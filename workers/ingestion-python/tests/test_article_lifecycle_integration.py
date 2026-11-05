@@ -1,0 +1,335 @@
+"""Required acceptance uses real worker processes and isolated fixture services."""
+from concurrent.futures import ProcessPoolExecutor
+from uuid import uuid4
+import asyncio
+import pytest
+from lifecycle_support import runtime,Repository,fresh_database
+
+
+def ensure_child(args):
+    from autodata_ingestion.source_job_persistence import ensure_article_job
+    repo,article=args
+    return ensure_article_job(repo,article,normalization_version="ordered-article-v1",rewrite_profile_version="technical-prose-v1")
+
+
+def test_twenty_ensures_two_processes_one_source_model_revision_event(runtime):
+    with ProcessPoolExecutor(max_workers=2) as pool:
+        results=list(pool.map(ensure_child,[(runtime.repo,runtime.article_id)]*20))
+    assert len({r.job_id for r in results})==1
+    runtime.start_workers(2);runtime.await_publication();runtime.stop_workers()
+    assert runtime.counters()=={"source":1,"asset":0,"model":1,"schedule":1}
+    with runtime.repo.connect() as conn:
+        for table in ("canonical_article_source_revisions","canonical_article_revisions","publication_events"):
+            assert conn.execute("SELECT count(*) AS n FROM "+table).fetchone()["n"]==1
+
+
+def test_warm_restart_is_provider_and_model_free(runtime):
+    first=runtime.ingest_to_publication("bankone")
+    runtime.restart_workers();runtime.reset_counters()
+    for _ in range(100):
+        assert runtime.read_current()["canonical_revision_id"]==first
+        assert runtime.ensure().job_id==runtime.current_job_id()
+    assert runtime.counters()=={"source":0,"asset":0,"model":0,"schedule":0}
+
+
+@pytest.mark.parametrize("provider",["bankone","banktwo"])
+def test_provider_bound_real_s3_capture_and_publication(runtime,provider):
+    revision=runtime.ingest_to_publication(provider)
+    assert runtime.read_current()["review_status"]=="UNREVIEWED"
+    assert runtime.servers["banktwo" if provider=="bankone" else "bankone"].calls==[]
+    with runtime.repo.connect() as conn:
+        key=conn.execute("SELECT snap.object_key FROM canonical_article_source_revisions s JOIN source_snapshots snap ON snap.source_snapshot_id=s.body_source_snapshot_id WHERE s.canonical_article_id=%s",(runtime.article_id,)).fetchone()["object_key"]
+    response=runtime.objects.client.get_object(runtime.bucket,key)
+    try:assert response.read()==b"<ol><li>Remove the pump.</li></ol>"
+    finally:response.close();response.release_conn()
+
+
+@pytest.mark.parametrize("point,expected_calls",[("before_source_commit",2),("after_source_commit",1),("after_model_dispatch",1),("after_model_result_commit",1),("before_publication",1),("inside_publication",1)])
+def test_process_death_resumes_durable_stage(runtime,point,expected_calls):
+    runtime.ensure();runtime.pause(point);runtime.start_workers(1);runtime.await_barrier()
+    job=runtime.current_job_id();runtime.kill_worker();runtime.expire_lease(job)
+    runtime.barrier=None;runtime.start_workers(2);runtime.await_publication();runtime.stop_workers()
+    assert runtime.counters()["source"]==(2 if point=="before_source_commit" else 1)
+    assert runtime.counters()["model"]==1
+    with runtime.repo.connect() as conn:
+        assert conn.execute("SELECT count(*) AS n FROM publication_events").fetchone()["n"]==1
+        attempts=conn.execute("SELECT status FROM canonical_article_rewrite_attempts ORDER BY created_at").fetchall()
+        assert [a["status"] for a in attempts]==(["ambiguous","succeeded"] if point=="after_model_dispatch" else ["succeeded"])
+
+
+def test_changed_source_keeps_identity_and_old_revision_immutable(runtime):
+    old=runtime.ingest_to_publication("banktwo");runtime.stop_workers()
+    with runtime.repo.connect() as conn:original=conn.execute("SELECT * FROM canonical_article_revisions WHERE canonical_article_revision_id=%s",(old,)).fetchone()
+    runtime.change_fixture_body(b"<ol><li>Remove the cover.</li></ol>")
+    runtime.refresh();runtime.pause("after_source_commit");runtime.start_workers(1);runtime.await_barrier()
+    assert runtime.read_current()["content_origin"]=="source"
+    assert runtime.read_current()["canonical_revision_id"] is None
+    runtime.release("after_source_commit");new=runtime.await_publication()
+    assert new!=old
+    with runtime.repo.connect() as conn:assert conn.execute("SELECT * FROM canonical_article_revisions WHERE canonical_article_revision_id=%s",(old,)).fetchone()==original
+
+
+def test_revision_only_refresh_reuses_publication_with_new_observation(runtime):
+    old=runtime.ingest_to_publication("bankone");runtime.stop_workers();runtime.reset_counters()
+    runtime.servers["bankone"].source_revision="revision-2"
+    runtime.refresh();runtime.start_workers(2)
+    runtime.wait_for(lambda:runtime.read_current()["processing_state"]=="completed")
+    assert runtime.read_current()["canonical_revision_id"]==old
+    assert runtime.read_current()["source_version"]=="revision-2"
+    assert runtime.counters()=={"source":1,"asset":0,"model":0,"schedule":1}
+    with runtime.repo.connect() as conn:
+        assert conn.execute("SELECT count(*) AS n FROM canonical_article_source_observations").fetchone()["n"]==2
+        assert conn.execute("SELECT count(*) AS n FROM publication_events").fetchone()["n"]==1
+
+
+@pytest.mark.parametrize("mode,code",[("unchanged","REWRITE_UNCHANGED"),("unsafe","REWRITE_PROTECTED_MUTATION")])
+def test_invalid_or_unchanged_model_retains_readable_source(runtime,mode,code):
+    runtime.model.mode=mode;runtime.ensure();runtime.start_workers(2);runtime.await_phase("needs_review")
+    state=runtime.read_current()
+    assert state["content_origin"]=="source" and state["processing_error_code"]==code
+    assert "Remove the pump." in state["body"]
+    with runtime.repo.connect() as conn:assert conn.execute("SELECT count(*) AS n FROM publication_events").fetchone()["n"]==0
+
+
+def test_unchanged_refresh_reuses_exhausted_transform_without_reset(runtime):
+    runtime.model.mode="transport";runtime.ensure();runtime.start_workers(2)
+    for claim in range(1,4):
+        def reached_attempt():
+            with runtime.repo.connect() as conn:
+                row=conn.execute("SELECT retry_count,status FROM source_fetch_jobs WHERE source_fetch_job_id=%s",(runtime.current_job_id(),)).fetchone()
+            return row["retry_count"]==claim and row["status"] in {"failed","dead_letter"}
+        runtime.wait_for(reached_attempt)
+        if claim<3:
+            with runtime.repo.connect() as conn:assert conn.execute("SELECT retry_count FROM source_fetch_jobs WHERE source_fetch_job_id=%s",(runtime.current_job_id(),)).fetchone()["retry_count"]==claim
+            runtime.make_due()
+    runtime.stop_workers()
+    with runtime.repo.connect() as conn:owner=conn.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s",(runtime.current_job_id(),)).fetchone()
+    assert owner["status"]=="dead_letter" and owner["retry_count"]==3
+    runtime.reset_counters();runtime.refresh();runtime.start_workers(2)
+    runtime.wait_for(lambda:runtime.read_current()["job_id"]==owner["source_fetch_job_id"])
+    runtime.stop_workers()
+    with runtime.repo.connect() as conn:
+        assert conn.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s",(owner["source_fetch_job_id"],)).fetchone()==owner
+        assert conn.execute("SELECT count(*) AS n FROM canonical_article_source_observations").fetchone()["n"]==2
+        assert conn.execute("SELECT count(*) AS n FROM canonical_article_revisions").fetchone()["n"]==0
+    assert runtime.counters()=={"source":1,"asset":0,"model":0,"schedule":1}
+    runtime.reset_counters()
+    for _ in range(100):assert runtime.ensure().job_id==owner["source_fetch_job_id"]
+    assert runtime.counters()=={"source":0,"asset":0,"model":0,"schedule":0}
+
+
+def test_real_nats_ack_before_mark_replay_is_one_logical_event_and_fenced(runtime,monkeypatch):
+    import json
+    import nats
+    from autodata_enrichment import outbox
+    runtime.ingest_to_publication("bankone");runtime.stop_workers()
+    for name,value in runtime.env.items():monkeypatch.setenv(name,value)
+    first=outbox._claim_next_event(3)
+    assert first is not None
+    async def send_twice():
+        connection=await nats.connect("nats://nats:4222",connect_timeout=1)
+        try:
+            js=connection.jetstream();await outbox._ensure_stream(js)
+            subscription=await js.pull_subscribe("catalog.article.published",durable="fixture-"+uuid4().hex,stream="AUTODATA_CATALOG")
+            ack=await outbox.publish_event(first,js)
+            with runtime.repo.connect() as conn:
+                conn.execute("UPDATE publication_events SET delivery_lease_expires_at=clock_timestamp()-interval '1 second' WHERE publication_event_id=%s",(first.publication_event_id,))
+            second=outbox._claim_next_event(3)
+            assert second.publication_event_id==first.publication_event_id and second.delivery_lease_token==first.delivery_lease_token+1
+            replay=await outbox.publish_event(second,js)
+            assert replay.seq==ack.seq and replay.duplicate
+            with pytest.raises(outbox.DeliveryLeaseLost):outbox._mark_delivered(first)
+            outbox._mark_delivered(second)
+            # Consumers independently deduplicate the immutable logical key.
+            with runtime.repo.connect() as conn:conn.execute("CREATE TABLE fixture_event_keys (idempotency_key text PRIMARY KEY)")
+            received=[]
+            deadline=__import__('time').monotonic()+10
+            while __import__('time').monotonic()<deadline:
+                messages=await subscription.fetch(1,timeout=1)
+                message=messages[0];value=json.loads(message.data)
+                await message.ack()
+                if value["event_id"]!=first.publication_event_id:continue
+                for _ in range(2):
+                    with runtime.repo.connect() as conn:conn.execute("INSERT INTO fixture_event_keys VALUES (%s) ON CONFLICT DO NOTHING",(value["idempotency_key"],))
+                received.append(value);break
+            assert len(received)==1
+            await js.delete_consumer("AUTODATA_CATALOG",subscription._consumer)
+        finally:await connection.close()
+    asyncio.run(send_twice())
+    with runtime.repo.connect() as conn:
+        assert conn.execute("SELECT count(*) AS n FROM fixture_event_keys").fetchone()["n"]==1
+        row=conn.execute("SELECT delivery_status,delivery_attempts FROM publication_events").fetchone()
+        assert row=={"delivery_status":"published","delivery_attempts":2}
+
+
+def test_broker_outage_keeps_canonical_publication_and_pending_event(runtime,monkeypatch):
+    from autodata_enrichment.outbox import relay_pending_events
+    revision=runtime.ingest_to_publication("banktwo");runtime.stop_workers()
+    for name,value in runtime.env.items():monkeypatch.setenv(name,value)
+    result=asyncio.run(relay_pending_events(nats_url="nats://127.0.0.1:1"))
+    assert result["claimed"]==0
+    assert runtime.read_current()["canonical_revision_id"]==revision
+    with runtime.repo.connect() as conn:assert conn.execute("SELECT delivery_status FROM publication_events").fetchone()["delivery_status"]=="pending"
+
+
+def test_expired_final_outbox_claim_is_dead_lettered(runtime,monkeypatch):
+    from autodata_enrichment import outbox
+    runtime.ingest_to_publication("bankone");runtime.stop_workers()
+    for name,value in runtime.env.items():monkeypatch.setenv(name,value)
+    first=outbox._claim_next_event(3)
+    with runtime.repo.connect() as conn:conn.execute("UPDATE publication_events SET delivery_attempts=3,delivery_lease_expires_at=clock_timestamp()-interval '1 second'")
+    assert outbox._claim_next_event(3) is None
+    with runtime.repo.connect() as conn:assert conn.execute("SELECT delivery_status,delivery_attempts FROM publication_events").fetchone()=={"delivery_status":"dead_letter","delivery_attempts":3}
+
+
+def test_crash_after_actual_model_request_records_ambiguous_and_bounded_replay(runtime):
+    runtime.model.delay=1;runtime.ensure();runtime.start_workers(1)
+    runtime.wait_for(lambda:runtime.model.calls==1)
+    job=runtime.current_job_id();runtime.kill_worker();runtime.expire_lease(job)
+    runtime.model.delay=0;runtime.start_workers(2)
+    runtime.await_publication();runtime.stop_workers()
+    assert runtime.counters()["source"]==1 and runtime.counters()["model"]==2
+    with runtime.repo.connect() as conn:
+        assert [r["status"] for r in conn.execute("SELECT status FROM canonical_article_rewrite_attempts ORDER BY created_at").fetchall()]==["ambiguous","succeeded"]
+        assert conn.execute("SELECT count(*) AS n FROM publication_events").fetchone()["n"]==1
+
+
+def test_stale_worker_after_source_io_cannot_commit_or_publish(runtime):
+    runtime.ensure();runtime.pause("before_source_commit");runtime.start_workers(1);runtime.await_barrier()
+    job=runtime.current_job_id();runtime.expire_lease(job)
+    # The second process is the new lease owner. The paused old process has
+    # already uploaded bytes, but its subsequent SQL write is fenced.
+    old_barrier=runtime.barrier;runtime.barrier=None;runtime.start_workers(1)
+    revision=runtime.await_publication();old_barrier[2].set()
+    runtime.stop_workers()
+    assert runtime.read_current()["canonical_revision_id"]==revision
+    with runtime.repo.connect() as conn:
+        assert conn.execute("SELECT count(*) AS n FROM canonical_article_source_observations").fetchone()["n"]==1
+        assert conn.execute("SELECT count(*) AS n FROM publication_events").fetchone()["n"]==1
+
+
+def test_real_s3_required_upload_failure_keeps_previous_publication(runtime):
+    old=runtime.ingest_to_publication("bankone");runtime.stop_workers()
+    runtime.change_fixture_body(b"<p>Remove the cover.</p>")
+    runtime.env["AUTODATA_SOURCE_BUCKET"]="fixture-missing-"+uuid4().hex
+    runtime.refresh();runtime.start_workers(2);runtime.await_phase("failed");runtime.stop_workers()
+    state=runtime.read_current()
+    assert state["canonical_revision_id"]==old and state["content_origin"]=="canonical"
+    assert state["processing_error_code"]=="ASSET_STORAGE_UNAVAILABLE"
+    with runtime.repo.connect() as conn:
+        assert conn.execute("SELECT count(*) AS n FROM canonical_article_source_revisions").fetchone()["n"]==1
+        assert conn.execute("SELECT count(*) AS n FROM publication_events").fetchone()["n"]==1
+
+
+def test_real_s3_optional_asset_failure_retains_readable_source_and_position(runtime):
+    from autodata_ingestion.worker import ArticleObjectStore
+    from autodata_ingestion.article_lifecycle import run_article_job
+    from autodata_ingestion.source_job_persistence import claim_source_job
+    from psycopg.types.json import Jsonb
+    from autodata_ingestion.mercury2 import Mercury2Client
+    provider=runtime.servers["bankone"]
+    provider.body(b'<p>Remove the pump.</p><img data-resource-ref="figure" src="https://provider.invalid/image">',assets=["figure"])
+    provider.body(b"fixture-image","image/png",ref="figure",kind="asset")
+    with runtime.repo.connect() as conn:
+        descriptor=conn.execute("SELECT descriptor FROM canonical_articles WHERE canonical_article_id=%s",(runtime.article_id,)).fetchone()["descriptor"]
+        descriptor["asset_resource_refs"]=["figure"]
+        conn.execute("UPDATE canonical_articles SET descriptor=%s WHERE canonical_article_id=%s",(Jsonb(descriptor),runtime.article_id))
+    missing=ArticleObjectStore(endpoint="minio:9000",access_key="fixture",secret_key="fixture",bucket="fixture-missing-"+uuid4().hex)
+    class SelectiveStore:
+        def put_object(self,key,payload,media_type):
+            (missing if media_type=="image/png" else runtime.objects).put_object(key,payload,media_type)
+    runtime.ensure();lease=claim_source_job(runtime.repo,worker_id=uuid4())
+    model=Mercury2Client(api_key="fixture-model",base_url=runtime.model.url)
+    run_article_job(runtime.repo,lease,registry=runtime.registry,object_store=SelectiveStore(),model_client=model)
+    state=runtime.read_current()
+    assert state["availability"]=="available"
+    assert state["document"]["blocks"][1]["type"]=="image" and state["document"]["blocks"][1]["status"]=="unavailable"
+    with runtime.repo.connect() as conn:
+        source=conn.execute("SELECT resource_manifest,projection_status FROM canonical_article_source_revisions").fetchone()
+        assert source["projection_status"]=="partial"
+        asset=next(item for item in source["resource_manifest"] if item["role"]=="asset")
+        assert asset["failure_code"]=="ASSET_STORAGE_UNAVAILABLE" and "sha256" not in asset
+
+
+def relay_paused_after_ack(env, arrived, release):
+    import os
+    from autodata_enrichment.outbox import relay_pending_events
+    os.environ.clear();os.environ.update(env)
+    def pause(point,event):
+        if point=="after_broker_ack":
+            arrived.set()
+            if not release.wait(15):raise AssertionError("relay barrier timed out")
+    asyncio.run(relay_pending_events(limit=1,hooks=pause,nats_url="nats://nats:4222"))
+
+
+def test_relay_process_death_after_real_broker_ack_replays_same_event(runtime,monkeypatch):
+    import multiprocessing
+    from autodata_enrichment import outbox
+    runtime.ingest_to_publication("banktwo");runtime.stop_workers()
+    for name,value in runtime.env.items():monkeypatch.setenv(name,value)
+    ctx=multiprocessing.get_context("spawn");arrived=ctx.Event();release=ctx.Event()
+    relay=ctx.Process(target=relay_paused_after_ack,args=(runtime.env,arrived,release))
+    relay.start()
+    try:
+        assert arrived.wait(10)
+        with runtime.repo.connect() as conn:
+            before=conn.execute("SELECT publication_event_id,idempotency_key,delivery_status FROM publication_events").fetchone()
+        assert before["delivery_status"]=="processing"
+        relay.kill();relay.join(3)
+        with runtime.repo.connect() as conn:conn.execute("UPDATE publication_events SET delivery_lease_expires_at=clock_timestamp()-interval '1 second'")
+        result=asyncio.run(outbox.relay_pending_events(limit=1,nats_url="nats://nats:4222"))
+        assert result["published"]==1
+        with runtime.repo.connect() as conn:
+            after=conn.execute("SELECT publication_event_id,idempotency_key,delivery_status,delivery_attempts FROM publication_events").fetchone()
+        assert after=={**before,"delivery_status":"published","delivery_attempts":2}
+    finally:
+        if relay.is_alive():relay.kill();relay.join(3)
+
+
+def scoped_runtime_article(runtime):
+    from lifecycle_support import seed_configuration
+    from autodata_ingestion.catalog_coverage import ensure_article_catalog_jobs
+    from autodata_ingestion.article_lifecycle import run_article_worker_once
+    configuration=seed_configuration(runtime.repo,runtime.vehicle)
+    with runtime.repo.connect() as conn:
+        conn.execute("UPDATE vehicle_configurations SET trim='Touring',engine_displacement_l=2.0 WHERE vehicle_configuration_id=%s",(configuration,))
+        conn.execute("UPDATE vehicle_identity_bases SET body_style='Sedan',drivetrain='AWD' WHERE vehicle_id=%s",(runtime.vehicle,))
+    ensure_article_catalog_jobs(runtime.repo,vehicle_id=runtime.vehicle,vehicle_configuration_id=configuration)
+    for _ in range(2):
+        assert run_article_worker_once(runtime.repo,worker_id=uuid4(),registry=runtime.registry,object_store=runtime.objects,model_client=None)
+    with runtime.repo.connect() as conn:
+        runtime.article_id=conn.execute("SELECT canonical_article_id FROM canonical_articles WHERE vehicle_configuration_id=%s AND provider_slug='bankone'",(configuration,)).fetchone()["canonical_article_id"]
+    return configuration
+
+
+@pytest.mark.parametrize("field,value,scoped",[("year",1999,False),("model_year",1999,False),("trim","Different",True),("engine_displacement_l",5.0,True),("drivetrain","RWD",True),("body_style","Coupe",True),("configuration","Different 5.0L RWD",True)])
+def test_actual_worker_rejects_wrong_year_aliases_and_configuration(runtime,field,value,scoped):
+    import json
+    if scoped:scoped_runtime_article(runtime)
+    runtime.servers["bankone"].body(json.dumps({"vehicle":{field:value},"body":"Remove the pump."}).encode(),"application/json")
+    runtime.ensure();runtime.start_workers(2)
+    runtime.wait_for(lambda:runtime.read_current()["processing_state"] in {"needs_review","completed"})
+    runtime.stop_workers()
+    state=runtime.read_current()
+    assert state["processing_state"]=="needs_review"
+    assert state["processing_error_code"]=="WRONG_APPLICABILITY" and state["canonical_revision_id"] is None
+    assert runtime.counters()["model"]==0
+    with runtime.repo.connect() as conn:
+        assert conn.execute("SELECT count(*) AS n FROM publication_events").fetchone()["n"]==0
+        assert conn.execute("SELECT count(*) AS n FROM canonical_article_source_observations").fetchone()["n"]==0
+
+
+def test_matching_scoped_applicability_persists_actual_context_for_replay(runtime):
+    import json
+    from autodata_ingestion.article_lifecycle_store import load_source_revision
+    configuration=scoped_runtime_article(runtime)
+    facts={"year":2024,"model_year":2024,"trim":"Touring","engine_displacement_l":2.0,"body_style":"Sedan","drivetrain":"AWD","configuration":"Touring 2.0L AWD"}
+    runtime.servers["bankone"].body(json.dumps({"vehicle":facts,"body":"Remove the pump."}).encode(),"application/json")
+    runtime.ensure();runtime.start_workers(2);runtime.await_publication();runtime.stop_workers()
+    source_id=runtime.read_current()["source_revision_id"]
+    source=load_source_revision(runtime.repo,source_id)
+    assert {name:source.vehicle[name] for name in facts}==facts
+    assert source.context.key.vehicle_configuration_id==configuration
+    with runtime.repo.connect() as conn:
+        conn.execute("UPDATE vehicle_configurations SET trim='Changed later' WHERE vehicle_configuration_id=%s",(configuration,))
+    assert load_source_revision(runtime.repo,source_id).vehicle==source.vehicle

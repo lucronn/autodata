@@ -1,0 +1,59 @@
+{
+  "task_id": "production-release-workshop-browser-account-media-status",
+  "repository": "lucronn/autodata",
+  "goal": "Align the real-API browser fixture with the existing wrong-account media404 privacy contract without changing authorization behavior.",
+  "builder_agent": "coordinator-authorized-python-fixture-builder",
+  "source_integration_base_sha": "fa30a2204dc8a5c0907d090ec4f41fdd8bec9b4b",
+  "allowed_paths": [
+    "scripts/dev/workshop_browser_smoke.py",
+    "scripts/dev/test_workshop_browser_smoke.py"
+  ],
+  "inputs": [
+    "docs/superpowers/plans/2026-11-03-workshop-browser-account-media-status.md",
+    "docs/superpowers/plans/2026-11-03-workshop-customer-ui.md",
+    "docs/superpowers/plans/2026-11-03-workshop-paid-access.md"
+  ],
+  "outputs": [
+    "scripts/dev/workshop_browser_smoke.py",
+    "scripts/dev/test_workshop_browser_smoke.py"
+  ],
+  "acceptance_tests": [
+    "Add a focused red regression executing the actual wrong-account media assertion against synthetic status404 and rejecting200/401/403/410/503; preserve sibling grant403/auth401 assertions.",
+    "Change only the wrong-account media fixture expectation from403 to404; preserve all21 parameterized cases and frozen runner/receipts.",
+    "Run focused Python unit tests, syntax and diff/scope checks; commit/push and request independent exact-candidate review.",
+    "After reviewed auth-header integration and required paid12 verification, let the coordinator run the unchanged isolated21 real-API browser inventory and independently inspect retained receipts."
+  ],
+  "forbidden_scope": [
+    "No product Go/UI/API/SQL/grant/session/source/media behavior, dependency or image changes.",
+    "No changes to21-case parametrization,120DTO inventory, pytest/Go fixture, timing budgets, frozen /tmp supervisors or historical receipts.",
+    "No Docker/browser/provider/cloud/real-secret execution by the implementation worker; coordinator owns actual acceptance.",
+    "No widened status union; same-owner revoked/missing grant403 and authentication401 remain exact."
+  ],
+  "pre_implementation": {
+    "goal": "Align the real-API browser fixture with the existing wrong-account media404 privacy contract without changing authorization behavior.",
+    "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-browser-account-media-status.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/superpowers/plans/2026-11-03-workshop-customer-ui.md"
+    ],
+    "todo": [
+      "Synchronize Issue186/Project8 and the canonical browser amendment; commit the checkpoint, pass exact-SHA preflight and obtain coordinator review before implementation.",
+      "Add a focused red regression executing the actual wrong-account media assertion against synthetic status404 and rejecting200/401/403/410/503; preserve sibling grant403/auth401 assertions.",
+      "Change only the wrong-account media fixture expectation from403 to404; preserve all21 parameterized cases and frozen runner/receipts.",
+      "Run focused Python unit tests, syntax and diff/scope checks; commit/push and request independent exact-candidate review.",
+      "After reviewed auth-header integration and required paid12 verification, let the coordinator run the unchanged isolated21 real-API browser inventory and independently inspect retained receipts."
+    ],
+    "status": "synchronized",
+    "updated_at": "2026-11-03T21:21:52.582101+00:00"
+  },
+  "execution": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "medium",
+    "service_tier": "fast",
+    "features": {
+      "fast_mode": true
+    },
+    "allow_fallback": false
+  }
+}

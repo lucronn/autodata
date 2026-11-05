@@ -2,33 +2,53 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	stdhtml "html"
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
+	"time"
 
 	"golang.org/x/net/html"
 )
 
 type CatalogSourceContentResponse struct {
-	Version string              `json:"version"`
-	Source  CatalogSourceReview `json:"source"`
-	Content string              `json:"content"`
+	Version      string              `json:"version"`
+	Source       CatalogSourceReview `json:"source"`
+	Content      string              `json:"content"`
+	Document     *CatalogDocument    `json:"document,omitempty"`
+	Images       []CatalogImage      `json:"images,omitempty"`
+	ViewRevision *string             `json:"view_revision,omitempty"`
 }
 
 var unsafeCatalogSourceStyle = regexp.MustCompile(`(?i)(?:url\s*\([^)]*\)|expression\s*\(|behavior\s*:|-moz-binding\s*:)`)
 
 func (s *Server) serveCatalogSource(response http.ResponseWriter, request *http.Request, principal Principal) {
+	if s.paidCatalogEnabled() {
+		s.servePaidCatalogSource(response, request, principal)
+		return
+	}
 	vehicleID := request.PathValue("vehicle_id")
 	articleID := request.PathValue("article_id")
-	stored, err := s.catalog.ArticleSource(request.Context(), principal, vehicleID, articleID)
+	response.Header().Set("Cache-Control", "private, no-store")
+	stored, err := s.catalog.ArticleSourceRevision(request.Context(), principal, vehicleID, articleID, request.URL.Query().Get("source_revision_id"))
 	if err != nil {
 		s.writeCatalogError(response, request, err)
 		return
 	}
-	format, content, err := renderStoredCatalogSource(stored.Original, stored.SourceURI, s.catalogImageKey)
+	var format, content string
+	if stored.Document != nil {
+		article := CatalogArticle{Images: stored.Images}
+		rewriteCatalogImageURLs(&article, s.catalogImageKey)
+		stored.Images = article.Images
+		format = "html"
+		content = renderCatalogOrderedSource(stored.Document, stored.Images)
+	} else {
+		format, content, err = renderStoredCatalogSource(stored.Original, stored.SourceURI, s.catalogImageKey)
+	}
 	if err != nil {
 		s.writeCatalogError(response, request, err)
 		return
@@ -39,13 +59,98 @@ func (s *Server) serveCatalogSource(response http.ResponseWriter, request *http.
 		Version:       stored.Version,
 		ContentSHA256: stored.ContentSHA256,
 		Format:        format,
-		URL:           catalogSourceURL(vehicleID, articleID),
+		URL:           catalogPinnedSourceURL(vehicleID, articleID, stored.SourceRevisionID),
 	}
 	if acceptsJSON(request) {
-		writeJSON(response, http.StatusOK, CatalogSourceContentResponse{Version: "v1", Source: review, Content: content})
+		writeJSON(response, http.StatusOK, CatalogSourceContentResponse{Version: "v1", Source: review, Content: content, Document: stored.Document, Images: stored.Images, ViewRevision: stored.ViewRevision})
 		return
 	}
 	writeCatalogSourceHTML(response, review, content, request.URL.Query().Get("evidence_id"), request.URL.Query().Get("source_locator"))
+}
+
+// Paid source review loads current anchors separately from a pinned historical
+// revision. A historical asset is never silently replaced by the newest source.
+func (s *Server) servePaidCatalogSource(w http.ResponseWriter, r *http.Request, p Principal) {
+	w.Header().Set("Cache-Control", "private, no-store")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	r = r.WithContext(ctx)
+	configuration, err := s.resolvePaidCatalogScope(ctx, p, r.PathValue("vehicle_id"), r.URL.Query().Get("region"))
+	if err != nil {
+		s.writePaidCatalogError(w, r, err)
+		return
+	}
+	articleID := r.PathValue("article_id")
+	if !commerceUUID(articleID) {
+		s.writePaidCatalogError(w, r, ErrCatalogNotFound)
+		return
+	}
+	identity, err := s.paidMediaIdentity(ctx, configuration, articleID)
+	if err != nil {
+		s.writePaidCatalogError(w, r, err)
+		return
+	}
+	view, err := s.catalog.ArticleView(ctx, p, configuration.ID, articleID)
+	if err != nil {
+		s.writePaidCatalogError(w, r, err)
+		return
+	}
+	if view.Withdrawn {
+		s.writePaidCatalogError(w, r, ErrCatalogWithdrawn)
+		return
+	}
+	if !paidCatalogViewMatches(view, identity) {
+		s.writePaidCatalogError(w, r, ErrCatalogNotFound)
+		return
+	}
+	selected := r.URL.Query().Get("source_revision_id")
+	if selected == "" {
+		if view.Article.SourceRevisionID == nil {
+			s.writePaidCatalogError(w, r, ErrVehicleGrantUnavailable)
+			return
+		}
+		selected = *view.Article.SourceRevisionID
+	}
+	if !commerceUUID(selected) {
+		s.writePaidCatalogError(w, r, ErrCatalogNotFound)
+		return
+	}
+	stored, err := s.catalog.ArticleSourceRevision(ctx, p, configuration.ID, articleID, selected)
+	if err != nil {
+		s.writePaidCatalogError(w, r, err)
+		return
+	}
+	if stored.SourceRevisionID == nil || *stored.SourceRevisionID != selected {
+		s.writePaidCatalogError(w, r, ErrCatalogNotFound)
+		return
+	}
+	stored.Images = append([]CatalogImage{}, stored.Images...)
+	stored.Document = publicCatalogDocument(stored.Document)
+	now := time.Now()
+	ref := paidCatalogProjectionReference(p, configuration, identity, view, selected, "source", now)
+	s.rewritePaidCatalogImages(stored.Images, stored, ref, now)
+	var format, content string
+	if stored.Document != nil {
+		format, content = "html", renderCatalogOrderedSource(stored.Document, stored.Images)
+	} else {
+		format, content, err = renderStoredCatalogSource(stored.Original, stored.SourceURI, s.catalogImageKey)
+		// Paid review exposes ordered projections or sanitized HTML, never a
+		// generic raw provider JSON download. Canonical PG sources have Documents.
+		if err == nil && format != "html" {
+			err = ErrVehicleGrantUnavailable
+		}
+	}
+	if err != nil {
+		s.writePaidCatalogError(w, r, err)
+		return
+	}
+	review := CatalogSourceReview{Available: true, SnapshotID: stored.SnapshotID, Version: stored.Version, ContentSHA256: stored.ContentSHA256, Format: format, URL: catalogPinnedSourceURL(configuration.ID, articleID, stored.SourceRevisionID)}
+	if acceptsJSON(r) {
+		writeJSON(w, http.StatusOK, CatalogSourceContentResponse{Version: "v1", Source: review, Content: content, Document: stored.Document, Images: stored.Images, ViewRevision: stored.ViewRevision})
+		return
+	}
+	writeCatalogSourceHTML(w, review, content, r.URL.Query().Get("evidence_id"), r.URL.Query().Get("source_locator"))
 }
 
 func sourceReviewForArticle(article CatalogArticle, vehicleID, articleID string) *CatalogSourceReview {
@@ -62,7 +167,7 @@ func sourceReviewForArticle(article CatalogArticle, vehicleID, articleID string)
 		Version:       article.sourceVersion,
 		ContentSHA256: article.sourceContentSHA256,
 		Format:        format,
-		URL:           catalogSourceURL(vehicleID, articleID),
+		URL:           catalogPinnedSourceURL(vehicleID, articleID, article.SourceRevisionID),
 	}
 }
 
@@ -166,9 +271,9 @@ func sanitizeCatalogSourceNode(node *html.Node, sourceURI string, imageKey []byt
 			}
 			sanitizeCatalogSourceAttributes(child, sourceURI, imageKey)
 			if tag == "img" && !catalogSourceImageHasSource(child) {
-				node.RemoveChild(child)
-				child = next
-				continue
+				child.Type = html.TextNode
+				child.Data = "Image unavailable"
+				child.Attr = nil
 			}
 		}
 		sanitizeCatalogSourceNode(child, sourceURI, imageKey)
@@ -187,17 +292,21 @@ func catalogSourceImageHasSource(node *html.Node) bool {
 
 func blockedCatalogSourceTag(tag string) bool {
 	switch tag {
-	case "base", "button", "embed", "form", "iframe", "input", "link", "meta", "object", "script", "select", "textarea":
-		return true
-	default:
+	case "html", "head", "body", "div", "span", "p", "br", "hr", "h1", "h2", "h3", "h4", "h5", "h6", "strong", "b", "em", "i", "u", "s", "sub", "sup", "pre", "code", "blockquote", "ul", "ol", "li", "dl", "dt", "dd", "table", "caption", "thead", "tbody", "tfoot", "tr", "th", "td", "img", "figure", "figcaption", "a":
 		return false
 	}
+	return true
 }
 
 func sanitizeCatalogSourceAttributes(node *html.Node, sourceURI string, imageKey []byte) {
 	attributes := make([]html.Attribute, 0, len(node.Attr))
 	for _, attribute := range node.Attr {
 		key := strings.ToLower(attribute.Key)
+		switch key {
+		case "src", "alt", "title", "colspan", "rowspan", "start", "value", "scope":
+		default:
+			continue
+		}
 		if strings.HasPrefix(key, "on") || key == "srcdoc" || key == "srcset" {
 			continue
 		}
@@ -239,7 +348,7 @@ func writeCatalogSourceHTML(response http.ResponseWriter, review CatalogSourceRe
 	response.Header().Set("Content-Type", "text/html; charset=utf-8")
 	response.Header().Set("Content-Security-Policy", "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; font-src 'none'; frame-ancestors 'self'; base-uri 'none'; form-action 'none'")
 	response.Header().Set("X-Content-Type-Options", "nosniff")
-	response.Header().Set("Cache-Control", "private, max-age=60")
+	response.Header().Set("Cache-Control", "private, no-store")
 	metadata := []string{"Stored source copy", "Snapshot " + review.SnapshotID, "Version " + review.Version}
 	if evidenceID != "" {
 		metadata = append(metadata, "Evidence "+evidenceID)
@@ -258,4 +367,126 @@ func writeCatalogSourceHTML(response http.ResponseWriter, review CatalogSourceRe
 	_, _ = response.Write([]byte("</strong><span>" + stdhtml.EscapeString(strings.Join(metadata[1:], " · ")) + "</span></header><main><article class=\"source-document\">"))
 	_, _ = response.Write([]byte(body))
 	_, _ = response.Write([]byte("</article></main></body></html>"))
+}
+
+func catalogPinnedSourceURL(vehicleID, articleID string, revision *string) string {
+	result := catalogSourceURL(vehicleID, articleID)
+	if revision != nil {
+		result += "?source_revision_id=" + url.QueryEscape(*revision)
+	}
+	return result
+}
+
+// Ordered text is escaped at every leaf, including structured table cells.
+func renderCatalogOrderedSource(document *CatalogDocument, images []CatalogImage) string {
+	var output strings.Builder
+	assets := map[string]CatalogImage{}
+	for _, image := range images {
+		assets[image.ID] = image
+		assets[image.ImageID] = image
+		if image.AssetID != "" {
+			assets[image.AssetID] = image
+		}
+	}
+	var cell func(any) string
+	imageHTML := func(id, alt string) string {
+		image, ok := assets[id]
+		if !ok || image.URL == "" {
+			return "<span>Image unavailable</span>"
+		}
+		return `<img src="` + stdhtml.EscapeString(image.URL) + `" alt="` + stdhtml.EscapeString(alt) + `">`
+	}
+	cell = func(value any) string {
+		switch v := value.(type) {
+		case string:
+			return stdhtml.EscapeString(v)
+		case map[string]any:
+			result := ""
+			if text, ok := v["text"].(string); ok {
+				result = stdhtml.EscapeString(text)
+			}
+			if id, ok := v["asset_id"].(string); ok {
+				result += imageHTML(id, "")
+			}
+			if nested, ok := v["images"].([]any); ok {
+				for _, img := range nested {
+					result += cell(img)
+				}
+			}
+			if blocks, ok := v["blocks"].([]any); ok {
+				for _, block := range blocks {
+					result += cell(block)
+				}
+			}
+			return result
+		case []any:
+			result := ""
+			for _, item := range v {
+				result += cell(item)
+			}
+			return result
+		default:
+			encoded, _ := json.Marshal(v)
+			return stdhtml.EscapeString(string(encoded))
+		}
+	}
+	for _, block := range document.Blocks {
+		output.WriteString(`<section id="` + stdhtml.EscapeString(block.BlockID) + `">`)
+		switch block.Type {
+		case "step":
+			number := block.Number
+			if number < 1 {
+				number = 1
+			}
+			output.WriteString(`<ol start="` + strconv.Itoa(number) + `"><li>` + stdhtml.EscapeString(block.Text) + `</li></ol>`)
+		case "image":
+			id := block.AssetID
+			if id == "" {
+				id = block.ImageID
+			}
+			output.WriteString(imageHTML(id, block.Alt))
+		case "table":
+			output.WriteString("<table>")
+			if len(block.Columns) > 0 {
+				output.WriteString("<thead><tr>")
+				for _, column := range block.Columns {
+					output.WriteString("<th>" + stdhtml.EscapeString(column) + "</th>")
+				}
+				output.WriteString("</tr></thead>")
+			}
+			output.WriteString("<tbody>")
+			for _, row := range block.Rows {
+				output.WriteString("<tr>")
+				for _, value := range row {
+					output.WriteString("<td>" + cell(value) + "</td>")
+				}
+				output.WriteString("</tr>")
+			}
+			output.WriteString("</tbody></table>")
+		default:
+			if block.Label != "" {
+				output.WriteString("<strong>" + stdhtml.EscapeString(block.Label) + "</strong>")
+			}
+			output.WriteString("<p>" + stdhtml.EscapeString(block.Text) + "</p>")
+			if len(block.Items) > 0 {
+				output.WriteString("<ol>")
+				for _, item := range block.Items {
+					output.WriteString("<li>" + stdhtml.EscapeString(item) + "</li>")
+				}
+				output.WriteString("</ol>")
+			}
+		}
+		for _, image := range block.Images {
+			id := image.ID
+			if id == "" {
+				id = image.ImageID
+			}
+			if id == "" {
+				id = image.AssetID
+			}
+			output.WriteString(imageHTML(id, image.Alt))
+		}
+		output.WriteString("</section>")
+	}
+	return output.String()
 }

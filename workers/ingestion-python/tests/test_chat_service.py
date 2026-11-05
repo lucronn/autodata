@@ -5,6 +5,7 @@ import http.client
 import sys
 import threading
 import uuid
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -920,7 +921,10 @@ def test_due_only_retry_queue_persists_backoff_and_dead_letters():
     scheduled = get_chat_query(created["query_id"], principal=principal())
     next_attempt = scheduled["job_plan"]["next_attempt_at"]
     assert next_attempt
-    assert process_chat_jobs() == []
+    not_due = (
+        datetime.fromisoformat(next_attempt) - timedelta(microseconds=1)
+    ).isoformat()
+    assert process_chat_jobs(now=not_due) == []
     process_chat_jobs(now=next_attempt)
     scheduled = get_chat_query(created["query_id"], principal=principal())
     process_chat_jobs(now=scheduled["job_plan"]["next_attempt_at"])
@@ -956,7 +960,10 @@ def test_price_refresh_retry_is_due_only_and_never_blocks_available_answer():
     assert first["status"] == "available"
     assert first["job_plan"]["price_refresh"]["backoff_seconds"] == 1
     next_attempt = first["job_plan"]["price_refresh"]["next_attempt_at"]
-    assert process_chat_price_jobs() == []
+    not_due = (
+        datetime.fromisoformat(next_attempt) - timedelta(microseconds=1)
+    ).isoformat()
+    assert process_chat_price_jobs(now=not_due) == []
     second = process_chat_price_jobs(now=next_attempt)[0]
     next_attempt = second["job_plan"]["price_refresh"]["next_attempt_at"]
     dead_letter = process_chat_price_jobs(now=next_attempt)[0]

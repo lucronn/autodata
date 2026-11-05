@@ -1,0 +1,77 @@
+{
+  "task_id": "production-release-r0-evidence",
+  "repository": "lucronn/autodata",
+  "goal": "Make agent release evidence verifiable and tied to actual checks and the exact candidate.",
+  "builder_agent": "autodata-python-builder",
+  "allowed_paths": [
+    "scripts/autonomy/runner.py",
+    "scripts/autonomy/orchestrator.py",
+    "scripts/autonomy/agent-output.schema.json",
+    "scripts/autonomy/test_runner.py",
+    "scripts/autonomy/test_orchestrator.py",
+    "scripts/autonomy/fixtures/provenance-v1/population.json",
+    "scripts/autonomy/fixtures/provenance-v1/source.json",
+    "scripts/autonomy/fixtures/provenance-v1/extraction.json",
+    "scripts/autonomy/fixtures/run_provenance_fixture.py"
+  ],
+  "bounded_contexts": [
+    "agent evidence",
+    "deterministic verification"
+  ],
+  "inputs": [
+    "docs/superpowers/specs/2026-11-03-production-release-orchestration-design.md",
+    "docs/superpowers/plans/2026-11-03-production-release-orchestration.md",
+    "docs/superpowers/plans/2026-11-03-agent-evidence-hardening.md"
+  ],
+  "outputs": [
+    "scripts/autonomy/runner.py"
+  ],
+  "acceptance_tests": [
+    "Missing, failed, tampered, out-of-root, or stale evidence blocks a claimed pass.",
+    "Verifier findings and actual command outcomes survive aggregation without fabricated coverage.",
+    "A nonempty, explicitly labeled deterministic provenance fixture supplies measured eligible and covered identities; empty eligibility blocks.",
+    "Committed deletions and dirty changes after a commit are checked against scope.",
+    "python3 -m unittest discover -s scripts/autonomy -p test_*.py -v"
+  ],
+  "forbidden_scope": [
+    "Production deployment or production-data changes",
+    "Changing the autonomy policy or weakening required checks",
+    "Publishing secrets or private source payloads",
+    "Editing paths outside the assigned scope",
+    "Merging without independent exact-commit verification",
+    "Changing the requested gpt-6.1-sol / medium / Fast execution profile or silently falling back to another model or tier"
+  ],
+  "compatibility": {
+    "api": "Preserve existing consumers with additive versioned fields; run compatibility checks.",
+    "events": "Preserve event identity and make duplicate delivery idempotent.",
+    "schema": "Forward-only additive migrations with clean and upgrade verification; no destructive edits to historical migrations."
+  },
+  "pre_implementation": {
+    "goal": "Make agent release evidence verifiable and tied to actual checks and the exact candidate.",
+    "plan_ref": "docs/superpowers/plans/2026-11-03-agent-evidence-hardening.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/superpowers/specs/2026-11-03-production-release-orchestration-design.md",
+      "docs/superpowers/plans/2026-11-03-production-release-orchestration.md"
+    ],
+    "todo": [
+      "Missing, failed, tampered, out-of-root, or stale evidence blocks a claimed pass.",
+      "Verifier findings and actual command outcomes survive aggregation without fabricated coverage.",
+      "A nonempty, explicitly labeled deterministic provenance fixture supplies measured eligible and covered identities; empty eligibility blocks.",
+      "Committed deletions and dirty changes after a commit are checked against scope.",
+      "python3 -m unittest discover -s scripts/autonomy -p test_*.py -v"
+    ],
+    "status": "synchronized",
+    "updated_at": "2026-11-03T09:19:59.667985+00:00"
+  },
+  "execution": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "medium",
+    "service_tier": "fast",
+    "features": {
+      "fast_mode": true
+    },
+    "allow_fallback": false
+  }
+}

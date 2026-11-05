@@ -53,7 +53,13 @@ services:
       context: ../..
       dockerfile: apps/api-go/Dockerfile
     environment:
+      AUTODATA_COMMERCE_MODE: ${AUTODATA_COMMERCE_MODE:-disabled}
+      AUTODATA_STRIPE_ACCOUNT_ID: ${AUTODATA_STRIPE_ACCOUNT_ID-}
+      AUTODATA_STRIPE_PRICE_ID: ${AUTODATA_STRIPE_PRICE_ID-}
       AUTODATA_API_ADDR: ":8080"
+      AUTODATA_ENV: "development"
+      AUTODATA_AUTH_MODE: "local"
+      AUTODATA_PUBLIC_ORIGIN: "https://localhost:8080"
       AUTODATA_DB_ADDRESS: "postgres:5432"
       AUTODATA_POSTGRES_DB: ${AUTODATA_POSTGRES_DB:-autodata}
       AUTODATA_POSTGRES_USER: ${AUTODATA_POSTGRES_USER:-autodata}
@@ -146,6 +152,13 @@ services:
       context: ../..
       dockerfile: workers/ingestion-python/Dockerfile
     environment:
+      AUTODATA_COMMERCE_MODE: ${AUTODATA_COMMERCE_MODE:-disabled}
+      AUTODATA_STRIPE_ACCOUNT_ID: ${AUTODATA_STRIPE_ACCOUNT_ID-}
+      AUTODATA_STRIPE_PRICE_ID: ${AUTODATA_STRIPE_PRICE_ID-}
+      AUTODATA_ENV: "development"
+      AUTODATA_PUBLIC_ORIGIN: "https://localhost:8080"
+      AUTODATA_STRIPE_SECRET_KEY: ${AUTODATA_STRIPE_SECRET_KEY-}
+      AUTODATA_STRIPE_WEBHOOK_SECRET: ${AUTODATA_STRIPE_WEBHOOK_SECRET-}
       AUTODATA_INGESTION_HTTP_ADDR: ":8081"
       AUTODATA_INGESTION_INTERNAL_TOKEN: ${AUTODATA_INGESTION_INTERNAL_TOKEN-}
       AUTODATA_DB_ADDRESS: "postgres:5432"
@@ -200,6 +213,14 @@ services:
       context: ../..
       dockerfile: workers/ingestion-python/Dockerfile
     environment:
+      AUTODATA_COMMERCE_MODE: ${AUTODATA_COMMERCE_MODE:-disabled}
+      AUTODATA_STRIPE_ACCOUNT_ID: ${AUTODATA_STRIPE_ACCOUNT_ID-}
+      AUTODATA_STRIPE_PRICE_ID: ${AUTODATA_STRIPE_PRICE_ID-}
+      AUTODATA_ENV: "development"
+      AUTODATA_PUBLIC_ORIGIN: "https://localhost:8080"
+      AUTODATA_STRIPE_SECRET_KEY: ${AUTODATA_STRIPE_SECRET_KEY-}
+      AUTODATA_STRIPE_WEBHOOK_SECRET: ${AUTODATA_STRIPE_WEBHOOK_SECRET-}
+      AUTODATA_INGESTION_INTERNAL_TOKEN: ${AUTODATA_INGESTION_INTERNAL_TOKEN-}
       AUTODATA_DB_ADDRESS: "postgres:5432"
       AUTODATA_POSTGRES_DB: ${AUTODATA_POSTGRES_DB:-autodata}
       AUTODATA_POSTGRES_USER: ${AUTODATA_POSTGRES_USER:-autodata}
@@ -344,7 +365,7 @@ services:
       PGDATABASE: ${AUTODATA_POSTGRES_DB:-autodata}
       PGUSER: ${AUTODATA_POSTGRES_USER:-autodata}
       PGPASSWORD: ${AUTODATA_POSTGRES_PASSWORD:?set AUTODATA_POSTGRES_PASSWORD for local development}
-    command: ["sh", "-c", "set -eu; for migration in /workspace/db/migrations/[0-9][0-9][0-9]_*.sql; do echo applying $${migration}; psql --set ON_ERROR_STOP=1 --file $${migration}; done"]
+    command: ["sh", "scripts/dev/migrate_sql.sh"]
     depends_on:
       postgres:
         condition: service_healthy

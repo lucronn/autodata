@@ -1,0 +1,64 @@
+{
+  "task_id": "production-release-r0-provider-path-schema",
+  "repository": "lucronn/autodata",
+  "goal": "Remove provider-unsupported path regex lookaround while preserving deterministic path safety at trusted-input and evidence boundaries.",
+  "builder_agent": "autodata-python-builder",
+  "allowed_paths": [
+    "scripts/autonomy/agent-output.schema.json",
+    "scripts/autonomy/test_runner.py"
+  ],
+  "bounded_contexts": [
+    "provider structured output compatibility"
+  ],
+  "inputs": [
+    "docs/superpowers/plans/2026-11-03-provider-path-schema-compatibility.md",
+    "docs/verification/2026-11-03-agent-evidence-hardening.md"
+  ],
+  "outputs": [
+    "scripts/autonomy/agent-output.schema.json"
+  ],
+  "acceptance_tests": [
+    "Provider schema contains no lookaround expressions and all unrelated constraints are unchanged.",
+    "Actual validation boundaries reject unsafe path forms and preserve permitted relative/root forms.",
+    "The full autonomy suite passes at an independently reviewed exact SHA; no runtime metadata is fabricated."
+  ],
+  "forbidden_scope": [
+    "Production deployment or production-data changes",
+    "Changing the autonomy policy or weakening required checks",
+    "Publishing secrets or private source payloads",
+    "Editing paths outside the assigned scope",
+    "Merging without independent exact-commit verification",
+    "Changing the requested gpt-6.1-sol / medium / Fast execution profile or silently falling back to another model or tier"
+  ],
+  "compatibility": {
+    "api": "Preserve existing consumers with additive versioned fields; run compatibility checks.",
+    "events": "Preserve event identity and make duplicate delivery idempotent.",
+    "schema": "Forward-only additive migrations with clean and upgrade verification; no destructive edits to historical migrations."
+  },
+  "pre_implementation": {
+    "goal": "Remove provider-unsupported path regex lookaround while preserving deterministic path safety at trusted-input and evidence boundaries.",
+    "plan_ref": "docs/superpowers/plans/2026-11-03-provider-path-schema-compatibility.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/agents/runner-interface.md",
+      "docs/verification/2026-11-03-agent-evidence-hardening.md"
+    ],
+    "todo": [
+      "Provider schema contains no lookaround expressions and all unrelated constraints are unchanged.",
+      "Actual validation boundaries reject unsafe path forms and preserve permitted relative/root forms.",
+      "The full autonomy suite passes at an independently reviewed exact SHA; no runtime metadata is fabricated."
+    ],
+    "status": "synchronized",
+    "updated_at": "2026-11-03T10:12:14.184785+00:00"
+  },
+  "execution": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "medium",
+    "service_tier": "fast",
+    "features": {
+      "fast_mode": true
+    },
+    "allow_fallback": false
+  }
+}

@@ -11,3 +11,4 @@ htmlcov/
 .env
 *.env
 
+/apps/api-go/workshop-client/node_modules/

@@ -1,0 +1,126 @@
+{
+  "task_id": "production-release-r2-rewrite",
+  "repository": "lucronn/autodata",
+  "goal": "Publish one validated canonical rewrite per source transformation key with durable source fallback and crash recovery.",
+  "builder_agent": "autodata-python-builder",
+  "allowed_paths": [
+    "workers/ingestion-python/src/autodata_ingestion/procedure_rewrite.py",
+    "workers/ingestion-python/src/autodata_ingestion/procedure_normalize.py",
+    "workers/ingestion-python/src/autodata_ingestion/article_document.py",
+    "workers/ingestion-python/src/autodata_ingestion/mercury2.py",
+    "workers/ingestion-python/src/autodata_ingestion/article_lifecycle.py",
+    "workers/ingestion-python/src/autodata_ingestion/article_lifecycle_store.py",
+    "workers/ingestion-python/src/autodata_ingestion/article_lifecycle_types.py",
+    "workers/ingestion-python/src/autodata_ingestion/source_job_persistence.py",
+    "workers/ingestion-python/src/autodata_ingestion/catalog_service.py",
+    "workers/ingestion-python/src/autodata_ingestion/worker.py",
+    "workers/ingestion-python/src/autodata_ingestion/http_service.py",
+    "workers/ingestion-python/src/autodata_ingestion/bankone_batch.py",
+    "workers/ingestion-python/src/autodata_ingestion/bankone_job_persistence.py",
+    "workers/ingestion-python/tests/test_procedure_rewrite.py",
+    "workers/ingestion-python/tests/test_article_document.py",
+    "workers/ingestion-python/tests/test_mercury2.py",
+    "workers/ingestion-python/tests/test_article_transform.py",
+    "workers/ingestion-python/tests/test_article_publication.py",
+    "workers/ingestion-python/tests/test_source_job_persistence.py",
+    "workers/ingestion-python/tests/test_catalog_service.py",
+    "workers/ingestion-python/tests/test_worker.py",
+    "workers/ingestion-python/tests/test_http_service.py",
+    "workers/ingestion-python/tests/test_bankone_batch.py",
+    "workers/ingestion-python/tests/test_bankone_job_persistence.py",
+    "workers/ingestion-python/tests/test_article_worker.py",
+    "workers/ingestion-python/tests/test_article_lifecycle_integration.py",
+    "workers/ingestion-python/tests/lifecycle_support.py",
+    "workers/enrichment-python/src/autodata_enrichment/outbox.py",
+    "workers/enrichment-python/tests/test_outbox.py",
+    "packages/contracts/contract.json",
+    "packages/contracts/python/autodata_contracts/contracts.py",
+    "packages/contracts/go/contracts.go",
+    "packages/contracts/go/contracts_test.go",
+    "packages/contracts/catalog/v1/article-lifecycle.schema.json",
+    "scripts/contracts/generate.py",
+    "scripts/contracts/test_contracts.py",
+    "scripts/dev/backfill_article_lifecycle.py",
+    "scripts/dev/test_backfill_article_lifecycle.py",
+    "scripts/dev/article_worker.py",
+    "scripts/dev/article_lifecycle_smoke.py",
+    "scripts/dev/test_article_lifecycle_smoke.py",
+    "scripts/dev/source_connector_fixture_server.py",
+    "infra/compose/compose.article-lifecycle-test.yaml",
+    "infra/compose/article-lifecycle-test.Dockerfile",
+    "docs/architecture/independent-bank-connectors.md",
+    "docs/architecture/article-catalog-list-only-hydration.md",
+    "docs/architecture/normalized-article-document.md",
+    "docs/verification/2026-11-03-canonical-article-lifecycle.md"
+  ],
+  "bounded_contexts": [
+    "article transformation",
+    "publication",
+    "recovery"
+  ],
+  "inputs": [
+    "docs/superpowers/specs/2026-11-03-production-release-orchestration-design.md",
+    "docs/superpowers/plans/2026-11-03-production-release-orchestration.md",
+    "docs/superpowers/plans/2026-11-03-canonical-article-lifecycle.md",
+    "docs/superpowers/specs/2026-11-03-canonical-article-lifecycle-design.md"
+  ],
+  "outputs": [
+    "workers/ingestion-python/src/autodata_ingestion/**"
+  ],
+  "acceptance_tests": [
+    "Two worker processes contend safely for one transformation; stale leases cannot publish.",
+    "Rewrite preserves technical values, warnings, block order, evidence and asset positions.",
+    "Missing, unchanged or rejected rewrite retains an explicit source/pending state.",
+    "Crash and restart resume from persisted source/model result without duplicate publication.",
+    "Warm completed reads make zero provider or model calls.",
+    "Changed source/version creates an immutable revision of the same article identity.",
+    "Expired dispatched model attempts become ambiguous before reclaim or final-attempt dead-letter transition without resetting the retry budget.",
+    "Catalog publication bindings are generated from the shared contract and preserve existing dataset envelopes.",
+    "An explicit unchanged-source refresh reuses the existing exhausted transformation owner, retains source provenance, and never resets its retry budget or assigns its unique key to another job."
+  ],
+  "forbidden_scope": [
+    "Production deployment or production-data changes",
+    "Changing the autonomy policy or weakening required checks",
+    "Publishing secrets or private source payloads",
+    "Editing paths outside the assigned scope",
+    "Merging without independent exact-commit verification",
+    "Changing the requested gpt-6.1-sol / medium / Fast execution profile or silently falling back to another model or tier"
+  ],
+  "compatibility": {
+    "api": "Preserve existing consumers with additive versioned fields; run compatibility checks.",
+    "events": "Preserve event identity and make duplicate delivery idempotent.",
+    "schema": "Forward-only additive migrations with clean and upgrade verification; no destructive edits to historical migrations."
+  },
+  "pre_implementation": {
+    "goal": "Publish one validated canonical rewrite per source transformation key with durable source fallback and crash recovery.",
+    "plan_ref": "docs/superpowers/plans/2026-11-03-canonical-article-lifecycle.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/superpowers/specs/2026-11-03-production-release-orchestration-design.md",
+      "docs/superpowers/plans/2026-11-03-production-release-orchestration.md"
+    ],
+    "todo": [
+      "Two worker processes contend safely for one transformation; stale leases cannot publish.",
+      "Rewrite preserves technical values, warnings, block order, evidence and asset positions.",
+      "Missing, unchanged or rejected rewrite retains an explicit source/pending state.",
+      "Crash and restart resume from persisted source/model result without duplicate publication.",
+      "Warm completed reads make zero provider or model calls.",
+      "Changed source/version creates an immutable revision of the same article identity.",
+      "Expired dispatched model attempts become ambiguous before reclaim or final-attempt dead-letter transition without resetting the retry budget.",
+      "Catalog publication bindings are generated from the shared contract and preserve existing dataset envelopes.",
+      "An explicit unchanged-source refresh reuses the existing exhausted transformation owner, retains source provenance, and never resets its retry budget or assigns its unique key to another job."
+    ],
+    "status": "synchronized",
+    "updated_at": "2026-11-03T10:09:32.036288+00:00"
+  },
+  "execution": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "medium",
+    "service_tier": "fast",
+    "features": {
+      "fast_mode": true
+    },
+    "allow_fallback": false
+  }
+}

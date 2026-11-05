@@ -1,0 +1,522 @@
+{
+  "schema_version": 1,
+  "task_id": "workshop-purchase-config-interlock",
+  "ordinal": 59,
+  "goal": "Serve frozen server-owned Workshop purchase/legal configuration from Python through the strict public Go projection, and reject every new or resumed checkout POST before financial side effects whenever purchase configuration is missing, malformed or disabled; preserve USD20 one-time vehicle ownership and recovery.",
+  "todo": [
+    "Independently review the approved Task59 proposal, its SHA256-bound approval, exact fifteen implementation paths/eight gate paths, coordinator-selected b6388596cf4419559fc6a8a5fbcd0b4fc33cc7cb planning parent and retained Task57/Task58 evidence; preserve all prior58 queue objects/root bytes and unchanged product/source pins, credit0 and release limits.",
+    "Synchronize the literal goal, these six todos, exact paths, canonical references and explicit production-config-delivery blocker in Issue186/Project8 with fresh ownership and before/after preservation readbacks; only then set standalone and nested records synchronized, commit/push the planning-only checkpoint, externally seal its actual SHA/tree, pass both exact-checkpoint machine preflights errors=[], obtain independent checkpoint review and explicit coordinator dispatch.",
+    "Implement the strict immutable seven-key Python configuration parser/factory, default-disabled service composition, token-authenticated exact-object private operation and pre-transaction checkout interlock; preserve strict merchant/mode/origin/migration checks and all financial recovery, with genuine red/green authority tests and validated synthetic enabled fixture inputs.",
+    "Implement the two-second strict no-store public Go projection and exact GET/HEAD/405/query/conditional behavior; remove the competing embedded JSON, preserve UI/quote contracts and add strict malformed-input, actual-network HEAD and stale-config authenticated/CSRF authority regressions within the fifteen-path scope.",
+    "Run focused red/green, frozen source/regression commands and the separately required three-case PG plus named Go authority bridge in the coordinator-owned lifecycle fixture; retain raw failures/no-skip/event/SQL/provider/provenance evidence separately from frozen collectors, inspect exact scope and promptly commit/push small validated milestones, then obtain independent exact-source review and fresh source-push/actual-PR CI required-job/live-Compose success.",
+    "Synchronize verified source and remaining owner legal/tax/support, secret/merchant/Firebase, protected deployment-config delivery, restart/drain/rollback, authentic identity/payment/staging/restore/host/TLS and Vercel DNS blockers; retain accepted_case_credit=0, accepted_new_case_credit=0, verified_case_ids=[] and release_state=unverified with no merge/deployment/live-sales authority."
+  ],
+  "status": "synchronized",
+  "state": "blocked",
+  "planning_status": "synchronized",
+  "tracking_status": "synchronized",
+  "plan_ref": "docs/superpowers/plans/2026-11-05-workshop-purchase-config-interlock.md",
+  "spec_ref": "docs/agents/specs/2026-11-05-workshop-purchase-config-interlock.json",
+  "record_ref": "docs/agents/records/2026-11-05-workshop-purchase-config-interlock.json",
+  "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-purchase-config-interlock.json",
+  "verification_ref": "docs/verification/2026-11-05-workshop-purchase-config-interlock.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/agents/specs/2026-11-05-workshop-purchase-config-interlock.json",
+    "docs/verification/2026-11-05-workshop-purchase-config-interlock.md",
+    "docs/architecture/workshop-commerce.md",
+    "docs/verification/workshop-commerce-runbook.md"
+  ],
+  "planning_materialization_parent_sha": "b6388596cf4419559fc6a8a5fbcd0b4fc33cc7cb",
+  "planning_materialization_parent_tree": "3f354a8da546141125d2c00d0adcb2431c72511e",
+  "source_candidate_sha": "6949eb1b1a5b93c9b2eb0579328e24c697f6f331",
+  "source_candidate_tree": "47ec54b1896c83a39b6637a6ce944d3620414f4e",
+  "checkpoint_sha": null,
+  "checkpoint_tree": null,
+  "implementation_base_sha": null,
+  "checkpoint_seal_ref": null,
+  "allowed_gate_document_paths": [
+    "docs/superpowers/plans/2026-11-05-workshop-purchase-config-interlock.md",
+    "docs/agents/specs/2026-11-05-workshop-purchase-config-interlock.json",
+    "docs/agents/records/2026-11-05-workshop-purchase-config-interlock.json",
+    "docs/agents/tasks/2026-11-03-production-release/workshop-purchase-config-interlock.json",
+    "docs/verification/2026-11-05-workshop-purchase-config-interlock.md",
+    "docs/agents/tasks/2026-11-03-production-release/queue.json",
+    "docs/architecture/workshop-commerce.md",
+    "docs/verification/workshop-commerce-runbook.md"
+  ],
+  "allowed_implementation_paths": [
+    "workers/ingestion-python/src/autodata_ingestion/purchase_config.py",
+    "workers/ingestion-python/tests/test_purchase_config.py",
+    "workers/ingestion-python/tests/test_purchase_config_postgres.py",
+    "apps/api-go/purchase_config.go",
+    "apps/api-go/purchase_config_test.go",
+    "workers/ingestion-python/src/autodata_ingestion/commerce_service.py",
+    "workers/ingestion-python/src/autodata_ingestion/http_service.py",
+    "workers/ingestion-python/tests/test_http_service.py",
+    "workers/ingestion-python/tests/test_commerce_service.py",
+    "workers/ingestion-python/tests/test_commerce_postgres.py",
+    "workers/ingestion-python/tests/test_paid_catalog_api_integration.py",
+    "apps/api-go/commerce_client.go",
+    "apps/api-go/commerce_client_test.go",
+    "apps/api-go/main.go",
+    "apps/api-go/workshop/purchase-config.json"
+  ],
+  "current_implementation_allowlist": [],
+  "accepted_case_credit": 0,
+  "accepted_new_case_credit": 0,
+  "verified_case_ids": [],
+  "release_state": "unverified",
+  "authorities": {
+    "implementation": false,
+    "implementation_dispatch": false,
+    "provider": false,
+    "runtime": false,
+    "host": false,
+    "host_execution": false,
+    "docker": false,
+    "network": false,
+    "cloud": false,
+    "dns": false,
+    "capture": false,
+    "profile_activation": false,
+    "acceptance": false,
+    "fixture_execution": false,
+    "image_build_pull_install": false,
+    "service_start": false,
+    "payment": false,
+    "account_mutation": false,
+    "staging": false,
+    "release": false,
+    "merge": false,
+    "deployment": false,
+    "cutover": false,
+    "secrets": false,
+    "github_write": false,
+    "code_approval": false,
+    "ci_success": false,
+    "merchant_enablement": false,
+    "manifest_injection": false,
+    "artifact_admission": false,
+    "owner_approval": false,
+    "stripe_test_acceptance": false,
+    "live_sales": false,
+    "code_import": false,
+    "ci_execution": false,
+    "capture_admission": false,
+    "fixture_api21": false,
+    "fixture_dto120": false,
+    "final180": false,
+    "current_source_browser_acceptance": false,
+    "owner_tax_decision": false,
+    "firebase_enrollment": false,
+    "stripe_test_enrollment": false,
+    "supervisor_timing_change": false,
+    "merge_to_protected_branch": false,
+    "hot_reload": false,
+    "purchase_enablement": false,
+    "production_config_delivery": false,
+    "dns_change": false,
+    "provider_secret_delivery": false,
+    "dispatch": false,
+    "commit": false,
+    "push": false
+  },
+  "tracking_sync": {
+    "status": "synchronized",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "ownership_verified": true,
+    "literal_readback_verified": true,
+    "coordinator_sync_completed": true,
+    "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6650475758",
+    "issue_comment_id": 6650475758,
+    "issue_comment_created_at": "2026-11-05T05:24:57Z",
+    "issue_comment_body_sha256": "646a2134b9bc68e1c080b2d77fb7d10b181e7562a89077d503ad6c4f589f7a00",
+    "before_readback": {
+      "path": "/home/corp/autodata-evidence/task59-before-tracking.json",
+      "sha256": "4dc68f829e038886b114c2d79daabd27c505b6c2e1dbc40c7646ed0a71a6448d",
+      "observed_at": "2026-11-05T05:24:52.874325+00:00"
+    },
+    "after_readback": {
+      "path": "/home/corp/autodata-evidence/task59-after-tracking.json",
+      "sha256": "f32db5549893ecba8e2f36d2fd920d86b6b391cc653066e7df4c1cababa56f64",
+      "observed_at": "2026-11-05T05:25:07.615614+00:00"
+    },
+    "issue_body_sha256": "927b46ef47b1dbf5b117273e3d3f5c0e6d9f23b722a5245869eb5323b96c4f25",
+    "project_source_sha256_before": "27c5c9fc62dfa3274e966cc04d63c0e10e071134248962cbd744c7c4f2355f7f",
+    "project_source_sha256_after": "0b6a39a6cc2c1872c38014c65e4d2131c45b98026745d0e53be8d330fb2d0d2a",
+    "issue_body_unchanged": true,
+    "prior_262_comments_unchanged": true,
+    "project_other_fields_unchanged": true,
+    "prior_project_source_preserved_verbatim_in_comment": true,
+    "literal_goal_six_todos_eight_gate_paths_fifteen_implementation_paths_verified": true,
+    "independent_corrected_draft_review": {
+      "path": "/home/corp/autodata-evidence/task59-gate-draft-review/REPORT.md",
+      "sha256": "ce210040dbe65be7c2add415dfa8b8f8a01d032f6736aec485bccc942d20e751",
+      "verdict": "PASS_CORRECTED_DRAFT",
+      "passing_checks": 29
+    },
+    "scope": "Planning synchronization only. Root authorized only the eight-document checkpoint commit/push. Actual external SHA/tree seal, standalone+nested exact-checkpoint errors=[] preflights, independent synchronized-checkpoint review and explicit fifteen-path dispatch remain required. All implementation/runtime/acceptance/release authorities remain false."
+  },
+  "pre_implementation_record": {
+    "goal": "Serve frozen server-owned Workshop purchase/legal configuration from Python through the strict public Go projection, and reject every new or resumed checkout POST before financial side effects whenever purchase configuration is missing, malformed or disabled; preserve USD20 one-time vehicle ownership and recovery.",
+    "plan_ref": "docs/superpowers/plans/2026-11-05-workshop-purchase-config-interlock.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/agents/specs/2026-11-05-workshop-purchase-config-interlock.json",
+      "docs/verification/2026-11-05-workshop-purchase-config-interlock.md",
+      "docs/architecture/workshop-commerce.md",
+      "docs/verification/workshop-commerce-runbook.md"
+    ],
+    "todo": [
+      "Independently review the approved Task59 proposal, its SHA256-bound approval, exact fifteen implementation paths/eight gate paths, coordinator-selected b6388596cf4419559fc6a8a5fbcd0b4fc33cc7cb planning parent and retained Task57/Task58 evidence; preserve all prior58 queue objects/root bytes and unchanged product/source pins, credit0 and release limits.",
+      "Synchronize the literal goal, these six todos, exact paths, canonical references and explicit production-config-delivery blocker in Issue186/Project8 with fresh ownership and before/after preservation readbacks; only then set standalone and nested records synchronized, commit/push the planning-only checkpoint, externally seal its actual SHA/tree, pass both exact-checkpoint machine preflights errors=[], obtain independent checkpoint review and explicit coordinator dispatch.",
+      "Implement the strict immutable seven-key Python configuration parser/factory, default-disabled service composition, token-authenticated exact-object private operation and pre-transaction checkout interlock; preserve strict merchant/mode/origin/migration checks and all financial recovery, with genuine red/green authority tests and validated synthetic enabled fixture inputs.",
+      "Implement the two-second strict no-store public Go projection and exact GET/HEAD/405/query/conditional behavior; remove the competing embedded JSON, preserve UI/quote contracts and add strict malformed-input, actual-network HEAD and stale-config authenticated/CSRF authority regressions within the fifteen-path scope.",
+      "Run focused red/green, frozen source/regression commands and the separately required three-case PG plus named Go authority bridge in the coordinator-owned lifecycle fixture; retain raw failures/no-skip/event/SQL/provider/provenance evidence separately from frozen collectors, inspect exact scope and promptly commit/push small validated milestones, then obtain independent exact-source review and fresh source-push/actual-PR CI required-job/live-Compose success.",
+      "Synchronize verified source and remaining owner legal/tax/support, secret/merchant/Firebase, protected deployment-config delivery, restart/drain/rollback, authentic identity/payment/staging/restore/host/TLS and Vercel DNS blockers; retain accepted_case_credit=0, accepted_new_case_credit=0, verified_case_ids=[] and release_state=unverified with no merge/deployment/live-sales authority."
+    ],
+    "status": "synchronized",
+    "updated_at": "2026-11-05T05:25:42Z"
+  },
+  "draft_only": false,
+  "canonical_gate_passed": false,
+  "implementation_dispatch": false,
+  "depends_on": [
+    "workshop-smoke-timeout-assertion",
+    "workshop-browser-supervisor-deadlines"
+  ],
+  "dispatch_mode": "coordinator_only_after_gate",
+  "branch_assignment": null,
+  "proposed_gate_branch": "codex/workshop-purchase-config-plan",
+  "reserved_implementation_branch": null,
+  "source_binding": {
+    "planning_materialization_parent_sha": "b6388596cf4419559fc6a8a5fbcd0b4fc33cc7cb",
+    "planning_materialization_parent_tree": "3f354a8da546141125d2c00d0adcb2431c72511e",
+    "task58_checkpoint_sha": "c4a042304637a9103fb9feee998df2a94865f6b5",
+    "task58_checkpoint_tree": "a4a0b9539adad9226a6d3b3514c1375fb3e0b64e",
+    "task58_checkpoint_effect": "Retained planning checkpoint dependency only; no Task58 implementation or runtime proof inherited.",
+    "task57_source_sha": "ea3797717599c27362eb78a94888762ca598239b",
+    "task57_source_tree": "f5fb201b70bc6b9b836b8cc38c0b146899c657d1",
+    "product_sha": "6949eb1b1a5b93c9b2eb0579328e24c697f6f331",
+    "product_tree": "47ec54b1896c83a39b6637a6ce944d3620414f4e",
+    "proposal_source_sha": "eddcf724028683dbb083191e4f8c42064b866bf0",
+    "task57_evidence_ref": "docs/verification/2026-11-05-workshop-smoke-timeout-assertion.md",
+    "task58_gate_ref": "docs/superpowers/plans/2026-11-05-workshop-browser-supervisor-deadlines.md",
+    "proposal_ref": "/home/corp/autodata-evidence/commerce-identity-launch-audit/TASK59-PROPOSAL.md",
+    "proposal_sha256": "e0dac5daa8948aa10c282a4bb34acb54a10d57b40c56d0e54925f59a8dde5798",
+    "proposal_review_ref": "/home/corp/autodata-evidence/task59-proposal-review/REPORT.md",
+    "proposal_review_sha256": "a0f46f46482429418431fc1958b47c7c4b9646c0b1c5827dbb78dece3032a869"
+  },
+  "remaining_blocks": [
+    "Independent corrected-draft PASS29 and literal Issue186 comment6650475758/Project8 synchronization completed with preserved readbacks; planning-only checkpoint commit/push, external actual SHA/tree seal, dual exact-checkpoint errors=[] preflights, independent checkpoint review and explicit coordinator fifteen-path dispatch remain required before code.",
+    "Actual planning-checkpoint SHA/tree seal, standalone/nested exact-base preflights, independent checkpoint review and explicit fifteen-path dispatch remain required before code.",
+    "Owner-approved actual terms/privacy/refund/contact content and URLs, support identity and truthful single-line tax notice are absent; synthetic tests cannot approve legal content or domain ownership.",
+    "Tax obligations and inclusion within exactly USD20 total require owner/adviser decision; adding tax on top requires separately reviewed financial-contract change.",
+    "Production closed schema/renderer/config-hash delivery does not yet pass AUTODATA_WORKSHOP_PURCHASE_CONFIG_JSON; a separately owned synchronized deployment-config follow-up is mandatory. No hand-edited container environment or hash bypass.",
+    "Actual Firebase project/Google provider/authorized domains, Stripe merchant/price/account/webhook and secret delivery remain owner/protected-release inputs; no real credentials belong in this gate.",
+    "Purchase pause takes effect after coordinated commerce process replacement; fleet drain/replacement and compatible rollback must be separately proved. Old enabled binaries/replicas and issued Stripe URLs retain stated limitations.",
+    "Authentic identity/payment/staging/restore/host/TLS, real API21/DTO120/same-candidate final180, runtime ownership/watchdog/observer/raw-capture/trace16MiB-versus8MiB proof and protected merge/deployment/release remain unverified.",
+    "cars.tk DNS provider is Vercel by trusted coordinator/user direction; no DNS or cloud operation is authorized."
+  ],
+  "dispatch_prerequisite": "Task59 planning/tracking synchronized with literal verified Issue186 comment6650475758 and Project8 readback; independent corrected-draft PASS29. Root authorized only eight-document checkpoint commit/push. External actual SHA/tree seal, standalone+nested exact-checkpoint preflights errors=[], independent synchronized-checkpoint review and explicit fifteen-path implementation dispatch remain required. Execution blocked, all authorities false/current implementation allowlist empty; no future-tool SHA belongs in predecessor bytes.",
+  "contract": {
+    "environment_variable": "AUTODATA_WORKSHOP_PURCHASE_CONFIG_JSON",
+    "maximum_utf8_bytes": 16384,
+    "public_keys": [
+      "enabled",
+      "terms_version",
+      "terms_url",
+      "privacy_url",
+      "refund_url",
+      "contact_url",
+      "tax_notice"
+    ],
+    "terms_version": "workshop-v1",
+    "private_operation": "POST /internal/commerce/purchase-config",
+    "private_payload": {},
+    "public_path": "/workshop/purchase-config.json",
+    "public_methods": [
+      "GET",
+      "HEAD"
+    ],
+    "private_deadline_seconds": 2,
+    "amount_minor": 2000,
+    "currency": "USD",
+    "authoritative_implementation": "CommerceService.checkout before transaction/idempotency/order/provider",
+    "runtime_and_http_contract": "## Fixed architecture\n\nPython `CommerceService` is the sole purchase-launch authority. Go exposes a public strict projection of its configuration through the existing `/workshop/purchase-config.json` URL. Go does not read a second copy of environment configuration and does not independently authorize purchases from a cached result. The final checkout decision occurs inside Python `CommerceService.checkout` on every invocation, including direct private authenticated requests. Existing browser code can retain its URL and JSON shape.\n\nSeparate the new purchase switch from `AUTODATA_COMMERCE_MODE`: commerce mode still controls whether the payment/grant subsystem exists and verifies its existing merchant/schema dependencies. To pause new purchase requests without losing access/webhooks/reconciliation, retain stripe_test/live mode and set purchase enabled false. Disabling the entire commerce mode is not a purchase-only pause.\n\nTask59 is an application configuration/interlock lane. It accepts a documented nonsecret runtime environment input but does not modify production renderer/schema/workflows, deliver actual config, enable a deployed merchant or change frontend assets. Production's closed configuration renderer must receive this new input through a separately owned, synchronized deployment-config follow-up before anyone claims this feature is deliverable by the production pipeline. This is an explicit remaining blocker, not an implied operational workaround. Do not edit container env by hand or bypass release config hashes.\n\n## Runtime configuration contract\n\nAdd one optional environment variable, `AUTODATA_WORKSHOP_PURCHASE_CONFIG_JSON`, consumed only by the private commerce composition. Maximum UTF-8 length16KiB. No path lookup, file read, network URL fetch, environment expansion or shell interpretation. Parse at process startup into a frozen value; no hot reload, mutable global defaults or process-local enable endpoint. Direct `CommerceService` construction also defaults to the frozen disabled value; tests must explicitly inject enabled fixture configuration. Enabled values must be produced by the same validating constructor/factory: no publicly constructible invalid enabled instance, aliased mutable dict or setter may bypass validation. Return a fresh seven-key public projection on every call.\n\nThe JSON object has exactly these seven keys, matching the shipped public shape:\n\n- enabled: strict JSON boolean.\n- terms_version: exactly workshop-v1; no new terms version or schema migration in this task.\n- terms_url, privacy_url, refund_url, contact_url: enabled configuration requires all four strings, each1–2048 UTF-8 bytes.\n- tax_notice: enabled configuration requires a nonblank single-line string of at most1024 UTF-8 bytes.\n\nReject duplicate or unknown keys, non-object roots, nonfinite values, invalid Unicode and incorrect types. URLs must use the literal https scheme, a nonempty ASCII DNS hostname, no username/password, no query/fragment delimiters (including empty ? or #), and no port other than absent or the literal443; paths are permitted. Reject every unescaped whitespace character anywhere in a URL, including interior ASCII spaces, tabs, nonbreaking spaces and Unicode line separators. Define whitespace as the union of Unicode White_Space and ECMAScript WhiteSpace/LineTerminator (including U+FEFF); additionally reject C0/C1 controls and DEL. Freeze identical Python/Go vectors rather than trusting URL-parser normalization or language-specific whitespace predicates.\n\nDNS syntax is conservative and purely syntactic: total hostname length<=253 ASCII characters, at least two nonempty labels, each1–63 characters, each label starts/ends alphanumeric and otherwise contains only ASCII alphanumeric/hyphen, final label2–63 ASCII letters. Case-insensitive ASCII labels and valid xn-- labels are permitted; raw Unicode hostnames, IP literals (IPv4/IPv6), localhost/single-label names, trailing dots, empty labels and host percent escapes are rejected. Reject a percent sign in the path unless followed by exactly two hexadecimal digits; preserve valid percent-encoded path octets, including %20, without decoding or rewriting. Percent-encoded path bytes do not bypass the raw host/scheme/control constraints. Do not resolve or fetch URLs. This is syntactic validation, not approval of legal content or domain ownership. tax_notice is rendered as text, not HTML; reject control characters. Disabled input must use the same complete seven-key set, terms_version workshop-v1, and null notice/URL fields; canonical disabled output equals today's embedded placeholder. This deliberately avoids retaining a misleading partial legal configuration.\n\nValidation precedence is fixed. Only an unset variable or the exactly empty string is an omitted-input shortcut, producing canonical disabled without a diagnostic. A nonempty value is first checked for UTF-8/size/JSON validity and the complete strict seven-key schema, and then for the enabled/disabled branch constraints. A complete valid enabled:false object with workshop-v1 and five null notice/URL fields is canonical disabled without a diagnostic. {\"enabled\":false}, a complete false object with any non-null notice/URL field, extra/missing/mistyped fields, and whitespace-only input are malformed. Every malformed nonempty input produces canonical disabled and exactly one fixed redacted diagnostic per composition attempt; never log raw input, URLs, notice text or parser exceptions. The parser reports validity to composition without performing logging itself, preventing duplicate diagnostics. **Do not abort otherwise valid commerce service startup because purchase notices are malformed**: that would also remove webhook/status/grant recovery. This is fail-closed for new checkout, while preserving the financial subsystem. The public route returns the disabled object; no secret/internal error fields appear. Existing merchant, mode, origin, migration and account-ownership startup checks remain strict and unchanged. New invalid purchase input never bypasses those checks.\n\nA configuration change takes effect only after a coordinated process replacement/restart. There is no instantaneous fleet-wide kill switch. During rolling replacement an old enabled replica may still accept requests; production follow-up must enter maintenance/drain and replace all commerce replicas before advertising an effective pause. An already issued Stripe Checkout URL can still settle after a pause; webhook/reconciliation must honor that payment. Task59 neither expires existing sessions nor promises to prevent payment through previously issued URLs.\n\n## HTTP/API behavior\n\n1. New private token-authenticated `POST /internal/commerce/purchase-config`, body exactly `{}`. No customer account/session is required at this internal operation, but the existing X-Autodata-Internal-Token check is mandatory. No DB transaction, Stripe call, bank/model call or customer data read. Successful response200 is exactly the seven-field frozen enabled/disabled object. Existing private handler request limits/authentication apply.\n2. Register one method-unqualified exact-path handler for `/workshop/purchase-config.json` adjacent to the generic embedded asset mount; ServeMux path specificity, not registration order, chooses it. The handler sets Content-Type application/json and Cache-Control:no-store before every branch, including405. Only GET/HEAD are accepted; other methods (including OPTIONS) return405 with `Allow: GET, HEAD` and a sanitized JSON error body using the existing error envelope. For GET/HEAD reject any query syntax, including a bare ?, using RawQuery or ForceQuery, with400 JSON INVALID_REQUEST. HEAD executes the same status/header/validation logic but explicitly writes no body on success or error, including conditional requests. Verify suppression with actual httptest.Server network requests; recorder-only calls are insufficient. Do not emit ETag or Last-Modified or produce304 from conditional headers.\n3. With commerceClient=nil (explicit disabled mode), public route returns200 canonical disabled without contacting Python. With enabled commerce client, fetch the new private operation with the existing internal token and a2-second total timeout, existing bounded response reader and redirects prohibited. Validate every key/type/URL/notice using the same seven-key/disabled-precedence contract, and reject duplicate keys, unknown fields, trailing JSON values, invalid UTF-8 and escaped unpaired surrogates before Go decoding can replace text or discard duplicate occurrences. Go struct decoding/DisallowUnknownFields alone is insufficient. Serialize only a fresh strict public projection; never copy arbitrary private fields. Dependency outage, timeout, redirects or invalid private success =>503 COMMERCE_UNAVAILABLE, no-store; no fallback to embedded enabled data, cached config or browser state.\n4. `CommerceService.checkout` validates request shape/scope/key/terms as today, then requires enabled purchase configuration before opening a transaction, recording idempotency mappings, allocating an order or invoking any provider method. Disabled/invalid/missing configuration =>503 COMMERCE_UNAVAILABLE using the existing sanitized error envelope. This blocks all checkout POSTs, including attempts to resume an existing creating/open order through POST. Owner-scoped GET order status remains the recovery path. No new error-code family is needed and current Go/client error handling remains compatible.\n5. Do not put an authoritative enable check only in Go or in the browser. A previously fetched enabled response never authorizes a later checkout against a paused Python process. No request parameter/header can select a different configuration, price, merchant, owner or enable state.\n6. Keep quote financial fields and current purchasable:true semantics unchanged in this bounded task: that field describes product/scope eligibility; the separate runtime purchase-config controls launch availability. Avoid changing `validQuote`, existing frozen quote fixtures or DTO inventories incidentally. Disabled config continues to show browsing plus purchase-unavailable copy through current UI behavior.\n7. Remove the embedded purchase-config.json from the delivered asset set so no alternative static path can expose a competing configuration. The exact route supplies canonical disabled config when appropriate. Retain no second enabled fallback. Existing source UI fetch/validation contract stays intact.\n\n",
+    "preservation_and_required_tests": "## Preservation and migration compatibility\n\nNo migration041 or application table change. Preserve001–040 inventory, workshop-v1 terms constraint, USD2000 orders, canonical request hashes/provider keys, existing merchant/mode verification and database ownership. Existing rows do not need backfilling. Immutable constructor config is not added to historical order rows and does not rewrite historical terms.\n\nPurchase-disabled service must continue current behavior for authenticated library/grant checks, paid catalog/media, order/status, signed webhook ingestion/replay, full refund/lost-dispute revocation and preparation/reconciliation. Previously paid ownership remains durable and another purchase is unnecessary. A valid pending signed payment that settles after pause may still issue its exact existing grant. Blocking checkout must not call create_order_checkout, allocate replacement sessions or alter stored expiry/status. Existing reconciliation may perform already authorized settlement/expiry recovery; preserve those semantics rather than relabeling a pause as revocation. Existing checkout UI remains disabled by the returned config while My vehicles and order return flows remain available.\n\nOlder application binaries do not enforce this new interlock. After deployment, do not roll back to an old enabled-commerce binary and assume purchase pause remains effective; a compatible operational rollback must remain in maintenance or otherwise enforce the pause through an approved plan. No migration means data compatibility, not equivalent old-binary behavior.\n\n## Required tests and evidence\n\nPure Python: unset/exact-empty defaults; valid complete false schema; malformed false-shortcut/non-null/unknown-field and whitespace-only inputs with exactly one redacted composition diagnostic; valid enabled synthetic object; duplicates/unknown/missing fields, non-object root, strict bool, null notice, bad terms, UTF-8/control/length limits and unsafe URL cases. Run shared-equivalent Python/Go URL vectors for interior ASCII/NBSP/line-separator/U+FEFF whitespace, invalid host labels/IP/localhost/trailing dots, malformed percent escapes and accepted percent-encoded paths. Reject direct construction of a malformed enabled value and prove mutation of an input/projection dict cannot change the frozen authority. Capture logs and prove config content is not echoed. Prove default direct construction is disabled. Spy provider/transaction factories must remain untouched on denied checkout, including existing idempotency-key requests; valid enabled configuration reaches unchanged request/financial logic.\n\nPrivate HTTP: missing configured token and absent/wrong request token401 before operation; exact{} accepted; extra/null/array input400; valid config read calls no DB/provider; no merchant keys/tokens/internal state leak. Existing raw signed webhook handling remains byte-identical.\n\nGo HTTP: anonymous enabled and disabled200; nil client200 disabled and zero private calls; strict malformed/unknown/duplicate/trailing-value/invalid-UTF8/unpaired-surrogate/oversize config rejection503; private auth/operation/payload, redirects, timeout, errors and no data leakage; success/error/HEAD/405 Cache-Control:no-store and JSON MIME; method405 Allow GET, HEAD; no ETag/Last-Modified/304; query rejection including bare ?; actual httptest.Server HEAD and conditional HEAD requests with zero response body on success, dependency503 and query400; exact dynamic routing and absence of a deleted static fallback. Run existing Workshop asset test unchanged except naturally receiving dynamic disabled config.\n\nOwned PG integration: start enabled service, create/settle an exact USD2000 fixture order and assert one durable grant. Reconstruct service on the same database/provider with disabled config; direct private checkout POST must503, with unchanged before/after order/idempotency/grant rows and zero provider-create delta. Library, grant check and order status continue. A pre-pause open session that settles after pause still verifies/grants exactly once; duplicate signed webhook no duplicate grant. Apply full refund/lost-dispute fixture after pause and retain existing monotonic revocation. Pending replay and preparation reconciliation still complete using existing routines. Re-enable and replay the original client key without allocating/charging a second order. Keep test/live isolation, entitlement-before-hydration and USD2000 checks intact.\n\nStale frontend proof: successfully read enabled public config through the actual public Go route, then replace/reconstruct the authoritative fixture service as disabled on the same fixture DB/provider. Send fully valid authenticated/CSRF checkout requests through actual Go→Python HTTP for both a new key and previously stored creating/open keys. Each must503; capture before/after SQL rows and provider-create deltas outside the HTTP bridge and prove no changes. The dedicated Go test bridge lives only in purchase_config_test.go; fixture service swapping is implemented only by the new Python test module's local fixture control, never a production mutable-config endpoint. This is an authority integration test, not an expansion of API21/DTO120 case credit. Do not change frozen producer selectors/inventories to absorb it.\n\n### Concrete separate required-mode runner\n\nInside the coordinator-owned immutable lifecycle fixture, from repository root, the coordinator creates the dedicated artifact directory `/artifacts/task59-purchase-config` outside source, preflights the exact source SHA/tree and pinned Python/Go binaries, and executes this separate command (not the frozen fourteen-case collector):\n\n```sh\nenv AUTODATA_LIFECYCLE_TEST=1 AUTODATA_REQUIRE_PURCHASE_CONFIG_INTEGRATION=1 PYTHONDONTWRITEBYTECODE=1 AUTODATA_PURCHASE_CONFIG_ARTIFACT_DIR=/artifacts/task59-purchase-config timeout --signal=TERM --kill-after=15s 900s python -m pytest -q -p no:cacheprovider --junitxml=/artifacts/task59-purchase-config/tests.xml workers/ingestion-python/tests/test_purchase_config_postgres.py > /artifacts/task59-purchase-config/pytest.stdout.log 2> /artifacts/task59-purchase-config/pytest.stderr.log\n```\n\nThe fixture uses only the existing private `postgres` service and synthetic lifecycle_fixture/lifecycle_test credentials from lifecycle_support.py, no host ports/live credentials/providers, and creates fresh UUID databases with the existing lifecycle_test_ prefix. The new module's owned cases are exactly `test_pause_preserves_paid_access_and_no_new_charge`, `test_late_settlement_refund_and_reconciliation_while_paused`, and `test_stale_public_config_rejected_through_go_authority_bridge`; all three must execute/pass, with zero skips. Without the dedicated required flag, this PG module is explicitly skipped during ordinary source discovery. With required flag1, missing lifecycle flag, PG/migrations, Go binary, fixture server or artifact directory causes a test failure/error, never a skip. Its own guard/fixture namespace is separate from AUTODATA_REQUIRE_COMMERCE_INTEGRATION and frozen collectors. Do not set the new flag in existing collector commands.\n\nThe third case starts its real Python private HTTP authority on an owned loopback ephemeral port; prepares synthetic customer/session fixtures; and launches exactly `go test -json -count=1 -timeout=120s -run ^TestWorkshopPurchaseConfigAuthorityIntegration$ .` from apps/api-go. Pass only a sanitized env containing pinned PATH/Go cache settings, `AUTODATA_PURCHASE_CONFIG_GO_BRIDGE=1`, `AUTODATA_REQUIRE_PURCHASE_CONFIG_INTEGRATION=1`, `AUTODATA_PURCHASE_CONFIG_FIXTURE_URL`, `AUTODATA_PURCHASE_CONFIG_FIXTURE_TOKEN` and the dedicated artifact directory. URL/token are synthetic fixture values, never live/internal production credentials. The Go test must validate required fixture env and run its actual auth+CSRF public requests; missing required inputs fails. With neither dedicated flag the Go root skips, keeping ordinary/frozen Go discovery separate. Mismatched flags fail whenever the required flag is set.\n\nPython bounds the Go subprocess at150seconds including compilation/test exit, creates a process group, records timeout/nonzero as failure, sends TERM then KILL after at most5seconds if needed, waits/reaps it, and captures raw `go-events.jsonl` and `go-stderr.log` in the dedicated artifact directory. Require exactly one run/pass and no skip/fail event for the named Go root plus package pass and exit0. Capture `authority-before.json`, `authority-after.json` and `provider-trace.json` with synthetic rows/counters and no raw sessions/tokens. Require before/after evidence to corroborate the Go observations; assertions alone are insufficient. Retain stdout/stderr/JUnit/raw files on failure, verify new-module case IDs/no-skips and Go events independently, and retain coordinator input/source before/after provenance. Outer exit124/137 or a missing artifact is a failed/incomplete run, never success. Existing fixture teardown removes only owned servers/databases/processes. These separate artifacts carry Task59 regression evidence only; do not hash or add them into frozen fourteen-case collector inventories.\n\nRun focused red-before/green-after tests, Go ./... and existing Node suite, Python commerce/HTTP/payment reconciliation suites and existing isolated fourteen-commerce/five-identity/paid regressions when available under the coordinator-owned lifecycle fixture. Any required integration skip is an unmet check, not a pass. Retain failed artifacts. Run git diff --check and exact allowlist/migration/SDK/policy diff checks. Independently review exact source commit, push small validated milestones promptly, and collect fresh source-push plus actual PR-checkout CI with SHA/tree/required-job/live-Compose evidence. Tests added here are Task59 source regression evidence; existing product acceptance remains0 until separately accepted.\n\n",
+    "canonical_disabled": {
+      "enabled": false,
+      "terms_version": "workshop-v1",
+      "terms_url": null,
+      "privacy_url": null,
+      "refund_url": null,
+      "contact_url": null,
+      "tax_notice": null
+    },
+    "url_vectors": [
+      {
+        "id": "plain_https",
+        "url": "https://legal.example.test/terms",
+        "valid": true
+      },
+      {
+        "id": "explicit_443",
+        "url": "https://legal.example.test:443/terms",
+        "valid": true
+      },
+      {
+        "id": "mixed_ascii",
+        "url": "https://Legal.Example.TEST/terms",
+        "valid": true
+      },
+      {
+        "id": "punycode",
+        "url": "https://xn--bcher-kva.example/terms",
+        "valid": true
+      },
+      {
+        "id": "encoded_space",
+        "url": "https://legal.example.test/terms%20v1",
+        "valid": true
+      },
+      {
+        "id": "encoded_octets",
+        "url": "https://legal.example.test/a%2Fb%FF",
+        "valid": true
+      },
+      {
+        "id": "wrong_scheme",
+        "url": "http://legal.example.test/terms",
+        "valid": false
+      },
+      {
+        "id": "upper_scheme",
+        "url": "HTTPS://legal.example.test/terms",
+        "valid": false
+      },
+      {
+        "id": "credentials",
+        "url": "https://user:pass@legal.example.test/terms",
+        "valid": false
+      },
+      {
+        "id": "empty_query",
+        "url": "https://legal.example.test/terms?",
+        "valid": false
+      },
+      {
+        "id": "query",
+        "url": "https://legal.example.test/terms?v=1",
+        "valid": false
+      },
+      {
+        "id": "empty_fragment",
+        "url": "https://legal.example.test/terms#",
+        "valid": false
+      },
+      {
+        "id": "fragment",
+        "url": "https://legal.example.test/terms#v1",
+        "valid": false
+      },
+      {
+        "id": "wrong_port",
+        "url": "https://legal.example.test:444/terms",
+        "valid": false
+      },
+      {
+        "id": "padded_port",
+        "url": "https://legal.example.test:0443/terms",
+        "valid": false
+      },
+      {
+        "id": "empty_port",
+        "url": "https://legal.example.test:/terms",
+        "valid": false
+      },
+      {
+        "id": "ipv4",
+        "url": "https://127.0.0.1/terms",
+        "valid": false
+      },
+      {
+        "id": "ipv6",
+        "url": "https://[::1]/terms",
+        "valid": false
+      },
+      {
+        "id": "localhost",
+        "url": "https://localhost/terms",
+        "valid": false
+      },
+      {
+        "id": "trailing_dot",
+        "url": "https://legal.example.test./terms",
+        "valid": false
+      },
+      {
+        "id": "empty_label",
+        "url": "https://legal..test/terms",
+        "valid": false
+      },
+      {
+        "id": "leading_hyphen",
+        "url": "https://-legal.example.test/terms",
+        "valid": false
+      },
+      {
+        "id": "trailing_hyphen",
+        "url": "https://legal-.example.test/terms",
+        "valid": false
+      },
+      {
+        "id": "underscore",
+        "url": "https://legal_site.example.test/terms",
+        "valid": false
+      },
+      {
+        "id": "numeric_tld",
+        "url": "https://legal.example.123/terms",
+        "valid": false
+      },
+      {
+        "id": "unicode_host",
+        "url": "https://bücher.example/terms",
+        "valid": false
+      },
+      {
+        "id": "host_escape",
+        "url": "https://legal%2Eexample.test/terms",
+        "valid": false
+      },
+      {
+        "id": "incomplete_escape",
+        "url": "https://legal.example.test/a%2",
+        "valid": false
+      },
+      {
+        "id": "bad_escape",
+        "url": "https://legal.example.test/a%G0",
+        "valid": false
+      },
+      {
+        "id": "bare_percent",
+        "url": "https://legal.example.test/a%",
+        "valid": false
+      },
+      {
+        "id": "space",
+        "url": "https://legal.example.test/terms v1",
+        "valid": false
+      },
+      {
+        "id": "tab",
+        "url": "https://legal.example.test/terms\tv1",
+        "valid": false
+      },
+      {
+        "id": "nbsp",
+        "url": "https://legal.example.test/terms v1",
+        "valid": false
+      },
+      {
+        "id": "line_separator",
+        "url": "https://legal.example.test/terms v1",
+        "valid": false
+      },
+      {
+        "id": "feff",
+        "url": "https://legal.example.test/terms﻿v1",
+        "valid": false
+      },
+      {
+        "id": "c0",
+        "url": "https://legal.example.test/terms\u0001v1",
+        "valid": false
+      },
+      {
+        "id": "del",
+        "url": "https://legal.example.test/termsv1",
+        "valid": false
+      },
+      {
+        "id": "c1",
+        "url": "https://legal.example.test/termsv1",
+        "valid": false
+      }
+    ],
+    "raw_url_forbidden_codepoint_ranges": [
+      "U+0000–U+0020",
+      "U+007F–U+00A0",
+      "U+1680",
+      "U+2000–U+200A",
+      "U+2028–U+2029",
+      "U+202F",
+      "U+205F",
+      "U+3000",
+      "U+FEFF"
+    ]
+  },
+  "required_integration_cases": [
+    "test_pause_preserves_paid_access_and_no_new_charge",
+    "test_late_settlement_refund_and_reconciliation_while_paused",
+    "test_stale_public_config_rejected_through_go_authority_bridge"
+  ],
+  "required_go_root": "TestWorkshopPurchaseConfigAuthorityIntegration",
+  "routing_composition_detail": "Existing GET /workshop/ cannot overlap a method-unqualified exact config route without ServeMux ambiguity. Change generic workshop subtree mount to method-unqualified /workshop/ with explicit GET/HEAD guard retaining static unsupported-method405/Allow GET, HEAD/no Location. Also retain GET /workshop redirect and register a method-unqualified exact /workshop fallback method guard: POST/OPTIONS and all unsupported methods405/Allow GET, HEAD/no Location, while GET/HEAD retain301 to /workshop/. This prevents implicit slash redirects before the subtree guard. Actual-network httptest.Server tests must use complete Server.Handler with redirect following disabled to prove POST/OPTIONS slashless405/no Location, GET/HEAD slashless301, generic subtree and ordinary asset GET/HEAD serving/unsupported-method405, and unchanged exact config JSON/no-store/Allow/HEAD behavior. Changes fit main.go and purchase_config_test.go only; no allowlist expansion or frontend path change.",
+  "routing_preservation_matrix": [
+    {
+      "path": "/workshop",
+      "methods": [
+        "POST",
+        "OPTIONS"
+      ],
+      "status": 405,
+      "allow": "GET, HEAD",
+      "location": null
+    },
+    {
+      "path": "/workshop",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "status": 301,
+      "location": "/workshop/"
+    },
+    {
+      "paths": [
+        "/workshop/",
+        "ordinary existing Workshop asset"
+      ],
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "behavior": "preserve existing serving; HEAD body empty"
+    },
+    {
+      "paths": [
+        "/workshop/",
+        "ordinary existing Workshop asset"
+      ],
+      "methods": [
+        "POST",
+        "OPTIONS"
+      ],
+      "status": 405,
+      "allow": "GET, HEAD",
+      "location": null
+    },
+    {
+      "path": "/workshop/purchase-config.json",
+      "behavior": "retain complete strict JSON/no-store/Allow/HEAD/query/conditional/status contract"
+    }
+  ]
+}

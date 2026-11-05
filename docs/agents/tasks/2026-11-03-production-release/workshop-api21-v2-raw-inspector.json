@@ -1,0 +1,624 @@
+{
+  "schema_version": 1,
+  "task_id": "workshop-api21-v2-raw-inspector",
+  "status": "synchronized",
+  "goal": "Add an internal API21 producer-v2 retained-byte consistency inspector bound to the exact Task51 source candidate while preserving historical v1 semantics and every runtime, acceptance and release block",
+  "todo": [
+    "Admit exact Task51 candidate 6949eb1b1a5b93c9b2eb0579328e24c697f6f331 and tree 47ec54b1896c83a39b6637a6ce944d3620414f4e only after completed source-push and actual PR checkout CI review; preserve every failure, skip and external status, freeze current seven producer inputs, served assets, 21 ordered cases and source-to-receipt mapping without transferring historical fixture credit.",
+    "Independently review the closed v2 schema, branch matrix, source manifests, redaction and semantic mutation matrix in this six-document draft; preserve all 51 queue objects and root fields and append only ordinal52, with all authorities false until exact checkpoint admission.",
+    "Synchronize this literal goal, six todo strings, six gate paths and exact three implementation paths in Issue186 and existing Project8 item PVTI_lAHOCSJ8cc4BiQ2BzhFocs4 with before/after readbacks; commit/push the six-document checkpoint from the admitted Task51 source, externally seal its actual SHA/tree, extract standalone and nested records and policy at that SHA, require both canonical preflights errors=[] and independent exact-checkpoint review before explicit code-only dispatch.",
+    "Write independent fake-byte red tests, then add only inspect_api21_v2_receipts and private v2 helpers in scripts/dev/release_acceptance.py with confined ArtifactStore reads, exact current candidate/source/asset bindings, closed schemas and retained-body/hash/process/log/phase consistency; preserve inspect_api21_receipts and all v1 behavior, with no producer import, execution, CLI dispatch, profile registration or transport activation.",
+    "Add semantic tamper, truncation, stale or mixed binding, identity, checkout loss/retry, scope denial, settlement/refund, owner/restart/warm, process/log/publication/cleanup interruption and secret-bearing body tests; append the current-source v2 limitations to the runbook, keeping status unavailable, complete false, verified IDs empty, both credits zero, all acceptance flags false and disabled public CLI exit3.",
+    "Run focused and full release-acceptance, applicable developer/autonomy and existing fake browser/observability checks plus exact-path preservation and diff checks; retain actual commands/counts/skips/failures, commit and promptly push validated coherent milestones after dispatch, obtain independent exact-code review and fresh push plus actual PR checkout CI, leaving capture, compiler/timers, host/runtime, profile, fixture180, staging and release separately gated."
+  ],
+  "source_binding": {
+    "candidate_sha": "6949eb1b1a5b93c9b2eb0579328e24c697f6f331",
+    "candidate_tree": "47ec54b1896c83a39b6637a6ce944d3620414f4e",
+    "source_admitted": true,
+    "admission_status": "terminal_source_CI_admitted_tracking_synchronized_checkpoint_pending",
+    "checkpoint_sha": null,
+    "checkpoint_tree": null,
+    "implementation_sha": null,
+    "historical_B": "b8371e305066574b5845c58ac70fca4b5ed197ea",
+    "historical_B_already_ancestor": true,
+    "historical_v1_candidate": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+    "historical_v1_tree": "9105b372988ca2fc2827310c4806cb826a395bda",
+    "identity_rule": "Source candidate, future checkpoint and future consumer implementation identities are distinct; own-tree checkpoint identity remains null and is externally sealed. V2 producer/served bytes bind fixed Task51, never old C/product217 or changed consumer bytes.",
+    "ci": {
+      "status": "terminal_success_source_only_admitted",
+      "captured_at": "2026-11-05T01:57:11.011081+00:00",
+      "source_sha": "6949eb1b1a5b93c9b2eb0579328e24c697f6f331",
+      "source_tree": "47ec54b1896c83a39b6637a6ce944d3620414f4e",
+      "audit_report_ref": "/home/corp/autodata-evidence/task51-terminal-ci-audit/REPORT.md",
+      "audit_report_sha256": "f0fa41ef50facfaa1f6d317dc3bee98a554c3b5ecc53ec15b5a28ab511fb9ece",
+      "audit_summary_ref": "/home/corp/autodata-evidence/task51-terminal-ci-audit/summary.json",
+      "audit_summary_sha256": "fce2b8c9d7401e6529078e92e6f3c8258ae722b3f1b0ae55f004420439f0fcf0",
+      "all_run_count": 8,
+      "all_job_count": 24,
+      "all_step_count": 328,
+      "failed_or_skipped_jobs_or_steps": 0,
+      "policy_suite_skip_free": false,
+      "scope": "Source/unit/contract/local-Compose, DTO120 fixture and synthetic/owned-child R3 preparation CI only; no real provider/live API21 browser/fixture180/staging/deployment acceptance.",
+      "source_actions_success_observed": true,
+      "actual_PR_checkout_sha": "e06844fddd3c8dbc3315bf4414b39de007f11f29",
+      "actual_PR_checkout_tree": "47ec54b1896c83a39b6637a6ce944d3620414f4e",
+      "actual_PR_checkout_logs_verified": true,
+      "source_and_PR_checkout_trees_equal": true,
+      "full_rollup_success_claimed": false,
+      "full_check_rollup": "not_green_external_vercel_failure",
+      "external_statuses": {
+        "271": [
+          {
+            "context": "Vercel",
+            "state": "failure",
+            "description": "Deployment rate limited \u2014 retry in 24 hours.",
+            "target_url": "https://vercel.com/curtt?upgradeToPro=build-rate-limit"
+          }
+        ],
+        "270": [
+          {
+            "context": "Vercel",
+            "state": "failure",
+            "description": "Deployment has failed \u2014 run this Vercel CLI command: npx vercel inspect dpl_EcgHcY1XuoUeDY9G2G9tkYkyVWUD --logs",
+            "target_url": "https://vercel.com/curtt/autodata-key-manager/EcgHcY1XuoUeDY9G2G9tkYkyVWUD"
+          }
+        ],
+        "269": [
+          {
+            "context": "Vercel",
+            "state": "failure",
+            "description": "Deployment rate limited \u2014 retry in 24 hours.",
+            "target_url": "https://vercel.com/curtt?upgradeToPro=build-rate-limit"
+          }
+        ],
+        "268": [
+          {
+            "context": "Vercel",
+            "state": "failure",
+            "description": "Deployment rate limited \u2014 retry in 24 hours.",
+            "target_url": "https://vercel.com/curtt?upgradeToPro=build-rate-limit"
+          }
+        ]
+      },
+      "real_acceptance_credit": 0,
+      "runs": [
+        {
+          "pr": 271,
+          "id": 41949840671,
+          "url": "https://github.com/lucronn/autodata/actions/runs/41949840671",
+          "event": "pull_request",
+          "reported_head_sha": "6949eb1b1a5b93c9b2eb0579328e24c697f6f331",
+          "actual_checkout_sha": "e06844fddd3c8dbc3315bf4414b39de007f11f29",
+          "actual_checkout_tree": "47ec54b1896c83a39b6637a6ce944d3620414f4e",
+          "status": "completed",
+          "conclusion": "success",
+          "job_count": 3,
+          "successful_step_count": 41,
+          "checkout_verified_all_jobs": true,
+          "dto_artifacts": [
+            {
+              "id": 13379788962,
+              "zip_sha256": "83769afc8e2afaaee9141bfc42597204cd2f217a15e73c594e5dfab83035417e",
+              "candidate_sha": "e06844fddd3c8dbc3315bf4414b39de007f11f29",
+              "receipt": {
+                "attempt_id": "1a40dd3b81e10cdfff853348f04716fc",
+                "candidate_sha": "e06844fddd3c8dbc3315bf4414b39de007f11f29",
+                "cleanup_status": "verified",
+                "epoch": 0,
+                "evidence_sha256": "e299d5eadf2c354f0cb0290dec7c4bdb23ff0ddbf64dad98ef08cba6dc1e0143",
+                "terminal_state": "committed",
+                "timing_contract_sha256": "a838b45f1f4960b997103cfaeb5edfb9f0e43f84ce7595ab13ea55116adf3db3",
+                "version": "v1"
+              },
+              "mode": "dto-fixture",
+              "result_count": 120,
+              "unique_pairs": 120,
+              "status_counts": {
+                "passed": 120
+              },
+              "browser_counts": {
+                "chromium": 40,
+                "firefox": 40,
+                "webkit": 40
+              },
+              "runtime_blockers": [
+                "independent_watchdog_not_admitted",
+                "descendant_containment_not_admitted",
+                "trace_16MiB_producer_8MiB_consumer_not_admitted"
+              ],
+              "timing_contract_sha256": "a838b45f1f4960b997103cfaeb5edfb9f0e43f84ce7595ab13ea55116adf3db3"
+            }
+          ]
+        },
+        {
+          "pr": 271,
+          "id": 41949810868,
+          "url": "https://github.com/lucronn/autodata/actions/runs/41949810868",
+          "event": "push",
+          "reported_head_sha": "6949eb1b1a5b93c9b2eb0579328e24c697f6f331",
+          "actual_checkout_sha": "6949eb1b1a5b93c9b2eb0579328e24c697f6f331",
+          "actual_checkout_tree": "47ec54b1896c83a39b6637a6ce944d3620414f4e",
+          "status": "completed",
+          "conclusion": "success",
+          "job_count": 3,
+          "successful_step_count": 41,
+          "checkout_verified_all_jobs": true,
+          "dto_artifacts": [
+            {
+              "id": 13381200356,
+              "zip_sha256": "b2975c4d4947662c5d552026b6d9e33f7a3dbb0d7d6576c6ee9a7c48b197a20e",
+              "candidate_sha": "6949eb1b1a5b93c9b2eb0579328e24c697f6f331",
+              "receipt": {
+                "attempt_id": "de0391f87d25a76a76f27e10a275cad0",
+                "candidate_sha": "6949eb1b1a5b93c9b2eb0579328e24c697f6f331",
+                "cleanup_status": "verified",
+                "epoch": 0,
+                "evidence_sha256": "b4bc336f5b3a39cab7b2f845bdbd445b2b878ba7e0f0f0b77d900fab4feec33c",
+                "terminal_state": "committed",
+                "timing_contract_sha256": "a838b45f1f4960b997103cfaeb5edfb9f0e43f84ce7595ab13ea55116adf3db3",
+                "version": "v1"
+              },
+              "mode": "dto-fixture",
+              "result_count": 120,
+              "unique_pairs": 120,
+              "status_counts": {
+                "passed": 120
+              },
+              "browser_counts": {
+                "chromium": 40,
+                "firefox": 40,
+                "webkit": 40
+              },
+              "runtime_blockers": [
+                "independent_watchdog_not_admitted",
+                "descendant_containment_not_admitted",
+                "trace_16MiB_producer_8MiB_consumer_not_admitted"
+              ],
+              "timing_contract_sha256": "a838b45f1f4960b997103cfaeb5edfb9f0e43f84ce7595ab13ea55116adf3db3"
+            }
+          ]
+        },
+        {
+          "pr": 270,
+          "id": 41949573403,
+          "url": "https://github.com/lucronn/autodata/actions/runs/41949573403",
+          "event": "pull_request",
+          "reported_head_sha": "5fd390081be2a4210fdc223326e190d30990969b",
+          "actual_checkout_sha": "e1e444ae2b29ea8751bcf4eb857fd480afc72101",
+          "actual_checkout_tree": "8000dd785bbb08604ae15589b215b3b6ba32972d",
+          "status": "completed",
+          "conclusion": "success",
+          "job_count": 3,
+          "successful_step_count": 41,
+          "checkout_verified_all_jobs": true,
+          "dto_artifacts": [
+            {
+              "id": 13380252653,
+              "zip_sha256": "b00888bd899b90056cb0e4494af7cc39debc21aeb7045d860681f752ccbe025c",
+              "candidate_sha": "e1e444ae2b29ea8751bcf4eb857fd480afc72101",
+              "receipt": {
+                "attempt_id": "a9c408f1c715646a785b4914dc88a244",
+                "candidate_sha": "e1e444ae2b29ea8751bcf4eb857fd480afc72101",
+                "cleanup_status": "verified",
+                "epoch": 0,
+                "evidence_sha256": "769732f0edd9b45930470225b89590d92de8a720693058703a3c8adcd2886a27",
+                "terminal_state": "committed",
+                "timing_contract_sha256": "a838b45f1f4960b997103cfaeb5edfb9f0e43f84ce7595ab13ea55116adf3db3",
+                "version": "v1"
+              },
+              "mode": "dto-fixture",
+              "result_count": 120,
+              "unique_pairs": 120,
+              "status_counts": {
+                "passed": 120
+              },
+              "browser_counts": {
+                "chromium": 40,
+                "firefox": 40,
+                "webkit": 40
+              },
+              "runtime_blockers": [
+                "independent_watchdog_not_admitted",
+                "descendant_containment_not_admitted",
+                "trace_16MiB_producer_8MiB_consumer_not_admitted"
+              ],
+              "timing_contract_sha256": "a838b45f1f4960b997103cfaeb5edfb9f0e43f84ce7595ab13ea55116adf3db3"
+            }
+          ]
+        },
+        {
+          "pr": 270,
+          "id": 41949392306,
+          "url": "https://github.com/lucronn/autodata/actions/runs/41949392306",
+          "event": "push",
+          "reported_head_sha": "5fd390081be2a4210fdc223326e190d30990969b",
+          "actual_checkout_sha": "5fd390081be2a4210fdc223326e190d30990969b",
+          "actual_checkout_tree": "8000dd785bbb08604ae15589b215b3b6ba32972d",
+          "status": "completed",
+          "conclusion": "success",
+          "job_count": 3,
+          "successful_step_count": 41,
+          "checkout_verified_all_jobs": true,
+          "dto_artifacts": [
+            {
+              "id": 13380626198,
+              "zip_sha256": "65571e3682f41af53f5afc007f3b0990e96b31d43fbd9ae9d922f77e5fe9c3d9",
+              "candidate_sha": "5fd390081be2a4210fdc223326e190d30990969b",
+              "receipt": {
+                "attempt_id": "54361682b560b41d64b702ebeb867145",
+                "candidate_sha": "5fd390081be2a4210fdc223326e190d30990969b",
+                "cleanup_status": "verified",
+                "epoch": 0,
+                "evidence_sha256": "fa650106dfb7b473ad45e8859a16e63ff06e9727903934572a1cd9a450657e25",
+                "terminal_state": "committed",
+                "timing_contract_sha256": "a838b45f1f4960b997103cfaeb5edfb9f0e43f84ce7595ab13ea55116adf3db3",
+                "version": "v1"
+              },
+              "mode": "dto-fixture",
+              "result_count": 120,
+              "unique_pairs": 120,
+              "status_counts": {
+                "passed": 120
+              },
+              "browser_counts": {
+                "chromium": 40,
+                "firefox": 40,
+                "webkit": 40
+              },
+              "runtime_blockers": [
+                "independent_watchdog_not_admitted",
+                "descendant_containment_not_admitted",
+                "trace_16MiB_producer_8MiB_consumer_not_admitted"
+              ],
+              "timing_contract_sha256": "a838b45f1f4960b997103cfaeb5edfb9f0e43f84ce7595ab13ea55116adf3db3"
+            }
+          ]
+        },
+        {
+          "pr": 269,
+          "id": 41948467742,
+          "url": "https://github.com/lucronn/autodata/actions/runs/41948467742",
+          "event": "pull_request",
+          "reported_head_sha": "7ce2a6f7decde5a59a3d9b3cb018d0e7373003a3",
+          "actual_checkout_sha": "3fe3e7f1ab03b54d64269e706ed1ab8325c0057f",
+          "actual_checkout_tree": "2300acbac301355338237c5cd9a649d8f5e35fe5",
+          "status": "completed",
+          "conclusion": "success",
+          "job_count": 3,
+          "successful_step_count": 41,
+          "checkout_verified_all_jobs": true,
+          "dto_artifacts": [
+            {
+              "id": 13379966654,
+              "zip_sha256": "9dc483fd0c8dacee466d32a697d17d79e4521b53836c709c8e4d51ceb946c736",
+              "candidate_sha": "3fe3e7f1ab03b54d64269e706ed1ab8325c0057f",
+              "receipt": {
+                "attempt_id": "f00eaaabb2a6b8162b2ddc295e7fad16",
+                "candidate_sha": "3fe3e7f1ab03b54d64269e706ed1ab8325c0057f",
+                "cleanup_status": "verified",
+                "epoch": 0,
+                "evidence_sha256": "22eb33beab1330a8873f8432753dc9da4f263fde9aac883535e01520f55627f7",
+                "terminal_state": "committed",
+                "timing_contract_sha256": "a838b45f1f4960b997103cfaeb5edfb9f0e43f84ce7595ab13ea55116adf3db3",
+                "version": "v1"
+              },
+              "mode": "dto-fixture",
+              "result_count": 120,
+              "unique_pairs": 120,
+              "status_counts": {
+                "passed": 120
+              },
+              "browser_counts": {
+                "chromium": 40,
+                "firefox": 40,
+                "webkit": 40
+              },
+              "runtime_blockers": [
+                "independent_watchdog_not_admitted",
+                "descendant_containment_not_admitted",
+                "trace_16MiB_producer_8MiB_consumer_not_admitted"
+              ],
+              "timing_contract_sha256": "a838b45f1f4960b997103cfaeb5edfb9f0e43f84ce7595ab13ea55116adf3db3"
+            }
+          ]
+        },
+        {
+          "pr": 269,
+          "id": 41948409051,
+          "url": "https://github.com/lucronn/autodata/actions/runs/41948409051",
+          "event": "push",
+          "reported_head_sha": "7ce2a6f7decde5a59a3d9b3cb018d0e7373003a3",
+          "actual_checkout_sha": "7ce2a6f7decde5a59a3d9b3cb018d0e7373003a3",
+          "actual_checkout_tree": "2300acbac301355338237c5cd9a649d8f5e35fe5",
+          "status": "completed",
+          "conclusion": "success",
+          "job_count": 3,
+          "successful_step_count": 41,
+          "checkout_verified_all_jobs": true,
+          "dto_artifacts": [
+            {
+              "id": 13379821981,
+              "zip_sha256": "97272db2d226b8b89b989b887f7acfb28d4bf62525e98745d99e0633da7d784f",
+              "candidate_sha": "7ce2a6f7decde5a59a3d9b3cb018d0e7373003a3",
+              "receipt": {
+                "attempt_id": "3682ca4f84002af2ef88f8d72d58b989",
+                "candidate_sha": "7ce2a6f7decde5a59a3d9b3cb018d0e7373003a3",
+                "cleanup_status": "verified",
+                "epoch": 0,
+                "evidence_sha256": "993b6f3cd5133e2d7658302740ef0679a8cfdb7a417e4b86301a04a3b3f27199",
+                "terminal_state": "committed",
+                "timing_contract_sha256": "a838b45f1f4960b997103cfaeb5edfb9f0e43f84ce7595ab13ea55116adf3db3",
+                "version": "v1"
+              },
+              "mode": "dto-fixture",
+              "result_count": 120,
+              "unique_pairs": 120,
+              "status_counts": {
+                "passed": 120
+              },
+              "browser_counts": {
+                "chromium": 40,
+                "firefox": 40,
+                "webkit": 40
+              },
+              "runtime_blockers": [
+                "independent_watchdog_not_admitted",
+                "descendant_containment_not_admitted",
+                "trace_16MiB_producer_8MiB_consumer_not_admitted"
+              ],
+              "timing_contract_sha256": "a838b45f1f4960b997103cfaeb5edfb9f0e43f84ce7595ab13ea55116adf3db3"
+            }
+          ]
+        },
+        {
+          "pr": 268,
+          "id": 41948405342,
+          "url": "https://github.com/lucronn/autodata/actions/runs/41948405342",
+          "event": "pull_request",
+          "reported_head_sha": "50269b207e707a9c927ed1d71c92a2de57e311b6",
+          "actual_checkout_sha": "a522e0256da5e32de61fa6d29e86c05c94a74469",
+          "actual_checkout_tree": "b420c3661c48ce55af92ae3fc0c716cf11fb8da5",
+          "status": "completed",
+          "conclusion": "success",
+          "job_count": 3,
+          "successful_step_count": 41,
+          "checkout_verified_all_jobs": true,
+          "dto_artifacts": [
+            {
+              "id": 13380535122,
+              "zip_sha256": "ff2489f367d6797ced15854ee70be9eefefdd383a81b0a056f8ffa53ff95c150",
+              "candidate_sha": "a522e0256da5e32de61fa6d29e86c05c94a74469",
+              "receipt": {
+                "attempt_id": "726583848a7da92c94ec8a4f50ca3576",
+                "candidate_sha": "a522e0256da5e32de61fa6d29e86c05c94a74469",
+                "cleanup_status": "verified",
+                "epoch": 0,
+                "evidence_sha256": "c06f570f42d3096e63ee30558e2761a551b436411574368b5baada333162b7c0",
+                "terminal_state": "committed",
+                "timing_contract_sha256": "a838b45f1f4960b997103cfaeb5edfb9f0e43f84ce7595ab13ea55116adf3db3",
+                "version": "v1"
+              },
+              "mode": "dto-fixture",
+              "result_count": 120,
+              "unique_pairs": 120,
+              "status_counts": {
+                "passed": 120
+              },
+              "browser_counts": {
+                "chromium": 40,
+                "firefox": 40,
+                "webkit": 40
+              },
+              "runtime_blockers": [
+                "independent_watchdog_not_admitted",
+                "descendant_containment_not_admitted",
+                "trace_16MiB_producer_8MiB_consumer_not_admitted"
+              ],
+              "timing_contract_sha256": "a838b45f1f4960b997103cfaeb5edfb9f0e43f84ce7595ab13ea55116adf3db3"
+            }
+          ]
+        },
+        {
+          "pr": 268,
+          "id": 41948332293,
+          "url": "https://github.com/lucronn/autodata/actions/runs/41948332293",
+          "event": "push",
+          "reported_head_sha": "50269b207e707a9c927ed1d71c92a2de57e311b6",
+          "actual_checkout_sha": "50269b207e707a9c927ed1d71c92a2de57e311b6",
+          "actual_checkout_tree": "b420c3661c48ce55af92ae3fc0c716cf11fb8da5",
+          "status": "completed",
+          "conclusion": "success",
+          "job_count": 3,
+          "successful_step_count": 41,
+          "checkout_verified_all_jobs": true,
+          "dto_artifacts": [
+            {
+              "id": 13379024898,
+              "zip_sha256": "d62d750620d502d6360044f3c4a9069f9e13f1a8ff9bd2299af324968fadb84d",
+              "candidate_sha": "50269b207e707a9c927ed1d71c92a2de57e311b6",
+              "receipt": {
+                "attempt_id": "d402caec161949e9c343cb2c7c514801",
+                "candidate_sha": "50269b207e707a9c927ed1d71c92a2de57e311b6",
+                "cleanup_status": "verified",
+                "epoch": 0,
+                "evidence_sha256": "1101a9e8b3cae36956470c7604e563415b562a77a5a4bc64be050bdc5f7a7a81",
+                "terminal_state": "committed",
+                "timing_contract_sha256": "a838b45f1f4960b997103cfaeb5edfb9f0e43f84ce7595ab13ea55116adf3db3",
+                "version": "v1"
+              },
+              "mode": "dto-fixture",
+              "result_count": 120,
+              "unique_pairs": 120,
+              "status_counts": {
+                "passed": 120
+              },
+              "browser_counts": {
+                "chromium": 40,
+                "firefox": 40,
+                "webkit": 40
+              },
+              "runtime_blockers": [
+                "independent_watchdog_not_admitted",
+                "descendant_containment_not_admitted",
+                "trace_16MiB_producer_8MiB_consumer_not_admitted"
+              ],
+              "timing_contract_sha256": "a838b45f1f4960b997103cfaeb5edfb9f0e43f84ce7595ab13ea55116adf3db3"
+            }
+          ]
+        }
+      ],
+      "policy_PR271_counts": [
+        {
+          "pr": 271,
+          "event": "pull_request",
+          "run": 41949840671,
+          "job": 126990911624,
+          "autonomy": 146,
+          "node": {
+            "tests": 184,
+            "pass": 184,
+            "fail": 0,
+            "skipped": 0
+          },
+          "browser_contract": 137,
+          "shared_contract": 19,
+          "enrichment": 46,
+          "development_adapter": 549,
+          "ingestion_passed": 727,
+          "ingestion_skipped": 207,
+          "ingestion_subtests_passed": 25,
+          "go_api": "passed",
+          "go_contract": "passed"
+        },
+        {
+          "pr": 271,
+          "event": "push",
+          "run": 41949810868,
+          "job": 126990818135,
+          "autonomy": 146,
+          "node": {
+            "tests": 184,
+            "pass": 184,
+            "fail": 0,
+            "skipped": 0
+          },
+          "browser_contract": 137,
+          "shared_contract": 19,
+          "enrichment": 46,
+          "development_adapter": 549,
+          "ingestion_passed": 727,
+          "ingestion_skipped": 207,
+          "ingestion_subtests_passed": 25,
+          "go_api": "passed",
+          "go_contract": "passed"
+        }
+      ],
+      "R3_scope": "130 discovered/run tests per each of8 runs, successful and no skips; synthetic/owned-child preparation only, watchdog/descendant containment/trace-size runtime blockers unchanged."
+    }
+  },
+  "tracking_sync": {
+    "status": "synchronized",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6647549390",
+    "issue_comment_id": 6647549390,
+    "issue_comment_created_at": "2026-11-05T02:00:18Z",
+    "issue_comment_body_sha256": "8315c424095002bc7d9215815245a66117ef49c3d81165388cbc8bd88e2b32c3",
+    "before_readback": {
+      "path": "/home/corp/autodata-evidence/api21-v2-task52-before-tracking.json",
+      "sha256": "463cc5681651f95b153b7113ff21af62b21432e1d25e31b1290be1c30a0a9e65",
+      "observed_at": "2026-11-05T02:00:12Z"
+    },
+    "after_readback": {
+      "path": "/home/corp/autodata-evidence/api21-v2-task52-after-tracking.json",
+      "sha256": "1e664f8390cb461e32a50047e96cab965fe889324cd81bdb0c48a5ba3b07401c",
+      "observed_at": "2026-11-05T02:00:30Z"
+    },
+    "issue_body_sha256": "927b46ef47b1dbf5b117273e3d3f5c0e6d9f23b722a5245869eb5323b96c4f25",
+    "project_source_sha256_before": "b51e2c1c7c929fdfd899ecf6efd4c692b859beb454a8fdbd3165abfcd43d2486",
+    "project_source_sha256_after": "073003a8ab91b113d0c2652d132d6c0c7425568d12934b7dd74ca4f346038004",
+    "issue_body_unchanged": true,
+    "prior_239_comments_unchanged": true,
+    "project_other_fields_unchanged": true,
+    "prior_project_source_preserved_verbatim_in_comment": true,
+    "literal_goal_todo_six_gate_paths_three_implementation_paths_verified": true,
+    "writes_performed_by_this_agent": false,
+    "coordinator_sync_completed": true,
+    "scope": "Planning synchronization only; committed exact checkpoint, positive preflights, independent checkpoint review and explicit code-only dispatch remain required."
+  },
+  "allowed_gate_document_paths": [
+    "docs/superpowers/plans/2026-11-05-workshop-api21-v2-raw-inspector.md",
+    "docs/agents/specs/2026-11-05-workshop-api21-v2-raw-inspector.json",
+    "docs/agents/records/2026-11-05-workshop-api21-v2-raw-inspector.json",
+    "docs/agents/tasks/2026-11-03-production-release/workshop-api21-v2-raw-inspector.json",
+    "docs/verification/2026-11-05-workshop-api21-v2-raw-inspector.md",
+    "docs/agents/tasks/2026-11-03-production-release/queue.json"
+  ],
+  "allowed_implementation_paths": [
+    "scripts/dev/release_acceptance.py",
+    "scripts/dev/test_release_acceptance.py",
+    "docs/verification/release-acceptance-runbook.md"
+  ],
+  "current_implementation_allowlist": [],
+  "accepted_case_credit": 0,
+  "accepted_new_case_credit": 0,
+  "verified_case_ids": [],
+  "release_state": "unverified",
+  "authorities": {
+    "implementation": false,
+    "provider": false,
+    "runtime": false,
+    "host": false,
+    "docker": false,
+    "network": false,
+    "cloud": false,
+    "dns": false,
+    "capture": false,
+    "profile_activation": false,
+    "acceptance": false,
+    "fixture_execution": false,
+    "staging": false,
+    "release": false,
+    "merge": false,
+    "deployment": false
+  },
+  "updated_at": "2026-11-05T02:00:18Z",
+  "id": "workshop-api21-v2-raw-inspector",
+  "ordinal": 52,
+  "plan_ref": "docs/superpowers/plans/2026-11-05-workshop-api21-v2-raw-inspector.md",
+  "spec_ref": "docs/agents/specs/2026-11-05-workshop-api21-v2-raw-inspector.json",
+  "record_ref": "docs/agents/records/2026-11-05-workshop-api21-v2-raw-inspector.json",
+  "verification_ref": "docs/verification/2026-11-05-workshop-api21-v2-raw-inspector.md",
+  "pre_implementation_record": {
+    "goal": "Add an internal API21 producer-v2 retained-byte consistency inspector bound to the exact Task51 source candidate while preserving historical v1 semantics and every runtime, acceptance and release block",
+    "plan_ref": "docs/superpowers/plans/2026-11-05-workshop-api21-v2-raw-inspector.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/agents/specs/2026-11-05-workshop-api21-v2-raw-inspector.json",
+      "docs/verification/2026-11-05-workshop-api21-v2-raw-inspector.md"
+    ],
+    "todo": [
+      "Admit exact Task51 candidate 6949eb1b1a5b93c9b2eb0579328e24c697f6f331 and tree 47ec54b1896c83a39b6637a6ce944d3620414f4e only after completed source-push and actual PR checkout CI review; preserve every failure, skip and external status, freeze current seven producer inputs, served assets, 21 ordered cases and source-to-receipt mapping without transferring historical fixture credit.",
+      "Independently review the closed v2 schema, branch matrix, source manifests, redaction and semantic mutation matrix in this six-document draft; preserve all 51 queue objects and root fields and append only ordinal52, with all authorities false until exact checkpoint admission.",
+      "Synchronize this literal goal, six todo strings, six gate paths and exact three implementation paths in Issue186 and existing Project8 item PVTI_lAHOCSJ8cc4BiQ2BzhFocs4 with before/after readbacks; commit/push the six-document checkpoint from the admitted Task51 source, externally seal its actual SHA/tree, extract standalone and nested records and policy at that SHA, require both canonical preflights errors=[] and independent exact-checkpoint review before explicit code-only dispatch.",
+      "Write independent fake-byte red tests, then add only inspect_api21_v2_receipts and private v2 helpers in scripts/dev/release_acceptance.py with confined ArtifactStore reads, exact current candidate/source/asset bindings, closed schemas and retained-body/hash/process/log/phase consistency; preserve inspect_api21_receipts and all v1 behavior, with no producer import, execution, CLI dispatch, profile registration or transport activation.",
+      "Add semantic tamper, truncation, stale or mixed binding, identity, checkout loss/retry, scope denial, settlement/refund, owner/restart/warm, process/log/publication/cleanup interruption and secret-bearing body tests; append the current-source v2 limitations to the runbook, keeping status unavailable, complete false, verified IDs empty, both credits zero, all acceptance flags false and disabled public CLI exit3.",
+      "Run focused and full release-acceptance, applicable developer/autonomy and existing fake browser/observability checks plus exact-path preservation and diff checks; retain actual commands/counts/skips/failures, commit and promptly push validated coherent milestones after dispatch, obtain independent exact-code review and fresh push plus actual PR checkout CI, leaving capture, compiler/timers, host/runtime, profile, fixture180, staging and release separately gated."
+    ],
+    "status": "synchronized",
+    "updated_at": "2026-11-05T02:00:18Z"
+  },
+  "state": "blocked",
+  "planning_status": "synchronized",
+  "tracking_status": "synchronized",
+  "depends_on": [
+    "workshop-reviewed-release-candidate-integration"
+  ],
+  "dispatch_mode": "coordinator_only_after_gate",
+  "branch_assignment": null,
+  "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-api21-v2-raw-inspector.json",
+  "implementation_base_sha": null,
+  "checkpoint_seal_ref": null
+}

@@ -1,0 +1,68 @@
+{
+  "task_id": "2026-11-03-workshop-browser-client-response-loss",
+  "repository": "lucronn/autodata",
+  "goal": "Correct the real-API browser fixture to lose only the browser checkout response after a successful API commit, then prove the same-key retry preserves one order and provider session.",
+  "builder_agent": "gpt-6.1-sol",
+  "allowed_paths": [
+    "scripts/dev/workshop_browser_smoke.py",
+    "scripts/dev/test_workshop_browser_smoke.py"
+  ],
+  "bounded_contexts": [
+    "real-API browser checkout transport fixture",
+    "fixture-only async route regression tests"
+  ],
+  "inputs": [
+    "docs/superpowers/plans/2026-11-03-workshop-browser-client-response-loss.md",
+    "docs/superpowers/plans/2026-11-03-workshop-customer-ui.md"
+  ],
+  "outputs": [
+    "scripts/dev/workshop_browser_smoke.py",
+    "scripts/dev/test_workshop_browser_smoke.py"
+  ],
+  "acceptance_tests": [
+    "First targeted POST is fetched from the actual API and validated as checkout before its browser response alone is aborted once.",
+    "Explicit retry is visible within the existing deadline, reuses the identical UUID Idempotency-Key and body, and forwards the actual successful checkout response.",
+    "Before and after retry: one order, one checkout request, zero entitlements, identical order/provider-session URL; existing snapshot paid_rows contains that session and payment_calls does not increase on retry.",
+    "Other scenarios, methods, paths and origins do not consume the fault; invalid/failing fetch cannot count as successful loss.",
+    "Keep existing provider-response-loss commerce regression unchanged; preserve API21 and DTO120 inventory, customer assertions, wrapper and six image build inputs.",
+    "Coordinator fresh pilot/full21 acceptance plus raw provenance and cleanup is required; units alone do not confer browser acceptance."
+  ],
+  "forbidden_scope": [
+    "Product or backend behavior changes; new APIs; schema/auth/payment/catalog/media changes",
+    "Assertion relaxation, added timeouts, altered 21/120 inventory or failed evidence rewriting",
+    "Frozen supervisor, Docker/image build inputs, dependency locks, Compose or workflows",
+    "Builder execution of Docker, browser, provider, cloud, deployment, DNS or secrets",
+    "Any path outside the literal two-file implementation allowlist"
+  ],
+  "pre_implementation": {
+    "goal": "Correct the real-API browser fixture to lose only the browser checkout response after a successful API commit, then prove the same-key retry preserves one order and provider session.",
+    "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-browser-client-response-loss.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/superpowers/plans/2026-11-03-workshop-customer-ui.md",
+      "docs/superpowers/plans/2026-11-03-workshop-browser-client-response-loss.md",
+      "docs/agents/tasks/2026-11-03-production-release/queue.json"
+    ],
+    "todo": [
+      "Synchronize Issue186/Project8, the dedicated plan, canonical UI plan, queue, task and record; commit/push the checkpoint and pass exact-SHA preflight before independent coordinator approval.",
+      "Add failing async route regressions for actual API fetch before browser abort, exact one-shot scope, same-key/body retry, unchanged real response forwarding and fail-closed invalid responses.",
+      "Replace the first real-API case provider lose-response control with browser-route response loss after successful checkout; retain retry visibility, hosted redirect, exact request reuse, durable order/session and provider-call assertions.",
+      "Run focused browser fixture units, syntax, 21/120 inventory, frozen-input and two-file scope checks; commit/push the coherent fixture fix and obtain independent exact-commit review.",
+      "Coordinator integrates the reviewed fix, reruns the Chromium pilot then the unchanged full21 actual API inventory at a clean immutable SHA using the frozen supervisor/image, and independently checks raw provenance and cleanup."
+    ],
+    "status": "synchronized",
+    "updated_at": "2026-11-03T21:53:47.224451+00:00"
+  },
+  "source_integration_base": "35aef11cb37cb6f1f6b6b609ff374689dde9d516",
+  "failed_run_ref": "/tmp/autodata-workshop-browser-pilot-8a1746d",
+  "execution": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "medium",
+    "service_tier": "fast",
+    "features": {
+      "fast_mode": true
+    },
+    "allow_fallback": false
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "goal": "Repair actual runtime check executable matching, trusted-check environment and synthetic verifier assignment scope while preserving strict runtime evidence and all release gates.",
+  "plan_ref": "docs/superpowers/plans/2026-11-03-runtime-check-contract.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/agents/runner-interface.md",
+    "docs/verification/2026-11-03-agent-evidence-hardening.md",
+    "docs/superpowers/plans/2026-11-03-production-release-orchestration.md"
+  ],
+  "todo": [
+    "Retain the original five-file plan and verified implementation; clarify only the two tests frozen prompt loading for shallow CI.",
+    "Read complete checked-in prompt bytes only after asserting frozen SHA256 d43f9a584cd5e65b823b1ee401b744e5e4d9923b2e57cd9517cdd7832ade09ed; preserve all existing semantic assertions and production loaders.",
+    "Change only scripts/autonomy/test_runner.py within the original five-path ceiling after this synchronized checkpoint passes exact-base preflight.",
+    "Retain depth-one red/green and changed-byte rejection, run full autonomy tests, obtain independent exact-commit review and verify actual GitHub CI after push.",
+    "Preserve all earlier failed and successful evidence distinctly; no provider retry, supervisor change, global-gate relaxation or production-readiness claim."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-03T18:07:36.351786+00:00"
+}

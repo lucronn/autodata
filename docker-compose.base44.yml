@@ -72,8 +72,7 @@ services:
       retries: 12
     restart: on-failure
 
-  # Forward-only schema migrations. Every migration is idempotent, so re-running
-  # them against the persistent volume is safe on each `up`.
+  # One locked session applies pending versions and preserves committed migrations.
   migration-runner:
     image: postgres:17-alpine
     working_dir: /workspace
@@ -85,12 +84,7 @@ services:
       PGDATABASE: autodata
       PGUSER: autodata
       PGPASSWORD: local-dev-only
-    command:
-      [
-        "sh",
-        "-c",
-        "set -eu; for migration in /workspace/db/migrations/[0-9][0-9][0-9]_*.sql; do echo applying $${migration}; psql --set ON_ERROR_STOP=1 --file $${migration}; done",
-      ]
+    command: ["sh", "scripts/dev/migrate_sql.sh"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -111,6 +105,9 @@ services:
       - ./.env.base44-defaults
       - /run/base44/app.env
     environment:
+      AUTODATA_COMMERCE_MODE: "disabled"
+      AUTODATA_STRIPE_SECRET_KEY: ""
+      AUTODATA_STRIPE_WEBHOOK_SECRET: ""
       <<: [*database-env, *object-storage-env]
       AUTODATA_INGESTION_HTTP_ADDR: ":8081"
       AUTODATA_NATS_ADDRESS: nats:4222
@@ -160,8 +157,12 @@ services:
       - .:/src
       - go-mod-cache:/go/pkg/mod
     environment:
+      AUTODATA_COMMERCE_MODE: "disabled"
       <<: [*database-env, *object-storage-env]
       AUTODATA_API_ADDR: ":8080"
+      AUTODATA_ENV: "development"
+      AUTODATA_AUTH_MODE: "local"
+      AUTODATA_PUBLIC_ORIGIN: "https://localhost:3000"
       AUTODATA_PROJECTION_STORE: postgres
       AUTODATA_NATS_ADDRESS: nats:4222
       AUTODATA_INGESTION_URL: http://ingestion-http:8081

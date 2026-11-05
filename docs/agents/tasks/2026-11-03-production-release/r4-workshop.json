@@ -1,0 +1,155 @@
+{
+  "task_id": "production-release-r4-workshop",
+  "repository": "lucronn/autodata",
+  "goal": "Deliver the complete paid Workshop UI: Google sign-in, one-time USD20 exact-configuration purchase, permanent library access and ordered source-to-canonical reading.",
+  "builder_agent": "autodata-go-builder",
+  "allowed_paths": [
+    "apps/api-go/workshop/auth.mjs",
+    "apps/api-go/workshop/commerce.mjs",
+    "apps/api-go/workshop/article-read.mjs",
+    "apps/api-go/workshop/firebase-web.mjs",
+    "apps/api-go/workshop/firebase-web.mjs.LEGAL.txt",
+    "apps/api-go/workshop/firebase-web.provenance.json",
+    "apps/api-go/workshop/purchase-config.json",
+    "apps/api-go/workshop-client/package.json",
+    "apps/api-go/workshop-client/package-lock.json",
+    "apps/api-go/workshop-client/build.mjs",
+    "apps/api-go/workshop-client/firebase-entry.mjs",
+    "apps/api-go/workshop_browser_fixture_test.go",
+    "scripts/dev/workshop_browser_smoke.py",
+    "scripts/dev/test_workshop_browser_smoke.py",
+    "scripts/dev/requirements-workshop-browser.txt",
+    "scripts/dev/fixtures/workshop_customer/scenarios.json",
+    "scripts/dev/fixtures/workshop_customer/firebase_transport.js",
+    "scripts/dev/fixtures/workshop_customer/stripe_checkout.html",
+    "scripts/dev/fixtures/workshop_customer/hostile_source.json",
+    "workers/ingestion-python/tests/test_workshop_browser_integration.py",
+    "docs/verification/workshop-customer-ui-runbook.md",
+    "apps/api-go/workshop/index.html",
+    "apps/api-go/workshop/app.mjs",
+    "apps/api-go/workshop/catalog.mjs",
+    "apps/api-go/workshop/progress.mjs",
+    "apps/api-go/workshop/styles.css",
+    "apps/api-go/workshop-client.test.mjs",
+    "apps/api-go/workshop_test.go",
+    "infra/compose/article-lifecycle-test.Dockerfile",
+    ".github/workflows/autonomous-verification.yml",
+    ".gitignore",
+    "docs/architecture/workshop-interface.md",
+    "docs/architecture/workshop-loading-progress.md"
+  ],
+  "bounded_contexts": [
+    "Workshop web application"
+  ],
+  "inputs": [
+    "docs/superpowers/plans/2026-11-03-workshop-customer-ui.md",
+    "docs/superpowers/plans/2026-11-03-workshop-firebase-identity.md",
+    "docs/superpowers/plans/2026-11-03-workshop-commerce.md",
+    "docs/superpowers/plans/2026-11-03-workshop-paid-access.md",
+    "docs/architecture/workshop-commerce.md"
+  ],
+  "outputs": [
+    "apps/api-go/workshop/app.mjs",
+    "apps/api-go/workshop/auth.mjs",
+    "apps/api-go/workshop/commerce.mjs",
+    "apps/api-go/workshop/article-read.mjs"
+  ],
+  "acceptance_tests": [
+    "Bundle pinned official Firebase12.19.0 with deterministic provenance/license and in-memory token persistence; use HttpOnly cookie sessions and CSRF with no demo/bearer fallback.",
+    "Implement public configuration browsing, server-priced quote, stable-idempotency hosted checkout, owner order status and permanent My vehicles library.",
+    "Implement configuration.id prepare POST then observational polling, ordered article/source rendering, contextual media renewal, cancellation, denial/logout clearing and accessible honest progress.",
+    "Run all120 DTO/browser scenarios and21 real API/browser cases across three engines, preserve separate8+5+14+12 backend inventories and verify actual production asset packaging.",
+    "Complete independent exact-candidate review and actual CI; keep real merchant/project/domain configuration and staging/cutover acceptance distinct from deterministic fixture evidence."
+  ],
+  "forbidden_scope": [
+    "Production deployment or production-data changes",
+    "Changing the autonomy policy or weakening required checks",
+    "Publishing secrets or private source payloads",
+    "Editing paths outside the assigned scope",
+    "Merging without independent exact-commit verification",
+    "Changing the requested gpt-6.1-sol / medium / Fast execution profile or silently falling back to another model or tier"
+  ],
+  "compatibility": {
+    "api": "Preserve existing consumers with additive versioned fields; run compatibility checks.",
+    "events": "Preserve event identity and make duplicate delivery idempotent.",
+    "schema": "Forward-only additive migrations with clean and upgrade verification; no destructive edits to historical migrations."
+  },
+  "pre_implementation": {
+    "goal": "Deliver the complete paid Workshop UI: Google sign-in, one-time USD20 exact-configuration purchase, permanent library access and ordered source-to-canonical reading.",
+    "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-customer-ui.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/architecture/workshop-commerce.md",
+      "docs/superpowers/specs/2026-11-03-source-fallback-web-design.md",
+      "docs/superpowers/plans/2026-11-03-production-release-orchestration.md",
+      "docs/superpowers/plans/2026-11-03-workshop-parallel-delivery.md"
+    ],
+    "todo": [
+      "Freeze reviewed commerce and paid-access interfaces, apply the parallel ownership plan, synchronize Issue186/Project8 and canonical docs, then pass the exact-base gate before implementation. Runtime acceptance remains required before release.",
+      "Bundle pinned official Firebase12.19.0 with deterministic provenance/license and in-memory token persistence; use HttpOnly cookie sessions and CSRF with no demo/bearer fallback.",
+      "Implement public configuration browsing, server-priced quote, stable-idempotency hosted checkout, owner order status and permanent My vehicles library.",
+      "Implement configuration.id prepare POST then observational polling, ordered article/source rendering, contextual media renewal, cancellation, denial/logout clearing and accessible honest progress.",
+      "Run all120 DTO/browser scenarios and21 real API/browser cases across three engines, preserve separate8+5+14+12 backend inventories and verify actual production asset packaging.",
+      "Complete independent exact-candidate review and actual CI; keep real merchant/project/domain configuration and staging/cutover acceptance distinct from deterministic fixture evidence."
+    ],
+    "status": "synchronized",
+    "updated_at": "2026-11-03T19:35:01.267422+00:00"
+  },
+  "execution": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "medium",
+    "service_tier": "fast",
+    "features": {
+      "fast_mode": true
+    },
+    "allow_fallback": false
+  },
+  "required_browser_engines": [
+    "chromium",
+    "firefox",
+    "webkit"
+  ],
+  "required_dto_browser_cases": 120,
+  "required_api_browser_cases": 21,
+  "parallel_plan_ref": "docs/superpowers/plans/2026-11-03-workshop-parallel-delivery.md",
+  "worker_ownership": {
+    "customer_ui": [
+      "apps/api-go/workshop/auth.mjs",
+      "apps/api-go/workshop/commerce.mjs",
+      "apps/api-go/workshop/article-read.mjs",
+      "apps/api-go/workshop/firebase-web.mjs",
+      "apps/api-go/workshop/firebase-web.mjs.LEGAL.txt",
+      "apps/api-go/workshop/firebase-web.provenance.json",
+      "apps/api-go/workshop/purchase-config.json",
+      "apps/api-go/workshop-client/package.json",
+      "apps/api-go/workshop-client/package-lock.json",
+      "apps/api-go/workshop-client/build.mjs",
+      "apps/api-go/workshop-client/firebase-entry.mjs",
+      "apps/api-go/workshop_browser_fixture_test.go",
+      "scripts/dev/workshop_browser_smoke.py",
+      "scripts/dev/test_workshop_browser_smoke.py",
+      "scripts/dev/requirements-workshop-browser.txt",
+      "scripts/dev/fixtures/workshop_customer/scenarios.json",
+      "scripts/dev/fixtures/workshop_customer/firebase_transport.js",
+      "scripts/dev/fixtures/workshop_customer/stripe_checkout.html",
+      "scripts/dev/fixtures/workshop_customer/hostile_source.json",
+      "workers/ingestion-python/tests/test_workshop_browser_integration.py",
+      "docs/verification/workshop-customer-ui-runbook.md",
+      "apps/api-go/workshop/index.html",
+      "apps/api-go/workshop/app.mjs",
+      "apps/api-go/workshop/catalog.mjs",
+      "apps/api-go/workshop/progress.mjs",
+      "apps/api-go/workshop/styles.css",
+      "apps/api-go/workshop-client.test.mjs",
+      "apps/api-go/workshop_test.go",
+      "infra/compose/article-lifecycle-test.Dockerfile",
+      ".github/workflows/autonomous-verification.yml",
+      ".gitignore",
+      "docs/architecture/workshop-loading-progress.md"
+    ],
+    "article_access": [
+      "docs/architecture/workshop-interface.md"
+    ]
+  }
+}

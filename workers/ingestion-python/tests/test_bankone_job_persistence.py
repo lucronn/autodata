@@ -1,285 +1,41 @@
-import sys
-import types
-import unittest
-from pathlib import Path
-from unittest.mock import patch
+"""Legacy jobs are immutable history; only proven canonical work is scheduled."""
+from types import SimpleNamespace
+import pytest
+from lifecycle_support import fresh_database,seed_vehicle,seed_snapshot,insert_descriptor
+from autodata_ingestion.article_lifecycle_types import ArticleKey
+from autodata_ingestion import bankone_job_persistence as jobs
 
 
-sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
-
-from autodata_ingestion.bankone_batch import BankoneBatch  # noqa: E402
-from autodata_ingestion.bankone_job_persistence import (  # noqa: E402
-    claim_autoapi_article_fetch_job,
-    persist_bankone_article_fetch_jobs,
-    record_autoapi_article_fetch_failure,
-)
+def test_unbound_batch_requires_review_without_any_database_access(monkeypatch):
+    def never(*args,**kwargs):pytest.fail("unbound legacy batch opened database")
+    monkeypatch.setattr(jobs,"_connection",never)
+    result=jobs.persist_bankone_article_fetch_jobs([SimpleNamespace(vehicle_key="v")],[{"vehicle_key":"v","status":"completed"}],selector_persistence={"observations":[{"vehicle_key":"v","vehicle_id":"unproven"}]},source_version="v1")
+    assert result["status"]=="needs_review" and result["error_code"]=="ARTICLE_BINDING_REVIEW_REQUIRED"
 
 
-class RecordingCursor:
-    def __init__(self):
-        self.calls = []
-
-    def execute(self, query, params):
-        self.calls.append((query, params))
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *_args):
-        return False
-
-
-class SequencedCursor(RecordingCursor):
-    def __init__(self, rows):
-        super().__init__()
-        self.rows = list(rows)
-
-    def fetchone(self):
-        return self.rows.pop(0) if self.rows else None
+def test_legacy_claim_and_record_do_not_mutate_imported_audit_rows(fresh_database,monkeypatch):
+    from lifecycle_support import seed_legacy_jobs_and_read_invariants,read_imported_job_invariants,apply_migration
+    repo=fresh_database(through=35);seed_legacy_jobs_and_read_invariants(repo)
+    for migration in (36,37,38):apply_migration(repo,migration)
+    before=read_imported_job_invariants(repo)
+    monkeypatch.setattr(jobs,"_connection",repo.connect)
+    for row in before:
+        result=jobs.claim_autoapi_article_fetch_job(row["idempotency_key"])
+        assert result["status"]=="needs_review" and result["error_code"]=="ARTICLE_BINDING_REVIEW_REQUIRED"
+        jobs.record_autoapi_article_fetch_success(row["idempotency_key"],checkpoint={"fake":"value"})
+        jobs.record_autoapi_article_fetch_failure(row["idempotency_key"],"fixture")
+    assert read_imported_job_invariants(repo)==before
 
 
-class RecordingConnection:
-    def __init__(self, cursor):
-        self.cursor_value = cursor
-        self.committed = False
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *_args):
-        return False
-
-    def cursor(self):
-        return self.cursor_value
-
-    def commit(self):
-        self.committed = True
-
-
-class AutoAPIJobPersistenceTests(unittest.TestCase):
-    def test_persists_pending_and_reviewable_article_fetch_jobs_idempotently(self):
-        cursor = RecordingCursor()
-        connection = RecordingConnection(cursor)
-        batches = [
-            BankoneBatch(
-                vehicle_key="ford-f-150-2020-us",
-                vehicle={"year": 2020, "make": "Ford", "model": "F-150", "region": "US"},
-                source_directory=None,
-                configurations=(),
-            ),
-            BankoneBatch(
-                vehicle_key="cadillac-escalade-esv-2019-us",
-                vehicle={
-                    "year": 2019,
-                    "make": "Cadillac",
-                    "model": "Escalade ESV",
-                    "region": "US",
-                },
-                source_directory=Path("catalog/cadillac-escalade-esv"),
-                configurations=(),
-            ),
-        ]
-        results = [
-            {
-                "vehicle_key": "ford-f-150-2020-us",
-                "status": "pending_source",
-                "error": "source bundle has not arrived",
-            },
-            {
-                "vehicle_key": "cadillac-escalade-esv-2019-us",
-                "status": "needs_review",
-                "articles": 6016,
-                "quarantined": 671,
-            },
-        ]
-        selector_persistence = {
-            "source_snapshot_id": "selector-snapshot-1",
-            "observations": [
-                {"vehicle_key": "ford-f-150-2020-us", "vehicle_id": "vehicle-ford"},
-                {"vehicle_key": "cadillac-escalade-esv-2019-us", "vehicle_id": "vehicle-cadillac"},
-            ],
-        }
-
-        fake_json = types.ModuleType("psycopg.types.json")
-        fake_json.Jsonb = lambda value: value
-        fake_types = types.ModuleType("psycopg.types")
-        fake_types.json = fake_json
-        fake_psycopg = types.ModuleType("psycopg")
-        fake_psycopg.connect = lambda **_kwargs: connection
-        with patch.dict(
-            sys.modules,
-            {
-                "psycopg": fake_psycopg,
-                "psycopg.types": fake_types,
-                "psycopg.types.json": fake_json,
-            },
-        ):
-            with patch.dict("os.environ", {"AUTODATA_POSTGRES_PASSWORD": "test-only"}):
-                result = persist_bankone_article_fetch_jobs(
-                    batches,
-                    results,
-                    selector_persistence=selector_persistence,
-                    source_version="autoapi-selector-v1",
-                )
-
-        self.assertEqual(result["status"], "persisted")
-        self.assertEqual(result["job_count"], 2)
-        self.assertEqual(
-            [job["status"] for job in result["jobs"]],
-            ["pending", "needs_review"],
-        )
-        insert_calls = [
-            (query, params)
-            for query, params in cursor.calls
-            if "INSERT INTO autoapi_article_fetch_jobs" in query
-        ]
-        self.assertEqual(len(insert_calls), 2)
-        self.assertEqual(insert_calls[0][1][1], "vehicle-ford")
-        self.assertEqual(insert_calls[0][1][6], "autoapi-selector-v1")
-        self.assertTrue(connection.committed)
-
-    def test_claim_increments_attempt_and_exhausted_failure_dead_letters(self):
-        claim_cursor = SequencedCursor([("job-1", "pending", 0, {}, None)])
-        claim_connection = RecordingConnection(claim_cursor)
-        failure_cursor = SequencedCursor([("job-1", "processing", 3, {}, None)])
-        failure_connection = RecordingConnection(failure_cursor)
-        connections = iter([claim_connection, failure_connection])
-        fake_json = types.ModuleType("psycopg.types.json")
-        fake_json.Jsonb = lambda value: value
-        fake_types = types.ModuleType("psycopg.types")
-        fake_types.json = fake_json
-        fake_psycopg = types.ModuleType("psycopg")
-        fake_psycopg.connect = lambda **_kwargs: next(connections)
-        with patch.dict(
-            sys.modules,
-            {
-                "psycopg": fake_psycopg,
-                "psycopg.types": fake_types,
-                "psycopg.types.json": fake_json,
-            },
-        ):
-            with patch.dict("os.environ", {"AUTODATA_POSTGRES_PASSWORD": "test-only"}):
-                claimed = claim_autoapi_article_fetch_job("autoapi-job-1", max_attempts=3)
-                dead_lettered = record_autoapi_article_fetch_failure(
-                    "autoapi-job-1", "source unavailable", max_attempts=3
-                )
-
-        self.assertEqual(claimed["status"], "processing")
-        self.assertEqual(claimed["attempt_count"], 1)
-        self.assertEqual(dead_lettered["status"], "dead_letter")
-        self.assertTrue(claim_connection.committed)
-        self.assertTrue(failure_connection.committed)
-        self.assertTrue(any("status = 'processing'" in query for query, _ in claim_cursor.calls))
-        self.assertTrue(any("status = %s" in query for query, _ in failure_cursor.calls))
-
-    def test_merged_vehicle_job_identity_includes_every_source_directory(self):
-        cursor = RecordingCursor()
-        connection = RecordingConnection(cursor)
-        batches = [
-            BankoneBatch(
-                vehicle_key="cadillac-escalade-esv-2019-us",
-                vehicle={
-                    "year": 2019,
-                    "make": "Cadillac",
-                    "model": "Escalade ESV",
-                    "region": "US",
-                },
-                source_directory=Path("catalog/first"),
-                source_directories=(Path("catalog/first"), Path("catalog/second")),
-                configurations=(),
-            )
-        ]
-        selector_persistence = {
-            "source_snapshot_id": "selector-snapshot-1",
-            "observations": [
-                {
-                    "vehicle_key": "cadillac-escalade-esv-2019-us",
-                    "vehicle_id": "vehicle-cadillac",
-                }
-            ],
-        }
-
-        fake_json = types.ModuleType("psycopg.types.json")
-        fake_json.Jsonb = lambda value: value
-        fake_types = types.ModuleType("psycopg.types")
-        fake_types.json = fake_json
-        fake_psycopg = types.ModuleType("psycopg")
-        fake_psycopg.connect = lambda **_kwargs: connection
-        with patch.dict(
-            sys.modules,
-            {
-                "psycopg": fake_psycopg,
-                "psycopg.types": fake_types,
-                "psycopg.types.json": fake_json,
-            },
-        ):
-            with patch.dict("os.environ", {"AUTODATA_POSTGRES_PASSWORD": "test-only"}):
-                persist_bankone_article_fetch_jobs(
-                    batches,
-                    [
-                        {
-                            "vehicle_key": "cadillac-escalade-esv-2019-us",
-                            "status": "completed",
-                        }
-                    ],
-                    selector_persistence=selector_persistence,
-                    source_version="autoapi-v1",
-                )
-
-        insert_calls = [
-            (query, params)
-            for query, params in cursor.calls
-            if "INSERT INTO autoapi_article_fetch_jobs" in query
-        ]
-        self.assertEqual(insert_calls[0][1][5], "catalog/first|catalog/second")
-
-    def test_persist_bankone_article_fetch_jobs_supports_address_parameter(self):
-        recorded_conninfo = {}
-
-        def fake_connect(**kwargs):
-            recorded_conninfo.update(kwargs)
-            raise RuntimeError("intercepted connection")
-
-        fake_json = types.ModuleType("psycopg.types.json")
-        fake_json.Jsonb = lambda value: value
-        fake_types = types.ModuleType("psycopg.types")
-        fake_types.json = fake_json
-        fake_psycopg = types.ModuleType("psycopg")
-        fake_psycopg.connect = fake_connect
-        fake_psycopg.types = fake_types
-        batches = [
-            BankoneBatch(
-                vehicle_key="ford-f-150-2020-us",
-                vehicle={"year": 2020, "make": "Ford", "model": "F-150", "region": "US"},
-                source_directory=None,
-                configurations=(),
-            ),
-        ]
-        selector_persistence = {
-            "source_snapshot_id": "selector-snapshot-1",
-            "observations": [
-                {"vehicle_key": "ford-f-150-2020-us", "vehicle_id": "vehicle-ford"},
-            ],
-        }
-        with patch.dict(
-            sys.modules,
-            {
-                "psycopg": fake_psycopg,
-                "psycopg.types": fake_types,
-                "psycopg.types.json": fake_json,
-            },
-        ):
-            with self.assertRaises(RuntimeError):
-                persist_bankone_article_fetch_jobs(
-                    batches,
-                    [{"vehicle_key": "ford-f-150-2020-us", "status": "pending_source"}],
-                    selector_persistence=selector_persistence,
-                    source_version="v1",
-                    address="db.cluster.internal:5434",
-                )
-        self.assertEqual(recorded_conninfo["host"], "db.cluster.internal")
-        self.assertEqual(recorded_conninfo["port"], 5434)
-
-
-if __name__ == "__main__":
-    unittest.main()
+def test_bound_batch_delegates_to_generic_ensure_and_replays(fresh_database,monkeypatch):
+    repo=fresh_database();vehicle=seed_vehicle(repo)
+    article=insert_descriptor(repo,ArticleKey("bankone",vehicle,None,"v","a"))
+    monkeypatch.setattr("autodata_ingestion.worker.ArticleRepository",lambda:repo)
+    kwargs=dict(selector_persistence={"observations":[{"vehicle_key":"v","vehicle_id":str(vehicle)}]},source_version="v1")
+    batch=SimpleNamespace(vehicle_key="v")
+    first=jobs.persist_bankone_article_fetch_jobs([batch],[{"vehicle_key":"v","canonical_article_ids":[str(article)]}],**kwargs)
+    second=jobs.persist_bankone_article_fetch_jobs([batch],[{"vehicle_key":"v","canonical_article_ids":[str(article)]}],**kwargs)
+    assert first["jobs"][0]["job_id"]==second["jobs"][0]["job_id"]
+    with repo.connect() as conn:
+        assert conn.execute("SELECT count(*) AS n FROM autoapi_article_fetch_jobs").fetchone()["n"]==0
+        assert conn.execute("SELECT count(*) AS n FROM source_fetch_jobs WHERE job_kind='article'").fetchone()["n"]==1

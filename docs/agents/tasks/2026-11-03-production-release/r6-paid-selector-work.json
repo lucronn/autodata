@@ -1,0 +1,114 @@
+{
+  "task_id": "production-release-r6-paid-selector-work",
+  "repository": "lucronn/autodata",
+  "goal": "Add one internal paid selector-work receipt consistency layer for the two GrantBeforeWork bank cases; preserve unavailable results, no verified cases and every disabled profile and false authority flag.",
+  "builder_agent": "autodata-python-builder",
+  "allowed_paths": [
+    "scripts/dev/release_acceptance.py",
+    "scripts/dev/test_release_acceptance.py",
+    "docs/verification/release-acceptance-runbook.md"
+  ],
+  "inputs": [
+    "docs/superpowers/plans/2026-11-03-workshop-r6-paid-selector-work.md",
+    "docs/agents/tasks/2026-11-03-production-release/r6-release.json"
+  ],
+  "outputs": [
+    "scripts/dev/release_acceptance.py",
+    "scripts/dev/test_release_acceptance.py",
+    "docs/verification/release-acceptance-runbook.md"
+  ],
+  "acceptance_tests": [
+    "Closed typed two-case selector-work schema and fourteen diagnostic snapshots match the dedicated plan.",
+    "Independent mutations reach semantic checks with updated enclosing hashes and copy seams.",
+    "All inherited missing families persist; no verified cases and all flags false.",
+    "CLI plan/validate never dispatch the new internal inspector; every profile remains disabled."
+  ],
+  "forbidden_scope": [
+    "Changing the autonomy policy or weakening required checks",
+    "Changing the requested gpt-6.1-sol / medium / Fast execution profile or silently falling back to another model or tier",
+    "Editing paths outside the assigned scope",
+    "Editing runner, orchestrator, policy, schema, registry, workflow, Compose, Kubernetes, application or SQL paths",
+    "Executing Docker, browser, cloud, provider or arbitrary commands from the assembler",
+    "Merging without independent exact-commit verification",
+    "Production deployment or production-data changes",
+    "Publishing secrets or private source payloads",
+    "Treating synthetic fixture tests as real acceptance or deployment authorization",
+    "Enabling or promoting any profile, supervisor, tier, reviewer or trust identity in this bounded milestone",
+    "Changing CLI disabled-profile behavior, deriving actual acceptance counts from synthetic tests or relabeling historical evidence",
+    "Implementing Git ancestry proof without a separately approved complete Git provenance contract",
+    "Modifying retained raw evidence, accessing live services or implementing later2 staging collection",
+    "Interpreting HTTP/body/headers, licensed source payloads, model lifecycle semantics or other ten paid cases beyond their existing layer."
+  ],
+  "pre_implementation": {
+    "goal": "Add one internal paid selector-work receipt consistency layer for the two GrantBeforeWork bank cases; preserve unavailable results, no verified cases and every disabled profile and false authority flag.",
+    "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-r6-paid-selector-work.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/superpowers/plans/2026-11-03-workshop-product-evidence-assembler.md",
+      "docs/superpowers/plans/2026-11-03-release-acceptance.md",
+      "docs/verification/release-acceptance-runbook.md"
+    ],
+    "todo": [
+      "Synchronize this single selector-work family, closed schema, three-path allowlist and todo in Issue186/Project8 and canonical plan/task/record/queue; commit/push and pass pinned preflight before independent gate review.",
+      "Add failing inline synthetic tests for closed selector request fields, exact typed payloads and route inventories, phase counter contradictions, numeric boundaries, copy seams and confined-store mutation.",
+      "Implement only inspect_paid_selector_work chained after inspect_paid_migration_receipts, with two fixed observed selector identities and fourteen phase/final snapshot diagnostics, retaining every prior missing family and adding explicit selector HTTP and request-provenance gaps.",
+      "Keep plan and validate disconnected from every internal typed inspector; preserve zero CLI counts, no verified case IDs, unavailable/incomplete results, all profiles disabled, enabled_tiers empty and every verification/deployment/cutover flag false.",
+      "Run focused/developer/autonomy, syntax, shallow-clone and three-path scope checks; update the runbook, commit/push the coherent candidate and obtain independent exact-SHA review before integration."
+    ],
+    "status": "synchronized",
+    "updated_at": "2026-11-04T00:34:12.496441+00:00",
+    "tracking_receipts": {
+      "source_base_sha": "eddcf724028683dbb083191e4f8c42064b866bf0",
+      "issue_comment_url": "https://github.com/lucronn/autodata/issues/186#issuecomment-6619194720",
+      "issue_comment_body_sha256": "7aa718e316d14718354e2206242f8470fc945bdcbfa1edf20c794c02e4de6db3",
+      "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+      "project_status": "In Progress",
+      "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+      "project_field_sha256": "293ca347ec9b6848b5e8e339b8dce6a0c5bdbe02019ef5feae45e0cbc5db4f93",
+      "prior_project_field_sha256": "0a1d7564da5b9e26b365fc471272c5fc0c092e409abe53efbbf8fe185cb7089d",
+      "readback_at": "2026-11-04T00:34:12.496441+00:00",
+      "project_field_characters": 816,
+      "restored_reference_id": "6617902111",
+      "pre_correction_project_field_sha256": "60cdeedf507f0f0f0b91cc08da08a357099f75dc08e9a6d1b1086e12b575ac65",
+      "prior_comment_ids_complete": true
+    },
+    "tracking_receipt_history": [
+      {
+        "kind": "original_planning_readback",
+        "receipt": {
+          "source_base_sha": "eddcf724028683dbb083191e4f8c42064b866bf0",
+          "issue_comment_url": "https://github.com/lucronn/autodata/issues/186#issuecomment-6619139974",
+          "issue_comment_body_sha256": "1149c8c6bacccad6fe9079a444eb8adff56095dabea535a939b92443728a1765",
+          "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+          "project_status": "In Progress",
+          "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+          "project_field_sha256": "9682bd24f8eb74c2c85bd3d3f8926544ea74ed5a9fbd7c0cc57ce2b7d536275d",
+          "prior_project_field_sha256": "0a1d7564da5b9e26b365fc471272c5fc0c092e409abe53efbbf8fe185cb7089d",
+          "readback_at": "2026-11-04T00:30:56.950795+00:00"
+        }
+      },
+      {
+        "kind": "original_checkpoint_followup",
+        "checkpoint_sha": "2222ce2123016f35a192fea312e9ff19749840b8",
+        "issue_comment_url": "https://github.com/lucronn/autodata/issues/186#issuecomment-6619164328",
+        "issue_comment_body_sha256": "02829f35c348a6466e0d64f0afac56427aa4b1e9815bfe902edec6a0cef45b18",
+        "project_field_sha256": "60cdeedf507f0f0f0b91cc08da08a357099f75dc08e9a6d1b1086e12b575ac65",
+        "known_defect": "Compact index omitted prior DTO comment6617902111; all-ID-retained claims superseded by corrected readback."
+      }
+    ]
+  },
+  "execution": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "medium",
+    "service_tier": "fast",
+    "features": {
+      "fast_mode": true
+    },
+    "allow_fallback": false
+  },
+  "source_inspection_sha": "eddcf724028683dbb083191e4f8c42064b866bf0",
+  "dispatch_mode": "coordinator-direct",
+  "product_evidence_profile_source": "docs/agents/tasks/2026-11-03-production-release/r6-release.json",
+  "independent_review_required": true
+}

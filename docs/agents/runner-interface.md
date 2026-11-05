@@ -6,7 +6,7 @@ The project-scoped prompts define agent behavior, but a model/provider runtime m
 
 ## Invocation
 
-The runner receives a task envelope:
+The v2 runner receives an envelope referencing a committed task:
 
 ```json
 {
@@ -14,12 +14,34 @@ The runner receives a task envelope:
   "task_id": "github-issue-or-project-item",
   "repository": "OWNER/REPO",
   "base_sha": "40-character-sha",
+  "subject_sha": "40-character-sha",
+  "task_ref": "docs/agents/tasks/committed-task.json",
   "agent_name": "autodata-architect",
-  "task_contract_ref": "artifact-or-path",
   "allowed_paths": ["docs/architecture/**"],
-  "deployment_target": "none|ephemeral|dev"
+  "deployment_target": "none",
+  "execution": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "medium",
+    "service_tier": "fast",
+    "features": {"fast_mode": true},
+    "allow_fallback": false
+  }
 }
 ```
+
+The example contains placeholders and is not a dispatch authorization. The task
+must declare `evidence_contract_version: 2`, the same `task_ref`, a synchronized
+pre-implementation record, and the full `verification` contract. The strict
+[schema](../../scripts/autonomy/agent-output.schema.json) defines checks,
+outputs, response findings, assessments, and provenance records. Every gate has
+a fixed argv/cwd/timeout/zero-exit requirement, with declared outputs written to
+`AUTODATA_EVIDENCE_ROOT`. Ten response artifact IDs cover architect, builder,
+and eight gates. The architect cannot replace the frozen task contract.
+
+`trusted_base_sha` pins task, policy, registry, prompts, schema, evaluator and
+fixture bytes. `subject_sha` identifies the actual candidate under inspection.
+The evaluator's loaded bytes must match the trusted blobs. A builder cannot
+modify protected inputs and use its modified evaluator to approve itself.
 
 The runner must:
 
@@ -30,7 +52,9 @@ The runner must:
 5. Enforce `allowed_paths` outside the model prompt.
 6. Capture commands, exit codes, changed paths, and artifacts.
 7. Write the run manifest and per-gate reports defined in [agent-contracts.md](agent-contracts.md).
-8. Invoke `scripts/autonomy/validate_run.py` before returning a successful release decision.
+8. Revalidate v2 evidence with `orchestrator.validate_evidence_bundle`, which
+   recomputes artifact/command/profile/SHA validity and coverage before invoking
+   the unchanged `validate_run.py` policy evaluator.
 
 ## Output
 
@@ -44,7 +68,10 @@ evidence/
 logs/
 ```
 
-The manifest must contain the exact implementation SHA. Every gate report must contain the same SHA and at least one content-hashed evidence artifact. The runner returns:
+The manifest must contain the exact implementation SHA. Every gate report must
+contain the same SHA and verified evidence. Provider responses alone cannot
+satisfy required command/artifact slots. Failure, timeout, malformed response,
+and cleanup failure evidence remains in the bundle. The runner returns:
 
 | Exit code | Meaning |
 | ---: | --- |
@@ -63,7 +90,7 @@ The repository's `autonomous-verification.yml` workflow validates the determinis
 
 ## Local CLI provider binding
 
-The checked-in `scripts/autonomy/runner.py` is the first provider adapter. It invokes the installed local agent CLI in non-interactive JSON mode with an ephemeral session and a workspace-write sandbox. It does not invoke GitHub, deployment, or cloud commands from the provider process. The runner creates the worktree and removes it itself; the provider can only leave evidence in the external run directory and local commits in its isolated worktree.
+The checked-in `scripts/autonomy/runner.py` is the first provider adapter. It invokes the installed Codex 0.162.1 stdio app-server through the bounded `app_server_adapter.py`, with one ephemeral thread and one turn. Real execution requires the protected disposable-container boundary described below. Approval policy is `never`; `danger-full-access` is used only inside that verified disposable OS boundary. It does not invoke GitHub, deployment, or cloud commands from the provider process. The runner creates the worktree and removes it itself; the provider can only leave evidence in the external run directory and local commits in its isolated worktree.
 
 Example future local execution, after replacing the placeholders with intentional values:
 
@@ -96,3 +123,219 @@ An orchestration run is not allowed to infer a task contract from prose, reuse a
 - The runner must retain failed and blocked evidence rather than replacing it with a later pass.
 - The runner must stop on disagreement after the configured alternate-reviewer retry budget.
 - External provider outages must produce `blocked` or `fail`, never a synthetic `pass`.
+
+## Verified v2 boundary and remaining certification
+
+The v2 implementation was independently reviewed and tested at
+`a7493d41be4f0c4aa93bdaaa74afa14c30d49965`; its integration is
+`643b8d3fc762cfdc9b456d28a47b7a4a9cde6402`. All 66 autonomy tests passed at
+both commits, and independent retained-bundle replay passed the success fixture
+while blocking failed-check, unavailable-provider, and malformed-response
+fixtures. These use fake provider responses and real local check processes.
+
+Real provider certification remains blocked. Two schema compatibility repairs
+passed independent review; the third bounded CLI trial at
+`d437eff812b0efb0d3dbdf8388cd2f9c7916f12d` returned structured output but lacked
+resolved execution metadata and used unassigned architect assessments. The
+installed0.162.1 exec JSONL does not emit the mocked `session_config` event.
+No builder ran and no runtime profile certification is claimed.
+
+The independently reviewed
+[app-server runtime plan](../superpowers/plans/2026-11-03-app-server-runtime-contract.md)
+is synchronized for a new committed-base gate. Its concrete todo is a bounded
+version-pinned adapter with actual catalog/startup/completion evidence, retained
+bidirectional transcript and independent replay, explicit role/check assignments,
+focused/full tests and independent exact-SHA promotion, then disposable real
+trials. The resolved profile must be exactly Sol6.1, medium, priority/Fast with
+no fallback. It certifies resolved request settings, not the unobserved upstream
+served/billed tier. Ordinary userMessage lifecycle items must be accepted and
+bound without being treated as responses.
+
+Real adapter execution is limited to the disposable non-root fixture container
+with a verified supervisor proof, authorized read-only Codex authentication,
+no GitHub/bank/production credentials or integrations, and truthfully recorded
+standard Docker unrestricted outbound networking. The coordinator prepares the
+scratch launch; no repository launcher or host execution fallback is added.
+Current source/data-quality measurement is synthetic only and cannot be relabeled
+as authenticated staging or production acceptance.
+
+
+## Configured execution proof through app-server
+
+The local-cli adapter requires exactly `codex-cli 0.162.1`; it never connects to
+an existing daemon or retries with another model. Its actual protocol sequence
+is `initialize`, `initialized`, paginated `model/list`, `thread/start`, and one
+`turn/start`. Discovery waits for the validated disabled startup snapshot
+described below. Catalog discovery must exhaust within 16 pages/1600 entries and
+advertise one exact `gpt-6.1-sol`, medium reasoning and the `priority` service
+tier. The resolved thread response must confirm that model, provider `openai`,
+reasoning `medium`, tier `priority`, isolated cwd and selected permissions.
+No turn-level model/effort/tier/settings overrides or reroutes are accepted.
+
+The turn receives the frozen v2 output schema and a prompt naming the exact
+role and assigned check IDs. Architecture/planning/implementation return
+`assessments: []`; verification assesses exactly its assigned IDs. The full
+contract check inventory is downstream work, not permission to invent checks.
+The architect must return the frozen contract unchanged and express blockers
+through findings. Ordinary userMessage start/completed events must match the
+supplied input and never count as the provider response.
+
+One completed agentMessage supplies the strict JSON response; commentary and
+streaming deltas are never concatenated or repaired. The matching thread/turn
+must complete without error and the server must exit 0. Missing/conflicting
+metadata, unknown notifications, approvals, interrupted turns, ambiguous answers
+and unavailable supported settings block. Unexpected command/file approval
+requests receive `cancel`; other server requests receive method-not-found.
+The adapter never executes those request payloads or grants host approval.
+
+Each invocation retains raw server stdout/stderr, the provider response and
+`<label>:protocol` (existing artifact kind `stdout`) in addition to its command
+record. The protocol capture contains an explicitly runner-owned adapter header,
+actual client/server JSON lines with sequence numbers, and an exit footer.
+It never fabricates `session_config`. Header metadata binds the invocation,
+version, initial candidate, prompt/schema hashes, worktree and nonsecret
+supervisor boundary. Builder commits retain the existing initial-to-final
+candidate rules. Runner and orchestrator independently replay protocol ordering,
+profile, identities and completion; raw server frames must exactly reproduce
+retained stdout, and the selected response must exactly reproduce the response
+artifact. Scoped events require their corresponding already-written thread/turn
+request; item/turn events after terminal completion are rejected. Notifications
+may precede the matching response once the request has been written.
+Replay derives the exact cwd from the caller-supplied evidence root and the
+fixed `agents/<label>/worktree` layout. Consistently rewritten transcript paths
+or boundary roots cannot relocate an invocation. Evidence must be replayed at
+its original root; copying it elsewhere does not establish a trusted relocation.
+A claimed observed_execution or passed flag cannot replace replay.
+The adapter source itself is snapshotted, byte-checked against trusted_base_sha
+and protected from candidate replacement.
+
+While running, `provider-protocol-progress.jsonl` in each agent run directory
+flushes sanitized actual header/frame records for coordinator observation. This
+diagnostic file is outside the provider worktree; final retained protocol
+artifacts supply certification evidence. The coordinator can observe an actual
+turn ID and signal the runner without inventing an event. SIGINT/SIGTERM trigger
+bounded interruption, process-group termination/reaping and a retained blocked
+manifest. The footer records the actual interrupted transport and OS exit;
+existing v2 command records use `unavailable`/null exit for incomplete operations,
+without adding new schema enum values.
+
+The single invocation deadline includes version discovery, handshake, catalog
+and inference, with three seconds reserved for cleanup. Provider timeout accepts
+4..1800 seconds; real trials use 120 seconds/provider and 400 seconds outer
+bounds. Limits are 1 MiB/frame and prompt+schema, 4 MiB each for stdout, stderr
+and client bytes, 12 MiB for capture, and 10,000 frames. Both output streams and
+stdin are handled without blocking. On interruption/failure the adapter attempts
+one real `turn/interrupt` when IDs are known, then terminates/kills and reaps the
+whole process group. No second inference repairs an incomplete run.
+
+The fixed proof `/run/autodata/runtime-boundary.json` must be a root-owned
+regular file without symlink aliases or group/world write, on a read-only mount;
+the workload must be non-root. Its version-1 fields are `purpose:
+r0-disposable-provider`, `network_policy:
+standard-docker-bridge-unrestricted-outbound`, false
+`github_credentials_or_integrations`, `bank_credentials_or_integrations` and
+`production_credentials_or_integrations`, `codex_auth_delivery:
+authorized-readonly-file`, the nonsecret `codex_auth_mount` destination,
+`worktree_root`, `output_root`, `codex_home` and actual `mnt`/`net`/`pid` namespace
+identities under `namespaces`. The runtime checks namespace and path bindings.
+CODEX_HOME is used when already supplied; otherwise normal HOME/.codex discovery
+is preserved without overriding either environment variable. Authentication
+contents are never inspected, copied or printed by this adapter.
+
+The coordinator's inspected scratch container specification supplies the actual
+boundary; a marker does not create isolation. It has no host sockets or
+GitHub/bank/production credentials/integrations, but standard Docker outbound
+networking is unrestricted and the authorized read-only Codex authentication
+mount is explicitly recorded. PATH guards and filtered environment remain
+defense in depth. Missing/unverifiable proof blocks before spawning Codex;
+ordinary-host provider execution has no fallback. Offline pure replay and
+fake-process tests require no provider or credentials.
+
+Certification establishes resolved runtime model/effort/Fast request settings.
+The upstream served or billed tier remains unobserved and is never claimed.
+Historical failed runs stay unchanged. Real certification remains blocked until
+independent exact-SHA promotion and coordinator-only bounded real trials; passing
+fake-process tests does not certify a real provider or authenticated staging.
+
+### Runtime packaging checkpoint
+
+The independently approved app-server adapter is integrated at `f4d95680f721ce32f4d3cb2f8da0552ef1673750` (131 integrated tests). Actual startup at that checkpoint blocked on the missing-bubblewrap warning. The [separate packaging plan](../superpowers/plans/2026-11-03-runtime-packaging.md) authorized only a scratch image dependency correction and one bounded retry after fresh preflight; strict warning rejection and the execution/isolation contract stay unchanged.
+
+### Pinned disabled startup notification follow-up
+
+The package-only retry at31d1582 cleared the bubblewrap warning, then blocked
+before discovery/inference on the official `remoteControl/status/changed`
+startup snapshot. The [dedicated-state plan](../superpowers/plans/2026-11-03-runtime-disabled-notification.md)
+pins the accepted shape to official Codex 0.162.1. The adapter and retained
+replay require exactly one such report after a successful validated initialize
+response. It may arrive before or after the client writes `initialized`.
+Initialize queues only `initialized`; snapshot validation queues `model/list`
+behind it. A missing report times out within the existing invocation budget;
+an invalid first report blocks before model discovery, thread creation or a turn.
+
+The report must have exactly `method`, `params` and `emittedAtMs`. Its params
+must have exactly `status: "disabled"`, `environmentId: null`, `serverName` and
+`installationId`. The timestamp is a non-boolean integer from 0 through
+`2**63-1`. The server name is trimmed, nonempty, 1–255 UTF-8 bytes and contains
+no ASCII control characters; Unicode names are allowed. The installation ID
+must be canonical lowercase hyphenated UUID text, without a version restriction.
+Missing, extra or duplicate fields, active/unknown states and every repeated
+snapshot (including identical reports or changed identities) block. The adapter
+sends no remote-control RPC and does not broaden the informational-event allowlist.
+Config warnings, approvals, reroutes, settings changes and all other unsupported
+notifications remain blocked. Existing causal thread/turn ordering and profile,
+completion, cancellation, retained-root and output bounds remain required.
+
+This snapshot is informational connection metadata. It supplies no hostname
+attestation, proof of historical absence of connections, execution-profile proof
+or upstream served/billed-tier receipt. Failed trials remain unchanged. Offline
+fake-process success does not authorize a real retry: independent exact-commit
+review, coordinator promotion and a fresh trial checkpoint are still required.
+
+## Runtime check-contract repair checkpoint
+
+The [bounded repair](../superpowers/plans/2026-11-03-runtime-check-contract.md)
+addresses the actual Python3.11 executable mismatch, nested trusted-check/provider
+environment conflict and synthetic verifier assignment scope. Replay explicitly
+accepts resolved `python3.11` alongside the existing `python3`, `python3.12`,
+`python3.13` and `python3.14` spellings for a frozen `python3` check. The executable
+must remain absolute and equal argv[0]; argv tails, cwd, subject, status, expected
+exit and output evidence IDs must still match. This compatibility does not attest
+arbitrary executable binary provenance beyond the existing command contract.
+
+Trusted frozen checks receive a fresh sanitized environment with the ordinary
+caller PATH, existing credential-name filtering, CI/Git isolation and isolated GH
+configuration. Only the provider environment prepends its owned command guards;
+provider guards and invocation executable resolution stay unchanged. Both receive
+`PYTHONDONTWRITEBYTECODE=1` and preserve caller HOME, CODEX_HOME and TMPDIR.
+The runner does not strip guards from arbitrary inherited PATH components: the
+coordinator must start it with the reviewed ordinary image PATH.
+
+The restricted scratch coordinator must create and verify an exclusively owned,
+non-symlink executable TMPDIR under the existing private `/evidence` bind before
+Python starts. HOME/CODEX_HOME, the noexec `/tmp` mount, nonroot identity, mounts,
+capabilities and other isolation requirements remain unchanged. This implementation
+does not create scratch, alter mount permissions or authorize host provider use.
+The coordinator separately owns reviewed scratch/sentinel scripts and offline
+restricted-image acceptance with no auth, real Codex package or network; zero
+sentinel calls and actual full-suite/eight-check evidence are required.
+
+Only assigned verification turns for task ID
+`production-release-runtime-fixture` receive an explicit local-decision block.
+It takes precedence over generic whole-bundle duties for that assignment and
+requires each supplied check exactly once, complete matching passing evidence
+and no genuine observed blocker. It does not claim upstream reports were supplied.
+Other tasks and unassigned architect/builder turns retain their full duties.
+Machine replay still requires all ten roles and eight global gates. Local passes
+cannot replace missing/failed global evidence, add assessments or invent evidence.
+
+The fixture instructions prohibit extra checks, unrelated source/test dumps,
+searches for upstream reports and credential-pattern examples, including synthetic
+test fixtures. This is guidance, not a guarantee of model compliance: credential
+patterns still require redaction, changed protocol bytes still block certification,
+and no raw pattern may reach retained artifacts. Complete raw replay, profile
+settings, candidate/root identities, cancellation and existing bounds remain
+required. Prior failed trials stay unchanged. The ten-role real trial remains
+blocked pending independent candidate promotion, restricted offline acceptance
+and a separately gated coordinator retry; no runtime success or release readiness
+is established by fake-process tests.

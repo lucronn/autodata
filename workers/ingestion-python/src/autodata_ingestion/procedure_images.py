@@ -13,7 +13,7 @@ from typing import Any, Mapping
 from urllib.parse import urlsplit
 
 from .object_storage import ensure_versioned_bucket
-
+from .article_lifecycle_types import ResourceRef
 
 PROVIDER_IMAGE_HOST_MARKERS = (
     "banktwo.cars.tk",
@@ -25,6 +25,8 @@ def localize_procedure_images(
     article: Mapping[str, Any],
     *,
     vehicle: Mapping[str, Any] | None = None,
+    provider: str | None = None,
+    resources: Mapping[ResourceRef, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Download figure URLs into MinIO and rewrite image records to local refs.
 
@@ -33,6 +35,12 @@ def localize_procedure_images(
     """
 
     out = dict(article)
+    declared_provider = (
+        provider or article.get("source_provider") or article.get("provider")
+    )
+    provider = {"autoapi": "bankone", "autoapitwo": "banktwo"}.get(
+        declared_provider, declared_provider
+    )
     vehicle = vehicle or {}
     del vehicle
     images = _collect_image_records(out)
@@ -41,13 +49,21 @@ def localize_procedure_images(
 
     unique_asset_refs = list(
         dict.fromkeys(
-            str(image.get("asset_resource_ref") or "").strip()
+            str(image.get("asset_resource_ref") or "")
             for image in images
-            if str(image.get("asset_resource_ref") or "").strip()
+            if str(image.get("asset_resource_ref") or "")
             and not str(image.get("storage_key") or "").strip()
         )
     )
-    fetched = _fetch_asset_resources(unique_asset_refs) if unique_asset_refs else {}
+    if provider in {"bankone", "banktwo"}:
+        refs = [ResourceRef(provider, ref) for ref in unique_asset_refs]
+        fetched = (
+            {ref.opaque_ref: resources[ref] for ref in refs if ref in resources}
+            if resources is not None
+            else _fetch_asset_resources(refs)
+        )
+    else:
+        fetched = {}
     stored: dict[str, dict[str, Any]] = {}
     for resource_ref, resource in fetched.items():
         payload = resource["payload"]
@@ -75,10 +91,12 @@ def localize_procedure_images(
             return localized
         record.pop("url", None)
         if str(record.get("storage_key") or "").strip():
-            record["url"] = f"artifact://{record.get('image_id')}" if record.get("image_id") else ""
+            record["url"] = (
+                f"artifact://{record.get('image_id')}" if record.get("image_id") else ""
+            )
             record.pop("fetch_failed", None)
             return record
-        resource_ref = str(record.get("asset_resource_ref") or "").strip()
+        resource_ref = str(record.get("asset_resource_ref") or "")
         local = stored.get(resource_ref)
         if local is None:
             record["fetch_failed"] = True
@@ -87,13 +105,17 @@ def localize_procedure_images(
         record.update(local)
         if image_id:
             record["image_id"] = image_id
-        record["url"] = f"artifact://{record.get('image_id')}" if record.get("image_id") else ""
+        record["url"] = (
+            f"artifact://{record.get('image_id')}" if record.get("image_id") else ""
+        )
         record.pop("fetch_failed", None)
         return record
 
     if isinstance(out.get("images"), list):
         out["images"] = [
-            rewrite_image(image) for image in out["images"] if isinstance(image, Mapping)
+            rewrite_image(image)
+            for image in out["images"]
+            if isinstance(image, Mapping)
         ]
     steps = out.get("steps")
     if isinstance(steps, list):
@@ -199,13 +221,19 @@ def hydrate_article_image_urls(
                 return
             if bkind in {"table", "grid"}:
                 for row in block.get("rows") or []:
-                    cells = row if isinstance(row, list) else row.get("cells", []) if isinstance(row, Mapping) else []
+                    cells = (
+                        row
+                        if isinstance(row, list)
+                        else row.get("cells", []) if isinstance(row, Mapping) else []
+                    )
                     for cell in cells:
                         if isinstance(cell, Mapping):
                             cell_images = cell.get("images")
                             if isinstance(cell_images, list):
                                 cell["images"] = [
-                                    hydrate(img) for img in cell_images if isinstance(img, Mapping)
+                                    hydrate(img)
+                                    for img in cell_images
+                                    if isinstance(img, Mapping)
                                 ]
                             for child in cell.get("blocks") or []:
                                 hydrate_block(child)
@@ -239,10 +267,13 @@ def _collect_image_records(article: Mapping[str, Any]) -> list[dict[str, Any]]:
                 continue
             images = step.get("images")
             if isinstance(images, list):
-                records.extend(dict(image) for image in images if isinstance(image, Mapping))
+                records.extend(
+                    dict(image) for image in images if isinstance(image, Mapping)
+                )
 
     document = article.get("normalized_document")
     if isinstance(document, Mapping):
+
         def _collect_from_block(block: Any) -> None:
             if not isinstance(block, Mapping):
                 return
@@ -252,13 +283,19 @@ def _collect_image_records(article: Mapping[str, Any]) -> list[dict[str, Any]]:
                 return
             if bkind in {"table", "grid"}:
                 for row in block.get("rows") or []:
-                    cells = row if isinstance(row, list) else row.get("cells", []) if isinstance(row, Mapping) else []
+                    cells = (
+                        row
+                        if isinstance(row, list)
+                        else row.get("cells", []) if isinstance(row, Mapping) else []
+                    )
                     for cell in cells:
                         if isinstance(cell, Mapping):
                             cell_images = cell.get("images")
                             if isinstance(cell_images, list):
                                 records.extend(
-                                    dict(img) for img in cell_images if isinstance(img, Mapping)
+                                    dict(img)
+                                    for img in cell_images
+                                    if isinstance(img, Mapping)
                                 )
                             for child in cell.get("blocks") or []:
                                 _collect_from_block(child)
@@ -308,7 +345,9 @@ def _rewrite_document_images(
         ):
             if key and str(key).strip():
                 skey = str(key).strip()
-                if skey not in by_ref or (not by_ref[skey].get("storage_key") and image.get("storage_key")):
+                if skey not in by_ref or (
+                    not by_ref[skey].get("storage_key") and image.get("storage_key")
+                ):
                     by_ref[skey] = image
 
     if stored:
@@ -324,7 +363,10 @@ def _rewrite_document_images(
                     if key and str(key).strip():
                         by_ref[str(key).strip()] = rec
                 for k, v in list(by_ref.items()):
-                    if str(v.get("asset_resource_ref") or "").strip() == str(ref).strip():
+                    if (
+                        str(v.get("asset_resource_ref") or "").strip()
+                        == str(ref).strip()
+                    ):
                         v.update(rec)
 
     def _lookup(obj: Mapping[str, Any]) -> dict[str, Any] | None:
@@ -354,17 +396,35 @@ def _rewrite_document_images(
     def _rewrite_figure(image: dict[str, Any]) -> None:
         localized = _lookup(image)
         reference = str(image.get("image_id") or image.get("asset_id") or "")
-        if localized and (localized.get("storage_key") or str(localized.get("url") or "").startswith("data:image/")):
-            if str(localized.get("url") or "").startswith("data:image/") and not localized.get("storage_key"):
-                data_loc = _localize_data_uri_image(localized, str(localized.get("url") or ""))
+        if localized and (
+            localized.get("storage_key")
+            or str(localized.get("url") or "").startswith("data:image/")
+        ):
+            if str(localized.get("url") or "").startswith(
+                "data:image/"
+            ) and not localized.get("storage_key"):
+                data_loc = _localize_data_uri_image(
+                    localized, str(localized.get("url") or "")
+                )
                 if data_loc:
                     localized.update(data_loc)
-            image["storage_key"] = localized.get("storage_key") or image.get("storage_key")
-            image["asset_id"] = localized.get("storage_key") or image.get("image_id") or localized.get("image_id") or reference
-            image["image_id"] = image.get("image_id") or localized.get("image_id") or reference
+            image["storage_key"] = localized.get("storage_key") or image.get(
+                "storage_key"
+            )
+            image["asset_id"] = (
+                localized.get("storage_key")
+                or image.get("image_id")
+                or localized.get("image_id")
+                or reference
+            )
+            image["image_id"] = (
+                image.get("image_id") or localized.get("image_id") or reference
+            )
             image["status"] = "available"
             image.pop("unavailable_reason", None)
-            if image.get("image_id") and not str(image.get("url") or "").startswith("data:image/"):
+            if image.get("image_id") and not str(image.get("url") or "").startswith(
+                "data:image/"
+            ):
                 image["url"] = f"artifact://{image['image_id']}"
         elif str(image.get("url") or "").startswith("data:image/"):
             data_loc = _localize_data_uri_image(image, str(image.get("url") or ""))
@@ -405,18 +465,37 @@ def _rewrite_document_images(
                     block.pop("unavailable_reason", None)
                 else:
                     block["status"] = "unavailable"
-                    block["unavailable_reason"] = "image was not materialized during ingest"
-            elif image.get("storage_key") or str(image.get("url") or "").startswith("data:image/"):
-                if str(image.get("url") or "").startswith("data:image/") and not image.get("storage_key"):
-                    localized = _localize_data_uri_image(image, str(image.get("url") or ""))
+                    block["unavailable_reason"] = (
+                        "image was not materialized during ingest"
+                    )
+            elif image.get("storage_key") or str(image.get("url") or "").startswith(
+                "data:image/"
+            ):
+                if str(image.get("url") or "").startswith(
+                    "data:image/"
+                ) and not image.get("storage_key"):
+                    localized = _localize_data_uri_image(
+                        image, str(image.get("url") or "")
+                    )
                     if localized:
                         image.update(localized)
-                block["storage_key"] = image.get("storage_key") or block.get("storage_key")
-                block["asset_id"] = image.get("storage_key") or block.get("image_id") or image.get("image_id") or reference
-                block["image_id"] = block.get("image_id") or image.get("image_id") or reference
+                block["storage_key"] = image.get("storage_key") or block.get(
+                    "storage_key"
+                )
+                block["asset_id"] = (
+                    image.get("storage_key")
+                    or block.get("image_id")
+                    or image.get("image_id")
+                    or reference
+                )
+                block["image_id"] = (
+                    block.get("image_id") or image.get("image_id") or reference
+                )
                 block["status"] = "available"
                 block.pop("unavailable_reason", None)
-                if block.get("image_id") and not str(block.get("url") or "").startswith("data:image/"):
+                if block.get("image_id") and not str(block.get("url") or "").startswith(
+                    "data:image/"
+                ):
                     block["url"] = f"artifact://{block['image_id']}"
             else:
                 block["status"] = "unavailable"
@@ -424,7 +503,11 @@ def _rewrite_document_images(
             return
         if bkind in {"table", "grid"}:
             for row in block.get("rows") or []:
-                cells = row if isinstance(row, list) else row.get("cells", []) if isinstance(row, Mapping) else []
+                cells = (
+                    row
+                    if isinstance(row, list)
+                    else row.get("cells", []) if isinstance(row, Mapping) else []
+                )
                 for cell in cells:
                     if isinstance(cell, Mapping):
                         for image in cell.get("images") or []:
@@ -446,12 +529,14 @@ def _rewrite_document_images(
         rewrite(block)
 
 
-def _fetch_asset_resources(resource_refs: list[str]) -> dict[str, dict[str, Any]]:
-    def fetch_one(resource_ref: str) -> tuple[str, dict[str, Any] | None]:
+def _fetch_asset_resources(
+    resource_refs: list[ResourceRef],
+) -> dict[str, dict[str, Any]]:
+    def fetch_one(resource_ref: ResourceRef) -> tuple[str, dict[str, Any] | None]:
         try:
-            return resource_ref, _read_asset_resource(resource_ref)
+            return resource_ref.opaque_ref, _read_asset_resource(resource_ref)
         except Exception:  # noqa: BLE001 - leave image marked failed
-            return resource_ref, None
+            return resource_ref.opaque_ref, None
 
     results: dict[str, dict[str, Any]] = {}
     if not resource_refs:
@@ -463,23 +548,23 @@ def _fetch_asset_resources(resource_refs: list[str]) -> dict[str, dict[str, Any]
     return results
 
 
-def _read_asset_resource(resource_ref: str) -> dict[str, Any]:
+def _read_asset_resource(resource_ref: ResourceRef, *, registry=None) -> dict[str, Any]:
     from .source_connector_client import source_connector_registry
 
-    registry = source_connector_registry(include_defaults=True)
-    connector_name = "banktwo"
-    if ":" in resource_ref:
-        prefix = resource_ref.split(":", 1)[0].lower()
-        if prefix in registry or prefix in {"bankone", "banktwo", "generic", "fake"}:
-            connector_name = prefix
-    connector = registry.get(connector_name)
+    if not isinstance(resource_ref, ResourceRef):
+        raise TypeError("explicit ResourceRef provider is required")
+    registry = source_connector_registry() if registry is None else registry
+    connector = registry.get(resource_ref.provider)
     if connector is None:
         raise ValueError(
-            f"unknown or unconfigured source connector '{connector_name}' for resource {resource_ref}"
+            f"unknown or unconfigured source connector '{resource_ref.provider}'"
         )
-    envelope = connector.read_resource(resource_ref)
+    envelope = connector.read_resource(resource_ref.opaque_ref)
     resource = envelope.to_source_resource()
-    if resource.metadata.get("kind") not in {"asset", "binary"} or not resource.media_type.startswith("image/"):
+    if resource.metadata.get("kind") not in {
+        "asset",
+        "binary",
+    } or not resource.media_type.startswith("image/"):
         raise ValueError("source resource is not an image asset")
     return {
         "payload": resource.payload,
@@ -492,7 +577,9 @@ def _read_asset_resource(resource_ref: str) -> dict[str, Any]:
     }
 
 
-def _localize_data_uri_image(record: Mapping[str, Any], url: str) -> dict[str, Any] | None:
+def _localize_data_uri_image(
+    record: Mapping[str, Any], url: str
+) -> dict[str, Any] | None:
     """Persist an inline data-URI figure into procedure image object storage."""
 
     try:

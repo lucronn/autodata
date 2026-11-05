@@ -398,7 +398,7 @@ def document_from_steps(article: Mapping[str, Any]) -> dict[str, Any]:
     return build_ordered_document(article, blocks)
 
 
-def validate_ordered_document(document: Any) -> list[str]:
+def validate_ordered_document(document: Any, *, strict: bool = False) -> list[str]:
     """Return deterministic validation errors without dropping source data."""
 
     if not isinstance(document, Mapping):
@@ -433,6 +433,86 @@ def validate_ordered_document(document: Any) -> list[str]:
         if block_type == "image" and block.get("status") not in {"available", "unavailable"}:
             errors.append(f"block {expected_order} has no image status")
         expected_order += 1
+    if strict:
+        errors.extend(_validate_recursive_blocks(blocks))
+        errors.extend(_validate_media_tree(document))
+    return errors
+
+
+def _validate_media_tree(value, *, image_container=False):
+    errors=[]
+    if isinstance(value,list):
+        for child in value:errors.extend(_validate_media_tree(child,image_container=image_container))
+    elif isinstance(value,dict):
+        if image_container or value.get("type")=="image":
+            evidence=value.get("evidence_ids")
+            if not isinstance(evidence,list) or not evidence:errors.append("missing image evidence")
+            if value.get("status")=="unavailable":
+                if not value.get("unavailable_reason"):errors.append("missing image failure reason")
+            elif (value.get("status")!="available" or not isinstance(value.get("storage_key"),str)
+                  or not value["storage_key"] or not re.fullmatch(r"[a-f0-9]{64}",str(value.get("content_sha256","")))
+                  or any(str(value.get(key,"")).lower().startswith(("http:","https:","javascript:")) for key in ("url","src","href"))):
+                errors.append("image is not locally verified")
+        for key,child in value.items():errors.extend(_validate_media_tree(child,image_container=key=="images"))
+    elif image_container:
+        errors.append("invalid image entry")
+    return errors
+
+
+def _validate_recursive_blocks(blocks, seen=None):
+    seen = set() if seen is None else seen
+    errors = []
+    for order, block in enumerate(blocks, 1):
+        if not isinstance(block, dict):
+            errors.append("invalid nested block")
+            continue
+        identifier = block.get("block_id")
+        if not isinstance(identifier, str) or not identifier or identifier in seen:
+            errors.append("missing or duplicate block id")
+        else:
+            seen.add(identifier)
+        if type(block.get("source_order")) is not int or block["source_order"] != order:
+            errors.append("invalid nested source order")
+        kind = block.get("type")
+        if kind not in DOCUMENT_TYPES or kind == "unknown":
+            errors.append("unsupported block")
+        evidence = block.get("evidence_ids")
+        if not isinstance(evidence, list) or not evidence or any(not isinstance(e, str) or not e for e in evidence):
+            errors.append("missing block evidence")
+        if kind in {"heading", "paragraph", "step", "callout", "link"} and (not isinstance(block.get("text"), str) or not block["text"].strip()):
+            errors.append("missing readable text")
+        if kind == "image":
+            if block.get("status") == "unavailable":
+                if not block.get("unavailable_reason"): errors.append("missing image failure reason")
+            elif block.get("status") != "available" or not block.get("storage_key") or not block.get("content_sha256"):
+                errors.append("image is not locally verified")
+        if kind == "table":
+            rows = block.get("rows")
+            if not isinstance(rows, list) or not rows: errors.append("empty table")
+            else:
+                for row in rows:
+                    cells = row if isinstance(row, list) else row.get("cells") if isinstance(row, dict) else None
+                    if not isinstance(cells, list) or not cells: errors.append("invalid table cells"); continue
+                    for cell in cells:
+                        if isinstance(cell,str):
+                            continue
+                        if not isinstance(cell, dict): errors.append("invalid cell"); continue
+                        if "blocks" in cell:
+                            if not isinstance(cell["blocks"], list): errors.append("invalid cell blocks")
+                            else: errors.extend(_validate_recursive_blocks(cell["blocks"], seen))
+        if kind in {"ordered_list", "unordered_list"}:
+            items = block.get("items")
+            if not isinstance(items, list) or not items: errors.append("empty list")
+            else:
+                for item in items:
+                    if isinstance(item,str):
+                        if not item.strip():errors.append("empty list item")
+                        continue
+                    if not isinstance(item, dict) or not isinstance(item.get("text"), str) or not item["text"].strip():
+                        errors.append("invalid list item")
+                    elif "blocks" in item:
+                        if not isinstance(item["blocks"], list): errors.append("invalid item blocks")
+                        else: errors.extend(_validate_recursive_blocks(item["blocks"], seen))
     return errors
 
 
@@ -1006,3 +1086,53 @@ __all__ = [
     "segment_plain_article_text",
     "validate_ordered_document",
 ]
+
+
+def project_ordered_document(document):
+    """Derive compatibility content without replacing the ordered document.
+
+    Tables and standalone illustrations contribute to body/images, never fake
+    compatibility operations. Nested prose retains its source traversal order.
+    """
+    texts, steps, images = [], [], []
+    current = None
+    def visit(blocks, allow_steps=True):
+        nonlocal current
+        for block in blocks:
+            kind = block.get("type")
+            text = block.get("text")
+            for label in (block.get("label"),block.get("caption")):
+                if isinstance(label,str) and label.strip():texts.append(label)
+            if isinstance(text, str) and text.strip():
+                texts.append(text)
+                if allow_steps and kind == "step":
+                    current={"action":text,"instructions":[],"images":deepcopy(block.get("images",[])),
+                             "evidence_ids":deepcopy(block.get("evidence_ids",[]))}
+                    steps.append(current)
+                elif allow_steps and kind == "paragraph" and current is not None:
+                    current["instructions"].append(text)
+            if kind == "image":
+                images.append(deepcopy(block))
+            images.extend(deepcopy(block.get("images", [])))
+            if kind in {"ordered_list", "unordered_list"}:
+                for item in block.get("items", []):
+                    if isinstance(item,str):item={"text":item}
+                    if isinstance(item.get("text"), str):
+                        texts.append(item["text"])
+                        if allow_steps:
+                            steps.append({"action":item["text"],"instructions":[],"images":deepcopy(item.get("images",[])),"evidence_ids":deepcopy(block.get("evidence_ids",[]))})
+                    images.extend(deepcopy(item.get("images",[])))
+                    visit(item.get("blocks",[]),allow_steps)
+            if kind == "table":
+                for column in block.get("columns",[]):
+                    if isinstance(column,str):texts.append(column)
+                    elif isinstance(column,dict) and isinstance(column.get("text"),str):texts.append(column["text"])
+                for row in block.get("rows",[]):
+                    cells=row if isinstance(row,list) else row.get("cells",[])
+                    for cell in cells:
+                        if isinstance(cell,str):cell={"text":cell}
+                        if isinstance(cell.get("text"),str): texts.append(cell["text"])
+                        images.extend(deepcopy(cell.get("images",[])))
+                        visit(cell.get("blocks",[]),False)
+    visit(document["blocks"])
+    return {"body":"\n".join(texts),"steps":steps,"images":images}

@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestChatRoutesAreNotRegistered(t *testing.T) {
@@ -87,4 +88,36 @@ func TestMetricsEndpointReportsAccessDenied(t *testing.T) {
 	if !strings.Contains(string(body), `autodata_api_access_denied_total{reason="unauthenticated"} 1`) {
 		t.Fatalf("metrics body = %s, want unauthenticated denial count", body)
 	}
+}
+
+func TestCustomerServerRejectsHeaderAuthorityAndMapsDependencyErrors(t *testing.T) {
+	now := time.Now().UTC()
+	token, _, err := newCustomerSessionToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	verifier := &customerVerifierFixture{}
+	service := &customerAuthService{config: customerAuthConfig{Mode: "firebase", Origin: "https://cars.example"},
+		store: &customerSessionFixture{session: customerSession{ProjectID: "fixture-project", UID: "user", AuthTime: now.Unix(), ExpiresAt: now.Add(time.Hour)}}, verifier: verifier}
+	api := NewServer(staticReadiness{})
+	api.customerAuth, api.auth = service, service
+	handler := api.Handler()
+	check := func(method, path string, headers map[string]string, want int) {
+		t.Helper()
+		request := httptest.NewRequest(method, path, nil)
+		request.AddCookie(customerSessionCookie(token, now.Add(time.Hour), now))
+		for key, value := range headers {
+			request.Header.Set(key, value)
+		}
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != want {
+			t.Fatalf("%s %s status%d want%d", method, path, response.Code, want)
+		}
+	}
+	check("GET", "/source-review-items", map[string]string{"X-Roles": "data_reviewer,platform_admin", "X-Organization-ID": "foreign"}, 403)
+	check("POST", "/dataset-requests", nil, 403)
+	check("GET", "/source-review-items", map[string]string{"Authorization": "Bearer fixture"}, 401)
+	verifier.checkErr = ErrCustomerDependency
+	check("GET", "/source-review-items", nil, 503)
 }

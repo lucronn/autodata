@@ -1,0 +1,137 @@
+{
+  "task_id": "production-release-r5-access",
+  "repository": "lucronn/autodata",
+  "goal": "Implement Firebase Google customer identity, durable project+UID accounts and revocable opaque PostgreSQL sessions; keep paid configuration+region access and real staging verification in separate gates.",
+  "builder_agent": "autodata-go-builder",
+  "allowed_paths": [
+    "apps/api-go/auth_config.go",
+    "apps/api-go/auth_config_test.go",
+    "apps/api-go/auth_firebase.go",
+    "apps/api-go/auth_firebase_test.go",
+    "apps/api-go/auth_session.go",
+    "apps/api-go/auth_session_test.go",
+    "apps/api-go/postgres_auth_sessions.go",
+    "apps/api-go/postgres_auth_sessions_test.go",
+    "apps/api-go/auth_http.go",
+    "apps/api-go/auth_http_test.go",
+    "db/migrations/039_production_identity_sessions.sql",
+    "scripts/dev/production_access_smoke.py",
+    "scripts/dev/test_production_access_smoke.py",
+    "docs/verification/production-access-runbook.md",
+    "apps/api-go/main.go",
+    "apps/api-go/main_test.go",
+    "apps/api-go/api_test.go",
+    "apps/api-go/requests.go",
+    "apps/api-go/go.mod",
+    "apps/api-go/go.sum",
+    "apps/api-go/openapi.json",
+    "apps/api-go/openapi.yaml",
+    "scripts/dev/migrate_sql.sh",
+    "scripts/dev/test_migrations.py",
+    "scripts/dev/test_api_runtime.py",
+    "scripts/dev/test_k8s_manifests.py",
+    "workers/ingestion-python/tests/test_article_lifecycle_migrations.py",
+    "workers/ingestion-python/tests/test_catalog_api_integration.py",
+    "docs/operations/migration-runner.md",
+    "infra/compose/compose.yaml",
+    "infra/compose/compose.ci.yaml",
+    "docker-compose.base44.yml",
+    "infra/k8s/base.yaml",
+    "docs/architecture/infrastructure-and-dev.md",
+    "docs/architecture/workshop-interface.md"
+  ],
+  "bounded_contexts": [
+    "customer Firebase identity",
+    "persistent customer accounts and sessions"
+  ],
+  "inputs": [
+    "docs/superpowers/plans/2026-11-03-workshop-firebase-identity.md",
+    "docs/superpowers/specs/2026-11-03-production-release-orchestration-design.md",
+    "docs/superpowers/plans/2026-11-03-production-release-orchestration.md",
+    "docs/superpowers/plans/2026-11-03-production-access.md",
+    "docs/superpowers/specs/2026-11-03-source-fallback-web-design.md",
+    "docs/superpowers/plans/2026-11-03-production-access-migration-handoff.md",
+    "docs/architecture/workshop-commerce.md"
+  ],
+  "outputs": [
+    "apps/api-go/auth_firebase.go",
+    "apps/api-go/auth_session.go",
+    "apps/api-go/postgres_auth_sessions.go",
+    "db/migrations/039_production_identity_sessions.sql",
+    "docs/verification/production-access-runbook.md"
+  ],
+  "acceptance_tests": [
+    "Pin firebase.google.com/go/v4 v4.22.0; add actual SDK generated-RS256 certificate/user-lookup tests with scoped concrete transport isolation and explicit emulator-host startup rejection, separate from fake handler tests.",
+    "Implement persistent unique project+UID customer accounts/personal organizations and SHA256-only opaque sessions with atomic provisioning/rotation/rollback, absolute12-hour expiry, account block and per-request Firebase auth_time revocation checks.",
+    "Wire no-store /auth/config, /auth/firebase/session, /auth/session and /auth/logout with exact same-origin exchange, session-bound CSRF, sanitized401/403/503 and explicit local login-unavailable behavior; hand the committed contract to R4.",
+    "Append self-contained migration039 at all four shared-runner transaction sites, reject untracked customer_accounts/auth_sessions, preserve SQL001\u2013038 and historical-prefix regressions, and verify full039/038 upgrade/populated restart/rollback/concurrency using real PostgreSQL.",
+    "Run TestPostgresAuthSessionsIntegration with exactly ConcurrentCustomerProvisionAndRotation, SharedSessionRevocation, ExpiryAndPersistedSecrecy, FirebaseExchangeAndUserRevocation and FirebaseStartupRequiresMigratedPostgres; require root/all five pass with zero skips and exact039 candidate provenance.",
+    "Rebuild the existing verified R3 image from candidate manifests without fixture-tooling changes, preserve offline Go flags, update catalog evidence to039/auth tables and retain all eight required R3 content cases with separately reviewed supervisor adaptation.",
+    "Run ordinary Go/API/contracts, migration/runtime/manifest checks, supported unit race tests, diff/scope verification and independent exact-SHA security review; preserve real Firebase registration/IAM/TLS/staging and paid commerce/catalog/media acceptance as separate prerequisites."
+  ],
+  "forbidden_scope": [
+    "Production deployment or production-data changes",
+    "Changing the autonomy policy or weakening required checks",
+    "Publishing secrets or private source payloads",
+    "Editing paths outside the assigned scope",
+    "Merging without independent exact-commit verification",
+    "Changing the requested gpt-6.1-sol / medium / Fast execution profile or silently falling back to another model or tier",
+    "Customer OIDC callback/PKCE transaction or bearer API fallback",
+    "Paid checkout/grants/library, catalog/media enforcement or Workshop UI implementation in this identity lane",
+    "Editing R3 fixture Dockerfile/Compose tooling or lifecycle_support.py"
+  ],
+  "compatibility": {
+    "api": "Preserve existing consumers with additive versioned fields; run compatibility checks.",
+    "events": "Preserve event identity and make duplicate delivery idempotent.",
+    "schema": "Forward-only additive migrations with clean and upgrade verification; no destructive edits to historical migrations."
+  },
+  "pre_implementation": {
+    "goal": "Implement Firebase Google customer identity, durable project+UID accounts and revocable opaque PostgreSQL sessions; keep paid configuration+region access and real staging verification in separate gates.",
+    "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-firebase-identity.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/superpowers/specs/2026-11-03-production-release-orchestration-design.md",
+      "docs/superpowers/specs/2026-11-03-source-fallback-web-design.md",
+      "docs/superpowers/plans/2026-11-03-production-access.md",
+      "docs/superpowers/plans/2026-11-03-production-access-migration-handoff.md",
+      "docs/architecture/workshop-commerce.md"
+    ],
+    "todo": [
+      "Synchronize the approved Firebase plan, canonical documents, R4/R5 tasks and actual Issue186/Project8; commit the checkpoint and pass exact-base machine preflight before implementation.",
+      "Pin firebase.google.com/go/v4 v4.22.0; add actual SDK generated-RS256 certificate/user-lookup tests with scoped concrete transport isolation and explicit emulator-host startup rejection, separate from fake handler tests.",
+      "Implement persistent unique project+UID customer accounts/personal organizations and SHA256-only opaque sessions with atomic provisioning/rotation/rollback, absolute12-hour expiry, account block and per-request Firebase auth_time revocation checks.",
+      "Wire no-store /auth/config, /auth/firebase/session, /auth/session and /auth/logout with exact same-origin exchange, session-bound CSRF, sanitized401/403/503 and explicit local login-unavailable behavior; hand the committed contract to R4.",
+      "Append self-contained migration039 at all four shared-runner transaction sites, reject untracked customer_accounts/auth_sessions, preserve SQL001\u2013038 and historical-prefix regressions, and verify full039/038 upgrade/populated restart/rollback/concurrency using real PostgreSQL.",
+      "Run TestPostgresAuthSessionsIntegration with exactly ConcurrentCustomerProvisionAndRotation, SharedSessionRevocation, ExpiryAndPersistedSecrecy, FirebaseExchangeAndUserRevocation and FirebaseStartupRequiresMigratedPostgres; require root/all five pass with zero skips and exact039 candidate provenance.",
+      "Rebuild the existing verified R3 image from candidate manifests without fixture-tooling changes, preserve offline Go flags, update catalog evidence to039/auth tables and retain all eight required R3 content cases with separately reviewed supervisor adaptation.",
+      "Run ordinary Go/API/contracts, migration/runtime/manifest checks, supported unit race tests, diff/scope verification and independent exact-SHA security review; preserve real Firebase registration/IAM/TLS/staging and paid commerce/catalog/media acceptance as separate prerequisites."
+    ],
+    "status": "synchronized",
+    "updated_at": "2026-11-03T18:09:07.657604+00:00"
+  },
+  "execution": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "medium",
+    "service_tier": "fast",
+    "features": {
+      "fast_mode": true
+    },
+    "allow_fallback": false
+  },
+  "required_postgres_tests": {
+    "root": "TestPostgresAuthSessionsIntegration",
+    "subtests": [
+      "ConcurrentCustomerProvisionAndRotation",
+      "SharedSessionRevocation",
+      "ExpiryAndPersistedSecrecy",
+      "FirebaseExchangeAndUserRevocation",
+      "FirebaseStartupRequiresMigratedPostgres"
+    ],
+    "required_flags": [
+      "AUTODATA_LIFECYCLE_TEST=1",
+      "AUTODATA_REQUIRE_AUTH_INTEGRATION=1"
+    ],
+    "zero_skips": true
+  }
+}

@@ -1,0 +1,814 @@
+# Workshop at cars.tk: bounded GCE hosting implementation proposal
+
+Offline implementation gate preparation, 2026-11-03. This successor consolidates the reviewed application interfaces, Firebase ADC isolation design and local pinned-image findings. It supersedes the prior hosting proposal (SHA256 `1cf908ab0e2b1eb678710d37809a7838051a8e4375d9d7e25a69de0cfd5c9a2f` in Git history), including its broad attached-identity/Secret Manager assumption and Ops Agent monitoring. Inputs: ADC isolation design SHA256 `91dd17b493d4c71e0632ac64b36136fec433a4d3d09529820ca4fefc009bcb32`, bounded amendment SHA256 `5d040259ab579bf6801a1839a0bbfa5eddfa4cd0d08790b856e36e81334c9d37`, and reviewed commerce040 plus paid candidate `a90613a76b3f2c5f5c14606384bf1d9cdcca0a6e`. The latter's full runtime acceptance and UI integration remain coordinator-owned. This offline definitions gate pins source integration3b551c992263f74e3ebdc6e4fa2c4ffda3b979a6; re-pin the final verified integrated release before real staging or deployment.
+
+Current hosting record: `docs/agents/records/2026-11-03-workshop-hosting.json`, status `synchronized` for the catalog-only A v2 planning checkpoint below after Issue186 comment6617521783 and matching Project8 readback. Commit/push, exact-SHA preflight, coordinator integration/re-pin and independent checkpoint review still precede code. Historical A v3 synchronization does not authorize the rejected c51d637 candidate. B archive checkpoint062d599 (integratedb4953ef) remains historically synchronized at Issue186 comment6617360191; its independently approved offline implementation is integrated at052bbf9. The B future-publication gate remains unverified, and neither B history nor this synchronized plan-only A checkpoint authorizes new implementation, runtime observation or deployment. Owner project/cost/region/provider/cutover inputs and R6/browser/application acceptance remain separate requirements.
+
+## Decisions that supersede the old hosting draft
+
+Keep one GCE VM, a separate persistent data disk, standalone production Compose and Caddy, same-origin `https://cars.tk`. Keep the proposed initial e2-standard-4/200GiB balanced data disk, nightly maintenance, proposed RPO24h/RTO4h, pending actual owner cost/region/recovery decisions and restore evidence. Keep Vercel until an explicitly approved cutover. Do not introduce Kubernetes, another identity broker or another hosting platform.
+
+Attach only `autodata-api-firebase@<HOST_PROJECT_ID>.iam.gserviceaccount.com`, with custom permission `firebaseauth.users.get` on `<FIREBASE_PROJECT_ID>`. No Secret Manager, registry, storage, snapshots, Monitoring, Logging, impersonation or IAM administration on this identity. Preserve the ADC design's explicit Compute access-scope ceiling and require a real SDK refresh/GetUser/revocation staging proof. The actual Go initializer uses cloud-platform and identitytoolkit scopes; configure the VM access-scope ceiling explicitly as cloud-platform, userinfo.email and identitytoolkit, and verify actual SDK refresh/GetUser in staging. IAM remains the one-permission boundary. `firebaseauth.users.get` permits account-read/list operations and is not IAM-restrictable to the requested UID; no user mutation or token signing permission is granted. The API has no credential-file mount, no developer ADC/home mount, no GOOGLE_APPLICATION_CREDENTIALS, and no emulator. Metadata access is exclusive to the API's designated network address; workers never get Google ADC.
+
+External GitHub OIDC/WIF principals perform publishing, deployment/secret delivery, backups and monitoring separately. Restrict each trust binding to numeric repository/owner identity, exact approved workflow/ref and protected environment. No service-account JSON key; no external cloud bearer token is persisted on the VM or mounted into containers. The deploy identity is a trusted host administrator; backup and monitor identities are not.
+
+Replace the old attached-SA Ops Agent proposal. Do not install an Ops Agent that obtains VM ADC. Use native Compute metrics and an external HTTPS uptime check, plus a protected scheduled external WIF monitoring job. That job reads only aggregate measurements through one fixed non-admin IAP/OS Login helper and writes Cloud Monitoring metrics with its own metricWriter identity. It has no secret, backup, deploy, registry or arbitrary sudo authority. Cloud Monitoring alert policies/notification channels are bootstrap-owned, not API-owned. Container logs stay bounded and rotated locally; the monitor receives no arbitrary logs or request payloads. This is coarse five-minute scheduled telemetry with scheduler jitter, plus native uptime/Compute signals, not a promised one-minute worker SLO. Missing monitor heartbeat is itself an alert. If the owner requires finer continuous telemetry, amend this scope explicitly before implementation; do not widen VM IAM silently.
+
+## Thirty implementation paths and two disjoint owners
+
+This is the exact thirty-path offline implementation scope. Execution is staged by the milestone restrictions below; only a coordinator-reviewed checkpoint and pinned preflight authorize dispatch. Coordinator separately owns the canonical plan/task/record/Issue186/Project8 synchronization. Existing application SQL001–040, paid/auth/commerce code, base/CI/Base44 Compose, UI and existing CI workflows are excluded.
+
+Runtime builder A owns these22 paths:
+
+1. `infra/compose/compose.production.yaml` — standalone complete service graph; never merge base/CI Compose.
+2. `infra/deploy/gce/Caddyfile` — TLS, same-origin proxy, safe access logging, fixed maintenance include, root-only Unix admin socket.
+3. `infra/deploy/gce/nats.conf.template` — private JetStream and explicit users/permissions.
+4. `infra/deploy/gce/seaweedfs-s3.json.template` — explicit S3 identities/actions, no committed keys.
+5. `infra/deploy/gce/release.env.example` — nonsecret required variables only.
+6. `infra/deploy/gce/release.schema.json` — image/source/migration/config-reference manifest validation.
+7. `infra/deploy/gce/migration.Dockerfile` — released runner+SQL tree and pinned PG17 client.
+8. `infra/deploy/gce/runtime-entrypoint.sh` — fixed per-service secret-name allowlist, file-to-process-env loading, then exec.
+9. `infra/deploy/gce/deploy.sh` — fixed root operations install/check/start/stop/maintenance/resume, release switch and rollback.
+10. `infra/deploy/gce/backup-host.sh` — fixed begin/status/export/resume operations, UUID lease, no cloud credential.
+11. `infra/deploy/gce/restore.sh` — explicit isolated restore/validate only, refuses live data directory.
+12. `infra/deploy/gce/runtime-check.py` — passive aggregate health/rights/config checks; structured redacted receipt.
+13. `infra/deploy/gce/metadata-guard.nft` — own early forwarding table only; never flush Docker's tables.
+14. `infra/deploy/gce/autodata-metadata-guard.service` — load/verify guard before Docker.
+15. `infra/deploy/gce/autodata.service` — mount/guard/secrets/digest dependency checks; selected release service control.
+16. `infra/deploy/gce/autodata-backup-resume.service` — fixed expired-maintenance recovery.
+17. `infra/deploy/gce/autodata-backup-resume.timer` — local lease watchdog, no Google identity.
+18. `infra/deploy/gce/docker-autodata.conf` — Docker systemd dependency on data mount and metadata guard.
+19. `infra/deploy/gce/runtime-grants.sql` — idempotent infrastructure role grants/aggregate monitoring views; not an application migration.
+20. `infra/deploy/gce/test_host_runtime.py` — pure/script/render negative tests and explicitly opted-in disposable runtime tests.
+21. `apps/api-go/Dockerfile` — COPY the small shared secret-entrypoint wrapper; retain actual API binary command.
+22. `workers/ingestion-python/Dockerfile` — COPY same wrapper; retain actual installed dependencies/source/commands.
+
+External-operations builder B owns these8 paths:
+
+23. `.github/workflows/release-workshop.yml` — tested immutable build/publish and protected explicit deploy dispatch.
+24. `.github/workflows/backup-workshop.yml` — separate WIF backup principal and bounded nightly/manual run.
+25. `.github/workflows/monitor-workshop.yml` — separate WIF metric writer; fixed read-only helper and missing-heartbeat signal.
+26. `infra/deploy/gce/cloud-bootstrap.sh` — explicit reviewed APIs/IAM/firewall/disk/IP/bucket setup; plan/render by default, apply only with operator authorization.
+27. `infra/deploy/gce/cloud-ops.py` — fixed external publish/deploy/backup/monitor/restore operations, finite subprocess bounds and safe receipts.
+28. `infra/deploy/gce/test_cloud_ops.py` — fake CLI/stream tests; no implicit cloud/provider calls.
+29. `docs/operations/workshop-gcp.md` — exact bootstrap/rollout/reboot/rotation/recovery/cutover runbook and evidence locations.
+30. `docs/architecture/infrastructure-and-dev.md` — chosen topology, actual limitations and later verified evidence.
+
+A implements the release schema, fixed helper subcommands/exit codes and service/network names specified below in its first reviewed milestone; any schema-field refinement must be reviewed before B consumes it. B can implement against that literal contract without Docker/cloud access; merge only coordinator-approved dependencies. Builders do not self-approve one another's IAM/runtime work. Both remain Sol6.1 medium Fast/priority. A third independent reviewer evaluates combined rendered config and failure injection before staging authorization.
+
+## Exact runtime graph and entrypoints
+
+Production Compose is standalone. It includes only caddy, api, ingestion-http, article-worker, payment-reconciler, postgres, nats, minio, plus explicitly invoked one-shot migration/bootstrap/metrics-probe services. No legacy ingestion consumer, enrichment, outbox relay, demo, fixture, smoke or build service is enabled initially. The purchased catalog uses durable PG article/index jobs; generic customer dataset/work bypass routes are denied. If later enabling legacy lanes/outbox/enrichment, prove their consumers and NATS permissions in a separate scope.
+
+Use these existing application commands, after the file-to-env wrapper:
+
+- API: `/usr/local/bin/autodata-api`.
+- Private HTTP: `python -m autodata_ingestion.http_service`.
+- Article worker: `python -c 'from autodata_ingestion.worker import article_worker_main; raise SystemExit(article_worker_main())'`.
+- Reconciler: `python /app/scripts/reconcile_payments.py --poll-seconds 15 --batch-size 50`.
+- Migration: `sh /release/scripts/dev/migrate_sql.sh --migrations-dir /release/db/migrations` with PGHOST/PGPORT/PGDATABASE/PGUSER from nonsecret config and PGPASSWORD loaded from its temporary secret file. Keep runner and SQL tree packaged from the same release; manifest currently001–040, discovered and hashed rather than permanently hardcoded.
+- Passive metrics: `python /app/scripts/operational_metrics.py --address postgres:5432` with its dedicated read-only DB credential. Add fixed host/queue/lease/backup and commerce aggregate queries in runtime-check.py where the existing renderer does not cover them; never call worker.run_once, ensure, bank/model, checkout or reconciliation from a health probe.
+
+Freeze commands/interfaces for the future scripts:
+
+```text
+cloud-ops.py publish --release <40hex> --config <nonsecret-json>
+cloud-ops.py deploy --release-manifest <json> --config <nonsecret-json>
+cloud-ops.py backup --config <nonsecret-json> --run-id <uuid>
+cloud-ops.py monitor --config <nonsecret-json>
+cloud-ops.py restore --config <isolated-restore-json> --backup-receipt <json>
+deploy.sh install|check|start|stop|maintenance|resume <40hex>
+backup-host.sh begin|status|export|resume <uuid>
+restore.sh restore|validate <uuid>
+runtime-check.py check|metrics --release <40hex>
+```
+
+Shared helper exit codes are frozen:0 success,2 invalid input/configuration,3 missing dependency/guard/mount/secrets,4 operation failure,5 timeout,6 incomplete recovery/backup. Receipts distinguish failure from timeout and never certify partial work. External publish is bounded45 minutes; deploy30 minutes; each monitor run60 seconds; backup maintenance30 minutes including safe-resume reserve; isolated restore validation4 hours including cleanup reserve, subject to the accepted measured RTO. Subcommands receive only the fixed manifest/config/run IDs above; commands do not accept caller-supplied shell fragments.
+
+No arbitrary command/path argument is accepted by backup/monitor sudo rules. Host helper paths and release directories are root-owned; unprivileged logins cannot change symlinks, configs, wrappers, current release or Docker membership. Deploy/helper unit tests must reject unknown subcommands, malformed UUID/SHA, traversal, substituted environment, missing/extra manifest fields and unexpected disk/network/service identities. No eval, shell sourcing of delivered secret content, shell command interpolation of secret values, HOME rewrite or implicit current-directory config lookup.
+
+## Required nonsecret configuration
+
+Root config JSON/release.env contains: HOST_PROJECT_ID, FIREBASE_PROJECT_ID, BACKUP_PROJECT_ID, REGION, ZONE, INSTANCE_NAME, DATA_DISK_NAME, DATA_DISK_FILESYSTEM_UUID, STATIC_IP_NAME, ARTIFACT_REPOSITORY, BACKUP_BUCKET, DEPLOY_ENVIRONMENT, PUBLIC_ORIGIN, RELEASE_SHA, ACME_EMAIL and pinned numeric secret-version references per service. Retain `<...>` project/owner inputs in this planning document; deterministic implementation rejects unresolved placeholders at apply/start. The owner still must choose project/billing/region, cost budget, recovery window, notification destination, Firebase registration and authorized staging hostname.
+
+Release manifest requires exact source SHA; every selected image as `registry/repository/name@sha256:<64hex>`; platform; image IDs/SBOM/provenance references; exact SQL filename inventory/combined hash and runner hash; tested Docker Engine/Compose package versions and package hashes; nonsecret service config hash; secret resource+numeric version references without values; and last compatible rollback manifest. Resolve/package-pin versions during implementation and record them; no tag-only runtime images or floating apt/tool downloads at host startup. CI action revisions are full reviewed commit IDs. Initial third-party images include reviewed PG17+pgvector, NATS2.10, Caddy and the existing exact SeaweedFS digest. No production image build on the VM or source bind mount.
+
+Actual app variables, not invented *_FILE support:
+
+- API: AUTODATA_ENV=production; AUTODATA_AUTH_MODE=firebase; AUTODATA_PUBLIC_ORIGIN=https://cars.tk; AUTODATA_FIREBASE_PROJECT_ID, AUTODATA_FIREBASE_WEB_API_KEY, AUTODATA_FIREBASE_WEB_APP_ID, AUTODATA_FIREBASE_AUTH_DOMAIN; AUTODATA_PROJECTION_STORE=postgres; AUTODATA_API_ADDR=:8080; AUTODATA_DB_ADDRESS=postgres:5432; AUTODATA_POSTGRES_DB/USER/PASSWORD; AUTODATA_NATS_ADDRESS=nats:4222; AUTODATA_S3_ADDRESS and AUTODATA_S3_ENDPOINT=minio:9000; AUTODATA_S3_ACCESS_KEY/SECRET_KEY; AUTODATA_SOURCE_BUCKET=autodata-sources; AUTODATA_INGESTION_URL=http://ingestion-http:8081; AUTODATA_INGESTION_INTERNAL_TOKEN; explicit strong AUTODATA_IMAGE_URL_KEY; AUTODATA_COMMERCE_MODE=stripe_live only after live-payment approval (stripe_test only in separate staging DB).
+- Ingestion HTTP: AUTODATA_ENV/PUBLIC_ORIGIN/COMMERCE_MODE; AUTODATA_INGESTION_HTTP_ADDR=:8081; DB and S3 writer variables; same internal token; AUTODATA_STRIPE_ACCOUNT_ID/PRICE_ID/SECRET_KEY/WEBHOOK_SECRET; approved BANKONE_BASE_URL/BANKTWO_BASE_URL and BANKONE_API_TOKEN/BANKTWO_API_TOKEN for actual bounded public-selector hydration. The HTTP catalog service itself fetches selector scopes, so these credentials cannot be assigned only to the article worker. No model key is required for this HTTP selector/commerce lane. Preserve exact configured price/merchant startup verification; do not bypass it for readiness.
+- Reconciler: DB writer variables; ENV/PUBLIC_ORIGIN/COMMERCE_MODE; Stripe ACCOUNT_ID/PRICE_ID/SECRET_KEY/WEBHOOK_SECRET and internal token because actual configured_commerce requires all of them. The current code cannot omit its webhook secret. No bank/model credentials are required for preparation scheduling itself.
+- Article worker: DB writer/S3 writer variables, explicit authorized BANKONE_BASE_URL/BANKTWO_BASE_URL and BANKONE_API_TOKEN/BANKTWO_API_TOKEN, INCEPTION_API_KEY/BASE_URL/MODEL/TIMEOUT_SECONDS as approved production configuration. No Stripe, Firebase, Google cloud or host credentials. Do not inherit example provider defaults. Both HTTP and worker explicitly set only the one supported bank credential name per provider; reject conflicting AUTODATA_BANKONE_API_KEY/AUTODATA_BANKTWO_API_KEY ambient aliases rather than relying on their precedence.
+- Metrics: separate DB role read-only on only the fixed operational query tables/aggregate views. No API DB secret, S3 write key, Stripe, bank/model, internal token or ADC. Runtime-check emits numbers/allowlisted states only, never query rows or raw exception strings.
+
+AUTODATA_READINESS_MODE=static, local auth, emulator settings, fixture flags, ambient Google credential file variables and cloud/payment environment inherited from an operator shell are forbidden. Staging ENV=staging requires its own approved HTTPS origin; configured return paths remain `<origin>/workshop/?order=<stored UUID>`. Browser prices, client return URLs and query payment-success flags never grant ownership. Paid access is unconditional in Firebase mode, requires PG/session/commerce/media dependencies, and has no deployment flag that turns it off.
+
+## Secret delivery without Docker metadata persistence
+
+Important correction: Compose env_file/environment stores resolved secret values in persistent Docker Config.Env, even when the original file is tmpfs. Therefore do not deliver secret values as Compose environment entries. The two application image changes above add the same tiny entrypoint that reads an allowlisted service's individual read-only `/run/autodata/<service>/<NAME>` files immediately before exec and exports only that process environment. Delivered values must match the documented single-line/no-NUL form; reject malformed files, symlinks, unknown names, wrong UID/mode, missing or empty required values. Do not source/eval file contents. Test that `docker inspect`/container configuration and disk release/config files contain no secret values. Host root and same-container process authority remain trusted; process env is not a defense against those administrators.
+
+Use image-supported POSTGRES_PASSWORD_FILE for the DB bootstrap password and direct root-private files for NATS/S3 configuration. Root delivers files into tmpfs; service-specific ownership/modes permit only the intended runtime UID/GID. Mount only that service's directory read-only. No broad /run/autodata, host home, Docker config/socket, kubeconfig or gcloud credential mount. Numeric secret versions are fetched by the external deploy principal, streamed over IAP stdin without tracing, and atomically installed root-owned on tmpfs. No secret values in argv/stdout/receipts. Registry pull authentication uses separate tmpfs Docker config and is removed after exact-digest pulls.
+
+API receives only DB, read-only S3, internal token and media key secrets. Private HTTP receives its necessary DB/S3/internal/Stripe and selector-connector bundle, without a model key. Article worker receives only DB/S3/bank/model. Reconciler receives its actual required DB/internal/Stripe bundle. Migrator/admin/S3-bootstrap secrets are mounted only into explicit temporary bootstrap jobs and removed after success. Regular app DB roles get required DML but no superuser, role administration, DDL ownership, filesystem/program execution or migration credential; the separate released migrator owns DDL. runtime-grants.sql verifies this on every new schema head.
+
+## Static network and metadata policy
+
+Only Caddy publishes80/443. SSH22 is IAP-source-only with OS Login; no public DB/S3/NATS/API/metrics ports. No host networking, privileged containers, Docker socket, NET_ADMIN/NET_RAW or host PID namespace. Drop capabilities, set no-new-privileges, read-only roots and only required tmpfs/data mounts. Pin/test container UID, writable directories and image capability needs rather than breaking stateful entrypoints by assertion.
+
+Use explicit bridge/IPAM names and addresses in the standalone Compose:
+
+- edge: bridge br-ad-edge,172.30.10.0/24; api172.30.10.10, caddy172.30.10.20; API default gateway is this network.
+- backend: br-ad-back,172.30.20.0/24,internal:true; app and stateful service traffic only; minio has fixed address172.30.20.40.
+- workers-egress: br-ad-work,172.30.30.0/24; private HTTP/reconciler/article worker outbound approved HTTPS; no metadata exception.
+
+Reserve these ranges only after bootstrap rejects overlap with host/VPC/Docker routes. API may also join backend with another fixed address but only its edge address may reach metadata. Disable container IPv6 for this launch. Verify the chosen pinned Compose supports explicit gateway priority; do not rely on network-name ordering.
+
+Before Docker starts, own nftables FORWARD hook at an explicitly tested priority earlier than Docker forwarding accepts. Allow only packets from172.30.10.10 on br-ad-edge to169.254.169.254 TCP80; drop every other forwarded destination169.254.169.254 on every port, plus fd20:ce::254 IPv6. Destination-address matching covers metadata.google.internal. Also restrict host OUTPUT to169.254.169.254 and fd20:ce::254: permit TCP80 only for trusted UID0 platform/root processes, then deny every other host UID/port/protocol. The GCE guest agent and OS Login platform plumbing may require metadata; test those actual functions rather than promising that all host metadata can be disabled. Ordinary non-admin OS Login shells used by backup/monitor principals are denied; their fixed helper access must not confer Firebase account-read credentials. The designated API exception is forwarded traffic only and must not exempt unprivileged host OUTPUT. Match source and ingress interface, not a source address alone. Do not flush Docker/VPC rules. Test real namespace requests and spoof prevention with dropped capabilities after Docker restart and VM reboot. Require actual non-admin host IPv4/IPv6/metadata-hostname denial, all other-container metadata denial, and successful API ADC refresh/GetUser through its designated forwarding exception, and functioning guest-agent/OS Login operations with the explicit trusted UID0 exception. Local root/Docker administrators remain trusted and can administer the guard; API-only ADC is a boundary for untrusted workloads and host users, not a claim that trusted root cannot obtain the attached identity.
+
+The same `metadata-guard.nft` artifact must also enforce a separate storage boundary: from application namespaces, permit only TCP9000 to172.30.20.40; deny every other destination port/protocol to that storage address, including same-bridge traffic. Use an nftables bridge-family forward hook for bridged packets and the early inet FORWARD guard for routed packets; do not assume an inet hook alone sees same-bridge traffic or rely only on unpublished ports. Disable IPv6 and reject unexpected storage addresses/networks. Internal mini component traffic remains within its own namespace. Actual network-namespace tests must prove API/worker/HTTP cannot access filer8888/18888, master9333/19333, volume8080/18080, admin23646/33646 or other storage ports while authenticated S3 works. A missing storage boundary blocks protected application startup. These are deterministic host rules within the existing30 paths, not a new proxy/service or a claim that the S3 config authenticates every mini listener.
+
+Docker's systemd drop-in Requires/After the data mount and early guard. autodata.service requires actual expected filesystem UUID/mount, exact guard and static route, verified cached images and newly delivered tmpfs secret files before any app start. Missing data mount must not create boot-disk data directories. Missing secrets after reboot must not restart apps with stale credential env. The wrapper ensures old container metadata does not provide a fallback. No boot-time registry/Secret Manager access using VM ADC. Guard/config tampering by trusted root is outside workload isolation; runtime checks must detect configuration drift and stop protected applications rather than silently switching routes.
+
+## SeaweedFS and durable state
+
+Keep image `ghcr.io/chrislusf/seaweedfs@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d` (local image ID `sha256:7b5ca1f11aa4c91593612d2d4a9e253ec9152a4bd13a19e551290a042a4c52f5`, version4.48), service name minio, private port9000 and persisted `/data`. The exact image's `mini -h` confirms `-s3.config`; do not use MINIO_ROOT_USER/PASSWORD as SeaweedFS configuration. Freeze this supported command, with capacity flags chosen/tested separately from the tiny probe:
+
+```text
+mini -dir=/data -s3.port=9000 -s3.config=/run/autodata/minio/s3.json
+  -admin.ui=false -webdav=false -s3.iam=false
+  -s3.port.iceberg=0 -s3.port.lance=0 -master.telemetry=false
+```
+
+Use `user: "1000:1000"` after explicitly initializing only the new owned data directory to UID/GID1000; read-only config files must be readable by that UID. The image's root entrypoint invokes su-exec/setgroups, so starting it as root with cap-drop ALL fails before S3. No routine capability addition is needed when the regular service starts directly as UID1000. State initialization is a separate bounded root-owned operation, never a recursive chown of an unchecked mount.
+
+The actual JSON schema is `identities:[{name,credentials:[{accessKey,secretKey}],actions:[...]}]`. Normal runtime config has two identities: worker with `Read:autodata-sources`, `Write:autodata-sources`, `List:autodata-sources`; API with `Read:autodata-sources` only. Distinct strong keys, no anonymous identity, global runtime action, Admin or List-all. Bootstrap adds a separate short-lived identity with Admin/Read/Write/List/Tagging to create the required bucket through the ingestion image's existing Minio client. Before normal application start, remove the bootstrap identity from the mounted config and restart mini; verify retired credentials fail and worker/API still function. Do not rely on a config rewrite being reloaded without restart. Temporary bootstrap files/clients are unmounted and removed; no admin key reaches API/worker. S3 admin is not a Google cloud credential.
+
+**S3 authentication does not protect mini's other listeners.** Local logs show filer and admin control planes still start with unauthenticated interfaces despite `-admin.ui=false`/`-s3.iam=false`. The authorized local probe directly retrieved the synthetic source object from filer8888 without S3 credentials. Thus the storage port boundary above is mandatory. Do not connect apps to an unrestricted mini backend and claim API read-only isolation from the S3 policy alone. No cloud deployment is approved until the actual host bridge/routed guards are tested.
+
+Local probe receipts are retained under `/tmp/autodata-seaweedfs-auth-probe-2` and `/tmp/autodata-seaweedfs-auth-probe-3`, with exact command, script/log hashes, outcomes and cleanup. These synthetic probes use an owned internal Docker network/volume, no published ports, UID1000,256MiB/0.5CPU, cap-drop ALL, no-new-privileges. Probe2 proved admin bucket bootstrap; worker put/get; API get; API put/delete/bucket-create denial; worker bucket-create denial; anonymous bucket/object list/get/put denial, all403; persisted object read after restart. No OOM occurred and all owned resources were removed. The earlier interrupted attempt is retained separately under `/tmp/autodata-seaweedfs-auth-probe`; it never reached S3 and is not a pass. Probe3 completed in16.64 seconds with `passed:true`, no failures/OOM, and all three cleanup flags true. It additionally proved unauthenticated filer retrieval200 with the same object SHA; after removing the Admin identity and restarting, its old list/create requests failed403 InvalidAccessKeyId, worker/API still read, and worker foreign-bucket write failed403. Probe3 result SHA256: `9629bae70f911415fe02b6e958fab5016bcfe3626b87760086be1e08fca7c0da`; script: `4460e87625325c6897447c6919e9f43edf0461654d33c45ccf5ba74ac1568e67`; redacted log: `c63c654b6a0cb19e5c6316f783bf71e24baac63658dbf1b60aecf53d313f0eb7`; mini help: `84c173814f61dcff3259a0eb014040020f57dece08da4037a46651cbc995d815`. Synthetic configuration was removed and no matching container, volume or network remained. Exact rerun command used `PYTHONPATH=/tmp/autodata-commerce-python-deps python /tmp/autodata-seaweedfs-auth-probe-3/probe.py`; the script records the separate ownership-initialization command and all finite client/Docker timeouts. These local results prove only the pinned S3 policy behavior and small-object persistence, not full production capacity, host network isolation, backup restoration or cloud readiness.
+
+Do not run current object_storage_health.py as a passive check: it creates/version-enables buckets. Bootstrap only the bucket/features the actual application uses. Persistent disk subdirectories contain PG, SeaweedFS, JetStream and Caddy ACME state. Check ownership and filesystem UUID before Compose. Secret files and registry tokens remain off persistent disks. Docker/container metadata must contain no secret values. Ordinary process restarts use cached exact images/current tmpfs secrets; full reboot intentionally remains unavailable until external rehydration.
+
+## IAM, monitoring and backup authority
+
+Publish principal: registry writer for the one repository, no VM/secret/backup access. Deploy principal: named-secret-version accessor, repository reader and explicitly trusted IAP/OS Login host administration for this VM; no account-key creation or general IAM administration. Bootstrap operator separately creates/reviews resources and bindings.
+
+Backup principal: no secret accessor, no deploy/Docker/root shell. Non-admin OS Login/IAP to the one VM and fixed backup-host.sh sudo verbs only; bucket object-create on unique owned names; a reviewed custom Compute snapshot role for the named disk and owned snapshot prefix: compute.disks.get/createSnapshot, compute.snapshots.create/get/list and compute.globalOperations.get, with per-resource conditions where supported and every unavoidable project-level permission explicitly reviewed. No delete authority in the routine backup principal. Separate bootstrap retention policy/lifecycle and separately authorized prune authority handle7daily/4weekly retention; do not give every backup run broad bucket delete or project Compute Admin. Restore operator is separate and explicitly approved, with backup read/restore and host-administration authority. Service Account User on only the attached Firebase-reader account is granted only where actual OS Login access requires it, never Token Creator.
+
+Monitor principal: non-admin OS Login/IAP and exactly runtime-check metrics, plus Cloud Monitoring metricWriter. OS Login permits ordinary unprivileged shell commands; it must confer no Docker membership, arbitrary privileged command, SQL credential, log export or ability to read /run secrets. Only the fixed root-owned metrics helper is sudo-allowlisted. Fixed helper exports only bounded valid metric names/number values and allowlisted state labels; reject unexpected output. Native Compute/HTTPS uptime metrics plus those aggregates cover disk space, service restart/unavailable state, PG connectivity, oldest article/index/rewrite lease/retry age, preparation/reconciliation/outbox lag/count, NATS state, S3 error count, last verified backup time, last restore-drill time and exporter heartbeat. Expose API latency/error aggregates only when actually measured from sanitized Caddy metrics/log fields; do not relabel missing values as zero. Never include URL/token/source/customer/order IDs in metric labels. Configure queue/backup/disk/uptime/heartbeat alerts to an owner-selected destination and prove a real test alert reaches it in staging. Budget alerts remain bootstrap-owned and are not spending caps.
+
+## Ordered deploy, reboot, failure and restore
+
+Fresh provision: apply approved resource/IAM plan; format only an explicitly new empty data disk after identity checks; mount by UUID; install reviewed Docker/packages, early guard and root helpers; external deploy pulls exact images through transient registry auth and rehydrates per-service secrets. Start PG/NATS/S3; provision scoped DB roles and S3 identities/bucket with temporary admin credentials; run released shared migrations once; apply/check runtime grants; start private HTTP and verify enabled merchant/price/schema startup; start one article worker and reconciler, then API. Only then Caddy leaves maintenance after actual readiness plus no-work authenticated S3/private-service checks. Startup external provider probes are explicit authorized staging/live rollout actions, not part of offline config rendering.
+
+Maintenance uses a fixed root-generated Caddy include switched/reloaded through a root-only Unix admin socket, not a network-accessible admin endpoint. Maintenance responses503 with Retry-After, no-store and no application details. Stop accepting new requests before bounded application stop. The current Go server does not establish a graceful signal-drain protocol; do not claim in-flight requests are guaranteed completed. Idempotent client retry and actual durable DB state govern interrupted work. Stop API/private HTTP/reconciler/article worker, then perform migration/backup operations. Retain maintenance on validation/migration failure; preserve receipts and request a forward fix. No blind down migration or starting old images against unverified incompatible schema.
+
+Nightly backup: external run creates UUID lease; fixed host helper enters maintenance/stops writers; produce and verify custom PG dump while PG remains up; stop PG/NATS/S3; sync; external principal requests/awaits the named data-disk cold snapshot. Finish snapshot within the valid30minute maintenance lease, then fixed resume helper starts stateful services and applications in the proven order. Local watchdog attempts bounded safe resume if the external job disappears and marks that run incomplete. If timeout/resume races an unfinished snapshot, that snapshot is not a verified recovery point. After service recovery, stream the fixed UUID dump/nonsecret release manifest over IAP to external runner; upload with external bucket credential and verify immutable object generation/hash. Receipt succeeds only when snapshot, verified upload, resume and no-work readiness checks all succeed. Failures alert and never advance last_verified_backup. No raw secret/archive of/run/autodata. Actual first-snapshot/dump time must prove the maintenance window on representative data; the plan does not promise30minutes is sufficient merely because it is a timeout.
+
+Reboot: Docker cannot precede mount/guard; no app may become healthy before secret redelivery. External deploy/bootstrap verifies selected release and pinned secret versions, then resumes. Losing runner/WIF/Secret Manager availability therefore extends recovery; accepted RTO must include that dependency. Secret rotation installs a new numeric version on tmpfs and restarts only affected services; no dual-key acceptance is invented. Media key rotation invalidates old image references, renewed by authorized projection refresh; persistent039 session tokens are DB-hashed and do not depend on a new invented server signing key.
+
+Restore: only an isolated replacement disk/VM, production ingress in maintenance and bank/model/payment writer egress disabled. Stage1 validates snapshot UUID/cutoff, released image/SQL manifests, exact ledger/schema, account/session/grant/order ownership relations, article/source/canonical rows and every referenced S3 object, JetStream state and PG portable restore on a fresh compatible instance. No payment replay or provider fetch. Do not start configured_commerce processes and claim an offline API restore: actual startup intentionally contacts Stripe to verify merchant and price. Stage2, after separate authorization, selectively enables necessary real identity/merchant/price read checks with writers/reconciliation still stopped and maintenance retained, then uses the approved synthetic/test identity and authorized observational read procedure to prove source/canonical/media. This requires a real safe identity/project/payment configuration; it is not accomplished by setting production local auth, mixing test/live orders or using the return URL as ownership. Only after recovery ownership/data validation and operator approval may writers and live ingress resume. Record measured cutoff/RPO/RTO and failed attempts; never overwrite newer paid live activity as a routine image rollback.
+
+## Verification and remaining owner decisions
+
+Before this offline infrastructure implementation: independently review this bounded amendment and the measured SeaweedFS S3/control-plane boundary; synchronize canonical docs/todo/Issue186/Project8 and task/record at the committed checkpoint; pass pinned machine preflight. Root then authorizes the staged disjoint builder milestones below. Freeze reviewed release toolchain/image pins before any deployable release is produced or runtime operation is authorized; the first pure schema tests require exact pins and reject unresolved ones without obtaining or executing them. Deterministic implementation/tests can proceed with fixture project identifiers once gated; pending real project/cost choices block apply/deployment, not all local development.
+
+Required implementation tests include rendered Compose service/port/image/env/mount allowlists; no secret in Config.Env or image metadata; startup refuses wrong/missing disk/guard/secrets; API-only metadata from every service namespace after daemon/reboot, plus actual non-admin host OUTPUT denial for IPv4/IPv6/metadata-hostname requests and successful designated API ADC refresh/GetUser and functioning actual guest-agent/OS Login under the explicit trusted UID0 metadata exception; no external-principal cloud credential on host; least-role Google deny proofs; real SeaweedFS auth/read-only/anonymous denial/durability; actual image commands/dependency imports; migration failure keeps maintenance; provider outage has no local fallback; interrupted backup/watchdog/failed upload do not certify recovery; portable and disk restore; previous compatible image rollback preserves newer ownership. Fake CLI unit tests alone cannot establish IAM/network/TLS/backup behavior. Required staging calls and billable actions require explicit owner authorization after concrete scripts/manifests/receipts are reviewable.
+
+Owner inputs still pending: chosen GCP/Firebase/backup projects and billing/region/residency; cost estimate/budget and operator alert destination; commercial acceptance of nightly maintenance/RPO/RTO; Firebase Google app/domain registration and approved staging hostname; Stripe test/live merchant/price/terms/refund/tax configuration; licensed connector/model credentials and permitted use; final DNS/TLS cutover approval. Preserve these as deploy prerequisites, not invented values or claims of readiness.
+
+## Final release, DNS and TLS approval
+
+1. Select the GCP project, billing owner, region, operator, identity registration and product/payment contract. Review costs. Satisfy the repository's synchronized implementation gate, then build and verify the immutable integrated release. Existing application CI and the already planned product acceptance remain the checks; no new Kubernetes or autonomy-runtime certification is required for this VM topology.
+2. Bring up an isolated staging instance using test identities and synthetic/licensed test fixtures. Exercise auth, protected media, article cold/source/canonical/warm paths, worker restart recovery, selected payment behavior, backup/restore and VM reboot with the persistent disk. External identity/provider verification, if needed, is a separately authorized staging action; infrastructure smoke must not call banks/models by default.
+3. Deploy production while Vercel still serves `cars.tk`. A dedicated staging hostname requires approved DNS/certificate ownership; do not invent or change a hostname now. Keep final-origin production login/traffic disabled until its Firebase domain configuration and certificate are ready. ACME DNS-01 can provision the final certificate ahead of apex cutover only with an explicitly authorized DNS integration; otherwise use approved HTTP-01 cutover sequencing and allow an honest certificate-issuance maintenance interval. Do not promise that Caddy can complete HTTP-01 for an apex still pointed at Vercel.
+4. Record current DNS records, TTLs and Vercel configuration. After owner approval, reduce TTL in advance, confirm final TLS/Firebase authorized-domain and popup-helper readiness, then change the apex A to the reserved VM address. Update/remove conflicting AAAA only if present and approved; retain unrelated mail/TXT records. Do not claim universal propagation within the TTL. Keep Vercel configured and reversible during the agreed observation period.
+5. For each later application rollout, retain previous digests and config references, take a verified pre-migration backup, enter a bounded maintenance/drain window, run the exact released shared migration runner once, and start the selected release only on success. Validate actual database/schema head from that manifest, not a permanently hardcoded 038. A migration failure keeps writes stopped until diagnosed; no blind down-migration.
+6. Application rollback selects the prior compatible image manifest without replacing live data. Schema changes must be backward compatible with that prior version or require an explicit recovery/forward-fix decision. DNS rollback to the preserved Vercel page can restore an informational/maintenance landing page; it cannot provide the new paid application's data/access functionality. A VM failure recovery uses the persistent disk on a replacement or the tested backup restore, not stale Vercel application state.
+
+
+## Planning tracking and authoritative next gate
+
+Issue: https://github.com/lucronn/autodata/issues/186
+Project: https://github.com/users/lucronn/projects/8
+
+Concrete todo and bounded dispatch are recorded below and in `docs/agents/tasks/2026-11-03-production-release/workshop-hosting.json`. Owner project/cost/recovery/operator inputs and final verified product/runtime evidence remain prerequisites for actual staging/apply, rather than blockers for these pure offline tests. Passing this gate alone never authorizes cloud resources, real secrets, DNS, provider calls or a runtime acceptance claim.
+
+## Documentation references
+
+- [ADC and attached service accounts](https://cloud.google.com/docs/authentication/application-default-credentials)
+- [Firebase Admin setup and GCE scopes](https://firebase.google.com/docs/admin/setup)
+- [Identity Platform permissions](https://cloud.google.com/identity-platform/docs/access-control)
+- [Compute service account scopes](https://cloud.google.com/compute/docs/access/service-accounts)
+- [Metadata endpoints](https://cloud.google.com/compute/docs/metadata/querying-metadata)
+- [Docker forwarding rule ordering](https://docs.docker.com/engine/network/firewall-iptables/)
+- [GitHub WIF deployment pipelines](https://cloud.google.com/iam/docs/workload-identity-federation-with-deployment-pipelines)
+- [Secret-level access control](https://cloud.google.com/secret-manager/docs/access-control)
+- [OS Login requirements](https://cloud.google.com/compute/docs/oslogin/set-up-oslogin)
+- [Disk snapshots](https://cloud.google.com/compute/docs/disks/snapshots)
+- [Caddy automatic HTTPS](https://caddyserver.com/docs/automatic-https)
+
+
+## Offline implementation checkpoint and first execution milestones
+
+Source integration base: `3b551c992263f74e3ebdc6e4fa2c4ffda3b979a6`. Issue186 and its existing Project8 item are the shared tracking authority; the coordinator owns integration and independent review. No implementation file is changed by this planning checkpoint. Both builders use gpt-6.1-sol, medium reasoning, Fast/priority, no fallback.
+
+The thirty allowed paths above remain exclusive: runtime A owns1–22 and operations B owns23–30. This gate permits implementation definitions and pure tests only after coordinator authorization. It does not permit invoking Docker/Compose, nft/systemd changes, packaging/building/pulling images, cloud/gcloud/SSH/IAP calls, DNS, secrets, provider endpoints, actual deployment or restore. Tests use standard-library unittest with inline fixture manifests and fake executable transcripts in temporary directories. No new dependency or fixture file is necessary. Existing policy, historical SQL001–040, application auth/payment/catalog/UI, base/CI/Base44 Compose and other CI workflows remain out of scope.
+
+### First A milestone: exact schema, parser and render boundary
+
+Only these eight A paths are executable in the first dispatch:
+
+- `infra/deploy/gce/release.schema.json`
+- `infra/deploy/gce/runtime-check.py`
+- `infra/deploy/gce/test_host_runtime.py`
+- `infra/deploy/gce/release.env.example`
+- `infra/compose/compose.production.yaml`
+- `infra/deploy/gce/Caddyfile`
+- `infra/deploy/gce/nats.conf.template`
+- `infra/deploy/gce/seaweedfs-s3.json.template`
+
+Write failing tests first for strict duplicate/unknown-field rejection, image/digest/platform/source/migration/config/secret-version binding, fixed service and network graph, Caddy-only published ports, metadata/storage guard prerequisites, no ambient/local fallback, and fake secret values absent from rendered Docker environment. Implement the literal shared v1 contract below. `runtime-check.py` in this milestone provides a passive parser/validator and receipt renderer; it must not start services or probe real endpoints. Tests intercept every attempted subprocess and reject any executable outside their owned fake paths. `release.env.example` contains nonsecret names only; it must not advertise unresolved values as deployable.
+
+Run `python -m unittest discover -s infra/deploy/gce -p test_host_runtime.py -v` with no Docker daemon or provider access. Retain red/green stdout and exact input hashes outside the checkout, run `git diff --check`, commit and push this coherent milestone. Coordinator independently reviews and pins the manifest fields, nonsecret service-config object, per-service secret allowlists, allowed metrics/receipt names and render output before B consumes it. The service-config object must include exactly environment/origin/Firebase public configuration, resource names, fixed service commands/network addresses, expected disk UUID, topology and nonsecret runtime tuning; it contains no credential values. Environment is `production|staging`, and every origin/config field is validated rather than inferred from the shell.
+
+### First B milestone: consume reviewed A contract with fake CLI only
+
+Only after coordinator-approved exact A dependency integration, B initially implements `infra/deploy/gce/cloud-ops.py` and `infra/deploy/gce/test_cloud_ops.py` from its existing eight paths. Consume the same v1 schema/layout/helper verbs without speculative aliases or a second manifest model. Write failing tests for bounded argv/timeouts, exact WIF/environment/repository/ref restrictions in planned operation definitions, wrong owner/disk/image/lease/snapshot, failed upload/resume and duplicate/escaping tar members. Fixed fake CLI transcripts cover success, command error, timeout, interrupted stream and cleanup failure; tests assert no real executable or network can run. The production helper remains fail-closed when real approved configuration, reviewed pins or required receipts are absent.
+
+Run `python -m unittest discover -s infra/deploy/gce -p test_cloud_ops.py -v`; retain exact inputs/red-green logs, then commit/push for independent review. Remaining A/B files, executable operations and later runtime verification require coordinator authorization after these first contract milestones. A reviewed contract change uses the existing affected paths and a visible amendment; it cannot silently expand the thirty paths.
+
+### Concrete todo and verification separation
+
+- [ ] Synchronize actual Issue186/Project8 and canonical docs/task/record; commit the checkpoint and pass machine preflight at that full checkpoint SHA before dispatch.
+- [ ] Coordinator reviews this exact gate and separately authorizes first A eight-path schema/parser/render milestone.
+- [ ] A produces retained red/green pure tests and exact commit; coordinator independently freezes the literal shared contract before B's two-path fake-CLI milestone.
+- [ ] B produces retained red/green pure tests and exact commit without running real CLIs; coordinator reviews both milestones and authorizes remaining same-scope implementation only when concrete.
+- [ ] Resolve reviewed image/toolchain pins, actual project/cost/recovery/operator/provider choices and exact integrated product evidence before any separately authorized staging action.
+- [ ] Obtain actual host/container IPv4/IPv6 metadata and storage denials, API SDK refresh/GetUser/platform success, mounted-disk/reboot/secrets behavior, signed/test commerce, backup/restore/alert delivery and final-origin TLS evidence; fake tests never certify these.
+- [ ] Keep cars.tk/Vercel and live data untouched until a concrete reviewed cutover and appropriate existing authorization apply.
+
+## Shared v1 interface frozen for first milestones
+
+## Fixed local layout and names
+
+- Root-owned host config: `/etc/autodata/host.json`, mode0600; nonsecret settings only. No implicit cwd lookup. Bootstrap alone installs it; helpers reject symlinks and wrong owner/mode.
+- Root-owned immutable release: `/opt/autodata/releases/<40lowerhex>/`; manifest `release.json`, standalone `compose.production.yaml`, Caddy/config/templates and released helper inputs. `/opt/autodata/current` is a root-owned symlink resolving exactly to one validated release directory; do not follow caller paths.
+- Fixed installed root helpers: `/opt/autodata/bin/deploy.sh`, `backup-host.sh`, `restore.sh`, `runtime-check.py`; only reviewed bootstrap/deploy administration replaces them. External backup/monitor callers cannot select an alternate executable or config path.
+- Data mount `/var/lib/autodata`, verified by configured filesystem UUID before any mkdir/start; owned subdirectories `postgres`, `seaweedfs`, `nats`, `caddy`, `backups`. New-directory ownership is initialized per service, not recursively across an unchecked mount.
+- Tmpfs `/run/autodata`: per-service secret subdirectories already specified in canonical plan; `registry/` for transient pull configuration; `state/` for root-only operation lock/lease. No service receives the whole tmpfs.
+- Persistent safe receipts `/var/lib/autodata/operations/<uuid>.json`,0600. Never put credentials/raw requests in receipts. Backup output directory `/var/lib/autodata/backups/<uuid>/`,0700, with `postgres.dump`, `release.json`, `backup.json`. Portable DB dumps are private customer data, not public artifacts.
+- Compose project `autodata-production`; service names exactly caddy/api/ingestion-http/article-worker/payment-reconciler/postgres/nats/minio plus profiles `migration`, `bootstrap`, `metrics` containing migration/bootstrap/metrics-probe one-shots. Normal start explicitly names only the eight normal services. Runtime images and service commands remain those in the canonical plan.
+
+All modes/paths above are shared literals, not caller-supplied values. A owns creation/validation and B consumes them. No path is added to the30 implementation files; these are runtime destinations generated by the existing scripts.
+
+## release.schema.json v1
+
+Strict JSON object, additionalProperties:false at every declared object. UTF-8 size<=1MiB, no duplicates, finite numbers only. References never carry secret values. Required fields:
+
+```
+schema_version: 1
+source_sha: <40lowerhex>
+platform: "linux/amd64"
+images: {api, ingestion, migration, caddy, postgres, nats, minio:
+  {reference:<registry/repository/name@sha256:64lowerhex>,
+   image_id:<sha256:64lowerhex>,
+   provenance_uri:<immutable artifact reference>,
+   sbom_uri:<immutable artifact reference>}}
+migrations: {runner_sha256:<64hex>,
+  files:[{name:<NNN_lower_snake.sql>,sha256:<64hex>}],
+  inventory_sha256:<64hex>}
+toolchain: {
+  docker_engine:{version:<exact string>,package_sha256:<64hex>},
+  docker_compose:{version:<exact string>,package_sha256:<64hex>}}
+service_config_sha256: <64hex>
+secret_versions: {<allowlisted SERVICE>:
+  {<allowlisted NAME>:"projects/<project>/secrets/<name>/versions/<positive decimal>"}}
+rollback_source_sha: <40lowerhex or null>
+```
+
+One ingestion image intentionally serves HTTP/article-worker/reconciler/metrics; service roles still have disjoint commands/mounts/secret-name allowlists. The release manifest contains images by image role, not duplicate worker image labels that could silently diverge. Image IDs are platform-specific locally inspectable identities; registry references are immutable content digests, not assumed equal to image IDs.
+
+Manifest digest = SHA256 of canonical JSON (UTF-8, sort_keys=true, separators=(',',':'), no trailing newline). Migration inventory digest = SHA256 of canonical JSON array `files` in filename order using the same encoding. The released shared runner and exact migration file tree are independently checked against those hashes. Require contiguous unique migration versions beginning001 and final manifest version matching actual schema; current application has040. Do not assume future count040 in generic release tooling. All references must be fully resolved and no `<...>`, `latest`, secret version alias, tag-only image or unknown field may reach apply/start.
+
+`service_config_sha256` binds canonical nonsecret service configuration JSON (the fixed application and topology settings), not secret bytes. A defines the literal settings object and exact service secret-name allowlists in its first reviewed schema milestone; B must consume that version unchanged. PUBLIC_ORIGIN must match the reviewed environment exactly. Record the fixed platform choice in cloud-bootstrap validation before applying a VM architecture.
+
+`rollback_source_sha=null` is allowed only for first installation. Otherwise its manifest must already exist and pass schema/image/config compatibility validation. A migration failure never implies permission to start an old image against a new schema.
+
+## Host operations and receipt/stream contract
+
+Freeze existing helper argv exactly as in canonical plan. Validate argument count as well as UUID/SHA shape. Helpers clear inherited environment, use absolute executables/pinned config, no shell sourcing/eval, no caller-selected command or path. Operation receipts on stdout are one JSON object (<=64KiB); bounded operational diagnostics go to stderr with no raw exceptions/secret content. Exit codes remain0 success/2 invalid input/3 missing dependency or guard/4 operation failure/5 timeout/6 incomplete recovery. A nonzero receipt must never contain passed:true.
+
+Common receipt fields: `schema_version:1`, `operation:<literal helper+verb>`, `run_id:<uuid or null for release check>`, `source_sha:<40hex or null before install>`, `status:passed|failed|timed_out|incomplete`, `started_at`, `finished_at` (UTC RFC3339), `checks:{<fixed allowlisted name>:boolean}`, `failure_code:<allowlisted code or null>`. Add only the operation-specific fields below; no raw command environment, customer IDs, tokens or query rows.
+
+- `deploy.sh check SHA`: passive local validation; reports manifest digest, disk UUID match, guard/config/secrets state, cached image identity, actual schema version. It must not migrate, contact providers, reconcile or hydrate. `start`/`resume` use the canonical ordered startup and no-work readiness; `maintenance` cannot silently stop Caddy maintenance on failure. `install` accepts only an already staged root-owned exact release and fixed host config, not an uploaded shell command.
+- `runtime-check.py check --release SHA`: receipt with service/DB/NATS/S3 allowlisted states and no-work counters. `metrics` emits a JSON object `{schema_version:1,source_sha,observed_at,metrics:[{name,value,unit,state}]}`; unique allowlisted names, finite numeric values, fixed unit/state enums, no dynamic labels. B maps these reviewed names to Cloud Monitoring descriptors; missing measurement is absent/unavailable, not zero. A and B review the exact metrics list in A's first milestone.
+- `backup-host.sh begin UUID`: serializes with a root-only lock, rejects a different active lease, enters maintenance/stops writers, creates the PG custom dump, stops stateful services, syncs and returns `state:quiesced`, `lease_expires_at`, `dump_sha256`, `dump_bytes`, `source_sha`, `manifest_sha256`, `disk_uuid`. Lease total<=1800s including resume reserve. Repeated same UUID returns its existing state without repeating a dump/snapshot; a completed UUID cannot start a new run.
+- `status UUID`: reports only that lease's state, expiry, dump/manifest identity and whether writers/stateful services resumed. Allowed monotonic states `preparing→quiesced→resuming→resumed`, with `failed|expired|incomplete` terminal evidence. An expired quiesced lease triggers the existing watchdog's bounded resume; it never becomes verified backup merely because services recover.
+- External B snapshots only after an unexpired quiesced receipt identifies the exact configured disk. B records snapshot resource/selfLink, operation identity, completion/cutoff timestamps and fixed manifest/dump hashes in its external receipt. No cloud token reaches host.
+- `resume UUID`: idempotently resumes only the matching lease/release, validates normal startup, records resumed or incomplete. A newer active lease cannot be resumed by an older UUID. Snapshot completion after lease expiry/resume is not a verified recovery point.
+- `export UUID` is the sole binary stdout exception: after successful resume, emit a tar stream with exactly regular `postgres.dump`, `release.json`, `backup.json`, no directories/symlinks/extra members, from that UUID directory. Status/manifest bytes and the independently verified dump hash remain available via status. B checks member paths/types/sizes/hash and stores the three objects under immutable `<UUID>/...` backup names; no general path export. Stream/client subprocess deadlines remain within canonical backup bounds. Routine backup principal has no delete permission.
+- `restore.sh restore|validate UUID`: only a separately staged root-owned isolated restore config/directory. Reject current/live data UUID/path and production writer egress before copying. Validate exact released manifests/schema/data/object references; no bank/model/payment calls. Cloud-ops stages the fixed receipt/input locations; no caller-selected root path or shell command reaches sudo.
+
+B's external final backup receipt additionally binds immutable bucket generations, dump SHA/bytes, snapshot identity/cutoff, source/manifest/schema, successful resume/readiness and cleanup. `last_verified_backup` advances only after all pass. A host receipt alone cannot certify the external upload/snapshot. Snapshot/restore permissions and platform bootstrap remain explicit owner-approved actions.
+
+## First integration checkpoint before builders diverge
+
+A first authors schema/constants/render tests and fixed helper parsers within its22 paths, with fake inputs only. Root independent review freezes schema version, config/secret-name maps, receipt fields, metrics list and installed paths. B develops its8 paths against those exact files via a coordinator-approved dependency merge. Breaking a field later requires a reviewed same-scope plan amendment, not accepting speculative aliases. Negative tests cover unknown fields/verbs/args, path/symlink/env substitution, stale lease resume, duplicate export members, secret/version aliases, wrong image/input/schema and malformed metric values.
+
+Actual toolchain/image pins and every unavoidable project-level snapshot IAM permission must be resolved/reviewed before apply/start. Actual unprivileged host+container metadata denial, API SDK refresh/GetUser, storage bridged/routed restrictions, OS Login/guest-agent operation, reboot, backup/restore and final-origin TLS remain real staging evidence; mocks cannot certify them. The trusted UID0 metadata exception and untrusted host/worker denial in62a47c remain mandatory. This proposal does not authorize new cloud scope or replace the canonical pre-implementation gate.
+
+
+## Passive schema observation: synchronized plan-only checkpoint
+
+**Historical A v3 material; superseded for the next A milestone by the synchronized plan-only catalog-only v2 correction below.**
+
+This six-document plan-only checkpoint starts from `bc62f86eac54eb81b61e4013f0e910f264556f6c`. Independent plan-only review approved the v3 contract artifact SHA256 `65fb0e202f21e95e503ecec001da561ac1efee4accbe7e2f6c74ba8557653625`. The approved draft artifact follows verbatim as the historical reviewed contract; its DRAFT ONLY label does not change this checkpoint's synchronized tracking status or authorize implementation. Its `paths.json` reference identifies the two implementation paths in the canonical task's `next_milestone.allowed_paths`; no extra repository file is required. The coordinator owns this planning checkpoint and the runbook update, including its B-owned documentation; original22+8 implementation ownership remains intact. No implementation is authorized until live Issue186/Project8 synchronization, committed/pushed status:synchronized records, pinned preflight and independent checkpoint approval.
+
+# Proposed bounded amendment: passive local schema observation
+
+Status: DRAFT ONLY. This document does not authorize implementation or execution.
+Previous approved A implementation: 6980138d2ad267f71b8b6165ddc3645e904da296 (integrated by coordinator as3578d98). Previous synchronized hosting checkpoint: fa30a2204dc8a5c0907d090ec4f41fdd8bec9b4b.
+
+## Purpose and boundary
+
+Add the smallest genuine schema-observation definition to `deploy.sh check SHA`. It must inspect an existing local Postgres container, execute one fixed read-only SQL query as the existing dedicated `autodata_metrics` role, and compare the complete ledger with the selected release manifest. This is an offline implementation milestone: all observation execution in tests is intercepted; no real Docker, Postgres, nft, systemd, cloud, credentials, provider or deployment action is authorized.
+
+The current pure schema validator is not evidence of an actual database. After this milestone, `checks.schema` may become true only after the fixed identity/query/ledger checks succeed. `checks.services` and `checks.runtime_evidence` stay false; successful partial checks still return exit3 and `missing_dependency`. Every mutation verb remains blocked before observations. No new secret files/mounts, password environment values, fallback admin credentials, role/grant application, migrations or service starts are included.
+
+## Required preexisting provision/auth contract
+
+A separately authorized future bootstrap/administration operation must provision the following before this collector is usable. This milestone must not provision them or pretend they already exist:
+
+1. PostgreSQL17 runs in the fixed Compose project `autodata-production`, service `postgres`, normal instance name `autodata-production-postgres-1`, UID/GID999:999. Its selected image ID matches the release's postgres image. Existing checked data disk is bound from `/var/lib/autodata/postgres` to `/var/lib/postgresql/data`, and the future provision contract configures PGDATA as `/var/lib/postgresql/data/pgdata`. This observed bind mount does not attest the effective server data_directory, config_file, hba_file or ident_file; PostgreSQL17 restricts data_directory to superusers. The collector must not request that setting or gain an elevated monitoring role to read it. Effective server-file placement remains a separately authorized administrative/staging proof. Secret directory `/run/autodata/postgres` is mounted at that same container path read-only. No additional credential directory is mounted.
+2. The fixed role `autodata_metrics` already exists with LOGIN, NOSUPERUSER, NOCREATEDB, NOCREATEROLE, NOREPLICATION, NOBYPASSRLS and NOINHERIT, and no role memberships. It does not own the autodata database and owns no application schema/table/sequence, cannot CREATE in the database or application schemas, and has no database TEMP privilege. Bootstrap must account for privileges inherited through PUBLIC, rather than relying on role flags alone.
+3. The role has CONNECT on `autodata`, USAGE on schema `public`, and SELECT on `public.schema_migrations`. Other SELECT grants, if needed later for the already planned fixed aggregate monitoring queries, require their own reviewed grant definitions. It has no INSERT/UPDATE/DELETE/TRUNCATE/REFERENCES/TRIGGER/MAINTAIN rights on application relations, no column-level INSERT/UPDATE/REFERENCES rights, no sequence USAGE/UPDATE rights, and no schema/database DDL ownership. Independently require rights.database_owner=false by comparing pg_database.datdba for the fixed autodata database with the fixed autodata_metrics role OID from pg_roles. Ownership cannot be inferred from has_database_privilege CREATE/TEMP: an owner can revoke those ACL privileges yet retain ALTER/DROP and the ability to regrant privileges. This explicit check is mandatory even when every database CREATE/TEMP capability check returns false. Effective checks must include privileges obtained through PUBLIC and PUBLIC defaults, not merely inspect explicit ACL entries for the role. Use PostgreSQL effective has_database_privilege/has_schema_privilege/has_table_privilege/has_any_column_privilege/has_sequence_privilege functions for the fixed role; these include PUBLIC grants. PUBLIC is ACL grantee0, not a role name to pass to those functions. PostgreSQL17 relation_write must also reject effective MAINTAIN from has_table_privilege, including a MAINTAIN-only grant when every ordinary DML privilege is absent; no additional collector call is needed. Check CREATE on every non-system schema and database CREATE/TEMP, ownership and write privileges across non-system relations/sequences, including objects in schemas the role currently lacks USAGE on; losing schema USAGE must not hide an existing write grant. Application namespaces mean all namespaces except pg_catalog, information_schema and pg_* internal namespaces. Ledger schema USAGE is independently required before accepting SELECT. This collector is not a substitute for separately reviewing runtime-grants.sql and complete application-role rights.
+4. Local socket authentication must allow this role without supplying a password. The intended provision is an explicit early `pg_hba.conf` rule `local autodata autodata_metrics peer map=autodata_metrics_probe`, and `pg_ident.conf` mapping `autodata_metrics_probe postgres autodata_metrics`; the image's OS user for UID999 must be `postgres`. This is future PGDATA provisioning: administration installs/protects the actual PGDATA pg_hba.conf and pg_ident.conf (or separately reviewed configured paths), validates their ordering/syntax and proves the effective rule/map. No new host bind mount or collector-owned config location is introduced. The collector neither creates nor edits these files and cannot infer their effective placement from Docker mounts or PGDATA environment text. Do not broaden TCP trust or use the administrator role to make the collector pass. The collector enforces a Unix socket and no password sources; it does not attest which effective pg_hba rule authenticated the session. Actual peer-auth rule selection is a later authorized staging proof.
+5. If the role, rights, PostgreSQL17 client, socket or authentication setup is missing, the collector stays unavailable. Password-required hosts do not gain a secret mount or password fallback from this amendment. No claim that current hosts satisfy these prerequisites is permitted.
+
+## Fixed local observation definition
+
+1. Run only fixed `/usr/bin/docker --host unix:///var/run/docker.sock container inspect --format FIXED_TEMPLATE autodata-production-postgres-1`. Its template emits only allowlisted identity/state/config/mount facts; never Config.Env, all labels, logs or secret contents. Bind a lowercase64hex container ID, selected postgres immutable image ID, exact Compose project/service labels, UID999:999, running/nonpaused state, and required bind mounts above. Bind `State.StartedAt` to detect a container restart across observation. Require the existing readonly root/capability/no-new-privileges expectations relevant to this fixed container, without claiming complete service readiness. Reject unexpected mounts that could shadow the data or socket locations; account explicitly for the already rendered fixed `/tmp` and `/var/run/postgresql` tmpfs. Implementation must verify the pinned Docker typed inspect/mount encoding from upstream before writing its independent fixtures.
+2. Execute by that validated container ID, never by a mutable name, with Docker `exec --user 999:999 --workdir /` and no privileged flag, interactive stdin, TTY, shell or caller command. Launch fixed `/usr/bin/env -i`, supplying only fixed PATH/LANG/LC_ALL, HOME=/nonexistent, PGPASSFILE=/dev/null, PGSERVICEFILE=/dev/null and fixed PGOPTIONS. No host/container inherited environment or user psql startup file is a fallback.
+3. Fixed client executable is `/usr/lib/postgresql/17/bin/psql`. The separately reviewed selected PostgreSQL17 image must supply it. Use `--no-psqlrc --no-password --no-align --tuples-only --quiet --host=/var/run/postgresql --port=5432 --username=autodata_metrics --dbname=autodata --set=ON_ERROR_STOP=1 --command=FIXED_SQL`. Do not call a shell, compose, application/worker code, migrations or provider probes. Missing binary is missing_dependency; do not search PATH for an alternate client.
+4. PGOPTIONS fixes `default_transaction_read_only=on`, `statement_timeout=2000`, `lock_timeout=1000`, and `search_path=pg_catalog`. SQL is one literal SELECT using fully qualified public.schema_migrations and catalog functions; it uses no caller parameters, dynamic SQL, writes, temporary objects, application-function calls or SET ROLE. It returns the exact protocol below. The query reads one database snapshot. No permanent current-schema040 literal is allowed. Concurrent hostile DDL by trusted administrators/migrators is outside this point-in-time collector's guarantees; it must not claim to prevent such DDL or certify effective server file placement.
+5. Query identity facts require session_user=current_user=autodata_metrics, current_database=autodata, server_version_num integer in170000..179999, transaction_read_only/default_transaction_read_only true, and Unix client address/port null. Check role flags/membership/ownership/create/temp/relation-write/column-write/sequence facts and expected CONNECT/schema USAGE/ledger SELECT as specified above. Use pg_roles/capability functions/catalog metadata only; never request password fields, pg_authid or any superuser-restricted setting. Do not grant pg_monitor, pg_read_all_settings or other broad membership to bypass an unavailable fact. Fail if required permitted facts cannot be observed.
+6. Before schema evidence is acceptable, the catalog facts must identify exactly `public.schema_migrations` as a permanent ordinary base table (`relkind=r`, `relpersistence=p`), not a view, materialized view, foreign table, partitioned table, partition or inherited relation. Require no inheritance links in either direction, relrowsecurity=false and relforcerowsecurity=false, and an ordinary NOT NULL nongenerated/nonidentity `version` column whose type OID is exactly pg_catalog.text (no domain or user-defined type). Its primary key must be exactly that one column. Require the role not to own the table/schema. Missing, ambiguous or incompatible catalog facts fail; SELECT success, a row count, or an RLS-filtered subset is not sufficient. Catalog/rights failures cannot be relabeled as an empty ledger.
+7. Bound the ledger before JSON aggregation: read at most MAX_LEDGER_ROWS+1 rows from the qualified relation, detect the extra row as overflow and fail. For every sampled value, check nonnull, octet_length<=MAX_LEDGER_VALUE_BYTES and the ASCII ledger grammar `^[0-9]{3}_[a-z0-9_]+$` before preserving it. Use CASE to avoid running the regex or copying an oversized value into an aggregate. Aggregate only bounded sanitized values, never raw invalid values. Return an invalid_value boolean rather than raw bad data. Order the bounded valid values with COLLATE "C". If the extra-row/invalid-value flag is set, expose no raw ledger list (use an empty array) and fail regardless of whether any prefix matches. Only a nonoverflowing, valid complete inventory with an exact integer version/count matching all selected manifest basenames may pass. A bounded prefix is never complete evidence.
+8. Strict duplicate/unknown-field JSON rejection, exact object/list/scalar types, fixed identity values and exact ledger/version comparison are mandatory. A missing/gapped/duplicated/unknown/reordered ledger, wrong count/version, incompatible server/relation/type/RLS, excess rights or malformed output cannot produce checks.schema=true. Do not put query rows or raw errors in receipts.
+9. Re-inspect the same validated container ID after SQL using the same allowlisted template. Require identical identity/image/mount/started_at facts and still-running/nonpaused state before accepting schema evidence. This is a point-in-time observation; it does not establish effective PostgreSQL configuration paths, future service health or resistance to trusted root changes.
+10. All observation subprocesses use the fixed clean host env, stdin DEVNULL, stderr DEVNULL, cwd=/, check=False semantics, per-call deadline5 seconds and total collector deadline15 seconds. Replace unbounded run/communicate capture for these new observation calls with streaming bounded capture: read chunks no larger than4096 bytes, retain at most the appropriate output cap plus one overflow byte, immediately kill the local CLI and close its pipe on overflow/deadline, then bounded wait/reap cleanup of at most1 second. The15-second observation deadline plus this exceptional cleanup allowance is a hard16-second outer bound; cleanup must not restart any command deadline. Never call unbounded communicate/read-to-EOF or accumulate all output before checking its size. All paths, including parse/error/timeout/capture overflow, close descriptors and attempt to reap the child; cleanup failure remains failed/unavailable. PostgreSQL statement_timeout bounds the remote SELECT even if the local Docker CLI is killed; do not claim local kill alone terminates a remote exec. A later whole-runtime capture refactor is outside this amendment.
+11. Missing executable/failed inspect/failed auth/failed SQL/malformed or over-cap output/rights or ledger mismatch returns exit3 missing_dependency with schema=false; deadline expiry returns exit5 operation_timed_out. No caller env/config/executable/path override or error-derived fallback. The frozen common receipt fields/helper argv stay unchanged.
+
+### Frozen protocol constants (code literals, never host.json fields)
+
+- SCHEMA_PROTOCOL_VERSION=1; POSTGRES_CONTAINER=autodata-production-postgres-1; POSTGRES_ROLE=autodata_metrics; POSTGRES_DATABASE=autodata; POSTGRES_SOCKET=/var/run/postgresql; POSTGRES_PORT=5432; POSTGRES_CLIENT=/usr/lib/postgresql/17/bin/psql. Fixed PGOPTIONS is one literal containing the settings above. Fixed Docker socket is unix:///var/run/docker.sock. No new configuration fields or manifest version are introduced.
+- MAX_LEDGER_ROWS=999; MAX_LEDGER_VALUE_BYTES=251; MAX_INSPECT_STDOUT_BYTES=65536; MAX_SQL_STDOUT_BYTES=524288; READ_CHUNK_BYTES=4096; COMMAND_TIMEOUT_SECONDS=5; COLLECTOR_TIMEOUT_SECONDS=15; REAP_TIMEOUT_SECONDS=1. Existing valid release filenames are bounded by the host filesystem255-byte basename limit, so their ASCII ledger basename minus `.sql` is at most251 bytes. Any future name/count/protocol expansion requires reviewed code/contract changes. No caller-supplied bound is accepted.
+- Host env is exactly PATH=/usr/sbin:/usr/bin:/sbin:/bin, LANG=C, LC_ALL=C. Container env after env-i is exactly PATH=/usr/lib/postgresql/17/bin:/usr/bin:/bin, LANG=C, LC_ALL=C, HOME=/nonexistent, PGPASSFILE=/dev/null, PGSERVICEFILE=/dev/null, and the fixed PGOPTIONS string. No inherited password/service/startup configuration is read.
+- Fixed SQL response is exactly one JSON object with keys `protocol_version`, `identity`, `rights`, `ledger_relation`, `ledger`. `protocol_version` must be integer1. Every nested key below is required; extra keys are rejected. Booleans must be actual JSON booleans, not integers/strings. A null fact is not false and is rejected unless explicitly allowed below.
+- identity keys: session_user/current_user/database (exact fixed strings); server_version_num (integer170000..179999); transaction_read_only/default_transaction_read_only (both true); client_addr/client_port (both null). There is no data_directory/config/hba/ident/PGDATA field.
+- rights keys: login (true); superuser/create_db/create_role/replication/bypass_rls/inherit (all false); membership_count (integer0); connect/schema_usage/ledger_select (all true); database_create/database_temp/database_owner/schema_create/schema_owner/relation_owner/sequence_owner/relation_write/column_write/sequence_write (all false). database_owner is the explicit pg_database.datdba=fixed-role-OID comparison for autodata and must be false; checking only CREATE/TEMP is insufficient. schema_create and each schema/relation/sequence owner/write boolean aggregate all non-system schemas/objects as specified above, not just public or the ledger. Missing permission to calculate a required aggregate is unavailable, not false.
+- ledger_relation keys: oid (positive integer); schema/name (exact public/schema_migrations); kind/persistence (exact r/p); is_partition/has_inheritance/rls/force_rls (all false); version_type (exact pg_catalog.text, derived from exact built-in type OID); version_not_null (true); version_generated/version_identity (both empty strings); primary_key_version (true). Every accepted catalog field is bounded: exact literals or nonnegative integer OIDs, not arbitrary names or definitions.
+- ledger keys: version (integer0..1000, bounded sampled row count); overflow/invalid_value (both false to pass); migrations (list of at most999 nonempty ASCII strings each<=251 bytes). Overflow sample1000 is a failure sentinel only; accepted version is exactly the nonempty selected manifest inventory length. The existing pure exact ledger validator consumes only the validated version/migrations projection. All wire facts stay internal; receipt schema remains unchanged except already allowlisted checks.schema may reflect this evidence.
+
+## Offline red/green verification
+
+Only modify the two A-owned implementation paths listed in paths.json after the new synchronized pinned gate passes. Do not edit B's runbook from the A branch.
+
+- Preserve existing64 focused tests and current redacted receipt/blocked-mutation contracts.
+- Build independent upstream-shaped fake Docker inspect and psql transcripts; tests must reject every unrecognized executable/argv and prohibit actual Popen/socket use. Existing disposable wrapper isolation tests remain the only harmless local process exception.
+- Positive fixture verifies exact fixed name-to-ID binding, SELECT-only role, socket-only fixed psql args, one SQL literal, fixed timeouts/env, full selected manifest ledger and final re-inspect; schema may be true while readiness is false and check still exits3.
+- Negative container cases: wrong project/service/image/user/ID, stopped/paused/restarted/replaced container, missing/wrong/shadowing bind mounts, incompatible fixed paths and changed StartedAt. Assert no SQL is attempted after initial identity failure.
+- Negative SQL cases: absent role/auth/client/socket, wrong current/session user, wrong database/server/socket identity; role flags/memberships/schema ownership/create/temp/relation-write/column-write/sequence rights drift, including PUBLIC-only and column-only grants and write grants in inaccessible schemas; missing SELECT/CONNECT/schema USAGE; non-read-only transaction; ledger replaced by view/foreign/partitioned/inherited/temp relation, text-domain/user-defined version type, nullable/generated/identity version, wrong primary key, RLS or FORCE RLS; unknown/duplicate/malformed fields, wrong types; complete ledger mismatch/gaps/duplicates/reordering/future versions. Assert no SQL requests data_directory or other restricted settings and no broad role membership is required.
+- Add a separate PostgreSQL17 MAINTAIN-only fixture: every ordinary DML/column write privilege is false but has_table_privilege(autodata_metrics, relation_oid, MAINTAIN) is true, so relation_write must be true and schema validation must fail. Include PUBLIC-derived MAINTAIN. No new collector call is introduced.
+- Add a distinct adversarial database-owner fixture: pg_database.datdba equals autodata_metrics OID while effective database CREATE=false and TEMP=false after self-revocation. It must still fail solely because rights.database_owner=true; retained ALTER/DROP/regrant powers make ownership unacceptable. Include a nonowner comparison fixture so an ordinary read-only role can pass. Missing/null/wrong-type database_owner is rejected by the strict protocol.
+- Bound tests:999 valid rows accepted only when manifest matches;1000-row sentinel rejected even if999-prefix matches;0/missing rows rejected;251-byte ASCII boundary and252-byte/oversized/null/non-ASCII/invalid grammar value cases; SQL fixture verifies bounds/sanitization before aggregation. Fake streaming children emit many small chunks and one oversized chunk to prove capped retention, no read after overflow, kill/close/bounded reap, deadline/cleanup failure paths and no partial-output success. Inspect cap65536 and SQL cap524288 get independent boundary tests. Never infer a capture bound merely from parsing an already-complete bytes object.
+- Exercise command failure, missing executable, timeout and post-query identity drift; assert schema=false, unchanged exit/failure rules, bounded command count, redaction and no fallback/mutation command.
+- Run focused tests, Python syntax, deploy shell syntax, git diff --check, exact scope and checkpoint/current-base preflight. Commit/push one coherent reviewed candidate and request independent review at the full immutable SHA. No integration or deployment claim from the builder.
+
+## Coordinator synchronization required before builder dispatch
+
+1. Review this amendment and append the approved contract to canonical hosting plan; add a concise prerequisite/limitation section to B-owned operations runbook from the coordinator checkout or via B owner.
+2. Update canonical architecture/release-orchestration references as needed to keep goal and concrete todo consistent. Update Issue186 and Project8 item with the same narrowed milestone, role/socket prerequisites, plan/runbook links, current status, exact checkpoint and explicit offline limits.
+3. Update task acceptance/todo and pre_implementation object; update the standalone record with matching goal/references/concrete todo, status:synchronized and actual timestamp. Do not silently reuse an earlier checkpoint for the new auth contract.
+4. Commit/push this plan-only checkpoint, pin its full SHA and pass machine preflight against it. Independently review the checkpoint before dispatching this bounded two-path A implementation. The full30 implementation ownership stays unchanged.
+5. Builder's next milestone must start from a branch containing the approved checkpoint and run pinned preflight before implementation. Runtime-grants provisioning, password/secret mounts, service/readiness/start/maintenance and actual execution remain separate unimplemented/unverified work.
+
+
+### Passive-schema checkpoint goal and concrete todo
+
+Goal: Implement the bounded passive PostgreSQL17 schema-observation definition with fixed local container/role/query protocol and fake-exec tests, preserving blocked deployment/readiness and separate runtime authorization.
+
+Status: `synchronized`; live tracking readback is complete. Commit/push, full-SHA preflight, coordinator integration/re-pin and independent checkpoint review remain required before implementation.
+
+- [ ] Synchronize the approved v3 passive-schema contract across Issue186/Project8, hosting plan, runbook, architecture/release references and task/record; commit/push a plan-only checkpoint and pass pinned preflight before coordinator dispatch.
+- [ ] Implement only runtime-check.py and test_host_runtime.py: fixed local PostgreSQL container identity, socket-only autodata_metrics role, fixed read-only SQL protocol, strict schema ledger/rights/relation checks and bounded streaming capture; no role provisioning, password/admin fallback or new secret mounts.
+- [ ] Write failing adversarial fake-exec tests for container/auth/role and database ownership, PUBLIC/column/MAINTAIN privileges, relation/type/RLS, ledger row/value bounds, capture limits/timeouts/cleanup and post-query identity drift; retain all64 existing focused tests.
+- [ ] Run focused tests, syntax, diff/scope and pinned preflight; commit/push one coherent candidate and obtain independent exact-SHA review before coordinator integration.
+- [ ] Keep service/readiness/runtime_evidence and all mutation/deploy verbs unavailable; actual role/PGDATA HBA/ident provision, effective configuration proof and Docker/DB/cloud/provider/staging execution require separate authorization.
+
+
+Tracking synchronization read back: [Issue186 comment6617024444](https://github.com/lucronn/autodata/issues/186#issuecomment-6617024444) and [Project8](https://github.com/users/lucronn/projects/8) item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4`, field `Source or dependency reference`, at `2026-11-03T22:27:57.522560+00:00`. The comment records the same v3 goal, five concrete todos, exact two-path implementation scope and offline limits; the project note indexes it. This is a plan-only synchronization checkpoint, not implementation dispatch or runtime/deployment authorization.
+
+
+## B release ZIP archive reader: synchronized plan-only checkpoint
+
+**Historical synchronized B checkpoint.** Its exact comment6617360191/protocol/future-publication limitations are preserved below. Offline implementation is independently approved and integrated at052bbf9; this historical checkpoint is not the current blocked A gate.
+
+**Goal:** Implement a bounded offline release ZIP archive verifier with independent archive and member SHA256 bindings, strict ZIP32 structure and JSON/image consistency checks; keep publication authentication and deployment unavailable.
+
+**Status:** `synchronized` after live [Issue186 comment6617360191](https://github.com/lucronn/autodata/issues/186#issuecomment-6617360191) and [Project8](https://github.com/users/lucronn/projects/8) item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4` readback at `2026-11-03T22:43:36.177270+00:00`. Planning source base is `a0eed5dce45171f5f94f72d99d2fdf694235df0d`; it is not an implementation authorization SHA. Independent review approved draft SHA256 `706f5fb2326ddc9e223547b4e95951f4643ba67d6b6e6a01d538198db0f319c6`. The canonical task/record and hosting queue index carry the same B goal/five todos/scope/limits. Project8 is a compact index to the exact issue-comment work queue and retains historical A/R6 checkpoint references. Prior passive-schema synchronized material above is historical A scope and cannot authorize B. Commit/push this seven-document checkpoint, pass machine preflight at its exact full SHA and obtain independent coordinator gate handoff before implementation dispatch. Preserve disjoint A and R6 work; do not broaden their scopes.
+
+**Architecture:** Add a pure bounded byte parser/consistency verifier in existing B code. It consumes independently approved ZIP/member digests and an already validated manifest/configuration. It does not fetch, execute, extract or authenticate anything. Existing raw-JSON fake transcript verification remains an explicitly simulated legacy definition; its `artifact_digest` is not reinterpreted silently as a ZIP digest.
+
+**Tech stack:** Python standard library (`struct`, `hashlib`, `binascii`, bounded `zlib.decompressobj`) plus existing runtime contract helpers; no new dependency or format library. The definition argues from this canonical hosting contract and `docs/agents/pre-implementation-gate.md`.
+
+### Exact scope and interfaces
+
+Only `infra/deploy/gce/cloud-ops.py`, `infra/deploy/gce/test_cloud_ops.py` and `docs/operations/workshop-gcp.md` may change in the future B implementation milestone. Coordinator owns this hosting plan, task, record, queue, architecture and release-plan synchronization. No runtime-check/schema/Compose/helper/A paths, R6 paths, workflows, CLI operations, application code or new implementation paths belong to B's milestone.
+
+Proposed helper signature:
+
+```python
+def verify_release_archive(archive_bytes: bytes, manifest: dict, *,
+                           expected_archive_sha256: str,
+                           expected_member_sha256: dict[str, str]) -> dict:
+    # Validated return: fixed digest/count/consistency receipt only.
+    # ContractError on malformed/unbound input or unsupported/corrupt ZIP.
+    ...
+```
+
+The caller must already run `rt.validate_manifest(manifest, config, rollback_manifest)`; this helper compares the supplied approved manifest without inventing configuration defaults. Require `type(archive_bytes) is bytes`, length 1..8388608, exact lowercase 64-hex digests without a `sha256:` prefix, and exact `expected_member_sha256` keys `release.json` and `images.json`. No binding may be inferred from the archive itself. Hash the whole original ZIP byte sequence before parsing; fail before decompression if it differs. This helper has no path/stream/callback/clock/network/subprocess interface, credentials, ambient configuration or authenticated GitHub claims.
+
+Return exact fields `schema_version: 1`, `status: archive_consistent`, `simulation: true`, `provenance_authenticated: false`, `deployment_authorized: false`, `archive_sha256`, `member_sha256` (the two verified raw hashes), `member_bytes` (the two bounded actual lengths), `manifest_sha256` (`rt.sha256(manifest)`), and `checks: {archive: true, members: true, manifest: true, image_observations: true}`. No extracted content or untrusted exception text enters the receipt. Failure raises only `ContractError('invalid release archive')` after catching format/decompression/JSON errors; no success receipt exists for partial verification. Existing CLI return codes/receipts and fake transcript API remain unchanged and fail closed.
+
+### Proposed producer protocol and parsing rules
+
+This is a proposed archive contract, not a claim that upload-artifact/GitHub currently emits it. The current workflow uploads nothing. A later separately gated publisher/transport milestone must prove its exact authenticated download bytes fit this subset, or amend/review the protocol before use. This implementation uses synthetic fixtures only and does not require actual artifact acquisition to pass its offline tests.
+
+The ZIP contains exactly two regular files in physical and central-directory order: ASCII `release.json`, then ASCII `images.json`. No directories or other members. Both bodies are nonempty strict JSON, at most `rt.MAX_JSON_BYTES` (1048576) each, at most 2097152 combined. `release.json` is the manifest; `images.json` is the existing fake verifier's exact role-to-image-observation object, with each role containing exactly the manifest image fields plus `platform`. These observations remain supplied assertions, never registry inspection or provenance.
+
+Use a strict ZIP32 structural parser before any body decode. Do not rely on `zipfile` central-directory acceptance, `testzip()`, or extraction as proof of local-record agreement. Treat every offset and length as untrusted; check the range is entirely inside the bounded original byte string before slicing/unpacking. No signature scanning, fallback parser, guessed boundary or recovery is permitted.
+
+1. Parse exactly the final 22 bytes as EOCD, require its signature, comment length zero, disk numbers zero, both entry counts exactly 2 and equal, no ZIP64 sentinel count/size/offset, and `central_offset + central_size == len(archive_bytes) - 22`. The central region must contain exactly two complete central file headers and their filenames, without gap/trailer/digital signature/ZIP64 locator/EOCD. Require per-member disk start zero, no extra fields or comments, and no sentinel sizes or local offset.
+2. Central names must be the exact ASCII byte strings above and unique. Reject NUL, Unicode/path alternatives and all other names. Compression method is 0 (stored) or 8 (DEFLATE). Allowed flags are exactly 0, 8, 2048 or 2056: optional data-descriptor bit3 and UTF8 bit11 only. Reject encryption and all other bits. Needed version must be 10 or 20, and must be 20 when method8 or descriptor bit3 is set. Creator OS must be DOS(0) or Unix(3); internal attributes must be zero, DOS directory/volume bits must be clear, and the Unix file type must be absent or regular, never symlink/device/FIFO/socket/directory. Attribute values do not select permissions or behavior.
+3. For each local header require the signature, identical exact filename bytes, method, flags, needed version and DOS date/time as its central record, and zero local extra length. Local file1 offset must be zero; each local header begins exactly where the preceding file data/descriptor ends. For flag3 clear, local CRC/compressed/uncompressed sizes must equal central values. For flag3 set, the local size/CRC triple must be either all zero or exactly the central triple; mixed placeholders fail. Central sizes always supply the bounded authoritative data range. Reject local ZIP64 sentinels regardless of flags.
+4. With flag3 set, precisely the bytes between `data_end` and the next independently recorded local offset (or central offset for file2) must be a 12-byte unsigned descriptor or 16-byte signed descriptor; signed form must start `0x08074b50`. Descriptor CRC/compressed/uncompressed sizes must equal the central values, with no ZIP64 descriptor. With flag3 clear no bytes may intervene. This handles an unsigned descriptor whose CRC happens to equal the signature without guessing: its bounded length determines the form. Central records and local data regions may not overlap or alias. The final local data/descriptor end must equal `central_offset`. No prepended bytes, padding, stale local records, duplicate central entries or trailing bytes are accepted.
+5. Require each declared compressed and uncompressed size >0 and <=1048576, cumulative declared/actual output <=2097152, and declared uncompressed size <=100 times compressed size. Stored entries require equal sizes. For DEFLATE use raw mode `zlib.decompressobj(-15)`, input chunks <=65536 and `decompress(chunk, remaining_output + 1)`; reject overflow before retaining it. Enforce bounded re-feeding of `unconsumed_tail`, rejecting any loop iteration that neither consumes input nor produces output; do not use an unbounded `flush()`. At the exact compressed range end require `eof`, empty `unused_data` and `unconsumed_tail`, exact output size and central CRC32. Reject truncated streams, concatenated streams and hidden trailing compressed data. At most 2 MiB of actual output and 8 MiB input can be retained, with no subprocess or external timeout claim.
+6. Hash each complete bounded raw output against the independently supplied member digest map before JSON interpretation. Parse via `rt.strict_json`, rejecting duplicate keys, floats/nonfinite numbers, unexpected shapes and type drift through existing strict helpers/canonical-byte comparison. Require canonical release bytes equal `rt.canonical_bytes(manifest)` and `rt.sha256(decoded_release) == rt.sha256(manifest)`. Raw `release.json` digest and canonical manifest digest are separate concepts and may legitimately differ because of formatting. Require exact image role keys and exact image field/platform shapes, then canonical equality to the manifest's approved image observations. Never treat matching observations as proof that images exist or came from a registry.
+
+### Concrete todo and test cycles
+
+- [ ] Synchronize this exact B archive-reader goal, ZIP32 producer contract, scope and todo across Issue186/Project8 and canonical documents; commit/push a plan-only checkpoint, pin its full SHA and pass machine preflight before coordinator dispatch.
+- [ ] Add failing synthetic archive tests for digest separation, strict local/central/EOCD and descriptor agreement, bounded stored/DEFLATE decoding, strict JSON and exact image observations; retain existing B tests.
+- [ ] Implement only cloud-ops.py and test_cloud_ops.py for explicitly supplied in-memory archive bytes and independently bound raw member digests; preserve existing fake transcript API and every fail-closed CLI operation.
+- [ ] Document proposed release.json/images.json producer layout, archive/raw-member/canonical-manifest digest meanings, fixed failure receipts and the lack of actual GitHub artifact compatibility or authenticated publication evidence.
+- [ ] Run focused B tests, Python syntax, diff/scope and exact-base preflight checks; commit/push a coherent candidate and obtain independent exact-SHA review before coordinator integration; cloud/provider/workflow/deployment execution stays separately gated.
+
+Task1 (tests plus parser implementation): first add deterministic valid stored/DEFLATE fixtures for both descriptor forms and flag11 variants; call the proposed helper and run `python -m unittest discover -s infra/deploy/gce -p test_cloud_ops.py -v` to observe the missing-helper failure. Implement the minimal bounded parser above and rerun. Test digest mismatch before body decode using an instrumented decompressor; separately corrupt each raw member digest and canonical manifest binding. Test semantically equal formatting with distinct raw digests, true-vs-1 drift, duplicate JSON keys and changed/missing/extra image/platform values.
+
+Add independently mutated binary fixtures for every structural rule: EOCD counts/disks/offset/size/comment/trailer; central/local names/flags/method/version/timestamps/extras; central file types/disk start/sentinels; duplicate and aliased offsets; prefix/padding/gaps/overlap; ZIP64 header/locator/descriptors; both descriptor forms, malformed signature/length/CRC/sizes and ambiguous CRC signature; CRC corruption; mismatched stored sizes; zero/oversize/aggregate/ratio bounds; truncated/concatenated/trailing DEFLATE streams; incremental output overflow. Rebind archive hashes for structural tests so rejection exercises structure rather than only outer digest failure. Retain existing CLI/fake transcript/workflow regressions and assert no helper failure text includes adversarial fixture strings. Run the same focused command to green before committing the coherent test/parser milestone under the coordinator's normal commit/push cadence.
+
+Task2 (documentation/acceptance): update only the runbook with this proposed layout, the three digest meanings, receipt limitations and separate future authenticated producer/transport gate. Run focused B tests and syntax compilation using `python -m py_compile infra/deploy/gce/cloud-ops.py infra/deploy/gce/test_cloud_ops.py`; run `git diff --check` and inspect the exact changed-path list. Rerun pinned preflight at the implementation boundary's actual committed planning SHA; a blocked draft result is expected until synchronization. Commit/push validated coherent milestones only after implementation dispatch; independent exact-SHA review precedes integration. No offline fixture or consistent receipt changes release/readiness state.
+
+
+## Catalog-only v2 correction: synchronized plan-only checkpoint
+
+Status: `synchronized` after live Issue186/Project8 readback. Independent plan-only review approved correction artifact SHA256 `7971a7ec0c260237dfea3f80be2318443981ffb40f8c63a2a3300dccf78a1d22`. This seven-document planning draft starts from integrated `052bbf9ac29a9c74163162f0f91adc2f6a656e4e` and contains no implementation. Blocked candidate `c51d637708c1e2ad24719e69d32ea87654c14473` remains unintegrated and excluded. Live Issue186 comment6617521783 and Project8 readback match the A goal/five todos/seven-doc scope/limits. Coordinator commit/push/integration/re-pin, exact-SHA preflight and independent checkpoint approval remain required before A implementation. The B archive checkpoint/source062d599/integratedb4953ef was synchronized at comment6617360191 and its independently approved offline implementation is integrated at052bbf9; that historical authority and unverified future-publication gate are preserved. A22/B8 ownership and R6/browser/application acceptance remain unchanged.
+
+Goal: Replace the unsafe passive schema ledger read with fixed catalog-only observation and adversarial fake-exec tests; keep schema, service and deploy readiness unavailable until a separately approved stable catalog-before-ledger protocol exists.
+
+Issue: https://github.com/lucronn/autodata/issues/186; Project: https://github.com/users/lucronn/projects/8, item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4`. Current v2 tracking is synchronized at comment6617521783 and matching Project8 readback; old comment6617024444 is historical only.
+
+## Finding and trust boundary
+
+The blocked SQL contains an unconditional `SELECT version FROM public.schema_migrations`. Catalog predicates returned alongside that SELECT are observations, not execution guards. Python validation occurs too late. A view, foreign relation, RLS policy, custom version type, custom table/index access method or expression index can invoke application/extension code during planning or execution, including code with external side effects despite a read-only transaction. A CASE/CTE/WHERE predicate in the same SQL statement is not a substitute: parsing, rewrite and planning may already consult the untrusted relation.
+
+Trusted scope is the selected PostgreSQL17 executable, built-in pg_catalog functions/operators/types and unmodified built-in system catalogs. Host root, PostgreSQL superuser, malicious extensions/hooks and modifications to built-in objects are outside any collector's guarantees. Never claim to resist those actors. Catalog-only reads must use fully qualified built-ins and cannot deparse/evaluate application expressions, call regclass output for arbitrary user objects, access pg_authid or request restricted settings. Mount observations still do not establish effective PGDATA/configuration.
+
+## Concrete PostgreSQL17 constraints
+
+Sources inspected read-only, with copies and hashes in /tmp/autodata-hosting-a-schema-correction:
+
+- https://www.postgresql.org/docs/17/sql-lock.html: SELECT permits ACCESS SHARE only; MAINTAIN/UPDATE/DELETE/TRUNCATE permits stronger modes. REPEATABLE READ must LOCK before the first SELECT to ensure the snapshot starts after lock acquisition.
+- https://github.com/postgres/postgres/blob/REL_17_STABLE/src/backend/commands/lockcmds.c: `LockTableAclCheck` implements that privilege rule. `LOCK TABLE ONLY` suppresses inheritance recursion, but a VIEW still enters `LockViewRecurse`; ONLY does not make a view into a safe table. Lock traversal is metadata work, not view execution, but it can acquire additional locks and is not itself validation.
+- https://github.com/postgres/postgres/blob/REL_17_STABLE/src/backend/tcop/pquery.c: `PlannedStmtRequiresSnapshot` explicitly exempts BEGIN, LOCK and SET; the first SELECT establishes the transaction snapshot.
+- https://www.postgresql.org/docs/17/explicit-locking.html and src/backend/commands/tablecmds.c: ACCESS SHARE blocks ACCESS EXCLUSIVE changes such as RLS/type replacement, but does not block CREATE INDEX or CREATE INDEX CONCURRENTLY. SHARE alone also permits ordinary CREATE INDEX because both use SHARE. SHARE ROW EXCLUSIVE conflicts with SHARE, SHARE UPDATE EXCLUSIVE and ROW EXCLUSIVE; it blocks these index/catalog changes and ordinary writes until release.
+- https://github.com/postgres/postgres/blob/REL_17_STABLE/src/backend/optimizer/util/plancat.c: planner relation inspection opens indexes, obtains access-method routines and index expressions. `enable_indexscan=off`, TABLESAMPLE, OFFSET0 or an EXPLAIN-before-SELECT approach is not accepted as a no-application-code boundary.
+- https://www.postgresql.org/docs/17/app-psql.html: repeated -c options share one connection, but cannot wait for Python validation between a catalog result and an already-queued ledger command. --command cannot combine SQL and psql meta-commands arbitrarily. A fixed script with \gset/\if is an additional server/psql validation language, not the existing Python trust boundary. It is not selected.
+
+Consequently no full ledger protocol satisfying all three current promises has been demonstrated: SELECT-only role, stable catalog-before-ledger execution boundary against concurrent DDL, and no privileged helper/new provision. Keeping the old no-concurrent-hostile-DDL disclaimer would weaken the requested stability property and is not an acceptable silent repair.
+
+## Decision for the next bounded milestone
+
+Select a catalog-only correction under the existing least-privilege role. No ledger query is sent at all, even for safe metadata; checks.schema remains false. This is useful prerequisite evidence but cannot establish a version or pass deploy check. It avoids broadening the role solely to make the probe operable. Full ledger observation remains blocked until a separate explicit privilege/provisioning decision and plan review.
+
+The next synchronized gate may authorize only runtime-check.py and test_host_runtime.py. It must explicitly replace the old one-SELECT/v1 schema-success contract with catalog-only/v2 unavailable-schema behavior. The coordinator chooses whether to salvage the reviewed inspect/bounds code from c51d637 or reimplement from the integrated branch; do not merge the blocked candidate directly. Do not add locking helper functions or grants in this milestone.
+
+Catalog-only protocol:
+
+1. Keep the fixed initial Docker inspect, identity/UID/mount/state validation, socket-only role, cleaned environment, fixed executable/argv and no-password behavior.
+2. Execute one fixed SELECT over built-in pg_catalog only. It returns protocol_version=2, phase='catalog', identity, rights and ledger_relation. No FROM/JOIN/CTE/EXPLAIN/COPY/TABLE/LOCK reference to an application relation is permitted. Object names occur only as fixed pg_catalog name comparisons. Query roles/rights/relation/type/RLS metadata with the existing strict bool/type rules; keep database_owner, PUBLIC, column privileges and MAINTAIN checks. AM/index metadata is explicitly deferred in v2: do not query/emit access-method, index, expression, predicate, opclass, collation or support-function metadata, and never call an application handler or deparse expression trees. Those facts are not needed to avoid a data read and are not attested by this catalog-only milestone.
+3. Preserve bounded capture, timeouts, strict duplicate/extra-field/type rejection and final same-ID Docker reinspection. Even complete valid catalog evidence yields schema=false, services=false, runtime_evidence=false and exit3 missing_dependency. No extra success receipt or runtime contract is introduced. Timeouts retain exit5.
+4. The pure ledger validator may remain as an offline utility but is disconnected from any actual relation query. No metadata flag, previously cached transcript or pure validator success can promote schema=true.
+5. Keep all mutation/start/maintenance/service verbs unavailable. Provision/auth/readiness are separate work.
+
+## Exact v2 response and validation contract
+
+Only this wire shape is accepted, with exactly five top-level fields and no arrays at any depth:
+
+```json
+{
+  "protocol_version": 2,
+  "phase": "catalog",
+  "identity": {
+    "session_user": "autodata_metrics", "current_user": "autodata_metrics",
+    "database": "autodata", "server_version_num": 170000,
+    "transaction_read_only": true, "default_transaction_read_only": true,
+    "client_addr": null, "client_port": null
+  },
+  "rights": {
+    "login": true, "superuser": false, "create_db": false, "create_role": false,
+    "replication": false, "bypass_rls": false, "inherit": false, "membership_count": 0,
+    "connect": true, "schema_usage": true, "ledger_select": true,
+    "database_create": false, "database_temp": false, "database_owner": false,
+    "schema_create": false, "schema_owner": false, "relation_owner": false,
+    "sequence_owner": false, "relation_write": false, "column_write": false,
+    "sequence_write": false
+  },
+  "ledger_relation": {
+    "oid": 1, "schema": "public", "name": "schema_migrations", "kind": "r",
+    "persistence": "p", "is_partition": false, "has_inheritance": false,
+    "rls": false, "force_rls": false, "version_type": "pg_catalog.text",
+    "version_not_null": true, "version_generated": "", "version_identity": "",
+    "primary_key_version": true
+  }
+}
+```
+
+The example OID1 and server170000 are illustrative valid values, not fixed identifiers. Exact required types/acceptance rules:
+
+- Root/identity/rights/ledger_relation are JSON objects with exactly the shown keys. protocol_version is an actual integer exactly2, not bool/float/string. phase is exactly the ASCII string catalog. Nested objects have no optional keys.
+- Identity strings and booleans are exactly the shown literals. server_version_num is an actual integer170000..179999 inclusive. client_addr and client_port are the only permitted nulls. No other null is accepted. No effective server/config/auth-file fact is inferred.
+- Every rights value except membership_count is an actual bool with exactly the shown expected value. membership_count is actual integer0. Existing metadata semantics remain fixed: database_owner compares autodata pg_database.datdba with the fixed role OID; effective privilege functions include PUBLIC; column INSERT/UPDATE/REFERENCES and PG17 table MAINTAIN are included; ownership/write aggregates cover non-system schemas/relations/sequences. Missing/unknown rights are not false. Privilege functions remain guarded by relation kind and cannot execute application code.
+- ledger_relation.oid is an actual integer1..4294967295 inclusive. Every other field is exactly the string/bool literal shown. Derive version_type by exact built-in text OID comparison, not by invoking type output functions or deparsing arbitrary names. Require exactly one public relation and one live version attribute; missing/ambiguous/incompatible facts fail (never fabricate a passing empty relation). Use pg_catalog metadata only to check inheritance, primary-key columns, type and RLS.
+- AM and all index metadata are explicitly deferred. There are no am/index keys and no index arrays/counts/hashes. The v2 result does not assert that the heap/index/planner path would be safe, nor that the relation will remain unchanged. Built-in heap, safe indexes, rewrite rules and DDL stability are mandatory subjects of a future full-observation gate, not implicit facts in v2.
+
+Fixed v2 bounds and framing:
+
+- Preserve MAX_INSPECT_STDOUT_BYTES=65536, MAX_SQL_STDOUT_BYTES=524288, READ_CHUNK_BYTES=4096, per-command5s, collector15s and exceptional reap1s. Capture cap is enforced while streaming, retaining at most cap+1, before JSON decoding. stderr/stdin remain DEVNULL. Host/container env and executable/argv remain the previously fixed literals except the v2 SQL constant. No ledger row/value bounds are exercised by a live v2 query because no ledger rows are read.
+- SQL stdout must contain exactly one UTF-8 JSON object plus optional ASCII SP/HT/CR/LF padding, all within the SQL byte cap. Strictly reject invalid UTF-8, multiple values/JSON-lines, a second row, trailing non-whitespace, empty output, duplicate keys at every level and NaN/Infinity. No parser coercions or replacement decoding. Reject nesting deeper than2 object levels (root depth1, the three nested objects depth2), any array token, or more than32 members in any object before accepting parsed facts. A string-aware bounded token/depth scan may enforce this before json.loads; parser recursion/error is a contract failure, not a receipt traceback.
+- Every decoded key and string value is ASCII and at most64 bytes. All accepted strings are also constrained to the shown exact literals; their actual maximum is therefore smaller. Numeric tokens are at most10 decimal digits, unsigned and canonical (no exponent/fraction/negative/leading-zero spelling); the scalar integer ranges above still apply. Booleans are not integers. No raw overlong/rejected values or SQL errors enter receipts.
+- Missing role/catalog object/client/socket/auth, invalid shape/type/value, unknown key/protocol/phase, SQL failure or capture overflow stays exit3 missing_dependency and all evidence flags false; deadline stays exit5 operation_timed_out. Valid catalog observations still exit3 with checks.schema=false, services=false and runtime_evidence=false. There is no catalog-only success receipt or bypass.
+
+### Required v1/cache disconnection
+
+Reject protocol_version1 before any compatibility projection. Reject a v2 object with a ledger field, ledger/version/count/overflow/invalid_value/migrations list at any location not explicitly in the exact fieldsets, v1 identity/rights/ledger_relation plus ledger, or any other extra field. Do not accept a bare {version,migrations} projection, arrays, a cached SQL transcript or a manifest-embedded observation as a catalog response. Do not implement protocol fallback or auto-upgrade. A legacy v1 object relabeled protocol_version2 is still rejected for phase/fieldset mismatch.
+
+The new runtime function is `collect_postgres_catalog(manifest) -> None`: successful validation returns None after final reinspection; errors raise the existing contract/timeout exceptions. The corresponding strict `validate_postgres_catalog(value) -> None` accepts only the v2 metadata shape. Remove the live `collect_postgres_schema` call/path and v1 observation validator rather than retaining a callable fallback. deploy_cli may call only the catalog collector for this prerequisite and must never assign its return value to checks.schema. Initialize checks.schema=false and leave it false unconditionally in this milestone. It cannot depend on catalog validation, cached images, migration-tree hashes, manifest ledgers or an offline validator result. No config/env/CLI input enables schema success.
+
+The existing pure `validate_schema_ledger(manifest, value)` may remain to test offline inventories, but no runtime check, catalog collector/validator or dispatch path calls it for observed schema evidence. A cache/offline utility returning True is never proof of a live version. Services/runtime_evidence and mutation dispatch remain independently unavailable. There is no new callable service/readiness function in this milestone.
+
+## Full catalog-before-ledger protocol: necessary new contract, not authorized
+
+This section makes the feasibility boundary concrete; it is NOT a proposed automatic grant or an implementation task. It is a policy-changing alternative requiring separate owner approval and independent plan review. It contradicts the current SELECT-only/MAINTAIN=false role contract and may be rejected on that basis.
+
+A direct-client strong-lock design would need an explicit new capability on the dedicated role, such as MAINTAIN on precisely public.schema_migrations, plus new checks that distinguish that deliberately permitted capability from all other relation writes/maintenance. MAINTAIN is not read-only: it permits maintenance operations, so do not call this role least-privilege read-only. Never choose UPDATE/DELETE/TRUNCATE instead. No such grant is authorized here.
+
+If that policy were separately approved, the concrete sequence must be:
+
+1. One persistent fixed psql process, bound to the validated container ID and socket role, stdin PIPE instead of DEVNULL and Docker exec --interactive solely for that bounded fixed input stream. No TTY/shell/caller SQL. Outbound writes are fixed byte constants, length-bounded and deadline-bounded; stdout uses bounded framed streaming. No process-per-query reconnect.
+2. Send only `BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY; LOCK TABLE ONLY public.schema_migrations IN SHARE ROW EXCLUSIVE MODE;` followed by one fixed catalog SELECT. No SELECT may precede LOCK: BEGIN/LOCK/SET establish no snapshot, so the catalog SELECT starts the transaction snapshot after the conflicting DDL/writes have drained. Lock/statement timeout remains bounded. Validate catalog output in Python before sending any ledger statement.
+3. Catalog validation additionally requires built-in heap AM, no rewrite rules, no inheritance/partition/RLS, exact built-in text column and safe primary key; all indexes must be bounded and restricted to the expected valid built-in btree/text_ops primary key with no expressions/predicates/custom opclasses/collations/support functions. Reject incompatible extra indexes rather than relying on planner settings. Exact built-in identities must be pinned to the supported PG17 catalog contract, with separate upstream validation. Lock and metadata queries must emit no raw definitions or application values.
+4. Only after successful Python validation send the fixed bounded ledger SELECT using ONLY public.schema_migrations and fully qualified built-in functions/operators/C collation. No dynamic identifier or value from JSON enters SQL. Send no ledger bytes on error, EOF, cap overflow, timeout, invalid facts or unexpected extra output. Same process and open transaction preserve snapshot and table lock; do not commit/reconnect in between.
+5. Validate exact ledger/count/bounds, then send only ROLLBACK and a fixed terminal frame; require clean exit. On rejection send fixed ROLLBACK if safely writable, otherwise close stdin and bounded kill/reap. Local Docker termination does not prove remote psql termination: add fixed server-side idle_in_transaction_session_timeout and statement_timeout to bound abandoned locks. These timeout values and the streaming protocol require fresh review rather than silently reusing the old 16-second outer-bound claim.
+6. Reinspect the container after the psql transaction exits; only then consider schema success. Hold the lock across catalog validation and ledger read; reject any uncertain transaction lifecycle. This lock temporarily blocks migrations and ordinary ledger writes, so this is not a zero-interference observation.
+
+A SECURITY DEFINER function is not a shortcut under the old contract. It introduces trusted provisioned code, owner/ACL/search_path/definition-hash checks and new runtime-grants.sql scope. A SELECT calling a lock helper also establishes the REPEATABLE READ snapshot before the helper obtains the lock, so it does not implement the LOCK-before-first-snapshot sequence above. DO/SQL CASE/dynamic SQL cannot be substituted without a separately proven snapshot and privilege design. No such helper is proposed in the bounded catalog-only milestone.
+
+## Offline implementation and adversarial acceptance after a new gate
+
+- [ ] Add failing fake-exec transcript tests first. The fake rejects every unknown argv and every SQL string except the fixed catalog literal. Each transcript maintains `application_code_executions=0`; a ledger-plan/read, EXPLAIN, view expansion, FDW access or dynamic relation command increments/fails immediately. Assert the counter remains0 on both accepted-catalog and rejected-catalog paths. This proves client command sequencing, not PostgreSQL execution semantics.
+- [ ] Catalog fixtures individually reject view, foreign table, RLS/FORCE RLS and incompatible text-domain/custom-type/primary-key facts represented by the exact v2 metadata. Fake-world fixtures also contain sentinel RLS policies, custom output functions, table/index AMs and expression/predicate indexes; AM/index details are deliberately not emitted in v2, so those fixtures test absence of any data/planning command, not rejection of an unobserved AM/index fact. On every fixture application-code counter stays0, receipts stay redacted and schema=false. Valid ordinary-table metadata also cannot promote schema=true.
+- [ ] Enumerate every v2 required field with absent/extra/null/type/boundary/value mutations; add duplicate JSON keys, nonfinite numbers, exponent/float/bool-as-int, invalid UTF-8, excessive depth/member count, arrays, over64-byte/Unicode strings, second JSON row and cap+1 streams. Test exactly the documented acceptance ranges and timeout mapping. Reject original v1, v1 relabeled v2, v2-plus-ledger, standalone pure projections and cached ledger transcripts. Patch the offline ledger validator to return True (and separately to raise if called) and verify valid cached images/tree/catalog still yield schema=false and exit3. Assert dispatch/runtime call paths have no schema=True assignment or live/pure-ledger fallback.
+- [ ] Race fixtures change relOID/type/RLS/index metadata before/after the catalog response. Because the selected correction never reads ledger data, no race creates a data-query opportunity. Missing permission, malformed facts, extra rows/fields, overlong metadata, deadline and truncated frame cases fail closed.
+- [ ] Preserve independent adversarial database-owner/PUBLIC/column/MAINTAIN fixtures, fixed socket/role, wrong identity/mount/restart tests, bounded streaming/deadline/kill/reap tests. Assert no stdin PIPE, --interactive, grants, locks, helper creation or new executable appears in this milestone.
+- [ ] Run `python -m unittest discover -s infra/deploy/gce -p test_host_runtime.py -v`, Python syntax, deploy.sh shell syntax, git diff --check, exact two-path scope and pinned record preflight. No Docker, DB, nft, systemd, cloud, provider or paid execution.
+- [ ] Request exact-SHA independent review before integration. No tests may be described as proving actual view/FDW/RLS nonexecution on PostgreSQL; that stronger runtime proof requires a separately authorized disposable PG17 adversarial harness. A future full-lock protocol must test actual concurrent DDL barriers, first-snapshot ordering, expression/index handler sentinels, lock permissions, transaction abort and remote idle cleanup before readiness claims.
+
+
+### Catalog-only v2 concrete todo
+
+- [ ] Synchronize the reviewed catalog-only correction and blocked c51d637 evidence across Issue186, Project8 and seven canonical files including the coordinator queue; commit/push, independently review and pin a new passing preflight checkpoint before builder dispatch.
+- [ ] Modify only runtime-check.py and test_host_runtime.py to remove all live ledger reads, implement the fixed built-in-catalog-only v2 observation, and retain fixed identity/auth/bounds/reinspection without new grants/helpers or interactive stdin.
+- [ ] Add red/green fake-exec tests proving no ledger SQL is sent for any catalog fixture, including view/foreign/RLS/custom type/custom AM/expression index and concurrent-change transcripts; preserve all existing applicable offline tests.
+- [ ] Run focused tests, syntax, scope/diff and pinned preflight; commit/push a coherent two-path candidate and obtain exact-SHA independent review before integration.
+- [ ] Keep schema/services/runtime_evidence false and all mutation/deploy verbs blocked; any stronger lock privilege, provisioned helper, persistent interactive client, effective auth proof or real PostgreSQL/Docker/cloud execution needs separate approved scope/gate.
+
+Implementation scope after a new passing checkpoint: only `infra/deploy/gce/runtime-check.py` and `infra/deploy/gce/test_host_runtime.py`. Seven-document planning scope is hosting plan, operations runbook, architecture, production-release plan, hosting task, hosting record and coordinator queue. Coordinator commit/push is the only current checkpoint action; implementation, runtime commands and stronger-role grants remain unavailable until separately authorized after the pinned gate.
+
+Coordinator integration index: [Issue186 comment6617490673](https://github.com/lucronn/autodata/issues/186#issuecomment-6617490673) records root052bbf9 and B/R6 integration. It is integration history only; A v2 goal/todos are now separately synchronized by comment6617521783 and matching Project8 readback.
+
+Tracking receipt: [Issue186 comment6617521783](https://github.com/lucronn/autodata/issues/186#issuecomment-6617521783), [Project8](https://github.com/users/lucronn/projects/8) item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4`, field `Source or dependency reference`, read back at `2026-11-03T22:52:39.567389+00:00`. Exact comment SHA256 `a4164a5bf2dc5edf986ed95aed7b26e8ace7419f3e576fbb8e49bae3dd319df1`; Project text SHA256 `78148627386a398901d82a8b2e5577c51cd2a32958e99c43c24513572415396a`. The compact Project index retains historical A/B/R6/current integration references and points to the full exact A goal/five todos/scope. Tracking synchronization is plan-only; no builder dispatch or live operation is authorized.
+
+
+## PostgreSQL17 schema observation harness successor: planning checkpoint
+
+Goal: Prove a bounded catalog-before-ledger protocol under an explicit ledger-only MAINTAIN capability in a disposable PostgreSQL17 adversarial harness; preserve the production catalog-only v2 collector and every release/readiness denial.
+
+Canonical decision-complete plan: `docs/superpowers/plans/2026-11-03-workshop-schema-observation-harness.md`; dedicated task `docs/agents/tasks/2026-11-03-production-release/workshop-schema-observation-harness.json`; record `docs/agents/records/2026-11-03-workshop-schema-observation-harness.json`. Source base `ee57cd13a2f4e0a15d9e1212acfd1779451a4a91`. This successor leaves integrated catalog-only v2 (`5bf59c2`, gate `3a511f1`) intact and excludes `c51d637`. It proposes only a disconnected module plus pure tests and an opt-in disposable local PG17/C-sentinel harness. Separate test-only autodata_schema_probe has ledger SELECT+MAINTAIN, no ownership/memberships/writes; trusted NOLOGIN autodata_schema_owner owns the ledger. Strong lock before first snapshot, complete catalog validation before ledger bytes, actual positive sentinel controls, concurrent DDL barriers and server idle cleanup are required. MAINTAIN is explicit maintenance authority; production autodata_metrics and provisioning remain unchanged. No production helper, grant, collector integration, Docker/cloud/provider/DNS action or readiness claim. Independent coordinator review and pinned passing preflight remain required before any builder dispatch.
+
+Prospective implementation allowlist: `infra/deploy/gce/schema_probe.py`, `infra/deploy/gce/test_schema_probe.py`, `infra/deploy/gce/test_schema_probe_pg17.py`, `infra/deploy/gce/testdata/schema_probe_sentinel.c`, `infra/deploy/gce/testdata/schema_probe_fixtures.sql`. DTO/browser/R6 and all existing runtime/operations implementation paths are excluded.
+
+Concrete todo:
+
+- [ ] Synchronize this exact harness goal, privilege decision, five-path implementation allowlist, tests and release limits in Issue186/Project8 and canonical documents; commit/push and pass pinned preflight before independent coordinator gate review.
+- [ ] Add failing pure transport/state-machine tests and implement the disconnected fixed-SQL schema_probe module with lock-before-snapshot catalog validation, bounded ledger framing and rollback-only cleanup.
+- [ ] Build the local-only PG17 harness and C sentinels with a non-owner SELECT+MAINTAIN probe role and trusted NOLOGIN ledger owner; demonstrate every sentinel fires in an intentional negative control before testing observer rejection.
+- [ ] Run actual disposable PG17 safe/hostile relation, index, privilege, concurrent DDL, first-snapshot and abandoned-session cases; retain red/green receipts, hashes and cleanup proof without running application services or contacting providers.
+- [ ] Run focused regressions, scope/diff and exact-base preflight; commit/push a coherent candidate for independent exact-SHA review, keeping production grants, collector integration, authenticated publication, services, deployment and cars.tk cutover behind later gates.
+
+Tracking synchronized by live Issue186 body/comment6618084753 and Project8 item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4` field `Source or dependency reference` readback at `2026-11-03T23:26:27.924126+00:00`. Exact goal, five todos and five-path scope match the full issue body/comment; the compact Project index links that comment and retains historical DTO/A/B/R6 references, with its previous text preserved verbatim there. Dedicated record stores SHA256 readback hashes. Independent checkpoint review remains pending; synchronized tracking does not authorize a builder or live operation.
+
+
+## Disconnected publisher and fixed host-check successor: planning checkpoint
+
+Goal: Implement concrete disconnected publisher orchestration for fixed checkout, three image builds/pushes, SBOM/provenance verification and release artifact upload through injected executor/transports, plus a bounded fixed IAP host check; preserve all live execution and readiness denials.
+
+Status: synchronized after live Issue186 comment6621071257 and matching Project8 readback. Source base `eddcf724028683dbb083191e4f8c42064b866bf0`. Canonical decision-complete plan: `docs/superpowers/plans/2026-11-03-workshop-publisher-transport.md`; dedicated task `docs/agents/tasks/2026-11-03-production-release/workshop-publisher-transport.json`; record `docs/agents/records/2026-11-03-workshop-publisher-transport.json`. This additive successor preserves historical A/B/PG17 authority. It proposes concrete injected-executor checkout/build/push/SBOM/provenance/upload orchestration, deterministic inner ZIP production and one fixed IAP `deploy.sh check SHA` request. Implementation allowlist is cloud-ops.py, test_cloud_ops.py and this operations runbook. No workflow/runtime-check/deploy/grants/application edit or real image build/publication/transport/signature verification, cloud/provider/container execution or readiness promotion is authorized. Fake interfaces exercise the complete production operation order; authentic adapters remain separately gated. Actual GitHub artifact download compatibility and authenticated publication remain unverified; the historical B future_publication_gate is unchanged. Valid host replies remain unavailable with schema/services/runtime_evidence false. Owner identities and production/paid/browser acceptance remain separate requirements.
+
+Concrete todo:
+
+- [ ] Synchronize this exact publisher-orchestration/host-check goal, three-path allowlist, fixed checkout/build/push/evidence/upload operations, trust/DTOs and five todos in Issue186/Project8 and canonical documents; preserve prior Project index, commit/push and pass pinned preflight before independent coordinator gate review.
+- [ ] Add failing fake-executor publisher sequencing tests and implement fixed source checkout, three digest-bound build/push operations and post-build registry identity verification; no real executable, network or credential discovery may run.
+- [ ] Implement deterministic inner release.zip production, bounded SBOM/provenance publish/verify and artifact upload/readback through injected interfaces, with versioned independent transport/payload/member/manifest digests and adversarial identity/subject/signature fixtures.
+- [ ] Add failing fixed IAP host-check tests and implement only the configured VM deploy.sh check SHA request with strict failed-readiness receipt handling; keep every mutation, schema/service/runtime readiness and CLI/workflow activation unavailable.
+- [ ] Run focused B and unchanged A regressions, syntax, scope/diff and pinned preflight; commit/push coherent candidates for independent exact-SHA review, retaining red/green evidence and actual authentication/archive compatibility, owner/provider, staging and paid-product gates.
+
+Tracking synchronization, committed pinned preflight and independent coordinator review remain required before implementation dispatch.
+
+
+Publisher successor tracking readback: [Issue186 comment6621071257](https://github.com/lucronn/autodata/issues/186#issuecomment-6621071257), Project8 item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4` field `Source or dependency reference`, verified `2026-11-04T02:40:50.163236+00:00`. Exact issue body/comment and Project index SHA256 hashes are retained in the dedicated publisher record. Prior Project index is preserved verbatim with hash in that comment. This is synchronized planning only; committed pinned preflight and independent coordinator review still precede any builder dispatch. No implementation or actual publication evidence exists.
+
+
+## Migration-only publisher build argument correction: planning checkpoint
+
+Goal: Correct only the disconnected publisher migration build argv to pass POSTGRES_IMAGE from the reviewed immutable manifest postgres reference before --file; preserve other-role argv, fake-only execution and every authority/readiness denial.
+
+Status: synchronized after live Issue186 comment6621206696 and matching Project8 readback. Source publisher candidate `30cab10e548a3e078055b08447253ea90cc36bdc` (draft PR189). Dedicated plan `docs/superpowers/plans/2026-11-03-workshop-migration-build-arg.md`, task `docs/agents/tasks/2026-11-03-production-release/workshop-migration-build-arg.json`, record `docs/agents/records/2026-11-03-workshop-migration-build-arg.json`. This successor changes only the previously frozen build_migration vector: insert `--build-arg`, `POSTGRES_IMAGE=` plus the already validated immutable `manifest.images.postgres.reference` immediately before `--file`. API/ingestion argv remain exact originals. Future implementation allowlist is cloud-ops.py, test_cloud_ops.py and runbook; no Dockerfile/schema/workflow/runtime/PG17/R6 edit. Exact fake-argv/digest-propagation/ambient-ignore/no-default/invalid-reference-before-callback tests are required. No real build/PG17 compatibility/publication evidence is claimed; every existing simulation, live-operation and readiness denial remains. Historical publisher/PG17/R6 checkpoints are preserved; this correction cannot authorize their expansion.
+
+Concrete todo:
+
+- [ ] Synchronize this exact migration-only build-argument correction, three-path future scope and five todos in Issue186/Project8 and canonical documents, preserving the full prior Project index verbatim/hash; commit/push and pass pinned preflight before independent plan review and coordinator dispatch.
+- [ ] Add failing exact fake-executor argv tests proving only build_migration receives --build-arg POSTGRES_IMAGE=<manifest.images.postgres.reference> immediately before --file while api/ingestion retain their existing complete argv.
+- [ ] Implement the migration-only argument in cloud-ops.py from the already validated immutable manifest; reject missing/tag-only/malformed postgres references before callbacks and ignore all ambient/default POSTGRES_IMAGE or caller build-argument overrides.
+- [ ] Run fake digest-propagation, no-fallback and unchanged publisher/host regressions, document that no Docker build or PostgreSQL17 runtime compatibility is proved, and retain every red/green/failure receipt outside the checkout.
+- [ ] Run focused B/A suites, syntax, diff/scope and pinned preflight; commit/push a coherent three-path candidate for independent exact-SHA review without integrating, activating workflows, accessing credentials or running any real build/cloud/provider/host operation.
+
+Commit/push, pinned preflight, independent exact-plan review and coordinator dispatch remain required before code.
+
+
+Migration-only correction tracking: [Issue186 comment6621206696](https://github.com/lucronn/autodata/issues/186#issuecomment-6621206696), Project8 item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4` field `Source or dependency reference`, verified `2026-11-04T02:50:39.563760+00:00`. The dedicated correction record stores exact body/comment/index hashes; the comment preserves the prior index verbatim/hash. This is plan-only synchronization; committed pinned preflight, independent exact-plan review and coordinator dispatch still precede implementation. No code or live execution is authorized by this checkpoint alone.
+
+
+## Workshop authenticated publisher adapter successor: planning checkpoint
+
+Goal: Build bounded real GitHub Actions artifact, registry/evidence and fixed IAP check adapters behind an independently controlled activation boundary, preserving all production and runtime readiness denials.
+
+Independently approved pre-sync design SHA256 `2e17c0e153ead31ae71e67b535b5d1d46b3ec10f401b8c3883773fe8c1aa4142`. Source base `1a0e2740171e6e0a2aa0bbc97a36299ecbf2106c` (publisher candidate30cab10 plus migration correction1a0e274); branch `codex/workshop-authenticated-publisher-plan`. This is a docs-only planning checkpoint; independent exact-checkpoint review and coordinator dispatch remain required before any implementation. Issue186/Project8 serialization follows PG17 acquisition-overlay gate26989e1/receipt80d4a20; those separate authorities, blockers and queue references are preserved.
+
+Plan: `docs/superpowers/plans/2026-11-03-workshop-authenticated-publisher.md`. Task: `docs/agents/tasks/2026-11-03-production-release/workshop-authenticated-publisher.json`. Record: `docs/agents/records/2026-11-03-workshop-authenticated-publisher.json`. Canonical refs: `docs/superpowers/plans/2026-11-03-workshop-publisher-transport.md`, `docs/superpowers/plans/2026-11-03-workshop-hosting.md`, `docs/operations/workshop-gcp.md`, `docs/architecture/infrastructure-and-dev.md`, `docs/superpowers/plans/2026-11-03-production-release-orchestration.md`.
+
+Concrete actual-adapter scope: real bounded HTTPS/GitHub Actions official-toolkit upload/raw download/OCI registry/WIF/process/IAP adapters; build-once signed immutable candidate from approved source/config/four dependencies, independent signed complete-v1-manifest approval, then finalize without rebuild/copy/per-image evidence regeneration. Post-upload signed binding authenticates returned artifact ID, outer digest/length and exact originating run+attempt using fresh SDK UploadSession evidence and verified attempt-bearing signer URI; current run endpoint cannot establish artifact attempt. Preserve source/workflow SHA split, actual outer ZIP one release.zip vs unchanged inner two members, terminal digestMismatch/digest/expiry failure and older-attempt artifact rejection despite identical inner bytes. Carry independently supplied bounded rollback_manifest through candidate/finalize/verify/host revalidation with unchanged v1 invariants and canonical approved hash; never invent image/evidence hashes or silently rewrite approval. Migration POSTGRES_IMAGE remains explicit immutable reviewed input.
+
+Future implementation allowlist (exact9 paths):
+- `infra/deploy/gce/publisher_adapters.py`
+- `infra/deploy/gce/publisher_artifact.mjs`
+- `infra/deploy/gce/publisher-toolkit/package.json`
+- `infra/deploy/gce/publisher-toolkit/package-lock.json`
+- `infra/deploy/gce/test_publisher_adapters.py`
+- `infra/deploy/gce/test_publisher_artifact.mjs`
+- `infra/deploy/gce/test_release_workshop_contract.py`
+- `.github/workflows/release-workshop.yml`
+- `docs/operations/workshop-gcp.md`
+
+Owner identities/protected environments/resources/WIF/IAM, toolkit/tool/action/Sigstore pins, approved origins and actual artifact compatibility semantics, upstream evidence policy, independent manifest-approval public key and fixed host-key/remote deadline proof are prerequisites to separately authorized staging. Code/tests may implement the real paths using injected fake/local process/transport/crypto dependencies; no live credentials or operation is authorized here. Existing production publish/deploy jobs and cloud CLI remain blocked; staging definitions retain unconditional precredential blockers. No schema/services/runtime_evidence readiness, provider/cloud/registry/host/build/upload/signing/staging/production activation, integration, deployment or owner policy installation is authorized by this planning checkpoint.
+
+Concrete todo:
+- [ ] After accepted migration review and root tracking release, synchronize the authenticated adapter-only goal, v3 identity/digest contracts, exact allowlist, five todos and activation exclusions across Issue186/Project8/canonical docs; commit/push, pin and independently review a machine-passing checkpoint before implementation.
+- [ ] Implement bounded authenticated I/O, strict real-wire projections, separate workflow/source identity, official-toolkit single-file upload, original outer ZIP decoding and post-upload signed originating-attempt binding with terminal digestMismatch/expiry/digest/older-attempt rejection; retain every existing v2 and CLI denial.
+- [ ] Implement actual build-once registry candidate push/SBOM/provenance verification, independent manifest approval and rebuild-free finalization plus separate fixed IAP check library, preserving independently supplied bounded v1 rollback_manifest through every phase and migration POSTGRES_IMAGE, credential/issuer/audience separation, pinned trust/tooling and bounded cleanup; reject candidate/approved-manifest/rollback mismatch without rewriting approval.
+- [ ] Add adversarial fake/local contract tests and a dormant protected staging workflow definition with unconditional precredential blocker; preserve unchanged production jobs, false readiness and all existing application/schema/deploy authority boundaries.
+- [ ] Run focused regressions, syntax/scope/diff and pinned preflight; commit/push coherent candidates for independent exact-SHA review, document missing owner/tool/origin/host/staging evidence and stop before any activation or live operation until a separate synchronized gate authorizes it.
+
+
+Tracking readback: [issuecomment-6621425159](https://github.com/lucronn/autodata/issues/186#issuecomment-6621425159), Project8 item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4` field `Source or dependency reference`, verified `2026-11-04T03:06:38.051955+00:00`. Exact body/comment/Project/prior-index hashes are in the dedicated synchronized record. Full predecessor Project index SHA256 `4e26f3831956fb10f26a64e5b791e27f502a35e3ead19015622e118d22dfec20` is preserved verbatim in that comment. This synchronizes planning only; committed full-SHA preflight, independent exact-checkpoint review and coordinator dispatch still precede implementation. No staging or production activation.
+
+
+## Isolated staging bare-resource bootstrap M1: synchronized planning checkpoint
+
+Goal: Create and read back only owner-approved isolated staging IPv4 address, empty persistent data disk and bare VM; preserve all application, deployment and production denials.
+
+Canonical plan: `docs/superpowers/plans/2026-11-04-workshop-staging-lifecycle.md`; task `docs/agents/tasks/2026-11-03-production-release/workshop-staging-bootstrap.json`; record `docs/agents/records/2026-11-04-workshop-staging-bootstrap.json`; preservation/evidence `docs/agents/records/2026-11-04-workshop-staging-bootstrap-evidence.json`. Source root `eddcf724028683dbb083191e4f8c42064b866bf0`; independently reviewed corrected draft `fb0c6f7a92b2580ae7bc993f827cfc2596a32743`.
+
+Status: `synchronized` after live [Issue186 detail6622232881](https://github.com/lucronn/autodata/issues/186#issuecomment-6622232881) and [Project8](https://github.com/users/lucronn/projects/8) readback at `2026-11-04T04:04:56.410962+00:00`. Commit/push, full-SHA pinned preflight, independent exact-checkpoint review and fresh coordinator dispatch still precede implementation. Synchronization does not authorize cloud or host operations.
+
+Exact prospective implementation allowlist:
+
+- `infra/deploy/gce/cloud-bootstrap.sh`
+- `infra/deploy/gce/staging_bootstrap.py`
+- `infra/deploy/gce/staging-bootstrap.schema.json`
+- `infra/deploy/gce/test_staging_bootstrap.py`
+
+Only dedicated staging address+empty data disk+bare VM against approved preexisting VPC/IAM/APIs/registry. Strict owner approval, inherited metadata/image/network/effective-policy readback, fixed Compute GET/three POST bodies, deterministic requestId, ownership/idempotency, bounds and redacted receipts are defined in the plan. Only exact default0.0.0.0/0 via default-internet-gateway is exempt from Docker overlap checking; selected subnet/additional destinations must be disjoint, and extra routes remain denied. No IAM mutation, package install, disk format, secret delivery, application startup, production apply or readiness authority. Actual owner-selected GCP/billing/region/pins/staging-origin inputs and separate live authorization remain mandatory. Publisher/schema contracts and separately reviewed installation/startup/recovery gates are still required.
+
+Concrete todo:
+
+- [ ] Synchronize the exact bare-resource goal, four-file allowlist, approval/request/network/receipt contract and concrete todo across Issue186/Project8 and canonical documents; preserve current PG/JS index/detail/pins verbatim with hashes, commit/push and pass full-SHA pinned preflight before independent checkpoint review.
+- [ ] After independent exact-checkpoint review and fresh coordinator dispatch, add offline failing tests for strict approval/token boundaries, exact request inventory, default-route exception and disjoint-subnet acceptance, overlapping-subnet/custom-next-hop rejection, ownership/idempotency, timeout/cancellation and redaction.
+- [ ] Implement only the four allowlisted bootstrap files for the fixed staging-only Compute GET and three POST operations, approved resource identity readback and bounded retained-resource failure receipts; keep production apply, IAM mutation, installation, formatting, secrets, application startup and readiness unavailable.
+- [ ] Run offline staging-bootstrap and existing host/cloud regression suites, syntax/scope/diff checks and pinned preflight; commit/push a coherent candidate and obtain independent exact-SHA review before integration or live use.
+- [ ] Keep all cloud execution blocked pending separate owner authorization of selected GCP projects/billing/region/VPC/IAM/pins/staging origin and concrete reviewed scripts; keep host install/readiness/recovery behind separate publisher/schema-dependent gates and preserve cars.tk/production blockers.
+
+Preservation: then-current full PG CapAdd Project index SHA256 `a67fb47f7973811904663fd8bba35a5c8ce6ad6164eb896adae83ea4dd39100d`, detail6622201950/pin6622210398, and prior JS Project index/detail6622115738/pin6622126651 remain verbatim with individual hashes in canonical evidence and the full synchronization comment. PG gate `cde9652c0e3dce9a9083540d15cb25b3682f144d` and JS gate `d105f8ae0747faa4bf4c6254e2dd1cd45ad0a830` retain their own review/dispatch/denial boundaries; no prior status is superseded.
+
+Pinned M1 checkpoint `52653deef3754972230801ac260875fe92e1a403` is pushed on `codex/workshop-staging-lifecycle-plan`; full-SHA preflight returned `{"status":"synchronized","errors":[]}`, exit0. [Pin/readback receipt6622247097](https://github.com/lucronn/autodata/issues/186#issuecomment-6622247097) and canonical evidence record Issue/Project/comment hashes at `2026-11-04T04:05:59.945032+00:00`. Independent exact-checkpoint review and fresh coordinator dispatch remain pending; implementation and cloud execution are unauthorized.
+
+
+## Staging boot attachment deviceName: synchronized corrective planning checkpoint
+
+Goal: Explicitly select the staging VM boot attachment deviceName and make the offline Compute fake distinguish attachment names from disk resource names, preserving strict readback and every existing authority boundary.
+
+Plan `docs/superpowers/plans/2026-11-04-workshop-staging-boot-device.md`; task `docs/agents/tasks/2026-11-03-production-release/workshop-staging-boot-device.json`; record `docs/agents/records/2026-11-04-workshop-staging-boot-device.json`; evidence `docs/agents/records/2026-11-04-workshop-staging-boot-device-evidence.json`. Rejected candidate `188d6e66a3edff53bb84548d78876f8c98f6aec0`; independently reviewed local draft `b31de33a7907bf295d4c69c8df13a2b15ebabd53` PASS via coordinator.
+
+Status: `synchronized` after [Issue186 detail6622382607](https://github.com/lucronn/autodata/issues/186#issuecomment-6622382607) and [Project8](https://github.com/users/lucronn/projects/8) readback at `2026-11-04T04:15:55.867157+00:00`. Commit/push, full-SHA pinned preflight, independent exact-checkpoint review and fresh root dispatch still precede code. No implementation or cloud operation is authorized now.
+
+Exact prospective implementation allowlist:
+
+- `infra/deploy/gce/staging_bootstrap.py`
+- `infra/deploy/gce/test_staging_bootstrap.py`
+
+Narrow request amendment: select boot `AttachedDisk.deviceName=<instance>-boot` explicitly as a sibling of `initializeParams`; independently retain `initializeParams.diskName=<instance>-boot` for the disk resource. Preserve strict attachment-name/resource-ID/image readback and data deviceName `autodata-data`. Make fake echo explicit attachment name and choose representative `persistent-disk-0` when omitted, never derive it from diskName. Original omission must fail strict readback after3POSTs/resources retained; exact explicit request success and observed-name drift rejection are required. No launcher/schema/config/token/network/receipt/budget/authority change. Source188d6e6 remains rejected pending exact correction review; no historical gate is retroactive acceptance.
+
+Concrete todo:
+
+- [ ] After PG releases the serialized tracking slot and coordinator approves this draft, synchronize the exact boot-attachment correction goal, explicit POST amendment, two-file allowlist, regression cases and todo across Issue186/Project8 and canonical plan/task/record/notes; preserve then-current full PG/JS index/detail/pins verbatim with hashes, commit/push and pass full-SHA preflight before independent exact-checkpoint review.
+- [ ] Obtain independent review of that exact new checkpoint and fresh root dispatch before implementation; preserve rejected source `188d6e66a3edff53bb84548d78876f8c98f6aec0` and the prior M1 gate/receipt as distinct historical records without retrospective acceptance.
+- [ ] Change the fake's omitted-name behavior and add the exact request/default/drift regressions first; demonstrate a red complete-run failure on the uncorrected request, with all three POSTs and retained resources, using only intercepted transports.
+- [ ] Add only the explicit boot AttachedDisk.deviceName sibling field in staging_bootstrap.py; keep strict readback and all request/approval/config/FD3/network/receipt/authority boundaries unchanged; run focused bootstrap plus existing host/cloud regressions, syntax and diff/scope checks.
+- [ ] Commit/push the exact two-file candidate, retain red/green logs and independently review its full SHA before integration; no credentials/cloud/resource operations, installation, formatting, host startup, readiness, cars.tk or production authority follows from simulated success.
+
+Preservation: full then-current PG offline Project index SHA256 `8e678c075d383d11fa9a63e3df05040a3b8e721e068d0c38e590728b6d009aa1`, detail6622351785/pin6622361427, and Stage0/staging/older PG/JS index/detail/pin texts are retained verbatim with individual SHA256 in canonical evidence and the exact preserved-comment references in the synchronization detail. Their statuses/independent review/dispatch/denial boundaries remain unchanged. No credentials/cloud/Docker/host/provider/DNS/runtime action or readiness/production claim occurs on this documentation turn.
+
+
+## Staging M2A inert-install synchronized planning checkpoint
+
+Goal: Install only an owner-accepted authenticated release manifest and its exact migration runner/tree into a fixed root-owned staging release directory, without formatting disks, selecting a running release, delivering secrets or starting services.
+
+Plan `docs/superpowers/plans/2026-11-04-workshop-staging-m2-host-install.md`; record `docs/agents/records/2026-11-04-workshop-staging-m2-host-install.json`; task `docs/agents/tasks/2026-11-03-production-release/workshop-staging-m2-host-install.json`; evidence `docs/agents/records/2026-11-04-workshop-staging-m2-host-install-evidence.json`. Source independently reviewed M1 candidate `ef536cc24478424efc3cc084425322cfb8056145`; independently approved corrected draft `f1558d526d87b9d48180f00be41835c65d9944fc` PASS via coordinator. No source merge/rebase is implied.
+
+Exact prospective implementation allowlist:
+
+- `infra/deploy/gce/deploy.sh`
+- `infra/deploy/gce/host_install.py`
+- `infra/deploy/gce/test_host_install.py`
+
+Fixed root-admin approval + local accepted inbox only: validate exact manifest/runner/SQL bytes with unchanged runtime validator; protect standard root-owned non-group/other-writable parents (0755 accepted), exact private0700 subtree; require already-approved mounted disk and tmpfs; bounded descriptor copy/no-replace inert install and redacted receipt. No formatting/mounting, remote ingress, package/unit changes, current-release selection, image pull, secrets or service startup. Publisher authentication and owner acceptance workflow remain external live-use dependencies; hashes never manufacture publisher authority. No activation/readiness/cloud authorization.
+
+Concrete todo:
+
+- [ ] Independently review this M2A split, exact three-file scope, trusted owner-acceptance boundary, immutable file/input/receipt contract and no-replace/cleanup primitives; synchronize goal/todo/references in Issue186/Project8/canonical docs with full then-current history preservation, commit/push and full-SHA preflight before builder dispatch.
+- [ ] Obtain independent exact synchronized-checkpoint review and fresh root dispatch; establish actual authenticated publisher and separate mounted-disk/tool prerequisites before any later live installation, without inventing a verifier or owner/cloud values.
+- [ ] Add failing fake-probe and temporary-inode tests for approval/publisher/mount/lock/inventory/no-replace/fault/redaction and reboot fail-closed invariants; then implement only deploy.sh, host_install.py and test_host_install.py for inert release-material installation.
+- [ ] Run focused host-install tests plus existing host/cloud/bootstrap regressions, syntax/diff/scope and pinned preflight; commit/push a coherent exact candidate for independent review, preserving all startup/readiness/cloud/secret/production denials.
+- [ ] Require separate decision-complete gates for authenticated remote ingress/private secret delivery, host packages/guard/units, image pull, start/schema/readiness and minimum recovery; no one may treat M2A success as completion of full M2 or live-operation authorization.
+
+Independent exact synchronized-checkpoint review and fresh root dispatch REQUIRED before any implementation. No cloud/Docker/credential/secret/runtime action. All prior Stage1A/Stage0/staging/PG/JS authorities/statuses/denials unchanged.
+
+Status: `synchronized` after [Issue186 detail6622589651](https://github.com/lucronn/autodata/issues/186#issuecomment-6622589651) and Project8 exact readback at `2026-11-04T04:30:30.706329+00:00`. Full then-current Project index, entire prior Issue body and all111 historical comment bodies are retained verbatim with SHA256 in `docs/agents/records/2026-11-04-workshop-staging-m2-host-install-evidence.json` and verified unchanged. Independent exact-checkpoint review and fresh root dispatch remain pending. This docs-only checkpoint authorizes no implementation or live action.
+
+
+## Verified docs-only integration tracking synchronization
+
+This additive receipt supersedes only the local-draft tracking statements above. Coordinator explicitly released PG writer slot. Independent local draft review PASS pinned plan SHA256 ea42fcac66cc397482f985be8a26e6e73dc1fc22c0b4e008eec742d4e384e553 / bundle manifest ca34e3e8be70bac131aabf7b600032a9b4531f0d87b85f5a8fa5f75f03c94a63. https://github.com/lucronn/autodata/issues/186#issuecomment-6622915925 read back at 2026-11-04T04:54:35.010852+00:00. Entire current Issue body/all115 prior comment bodies and full current PG Project index preserved verbatim+hash in `docs/agents/records/2026-11-04-workshop-reviewed-leaves-integration-evidence.json`; independent API readback confirmed Issue/prior comments unchanged. PG gate74dfe57/receiptd662cb0, Stage1A and M2A details/pins/statuses/denials preserved. Project current index SHA256 20ab190a8c0e78eb994b5e99ba133e7df2cdebd1258f29c0680d0cb32422407c.
+
+Record/task status synchronized after actual readback. Full committed checkpoint/preflight, independent exact-checkpoint review and fresh coordinator dispatch remain required before any ordered integration. No implementation merge, provider, cloud, runtime, staging activation or deployment occurred. This synchronization alone authorizes none of them.
+
+Goal: Integrate the three independently reviewed dormant R6, publisher and staging leaf histories into one byte-pinned offline candidate without live activation.
+
+Refs: `docs/superpowers/plans/2026-11-04-workshop-reviewed-leaves-integration.md`, `docs/agents/specs/2026-11-04-workshop-reviewed-leaves-integration.md`, `docs/agents/records/2026-11-04-workshop-reviewed-leaves-integration.json`, `docs/agents/tasks/2026-11-03-production-release/workshop-reviewed-leaves-integration.json`, `docs/agents/records/2026-11-04-workshop-reviewed-leaves-integration-evidence.json`
+
+Concrete todo:
+- [ ] Obtain independent local-draft review; keep status unsynchronized and integration blocked until PG releases the serialized tracking slot.
+- [ ] After slot release, preserve then-current Issue186/Project8 texts and hashes; synchronize exact source tuple, plan/spec/record/task/canonical notes and concrete todo; commit/push the docs-only checkpoint and pass full-SHA preflight.
+- [ ] Obtain independent exact synchronized-checkpoint review and fresh coordinator code-only dispatch; create an isolated feature worktree/branch from the checkpoint.
+- [ ] Merge exact R6, publisher and staging leaf histories in that deterministic order, resolving only five approved documentation/tracking conflicts and preserving all 23 implementation blob pins and historical additions.
+- [ ] Run combined offline Python/Node/preflight/syntax/scope/authority checks after each milestone; commit and promptly push validated coherent merges to the assigned branch.
+- [ ] Obtain independent exact-head review, freeze the combined candidate SHA and retain results; obtain separate gates before fixture/CI reruns or any live activation.
+
+
+### Exact committed integration checkpoint pin
+
+Gate `2728ac1acaf173d6f244e200e584dac7922fda1d` pushed on `codex/workshop-reviewed-leaves-integration-plan`; canonical preflight at that full SHA exit0, `status: synchronized`, `errors: []`, stderr empty. Pin https://github.com/lucronn/autodata/issues/186#issuecomment-6622928529 read back 2026-11-04T04:55:31.706681+00:00. Final Project index SHA256 `578438413fa8b6738efbf960c46e55ff7b6623772fac191b697af862d57bf0d2` (934 characters), containing every explicit predecessor reference ID including full PG gate74dfe57, receiptd662cb0 and M2A gate9a2b57d0. Complete Issue body/all115 predecessor bodies unchanged on fresh paginated readback. Evidence retains exact prior/full current index, pin hash, command/stdout/stderr and readback.
+
+Independent exact-checkpoint review and fresh coordinator code-only dispatch remain required before any ordered integration. No code merge or activation occurred. Receipt commit records this gate without changing its pinned base.

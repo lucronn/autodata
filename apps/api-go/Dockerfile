@@ -17,4 +17,6 @@ RUN CGO_ENABLED=0 go build -trimpath -o /out/autodata-api .
 FROM golang:1.26-bookworm
 COPY --from=build /out/autodata-api /usr/local/bin/autodata-api
 EXPOSE 8080
-ENTRYPOINT ["/usr/local/bin/autodata-api"]
+COPY --chmod=0555 infra/deploy/gce/runtime-entrypoint.sh /usr/local/bin/autodata-runtime-entrypoint
+ENTRYPOINT ["/usr/local/bin/autodata-runtime-entrypoint"]
+CMD ["/usr/local/bin/autodata-api"]

@@ -1,0 +1,243 @@
+"""Owned temporary-file and local worker tests; no host observations."""
+import hashlib
+import os
+from pathlib import Path
+import signal
+import socket
+import tempfile
+import threading
+import time
+import unittest
+from dataclasses import replace
+from unittest.mock import patch
+from test_policy import load
+
+a=load('real_admission'); f=load('file_transport')
+
+
+def identity(target):
+    if type(target) is int:return f._identity(os.fstat(target),fd=target)
+    target=Path(target);parent=os.open(target.parent,os.O_RDONLY|os.O_DIRECTORY|os.O_CLOEXEC)
+    try:return f._identity(target.stat(follow_symlinks=False),dir_fd=parent,name=target.name)
+    finally:os.close(parent)
+
+
+class WorkerTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp=tempfile.TemporaryDirectory();self.root=Path(self.tmp.name);self.root.chmod(0o700)
+        self.leaf=self.root/'input';self.leaf.write_bytes(b'owned input');self.leaf.chmod(0o600)
+        self.rootfd=os.open(self.root,os.O_RDONLY|os.O_DIRECTORY|os.O_CLOEXEC)
+        self.anchor=a.Anchor('root',self.rootfd,identity(self.rootfd))
+        self.recipe=a.FileRecipe('input','root',('input',),'regular',identity(self.leaf),
+            (self.anchor.identity,),hashlib.sha256(b'owned input').hexdigest(),None)
+        self.cancel=threading.Event();self.workers=[]
+
+    def tearDown(self):
+        for w in self.workers:w.close()
+        os.close(self.rootfd);self.tmp.cleanup()
+
+    def worker(self,recipes=None):
+        self.cancel=threading.Event()  # Each worker is a separate owned test attempt.
+        w=f.FileWorker((self.anchor,),tuple(recipes or (self.recipe,)), 'root',
+                       time.monotonic_ns()+10*10**9,self.cancel)
+        self.workers.append(w);return w
+
+    def test_hash_regular_and_retire(self):
+        w=self.worker();r=w.observe('input')
+        self.assertEqual(r['sha256'],self.recipe.sha256);self.assertTrue(r['complete'])
+        self.assertEqual(w.close(),'reaped');self.assertTrue(w.ipc_closed)
+        self.assertEqual(w.close(),'reaped')
+
+    def test_symlink_special_leaf_and_wrong_identity(self):
+        for kind in ('symlink','fifo','socket','identity','nlink','mode'):
+            with self.subTest(kind=kind):
+                if self.leaf.exists() or self.leaf.is_symlink():self.leaf.unlink()
+                owned_socket=None
+                if kind=='symlink': self.leaf.symlink_to('/not-read')
+                elif kind=='fifo':os.mkfifo(self.leaf,0o600)
+                elif kind=='socket':
+                    owned_socket=socket.socket(socket.AF_UNIX);owned_socket.bind(str(self.leaf))
+                else:
+                    self.leaf.write_bytes(b'owned input');self.leaf.chmod(0o600)
+                    if kind=='nlink':os.link(self.leaf,self.root/'hardlink')
+                    if kind=='mode':self.leaf.chmod(0o666)
+                anchor=replace(self.anchor,identity=identity(self.rootfd))
+                with patch.object(self,'anchor',anchor):
+                    w=self.worker();self.assertRaises(f.TransportFault,w.observe,'input');self.assertEqual(w.close(),'reaped')
+                if owned_socket:owned_socket.close()
+                if (self.root/'hardlink').exists():(self.root/'hardlink').unlink()
+
+    def test_absence_only_enoent_then_creation_is_integrity_fault(self):
+        recipe=a.FileRecipe('absent','root',('absent',),'absence',None,(self.anchor.identity,),None,None)
+        w=self.worker((recipe,));self.assertEqual(w.observe('absent'),{'absent':True})
+        (self.root/'absent').write_bytes(b'collision')
+        self.assertRaises(f.TransportFault,w.observe,'absent')
+
+    def test_exclusive_output_has_real_metadata_and_complete_hash(self):
+        w=self.worker();raw=b'output'*20000
+        result=w.create_output('REPORT.md',raw)
+        self.assertEqual((self.root/'REPORT.md').read_bytes(),raw)
+        self.assertEqual((self.root/'REPORT.md').stat().st_mode&0o777,0o600)
+        self.assertEqual(result['sha256'],hashlib.sha256(raw).hexdigest())
+        self.assertEqual(w.verify_output('REPORT.md'),result)
+        self.assertRaises(f.TransportFault,w.create_output,'REPORT.md',b'replace')
+        self.assertEqual((self.root/'REPORT.md').read_bytes(),raw)
+
+    def test_forbidden_names_owner_inputs_and_reviewer_are_never_created(self):
+        for name in ('../escape','extra.json','owner-contract.json','dispatch.json','independent-review.md'):
+            w=self.worker();self.assertRaises(f.TransportFault,w.create_output,name,b'private')
+            self.assertEqual(w.close(),'reaped')
+        self.assertFalse((self.root/'extra.json').exists())
+
+    def test_output_symlink_collision_no_overwrite(self):
+        (self.root/'REPORT.md').symlink_to(self.leaf)
+        self.anchor=replace(self.anchor,identity=identity(self.rootfd))
+        w=self.worker();self.assertRaises(f.TransportFault,w.create_output,'REPORT.md',b'bad')
+        self.assertEqual(self.leaf.read_bytes(),b'owned input')
+
+    def test_output_inventory_detects_unexpected_file(self):
+        w=self.worker();self.assertRaises(f.TransportFault,w.inventory_outputs,())
+
+    def test_cancel_and_expiry_latch_no_further_operation(self):
+        w=self.worker();self.cancel.set();self.assertRaises(f.TransportFault,w.observe,'input')
+        self.cancel.clear();self.assertRaises(f.TransportFault,w.observe,'input')
+        self.assertEqual(w.close(),'reaped')
+
+    def test_stalled_worker_is_bounded_and_reaped(self):
+        def stalled(*args): time.sleep(20)
+        start=time.monotonic()
+        with patch.object(f,'_observe',stalled):
+            w=self.worker();self.assertRaises(f.TransportFault,w.observe,'input')
+        self.assertLess(time.monotonic()-start,10)
+        self.assertEqual(w.close(),'reaped')
+
+    def test_unconfirmed_cleanup_is_explicit_and_quarantines(self):
+        w=self.worker()
+        with patch.object(f.os,'waitid',side_effect=OSError()):
+            self.assertEqual(w.close(),'unconfirmed')
+        self.assertTrue(w.quarantine_required)
+        # Test owns this child and repairs its own injected observation failure.
+        os.waitpid(w._pid,0)
+
+    def test_ordinary_sigchld_and_single_thread_requirement(self):
+        with patch.object(f.signal,'getsignal',return_value=signal.SIG_IGN):
+            self.assertRaises(f.TransportFault,self.worker)
+        with patch.object(f.threading,'active_count',return_value=2):
+            self.assertRaises(f.TransportFault,self.worker)
+
+    def test_partial_write_and_eintr_resume_one_descriptor(self):
+        original=os.write;calls=[0]
+        def partial(fd,data):
+            calls[0]+=1
+            if calls[0]==1:raise InterruptedError()
+            return original(fd,data[:7])
+        with patch.object(f.os,'write',side_effect=partial):
+            w=self.worker();result=w.create_output('REPORT.md',b'partial data'*100)
+        self.assertTrue(result['complete']);self.assertEqual((self.root/'REPORT.md').read_bytes(),b'partial data'*100)
+
+    def test_fsync_and_enospc_failures_latch_without_rewrite(self):
+        import errno
+        for operation,code in (('fsync',errno.EIO),('write',errno.ENOSPC)):
+            with self.subTest(operation=operation):
+                if (self.root/'REPORT.md').exists():(self.root/'REPORT.md').unlink()
+                self.anchor=replace(self.anchor,identity=identity(self.rootfd))
+                with patch.object(f.os,operation,side_effect=OSError(code,'private sentinel')):
+                    w=self.worker();self.assertRaises(f.TransportFault,w.create_output,'REPORT.md',b'owned')
+                self.assertRaises(f.TransportFault,w.create_output,'classification.json',b'new')
+                self.assertFalse((self.root/'classification.json').exists())
+                self.assertNotIn('private sentinel',str(w._fault))
+
+    def test_same_inode_change_and_output_substitution(self):
+        w=self.worker();w.create_output('REPORT.md',b'first')
+        (self.root/'REPORT.md').write_bytes(b'other')
+        self.assertRaises(f.TransportFault,w.verify_output,'REPORT.md')
+
+    def test_input_hash_and_size_change_after_admission(self):
+        self.leaf.write_bytes(b'different')
+        self.anchor=replace(self.anchor,identity=identity(self.rootfd))
+        w=self.worker();self.assertRaises(f.TransportFault,w.observe,'input')
+
+    def test_symlink_parent_never_traversed(self):
+        directory=self.root/'nested';directory.mkdir(mode=0o700)
+        leaf=directory/'data';leaf.write_bytes(b'owned');leaf.chmod(0o600)
+        self.anchor=replace(self.anchor,identity=identity(self.rootfd))
+        recipe=a.FileRecipe('nested','root',('nested','data'),'regular',identity(leaf),
+             (self.anchor.identity,identity(directory)),hashlib.sha256(b'owned').hexdigest(),None)
+        w=self.worker((recipe,));leaf.unlink();directory.rmdir();directory.symlink_to('/not-traversed')
+        self.assertRaises(f.TransportFault,w.observe,'nested')
+
+    def test_missing_first_prerequisite_blocks_but_disappearance_is_integrity(self):
+        w=self.worker();self.leaf.unlink()
+        self.assertEqual(w.observe('input'),{'blocked_missing_input':True});self.assertFalse(w.ipc_closed)
+        w.close()
+        self.leaf.write_bytes(b'owned input');self.leaf.chmod(0o600)
+        self.anchor=replace(self.anchor,identity=identity(self.rootfd))
+        self.recipe=replace(self.recipe,identity=identity(self.leaf),parents=(self.anchor.identity,))
+        w=self.worker();w.observe('input');self.leaf.unlink()
+        self.assertRaises(f.TransportFault,w.observe,'input');self.assertEqual(w._fault,'integrity')
+
+    def test_ipc_uses_one_json_ledger_and_cannot_renew_exhausted_budget(self):
+        budget=a.JsonBudget(time.monotonic_ns()+10**10,self.cancel)
+        w=f.FileWorker((self.anchor,),(self.recipe,),'root',time.monotonic_ns()+10**10,self.cancel,json_budget=budget)
+        self.workers.append(w);self.assertIs(w.json,budget)
+        first=budget.spent_ns;w.observe('input');self.assertGreater(budget.spent_ns,first)
+        budget.spent_ns=60*10**9
+        self.assertRaises(f.TransportFault,w.observe,'input');self.assertTrue(w.ipc_closed)
+        self.assertRaises(f.TransportFault,w.create_output,'REPORT.md',b'no more writes')
+        self.assertFalse((self.root/'REPORT.md').exists())
+
+    def test_ipc_lifetime_byte_account_is_not_reset_on_operation(self):
+        w=self.worker();w.observe('input');used=w._account.bytes
+        self.assertGreater(used,0);w.observe('input');self.assertGreater(w._account.bytes,used)
+        w._account.bytes=2*40000*(65536+f._HEADER.size)+128*1024**2
+        self.assertRaises(f.TransportFault,w.observe,'input');self.assertEqual(w._fault,'cap')
+
+    def test_startup_failure_preserves_owned_cleanup_and_primary_fault(self):
+        # Every process API is doubled: this value never reaches a real signal,
+        # wait, fork or getpgid operation.
+        for code,cleanup in (('deadline','unconfirmed'),('cancel','reaped'),('integrity','reaped')):
+            retired=[]
+            def close_double(worker):
+                retired.append(worker._pid is not None)
+                if worker._socket is not None:worker._socket.close();worker._socket=None
+                worker._ipc_closed=True;worker._cleanup=cleanup
+                worker.quarantine_required=cleanup=='unconfirmed'
+                return cleanup
+            with self.subTest(code=code,cleanup=cleanup):
+                with patch.object(f.os,'fork',return_value=987654321),patch.object(f,'_receive',side_effect=f.TransportFault(code)),patch.object(f.FileWorker,'close',close_double):
+                    with self.assertRaises(f.WorkerStartupFault) as caught:self.worker()
+                error=caught.exception
+                self.assertEqual(error.code,code);self.assertTrue(error.outcome.file_worker_started)
+                self.assertEqual(error.outcome.file_worker_cleanup,cleanup)
+                self.assertTrue(error.outcome.worker_ipc_closed)
+                self.assertEqual(error.outcome.quarantine_required,cleanup=='unconfirmed')
+                self.assertEqual(retired,[True])
+
+    def test_fork_failure_has_no_started_worker_but_preserves_fault(self):
+        with patch.object(f.os,'fork',side_effect=OSError('private sentinel')):
+            with self.assertRaises(f.WorkerStartupFault) as caught:self.worker()
+        self.assertEqual(caught.exception.code,'port_failure')
+        self.assertFalse(caught.exception.outcome.file_worker_started)
+        self.assertEqual(caught.exception.outcome.file_worker_cleanup,'not_started')
+        self.assertTrue(caught.exception.outcome.worker_ipc_closed)
+        self.assertFalse(caught.exception.outcome.quarantine_required)
+        self.assertNotIn('private sentinel',repr(caught.exception))
+
+    def test_mount_id_mismatch_rejects_regular_and_parent(self):
+        self.assertGreater(self.anchor.identity.mount_id,0)
+        self.recipe=replace(self.recipe,identity=replace(self.recipe.identity,mount_id=self.recipe.identity.mount_id+1))
+        w=self.worker();self.assertRaises(f.TransportFault,w.observe,'input')
+
+    def test_mount_measurement_unavailable_fails_closed(self):
+        with patch.object(f.ctypes,'CDLL',side_effect=OSError('unsupported')):
+            self.assertRaises(f.TransportFault,f._identity,os.fstat(self.rootfd),fd=self.rootfd)
+
+    def test_protocol_rejects_length_sequence_and_truncation(self):
+        for header,body in ((f._HEADER.pack(1,2,1,65537),b''),
+                            (f._HEADER.pack(1,2,2,2),b'{}'),
+                            (f._HEADER.pack(1,2,1,5),b'{}')):
+            left,right=socket.socketpair();left.setblocking(False)
+            try:
+                right.sendall(header+body);right.close()
+                self.assertRaises(f.TransportFault,f._receive,left,2,1,time.monotonic_ns()+10**9,threading.Event())
+            finally:left.close();right.close()

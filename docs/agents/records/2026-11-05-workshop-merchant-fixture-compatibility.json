@@ -1,0 +1,22 @@
+{
+  "goal": "Isolate historical Task54 merchant-preparation fixtures from the evolving application tree, preserving the exact validator contract and Task59 server-owned configuration authority.",
+  "plan_ref": "docs/superpowers/plans/2026-11-05-workshop-merchant-fixture-compatibility.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/agents/specs/2026-11-05-workshop-merchant-fixture-compatibility.json",
+    "docs/verification/2026-11-05-workshop-merchant-fixture-compatibility.md",
+    "docs/architecture/workshop-commerce.md",
+    "docs/verification/workshop-commerce-runbook.md"
+  ],
+  "todo": [
+    "Independently review the exact Task59 merchant-test failures and historical fixture isolation design, freezing the three implementation paths and preserving prior task/queue/source evidence and credit0 release limits.",
+    "Synchronize this goal, six todos, eight gate paths and three implementation paths in Issue186/Project8 with preservation readbacks; commit/push the planning checkpoint, externally seal its actual SHA/tree, pass exact-base standalone/nested preflights and obtain independent checkpoint review plus explicit dispatch before implementation.",
+    "Record the exact-base failing merchant regression, add verbatim independently pinned historical embed/disabled fixtures while retaining the unchanged live Dockerfile pin and point tests at them, retaining all strict provenance/URL/byte/read-only/fail-closed tests and explicit current-source pin-mismatch rejection.",
+    "Prove focused red/green and full developer discovery, unchanged current Go dynamic-route and Node regressions, exact scope/fixture/evaluator/protected-source checks and honest failures/skips with no merchant or acceptance credit.",
+    "Commit and promptly push validated coherent milestones on the assigned branch, obtain independent exact-source review and fresh source-push plus actual-PR CI terminal required-job/live-Compose success.",
+    "Synchronize verified source and remaining protected configuration delivery, owner/legal/tax/secret/Firebase/Stripe, authentic TEST/runtime/staging/release blockers while retaining all authorities false, accepted_case_credit0, accepted_new_case_credit0, verified_case_ids[] and release_state:unverified."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-05T05:56:49Z"
+}

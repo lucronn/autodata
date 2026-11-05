@@ -383,7 +383,7 @@ Examples use names and local fake values only. No real token, API key, private k
 
 ## Deployment posture
 
-The deployment design is provider-neutral and Kubernetes-compatible:
+The repository retains a provider-neutral, Kubernetes-compatible reference design for general deployments. The paid Workshop hosting choice is the standalone VM lane described below; these reference resources do not establish its deployed topology:
 
 - Stateless Go API replicas behind a provider-neutral ingress/load balancer.
 - Independently scaled fast and deep Python workers.
@@ -394,9 +394,9 @@ The deployment design is provider-neutral and Kubernetes-compatible:
 - Secret-manager interface for database, provider, authentication, and object-storage credentials.
 - OpenTelemetry-compatible traces and metrics with request/correlation IDs propagated through API, database, NATS, and workers.
 
-The platform keeps cloud-specific adapters behind interfaces for ingress, secrets, object storage, managed PostgreSQL, and observability. Docker Compose remains the contract for local parity; Kubernetes manifests are the contract for deployable topology, not a requirement to operate Kubernetes during development.
+The platform keeps cloud-specific adapters behind interfaces for ingress, secrets, object storage, managed PostgreSQL, and observability. Docker Compose remains the contract for local development. Kubernetes manifests are a reference contract for a separately selected cluster deployment; paid Workshop uses its standalone production Compose definition.
 
-The initial deployable baseline is `infra/k8s/base.yaml`. It contains the API Service and two-replica rolling Deployment, a private `autodata-ingestion-http` Service and independently scalable gateway Deployment, independently scalable ingestion, enrichment, and payment-reconciler Deployments, a one-shot migration Job, and an API PodDisruptionBudget. The manifest references the externally managed `autodata-runtime-secrets` Secret and deliberately does not define or embed secret values. The `autodata-config` endpoint values and image references are provider-neutral defaults that must be replaced by an environment overlay before a cluster apply. Migration images are built and published as release artifacts; the migration Job is run and verified before API rollout. The API communicates with the gateway through the cluster DNS name `http://autodata-ingestion-http:8081`; no gateway port is exposed through a load balancer or ingress.
+The generic Kubernetes reference baseline is `infra/k8s/base.yaml`. It contains the API Service and two-replica rolling Deployment, a private `autodata-ingestion-http` Service and independently scalable gateway Deployment, independently scalable ingestion, enrichment, and payment-reconciler Deployments, a one-shot migration Job, and an API PodDisruptionBudget. The manifest references the externally managed `autodata-runtime-secrets` Secret and deliberately does not define or embed secret values. The `autodata-config` endpoint values and image references are provider-neutral defaults that must be replaced by an environment overlay before a cluster apply. Migration images are built and published as release artifacts; the migration Job is run and verified before API rollout. The API communicates with the gateway through the cluster DNS name `http://autodata-ingestion-http:8081`; no gateway port is exposed through a load balancer or ingress.
 
 Validate the manifest structure locally with `python scripts/dev/test_k8s_manifests.py`. A cluster-specific deployment pipeline may additionally run `kubectl apply --dry-run=server` against the target cluster and then apply the same reviewed manifest plus its environment overlay. The repository does not assume a Kubernetes context is available on a developer workstation.
 
@@ -431,3 +431,327 @@ The first dashboards and alerts must cover:
 - Source takedown, revision revocation, and access-denied counts.
 
 The checked-in baseline alert policy is [`infra/observability/prometheus-alerts.yaml`](../../infra/observability/prometheus-alerts.yaml). It uses only the provider-neutral metric names above, separates page-level availability/billing failures from warning-level freshness/review signals, and links each alert to a repository runbook. A deployment may translate these rules into its observability provider, but it must preserve the thresholds, severity intent, and runbook links or record an explicit reviewed policy change.
+
+
+## Explicit customer authentication runtime
+
+The API requires AUTODATA_ENV, AUTODATA_AUTH_MODE and AUTODATA_PUBLIC_ORIGIN.
+Compose/Base44 select development/local explicitly; CI selects test/local.
+These headless fixtures retain existing header authentication but expose no
+browser login or demo account. HTTPS localhost origins are configuration values;
+local stacks do not gain a TLS listener from this setting. Only test mode permits
+an HTTP loopback origin. Staging/production require firebase mode; production
+origin is exactly https://cars.tk.
+
+Firebase mode additionally requires AUTODATA_FIREBASE_PROJECT_ID,
+AUTODATA_FIREBASE_WEB_API_KEY, AUTODATA_FIREBASE_WEB_APP_ID and
+AUTODATA_FIREBASE_AUTH_DOMAIN. Kubernetes references these public app values
+from externally managed ConfigMap autodata-firebase-config. Its absence fails
+startup instead of selecting local mode. Do not put service-account JSON into
+that ConfigMap or the checkout. Provision the runtime's approved ADC/workload
+identity and Firebase Auth user-read permission separately; the provider-neutral
+manifest does not invent a cloud service account or binding. Firebase mode
+rejects FIREBASE_AUTH_EMULATOR_HOST, in-memory persistence, unavailable PostgreSQL
+and schema before 039. Run the shared migration driver before starting replicas.
+
+All replicas use the same durable project+UID accounts and SHA256 session hashes.
+Absolute sessions expire after 12 hours without sliding renewal. Every protected
+request checks current database status and live Firebase user revocation against
+original auth_time; outages fail503 without stale acceptance. Requests carrying
+Authorization headers cannot fall back to customer cookies. Only dataset_viewer
+is assigned; existing organization-owned reads retain their predicates.
+
+See docs/verification/production-access-runbook.md for deterministic acceptance
+and the separate live staging prerequisites. This identity change does not
+certify commerce or paid catalog/media access.
+
+
+## Paid Workshop standalone VM hosting lane (offline gate)
+
+The selected cars.tk topology is one GCE VM with a separate persistent data disk, standalone [production Compose](../../infra/compose/compose.production.yaml) and Caddy. The [canonical thirty-path plan](../superpowers/plans/2026-11-03-workshop-hosting.md), [task](../agents/tasks/2026-11-03-production-release/workshop-hosting.json), [planning record](../agents/records/2026-11-03-workshop-hosting.json), [Issue186](https://github.com/lucronn/autodata/issues/186) and [Project8](https://github.com/users/lucronn/projects/8) govern this offline implementation scope. The [operations runbook](../operations/workshop-gcp.md) records exact definition interfaces and later rollout/recovery requirements. Local, CI and Base44 Compose keep their existing roles.
+
+The steady service graph is Caddy, Go API, private ingestion HTTP, one article worker, payment reconciler, PostgreSQL, NATS JetStream and the pinned SeaweedFS S3 service under the existing `minio` service name. Migration, bootstrap and passive metrics are explicit one-shot operations. The paid lane uses PostgreSQL article/index jobs; the generic enrichment/outbox/demo/fixture lanes are outside this initial production graph. Only Caddy publishes 80/443 and serves the same-origin Workshop/API boundary. PostgreSQL, NATS, S3 and application/metrics listeners stay private. Released images must be immutable digests on the reviewed platform, with exact source/migration/configuration/secret-version bindings; a source checkout or build on the VM is outside the topology.
+
+The proposed e2-standard-4 VM, 200 GiB balanced data disk, nightly maintenance and RPO24h/RTO4h remain owner decisions and measured-recovery targets. Project/billing/region, VPC, package/boot-image pins, provider authorization, alert destination and staging hostname remain prerequisites. No VM, persistent disk, firewall, static address, registry, bucket or DNS state is established by this document. Vercel remains in place until a separately approved final-origin cutover.
+
+### Runtime and external identity boundaries
+
+The sole proposed attached VM identity is `autodata-api-firebase@HOST_PROJECT_ID.iam.gserviceaccount.com`, with exactly `firebaseauth.users.get` on the selected Firebase project. Its explicit access-scope ceiling is cloud-platform, userinfo.email and identitytoolkit; IAM remains the permission boundary. That permission permits account read/list behavior and cannot be restricted to a requested UID. It grants no secret, registry, storage, snapshot, monitoring, logging, impersonation or IAM-administration authority. Real Firebase SDK refresh/GetUser/revocation behavior remains staging evidence.
+
+The metadata design permits only the API's designated container address, with an explicit trusted UID0 host-platform exception. Other containers and unprivileged host users must be denied on IPv4, IPv6 and the metadata hostname. A separate storage guard permits application access only to S3 TCP 9000 at the fixed storage address, including both bridged and routed traffic. Root-owned fixed helpers, data-mount identity and guard-before-Docker dependencies are required. Rendering rules does not prove actual namespace isolation, OS Login/guest-agent behavior or reboot safety.
+
+Four separate external GitHub OIDC/WIF principals are required: publish writes the named registry; deploy reads exact images/numeric secret versions and is a trusted host administrator; backup uses fixed non-admin host helpers plus reviewed snapshot/object-create authority; monitor uses only a fixed aggregate helper and external metricWriter. Backup and monitor receive no secret/deploy/Docker authority, and routine backup receives no delete permission. Restore and prune authority require separate approval. WIF trust must bind numeric repository/owner identity, exact approved workflow/ref and protected environment. These are reviewed authority definitions, not active IAM bindings.
+
+External deploy delivery must stream only manifest-bound secret versions into service-specific tmpfs files, with no bearer token on the VM or containers. Entrypoints load only fixed service secret names immediately before exec; secret values must never be persisted as Compose environment metadata. The API has no credential-file/developer-home mount or emulator. The attached VM account cannot fetch secrets or registry credentials. Loss of tmpfs secrets after reboot must block startup until separately authorized external redelivery.
+
+### Workflow and verification state
+
+The [release](../../.github/workflows/release-workshop.yml), [backup](../../.github/workflows/backup-workshop.yml) and [monitor](../../.github/workflows/monitor-workshop.yml) workflows are guarded offline definitions. Each operation has its own enable variable and production environment, requires the exact master workflow ref and numeric repository/owner tuple, and validates four distinct configured service accounts. Release publish and deploy are separate manual choices; backup defines a 03:17 UTC daily/manual trigger, and monitor defines a five-minute/manual trigger. Job budgets are 45/30/30/1 minutes respectively. The runbook specifies all variable names and immutable dispatch fields.
+
+Absent enable variables skip jobs. Enabled valid jobs still fail with exit 3 `missing_dependency`: no workflow has a WIF authentication, build/publish, artifact fetch/provenance, host-operation or metrics adapter. Permissions are only `contents: read`, with no OIDC-token request or action invocation. Deploy's run/artifact/digest fields receive syntax checks only. Neither a protected-environment name nor a matching configuration string proves environment protection, cloud identity or provenance. `cloud-bootstrap.sh` renders a nonexecuting plan; `cloud-ops.py` has fail-closed CLI entrypoints and an explicitly simulated fake backup evaluator.
+
+Pure schema/render/fake-transcript tests provide offline contract evidence. They cannot certify actual IAM/network/metadata/storage denial, Firebase or Stripe behavior, licensed bank/model access, no-work readiness, package installation, startup/reboot/secret redelivery, backup cutoff/immutable generations, isolated restore/RPO/RTO, alert delivery or final-origin TLS. Monitoring requires native Compute metrics, external HTTPS uptime and a separately authenticated aggregate exporter; missing heartbeat must alert independently. No Ops Agent or VM-ADC monitoring path is proposed, and GitHub's coarse schedule does not promise a one-minute SLO.
+
+Before staging, pin the final independently reviewed integrated release and resolve owner configuration/toolchain inputs under a separate authorization. Retain exact-SHA denial, runtime, recovery and notification evidence in Issue186/Project8 and canonical documentation. Final DNS/TLS/Firebase-domain and cars.tk cutover require another explicit gate. The current definitions do not establish an active cloud deployment or production readiness.
+
+
+### Passive PostgreSQL schema observation: draft checkpoint
+
+**Historical A v3 checkpoint.** The blocked catalog-only v2 amendment below supersedes this material for the next A milestone; earlier synchronization is not v2 authority.
+
+The [hosting plan's approved v3 passive-schema contract](../superpowers/plans/2026-11-03-workshop-hosting.md#passive-schema-observation-synchronized-plan-only-checkpoint) and [runbook prerequisites](../operations/workshop-gcp.md#passive-postgresql-schema-collector-draft-prerequisites) define the next bounded A milestone at planning base `bc62f86eac54eb81b61e4013f0e910f264556f6c`. Task/record are `synchronized` after coordinator live Issue186/Project8 readback; commit/push, exact-SHA preflight, coordinator integration/re-pin and independent checkpoint review remain required. Only runtime-check.py and test_host_runtime.py may change after that gate; original30-path ownership remains unchanged.
+
+The proposed definition binds an existing local PostgreSQL17 container and dedicated socket-auth-only autodata_metrics role to fixed read-only SQL and a bounded exact ledger/rights protocol. It requires explicit nonownership, PUBLIC/column/MAINTAIN privilege checks, ordinary permanent non-RLS text-key relation checks, row/value bounds before aggregation and streaming capture limits. Future administration must provision role/HBA/ident; missing prerequisites remain unavailable. A Docker data mount is not an attestation of effective PostgreSQL configuration; the probe never reads superuser-only data_directory or gains broad monitoring privileges. No new secrets/mounts or real execution are included.
+
+Concrete todo is canonical in the task/record and hosting plan: synchronize tracking/documents, independently approve the new pinned gate, implement only the two fake-exec-tested A paths, validate and independently review the exact candidate. Services/readiness/runtime evidence and mutation/deploy verbs stay blocked; real provisioning and runtime/staging proofs remain separately authorized.
+
+
+Tracking synchronization read back: [Issue186 comment6617024444](https://github.com/lucronn/autodata/issues/186#issuecomment-6617024444) and [Project8](https://github.com/users/lucronn/projects/8) item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4`, field `Source or dependency reference`, at `2026-11-03T22:27:57.522560+00:00`. The comment records the same v3 goal, five concrete todos, exact two-path implementation scope and offline limits; the project note indexes it. This is a plan-only synchronization checkpoint, not implementation dispatch or runtime/deployment authorization.
+
+
+### B release ZIP archive reader: synchronized planning checkpoint
+
+**Historical synchronized B checkpoint.** Its exact comment6617360191/protocol/future-publication limitations are preserved below. Offline implementation is independently approved and integrated at052bbf9; this historical checkpoint is not the current blocked A gate.
+
+**Goal:** Implement a bounded offline release ZIP archive verifier with independent archive and member SHA256 bindings, strict ZIP32 structure and JSON/image consistency checks; keep publication authentication and deployment unavailable.
+
+The [canonical hosting amendment](../superpowers/plans/2026-11-03-workshop-hosting.md#b-release-zip-archive-reader-synchronized-plan-only-checkpoint) proposes a pure bounded ZIP32 archive verifier at planning source base `a0eed5dce45171f5f94f72d99d2fdf694235df0d`. This is a proposed `release.json`/`images.json` producer contract with explicit local/central/EOCD agreement, signed/unsigned bounded descriptor parsing, no ZIP64 or extra fields, stored/bounded DEFLATE decoding and independent whole-archive/raw-member/canonical-manifest digest meanings. It does not claim compatibility with an actual GitHub Actions artifact: the current workflow produces none, and authenticated publisher/transport compatibility remains separately gated.
+
+The next B implementation scope is only `infra/deploy/gce/cloud-ops.py`, `infra/deploy/gce/test_cloud_ops.py` and `docs/operations/workshop-gcp.md`. The task/record/queue are `synchronized` after live [Issue186 comment6617360191](https://github.com/lucronn/autodata/issues/186#issuecomment-6617360191) and [Project8](https://github.com/users/lucronn/projects/8) item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4` readback at `2026-11-03T22:43:36.177270+00:00`; the project preserves historical A/R6 references and indexes the exact B goal/five todos/scope/limits in that comment. Independent draft review approved SHA256 `706f5fb2326ddc9e223547b4e95951f4643ba67d6b6e6a01d538198db0f319c6`. Commit/push this seven-document checkpoint, full-SHA preflight and independent coordinator gate handoff remain required before implementation dispatch. Historical synchronized A material does not authorize B. A and R6 files and workflow execution remain outside scope. Success can report only simulated archive consistency with provenance/deployment authority false; every CLI operation remains unavailable.
+
+Concrete todo:
+
+- [ ] Synchronize this exact B archive-reader goal, ZIP32 producer contract, scope and todo across Issue186/Project8 and canonical documents; commit/push a plan-only checkpoint, pin its full SHA and pass machine preflight before coordinator dispatch.
+- [ ] Add failing synthetic archive tests for digest separation, strict local/central/EOCD and descriptor agreement, bounded stored/DEFLATE decoding, strict JSON and exact image observations; retain existing B tests.
+- [ ] Implement only cloud-ops.py and test_cloud_ops.py for explicitly supplied in-memory archive bytes and independently bound raw member digests; preserve existing fake transcript API and every fail-closed CLI operation.
+- [ ] Document proposed release.json/images.json producer layout, archive/raw-member/canonical-manifest digest meanings, fixed failure receipts and the lack of actual GitHub artifact compatibility or authenticated publication evidence.
+- [ ] Run focused B tests, Python syntax, diff/scope and exact-base preflight checks; commit/push a coherent candidate and obtain independent exact-SHA review before coordinator integration; cloud/provider/workflow/deployment execution stays separately gated.
+
+
+## Catalog-only PostgreSQL v2 correction: synchronized
+
+Status: `synchronized` after live Issue186/Project8 readback. Independent plan-only review approved correction artifact SHA256 `7971a7ec0c260237dfea3f80be2318443981ffb40f8c63a2a3300dccf78a1d22`. This seven-document planning draft starts from integrated `052bbf9ac29a9c74163162f0f91adc2f6a656e4e` and contains no implementation. Blocked candidate `c51d637708c1e2ad24719e69d32ea87654c14473` remains unintegrated and excluded. Live Issue186 comment6617521783 and Project8 readback match the A goal/five todos/seven-doc scope/limits. Coordinator commit/push/integration/re-pin, exact-SHA preflight and independent checkpoint approval remain required before A implementation. The B archive checkpoint/source062d599/integratedb4953ef was synchronized at comment6617360191 and its independently approved offline implementation is integrated at052bbf9; that historical authority and unverified future-publication gate are preserved. A22/B8 ownership and R6/browser/application acceptance remain unchanged.
+
+Goal: Replace the unsafe passive schema ledger read with fixed catalog-only observation and adversarial fake-exec tests; keep schema, service and deploy readiness unavailable until a separately approved stable catalog-before-ledger protocol exists.
+
+The [canonical exact v2 contract](../superpowers/plans/2026-11-03-workshop-hosting.md#exact-v2-response-and-validation-contract) fixes five response fields: integer protocol_version=2, phase=catalog, identity, rights and ledger_relation. All exact nested fields/types/ranges, duplicate/unknown/null/UTF-8/depth/member/string/numeric/capture rejection rules and unchanged exit3/exit5 behavior are normative there. AM/index metadata is explicitly deferred; no heap/index/execution safety or DDL stability is attested. v1, relabeled v1, ledger-bearing and cached/offline transcripts are rejected.
+
+The fixed socket-only role retains SELECT-only least rights, with explicit database-owner/PUBLIC/column/MAINTAIN/type/RLS checks, future HBA/ident provisioning and no admin/password fallback. Query only built-in pg_catalog metadata, never public.schema_migrations data or application code. Valid catalog observations still leave checks.schema=false, services=false and runtime_evidence=false; deploy check exits3 missing_dependency. The catalog collector/validator return None and cannot promote schema success; offline ledger validation is disconnected from runtime dispatch. No new grants, lock helper, interactive stdin, secret mounts or readiness/start/resume/maintenance authorization.
+
+The rejected candidate read the ledger before catalog validation. A two-SELECT ACCESS SHARE repair cannot provide complete DDL stability: SELECT-only authority cannot obtain the stronger locking needed to exclude index changes. A full snapshot/locking/privilege protocol is separately gated; read-only transaction flags alone do not prevent application code or external side effects. Docker mounts still do not attest effective PostgreSQL configuration.
+
+Only runtime-check.py and test_host_runtime.py are the prospective A implementation scope after this committed, pinned and independently approved passing gate; no implementation is included here. Operations/runbook changes remain coordinator/B-owned. All tests are fake-exec, not actual PostgreSQL/host/cloud/provider evidence. B checkpoint062d599 and its approved offline implementation are integrated at this base; preserve its synchronized comment6617360191, future-publication gate, existing B workflow and R6/browser/application acceptance requirements.
+
+Concrete todo (same task/record):
+
+- [ ] Synchronize the reviewed catalog-only correction and blocked c51d637 evidence across Issue186, Project8 and seven canonical files including the coordinator queue; commit/push, independently review and pin a new passing preflight checkpoint before builder dispatch.
+- [ ] Modify only runtime-check.py and test_host_runtime.py to remove all live ledger reads, implement the fixed built-in-catalog-only v2 observation, and retain fixed identity/auth/bounds/reinspection without new grants/helpers or interactive stdin.
+- [ ] Add red/green fake-exec tests proving no ledger SQL is sent for any catalog fixture, including view/foreign/RLS/custom type/custom AM/expression index and concurrent-change transcripts; preserve all existing applicable offline tests.
+- [ ] Run focused tests, syntax, scope/diff and pinned preflight; commit/push a coherent two-path candidate and obtain exact-SHA independent review before integration.
+- [ ] Keep schema/services/runtime_evidence false and all mutation/deploy verbs blocked; any stronger lock privilege, provisioned helper, persistent interactive client, effective auth proof or real PostgreSQL/Docker/cloud execution needs separate approved scope/gate.
+
+Coordinator integration index: [Issue186 comment6617490673](https://github.com/lucronn/autodata/issues/186#issuecomment-6617490673) records root052bbf9 and B/R6 integration. It is integration history only; A v2 goal/todos are now separately synchronized by comment6617521783 and matching Project8 readback.
+
+Tracking receipt: [Issue186 comment6617521783](https://github.com/lucronn/autodata/issues/186#issuecomment-6617521783), [Project8](https://github.com/users/lucronn/projects/8) item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4`, field `Source or dependency reference`, read back at `2026-11-03T22:52:39.567389+00:00`. Exact comment SHA256 `a4164a5bf2dc5edf986ed95aed7b26e8ace7419f3e576fbb8e49bae3dd319df1`; Project text SHA256 `78148627386a398901d82a8b2e5577c51cd2a32958e99c43c24513572415396a`. The compact Project index retains historical A/B/R6/current integration references and points to the full exact A goal/five todos/scope. Tracking synchronization is plan-only; no builder dispatch or live operation is authorized.
+
+
+## PostgreSQL17 schema observation harness successor: planning checkpoint
+
+Goal: Prove a bounded catalog-before-ledger protocol under an explicit ledger-only MAINTAIN capability in a disposable PostgreSQL17 adversarial harness; preserve the production catalog-only v2 collector and every release/readiness denial.
+
+Canonical decision-complete plan: `docs/superpowers/plans/2026-11-03-workshop-schema-observation-harness.md`; dedicated task `docs/agents/tasks/2026-11-03-production-release/workshop-schema-observation-harness.json`; record `docs/agents/records/2026-11-03-workshop-schema-observation-harness.json`. Source base `ee57cd13a2f4e0a15d9e1212acfd1779451a4a91`. This successor leaves integrated catalog-only v2 (`5bf59c2`, gate `3a511f1`) intact and excludes `c51d637`. It proposes only a disconnected module plus pure tests and an opt-in disposable local PG17/C-sentinel harness. Separate test-only autodata_schema_probe has ledger SELECT+MAINTAIN, no ownership/memberships/writes; trusted NOLOGIN autodata_schema_owner owns the ledger. Strong lock before first snapshot, complete catalog validation before ledger bytes, actual positive sentinel controls, concurrent DDL barriers and server idle cleanup are required. MAINTAIN is explicit maintenance authority; production autodata_metrics and provisioning remain unchanged. No production helper, grant, collector integration, Docker/cloud/provider/DNS action or readiness claim. Independent coordinator review and pinned passing preflight remain required before any builder dispatch.
+
+Prospective implementation allowlist: `infra/deploy/gce/schema_probe.py`, `infra/deploy/gce/test_schema_probe.py`, `infra/deploy/gce/test_schema_probe_pg17.py`, `infra/deploy/gce/testdata/schema_probe_sentinel.c`, `infra/deploy/gce/testdata/schema_probe_fixtures.sql`. DTO/browser/R6 and all existing runtime/operations implementation paths are excluded.
+
+Concrete todo:
+
+- [ ] Synchronize this exact harness goal, privilege decision, five-path implementation allowlist, tests and release limits in Issue186/Project8 and canonical documents; commit/push and pass pinned preflight before independent coordinator gate review.
+- [ ] Add failing pure transport/state-machine tests and implement the disconnected fixed-SQL schema_probe module with lock-before-snapshot catalog validation, bounded ledger framing and rollback-only cleanup.
+- [ ] Build the local-only PG17 harness and C sentinels with a non-owner SELECT+MAINTAIN probe role and trusted NOLOGIN ledger owner; demonstrate every sentinel fires in an intentional negative control before testing observer rejection.
+- [ ] Run actual disposable PG17 safe/hostile relation, index, privilege, concurrent DDL, first-snapshot and abandoned-session cases; retain red/green receipts, hashes and cleanup proof without running application services or contacting providers.
+- [ ] Run focused regressions, scope/diff and exact-base preflight; commit/push a coherent candidate for independent exact-SHA review, keeping production grants, collector integration, authenticated publication, services, deployment and cars.tk cutover behind later gates.
+
+Tracking synchronized by live Issue186 body/comment6618084753 and Project8 item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4` field `Source or dependency reference` readback at `2026-11-03T23:26:27.924126+00:00`. Exact goal, five todos and five-path scope match the full issue body/comment; the compact Project index links that comment and retains historical DTO/A/B/R6 references, with its previous text preserved verbatim there. Dedicated record stores SHA256 readback hashes. Independent checkpoint review remains pending; synchronized tracking does not authorize a builder or live operation.
+
+
+## Disconnected publisher and fixed host-check successor: planning checkpoint
+
+Goal: Implement concrete disconnected publisher orchestration for fixed checkout, three image builds/pushes, SBOM/provenance verification and release artifact upload through injected executor/transports, plus a bounded fixed IAP host check; preserve all live execution and readiness denials.
+
+Status: synchronized after live Issue186 comment6621071257 and matching Project8 readback. Source base `eddcf724028683dbb083191e4f8c42064b866bf0`. Canonical decision-complete plan: `docs/superpowers/plans/2026-11-03-workshop-publisher-transport.md`; dedicated task `docs/agents/tasks/2026-11-03-production-release/workshop-publisher-transport.json`; record `docs/agents/records/2026-11-03-workshop-publisher-transport.json`. This additive successor preserves historical A/B/PG17 authority. It proposes concrete injected-executor checkout/build/push/SBOM/provenance/upload orchestration, deterministic inner ZIP production and one fixed IAP `deploy.sh check SHA` request. Implementation allowlist is cloud-ops.py, test_cloud_ops.py and this operations runbook. No workflow/runtime-check/deploy/grants/application edit or real image build/publication/transport/signature verification, cloud/provider/container execution or readiness promotion is authorized. Fake interfaces exercise the complete production operation order; authentic adapters remain separately gated. Actual GitHub artifact download compatibility and authenticated publication remain unverified; the historical B future_publication_gate is unchanged. Valid host replies remain unavailable with schema/services/runtime_evidence false. Owner identities and production/paid/browser acceptance remain separate requirements.
+
+Concrete todo:
+
+- [ ] Synchronize this exact publisher-orchestration/host-check goal, three-path allowlist, fixed checkout/build/push/evidence/upload operations, trust/DTOs and five todos in Issue186/Project8 and canonical documents; preserve prior Project index, commit/push and pass pinned preflight before independent coordinator gate review.
+- [ ] Add failing fake-executor publisher sequencing tests and implement fixed source checkout, three digest-bound build/push operations and post-build registry identity verification; no real executable, network or credential discovery may run.
+- [ ] Implement deterministic inner release.zip production, bounded SBOM/provenance publish/verify and artifact upload/readback through injected interfaces, with versioned independent transport/payload/member/manifest digests and adversarial identity/subject/signature fixtures.
+- [ ] Add failing fixed IAP host-check tests and implement only the configured VM deploy.sh check SHA request with strict failed-readiness receipt handling; keep every mutation, schema/service/runtime readiness and CLI/workflow activation unavailable.
+- [ ] Run focused B and unchanged A regressions, syntax, scope/diff and pinned preflight; commit/push coherent candidates for independent exact-SHA review, retaining red/green evidence and actual authentication/archive compatibility, owner/provider, staging and paid-product gates.
+
+Tracking synchronization, committed pinned preflight and independent coordinator review remain required before implementation dispatch.
+
+
+Publisher successor tracking readback: [Issue186 comment6621071257](https://github.com/lucronn/autodata/issues/186#issuecomment-6621071257), Project8 item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4` field `Source or dependency reference`, verified `2026-11-04T02:40:50.163236+00:00`. Exact issue body/comment and Project index SHA256 hashes are retained in the dedicated publisher record. Prior Project index is preserved verbatim with hash in that comment. This is synchronized planning only; committed pinned preflight and independent coordinator review still precede any builder dispatch. No implementation or actual publication evidence exists.
+
+
+## Migration-only publisher build argument correction: planning checkpoint
+
+Goal: Correct only the disconnected publisher migration build argv to pass POSTGRES_IMAGE from the reviewed immutable manifest postgres reference before --file; preserve other-role argv, fake-only execution and every authority/readiness denial.
+
+Status: synchronized after live Issue186 comment6621206696 and matching Project8 readback. Source publisher candidate `30cab10e548a3e078055b08447253ea90cc36bdc` (draft PR189). Dedicated plan `docs/superpowers/plans/2026-11-03-workshop-migration-build-arg.md`, task `docs/agents/tasks/2026-11-03-production-release/workshop-migration-build-arg.json`, record `docs/agents/records/2026-11-03-workshop-migration-build-arg.json`. This successor changes only the previously frozen build_migration vector: insert `--build-arg`, `POSTGRES_IMAGE=` plus the already validated immutable `manifest.images.postgres.reference` immediately before `--file`. API/ingestion argv remain exact originals. Future implementation allowlist is cloud-ops.py, test_cloud_ops.py and runbook; no Dockerfile/schema/workflow/runtime/PG17/R6 edit. Exact fake-argv/digest-propagation/ambient-ignore/no-default/invalid-reference-before-callback tests are required. No real build/PG17 compatibility/publication evidence is claimed; every existing simulation, live-operation and readiness denial remains. Historical publisher/PG17/R6 checkpoints are preserved; this correction cannot authorize their expansion.
+
+Concrete todo:
+
+- [ ] Synchronize this exact migration-only build-argument correction, three-path future scope and five todos in Issue186/Project8 and canonical documents, preserving the full prior Project index verbatim/hash; commit/push and pass pinned preflight before independent plan review and coordinator dispatch.
+- [ ] Add failing exact fake-executor argv tests proving only build_migration receives --build-arg POSTGRES_IMAGE=<manifest.images.postgres.reference> immediately before --file while api/ingestion retain their existing complete argv.
+- [ ] Implement the migration-only argument in cloud-ops.py from the already validated immutable manifest; reject missing/tag-only/malformed postgres references before callbacks and ignore all ambient/default POSTGRES_IMAGE or caller build-argument overrides.
+- [ ] Run fake digest-propagation, no-fallback and unchanged publisher/host regressions, document that no Docker build or PostgreSQL17 runtime compatibility is proved, and retain every red/green/failure receipt outside the checkout.
+- [ ] Run focused B/A suites, syntax, diff/scope and pinned preflight; commit/push a coherent three-path candidate for independent exact-SHA review without integrating, activating workflows, accessing credentials or running any real build/cloud/provider/host operation.
+
+Commit/push, pinned preflight, independent exact-plan review and coordinator dispatch remain required before code.
+
+
+Migration-only correction tracking: [Issue186 comment6621206696](https://github.com/lucronn/autodata/issues/186#issuecomment-6621206696), Project8 item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4` field `Source or dependency reference`, verified `2026-11-04T02:50:39.563760+00:00`. The dedicated correction record stores exact body/comment/index hashes; the comment preserves the prior index verbatim/hash. This is plan-only synchronization; committed pinned preflight, independent exact-plan review and coordinator dispatch still precede implementation. No code or live execution is authorized by this checkpoint alone.
+
+
+## Workshop authenticated publisher adapter successor: planning checkpoint
+
+Goal: Build bounded real GitHub Actions artifact, registry/evidence and fixed IAP check adapters behind an independently controlled activation boundary, preserving all production and runtime readiness denials.
+
+Independently approved pre-sync design SHA256 `2e17c0e153ead31ae71e67b535b5d1d46b3ec10f401b8c3883773fe8c1aa4142`. Source base `1a0e2740171e6e0a2aa0bbc97a36299ecbf2106c` (publisher candidate30cab10 plus migration correction1a0e274); branch `codex/workshop-authenticated-publisher-plan`. This is a docs-only planning checkpoint; independent exact-checkpoint review and coordinator dispatch remain required before any implementation. Issue186/Project8 serialization follows PG17 acquisition-overlay gate26989e1/receipt80d4a20; those separate authorities, blockers and queue references are preserved.
+
+Plan: `docs/superpowers/plans/2026-11-03-workshop-authenticated-publisher.md`. Task: `docs/agents/tasks/2026-11-03-production-release/workshop-authenticated-publisher.json`. Record: `docs/agents/records/2026-11-03-workshop-authenticated-publisher.json`. Canonical refs: `docs/superpowers/plans/2026-11-03-workshop-publisher-transport.md`, `docs/superpowers/plans/2026-11-03-workshop-hosting.md`, `docs/operations/workshop-gcp.md`, `docs/architecture/infrastructure-and-dev.md`, `docs/superpowers/plans/2026-11-03-production-release-orchestration.md`.
+
+Concrete actual-adapter scope: real bounded HTTPS/GitHub Actions official-toolkit upload/raw download/OCI registry/WIF/process/IAP adapters; build-once signed immutable candidate from approved source/config/four dependencies, independent signed complete-v1-manifest approval, then finalize without rebuild/copy/per-image evidence regeneration. Post-upload signed binding authenticates returned artifact ID, outer digest/length and exact originating run+attempt using fresh SDK UploadSession evidence and verified attempt-bearing signer URI; current run endpoint cannot establish artifact attempt. Preserve source/workflow SHA split, actual outer ZIP one release.zip vs unchanged inner two members, terminal digestMismatch/digest/expiry failure and older-attempt artifact rejection despite identical inner bytes. Carry independently supplied bounded rollback_manifest through candidate/finalize/verify/host revalidation with unchanged v1 invariants and canonical approved hash; never invent image/evidence hashes or silently rewrite approval. Migration POSTGRES_IMAGE remains explicit immutable reviewed input.
+
+Future implementation allowlist (exact9 paths):
+- `infra/deploy/gce/publisher_adapters.py`
+- `infra/deploy/gce/publisher_artifact.mjs`
+- `infra/deploy/gce/publisher-toolkit/package.json`
+- `infra/deploy/gce/publisher-toolkit/package-lock.json`
+- `infra/deploy/gce/test_publisher_adapters.py`
+- `infra/deploy/gce/test_publisher_artifact.mjs`
+- `infra/deploy/gce/test_release_workshop_contract.py`
+- `.github/workflows/release-workshop.yml`
+- `docs/operations/workshop-gcp.md`
+
+Owner identities/protected environments/resources/WIF/IAM, toolkit/tool/action/Sigstore pins, approved origins and actual artifact compatibility semantics, upstream evidence policy, independent manifest-approval public key and fixed host-key/remote deadline proof are prerequisites to separately authorized staging. Code/tests may implement the real paths using injected fake/local process/transport/crypto dependencies; no live credentials or operation is authorized here. Existing production publish/deploy jobs and cloud CLI remain blocked; staging definitions retain unconditional precredential blockers. No schema/services/runtime_evidence readiness, provider/cloud/registry/host/build/upload/signing/staging/production activation, integration, deployment or owner policy installation is authorized by this planning checkpoint.
+
+Concrete todo:
+- [ ] After accepted migration review and root tracking release, synchronize the authenticated adapter-only goal, v3 identity/digest contracts, exact allowlist, five todos and activation exclusions across Issue186/Project8/canonical docs; commit/push, pin and independently review a machine-passing checkpoint before implementation.
+- [ ] Implement bounded authenticated I/O, strict real-wire projections, separate workflow/source identity, official-toolkit single-file upload, original outer ZIP decoding and post-upload signed originating-attempt binding with terminal digestMismatch/expiry/digest/older-attempt rejection; retain every existing v2 and CLI denial.
+- [ ] Implement actual build-once registry candidate push/SBOM/provenance verification, independent manifest approval and rebuild-free finalization plus separate fixed IAP check library, preserving independently supplied bounded v1 rollback_manifest through every phase and migration POSTGRES_IMAGE, credential/issuer/audience separation, pinned trust/tooling and bounded cleanup; reject candidate/approved-manifest/rollback mismatch without rewriting approval.
+- [ ] Add adversarial fake/local contract tests and a dormant protected staging workflow definition with unconditional precredential blocker; preserve unchanged production jobs, false readiness and all existing application/schema/deploy authority boundaries.
+- [ ] Run focused regressions, syntax/scope/diff and pinned preflight; commit/push coherent candidates for independent exact-SHA review, document missing owner/tool/origin/host/staging evidence and stop before any activation or live operation until a separate synchronized gate authorizes it.
+
+
+Tracking readback: [issuecomment-6621425159](https://github.com/lucronn/autodata/issues/186#issuecomment-6621425159), Project8 item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4` field `Source or dependency reference`, verified `2026-11-04T03:06:38.051955+00:00`. Exact body/comment/Project/prior-index hashes are in the dedicated synchronized record. Full predecessor Project index SHA256 `4e26f3831956fb10f26a64e5b791e27f502a35e3ead19015622e118d22dfec20` is preserved verbatim in that comment. This synchronizes planning only; committed full-SHA preflight, independent exact-checkpoint review and coordinator dispatch still precede implementation. No staging or production activation.
+
+
+## Isolated staging bare-resource bootstrap M1: synchronized planning checkpoint
+
+Goal: Create and read back only owner-approved isolated staging IPv4 address, empty persistent data disk and bare VM; preserve all application, deployment and production denials.
+
+Canonical plan: `docs/superpowers/plans/2026-11-04-workshop-staging-lifecycle.md`; task `docs/agents/tasks/2026-11-03-production-release/workshop-staging-bootstrap.json`; record `docs/agents/records/2026-11-04-workshop-staging-bootstrap.json`; preservation/evidence `docs/agents/records/2026-11-04-workshop-staging-bootstrap-evidence.json`. Source root `eddcf724028683dbb083191e4f8c42064b866bf0`; independently reviewed corrected draft `fb0c6f7a92b2580ae7bc993f827cfc2596a32743`.
+
+Status: `synchronized` after live [Issue186 detail6622232881](https://github.com/lucronn/autodata/issues/186#issuecomment-6622232881) and [Project8](https://github.com/users/lucronn/projects/8) readback at `2026-11-04T04:04:56.410962+00:00`. Commit/push, full-SHA pinned preflight, independent exact-checkpoint review and fresh coordinator dispatch still precede implementation. Synchronization does not authorize cloud or host operations.
+
+Exact prospective implementation allowlist:
+
+- `infra/deploy/gce/cloud-bootstrap.sh`
+- `infra/deploy/gce/staging_bootstrap.py`
+- `infra/deploy/gce/staging-bootstrap.schema.json`
+- `infra/deploy/gce/test_staging_bootstrap.py`
+
+Only dedicated staging address+empty data disk+bare VM against approved preexisting VPC/IAM/APIs/registry. Strict owner approval, inherited metadata/image/network/effective-policy readback, fixed Compute GET/three POST bodies, deterministic requestId, ownership/idempotency, bounds and redacted receipts are defined in the plan. Only exact default0.0.0.0/0 via default-internet-gateway is exempt from Docker overlap checking; selected subnet/additional destinations must be disjoint, and extra routes remain denied. No IAM mutation, package install, disk format, secret delivery, application startup, production apply or readiness authority. Actual owner-selected GCP/billing/region/pins/staging-origin inputs and separate live authorization remain mandatory. Publisher/schema contracts and separately reviewed installation/startup/recovery gates are still required.
+
+Concrete todo:
+
+- [ ] Synchronize the exact bare-resource goal, four-file allowlist, approval/request/network/receipt contract and concrete todo across Issue186/Project8 and canonical documents; preserve current PG/JS index/detail/pins verbatim with hashes, commit/push and pass full-SHA pinned preflight before independent checkpoint review.
+- [ ] After independent exact-checkpoint review and fresh coordinator dispatch, add offline failing tests for strict approval/token boundaries, exact request inventory, default-route exception and disjoint-subnet acceptance, overlapping-subnet/custom-next-hop rejection, ownership/idempotency, timeout/cancellation and redaction.
+- [ ] Implement only the four allowlisted bootstrap files for the fixed staging-only Compute GET and three POST operations, approved resource identity readback and bounded retained-resource failure receipts; keep production apply, IAM mutation, installation, formatting, secrets, application startup and readiness unavailable.
+- [ ] Run offline staging-bootstrap and existing host/cloud regression suites, syntax/scope/diff checks and pinned preflight; commit/push a coherent candidate and obtain independent exact-SHA review before integration or live use.
+- [ ] Keep all cloud execution blocked pending separate owner authorization of selected GCP projects/billing/region/VPC/IAM/pins/staging origin and concrete reviewed scripts; keep host install/readiness/recovery behind separate publisher/schema-dependent gates and preserve cars.tk/production blockers.
+
+Preservation: then-current full PG CapAdd Project index SHA256 `a67fb47f7973811904663fd8bba35a5c8ce6ad6164eb896adae83ea4dd39100d`, detail6622201950/pin6622210398, and prior JS Project index/detail6622115738/pin6622126651 remain verbatim with individual hashes in canonical evidence and the full synchronization comment. PG gate `cde9652c0e3dce9a9083540d15cb25b3682f144d` and JS gate `d105f8ae0747faa4bf4c6254e2dd1cd45ad0a830` retain their own review/dispatch/denial boundaries; no prior status is superseded.
+
+Pinned M1 checkpoint `52653deef3754972230801ac260875fe92e1a403` is pushed on `codex/workshop-staging-lifecycle-plan`; full-SHA preflight returned `{"status":"synchronized","errors":[]}`, exit0. [Pin/readback receipt6622247097](https://github.com/lucronn/autodata/issues/186#issuecomment-6622247097) and canonical evidence record Issue/Project/comment hashes at `2026-11-04T04:05:59.945032+00:00`. Independent exact-checkpoint review and fresh coordinator dispatch remain pending; implementation and cloud execution are unauthorized.
+
+
+## Staging boot attachment deviceName: synchronized corrective planning checkpoint
+
+Goal: Explicitly select the staging VM boot attachment deviceName and make the offline Compute fake distinguish attachment names from disk resource names, preserving strict readback and every existing authority boundary.
+
+Plan `docs/superpowers/plans/2026-11-04-workshop-staging-boot-device.md`; task `docs/agents/tasks/2026-11-03-production-release/workshop-staging-boot-device.json`; record `docs/agents/records/2026-11-04-workshop-staging-boot-device.json`; evidence `docs/agents/records/2026-11-04-workshop-staging-boot-device-evidence.json`. Rejected candidate `188d6e66a3edff53bb84548d78876f8c98f6aec0`; independently reviewed local draft `b31de33a7907bf295d4c69c8df13a2b15ebabd53` PASS via coordinator.
+
+Status: `synchronized` after [Issue186 detail6622382607](https://github.com/lucronn/autodata/issues/186#issuecomment-6622382607) and [Project8](https://github.com/users/lucronn/projects/8) readback at `2026-11-04T04:15:55.867157+00:00`. Commit/push, full-SHA pinned preflight, independent exact-checkpoint review and fresh root dispatch still precede code. No implementation or cloud operation is authorized now.
+
+Exact prospective implementation allowlist:
+
+- `infra/deploy/gce/staging_bootstrap.py`
+- `infra/deploy/gce/test_staging_bootstrap.py`
+
+Narrow request amendment: select boot `AttachedDisk.deviceName=<instance>-boot` explicitly as a sibling of `initializeParams`; independently retain `initializeParams.diskName=<instance>-boot` for the disk resource. Preserve strict attachment-name/resource-ID/image readback and data deviceName `autodata-data`. Make fake echo explicit attachment name and choose representative `persistent-disk-0` when omitted, never derive it from diskName. Original omission must fail strict readback after3POSTs/resources retained; exact explicit request success and observed-name drift rejection are required. No launcher/schema/config/token/network/receipt/budget/authority change. Source188d6e6 remains rejected pending exact correction review; no historical gate is retroactive acceptance.
+
+Concrete todo:
+
+- [ ] After PG releases the serialized tracking slot and coordinator approves this draft, synchronize the exact boot-attachment correction goal, explicit POST amendment, two-file allowlist, regression cases and todo across Issue186/Project8 and canonical plan/task/record/notes; preserve then-current full PG/JS index/detail/pins verbatim with hashes, commit/push and pass full-SHA preflight before independent exact-checkpoint review.
+- [ ] Obtain independent review of that exact new checkpoint and fresh root dispatch before implementation; preserve rejected source `188d6e66a3edff53bb84548d78876f8c98f6aec0` and the prior M1 gate/receipt as distinct historical records without retrospective acceptance.
+- [ ] Change the fake's omitted-name behavior and add the exact request/default/drift regressions first; demonstrate a red complete-run failure on the uncorrected request, with all three POSTs and retained resources, using only intercepted transports.
+- [ ] Add only the explicit boot AttachedDisk.deviceName sibling field in staging_bootstrap.py; keep strict readback and all request/approval/config/FD3/network/receipt/authority boundaries unchanged; run focused bootstrap plus existing host/cloud regressions, syntax and diff/scope checks.
+- [ ] Commit/push the exact two-file candidate, retain red/green logs and independently review its full SHA before integration; no credentials/cloud/resource operations, installation, formatting, host startup, readiness, cars.tk or production authority follows from simulated success.
+
+Preservation: full then-current PG offline Project index SHA256 `8e678c075d383d11fa9a63e3df05040a3b8e721e068d0c38e590728b6d009aa1`, detail6622351785/pin6622361427, and Stage0/staging/older PG/JS index/detail/pin texts are retained verbatim with individual SHA256 in canonical evidence and the exact preserved-comment references in the synchronization detail. Their statuses/independent review/dispatch/denial boundaries remain unchanged. No credentials/cloud/Docker/host/provider/DNS/runtime action or readiness/production claim occurs on this documentation turn.
+
+
+## Staging M2A inert-install synchronized planning checkpoint
+
+Goal: Install only an owner-accepted authenticated release manifest and its exact migration runner/tree into a fixed root-owned staging release directory, without formatting disks, selecting a running release, delivering secrets or starting services.
+
+Plan `docs/superpowers/plans/2026-11-04-workshop-staging-m2-host-install.md`; record `docs/agents/records/2026-11-04-workshop-staging-m2-host-install.json`; task `docs/agents/tasks/2026-11-03-production-release/workshop-staging-m2-host-install.json`; evidence `docs/agents/records/2026-11-04-workshop-staging-m2-host-install-evidence.json`. Source independently reviewed M1 candidate `ef536cc24478424efc3cc084425322cfb8056145`; independently approved corrected draft `f1558d526d87b9d48180f00be41835c65d9944fc` PASS via coordinator. No source merge/rebase is implied.
+
+Exact prospective implementation allowlist:
+
+- `infra/deploy/gce/deploy.sh`
+- `infra/deploy/gce/host_install.py`
+- `infra/deploy/gce/test_host_install.py`
+
+Fixed root-admin approval + local accepted inbox only: validate exact manifest/runner/SQL bytes with unchanged runtime validator; protect standard root-owned non-group/other-writable parents (0755 accepted), exact private0700 subtree; require already-approved mounted disk and tmpfs; bounded descriptor copy/no-replace inert install and redacted receipt. No formatting/mounting, remote ingress, package/unit changes, current-release selection, image pull, secrets or service startup. Publisher authentication and owner acceptance workflow remain external live-use dependencies; hashes never manufacture publisher authority. No activation/readiness/cloud authorization.
+
+Concrete todo:
+
+- [ ] Independently review this M2A split, exact three-file scope, trusted owner-acceptance boundary, immutable file/input/receipt contract and no-replace/cleanup primitives; synchronize goal/todo/references in Issue186/Project8/canonical docs with full then-current history preservation, commit/push and full-SHA preflight before builder dispatch.
+- [ ] Obtain independent exact synchronized-checkpoint review and fresh root dispatch; establish actual authenticated publisher and separate mounted-disk/tool prerequisites before any later live installation, without inventing a verifier or owner/cloud values.
+- [ ] Add failing fake-probe and temporary-inode tests for approval/publisher/mount/lock/inventory/no-replace/fault/redaction and reboot fail-closed invariants; then implement only deploy.sh, host_install.py and test_host_install.py for inert release-material installation.
+- [ ] Run focused host-install tests plus existing host/cloud/bootstrap regressions, syntax/diff/scope and pinned preflight; commit/push a coherent exact candidate for independent review, preserving all startup/readiness/cloud/secret/production denials.
+- [ ] Require separate decision-complete gates for authenticated remote ingress/private secret delivery, host packages/guard/units, image pull, start/schema/readiness and minimum recovery; no one may treat M2A success as completion of full M2 or live-operation authorization.
+
+Independent exact synchronized-checkpoint review and fresh root dispatch REQUIRED before any implementation. No cloud/Docker/credential/secret/runtime action. All prior Stage1A/Stage0/staging/PG/JS authorities/statuses/denials unchanged.
+
+Status: `synchronized` after [Issue186 detail6622589651](https://github.com/lucronn/autodata/issues/186#issuecomment-6622589651) and Project8 exact readback at `2026-11-04T04:30:30.706329+00:00`. Full then-current Project index, entire prior Issue body and all111 historical comment bodies are retained verbatim with SHA256 in `docs/agents/records/2026-11-04-workshop-staging-m2-host-install-evidence.json` and verified unchanged. Independent exact-checkpoint review and fresh root dispatch remain pending. This docs-only checkpoint authorizes no implementation or live action.
+
+
+## Verified docs-only integration tracking synchronization
+
+This additive receipt supersedes only the local-draft tracking statements above. Coordinator explicitly released PG writer slot. Independent local draft review PASS pinned plan SHA256 ea42fcac66cc397482f985be8a26e6e73dc1fc22c0b4e008eec742d4e384e553 / bundle manifest ca34e3e8be70bac131aabf7b600032a9b4531f0d87b85f5a8fa5f75f03c94a63. https://github.com/lucronn/autodata/issues/186#issuecomment-6622915925 read back at 2026-11-04T04:54:35.010852+00:00. Entire current Issue body/all115 prior comment bodies and full current PG Project index preserved verbatim+hash in `docs/agents/records/2026-11-04-workshop-reviewed-leaves-integration-evidence.json`; independent API readback confirmed Issue/prior comments unchanged. PG gate74dfe57/receiptd662cb0, Stage1A and M2A details/pins/statuses/denials preserved. Project current index SHA256 20ab190a8c0e78eb994b5e99ba133e7df2cdebd1258f29c0680d0cb32422407c.
+
+Record/task status synchronized after actual readback. Full committed checkpoint/preflight, independent exact-checkpoint review and fresh coordinator dispatch remain required before any ordered integration. No implementation merge, provider, cloud, runtime, staging activation or deployment occurred. This synchronization alone authorizes none of them.
+
+Goal: Integrate the three independently reviewed dormant R6, publisher and staging leaf histories into one byte-pinned offline candidate without live activation.
+
+Refs: `docs/superpowers/plans/2026-11-04-workshop-reviewed-leaves-integration.md`, `docs/agents/specs/2026-11-04-workshop-reviewed-leaves-integration.md`, `docs/agents/records/2026-11-04-workshop-reviewed-leaves-integration.json`, `docs/agents/tasks/2026-11-03-production-release/workshop-reviewed-leaves-integration.json`, `docs/agents/records/2026-11-04-workshop-reviewed-leaves-integration-evidence.json`
+
+Concrete todo:
+- [ ] Obtain independent local-draft review; keep status unsynchronized and integration blocked until PG releases the serialized tracking slot.
+- [ ] After slot release, preserve then-current Issue186/Project8 texts and hashes; synchronize exact source tuple, plan/spec/record/task/canonical notes and concrete todo; commit/push the docs-only checkpoint and pass full-SHA preflight.
+- [ ] Obtain independent exact synchronized-checkpoint review and fresh coordinator code-only dispatch; create an isolated feature worktree/branch from the checkpoint.
+- [ ] Merge exact R6, publisher and staging leaf histories in that deterministic order, resolving only five approved documentation/tracking conflicts and preserving all 23 implementation blob pins and historical additions.
+- [ ] Run combined offline Python/Node/preflight/syntax/scope/authority checks after each milestone; commit and promptly push validated coherent merges to the assigned branch.
+- [ ] Obtain independent exact-head review, freeze the combined candidate SHA and retain results; obtain separate gates before fixture/CI reruns or any live activation.
+
+
+### Exact committed integration checkpoint pin
+
+Gate `2728ac1acaf173d6f244e200e584dac7922fda1d` pushed on `codex/workshop-reviewed-leaves-integration-plan`; canonical preflight at that full SHA exit0, `status: synchronized`, `errors: []`, stderr empty. Pin https://github.com/lucronn/autodata/issues/186#issuecomment-6622928529 read back 2026-11-04T04:55:31.706681+00:00. Final Project index SHA256 `578438413fa8b6738efbf960c46e55ff7b6623772fac191b697af862d57bf0d2` (934 characters), containing every explicit predecessor reference ID including full PG gate74dfe57, receiptd662cb0 and M2A gate9a2b57d0. Complete Issue body/all115 predecessor bodies unchanged on fresh paginated readback. Evidence retains exact prior/full current index, pin hash, command/stdout/stderr and readback.
+
+Independent exact-checkpoint review and fresh coordinator code-only dispatch remain required before any ordered integration. No code merge or activation occurred. Receipt commit records this gate without changing its pinned base.

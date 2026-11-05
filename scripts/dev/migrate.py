@@ -84,36 +84,29 @@ def psql_command(address: str | None = None) -> list[str]:
 
 
 def apply_migrations(root: Path, address: str | None = None) -> list[str]:
-    files = migration_files(root / "db/migrations")
-    if not files:
-        raise FileNotFoundError("no numbered migrations found")
+    generated = subprocess.run(
+        ["sh", str(root / "scripts/dev/migrate_sql.sh"), "--emit"],
+        cwd=root, check=False, capture_output=True, text=True,
+    )
+    if generated.returncode:
+        raise RuntimeError(generated.stderr.strip() or generated.stdout.strip())
     command = psql_command(address)
-    completed: list[str] = []
     env = {
         **os.environ,
         "PGPASSWORD": os.getenv("PGPASSWORD", os.getenv("AUTODATA_POSTGRES_PASSWORD", "local-dev-only")),
     }
-    for migration in files:
-        in_container = command[0] == "docker"
-        migration_path = "/workspace/db/migrations/" + migration.name if in_container else str(migration)
-        psql_args = [*command, "--set", "ON_ERROR_STOP=1", "--file", migration_path]
-        input_sql = None
-        if in_container:
-            psql_args[-1] = "-"
-            input_sql = migration.read_text()
-        result = subprocess.run(
-            psql_args,
-            cwd=root,
-            check=False,
-            capture_output=True,
-            text=True,
-            input=input_sql,
-            env=env,
-        )
-        if result.returncode:
-            raise RuntimeError(result.stderr.strip() or result.stdout.strip())
-        completed.append(migration.name)
-    return completed
+    result = subprocess.run(
+        [*command, "-X", "--set", "ON_ERROR_STOP=1", "--file", "-"],
+        cwd=root, check=False, capture_output=True, text=True,
+        input=generated.stdout, env=env,
+    )
+    if result.stderr:
+        print(result.stderr, end="", file=sys.stderr)
+    if result.returncode:
+        raise RuntimeError(result.stderr.strip() or result.stdout.strip())
+    return [line.removeprefix("AUTODATA_APPLIED ")
+            for line in result.stdout.splitlines()
+            if line.startswith("AUTODATA_APPLIED ")]
 
 
 def main(argv: list[str] | None = None) -> None:

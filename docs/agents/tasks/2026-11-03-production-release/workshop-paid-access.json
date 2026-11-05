@@ -1,0 +1,119 @@
+{
+  "task_id": "production-release-workshop-paid-access",
+  "repository": "lucronn/autodata",
+  "goal": "Enforce purchased configuration and region access before catalog preparation, content and contextual media reads.",
+  "builder_agent": "autodata-go-builder",
+  "allowed_paths": [
+    "apps/api-go/catalog_access.go",
+    "apps/api-go/catalog_access_test.go",
+    "apps/api-go/catalog_media_access.go",
+    "apps/api-go/catalog_media_access_test.go",
+    "apps/api-go/postgres_catalog_access_test.go",
+    "workers/ingestion-python/tests/test_paid_catalog_api_integration.py",
+    "scripts/dev/workshop_paid_access_smoke.py",
+    "scripts/dev/test_workshop_paid_access_smoke.py",
+    "docs/verification/workshop-paid-access-runbook.md",
+    "apps/api-go/main.go",
+    "apps/api-go/catalog_http.go",
+    "apps/api-go/catalog_source.go",
+    "apps/api-go/catalog_media_token.go",
+    "apps/api-go/openapi.json",
+    "apps/api-go/openapi.yaml",
+    "docs/architecture/workshop-interface.md",
+    "apps/api-go/main_test.go"
+  ],
+  "bounded_contexts": [
+    "purchased catalog HTTP access",
+    "contextual authenticated source media"
+  ],
+  "inputs": [
+    "docs/superpowers/plans/2026-11-03-workshop-paid-access.md",
+    "docs/superpowers/plans/2026-11-03-workshop-commerce.md",
+    "docs/superpowers/plans/2026-11-03-workshop-firebase-identity.md"
+  ],
+  "outputs": [
+    "apps/api-go/catalog_access.go",
+    "apps/api-go/catalog_media_access.go"
+  ],
+  "acceptance_tests": [
+    "Expose only safe selector metadata publicly; enforce current verified session and exact owner/configuration/region grant before protected work and deny legacy customer bypass routes.",
+    "Add explicit CSRF-protected prepare POST and observational paid GETs while preserving shared canonical rewriting and source fallback.",
+    "Bind v2 media to account, exact scope, article, revisions and permitted asset; recheck current grant and rights before object reads.",
+    "Execute all twelve real paid-access cases across both banks and preserve eight R3, five identity and fourteen commerce regressions; independently review exact candidate and CI."
+  ],
+  "required_postgres_test_roots": [
+    "TestPostgresPaidCatalogGrantBeforeWork",
+    "TestPostgresPaidCatalogExactScopeAndOwnerIsolation",
+    "TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse",
+    "TestPostgresPaidCatalogContextualMediaAndRevocation",
+    "TestPostgresPaidCatalogHistoricalSourceAndRights",
+    "TestPostgresPaidCatalogCustomerLegacyRoutesDenied"
+  ],
+  "required_providers": [
+    "bankone",
+    "banktwo"
+  ],
+  "required_runtime_cases": 12,
+  "forbidden_scope": [
+    "No historical SQL, identity, commerce authority, worker, fixture infrastructure or UI implementation changes.",
+    "No live charges, provider credentials, cloud resources, DNS or deployment.",
+    "No policy bypass, legacy media fallback in Firebase mode, client-controlled grant or source identity."
+  ],
+  "pre_implementation": {
+    "goal": "Enforce purchased configuration and region access before catalog preparation, content and contextual media reads.",
+    "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-paid-access.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/architecture/workshop-commerce.md",
+      "docs/superpowers/specs/2026-11-03-source-fallback-web-design.md",
+      "docs/superpowers/plans/2026-11-03-production-release-orchestration.md",
+      "docs/superpowers/plans/2026-11-03-workshop-parallel-delivery.md"
+    ],
+    "todo": [
+      "Freeze reviewed commerce and paid-access interfaces, apply the parallel ownership plan, synchronize Issue186/Project8 and canonical docs, then pass the exact-base gate before implementation. Runtime acceptance remains required before release.",
+      "Expose only safe selector metadata publicly; enforce current verified session and exact owner/configuration/region grant before protected work and deny legacy customer bypass routes.",
+      "Add explicit CSRF-protected prepare POST and observational paid GETs while preserving shared canonical rewriting and source fallback.",
+      "Bind v2 media to account, exact scope, article, revisions and permitted asset; recheck current grant and rights before object reads.",
+      "Execute all twelve real paid-access cases across both banks and preserve eight R3, five identity and fourteen commerce regressions; independently review exact candidate and CI.",
+      "Coordinator updates the existing identity boundary test to use the still-protected source-review-items route for bearer rejection and identity dependency errors; public selectors remain200."
+    ],
+    "status": "synchronized",
+    "updated_at": "2026-11-03T19:42:13.328301+00:00"
+  },
+  "execution": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "medium",
+    "service_tier": "fast",
+    "features": {
+      "fast_mode": true
+    },
+    "allow_fallback": false
+  },
+  "parallel_plan_ref": "docs/superpowers/plans/2026-11-03-workshop-parallel-delivery.md",
+  "worker_ownership": {
+    "article_access": [
+      "apps/api-go/catalog_access.go",
+      "apps/api-go/catalog_access_test.go",
+      "apps/api-go/postgres_catalog_access_test.go",
+      "workers/ingestion-python/tests/test_paid_catalog_api_integration.py",
+      "scripts/dev/workshop_paid_access_smoke.py",
+      "scripts/dev/test_workshop_paid_access_smoke.py",
+      "docs/verification/workshop-paid-access-runbook.md",
+      "apps/api-go/main.go",
+      "apps/api-go/catalog_http.go",
+      "apps/api-go/openapi.json",
+      "apps/api-go/openapi.yaml",
+      "docs/architecture/workshop-interface.md"
+    ],
+    "protected_media": [
+      "apps/api-go/catalog_media_access.go",
+      "apps/api-go/catalog_media_access_test.go",
+      "apps/api-go/catalog_source.go",
+      "apps/api-go/catalog_media_token.go"
+    ],
+    "coordinator": [
+      "apps/api-go/main_test.go"
+    ]
+  }
+}

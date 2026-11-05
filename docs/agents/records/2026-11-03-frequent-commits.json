@@ -1,0 +1,18 @@
+{
+  "goal": "Require frequent, small, meaningful commits and prompt GitHub pushes while preserving planning, verification and branch ownership.",
+  "plan_ref": "docs/superpowers/plans/2026-11-03-frequent-commits.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/agents/pre-implementation-gate.md",
+    "docs/superpowers/plans/2026-11-03-production-release-orchestration.md"
+  ],
+  "todo": [
+    "Commit this plan and synchronized Issue186/Project8/canonical documentation record, then pass exact-base preflight.",
+    "Add a concise AGENTS.md rule for small coherent commits, meaningful messages and prompt pushes of validated milestones on the assigned branch.",
+    "Preserve existing planning/testing requirements and branch ownership; prohibit empty or artificial history changes made only to inflate activity.",
+    "Inspect the Markdown diff, commit the instruction change separately and push the assigned coordination branch."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-03T17:37:34.150260+00:00"
+}

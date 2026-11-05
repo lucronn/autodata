@@ -1,0 +1,22 @@
+{
+  "goal": "Serve frozen server-owned Workshop purchase/legal configuration from Python through the strict public Go projection, and reject every new or resumed checkout POST before financial side effects whenever purchase configuration is missing, malformed or disabled; preserve USD20 one-time vehicle ownership and recovery.",
+  "plan_ref": "docs/superpowers/plans/2026-11-05-workshop-purchase-config-interlock.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/agents/specs/2026-11-05-workshop-purchase-config-interlock.json",
+    "docs/verification/2026-11-05-workshop-purchase-config-interlock.md",
+    "docs/architecture/workshop-commerce.md",
+    "docs/verification/workshop-commerce-runbook.md"
+  ],
+  "todo": [
+    "Independently review the approved Task59 proposal, its SHA256-bound approval, exact fifteen implementation paths/eight gate paths, coordinator-selected b6388596cf4419559fc6a8a5fbcd0b4fc33cc7cb planning parent and retained Task57/Task58 evidence; preserve all prior58 queue objects/root bytes and unchanged product/source pins, credit0 and release limits.",
+    "Synchronize the literal goal, these six todos, exact paths, canonical references and explicit production-config-delivery blocker in Issue186/Project8 with fresh ownership and before/after preservation readbacks; only then set standalone and nested records synchronized, commit/push the planning-only checkpoint, externally seal its actual SHA/tree, pass both exact-checkpoint machine preflights errors=[], obtain independent checkpoint review and explicit coordinator dispatch.",
+    "Implement the strict immutable seven-key Python configuration parser/factory, default-disabled service composition, token-authenticated exact-object private operation and pre-transaction checkout interlock; preserve strict merchant/mode/origin/migration checks and all financial recovery, with genuine red/green authority tests and validated synthetic enabled fixture inputs.",
+    "Implement the two-second strict no-store public Go projection and exact GET/HEAD/405/query/conditional behavior; remove the competing embedded JSON, preserve UI/quote contracts and add strict malformed-input, actual-network HEAD and stale-config authenticated/CSRF authority regressions within the fifteen-path scope.",
+    "Run focused red/green, frozen source/regression commands and the separately required three-case PG plus named Go authority bridge in the coordinator-owned lifecycle fixture; retain raw failures/no-skip/event/SQL/provider/provenance evidence separately from frozen collectors, inspect exact scope and promptly commit/push small validated milestones, then obtain independent exact-source review and fresh source-push/actual-PR CI required-job/live-Compose success.",
+    "Synchronize verified source and remaining owner legal/tax/support, secret/merchant/Firebase, protected deployment-config delivery, restart/drain/rollback, authentic identity/payment/staging/restore/host/TLS and Vercel DNS blockers; retain accepted_case_credit=0, accepted_new_case_credit=0, verified_case_ids=[] and release_state=unverified with no merge/deployment/live-sales authority."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-05T05:25:42Z"
+}

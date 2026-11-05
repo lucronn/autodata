@@ -10,10 +10,19 @@ from autodata_ingestion.payment_reconciliation import (  # noqa: E402
     canonical_payment_payload,
     revoke_entitlement,
     _source_descriptor,
+    reconcile_payment_event,
 )
 
 
 class PaymentReconciliationTests(unittest.TestCase):
+    def test_workshop_signed_facts_use_explicit_authority_not_legacy_fakes(self):
+        calls=[]
+        class Commerce:
+            def reconcile_event(self,event):calls.append(event);return {'status':'accepted'}
+        event={'kind':'workshop','provider_name':'stripe','provider_event_id':'evt_fixture'}
+        self.assertEqual(reconcile_payment_event(None,event,commerce=Commerce()),{'status':'accepted'})
+        self.assertEqual(calls,[event])
+
     def test_verified_event_accepts_delayed_dataset_request_reference(self):
         intent = PaymentIntent.from_event(
             {

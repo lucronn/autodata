@@ -1,0 +1,71 @@
+{
+  "task_id": "production-release-r6-evidence-adapter",
+  "repository": "lucronn/autodata",
+  "goal": "Collect actual licensed Workshop staging provenance through a separately gated fixed two-file adapter.",
+  "builder_agent": "autodata-python-builder",
+  "allowed_paths": [
+    "scripts/dev/collect_staging_provenance.py",
+    "scripts/dev/test_collect_staging_provenance.py"
+  ],
+  "bounded_contexts": [
+    "staging provenance",
+    "protected evidence collection"
+  ],
+  "inputs": [
+    "docs/superpowers/plans/2026-11-03-workshop-product-evidence-assembler.md",
+    "docs/superpowers/plans/2026-11-03-release-acceptance.md"
+  ],
+  "outputs": [
+    "scripts/dev/collect_staging_provenance.py",
+    "scripts/dev/test_collect_staging_provenance.py"
+  ],
+  "acceptance_tests": [
+    "Actual enrolled Bankone and Banktwo population has nonempty frozen denominators and independently measured 1.0 fast-lane provenance coverage.",
+    "Protected immutable source/object versions, rights and required field/locator evidence bind to exact candidate.",
+    "Failed, pending, quarantined and withdrawn required outcomes remain in the denominator.",
+    "Synthetic, stale, dropped or cross-candidate evidence cannot satisfy staging acceptance.",
+    "A separate synchronized gate and preflight precede implementation after real enrollment selection."
+  ],
+  "forbidden_scope": [
+    "Production deployment or production-data changes",
+    "Changing the autonomy policy or weakening required checks",
+    "Publishing secrets or private source payloads",
+    "Editing paths outside the assigned scope",
+    "Merging without independent exact-commit verification",
+    "Changing the requested gpt-6.1-sol / medium / Fast execution profile or silently falling back to another model or tier"
+  ],
+  "compatibility": {
+    "api": "Preserve existing consumers with additive versioned fields; run compatibility checks.",
+    "events": "Preserve event identity and make duplicate delivery idempotent.",
+    "schema": "Forward-only additive migrations with clean and upgrade verification; no destructive edits to historical migrations."
+  },
+  "pre_implementation": {
+    "goal": "Collect actual licensed Workshop staging provenance through a separately gated fixed two-file adapter.",
+    "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-product-evidence-assembler.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/superpowers/specs/2026-11-03-production-release-orchestration-design.md",
+      "docs/superpowers/plans/2026-11-03-production-release-orchestration.md"
+    ],
+    "todo": [
+      "Actual enrolled Bankone and Banktwo population has nonempty frozen denominators and independently measured 1.0 fast-lane provenance coverage.",
+      "Protected immutable source/object versions, rights and required field/locator evidence bind to exact candidate.",
+      "Failed, pending, quarantined and withdrawn required outcomes remain in the denominator.",
+      "Synthetic, stale, dropped or cross-candidate evidence cannot satisfy staging acceptance.",
+      "A separate synchronized gate and preflight precede implementation after real enrollment selection."
+    ],
+    "status": "blocked",
+    "updated_at": "2026-11-03T21:36:42.684228+00:00"
+  },
+  "execution": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "medium",
+    "service_tier": "fast",
+    "features": {
+      "fast_mode": true
+    },
+    "allow_fallback": false
+  },
+  "source_inspection_sha": "2de36a1305bfbe45992995e6caf0ba52f30fddcc"
+}

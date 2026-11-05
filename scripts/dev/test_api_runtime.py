@@ -24,9 +24,19 @@ class APIRuntimeContractTests(unittest.TestCase):
         self.assertIn("scripts/dev/api_runtime_smoke.py", compose)
         self.assertIn("api:\n        condition: service_healthy", compose)
 
+    def test_local_auth_mode_is_explicit_and_unavailable(self):
+        for path in ('infra/compose/compose.yaml', 'docker-compose.base44.yml'):
+            compose = self.read(path)
+            self.assertIn('AUTODATA_ENV: "development"', compose)
+            self.assertIn('AUTODATA_AUTH_MODE: "local"', compose)
+            self.assertIn('AUTODATA_PUBLIC_ORIGIN: "https://localhost:', compose)
+        ci = self.read('infra/compose/compose.ci.yaml')
+        self.assertIn('AUTODATA_ENV: "test"', ci)
+        self.assertIn('AUTODATA_AUTH_MODE: "local"', ci)
+
     def test_catalog_image_storage_key_is_internal_only(self):
         store = self.read("apps/api-go/catalog_store.go")
-        self.assertIn('StorageKey string `json:"-"`', store)
+        self.assertRegex(store, r'(?m)^[ \t]*StorageKey[ \t]+string[ \t]+`json:"-"`[ \t]*$')
         media_test = self.read("apps/api-go/catalog_media_test.go")
         self.assertIn("private/source-object/key", media_test)
         self.assertIn("storage_key", media_test)
@@ -126,3 +136,19 @@ class APIRuntimeContractTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CommerceRuntimeTests(unittest.TestCase):
+    def test_commerce_mode_is_explicit_and_secrets_are_python_only(self):
+        import yaml
+        for relative in ('infra/compose/compose.yaml','docker-compose.base44.yml'):
+            data=yaml.safe_load((ROOT/relative).read_text())
+            for service in ('api','ingestion-http'):
+                self.assertIn('AUTODATA_COMMERCE_MODE',data['services'][service]['environment'])
+            self.assertNotIn('AUTODATA_STRIPE_SECRET_KEY',data['services']['api']['environment'])
+            self.assertNotIn('AUTODATA_STRIPE_WEBHOOK_SECRET',data['services']['api']['environment'])
+            self.assertIn('AUTODATA_STRIPE_SECRET_KEY',data['services']['ingestion-http']['environment'])
+        project=__import__('tomllib').loads((ROOT/'workers/ingestion-python/pyproject.toml').read_text())
+        self.assertIn('stripe==16.1.0',project['project']['dependencies'])
+        dockerfile=(ROOT/'workers/ingestion-python/Dockerfile').read_text()
+        self.assertIn("p['project']['dependencies']",dockerfile)

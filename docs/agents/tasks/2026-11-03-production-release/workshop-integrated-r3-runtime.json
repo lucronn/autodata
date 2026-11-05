@@ -1,0 +1,108 @@
+{
+  "task_id": "workshop-integrated-r3-runtime",
+  "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-integrated-r3-runtime.md",
+  "spec_ref": "docs/verification/2026-11-03-canonical-article-lifecycle.md",
+  "record_ref": "docs/agents/records/2026-11-04-workshop-integrated-r3-runtime.json",
+  "source_candidate_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+  "state": "blocked",
+  "pre_implementation": {
+    "goal": "Measure the integrated Workshop candidate with one fresh, isolated, bounded R3 fixture run: eight required provider/root outcomes and 42 SQL readiness tuples at one unchanged exact SHA.",
+    "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-integrated-r3-runtime.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/verification/2026-11-03-canonical-article-lifecycle.md"
+    ],
+    "todo": [
+      "Retain the coordinator-reported independent exact-head integration review PASS at 4d82e413e04fb2401ac7bc28dc828375ac662180 with Issue186 comment6636079243 and builder handoff hash; any candidate change requires a fresh binding and review.",
+      "Resolve immutable runner/service image availability, candidate compatibility, cache manifest and reviewed supervisor adaptation facts with read-only evidence; preserve the historical supervisor and leaf receipts.",
+      "Independently review this docs-only blocked draft; have the serialized coordinator preserve Issue186/Project8 history and synchronize this exact goal, scope, references and todo only after blockers close; commit/push the checkpoint, pin its full SHA and pass canonical machine preflight before runtime dispatch.",
+      "After a separate explicit runtime handoff, prepare a clean remote-free plain clone of the fixed candidate, new owned artifacts and services, immutable input/image/cache/host manifests and a fresh private /home SeaweedFS bind with at least 12 GiB free.",
+      "Execute the unchanged required pytest bridge and eight exact Go roots under the 1320-second runner deadline; require zero skips, 42 expected/observed SQL tuple matches and every original lifecycle invariant.",
+      "Preserve before/after provenance, all failed/successful commands and evidence, and bounded ownership-checked cleanup; obtain independent exact-run audit and synchronize measured completion without claiming final180, provider, payment, cloud or release acceptance."
+    ],
+    "status": "blocked",
+    "updated_at": "2026-11-04T16:31:53.021909+00:00",
+    "source_candidate_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+    "draft_state": "blocked_pending_runtime_provenance",
+    "blockers": [
+      "Historical image IDs exist in receipts, but current local availability, platform/entrypoint/tool versions, whole dependency/module cache manifests and candidate compatibility have not been established.",
+      "The pinned historical supervisor always invokes an unpinned docker-container BuildKit build; it does not implement the selected immutable-image reuse path or immutable dependency/cache manifests. No adaptation source/hash has been supplied or reviewed.",
+      "Fresh Issue186/Project8 synchronization, independent planning checkpoint review, committed checkpoint SHA, exact-base machine preflight and runtime handoff do not exist for this separate gate."
+    ],
+    "allowed_implementation_paths": [],
+    "allowed_gate_document_paths": [
+      "docs/superpowers/plans/2026-11-04-workshop-integrated-r3-runtime.md",
+      "docs/agents/records/2026-11-04-workshop-integrated-r3-runtime.json",
+      "docs/agents/tasks/2026-11-03-production-release/workshop-integrated-r3-runtime.json",
+      "docs/agents/tasks/2026-11-03-production-release/queue.json",
+      "docs/verification/2026-11-03-canonical-article-lifecycle.md"
+    ],
+    "implementation_dispatch_authorized": false,
+    "runtime_execution_authorized": false,
+    "cloud_execution_authorized": false,
+    "tracking_sync": {
+      "status": "not_synchronized",
+      "writer": "coordinator serialized writer only; no GitHub write in this draft"
+    },
+    "release_state": "unverified",
+    "final180_status": "open",
+    "release_authorities": {
+      "merge": false,
+      "release": false,
+      "deployment": false,
+      "activation": false,
+      "live_provider": false,
+      "live_payment": false,
+      "final180": false
+    },
+    "runtime_contract": {
+      "strategy": "reuse_verified_immutable_local_images_only_no_build_or_acquisition",
+      "runner_deadline_seconds": 1320,
+      "minimum_private_home_bind_free_bytes": 12884901888,
+      "required_python_cases": 8,
+      "required_go_roots": 8,
+      "required_sql_tuples": 42,
+      "required_skips": 0,
+      "historical_supervisor_sha256": "e4a8f054f85207b5dc8e83155cf1b39e67ffcbc467d8f0a44eb08bc86a0e26b9",
+      "reviewed_execution_supervisor_ref": null,
+      "reviewed_execution_supervisor_sha256": null
+    },
+    "integration_review": {
+      "status": "PASS",
+      "candidate_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+      "source": "coordinator independent-review PASS handoff and verified live readback; this planner performed no GitHub write",
+      "pull_request_ref": "https://github.com/lucronn/autodata/pull/217",
+      "receipt_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6636079243",
+      "tree_sha": "d9fb2a8f49beacd009374a76327d0736c1fc9b0a",
+      "builder_handoff_ref": "/home/corp/autodata-evidence/final-leaves-builder/corrected/final-handoff.json",
+      "builder_handoff_sha256": "de910ae65e80a4a94ff91dd886a030bafd3e695228f57d9d7c99b2b77e6668a4",
+      "builder_handoff_limit": "Predates independent review and says review pending; not itself an independent PASS receipt."
+    }
+  },
+  "goal": "Measure the integrated Workshop candidate with one fresh, isolated, bounded R3 fixture run: eight required provider/root outcomes and 42 SQL readiness tuples at one unchanged exact SHA.",
+  "todo": [
+    "Retain the coordinator-reported independent exact-head integration review PASS at 4d82e413e04fb2401ac7bc28dc828375ac662180 with Issue186 comment6636079243 and builder handoff hash; any candidate change requires a fresh binding and review.",
+    "Resolve immutable runner/service image availability, candidate compatibility, cache manifest and reviewed supervisor adaptation facts with read-only evidence; preserve the historical supervisor and leaf receipts.",
+    "Independently review this docs-only blocked draft; have the serialized coordinator preserve Issue186/Project8 history and synchronize this exact goal, scope, references and todo only after blockers close; commit/push the checkpoint, pin its full SHA and pass canonical machine preflight before runtime dispatch.",
+    "After a separate explicit runtime handoff, prepare a clean remote-free plain clone of the fixed candidate, new owned artifacts and services, immutable input/image/cache/host manifests and a fresh private /home SeaweedFS bind with at least 12 GiB free.",
+    "Execute the unchanged required pytest bridge and eight exact Go roots under the 1320-second runner deadline; require zero skips, 42 expected/observed SQL tuple matches and every original lifecycle invariant.",
+    "Preserve before/after provenance, all failed/successful commands and evidence, and bounded ownership-checked cleanup; obtain independent exact-run audit and synchronize measured completion without claiming final180, provider, payment, cloud or release acceptance."
+  ],
+  "allowed_paths": [
+    "docs/superpowers/plans/2026-11-04-workshop-integrated-r3-runtime.md",
+    "docs/agents/records/2026-11-04-workshop-integrated-r3-runtime.json",
+    "docs/agents/tasks/2026-11-03-production-release/workshop-integrated-r3-runtime.json",
+    "docs/agents/tasks/2026-11-03-production-release/queue.json",
+    "docs/verification/2026-11-03-canonical-article-lifecycle.md"
+  ],
+  "allowed_implementation_paths": [],
+  "implementation_dispatch_authorized": false,
+  "runtime_execution_authorized": false,
+  "cloud_execution_authorized": false,
+  "release_state": "unverified",
+  "depends_on": [
+    "workshop-final-reviewed-leaves-integration"
+  ],
+  "dispatch_prerequisite": "Close immutable runtime provenance and reviewed supervisor adaptation blockers; independently review and synchronize committed docs-only checkpoint, pass exact-base machine preflight and obtain separate runtime handoff."
+}

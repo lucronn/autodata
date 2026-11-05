@@ -46,13 +46,14 @@ def db_connection(address: str | None = None):
     )
 
 
-def run_once(batch_size: int | None = None, address: str | None = None) -> list[dict[str, object]]:
+def run_once(batch_size: int | None = None, address: str | None = None, *, commerce=None) -> list[dict[str, object]]:
     size = batch_size if batch_size is not None else int(os.getenv("AUTODATA_PAYMENT_RECONCILE_BATCH_SIZE", "50"))
     with db_connection(address) as connection:
-        return reconcile_pending_payments(
-            connection,
-            size,
-        )
+        results = reconcile_pending_payments(connection, size, commerce=commerce) if commerce is not None else reconcile_pending_payments(connection, size)
+        if commerce is not None:
+            from autodata_ingestion.commerce_service import reconcile_workshop_preparation
+            results += reconcile_workshop_preparation(connection, limit=10)
+        return results
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -85,11 +86,13 @@ def main(argv: list[str] | None = None) -> None:
     )
     args = parser.parse_args(argv)
 
+    from autodata_ingestion.commerce_service import configured_commerce
+    commerce = configured_commerce()
     if args.once:
-        print(run_once(batch_size=args.batch_size, address=args.address), flush=True)
+        print(run_once(batch_size=args.batch_size, address=args.address, commerce=commerce), flush=True)
         return
     while True:
-        results = run_once(batch_size=args.batch_size, address=args.address)
+        results = run_once(batch_size=args.batch_size, address=args.address, commerce=commerce)
         if results:
             print(results, flush=True)
         time.sleep(args.poll_seconds)

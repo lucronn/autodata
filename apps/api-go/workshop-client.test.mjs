@@ -1,16 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
+import { NavigationGeneration, processingArticle, readableArticle } from './workshop/article-read.mjs';
+import { purchaseConfiguration, uuid, validScope } from './workshop/commerce.mjs';
 import { articlePresentation, configurationLabel, filterArticles, hasSourceReference, legacyArticleBlocks, localImageURL, readCollection, requestJSON, sourceReferenceURL } from './workshop/catalog.mjs';
 import { LOAD_STAGES, loadingProgress } from './workshop/progress.mjs';
 
 test('loading progress uses fixed ordered stages and caps incomplete hydration', () => {
   assert.deepEqual(LOAD_STAGES.map(stage => stage.key), ['year', 'make', 'model', 'configuration', 'articles', 'article']);
-  assert.equal(loadingProgress('make', { complete: true }).percent, 30);
+  assert.equal(loadingProgress('make', { complete: true }).complete, true);
   const partial = loadingProgress('make', { attempt: 40, attempts: 40, hydrating: true });
   assert.equal(partial.step, 2);
   assert.equal(partial.total, 6);
-  assert.equal(partial.percent, 27);
-  assert.ok(partial.percent < 30);
+  assert.equal(partial.percent, null);
 });
 
 test('partial selector hydration expands until complete', async () => {
@@ -102,9 +105,10 @@ test('legacy descriptions get readable paragraph breaks without changing text or
 });
 
 test('image rendering does not contact original providers or accept script URLs', () => {
-  assert.equal(localImageURL('/images/a.png', 'http://localhost:8080'), 'http://localhost:8080/images/a.png');
+  assert.equal(localImageURL('/images/a.png', 'http://localhost:8080'), null);
+  assert.equal(localImageURL('/v1/catalog/images/v2.opaque', 'http://localhost:8080'), 'http://localhost:8080/v1/catalog/images/v2.opaque');
   for (const url of ['https://provider.example/a.png', '//provider.example/a.png', 'javascript:alert(1)', 'data:image/svg+xml,<svg/>', 'artifact://missing']) assert.equal(localImageURL(url, 'http://localhost:8080'), null);
-  assert.equal(localImageURL('data:image/png;base64,YQ==', 'http://localhost:8080'), 'data:image/png;base64,YQ==');
+  assert.equal(localImageURL('data:image/png;base64,YQ==', 'http://localhost:8080', { compatibility: true }), 'data:image/png;base64,YQ==');
 });
 
 test('source references stay same-origin and retain evidence locator context', () => {
@@ -122,3 +126,1310 @@ test('search matches all words without changing catalog order or IDs', () => {
   assert.deepEqual(filterArticles(articles, ''), articles);
   assert.equal(configurationLabel({ engine: '2.0', trim: 'Base' }), '2.0 / Base');
 });
+
+const scope = { configuration_id: '11111111-1111-4111-8111-111111111111', region: 'US' };
+const orderID = '22222222-2222-4222-8222-222222222222';
+const quote = { version: 'v1', ...scope, product_key: 'workshop-configuration-v1', configuration_label: '2005 Toyota / 2.4L / US', amount_minor: 2000, currency: 'USD', purchase_terms_version: 'workshop-v1', purchasable: true };
+test('quote requires server price and exact configuration/region', async () => {
+  const { validQuote } = await import('./workshop/commerce.mjs');
+  assert.equal(validQuote(quote, scope), true);
+  for (const change of [{ amount_minor: 1 }, { region: 'CA' }, { purchase_terms_version: 'unknown' }, { configuration_id: orderID }, { purchasable: false }]) assert.equal(validQuote({ ...quote, ...change }, scope), false);
+});
+test('checkout URL validation preserves opaque fragment and rejects ambiguous hosts', async () => {
+  const { hostedCheckoutURL } = await import('./workshop/commerce.mjs');
+  const url = 'https://checkout.stripe.com/c/pay/cs_test_123#opaque%2Ffragment';
+  assert.equal(hostedCheckoutURL(url), url);
+  for (const value of ['https://checkout.stripe.com:443/c/pay/x', 'https://checkout.stripe.com.evil/c/pay/x', 'https://user@checkout.stripe.com/c/pay/x', 'https://checkout.stripe.com/c/pay/', 'https://checkout.stripe.com/c/pay/x\n', '//checkout.stripe.com/c/pay/x']) assert.equal(hostedCheckoutURL(value), null);
+});
+test('order discriminants cannot grant access or create automatic replacement', async () => {
+  const { validOrder } = await import('./workshop/commerce.mjs');
+  assert.equal(validOrder({ version: 'v1', ...scope, order_id: orderID, state: 'paid', retry_disposition: 'do_not_repay' }, orderID), true);
+  assert.equal(validOrder({ version: 'v1', ...scope, order_id: orderID, state: 'paid', retry_disposition: 'new_key' }, orderID), false);
+});
+test('library requires nullable cursor and accepts revoked never-granted tombstone', async () => {
+  const { validLibrary } = await import('./workshop/commerce.mjs');
+  const item = { ...scope, library_item_id: orderID, label: 'Vehicle', access_state: 'revoked', granted_at: null };
+  for (const next_cursor of [null, '', 'opaque+/=']) assert.equal(validLibrary({ version: 'v1', items: [item], next_cursor }), true);
+  for (const bad of [{ version: 'v1', items: [] }, { version: 'v1', items: [], next_cursor: 4 }, { version: 'v1', items: [{ ...item, access_state: 'paid' }], next_cursor: null }]) assert.equal(validLibrary(bad), false);
+});
+test('checkout attempt shares one in-flight request and retries the same key/body', async () => {
+  const { createCheckout } = await import('./workshop/commerce.mjs');
+  const values = new Map(), calls = []; let release;
+  const storage = { getItem: k => values.get(k) ?? null, setItem: (k,v) => values.set(k,v), removeItem: k => values.delete(k) };
+  const checkout = createCheckout({ storage, uuid: () => orderID, request: (path, options) => { calls.push(options); return new Promise(resolve => { release = resolve; }); } });
+  const a = checkout.start(scope, 'csrf'); const b = checkout.start(scope, 'csrf');
+  assert.equal(calls.length, 1);
+  release({ version: 'v1', ...scope, order_id: orderID, state: 'processing' });
+  await Promise.all([a,b]);
+  const c = checkout.start(scope, 'fresh-csrf');
+  release({ version: 'v1', ...scope, order_id: orderID, state: 'processing' }); await c;
+  assert.equal(calls[0].headers['Idempotency-Key'], calls[1].headers['Idempotency-Key']);
+  assert.deepEqual(calls[0].body, calls[1].body);
+  assert.ok(![...values.values()].join('').includes('csrf'));
+});
+test('reader is sequential, retains source during transient failure and stops at terminal canonical', async () => {
+  const { readArticle } = await import('./workshop/article-read.mjs');
+  const updates = [], waits = []; let now = 0, calls = 0;
+  const versions = [{ status: 200, data: { article: { body: 'source', processing: { job_id: 'job', state: 'fetching' } } } }, new TypeError('network'), { status: 200, data: { article: { document: { blocks: [{ type: 'paragraph', text: 'canonical' }] }, processing: { job_id: 'job', state: 'completed' } } } }];
+  const result = await readArticle(async () => { calls++; const value=versions.shift();if(value instanceof Error)throw value;return value; }, { now: () => now, wait: async ms => { waits.push(ms);now += ms; }, onUpdate: r => updates.push(r.data.article) });
+  assert.equal(calls,3);assert.equal(updates.length,2);assert.deepEqual(waits,[1000,2000]);assert.equal(result.timedOut,false);
+});
+test('reader retries failed jobs until canonical without losing source', async () => {
+  const { readArticle, processingArticle, readableArticle } = await import('./workshop/article-read.mjs');
+  let now = 0, reads = 0, inFlight = 0, maxInFlight = 0;
+  const waits = [], updates = [];
+  const source = {
+    content_origin: 'source', body: 'Stored source remains readable',
+    processing: { job_id: 'job', state: 'failed', retryable: true, retry_after_seconds: 3 },
+  };
+  const responses = [source,
+    { ...source, processing: { job_id: 'job', state: 'queued' } },
+    { ...source, processing: { job_id: 'job', state: 'rewriting' } },
+    { content_origin: 'canonical', body: 'Published canonical', processing: { job_id: 'job', state: 'completed', retryable: false } },
+  ];
+  const result = await readArticle(async () => {
+    reads++; inFlight++; maxInFlight = Math.max(maxInFlight, inFlight);
+    try {
+      await Promise.resolve();
+      assert.ok(responses.length, 'must stop after canonical completion');
+      return { status: 200, data: { article: responses.shift() } };
+    } finally { inFlight--; }
+  }, {
+    now: () => now,
+    wait: async ms => { waits.push(ms); now += ms; },
+    onUpdate: response => updates.push(response.data.article),
+  });
+  assert.equal(processingArticle(source), true);
+  assert.equal(reads, 4);
+  assert.equal(maxInFlight, 1);
+  assert.deepEqual(waits, [3000, 2000, 4000]);
+  assert.equal(updates.length, 4);
+  assert.ok(updates.slice(0, 3).every(readableArticle));
+  assert.ok(updates.slice(0, 3).every(article => article.body === source.body));
+  assert.equal(updates.filter(article => article.content_origin === 'canonical').length, 1);
+  assert.equal(result.data.article.content_origin, 'canonical');
+  assert.equal(result.timedOut, false);
+});
+test('reader keeps nonretryable failures and completed outcomes terminal', async () => {
+  const { readArticle, processingArticle } = await import('./workshop/article-read.mjs');
+  for (const processing of [
+    { job_id: 'job', state: 'failed', retryable: false },
+    { job_id: 'job', state: 'failed' },
+    { job_id: 'job', state: 'failed', retryable: 'true' },
+    ...['completed', 'needs_review', 'withdrawn'].map(state => ({ job_id: 'job', state, retryable: true })),
+    { state: 'failed', retryable: true },
+  ]) {
+    const source = { content_origin: 'source', body: 'Retained source', processing };
+    let reads = 0;
+    const updates = [];
+    const result = await readArticle(async () => {
+      reads++;
+      return { status: 200, data: { article: source } };
+    }, {
+      now: () => 0,
+      wait: async () => assert.fail('terminal outcomes must not wait for another read'),
+      onUpdate: response => updates.push(response.data.article),
+    });
+    assert.equal(processingArticle(source), false);
+    assert.equal(reads, 1);
+    assert.deepEqual(updates, [source]);
+    assert.equal(result.data.article, source);
+    assert.equal(result.timedOut, false);
+  }
+});
+test('reader retains retryable failed source when the absolute budget expires', async () => {
+  const { readArticle } = await import('./workshop/article-read.mjs');
+  const source = {
+    content_origin: 'source', body: 'Retained source',
+    processing: { job_id: 'job', state: 'failed', retryable: true, retry_after_seconds: 9 },
+  };
+  let now = 0, reads = 0;
+  const waits = [], updates = [];
+  const result = await readArticle(async () => {
+    reads++;
+    return { status: 200, data: { article: source } };
+  }, {
+    budgetMs: 5000, now: () => now,
+    wait: async ms => { waits.push(ms); now += ms; },
+    onUpdate: response => updates.push(response.data.article),
+  });
+  assert.equal(reads, 1);
+  assert.equal(now, 5000);
+  assert.deepEqual(waits, [5000]);
+  assert.deepEqual(updates, [source]);
+  assert.equal(result.data.article, source);
+  assert.equal(result.timedOut, true);
+});
+test('reader navigation abort during retryable failure backoff prevents later reads and updates', async () => {
+  const { readArticle } = await import('./workshop/article-read.mjs');
+  const navigation = new NavigationGeneration();
+  const generation = navigation.next();
+  const source = {
+    content_origin: 'source', body: 'Retained source',
+    processing: { job_id: 'job', state: 'failed', retryable: true, retry_after_seconds: 3 },
+  };
+  let reads = 0, waits = 0;
+  const updates = [];
+  await assert.rejects(readArticle(async () => {
+    reads++;
+    return { status: 200, data: { article: source } };
+  }, {
+    signal: generation.signal, now: () => 0,
+    wait: async (ms, signal) => {
+      waits++;
+      assert.equal(ms, 3000);
+      assert.equal(signal, generation.signal);
+      navigation.clear();
+      signal.throwIfAborted();
+    },
+    onUpdate: response => updates.push(response.data.article),
+  }), { name: 'AbortError' });
+  assert.equal(reads, 1);
+  assert.equal(waits, 1);
+  assert.deepEqual(updates, [source]);
+  assert.equal(generation.current(), false);
+  const later = navigation.next();
+  assert.equal(later.current(), true);
+  assert.equal(later.signal.aborted, false);
+});
+test('reader honors retry-after and absolute budget without extra request', async () => {
+  const { readArticle } = await import('./workshop/article-read.mjs'); let now=0,calls=0;
+  const result = await readArticle(async () => {calls++;return {status:202,data:{article:{processing:{job_id:'job',state:'queued'}}},retryAfterSeconds:9};}, {budgetMs:5000,now:()=>now,wait:async ms=>{now+=ms;}});
+  assert.equal(calls,1);assert.equal(now,5000);assert.equal(result.timedOut,true);
+});
+test('generation invalidation aborts every old callback', async () => {
+  const { NavigationGeneration } = await import('./workshop/article-read.mjs');
+  const g = new NavigationGeneration();const a=g.next();const b=g.next();assert.equal(a.signal.aborted,true);assert.equal(a.current(),false);assert.equal(b.current(),true);g.clear();assert.equal(b.current(),false);
+});
+test('session bootstrap validates cookie authority and never loads SDK for existing session', async () => {
+  const { createSession } = await import('./workshop/auth.mjs'); let sdkLoads=0;const calls=[];
+  const session=createSession({request:async path=>{calls.push(path);return path==='/auth/config'?{version:'v1',mode:'firebase',login_available:true,providers:['google.com'],firebase:{apiKey:'fixture',authDomain:'fixture-project.firebaseapp.com',projectId:'fixture-project',appId:'1:123:web:abc'}}:{authenticated:true,roles:['dataset_viewer'],expires_at:'2099-01-01T00:00:00Z',csrf_token:'memory-only'};},loadSDK:async()=>{sdkLoads++;}});
+  await session.bootstrap();assert.equal(session.state.authenticated,true);assert.equal(sdkLoads,0);assert.deepEqual(calls,['/auth/config','/auth/session']);
+});
+test('Firebase persistence is awaited before popup and token exchange clears SDK user', async () => {
+  const { createSession }=await import('./workshop/auth.mjs');const calls=[];let release;
+  const user={}; const sdk={initializeApp:()=>({}),initializeAuth:(_,options)=>{assert.equal(options.persistence,'NONE');return {};},inMemoryPersistence:'NONE',browserPopupRedirectResolver:{},setPersistence:()=>new Promise(resolve=>{release=resolve;}),GoogleAuthProvider:class{},signInWithPopup:async()=>{calls.push('popup');return{user};},getIdTokenResult:async()=>({token:'synthetic-token',authTime:new Date().toISOString()}),signOut:async()=>{calls.push('sdk-signout');}};
+  let loggedIn=false;const session=createSession({loadSDK:async()=>sdk,request:async(path,options)=>{if(path==='/auth/config')return{version:'v1',mode:'firebase',login_available:true,providers:['google.com'],firebase:{apiKey:'fixture',authDomain:'fixture-project.firebaseapp.com',projectId:'fixture-project',appId:'1:123:web:abc'}};if(path==='/auth/session'){if(!loggedIn){const error=new Error();error.status=401;throw error;}return{authenticated:true,roles:['dataset_viewer'],expires_at:'2099-01-01T00:00:00Z',csrf_token:'csrf'};}assert.equal(path,'/auth/firebase/session');assert.equal(options.body.id_token,'synthetic-token');assert.equal(options.headers['X-Autodata-Session-Exchange'],'1');loggedIn=true;calls.push('exchange');}});
+  const bootstrap=session.bootstrap();await new Promise(resolve=>setImmediate(resolve));assert.equal(session.state.ready,false);release();await bootstrap;await session.signIn();assert.deepEqual(calls,['popup','exchange','sdk-signout']);assert.equal(session.state.authenticated,true);
+});
+test('cookie transport sends JSON/CSRF without bearer, honors response status and safe retry metadata', async () => {
+  const { requestArticleJSON, CatalogRequestError } = await import('./workshop/catalog.mjs');
+  let options;
+  const result = await requestArticleJSON('/v1/catalog/vehicles/a/articles/b/prepare', { method:'POST',body:{},headers:{'X-CSRF-Token':'csrf'},fetcher:async(_,o)=>{options=o;return new Response('{"article":{"id":"b"}}',{status:202,headers:{'Retry-After':'3'}});} });
+  assert.equal(options.credentials,'same-origin');assert.equal(options.cache,'no-store');assert.equal(options.body,'{}');assert.equal(options.headers.Authorization,undefined);assert.equal(result.status,202);assert.equal(result.retryAfterSeconds,3);
+  await assert.rejects(requestJSON('/x',{fetcher:async()=>new Response('{"error":{"code":"ENTITLEMENT_REQUIRED","message":"PRIVATE SECRET","retryable":false,"request_id":"safe-id"}}',{status:403})}),e=>e instanceof CatalogRequestError&&e.code==='ENTITLEMENT_REQUIRED'&&!e.message.includes('PRIVATE'));
+});
+test('indeterminate stage progress does not derive percentages from retries', () => {
+  assert.equal(loadingProgress('make',{attempt:2,attempts:40,hydrating:true}).percent,null);
+  assert.equal(loadingProgress('make',{attempt:39,attempts:40,hydrating:true}).percent,null);
+});
+test('sign-out confirmation failure never reports revocation and allows same-CSRF retry', async()=>{
+  const {createSession}=await import('./workshop/auth.mjs');let logoutCalls=0;
+  const s=createSession({request:async(path,options)=>{if(path==='/auth/config')return{login_available:false};if(path==='/auth/session')return{authenticated:true,roles:['dataset_viewer'],expires_at:'2099-01-01T00:00:00Z',csrf_token:'csrf'};assert.equal(options.headers['X-CSRF-Token'],'csrf');if(++logoutCalls===1)throw new TypeError('network');}});
+  await s.bootstrap();assert.equal(await s.logout(),false);assert.equal(s.state.authenticated,false);assert.match(s.state.message,/could not be confirmed/);assert.equal(await s.logout(),true);
+});
+test('cookie recheck after invalidation reuses the initialized memory SDK and enables explicit login',async()=>{
+  const {createSession}=await import('./workshop/auth.mjs');let initialized=0;
+  const sdk={initializeApp:()=>({}),initializeAuth:()=>{initialized++;return{};},inMemoryPersistence:'NONE',browserPopupRedirectResolver:{},setPersistence:async()=>{},GoogleAuthProvider:class{}};
+  const s=createSession({loadSDK:async()=>sdk,request:async path=>{if(path==='/auth/config')return{version:'v1',mode:'firebase',login_available:true,providers:['google.com'],firebase:{apiKey:'fixture',authDomain:'fixture-project.firebaseapp.com',projectId:'fixture-project',appId:'1:123:web:abc'}};const e=new Error();e.status=401;throw e;}});
+  await s.bootstrap();assert.equal(s.state.ready,true);s.clear();await s.bootstrap();assert.equal(s.state.ready,true);assert.equal(initialized,1);
+});
+
+test('confirmed cookie-only logout prepares memory-only SDK for the next explicit sign-in', async () => {
+  const { createSession } = await import('./workshop/auth.mjs');
+  let loaded = 0;
+  const sdk = { initializeApp: () => ({}), initializeAuth: () => ({}), setPersistence: async () => {}, inMemoryPersistence: {}, browserPopupRedirectResolver: {}, GoogleAuthProvider: class {}, signOut: async () => {} };
+  const account = createSession({ request: async path => path === '/auth/config' ? {version:'v1',mode:'firebase',login_available:true,providers:['google.com'],firebase:{apiKey:'fixture',authDomain:'fixture-project.firebaseapp.com',projectId:'fixture-project',appId:'1:123:web:abc'}} : path === '/auth/session' ? {authenticated:true,roles:['dataset_viewer'],expires_at:'2099-01-01T00:00:00Z',csrf_token:'csrf'} : null, loadSDK: async () => { loaded++; return sdk; } });
+  await account.bootstrap();
+  assert.equal(loaded, 0);
+  assert.equal(await account.logout(), true);
+  assert.equal(account.state.ready, true);
+  assert.equal(loaded, 1);
+});
+
+// Keep SDK/browser transport external while exercising the real session state machine.
+function deferredAuthOperation() {
+  let resolve, reject;
+  const promise = new Promise((done, fail) => { resolve = done; reject = fail; });
+  return { promise, resolve, reject };
+}
+
+async function sessionPreparationHarness({ authenticated = false, persistence = async () => {}, constructProvider = () => {}, popup } = {}) {
+  const { createSession } = await import('./workshop/auth.mjs');
+  const calls = { loads: 0, initializations: 0, providers: 0, persistence: 0, popups: 0, signouts: 0, exchanges: 0 };
+  const changes = [], user = {}, auth = {};
+  let provider;
+  const sdk = {
+    initializeApp: () => ({}),
+    initializeAuth: (_app, options) => {
+      assert.equal(options.persistence, sdk.inMemoryPersistence);
+      assert.equal(options.popupRedirectResolver, sdk.browserPopupRedirectResolver);
+      calls.initializations++;
+      return auth;
+    },
+    inMemoryPersistence: {}, browserPopupRedirectResolver: {},
+    setPersistence: (actualAuth, value) => {
+      assert.equal(actualAuth, auth);
+      assert.equal(value, sdk.inMemoryPersistence);
+      return persistence(++calls.persistence);
+    },
+    GoogleAuthProvider: class {
+      constructor() { constructProvider(++calls.providers); provider = this; }
+    },
+    signInWithPopup: (actualAuth, actualProvider) => {
+      calls.popups++;
+      assert.equal(actualAuth, auth);
+      assert.ok(actualProvider instanceof sdk.GoogleAuthProvider);
+      assert.equal(actualProvider, provider);
+      return popup ? popup() : Promise.resolve({ user });
+    },
+    getIdTokenResult: async (actualUser, forceRefresh) => {
+      assert.equal(actualUser, user);
+      assert.equal(forceRefresh, true);
+      return { token: 'synthetic-token', authTime: new Date().toISOString() };
+    },
+    signOut: async actualAuth => { assert.equal(actualAuth, auth); calls.signouts++; },
+  };
+  const session = createSession({
+    loadSDK: async () => { calls.loads++; return sdk; },
+    onChange: state => changes.push({ ...state, providerPresent: provider !== undefined }),
+    request: async (path, options) => {
+      if (path === '/auth/config') return { version: 'v1', mode: 'firebase', login_available: true, providers: ['google.com'], firebase: { apiKey: 'fixture', authDomain: 'fixture-project.firebaseapp.com', projectId: 'fixture-project', appId: '1:123:web:abc' } };
+      if (path === '/auth/session') {
+        if (!authenticated) throw Object.assign(new Error('signed out'), { status: 401 });
+        return { authenticated: true, roles: ['dataset_viewer'], csrf_token: 'cookie-csrf', expires_at: '2099-01-01T00:00:00Z' };
+      }
+      if (path === '/auth/logout') {
+        assert.equal(options.headers['X-CSRF-Token'], 'cookie-csrf');
+        authenticated = false;
+        return null;
+      }
+      assert.equal(path, '/auth/firebase/session');
+      assert.equal(options.method, 'POST');
+      assert.deepEqual(options.body, { id_token: 'synthetic-token' });
+      assert.deepEqual(options.headers, { 'X-Autodata-Session-Exchange': '1' });
+      calls.exchanges++;
+      authenticated = true;
+      return null;
+    },
+  });
+  return { session, calls, changes };
+}
+
+test('logout preparation preserves provider readiness across an epoch-changing bootstrap', async () => {
+  const started = deferredAuthOperation(), firstPersistence = deferredAuthOperation();
+  const { session, calls, changes } = await sessionPreparationHarness({
+    authenticated: true,
+    persistence: attempt => {
+      if (attempt === 1) { started.resolve(); return firstPersistence.promise; }
+      return Promise.resolve();
+    },
+  });
+  await session.bootstrap();
+  assert.equal(calls.loads, 0, 'cookie authority needs no SDK recovery');
+  const logout = session.logout();
+  await started.promise;
+  assert.equal(session.state.ready, false);
+  try {
+    await session.bootstrap();
+    assert.equal(session.state.ready, true);
+    assert.equal(calls.providers, 1, 'ready must include a Google provider');
+  } finally {
+    firstPersistence.resolve();
+    assert.equal(await logout, true);
+  }
+  assert.ok(changes.filter(state => state.ready).every(state => state.providerPresent));
+  const signingIn = session.signIn();
+  assert.equal(calls.popups, 1, 'popup starts before yielding');
+  await signingIn;
+  assert.equal(calls.initializations, 1);
+  assert.equal(calls.providers, 1);
+  assert.equal(calls.exchanges, 1);
+  assert.equal(session.state.authenticated, true);
+  assert.equal(session.state.csrf, 'cookie-csrf');
+});
+
+test('provider constructor failures stay unavailable until an existing-auth retry succeeds', async () => {
+  const { session, calls, changes } = await sessionPreparationHarness({
+    constructProvider: attempt => { if (attempt <= 2) throw new Error('private constructor detail'); },
+  });
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    await assert.doesNotReject(session.bootstrap());
+    assert.equal(session.state.ready, false);
+    assert.equal(session.state.message, 'Google sign-in is unavailable. You can keep browsing.');
+    await assert.rejects(session.signIn(), /Sign-in is unavailable/);
+    assert.equal(calls.popups, 0);
+  }
+  await session.bootstrap();
+  assert.equal(session.state.ready, true);
+  assert.equal(calls.initializations, 1);
+  assert.equal(calls.providers, 3);
+  assert.ok(changes.filter(state => state.ready).every(state => state.providerPresent));
+  await session.signIn();
+  assert.equal(session.state.authenticated, true);
+  assert.equal(calls.exchanges, 1);
+});
+
+test('existing-auth persistence failure stays unavailable and permits a later retry', async () => {
+  const { session, calls } = await sessionPreparationHarness({
+    persistence: async attempt => { if (attempt === 2) throw new Error('private persistence detail'); },
+  });
+  await session.bootstrap();
+  assert.equal(session.state.ready, true);
+  await assert.doesNotReject(session.bootstrap());
+  assert.equal(session.state.ready, false);
+  assert.equal(session.state.message, 'Google sign-in is unavailable. You can keep browsing.');
+  await assert.rejects(session.signIn(), /Sign-in is unavailable/);
+  assert.equal(calls.popups, 0);
+  await session.bootstrap();
+  assert.equal(session.state.ready, true);
+  await session.signIn();
+  assert.equal(session.state.authenticated, true);
+});
+
+for (const pausedAttempt of [1, 2]) {
+  test(`stale ${pausedAttempt === 1 ? 'initial' : 'existing-auth'} preparation failure cannot overwrite current readiness`, async () => {
+    const started = deferredAuthOperation(), pendingPersistence = deferredAuthOperation();
+    const { session, changes } = await sessionPreparationHarness({
+      persistence: attempt => {
+        if (attempt === pausedAttempt) { started.resolve(); return pendingPersistence.promise; }
+        return Promise.resolve();
+      },
+    });
+    if (pausedAttempt === 2) await session.bootstrap();
+    const staleBootstrap = session.bootstrap();
+    await started.promise;
+    await session.bootstrap();
+    assert.equal(session.state.ready, true);
+    const currentState = { ...session.state }, changeCount = changes.length;
+    pendingPersistence.reject(new Error('private stale failure'));
+    await assert.doesNotReject(staleBootstrap);
+    assert.deepEqual(session.state, currentState);
+    assert.equal(changes.length, changeCount);
+    await session.signIn();
+    assert.equal(session.state.authenticated, true);
+  });
+}
+
+for (const mode of ['synchronous popup invocation', 'asynchronous popup rejection']) {
+  test(`${mode} failure restores readiness without deferring the popup`, async () => {
+    const error = Object.assign(new Error('private popup detail'), { code: 'auth/internal-error' });
+    const { session, calls } = await sessionPreparationHarness({
+      popup: () => { if (mode === 'synchronous popup invocation') throw error; return Promise.reject(error); },
+    });
+    await session.bootstrap();
+    let signingIn;
+    assert.doesNotThrow(() => { signingIn = session.signIn(); });
+    assert.ok(signingIn instanceof Promise);
+    assert.equal(calls.popups, 1, 'popup starts before yielding');
+    assert.equal(session.state.ready, false);
+    await assert.doesNotReject(signingIn);
+    assert.equal(session.state.ready, true);
+    assert.equal(session.state.authenticated, false);
+    assert.equal(session.state.csrf, '');
+    assert.equal(session.state.message, 'Google sign-in is unavailable. You can keep browsing.');
+    assert.equal(calls.signouts, 1);
+    assert.equal(calls.exchanges, 0);
+  });
+}
+
+// Execute production app boundaries without starting its browser bootstrap.
+function appSection(start, end) {
+  const source = readFileSync(new URL('./workshop/app.mjs', import.meta.url), 'utf8');
+  assert.equal(source.split(start).length, 2, `unique app boundary: ${start}`);
+  assert.equal(source.split(end).length, 2, `unique app boundary: ${end}`);
+  const first = source.indexOf(start), last = source.indexOf(end);
+  assert.ok(last > first, 'app boundaries are ordered');
+  return source.slice(first, last);
+}
+
+function sourceReviewHarness() {
+  const navigation = new NavigationGeneration();
+  const first = navigation.next();
+  const state = { content: 'article A', status: 'A ready', view: 'reader' };
+  const loads = [], errors = [];
+  let click, rejectSource;
+  const context = {
+    currentArticle: { source_review: { url: '/article-A/source' } },
+    viewGeneration: first,
+    $: () => ({ addEventListener(event, callback) {
+      assert.equal(event, 'click');
+      click = callback;
+    } }),
+    loadSource(url, generation) {
+      loads.push({ url, generation });
+      return new Promise((_, reject) => { rejectSource = reject; });
+    },
+    invalidate() { navigation.clear(); state.content = ''; },
+    show(view) { state.view = view; },
+    status(message) { state.status = message; },
+  };
+  runInNewContext(
+    appSection('function handleSourceError(error, g) {', 'async function renewMedia(') +
+    appSection('$("source-review-load").addEventListener', '$("back").addEventListener'),
+    context,
+  );
+  const handleError = context.handleSourceError;
+  context.handleSourceError = (error, generation) => {
+    errors.push(generation);
+    handleError(error, generation);
+  };
+  return { context, state, first, loads, errors, navigation,
+    click: () => click(), reject: error => rejectSource(error) };
+}
+
+for (const failure of ['AbortError', 401, 403, 410]) {
+  test(`source review ignores stale ${failure} after selection A changes to B`, async () => {
+    const h = sourceReviewHarness();
+    h.click();
+    assert.equal(h.loads.length, 1);
+    assert.equal(h.loads[0].url, '/article-A/source');
+    assert.equal(h.loads[0].generation, h.first);
+    const second = h.navigation.next();
+    h.context.viewGeneration = second;
+    Object.assign(h.state, { content: 'article B', status: 'B ready', view: 'reader' });
+    const error = failure === 'AbortError'
+      ? new DOMException('Source A canceled', 'AbortError')
+      : Object.assign(new Error('Source A denied'), { status: failure });
+    h.reject(error);
+    await new Promise(setImmediate);
+    assert.deepEqual(h.state, { content: 'article B', status: 'B ready', view: 'reader' });
+    assert.equal(second.current(), true);
+    assert.deepEqual(h.errors, [h.first]);
+  });
+}
+
+for (const failure of [401, 403, 410]) {
+  test(`source review still clears current selection on ${failure}`, async () => {
+    const h = sourceReviewHarness();
+    h.click();
+    h.reject(Object.assign(new Error('Current source denied'), { status: failure }));
+    await new Promise(setImmediate);
+    assert.deepEqual(h.state, { content: '', status: 'Current source denied', view: 'welcome' });
+    assert.equal(h.first.current(), false);
+    assert.deepEqual(h.errors, [h.first]);
+  });
+}
+
+for (const unavailable of ['article', 'generation', 'canceled generation']) {
+  test(`source review does not load without a current ${unavailable}`, () => {
+    const h = sourceReviewHarness();
+    if (unavailable === 'article') h.context.currentArticle = null;
+    else if (unavailable === 'generation') h.context.viewGeneration = null;
+    else h.navigation.clear();
+    h.click();
+    assert.equal(h.loads.length, 0);
+    assert.equal(h.errors.length, 0);
+    assert.deepEqual(h.state, { content: 'article A', status: 'A ready', view: 'reader' });
+  });
+}
+
+const routeConfiguration = '11111111-1111-4111-8111-111111111111';
+const routeArticle = '22222222-2222-4222-8222-222222222222';
+const routeOrder = '33333333-3333-4333-8333-333333333333';
+const previousConfiguration = '44444444-4444-4444-8444-444444444444';
+
+function loginRouteHarness(search, { authenticate = true, signInError = null, login = null, library = null } = {}) {
+  const navigation = new NavigationGeneration();
+  const calls = { signIns: 0, checkoutClears: 0, checkouts: 0, routes: 0,
+    selections: [], libraries: 0, orders: [], options: [], invalidations: 0 };
+  const elements = new Map();
+  const element = name => {
+    if (!elements.has(name)) elements.set(name, { value: '' });
+    return elements.get(name);
+  };
+  const configuration = { id: routeConfiguration, region: 'US' };
+  const context = {
+    URLSearchParams, uuid, validScope,
+    location: { search }, signingIn: false,
+    vehicle: { id: previousConfiguration, region: 'US' }, quote: null,
+    names: ['year', 'make', 'model', 'configuration'],
+    rows: { configuration: [configuration] }, $: element,
+    checkout: { clear() { calls.checkoutClears++; }, start() { calls.checkouts++; } },
+    session: { state: { authenticated: false }, async signIn() {
+      calls.signIns++;
+      if (login) await login();
+      if (signInError) throw signInError;
+      context.session.state.authenticated = authenticate;
+    } },
+    scope: () => ({ configuration_id: context.vehicle?.id, region: context.vehicle?.region }),
+    invalidate() { calls.invalidations++; navigation.clear(); },
+    show() {}, status() {}, renderPurchase() {},
+    async operation(work) { calls.routes++; return work(navigation.next()); },
+    async library(g) {
+      assert.equal(g.current(), true);
+      calls.libraries++;
+      if (library) await library();
+    },
+    async checkOrder(g, id) {
+      assert.equal(g.current(), true);
+      calls.orders.push(id);
+    },
+    async selectVehicle(g, article = '') {
+      assert.equal(g.current(), true);
+      calls.selections.push({ configuration: context.vehicle.id, region: context.vehicle.region, article });
+    },
+    async loadOptions(name, g, desired) {
+      assert.equal(g.current(), true);
+      calls.options.push({ name, desired });
+      element(name).value = desired;
+    },
+  };
+  runInNewContext(
+    appSection('async function signIn() {', 'async function bootstrap() {') +
+    appSection('async function restoreRoute() {', 'for (const [index, name] of names.entries())'),
+    context,
+  );
+  return { context, calls, element };
+}
+
+const loginRoutes = [
+  { name: 'My vehicles instead of a prior selected configuration', query: '?view=library',
+    libraries: 1, orders: [], selections: [], options: [] },
+  { name: 'the exact article in a direct configuration link',
+    query: `?configuration=${routeConfiguration}&region=US&article=${routeArticle}`,
+    libraries: 0, orders: [],
+    selections: [{ configuration: routeConfiguration, region: 'US', article: routeArticle }], options: [] },
+  { name: 'the article and search in a saved selector hierarchy',
+    query: `?year=2020&make=toyota&model=rav4&configuration=${routeConfiguration}&region=US&article=${routeArticle}&q=brakes`,
+    libraries: 0, orders: [],
+    selections: [{ configuration: routeConfiguration, region: 'US', article: routeArticle }],
+    options: [{ name: 'year', desired: '2020' }, { name: 'make', desired: 'toyota' },
+      { name: 'model', desired: 'rav4' }, { name: 'configuration', desired: routeConfiguration }] },
+  { name: 'the order return before the library or prior configuration',
+    query: `?order=${routeOrder}&view=library&configuration=${routeConfiguration}&region=US&article=${routeArticle}`,
+    libraries: 0, orders: [routeOrder], selections: [], options: [] },
+];
+for (const route of loginRoutes) {
+  test(`login route resumes ${route.name} without checkout replay`, async () => {
+    const h = loginRouteHarness(route.query);
+    await h.context.signIn();
+    assert.equal(h.calls.libraries, route.libraries);
+    assert.deepEqual(h.calls.orders, route.orders);
+    assert.deepEqual(h.calls.selections, route.selections);
+    assert.deepEqual(h.calls.options, route.options);
+    assert.equal(h.calls.routes, 1);
+    assert.equal(h.calls.invalidations, 1);
+    assert.equal(h.calls.signIns, 1);
+    assert.equal(h.calls.checkoutClears, 1);
+    assert.equal(h.calls.checkouts, 0);
+    assert.equal(h.context.signingIn, false);
+    if (route.query.includes('q=brakes')) assert.equal(h.element('search').value, 'brakes');
+  });
+}
+
+for (const outcome of ['canceled', 'failed']) {
+  test(`login route stays put after ${outcome} sign-in without checkout replay`, async () => {
+    const h = loginRouteHarness('?view=library', { authenticate: false });
+    await h.context.signIn();
+    assert.equal(h.calls.signIns, 1);
+    assert.equal(h.calls.routes, 0);
+    assert.equal(h.calls.invalidations, 0);
+    assert.equal(h.calls.libraries, 0);
+    assert.deepEqual(h.calls.selections, []);
+    assert.deepEqual(h.calls.orders, []);
+    assert.deepEqual(h.calls.options, []);
+    assert.equal(h.calls.checkouts, 0);
+    assert.equal(h.context.signingIn, false);
+  });
+}
+
+test('login route preserves a rejected sign-in and resets its guard without restoring', async () => {
+  const error = new Error('Sign-in transport unavailable');
+  const h = loginRouteHarness('?view=library', { signInError: error });
+  await assert.rejects(h.context.signIn(), received => received === error);
+  assert.equal(h.calls.signIns, 1);
+  assert.equal(h.calls.routes, 0);
+  assert.equal(h.calls.invalidations, 0);
+  assert.equal(h.calls.libraries, 0);
+  assert.equal(h.calls.checkouts, 0);
+  assert.equal(h.context.signingIn, false);
+});
+
+test('login route shares the existing sign-in guard rather than starting another popup', async () => {
+  let finish;
+  const login = new Promise(resolve => { finish = resolve; });
+  const h = loginRouteHarness('?view=library', { login: () => login });
+  const first = h.context.signIn();
+  assert.equal(h.context.signingIn, true);
+  await h.context.signIn();
+  assert.equal(h.calls.signIns, 1);
+  assert.equal(h.calls.checkoutClears, 1);
+  assert.equal(h.calls.routes, 0);
+  finish();
+  await first;
+  assert.equal(h.calls.libraries, 1);
+  assert.equal(h.calls.routes, 1);
+  assert.equal(h.calls.checkouts, 0);
+  assert.equal(h.context.signingIn, false);
+});
+
+test('login route awaits restoration completion before signIn resolves', async () => {
+  let finish;
+  const library = new Promise(resolve => { finish = resolve; });
+  const h = loginRouteHarness('?view=library', { library: () => library });
+  let completed = false;
+  const pending = h.context.signIn().then(() => { completed = true; });
+  await new Promise(setImmediate);
+  assert.equal(h.calls.libraries, 1);
+  assert.equal(completed, false);
+  finish();
+  await pending;
+  assert.equal(completed, true);
+  assert.equal(h.calls.checkouts, 0);
+});
+
+function articleIndexHarness(responses) {
+  const navigation = new NavigationGeneration();
+  const nodes = new Map();
+  function element(tag, text = '', className = '') {
+    return { tag, textContent: text, className, hidden: false, value: '', dataset: {}, children: [], events: {},
+      append(child) { this.children.push(child); },
+      replaceChildren(...children) { this.children = children; },
+      addEventListener(name, callback) { this.events[name] = callback; },
+      removeAttribute() {},
+    };
+  }
+  const $ = id => {
+    if (!nodes.has(id)) nodes.set(id, element('div'));
+    return nodes.get(id);
+  };
+  const statuses = [], updates = [], opened = [], requests = [], results = [];
+  const context = {
+    $, element, URL, location: { href: 'https://cars.example/workshop?vehicle=B' },
+    document: { body: { dataset: {} } },
+    quote: null, articles: [], access: '', retryAction: null, filterArticles,
+    stage() {}, renderPurchase() {}, show() {},
+    articlePath: () => '/v1/catalog/vehicles/B/articles',
+    requestJSON(path, options) {
+      requests.push({ path, signal: options.signal });
+      const response = responses[Math.min(requests.length - 1, responses.length - 1)];
+      return typeof response === 'function' ? response() : Promise.resolve(response);
+    },
+    async readCollection(read, options) {
+      const result = await readCollection(read, {
+        ...options, attempts: 3, wait: async () => {},
+        onUpdate(data, meta) {
+          options.onUpdate(data, meta);
+          updates.push({ complete: data.complete, count: $('articles').children[0]?.children.length ?? 0,
+            completion: $('completion-status').textContent,
+            link: $('articles').children[0]?.children[0]?.children[0] });
+        },
+      });
+      results.push(result);
+      return result;
+    },
+    loadArticle: async (id, generation) => opened.push({ id, generation }),
+    openArticle: id => opened.push({ id }),
+    operation: callback => callback(navigation.next()),
+    recordStatus: (text, options) => statuses.push({ text, ...options }),
+  };
+  runInNewContext(
+    appSection('function status(', 'function stage(') +
+    appSection('async function loadArticles(', 'const assetID =') +
+    '\nconst actualStatus = status; status = (text, options = {}) => { recordStatus(text, options); actualStatus(text, options); };',
+    context,
+  );
+  return { context, $, navigation, statuses, updates, opened, requests, results,
+    load: (article = '', generation = navigation.next()) => context.loadArticles(generation, article) };
+}
+
+const indexResponse = (status, { complete = false, retryable = false, hydrating = false, items = [] } = {}) =>
+  ({ items, complete, hydrating, progress: status ? { status, retryable } : null });
+
+test('actual article index flow polls until explicit current completion', async () => {
+  for (const responses of [
+    [indexResponse('pending', { hydrating: true }), indexResponse('running', { hydrating: true }), indexResponse('completed', { complete: true })],
+    [indexResponse('failed', { retryable: true, hydrating: true }), indexResponse('completed', { complete: true })],
+  ]) {
+    const h = articleIndexHarness(responses);
+    await h.load();
+    assert.equal(h.requests.length, responses.length);
+    assert.equal(h.statuses.filter(s => s.complete === true).length, 1);
+    assert.equal(h.updates.slice(0, -1).every(u => u.completion === ''), true);
+    assert.equal(h.$('completion-status').textContent, 'Article index ready. No articles are currently available.');
+  }
+});
+
+test('actual article index flow keeps terminal, timed out, and nonhydrating outcomes incomplete', async () => {
+  for (const [response, reads, text] of [
+    [indexResponse('failed'), 1, /could not be prepared/],
+    [indexResponse('pending', { hydrating: true }), 3, /still being prepared/],
+    [indexResponse('pending'), 1, /still being prepared/],
+    [indexResponse(null), 1, /still being prepared/],
+  ]) {
+    const h = articleIndexHarness([response]);
+    await h.load();
+    assert.equal(h.requests.length, reads);
+    assert.equal(h.statuses.some(s => s.complete === true), false);
+    assert.match(h.$('activity-text').textContent, text);
+    assert.equal(h.$('completion-status').textContent, '');
+    assert.equal(h.results[0].timedOut === true, reads === 3);
+    assert.equal(typeof h.context.retryAction, response.progress?.status === 'failed' ? 'object' : 'function');
+  }
+});
+
+test('partial index rows remain clickable during preparation and saved articles open immediately', async () => {
+  const partial = indexResponse('running', { hydrating: true, items: [{ id: 'saved/article', title: 'Pump' }] });
+  const h = articleIndexHarness([partial]);
+  await h.load();
+  assert.equal(h.requests.length, 3);
+  assert.equal(h.updates[0].count, 1);
+  const link = h.updates[0].link;
+  assert.equal(new URL(link.href, 'https://cars.example').searchParams.get('article'), 'saved/article');
+  let prevented = false;
+  link.events.click({ preventDefault() { prevented = true; } });
+  assert.equal(prevented, true);
+  assert.equal(h.opened[0].id, 'saved/article');
+  const saved = articleIndexHarness([partial]);
+  await saved.load('saved/article');
+  assert.equal(saved.requests.length, 1);
+  assert.equal(saved.opened[0].id, 'saved/article');
+  assert.equal(saved.statuses.some(s => s.complete === true), false);
+});
+
+test('nonempty explicit completed article index is ready after one read', async () => {
+  const h = articleIndexHarness([indexResponse('completed', { complete: true, items: [{ id: 'saved', title: 'Pump' }] })]);
+  await h.load();
+  assert.equal(h.requests.length, 1);
+  assert.equal(h.$('completion-status').textContent, 'Article index ready.');
+});
+
+test('actual status DOM clears vehicle A completion immediately before vehicle B pending or terminal read resolves', async () => {
+  for (const result of [indexResponse('pending', { hydrating: true }), indexResponse('failed')]) {
+    let resolve;
+    const h = articleIndexHarness([() => new Promise(done => { resolve = done; }), result]);
+    h.context.status('Article index ready for vehicle A.', { complete: true });
+    const loading = h.load();
+    assert.equal(h.requests.length, 1);
+    assert.equal(h.$('completion-status').textContent, '', 'clear A completion before awaiting B');
+    resolve(result);
+    await loading;
+    assert.equal(h.$('completion-status').textContent, '');
+  }
+});
+
+test('obsolete article index loads cannot clear or publish current navigation state', async () => {
+  const h = articleIndexHarness([indexResponse('completed', { complete: true })]);
+  const stale = h.navigation.next();
+  h.navigation.next();
+  h.context.status('Current vehicle is ready.', { complete: true });
+  await h.load('', stale);
+  assert.equal(h.requests.length, 0);
+  assert.equal(h.$('completion-status').textContent, 'Current vehicle is ready.');
+
+  let resolve;
+  const inFlight = articleIndexHarness([() => new Promise(done => { resolve = done; })]);
+  const loading = inFlight.load();
+  inFlight.navigation.next();
+  resolve(indexResponse('completed', { complete: true, items: [{ id: 'obsolete' }] }));
+  await assert.rejects(loading, { name: 'AbortError' });
+  assert.equal(inFlight.updates.length, 0);
+  assert.equal(inFlight.statuses.some(s => s.complete === true), false);
+});
+
+test('generation changes without abort suppress in-flight article index rendering and ready copy', async () => {
+  let resolve, current = true;
+  const h = articleIndexHarness([() => new Promise(done => { resolve = done; })]);
+  const generation = { signal: new AbortController().signal, current: () => current };
+  const loading = h.load('', generation);
+  current = false;
+  resolve(indexResponse('completed', { complete: true, items: [{ id: 'obsolete' }] }));
+  await loading;
+  assert.equal(h.requests.length, 1);
+  assert.equal(h.$('articles').children.length, 0);
+  assert.equal(h.$('completion-status').textContent, '');
+  assert.equal(h.statuses.some(s => s.complete === true), false);
+});
+
+const merchantFixture = () => ({
+  enabled: true,
+  terms_version: 'workshop-v1',
+  terms_url: 'https://merchant.example/terms',
+  privacy_url: 'https://merchant.example/privacy',
+  refund_url: 'https://merchant.example/refunds',
+  contact_url: 'https://merchant.example/contact',
+  tax_notice: 'Synthetic fixture notice.',
+});
+const quoteTermsFixture = () => ({ purchase_terms_version: 'workshop-v1' });
+
+test('purchase readiness requires the supported terms contract', async t => {
+  assert.equal(purchaseConfiguration(merchantFixture(), quoteTermsFixture()), true);
+  for (const [label, version] of [
+    ['missing', undefined], ['null', null], ['empty', ''], ['unsupported', 'workshop-v2'],
+  ]) {
+    await t.test(`matching ${label} terms remain unavailable`, () => {
+      const config = { ...merchantFixture(), terms_version: version };
+      const quote = { purchase_terms_version: version };
+      assert.equal(purchaseConfiguration(config, quote), false);
+    });
+  }
+  assert.equal(purchaseConfiguration(merchantFixture(), { purchase_terms_version: 'workshop-v2' }), false);
+  assert.equal(purchaseConfiguration(merchantFixture(), {}), false);
+  assert.equal(purchaseConfiguration(merchantFixture(), null), false);
+  assert.equal(purchaseConfiguration(null, quoteTermsFixture()), false);
+});
+
+test('purchase readiness fails closed for unavailable merchant fields', () => {
+  for (const enabled of [false, null, undefined, 'true', 1])
+    assert.equal(purchaseConfiguration({ ...merchantFixture(), enabled }, quoteTermsFixture()), false);
+  for (const tax_notice of [null, undefined, '', ' \n\t', 0])
+    assert.equal(purchaseConfiguration({ ...merchantFixture(), tax_notice }, quoteTermsFixture()), false);
+  for (const key of ['terms_url', 'privacy_url', 'refund_url', 'contact_url']) {
+    for (const value of [null, undefined, '', '/terms', '//merchant.example/terms',
+      'http://merchant.example/terms', 'javascript:alert(1)', 'data:text/plain,x',
+      'https://user:pass@merchant.example/terms', 'https://merchant.example/has space',
+      'https://merchant.example/line\nfeed', 'https://']) {
+      assert.equal(purchaseConfiguration({ ...merchantFixture(), [key]: value }, quoteTermsFixture()), false, `${key}: ${String(value)}`);
+    }
+  }
+});
+
+
+// A deliberately bounded DOM model: production renderers/helpers run unchanged.
+// This observes DOM/state contracts, not browser layout or accessibility trees.
+class ArticleMediaNode {
+  constructor(tagName) {
+    this.tagName = tagName;
+    this.children = [];
+    this.parentNode = null;
+    this.dataset = {};
+    this.attributes = new Map();
+    this.handlers = new Map();
+    this.hidden = false;
+    this.disabled = false;
+    this.open = false;
+    this._text = '';
+  }
+  get textContent() { return this._text + this.children.map(n => n.textContent).join(''); }
+  set textContent(value) { this.replaceChildren(); this._text = String(value); }
+  get isConnected() { return this.tagName === 'body' || Boolean(this.parentNode?.isConnected); }
+  get nextSibling() {
+    const siblings = this.parentNode?.children || [];
+    return siblings[siblings.indexOf(this) + 1] || null;
+  }
+  remove() {
+    if (this.parentNode) {
+      const siblings = this.parentNode.children;
+      siblings.splice(siblings.indexOf(this), 1);
+      this.parentNode = null;
+    }
+  }
+  append(...nodes) {
+    for (const node of nodes) {
+      if (node.tagName === '#fragment') this.append(...node.children);
+      else { node.remove(); node.parentNode = this; this.children.push(node); }
+    }
+  }
+  replaceChildren(...nodes) {
+    for (const child of [...this.children]) child.remove();
+    this._text = '';
+    this.append(...nodes);
+  }
+  replaceWith(node) {
+    if (!this.parentNode) return;
+    const parent = this.parentNode, index = parent.children.indexOf(this);
+    node.remove(); this.remove(); node.parentNode = parent;
+    parent.children.splice(index, 0, node);
+  }
+  setAttribute(name, value) { this.attributes.set(name, String(value)); }
+  getAttribute(name) { return this.attributes.get(name) ?? null; }
+  removeAttribute(name) { this.attributes.delete(name); delete this[name]; }
+  addEventListener(name, handler) {
+    const handlers = this.handlers.get(name) || [];
+    handlers.push(handler); this.handlers.set(name, handlers);
+  }
+  dispatch(name, event = {}) { for (const handler of this.handlers.get(name) || []) handler(event); }
+  querySelectorAll(selector) {
+    assert.equal(selector, 'img[data-asset-id]');
+    return mediaDescendants(this, 'img').filter(n => n.dataset.assetId !== undefined);
+  }
+}
+function mediaDescendants(node, tag) {
+  return node.children.flatMap(child => [
+    ...(child.tagName === tag ? [child] : []), ...mediaDescendants(child, tag),
+  ]);
+}
+const mediaTags = node => node.children.map(n => n.tagName);
+const mediaIDs = node => mediaDescendants(node, 'img').map(n => n.dataset.assetId);
+const mediaURL = token => `/v1/catalog/images/v2.${token}`;
+const mediaSourceURL = '/v1/catalog/vehicles/v/articles/a/source?source_revision_id=11111111-1111-4111-8111-111111111111';
+function mediaArticle(blocks, images = [], changes = {}) {
+  return { id: 'a', title: 'Pump service', content_origin: 'source', view_revision: 'view-1',
+    source_revision_id: '11111111-1111-4111-8111-111111111111',
+    document: { blocks }, images, ...changes };
+}
+function articleMediaHarness(overrides = {}) {
+  const body = new ArticleMediaNode('body'), nodes = new Map();
+  const ids = ['articles', 'article-content', 'source-review-frame', 'reference-data', 'library-items',
+    'article-title', 'catalog-count', 'article-note', 'source-review-meta', 'source-review', 'print',
+    'reader', 'catalog', 'source-review-link', 'reader-vehicle', 'reader-engine', 'purchase-selection',
+    'article-kind', 'article-reference', 'source-review-load'];
+  for (const id of ids) { const node = new ArticleMediaNode('div'); nodes.set(id, node); body.append(node); }
+  const navigation = new NavigationGeneration(), g = navigation.next();
+  const shows = [], statuses = [];
+  const context = {
+    URL, uuid, articlePresentation, localImageURL, sourceReferenceURL, processingArticle, readableArticle,
+    document: { body, title: '', createElement: tag => new ArticleMediaNode(tag),
+      createDocumentFragment: () => new ArticleMediaNode('#fragment') },
+    location: { origin: 'https://cars.example' },
+    $: id => { assert.ok(nodes.has(id), `known DOM node ${id}`); return nodes.get(id); },
+    navigation, currentArticle: null, renderedRevision: '', sourceData: null, sourceURL: '', sourceRevision: 0,
+    renewalUsed: false, renewal: null, renewalFailures: new Set(), articles: [], libraryItems: [], libraryCursor: null,
+    access: 'granted', quote: { configuration_label: '2005 Toyota' }, vehicle: { region: 'US' },
+    articlePath: id => `/v1/catalog/vehicles/v/articles/${id}`,
+    requestArticleJSON: () => assert.fail('unexpected article request'),
+    requestJSON: () => assert.fail('unexpected source request'),
+    show: id => shows.push(id), status: (message, options) => statuses.push({ message, options }),
+    ...overrides,
+  };
+  runInNewContext([
+    appSection('const element =', 'const session ='),
+    appSection('function clearProtected(', 'async function operation('),
+    appSection('const assetID =', 'async function loadArticle('),
+    appSection('function validSourceURL(', 'async function library('),
+  ].join('\n'), context);
+  return { context, g, nodes, navigation, shows, statuses,
+    render(article) { context.renderArticle(article, g); return nodes.get('article-content'); },
+    content(article) { const parent = new ArticleMediaNode('div'); body.append(parent); context.renderContent(parent, article, g); return parent; },
+  };
+}
+
+for (const [type, tag] of [['ordered_list', 'ol'], ['unordered_list', 'ul']]) {
+  test(`article block media ${type} keeps normalized items and retained sibling figure order`, () => {
+    const h = articleMediaHarness();
+    const parent = h.content(mediaArticle([
+      { type: 'paragraph', text: 'Before' },
+      { type, items: ['Check pump.', 'Install seal.'], images: [{ asset_id: 'direct' }, { image_id: 'flattened' }] },
+      { type: 'paragraph', text: 'After' },
+    ], [{ id: 'unrelated', url: mediaURL('unused') }, { id: 'flattened', url: mediaURL('flat') }, { id: 'direct', url: mediaURL('direct') }]));
+    assert.equal(mediaDescendants(parent, 'figure').length, 2, 'retained list block images must produce two figures');
+    assert.deepEqual(mediaTags(parent), ['p', tag, 'figure', 'figure', 'p']);
+    assert.deepEqual(mediaTags(parent.children[1]), ['li', 'li']);
+    assert.deepEqual(parent.children[1].children.map(n => n.textContent), ['Check pump.', 'Install seal.']);
+    assert.deepEqual(mediaIDs(parent), ['direct', 'flattened']);
+    assert.deepEqual(mediaDescendants(parent, 'img').map(n => n.src), ['https://cars.example/v1/catalog/images/v2.direct', 'https://cars.example/v1/catalog/images/v2.flat']);
+    assert.equal(parent.children[0].textContent, 'Before');
+    assert.equal(parent.children.at(-1).textContent, 'After');
+  });
+}
+for (const label of ['Warning', 'Note']) {
+  test(`article block media ${label} callout groups text and direct/flattened figures in its second child`, () => {
+    const h = articleMediaHarness();
+    const parent = h.content(mediaArticle([
+      { type: 'paragraph', text: 'Before' },
+      { type: 'callout', label, text: 'Keep clear.', images: [{ asset_id: 'direct' }, { asset_id: 'flattened' }], evidence_ids: ['e-7'], source_locator: 'body[3]' },
+      { type: 'paragraph', text: 'After' },
+    ], [{ id: 'flattened', url: mediaURL('flat') }, { id: 'direct', url: mediaURL('direct') }], { source_review: { available: true, url: mediaSourceURL } }));
+    const aside = parent.children[1];
+    assert.equal(mediaDescendants(aside, 'figure').length, 2, 'retained callout images must produce two figures');
+    assert.deepEqual(mediaTags(parent), ['p', 'aside', 'a', 'p']);
+    assert.equal(aside.className, 'article-callout');
+    assert.deepEqual(mediaTags(aside), ['strong', 'div']);
+    assert.equal(aside.children[0].textContent, label);
+    assert.deepEqual(mediaTags(aside.children[1]), ['span', 'figure', 'figure']);
+    assert.equal(aside.children[1].children[0].textContent, 'Keep clear.');
+    assert.deepEqual(mediaTags(aside.children[1].children[0]), []);
+    assert.deepEqual(mediaIDs(aside), ['direct', 'flattened']);
+    assert.equal(parent.children[2].textContent, 'Source ↗');
+    assert.equal(parent.children[3].textContent, 'After');
+  });
+}
+
+test('article block media mixed document preserves each contextual placement and supported consumers', () => {
+  const h = articleMediaHarness();
+  const parent = h.content(mediaArticle([
+    { type: 'ordered_list', items: ['First'], images: [{ asset_id: 'shared' }] },
+    { type: 'callout', text: 'Careful', images: [{ asset_id: 'callout' }] },
+    { type: 'step', number: 3, instructions: ['Remove'], images: [{ asset_id: 'step' }] },
+    { type: 'table', columns: ['Part'], rows: [[{ text: 'Seal', images: [{ asset_id: 'cell' }] }]] },
+    { type: 'image', asset_id: 'shared' },
+  ], ['cell', 'step', 'callout', 'shared', 'unused'].map(id => ({ id, url: mediaURL(id) }))));
+  assert.deepEqual(mediaIDs(parent), ['shared', 'callout', 'step', 'cell', 'shared']);
+  assert.deepEqual(mediaTags(parent), ['ol', 'figure', 'aside', 'section', 'div', 'figure']);
+  assert.deepEqual(mediaIDs(parent.children[3]), ['step']);
+  assert.deepEqual(mediaIDs(mediaDescendants(parent, 'td')[0]), ['cell']);
+});
+
+for (const type of ['ordered_list', 'unordered_list', 'callout']) {
+  for (const [name, ref] of [
+    ['missing IDs', { status: 'unavailable', unavailable_reason: 'source image reference is missing' }],
+    ['empty IDs', { asset_id: '', image_id: '' }],
+  ]) {
+    for (const origin of [undefined, 'source', 'canonical']) {
+      test(`article block media ${type} rejects ${name} with a valid unrelated pool in ${origin || 'renderContent'}`, () => {
+        const h = articleMediaHarness();
+        const article = mediaArticle([{ type, items: ['Check'], text: 'Note', images: [ref] }],
+          [{ id: 'unrelated', url: mediaURL('unrelated') }], origin ? { content_origin: origin } : {});
+        const parent = origin ? h.render(article) : h.content(article);
+        assert.equal(mediaDescendants(parent, 'img').length, 0, 'ID-less references must not render an unrelated pool image');
+        const figures = mediaDescendants(parent, 'figure');
+        assert.equal(figures.length, 1);
+        assert.deepEqual(mediaTags(figures[0]), ['p']);
+        assert.equal(figures[0].textContent, 'Illustration unavailable.');
+        assert.equal(figures[0].children[0].className, 'image-missing');
+        assert.equal(mediaDescendants(parent, 'figcaption').length, 0);
+      });
+    }
+  }
+}
+
+for (const type of ['ordered_list', 'unordered_list', 'callout']) {
+  for (const refKey of ['asset_id', 'image_id']) for (const poolKey of ['id', 'image_id', 'asset_id']) {
+    test(`article block media ${type} resolves ${refKey} through pool ${poolKey} and ignores inline URL`, () => {
+      const h = articleMediaHarness();
+      const parent = h.content(mediaArticle([{ type, items: ['Check'], text: 'Note', images: [{ [refKey]: 'mapped', url: 'https://provider.example/inline' }] }],
+        [{ [poolKey]: 'mapped', url: mediaURL('authorized') }]));
+      assert.deepEqual(mediaIDs(parent), ['mapped']);
+      const img = mediaDescendants(parent, 'img')[0];
+      assert.equal(img.src, 'https://cars.example/v1/catalog/images/v2.authorized');
+      assert.equal(img.referrerPolicy, 'no-referrer');
+    });
+  }
+  const unavailable = [
+    ['missing mapping', { asset_id: 'absent', url: mediaURL('inline') }, []],
+    ['absent ID', { url: mediaURL('inline') }, [{ id: 'unrelated', url: mediaURL('safe') }]],
+    ['missing URL', { asset_id: 'a' }, [{ id: 'a' }]],
+    ['unavailable asset', { asset_id: 'a' }, [{ id: 'a', unavailable: true }]],
+    ...['https://provider.example/image.png', 'javascript:alert(1)', 'data:image/png;base64,YQ==',
+      '/images/unsafe.png', '/v1/catalog/images/notopaque', '//provider.example/v1/catalog/images/v2.a',
+      'https://user:pass@cars.example/v1/catalog/images/v2.a', '/v1/catalog/images/v2.a?token=x', '/v1/catalog/images/v2.a#x']
+      .map(url => [url, { asset_id: 'a' }, [{ id: 'a', url }]]),
+  ];
+  for (const [name, ref, images] of unavailable) {
+    test(`article block media ${type} renders unavailable figure for ${name}`, () => {
+      const h = articleMediaHarness(), parent = h.content(mediaArticle([{ type, items: ['Check'], text: 'Note', images: [ref] }], images));
+      const figures = mediaDescendants(parent, 'figure');
+      assert.equal(figures.length, 1);
+      assert.deepEqual(mediaTags(figures[0]), ['p']);
+      assert.equal(figures[0].children[0].textContent, 'Illustration unavailable.');
+      assert.equal(figures[0].children[0].className, 'image-missing');
+      assert.deepEqual(mediaIDs(parent), []);
+      assert.equal(mediaDescendants(parent, 'figcaption').length, 0);
+    });
+  }
+  for (const [name, refAlt, poolAlt, expectedAlt, captions] of [
+    ['reference alt', '<b>Pump orientation</b>', 'Pool alt', '<b>Pump orientation</b>', ['<b>Pump orientation</b>']],
+    ['absent reference alt', undefined, 'Pool alt', 'Pool alt', []],
+    ['empty reference alt', '', 'Pool alt', 'Pool alt', []],
+    ['default alt', undefined, undefined, 'Article illustration', []],
+  ]) {
+    test(`article block media ${type} keeps exact ${name} and caption policy`, () => {
+      const h = articleMediaHarness(), parent = h.content(mediaArticle([{ type, items: ['Check'], text: 'Note', images: [{ asset_id: 'a', alt: refAlt }] }],
+        [{ id: 'a', url: mediaURL('a'), alt: poolAlt }]));
+      assert.equal(mediaDescendants(parent, 'img').length, 1);
+      assert.equal(mediaDescendants(parent, 'img')[0].alt, expectedAlt);
+      const renderedCaptions = mediaDescendants(parent, 'figcaption');
+      assert.deepEqual(renderedCaptions.map(n => n.textContent), captions);
+      assert.ok(renderedCaptions.every(n => n.children.length === 0), 'HTML-like caption stays inert text');
+    });
+  }
+}
+
+test('article block media object list item retains its own image alongside block sibling', () => {
+  const h = articleMediaHarness(), parent = h.content(mediaArticle([
+    { type: 'ordered_list', items: [{ text: 'Check', images: [{ asset_id: 'item' }] }], images: [{ asset_id: 'block' }] },
+  ], [{ id: 'block', url: mediaURL('block') }, { id: 'item', url: mediaURL('item') }]));
+  assert.deepEqual(mediaTags(parent), ['ol', 'figure']);
+  assert.deepEqual(mediaTags(parent.children[0]), ['li']);
+  assert.deepEqual(mediaIDs(parent.children[0].children[0]), ['item']);
+  assert.deepEqual(mediaIDs(parent), ['item', 'block']);
+});
+for (const images of [undefined, []]) {
+  test(`article block media empty ${images ? 'array' : 'absent'} media preserves text and native structure`, () => {
+    const h = articleMediaHarness(), parent = h.content(mediaArticle([
+      { type: 'ordered_list', items: ['Check'], images },
+      { type: 'unordered_list', items: ['Install'], images },
+      { type: 'callout', text: 'Keep clear.', images },
+    ], [{ id: 'unused', url: mediaURL('unused') }]));
+    assert.deepEqual(mediaTags(parent), ['ol', 'ul', 'aside']);
+    assert.deepEqual(mediaIDs(parent), []);
+    const aside = parent.children[2];
+    assert.deepEqual(mediaTags(aside), ['strong', 'div']);
+    assert.deepEqual(mediaTags(aside.children[1]), ['span']);
+    assert.equal(aside.children[0].textContent, 'Note');
+    assert.equal(aside.children[1].textContent, 'Keep clear.');
+  });
+}
+
+for (const [origin, state, retryable, note] of [
+  ['source', 'fetching', false, true], ['source', 'failed', true, true],
+  ['source', 'failed', false, false], ['source', 'needs_review', false, false], ['canonical', 'completed', false, false],
+]) {
+  test(`article block media actual renderArticle retains ${origin}/${state}/${retryable} UI policy`, () => {
+    const h = articleMediaHarness();
+    h.render(mediaArticle([{ type: 'paragraph', text: 'Old view' }], [], { view_revision: 'old' }));
+    const article = mediaArticle([
+      { type: 'ordered_list', items: ['Check'], images: [{ asset_id: 'list' }] },
+      { type: 'callout', label: 'Warning', text: 'Keep clear.', images: [{ asset_id: 'callout' }] },
+    ], [{ id: 'callout', url: mediaURL('callout') }, { id: 'list', url: mediaURL('list') }], {
+      content_origin: origin, processing: { job_id: 'job', state, retryable }, complete: origin === 'canonical',
+      source_review: { available: true, url: mediaSourceURL },
+      steps: [{ instructions: ['Conflicting legacy step'], images: [{ id: 'legacy', url: mediaURL('legacy') }] }], body: 'Conflicting body',
+    });
+    const before = JSON.stringify(article), parent = h.render(article);
+    assert.deepEqual(mediaIDs(parent), ['list', 'callout']);
+    assert.deepEqual(mediaTags(parent), ['ol', 'figure', 'aside']);
+    assert.equal(parent.textContent.includes('Conflicting'), false);
+    assert.equal(h.nodes.get('article-kind').textContent, origin === 'canonical' ? 'Workshop article' : 'Stored source');
+    assert.equal(h.nodes.get('article-note').hidden, !note);
+    assert.equal(h.nodes.get('article-note').textContent, note ? 'Preparing articles. Available source remains readable.' : '');
+    assert.equal(h.nodes.get('print').disabled, false);
+    assert.equal(h.context.document.body.dataset.printable, 'true');
+    assert.equal(h.nodes.get('source-review').hidden, false);
+    assert.equal(h.nodes.get('source-review-link').href, mediaSourceURL);
+    assert.equal(JSON.stringify(article), before, 'rendering cannot change origin or completion');
+    h.render(mediaArticle([], [], { view_revision: 'unreadable' }));
+    assert.equal(h.nodes.get('print').disabled, true);
+    assert.equal(h.context.document.body.dataset.printable, 'false');
+  });
+}
+
+test('article block media actual loadSource renders retained shapes and rejects changed or invalid references', async () => {
+  const calls = [];
+  let response = { source: { url: mediaSourceURL, format: 'json' }, document: { blocks: [
+    { type: 'ordered_list', items: ['Stored check'], images: [{ asset_id: 'list' }] },
+    { type: 'callout', text: 'Stored caution', images: [{ asset_id: 'callout' }] },
+  ] }, images: [{ id: 'list', url: mediaURL('list') }, { id: 'callout', url: mediaURL('callout') }] };
+  const h = articleMediaHarness({ requestJSON: async (path, options) => { calls.push({ path, options }); return response; } });
+  h.render(mediaArticle([{ type: 'paragraph', text: 'Article' }]));
+  await h.context.loadSource(mediaSourceURL, h.g);
+  const frame = h.nodes.get('source-review-frame'), first = frame.children[0];
+  assert.deepEqual(mediaTags(frame), ['ol', 'figure', 'aside']);
+  assert.deepEqual(mediaIDs(frame), ['list', 'callout']);
+  assert.equal(frame.hidden, false);
+  assert.equal(h.nodes.get('source-review-meta').textContent, 'Stored source loaded.');
+  assert.equal(h.nodes.get('article-reference').open, true);
+  assert.equal(h.nodes.get('source-review-load').disabled, false);
+  assert.equal(calls[0].path, mediaSourceURL);
+  assert.equal(calls[0].options.signal, h.g.signal);
+  response = { ...response, source: { url: mediaSourceURL.replace('11111111-', '22222222-') } };
+  await assert.rejects(h.context.loadSource(mediaSourceURL, h.g), /source reference changed/);
+  assert.equal(frame.children[0], first);
+  const count = calls.length;
+  await assert.rejects(h.context.loadSource('https://provider.example/source', h.g), /reference is unavailable/);
+  assert.equal(calls.length, count);
+  assert.equal(frame.children[0], first);
+  assert.equal(frame.hidden, false);
+});
+
+for (const type of ['ordered_list', 'unordered_list', 'callout']) {
+  test(`article block media ${type} source evidence handler and image error obey current generation`, async () => {
+    const loads = [], renewals = [];
+    const h = articleMediaHarness();
+    h.context.loadSource = async (url, g) => loads.push({ url, g });
+    h.context.renewMedia = (g, img) => renewals.push({ g, img });
+    const parent = h.content(mediaArticle([
+      { type, items: ['Check'], text: 'Careful', images: [{ asset_id: 'a' }], evidence_ids: ['e-7'], source_locator: 'body[3]' },
+      { type: 'paragraph', text: 'After' },
+    ], [{ id: 'a', url: mediaURL('a') }], { source_review: { url: mediaSourceURL } }));
+    assert.deepEqual(mediaTags(parent), type === 'callout' ? ['aside', 'a', 'p'] : [type === 'ordered_list' ? 'ol' : 'ul', 'figure', 'a', 'p']);
+    const link = mediaDescendants(parent, 'a')[0], img = mediaDescendants(parent, 'img')[0];
+    assert.ok(img, 'new block figure must expose the existing error handler');
+    let prevented = 0;
+    link.dispatch('click', { preventDefault() { prevented++; } }); img.dispatch('error');
+    await Promise.resolve();
+    assert.equal(loads.length, 1);
+    assert.equal(loads[0].url, mediaSourceURL + '&evidence_id=e-7&source_locator=body%5B3%5D');
+    assert.equal(loads[0].g, h.g);
+    assert.equal(renewals.length, 1); assert.equal(renewals[0].img, img); assert.equal(renewals[0].g, h.g);
+    h.navigation.next();
+    link.dispatch('click', { preventDefault() { prevented++; } }); img.dispatch('error');
+    assert.equal(prevented, 2); assert.equal(loads.length, 1); assert.equal(renewals.length, 1);
+  });
+}
+
+function renewalFixture() {
+  return mediaArticle([
+    { type: 'ordered_list', items: ['Check'], images: [{ asset_id: 'list' }] },
+    { type: 'callout', text: 'Careful', images: [{ asset_id: 'callout' }] },
+  ], [{ id: 'list', url: mediaURL('old-list') }, { id: 'callout', url: mediaURL('old-callout') }]);
+}
+const renewedArticle = () => ({ data: { article: { ...renewalFixture(), images: [
+  { id: 'list', url: mediaURL('new-list') }, { id: 'callout', url: mediaURL('new-callout') },
+] } } });
+
+test('article block media actual renewal shares one request and reconciles both shapes once per revision', async () => {
+  const pending = deferredAuthOperation(), calls = [];
+  const h = articleMediaHarness({ requestArticleJSON: (path, options) => { calls.push({ path, options }); return pending.promise; } });
+  const parent = h.render(renewalFixture()), images = mediaDescendants(parent, 'img');
+  assert.equal(images.length, 2);
+  images[0].dispatch('error'); const renewal = h.context.renewal;
+  images[1].dispatch('error');
+  assert.equal(calls.length, 1); assert.equal(h.context.renewal, renewal);
+  assert.equal(calls[0].path, '/v1/catalog/vehicles/v/articles/a'); assert.equal(calls[0].options.signal, h.g.signal);
+  pending.resolve(renewedArticle()); await renewal;
+  assert.deepEqual(mediaDescendants(parent, 'img'), images, 'stable revision retains image nodes');
+  assert.deepEqual(images.map(n => n.src), ['https://cars.example/v1/catalog/images/v2.new-list', 'https://cars.example/v1/catalog/images/v2.new-callout']);
+  assert.deepEqual(images.map(n => n.dataset.replacement), ['1', '1']);
+  assert.equal(h.context.renewal, null); assert.equal(h.context.renewalFailures.size, 0);
+  images[0].dispatch('error'); images[1].dispatch('error');
+  assert.equal(calls.length, 1);
+  assert.deepEqual(mediaIDs(parent), []);
+  assert.equal(mediaDescendants(parent, 'figure')[0].textContent, 'Illustration unavailable. Refresh this article to try again.');
+});
+for (const changed of [false, true]) {
+  test(`article block media actual renewal ${changed ? 'rejects changed' : 'reconciles matching'} stored-source revision`, async () => {
+    const calls = [];
+    const h = articleMediaHarness({ requestArticleJSON: async () => renewedArticle(), requestJSON: async (url, options) => {
+      calls.push({ url, options });
+      return { source: { url: changed ? mediaSourceURL.replace('11111111-', '22222222-') : mediaSourceURL },
+        images: [{ id: 'stored', url: mediaURL('new-stored') }] };
+    } });
+    h.render(renewalFixture());
+    const frame = h.nodes.get('source-review-frame');
+    h.context.renderBlocks(frame, [{ type: 'callout', text: 'Stored', images: [{ asset_id: 'stored' }] }],
+      [{ id: 'stored', url: mediaURL('old-stored') }], null, h.g);
+    frame.hidden = false; h.context.sourceData = { source: { url: mediaSourceURL } }; h.context.sourceURL = 'https://cars.example' + mediaSourceURL;
+    const image = mediaDescendants(frame, 'img')[0];
+    assert.ok(image, 'stored-source callout must contain a retained figure');
+    image.dispatch('error'); await h.context.renewal;
+    assert.equal(calls.length, 1); assert.equal(calls[0].url, 'https://cars.example' + mediaSourceURL); assert.equal(calls[0].options.signal, h.g.signal);
+    if (changed) {
+      assert.deepEqual(mediaIDs(frame), []);
+      assert.equal(frame.textContent, 'NoteStoredIllustration unavailable. Refresh this article to try again.');
+    } else {
+      assert.equal(mediaDescendants(frame, 'img')[0], image);
+      assert.equal(image.src, 'https://cars.example/v1/catalog/images/v2.new-stored');
+      assert.equal(image.dataset.replacement, '1');
+    }
+  });
+}
+for (const status of [401, 403, 410]) {
+  test(`article block media actual renewal ${status} invalidates protected content and generation`, async () => {
+    const h = articleMediaHarness({ requestArticleJSON: async () => { throw Object.assign(new Error('Access unavailable'), { status }); } });
+    h.render(renewalFixture());
+    for (const id of ['articles', 'source-review-frame', 'reference-data', 'library-items']) h.nodes.get(id).textContent = 'Protected';
+    h.nodes.get('source-review-link').href = mediaSourceURL;
+    const image = mediaDescendants(h.nodes.get('article-content'), 'img')[0];
+    assert.ok(image); image.dispatch('error'); await h.context.renewal;
+    assert.equal(h.g.current(), false);
+    assert.equal(h.g.signal.aborted, true);
+    for (const id of ['articles', 'article-content', 'source-review-frame', 'reference-data', 'library-items']) assert.equal(h.nodes.get(id).textContent, '', id);
+    assert.equal(h.context.currentArticle, null); assert.equal(h.context.sourceData, null); assert.equal(h.context.sourceURL, '');
+    assert.equal(h.nodes.get('source-review-link').href, undefined);
+    assert.equal(h.nodes.get('source-review-frame').hidden, true); assert.equal(h.nodes.get('print').disabled, true);
+    assert.equal(h.context.document.body.dataset.printable, 'false');
+    assert.deepEqual(h.shows, ['welcome']); assert.equal(h.statuses[0].message, 'Access unavailable'); assert.equal(h.statuses[0].options.error, true);
+  });
+}
+for (const outcome of ['resolve', 'reject']) {
+  test(`article block media actual renewal stale ${outcome} preserves newly selected content`, async () => {
+    const pending = deferredAuthOperation(); let sourceCalls = 0;
+    const h = articleMediaHarness({ requestArticleJSON: () => pending.promise, requestJSON: () => { sourceCalls++; assert.fail('stale renewal cannot fetch source'); } });
+    h.render(renewalFixture());
+    h.context.sourceData = { source: { url: mediaSourceURL } }; h.context.sourceURL = mediaSourceURL;
+    const image = mediaDescendants(h.nodes.get('article-content'), 'img')[0];
+    assert.ok(image); image.dispatch('error'); const renewal = h.context.renewal;
+    h.context.invalidate(); const next = h.navigation.next();
+    h.context.renderArticle(mediaArticle([{ type: 'paragraph', text: 'New selected article' }], [], { id: 'b', view_revision: 'view-b' }), next);
+    h.nodes.get('source-review-frame').textContent = 'New source';
+    if (outcome === 'resolve') pending.resolve(renewedArticle());
+    else pending.reject(Object.assign(new Error('Stale denial'), { status: 403 }));
+    await renewal;
+    assert.equal(h.nodes.get('article-content').textContent, 'New selected article');
+    assert.equal(h.nodes.get('source-review-frame').textContent, 'New source');
+    assert.equal(h.context.currentArticle.id, 'b'); assert.equal(next.current(), true);
+    assert.equal(sourceCalls, 0); assert.deepEqual(h.shows, []); assert.deepEqual(h.statuses, []);
+  });
+}

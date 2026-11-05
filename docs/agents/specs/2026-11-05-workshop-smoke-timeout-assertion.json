@@ -1,0 +1,240 @@
+{
+  "schema_version": 1,
+  "task_id": "workshop-smoke-timeout-assertion",
+  "ordinal": 57,
+  "goal": "Align only the existing ingestion-smoke workflow timeout assertion with the reviewed 30-minute autonomy-policy budget on the exact Task56 combined source, preserving every other byte and every runtime, acceptance and release block.",
+  "todo": [
+    "Independently review exact Task56 code 209aa420b391dc81275b0178fd8988a61f591cb7/tree ef740d24e7348f358c445aaf9c050bd30c097ff5, its retained final code-review receipt and the independently reproduced clean-source stale assertion; freeze only scripts/dev/test_ingestion_smoke.py line58 timeout-minutes: 20 to timeout-minutes: 30. Task56 remaining full-suite/CI inventory is not a Task57 synchronization or dispatch prerequisite and confers no inherited success; any additional defect requires a separate synchronized gate.",
+    "Synchronize this literal goal, six todos, six gate paths and sole implementation path in Issue186/Project8 with fresh before/after preservation readbacks; preserve all prior56 queue objects and root bytes, commit/push only the synchronized checkpoint rooted at exact Task56 code, externally seal its actual SHA/tree, and require standalone/nested exact-checkpoint preflights errors=[] plus independent checkpoint review before explicit coordinator dispatch.",
+    "Reproduce the existing focused workflow-contract assertion failure before repair, then replace only the sole exact line58 assertion string timeout-minutes: 20 with timeout-minutes: 30 in scripts/dev/test_ingestion_smoke.py; preserve every other file byte, the reviewed workflow30/DTO100/exercise85/R3 5, R6 hash binding and all existing assertions, tests and smoke cleanup.",
+    "Require the focused assertion and complete ingestion-smoke module green, rerun the full developer/autonomy suites and frozen Task56 offline combined checks on the exact candidate, retain actual commands/counts/skips/failures/exits and verify the deterministic one-line diff; stop for a new gate on any extra repair or path.",
+    "Commit and promptly push the validated one-line milestone under coordinator branch ownership, obtain independent exact-code/diff review, and require fresh corrected source-push and actual PR-checkout Autonomous Verification terminal success for all three jobs and the complete live Compose step; bind logs and artifacts to actual checkout SHA/tree and report ordinary skips and external Vercel status separately.",
+    "Keep accepted_case_credit=0, accepted_new_case_credit=0, verified_case_ids=[] and release_state=unverified; leave owner policy/tax, merchant manifest injection/rebuild and artifact/served-byte proof, provider/Firebase/Stripe TEST enrollment, source/runtime admission, supervisor timing, real API21/DTO120/final180 acceptance, host/services, DNS, staging, protected merge, deployment and release behind separate measured gates."
+  ],
+  "status": "synchronized",
+  "state": "blocked",
+  "planning_status": "synchronized",
+  "tracking_status": "synchronized",
+  "plan_ref": "docs/superpowers/plans/2026-11-05-workshop-smoke-timeout-assertion.md",
+  "spec_ref": "docs/agents/specs/2026-11-05-workshop-smoke-timeout-assertion.json",
+  "record_ref": "docs/agents/records/2026-11-05-workshop-smoke-timeout-assertion.json",
+  "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-smoke-timeout-assertion.json",
+  "verification_ref": "docs/verification/2026-11-05-workshop-smoke-timeout-assertion.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+  "repository_doc_refs": [
+    "docs/agents/specs/2026-11-05-workshop-smoke-timeout-assertion.json",
+    "docs/verification/2026-11-05-workshop-smoke-timeout-assertion.md"
+  ],
+  "planning_materialization_parent_sha": "209aa420b391dc81275b0178fd8988a61f591cb7",
+  "planning_materialization_parent_tree": "ef740d24e7348f358c445aaf9c050bd30c097ff5",
+  "source_candidate_sha": "209aa420b391dc81275b0178fd8988a61f591cb7",
+  "source_candidate_tree": "ef740d24e7348f358c445aaf9c050bd30c097ff5",
+  "checkpoint_sha": null,
+  "checkpoint_tree": null,
+  "implementation_base_sha": null,
+  "checkpoint_seal_ref": null,
+  "allowed_gate_document_paths": [
+    "docs/superpowers/plans/2026-11-05-workshop-smoke-timeout-assertion.md",
+    "docs/agents/specs/2026-11-05-workshop-smoke-timeout-assertion.json",
+    "docs/agents/records/2026-11-05-workshop-smoke-timeout-assertion.json",
+    "docs/agents/tasks/2026-11-03-production-release/workshop-smoke-timeout-assertion.json",
+    "docs/verification/2026-11-05-workshop-smoke-timeout-assertion.md",
+    "docs/agents/tasks/2026-11-03-production-release/queue.json"
+  ],
+  "allowed_implementation_paths": [
+    "scripts/dev/test_ingestion_smoke.py"
+  ],
+  "current_implementation_allowlist": [],
+  "accepted_case_credit": 0,
+  "accepted_new_case_credit": 0,
+  "verified_case_ids": [],
+  "release_state": "unverified",
+  "authorities": {
+    "implementation": false,
+    "implementation_dispatch": false,
+    "provider": false,
+    "runtime": false,
+    "host": false,
+    "host_execution": false,
+    "docker": false,
+    "network": false,
+    "cloud": false,
+    "dns": false,
+    "capture": false,
+    "profile_activation": false,
+    "acceptance": false,
+    "fixture_execution": false,
+    "image_build_pull_install": false,
+    "service_start": false,
+    "payment": false,
+    "account_mutation": false,
+    "staging": false,
+    "release": false,
+    "merge": false,
+    "deployment": false,
+    "cutover": false,
+    "secrets": false,
+    "github_write": false,
+    "code_approval": false,
+    "ci_success": false,
+    "merchant_enablement": false,
+    "manifest_injection": false,
+    "artifact_admission": false,
+    "owner_approval": false,
+    "stripe_test_acceptance": false,
+    "live_sales": false,
+    "code_import": false,
+    "ci_execution": false,
+    "capture_admission": false,
+    "fixture_api21": false,
+    "fixture_dto120": false,
+    "final180": false,
+    "current_source_browser_acceptance": false,
+    "owner_tax_decision": false,
+    "firebase_enrollment": false,
+    "stripe_test_enrollment": false,
+    "supervisor_timing_change": false,
+    "merge_to_protected_branch": false
+  },
+  "tracking_sync": {
+    "status": "synchronized",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "ownership_verified": true,
+    "literal_readback_verified": true,
+    "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6649804778",
+    "issue_comment_id": 6649804778,
+    "issue_comment_created_at": "2026-11-05T04:37:08Z",
+    "issue_comment_body_sha256": "5e719467bc16e1166c6094d2ee89da2f563d42a1dfc2ef2626a7d01162330323",
+    "before_readback": {
+      "path": "/home/corp/autodata-evidence/task57-before-tracking.json",
+      "sha256": "2b684f5cdf9ebd1a18b8de1633e72350baf9568eb36359c3f0b045b9e2b30dbe",
+      "observed_at": "2026-11-05T04:36:46.344220+00:00"
+    },
+    "after_readback": {
+      "path": "/home/corp/autodata-evidence/task57-after-tracking.json",
+      "sha256": "cef0003e2253ebef31627ea17045058e87f0aa8360a04ad9f8f32e6c9526c99b",
+      "observed_at": "2026-11-05T04:37:16.760218+00:00"
+    },
+    "issue_body_sha256": "927b46ef47b1dbf5b117273e3d3f5c0e6d9f23b722a5245869eb5323b96c4f25",
+    "project_source_sha256_before": "e04490b8c6c282b2d008ee0cce5daff1d9dd6e526dd874a075fe475b8740dde0",
+    "project_source_sha256_after": "8edb13185d2da2f79ee24adead6fa8254820024bacc301d21f969e43d3052a35",
+    "issue_body_unchanged": true,
+    "prior_255_comments_unchanged": true,
+    "project_other_fields_unchanged": true,
+    "prior_project_source_preserved_verbatim_in_comment": true,
+    "literal_goal_todo_six_gate_paths_one_implementation_path_verified": true,
+    "coordinator_sync_completed": true,
+    "independent_revised_draft_review": {
+      "path": "/home/corp/autodata-evidence/task57-smoke-timeout-assertion-draft-review/REPORT.md",
+      "sha256": "351654845ea9128827dcb13b041bf35cf6130a775ee34e6bb974ab5a27f76052",
+      "verdict": "PASS_REVISED_DRAFT"
+    },
+    "scope": "Planning synchronization only. Exact checkpoint commit/push, external SHA/tree seal, dual exact-checkpoint preflights, independent checkpoint review and explicit one-path dispatch remain required. All implementation/runtime/release authorities false."
+  },
+  "updated_at": "2026-11-05T04:37:08Z",
+  "source_binding": {
+    "parent_sha": "209aa420b391dc81275b0178fd8988a61f591cb7",
+    "parent_tree": "ef740d24e7348f358c445aaf9c050bd30c097ff5",
+    "parent_review": {
+      "path": "/home/corp/autodata-evidence/task56-integration-final-review/REPORT.md",
+      "sha256": "d34316c1e3948c8672a45ee842e94a95a3ece076d578e9673fdfea8ac808ec2a",
+      "verdict": "PASS",
+      "scope": "Exact Task56 source/diff review only; no final broad-suite or CI success certified."
+    },
+    "final_inventory_status": "pending_no_task57_sync_or_dispatch_prerequisite_no_inherited_success",
+    "final_local_full_suite": "not_green_coordinator_reports_observed_assertion_failure",
+    "source_push_ci": "not_green_unverified",
+    "actual_pr_checkout_ci": "not_green_unverified",
+    "product_sha": "6949eb1b1a5b93c9b2eb0579328e24c697f6f331",
+    "product_tree": "47ec54b1896c83a39b6637a6ce944d3620414f4e"
+  },
+  "design": {
+    "path": "scripts/dev/test_ingestion_smoke.py",
+    "line_at_parent": 58,
+    "old_line": "        self.assertIn(\"timeout-minutes: 20\", workflow)",
+    "new_line": "        self.assertIn(\"timeout-minutes: 30\", workflow)",
+    "old_manifest": {
+      "path": "scripts/dev/test_ingestion_smoke.py",
+      "git_blob": "c4513119139c0ef0e2dfa5f505cd9554d5a20035",
+      "bytes": 5369,
+      "sha256": "95e1aabe49bc702133f6f7cbe1749bd0423582b6694185da988b0b690055edae"
+    },
+    "expected_new_manifest": {
+      "path": "scripts/dev/test_ingestion_smoke.py",
+      "git_blob": "a82f48ad546feef950b335823b25ba90fd8ef6d7",
+      "bytes": 5369,
+      "sha256": "ec50bedac82105f54d894c5a18ecd535603c26cc2eac42050b6d823627cc5a39"
+    },
+    "operation": "Replace the one exact ASCII assertion line in original bytes; no reserialization, formatting or other byte change. The hardcoded assertion remains and checks the reviewed 30-minute value. Do not delete, skip, broaden or restructure any test.",
+    "risk": "Corrects stale test expectation only; does not establish that full suites or CI pass. Further failures require a new synchronized gate.",
+    "preserve_manifests": [
+      {
+        "path": ".github/workflows/autonomous-verification.yml",
+        "git_blob": "86d9889e24e53f430843782795fcca35c3e645c5",
+        "bytes": 15003,
+        "sha256": "b7dc37359faea4cdaff29ce7b0460d2f5d289ad7d3ae4c2c0c788a8992556e4d"
+      },
+      {
+        "path": "docs/agents/tasks/2026-11-03-production-release/r6-release.json",
+        "git_blob": "789c9e202e9cf9199853c54af9f09c7923cd00a4",
+        "bytes": 8727,
+        "sha256": "0b7a892bf0ea51d5a3197dce795d2be451bd7535809c9c82c8bbd5fe5bdecc52"
+      },
+      {
+        "path": ".autodata-autonomy-policy.json",
+        "git_blob": "be4d8088b3fd28c84c101a723ecc7c26768de9e7",
+        "bytes": 2201,
+        "sha256": "798e91b9854098a706ea4ab66a414492c044059a1c98edb9d2f1d003e3baad98"
+      }
+    ],
+    "all_other_paths": "Every existing parent path and mode must remain byte-identical except queue additive Task57 during gate; implementation delta from sealed checkpoint must be exactly the deterministic one-line test edit.",
+    "queue_preservation": "Preserve each of the first56 raw task objects, separators/order and root prefix/suffix bytes; append exactly one Task57 object identical to standalone task."
+  },
+  "verification_commands": [
+    "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=workers/ingestion-python/src:packages/contracts/python python3 -B -m unittest scripts.dev.test_ingestion_smoke.IngestionSmokeContractTests.test_protected_workflow_runs_live_fast_lane_smoke_with_cleanup -v",
+    "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=workers/ingestion-python/src:packages/contracts/python python3 -B -m unittest scripts.dev.test_ingestion_smoke -v",
+    "PYTHONDONTWRITEBYTECODE=1 python3 -B -m unittest scripts.dev.test_workshop_browser_smoke.DTOWorkflowBindingTests.test_dto_job_matches_shared_contract_and_disabled_r6_hash -v",
+    "PYTHONDONTWRITEBYTECODE=1 python3 -B -m unittest scripts.dev.test_workshop_browser_smoke -v",
+    "PYTHONDONTWRITEBYTECODE=1 python3 -B -m unittest scripts.dev.test_release_acceptance -v",
+    "PYTHONDONTWRITEBYTECODE=1 python3 -B -m unittest discover -s scripts/dev -p test_workshop_merchant_manifest.py -v",
+    "env -u AUTODATA_REQUIRE_WORKSHOP_BROWSER_INTEGRATION -u AUTODATA_LIFECYCLE_TEST -u AUTODATA_WORKSHOP_BROWSER_CHILD PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=scripts/dev python3 -B -m pytest -q -p no:cacheprovider --collect-only scripts/dev/test_workshop_browser_environment.py scripts/dev/test_workshop_browser_execution_contract.py scripts/dev/test_workshop_browser_execution_evidence.py scripts/dev/test_workshop_browser_execution_supervisor.py scripts/dev/test_workshop_browser_preparation_probe.py",
+    "env -u AUTODATA_REQUIRE_WORKSHOP_BROWSER_INTEGRATION -u AUTODATA_LIFECYCLE_TEST -u AUTODATA_WORKSHOP_BROWSER_CHILD PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=scripts/dev python3 -B -m pytest -q -p no:cacheprovider scripts/dev/test_workshop_browser_environment.py scripts/dev/test_workshop_browser_execution_contract.py scripts/dev/test_workshop_browser_execution_evidence.py scripts/dev/test_workshop_browser_execution_supervisor.py scripts/dev/test_workshop_browser_preparation_probe.py",
+    "env -u AUTODATA_REQUIRE_WORKSHOP_BROWSER_INTEGRATION -u AUTODATA_LIFECYCLE_TEST -u AUTODATA_WORKSHOP_BROWSER_CHILD PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -B -m pytest -q -p no:cacheprovider --confcutdir=workers/ingestion-python/tests workers/ingestion-python/tests/test_workshop_browser_observability.py",
+    "PYTHONDONTWRITEBYTECODE=1 python3 -B -m unittest discover -s scripts/autonomy -p \"test_*.py\" -v",
+    "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=workers/ingestion-python/src:packages/contracts/python python3 -B -m unittest discover -s scripts/dev -p \"test_*.py\" -v",
+    "node --test apps/api-go/workshop-client.test.mjs",
+    "node --check apps/api-go/workshop/app.mjs",
+    "go -C apps/api-go test ./...",
+    "git diff --check"
+  ],
+  "ci_contract": {
+    "workflow_path": ".github/workflows/autonomous-verification.yml",
+    "required_jobs": {
+      "autonomy-policy": "Validate autonomy policy and evidence contract",
+      "workshop-dto-browser": "Workshop DTO browser inventory (not real API acceptance)",
+      "r3-preparation-unit": "R3 preparation synthetic and owned-child tests"
+    },
+    "autonomy_policy_timeout_minutes": 30,
+    "dto_job_timeout_minutes": 100,
+    "dto_exercise_timeout_minutes": 85,
+    "r3_job_timeout_minutes": 5,
+    "required_step": "Run live Compose fast-lane smoke",
+    "required_result": "Fresh corrected-source push and actual PR checkout: each run completed/success, all three jobs completed/success, every required test and live Compose step completed/success. Cancellation, timeout, skipped required steps, in-progress state and historical source-lane runs do not qualify. Record ordinary test skips honestly; workflow green does not mean skip-free suites.",
+    "identity": "Retain exact source SHA/tree, actual checkout SHA/tree and checkout logs for every job; PR metadata head_sha alone is insufficient. Verify actual PR commit parents and tree. Require tree equality to reviewed combined source; if PR tree differs, freeze/review/test that actual tree or block and replan, never infer equivalence.",
+    "evidence": "Retain raw run/jobs/step/annotation/log/status JSON, actual attempts, checkout lines, workflow blob, DTO artifact ZIP hashes and extracted same-attempt receipts bound to actual checkout/candidate/timing/input identities. Record source and PR results separately and external Vercel statuses independently.",
+    "scope": "Only already-reviewed workflow CI may exercise local Compose and synthetic browser/owned-child jobs under later explicit coordinator dispatch. Draft permits no host/service/CI operation. No real provider, API21, merchant/Firebase/Stripe TEST or release acceptance credit."
+  },
+  "remaining_blocks": [
+    "No real provider credentials/enrollment, Firebase identity project/configuration or authentic Stripe TEST account/Price/checkout/webhook/durable grant/duplicate/revocation evidence is admitted; stripe_live/live sales remain blocked.",
+    "Owner must independently approve exact Terms/Privacy/Refund/Contact URLs and snapshot bytes and tax/final USD20 price treatment. prepared_offline proves supplied-byte consistency only. The shipped 168-byte disabled manifest remains unchanged; no injection/rebuild, immutable OCI/binary/served-byte artifact admission is authorized.",
+    "Task52 v2 remains internal, unavailable, complete=false, credits0 and verified IDs empty; historical v1/public CLI exit3/profiles unchanged. Task53 static contract pins Task51 product6949/tree47ec; combined tooling SHA never silently rebinds the producer/product source.",
+    "Unchanged supervisor dto_running=4560s versus compiler command ceiling5100s and whole attempt7500s is an explicit unresolved runtime blocker. No timer repair, runtime observer/admission, containment/watchdog or real API finite-success proof is admitted. Producer trace16MiB versus consumer8MiB and original authenticated JUnit/log capture remain blocked.",
+    "No real API21, DTO120 or same-candidate final180 acceptance is established. DTO CI is synthetic fixture/source smoke only, even when all120 rows pass; R3 CI is synthetic/owned-child preparation only. Local Compose smoke is CI infrastructure proof, not authentic staging/provider/customer acceptance.",
+    "cars.tk DNS is Vercel-managed and owner can change it; this is owner-provided planning context. External Vercel deployment/rate-limit failures remain separate from Actions success and prohibit a full green rollup claim while failing. No Vercel setting/retry/hosting, host execution, Docker/services, DNS, staging, protected-branch merge, deployment, cutover or release authority follows."
+  ],
+  "dispatch_prerequisite": "Coordinator Issue186/Project8 synchronization with preservation readbacks; synchronized six-document checkpoint committed/pushed at exact Task56 parent; external actual SHA/tree seal; standalone+nested exact-checkpoint canonical preflight errors=[]; independent checkpoint PASS; then explicit assigned one-path source-only dispatch. Planning synchronization grants no implementation or operational authority."
+}

@@ -1,0 +1,252 @@
+{
+  "schema_version": 1,
+  "task_id": "workshop-merchant-manifest",
+  "ordinal": 54,
+  "goal": "Add an inert offline validator for exact-byte Workshop merchant manifest preparation while preserving the shipped disabled manifest and every owner approval, Stripe TEST, runtime and release block.",
+  "todo": [
+    "Independently review this six-document draft at exact Task53 planning parent c374f77af461f01d367a8b802c7d7bea886fe7ec, preserve all 53 prior queue objects and root fields, and freeze the two-new-Python-file implementation scope and disabled manifest bytes.",
+    "Synchronize this literal goal, six todo strings, six gate paths and exact two implementation paths in Issue186 and existing Project8 item PVTI_lAHOCSJ8cc4BiQ2BzhFocs4 with before/after readbacks; commit/push the planning checkpoint, externally seal its SHA/tree, pass standalone and nested canonical exact-base preflights and independent checkpoint review before explicit branch dispatch.",
+    "Write independent synthetic red tests for strict bounded inputs, exact raw-byte bindings, policy URL/snapshot mapping, tax/product/enrollment tuple mutations and immutable disabled baseline; then implement only the pure standard-library offline evaluator and read-only CLI in the two allowed Python files.",
+    "Keep prepared_offline limited to locally consistent supplied bytes with explicit provenance; report absent or mismatched prerequisites as blocked, preserve exact input bytes, and keep owner approval, artifact admission, authentic TEST acceptance, enablement and all operational authorities false.",
+    "Run focused and full developer tests, developer discovery checks, unchanged Node Workshop readiness and Go Workshop tests, exact allowlist/baseline checks and diff checks; record actual red/green receipts, skips and failures without customer acceptance credit.",
+    "After authorized implementation, commit and promptly push coherent validated milestones, obtain independent exact-code review and fresh source-push plus actual PR checkout CI; leave owner-supplied real policy/tax inputs, injection/rebuild, immutable artifact/served-byte proof, authentic Stripe TEST enrollment and live release to separate gates."
+  ],
+  "status": "synchronized",
+  "state": "blocked",
+  "planning_status": "synchronized",
+  "tracking_status": "synchronized",
+  "plan_ref": "docs/superpowers/plans/2026-11-05-workshop-merchant-manifest.md",
+  "spec_ref": "docs/agents/specs/2026-11-05-workshop-merchant-manifest.json",
+  "record_ref": "docs/agents/records/2026-11-05-workshop-merchant-manifest.json",
+  "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-merchant-manifest.json",
+  "verification_ref": "docs/verification/2026-11-05-workshop-merchant-manifest.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+  "repository_doc_refs": [
+    "docs/agents/specs/2026-11-05-workshop-merchant-manifest.json",
+    "docs/verification/2026-11-05-workshop-merchant-manifest.md"
+  ],
+  "planning_materialization_parent_sha": "c374f77af461f01d367a8b802c7d7bea886fe7ec",
+  "planning_materialization_parent_tree": "a29bd3380144303394e1cf680d031af91009430d",
+  "source_candidate_sha": "6949eb1b1a5b93c9b2eb0579328e24c697f6f331",
+  "source_candidate_tree": "47ec54b1896c83a39b6637a6ce944d3620414f4e",
+  "checkpoint_sha": null,
+  "checkpoint_tree": null,
+  "implementation_base_sha": null,
+  "checkpoint_seal_ref": null,
+  "allowed_gate_document_paths": [
+    "docs/superpowers/plans/2026-11-05-workshop-merchant-manifest.md",
+    "docs/agents/specs/2026-11-05-workshop-merchant-manifest.json",
+    "docs/agents/records/2026-11-05-workshop-merchant-manifest.json",
+    "docs/agents/tasks/2026-11-03-production-release/workshop-merchant-manifest.json",
+    "docs/verification/2026-11-05-workshop-merchant-manifest.md",
+    "docs/agents/tasks/2026-11-03-production-release/queue.json"
+  ],
+  "allowed_implementation_paths": [
+    "scripts/dev/workshop_merchant_manifest.py",
+    "scripts/dev/test_workshop_merchant_manifest.py"
+  ],
+  "current_implementation_allowlist": [],
+  "accepted_case_credit": 0,
+  "accepted_new_case_credit": 0,
+  "verified_case_ids": [],
+  "release_state": "unverified",
+  "authorities": {
+    "implementation": false,
+    "implementation_dispatch": false,
+    "provider": false,
+    "runtime": false,
+    "host": false,
+    "host_execution": false,
+    "docker": false,
+    "network": false,
+    "cloud": false,
+    "dns": false,
+    "capture": false,
+    "profile_activation": false,
+    "acceptance": false,
+    "fixture_execution": false,
+    "image_build_pull_install": false,
+    "service_start": false,
+    "payment": false,
+    "account_mutation": false,
+    "staging": false,
+    "release": false,
+    "merge": false,
+    "deployment": false,
+    "cutover": false,
+    "secrets": false,
+    "github_write": false,
+    "code_approval": false,
+    "ci_success": false,
+    "merchant_enablement": false,
+    "manifest_injection": false,
+    "artifact_admission": false,
+    "owner_approval": false,
+    "stripe_test_acceptance": false,
+    "live_sales": false
+  },
+  "tracking_sync": {
+    "status": "synchronized",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6647901931",
+    "issue_comment_id": 6647901931,
+    "issue_comment_created_at": "2026-11-05T02:20:31Z",
+    "issue_comment_body_sha256": "e5cb9c04ebe3bf22b614a77fadd583ab37b8a5ab81ba2a8aa6efbb16ad7036c3",
+    "before_readback": {
+      "path": "/home/corp/autodata-evidence/merchant-manifest-task54-before-tracking.json",
+      "sha256": "53eace0d9196c6ee4f12dc7b97fdc0afc0453f54210c3a822e5d6fd28ae3a2c9",
+      "observed_at": "2026-11-05T02:20:21Z"
+    },
+    "after_readback": {
+      "path": "/home/corp/autodata-evidence/merchant-manifest-task54-after-tracking.json",
+      "sha256": "7bdd2d118e39c2cfc3a4b911c55e3a0c8f5c71922cb5ad030d5393653cec0bde",
+      "observed_at": "2026-11-05T02:20:40Z"
+    },
+    "issue_body_sha256": "927b46ef47b1dbf5b117273e3d3f5c0e6d9f23b722a5245869eb5323b96c4f25",
+    "project_source_sha256_before": "2846adc7bd8dd84f23f44b40632a5cc76d8d5f30f91beb9c46bca24b7b9a2468",
+    "project_source_sha256_after": "d2308af4c50c3083224c95f8bdf5d6323164975ed3e4f235235c0e01b6c6cfe2",
+    "issue_body_unchanged": true,
+    "prior_243_comments_unchanged": true,
+    "project_other_fields_unchanged": true,
+    "prior_project_source_preserved_verbatim_in_comment": true,
+    "literal_goal_todo_six_gate_paths_two_implementation_paths_verified": true,
+    "observed_this_task": true,
+    "writes_performed_by_this_agent": false,
+    "coordinator_sync_completed": true,
+    "scope": "Planning synchronization only. Exact committed/pushed checkpoint, external seal, dual positive preflights, independent checkpoint review and explicit two-path dispatch remain required. All implementation/runtime/release authorities remain false."
+  },
+  "updated_at": "2026-11-05T02:20:31Z",
+  "source_pins": {
+    "apps/api-go/workshop/purchase-config.json": {
+      "bytes": 168,
+      "sha256": "edb1d6d182c5eeee6c33885e873bc5b44ac7a3eb4465d9e92af5d1bc60d4b45f"
+    },
+    "apps/api-go/Dockerfile": {
+      "bytes": 928,
+      "sha256": "bd7a4d022e89c76432cd5b8e086166252303710cb8cb24a72b5eeff31fc52559"
+    },
+    "apps/api-go/main.go": {
+      "bytes": 30491,
+      "sha256": "6a6c78c4d84604ec4e626b49dc10e20603018e9db398c709073e689723801a77"
+    },
+    "apps/api-go/workshop/commerce.mjs": {
+      "bytes": 7369,
+      "sha256": "e7f8e2fd45d6cd9f4ec2ef2f3a50d3f090f34e2562d4bbc58f9c23d06e8a1142"
+    },
+    "apps/api-go/workshop/app.mjs": {
+      "bytes": 37870,
+      "sha256": "2bfe85a3f5e0b77bc55fe0c18b50b35a9bab6444f6a640bf6a6a36bd57ab4c46"
+    },
+    "apps/api-go/workshop_test.go": {
+      "bytes": 10059,
+      "sha256": "f5ae414717940c89f8780419c2adccebb9518a204efc46e8cd835dd678a6b985"
+    },
+    "apps/api-go/workshop-client.test.mjs": {
+      "bytes": 82585,
+      "sha256": "6014eb2f82255c12bfc6bc4ed0c792c7ba92f379c49fa2725056eec2c8923113"
+    }
+  },
+  "design": {
+    "boundary": "Pure local standard-library preparation only. No runtime override, config endpoint, npm/build integration, image operation, network, ambient environment, secret lookup, subprocess or default output file. No future artifact admission command.",
+    "interface": {
+      "library": "evaluate_files(*, manifest: Path, approval: Path, policies: dict[str, Path], build_recipe: Path, embed_source: Path) -> dict[str, object]",
+      "cli": "python3 scripts/dev/workshop_merchant_manifest.py --manifest PATH --approval PATH --policy terms=PATH --policy privacy=PATH --policy refund=PATH --policy contact=PATH --build-recipe PATH --embed-source PATH",
+      "output": "One deterministic JSON object to stdout; no input content, policy text, URLs, account/Price IDs or exception strings echoed. Exit0 prepared_offline; exit3 blocked; argparse usage exit2. No writes or optional network behavior."
+    },
+    "input_limits": {
+      "manifest_bytes": 65536,
+      "approval_bytes": 65536,
+      "each_policy_bytes": 1048576,
+      "build_recipe_bytes": 65536,
+      "embed_source_bytes": 1048576,
+      "all_reads": "Explicit regular files only; reject symlinks/directories/nonregular files, bound reads to limit+1, require strict UTF-8 for manifest/envelope, reject BOM, duplicate keys at every nesting level, non-finite numbers and unknown/missing keys. Never parse policy snapshots; hash their exact bytes."
+    },
+    "manifest_closed_fields": [
+      "enabled",
+      "terms_version",
+      "terms_url",
+      "privacy_url",
+      "refund_url",
+      "contact_url",
+      "tax_notice"
+    ],
+    "manifest_rules": "Prospective candidate enabled must be exact boolean true; terms_version literal workshop-v1; tax_notice nonblank UTF-8 string with no controls except LF/tab; four URLs nonblank absolute HTTPS with hostname, no whitespace/control/userinfo, fragments, invalid port or backslash. No URL normalization before comparison. Real-owner provenance rejects localhost/IP literals, .localhost/.local/.test/.invalid/.example and example.com/net/org plus their subdomains, and /fixture or /fixtures path segments. Synthetic provenance permits reserved test hosts and fixture paths. This check is syntax only: the exact reviewed URL string and snapshot digest remain authoritative; no publication claim.",
+    "approval_closed_fields": {
+      "schema": "workshop-merchant-preparation-v1",
+      "provenance": "synthetic or owner_supplied_unverified",
+      "owner_approval_ref": "nonempty string <=2048; reference only, never authenticated by tool",
+      "policy_revision": "nonempty string <=256",
+      "source": {
+        "sha": "exact source_candidate_sha",
+        "tree": "exact source_candidate_tree"
+      },
+      "build_recipe": {
+        "sha256": "exact pinned Dockerfile digest",
+        "bytes": "exact pinned Dockerfile length"
+      },
+      "embed_source": {
+        "sha256": "exact pinned main.go digest",
+        "bytes": "exact pinned main.go length"
+      },
+      "manifest": {
+        "sha256": "lowercase raw-byte SHA256",
+        "bytes": "positive integer excluding bool",
+        "served_path": "/workshop/purchase-config.json",
+        "terms_version": "workshop-v1"
+      },
+      "policies": {
+        "terms|privacy|refund|contact": "each exactly {url: exact corresponding manifest URL string, sha256: raw snapshot digest, bytes: positive integer excluding bool}"
+      },
+      "tax": {
+        "notice_sha256": "SHA256 of decoded manifest tax_notice encoded UTF-8, without normalization",
+        "notice_bytes": "UTF-8 byte length",
+        "final_price_treatment": "literal owner_confirms_usd20_final_no_additional_tax_collection",
+        "owner_decision_ref": "nonempty string <=2048; unverified reference only"
+      },
+      "product": {
+        "id": "workshop-configuration-v1",
+        "currency": "USD",
+        "amount_minor": 2000,
+        "recurrence": "one_time"
+      },
+      "enrollment": {
+        "mode": "stripe_test",
+        "account_id": "ASCII regex acct_[A-Za-z0-9]{1,251}; unverified reference",
+        "price_id": "ASCII regex price_[A-Za-z0-9]{1,250}; unverified reference"
+      }
+    },
+    "identity_rules": "Verify source SHA/tree against spec constants; they are admitted source declarations, not proof of a local checkout. Hash actual explicitly supplied build_recipe and embed_source files and compare against both envelope and pins. Hash original manifest/snapshots exactly once as bounded bytes; preserve those bytes and never reserialize an approved manifest. All nested schemas closed. Digests use lowercase 64-hex. All integer comparisons reject bool. No timestamps, caller-declared approved/test_passed booleans, mutable image tags or artifact fields accepted.",
+    "result_closed_fields": {
+      "schema": "workshop-merchant-preparation-result-v1",
+      "status": "prepared_offline or blocked",
+      "provenance": "synthetic, owner_supplied_unverified or absent",
+      "manifest_sha256": "raw hash when readable, else null",
+      "manifest_bytes": "actual length when readable, else null",
+      "baseline_disabled": "true only for exact pinned 168-byte disabled baseline",
+      "reasons": "sorted unique stable reason codes, no supplied text",
+      "missing_external_prerequisites": [
+        "independent_owner_approval",
+        "published_policy_byte_verification",
+        "approved_manifest_injection_rebuild",
+        "immutable_artifact_and_binary_binding",
+        "exact_running_image_served_byte_capture",
+        "authentic_stripe_test_enrollment_and_acceptance",
+        "explicit_operational_release_authorization"
+      ],
+      "authorities": "every key from task authorities false",
+      "accepted_case_credit": 0
+    },
+    "status_semantics": "prepared_offline requires every supplied local file, strict schema, tuple and digest consistent; it can use synthetic inputs with explicit provenance. Owner_supplied_unverified still conveys zero owner/authenticity credit. Missing future artifacts and real TEST evidence do not prevent prepared_offline because this lane cannot verify them. Missing/malformed local inputs or mutations yield blocked. Exact disabled shipped baseline is valid baseline evidence and blocked for preparation by merchant_inputs_pending, not labeled malformed. No enabled candidate is copied to shipped path.",
+    "later_separate_gate": "Owner must independently approve exact Terms/Privacy/Refund/Contact HTTPS URLs, policy/contact snapshots and tax/final-price decision. If tax obligations require extra collection, block for separate payment design; current Checkout has no automatic_tax/tax_rates. Later approved injection/rebuild seals manifest/build inputs before producing image identity, then binds actual OCI digest (and platform digest for multiarch), actual compiled binary digest and actual extracted/served manifest equality. Authentic Stripe TEST account/Price and checkout/webhook/durable grant/duplicate/revocation evidence must bind the same product/policies/manifest/artifact tuple; caller flags and copied fixtures do not prove it. TEST never admits stripe_live. No circular self-hash or mutable tag proof.",
+    "non_goals": [
+      "Editing application JS, purchase-config.json, Go tests, Dockerfile, compose, workers, database, checkout, authentication, Firebase build, API21 producer/inspector/compiler, workflow, profiles, browser fixture or existing runbook",
+      "Starting services, enrollment, provider calls, payments, deployment, DNS changes or live sales",
+      "Treating browser smoke replaced merchantFixture, DTO CI or PR258 source checks as authentic merchant TEST/customer acceptance"
+    ],
+    "go_test_decision": "Do not modify apps/api-go/workshop_test.go. Its existing semantic test plus new Python independent exact-blob hash/length test suffice for this offline lane; no new served-image equality claim."
+  }
+}

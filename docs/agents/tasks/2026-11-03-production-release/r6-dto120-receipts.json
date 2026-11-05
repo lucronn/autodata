@@ -1,0 +1,111 @@
+{
+  "task_id": "production-release-r6-dto120-receipts",
+  "repository": "lucronn/autodata",
+  "goal": "Add one internal DTO120 raw outcome and source-derived asset-binding consistency inspector; preserve unavailable results, no verified cases, all disabled profiles and every false authority flag.",
+  "builder_agent": "autodata-python-builder",
+  "allowed_paths": [
+    "scripts/dev/release_acceptance.py",
+    "scripts/dev/test_release_acceptance.py",
+    "docs/verification/release-acceptance-runbook.md"
+  ],
+  "inputs": [
+    "docs/superpowers/plans/2026-11-03-workshop-r6-dto120-receipts.md",
+    "docs/agents/tasks/2026-11-03-production-release/r6-release.json"
+  ],
+  "outputs": [
+    "scripts/dev/release_acceptance.py",
+    "scripts/dev/test_release_acceptance.py",
+    "docs/verification/release-acceptance-runbook.md"
+  ],
+  "acceptance_tests": [
+    "Closed DTO v1 archive/row/request contract matches exactly120 literal scenario-engine tuples and fixed source99df69c input/asset expectations.",
+    "Independent semantic mutations rebuild transport hashes and ZIP CRCs; real confined-store checks and strict numeric/size boundaries fail closed.",
+    "Expected hashes are fixed source-derived constants; archive/TLS/CI/SDK/engine/authorship trust gaps stay explicit and unpromoted.",
+    "No verified cases, unavailable/incomplete, all five flags false, all profiles/tier disabled, CLI no dispatch and zero counts."
+  ],
+  "forbidden_scope": [
+    "Changing the autonomy policy or weakening required checks",
+    "Changing the requested gpt-6.1-sol / medium / Fast execution profile or silently falling back to another model or tier",
+    "Editing paths outside the assigned scope",
+    "Editing runner, orchestrator, policy, schema, registry, workflow, Compose, Kubernetes, application or SQL paths",
+    "Executing Docker, browser, cloud, provider or arbitrary commands from the assembler",
+    "Merging without independent exact-commit verification",
+    "Production deployment or production-data changes",
+    "Publishing secrets or private source payloads",
+    "Treating synthetic fixture tests as real acceptance or deployment authorization",
+    "Enabling or promoting any profile, supervisor, tier, reviewer or trust identity in this bounded milestone",
+    "Changing CLI disabled-profile behavior, deriving actual acceptance counts from synthetic tests or relabeling historical evidence",
+    "Implementing Git ancestry proof without a separately approved complete Git provenance contract",
+    "Modifying retained raw evidence, accessing live services or implementing later2 staging collection",
+    "Interpreting paid/lifecycle/media/SQL/browser DOM outcomes or raw API21 beyond existing validation; treating DTO status strings as independent assertion proof.",
+    "Deriving expected source hashes, versions, asset lengths or trust identities from candidate-controlled evidence."
+  ],
+  "pre_implementation": {
+    "goal": "Add one internal DTO120 raw outcome and source-derived asset-binding consistency inspector; preserve unavailable results, no verified cases, all disabled profiles and every false authority flag.",
+    "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-r6-dto120-receipts.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/superpowers/plans/2026-11-03-workshop-product-evidence-assembler.md",
+      "docs/superpowers/plans/2026-11-03-release-acceptance.md",
+      "docs/superpowers/plans/2026-11-03-production-release-orchestration.md",
+      "docs/verification/release-acceptance-runbook.md"
+    ],
+    "todo": [
+      "Synchronize this closed DTO120 receipt contract, source-derived expected hashes, three-path allowlist and todo in Issue186/Project8 and canonical plan/task/record/queue after coordinator tracking-lock release; commit/push, pass exact-base preflight and obtain independent gate review before implementation.",
+      "Add failing inline synthetic tests for the exact forty scenarios crossed with three engines, closed typed rows and requests, fixed input/asset bindings, readiness consistency, strict limits and unsafe or contradictory archives.",
+      "Implement only the internal inspect_dto_receipts API with fixed dto-fixture-v1 dispatch and source99df69c hash constants, existing bounded archive/strict JSON/confinement checks, observed diagnostics and explicit unverified provenance gaps.",
+      "Keep disabled CLI plan/validate disconnected from the inspector; retain zero CLI counts, unavailable/incomplete results, empty verified IDs, all profiles disabled, enabled_tiers empty and all five verification/deployment/cutover flags false.",
+      "Run controlled red/green mutations, focused/developer/autonomy, syntax, shallow-clone and exact three-path checks; update the runbook, commit/push coherent milestones and obtain independent exact-SHA code review before any integration."
+    ],
+    "status": "synchronized",
+    "updated_at": "2026-11-04T02:43:04.572252+00:00",
+    "tracking_receipts": {
+      "source_base_sha": "99df69caaeb4d5ccf6d0ffbf0377fe6d5d872a3d",
+      "issue_comment_url": "https://github.com/lucronn/autodata/issues/186#issuecomment-6621102242",
+      "issue_comment_body_sha256": "9c7251167de52b3b9d3bdcdd2ac071dc795930fdde8edd8058fed3ab18ce98f3",
+      "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+      "project_status": "In Progress",
+      "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+      "project_field_sha256": "f6b01dc0fe6cb7909d045b567505549909e71d4fe8853ac40d55f1a6d649e6b0",
+      "prior_project_field_sha256": "e05d13f3c018713ea7200aa5d860d63355cee5d0576ed25836bed7cb30f4ac7d",
+      "project_field_characters": 879,
+      "prior_project_field_characters": 606,
+      "prior_comment_ids": [
+        "6617360191",
+        "6617521783",
+        "6618084753",
+        "6618111784",
+        "6618124676",
+        "6618597888",
+        "6619139974",
+        "6619358812",
+        "6621014641",
+        "6621071257",
+        "6621086102"
+      ],
+      "additional_preserved_comment_ids": [
+        "6617902111",
+        "6619194720",
+        "6619208212"
+      ],
+      "prior_comment_ids_complete": true,
+      "predecessor_verbatim_preserved_in_issue": true,
+      "readback_at": "2026-11-04T02:43:04.572252+00:00"
+    }
+  },
+  "execution": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "medium",
+    "service_tier": "fast",
+    "features": {
+      "fast_mode": true
+    },
+    "allow_fallback": false
+  },
+  "source_inspection_sha": "99df69caaeb4d5ccf6d0ffbf0377fe6d5d872a3d",
+  "source_dependency_pr": "https://github.com/lucronn/autodata/pull/188",
+  "dispatch_mode": "coordinator-direct",
+  "product_evidence_profile_source": "docs/agents/tasks/2026-11-03-production-release/r6-release.json",
+  "independent_review_required": true
+}

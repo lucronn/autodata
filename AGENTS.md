@@ -4,6 +4,18 @@ Before any implementation work, read the canonical [pre-implementation planning 
 
 No implementation agent may modify implementation files until the required plan, GitHub Issue/Project update, canonical repository-document update, concrete `todo` list, and machine-checked `status: synchronized` record exist at the pinned base SHA. This file is only a discovery pointer; the canonical rule and record shape live under `docs/agents/`.
 
+## Commit and push cadence
+
+- Commit small, coherent milestones frequently as work progresses. Keep each
+  commit independently reviewable and use a clear message describing its purpose.
+- Run the checks appropriate to each milestone, then promptly push completed,
+  validated commits to the assigned feature branch. Follow the coordinator's
+  branch ownership and integration instructions when multiple agents collaborate.
+- Keep the pre-implementation gate and required verification intact. Frequent
+  commits do not authorize an agent to expand its scope, merge, or deploy.
+- Do not create empty commits, unrelated cosmetic changes, or rewrite published
+  history solely to inflate GitHub activity.
+
 ## Base44 sandbox environment
 
 `docker-compose.base44.yml` is the sandbox-only development stack; it does not

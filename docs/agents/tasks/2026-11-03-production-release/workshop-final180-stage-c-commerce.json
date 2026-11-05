@@ -1,0 +1,272 @@
+{
+  "task_id": "production-release-workshop-final180-stage-c-commerce",
+  "repository": "lucronn/autodata",
+  "status": "blocked",
+  "goal": "Add a bytes-only restricted synthetic commerce14 JUnit adapter with optional first-case Go support, zero accepted-case credit and every authority false.",
+  "dispatch_mode": "coordinator-direct-after-tracking-preflight-review-and-explicit-dispatch",
+  "allowed_paths": [
+    "scripts/dev/workshop_final180_commerce_adapter.py",
+    "scripts/dev/test_workshop_final180_commerce_adapter.py",
+    "docs/verification/workshop-final180-runbook.md"
+  ],
+  "inputs": [
+    "docs/superpowers/plans/2026-11-04-workshop-final180-stage-c-commerce.md",
+    "docs/agents/specs/2026-11-04-workshop-final180-stage-c-commerce.md",
+    "docs/agents/specs/2026-11-04-workshop-final180-inventory.json"
+  ],
+  "outputs": [
+    "scripts/dev/workshop_final180_commerce_adapter.py",
+    "scripts/dev/test_workshop_final180_commerce_adapter.py",
+    "docs/verification/workshop-final180-runbook.md"
+  ],
+  "pre_implementation": {
+    "goal": "Add a bytes-only restricted synthetic commerce14 JUnit adapter with optional first-case Go support, zero accepted-case credit and every authority false.",
+    "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-final180-stage-c-commerce.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/agents/specs/2026-11-04-workshop-final180-stage-c-commerce.md",
+      "docs/agents/specs/2026-11-04-workshop-final180-inventory.json",
+      "docs/superpowers/plans/2026-11-03-workshop-product-evidence-assembler.md"
+    ],
+    "todo": [
+      "Synchronize the Stage C plan/spec/task/record and exact three-path implementation allowlist with Issue186 and Project8, preserving history; commit the checkpoint at parent fa0c1bca6c61340c743e2b575bc54fc23a0d2fdc, pass exact-checkpoint standalone/nested preflight and independent gate review, then obtain explicit coordinator dispatch.",
+      "Implement only the bytes-only restricted synthetic commerce14 JUnit translator and optional first-case Go support using the unchanged public B1 parser, frozen interfaces, bounded Expat grammar, callback-independent character checks and exact status/reason rules.",
+      "Add failing-first constructed-byte tests for all literal identities, XML grammar and segmentation precedence, inherited Go parsing/lifecycle, optional support absence, every 12-cell mixed-failure outcome, continued dual parsing, receipt facts and strict deterministic serialization.",
+      "Update only the runbook alongside the two new modules; run focused Stage C and unchanged Stage A/B1/B2, complete developer/autonomy offline suites, no-bytecode syntax, import/scope/pin checks; commit/push validated milestones and obtain independent exact-code-head review.",
+      "Synchronize exact-code-head local and CI evidence while preserving integer0 credit, disabled profiles/tiers, null runtime lock/run record and all nine false authority flags; retain full financial/raw, actual JUnit compatibility, runtime, final180 and release blockers."
+    ],
+    "status": "synchronized",
+    "updated_at": "2026-11-04T18:39:06.576848+00:00",
+    "planning_parent_sha": "fa0c1bca6c61340c743e2b575bc54fc23a0d2fdc",
+    "selected_candidate_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+    "inventory_sha256": "c4e9293875d22e04469c6a3fb4cdab27889328d6519243cee3862f9ecf490b39",
+    "reviewed_b1_head_sha": "54a7ca32eab80654310d862f0ac6957375d16e8b",
+    "authorizing_checkpoint_sha": null,
+    "tracking_receipts": {
+      "current_comment_count": 165,
+      "issue_after_sha256": "5e1789d6c595508c2fc22257eb461da52b51bcb6ba7704d51565fddbba47935b",
+      "issue_before_sha256": "0cfbf7cb250943873bf0e60f8d15a2827431f71d03e8e6754eb48595ca92986b",
+      "issue_body_unchanged": true,
+      "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6638920703",
+      "other_project_fields_unchanged": true,
+      "previous_source_archived_verbatim": true,
+      "prior_comment_count": 164,
+      "prior_comments_preserved": true,
+      "prior_project_source_sha256": "a1a9e1f920c1c344076ec77d998af8d085b0cd15bad92a80c1589be495d6e62c",
+      "project_after_sha256": "8b36b7fe8a54b4fe6a700ee8a33401496855b6c9af3bb53a4337f3e9094a2e37",
+      "project_before_sha256": "33aff0d836b5dd418b4a075f34a046c8a6f0a454806b3b5cf1a4390af70c1efa",
+      "project_source_sha256": "ad0b1d9d0c93ce3171a428c7ea6be9d783fb2a7554e9309f57851bd0b447d67e",
+      "project_status": "In Progress",
+      "status": "synchronized_live_readback",
+      "writer": "coordinator sole serialized writer",
+      "issue_detail_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6638920703",
+      "issue_readback_ref": "/home/corp/autodata-evidence/final180-commerce-gate-tracking/issue-after.json",
+      "project_readback_ref": "/home/corp/autodata-evidence/final180-commerce-gate-tracking/project-after.json",
+      "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+      "project_field_name": "Source or dependency reference",
+      "receipt_ref": "/home/corp/autodata-evidence/final180-commerce-gate-tracking/receipt.json",
+      "receipt_sha256": "5e44e24272d77ce2402026ddea783dcb544af9f6de3b173374abc47dda55dc99"
+    },
+    "draft_review": {
+      "status": "PASS",
+      "provenance": "Coordinator-reported independent exact revised DRAFT and repaired SPEC review PASS for restricted synthetic scope; source-check pending-review wording is historical, not a repository-gate review. No saved reviewer receipt is invented.",
+      "draft_sha256": "9d706bc850fc6aad24560f732a376625da3afb3fa9d2117a88bca619f1ae96e4",
+      "spec_sha256": "ad1c3cfa26315babfbc0820b2bf0b06463a204eb30e18516bc876888d4a12d41"
+    },
+    "committed_gate_review": {
+      "status": "pending",
+      "checkpoint_sha": null
+    },
+    "parent_code_review": {
+      "status": "PASS",
+      "provenance": "Coordinator-reported independent exact CI integration code-head review PASS; PR232. This is not Stage C gate review.",
+      "head_sha": "fa0c1bca6c61340c743e2b575bc54fc23a0d2fdc",
+      "pull_request": "https://github.com/lucronn/autodata/pull/232",
+      "ci_status": "pending_at_planning_dispatch",
+      "tracking_detail_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6638840314",
+      "tracking_scope": "Predecessor CI code-only review synchronization; not Stage C synchronization or CI success."
+    },
+    "external_draft_artifacts": {
+      "DRAFT.md": {
+        "bytes": 25079,
+        "sha256": "9d706bc850fc6aad24560f732a376625da3afb3fa9d2117a88bca619f1ae96e4",
+        "historical_locator": "/home/corp/autodata-evidence/final180-commerce-planning/DRAFT.md"
+      },
+      "SPEC.draft.md": {
+        "bytes": 65156,
+        "sha256": "ad1c3cfa26315babfbc0820b2bf0b06463a204eb30e18516bc876888d4a12d41",
+        "historical_locator": "/home/corp/autodata-evidence/final180-commerce-planning/SPEC.draft.md"
+      },
+      "report.json": {
+        "bytes": 5561,
+        "sha256": "614340d358570389a7104958b352e75672cefab5eb23a1bf4544633fdb87a903",
+        "historical_locator": "/home/corp/autodata-evidence/final180-commerce-planning/report.json"
+      },
+      "SPEC.source-check.json": {
+        "bytes": 2907,
+        "sha256": "a5f1dd9546fc018de45bab1946f0aa234733bbff4278190e391e9deeae11271e",
+        "historical_locator": "/home/corp/autodata-evidence/final180-commerce-planning/SPEC.source-check.json"
+      },
+      "source-pins.json": {
+        "bytes": 12483,
+        "sha256": "5c66f5f911a5da893393d4a16debd0536fe4b13a6261e326898a4c6026583d5b",
+        "historical_locator": "/home/corp/autodata-evidence/final180-commerce-planning/source-pins.json"
+      },
+      "literal-mappings.json": {
+        "bytes": 41200,
+        "sha256": "52cea4301b9ca8fd67bfdb0502d640f76697517c893d2d58d87f8642b494b897",
+        "historical_locator": "/home/corp/autodata-evidence/final180-commerce-planning/literal-mappings.json"
+      },
+      "verification.json": {
+        "bytes": 912,
+        "sha256": "f12201ca00e473c4377467d12c57874d218bc89c41a5708a13e39c6314faecef",
+        "historical_locator": "/home/corp/autodata-evidence/final180-commerce-planning/verification.json"
+      },
+      "citations.json": {
+        "bytes": 38493,
+        "sha256": "ee9bb8cfd77954818c0274a224455cd74fd374bacd8f8c7a9e40cced38fd926f",
+        "historical_locator": "/home/corp/autodata-evidence/final180-commerce-planning/citations.json"
+      }
+    },
+    "protected_parent_pins": [
+      {
+        "path": "scripts/dev/workshop_final180_runner.py",
+        "commit": "fa0c1bca6c61340c743e2b575bc54fc23a0d2fdc",
+        "git_blob": "ca48cd988c5579a7d385dc1844b84306eae0861e",
+        "bytes": 47124,
+        "sha256": "693a408a73f3ccd37bf945bfc94d427f742878580932dab382ea9a244a141c91"
+      },
+      {
+        "path": "scripts/dev/test_workshop_final180_runner.py",
+        "commit": "fa0c1bca6c61340c743e2b575bc54fc23a0d2fdc",
+        "git_blob": "f4db092e0d1a83fce47b51f7c68021b6dc2053bd",
+        "bytes": 33237,
+        "sha256": "c0bac62eb756d84593191e82b2b240fdd77bd5128242f212e9b508e15c1740c1"
+      },
+      {
+        "path": "scripts/dev/workshop_final180_identity_adapter.py",
+        "commit": "fa0c1bca6c61340c743e2b575bc54fc23a0d2fdc",
+        "git_blob": "8c7fa87bab906955c145d7cc965be641aea48c5f",
+        "bytes": 22290,
+        "sha256": "0474a85c33d4f2722ad01d6e55e69a8080dc0f1983c856ca7caa1b94510a767d"
+      },
+      {
+        "path": "scripts/dev/test_workshop_final180_identity_adapter.py",
+        "commit": "fa0c1bca6c61340c743e2b575bc54fc23a0d2fdc",
+        "git_blob": "7391263cb874e2505f4f110df6343c8b466fc692",
+        "bytes": 29838,
+        "sha256": "a3f3017b1d7a85da9ae4d1883758f2494d722fb321d45c1ff758994ab6d2653c"
+      },
+      {
+        "path": "scripts/dev/workshop_final180_catalog_adapter.py",
+        "commit": "fa0c1bca6c61340c743e2b575bc54fc23a0d2fdc",
+        "git_blob": "060d1407ee5e71880cf7e441195cac4274f04937",
+        "bytes": 15467,
+        "sha256": "88f481104d66d9bda8bdf6c1a8038e8514b69d63db813b85c5ec13e40f0c6ddf"
+      },
+      {
+        "path": "scripts/dev/test_workshop_final180_catalog_adapter.py",
+        "commit": "fa0c1bca6c61340c743e2b575bc54fc23a0d2fdc",
+        "git_blob": "86e78aef564c216ede5780dccadd56366d4d0a63",
+        "bytes": 26977,
+        "sha256": "978cbb594d9bc42f0cb02b3447e2afed6bb6764c155b657db6e5b3676cc319a9"
+      },
+      {
+        "path": "docs/verification/workshop-final180-runbook.md",
+        "commit": "fa0c1bca6c61340c743e2b575bc54fc23a0d2fdc",
+        "git_blob": "05c38499f47d8960e9d6ae8c0497f5866cec200c",
+        "bytes": 22069,
+        "sha256": "0a36f9e46ffa767feacc3a49ead622ce3d424b5eec155300c3df58dde8da89d6"
+      },
+      {
+        "path": "docs/agents/pre-implementation-gate.md",
+        "commit": "fa0c1bca6c61340c743e2b575bc54fc23a0d2fdc",
+        "git_blob": "41076af1db25f0cff8ca41d0203c050af9b772df",
+        "bytes": 5659,
+        "sha256": "fa6e9c95c2674164c90d78e046a0427f6b406c313fb82ff627a2a2facb560ad0"
+      },
+      {
+        "path": "docs/agents/specs/2026-11-04-workshop-final180-inventory.json",
+        "commit": "fa0c1bca6c61340c743e2b575bc54fc23a0d2fdc",
+        "git_blob": "24ac3e9264b85eb914daa7805d183e15f58d374a",
+        "bytes": 122350,
+        "sha256": "c4e9293875d22e04469c6a3fb4cdab27889328d6519243cee3862f9ecf490b39"
+      }
+    ],
+    "implementation_allowlist": [
+      "scripts/dev/workshop_final180_commerce_adapter.py",
+      "scripts/dev/test_workshop_final180_commerce_adapter.py",
+      "docs/verification/workshop-final180-runbook.md"
+    ],
+    "runtime_lock": null,
+    "run_record": null,
+    "accepted_case_credit": 0,
+    "profiles_enabled": false,
+    "enabled_tiers": [],
+    "authority": {
+      "fixture_verified": false,
+      "product_candidate_verified": false,
+      "staging_verified": false,
+      "deployment_authorized": false,
+      "cutover_verified": false,
+      "implementation_authorized": false,
+      "runtime_execution_authorized": false,
+      "profile_promotion_authorized": false,
+      "merge_authorized": false
+    },
+    "pre_sync_draft_review": {
+      "status": "PASS",
+      "provenance": "Coordinator-reported independent exact five-file pre-sync draft review PASS with no findings; distinct from pending committed-checkpoint review."
+    }
+  },
+  "planning_parent_sha": "fa0c1bca6c61340c743e2b575bc54fc23a0d2fdc",
+  "selected_candidate_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+  "authorizing_checkpoint_sha": null,
+  "runtime_lock": null,
+  "run_record": null,
+  "authority": {
+    "fixture_verified": false,
+    "product_candidate_verified": false,
+    "staging_verified": false,
+    "deployment_authorized": false,
+    "cutover_verified": false,
+    "implementation_authorized": false,
+    "runtime_execution_authorized": false,
+    "profile_promotion_authorized": false,
+    "merge_authorized": false
+  },
+  "product_evidence": {
+    "profiles_enabled": false,
+    "enabled_tiers": [],
+    "accepted_case_credit": 0
+  },
+  "todo": [
+    "Synchronize the Stage C plan/spec/task/record and exact three-path implementation allowlist with Issue186 and Project8, preserving history; commit the checkpoint at parent fa0c1bca6c61340c743e2b575bc54fc23a0d2fdc, pass exact-checkpoint standalone/nested preflight and independent gate review, then obtain explicit coordinator dispatch.",
+    "Implement only the bytes-only restricted synthetic commerce14 JUnit translator and optional first-case Go support using the unchanged public B1 parser, frozen interfaces, bounded Expat grammar, callback-independent character checks and exact status/reason rules.",
+    "Add failing-first constructed-byte tests for all literal identities, XML grammar and segmentation precedence, inherited Go parsing/lifecycle, optional support absence, every 12-cell mixed-failure outcome, continued dual parsing, receipt facts and strict deterministic serialization.",
+    "Update only the runbook alongside the two new modules; run focused Stage C and unchanged Stage A/B1/B2, complete developer/autonomy offline suites, no-bytecode syntax, import/scope/pin checks; commit/push validated milestones and obtain independent exact-code-head review.",
+    "Synchronize exact-code-head local and CI evidence while preserving integer0 credit, disabled profiles/tiers, null runtime lock/run record and all nine false authority flags; retain full financial/raw, actual JUnit compatibility, runtime, final180 and release blockers."
+  ],
+  "blockers": [
+    "Committed checkpoint, exact-checkpoint standalone/nested preflight, independent exact-checkpoint review and explicit coordinator dispatch remain required; live tracking synchronization is complete at comment6638920703.",
+    "Exact parent CI remains pending at planning dispatch; do not infer success.",
+    "Full raw financial validation, actual installed pytest/JUnit compatibility and process/artifact provenance remain unobserved or blocked."
+  ],
+  "scope": "restricted synthetic commerce14 shared JUnit and optional first-case Go translation only",
+  "blocked_successors": [
+    "full commerce financial/raw validator",
+    "actual fixture collection and authenticated runtime/process/artifact provenance",
+    "genuine same-head final180, profiles, staging/live/release"
+  ],
+  "acceptance_tests": [
+    "Canonical spec sections 4.1, 5-9: exact grammar, callback segmentation, 67 names, 12-cell product matrix, absence, continued independent parses, complete reason vocabulary and forged serializer rejection",
+    "Focused Stage C/Stage A/B1/B2, developer/autonomy offline suites, in-memory syntax and exact three-path/unchanged-predecessor checks"
+  ],
+  "forbidden_scope": [
+    "Stage A/B1/B2/CI predecessor files or gate identity changes",
+    "application/producer/tests/SQL/Compose/workflow/dependency/assembler/policy/profile/inventory/autonomy-runner changes",
+    "CLI/artifact filesystem/process/clock/scheduler/Docker/browser/network/provider/payment/settlement execution",
+    "real commerce acceptance/full180 output/nonzero credit/profile enablement/any true authority"
+  ]
+}

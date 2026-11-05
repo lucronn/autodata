@@ -1,0 +1,55 @@
+{
+  "task_id": "production-release-auth-error-cache-headers",
+  "repository": "lucronn/autodata",
+  "goal": "Preserve private,no-store on protected authentication errors while retaining no-store on existing auth endpoints.",
+  "builder_agent": "coordinator-authorized-go-builder",
+  "source_integration_base_sha": "fa30a2204dc8a5c0907d090ec4f41fdd8bec9b4b",
+  "allowed_paths": [
+    "apps/api-go/auth_http.go",
+    "apps/api-go/auth_http_test.go"
+  ],
+  "inputs": [
+    "docs/superpowers/plans/2026-11-03-auth-error-cache-headers.md",
+    "docs/superpowers/plans/2026-11-03-workshop-paid-access.md"
+  ],
+  "outputs": [
+    "apps/api-go/auth_http.go"
+  ],
+  "acceptance_tests": [
+    "Add red actual writeError and protected-handler cache policy cases while retaining strict no-store auth endpoint assertions.",
+    "Implement only exact trusted private,no-store preservation in auth_http.go; retain all authorization/error/cookie behavior.",
+    "Run focused/full Go and vet checks, commit/push and independently review the exact two-file implementation.",
+    "Integrate and rerun full actual paid12 with unchanged assertions; no runtime/release claim from this gate."
+  ],
+  "forbidden_scope": [
+    "No wrapper or changes to catalog/session/identity/grant/cookie/error semantics, SQL, UI, OpenAPI, collector/supervisor or deployment.",
+    "No Docker, real credentials/provider/cloud/DNS operations or acceptance claim from unit tests."
+  ],
+  "pre_implementation": {
+    "goal": "Preserve private,no-store on protected authentication errors while retaining no-store on existing auth endpoints.",
+    "plan_ref": "docs/superpowers/plans/2026-11-03-auth-error-cache-headers.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/superpowers/plans/2026-11-03-workshop-paid-access.md"
+    ],
+    "todo": [
+      "Synchronize Issue186/Project8 and canonical two-file cache-header amendment; commit and pass exact-checkpoint preflight before coordinator authorization.",
+      "Add red actual writeError and protected-handler cache policy cases while retaining strict no-store auth endpoint assertions.",
+      "Implement only exact trusted private,no-store preservation in auth_http.go; retain all authorization/error/cookie behavior.",
+      "Run focused/full Go and vet checks, commit/push and independently review the exact two-file implementation.",
+      "Integrate and rerun full actual paid12 with unchanged assertions; no runtime/release claim from this gate."
+    ],
+    "status": "synchronized",
+    "updated_at": "2026-11-03T20:53:21.615311+00:00"
+  },
+  "execution": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "medium",
+    "service_tier": "fast",
+    "features": {
+      "fast_mode": true
+    },
+    "allow_fallback": false
+  }
+}

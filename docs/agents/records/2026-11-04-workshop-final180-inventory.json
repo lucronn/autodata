@@ -1,0 +1,31 @@
+{
+  "goal": "Freeze a planning-only final180 literal inventory and propose a separately gated fixture runner; preserve disabled profiles and false authority.",
+  "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-final180-inventory.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/agents/specs/2026-11-04-workshop-final180-inventory.md",
+    "docs/agents/specs/2026-11-04-workshop-final180-inventory.json",
+    "docs/superpowers/plans/2026-11-03-workshop-product-evidence-assembler.md"
+  ],
+  "todo": [
+    "Record the selected integrated source tuple at 4d82e413e04fb2401ac7bc28dc828375ac662180 and reverify literal IDs and source hashes only from immutable Git objects; retain df52326b as historical inspection.",
+    "Review complete raw/support inventories, source hashes, argv, phase/global deadlines, environment, storage and trust identities; preserve every explicit missing fact.",
+    "Synchronize Issue186, Project8, this plan/spec/inventory/task/record/queue and canonical assembler plan; commit the docs checkpoint and obtain exact-base preflight plus independent gate review.",
+    "Separately approve and synchronize a literal runner implementation allowlist and failing-test contract; no runner implementation follows from this pending planning task.",
+    "After reviewed runner integration, freeze a new final candidate and execute fresh180/support/CI/security/image/raw-review evidence under its own exact-base gate; enable no assembler profile here."
+  ],
+  "status": "pending",
+  "updated_at": "2026-11-04T16:31:21.441009Z",
+  "source_inspection_sha": "df52326b2a12fd17db39d9368f66a28a366f38ad",
+  "tracking_receipts": null,
+  "selected_candidate_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+  "selected_source_tuple": {
+    "candidate_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+    "source_pins_git_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+    "historical_inspection_sha": "df52326b2a12fd17db39d9368f66a28a366f38ad",
+    "authorizing_checkpoint_sha": null,
+    "promoted_tooling_base_sha": null,
+    "selection_scope": "coordinator-selected code for docs-only inventory; execution and acceptance remain unauthorized"
+  }
+}

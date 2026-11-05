@@ -32,6 +32,8 @@ type CatalogStore interface {
 	ConfigurationByVehicle(context.Context, Principal, string) (CatalogConfiguration, error)
 	Articles(context.Context, Principal, string) ([]CatalogArticle, error)
 	Article(context.Context, Principal, string, string) (CatalogArticle, error)
+	ArticleView(context.Context, Principal, string, string) (CatalogArticleView, error)
+	ArticleSourceRevision(context.Context, Principal, string, string, string) (CatalogSourceContent, error)
 	ArticleSource(context.Context, Principal, string, string) (CatalogSourceContent, error)
 }
 
@@ -67,10 +69,30 @@ type CatalogProvenance struct {
 }
 
 type CatalogStep struct {
-	Number       int      `json:"number"`
-	Heading      string   `json:"heading,omitempty"`
-	Instructions []string `json:"instructions"`
-	ImageIDs     []string `json:"image_ids,omitempty"`
+	Action       string          `json:"action,omitempty"`
+	Images       *[]CatalogImage `json:"images,omitempty"`
+	Text         string          `json:"text,omitempty"`
+	EvidenceIDs  []string        `json:"evidence_ids,omitempty"`
+	Number       int             `json:"number,omitempty"`
+	Heading      string          `json:"heading,omitempty"`
+	Instructions []string        `json:"instructions"`
+	ImageIDs     []string        `json:"image_ids,omitempty"`
+}
+
+// R2 source steps retain text; canonical steps retain action and following
+// instructions separately. Missing canonical numbers stay absent, and an
+// optional image slice distinguishes absent images from an explicit empty list.
+func (step *CatalogStep) UnmarshalJSON(data []byte) error {
+	type plain CatalogStep
+	var value plain
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	*step = CatalogStep(value)
+	if step.Action == "" && len(step.Instructions) == 0 && step.Text != "" {
+		step.Instructions = []string{step.Text}
+	}
+	return nil
 }
 
 type CatalogDocument struct {
@@ -80,48 +102,60 @@ type CatalogDocument struct {
 }
 
 type CatalogDocumentBlock struct {
-	BlockID           string   `json:"block_id,omitempty"`
-	SourceOrder       int      `json:"source_order,omitempty"`
-	Type              string   `json:"type"`
-	Level             int      `json:"level,omitempty"`
-	Number            int      `json:"number,omitempty"`
-	Text              string   `json:"text,omitempty"`
-	Label             string   `json:"label,omitempty"`
-	Href              string   `json:"href,omitempty"`
-	Columns           []string `json:"columns,omitempty"`
-	Rows              [][]any  `json:"rows,omitempty"`
-	Items             []string `json:"items,omitempty"`
-	AssetID           string   `json:"asset_id,omitempty"`
-	ImageID           string   `json:"image_id,omitempty"`
-	Alt               string   `json:"alt,omitempty"`
-	Status            string   `json:"status,omitempty"`
-	UnavailableReason string   `json:"unavailable_reason,omitempty"`
-	EvidenceIDs       []string `json:"evidence_ids,omitempty"`
-	SourceLocator     string   `json:"source_locator,omitempty"`
+	Images            []CatalogImage `json:"images,omitempty"`
+	Caption           string         `json:"caption,omitempty"`
+	BlockID           string         `json:"block_id,omitempty"`
+	SourceOrder       int            `json:"source_order,omitempty"`
+	Type              string         `json:"type"`
+	Level             int            `json:"level,omitempty"`
+	Number            int            `json:"number,omitempty"`
+	Text              string         `json:"text,omitempty"`
+	Label             string         `json:"label,omitempty"`
+	Href              string         `json:"href,omitempty"`
+	Columns           []string       `json:"columns,omitempty"`
+	Rows              [][]any        `json:"rows,omitempty"`
+	Items             []string       `json:"items,omitempty"`
+	AssetID           string         `json:"asset_id,omitempty"`
+	ImageID           string         `json:"image_id,omitempty"`
+	Alt               string         `json:"alt,omitempty"`
+	Status            string         `json:"status,omitempty"`
+	UnavailableReason string         `json:"unavailable_reason,omitempty"`
+	EvidenceIDs       []string       `json:"evidence_ids,omitempty"`
+	SourceLocator     string         `json:"source_locator,omitempty"`
 }
 
 type CatalogArticle struct {
-	ID                  string               `json:"id"`
-	VehicleID           string               `json:"vehicle_id"`
-	Title               string               `json:"title"`
-	Kind                string               `json:"kind,omitempty"`
-	Component           string               `json:"component,omitempty"`
-	ContentStatus       string               `json:"content_status"`
-	Complete            bool                 `json:"complete"`
-	Body                string               `json:"body,omitempty"`
-	Steps               []CatalogStep        `json:"steps,omitempty"`
-	Document            *CatalogDocument     `json:"document,omitempty"`
-	Images              []CatalogImage       `json:"images,omitempty"`
-	Provenance          []CatalogProvenance  `json:"provenance,omitempty"`
-	SourceReview        *CatalogSourceReview `json:"source_review,omitempty"`
-	SourceOriginal      json.RawMessage      `json:"-"`
-	sourceArticleID     string
-	sourceSnapshotID    string
-	sourceVersion       string
-	sourceContentSHA256 string
-	sourceURI           string
-	sourceFormat        string
-	sourceAvailable     bool
+	CanonicalArticleID       *string              `json:"canonical_article_id"`
+	SourceRevisionID         *string              `json:"source_revision_id"`
+	CanonicalRevisionID      *string              `json:"canonical_revision_id"`
+	ContentOrigin            *string              `json:"content_origin"`
+	Availability             string               `json:"availability"`
+	ViewRevision             *string              `json:"view_revision"`
+	ReviewStatus             *string              `json:"review_status"`
+	Processing               *CatalogProcessing   `json:"processing"`
+	ID                       string               `json:"id"`
+	VehicleID                string               `json:"vehicle_id"`
+	Title                    string               `json:"title"`
+	Kind                     string               `json:"kind,omitempty"`
+	Component                string               `json:"component,omitempty"`
+	ContentStatus            string               `json:"content_status"`
+	Complete                 bool                 `json:"complete"`
+	Body                     string               `json:"body,omitempty"`
+	Steps                    []CatalogStep        `json:"steps,omitempty"`
+	Document                 *CatalogDocument     `json:"document,omitempty"`
+	Images                   []CatalogImage       `json:"images"`
+	Provenance               []CatalogProvenance  `json:"provenance,omitempty"`
+	SourceReview             *CatalogSourceReview `json:"source_review,omitempty"`
+	SourceOriginal           json.RawMessage      `json:"-"`
+	canonicalVehicleID       string
+	canonicalConfigurationID *string
+	sourceArticleID          string
+	sourceSnapshotID         string
+	sourceVersion            string
+	sourceContentSHA256      string
+	sourceURI                string
+	sourceFormat             string
+	sourceAvailable          bool
 }
 
 // CatalogSourceReview is safe metadata for the immutable source copy. The
@@ -137,14 +171,20 @@ type CatalogSourceReview struct {
 }
 
 type CatalogSourceContent struct {
-	SnapshotID    string
-	Version       string
-	ContentSHA256 string
-	SourceURI     string
-	Original      json.RawMessage
+	Document         *CatalogDocument
+	Images           []CatalogImage
+	ViewRevision     *string
+	SourceRevisionID *string
+	SnapshotID       string
+	Version          string
+	ContentSHA256    string
+	SourceURI        string
+	Original         json.RawMessage
 }
 
 type CatalogArticleProgress struct {
+	Complete         bool   `json:"complete"`
+	Retryable        bool   `json:"retryable"`
 	Status           string `json:"status"`
 	Phase            string `json:"phase"`
 	Processed        int    `json:"processed"`
@@ -156,12 +196,16 @@ type CatalogArticleProgress struct {
 }
 
 type CatalogImage struct {
-	ID         string `json:"id,omitempty"`
-	URL        string `json:"url,omitempty"`
-	Alt        string `json:"alt,omitempty"`
-	StorageKey string `json:"-"`
-	MediaType  string `json:"media_type,omitempty"`
-	ImageID    string `json:"image_id,omitempty"`
+	AssetID           string `json:"asset_id,omitempty"`
+	Caption           string `json:"caption,omitempty"`
+	ID                string `json:"id,omitempty"`
+	URL               string `json:"url,omitempty"`
+	Alt               string `json:"alt,omitempty"`
+	StorageKey        string `json:"-"`
+	MediaType         string `json:"media_type,omitempty"`
+	ImageID           string `json:"image_id,omitempty"`
+	Status            string `json:"status,omitempty"`
+	UnavailableReason string `json:"unavailable_reason,omitempty"`
 }
 
 // UnmarshalJSON retains the private storage locator from persisted article
@@ -177,6 +221,14 @@ func (image *CatalogImage) UnmarshalJSON(data []byte) error {
 	}
 	*image = CatalogImage(decoded.publicImage)
 	image.StorageKey = decoded.StorageKey
+	image.ImageID = publicCatalogAssetID(image.ImageID)
+	image.AssetID = publicCatalogAssetID(image.AssetID)
+	if image.ImageID != "" {
+		image.AssetID = image.ImageID
+		if image.ID == "" {
+			image.ID = image.ImageID
+		}
+	}
 	return nil
 }
 
@@ -556,39 +608,31 @@ func (s *postgresCatalogStore) CatalogScopeComplete(ctx context.Context, _ Princ
 }
 
 func (s *postgresCatalogStore) CatalogArticleProgress(ctx context.Context, _ Principal, vehicleID string) (*CatalogArticleProgress, error) {
-	var progress CatalogArticleProgress
+	var total, completed, active, failed, retryable int
 	err := s.pool.QueryRow(ctx, `
-		SELECT status, phase, processed_units, total_units, progress_percent,
-		       current_article_id, current_title, progress_detail
-		FROM vehicle_catalog_hydration_scopes
-		WHERE scope = 'articles' AND (
-		      vehicle_id = $1
-		      OR vehicle_id = (
-			      SELECT vc.vehicle_id::text
-			      FROM vehicle_configurations vc
-			      WHERE vc.vehicle_configuration_id::text = $1
-			      LIMIT 1
-		      )
-		)
-		ORDER BY updated_at DESC
-		LIMIT 1`, vehicleID).
-		Scan(
-			&progress.Status,
-			&progress.Phase,
-			&progress.Processed,
-			&progress.Total,
-			&progress.Percent,
-			&progress.CurrentArticleID,
-			&progress.CurrentTitle,
-			&progress.Detail,
-		)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
-	}
+  SELECT count(*),
+    count(*) FILTER(WHERE scope.status='complete' AND scope.completed_generation=scope.generation),
+    count(*) FILTER(WHERE job.status IN ('pending','processing')),
+    count(*) FILTER(WHERE scope.status IN ('partial','failed','needs_review','not_configured')
+      OR job.status IN ('failed','needs_review','dead_letter')),
+    count(*) FILTER(WHERE job.status='failed' AND job.retryable=true
+      AND job.retry_count < job.max_attempts)
+  FROM catalog_article_provider_scopes scope
+  LEFT JOIN source_fetch_jobs job ON job.source_fetch_job_id=scope.current_job_id
+  WHERE (scope.vehicle_id::text=$1 AND scope.vehicle_configuration_id IS NULL OR scope.vehicle_configuration_id::text=$1)
+    AND scope.provider_slug IN ('bankone','banktwo')`, vehicleID).Scan(&total, &completed, &active, &failed, &retryable)
 	if err != nil {
 		return nil, err
 	}
-	return &progress, nil
+	progress := &CatalogArticleProgress{Status: "pending", Phase: "indexing", Total: 2, Processed: completed, Percent: completed * 50, Complete: total == 2 && completed == 2, Retryable: retryable > 0}
+	if progress.Complete {
+		progress.Status = "completed"
+	} else if active > 0 {
+		progress.Status = "running"
+	} else if failed > 0 {
+		progress.Status = "failed"
+	}
+	return progress, nil
 }
 
 func (s *postgresCatalogStore) ConfigurationByVehicle(ctx context.Context, _ Principal, vehicleID string) (CatalogConfiguration, error) {
@@ -613,46 +657,7 @@ func (s *postgresCatalogStore) ConfigurationByVehicle(ctx context.Context, _ Pri
 	return record, nil
 }
 
-func (s *postgresCatalogStore) Articles(ctx context.Context, _ Principal, vehicleID string) ([]CatalogArticle, error) {
-	rows, err := s.pool.Query(ctx, `
-	SELECT DISTINCT ON (article_id) catalog_article_id::text, article_id, COALESCE(title, ''),
-	       COALESCE(content_kind, ''), COALESCE(component, ''),
-	       COALESCE(content_status, 'list_only')
-	FROM catalog_articles
-	WHERE (
-	      vehicle_id::text = $1
-	      OR EXISTS (
-		      SELECT 1
-		      FROM vehicle_configurations vc
-		      WHERE vc.vehicle_id = catalog_articles.vehicle_id
-		        AND vc.vehicle_configuration_id::text = $1
-	      )
-	)
-	  AND article_id NOT LIKE 'L:%'
-	ORDER BY article_id,
-	         (content_status = 'content_complete') DESC,
-	         created_at DESC,
-	         catalog_article_id DESC`, vehicleID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	result := []CatalogArticle{}
-	for rows.Next() {
-		var record CatalogArticle
-		var sourceArticleID string
-		if err := rows.Scan(&record.ID, &sourceArticleID, &record.Title, &record.Kind, &record.Component, &record.ContentStatus); err != nil {
-			return nil, err
-		}
-		record.sourceArticleID = sourceArticleID
-		record.VehicleID = vehicleID
-		record.Complete = record.ContentStatus == "content_complete"
-		result = append(result, record)
-	}
-	return result, rows.Err()
-}
-
-func (s *postgresCatalogStore) Article(ctx context.Context, _ Principal, vehicleID, articleID string) (CatalogArticle, error) {
+func (s *postgresCatalogStore) legacyArticle(ctx context.Context, _ Principal, vehicleID, articleID string) (CatalogArticle, error) {
 	var record CatalogArticle
 	var rawSteps, rawDocument, rawImages, rawOriginal []byte
 	var sourceID, sourceVersion, sourceContentSHA256, sourceURI, sourceArticleID string
@@ -665,21 +670,8 @@ func (s *postgresCatalogStore) Article(ctx context.Context, _ Principal, vehicle
 		       COALESCE(ss.source_version, ''), COALESCE(ss.content_sha256, ''), COALESCE(ss.source_uri, '')
 		FROM catalog_articles ca
 		JOIN source_snapshots ss ON ss.source_snapshot_id = ca.source_snapshot_id
-		WHERE (
-		      ca.vehicle_id::text = $1
-		      OR EXISTS (
-			      SELECT 1
-			      FROM vehicle_configurations vc
-			      WHERE vc.vehicle_id = ca.vehicle_id
-			        AND vc.vehicle_configuration_id::text = $1
-		      )
-		)
-		  AND (ca.catalog_article_id::text = $2 OR ca.article_id = $2 OR ca.article_id = (
-			      SELECT alias.article_id
-			      FROM catalog_articles alias
-			      WHERE alias.catalog_article_id::text = $2
-			      LIMIT 1
-		       ))
+		WHERE (ca.vehicle_id::text=$1 AND ca.vehicle_configuration_id IS NULL OR ca.vehicle_configuration_id::text=$1 AND EXISTS(SELECT 1 FROM vehicle_configurations vc JOIN vehicle_identity_bases vb USING(vehicle_identity_base_id) WHERE vc.vehicle_configuration_id=ca.vehicle_configuration_id AND vc.reviewer_state<>'rejected' AND vb.reviewer_state<>'rejected'))
+		  AND ca.catalog_article_id::text = $2 AND NOT EXISTS (SELECT 1 FROM canonical_article_aliases x JOIN canonical_articles owner ON owner.canonical_article_id=x.canonical_article_id WHERE x.catalog_article_id=ca.catalog_article_id AND owner.vehicle_id=ca.vehicle_id AND owner.vehicle_configuration_id IS NOT DISTINCT FROM ca.vehicle_configuration_id) AND ss.takedown_status='active' AND NOT EXISTS (SELECT 1 FROM source_review_items review WHERE review.item_kind='quarantine' AND review.status<>'approved' AND review.source_snapshot_ids ? ca.source_snapshot_id::text)
 		ORDER BY (ca.content_status = 'content_complete') DESC,
 		         ca.created_at DESC LIMIT 1`, vehicleID, articleID).
 		Scan(&record.ID, &sourceArticleID, &record.Title, &record.Kind, &record.Component, &record.ContentStatus, &record.Body, &rawSteps, &rawDocument, &rawImages, &rawOriginal, &sourceID, &sourceVersion, &sourceContentSHA256, &sourceURI)
@@ -714,7 +706,7 @@ func (s *postgresCatalogStore) Article(ctx context.Context, _ Principal, vehicle
 	return record, nil
 }
 
-func (s *postgresCatalogStore) ArticleSource(ctx context.Context, _ Principal, vehicleID, articleID string) (CatalogSourceContent, error) {
+func (s *postgresCatalogStore) legacyArticleSource(ctx context.Context, _ Principal, vehicleID, articleID string) (CatalogSourceContent, error) {
 	var result CatalogSourceContent
 	var rawOriginal []byte
 	err := s.pool.QueryRow(ctx, `
@@ -723,21 +715,8 @@ func (s *postgresCatalogStore) ArticleSource(ctx context.Context, _ Principal, v
 		       COALESCE(ca.source_original, '{}'::jsonb)
 		FROM catalog_articles ca
 		JOIN source_snapshots ss ON ss.source_snapshot_id = ca.source_snapshot_id
-		WHERE (
-		      ca.vehicle_id::text = $1
-		      OR EXISTS (
-			      SELECT 1
-			      FROM vehicle_configurations vc
-			      WHERE vc.vehicle_id = ca.vehicle_id
-			        AND vc.vehicle_configuration_id::text = $1
-		      )
-		)
-		  AND (ca.catalog_article_id::text = $2 OR ca.article_id = $2 OR ca.article_id = (
-			      SELECT alias.article_id
-			      FROM catalog_articles alias
-			      WHERE alias.catalog_article_id::text = $2
-			      LIMIT 1
-		       ))
+		WHERE (ca.vehicle_id::text=$1 AND ca.vehicle_configuration_id IS NULL OR ca.vehicle_configuration_id::text=$1 AND EXISTS(SELECT 1 FROM vehicle_configurations vc JOIN vehicle_identity_bases vb USING(vehicle_identity_base_id) WHERE vc.vehicle_configuration_id=ca.vehicle_configuration_id AND vc.reviewer_state<>'rejected' AND vb.reviewer_state<>'rejected'))
+		  AND ca.catalog_article_id::text = $2 AND NOT EXISTS (SELECT 1 FROM canonical_article_aliases x JOIN canonical_articles owner ON owner.canonical_article_id=x.canonical_article_id WHERE x.catalog_article_id=ca.catalog_article_id AND owner.vehicle_id=ca.vehicle_id AND owner.vehicle_configuration_id IS NOT DISTINCT FROM ca.vehicle_configuration_id) AND ss.takedown_status='active' AND NOT EXISTS (SELECT 1 FROM source_review_items review WHERE review.item_kind='quarantine' AND review.status<>'approved' AND review.source_snapshot_ids ? ca.source_snapshot_id::text)
 		  AND jsonb_typeof(ca.source_original) = 'object'
 		  AND ca.source_original <> '{}'::jsonb
 		ORDER BY (ca.content_status = 'content_complete') DESC,

@@ -1,0 +1,725 @@
+{
+  "schema_version": 1,
+  "task_id": "workshop-current-source-api21-raw-inspector",
+  "repository": "lucronn/autodata",
+  "status": "synchronized",
+  "goal": "Reconcile current browser producer source and add an internal API21 raw-semantic consistency inspector while preserving every runtime and acceptance block",
+  "todo": [
+    "Independently review this external proposal and immutable C/K source manifests; admit C only with fresh exact-source and actual PR merge-checkout CI/readback, preserving unresolved Vercel/full-check and all historical task47/R6/DTO records.",
+    "Reconcile old4d82 browser source/timer statements append-only in the new spec/verification document; freeze exact21 IDs,148 producer refs, observed raw shapes, semantic constraints and unavailable checks without rebinding static compiler or changing timers.",
+    "Synchronize this literal goal, six planning paths, three implementation paths and full todo in Issue186 and Project8 with fresh readback; commit/push only the six-path checkpoint K2, seal actual K2 externally, pass standalone and extracted nested exact-K2 preflight using policy at K2, obtain independent exact-K2 review and explicit narrow code-only dispatch.",
+    "Add independently authored fake raw bytes and red tests, then implement only internal inspect_api21_receipts with confined ArtifactStore reads, closed observed schemas, exact identity/inventory/support/retained-state consistency and truthful unavailable families; no producer import/execution, CLI dispatch or enabled profile.",
+    "Add adversarial identity/JUnit/JSON/XML/support/owner/scope/refund/restart/warm/worker/transport/redaction tests; retain all nonpass diagnostics and prove all verified IDs/counts/acceptance flags remain empty/zero/false and CLI remains exit3.",
+    "Run focused/full developer and autonomy checks plus existing fake browser suites, static compile/import checks, exact three-path invariants and diff-check; commit/push validated coherent milestones, obtain independent exact-code review and honest exact-source/merge-fixture CI readback, and leave all runtime, transport, capture, profile, release and acceptance work separately gated."
+  ],
+  "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-current-source-api21-raw-inspector.md",
+  "spec_ref": "docs/agents/specs/2026-11-04-workshop-current-source-api21-raw-inspector.json",
+  "record_ref": "docs/agents/records/2026-11-04-workshop-current-source-api21-raw-inspector.json",
+  "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-current-source-api21-raw-inspector.json",
+  "verification_ref": "docs/verification/2026-11-04-workshop-current-source-api21-raw-inspector.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/agents/specs/2026-11-04-workshop-current-source-api21-raw-inspector.json",
+    "docs/verification/2026-11-04-workshop-current-source-api21-raw-inspector.md"
+  ],
+  "allowed_gate_document_paths": [
+    "docs/superpowers/plans/2026-11-04-workshop-current-source-api21-raw-inspector.md",
+    "docs/agents/specs/2026-11-04-workshop-current-source-api21-raw-inspector.json",
+    "docs/agents/records/2026-11-04-workshop-current-source-api21-raw-inspector.json",
+    "docs/agents/tasks/2026-11-03-production-release/workshop-current-source-api21-raw-inspector.json",
+    "docs/verification/2026-11-04-workshop-current-source-api21-raw-inspector.md",
+    "docs/agents/tasks/2026-11-03-production-release/queue.json"
+  ],
+  "allowed_implementation_paths": [
+    "scripts/dev/release_acceptance.py",
+    "scripts/dev/test_release_acceptance.py",
+    "docs/verification/release-acceptance-runbook.md"
+  ],
+  "current_implementation_allowlist": [],
+  "source_binding": {
+    "candidate_C": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+    "candidate_tree": "9105b372988ca2fc2827310c4806cb826a395bda",
+    "prior_checkpoint_K": "ae4740e781609227ac33e595e6206647ecdcf445",
+    "prior_tree": "e47e2d7df229270972b673862ec5781e23bd2ba6",
+    "K2": null,
+    "source_ci": {
+      "status": "admitted_source_only_actions_success_external_failed",
+      "source_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+      "pull_request": "https://github.com/lucronn/autodata/pull/258",
+      "reported_draft": true,
+      "actions_runs": [
+        {
+          "id": "41932507018",
+          "url": "https://github.com/lucronn/autodata/actions/runs/41932507018",
+          "event": "push",
+          "reported_head_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+          "actual_checkout_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+          "status": "completed",
+          "conclusion": "success",
+          "job_count": 3,
+          "successful_step_count": 41,
+          "all_jobs_and_steps_success": true,
+          "checkout_verified_all_jobs": true
+        },
+        {
+          "id": "41932528687",
+          "url": "https://github.com/lucronn/autodata/actions/runs/41932528687",
+          "event": "pull_request",
+          "reported_head_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+          "actual_checkout_sha": "e19eb687eb5521de22f301e643bce0d6ef374c47",
+          "status": "completed",
+          "conclusion": "success",
+          "job_count": 3,
+          "successful_step_count": 41,
+          "all_jobs_and_steps_success": true,
+          "checkout_verified_all_jobs": true
+        }
+      ],
+      "actual_merge_checkout_sha": "e19eb687eb5521de22f301e643bce0d6ef374c47",
+      "actual_merge_tree": "9105b372988ca2fc2827310c4806cb826a395bda",
+      "exact_source_actions_conclusion": "success",
+      "actual_merge_actions_conclusion": "success",
+      "external_status_conclusion": "failure",
+      "full_check_rollup_conclusion": "failure",
+      "external_status": {
+        "context": "Vercel",
+        "description": "Deployment rate limited \u2014 retry in 24 hours.",
+        "target_url": "https://vercel.com/curtt?upgradeToPro=build-rate-limit"
+      },
+      "source_admitted": true,
+      "admission_scope": "source_only_for_G0_planning; no runtime, product, merchant, real API, release or deployment acceptance",
+      "success_claimed": false,
+      "actions_success_observed": true,
+      "full_rollup_success_claimed": false,
+      "readback_receipt": "/home/corp/autodata-evidence/workshop-launch-source-ci-audit/receipt.json",
+      "readback_receipt_sha256": "1bad06664be833e86ff087ff84dd4d6d56e5dabf2971cc9ed9815c713cebee80",
+      "ci_audit_verdict": "/home/corp/autodata-evidence/workshop-launch-source-ci-audit/verdict.json",
+      "ci_audit_verdict_sha256": "3163a4f284e5871825428fa85bf32545b04c877befd28707ee4971d2c7c57d61",
+      "independent_source_review": "/home/corp/autodata-evidence/workshop-launch-source-combined-review/verdict.json",
+      "independent_source_review_sha256": "9a3f984d295372ec9f50ab34e5fa1d396241e849eaf47c8c86919e9c9e60ffd6",
+      "source_result_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6645230387"
+    },
+    "historical_browser_candidate": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+    "historical_browser_tree": "d9fb2a8f49beacd009374a76327d0736c1fc9b0a"
+  },
+  "pre_implementation": {
+    "goal": "Reconcile current browser producer source and add an internal API21 raw-semantic consistency inspector while preserving every runtime and acceptance block",
+    "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-current-source-api21-raw-inspector.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/agents/specs/2026-11-04-workshop-current-source-api21-raw-inspector.json",
+      "docs/verification/2026-11-04-workshop-current-source-api21-raw-inspector.md"
+    ],
+    "todo": [
+      "Independently review this external proposal and immutable C/K source manifests; admit C only with fresh exact-source and actual PR merge-checkout CI/readback, preserving unresolved Vercel/full-check and all historical task47/R6/DTO records.",
+      "Reconcile old4d82 browser source/timer statements append-only in the new spec/verification document; freeze exact21 IDs,148 producer refs, observed raw shapes, semantic constraints and unavailable checks without rebinding static compiler or changing timers.",
+      "Synchronize this literal goal, six planning paths, three implementation paths and full todo in Issue186 and Project8 with fresh readback; commit/push only the six-path checkpoint K2, seal actual K2 externally, pass standalone and extracted nested exact-K2 preflight using policy at K2, obtain independent exact-K2 review and explicit narrow code-only dispatch.",
+      "Add independently authored fake raw bytes and red tests, then implement only internal inspect_api21_receipts with confined ArtifactStore reads, closed observed schemas, exact identity/inventory/support/retained-state consistency and truthful unavailable families; no producer import/execution, CLI dispatch or enabled profile.",
+      "Add adversarial identity/JUnit/JSON/XML/support/owner/scope/refund/restart/warm/worker/transport/redaction tests; retain all nonpass diagnostics and prove all verified IDs/counts/acceptance flags remain empty/zero/false and CLI remains exit3.",
+      "Run focused/full developer and autonomy checks plus existing fake browser suites, static compile/import checks, exact three-path invariants and diff-check; commit/push validated coherent milestones, obtain independent exact-code review and honest exact-source/merge-fixture CI readback, and leave all runtime, transport, capture, profile, release and acceptance work separately gated."
+    ],
+    "status": "synchronized",
+    "updated_at": "2026-11-04T23:38:57Z",
+    "source_candidate_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+    "source_candidate_tree": "9105b372988ca2fc2827310c4806cb826a395bda",
+    "prior_checkpoint_K": "ae4740e781609227ac33e595e6206647ecdcf445",
+    "checkpoint_K2": null,
+    "checkpoint_sha": null,
+    "implementation_base_sha": null,
+    "allowed_gate_document_paths": [
+      "docs/superpowers/plans/2026-11-04-workshop-current-source-api21-raw-inspector.md",
+      "docs/agents/specs/2026-11-04-workshop-current-source-api21-raw-inspector.json",
+      "docs/agents/records/2026-11-04-workshop-current-source-api21-raw-inspector.json",
+      "docs/agents/tasks/2026-11-03-production-release/workshop-current-source-api21-raw-inspector.json",
+      "docs/verification/2026-11-04-workshop-current-source-api21-raw-inspector.md",
+      "docs/agents/tasks/2026-11-03-production-release/queue.json"
+    ],
+    "allowed_implementation_paths": [
+      "scripts/dev/release_acceptance.py",
+      "scripts/dev/test_release_acceptance.py",
+      "docs/verification/release-acceptance-runbook.md"
+    ],
+    "current_implementation_allowlist": [],
+    "tracking_sync": {
+      "status": "synchronized_live_literal_readback_planning_only",
+      "observed_at": "2026-11-04T23:38:57Z",
+      "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6645271885",
+      "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+      "readback_receipt": "/home/corp/autodata-evidence/api21-g0-literal-tracking/receipt.json",
+      "readback_receipt_sha256": "6b7314286fa73bda0fd51f21944a320dc8d0127fb122c4a7687de14b9445ee8f",
+      "literal_goal_todos_paths_verified": true,
+      "readback_verified": true
+    },
+    "source_ci": {
+      "status": "admitted_source_only_actions_success_external_failed",
+      "source_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+      "pull_request": "https://github.com/lucronn/autodata/pull/258",
+      "reported_draft": true,
+      "actions_runs": [
+        {
+          "id": "41932507018",
+          "url": "https://github.com/lucronn/autodata/actions/runs/41932507018",
+          "event": "push",
+          "reported_head_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+          "actual_checkout_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+          "status": "completed",
+          "conclusion": "success",
+          "job_count": 3,
+          "successful_step_count": 41,
+          "all_jobs_and_steps_success": true,
+          "checkout_verified_all_jobs": true
+        },
+        {
+          "id": "41932528687",
+          "url": "https://github.com/lucronn/autodata/actions/runs/41932528687",
+          "event": "pull_request",
+          "reported_head_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+          "actual_checkout_sha": "e19eb687eb5521de22f301e643bce0d6ef374c47",
+          "status": "completed",
+          "conclusion": "success",
+          "job_count": 3,
+          "successful_step_count": 41,
+          "all_jobs_and_steps_success": true,
+          "checkout_verified_all_jobs": true
+        }
+      ],
+      "actual_merge_checkout_sha": "e19eb687eb5521de22f301e643bce0d6ef374c47",
+      "actual_merge_tree": "9105b372988ca2fc2827310c4806cb826a395bda",
+      "exact_source_actions_conclusion": "success",
+      "actual_merge_actions_conclusion": "success",
+      "external_status_conclusion": "failure",
+      "full_check_rollup_conclusion": "failure",
+      "external_status": {
+        "context": "Vercel",
+        "description": "Deployment rate limited \u2014 retry in 24 hours.",
+        "target_url": "https://vercel.com/curtt?upgradeToPro=build-rate-limit"
+      },
+      "source_admitted": true,
+      "admission_scope": "source_only_for_G0_planning; no runtime, product, merchant, real API, release or deployment acceptance",
+      "success_claimed": false,
+      "actions_success_observed": true,
+      "full_rollup_success_claimed": false,
+      "readback_receipt": "/home/corp/autodata-evidence/workshop-launch-source-ci-audit/receipt.json",
+      "readback_receipt_sha256": "1bad06664be833e86ff087ff84dd4d6d56e5dabf2971cc9ed9815c713cebee80",
+      "ci_audit_verdict": "/home/corp/autodata-evidence/workshop-launch-source-ci-audit/verdict.json",
+      "ci_audit_verdict_sha256": "3163a4f284e5871825428fa85bf32545b04c877befd28707ee4971d2c7c57d61",
+      "independent_source_review": "/home/corp/autodata-evidence/workshop-launch-source-combined-review/verdict.json",
+      "independent_source_review_sha256": "9a3f984d295372ec9f50ab34e5fa1d396241e849eaf47c8c86919e9c9e60ffd6",
+      "source_result_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6645230387"
+    },
+    "authorities": {
+      "implementation_dispatch": false,
+      "repository_edit": false,
+      "github_write": false,
+      "host_execution": false,
+      "host_process_execution": false,
+      "runtime_preparation_probe": false,
+      "image_build_pull_install": false,
+      "docker_execution": false,
+      "service_start": false,
+      "fixture_execution": false,
+      "network": false,
+      "provider": false,
+      "payment": false,
+      "account_mutation": false,
+      "cloud": false,
+      "secrets": false,
+      "probe_output_admission": false,
+      "trust_profile_promotion": false,
+      "cli_enablement": false,
+      "profiles_enabled": false,
+      "code_approval": false,
+      "ci_success": false,
+      "merge": false,
+      "release": false,
+      "deployment": false,
+      "cutover": false
+    },
+    "verification_state": {
+      "current_source_browser_acceptance": false,
+      "fixture_api21": false,
+      "fixture_dto120": false,
+      "final180": false,
+      "staging": false,
+      "all_trust_profiles_enabled": false,
+      "product_candidate_verified": false,
+      "release_authorized": false
+    },
+    "accepted_case_credit": 0,
+    "accepted_new_case_credit": 0,
+    "release_state": "unverified"
+  },
+  "source_manifest": [
+    {
+      "source_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+      "path": "docs/agents/pre-implementation-gate.md",
+      "blob": "41076af1db25f0cff8ca41d0203c050af9b772df",
+      "sha256": "fa6e9c95c2674164c90d78e046a0427f6b406c313fb82ff627a2a2facb560ad0",
+      "bytes": 5659,
+      "snapshot": "sources/b6279480/docs/agents/pre-implementation-gate.md"
+    },
+    {
+      "source_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+      "path": ".autodata-autonomy-policy.json",
+      "blob": "be4d8088b3fd28c84c101a723ecc7c26768de9e7",
+      "sha256": "798e91b9854098a706ea4ab66a414492c044059a1c98edb9d2f1d003e3baad98",
+      "bytes": 2201,
+      "snapshot": "sources/b6279480/.autodata-autonomy-policy.json"
+    },
+    {
+      "source_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+      "path": "scripts/autonomy/pre_implementation.py",
+      "blob": "595ccf5f84c8e5ff7aa29dcc2a9284b8b7421f39",
+      "sha256": "af5cf8d987dea0d63f98865a6b6bcf1d730f044a9e6dc14509a91aeb0505f1ec",
+      "bytes": 8645,
+      "snapshot": "sources/b6279480/scripts/autonomy/pre_implementation.py"
+    },
+    {
+      "source_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+      "path": "docs/agents/tasks/2026-11-03-production-release/queue.json",
+      "blob": "24aa07fec0f10a60a313129d713e11a34df15e54",
+      "sha256": "7992a74ebe618af149d4f0270abdf61ec3ee4be795b7311a7c5b7e36c00b56b8",
+      "bytes": 233631,
+      "snapshot": "sources/b6279480/docs/agents/tasks/2026-11-03-production-release/queue.json"
+    },
+    {
+      "source_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+      "path": "docs/agents/tasks/2026-11-03-production-release/workshop-launch-source-readiness.json",
+      "blob": "b5615bc8145f3ae92317db46a16b797e9eb99f64",
+      "sha256": "9e015a6be27ef5f7d023e08865303859d32e05a44a24d72d126bf123f5189d6e",
+      "bytes": 16080,
+      "snapshot": "sources/b6279480/docs/agents/tasks/2026-11-03-production-release/workshop-launch-source-readiness.json"
+    },
+    {
+      "source_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+      "path": "docs/agents/records/2026-11-04-workshop-launch-source-readiness.json",
+      "blob": "43e13c95d7f87fcee47ec2a052e5c8765b2ff778",
+      "sha256": "cfd1c8ca8b9423a652d659162a5963bc1e29b001ce7975840a047b1ffd65a38b",
+      "bytes": 3788,
+      "snapshot": "sources/b6279480/docs/agents/records/2026-11-04-workshop-launch-source-readiness.json"
+    },
+    {
+      "source_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+      "path": "docs/verification/2026-11-04-workshop-browser-execution-contract.md",
+      "blob": "6b717947238d5b1d9d3e193f429ee5a2bfcfc400",
+      "sha256": "4bdbe8c57b36af6b57b816b45f6ba259cc57b470c2921f7f234ccf5f197f7889",
+      "bytes": 13632,
+      "snapshot": "sources/b6279480/docs/verification/2026-11-04-workshop-browser-execution-contract.md"
+    },
+    {
+      "source_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+      "path": "docs/agents/specs/2026-11-04-workshop-browser-execution-contract.json",
+      "blob": "6f46fa66fb773b6ea05e3e57bec8c21aec9c34fa",
+      "sha256": "cf54cb4292b084c1b8a69fb9f76a963d4ac393507ebd1f6593052c0cf55eef66",
+      "bytes": 64664,
+      "snapshot": "sources/b6279480/docs/agents/specs/2026-11-04-workshop-browser-execution-contract.json"
+    },
+    {
+      "source_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+      "path": "docs/agents/specs/2026-11-04-workshop-browser-static-supervisor.json",
+      "blob": "63fc36696501c3b4d84515614121051b9326a248",
+      "sha256": "1b02fc74ecfc954b8b20e4927410dc60b2a030db51fe977cfd9ec270ef42744f",
+      "bytes": 227543,
+      "snapshot": "sources/b6279480/docs/agents/specs/2026-11-04-workshop-browser-static-supervisor.json"
+    },
+    {
+      "source_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+      "path": "docs/agents/tasks/2026-11-03-production-release/2026-11-04-workshop-browser-static-supervisor.json",
+      "blob": "0ec1fb0c5f596e17b2a64494fa9a050f03c1e330",
+      "sha256": "4af6dd54c1426ee26e6a3e95a55ce3e53d6ac9c38bff1316d7404650a2214dea",
+      "bytes": 21002,
+      "snapshot": "sources/b6279480/docs/agents/tasks/2026-11-03-production-release/2026-11-04-workshop-browser-static-supervisor.json"
+    },
+    {
+      "source_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+      "path": "docs/agents/specs/2026-11-04-workshop-final180-inventory.json",
+      "blob": "24ac3e9264b85eb914daa7805d183e15f58d374a",
+      "sha256": "c4e9293875d22e04469c6a3fb4cdab27889328d6519243cee3862f9ecf490b39",
+      "bytes": 122350,
+      "snapshot": "sources/b6279480/docs/agents/specs/2026-11-04-workshop-final180-inventory.json"
+    },
+    {
+      "source_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+      "path": "scripts/dev/release_acceptance.py",
+      "blob": "02f7dd277ad5563b1e244ff3c18400aef703727a",
+      "sha256": "8aa4ee2997f0d522a55905cb229b8b8ca1203a98d12bf78cccd56bbc22456d70",
+      "bytes": 124540,
+      "snapshot": "sources/b6279480/scripts/dev/release_acceptance.py"
+    },
+    {
+      "source_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+      "path": "scripts/dev/test_release_acceptance.py",
+      "blob": "877f9070256f5dff682ae20452d6532ac87686f6",
+      "sha256": "056b7a999d2c4f8a835789ee0214a71b6ee32a8b7c28afa3e009000401be9f5b",
+      "bytes": 189841,
+      "snapshot": "sources/b6279480/scripts/dev/test_release_acceptance.py"
+    },
+    {
+      "source_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+      "path": "scripts/dev/workshop_browser_execution_contract.py",
+      "blob": "cd49bfa40dd95e00df1346c3fe14e46f7718d024",
+      "sha256": "042fe9e21c9fcab442ff39f6faca85c3c6fff919978b9733d8b691be032de260",
+      "bytes": 23851,
+      "snapshot": "sources/b6279480/scripts/dev/workshop_browser_execution_contract.py"
+    },
+    {
+      "source_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+      "path": "scripts/dev/workshop_browser_execution_evidence.py",
+      "blob": "ec31e9304f043eda93124580ab3491132f4c9f78",
+      "sha256": "37df0791a9fad1158f1ef057b589aa8e784d9d019803dcf96c6e3b7f1ff37cee",
+      "bytes": 42878,
+      "snapshot": "sources/b6279480/scripts/dev/workshop_browser_execution_evidence.py"
+    },
+    {
+      "source_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+      "path": "scripts/dev/workshop_browser_execution_supervisor.py",
+      "blob": "e945cc4d121db7a991a461b0fc99ec6d1b3d95ac",
+      "sha256": "c4972604193815a742b13cb2b48275c648eb995e0c541ee300d242226cf6bc4b",
+      "bytes": 25865,
+      "snapshot": "sources/b6279480/scripts/dev/workshop_browser_execution_supervisor.py"
+    },
+    {
+      "source_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+      "path": "scripts/dev/workshop_browser_preparation_probe.py",
+      "blob": "53d32a830093926d543dd38787675b663cc38871",
+      "sha256": "696065d0560cebe1b8d8a2010e7aa2d8283a29d32d793e8fdf32685680504458",
+      "bytes": 13414,
+      "snapshot": "sources/b6279480/scripts/dev/workshop_browser_preparation_probe.py"
+    },
+    {
+      "source_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+      "path": "scripts/dev/fixtures/workshop_customer/timing.json",
+      "blob": "ba49588ef63865ac177f38ee2761740a98b3e5f9",
+      "sha256": "a838b45f1f4960b997103cfaeb5edfb9f0e43f84ce7595ab13ea55116adf3db3",
+      "bytes": 1167,
+      "snapshot": "sources/b6279480/scripts/dev/fixtures/workshop_customer/timing.json"
+    },
+    {
+      "source_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+      "path": "scripts/dev/fixtures/workshop_customer/scenarios.json",
+      "blob": "bff0b0a52aa900e144ad8e3062632e8859a87c30",
+      "sha256": "83ae0b9a08148fc5321663ce1f4647d29535726d7af93f6299abd4171ebc65d9",
+      "bytes": 1027,
+      "snapshot": "sources/b6279480/scripts/dev/fixtures/workshop_customer/scenarios.json"
+    },
+    {
+      "source_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+      "path": "scripts/dev/fixtures/workshop_customer/firebase_transport.js",
+      "blob": "38616cde5dc9f0ba45663638e772511b8adeb233",
+      "sha256": "96bd315271bf05f363dc74ebb8d60c243f0ede8f0e7a649d3d7eeb7ea8f9dc63",
+      "bytes": 1386,
+      "snapshot": "sources/b6279480/scripts/dev/fixtures/workshop_customer/firebase_transport.js"
+    },
+    {
+      "source_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+      "path": "scripts/dev/fixtures/workshop_customer/hostile_source.json",
+      "blob": "24bdbea86de6f54abab0c26581d77675cf2d2f24",
+      "sha256": "076b68d46991bd32a8ba73f61b93d7c22b52784c3df2d58d0c9e8d33891483d1",
+      "bytes": 485,
+      "snapshot": "sources/b6279480/scripts/dev/fixtures/workshop_customer/hostile_source.json"
+    },
+    {
+      "source_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+      "path": "scripts/dev/fixtures/workshop_customer/stripe_checkout.html",
+      "blob": "acc3a065b4b6cc6c4c32f0eedb203d2cdd59c096",
+      "sha256": "26c1c7ea312630626792f89290b318ca36d01f72c7906d94cab9baf03dc74083",
+      "bytes": 503,
+      "snapshot": "sources/b6279480/scripts/dev/fixtures/workshop_customer/stripe_checkout.html"
+    },
+    {
+      "source_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+      "path": "scripts/dev/requirements-workshop-browser.txt",
+      "blob": "316ea1ec732f063e8a628fb1a4603be39cc3f59b",
+      "sha256": "adeb8976dfd2edb0e44e74da84319fae6d821478330c93e39829516c01d5fe25",
+      "bytes": 19,
+      "snapshot": "sources/b6279480/scripts/dev/requirements-workshop-browser.txt"
+    },
+    {
+      "source_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+      "path": "scripts/dev/workshop_browser_smoke.py",
+      "blob": "713a9c94733ba7980668e64e24383e42f8c178d3",
+      "sha256": "95f95f25de9c1718901f1dc99580a89d5588a17dd43b8a3a013f8b459e6ba2bc",
+      "bytes": 106108,
+      "snapshot": "sources/b6279480/scripts/dev/workshop_browser_smoke.py"
+    },
+    {
+      "source_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+      "path": "workers/ingestion-python/tests/test_workshop_browser_integration.py",
+      "blob": "3b8a9de3b5e7d822b36731c5c7f3e9723b1787db",
+      "sha256": "b16ab3953b863a2c7156cf57936a2bca4f56f2c3078c68f93ba616318793e801",
+      "bytes": 12589,
+      "snapshot": "sources/b6279480/workers/ingestion-python/tests/test_workshop_browser_integration.py"
+    },
+    {
+      "source_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+      "path": "workers/ingestion-python/tests/test_paid_catalog_api_integration.py",
+      "blob": "d4d8b6d26ead3023dbbe5084d1376c0009404aae",
+      "sha256": "efd3098953dde54d3fc38c167db1f56ab97225c185fb73f032fe7f3289b70198",
+      "bytes": 19378,
+      "snapshot": "sources/b6279480/workers/ingestion-python/tests/test_paid_catalog_api_integration.py"
+    },
+    {
+      "source_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+      "path": "workers/ingestion-python/tests/test_catalog_api_integration.py",
+      "blob": "5b16ff5b5428547fcdeb09fb63c36c94a406ff6c",
+      "sha256": "88e6c1fd339da60614056abd7689b6a7fcd1d16bc1e239cec888b06bb6a61974",
+      "bytes": 30980,
+      "snapshot": "sources/b6279480/workers/ingestion-python/tests/test_catalog_api_integration.py"
+    },
+    {
+      "source_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+      "path": "workers/ingestion-python/tests/lifecycle_support.py",
+      "blob": "ac52c479e5e4a7f625cddd409d8d61573c271765",
+      "sha256": "746eba57bfffb760e2f779d0d0494125f8b559b07de5ff6ec11099d517bf76dc",
+      "bytes": 19309,
+      "snapshot": "sources/b6279480/workers/ingestion-python/tests/lifecycle_support.py"
+    },
+    {
+      "source_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+      "path": "apps/api-go/workshop_browser_fixture_test.go",
+      "blob": "2e993a713bdaddef4b9ab5f3f17bf9e6a0143a42",
+      "sha256": "7520a24bcfa06fe64810c6c17625563d29a2387c6d0531a61713f50b2098bf33",
+      "bytes": 25015,
+      "snapshot": "sources/b6279480/apps/api-go/workshop_browser_fixture_test.go"
+    },
+    {
+      "source_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+      "path": "apps/api-go/workshop_browser_fixture_deadline_test.go",
+      "blob": "53a0a7a331d928c62f18abb66511182e3b14613e",
+      "sha256": "5487733c37bb392fdaaa1050f214cbda6f810c1ecbe92f1e797887c448a6f142",
+      "bytes": 2106,
+      "snapshot": "sources/b6279480/apps/api-go/workshop_browser_fixture_deadline_test.go"
+    },
+    {
+      "source_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+      "path": ".github/workflows/autonomous-verification.yml",
+      "blob": "c312c57f19b809c87338170e661800e5d55b5c93",
+      "sha256": "adbe6221e09c0427d5abaf0ddaa566331abb483f8e246dad3dd42a3dbd6d23a3",
+      "bytes": 15003,
+      "snapshot": "sources/b6279480/.github/workflows/autonomous-verification.yml"
+    },
+    {
+      "source_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+      "path": "docs/verification/release-acceptance-runbook.md",
+      "blob": "23c85c2e468b45b38b84a42524d8e2b5b6c84e5a",
+      "sha256": "52ba7b0b77fe800565464cc0431d9405ed427ea1856d513ca2359c351c6c4e55",
+      "bytes": 32636,
+      "snapshot": "sources/b6279480/docs/verification/release-acceptance-runbook.md"
+    },
+    {
+      "source_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+      "path": "apps/api-go/workshop/index.html",
+      "blob": "fa2bf7a6a8dfb580267ece998234148036d56030",
+      "sha256": "8910a2b9021af306f1f3698a094bbc0b8da01b9038666ec2c57879b8fb65ac68",
+      "bytes": 10868,
+      "snapshot": "sources/b6279480/apps/api-go/workshop/index.html"
+    },
+    {
+      "source_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+      "path": "apps/api-go/workshop/app.mjs",
+      "blob": "849609b437d1f24f2a7ca6107b2ad2a0683c08b3",
+      "sha256": "4a3e16b3b407e738ed013f4b7ae416fe6c47eb1548d123e90b5b867df5c74788",
+      "bytes": 37545,
+      "snapshot": "sources/b6279480/apps/api-go/workshop/app.mjs"
+    },
+    {
+      "source_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+      "path": "apps/api-go/workshop/auth.mjs",
+      "blob": "53edaacf0c5f3d472f2cf0b65e2261f70b7bbc03",
+      "sha256": "ec71ad49dc21fc8633e1165ff759f1d05467f40d045ca056c8be5460cce285e2",
+      "bytes": 7908,
+      "snapshot": "sources/b6279480/apps/api-go/workshop/auth.mjs"
+    },
+    {
+      "source_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+      "path": "apps/api-go/workshop/catalog.mjs",
+      "blob": "0d91ddb47e6f0ae1bafda0a4cd1c9ae0869e5860",
+      "sha256": "cf518ae376f7d61ac6dc09e9a09b12baca6be66e64b8b79d54bab2393286db52",
+      "bytes": 11688,
+      "snapshot": "sources/b6279480/apps/api-go/workshop/catalog.mjs"
+    },
+    {
+      "source_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+      "path": "apps/api-go/workshop/progress.mjs",
+      "blob": "07769f5e8a25ef0571df4c7622a5f68e004f106b",
+      "sha256": "dd41a36c18871aacb6c1dfb16cfb6c3659c51e92acb479481897f77cffbe7e48",
+      "bytes": 1076,
+      "snapshot": "sources/b6279480/apps/api-go/workshop/progress.mjs"
+    },
+    {
+      "source_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+      "path": "apps/api-go/workshop/commerce.mjs",
+      "blob": "b14557f5c31b5e06f116121291d6c8f1ca6d2adf",
+      "sha256": "e7f8e2fd45d6cd9f4ec2ef2f3a50d3f090f34e2562d4bbc58f9c23d06e8a1142",
+      "bytes": 7369,
+      "snapshot": "sources/b6279480/apps/api-go/workshop/commerce.mjs"
+    },
+    {
+      "source_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+      "path": "apps/api-go/workshop/article-read.mjs",
+      "blob": "cd845362a707d512c5d0cf56b4e1b9b057c576a1",
+      "sha256": "2957242037d4bc3ce7894ae2c7e4bae1636406d0256dd75b6150e78c1c4e5178",
+      "bytes": 2579,
+      "snapshot": "sources/b6279480/apps/api-go/workshop/article-read.mjs"
+    },
+    {
+      "source_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+      "path": "apps/api-go/workshop/styles.css",
+      "blob": "3208e18430187486c7033ca7499134b790fcf33f",
+      "sha256": "c57c63c0661c500a83f2c3e5ffd57d18eac5910733a0d978e829dfa23ac09a0c",
+      "bytes": 20773,
+      "snapshot": "sources/b6279480/apps/api-go/workshop/styles.css"
+    },
+    {
+      "source_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+      "path": "apps/api-go/workshop/firebase-web.mjs",
+      "blob": "0c9639ded829e72f88a11f8af4169abe62d1f8e7",
+      "sha256": "bd2f3d36daaecdb5556e601603bea4e80cd202fc515faa931b2b0c5d0f7344f1",
+      "bytes": 112641,
+      "snapshot": "sources/b6279480/apps/api-go/workshop/firebase-web.mjs"
+    },
+    {
+      "source_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+      "path": "apps/api-go/workshop/firebase-web.mjs.LEGAL.txt",
+      "blob": "56d5e326693d8648eece9d0b1f057c68a7979da1",
+      "sha256": "70b7365a8d96e19330fbc64e69fa03c03452787b8bcf52d0fc7ad2e184dfd319",
+      "bytes": 35536,
+      "snapshot": "sources/b6279480/apps/api-go/workshop/firebase-web.mjs.LEGAL.txt"
+    },
+    {
+      "source_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+      "path": "apps/api-go/workshop/firebase-web.provenance.json",
+      "blob": "b5d611aaf078dfbc2bb556f9ed21b8d085e6fd1a",
+      "sha256": "0ac4b7ddfa58ef0ac800095a4a16f29d96518792b9b81c8dcc81b262a918fa9a",
+      "bytes": 2237,
+      "snapshot": "sources/b6279480/apps/api-go/workshop/firebase-web.provenance.json"
+    }
+  ],
+  "authorities": {
+    "implementation_dispatch": false,
+    "repository_edit": false,
+    "github_write": false,
+    "host_execution": false,
+    "host_process_execution": false,
+    "runtime_preparation_probe": false,
+    "image_build_pull_install": false,
+    "docker_execution": false,
+    "service_start": false,
+    "fixture_execution": false,
+    "network": false,
+    "provider": false,
+    "payment": false,
+    "account_mutation": false,
+    "cloud": false,
+    "secrets": false,
+    "probe_output_admission": false,
+    "trust_profile_promotion": false,
+    "cli_enablement": false,
+    "profiles_enabled": false,
+    "code_approval": false,
+    "ci_success": false,
+    "merge": false,
+    "release": false,
+    "deployment": false,
+    "cutover": false
+  },
+  "verification_state": {
+    "current_source_browser_acceptance": false,
+    "fixture_api21": false,
+    "fixture_dto120": false,
+    "final180": false,
+    "staging": false,
+    "all_trust_profiles_enabled": false,
+    "product_candidate_verified": false,
+    "release_authorized": false
+  },
+  "accepted_case_credit": 0,
+  "accepted_new_case_credit": 0,
+  "release_state": "unverified",
+  "dispatch_mode": "none_until_exact_K2_preflight_review_and_coordinator_dispatch",
+  "source_ci": {
+    "status": "admitted_source_only_actions_success_external_failed",
+    "source_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+    "pull_request": "https://github.com/lucronn/autodata/pull/258",
+    "reported_draft": true,
+    "actions_runs": [
+      {
+        "id": "41932507018",
+        "url": "https://github.com/lucronn/autodata/actions/runs/41932507018",
+        "event": "push",
+        "reported_head_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+        "actual_checkout_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+        "status": "completed",
+        "conclusion": "success",
+        "job_count": 3,
+        "successful_step_count": 41,
+        "all_jobs_and_steps_success": true,
+        "checkout_verified_all_jobs": true
+      },
+      {
+        "id": "41932528687",
+        "url": "https://github.com/lucronn/autodata/actions/runs/41932528687",
+        "event": "pull_request",
+        "reported_head_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+        "actual_checkout_sha": "e19eb687eb5521de22f301e643bce0d6ef374c47",
+        "status": "completed",
+        "conclusion": "success",
+        "job_count": 3,
+        "successful_step_count": 41,
+        "all_jobs_and_steps_success": true,
+        "checkout_verified_all_jobs": true
+      }
+    ],
+    "actual_merge_checkout_sha": "e19eb687eb5521de22f301e643bce0d6ef374c47",
+    "actual_merge_tree": "9105b372988ca2fc2827310c4806cb826a395bda",
+    "exact_source_actions_conclusion": "success",
+    "actual_merge_actions_conclusion": "success",
+    "external_status_conclusion": "failure",
+    "full_check_rollup_conclusion": "failure",
+    "external_status": {
+      "context": "Vercel",
+      "description": "Deployment rate limited \u2014 retry in 24 hours.",
+      "target_url": "https://vercel.com/curtt?upgradeToPro=build-rate-limit"
+    },
+    "source_admitted": true,
+    "admission_scope": "source_only_for_G0_planning; no runtime, product, merchant, real API, release or deployment acceptance",
+    "success_claimed": false,
+    "actions_success_observed": true,
+    "full_rollup_success_claimed": false,
+    "readback_receipt": "/home/corp/autodata-evidence/workshop-launch-source-ci-audit/receipt.json",
+    "readback_receipt_sha256": "1bad06664be833e86ff087ff84dd4d6d56e5dabf2971cc9ed9815c713cebee80",
+    "ci_audit_verdict": "/home/corp/autodata-evidence/workshop-launch-source-ci-audit/verdict.json",
+    "ci_audit_verdict_sha256": "3163a4f284e5871825428fa85bf32545b04c877befd28707ee4971d2c7c57d61",
+    "independent_source_review": "/home/corp/autodata-evidence/workshop-launch-source-combined-review/verdict.json",
+    "independent_source_review_sha256": "9a3f984d295372ec9f50ab34e5fa1d396241e849eaf47c8c86919e9c9e60ffd6",
+    "source_result_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6645230387"
+  },
+  "trusted": false,
+  "profiles_enabled": false,
+  "enabled_tiers": [],
+  "verified_case_ids": [],
+  "independent_review_required": true,
+  "queue_contract": {
+    "base_sha": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+    "prior_K": "ae4740e781609227ac33e595e6206647ecdcf445",
+    "base_queue_sha256": "7992a74ebe618af149d4f0270abdf61ec3ee4be795b7311a7c5b7e36c00b56b8",
+    "existing_task_count": 47,
+    "proposed_task_count": 48,
+    "preserve_root_fields": true,
+    "preserve_all47_objects_and_order": true,
+    "append_only_task_id": "workshop-current-source-api21-raw-inspector",
+    "task47_sha256": "9a4bf58a01a3683bededd7dfed490895d42e6b378cc1e52c5d7cb2ba3107543e"
+  },
+  "tracking_sync": {
+    "status": "synchronized_live_literal_readback_planning_only",
+    "observed_at": "2026-11-04T23:38:57Z",
+    "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6645271885",
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "readback_receipt": "/home/corp/autodata-evidence/api21-g0-literal-tracking/receipt.json",
+    "readback_receipt_sha256": "6b7314286fa73bda0fd51f21944a320dc8d0127fb122c4a7687de14b9445ee8f",
+    "literal_goal_todos_paths_verified": true,
+    "readback_verified": true
+  }
+}

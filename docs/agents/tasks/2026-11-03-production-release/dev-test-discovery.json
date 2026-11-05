@@ -1,0 +1,62 @@
+{
+  "task_id": "production-release-dev-test-discovery",
+  "repository": "lucronn/autodata",
+  "goal": "Make the existing backfill pytest module importable by clean development unittest discovery without relying on inherited fixture PYTHONPATH or changing coverage.",
+  "builder_agent": "autodata-python-builder",
+  "allowed_paths": [
+    "scripts/dev/test_backfill_article_lifecycle.py"
+  ],
+  "bounded_contexts": [
+    "development test discovery"
+  ],
+  "inputs": [
+    "docs/superpowers/plans/2026-11-03-dev-test-discovery.md"
+  ],
+  "outputs": [
+    "scripts/dev/test_backfill_article_lifecycle.py"
+  ],
+  "acceptance_tests": [
+    "Unmodified clean Python3.12 development unittest discovery passes without inherited fixture PYTHONPATH.",
+    "All six existing backfill PostgreSQL cases execute and pass without skips.",
+    "Only test import-path setup changes; existing assertions, product code, workflow and migrations stay unchanged."
+  ],
+  "forbidden_scope": [
+    "Workflow or test suppression",
+    "Product/schema/helper changes",
+    "Live bank/model or production access",
+    "Editing paths outside exact allowed scope",
+    "Profile fallback"
+  ],
+  "compatibility": {
+    "api": "No application behavior changes.",
+    "events": "No changes.",
+    "schema": "No changes."
+  },
+  "pre_implementation": {
+    "goal": "Make the existing backfill pytest module importable by clean development unittest discovery without relying on inherited fixture PYTHONPATH or changing coverage.",
+    "plan_ref": "docs/superpowers/plans/2026-11-03-dev-test-discovery.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/verification/2026-11-03-canonical-article-lifecycle.md",
+      "docs/superpowers/plans/2026-11-03-production-release-orchestration.md"
+    ],
+    "todo": [
+      "Preserve actual CI run41625088678 import-failure evidence, synchronize Issue186/Project8 and canonical verification, commit this checkpoint and pass exact-base preflight.",
+      "Add only the absolute repository ingestion-tests directory to the existing test module import path before importing lifecycle_support; retain all six DB tests and their assertions.",
+      "Reproduce the unmodified CI development unittest command in clean Python3.12 without inherited PYTHONPATH, then verify the six backfill cases in the isolated PostgreSQL runner.",
+      "Review the exact one-file candidate independently, integrate unchanged, and retain the next actual GitHub verification result alongside the separate migration repair."
+    ],
+    "status": "synchronized",
+    "updated_at": "2026-11-03T11:17:00.878858+00:00"
+  },
+  "execution": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "medium",
+    "service_tier": "fast",
+    "features": {
+      "fast_mode": true
+    },
+    "allow_fallback": false
+  }
+}

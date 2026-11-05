@@ -1,192 +1,459 @@
-import unittest
+import copy
+import hashlib
 import json
+import os
 import tempfile
+import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-
-from orchestrator import GATE_AGENTS, aggregate_gate_reports, orchestrate_task, validate_task_contract
+import runner as r
+import orchestrator as o
+from test_runner import PROFILE, SHA
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
-def valid_pre_implementation_record():
-    return {
-        "goal": "Enforce an agent-agnostic planning gate before implementation",
-        "plan_ref": "docs/superpowers/plans/2026-09-11-pre-implementation-gate.md",
-        "issue_ref": "https://github.com/lucronn/autodata/issues/86",
-        "project_ref": "https://github.com/users/lucronn/projects/8",
-        "repository_doc_refs": ["docs/github/operating-model.md"],
-        "todo": ["Add policy enforcement", "Run the gate tests"],
-        "status": "synchronized",
-        "updated_at": "2026-09-11T00:00:00Z",
-    }
+class EvidenceAggregationTests(unittest.TestCase):
+    def test_summary_only_gate_cannot_receive_candidate_sha(self):
+        reports = o.aggregate_gate_reports(
+            "run", SHA, {"security": {"decision": "pass"}}
+        )
+        self.assertEqual(reports["security"]["decision"], "blocked")
+        self.assertIsNone(reports["security"]["implementation_sha"])
+        self.assertEqual(reports["source_provenance"]["decision"], "blocked")
 
-
-class OrchestratorTests(unittest.TestCase):
-    def test_orchestrator_does_not_call_builder_without_pre_implementation_record(self):
-        task = {
-            "task_id": "issue-86",
-            "goal": "Enforce the planning gate",
-            "builder_agent": "autodata-go-builder",
-            "allowed_paths": ["apps/api-go/**"],
-            "bounded_contexts": ["developer infrastructure"],
-            "inputs": ["docs/agents/pre-implementation-gate.md"],
-            "outputs": ["scripts/autonomy/"],
-            "acceptance_tests": ["A builder is blocked without a synchronized record"],
-            "forbidden_scope": ["runtime behavior"],
-            "compatibility": {"api": "preserve", "events": "preserve", "schema": "none"},
-        }
-        contract = {
-            "task_id": task["task_id"],
-            "goal": task["goal"],
-            "bounded_contexts": task["bounded_contexts"],
-            "inputs": task["inputs"],
-            "outputs": task["outputs"],
-            "acceptance_tests": task["acceptance_tests"],
-            "forbidden_scope": task["forbidden_scope"],
-            "compatibility": task["compatibility"],
-        }
-        calls = []
-
-        def fake_run_agent(repo_root, envelope, provider, output_root, timeout_seconds):
-            calls.append(envelope["agent_name"])
-            if envelope["agent_name"] != "autodata-architect":
-                raise AssertionError("builder was invoked before pre-implementation validation")
-            output_root.mkdir(parents=True)
-            evidence = output_root / "evidence"
-            evidence.mkdir()
-            (evidence / "provider-output.json").write_text(
-                json.dumps({"decision": "pass", "summary": "plan returned", "task_contract": contract}),
-                encoding="utf-8",
+    def test_coverage_reopens_files_and_nonempty_denominator(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            a = r._save_artifact(b"one", root, "one", "test-result", SHA, None)
+            p = {"ratio": 0.5, "eligible_count": 2, "covered_count": 1}
+            measured = o.calculate_coverage({"one", "two"}, [a], p, root)
+            self.assertEqual(measured["evidence_completeness"], 0.5)
+            self.assertEqual(measured["evidence"]["missing_ids"], ["two"])
+            (root / a["ref"]).write_bytes(b"tampered")
+            self.assertEqual(
+                o.calculate_coverage({"one"}, [a], p, root)["evidence_completeness"], 0
             )
-            manifest_path = output_root / "run-manifest.json"
-            manifest_path.write_text(
-                json.dumps({"implementation_sha": "a" * 40, "changed_paths": [], "findings": [], "commands_run": []}),
-                encoding="utf-8",
+            self.assertTrue(
+                o.calculate_coverage(set(), [a], p, root)["evidence"]["errors"]
             )
-            return 0, manifest_path
-
-        with tempfile.TemporaryDirectory() as directory, patch(
-            "orchestrator.run_agent", fake_run_agent
-        ):
-            code, decision_path = orchestrate_task(
-                REPO_ROOT, task, "local-cli", Path(directory) / "run", 1
+            self.assertTrue(
+                o.calculate_coverage({"one"}, [a, a], p, root)["evidence"]["errors"]
             )
-            decision = json.loads(decision_path.read_text(encoding="utf-8"))
 
-        self.assertEqual(calls, ["autodata-architect"])
-        self.assertEqual(code, 20)
-        self.assertEqual(decision["phase"], "planning")
-        self.assertIn("task contract missing field: pre_implementation", decision["contract_errors"])
-        self.assertIn("pre_implementation record is required", decision["pre_implementation_errors"])
+    def test_configuration_blocks_before_provider_or_output_creation(self):
+        with tempfile.TemporaryDirectory() as d, patch(
+            "orchestrator.run_agent"
+        ) as provider:
+            root = Path(d) / "run"
+            with self.assertRaises(r.RunnerError):
+                o.orchestrate_task(
+                    REPO_ROOT, {"task_id": "legacy"}, "local-cli", root, 1
+                )
+            provider.assert_not_called()
+            self.assertFalse(root.exists())
 
-    def test_all_policy_gates_have_independent_agents(self):
-        required = {
-            "deterministic_ci",
-            "contract_compatibility",
-            "schema_integrity",
-            "source_provenance",
-            "data_quality",
-            "security",
-            "reliability",
-            "independent_review",
-        }
-
-        self.assertEqual(set(GATE_AGENTS), required)
-        self.assertEqual(len(set(GATE_AGENTS.values())), len(required))
-
-    def test_task_contract_requires_measurable_scope(self):
-        contract = {
-            "task_id": "task-1",
-            "goal": "Add a deterministic endpoint",
-            "bounded_contexts": ["api"],
-            "inputs": ["docs/architecture/contracts.md"],
-            "outputs": ["apps/api-go/"],
-            "acceptance_tests": ["GET returns 200 for an entitled caller"],
-            "forbidden_scope": ["web UI"],
-            "compatibility": {"api": "preserve-or-version", "events": "preserve", "schema": "none"},
-            "pre_implementation": valid_pre_implementation_record(),
-        }
-
-        self.assertEqual(validate_task_contract(contract), [])
-        self.assertIn("goal must be a non-empty string", validate_task_contract({**contract, "goal": ""}))
-
-    def test_aggregate_gate_reports_preserves_sha_and_fails_missing_gate(self):
-        reports = aggregate_gate_reports(
-            run_id="run-1",
-            implementation_sha="b" * 40,
-            provider_runs={
-                "deterministic_ci": {
+    def test_agent_usable_reads_runner_state_and_blocking_medium(self):
+        self.assertFalse(
+            o._agent_usable(
+                {"response": {"decision": "pass"}, "decision": "blocked"}, False, SHA
+            )
+        )
+        self.assertFalse(
+            o._agent_usable(
+                {
                     "decision": "pass",
-                    "evidence": {"ref": "evidence/test.json", "sha256": "c" * 64},
-                }
-            },
+                    "findings": [{"severity": "medium", "blocking": True}],
+                },
+                False,
+                SHA,
+            )
         )
 
-        self.assertEqual(reports["deterministic_ci"]["implementation_sha"], "b" * 40)
-        self.assertEqual(reports["deterministic_ci"]["decision"], "pass")
-        self.assertEqual(reports["security"]["decision"], "blocked")
-        self.assertEqual(reports["security"]["implementation_sha"], "b" * 40)
-
-    def test_orchestration_assembles_a_complete_policy_manifest(self):
-        task = {
-            "task_id": "task-1",
-            "goal": "Add a deterministic endpoint",
-            "builder_agent": "autodata-go-builder",
-            "allowed_paths": ["apps/api-go/**"],
-            "bounded_contexts": ["api"],
-            "inputs": ["docs/architecture/contracts.md"],
-            "outputs": ["apps/api-go/"],
-            "acceptance_tests": ["GET returns 200 for an entitled caller"],
-            "forbidden_scope": ["web UI"],
-            "compatibility": {"api": "preserve-or-version", "events": "preserve", "schema": "none"},
-            "pre_implementation": valid_pre_implementation_record(),
+    def test_bundle_rejects_fabricated_legacy_metrics_and_missing_required_slots(self):
+        trusted = {
+            "trusted_base_sha": SHA,
+            "task": {
+                "task_id": "t",
+                "execution": PROFILE,
+                "verification": {
+                    "checks": [],
+                    "required_agent_evidence": [],
+                    "provenance": {
+                        "check_id": "source-fixture",
+                        "population_ref": "fixture/population.json",
+                        "report_artifact_id": "source",
+                    },
+                },
+            },
+            "policy": json.loads(
+                (REPO_ROOT / ".autodata-autonomy-policy.json").read_text()
+            ),
+            "artifacts": {},
+            "population": {
+                "population_id": "x",
+                "scope": "synthetic-regression",
+                "records": [],
+            },
+            "provenance_inputs": {},
         }
-        contract = {
-            "task_id": "task-1",
-            "goal": "Add a deterministic endpoint",
-            "bounded_contexts": ["api"],
-            "inputs": ["docs/architecture/contracts.md"],
-            "outputs": ["apps/api-go/"],
-            "acceptance_tests": ["GET returns 200 for an entitled caller"],
-            "forbidden_scope": ["web UI"],
-            "compatibility": {"api": "preserve-or-version", "events": "preserve", "schema": "none"},
-            "pre_implementation": valid_pre_implementation_record(),
-        }
-        implementation_sha = "b" * 40
-
-        def fake_run_agent(repo_root, envelope, provider, output_root, timeout_seconds):
-            output_root.mkdir(parents=True)
-            evidence = output_root / "evidence"
-            evidence.mkdir()
-            response = {
-                "decision": "pass",
-                "summary": "fixture agent pass",
-                "task_contract": contract if envelope["agent_name"] == "autodata-architect" else None,
-            }
-            (evidence / "provider-output.json").write_text(json.dumps(response), encoding="utf-8")
-            manifest = {
-                "implementation_sha": implementation_sha if envelope["agent_name"] == "autodata-go-builder" else envelope["base_sha"],
-                "changed_paths": ["apps/api-go/main.go"] if envelope["agent_name"] == "autodata-go-builder" else [],
-                "findings": [],
-                "commands_run": [{"exit_code": 0}],
-            }
-            manifest_path = output_root / "run-manifest.json"
-            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
-            return 20, manifest_path
-
-        with tempfile.TemporaryDirectory() as directory, patch("orchestrator.run_agent", fake_run_agent):
-            code, manifest_path = orchestrate_task(
-                REPO_ROOT, task, "local-cli", Path(directory) / "run", 1
+        with tempfile.TemporaryDirectory() as d:
+            result = o.validate_evidence_bundle(
+                {
+                    "evidence_completeness": 1.0,
+                    "fast_lane_provenance_coverage": 1.0,
+                    "implementation_sha": SHA,
+                },
+                trusted,
+                Path(d),
             )
-            final = json.loads(manifest_path.read_text(encoding="utf-8"))
+            self.assertFalse(result["passed"])
+            self.assertTrue(result["failures"])
 
-        self.assertEqual(code, 0)
-        self.assertEqual(final["implementation_sha"], implementation_sha)
-        self.assertEqual(final["decision"], "pass")
-        self.assertEqual(set(final["gate_decisions"]), set(GATE_AGENTS))
+
+class FullChainV2Tests(unittest.TestCase):
+    def run_fixture(
+        self, directory, fail_check=False, unavailable=False, malformed=False,
+        command_mutator=None, runtime_fixture=False,
+    ):
+        from test_runner import make_trusted_repository
+
+        root = directory / "repo"
+        root.mkdir()
+        task, base = make_trusted_repository(root)
+        if runtime_fixture:
+            task['task_id']='production-release-runtime-fixture'
+            (root/task['task_ref']).write_text(json.dumps(task))
+            r._run_git(root,['add',task['task_ref']])
+            r._run_git(root,['commit','-m','synthetic runtime task identity'])
+            base=r._run_git(root,['rev-parse','HEAD']).strip()
+        trusted = r.load_trusted_inputs(root, base, task["task_ref"])
+        original_checks = r.execute_required_checks
+        def retained_checks(worktree, subject, checks, output_root, environment):
+            commands, artifacts, findings = original_checks(worktree, subject, checks, output_root, environment)
+            if command_mutator is not None:
+                for command in commands:
+                    command_mutator(command)
+                    artifact=next(a for a in artifacts if a['artifact_id']==command['check_id']+':command')
+                    data=(json.dumps(command,sort_keys=True)+'\n').encode()
+                    (output_root/artifact['ref']).write_bytes(data)
+                    artifact.update(sha256=hashlib.sha256(data).hexdigest(),size_bytes=len(data))
+            return commands, artifacts, findings
+        if fail_check:
+            # Commit a failed command as a frozen requirement, never modify it after trust resolution.
+            task["verification"]["checks"][0]["argv"] = [
+                "python3",
+                "-c",
+                "raise SystemExit(7)",
+            ]
+            (root / task["task_ref"]).write_text(json.dumps(task))
+            import subprocess
+
+            subprocess.run(
+                ["git", "add", "."], cwd=root, check=True, capture_output=True
+            )
+            subprocess.run(
+                ["git", "commit", "-m", "failed fixture requirement"],
+                cwd=root,
+                check=True,
+                capture_output=True,
+            )
+            base = r._run_git(root, ["rev-parse", "HEAD"]).strip()
+            trusted = r.load_trusted_inputs(root, base, task["task_ref"])
+        from test_app_server_adapter import fake_codex, boundary
+        from unittest.mock import patch
+        import app_server_adapter as adapter
+        bindir=fake_codex(directory)
+        output=directory/"bundle"
+        mode="unavailable-security" if unavailable else "malformed" if malformed else "success"
+        with patch.dict(os.environ, {"PATH":str(bindir)+os.pathsep+os.environ["PATH"], "CODEX_HOME":"/tmp/codex-disposable", "FAKE_CODEX_MODE":mode}), patch.object(adapter,"validate_boundary",side_effect=lambda path, cwd, env: boundary(cwd)), patch.object(r,'execute_required_checks',side_effect=retained_checks):
+            code,path=o.orchestrate_task(root,task,"local-cli",output,6)
+        envelopes=[json.loads(p.read_text()) for p in sorted(output.glob("agents/*/task-envelope.json"))]
+        return code,path,trusted,envelopes
+
+    @staticmethod
+    def resolved_python311(command):
+        # Synthetic retained spelling is set before prompts/transcripts are built.
+        command['argv'][0]=command['executable']='/usr/bin/python3.11'
+
+    def test_python311_resolved_command_matches_frozen_check(self):
+        with tempfile.TemporaryDirectory() as d:
+            code,path,trusted,_=self.run_fixture(Path(d),command_mutator=self.resolved_python311)
+            final=json.loads(path.read_text())
+            replay=o.validate_evidence_bundle(final,trusted,path.parent)
+            self.assertTrue(replay['passed'],replay['failures'])
+            self.assertEqual(code,0)
+            self.assertEqual(len(final['commands_run']),8)
+            self.assertTrue(all(c['argv'][0]==c['executable']=='/usr/bin/python3.11' for c in final['commands_run']))
+
+    def test_resolved_python_compatibility_preserves_exact_command_binding(self):
+        for mode in ('tail','cwd','relative','executable','python3.111','python2','subject','output-ids'):
+            with self.subTest(mode=mode),tempfile.TemporaryDirectory() as d:
+                def tamper(command):
+                    self.resolved_python311(command)
+                    if mode=='tail':command['argv'].append('--unassigned')
+                    elif mode=='cwd':command['cwd']='scripts'
+                    elif mode=='relative':command['argv'][0]=command['executable']='python3.11'
+                    elif mode=='executable':command['executable']='/another/python3.11'
+                    elif mode in ('python3.111','python2'):command['argv'][0]=command['executable']='/usr/bin/'+mode
+                    elif mode=='subject':command['subject_sha']='f'*40
+                    else:command['output_ids'].append('unassigned-proof')
+                code,path,trusted,_=self.run_fixture(Path(d),command_mutator=tamper)
+                replay=o.validate_evidence_bundle(json.loads(path.read_text()),trusted,path.parent)
+                self.assertFalse(replay['passed'])
+                expected='invalid command argv/cwd' if mode=='relative' else 'failed/stale' if mode=='subject' else 'evidence IDs differ' if mode=='output-ids' else 'frozen definition'
+                self.assertTrue(any(expected in error for error in replay['failures']),replay['failures'])
+
+    def test_fixture_local_pass_does_not_hide_missing_global_gate(self):
+        with tempfile.TemporaryDirectory() as d:
+            code,path,trusted,_=self.run_fixture(Path(d),runtime_fixture=True)
+            final=json.loads(path.read_text())
+            self.assertEqual(code,0)
+            self.assertEqual(final['agent_runs']['independent_review']['response']['decision'],'pass')
+            for gate in r.GATES:
+                with self.subTest(missing_gate=gate):
+                    bad=copy.deepcopy(final);del bad['agent_runs'][gate]
+                    self.assertFalse(o.validate_evidence_bundle(bad,trusted,path.parent)['passed'])
+                with self.subTest(failed_gate=gate):
+                    bad=copy.deepcopy(final);bad['agent_runs'][gate]['response']['decision']='fail'
+                    self.assertFalse(o.validate_evidence_bundle(bad,trusted,path.parent)['passed'])
+            for mode in ('artifact','assessment','evidence'):
+                with self.subTest(mode=mode):
+                    bad=copy.deepcopy(final)
+                    if mode=='artifact':bad['artifacts']=[a for a in bad['artifacts'] if a['artifact_id']!='check-0:command']
+                    elif mode=='assessment':bad['agent_runs']['independent_review']['response']['assessments'].append({'check_id':'unknown','decision':'pass','evidence_ids':[],'explanation':'unassigned'})
+                    else:bad['agent_runs']['independent_review']['response']['evidence_ids'].append('unknown-evidence')
+                    if mode=='artifact':
+                        self.assertFalse(o.validate_evidence_bundle(bad,trusted,path.parent)['passed'])
+                        continue
+                    # Refresh the actual response too: semantic validation must
+                    # reject invented assignments/IDs independently of hashes.
+                    artifact=next(a for a in bad['artifacts'] if a['artifact_id']=='independent_review:response')
+                    response_path=path.parent/artifact['ref'];original=response_path.read_bytes()
+                    data=json.dumps(bad['agent_runs']['independent_review']['response']).encode()
+                    response_path.write_bytes(data)
+                    def refresh(value):
+                        if isinstance(value,dict):
+                            if value.get('artifact_id')=='independent_review:response':
+                                value.update(sha256=hashlib.sha256(data).hexdigest(),size_bytes=len(data))
+                            for child in value.values():refresh(child)
+                        elif isinstance(value,list):
+                            for child in value:refresh(child)
+                    refresh(bad)
+                    try:
+                        replay=o.validate_evidence_bundle(bad,trusted,path.parent)
+                        self.assertFalse(replay['passed'])
+                        expected='assessments must match assigned checks exactly' if mode=='assessment' else 'unknown/duplicate evidence IDs'
+                        self.assertIn(expected,replay['failures'])
+                    finally:response_path.write_bytes(original)
+
+    def test_real_checks_fake_provider_complete_bundle_and_replay_tampering(self):
+        with tempfile.TemporaryDirectory() as d:
+            code, path, trusted, envelopes = self.run_fixture(Path(d))
+            final = json.loads(path.read_text())
+            self.assertEqual(code, 0, (path.parent / "decision.json").read_text())
+            self.assertEqual(len(envelopes), 10)
+            self.assertEqual(
+                final["agent_runs"]["architect"]["provider_command"]["exit_code"], 0
+            )
+            self.assertTrue(
+                any(
+                    a["artifact_id"] == "architect:invocation"
+                    for a in final["artifacts"]
+                )
+            )
+            self.assertTrue(all(e["execution"] == PROFILE for e in envelopes))
+            self.assertEqual(final["measurements"]["provenance"]["eligible_count"], 2)
+            self.assertTrue(
+                o.validate_evidence_bundle(final, trusted, path.parent)["passed"]
+            )
+            for mutate in (
+                "metric",
+                "count",
+                "slots",
+                "missing-gate",
+                "stale",
+                "blocking-medium",
+            ):
+                bad = copy.deepcopy(final)
+                if mutate == "metric":
+                    bad["fast_lane_provenance_coverage"] = 0.5
+                elif mutate == "count":
+                    bad["measurements"]["provenance"]["covered_count"] = 1
+                elif mutate == "slots":
+                    bad["measurements"]["evidence"]["required_ids"] = []
+                elif mutate == "missing-gate":
+                    del bad["agent_runs"]["security"]
+                elif mutate == "stale":
+                    bad["agent_runs"]["security"]["subject_sha"] = "b" * 40
+                else:
+                    bad["agent_runs"]["security"]["findings"] = [
+                        {**r.finding("medium", "blocked"), "severity": "medium"}
+                    ]
+                self.assertFalse(
+                    o.validate_evidence_bundle(bad, trusted, path.parent)["passed"],
+                    mutate,
+                )
+            response_artifact = next(
+                a for a in final["artifacts"] if a["artifact_id"] == "security:response"
+            )
+            response_path = path.parent / response_artifact["ref"]
+            original_response = response_path.read_bytes()
+            for nonpass in ("fail", "blocked", "needs_review", "not_applicable"):
+                bad = copy.deepcopy(final)
+                response = copy.deepcopy(bad["agent_runs"]["security"]["response"])
+                response["decision"] = nonpass
+                changed = json.dumps(response).encode()
+                response_path.write_bytes(changed)
+                bad["agent_runs"]["security"]["response"] = response
+                digest = hashlib.sha256(changed).hexdigest()
+
+                def refresh(value):
+                    if isinstance(value, dict):
+                        if value.get("artifact_id") == "security:response":
+                            value["sha256"] = digest
+                            value["size_bytes"] = len(changed)
+                        for child in value.values():
+                            refresh(child)
+                    elif isinstance(value, list):
+                        for child in value:
+                            refresh(child)
+
+                refresh(bad)
+                try:
+                    replay = o.validate_evidence_bundle(bad, trusted, path.parent)
+                    self.assertFalse(replay["passed"], nonpass)
+                    self.assertTrue(
+                        any(
+                            "provider decision" in error for error in replay["failures"]
+                        ),
+                        replay,
+                    )
+                finally:
+                    response_path.write_bytes(original_response)
+            artifact = final["artifacts"][0]
+            (path.parent / artifact["ref"]).write_bytes(b"tampered")
+            self.assertFalse(
+                o.validate_evidence_bundle(final, trusted, path.parent)["passed"]
+            )
+
+    def test_malformed_provider_record_retains_blocked_complete_bundle(self):
+        with tempfile.TemporaryDirectory() as d:
+            code, path, trusted, _ = self.run_fixture(Path(d), malformed=True)
+            self.assertEqual(code, 20)
+            final = json.loads(path.read_text())
+            self.assertTrue((path.parent / "decision.json").is_file())
+            security = final["agent_runs"]["security"]
+            self.assertEqual(security["agent_decision"], "blocked")
+            self.assertIsNone(security["response"])
+            self.assertEqual(security["commands_run"][0]["exit_code"], 0)
+            raw = next(
+                a for a in final["artifacts"] if a["artifact_id"] == "security:response"
+            )
+            self.assertIsNone(
+                json.loads((path.parent / raw["ref"]).read_text())["findings"]
+            )
+            replay = o.validate_evidence_bundle(final, trusted, path.parent)
+            self.assertFalse(replay["passed"])
+            self.assertTrue(
+                any("findings" in error for error in replay["failures"]), replay
+            )
+
+    def test_real_failed_check_cannot_be_overridden_by_fake_provider_pass(self):
+        with tempfile.TemporaryDirectory() as d:
+            code, path, trusted, _ = self.run_fixture(Path(d), fail_check=True)
+            self.assertEqual(code, 20)
+            final = json.loads(path.read_text())
+            self.assertEqual(final["commands_run"][0]["exit_code"], 7)
+            self.assertFalse(
+                o.validate_evidence_bundle(final, trusted, path.parent)["passed"]
+            )
+
+    def test_unavailable_provider_keeps_successful_actual_command_records(self):
+        with tempfile.TemporaryDirectory() as d:
+            code, path, trusted, _ = self.run_fixture(Path(d), unavailable=True)
+            self.assertEqual(code, 20)
+            final = json.loads(path.read_text())
+            security = final["agent_runs"]["security"]
+            self.assertEqual(security["commands_run"][0]["exit_code"], 0)
+            self.assertEqual(security["agent_decision"], "blocked")
+            validation = o.validate_evidence_bundle(final, trusted, path.parent)
+            self.assertNotIn(
+                "final findings differ from runner findings", validation["failures"]
+            )
+            self.assertFalse(
+                o.validate_evidence_bundle(final, trusted, path.parent)["passed"]
+            )
 
 
 if __name__ == "__main__":
     unittest.main()
+
+class AppServerReplayTests(FullChainV2Tests):
+    test_python311_resolved_command_matches_frozen_check = None
+    test_resolved_python_compatibility_preserves_exact_command_binding = None
+    test_fixture_local_pass_does_not_hide_missing_global_gate = None
+    # Do not inherit the parent's tests a second time; only reuse its fixture helper.
+    test_real_checks_fake_provider_complete_bundle_and_replay_tampering = None
+    test_malformed_provider_record_retains_blocked_complete_bundle = None
+    test_real_failed_check_cannot_be_overridden_by_fake_provider_pass = None
+    test_unavailable_provider_keeps_successful_actual_command_records = None
+
+    def test_self_consistent_hashes_cannot_hide_protocol_or_observation_tampering(self):
+        with tempfile.TemporaryDirectory() as d:
+            code,path,trusted,_=self.run_fixture(Path(d))
+            self.assertEqual(code,0)
+            final=json.loads(path.read_text())
+            by_id={x['artifact_id']:x for x in final['artifacts']}
+            protocol_path=path.parent/by_id['architect:protocol']['ref']
+            stdout_path=path.parent/by_id['architect:stdout']['ref']
+            original_protocol=protocol_path.read_bytes();original_stdout=stdout_path.read_bytes()
+            self.assertTrue(o.validate_evidence_bundle(final,trusted,path.parent)['passed'])
+            def refresh(value,aid,data):
+                if isinstance(value,dict):
+                    if value.get('artifact_id')==aid:
+                        value['sha256']=hashlib.sha256(data).hexdigest();value['size_bytes']=len(data)
+                    for child in value.values():refresh(child,aid,data)
+                elif isinstance(value,list):
+                    for child in value:refresh(child,aid,data)
+            for mode in ['prompt-hash','candidate','version','client-override','catalog','resolved','foreign-turn','observed','sequence','relocated-root','relocated-root-symlink']:
+                with self.subTest(mode=mode):
+                    bad=copy.deepcopy(final);records=[json.loads(x) for x in original_protocol.splitlines()]
+                    if mode=='prompt-hash':records[0]['context']['prompt_sha256']='0'*64
+                    elif mode=='candidate':records[0]['context']['subject_sha']='f'*40
+                    elif mode=='version':records[0]['cli_version']='codex-cli 0.162.0'
+                    elif mode=='observed':bad['agent_runs']['architect']['observed_execution']['model']='other'
+                    elif mode=='sequence':records[1]['seq']=2
+                    elif mode in ('relocated-root','relocated-root-symlink'):
+                        cwd='/tmp/unrelated-run/agents/architect/worktree'
+                        if mode=='relocated-root-symlink':
+                            (path.parent/'agents'/'architect'/'worktree').symlink_to(cwd)
+                        records[0]['context']['cwd']=cwd
+                        for field in ('worktree_root','output_root'):
+                            records[0]['boundary'][field]=str(Path(cwd).parent)
+                        for rec in records[1:-1]:
+                            frame=json.loads(rec['raw'])
+                            if frame.get('method')=='thread/start':frame['params']['cwd']=cwd
+                            if frame.get('id')==3 and 'result' in frame:frame['result']['cwd']=cwd
+                            rec['raw']=json.dumps(frame)+'\n'
+                    else:
+                        for rec in records[1:-1]:
+                            frame=json.loads(rec['raw'])
+                            if mode=='client-override' and frame.get('method')=='turn/start':frame['params']['effort']='high'
+                            elif mode=='catalog' and frame.get('id')==2 and 'result' in frame:frame['result']['data'][0]['serviceTiers']=[]
+                            elif mode=='resolved' and frame.get('id')==3 and 'result' in frame:frame['result']['model']='other'
+                            elif mode=='foreign-turn' and frame.get('method')=='turn/completed':frame['params']['turn']['id']='foreign'
+                            rec['raw']=json.dumps(frame)+'\n'
+                    changed=('\n'.join(json.dumps(x) for x in records)+'\n').encode()
+                    changed_stdout=''.join(x['raw'] for x in records[1:-1] if x['direction']=='server').encode()
+                    protocol_path.write_bytes(changed);stdout_path.write_bytes(changed_stdout)
+                    refresh(bad,'architect:protocol',changed);refresh(bad,'architect:stdout',changed_stdout)
+                    try:
+                        result=o.validate_evidence_bundle(bad,trusted,path.parent)
+                        self.assertFalse(result['passed'],mode)
+                        self.assertTrue(any('runtime evidence' in x or 'observed execution' in x for x in result['failures']),result)
+                    finally:
+                        protocol_path.write_bytes(original_protocol);stdout_path.write_bytes(original_stdout)
+                        if mode=='relocated-root-symlink':
+                            (path.parent/'agents'/'architect'/'worktree').unlink()

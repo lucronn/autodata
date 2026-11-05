@@ -1,0 +1,219 @@
+{
+  "schema_version": 1,
+  "id": "workshop-integration-ci-profile-refresh",
+  "goal": "Rebind the disabled R6 CI profile to the exact reviewed integrated workflow without enabling acceptance or release authority.",
+  "todo": [
+    "Review the external six-document proposal and exact source pins; synchronize this literal goal, todo list, six gate paths and sole implementation path in Issue186/Project8 with live readback before committing the checkpoint from e3ffba5037cea484ad0b12bcf594d726ad6b0311.",
+    "Commit and promptly push the synchronized six-document checkpoint, seal its actual full SHA externally, pass standalone and nested canonical preflight at that exact SHA with errors=[], obtain independent exact-checkpoint review and explicit one-path implementation dispatch.",
+    "Change only product_evidence.ci_profile.workflow_sha256 in docs/agents/tasks/2026-11-03-production-release/r6-release.json from d38f4b1a5f414775b494ee801c83ebbc0473a7ab7e970cbf573529d08f1010aa to 99b68b40c7bcad1647bd0bf22f37aa4381c156f1c4f37bd4424454c659b38a89, preserving all other bytes and disabled trust semantics.",
+    "Verify the exact one-field and whole-file hashes, run the seven previously failing synthetic tests, the complete release-acceptance module, all development-adapter tests and autonomy tests; commit and promptly push the validated coherent correction, then obtain independent exact-candidate review.",
+    "Observe fresh normal Actions for the repaired source and actual PR merge fixture, record each required job and skipped step honestly, and integrate only through an independently reviewed semantic queue merge preserving both this stable task ID and the concurrent DTO timing task; keep credit0 and all runtime, acceptance, promotion, merge and release authorities false."
+  ],
+  "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-integration-ci-profile-refresh.md",
+  "spec_ref": "docs/agents/specs/2026-11-04-workshop-integration-ci-profile-refresh.json",
+  "record_ref": "docs/agents/records/2026-11-04-workshop-integration-ci-profile-refresh.json",
+  "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-integration-ci-profile-refresh.json",
+  "verification_ref": "docs/verification/2026-11-04-workshop-integration-ci-profile-refresh.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/agents/specs/2026-11-04-workshop-integration-ci-profile-refresh.json",
+    "docs/verification/2026-11-04-workshop-integration-ci-profile-refresh.md"
+  ],
+  "planning_base_sha": "e3ffba5037cea484ad0b12bcf594d726ad6b0311",
+  "planning_parent_sha": "e3ffba5037cea484ad0b12bcf594d726ad6b0311",
+  "implementation_base_sha": null,
+  "execution_gate_sha": null,
+  "allowed_gate_document_paths": [
+    "docs/superpowers/plans/2026-11-04-workshop-integration-ci-profile-refresh.md",
+    "docs/agents/specs/2026-11-04-workshop-integration-ci-profile-refresh.json",
+    "docs/agents/records/2026-11-04-workshop-integration-ci-profile-refresh.json",
+    "docs/agents/tasks/2026-11-03-production-release/workshop-integration-ci-profile-refresh.json",
+    "docs/verification/2026-11-04-workshop-integration-ci-profile-refresh.md",
+    "docs/agents/tasks/2026-11-03-production-release/queue.json"
+  ],
+  "allowed_implementation_paths": [
+    "docs/agents/tasks/2026-11-03-production-release/r6-release.json"
+  ],
+  "status": "synchronized",
+  "tracking_status": "synchronized",
+  "planning_status": "canonical_planning_synchronized_exact_checkpoint_review_pending",
+  "updated_at": "2026-11-04T21:39:49Z",
+  "accepted_case_credit": 0,
+  "enabled_tiers": [],
+  "runtime_lock": null,
+  "run_record": null,
+  "authority": false,
+  "trusted": false,
+  "runtime_accepted": false,
+  "host_observed": false,
+  "profiles_enabled": false,
+  "fixture_verified": false,
+  "product_candidate_verified": false,
+  "staging_verified": false,
+  "deployment_authorized": false,
+  "cutover_verified": false,
+  "implementation_authorized": false,
+  "runtime_execution_authorized": false,
+  "profile_promotion_authorized": false,
+  "merge_authorized": false,
+  "source_pins": {
+    "docs/agents/tasks/2026-11-03-production-release/r6-release.json": {
+      "source_sha": "e3ffba5037cea484ad0b12bcf594d726ad6b0311",
+      "sha256": "e980162ca709b3b7622126ab943a3a9f4c9efc7e3d51eea30d9bbe0699aea5d0",
+      "git_blob": "ffba5de786aa9d628c04d732b08c63d1a6b6890a"
+    },
+    ".github/workflows/autonomous-verification.yml": {
+      "source_sha": "e3ffba5037cea484ad0b12bcf594d726ad6b0311",
+      "sha256": "99b68b40c7bcad1647bd0bf22f37aa4381c156f1c4f37bd4424454c659b38a89",
+      "git_blob": "fef85365277fc53c06c2cd0b46189e36fa6cf139"
+    },
+    "docs/agents/tasks/2026-11-03-production-release/queue.json": {
+      "source_sha": "e3ffba5037cea484ad0b12bcf594d726ad6b0311",
+      "sha256": "b85de9c94abbd189bf2a8c05a50151eeff24ccff22faa5fbab967a99ab239275",
+      "git_blob": "f75d2d553a5cef6a7df893c194fe7bfe483497b0"
+    },
+    "docs/agents/pre-implementation-gate.md": {
+      "source_sha": "e3ffba5037cea484ad0b12bcf594d726ad6b0311",
+      "sha256": "fa6e9c95c2674164c90d78e046a0427f6b406c313fb82ff627a2a2facb560ad0",
+      "git_blob": "41076af1db25f0cff8ca41d0203c050af9b772df"
+    },
+    "scripts/dev/release_acceptance.py": {
+      "source_sha": "e3ffba5037cea484ad0b12bcf594d726ad6b0311",
+      "sha256": "8aa4ee2997f0d522a55905cb229b8b8ca1203a98d12bf78cccd56bbc22456d70",
+      "git_blob": "02f7dd277ad5563b1e244ff3c18400aef703727a"
+    },
+    "scripts/dev/test_release_acceptance.py": {
+      "source_sha": "e3ffba5037cea484ad0b12bcf594d726ad6b0311",
+      "sha256": "056b7a999d2c4f8a835789ee0214a71b6ee32a8b7c28afa3e009000401be9f5b",
+      "git_blob": "877f9070256f5dff682ae20452d6532ac87686f6"
+    },
+    "scripts/autonomy/pre_implementation.py": {
+      "source_sha": "e3ffba5037cea484ad0b12bcf594d726ad6b0311",
+      "sha256": "af5cf8d987dea0d63f98865a6b6bcf1d730f044a9e6dc14509a91aeb0505f1ec",
+      "git_blob": "595ccf5f84c8e5ff7aa29dcc2a9284b8b7421f39"
+    },
+    ".autodata-autonomy-policy.json": {
+      "source_sha": "e3ffba5037cea484ad0b12bcf594d726ad6b0311",
+      "sha256": "798e91b9854098a706ea4ab66a414492c044059a1c98edb9d2f1d003e3baad98",
+      "git_blob": "be4d8088b3fd28c84c101a723ecc7c26768de9e7"
+    },
+    "/home/corp/autodata-evidence/integration-ci-failure-diagnosis/REPORT.md": {
+      "sha256": "173fbcc9b5fe8a052903aa7dce2cfd100f45c45741de6608062fc8fe9ec7a80c"
+    },
+    "/home/corp/autodata-evidence/integration-ci-failure-diagnosis/evidence-manifest.json": {
+      "sha256": "ed424a4990a74cb5e8523d26a37a8c14b7e9750c801bd50002ee557b0d0d789a"
+    },
+    "/home/corp/autodata-evidence/integration-ci-failure-diagnosis/exact-correction-design.json": {
+      "sha256": "56434bdf01352907aaf50675c349cfc026c5661e2c866768ffd602c7e5f36b97"
+    },
+    "/home/corp/autodata-evidence/integration-ci-failure-diagnosis/failed-test-ids.json": {
+      "sha256": "e8bd8b2ab4ddf8fb5201df229609ac7cceddbe65fca361bf56f53f44b1aea770"
+    },
+    "/home/corp/autodata-evidence/integration-ci-failure-diagnosis/hash-probe.json": {
+      "sha256": "6a00c6647faf623744bfc597bacc070fd9e137ed8f5f357ee0d64759329ec62c"
+    },
+    "/home/corp/autodata-evidence/integration-ci-failure-diagnosis/hash-probe.py": {
+      "sha256": "a7ef6314b6cc5d4a83563f4c7c98b4f28e2bf40d1a1b7dc2f2e2da8184017c7a"
+    },
+    "/home/corp/autodata-evidence/integration-ci-failure-diagnosis/merge-r6-task.json": {
+      "sha256": "9499abc9eaa79e1d160ba4437fa060eec11d8d73e33ee307a947550c92461b7a"
+    },
+    "/home/corp/autodata-evidence/integration-ci-failure-diagnosis/merge-workflow.json": {
+      "sha256": "6ae5ae36b511994c768a3e368ce75a1612c1d4561837005e08c92c6fe6c5bb7f"
+    },
+    "/home/corp/autodata-evidence/integration-ci-failure-diagnosis/minimal-remedy-design.json": {
+      "sha256": "57989a441ef3fd948c414ad8241ce8204fbc591ce41232f48d12396365d99d78"
+    },
+    "/home/corp/autodata-evidence/integration-ci-failure-diagnosis/proposed-one-field.diff": {
+      "sha256": "f964aa6b0c32513ff043d8c14b9f0f951056c200e9f20e4ffed11005c49c8c6e"
+    },
+    "/home/corp/autodata-evidence/integration-ci-failure-diagnosis/reproduce-seven.py": {
+      "sha256": "43e516a1d09cea27d34948d4505985e190013b04b905282f1660e37d7a7b07c0"
+    },
+    "/home/corp/autodata-evidence/integration-ci-failure-diagnosis/run41910284615.json": {
+      "sha256": "68de11ae59a847d8026fd4d0a3a3723f751bc81137c6c074c3e894399aa491df"
+    },
+    "/home/corp/autodata-evidence/integration-ci-failure-diagnosis/run41914795122.json": {
+      "sha256": "b42cc48d45a0087eb48ac1915d344d22c690ab544e19df94313a05a16b714267"
+    },
+    "/home/corp/autodata-evidence/integration-ci-failure-diagnosis/run41914800902.json": {
+      "sha256": "5d5fde17166abeff9dde38a50405d7175914cfe7e002166db98dfa25a5b6903a"
+    },
+    "/home/corp/autodata-evidence/integration-ci-failure-diagnosis/run41915336349.json": {
+      "sha256": "0f11d578979cae1b7b92c9eb8614a1ed66258b7f6b2dfe05c6590f298c08d3df"
+    },
+    "/home/corp/autodata-evidence/integration-ci-failure-diagnosis/seven-tests.json": {
+      "sha256": "190e0ae290cc432cbe1384adb64fc1b68652deb9f34c8768cbd9b786150fca40"
+    },
+    "/home/corp/autodata-evidence/integration-ci-failure-diagnosis/seven-tests.stderr": {
+      "sha256": "53917338239555515b7880f46a25822672b0fa9940b436980e0c50651900c5ba"
+    },
+    "/home/corp/autodata-evidence/integration-ci-failure-diagnosis/seven-tests.stdout": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "/home/corp/autodata-evidence/integration-ci-failure-diagnosis/validator-41910284615.log": {
+      "sha256": "b450bf6642d22f9a84ee7ddd443ecee603d77f4dd1f208ee682e8e59a31e6829"
+    },
+    "/home/corp/autodata-evidence/integration-ci-failure-diagnosis/validator-41914795122.log": {
+      "sha256": "e9606776d929c93358c0706e537a771aabfe4b1d03e708992af1f8dfde72eb9d"
+    },
+    "/home/corp/autodata-evidence/integration-ci-failure-diagnosis/validator-41914800902.log": {
+      "sha256": "8778578bc08ea99b0d4df3c1ad9ac037e39cfa304efc3968d8917d0f31fc92ad"
+    },
+    "/home/corp/autodata-evidence/integration-ci-failure-diagnosis/validator-full.log": {
+      "sha256": "0999b713e0d6b7b56b34aee5c10b6ea08c61285d99fc805a60b85a2cbb896956"
+    },
+    "/home/corp/autodata-evidence/integration-ci-failure-diagnosis/verdict.json": {
+      "sha256": "99b07b95a5491176fb9dae8ab59c5ab93ec9e3e0a1a62f4eb58323246c6d3ed4"
+    }
+  },
+  "proposed_delta": {
+    "path": "docs/agents/tasks/2026-11-03-production-release/r6-release.json",
+    "json_path": "product_evidence.ci_profile.workflow_sha256",
+    "old": "d38f4b1a5f414775b494ee801c83ebbc0473a7ab7e970cbf573529d08f1010aa",
+    "new": "99b68b40c7bcad1647bd0bf22f37aa4381c156f1c4f37bd4424454c659b38a89",
+    "old_file_sha256": "e980162ca709b3b7622126ab943a3a9f4c9efc7e3d51eea30d9bbe0699aea5d0",
+    "new_file_sha256": "240aad0a76f22e46ff37c26f76b191a5af810a87c33da28a2e73a3b9ce8bd35d",
+    "old_blob": "ffba5de786aa9d628c04d732b08c63d1a6b6890a",
+    "new_blob": "3acd5de4b0b358b854a5ee58559d805317adcb6b"
+  },
+  "future_branches": {
+    "gate": "codex/workshop-r6-workflow-hash-gate",
+    "builder": "codex/workshop-integration-ci-profile-refresh-build",
+    "source": "e3ffba5037cea484ad0b12bcf594d726ad6b0311"
+  },
+  "integration_strategy": "Build this correction on a separate branch descending from exact source e3ffba5037cea484ad0b12bcf594d726ad6b0311. It must not absorb the concurrent DTO timing branch. Prefer CI correction first; DTO must refresh its source/checkpoint and workflow-binding context after correction. At a later integration, use the common e3 queue as a three-way semantic base: preserve its 44 objects and root fields, append this stable ID and the distinct DTO timing stable ID exactly once each (46 tasks if both are the only additions), retain every branch-specific tracking field, and resolve genuine same-object/root edits explicitly with coordinator review. Never take ours/theirs or copy either entire queue. If DTO changes workflow bytes, this literal hash proposal no longer applies to the combined candidate: stop for a separate exact-workflow binding update under the DTO successor gate and fresh preflight; never substitute an arbitrary or dynamically trusted hash. Revalidate all pins and require exact source and actual merge-fixture Actions after integration. No automatic merge authority is granted.",
+  "tracking_sync": {
+    "status": "synchronized_live_literal_readback_planning_only",
+    "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6642798543",
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "observed_at": "2026-11-04T21:39:49Z",
+    "receipt_ref": "/home/corp/autodata-evidence/r6-workflow-hash-literal-tracking/receipt.json",
+    "receipt_sha256": "6ab37254147bd452737e6d60a64556242ac08ef4fede4265445252cad808cbbe",
+    "readback_verified": true,
+    "literal_goal_todo_paths_verified": true,
+    "issue_body_prior_comments_preserved": true,
+    "prior_project_source_archived_verbatim": true,
+    "other_project_fields_preserved": true,
+    "issue_before_sha256": "98cc5c36d6fe0bfd00b5bd5074ce699f6d064256e3800dee8783684b0f6e1734",
+    "issue_after_sha256": "dc3c2858a32779b3cb310ef51aaa34284ea6a959ed803cac92dbe29e955ae4e1",
+    "project_before_sha256": "0cd1864930b4d1d0236e467024ec6ddf809081356ba57248d77a3e1b2be1ed62",
+    "project_after_sha256": "5f5b2dac1b04a6b4866ed7a3bd3fa460cc8288031d2289da40d4360e67ae9349"
+  },
+  "implementation_blockers": [
+    "Committed checkpoint SHA and standalone/nested preflight receipts must be sealed externally after this commit.",
+    "Independent exact committed checkpoint review not yet performed.",
+    "Explicit one-path implementation dispatch not issued."
+  ],
+  "independent_review": {
+    "status": "PASS_EXTERNAL_R6_WORKFLOW_HASH_GATE_PROPOSAL",
+    "receipt_ref": "/home/corp/autodata-evidence/r6-workflow-hash-gate-proposal-review/verdict.json",
+    "receipt_sha256": "f6fd0d3e93cff43a0bbe10a8b326cbf3e1e868c00db3482da21ba93d40a00d02",
+    "independent_checks_passed": 93,
+    "findings": [],
+    "reviewed_artifact_manifest_sha256": "b8b13be4e96c6d6a6e675152aab1fa6da703303554707379d3616c8f465051af",
+    "exact_committed_checkpoint_review": "pending_coordinator"
+  },
+  "planning_gate_branch": "codex/workshop-r6-workflow-hash-gate"
+}

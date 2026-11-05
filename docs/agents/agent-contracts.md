@@ -1,8 +1,35 @@
 # AutoData Agent Contracts
 
-## Run manifest
+## V2 local execution contract
 
-Every agent run writes one JSON manifest with this shape:
+The current local runner uses strict `schema_version: 2` provider responses.
+The exact definitions are in
+[`agent-output.schema.json`](../../scripts/autonomy/agent-output.schema.json)
+and the [runner interface](runner-interface.md). Provider responses contain
+run/task/agent/subject identity, decision, summary, the architecture-only frozen
+task contract, typed findings, per-check assessments, and artifact IDs. Unknown
+fields, legacy response shapes, wrong identities, and malformed nested values
+block the run. Provider claims do not create runner-owned command or artifact
+records.
+
+Committed v2 tasks bind the execution profile and verification requirements to
+`trusted_base_sha`. The runner records actual commands and hashes retained
+outputs; the bundle validator recomputes coverage from those required slots.
+All ten agents and all eight gates must pass. A non-pass retained provider
+verdict cannot become a pass by editing a summary. The current provenance
+population is explicitly `synthetic-regression`; an empty population blocks,
+and synthetic evidence cannot certify staging. R6 owns the separately reviewed
+staging adapter.
+
+The legacy policy projection below remains the input to `validate_run.py` and
+is retained inside the v2 aggregate. It is insufficient by itself for a v2
+release: consumers must also call `validate_evidence_bundle` with trusted inputs
+and retained evidence. Direct coordinator task records without the complete v2
+verification contract cannot be invoked through the local runner.
+
+## Legacy policy manifest projection
+
+The policy evaluator consumes a JSON manifest with this shape:
 
 ```json
 {

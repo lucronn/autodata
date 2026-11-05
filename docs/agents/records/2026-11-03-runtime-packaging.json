@@ -1,0 +1,20 @@
+{
+  "goal": "Correct the disposable Codex runtime missing-bubblewrap prerequisite without changing its reviewed adapter, requested profile or container isolation, then run one bounded success retry.",
+  "plan_ref": "docs/superpowers/plans/2026-11-03-runtime-packaging.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/agents/runner-interface.md",
+    "docs/verification/2026-11-03-agent-evidence-hardening.md",
+    "docs/superpowers/plans/2026-11-03-production-release-orchestration.md"
+  ],
+  "todo": [
+    "Preserve the actual missing-bubblewrap startup failure and synchronize this plan, Issue186, Project8 and canonical runtime evidence before a fresh committed-base preflight.",
+    "Add only bubblewrap to the scratch Dockerfile package list, build a distinct image, and record its actual package/image/CLI versions offline without authentication.",
+    "Preserve the nonroot read-only container, no added capabilities or privileges, exact Sol6.1 medium Fast profile, and strict rejection of every warning.",
+    "Run one bounded success retry from the independently promoted adapter bytes in a fresh clone, retain actual protocol/decision evidence and independently replay at the original evidence root.",
+    "Record pass or actual new blocking prerequisite without retry loops; unavailable-profile and interruption acceptance remain separate requirements."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-03T11:08:22.298096+00:00"
+}

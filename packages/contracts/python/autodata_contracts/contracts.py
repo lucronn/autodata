@@ -10,7 +10,7 @@ DATA_STATE_VALUES = ('normalized', 'source_unnormalized', 'stale', 'normalizing'
 ANSWER_STATUS_VALUES = ('options', 'processing', 'available', 'partial', 'complete', 'failed', 'needs_review',)
 DATASET_AVAILABILITY_VALUES = ('purchased', 'fast_lane_processing', 'viewable', 'enriching', 'complete', 'failed', 'needs_review', 'revoked',)
 SECTION_STATUS_VALUES = ('pending', 'processing', 'viewable', 'complete', 'failed', 'needs_review',)
-EVENT_SUBJECTS = ('dataset.fast.requested', 'dataset.viewable', 'dataset.deep.requested', 'dataset.knowledge.fallback.requested', 'dataset.section.published', 'dataset.enrichment.failed', 'dataset.review.requested', 'dataset.revision.revoked', 'chat.answer.updated', 'chat.vehicle.options', 'chat.worker.progress', 'chat.price.refresh.requested', 'chat.procedure.published', 'chat.visual.published',)
+EVENT_SUBJECTS = ('dataset.fast.requested', 'dataset.viewable', 'dataset.deep.requested', 'dataset.knowledge.fallback.requested', 'dataset.section.published', 'dataset.enrichment.failed', 'dataset.review.requested', 'dataset.revision.revoked', 'chat.answer.updated', 'chat.vehicle.options', 'chat.worker.progress', 'chat.price.refresh.requested', 'chat.procedure.published', 'chat.visual.published', 'catalog.article.published',)
 KNOWLEDGE_RESULT_KIND_VALUES = ('article', 'procedure',)
 ENTITLEMENT_STATUS_VALUES = ('active', 'revoked',)
 FEEDBACK_CATEGORY_VALUES = ('correction', 'missing', 'quality', 'safety',)
@@ -275,3 +275,22 @@ class ChatSelection:
     selection_type: str
     option_number: int | None
     vehicle_id: str | None = None
+
+ARTICLE_PROCESSING_STATE_VALUES = ('queued', 'fetching_source', 'normalizing', 'rewriting', 'validating', 'publishing', 'completed', 'failed', 'needs_review')
+ARTICLE_CONTENT_ORIGIN_VALUES = ('source', 'canonical')
+ARTICLE_REVIEW_STATUS_VALUES = ('UNREVIEWED', 'APPROVED', 'REJECTED')
+CATALOG_ARTICLE_PUBLISHED_REQUIRED_FIELDS = ('event_id', 'event_type', 'event_version', 'occurred_at', 'producer', 'correlation_id', 'idempotency_key', 'canonical_article_id', 'source_revision_id', 'canonical_revision_id', 'review_status')
+
+@dataclass(frozen=True)
+class CatalogArticlePublished:
+    event_id: str
+    event_type: str
+    event_version: int
+    occurred_at: str
+    producer: str
+    correlation_id: str
+    idempotency_key: str
+    canonical_article_id: str
+    source_revision_id: str
+    canonical_revision_id: str
+    review_status: str

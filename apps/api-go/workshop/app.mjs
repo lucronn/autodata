@@ -1,746 +1,1168 @@
-import { articlePresentation, configurationLabel, filterArticles, hasSourceReference, localImageURL, readCollection, requestJSON, sourceReferenceURL } from './catalog.mjs';
-import { loadingProgress } from './progress.mjs';
+import {
+  articlePresentation,
+  configurationLabel,
+  filterArticles,
+  localImageURL,
+  readCollection,
+  requestJSON,
+  requestArticleJSON,
+  sourceReferenceURL,
+} from "./catalog.mjs";
+import { loadingProgress } from "./progress.mjs";
+import { createSession } from "./auth.mjs";
+import {
+  createCheckout,
+  validQuote,
+  validScope,
+  validLibrary,
+  purchaseConfiguration,
+  pollOrder,
+  uuid,
+} from "./commerce.mjs";
+import {
+  NavigationGeneration,
+  readArticle,
+  readableArticle,
+  processingArticle,
+} from "./article-read.mjs";
 
-const $ = id => document.getElementById(id);
-const names = ['year', 'make', 'model', 'configuration'];
-const singular = { year: 'year', make: 'make', model: 'model', configuration: 'engine / trim' };
-const plural = { year: 'years', make: 'makes', model: 'models', configuration: 'configurations' };
-const parents = { make: 'year', model: 'make', configuration: 'model' };
-const rows = { year: [], make: [], model: [], configuration: [] };
-let articles = [], vehicle = null, active = null, retryAction = null;
-let sourceReviewLoadedURL = '';
-
-function token() {
-  try { return localStorage.getItem('autodata-auth-token') || 'local:demo:dataset_viewer'; }
-  catch { return 'local:demo:dataset_viewer'; }
-}
-
-function element(tag, text, className) {
-  const node = document.createElement(tag);
-  if (text !== undefined) node.textContent = text;
-  if (className) node.className = className;
-  return node;
-}
-
-function setStatus(text, tone = 'ready', retry = null) {
-  $('activity-text').textContent = text;
-  $('activity').dataset.tone = tone;
-  document.body.dataset.busy = String(tone === 'loading');
-  $('loading-progress').hidden = tone !== 'loading';
-  $('retry').hidden = !retry;
-  $('cancel').hidden = tone !== 'loading';
+const $ = (id) => document.getElementById(id);
+const names = ["year", "make", "model", "configuration"];
+const rows = Object.fromEntries(names.map((name) => [name, []]));
+const navigation = new NavigationGeneration();
+const checkout = createCheckout();
+let vehicle = null,
+  articles = [],
+  currentArticle = null,
+  renderedRevision = "",
+  sourceURL = "",
+  sourceRevision = "",
+  sourceData = null;
+let quote = null,
+  merchant = null,
+  access = "unknown",
+  libraryCursor = null,
+  libraryItems = [],
+  currentOrder = "",
+  retryAction = null,
+  renewalUsed = false,
+  renewal = null,
+  renewalFailures = new Set(),
+  viewGeneration = null,
+  sessionEstablished = false,
+  signingIn = false;
+const element = (tag, text, className) => {
+  const n = document.createElement(tag);
+  if (text !== undefined) n.textContent = String(text);
+  if (className) n.className = className;
+  return n;
+};
+const session = createSession({
+  onChange(state) {
+    $("signin").hidden = state.authenticated;
+    $("signin").disabled = !state.ready;
+    $("signin").textContent = state.confirm
+      ? "Confirm Google sign-in"
+      : "Sign in with Google";
+    $("signout").hidden = !state.authenticated && !state.csrf;
+    $("account-status").textContent = state.message;
+    renderPurchase();
+  },
+});
+const scope = () => ({
+  configuration_id: vehicle?.id,
+  region: vehicle?.region,
+});
+const articlePath = (id) =>
+  `/v1/catalog/vehicles/${encodeURIComponent(vehicle.id)}/articles${id ? `/${encodeURIComponent(id)}` : ""}`;
+function status(
+  text,
+  { error = false, busy = false, retry = null, complete = false } = {},
+) {
+  $("activity-text").textContent = text;
+  $("activity").dataset.tone = error ? "error" : busy ? "loading" : "ready";
+  $("critical-error").textContent = error ? text : "";
+  if (complete) $("completion-status").textContent = text;
+  $("cancel").hidden = !busy;
+  $("retry").hidden = !retry;
   retryAction = retry;
+  $("loading-progress").hidden = !busy;
+  document.body.dataset.busy = String(busy);
 }
-
-function resetLoadingProgress() {
-  $('loading-progress').hidden = true;
-  $('loading-progress-catalog').hidden = true;
-  $('loading-progress-bar').value = 0;
-  $('loading-progress-catalog-bar').value = 0;
-  $('loading-progress-percent').textContent = '0%';
-  $('loading-progress-catalog-percent').textContent = '0%';
-  $('loading-progress-detail').textContent = '';
-  $('loading-progress-catalog-detail').textContent = '';
+function stage(key) {
+  const p = loadingProgress(key);
+  $("loading-progress-stage").textContent =
+    `Step ${p.step} of ${p.total} · ${p.label}`;
+  $("loading-progress-bar").removeAttribute("value");
 }
-
-function catalogProgressDetail(progress) {
-  if (!progress || typeof progress !== 'object') return '';
-  const processed = Number(progress.processed || 0).toLocaleString();
-  const total = Number(progress.total || 0).toLocaleString();
-  const title = String(progress.current_title || 'Untitled article');
-  if (progress.phase === 'indexing') return progress.detail || 'Retrieving the article index from AutoAPItwo…';
-  if (progress.phase === 'normalizing') {
-    return progress.detail || `Building catalog… Processing article ${processed}/${total} — ${title}`;
-  }
-  if (progress.phase === 'persisting') return progress.detail || `Saving ${total} catalog articles…`;
-  return progress.detail || '';
+function show(id) {
+  for (const section of ["welcome", "catalog", "reader", "library"])
+    $(section).hidden = section !== id;
 }
-
-function setLoadingProgress(stageKey, options = {}) {
-  const progress = loadingProgress(stageKey, options);
-  const detail = options.detail || `Working on ${progress.label.toLocaleLowerCase()}…`;
-  const summary = `Step ${progress.step} of ${progress.total} · ${progress.label} · ${progress.percent}%`;
-  const catalog = stageKey === 'articles' && options.catalogProgress && typeof options.catalogProgress === 'object'
-    ? options.catalogProgress
-    : null;
-  const catalogPercent = catalog ? Math.min(100, Math.max(0, Number(catalog.percent) || 0)) : 0;
-  const catalogDetail = catalogProgressDetail(catalog);
-  $('loading-progress').hidden = false;
-  $('loading-progress-stage').textContent = summary;
-  $('loading-progress-percent').textContent = `${progress.percent}%`;
-  $('loading-progress-bar').value = progress.percent;
-  const displayDetail = catalogDetail ? `${catalogDetail} · Total progress ${progress.percent}%` : detail;
-  $('loading-progress-bar').setAttribute('aria-valuetext', `${summary}. ${displayDetail}`);
-  $('loading-progress-detail').textContent = displayDetail;
-  $('loading-progress-catalog').hidden = !catalog;
-  if (catalog) {
-    $('loading-progress-catalog-percent').textContent = `${catalogPercent}%`;
-    $('loading-progress-catalog-bar').value = catalogPercent;
-    $('loading-progress-catalog-bar').setAttribute('aria-valuetext', `${catalogPercent}% catalog progress. ${catalogDetail}`);
-    $('loading-progress-catalog-detail').textContent = catalogDetail;
-  }
-  $('activity-text').textContent = `${summary} — ${displayDetail}`;
+function clearProtected() {
+  articles = [];
+  currentArticle = null;
+  renderedRevision = "";
+  sourceData = null;
+  sourceURL = "";
+  sourceRevision = "";
+  renewalUsed = false;
+  renewal = null;
+  for (const id of [
+    "articles",
+    "article-content",
+    "source-review-frame",
+    "reference-data",
+    "library-items",
+  ])
+    $(id).replaceChildren();
+  $("article-title").textContent = "";
+  $("catalog-count").textContent = "";
+  $("article-note").textContent = "";
+  $("source-review-meta").textContent = "";
+  $("source-review").hidden = true;
+  $("source-review-frame").hidden = true;
+  $("print").disabled = true;
+  document.body.dataset.printable = "false";
+  $("reader").hidden = true;
+  $("catalog").hidden = true;
+  $("source-review-link").removeAttribute("href");
+  libraryItems = [];
+  libraryCursor = null;
+  access = "unknown";
 }
-
-function show(section) {
-  for (const id of ['welcome', 'catalog', 'reader']) $(id).hidden = id !== section;
+function invalidate() {
+  navigation.clear();
+  clearProtected();
 }
-
-async function run(work, retry) {
-  active?.abort();
-  const controller = new AbortController();
-  active = controller;
-  try { await work(controller.signal); }
-  catch (error) {
-    if (!controller.signal.aborted) setStatus(error.message || 'The catalog could not be loaded. Try again.', 'error', retry);
+async function operation(work, retry = null) {
+  const g = navigation.next();
+  viewGeneration = g;
+  try {
+    await work(g);
+  } catch (error) {
+    if (!g.current()) return;
+    if ([401, 403, 410].includes(error.status)) {
+      clearProtected();
+      show("welcome");
+      if (error.status === 401) {
+        session.clear();
+        void session.bootstrap();
+      }
+    }
+    if (error.code === "ENTITLEMENT_REQUIRED") {
+      access = "missing";
+      show("welcome");
+      renderPurchase();
+      status("This vehicle is available to purchase.");
+    } else if (error.code === "ENTITLEMENT_REVOKED") {
+      access = "revoked";
+      show("welcome");
+      renderPurchase();
+      status("Access to this vehicle has been revoked. Contact support.", {
+        error: true,
+      });
+    } else
+      status(error.message || "AutoData is unavailable. Try again.", {
+        error: true,
+        retry,
+      });
   } finally {
-    if (active === controller) { $('cancel').hidden = true; document.body.dataset.busy = 'false'; }
+    if (g.current()) {
+      $("cancel").hidden = true;
+      $("loading-progress").hidden = true;
+      document.body.dataset.busy = "false";
+    }
   }
 }
-
-function selection(name) { return rows[name].find(row => String(row.id ?? row.year) === $(name).value); }
-function vehicleName() {
-  return vehicle ? [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ') : '';
+function updateURL({ article = "", replace = false, library = false } = {}) {
+  const p = new URLSearchParams();
+  for (const name of names) if ($(name).value) p.set(name, $(name).value);
+  if (vehicle?.id) {
+    p.set("configuration", vehicle.id);
+    p.set("region", vehicle.region);
+  }
+  if (article) p.set("article", article);
+  if ($("search").value) p.set("q", $("search").value);
+  if (library) p.set("view", "library");
+  const url = `${location.pathname}${p.size ? `?${p}` : ""}`;
+  if (url !== location.pathname + location.search)
+    history[replace ? "replaceState" : "pushState"](null, "", url);
 }
-function pathTo(name) {
-  const year = encodeURIComponent($('year').value);
-  const make = encodeURIComponent($('make').value);
-  const model = encodeURIComponent($('model').value);
+function populate(name, items, desired = "") {
+  rows[name] =
+    name === "year" ? [...items].sort((a, b) => b.year - a.year) : items;
+  $(name).replaceChildren(
+    new Option(
+      `Choose ${name === "configuration" ? "engine / trim" : name}`,
+      "",
+    ),
+    ...rows[name].map(
+      (item) =>
+        new Option(
+          name === "year"
+            ? item.year
+            : name === "configuration"
+              ? configurationLabel(item)
+              : item.name,
+          String(item.id ?? item.year),
+        ),
+    ),
+  );
+  $(name).disabled = !items.length;
+  if (desired) $(name).value = desired;
+}
+function selectorPath(name) {
+  const year = encodeURIComponent($("year").value),
+    make = encodeURIComponent($("make").value),
+    model = encodeURIComponent($("model").value);
   return {
-    year: '/v1/catalog/years',
+    year: "/v1/catalog/years",
     make: `/v1/catalog/years/${year}/makes?region=US`,
     model: `/v1/catalog/years/${year}/makes/${make}/models?region=US`,
     configuration: `/v1/catalog/years/${year}/makes/${make}/models/${model}/configurations?region=US`,
   }[name];
 }
-
-function clearAfter(name) {
-  active?.abort();
-  for (const next of names.slice(names.indexOf(name) + 1)) {
-    rows[next] = [];
-    $(next).replaceChildren(new Option(`Choose ${parents[next]} first`, ''));
-    $(next).disabled = true;
-  }
-  resetCatalogView();
-  document.title = 'AutoData — The workshop reference';
-  show('welcome');
-}
-
-function resetCatalogView() {
-  vehicle = null; articles = [];
-  $('search').value = '';
-  $('catalog-count').textContent = '';
-  $('articles').replaceChildren();
-  $('article-content').replaceChildren();
-  $('no-results').hidden = true;
-  resetLoadingProgress();
-  show('welcome');
-}
-
-function updateURL({ article = '', replace = false } = {}) {
-  const params = new URLSearchParams();
-  for (const name of names) if ($(name).value) params.set(name, $(name).value);
-  if (article) params.set('article', article);
-  if ($('search').value) params.set('q', $('search').value);
-  const url = `${location.pathname}${params.size ? `?${params}` : ''}`;
-  if (url !== location.pathname + location.search) history[replace ? 'replaceState' : 'pushState'](null, '', url);
-}
-
-function populate(name, items) {
-  const previous = $(name).value;
-  rows[name] = name === 'year' ? [...items].sort((a, b) => b.year - a.year) : items;
-  const options = [new Option(`Choose ${singular[name]}`, '')];
-  for (const item of rows[name]) {
-    options.push(new Option(name === 'year' ? String(item.year) : name === 'configuration' ? configurationLabel(item) : item.name, String(item.id ?? item.year)));
-  }
-  $(name).replaceChildren(...options);
-  $(name).value = previous;
-  $(name).disabled = !items.length;
-}
-
-async function loadOptions(name, signal, desired = '') {
-  setStatus(`Loading ${plural[name]}…`, 'loading');
-  setLoadingProgress(name, { detail: `Requesting the ${plural[name]} catalog…` });
-  $(name).replaceChildren(new Option(`Loading ${plural[name]}…`, ''));
+async function loadOptions(name, g, desired = "") {
+  status(`Loading ${name} choices…`, { busy: true });
+  stage(name);
   $(name).disabled = true;
-  const retry = () => run(s => loadOptions(name, s), retry);
-  const data = await readCollection(() => requestJSON(pathTo(name), { signal, token: token(), timeout: 20000 }), {
-    signal, desired,
-    onUpdate(result, meta) {
-      populate(name, result.items);
-      const detail = result.hydrating && !result.complete
-        ? result.items.length ? `${result.items.length} ${plural[name]} currently available; checking saved catalog coverage…` : `Checking the saved ${plural[name]} catalog…`
-        : `${result.items.length} ${plural[name]} ready.`;
-      setLoadingProgress(name, { ...meta, hydrating: Boolean(result.hydrating && !result.complete), complete: result.complete === true, detail });
-    },
-  });
-  signal.throwIfAborted();
-  if (!data.items.length) {
-    setStatus(data.timedOut ? `Still waiting for the ${plural[name]} catalog. Retry to check again.` : `No ${plural[name]} are available for this selection. Try again or change the vehicle.`, 'error', retry);
-  } else if (data.complete === false) {
-    setStatus(`${data.items.length} ${plural[name]} available. The list may still be incomplete.`, 'ready', retry);
-  } else {
-    setStatus(`${data.items.length} ${plural[name]} available. Choose ${singular[name]} to continue.`);
-  }
-  if (desired) {
-    const match = data.items.find(item => String(item.id ?? item.year) === desired);
-    if (!match) throw new Error(`The saved ${singular[name]} is unavailable. Choose another option above.`);
-    $(name).value = desired;
-  }
-}
-
-async function loadArticles(signal, articleID = '') {
-  vehicle = selection('configuration');
-  if (!vehicle?.vehicle_id) {
-    resetCatalogView();
-    setStatus('Choose an engine / trim to open the article index.');
-    return;
-  }
-  $('vehicle-caption').textContent = `${vehicleName()} / ${configurationLabel(vehicle)}`;
-  $('catalog-count').textContent = 'Loading articles…';
-  $('articles').replaceChildren(); $('no-results').hidden = true;
-  show('catalog');
-  setStatus('Opening the vehicle’s article index…', 'loading');
-  setLoadingProgress('articles', { detail: 'Requesting the vehicle article catalog…' });
-  const retry = () => run(s => loadArticles(s), retryArticles);
-  const data = await readCollection(
-    () => requestJSON(`/v1/catalog/vehicles/${encodeURIComponent(vehicle.vehicle_id)}/articles`, { signal, token: token(), timeout: 20000 }),
+  const result = await readCollection(
+    () => requestJSON(selectorPath(name), { signal: g.signal }),
     {
-      signal,
-      onUpdate(result, meta) {
-        const hydrating = Boolean(result.hydrating && !result.complete);
-        const progressDetail = catalogProgressDetail(result.progress);
-        const waitingDetail = progressDetail || 'Retrieving the full article list from the configured sources…';
-        if (result.items.length) {
-          articles = result.items; renderArticles();
-          setLoadingProgress('articles', {
-            ...meta,
-            hydrating,
-            complete: result.complete === true,
-            catalogProgress: result.progress,
-            detail: hydrating ? `${result.items.length.toLocaleString()} articles currently available. ${waitingDetail}` : `${result.items.length.toLocaleString()} articles ready.`,
-          });
-          if (!hydrating) setStatus('Article index ready.');
-        } else if (result.hydrating) {
-          setLoadingProgress('articles', {
-            ...meta,
-            hydrating: true,
-            catalogProgress: result.progress,
-            detail: waitingDetail,
-          });
-        }
+      signal: g.signal,
+      desired,
+      onUpdate(data) {
+        if (g.current()) populate(name, data.items, desired);
       },
     },
   );
-  signal.throwIfAborted();
-  if (!Array.isArray(data.items)) throw new Error('The article index could not be read. Try again.');
-  articles = data.items; renderArticles();
-  const finalProgressDetail = catalogProgressDetail(data.progress);
-  if (!articles.length) {
-    const detail = finalProgressDetail || (data.timedOut
-      ? 'The full article list is still being retrieved from the configured sources.'
-      : 'No articles were returned for this vehicle.');
-    setStatus(`${detail} Retry to check again.`, 'error', retry);
-  } else if (data.timedOut) {
-    setStatus(`${articles.length.toLocaleString()} articles are available so far. ${finalProgressDetail || 'The full article list is still being retrieved in the background.'} Retry to check again.`, 'ready', retry);
+  if (!g.current()) return;
+  if (
+    desired &&
+    !result.items.some((item) => String(item.id ?? item.year) === desired)
+  )
+    throw new Error(
+      "This saved vehicle choice is unavailable. Choose another vehicle.",
+    );
+  status(
+    result.items.length
+      ? "Choose your vehicle to continue."
+      : "No choices are available. Try again.",
+    { retry: () => restoreRoute() },
+  );
+}
+function renderPurchase() {
+  if (!$("purchase")) return;
+  $("purchase").hidden = !validScope(scope());
+  $("purchase-selection").textContent =
+    quote?.configuration_label ||
+    [
+      vehicle?.year,
+      vehicle?.make,
+      vehicle?.model,
+      configurationLabel(vehicle || {}),
+      vehicle?.region,
+    ]
+      .filter(Boolean)
+      .join(" / ");
+  const priced = validQuote(quote, scope()),
+    configured = purchaseConfiguration(merchant, quote);
+  $("purchase-price").textContent = priced
+    ? "$20 USD · one-time"
+    : "Price is currently unavailable.";
+  $("purchase-terms").hidden = !configured;
+  $("purchase-message").textContent =
+    access === "revoked"
+      ? "Access revoked. Contact the published support address."
+      : access === "owned"
+        ? "Owned. Open your articles without another purchase."
+        : !configured
+          ? "Purchasing is currently unavailable. You can keep browsing."
+          : !session.state.authenticated
+            ? "Sign in to check access and purchase for your account."
+            : access === "missing"
+              ? "One purchase for this exact configuration and region. No renewal is required, subject to published terms and source availability."
+              : "Checking access. Try again if the service is unavailable.";
+  $("purchase-action").textContent = !session.state.authenticated
+    ? "Sign in with Google"
+    : access === "owned"
+      ? "Open articles"
+      : "Buy for $20 USD";
+  $("purchase-action").disabled = !session.state.authenticated
+    ? !session.state.ready
+    : access === "owned"
+      ? false
+      : !(access === "missing" && priced && configured);
+  $("policy-links").replaceChildren();
+  if (configured)
+    for (const [field, label] of [
+      ["terms_url", "Terms"],
+      ["privacy_url", "Privacy"],
+      ["refund_url", "Refund policy"],
+      ["contact_url", "Contact"],
+    ]) {
+      const link = element("a", label);
+      link.href = merchant[field];
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      $("policy-links").append(link, document.createTextNode(" · "));
+    }
+  $("tax-notice").textContent = configured ? merchant.tax_notice : "";
+}
+async function selectVehicle(g, articleID = "") {
+  clearProtected();
+  quote = null;
+  $("agreement").checked = false;
+  renderPurchase();
+  if (!validScope(scope())) return;
+  const selected = scope();
+  try {
+    const q = await requestJSON(
+      `/v1/workshop/quote?configuration_id=${selected.configuration_id}&region=${selected.region}`,
+      { signal: g.signal },
+    );
+    if (!g.current()) return;
+    quote = validQuote(q, selected) ? q : null;
+  } catch (error) {
+    if (g.signal.aborted) throw error;
   }
-  else setStatus(`Article index ready for ${vehicleName()}.`);
-  if (articleID) await loadArticle(articleID, signal);
-}
-
-function retryArticles() { run(s => loadArticles(s), retryArticles); }
-
-function kindLabel(kind) {
-  return ({ procedure: 'Procedure', repair_procedure: 'Procedure', specification: 'Specification', technical_service_bulletin: 'Bulletin', wiring_diagram: 'Wiring diagram' })[kind] || String(kind || 'Reference').replaceAll('_', ' ').replace(/^./, char => char.toUpperCase());
-}
-
-const articleCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
-
-function displayLabel(value) {
-  return String(value || '')
-    .replaceAll('_', ' ')
-    .replaceAll('-', ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/\b\w/g, character => character.toUpperCase());
-}
-
-const titleCategoryRules = [
-  ['Scheduled maintenance', /\b\d{3,6}\s*(?:miles?|kilometers?|km)\b|\bmaintenance\b|\b(?:routine|normal|severe) service\b/i],
-  ['Safety systems', /\b(?:airbags?|srs|supplemental restraints?|seat ?belts?|occupant restraints?|restraints?|safety)\b/i],
-  ['Parts and labor', /\bparts?\s*(?:and|&)\s*labor\b/i],
-  ['Air conditioning and heating', /\b(?:a\s*\/\s*c|air conditioning|evaporator|condenser|blower|heater|hvac|compressor|refrigerant|manifold gauge|evacuating system|charging the system)\b/i],
-  ['Brakes', /\b(?:brakes?|abs|anti-?lock|calipers?|rotors?|master cylinders?|brake pads?|brake lines?|park brake|(?:front|rear|wheel) speed sensor)\b/i],
-  ['Cooling system', /\b(?:cooling system|cooling fans?|cooling fan motors?|cooling fan relays?|radiator|thermostat|coolant|water pump)\b/i],
-  ['Transmission and drivetrain', /\b(?:transmissions?|clutch(?:es)?|torque converters?|differentials?|axles?|transfer(?: cases?)?|driveshafts?|drive shafts?|transaxles?|planetary gears?|shift solenoids?|a\/t|m\/t|atf|drivetrain|gearbox|pinion|ring gear|shift interlock|shift lock|lock-up|automatic shift schedule|valve body|magnetic clutch|propeller shaft|(?:input|output) shaft|extension housing)\b/i],
-  ['Fuel and emissions', /\b(?:fuel|emissions?|oxygen|o2|catalyst|catalytic|evap|injectors?|egr|mil on|emission control)\b/i],
-  ['Steering and suspension', /\b(?:steering|suspension|shocks?|struts?|tie rods?|ball joints?|control arms?|wheel alignment|wheel balance|power steering)\b/i],
-  ['Body and interior', /\b(?:doors?|windows?|seats?|sunvisors?|dashboard|trim|mirrors?|hood|trunks?|bumpers?|windshields?|wipers?|washers?|roof|sunroof|paint|rust|acid rain|keyless|keys?|defogger|wind noise|wind (?:turbulence|whistle)|instrument cluster|instrument panel|cruise control|radio|audio|cassette|sound systems?|clock|speaker|am[- ]?fm|am or fm|no power coming in|headlights?|horns?|lights?|locks?|body|frame|fender|interior|antitheft|arming|disarming|homelink|cigarette lighter|foamed material)\b/i],
-  ['Engine', /\b(?:engine|air induction|oil|timing|camshafts?|crankshafts?|valves?|cylinders?|pistons?|spark plugs?|ignition|throttles?|accelerators?|intake|exhaust|drive belts?|idle(?:-up)?|oil pressure|gaskets?|breathers?|engine controls?|spark control|connecting rod)\b/i],
-  ['Specifications and reference', /\b(?:specifications?|specs|service data|torque(?! converter)|fluid capacities?|capacities|dimensions|tightening|fluid levels?|fluid pressures?|clearance|pressure|volume|standard voltage|specific gravity)\b/i],
-  ['Diagnostics and service', /\b(?:dtc|p\d{4}|p codes?|trouble codes?|diagnos(?:is|tic|tics|e|ing)?|diagnostic|symptoms?|troubleshoot(?:ing)?|inspections?|test(?:ing|s)?|checks?|warning systems?|indicator checks?|how to proceed|problem symptoms?|ecu data monitor|monitor descriptions?|obd|readiness|preliminary checks?|code definition|mode \$06|normal mode)\b/i],
-  ['Electrical', /\b(?:electrical|batter(?:y|ies)|alternators?|starters?|fuses?|relays?|wiring|harness|circuits?|sockets?|sensors?|switches?|lamps?|ground|power distribution|computer data|ecm|ecu|electronic control|terminals?|speed sensor|indicator lamp|warning light|junction block|j\/b|r\/b|schematic|tachometer|magnetic switch|brush(?:es)?|mobile communications)\b/i],
-  ['General service procedures', /\b(?:adjustments?|after assembly|assemble|assembly|basic subassembly|cleaning|disassembl(?:e|y)|disposal(?: procedures?)?|general procedure|installations?|on[- ]vehicle|overhaul|preparation for disassembly|procedures?|removals?|replacement|reassembly|service and repair)\b/i],
-  ['Tools and service information', /\b(?:tools?|equipment|sst|adapter|gauge|service hints?|owner instructions?|owners instructions?|manual corrections?)\b/i],
-];
-
-function articleCategory(item) {
-  const component = String(item.component || '').trim();
-  if (component) return displayLabel(component);
-  const title = String(item.title || '').trim();
-  const inferred = titleCategoryRules.find(([, pattern]) => pattern.test(title));
-  if (inferred) return inferred[0];
-  const kind = kindLabel(item.kind);
-  return ({
-    Reference: 'General reference',
-    Procedure: 'General service procedures',
-    Specification: 'Specifications and reference',
-    'Wiring diagram': 'Electrical',
-  })[kind] || kind;
-}
-
-function compareArticles(left, right) {
-  return articleCollator.compare(left.title || 'Untitled article', right.title || 'Untitled article')
-    || articleCollator.compare(kindLabel(left.kind), kindLabel(right.kind))
-    || articleCollator.compare(left.id || '', right.id || '');
-}
-
-function articleGroups(items) {
-  const groups = new Map();
-  for (const item of items) {
-    const label = articleCategory(item);
-    const key = label.toLocaleLowerCase();
-    if (!groups.has(key)) groups.set(key, { label, items: [] });
-    groups.get(key).items.push(item);
+  if (!g.current()) return;
+  renderPurchase();
+  if (!session.state.authenticated) {
+    show("welcome");
+    status("Sign in to check access to your selected vehicle.");
+    return;
   }
-  return [...groups.values()]
-    .map(group => ({ ...group, items: group.items.slice().sort(compareArticles) }))
-    .sort((left, right) => articleCollator.compare(left.label, right.label));
+  await loadArticles(g, articleID);
 }
-
-function renderCategoryArticles(list, group) {
-  for (const item of group.items) {
-    const li = element('li'), link = element('a');
-    link.href = articleURL(item.id);
-    link.append(element('span', item.title || 'Untitled article'), element('span', kindLabel(item.kind), 'article-type'));
-    link.addEventListener('click', event => {
-      if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-      event.preventDefault(); openArticle(item.id);
+async function loadArticles(g, articleID = "") {
+  if (!g.current()) return;
+  $("completion-status").textContent = "";
+  stage("articles");
+  status("Opening your article index…", { busy: true });
+  const data = await readCollection(
+    () => requestJSON(articlePath(), { signal: g.signal }),
+    {
+      signal: g.signal,
+      desired: articleID,
+      onUpdate(result) {
+        if (!g.current()) return;
+        articles = result.items;
+        access = "owned";
+        renderPurchase();
+        show("catalog");
+        renderArticles();
+      },
+    },
+  );
+  if (!g.current()) return;
+  if (articleID) {
+    if (!articles.some((item) => item.id === articleID))
+      throw new Error("This article is unavailable for the selected vehicle.");
+    await loadArticle(articleID, g);
+  } else if (data.complete === true) {
+    status(data.items.length ? "Article index ready." :
+      "Article index ready. No articles are currently available.", { complete: true });
+  } else if (data.progress?.status === "failed" && data.progress?.retryable !== true) {
+    status("Your article index could not be prepared. Available articles can still be opened.", {
+      complete: false,
     });
-    li.append(link); list.append(li);
+  } else {
+    status("Your article index is still being prepared. Check again.", {
+      complete: false,
+      retry: () => operation((next) => loadArticles(next)),
+    });
   }
-}
-
-function articleURL(id) {
-  const url = new URL(location.href);
-  url.searchParams.set('article', id);
-  return url.pathname + url.search;
 }
 
 function renderArticles() {
-  const filtered = filterArticles(articles, $('search').value);
-  const groups = articleGroups(filtered);
-  const fragment = document.createDocumentFragment();
-  const hasSearch = Boolean($('search').value.trim());
-  for (const group of groups) {
-    const category = element('details', undefined, 'article-category');
-    category.open = hasSearch;
-    const summary = element('summary', undefined, 'article-category-summary');
-    summary.append(element('h3', group.label), element('span', `${group.items.length.toLocaleString()} article${group.items.length === 1 ? '' : 's'}`, 'article-category-count'));
-    category.append(summary);
-    const list = element('ul', undefined, 'article-list');
-    if (hasSearch) renderCategoryArticles(list, group);
-    category.addEventListener('toggle', () => {
-      if (category.open) {
-        if (!list.childElementCount) renderCategoryArticles(list, group);
-      } else {
-        list.replaceChildren();
-      }
+  $("vehicle-caption").textContent =
+    quote?.configuration_label || $("purchase-selection").textContent;
+  const items = filterArticles(articles, $("search").value);
+  const list = element("ul", undefined, "article-list");
+  for (const item of items) {
+    const li = element("li"),
+      link = element("a", item.title || "Untitled article");
+    const url = new URL(location.href);
+    url.searchParams.set("article", item.id);
+    link.href = url.pathname + url.search;
+    link.addEventListener("click", (event) => {
+      if (
+        event.button ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        event.altKey
+      )
+        return;
+      event.preventDefault();
+      openArticle(item.id);
     });
-    category.append(list); fragment.append(category);
+    li.append(link);
+    list.append(li);
   }
-  $('articles').replaceChildren(fragment);
-  $('catalog-count').textContent = $('search').value.trim()
-    ? `${filtered.length.toLocaleString()} matching articles across ${groups.length.toLocaleString()} categories / ${articles.length.toLocaleString()} in this vehicle`
-    : `${articles.length.toLocaleString()} articles across ${groups.length.toLocaleString()} categories. Choose a category to open.`;
-  $('no-results').hidden = filtered.length > 0 || !articles.length;
+  $("articles").replaceChildren(list);
+  $("catalog-count").textContent = `${items.length} articles`;
+  $("no-results").hidden = items.length > 0;
 }
-
-function openArticle(id) {
-  updateURL({ article: id });
-  run(s => loadArticle(id, s), () => openArticle(id));
+const assetID = (image) =>
+  image?.id || image?.image_id || image?.asset_id || "";
+function imageMap(article) {
+  return [
+    ...(article?.images || []),
+    ...(article?.steps || []).flatMap((step) => step.images || []),
+  ];
 }
-
-function addImage(parent, image, caption) {
-  const url = localImageURL(image?.url, location.origin);
-  const figure = element('figure');
-  if (url) {
-    const img = element('img'); img.src = url; img.alt = caption; img.loading = 'lazy'; img.referrerPolicy = 'no-referrer';
-    img.addEventListener('error', () => { img.replaceWith(element('p', 'This illustration could not be loaded.', 'image-missing')); });
-    figure.append(img, element('figcaption', caption));
-  } else {
-    figure.append(element('p', 'This illustration is not available in the saved article.', 'image-missing'));
-  }
+function addImage(parent, image, caption, g) {
+  const figure = element("figure");
+  const url = localImageURL(image?.url, location.origin),
+    id = assetID(image);
+  if (url && id) {
+    const img = element("img");
+    img.dataset.assetId = id;
+    img.src = url;
+    img.alt = caption || image.alt || "Article illustration";
+    img.referrerPolicy = "no-referrer";
+    img.addEventListener("error", () => {
+      if (g.current()) void renewMedia(g, img);
+    });
+    figure.append(img);
+    if (caption) figure.append(element("figcaption", caption));
+  } else
+    figure.append(element("p", "Illustration unavailable.", "image-missing"));
   parent.append(figure);
 }
-
-function appendSourceReference(parent, block, sourceReview, seen = null) {
-  if (!sourceReview || !hasSourceReference(block)) return;
-  const href = sourceReferenceURL(sourceReview, block);
+function appendSource(parent, block, review, g) {
+  const href = sourceReferenceURL(review, block);
   if (!href) return;
-  if (seen?.has(href)) return;
-  seen?.add(href);
-  const link = element('a', 'Source ↗', 'source-reference');
-  link.href = '#source-review';
-  link.dataset.sourceUrl = href;
-  link.addEventListener('click', event => {
+  const link = element("a", "Source ↗", "source-reference");
+  link.href = "#source-review";
+  link.addEventListener("click", (event) => {
     event.preventDefault();
-    void revealSourceReview(href);
+    if (g.current())
+      void loadSource(href, g).catch((error) => handleSourceError(error, g));
   });
   parent.append(link);
 }
-
-function documentImage(images, block) {
-  const key = String(block?.image_id || block?.asset_id || '').trim();
-  return images.find(image => [image.id, image.image_id, image.asset_id, image.storage_key].some(value => value && String(value) === key)) || null;
-}
-
-function renderDocumentBlocks(parent, blocks, images, sourceReview) {
-  let list = null;
-  let listType = '';
-  const sourceReferenceSeen = new Set();
-  const flush = () => { if (list) { parent.append(list); list = null; listType = ''; } };
-  const appendListItem = (type, text, number, block) => {
-    if (!text) return;
-    if (!list || listType !== type) {
-      flush();
-      list = element(type === 'ol' ? 'ol' : 'ul', undefined, type === 'ol' ? 'procedure-steps' : 'article-list');
-      if (type === 'ol' && Number.isInteger(number)) list.start = number;
-      listType = type;
-    }
-    const li = element('li');
-    if (type === 'ol') li.append(element('span', `${number ?? list.children.length + 1}.`, 'step-number'));
-    li.append(element('p', text));
-    appendSourceReference(li, block, sourceReview, sourceReferenceSeen);
-    list.append(li);
-  };
-  for (const block of blocks) {
-    if (!block || typeof block !== 'object') continue;
-    const type = String(block.type || 'unknown');
-    if (type === 'step') {
-      appendListItem('ol', String(block.text || '').trim(), Number.isInteger(block.number) ? block.number : undefined, block);
-      continue;
-    }
-    if (type === 'ordered_list' || type === 'unordered_list') {
-      const listTypeName = type === 'ordered_list' ? 'ol' : 'ul';
-      for (const item of block.items || []) appendListItem(listTypeName, String(item || '').trim());
-      flush();
-      appendSourceReference(parent, block, sourceReview, sourceReferenceSeen);
-      continue;
-    }
-    flush();
-    if (type === 'heading') {
-      const level = Math.max(3, Math.min(6, Number(block.level) || 3));
-      parent.append(element(`h${level}`, block.text || ''));
-      appendSourceReference(parent, block, sourceReview, sourceReferenceSeen);
-    } else if (type === 'paragraph' || type === 'link') {
-      if (type === 'link' && block.href && /^\/(?!\/)/.test(block.href)) {
-        const link = element('a', block.text || ''); link.href = block.href; link.target = '_blank'; link.rel = 'noreferrer'; parent.append(link);
-      } else parent.append(element('p', block.text || ''));
-      appendSourceReference(parent, block, sourceReview, sourceReferenceSeen);
-    } else if (type === 'callout') {
-      const callout = element('aside', undefined, 'article-callout');
-      callout.append(element('strong', block.label || 'Note'), element('span', block.text || ''));
-      parent.append(callout);
-      appendSourceReference(parent, block, sourceReview, sourceReferenceSeen);
-    } else if (type === 'image') {
-      const image = documentImage(images, block);
-      if (image) addImage(parent, image, block.alt || 'Article illustration');
-      else parent.append(element('p', block.unavailable_reason || 'This illustration is not available in the saved article.', 'image-missing'));
-      appendSourceReference(parent, block, sourceReview, sourceReferenceSeen);
-    } else if (type === 'table') {
-      const table = element('table', undefined, 'article-table');
-      if (block.label) table.append(element('caption', block.label));
-      if (Array.isArray(block.columns) && block.columns.length) {
-        const head = element('thead'), row = element('tr');
-        for (const column of block.columns) row.append(element('th', column));
-        head.append(row); table.append(head);
+function renderBlocks(parent, blocks, images, review, g) {
+  const find = (ref) =>
+    images.find((image) =>
+      [image.id, image.image_id, image.asset_id].includes(
+        ref?.asset_id || ref?.image_id,
+      ),
+    );
+  for (const block of blocks || []) {
+    if (!block || typeof block !== "object") continue;
+    const type = block.type;
+    if (type === "heading")
+      parent.append(
+        element(
+          `h${Math.max(3, Math.min(6, Number(block.level) || 3))}`,
+          block.text ?? "",
+        ),
+      );
+    else if (type === "paragraph" || type === "link")
+      parent.append(element("p", block.text ?? ""));
+    else if (type === "callout") {
+      const aside = element("aside", undefined, "article-callout");
+      const content = element("div");
+      content.append(element("span", block.text ?? ""));
+      for (const ref of block.images || [])
+        addImage(content, (ref?.asset_id || ref?.image_id) ? find(ref) : undefined, ref.alt, g);
+      aside.append(element("strong", block.label ?? "Note"), content);
+      parent.append(aside);
+    } else if (type === "image")
+      addImage(parent, find(block), block.alt || block.caption, g);
+    else if (type === "step") {
+      const section = element("section", undefined, "procedure-step");
+      if (Number.isInteger(block.number))
+        section.append(element("span", `${block.number}.`, "step-number"));
+      if (block.text) section.append(element("p", block.text));
+      if (block.action) section.append(element("h3", block.action));
+      for (const text of block.instructions || [])
+        section.append(element("p", text));
+      for (const ref of block.images || [])
+        addImage(section, find(ref), ref.alt, g);
+      parent.append(section);
+    } else if (type === "ordered_list" || type === "unordered_list") {
+      const list = element(type === "ordered_list" ? "ol" : "ul");
+      for (const item of block.items || []) {
+        const li = element("li");
+        if (typeof item === "object") {
+          li.append(element("p", item.text ?? ""));
+          for (const ref of item.images || [])
+            addImage(li, find(ref), ref.alt, g);
+        } else li.textContent = String(item ?? "");
+        list.append(li);
       }
-      const body = element('tbody');
+      parent.append(list);
+      for (const ref of block.images || [])
+        addImage(parent, (ref?.asset_id || ref?.image_id) ? find(ref) : undefined, ref.alt, g);
+    } else if (type === "table") {
+      const table = element("table", undefined, "article-table");
+      if (block.label || block.caption)
+        table.append(element("caption", block.label || block.caption));
+      if (block.columns?.length) {
+        const row = element("tr"),
+          head = element("thead");
+        for (const c of block.columns) {
+          const th = element("th", typeof c === "object" ? (c.text ?? "") : c);
+          th.scope = "col";
+          row.append(th);
+        }
+        head.append(row);
+        table.append(head);
+      }
+      const body = element("tbody");
       for (const values of block.rows || []) {
-        const row = element('tr');
-        for (const value of values || []) {
-          const cell = element('td');
-          if (value && typeof value === 'object') {
-            if (value.text) cell.append(element('span', value.text));
-            for (const reference of value.images || []) {
-              const image = documentImage(images, reference);
-              if (image) addImage(cell, image, reference.alt || 'Article illustration');
-              else cell.append(element('p', 'This illustration is not available in the saved article.', 'image-missing'));
-            }
-          } else cell.textContent = String(value || '');
+        const row = element("tr");
+        for (const v of values || []) {
+          const cell = element("td");
+          if (v !== null && typeof v === "object") {
+            cell.append(element("span", v.text ?? ""));
+            for (const ref of v.images || [])
+              addImage(cell, find(ref), ref.alt, g);
+          } else cell.textContent = String(v ?? "");
           row.append(cell);
         }
         body.append(row);
       }
-      table.append(body); parent.append(table);
-      appendSourceReference(parent, block, sourceReview, sourceReferenceSeen);
-    } else if (type === 'break') {
-      parent.append(element('hr'));
-    } else if (type === 'unknown') {
-      const unknown = element('aside', undefined, 'article-callout');
-      unknown.append(element('strong', 'Source block needs review'), element('span', block.text || 'The source block was retained but has no display-specific structure.'));
-      parent.append(unknown);
-      appendSourceReference(parent, block, sourceReview, sourceReferenceSeen);
-    }
+      table.append(body);
+      const wrap = element("div", undefined, "table-scroll");
+      wrap.append(table);
+      parent.append(wrap);
+    } else if (type === "break") parent.append(element("hr"));
+    else
+      parent.append(
+        element(
+          "aside",
+          block.text ??
+            block.unavailable_reason ??
+            "This source block needs review.",
+          "article-callout",
+        ),
+      );
+    appendSource(parent, block, review, g);
   }
-  flush();
 }
-
-function renderLegacyBlocks(parent, blocks) {
-  let list = null;
-  const flush = () => { if (list) { parent.append(list); list = null; } };
-  for (const block of blocks) {
-    if (block.type === 'step') {
-      if (!list) list = element('ol', undefined, 'procedure-steps');
-      const li = element('li');
-      li.append(element('span', `${block.number}.`, 'step-number'));
-      for (const part of block.parts || []) {
-        if (part.type === 'callout') {
-          const callout = element('aside', undefined, 'article-callout');
-          callout.append(element('strong', part.label), element('span', part.text));
-          li.append(callout);
-        } else if (part.text) li.append(element('p', part.text));
-      }
-      list.append(li);
-      continue;
-    }
-    flush();
-    if (block.type === 'heading') parent.append(element('h3', block.text, 'legacy-heading'));
-    else if (block.type === 'callout') {
-      const callout = element('aside', undefined, 'article-callout');
-      callout.append(element('strong', block.label), element('span', block.text));
-      parent.append(callout);
-    } else if (block.text) parent.append(element('p', block.text));
-  }
-  flush();
-}
-
-function renderArticle(article) {
-  const presentation = articlePresentation(article);
-  const images = Array.isArray(article.images) ? article.images : [];
-  const used = new Set();
-  $('article-title').textContent = article.title || 'Untitled article';
-  $('article-kind').textContent = kindLabel(article.kind);
-  $('reader-vehicle').textContent = vehicleName();
-  $('reader-engine').textContent = configurationLabel(vehicle);
-  const notes = [];
-  if (presentation.legacy) notes.push('This saved article was formatted for display from the source text; source order is preserved.');
-  if (!images.length) notes.push('No illustrations are available in this saved article.');
-  if (!article.complete) notes.push('This article is incomplete.');
-  $('article-note').hidden = !notes.length;
-  $('article-note').textContent = notes.join(' ');
-  const content = $('article-content'); content.replaceChildren();
-  if (presentation.documentBlocks.length) {
-    renderDocumentBlocks(content, presentation.documentBlocks, images, article.source_review);
-  } else if (presentation.steps.length) {
-    const list = element('ol', undefined, 'procedure-steps');
-    const sourceReferenceSeen = new Set();
-    for (const [index, step] of presentation.steps.entries()) {
-      const li = element('li');
-      li.append(element('span', `${step.number ?? index + 1}.`, 'step-number'));
-      if (step.heading) li.append(element('h3', step.heading));
-      for (const instruction of step.instructions || []) li.append(element('p', instruction));
+function renderContent(parent, article, g) {
+  const presentation = articlePresentation(article),
+    images = imageMap(article);
+  if (presentation.documentBlocks.length)
+    renderBlocks(
+      parent,
+      presentation.documentBlocks,
+      images,
+      article.source_review,
+      g,
+    );
+  else if (presentation.steps.length) {
+    for (const step of presentation.steps) {
+      const section = element("section", undefined, "procedure-step");
+      if (Number.isInteger(step.number))
+        section.append(element("span", `${step.number}.`, "step-number"));
+      if (step.action || step.heading)
+        section.append(element("h3", step.action || step.heading));
+      for (const text of step.instructions || [])
+        section.append(element("p", text));
+      for (const image of step.images || [])
+        addImage(section, image, image.alt, g);
       for (const id of step.image_ids || []) {
-        const image = images.find(image => image.id === id || image.image_id === id);
-        if (image) {
-          addImage(li, image, `Illustration for step ${step.number ?? index + 1}`);
-          used.add(image.id || image.image_id);
-        }
+        const image = images.find((i) => assetID(i) === id);
+        if (image) addImage(section, image, image.alt, g);
       }
-      appendSourceReference(li, step, article.source_review, sourceReferenceSeen);
-      list.append(li);
+      parent.append(section);
     }
-    content.append(list);
-  } else if (presentation.blocks.length) {
-    renderLegacyBlocks(content, presentation.blocks);
-  } else if (presentation.body.trim()) {
-    content.append(element('div', presentation.body, 'body-text'));
-  } else {
-    content.append(element('p', 'This record has no readable article text. Return to the index or try loading it again.'));
-  }
-  const documentImageIDs = new Set(presentation.documentBlocks.flatMap(block => {
-    if (block.type === 'image') return [block.image_id, block.asset_id];
-    return (block.rows || []).flatMap(row => (row || []).flatMap(cell => cell?.images?.flatMap(image => [image.image_id, image.asset_id]) || []));
-  }).filter(Boolean));
-  const unplaced = images.filter(image => !used.has(image.id) && !documentImageIDs.has(image.id) && !documentImageIDs.has(image.image_id) && !documentImageIDs.has(image.storage_key));
-  if (unplaced.length) {
-    const group = element('section'); group.append(element('h3', 'Article illustrations'));
-    for (const [index, image] of unplaced.entries()) addImage(group, image, `Illustration ${index + 1}`);
-    content.append(group);
-  }
-  $('reference-data').replaceChildren();
-  for (const [label, value] of [['Article ID', article.id], ['Vehicle ID', article.vehicle_id], ['Saved content', article.complete ? 'Available' : 'Incomplete']]) {
-    $('reference-data').append(element('dt', label), element('dd', String(value || 'Unavailable')));
-  }
-  renderSourceReview(article);
-  $('article-reference').open = false;
-  document.title = `${article.title || 'Article'} | ${vehicleName()} | AutoData`;
+  } else if (presentation.blocks.length)
+    for (const b of presentation.blocks) {
+      if (b.type === "step") {
+        const section = element("section", undefined, "procedure-step");
+        section.append(element("span", `${b.number}.`, "step-number"));
+        for (const part of b.parts || [])
+          section.append(element("p", part.text ?? ""));
+        parent.append(section);
+      } else renderBlocks(parent, [b], images, null, g);
+    }
+  else parent.append(element("p", "No readable content is available yet."));
 }
-
-function resetSourceReview() {
-  sourceReviewLoadedURL = '';
-  $('source-review').hidden = true;
-  $('source-review-meta').textContent = '';
-  $('source-review-link').href = '#source-review';
-  delete $('source-review-link').dataset.sourceUrl;
-  $('source-review-link').onclick = null;
-  $('source-review-frame').hidden = true;
-  $('source-review-frame').removeAttribute('srcdoc');
-  $('source-review-load').hidden = false;
-  $('source-review-load').disabled = false;
-  $('source-review-load').textContent = 'Load beside article';
+function reconcileImages(parent, images, g) {
+  for (const img of parent.querySelectorAll("img[data-asset-id]")) {
+    const found = images.find(
+      (image) => assetID(image) === img.dataset.assetId,
+    );
+    const url = localImageURL(found?.url, location.origin);
+    if (url && img.src !== url && g.current()) {
+      img.dataset.replacement = "1";
+      img.src = url;
+    }
+  }
 }
-
-function renderSourceReview(article) {
-  resetSourceReview();
-  const review = article?.source_review;
-  if (!review?.available || !review.url) return;
-  $('source-review').hidden = false;
-  $('source-review-link').href = '#source-review';
-  $('source-review-link').dataset.sourceUrl = review.url;
-  $('source-review-link').onclick = event => {
-    event.preventDefault();
-    void revealSourceReview(review.url);
-  };
-  $('source-review-meta').textContent = [
-    review.format ? review.format.toUpperCase() : 'Stored source',
-    review.version,
-    review.snapshot_id ? `Snapshot ${review.snapshot_id}` : '',
-    review.content_sha256 ? `SHA-256 ${review.content_sha256.slice(0, 12)}…` : '',
-  ].filter(Boolean).join(' · ');
+function renderArticle(article, g) {
+  if (!g.current()) return;
+  const revision =
+    article.view_revision ||
+    `${article.content_origin || "legacy"}:${article.source_revision_id || ""}:${article.canonical_revision_id || ""}`;
+  if (revision !== renderedRevision) {
+    const fragment = document.createDocumentFragment();
+    renderContent(fragment, article, g);
+    if (!g.current()) return;
+    $("article-content").replaceChildren(fragment);
+    renderedRevision = revision;
+    renewalUsed = false;
+    sourceData = null;
+    $("source-review-frame").replaceChildren();
+    $("source-review-frame").hidden = true;
+  } else reconcileImages($("article-content"), imageMap(article), g);
+  currentArticle = article;
+  $("article-title").textContent = article.title || "Article";
+  $("article-kind").textContent =
+    article.content_origin === "canonical"
+      ? "Workshop article"
+      : article.content_origin === "source"
+        ? "Stored source"
+        : "Article";
+  $("reader-vehicle").textContent =
+    quote?.configuration_label || $("purchase-selection").textContent;
+  $("reader-engine").textContent = vehicle.region;
+  $("article-note").hidden = !processingArticle(article);
+  $("article-note").textContent = processingArticle(article)
+    ? "Preparing articles. Available source remains readable."
+    : "";
+  $("print").disabled = !readableArticle(article);
+  document.body.dataset.printable = String(readableArticle(article));
+  $("article-reference").hidden = false;
+  $("source-review").hidden = !article.source_review?.available;
+  const review = article.source_review;
+  if (review?.available) {
+    $("source-review-link").href = review.url;
+    $("source-review-link").target = "_blank";
+    $("source-review-link").rel = "noopener noreferrer";
+    $("source-review-meta").textContent = "Stored source for this article.";
+  }
+  document.title = `${article.title || "Article"} | AutoData`;
 }
-
-async function loadSourceReview(sourceURL = '') {
-  const url = sourceURL || $('source-review-link').dataset.sourceUrl || '';
-  if (!url) return;
-  if (sourceReviewLoadedURL === url) {
-    $('source-review-frame').hidden = false;
+async function loadArticle(id, g) {
+  if (!session.state.authenticated) return;
+  show("reader");
+  $("print").disabled = true;
+  $("article-content").replaceChildren();
+  renderedRevision = "";
+  sourceURL = "";
+  renewalUsed = false;
+  stage("article");
+  status("Opening article…", { busy: true });
+  const first = await requestArticleJSON(`${articlePath(id)}/prepare`, {
+    method: "POST",
+    body: {},
+    headers: { "X-CSRF-Token": session.state.csrf },
+    signal: g.signal,
+  });
+  if (!g.current()) return;
+  if (first.data?.article) renderArticle(first.data.article, g);
+  let initial = first;
+  const result = await readArticle(
+    (options) => {
+      if (initial) {
+        const value = initial;
+        initial = null;
+        return value;
+      }
+      return requestArticleJSON(articlePath(id), options);
+    },
+    {
+      signal: g.signal,
+      onUpdate(response) {
+        if (g.current()) renderArticle(response.data.article, g);
+      },
+    },
+  );
+  if (!g.current()) return;
+  const article = result.data?.article;
+  status(
+    result.timedOut
+      ? "Preparation is taking longer. You can check again."
+      : article?.processing?.state === "needs_review"
+        ? "This article needs review."
+        : article?.processing?.state === "failed"
+          ? "Preparation could not finish. Available source can still be read."
+          : readableArticle(article)
+            ? "Article ready."
+            : "No readable content is available.",
+    { retry: () => openArticle(id), complete: readableArticle(article) },
+  );
+}
+function openArticle(id) {
+  updateURL({ article: id });
+  operation(
+    (g) => loadArticle(id, g),
+    () => openArticle(id),
+  );
+}
+function validSourceURL(value) {
+  try {
+    const u = new URL(value, location.origin);
+    return u.origin === location.origin &&
+      u.pathname === `${articlePath(currentArticle.id)}/source` &&
+      uuid(u.searchParams.get("source_revision_id"))
+      ? u
+      : null;
+  } catch {
+    return null;
+  }
+}
+async function loadSource(value, g) {
+  const requested = validSourceURL(value);
+  if (!requested) throw new Error("This source reference is unavailable.");
+  const selected = ++sourceRevision;
+  sourceURL = requested.href;
+  $("source-review-load").disabled = true;
+  try {
+    const data = await requestJSON(requested.pathname + requested.search, {
+      signal: g.signal,
+    });
+    if (!g.current() || selected !== sourceRevision) return;
+    const returned = validSourceURL(data.source?.url);
+    if (
+      !returned ||
+      returned.pathname !== requested.pathname ||
+      returned.searchParams.get("source_revision_id") !==
+        requested.searchParams.get("source_revision_id")
+    )
+      throw new Error("The source reference changed. Reload this article.");
+    const fragment = document.createDocumentFragment();
+    if (data.document?.blocks?.length)
+      renderBlocks(fragment, data.document.blocks, data.images || [], null, g);
+    else if (data.source?.format === "json")
+      fragment.append(element("pre", data.content ?? ""));
+    else fragment.append(element("p", "Stored source is unavailable."));
+    $("source-review-frame").replaceChildren(fragment);
+    $("source-review-frame").hidden = false;
+    sourceData = data;
+    $("article-reference").open = true;
+    $("source-review-meta").textContent = "Stored source loaded.";
+  } finally {
+    if (g.current() && selected === sourceRevision)
+      $("source-review-load").disabled = false;
+  }
+}
+function handleSourceError(error, g) {
+  if (!g.current()) return;
+  if ([401, 403, 410].includes(error.status)) {
+    invalidate();
+    show("welcome");
+  }
+  status(error.message || "Stored source is unavailable.", { error: true });
+}
+async function renewMedia(g, failed) {
+  if (!g.current()) return;
+  if (failed.dataset.replacement === "1" || (renewalUsed && !renewal)) {
+    failed.replaceWith(
+      element(
+        "p",
+        "Illustration unavailable. Refresh this article to try again.",
+        "image-missing",
+      ),
+    );
     return;
   }
-  $('source-review-load').disabled = true;
-  $('source-review-load').textContent = 'Loading stored source…';
-  try {
-    const data = await requestJSON(url, { token: token(), timeout: 20000 });
-    if (data.source?.url) {
-      const requested = new URL(url, location.origin);
-      const returned = new URL(data.source.url, location.origin);
-      if (requested.origin !== returned.origin || requested.pathname !== returned.pathname) {
-        throw new Error('The stored source reference changed. Reload the article and try again.');
-      }
-    }
-    const frame = $('source-review-frame');
-    const content = String(data.content || '');
-    frame.srcdoc = data.source?.format === 'json'
-      ? `<pre>${escapeMarkup(content)}</pre>`
-      : content || '<p>No stored source content is available.</p>';
-    frame.hidden = false;
-    sourceReviewLoadedURL = url;
-    $('source-review-load').textContent = 'Reload stored source';
-  } catch (error) {
-    $('source-review-meta').textContent = `Stored source could not be loaded: ${error.message || 'unknown error'}`;
-    $('source-review-load').textContent = 'Try again';
-  } finally {
-    $('source-review-load').disabled = false;
-  }
-}
-
-async function revealSourceReview(url) {
-  $('article-reference').hidden = false;
-  $('article-reference').open = true;
-  await loadSourceReview(url);
-  $('source-review').scrollIntoView({ block: 'start' });
-}
-
-function escapeMarkup(value) {
-  const node = document.createElement('span');
-  node.textContent = value;
-  return node.innerHTML;
-}
-
-async function loadArticle(id, signal) {
-  show('reader');
-  resetSourceReview();
-  $('article-title').textContent = articles.find(article => article.id === id)?.title || 'Opening article…';
-  $('article-content').replaceChildren(); $('article-note').hidden = true; $('article-reference').hidden = true;
-  $('article-kind').textContent = 'Loading article';
-  $('reader-vehicle').textContent = vehicleName(); $('reader-engine').textContent = configurationLabel(vehicle);
-  $('print').disabled = true;
-  setStatus('Opening the article. First-time preparation can take a moment…', 'loading');
-  setLoadingProgress('article', { detail: 'Retrieving the saved article…' });
-  const data = await requestJSON(`/v1/catalog/vehicles/${encodeURIComponent(vehicle.vehicle_id)}/articles/${encodeURIComponent(id)}`, { signal, token: token() });
-  signal.throwIfAborted();
-  if (!data.article || typeof data.article !== 'object') throw new Error('The article response is empty. Return to the index or try again.');
-  renderArticle(data.article);
-  setLoadingProgress('article', { complete: true, detail: 'Article ready.' });
-  $('article-reference').hidden = false;
-  $('print').disabled = false;
-  const readable = articlePresentation(data.article);
-  if (!readable.steps.length && !readable.blocks.length && !readable.body.trim()) setStatus('This article has no readable content yet.', 'error', () => openArticle(id));
-  else setStatus('Article opened.');
-  $('article-title').focus({ preventScroll: true });
-  $('reader').scrollIntoView({ block: 'start' });
-}
-
-for (const [index, name] of names.entries()) {
-  $(name).addEventListener('change', () => {
-    clearAfter(name); updateURL();
-    if (!$(name).value) { setStatus(`Choose ${singular[name]} to continue.`); return; }
-    const next = names[index + 1];
-    const retry = next ? () => run(s => loadOptions(next, s), retry) : retryArticles;
-    if (next) retry(); else retryArticles();
-  });
-}
-
-$('retry').addEventListener('click', () => retryAction?.());
-$('cancel').addEventListener('click', () => {
-  active?.abort();
-  setStatus('Loading stopped. Choose an option or try again.', 'ready', restoreRoute);
-});
-$('search').addEventListener('input', () => { updateURL({ replace: true }); renderArticles(); });
-$('source-review-load').addEventListener('click', () => { void loadSourceReview(); });
-$('back').addEventListener('click', () => {
-  active?.abort(); updateURL(); show('catalog'); renderArticles();
-  document.title = `${vehicleName()} | AutoData`;
-  setStatus(`Article index ready for ${vehicleName()}.`);
-  $('catalog-title').focus({ preventScroll: true });
-});
-$('print').addEventListener('click', () => window.print());
-
-// All navigation, including browser Back and shared URLs, rebuilds from API IDs.
-function restoreRoute() {
-  active?.abort();
-  for (const name of names) {
-    rows[name] = [];
-    $(name).replaceChildren(new Option(name === 'year' ? 'Loading years…' : `Choose ${parents[name]} first`, ''));
-    $(name).disabled = true;
-  }
-  resetCatalogView();
-  document.title = 'AutoData — The workshop reference';
-  const params = new URLSearchParams(location.search);
-  run(async signal => {
-    for (const name of names) {
-      const desired = params.get(name) || '';
-      await loadOptions(name, signal, desired);
-      if (!desired) {
-        setStatus(`Choose ${singular[name]} to continue.`);
+  renewalFailures.add(failed);
+  if (renewal) return renewal;
+  renewalUsed = true;
+  const revision = renderedRevision;
+  renewal = (async () => {
+    try {
+      const response = await requestArticleJSON(
+        articlePath(currentArticle.id),
+        { signal: g.signal },
+      );
+      if (!g.current()) return;
+      if (response.data?.article?.view_revision !== revision) {
+        renderArticle(response.data.article, g);
         return;
       }
+      renderArticle(response.data.article, g);
+      if (sourceData && sourceURL) {
+        const data = await requestJSON(sourceURL, { signal: g.signal });
+        if (!g.current()) return;
+        const requested = validSourceURL(sourceURL),
+          returned = validSourceURL(data.source?.url);
+        if (
+          !returned ||
+          returned.searchParams.get("source_revision_id") !==
+            requested?.searchParams.get("source_revision_id")
+        )
+          throw new Error("The stored source changed.");
+        reconcileImages($("source-review-frame"), data.images || [], g);
+        sourceData = data;
+      }
+    } catch (error) {
+      if (!g.current()) return;
+      if ([401, 403, 410].includes(error.status)) {
+        invalidate();
+        show("welcome");
+        status(error.message, { error: true });
+      } else
+        failed.replaceWith(
+          element(
+            "p",
+            "Illustration unavailable. Refresh this article to try again.",
+            "image-missing",
+          ),
+        );
+    } finally {
+      if (g.current()) {
+        for (const image of renewalFailures) {
+          if (image.isConnected && image.dataset.replacement !== "1")
+            image.replaceWith(
+              element(
+                "p",
+                "Illustration unavailable. Refresh this article to try again.",
+                "image-missing",
+              ),
+            );
+        }
+        renewalFailures.clear();
+        renewal = null;
+      }
     }
-    $('search').value = params.get('q') || '';
-    await loadArticles(signal, params.get('article') || '');
-  }, restoreRoute);
+  })();
+  return renewal;
 }
-
-window.addEventListener('popstate', restoreRoute);
-restoreRoute();
+async function library(g, append = false) {
+  clearReader();
+  if (!session.state.authenticated) {
+    show("welcome");
+    status("Sign in to open My vehicles.");
+    return;
+  }
+  show("library");
+  status("Opening My vehicles…", { busy: true });
+  const cursor = append ? libraryCursor : null;
+  const data = await requestJSON(
+    `/v1/workshop/library?limit=20${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
+    { signal: g.signal },
+  );
+  if (!g.current()) return;
+  if (!validLibrary(data))
+    throw new Error("My vehicles is temporarily unavailable.");
+  libraryItems = append ? [...libraryItems, ...data.items] : data.items;
+  libraryCursor = data.next_cursor || null;
+  $("library-items").replaceChildren();
+  for (const item of libraryItems) {
+    const li = element("li");
+    li.append(
+      element("h3", `${item.label} / ${item.region}`),
+      element(
+        "p",
+        {
+          paid: "Owned, ready to open",
+          preparing: "Preparing articles",
+          viewable: "Open articles",
+          revoked: "Access revoked. Contact support.",
+        }[item.access_state],
+      ),
+    );
+    if (item.access_state !== "revoked") {
+      const button = element("button", "Open articles");
+      button.type = "button";
+      button.addEventListener("click", () => {
+        // A library item is an exact configuration/region route. A previous
+        // browse hierarchy can belong to a different vehicle and must be cleared.
+        for (const name of names) $(name).value = "";
+        vehicle = {
+          id: item.configuration_id,
+          region: item.region,
+          engine: item.label,
+        };
+        quote = null;
+        updateURL();
+        operation((g) => selectVehicle(g));
+      });
+      li.append(button);
+    }
+    $("library-items").append(li);
+  }
+  $("library-more").hidden = !libraryCursor;
+  $("library-message").textContent = libraryItems.length
+    ? ""
+    : "No vehicles purchased yet. Browse to choose a vehicle.";
+  status("My vehicles ready.", { complete: true });
+}
+function clearReader() {
+  currentArticle = null;
+  $("article-content").replaceChildren();
+  $("source-review-frame").replaceChildren();
+  $("reader").hidden = true;
+  $("print").disabled = true;
+  document.body.dataset.printable = "false";
+}
+async function checkOrder(g, id) {
+  currentOrder = id;
+  $("check-order").hidden = false;
+  status("Checking payment status…", { busy: true });
+  try {
+    const result = await pollOrder(id, {
+      signal: g.signal,
+      onUpdate(order) {
+        if (g.current())
+          $("purchase-message").textContent =
+            order.state === "paid"
+              ? "Payment received. Checking article access."
+              : "Payment is being confirmed. Do not pay again.";
+      },
+    });
+    if (!g.current()) return;
+    if (result.state === "paid") {
+      vehicle = { id: result.configuration_id, region: result.region };
+      await selectVehicle(g);
+    } else if (["expired", "canceled"].includes(result.state)) {
+      checkout.clear();
+      status(
+        "The previous payment attempt ended. Choose Buy again only when you are ready.",
+      );
+      renderPurchase();
+    } else if (result.state === "revoked") {
+      invalidate();
+      access = "revoked";
+      renderPurchase();
+      status("Access revoked. Contact support.", { error: true });
+    } else
+      status(
+        "Payment confirmation is still pending. Check payment status manually.",
+        { retry: () => operation((g) => checkOrder(g, id)) },
+      );
+  } catch (error) {
+    if (error.status === 404) checkout.clear();
+    throw error;
+  }
+}
+async function purchase() {
+  if (!session.state.authenticated) {
+    await signIn();
+    return;
+  }
+  if (access === "owned") {
+    operation((g) => loadArticles(g));
+    return;
+  }
+  if (
+    !validQuote(quote, scope()) ||
+    !purchaseConfiguration(merchant, quote) ||
+    access !== "missing"
+  )
+    return;
+  if (!$("agreement").checked) {
+    $("agreement-error").textContent =
+      "Agree to the purchase terms before continuing.";
+    $("agreement").setAttribute("aria-invalid", "true");
+    $("agreement").focus();
+    return;
+  }
+  $("agreement-error").textContent = "";
+  $("agreement").removeAttribute("aria-invalid");
+  await operation(
+    async (g) => {
+      $("purchase-action").disabled = true;
+      const result = await checkout.start(scope(), session.state.csrf, {
+        signal: g.signal,
+      });
+      if (!g.current()) return;
+      if (result.state === "checkout") location.assign(result.checkout_url);
+      else if (result.state === "owned") await loadArticles(g);
+      else await checkOrder(g, result.order_id);
+    },
+    () => purchase(),
+  );
+  renderPurchase();
+}
+async function signIn() {
+  if (signingIn) return;
+  signingIn = true;
+  checkout.clear();
+  try {
+    await session.signIn();
+  } finally {
+    signingIn = false;
+  }
+  if (session.state.authenticated) await restoreRoute();
+}
+async function bootstrap() {
+  invalidate();
+  await session.bootstrap();
+  sessionEstablished = true;
+  try {
+    merchant = await requestJSON("/workshop/purchase-config.json");
+  } catch {
+    merchant = null;
+  }
+  await restoreRoute();
+}
+async function restoreRoute() {
+  invalidate();
+  show("welcome");
+  const params = new URLSearchParams(location.search);
+  return operation(
+    async (g) => {
+      const order = params.get("order");
+      if (uuid(order)) {
+        if (session.state.authenticated) await checkOrder(g, order);
+        else status("Sign in to check this payment.");
+        return;
+      }
+      if (params.get("view") === "library") {
+        await library(g);
+        return;
+      }
+      if (uuid(params.get("configuration")) && !params.get("year")) {
+        vehicle = {
+          id: params.get("configuration"),
+          region: params.get("region"),
+        };
+        await selectVehicle(g, params.get("article") || "");
+        return;
+      }
+      vehicle = null;
+      quote = null;
+      renderPurchase();
+      for (const name of names) {
+        const desired = params.get(name) || "";
+        await loadOptions(name, g, desired);
+        if (!g.current() || !desired) return;
+      }
+      vehicle = rows.configuration.find(
+        (item) => item.id === $("configuration").value,
+      );
+      $("search").value = params.get("q") || "";
+      await selectVehicle(g, params.get("article") || "");
+    },
+    () => restoreRoute(),
+  );
+}
+for (const [index, name] of names.entries())
+  $(name).addEventListener("change", () => {
+    invalidate();
+    vehicle = null;
+    quote = null;
+    $("purchase").hidden = true;
+    for (const next of names.slice(index + 1)) {
+      rows[next] = [];
+      populate(next, []);
+    }
+    show("welcome");
+    updateURL();
+    if (!$(name).value) return;
+    const next = names[index + 1];
+    if (next)
+      operation(
+        (g) => loadOptions(next, g),
+        () => restoreRoute(),
+      );
+    else {
+      vehicle = rows.configuration.find(
+        (item) => item.id === $("configuration").value,
+      );
+      updateURL();
+      operation((g) => selectVehicle(g));
+    }
+  });
+$("signin").addEventListener("click", () => void signIn());
+$("signout").addEventListener("click", async () => {
+  invalidate();
+  checkout.clear();
+  show("welcome");
+  const confirmed = await session.logout();
+  channel?.postMessage("invalidate");
+  status(
+    confirmed
+      ? "Signed out."
+      : "Sign-out could not be confirmed. Retry sign-out.",
+    { error: !confirmed },
+  );
+  renderPurchase();
+});
+$("browse").addEventListener("click", () => {
+  invalidate();
+  show("welcome");
+  history.pushState(null, "", "/workshop/");
+  void restoreRoute();
+});
+$("my-vehicles").addEventListener("click", () => {
+  invalidate();
+  updateURL({ library: true });
+  operation(
+    (g) => library(g),
+    () => operation((g) => library(g)),
+  );
+});
+$("library-more").addEventListener("click", () =>
+  operation((g) => library(g, true)),
+);
+$("purchase-action").addEventListener("click", () => void purchase());
+$("check-order").addEventListener("click", () => {
+  if (currentOrder) operation((g) => checkOrder(g, currentOrder));
+});
+$("search").addEventListener("input", () => {
+  updateURL({ replace: true });
+  renderArticles();
+});
+$("retry").addEventListener("click", () => retryAction?.());
+$("cancel").addEventListener("click", () => {
+  navigation.clear();
+  status("Loading stopped. You can try again.", {
+    retry: () => restoreRoute(),
+  });
+});
+$("source-review-load").addEventListener("click", () => {
+  const g = viewGeneration;
+  if (currentArticle && g?.current())
+    void loadSource(currentArticle.source_review?.url, g).catch(
+      (error) => handleSourceError(error, g),
+    );
+});
+$("back").addEventListener("click", () => {
+  navigation.clear();
+  clearReader();
+  updateURL();
+  show("catalog");
+  renderArticles();
+  $("catalog-title").focus({ preventScroll: true });
+});
+$("print").addEventListener("click", () => {
+  if (readableArticle(currentArticle) && session.state.authenticated)
+    window.print();
+});
+window.addEventListener("popstate", () => void restoreRoute());
+window.addEventListener("pagehide", () => invalidate());
+let lifecycleCheck = null;
+async function recheck() {
+  if (
+    !sessionEstablished ||
+    signingIn ||
+    document.visibilityState === "hidden" ||
+    lifecycleCheck
+  )
+    return;
+  lifecycleCheck = bootstrap();
+  try {
+    await lifecycleCheck;
+  } finally {
+    lifecycleCheck = null;
+  }
+}
+window.addEventListener("pageshow", (event) => {
+  if (event.persisted) void recheck();
+});
+window.addEventListener("focus", () => void recheck());
+const channel =
+  typeof BroadcastChannel === "function"
+    ? new BroadcastChannel("autodata-session-invalidation")
+    : null;
+channel?.addEventListener("message", (event) => {
+  if (event.data === "invalidate") {
+    invalidate();
+    session.clear();
+    void recheck();
+  }
+});
+void bootstrap();

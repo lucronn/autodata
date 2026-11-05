@@ -1,0 +1,746 @@
+{
+  "task_id": "workshop-reviewed-leaves-integration",
+  "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-reviewed-leaves-integration.md",
+  "spec_ref": "docs/agents/specs/2026-11-04-workshop-reviewed-leaves-integration.md",
+  "record_ref": "docs/agents/records/2026-11-04-workshop-reviewed-leaves-integration.json",
+  "source_integration_base_sha": "eddcf724028683dbb083191e4f8c42064b866bf0",
+  "state": "synchronized_pending_exact_checkpoint_review",
+  "pre_implementation": {
+    "goal": "Integrate the three independently reviewed dormant R6, publisher and staging leaf histories into one byte-pinned offline candidate without live activation.",
+    "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-reviewed-leaves-integration.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/agents/specs/2026-11-04-workshop-reviewed-leaves-integration.md",
+      "docs/architecture/infrastructure-and-dev.md",
+      "docs/operations/workshop-gcp.md",
+      "docs/superpowers/plans/2026-11-03-production-release-orchestration.md",
+      "docs/superpowers/plans/2026-11-03-workshop-hosting.md"
+    ],
+    "todo": [
+      "Obtain independent local-draft review; keep status unsynchronized and integration blocked until PG releases the serialized tracking slot.",
+      "After slot release, preserve then-current Issue186/Project8 texts and hashes; synchronize exact source tuple, plan/spec/record/task/canonical notes and concrete todo; commit/push the docs-only checkpoint and pass full-SHA preflight.",
+      "Obtain independent exact synchronized-checkpoint review and fresh coordinator code-only dispatch; create an isolated feature worktree/branch from the checkpoint.",
+      "Merge exact R6, publisher and staging leaf histories in that deterministic order, resolving only five approved documentation/tracking conflicts and preserving all 23 implementation blob pins and historical additions.",
+      "Run combined offline Python/Node/preflight/syntax/scope/authority checks after each milestone; commit and promptly push validated coherent merges to the assigned branch.",
+      "Obtain independent exact-head review, freeze the combined candidate SHA and retain results; obtain separate gates before fixture/CI reruns or any live activation."
+    ],
+    "status": "synchronized",
+    "updated_at": "2026-11-04T04:55:31.705727+00:00",
+    "draft_state": "synchronized_pending_exact_checkpoint_review",
+    "root_base_sha": "eddcf724028683dbb083191e4f8c42064b866bf0",
+    "synchronized_checkpoint_sha": "2728ac1acaf173d6f244e200e584dac7922fda1d",
+    "source_leaves": {
+      "r6": "a4a0d7cc5e95f16793d80dfd73596b40c27e6757",
+      "publisher": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+      "staging": "10a454a3c4160ac8e423c25fcf38ab58b426fb86"
+    },
+    "selected_implementation_blobs": {
+      "scripts/dev/release_acceptance.py": {
+        "source_sha": "a4a0d7cc5e95f16793d80dfd73596b40c27e6757",
+        "git_blob_oid": "df8d4fd4608fc7685746fed0543ce5b595c79053",
+        "sha256": "44914594c529f88868630223ddd6165f3e6f06b8c83359493da75a2e9a2feb64",
+        "bytes": 98410,
+        "git_mode": "100644"
+      },
+      "scripts/dev/test_release_acceptance.py": {
+        "source_sha": "a4a0d7cc5e95f16793d80dfd73596b40c27e6757",
+        "git_blob_oid": "d0e82d2658e2659590b99148942e2df100370265",
+        "sha256": "5d85422063a3bd876786ac8c2fa5f4c7139ed8cb557dbbfd59d23d817416cd0a",
+        "bytes": 134247,
+        "git_mode": "100644"
+      },
+      ".github/workflows/release-workshop.yml": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "a8f5ef0fc4ab79ee7a42afb58662a3fbe81766e9",
+        "sha256": "d74d596e6f4e2650d028afa4639c35a0da5a6fb71040ff3b58d1747fcd297975",
+        "bytes": 21962,
+        "git_mode": "100644"
+      },
+      "infra/deploy/gce/cloud-ops.py": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "ea5facecf4285b7d3366a08e714c1f2137a82623",
+        "sha256": "abb5190f6ff94c93065403e0863851cc3eea26aaf539d71466d57726ea015ee0",
+        "bytes": 53007,
+        "git_mode": "100644"
+      },
+      "infra/deploy/gce/publisher-toolkit/package-lock.json": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "ae1c96e2703ca55ce440706d93b559c158c8c3f0",
+        "sha256": "3e697f78715f0ef89dfd4f60c1ed9902e21dbfd3fadb2cbd7c39776192611bf5",
+        "bytes": 123229,
+        "git_mode": "100644"
+      },
+      "infra/deploy/gce/publisher-toolkit/package.json": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "54ec1370e156229936d252e9d634c7fa1d14e160",
+        "sha256": "4b9b05fd07b88abd417a2cd863071d501553b34d6c0d9b0b2762380af813d5da",
+        "bytes": 594,
+        "git_mode": "100644"
+      },
+      "infra/deploy/gce/publisher_adapters.py": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "33c478264c48685615a8d4d338b5ad5c8a63169b",
+        "sha256": "ee8d19abde07f27516527e6456db8a7f1f155592cb9159e7fc608309f1c5d552",
+        "bytes": 67085,
+        "git_mode": "100644"
+      },
+      "infra/deploy/gce/publisher_artifact.mjs": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "8d72f191b9228f8a19ec1ba145755a8cfd7a93e6",
+        "sha256": "c75bb4580007934a91a1f3b6d0f2f4d53b0e5eb785fc1dbbeb99480b1e85a1ad",
+        "bytes": 32325,
+        "git_mode": "100644"
+      },
+      "infra/deploy/gce/publisher_identity.mjs": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "947a1b682608601ecefb055b8c52445aa322b64d",
+        "sha256": "50d51fe5c6bab2a37d70c901ed5e01c0038ada392b87c23ad4fa5ff9fb11991f",
+        "bytes": 6419,
+        "git_mode": "100644"
+      },
+      "infra/deploy/gce/publisher_policy.mjs": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "29f98311e91313210b2c2053b553dfbbcb388cd5",
+        "sha256": "cdb22dafbfa20d1b08add0ba1c4dfe38c0e9283d7d6e44e6ef359ce7307e634b",
+        "bytes": 20224,
+        "git_mode": "100644"
+      },
+      "infra/deploy/gce/test_cloud_ops.py": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "4cdc9f05c671bfdd75a7b2775ee292bc254c1129",
+        "sha256": "c78b3529ecb769433cb5425dcbdec9ca5c6f8f9a0440fad778bf662007cdcfc5",
+        "bytes": 88808,
+        "git_mode": "100644"
+      },
+      "infra/deploy/gce/test_publisher_adapters.py": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "8cea6954a8fbb80dadcdee20f4fe8246414e49d5",
+        "sha256": "d885c8b0c7702d0602c124b27184f56f2959a29abac69e9b98393a9719dfe44b",
+        "bytes": 49511,
+        "git_mode": "100644"
+      },
+      "infra/deploy/gce/test_publisher_artifact.mjs": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "ae92b91ab5015ec4ca7e268d2712fcd0f06a9a9a",
+        "sha256": "39e38d1d2c597cafad39b1c5764ee1f81ce57a94fdad587bd38ad508fcb4d597",
+        "bytes": 42765,
+        "git_mode": "100644"
+      },
+      "infra/deploy/gce/test_publisher_identity.mjs": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "1439cc3a055884ed98d7bf0243aea60725178901",
+        "sha256": "91fe44a854564bf76e3ca6da39870f306c12541e1b9c2373b86a4c43b652770a",
+        "bytes": 10469,
+        "git_mode": "100644"
+      },
+      "infra/deploy/gce/test_publisher_policy.mjs": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "b56cfa6fd614d4dc53fd6be0aba61620f50d4729",
+        "sha256": "2d82ab725023e7e1e6993a6fd0ad3c036390039803c75fa23c5803ba09002657",
+        "bytes": 19917,
+        "git_mode": "100644"
+      },
+      "infra/deploy/gce/test_release_workshop_contract.py": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "a7c3555187681e52339e18c3d6933edf216f5009",
+        "sha256": "b46cfeb4dcd049236895be2e5383182b80ee53d3b154e6bf1042719a62992994",
+        "bytes": 5759,
+        "git_mode": "100644"
+      },
+      "infra/deploy/gce/cloud-bootstrap.sh": {
+        "source_sha": "10a454a3c4160ac8e423c25fcf38ab58b426fb86",
+        "git_blob_oid": "8a3c981394ab08433418fc841b44ba3bc59e3cf7",
+        "sha256": "032e6b968ca54c8724a3b4f81332c9d4efc6d00bd0f92707f1d2f18de50c7715",
+        "bytes": 10247,
+        "git_mode": "100755"
+      },
+      "infra/deploy/gce/deploy.sh": {
+        "source_sha": "10a454a3c4160ac8e423c25fcf38ab58b426fb86",
+        "git_blob_oid": "b498bf18ded03c01fc5b1ef0e962c9a46eb29f1d",
+        "sha256": "478e14af7152e8bd5229bcd06ee07fd8d9258db495321b88a40393b46fbf3fb1",
+        "bytes": 2215,
+        "git_mode": "100755"
+      },
+      "infra/deploy/gce/host_install.py": {
+        "source_sha": "10a454a3c4160ac8e423c25fcf38ab58b426fb86",
+        "git_blob_oid": "c07f94939bf7a84a1936fa8689b7cbcdc619969a",
+        "sha256": "6b2e25e6a6861dd292d15816e1f3fb926d94aa2f2a416fd9c1ca463fad5fa6f1",
+        "bytes": 32729,
+        "git_mode": "100644"
+      },
+      "infra/deploy/gce/staging-bootstrap.schema.json": {
+        "source_sha": "10a454a3c4160ac8e423c25fcf38ab58b426fb86",
+        "git_blob_oid": "3c267fb2a13f7db6a1aabec2dcdc6b5ae9dbc45d",
+        "sha256": "1cb0908d8f96229b9f2c15fc7f26cde330f9902f31453dda8daf60ac20267996",
+        "bytes": 3768,
+        "git_mode": "100644"
+      },
+      "infra/deploy/gce/staging_bootstrap.py": {
+        "source_sha": "10a454a3c4160ac8e423c25fcf38ab58b426fb86",
+        "git_blob_oid": "f0a448e43328cb4fc16f1c552cabe020480056f9",
+        "sha256": "2cfe576bc79d3711cb7f801ec2a6f19135dd994226284bd4db9e1cb9bcaf40f4",
+        "bytes": 35196,
+        "git_mode": "100644"
+      },
+      "infra/deploy/gce/test_host_install.py": {
+        "source_sha": "10a454a3c4160ac8e423c25fcf38ab58b426fb86",
+        "git_blob_oid": "aa6b6bd18045dd644ae8d073747ec15655b76aa4",
+        "sha256": "89285c85ca6c99704629557164de5a27fbcc0d47443bdc92d5082b75071e87f4",
+        "bytes": 29155,
+        "git_mode": "100644"
+      },
+      "infra/deploy/gce/test_staging_bootstrap.py": {
+        "source_sha": "10a454a3c4160ac8e423c25fcf38ab58b426fb86",
+        "git_blob_oid": "1dbc7e0bc91d55e9b2def2b6d32b5924e1b17701",
+        "sha256": "e77548c83bf6f211de167fac134b0520931c61370d3a70b08a0c94a004661e41",
+        "bytes": 29321,
+        "git_mode": "100644"
+      }
+    },
+    "historical_document_pins": {
+      "docs/agents/records/2026-11-03-r6-dto120-receipts.json": {
+        "source_sha": "a4a0d7cc5e95f16793d80dfd73596b40c27e6757",
+        "git_blob_oid": "40a65606b7e6f4284534c8a9ae18f0c16ece26f9",
+        "sha256": "2eb046c5b62be9e48dd28c3c3090b77cdd058b042281d843ba59042f1b595fbf",
+        "bytes": 3344,
+        "git_mode": "100644"
+      },
+      "docs/agents/records/2026-11-03-r6-paid-selector-work.json": {
+        "source_sha": "a4a0d7cc5e95f16793d80dfd73596b40c27e6757",
+        "git_blob_oid": "5c732ffad957eb5b59983fec3ca548518d95acbe",
+        "sha256": "527a50425fb0e9220d618e05a13f13853502c282613569bbd6383533c6736548",
+        "bytes": 4258,
+        "git_mode": "100644"
+      },
+      "docs/agents/tasks/2026-11-03-production-release/r6-dto120-receipts.json": {
+        "source_sha": "a4a0d7cc5e95f16793d80dfd73596b40c27e6757",
+        "git_blob_oid": "82495e689b9da53f6b429c53c7f4249a6f8ed6b1",
+        "sha256": "27758b1f6c9660eaeab8a7657df8985effd1485104ba1549f74e0c0d8085e819",
+        "bytes": 6906,
+        "git_mode": "100644"
+      },
+      "docs/agents/tasks/2026-11-03-production-release/r6-paid-selector-work.json": {
+        "source_sha": "a4a0d7cc5e95f16793d80dfd73596b40c27e6757",
+        "git_blob_oid": "ca4525cc5c79e6b546b86a1c5e19ad7f1c930a08",
+        "sha256": "b857c9b4a7fe73606b0da78757778098025da559b56bae6157bd08acf09e3a8f",
+        "bytes": 7448,
+        "git_mode": "100644"
+      },
+      "docs/superpowers/plans/2026-11-03-release-acceptance.md": {
+        "source_sha": "a4a0d7cc5e95f16793d80dfd73596b40c27e6757",
+        "git_blob_oid": "1c04b0f782ab070c708f804816f3cfdc6d49896c",
+        "sha256": "159dd638ffd6ddbf47c1333cc3f5e7f6d6fcb661cb3183202550882c3e1f67d4",
+        "bytes": 36345,
+        "git_mode": "100644"
+      },
+      "docs/superpowers/plans/2026-11-03-workshop-product-evidence-assembler.md": {
+        "source_sha": "a4a0d7cc5e95f16793d80dfd73596b40c27e6757",
+        "git_blob_oid": "105bee4b15d38143e439df3eca24c72e813ac972",
+        "sha256": "266657a1dc2b48e953d85158d7e9e85036481ff3bb3b6385dd0e3fb615b2c11c",
+        "bytes": 53427,
+        "git_mode": "100644"
+      },
+      "docs/superpowers/plans/2026-11-03-workshop-r6-dto120-receipts.md": {
+        "source_sha": "a4a0d7cc5e95f16793d80dfd73596b40c27e6757",
+        "git_blob_oid": "b6bccf90c8559ff00d8fbf86f3a1190a439381e9",
+        "sha256": "0a92ab2438f72ce5b07bc323e77fc6694ce4d797cd5e6440e9247db38edc9152",
+        "bytes": 30188,
+        "git_mode": "100644"
+      },
+      "docs/superpowers/plans/2026-11-03-workshop-r6-paid-selector-work.md": {
+        "source_sha": "a4a0d7cc5e95f16793d80dfd73596b40c27e6757",
+        "git_blob_oid": "6ca6d9d50eaac57404afe2c919d2d5d97718cc79",
+        "sha256": "eea9cee67f8ade0fc517777e59bc97f51bebe195cdc413f923baf48d43320b2d",
+        "bytes": 18898,
+        "git_mode": "100644"
+      },
+      "docs/verification/release-acceptance-runbook.md": {
+        "source_sha": "a4a0d7cc5e95f16793d80dfd73596b40c27e6757",
+        "git_blob_oid": "97e864e38a736f9a7daf9e8925b5daddf823d750",
+        "sha256": "7e5e25b8ee5885e218a9a5250703d3d9cd2a05fa40c6371512dca586473b8099",
+        "bytes": 24252,
+        "git_mode": "100644"
+      },
+      "docs/agents/records/2026-11-03-workshop-artifact-boundary-corrections.json": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "6a58133ab3901f7903ce9c6b86f103032ececd4c",
+        "sha256": "c68db6b3c9eb2c2e4daac92a32fbc7526dc16cc4584e799f44c2d8226dca2766",
+        "bytes": 3182,
+        "git_mode": "100644"
+      },
+      "docs/agents/records/2026-11-03-workshop-authenticated-publisher.json": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "4211188e038be9dfff3baac96a3c04cdbacc924f",
+        "sha256": "6dbaca3cf7f714f2422880213d303b144d406b9132a76de3d48dfd4393a71ac7",
+        "bytes": 4739,
+        "git_mode": "100644"
+      },
+      "docs/agents/records/2026-11-03-workshop-migration-build-arg.json": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "e8175284c036185c3a6c552e9ffd3f1e49e3505d",
+        "sha256": "a97dd651500a87db6c5b303a95183adfd7a55c04640b112beb5aa38c8e5ed899",
+        "bytes": 3535,
+        "git_mode": "100644"
+      },
+      "docs/agents/records/2026-11-03-workshop-publisher-transport.json": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "0fd1313ec6e0996a3d6d45c805a3ed886c2b1e58",
+        "sha256": "492c08c837baa839dd39ad78392ac9858efeccf05b3f0747cde27ee64cfe2440",
+        "bytes": 3601,
+        "git_mode": "100644"
+      },
+      "docs/agents/records/2026-11-03-workshop-staging-workflow-regression.json": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "154179a68329007f208f896c354b5a0ac8b8fc64",
+        "sha256": "ce176fc53a3b297c9a4edc305426180bbfced848d7b9b1048db02a5f2f3d7d84",
+        "bytes": 2287,
+        "git_mode": "100644"
+      },
+      "docs/agents/records/2026-11-04-workshop-artifact-inspection-close-failure-preflight.json": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "21cd5526119e98ca9e0a15e1035340a5c1faba90",
+        "sha256": "2bb900d8042598ccd9e8937ce11714ee514847044ff4a4d01ce1dd36b5424e6e",
+        "bytes": 2875,
+        "git_mode": "100644"
+      },
+      "docs/agents/records/2026-11-04-workshop-artifact-inspection-close-failure.json": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "74e99e5d4617b14b83b5c87713f7952c68d8139f",
+        "sha256": "134f380024cd63c3812dada169ba4045d04a58f1a25ffee90792b282f230fe85",
+        "bytes": 4199,
+        "git_mode": "100644"
+      },
+      "docs/agents/records/2026-11-04-workshop-artifact-revalidation-deadline.json": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "151763a06267fc2a5c0fc1c42a178b953051bd21",
+        "sha256": "b59df5768f2ca7032cd670e8856f3bc33f3aad03e15e818b6eed289d029a071f",
+        "bytes": 3868,
+        "git_mode": "100644"
+      },
+      "docs/agents/records/2026-11-04-workshop-publisher-python-review-corrections.json": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "59e5d654b95ffae7535cdb0672202b46b0ef0bba",
+        "sha256": "5af984b9c5ddea00d0cd892aeee4bc878ffffcef5a91f16e42b99fce72442dea",
+        "bytes": 4061,
+        "git_mode": "100644"
+      },
+      "docs/agents/records/2026-11-04-workshop-publisher-sigterm-ordering-amendment.json": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "294d3e80fc90a60bb1681cf139e030253f971ac9",
+        "sha256": "5a910f3f1f916747519d76dd8ff1f84d930f7fa579ef133e00453cf4ba99af80",
+        "bytes": 4223,
+        "git_mode": "100644"
+      },
+      "docs/agents/records/2026-11-04-workshop-publisher-stage0-integration-evidence.json": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "a1fb2888c2bfbf9e477860c8243c81a5c1ef32c5",
+        "sha256": "044b1044865831b1ee11466b24dd2302ef7b692c6f2f8d4d6512852634902e58",
+        "bytes": 107264,
+        "git_mode": "100644"
+      },
+      "docs/agents/records/2026-11-04-workshop-publisher-stage0-integration.json": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "afa8461b5878775e4a4eb8a3a59ac936722aa64d",
+        "sha256": "8fdf493657425221dd806e1bdcf8190bed9e096278d39efe9779d063dcfafcb4",
+        "bytes": 13643,
+        "git_mode": "100644"
+      },
+      "docs/agents/records/2026-11-04-workshop-publisher-stage1a-offline-trust-evidence.json": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "a93470a9c3aa378fabd2cd831dfa7284055d42f8",
+        "sha256": "8a0bec72faada1c44ebc0594299f1ba41347d72dbc62b5202e8593275d21b4f8",
+        "bytes": 261610,
+        "git_mode": "100644"
+      },
+      "docs/agents/records/2026-11-04-workshop-publisher-stage1a-offline-trust.json": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "6cb49472fff0902c83101fd1f5184fde5af26353",
+        "sha256": "7e5832ac439c1bd227296ca6e7ef2bb4e93ed3301c89106f109e07582140d0a2",
+        "bytes": 8020,
+        "git_mode": "100644"
+      },
+      "docs/agents/specs/2026-11-04-workshop-publisher-stage1a-offline-trust.md": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "c5c64de383d305892abc6cf2c7e3937548f8306b",
+        "sha256": "2f0504de9f7b7f7cd6c06b9b1078cb4b5b96909b5b1f3095b64a28e38389b9d2",
+        "bytes": 24783,
+        "git_mode": "100644"
+      },
+      "docs/agents/tasks/2026-11-03-production-release/workshop-artifact-boundary-corrections.json": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "8c73aedd249a0ca297b3d0fa7a3e67144bb7d4af",
+        "sha256": "3011fb4b4c8a613dfdb402b9843379e66a73766a632d5565947956f488d5ae66",
+        "bytes": 3422,
+        "git_mode": "100644"
+      },
+      "docs/agents/tasks/2026-11-03-production-release/workshop-artifact-inspection-close-failure.json": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "c788ce96e84287ca5ddf1c887d6462f0d5639794",
+        "sha256": "39be7fba1bf26369517e5aeabdf07ddd570a9eb3b0531f7e7a6f1edcb75e158d",
+        "bytes": 4462,
+        "git_mode": "100644"
+      },
+      "docs/agents/tasks/2026-11-03-production-release/workshop-artifact-revalidation-deadline.json": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "9e600c49fc4de17a19a7a38c3f0728941ff092c1",
+        "sha256": "d72cb677604f1bb6fe611c8593224f897da9bddbc76cc9e0e964067c139f3e77",
+        "bytes": 4104,
+        "git_mode": "100644"
+      },
+      "docs/agents/tasks/2026-11-03-production-release/workshop-authenticated-publisher.json": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "b2c846f14ca14cb158c76ef06c253e1b91cddabd",
+        "sha256": "59108ce8696594ee2e24b0b408f0aded5d3c5c052ccfc7bae8c0dc045b150f10",
+        "bytes": 8058,
+        "git_mode": "100644"
+      },
+      "docs/agents/tasks/2026-11-03-production-release/workshop-migration-build-arg.json": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "86de6bdc96710858375aec15277a790c23383c09",
+        "sha256": "4d72c45bab0fda706a7427ca6f9e3f29fe4929a3415396deab656d9628df0452",
+        "bytes": 5976,
+        "git_mode": "100644"
+      },
+      "docs/agents/tasks/2026-11-03-production-release/workshop-publisher-python-review-corrections.json": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "f64c5b443b97cfb898e5dc5b90ba05ed28a3d024",
+        "sha256": "fadc43d7c1128a5595294e7d2ac180d438134282900b713ab62a78f604e26cc2",
+        "bytes": 6726,
+        "git_mode": "100644"
+      },
+      "docs/agents/tasks/2026-11-03-production-release/workshop-publisher-sigterm-ordering-amendment.json": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "89bb11bbf6955aa3f1963bb7e768f0cdc1f67d38",
+        "sha256": "741d7e6556f4b0471a3212fa13286a1263a6b304b9d2762fcb975a8b3553941e",
+        "bytes": 6519,
+        "git_mode": "100644"
+      },
+      "docs/agents/tasks/2026-11-03-production-release/workshop-publisher-stage0-integration.json": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "921a00a0355af11f70f5ef5695aad37d9371f486",
+        "sha256": "1643cb5d8d1513ecf810a852e05b1be741a9da34cc403427cbd9c8510be0add8",
+        "bytes": 18225,
+        "git_mode": "100644"
+      },
+      "docs/agents/tasks/2026-11-03-production-release/workshop-publisher-stage1a-offline-trust.json": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "2067dff2614024394b509e9d4b5e21e886046f55",
+        "sha256": "ae7077736cde53be30fd559be3bad40d545192139bbc15fe94cc595483c5219b",
+        "bytes": 9797,
+        "git_mode": "100644"
+      },
+      "docs/agents/tasks/2026-11-03-production-release/workshop-publisher-transport.json": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "6be4547323a5651a79526d20c5afda59f52ed800",
+        "sha256": "9c7ba759c68cc316bba6eb0d685b9f522d6bcbb0f5b08ea9ef475bddbf435ec5",
+        "bytes": 6246,
+        "git_mode": "100644"
+      },
+      "docs/agents/tasks/2026-11-03-production-release/workshop-staging-workflow-regression.json": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "6b23f60a73d4ae67c31552a612cd9532a82f11d6",
+        "sha256": "95e46209b827592fdb19bc266e42f11c45293a819b1050142cd0ca102a07ba34",
+        "bytes": 2500,
+        "git_mode": "100644"
+      },
+      "docs/superpowers/plans/2026-11-03-workshop-artifact-boundary-corrections.md": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "38a7ae8eee089fe30d01c35927f6834713251577",
+        "sha256": "2b3f68349fba53f78c7b3bd434aec2622e05b8291d6dad3d8655f539ee6718db",
+        "bytes": 22414,
+        "git_mode": "100644"
+      },
+      "docs/superpowers/plans/2026-11-03-workshop-authenticated-publisher.md": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "27c24c4d7501e3a12c596c13c422a251d4b03f8f",
+        "sha256": "92677ccd0dd1c6078bb17ae6c94a8d53b97eebdca4e724e36f9a1c57bc8df4bf",
+        "bytes": 71386,
+        "git_mode": "100644"
+      },
+      "docs/superpowers/plans/2026-11-03-workshop-migration-build-arg.md": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "db85f7c98018ae8776cb20881bc5111eab113d45",
+        "sha256": "b7031cfa5c6ba7cace2e41d67e00498de3e332c164c8658f415dd30383bc071b",
+        "bytes": 12210,
+        "git_mode": "100644"
+      },
+      "docs/superpowers/plans/2026-11-03-workshop-publisher-transport.md": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "a065aca86adc5bc139a3f2586de14f9972ed32cf",
+        "sha256": "d0bca7b9a536481981f62163abcb22cf4fd735ed876226082baa3e38863b248b",
+        "bytes": 48211,
+        "git_mode": "100644"
+      },
+      "docs/superpowers/plans/2026-11-03-workshop-staging-workflow-regression-amendment.md": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "a24e2e8a943fe9bec34783fdf47990059ffe9383",
+        "sha256": "f2814d837cf3329b8329a2d87a21ac3a0dc941c3bae9c130be554882ff552ce7",
+        "bytes": 5502,
+        "git_mode": "100644"
+      },
+      "docs/superpowers/plans/2026-11-04-workshop-artifact-inspection-close-failure.md": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "21ff22eb77fcdcdace539623b9dd452e32067a08",
+        "sha256": "811f418eec4782355ab3695d942361d95629a7bac30d055bf31040f60ab9f563",
+        "bytes": 12893,
+        "git_mode": "100644"
+      },
+      "docs/superpowers/plans/2026-11-04-workshop-artifact-revalidation-deadline.md": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "041637617106ad55c95e24b1a13182c1430623f9",
+        "sha256": "42cffb023466e0e39c486d6681a616bbe529cf1e0cc8e7a48f8656f5347856c7",
+        "bytes": 14170,
+        "git_mode": "100644"
+      },
+      "docs/superpowers/plans/2026-11-04-workshop-publisher-python-review-corrections.md": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "88e7bab6ef9e1883521da6280d6008de3d22e5b2",
+        "sha256": "7217a7b13efadb15c3eaaef13f23d5abd3ae73acb884020dbb61bb900662bd07",
+        "bytes": 13730,
+        "git_mode": "100644"
+      },
+      "docs/superpowers/plans/2026-11-04-workshop-publisher-sigterm-ordering-amendment.md": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "c334d0c73b686c614135a5a0fdbb45dcdc8c678f",
+        "sha256": "d96f16b23af2fff85a23bbff2169a3c51aa4731ed32a5e2aed05287d1422874a",
+        "bytes": 12080,
+        "git_mode": "100644"
+      },
+      "docs/superpowers/plans/2026-11-04-workshop-publisher-stage0-integration.md": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "0fd8b2223c324743c957e9ae49f6714fe4dcfe91",
+        "sha256": "c135e55c6a3b41e51300818e2b2145225879596e93cd09a07fcb863ad158f5bf",
+        "bytes": 20342,
+        "git_mode": "100644"
+      },
+      "docs/superpowers/plans/2026-11-04-workshop-publisher-stage1a-offline-trust.md": {
+        "source_sha": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+        "git_blob_oid": "a3c5d91e9973e23ded210dd6aff7d9d0ddae7bbb",
+        "sha256": "db5b08b7d36348032d7f935623bbbed8b8f5e09e4e52b097a9bebc55715166bd",
+        "bytes": 19126,
+        "git_mode": "100644"
+      },
+      "docs/agents/records/2026-11-04-workshop-staging-boot-device-evidence.json": {
+        "source_sha": "10a454a3c4160ac8e423c25fcf38ab58b426fb86",
+        "git_blob_oid": "1bbc47402a9306844d81ee24a27d087bbc5912be",
+        "sha256": "a47ce650807417611c26ac9d33b9b5828b3947a5f55bd44481c72e5662d98e82",
+        "bytes": 125609,
+        "git_mode": "100644"
+      },
+      "docs/agents/records/2026-11-04-workshop-staging-boot-device.json": {
+        "source_sha": "10a454a3c4160ac8e423c25fcf38ab58b426fb86",
+        "git_blob_oid": "4075f681007f737fa7c107f19a865f02ffd37662",
+        "sha256": "81973d1b7d340723502c252b807db289fdcc9086215a4ff24791e57717d1c4ee",
+        "bytes": 4100,
+        "git_mode": "100644"
+      },
+      "docs/agents/records/2026-11-04-workshop-staging-bootstrap-evidence.json": {
+        "source_sha": "10a454a3c4160ac8e423c25fcf38ab58b426fb86",
+        "git_blob_oid": "5079fff7e10443881c1b29db01d5d8866b147dc2",
+        "sha256": "dd732b5f713ef1d1eade8c970d64751a28529b1d02e88618ab5a2712b9b34f3c",
+        "bytes": 71646,
+        "git_mode": "100644"
+      },
+      "docs/agents/records/2026-11-04-workshop-staging-bootstrap.json": {
+        "source_sha": "10a454a3c4160ac8e423c25fcf38ab58b426fb86",
+        "git_blob_oid": "83d42b34bfc052fddc41f4d2648024a895d0d32e",
+        "sha256": "7d6e33e340c1d306cc6e70afa9d1a67aab49d8f27e2590b01f0e19538de276ee",
+        "bytes": 4825,
+        "git_mode": "100644"
+      },
+      "docs/agents/records/2026-11-04-workshop-staging-m2-host-install-evidence.json": {
+        "source_sha": "10a454a3c4160ac8e423c25fcf38ab58b426fb86",
+        "git_blob_oid": "31b84905efe0b356dc48982a476fc8f2ff780af9",
+        "sha256": "f5b51d0bd3f1189c4304d27dcb2375e5b82daa61661fec904a38dcbe7e8b5993",
+        "bytes": 891059,
+        "git_mode": "100644"
+      },
+      "docs/agents/records/2026-11-04-workshop-staging-m2-host-install.json": {
+        "source_sha": "10a454a3c4160ac8e423c25fcf38ab58b426fb86",
+        "git_blob_oid": "5a73791d9835e3e4154aa30adf3b5f839395c127",
+        "sha256": "23f6aca2790bf722914210f843d4643e6459cc809f562636e62c6c7ef38d49fd",
+        "bytes": 4070,
+        "git_mode": "100644"
+      },
+      "docs/agents/tasks/2026-11-03-production-release/workshop-staging-boot-device.json": {
+        "source_sha": "10a454a3c4160ac8e423c25fcf38ab58b426fb86",
+        "git_blob_oid": "a7a60bdd81e18506cee0a8d7bf93ca57a4ef5c88",
+        "sha256": "d4406ca1243dc5129b37b8e2c8d4b866bf0b65c477b95f977ef74e7162b02578",
+        "bytes": 6655,
+        "git_mode": "100644"
+      },
+      "docs/agents/tasks/2026-11-03-production-release/workshop-staging-bootstrap.json": {
+        "source_sha": "10a454a3c4160ac8e423c25fcf38ab58b426fb86",
+        "git_blob_oid": "a9b3abba26af60b9ae2a5238fcd95bbedabcea28",
+        "sha256": "5fd303a27e0d4c53f49d359c7ab68f8829b02a73668ce55616604f1e58c90fa6",
+        "bytes": 8534,
+        "git_mode": "100644"
+      },
+      "docs/agents/tasks/2026-11-03-production-release/workshop-staging-m2-host-install.json": {
+        "source_sha": "10a454a3c4160ac8e423c25fcf38ab58b426fb86",
+        "git_blob_oid": "b2ccb88c027373def83251b993178bdc0b9623b5",
+        "sha256": "00675cab2adfbb37d3742a5c42ef67fec72b3af602018812a2e9abcc150ef4bb",
+        "bytes": 6651,
+        "git_mode": "100644"
+      },
+      "docs/superpowers/plans/2026-11-04-workshop-staging-boot-device.md": {
+        "source_sha": "10a454a3c4160ac8e423c25fcf38ab58b426fb86",
+        "git_blob_oid": "187009a66e88b607c024cda93b16acc262a008fc",
+        "sha256": "2d3ba01d575de47aaa693f59af3402c9b42b0dde62ba090c6cb73053f09a3431",
+        "bytes": 16418,
+        "git_mode": "100644"
+      },
+      "docs/superpowers/plans/2026-11-04-workshop-staging-lifecycle.md": {
+        "source_sha": "10a454a3c4160ac8e423c25fcf38ab58b426fb86",
+        "git_blob_oid": "a1b29c43e0e6016c3035109520ae6d852902d8a4",
+        "sha256": "e20c2cc687d5cc751053d8f0b13411c4bfd08ba5e2f4e2650b86e88a72eae641",
+        "bytes": 42148,
+        "git_mode": "100644"
+      },
+      "docs/superpowers/plans/2026-11-04-workshop-staging-m2-host-install.md": {
+        "source_sha": "10a454a3c4160ac8e423c25fcf38ab58b426fb86",
+        "git_blob_oid": "74877db7504ad75762d75ca36c1d6c2aff261139",
+        "sha256": "ce896f8037dccdfd2c328b11a3213d306194a1a79151e64e3d5c074b93f8bf09",
+        "bytes": 32488,
+        "git_mode": "100644"
+      },
+      "docs/verification/2026-11-04-workshop-staging-m2-host-install-gate.md": {
+        "source_sha": "10a454a3c4160ac8e423c25fcf38ab58b426fb86",
+        "git_blob_oid": "6ca4a3e96ed6d6cab83ec38d368e75a74d3b0513",
+        "sha256": "607848fda70a2f3c5a7ba0c7fb85a29089b31594597af64cf26297ced9a10b56",
+        "bytes": 2027,
+        "git_mode": "100644"
+      }
+    },
+    "implementation_dispatch_authorized": false,
+    "tracking_write_authorized": false,
+    "cloud_execution_authorized": false,
+    "staging_activation_authorized": false,
+    "deployment_authorized": false,
+    "production_ready": false,
+    "cutover_verified": false,
+    "tracking_sync": {
+      "detail_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6622915925",
+      "detail_sha256": "5c127a30683381c84c68f969556e1caff5249d54e758a82cc4f106082b621666",
+      "project_index_sha256": "20ab190a8c0e78eb994b5e99ba133e7df2cdebd1258f29c0680d0cb32422407c",
+      "prior_project_index_sha256": "a83de3e989bdbb1c92a659efd168daf712a7461198c31d5517c608a86b020328",
+      "issue_body_sha256": "6875ef4a9114cf3cc21429f8b9599a333a4fc32d696075fce54432802adf95bb",
+      "prior_comments": 115,
+      "readback_at": "2026-11-04T04:54:35.007842+00:00",
+      "all_predecessor_bytes_preserved": true,
+      "pg_gate_sha": "74dfe57e1d6601429774f7e44e1df17ba1c54144",
+      "pg_receipt_sha": "d662cb01a35b07cfa0dc3788891248fc4c07d12f"
+    },
+    "checkpoint_verification": {
+      "gate_sha": "2728ac1acaf173d6f244e200e584dac7922fda1d",
+      "branch": "codex/workshop-reviewed-leaves-integration-plan",
+      "remote_gate_sha": "2728ac1acaf173d6f244e200e584dac7922fda1d",
+      "preflight": {
+        "command": [
+          "python3",
+          "scripts/autonomy/pre_implementation.py",
+          "--record",
+          "docs/agents/records/2026-11-04-workshop-reviewed-leaves-integration.json",
+          "--base-sha",
+          "2728ac1acaf173d6f244e200e584dac7922fda1d",
+          "--repo-root",
+          "/home/corp/.codex/worktrees/workshop-reviewed-leaves-integration/autodata"
+        ],
+        "exit_code": 0,
+        "stdout": "{\"status\": \"synchronized\", \"errors\": []}\n",
+        "stderr": ""
+      },
+      "pin_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6622928529",
+      "pin_body_sha256": "f7e39a876fcfb339b7919f1cbc75f3ce0c5aceba8f732a70d154c36a722f06d1",
+      "project_index": "Reviewed-leaf integration detail6622915925: root eddcf724; ordered R6 a4a0d7c, publisher12e6944, staging10a454a;23 implementation+59 historical-doc pins;five docs/queue resolutions preserve histories. Goal/todo/plan/spec/record/task in detail; independent local review PASS. Full CURRENT PG index gate74dfe57e1d6601429774f7e44e1df17ba1c54144/receiptd662cb0 detail6622859754+pin6622872548, Stage1A detail6622550358+pin6622560758, M2A gate9a2b57d0 detail6622589651+pin6622599898 and ALL115 prior comment bodies/Issue body preserved verbatim+SHA256/readback in detail/canonical evidence; prior statuses/authorities/denials unchanged. Exact committed preflight+independent checkpoint review+fresh coordinator dispatch required before ordered code-only merges. NO merges/runtime/providers/cloud/activation/readiness/production on this docs turn. Gate 2728ac1acaf173d6f244e200e584dac7922fda1d preflight synchronized/errors[]; pin6622928529.",
+      "project_index_sha256": "578438413fa8b6738efbf960c46e55ff7b6623772fac191b697af862d57bf0d2",
+      "readback_at": "2026-11-04T04:55:31.701617+00:00",
+      "issue_body_unchanged": true,
+      "all_115_prior_comment_bodies_unchanged": true,
+      "prior_index_reference_ids_retained": true,
+      "independent_exact_checkpoint_review": "required",
+      "implementation_dispatch_authorized": false,
+      "runtime_execution_authorized": false
+    }
+  },
+  "allowed_implementation_paths": [
+    ".github/workflows/release-workshop.yml",
+    "infra/deploy/gce/cloud-bootstrap.sh",
+    "infra/deploy/gce/cloud-ops.py",
+    "infra/deploy/gce/deploy.sh",
+    "infra/deploy/gce/host_install.py",
+    "infra/deploy/gce/publisher-toolkit/package-lock.json",
+    "infra/deploy/gce/publisher-toolkit/package.json",
+    "infra/deploy/gce/publisher_adapters.py",
+    "infra/deploy/gce/publisher_artifact.mjs",
+    "infra/deploy/gce/publisher_identity.mjs",
+    "infra/deploy/gce/publisher_policy.mjs",
+    "infra/deploy/gce/staging-bootstrap.schema.json",
+    "infra/deploy/gce/staging_bootstrap.py",
+    "infra/deploy/gce/test_cloud_ops.py",
+    "infra/deploy/gce/test_host_install.py",
+    "infra/deploy/gce/test_publisher_adapters.py",
+    "infra/deploy/gce/test_publisher_artifact.mjs",
+    "infra/deploy/gce/test_publisher_identity.mjs",
+    "infra/deploy/gce/test_publisher_policy.mjs",
+    "infra/deploy/gce/test_release_workshop_contract.py",
+    "infra/deploy/gce/test_staging_bootstrap.py",
+    "scripts/dev/release_acceptance.py",
+    "scripts/dev/test_release_acceptance.py"
+  ],
+  "allowed_conflict_paths": [
+    "docs/agents/tasks/2026-11-03-production-release/queue.json",
+    "docs/architecture/infrastructure-and-dev.md",
+    "docs/operations/workshop-gcp.md",
+    "docs/superpowers/plans/2026-11-03-production-release-orchestration.md",
+    "docs/superpowers/plans/2026-11-03-workshop-hosting.md"
+  ],
+  "source_leaves": {
+    "r6": "a4a0d7cc5e95f16793d80dfd73596b40c27e6757",
+    "publisher": "12e69449d8a0e53c4817c3d523d2cab4da57e38c",
+    "staging": "10a454a3c4160ac8e423c25fcf38ab58b426fb86"
+  },
+  "todo": [
+    "Obtain independent local-draft review; keep status unsynchronized and integration blocked until PG releases the serialized tracking slot.",
+    "After slot release, preserve then-current Issue186/Project8 texts and hashes; synchronize exact source tuple, plan/spec/record/task/canonical notes and concrete todo; commit/push the docs-only checkpoint and pass full-SHA preflight.",
+    "Obtain independent exact synchronized-checkpoint review and fresh coordinator code-only dispatch; create an isolated feature worktree/branch from the checkpoint.",
+    "Merge exact R6, publisher and staging leaf histories in that deterministic order, resolving only five approved documentation/tracking conflicts and preserving all 23 implementation blob pins and historical additions.",
+    "Run combined offline Python/Node/preflight/syntax/scope/authority checks after each milestone; commit and promptly push validated coherent merges to the assigned branch.",
+    "Obtain independent exact-head review, freeze the combined candidate SHA and retain results; obtain separate gates before fixture/CI reruns or any live activation."
+  ],
+  "release_state": "unverified",
+  "implementation_dispatch_authorized": false,
+  "cloud_execution_authorized": false,
+  "checkpoint_verification": {
+    "gate_sha": "2728ac1acaf173d6f244e200e584dac7922fda1d",
+    "branch": "codex/workshop-reviewed-leaves-integration-plan",
+    "remote_gate_sha": "2728ac1acaf173d6f244e200e584dac7922fda1d",
+    "preflight": {
+      "command": [
+        "python3",
+        "scripts/autonomy/pre_implementation.py",
+        "--record",
+        "docs/agents/records/2026-11-04-workshop-reviewed-leaves-integration.json",
+        "--base-sha",
+        "2728ac1acaf173d6f244e200e584dac7922fda1d",
+        "--repo-root",
+        "/home/corp/.codex/worktrees/workshop-reviewed-leaves-integration/autodata"
+      ],
+      "exit_code": 0,
+      "stdout": "{\"status\": \"synchronized\", \"errors\": []}\n",
+      "stderr": ""
+    },
+    "pin_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6622928529",
+    "pin_body_sha256": "f7e39a876fcfb339b7919f1cbc75f3ce0c5aceba8f732a70d154c36a722f06d1",
+    "project_index": "Reviewed-leaf integration detail6622915925: root eddcf724; ordered R6 a4a0d7c, publisher12e6944, staging10a454a;23 implementation+59 historical-doc pins;five docs/queue resolutions preserve histories. Goal/todo/plan/spec/record/task in detail; independent local review PASS. Full CURRENT PG index gate74dfe57e1d6601429774f7e44e1df17ba1c54144/receiptd662cb0 detail6622859754+pin6622872548, Stage1A detail6622550358+pin6622560758, M2A gate9a2b57d0 detail6622589651+pin6622599898 and ALL115 prior comment bodies/Issue body preserved verbatim+SHA256/readback in detail/canonical evidence; prior statuses/authorities/denials unchanged. Exact committed preflight+independent checkpoint review+fresh coordinator dispatch required before ordered code-only merges. NO merges/runtime/providers/cloud/activation/readiness/production on this docs turn. Gate 2728ac1acaf173d6f244e200e584dac7922fda1d preflight synchronized/errors[]; pin6622928529.",
+    "project_index_sha256": "578438413fa8b6738efbf960c46e55ff7b6623772fac191b697af862d57bf0d2",
+    "readback_at": "2026-11-04T04:55:31.701617+00:00",
+    "issue_body_unchanged": true,
+    "all_115_prior_comment_bodies_unchanged": true,
+    "prior_index_reference_ids_retained": true,
+    "independent_exact_checkpoint_review": "required",
+    "implementation_dispatch_authorized": false,
+    "runtime_execution_authorized": false
+  }
+}

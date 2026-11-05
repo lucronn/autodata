@@ -1,0 +1,40 @@
+# Root-owned /etc/autodata/metadata-guard.nft. Load as one nft transaction.
+# Only these private tables are replaced; never flush the global ruleset or
+# Docker tables. Kernel/parser/bridge-interface behavior requires staging proof.
+add table inet autodata_guard
+flush table inet autodata_guard
+add table bridge autodata_guard
+flush table bridge autodata_guard
+
+table inet autodata_guard {
+    chain forward {
+        type filter hook forward priority -200; policy accept;
+        meta iifname "br-ad-edge" ip saddr 172.30.10.10 ip daddr 169.254.169.254 meta l4proto tcp tcp dport 80 accept
+        ip daddr 169.254.169.254 drop
+        ip6 daddr fd20:ce::254 drop
+        meta iifname "br-ad-edge" meta nfproto ipv6 drop
+        meta iifname "br-ad-back" meta nfproto ipv6 drop
+        meta iifname "br-ad-work" meta nfproto ipv6 drop
+        meta iifname "br-ad-edge" ip saddr 172.30.10.0/24 ip daddr 172.30.20.40 meta l4proto tcp tcp dport 9000 accept
+        meta iifname "br-ad-back" ip saddr 172.30.20.0/24 ip daddr 172.30.20.40 meta l4proto tcp tcp dport 9000 accept
+        meta iifname "br-ad-work" ip saddr 172.30.30.0/24 ip daddr 172.30.20.40 meta l4proto tcp tcp dport 9000 accept
+        ip daddr 172.30.20.40 drop
+    }
+    chain output {
+        type filter hook output priority -200; policy accept;
+        meta skuid 0 ip daddr 169.254.169.254 meta l4proto tcp tcp dport 80 accept
+        ip daddr 169.254.169.254 drop
+        ip6 daddr fd20:ce::254 drop
+    }
+}
+
+table bridge autodata_guard {
+    chain forward {
+        type filter hook forward priority -200; policy accept;
+        meta ibrname "br-ad-edge" ether type ip6 drop
+        meta ibrname "br-ad-back" ether type ip6 drop
+        meta ibrname "br-ad-work" ether type ip6 drop
+        meta ibrname "br-ad-back" ip saddr 172.30.20.0/24 ip daddr 172.30.20.40 meta l4proto tcp tcp dport 9000 accept
+        ip daddr 172.30.20.40 drop
+    }
+}

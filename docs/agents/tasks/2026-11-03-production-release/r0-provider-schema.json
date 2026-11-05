@@ -1,0 +1,66 @@
+{
+  "task_id": "production-release-r0-provider-schema",
+  "repository": "lucronn/autodata",
+  "goal": "Remove provider-unsupported schema uniqueness keywords while preserving deterministic duplicate-ID rejection and all evidence gates.",
+  "builder_agent": "autodata-python-builder",
+  "allowed_paths": [
+    "scripts/autonomy/agent-output.schema.json",
+    "scripts/autonomy/test_runner.py"
+  ],
+  "bounded_contexts": [
+    "provider structured output compatibility"
+  ],
+  "inputs": [
+    "docs/superpowers/plans/2026-11-03-provider-schema-compatibility.md",
+    "docs/verification/2026-11-03-agent-evidence-hardening.md"
+  ],
+  "outputs": [
+    "scripts/autonomy/agent-output.schema.json"
+  ],
+  "acceptance_tests": [
+    "Checked-in provider schema contains no unsupported uniqueItems declarations.",
+    "Runtime rejects duplicate evidence, finding/assessment, command-output, provenance and required-agent IDs.",
+    "Schema inventories and strict field/type/value validation remain unchanged.",
+    "Focused and full autonomy suites pass at an independently reviewed exact SHA."
+  ],
+  "forbidden_scope": [
+    "Production deployment or production-data changes",
+    "Changing the autonomy policy or weakening required checks",
+    "Publishing secrets or private source payloads",
+    "Editing paths outside the assigned scope",
+    "Merging without independent exact-commit verification",
+    "Changing the requested gpt-6.1-sol / medium / Fast execution profile or silently falling back to another model or tier"
+  ],
+  "compatibility": {
+    "api": "Preserve existing consumers with additive versioned fields; run compatibility checks.",
+    "events": "Preserve event identity and make duplicate delivery idempotent.",
+    "schema": "Forward-only additive migrations with clean and upgrade verification; no destructive edits to historical migrations."
+  },
+  "pre_implementation": {
+    "goal": "Remove provider-unsupported schema uniqueness keywords while preserving deterministic duplicate-ID rejection and all evidence gates.",
+    "plan_ref": "docs/superpowers/plans/2026-11-03-provider-schema-compatibility.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/agents/runner-interface.md",
+      "docs/verification/2026-11-03-agent-evidence-hardening.md"
+    ],
+    "todo": [
+      "Checked-in provider schema contains no unsupported uniqueItems declarations.",
+      "Runtime rejects duplicate evidence, finding/assessment, command-output, provenance and required-agent IDs.",
+      "Schema inventories and strict field/type/value validation remain unchanged.",
+      "Focused and full autonomy suites pass at an independently reviewed exact SHA."
+    ],
+    "status": "synchronized",
+    "updated_at": "2026-11-03T10:00:57.924214+00:00"
+  },
+  "execution": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "medium",
+    "service_tier": "fast",
+    "features": {
+      "fast_mode": true
+    },
+    "allow_fallback": false
+  }
+}

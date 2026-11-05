@@ -1,0 +1,178 @@
+{
+  "accepted_case_credit": 0,
+  "authority": {
+    "cutover_verified": false,
+    "deployment_authorized": false,
+    "fixture_verified": false,
+    "implementation_authorized": false,
+    "merge_authorized": false,
+    "product_candidate_verified": false,
+    "profile_promotion_authorized": false,
+    "runtime_execution_authorized": false,
+    "staging_verified": false
+  },
+  "authorizing_checkpoint_sha": null,
+  "committed_gate_review": {
+    "checkpoint_sha": null,
+    "status": "pending"
+  },
+  "draft_review": {
+    "findings": [],
+    "provenance": "Coordinator-reported independent pre-sync five-file draft review; no committed-checkpoint review or builder dispatch is asserted.",
+    "status": "PASS"
+  },
+  "enabled_tiers": [],
+  "goal": "Carry the exact Stage A CI Git-metadata test-fixture isolation repair into the reviewed B2 stack without changing production behavior or earning runtime acceptance credit.",
+  "implementation_allowlist": [
+    "scripts/dev/test_workshop_final180_runner.py",
+    "docs/verification/workshop-final180-runbook.md"
+  ],
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-final180-ci-integration.md",
+  "planning_parent_sha": "0ccfe79345c0a1303bc6a33dfdc51ceccf8e3471",
+  "planning_validation": {
+    "append_only_baseline_bytes": 79030,
+    "committed": false,
+    "contaminated_checkout_baseline_setup_git_config_errors": 10,
+    "contaminated_checkout_baseline_tests": 10,
+    "github_writes": false,
+    "implementation_modified": false,
+    "implementation_preflight_run": false,
+    "nested_record_equal": true,
+    "pushed": false,
+    "status": "draft_checks_passed_not_implementation_preflight"
+  },
+  "predecessor_completion_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6638436396",
+  "profiles_enabled": false,
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repair_ancestor_sha": "2ac80344abe855d8dcbfcc6ccd309cc3c7128a3e",
+  "repair_patch_id": "87df9ca6f05a0bbdf9f5c98bcc549fef1be6b3fc",
+  "repair_patch_sha256": "c4567a3b03db9d8bb56af43a701f56ebaf15d68149ff6cadd326c93ecfb921eb",
+  "repair_path": "scripts/dev/test_workshop_final180_runner.py",
+  "repair_source_sha": "93b0bf4ed18737a7e57c0de6a8ea1fa0f5bdba0a",
+  "repository_doc_refs": [
+    "docs/agents/specs/2026-11-04-workshop-final180-ci-integration.md",
+    "docs/superpowers/plans/2026-11-03-workshop-product-evidence-assembler.md"
+  ],
+  "reviewed_b2_head_sha": "0ccfe79345c0a1303bc6a33dfdc51ceccf8e3471",
+  "run_record": null,
+  "runtime_lock": null,
+  "selected_candidate_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+  "source_pins": [
+    {
+      "bytes": 32981,
+      "commit": "2ac80344abe855d8dcbfcc6ccd309cc3c7128a3e",
+      "git_blob": "2cfa9dc8ea116b7aa5b0c541529712b4b5d24be3",
+      "path": "scripts/dev/test_workshop_final180_runner.py",
+      "sha256": "2f92614e937b5b3d6a17da7ab9f4b758b34a4a542fbe5564b29ddefd4f7b148a"
+    },
+    {
+      "bytes": 33237,
+      "commit": "93b0bf4ed18737a7e57c0de6a8ea1fa0f5bdba0a",
+      "git_blob": "f4db092e0d1a83fce47b51f7c68021b6dc2053bd",
+      "path": "scripts/dev/test_workshop_final180_runner.py",
+      "sha256": "c0bac62eb756d84593191e82b2b240fdd77bd5128242f212e9b508e15c1740c1"
+    },
+    {
+      "bytes": 32981,
+      "commit": "0ccfe79345c0a1303bc6a33dfdc51ceccf8e3471",
+      "git_blob": "2cfa9dc8ea116b7aa5b0c541529712b4b5d24be3",
+      "path": "scripts/dev/test_workshop_final180_runner.py",
+      "sha256": "2f92614e937b5b3d6a17da7ab9f4b758b34a4a542fbe5564b29ddefd4f7b148a"
+    },
+    {
+      "bytes": 47124,
+      "commit": "0ccfe79345c0a1303bc6a33dfdc51ceccf8e3471",
+      "git_blob": "ca48cd988c5579a7d385dc1844b84306eae0861e",
+      "path": "scripts/dev/workshop_final180_runner.py",
+      "sha256": "693a408a73f3ccd37bf945bfc94d427f742878580932dab382ea9a244a141c91"
+    },
+    {
+      "bytes": 22290,
+      "commit": "0ccfe79345c0a1303bc6a33dfdc51ceccf8e3471",
+      "git_blob": "8c7fa87bab906955c145d7cc965be641aea48c5f",
+      "path": "scripts/dev/workshop_final180_identity_adapter.py",
+      "sha256": "0474a85c33d4f2722ad01d6e55e69a8080dc0f1983c856ca7caa1b94510a767d"
+    },
+    {
+      "bytes": 29838,
+      "commit": "0ccfe79345c0a1303bc6a33dfdc51ceccf8e3471",
+      "git_blob": "7391263cb874e2505f4f110df6343c8b466fc692",
+      "path": "scripts/dev/test_workshop_final180_identity_adapter.py",
+      "sha256": "a3f3017b1d7a85da9ae4d1883758f2494d722fb321d45c1ff758994ab6d2653c"
+    },
+    {
+      "bytes": 15467,
+      "commit": "0ccfe79345c0a1303bc6a33dfdc51ceccf8e3471",
+      "git_blob": "060d1407ee5e71880cf7e441195cac4274f04937",
+      "path": "scripts/dev/workshop_final180_catalog_adapter.py",
+      "sha256": "88f481104d66d9bda8bdf6c1a8038e8514b69d63db813b85c5ec13e40f0c6ddf"
+    },
+    {
+      "bytes": 26977,
+      "commit": "0ccfe79345c0a1303bc6a33dfdc51ceccf8e3471",
+      "git_blob": "86e78aef564c216ede5780dccadd56366d4d0a63",
+      "path": "scripts/dev/test_workshop_final180_catalog_adapter.py",
+      "sha256": "978cbb594d9bc42f0cb02b3447e2afed6bb6764c155b657db6e5b3676cc319a9"
+    },
+    {
+      "bytes": 18423,
+      "commit": "0ccfe79345c0a1303bc6a33dfdc51ceccf8e3471",
+      "git_blob": "5812377b4e1a1bd9f992f116cdd11e73c7168393",
+      "path": "docs/verification/workshop-final180-runbook.md",
+      "sha256": "23023c638cd94dd46ff7722d80a5f28a1e3e6ad2c82f417ac6485d46cabeef03"
+    },
+    {
+      "bytes": 79030,
+      "commit": "0ccfe79345c0a1303bc6a33dfdc51ceccf8e3471",
+      "git_blob": "bd7d94e9c02455b229413795056bfe7a0e2e2e1d",
+      "path": "docs/superpowers/plans/2026-11-03-workshop-product-evidence-assembler.md",
+      "sha256": "59cb096b18c57d52cdbf007521652b83c4a66636a2cc822a47d7366808e15129"
+    },
+    {
+      "bytes": 9521,
+      "commit": "0ccfe79345c0a1303bc6a33dfdc51ceccf8e3471",
+      "git_blob": "08384431f5c6795eb83cae0ad4e8b8759d5e6fa9",
+      "path": ".github/workflows/autonomous-verification.yml",
+      "sha256": "d38f4b1a5f414775b494ee801c83ebbc0473a7ab7e970cbf573529d08f1010aa"
+    }
+  ],
+  "status": "synchronized",
+  "todo": [
+    "Synchronize this CI-integration plan/spec/record/task and exact two-path implementation allowlist with Issue186 and Project8, preserving history; commit/push the checkpoint descending from reviewed B2 0ccfe79345c0a1303bc6a33dfdc51ceccf8e3471 and pass exact-checkpoint standalone/nested preflight plus independent gate review before explicit builder dispatch.",
+    "Reproduce the ten ProductionGitTests setup failures with harmless forbidden checkout metadata, then apply only the pinned Stage A test-file patch from ancestor 2ac80344abe855d8dcbfcc6ccd309cc3c7128a3e to source 93b0bf4ed18737a7e57c0de6a8ea1fa0f5bdba0a; keep every production and adapter byte unchanged.",
+    "Update the final180 runbook to distinguish CI fixture isolation and code-only synthetic checks from genuine raw-fixture and runtime acceptance; preserve accepted_case_credit0, disabled profiles/tiers, null runtime lock/run record and all nine authority flags false.",
+    "Run the contaminated-checkout regression, 52 Stage A plus 25 B1 plus 23 B2 focused tests, complete developer/autonomy discovery, no-bytecode syntax and exact patch/two-path/unchanged-source checks; commit/push validated milestones and obtain independent exact-code-head review.",
+    "Read back exact-successor-head Autonomous Verification results and synchronize code-only evidence with Issue186/Project8; retain any pending or failed CI and every runtime/profile/release blocker without inferring acceptance or authority."
+  ],
+  "tracking_receipts": {
+    "current_comment_count": 161,
+    "issue_after_sha256": "b52fbb3d7a7a9b8ea543984133153793b3cc7abff119d69078179e46f106a750",
+    "issue_before_sha256": "537d2e3e512635cd1847aebda81358b5d4b870a479e0186177474b44dc371acb",
+    "issue_body_unchanged": true,
+    "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6638503013",
+    "issue_comment_count": 161,
+    "issue_detail_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6638503013",
+    "issue_preserved_comment_count": 160,
+    "issue_readback_ref": "/home/corp/autodata-evidence/final180-ci-integration-tracking/issue-after.json",
+    "issue_readback_sha256": "b52fbb3d7a7a9b8ea543984133153793b3cc7abff119d69078179e46f106a750",
+    "other_project_fields_unchanged": true,
+    "previous_source_archived_verbatim": true,
+    "prior_comment_count": 160,
+    "prior_comments_preserved": true,
+    "prior_project_source_sha256": "08e8c676cd8bb03f65ef29a6209da6fd0962a8b376df1b79632eaef4d7d10e14",
+    "project_after_sha256": "5e85f52638b718d743c567d8bdb13ae8c61c64fc08cf1850ca148232415b948d",
+    "project_before_sha256": "26d4a8a0777502ab4f8009b4f77abeccf145cf111847a67b005fd127cb04aef2",
+    "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "project_readback_ref": "/home/corp/autodata-evidence/final180-ci-integration-tracking/project-after.json",
+    "project_readback_sha256": "5e85f52638b718d743c567d8bdb13ae8c61c64fc08cf1850ca148232415b948d",
+    "project_source_sha256": "818d5bf9c5dd574c09816cd7c93db0549b37519a78437a7ff1023409cd02f5e9",
+    "project_status": "In Progress",
+    "receipt_ref": "/home/corp/autodata-evidence/final180-ci-integration-tracking/receipt.json",
+    "receipt_sha256": "f627123960cf2f873c86ea91f53bbbd58575d37a0ab48b0af89e9cf302a84f0e",
+    "status": "synchronized_live_readback",
+    "writer": "coordinator sole serialized writer"
+  },
+  "updated_at": "2026-11-04T18:20:17.386292+00:00"
+}

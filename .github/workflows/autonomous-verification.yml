@@ -17,8 +17,10 @@ on:
       - "packages/contracts/**"
       - "db/migrations/**"
       - "infra/compose/**"
+      - "infra/deploy/gce/**"
       - "infra/k8s/**"
       - "scripts/dev/**"
+      - "scripts/r3_preparation/**"
       - "scripts/contracts/**"
       - ".github/workflows/autonomous-verification.yml"
       - ".github/CODEOWNERS"
@@ -43,8 +45,10 @@ on:
       - "packages/contracts/**"
       - "db/migrations/**"
       - "infra/compose/**"
+      - "infra/deploy/gce/**"
       - "infra/k8s/**"
       - "scripts/dev/**"
+      - "scripts/r3_preparation/**"
       - "scripts/contracts/**"
       - ".github/workflows/autonomous-verification.yml"
       - ".github/CODEOWNERS"
@@ -62,7 +66,7 @@ jobs:
   autonomy-policy:
     name: Validate autonomy policy and evidence contract
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -87,6 +91,18 @@ jobs:
           --evidence-root scripts/autonomy/fixtures/evidence
           --json
 
+      - name: Set up build-only Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Verify pinned browser SDK and native client helpers
+        run: |
+          npm --prefix apps/api-go/workshop-client ci --ignore-scripts --no-audit --no-fund
+          node apps/api-go/workshop-client/build.mjs --check
+          node --test apps/api-go/workshop-client.test.mjs
+          python -m unittest scripts/dev/test_workshop_browser_smoke.py -v
+
       - name: Run Go API tests
         working-directory: apps/api-go
         run: go test ./...
@@ -109,6 +125,18 @@ jobs:
         working-directory: workers/ingestion-python
         run: |
           python -m pip install --disable-pip-version-check --no-input pytest
+          python - <<'PY'
+          import subprocess
+          import sys
+          import tomllib
+
+          with open("pyproject.toml", "rb") as project_file:
+              dependencies = tomllib.load(project_file)["project"]["dependencies"]
+          subprocess.run(
+              [sys.executable, "-m", "pip", "install", "--disable-pip-version-check", "--no-input", *dependencies],
+              check=True,
+          )
+          PY
           python -m pytest tests -q
 
       - name: Run enrichment worker tests
@@ -117,6 +145,45 @@ jobs:
 
       - name: Run development adapter tests
         run: python -m unittest discover -s scripts/dev -p 'test_*.py' -v
+
+      - name: Run required GCE host delivery tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          fail() { printf '%s\n' "gce_ci_preflight:$1" >&2; exit 1; }
+          for tool in /usr/bin/sudo /usr/bin/setpriv /usr/bin/env /usr/bin/docker /bin/sh /usr/bin/python3 /usr/bin/openssl; do
+            test -x "$tool" || fail executable_missing
+          done
+          sudo -n /usr/bin/true || fail sudo_unavailable
+          if [ ! -e /usr/bin/python ] && [ ! -L /usr/bin/python ]; then
+            sudo -n /bin/ln -s /usr/bin/python3 /usr/bin/python
+          fi
+          test -x /usr/bin/python || fail python_alias_unavailable
+          gce_python="$(python -c 'import sys; print(sys.executable)')"
+          case "$gce_python" in /*) ;; *) fail python_not_absolute ;; esac
+          test -x "$gce_python" || fail active_python_unavailable
+          gce_temp="$(mktemp -d "${RUNNER_TEMP:?}/gce-contract.XXXXXXXX")"
+          cleanup() {
+            code=$?
+            trap - EXIT
+            sudo -n /bin/rm -rf -- "$gce_temp" || code=1
+            exit "$code"
+          }
+          trap cleanup EXIT
+          mkdir -m 700 "$gce_temp/home" "$gce_temp/tmp"
+          sudo -n /bin/chown 1000:1000 "$gce_temp" "$gce_temp/home" "$gce_temp/tmp"
+          run_gce() {
+            sudo -n /usr/bin/setpriv --reuid=1000 --regid=1000 --clear-groups /usr/bin/env -i \
+              HOME="$gce_temp/home" TMPDIR="$gce_temp/tmp" PATH=/usr/bin:/bin LANG=C.UTF-8 LC_ALL=C.UTF-8 \
+              PYTHONDONTWRITEBYTECODE=1 AUTODATA_REQUIRE_PURCHASE_CONFIG_DELIVERY_COMPOSE=1 "$@"
+          }
+          sudo -n /bin/chmod o+x /home/runner
+          run_gce "$gce_python" -B -c 'import os,pathlib,sys,tempfile; assert (os.getuid(),os.getgid(),os.geteuid(),os.getegid())==(1000,1000,1000,1000); assert sys.version_info>=(3,12); root=pathlib.Path.cwd(); assert (root/"infra/deploy/gce/runtime-entrypoint.sh").read_bytes(); assert (root/"workers/ingestion-python/src/autodata_ingestion/commerce_service.py").read_bytes(); assert os.access(sys.executable,os.X_OK); d=tempfile.TemporaryDirectory(); d.cleanup(); print("gce_ci_preflight:identity_paths_temp_pass")'
+          run_gce /usr/bin/python -B -c 'import sys; assert sys.version_info>=(3,12)'
+          run_gce /usr/bin/python3 -B -c 'import sys; assert sys.version_info>=(3,12)'
+          run_gce /usr/bin/docker compose version
+          run_gce /usr/bin/openssl version
+          run_gce "$gce_python" -B -m unittest discover -s infra/deploy/gce -p 'test_*.py' -v
 
       - name: Validate Compose definition
         env:
@@ -154,3 +221,164 @@ jobs:
           docker compose -f infra/compose/compose.yaml -f infra/compose/compose.ci.yaml up -d --wait api
           docker compose -f infra/compose/compose.yaml -f infra/compose/compose.ci.yaml run --rm api-runtime-smoke
           docker compose -f infra/compose/compose.yaml -f infra/compose/compose.ci.yaml run --rm --no-deps ingestion-smoke
+
+  workshop-dto-browser:
+    name: Workshop DTO browser inventory (not real API acceptance)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.x"
+      - name: Install exact browser fixture runtime
+        run: |
+          python -m pip install -r scripts/dev/requirements-workshop-browser.txt
+          python -m playwright install --with-deps chromium firefox webkit
+      - name: Exercise all 120 DTO browser cases over actual Go TLS assets
+        timeout-minutes: 85
+        env:
+          CANDIDATE_SHA: ${{ github.sha }}
+        run: |
+          python - <<'PY'
+          import hashlib
+          import importlib.util
+          import json
+          import os
+          from pathlib import Path
+          import signal
+          import ssl
+          import subprocess
+          import sys
+          import time
+          from urllib.request import Request, urlopen
+          spec = importlib.util.spec_from_file_location('workshop_browser_smoke', 'scripts/dev/workshop_browser_smoke.py')
+          smoke = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(smoke)
+          timing = smoke.load_dto_timing(smoke.FIXTURES / 'timing.json')
+          if timing['ci_exercise_seconds'] != 85*60 or timing['ci_job_minutes'] != 100:
+              raise SystemExit('workflow timing binding mismatch')
+          directory = Path(os.environ['RUNNER_TEMP']) / 'workshop-dto-browser'
+          directory.mkdir(mode=0o700)
+          with open(os.environ['GITHUB_ENV'], 'a') as stream:
+              stream.write(f'WORKSHOP_DTO_EVIDENCE_DIR={directory}\n')
+          fixture = producer = None
+          code = 1
+          interrupted = []
+          def latch(signum, frame):
+              interrupted.append(signum)
+          for sig in (signal.SIGTERM, signal.SIGINT):
+              signal.signal(sig, latch)
+          def poll_until(process, deadline):
+              while time.monotonic() < deadline:
+                  status = process.poll()
+                  if status is not None:
+                      return status
+                  if interrupted:
+                      return None
+                  time.sleep(min(.05, max(0, deadline-time.monotonic())))
+              return process.poll()
+          def stop_owned(process):
+              if process is None or process.poll() is not None:
+                  return True
+              # Owned sessions only. No unbounded wait or descendant-containment claim.
+              for sig, seconds in ((signal.SIGTERM, 2), (signal.SIGKILL, 2), (None, 2)):
+                  if sig is not None:
+                      try:
+                          os.killpg(process.pid, sig)
+                      except ProcessLookupError:
+                          pass
+                  end = time.monotonic() + seconds
+                  while time.monotonic() < end:
+                      if process.poll() is not None:
+                          return True
+                      time.sleep(min(.05, max(0, end-time.monotonic())))
+              return process.poll() is not None
+          with open(directory / 'go-fixture.log', 'wb') as log:
+              try:
+                  env = dict(os.environ, AUTODATA_WORKSHOP_BROWSER_FIXTURE='1',
+                      AUTODATA_WORKSHOP_BROWSER_READY=str(directory / 'ready.json'))
+                  fixture = subprocess.Popen(['go', '-C', 'apps/api-go', 'test', '-run',
+                      '^TestWorkshopBrowserFixtureHTTP$', '-count=1', f"-timeout={timing['go_test_seconds']}s"],
+                      env=env, start_new_session=True, stdout=log, stderr=subprocess.STDOUT)
+                  readiness_deadline = time.monotonic() + timing['readiness_seconds']
+                  ready = directory / 'ready.json'
+                  while not ready.exists():
+                      if interrupted or time.monotonic() >= readiness_deadline or fixture.poll() is not None:
+                          raise RuntimeError('fixture readiness unverified')
+                      time.sleep(.05)
+                  metadata = json.loads(ready.read_bytes())
+                  contract_hash = hashlib.sha256((smoke.FIXTURES / 'timing.json').read_bytes()).hexdigest()
+                  if (metadata.get('kind') != 'dto-fixture' or metadata.get('lifetime_seconds') != timing['dto_fixture_seconds']
+                          or metadata.get('timing_contract_sha256') != contract_hash):
+                      raise RuntimeError('fixture lifetime/contract metadata mismatch')
+                  origin = smoke.fixture_origin(metadata['origin'])
+                  producer = subprocess.Popen([sys.executable, 'scripts/dev/workshop_browser_smoke.py',
+                      '--base-url', origin, '--mode', 'dto-fixture', '--browser', 'all',
+                      '--candidate-sha', os.environ['CANDIDATE_SHA'], '--output', str(directory / 'browser')],
+                      start_new_session=True)
+                  status = poll_until(producer, time.monotonic()+timing['producer_hard_seconds'])
+                  code = status if status is not None and status > 0 else (0 if status == 0 and not interrupted else 1)
+                  if code == 0:
+                      raw = (directory / 'browser/evidence.json').read_bytes()
+                      evidence = json.loads(raw)
+                      receipt = json.loads((directory / 'browser/commit.json').read_bytes())
+                      invocation = dict(attempt_id=evidence['attempt_id'], epoch=evidence['epoch'],
+                          exit_code=status, terminal_state='COMMITTED')
+                      expected = [(engine, name) for engine in smoke.ENGINES for name in smoke.inventory()]
+                      if not smoke.accept_dto_success(raw, receipt, invocation=invocation,
+                              expected_attempt=evidence['attempt_id'], candidate_sha=os.environ['CANDIDATE_SHA'],
+                              timing_sha256=contract_hash, expected=expected, expected_input_sha256=smoke._dto_inputs()):
+                          raise RuntimeError('same-attempt receipt plus exit0 not verified')
+                  request = Request(origin+'/__fixture/stop', method='POST')
+                  with urlopen(request, context=ssl._create_unverified_context(), timeout=2) as response:
+                      if response.status != 204:
+                          raise RuntimeError('fixture stop ACK missing')
+                  if poll_until(fixture, time.monotonic()+2) != 0 and code == 0:
+                      code = 1
+              except BaseException as error:
+                  print(type(error).__name__ + ': ' + str(error), file=sys.stderr)
+                  if code == 0:
+                      code = 1
+              finally:
+                  producer_clean = stop_owned(producer)
+                  fixture_clean = stop_owned(fixture)
+                  if (not producer_clean or not fixture_clean or interrupted) and code == 0:
+                      code = 1
+          raise SystemExit(code)
+          PY
+      - name: Retain actual DTO browser evidence on success or failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: workshop-dto-browser-${{ github.sha }}
+          path: ${{ env.WORKSHOP_DTO_EVIDENCE_DIR }}
+          if-no-files-found: error
+          retention-days: 14
+
+  r3-preparation-unit:
+    name: R3 preparation synthetic and owned-child tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run all 130 R3 preparation unit tests
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          python - <<'PYTEST'
+          import sys
+          import unittest
+          suite = unittest.defaultTestLoader.discover("scripts/r3_preparation", pattern="test_*.py")
+          if suite.countTestCases() != 130:
+              raise SystemExit("expected exact reviewed 130-test inventory")
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          if result.testsRun != 130 or result.skipped or not result.wasSuccessful():
+              raise SystemExit(1)
+          PYTEST

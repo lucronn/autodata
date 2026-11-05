@@ -1,0 +1,46 @@
+{
+  "goal": "Make Workshop the application root entry and enforce current purchase configuration readiness without enabling sales",
+  "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-launch-source-readiness.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/agents/specs/2026-11-04-workshop-launch-source-readiness.md",
+    "docs/verification/2026-11-04-workshop-launch-source-readiness.md"
+  ],
+  "todo": [
+    "Admit the actual DTO code successor S only after exact-source and actual merge-fixture CI/readback and independent code evidence; refresh source/tree/hash pins and preserve DTO/R6/workflow/120-ID history.",
+    "Review this source-only six-document package, four implementation paths and literal todo; synchronize a verified real Issue and Project8 item with matching goal, refs and todos and retain live readback hashes without replacing prior history.",
+    "Commit/push only the six-document planning checkpoint K descending from accepted S, seal actual K externally, pass standalone and extracted nested exact-K preflight using policy from K, and obtain independent exact-K review plus explicit scoped dispatch before implementation.",
+    "Add failing root GET/HEAD302 and unknown404 tests, change only exact root redirect to /workshop/, retain explicit dashboard/slash/assets behavior, run focused/full Go checks and commit/push the validated routing milestone.",
+    "Add supported/missing/equal-invalid/mismatched terms and merchant-field tests, add only literal workshop-v1 conjunct to purchaseConfiguration, and add served-disabled-default regression; keep purchase-config.json byte-identical and all checkout contracts unchanged.",
+    "Run focused/full Node and Go checks and exact four-path/config invariants, independently review the exact final code SHA, commit/push validated coherent milestones and record honest exact-source and actual merge-fixture CI with no launch or accepted-case credit."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-04T23:12:08Z",
+  "source_base_sha": "0674adfb49744331b9edc430c5f556da6ee63cd5",
+  "tracking_sync": {
+    "receipt_ref": "/home/corp/autodata-evidence/workshop-launch-source-gate-tracking/receipt.json",
+    "receipt_sha256": "50811cf6e212bb2041de8181a28c8b7e5088f539343c7265627e3a2f10620d9c",
+    "status": "synchronized_live_literal_readback_planning_only",
+    "observed_at": "2026-11-04T23:12:08Z",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6644616654",
+    "issue_comment_body_sha256": "239d453b60e78f8632d7e7c54047b6bbff2394c87d760553c365ae7bb619706e",
+    "issue_body_before_sha256": "927b46ef47b1dbf5b117273e3d3f5c0e6d9f23b722a5245869eb5323b96c4f25",
+    "issue_body_after_sha256": "927b46ef47b1dbf5b117273e3d3f5c0e6d9f23b722a5245869eb5323b96c4f25",
+    "project_source_before_sha256": "d71cea6d011b230780fdc394bf1bfb92ed504449bf0da54215dd1453c072c959",
+    "project_source_after_sha256": "cdfaa62da27f0875e1a4c430ed090592c51a0de3f6c61124b6c0106964638421",
+    "before_snapshot_sha256": "8a24b6e74b88792edba01294f2be890f882205164462862b0caf9902c03eee53",
+    "after_snapshot_sha256": "913f2eed81434adaf8fda40fdb245b8ce7b3f20adcb5697fbc4b417d869e89e1",
+    "prior_comments_preserved": 218,
+    "new_comments": 1,
+    "issue_body_unchanged": true,
+    "project_other_fields_unchanged": true,
+    "literal_goal_todos_paths_verified": true,
+    "readback_verified": true,
+    "accepted_case_credit": 0,
+    "implementation_dispatched": false
+  }
+}

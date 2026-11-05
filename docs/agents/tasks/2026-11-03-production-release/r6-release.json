@@ -1,0 +1,160 @@
+{
+  "task_id": "production-release-r6-release",
+  "repository": "lucronn/autodata",
+  "goal": "Add bounded offline typed paid12 and DTO120 raw validators under first3; keep every profile and verification tier disabled pending separate trust promotion.",
+  "builder_agent": "autodata-python-builder",
+  "allowed_paths": [
+    "scripts/dev/release_acceptance.py",
+    "scripts/dev/test_release_acceptance.py",
+    "docs/verification/release-acceptance-runbook.md"
+  ],
+  "bounded_contexts": [
+    "offline paid12 and DTO120 typed raw validation",
+    "disabled profile and fixture/staging authority separation"
+  ],
+  "inputs": [
+    "docs/superpowers/plans/2026-11-03-workshop-product-evidence-assembler.md",
+    "docs/superpowers/plans/2026-11-03-release-acceptance.md",
+    ".autodata-autonomy-policy.json"
+  ],
+  "outputs": [
+    "scripts/dev/release_acceptance.py",
+    "scripts/dev/test_release_acceptance.py",
+    "docs/verification/release-acceptance-runbook.md"
+  ],
+  "acceptance_tests": [
+    "Explicit internal paid12 and DTO120 validators enforce fixed versioned contracts; they never import or execute candidate collectors, supervisors or arbitrary schemas.",
+    "Raw JSON has a separate fixed 4MiB ceiling; envelope stays at 2MiB and transport stays at 8MiB per file/64MiB aggregate. Oversize is rejected before parsing.",
+    "Paid evidence yields exactly six frozen Go roots crossed with Bankone/Banktwo, with raw child/phase/assertion/hash/image/migration/runtime outcomes corroborating each distinct logical case.",
+    "DTO evidence yields exactly forty frozen scenario IDs crossed with three frozen engines; bounded archive member inventory, hashes, readiness, fixture inputs, served assets, SDK and browser identities agree.",
+    "Missing contract facts or trusted provenance remain unavailable; historical 2de36a1 receipts cannot be relabeled to a new candidate or promoted by internal parser success.",
+    "Every committed profile and tier remains disabled. Plan performs no evidence-root I/O; disabled CLI validate returns unavailable with all verification/deployment flags false and no typed-validator dispatch.",
+    "Inline synthetic independent mutations cover IDs, primitives, versions, bounds, raw contradictions and unsafe archives; focused/developer/autonomy and shallow-clone tests pass before independent exact-SHA review.",
+    "Actual API21, complete final-head 180-case/support/security/image/CI/review evidence and all eight staging gates remain separate acceptance requirements; support evidence adds zero logical cases."
+  ],
+  "forbidden_scope": [
+    "Changing the autonomy policy or weakening required checks",
+    "Changing the requested gpt-6.1-sol / medium / Fast execution profile or silently falling back to another model or tier",
+    "Editing paths outside the assigned scope",
+    "Editing runner, orchestrator, policy, schema, registry, workflow, Compose, Kubernetes, application or SQL paths",
+    "Executing Docker, browser, cloud, provider or arbitrary commands from the assembler",
+    "Merging without independent exact-commit verification",
+    "Production deployment or production-data changes",
+    "Publishing secrets or private source payloads",
+    "Treating synthetic fixture tests as real acceptance or deployment authorization",
+    "Enabling or promoting any profile, supervisor, tier, reviewer or trust identity in this bounded milestone",
+    "Changing CLI disabled-profile behavior, deriving actual acceptance counts from synthetic tests or relabeling historical evidence",
+    "Implementing Git ancestry proof without a separately approved complete Git provenance contract",
+    "Modifying retained raw evidence, accessing live services or implementing later2 staging collection"
+  ],
+  "compatibility": {
+    "api": "Preserve existing consumers with additive versioned fields; run compatibility checks.",
+    "events": "Preserve event identity and make duplicate delivery idempotent.",
+    "schema": "Forward-only additive migrations with clean and upgrade verification; no destructive edits to historical migrations."
+  },
+  "pre_implementation": {
+    "goal": "Add bounded offline typed paid12 and DTO120 raw validators under first3; keep every profile and verification tier disabled pending separate trust promotion.",
+    "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-product-evidence-assembler.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/superpowers/plans/2026-11-03-release-acceptance.md",
+      "docs/superpowers/plans/2026-11-03-production-release-orchestration.md",
+      "docs/verification/release-acceptance-runbook.md"
+    ],
+    "todo": [
+      "Synchronize this bounded raw-validator goal, todo and references in Issue186, Project8 and canonical plan/task/record/queue; commit a new checkpoint and pass exact-base preflight before implementation.",
+      "Implement explicit internal paid12 and DTO120 typed validators with fixed version dispatch, strict raw JSON/XML/JSONL and bounded ZIP integrity checks; use a separate 4MiB raw JSON limit without enlarging the 2MiB envelope.",
+      "Derive paid case and DTO scenario/engine identities from fixed reviewed contracts and underlying raw outcomes; reject missing, duplicate, extra, contradictory, failed or mixed candidate/base/profile evidence without backfill.",
+      "Keep typed validators unselected by disabled CLI profiles; plan performs no evidence-root I/O, validate remains unavailable after transport integrity checks, every verification/deployment flag stays false and no tier is promoted.",
+      "Add inline synthetic adversarial tests, run focused/developer/autonomy and shallow-clone checks, update the runbook, commit/push coherent first3 milestones and obtain independent exact-SHA review.",
+      "Retain explicit missing trust/CI provenance, actual API21 and final exact-head 180-case/support evidence blockers; enable no profile and leave later2 staging enrollment/collector under its own gate."
+    ],
+    "status": "synchronized",
+    "updated_at": "2026-11-03T22:36:57.580490+00:00",
+    "tracking_receipts": {
+      "source_base_sha": "1138ddd2c4c9ba1f90556f568377099e4733745a",
+      "approved_draft_plan_sha256": "2e2fef5b449002add2d0b4b652c53da76c56f0d41d7613563fa52227ada6c468",
+      "issue_comment_url": "https://github.com/lucronn/autodata/issues/186#issuecomment-6617239424",
+      "issue_comment_created_at": "2026-11-03T22:36:19Z",
+      "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+      "project_status": "In Progress",
+      "readback_at": "2026-11-03T22:36:57.580490+00:00"
+    }
+  },
+  "execution": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "medium",
+    "service_tier": "fast",
+    "features": {
+      "fast_mode": true
+    },
+    "allow_fallback": false
+  },
+  "product_evidence": {
+    "contract": "workshop-product-evidence-v1",
+    "schema_version": 1,
+    "policy_sha256": "798e91b9854098a706ea4ab66a414492c044059a1c98edb9d2f1d003e3baad98",
+    "assembler_ref": "scripts/dev/release_acceptance.py",
+    "assembler_sha256": null,
+    "evaluator_ref": "scripts/autonomy/validate_run.py",
+    "evaluator_sha256": "e4bcfaea61f4bc3a4f5639fb118ab60e50fdf9f4f84c063fc7e6d9382a1c724c",
+    "supervisor_profiles": [],
+    "bindings_profile": {
+      "enabled": false
+    },
+    "slot_profiles": [
+      {
+        "slot_id": "fixture.identity",
+        "enabled": false,
+        "expected_cases": 5
+      },
+      {
+        "slot_id": "fixture.catalog",
+        "enabled": false,
+        "expected_cases": 8
+      },
+      {
+        "slot_id": "fixture.commerce",
+        "enabled": false,
+        "expected_cases": 14
+      },
+      {
+        "slot_id": "fixture.paid",
+        "enabled": false,
+        "expected_cases": 12
+      },
+      {
+        "slot_id": "fixture.browser_dto",
+        "enabled": false,
+        "expected_cases": 120
+      },
+      {
+        "slot_id": "fixture.browser_api",
+        "enabled": false,
+        "expected_cases": 21
+      }
+    ],
+    "ci_profile": {
+      "enabled": false,
+      "workflow_sha256": "3c54e7ba0613d1cd3a78819eede4915b1d268ffd904df83b2c034d914dca10e6",
+      "dto_upload_required": true
+    },
+    "report_profile": {
+      "enabled": false,
+      "gate_ids": [
+        "deterministic_ci",
+        "contract_compatibility",
+        "schema_integrity",
+        "source_provenance",
+        "data_quality",
+        "security",
+        "reliability",
+        "independent_review"
+      ]
+    },
+    "enabled_tiers": []
+  },
+  "source_inspection_sha": "1138ddd2c4c9ba1f90556f568377099e4733745a",
+  "dispatch_mode": "coordinator-direct"
+}

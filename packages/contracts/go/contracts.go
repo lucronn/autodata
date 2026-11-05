@@ -7,7 +7,7 @@ var DataStateValues = []string{"normalized", "source_unnormalized", "stale", "no
 var AnswerStatusValues = []string{"options", "processing", "available", "partial", "complete", "failed", "needs_review"}
 var DatasetAvailabilityValues = []string{"purchased", "fast_lane_processing", "viewable", "enriching", "complete", "failed", "needs_review", "revoked"}
 var SectionStatusValues = []string{"pending", "processing", "viewable", "complete", "failed", "needs_review"}
-var EventSubjects = []string{"dataset.fast.requested", "dataset.viewable", "dataset.deep.requested", "dataset.knowledge.fallback.requested", "dataset.section.published", "dataset.enrichment.failed", "dataset.review.requested", "dataset.revision.revoked", "chat.answer.updated", "chat.vehicle.options", "chat.worker.progress", "chat.price.refresh.requested", "chat.procedure.published", "chat.visual.published"}
+var EventSubjects = []string{"dataset.fast.requested", "dataset.viewable", "dataset.deep.requested", "dataset.knowledge.fallback.requested", "dataset.section.published", "dataset.enrichment.failed", "dataset.review.requested", "dataset.revision.revoked", "chat.answer.updated", "chat.vehicle.options", "chat.worker.progress", "chat.price.refresh.requested", "chat.procedure.published", "chat.visual.published", "catalog.article.published"}
 var KnowledgeResultKindValues = []string{"article", "procedure"}
 var EntitlementStatusValues = []string{"active", "revoked"}
 var FeedbackCategoryValues = []string{"correction", "missing", "quality", "safety"}
@@ -249,4 +249,23 @@ type ChatSelection struct {
 	SelectionType string  `json:"selection_type"`
 	OptionNumber  *int    `json:"option_number"`
 	VehicleID     *string `json:"vehicle_id"`
+}
+
+var ArticleProcessingStateValues = []string{"queued", "fetching_source", "normalizing", "rewriting", "validating", "publishing", "completed", "failed", "needs_review"}
+var ArticleContentOriginValues = []string{"source", "canonical"}
+var ArticleReviewStatusValues = []string{"UNREVIEWED", "APPROVED", "REJECTED"}
+var CatalogArticlePublishedRequiredFields = []string{"event_id", "event_type", "event_version", "occurred_at", "producer", "correlation_id", "idempotency_key", "canonical_article_id", "source_revision_id", "canonical_revision_id", "review_status"}
+
+type CatalogArticlePublished struct {
+	EventID string `json:"event_id"`
+	EventType string `json:"event_type"`
+	EventVersion int `json:"event_version"`
+	OccurredAt string `json:"occurred_at"`
+	Producer string `json:"producer"`
+	CorrelationID string `json:"correlation_id"`
+	IdempotencyKey string `json:"idempotency_key"`
+	CanonicalArticleID string `json:"canonical_article_id"`
+	SourceRevisionID string `json:"source_revision_id"`
+	CanonicalRevisionID string `json:"canonical_revision_id"`
+	ReviewStatus string `json:"review_status"`
 }

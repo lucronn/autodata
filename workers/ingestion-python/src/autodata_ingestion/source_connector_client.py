@@ -8,8 +8,9 @@ from __future__ import annotations
 
 import base64
 import binascii
-from dataclasses import dataclass
-from datetime import datetime
+from dataclasses import dataclass, replace
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 import hashlib
 import json
 import os
@@ -37,10 +38,18 @@ _SENSITIVE_QUERY_KEY = re.compile(r"token|sig(?:nature)?|key|auth|secret|passwor
 class SourceConnectorError(RuntimeError):
     """Sanitized connector failure with a stable retry decision."""
 
-    def __init__(self, code: str, *, retryable: bool = False, status: int | None = None):
+    def __init__(
+        self,
+        code: str,
+        *,
+        retryable: bool = False,
+        status: int | None = None,
+        retry_after_seconds: int | None = None,
+    ):
         self.code = code
         self.retryable = retryable
         self.status = status
+        self.retry_after_seconds = retry_after_seconds
         super().__init__(f"source connector {code.lower()}")
 
 
@@ -59,6 +68,7 @@ class SourceEnvelopeV1:
     body: Mapping[str, Any]
     resource_uri: str | None = None
     raw_resource: bytes | None = None
+    raw_envelope: bytes | None = None
 
     @property
     def persisted_provider(self) -> str:
@@ -185,12 +195,12 @@ class SourceConnectorClient:
             operation="articles", payload=body,
         )
 
-    def read_resource(self, resource_ref: str) -> SourceEnvelopeV1:
-        return self._read("GET", f"/v1/resources/{_opaque_ref(resource_ref, 2048)}", operation="resource")
+    def read_resource(self, resource_ref: str, *, timeout: float | None = None) -> SourceEnvelopeV1:
+        return self._read("GET", f"/v1/resources/{_opaque_ref(resource_ref, 2048)}", operation="resource", timeout=timeout)
 
     def _read(
         self, method: str, path: str, *, operation: str, payload: Mapping[str, Any] | None = None,
-        scope: str | None = None,
+        scope: str | None = None, timeout: float | None = None,
     ) -> SourceEnvelopeV1:
         url = self.base_url + path
         data = json.dumps(payload, separators=(",", ":")).encode() if payload is not None else None
@@ -201,10 +211,10 @@ class SourceConnectorClient:
             headers["Authorization"] = f"Bearer {self._token}"
         request = Request(url, data=data, headers=headers, method=method)
         try:
-            with self._opener(request, timeout=self.timeout) as response:
+            with self._opener(request, timeout=min(self.timeout, timeout) if timeout is not None else self.timeout) as response:
                 status = int(getattr(response, "status", getattr(response, "code", 200)))
                 if status != 200:
-                    raise _status_error(status)
+                    raise _status_error(status, _header(getattr(response, "headers", {}), "retry-after"))
                 final_url = response.geturl() if hasattr(response, "geturl") else url
                 if final_url != url:
                     raise SourceConnectorError("INVALID_UPSTREAM_RESPONSE")
@@ -221,16 +231,16 @@ class SourceConnectorClient:
                     raise SourceConnectorError("INVALID_UPSTREAM_RESPONSE")
                 media = (_header(response_headers, "content-type") or "").split(";", 1)[0].strip().lower()
                 if operation == "resource" and media == "application/octet-stream":
-                    return _binary_envelope(raw, response_headers, url, self.provider)
+                    return replace(_binary_envelope(raw, response_headers, url, self.provider), raw_envelope=raw)
                 if media != "application/json":
                     raise SourceConnectorError("INVALID_UPSTREAM_RESPONSE")
                 try:
                     body = json.loads(raw)
                 except (UnicodeError, ValueError) as error:
                     raise SourceConnectorError("INVALID_UPSTREAM_RESPONSE") from error
-                return _validated_envelope(body, operation, self.provider, scope, url)
+                return replace(_validated_envelope(body, operation, self.provider, scope, url), raw_envelope=raw)
         except HTTPError as error:
-            raise _status_error(error.code) from None
+            raise _status_error(error.code, _header(error.headers, "retry-after")) from None
         except (URLError, socket.timeout, TimeoutError, ConnectionError) as error:
             raise SourceConnectorError("UPSTREAM_UNAVAILABLE", retryable=True) from None
 
@@ -265,13 +275,41 @@ def source_connector_registry(*, include_defaults: bool = False) -> dict[str, So
     return result
 
 
-def _status_error(status: int) -> SourceConnectorError:
+def _status_error(status: int, retry_after: str | None = None) -> SourceConnectorError:
     if 300 <= status < 400:
         return SourceConnectorError("INVALID_UPSTREAM_RESPONSE", status=status)
-    code = {400: "INVALID_INPUT", 401: "UNAUTHORIZED", 403: "UNAUTHORIZED", 404: "NOT_FOUND", 409: "AMBIGUOUS", 429: "RATE_LIMITED"}.get(status)
+    code = {
+        400: "INVALID_INPUT",
+        401: "UNAUTHORIZED",
+        403: "UNAUTHORIZED",
+        404: "NOT_FOUND",
+        409: "AMBIGUOUS",
+        429: "RATE_LIMITED",
+    }.get(status)
     if code is None:
         code = "UPSTREAM_UNAVAILABLE" if status >= 500 else "INVALID_UPSTREAM_RESPONSE"
-    return SourceConnectorError(code, retryable=status in {429, 502, 503, 504}, status=status)
+    return SourceConnectorError(
+        code,
+        retryable=status == 429 or status >= 500,
+        status=status,
+        retry_after_seconds=_retry_after(retry_after),
+    )
+
+
+def _retry_after(value: str | None) -> int | None:
+    if not isinstance(value, str) or len(value) > 128:
+        return None
+    try:
+        if value.isdecimal():
+            seconds = int(value)
+        else:
+            parsed = parsedate_to_datetime(value)
+            if parsed.tzinfo is None:
+                return None
+            seconds = int((parsed - datetime.now(timezone.utc)).total_seconds())
+        return min(900, max(1, seconds))
+    except (ValueError, TypeError, OverflowError):
+        return None
 
 
 def _header(headers: Any, name: str) -> str | None:
@@ -282,7 +320,7 @@ def _header(headers: Any, name: str) -> str | None:
 
 def _opaque_ref(value: str, limit: int) -> str:
     ref = _bounded_text(value, "opaque reference", limit)
-    if ref in {".", ".."} or any(ord(char) < 32 for char in ref):
+    if ref in {".", ".."} or any(ord(char) < 32 or ord(char) == 127 for char in ref):
         raise ValueError("invalid opaque reference")
     return quote(ref, safe="")
 
@@ -437,7 +475,7 @@ def _valid_label(value: Any, limit: int) -> bool:
 
 
 def _valid_ref(value: Any, limit: int) -> bool:
-    return isinstance(value, str) and 0 < len(value) <= limit
+    return isinstance(value, str) and bool(value.strip()) and len(value) <= limit and not any(ord(c)<32 or ord(c)==127 for c in value)
 
 
 def _valid_ref_list(value: Any, limit: int) -> bool:

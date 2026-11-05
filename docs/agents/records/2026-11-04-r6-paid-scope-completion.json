@@ -1,0 +1,204 @@
+{
+  "goal": "Add one unselected internal consistency inspector for both ExactScopeAndOwnerIsolation bank cases, covering exactly 22 projected HTTP observations, exact configuration/owner/region row relationships and two no-work/final snapshot pairs; preserve zero verified cases and all false authority flags.",
+  "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-r6-paid-scope-receipts.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/superpowers/plans/2026-11-03-workshop-product-evidence-assembler.md",
+    "docs/superpowers/plans/2026-11-03-release-acceptance.md",
+    "docs/verification/release-acceptance-runbook.md"
+  ],
+  "todo": [
+    "Synchronize closed two-case exact-scope22-observation/four-snapshot contract, literal three-path scope and references; commit/push checkpoint and pass exact-base preflight plus independent review before implementation.",
+    "Add independent inline red/green fixtures and repaired-semantic/unrepaired-transport adversarial tests for scope/owner/region/legacy/revocation projections, no-work and confined transport.",
+    "Implement only unselected inspect_paid_scope_receipts after existing paid HTTP chain, add diagnostic IDs/counts and terminal-entitlement gap; preserve predecessor/DTO/CLI/policy/profile bytes and allfalse/unavailable/emptyverified behavior.",
+    "Run focused/developer/autonomy/syntax/shallow/exact-scope checks, update runbook, commit/push coherent green milestones and obtain independent exact-SHA review.",
+    "Retain complete paid12/DTO120/final-head180/support/CI/security/image/SDK/license/reviewer/staging blockers; enable no tier/profile and leave API21/live evidence and later collection separately gated."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-04T15:15:56.466530+00:00",
+  "record_kind": "docs_only_completion_of_independently_reviewed_internal_tool",
+  "state": "code_reviewed_completion_docs_pending_independent_review",
+  "planning_checkpoint_sha": "281ec742e88d9dcde5fb16d1bb778f2778a5c5b3",
+  "implementation_candidate_sha": "30ea7a0f3d0d7f2c185ba74d84b8fd94a3f57abe",
+  "documentation_base_sha": "30ea7a0f3d0d7f2c185ba74d84b8fd94a3f57abe",
+  "documentation_branch": "codex/workshop-r6-scope-completion",
+  "milestones": [
+    {
+      "sha": "bd54fc9fcdb38c9b43bd57677cf2bf169ce1dcc6",
+      "purpose": "Add unselected inspector, independent positive fixture, disabled CLI no-dispatch guard and runbook",
+      "validation": "Positive, predecessor-positive and disabled-CLI tests: 3 passed before push"
+    },
+    {
+      "sha": "1b4b52d94cc742b9c3b6c53e7246efa51c69b54a",
+      "purpose": "Add repaired semantic, transport, randomized-identity and no-work adversarial coverage",
+      "validation": "Focused 15 passed before push; superseded by explicit-column regression/fix and final-head reruns"
+    },
+    {
+      "sha": "30ea7a0f3d0d7f2c185ba74d84b8fd94a3f57abe",
+      "purpose": "Require an explicit vehicle_configuration_id column in every canonical row",
+      "validation": "Missing-column red reproduced; all-eight-row regression and positive green before push; every required suite rerun at this exact final code SHA"
+    }
+  ],
+  "tests": [
+    {
+      "name": "focused",
+      "command": "python3 -m unittest scripts.dev.test_release_acceptance.PaidScopeReceiptTests -v",
+      "passed": 16,
+      "duration_seconds": 200.918,
+      "exit_code": 0,
+      "candidate_sha": "30ea7a0f3d0d7f2c185ba74d84b8fd94a3f57abe",
+      "log_ref": "/home/corp/autodata-evidence/r6-scope-code30ea7a0/r6-scope-30ea7a0-focused.log",
+      "log_sha256": "45af0ced5b88e078e8d8402a37a54757286fabb79679d95512102ca4663af908"
+    },
+    {
+      "name": "module",
+      "command": "python3 -m unittest scripts/dev/test_release_acceptance.py -v",
+      "passed": 108,
+      "duration_seconds": 452.602,
+      "exit_code": 0,
+      "candidate_sha": "30ea7a0f3d0d7f2c185ba74d84b8fd94a3f57abe",
+      "log_ref": "/home/corp/autodata-evidence/r6-scope-code30ea7a0/r6-scope-30ea7a0-module.log",
+      "log_sha256": "5de928ca459c11e8ca74fa88f6fae3b516c90b50f20b216ccc27467c80733ca7"
+    },
+    {
+      "name": "dev",
+      "command": "python3 -m unittest discover -s scripts/dev -p 'test_*.py'",
+      "passed": 260,
+      "duration_seconds": 460.065,
+      "exit_code": 0,
+      "candidate_sha": "30ea7a0f3d0d7f2c185ba74d84b8fd94a3f57abe",
+      "log_ref": "/home/corp/autodata-evidence/r6-scope-code30ea7a0/r6-scope-30ea7a0-dev.log",
+      "log_sha256": "90f22e8004ef426c5104593eedca5a510b4396d20ee73b1f1f5a96717b02dd94"
+    },
+    {
+      "name": "autonomy",
+      "command": "python3 -m unittest discover -s scripts/autonomy -p 'test_*.py'",
+      "passed": 146,
+      "duration_seconds": 49.711,
+      "exit_code": 0,
+      "candidate_sha": "30ea7a0f3d0d7f2c185ba74d84b8fd94a3f57abe",
+      "log_ref": "/home/corp/autodata-evidence/r6-scope-code30ea7a0/r6-scope-30ea7a0-autonomy.log",
+      "log_sha256": "d492f1a7012966b4aed6c69bc261c58b77f2d262e163e0672765d7a75997606f"
+    },
+    {
+      "name": "shallow",
+      "command": "python3 -m unittest scripts.dev.test_release_acceptance.PaidScopeReceiptTests scripts.dev.test_release_acceptance.RawPrimitiveTests.test_raw_foundations_are_never_selected_by_the_disabled_cli -v",
+      "passed": 17,
+      "duration_seconds": 201.28,
+      "exit_code": 0,
+      "candidate_sha": "30ea7a0f3d0d7f2c185ba74d84b8fd94a3f57abe",
+      "log_ref": "/home/corp/autodata-evidence/r6-scope-code30ea7a0/r6-scope-30ea7a0-shallow.log",
+      "log_sha256": "13bcd773d5611cd503780a4d8557e5041bcd0dc6b65e1986fe336d7a8934b5ea"
+    }
+  ],
+  "independent_code_review": {
+    "status": "PASS",
+    "candidate_sha": "30ea7a0f3d0d7f2c185ba74d84b8fd94a3f57abe",
+    "provenance": "Coordinator-relayed independent exact-SHA review; independently read back in Issue186 detail6634324284. No separate reviewer transcript, signed attestation or reviewer-owned receipt is invented.",
+    "tracking_comment_url": "https://github.com/lucronn/autodata/issues/186#issuecomment-6634324284",
+    "outstanding_findings": 0,
+    "regression": "Missing canonical vehicle_configuration_id column was independently reproduced and rejected for both banks after repair"
+  },
+  "independent_docs_review": "pending separate exact-completion-SHA review",
+  "todo_disposition": [
+    {
+      "todo": "Synchronize closed two-case exact-scope22-observation/four-snapshot contract, literal three-path scope and references; commit/push checkpoint and pass exact-base preflight plus independent review before implementation.",
+      "status": "completed_for_bounded_internal_milestone",
+      "evidence": [
+        "docs/superpowers/plans/2026-11-04-workshop-r6-paid-scope-receipts.md",
+        "docs/agents/records/2026-11-04-r6-paid-scope-completion.json",
+        "docs/agents/records/2026-11-04-r6-paid-scope-completion-tracking-evidence.json"
+      ]
+    },
+    {
+      "todo": "Add independent inline red/green fixtures and repaired-semantic/unrepaired-transport adversarial tests for scope/owner/region/legacy/revocation projections, no-work and confined transport.",
+      "status": "completed_for_bounded_internal_milestone",
+      "evidence": [
+        "docs/superpowers/plans/2026-11-04-workshop-r6-paid-scope-receipts.md",
+        "docs/agents/records/2026-11-04-r6-paid-scope-completion.json",
+        "docs/agents/records/2026-11-04-r6-paid-scope-completion-tracking-evidence.json"
+      ]
+    },
+    {
+      "todo": "Implement only unselected inspect_paid_scope_receipts after existing paid HTTP chain, add diagnostic IDs/counts and terminal-entitlement gap; preserve predecessor/DTO/CLI/policy/profile bytes and allfalse/unavailable/emptyverified behavior.",
+      "status": "completed_for_bounded_internal_milestone",
+      "evidence": [
+        "docs/superpowers/plans/2026-11-04-workshop-r6-paid-scope-receipts.md",
+        "docs/agents/records/2026-11-04-r6-paid-scope-completion.json",
+        "docs/agents/records/2026-11-04-r6-paid-scope-completion-tracking-evidence.json"
+      ]
+    },
+    {
+      "todo": "Run focused/developer/autonomy/syntax/shallow/exact-scope checks, update runbook, commit/push coherent green milestones and obtain independent exact-SHA review.",
+      "status": "completed_for_bounded_internal_milestone",
+      "evidence": [
+        "docs/superpowers/plans/2026-11-04-workshop-r6-paid-scope-receipts.md",
+        "docs/agents/records/2026-11-04-r6-paid-scope-completion.json",
+        "docs/agents/records/2026-11-04-r6-paid-scope-completion-tracking-evidence.json"
+      ]
+    },
+    {
+      "todo": "Retain complete paid12/DTO120/final-head180/support/CI/security/image/SDK/license/reviewer/staging blockers; enable no tier/profile and leave API21/live evidence and later collection separately gated.",
+      "status": "completed_by_preserving_external_blockers",
+      "evidence": [
+        "docs/superpowers/plans/2026-11-04-workshop-r6-paid-scope-receipts.md",
+        "docs/agents/records/2026-11-04-r6-paid-scope-completion.json",
+        "docs/agents/records/2026-11-04-r6-paid-scope-completion-tracking-evidence.json"
+      ]
+    }
+  ],
+  "tracking_sync": {
+    "detail_comment_url": "https://github.com/lucronn/autodata/issues/186#issuecomment-6634324284",
+    "detail_comment_id": 6634324284,
+    "detail_comment_sha256": "17557639c66501083e26a14b490222ba7e14b5f7cf549c4f721704c825f0ba37",
+    "detail_comment_utf8_bytes": 1541,
+    "issue_body_sha256": "927b46ef47b1dbf5b117273e3d3f5c0e6d9f23b722a5245869eb5323b96c4f25",
+    "issue_comment_count": 137,
+    "preserved_planning_comment_count": 133,
+    "all_planning_comment_bodies_unchanged": true,
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "project_source_index_sha256": "7988162779e1b526fef566c7288f0ab2a99dc7b34dd74650ce06c79673cbd2b5",
+    "project_source_index_characters": 966,
+    "project_status": "In Progress",
+    "all_other_project_fields_unchanged": true,
+    "readback_at": "2026-11-04T15:15:56.466530+00:00",
+    "coordinator_readback_ref": "/home/corp/autodata-evidence/r6-scope-project-readback.json",
+    "tracking_evidence_ref": "docs/agents/records/2026-11-04-r6-paid-scope-completion-tracking-evidence.json"
+  },
+  "tracking_evidence_ref": "docs/agents/records/2026-11-04-r6-paid-scope-completion-tracking-evidence.json",
+  "historical_planning_record_ref": "docs/agents/records/2026-11-04-r6-paid-scope-receipts.json",
+  "historical_planning_evidence_ref": "docs/agents/records/2026-11-04-r6-paid-scope-tracking-evidence.json",
+  "syntax": "PASS",
+  "diff_check": "PASS",
+  "implementation_allowlist_check": "PASS: only three authorized paths at code SHA relative to gate",
+  "predecessor_inspectors_dto_cli_constants_and_limits": "PASS: production bytes outside inserted scope block equal gate",
+  "profile_policy_and_evaluator": "unchanged",
+  "diagnostics": {
+    "observed_scope_http_observation_count": 22,
+    "observed_scope_snapshot_count": 4,
+    "logical_acceptance_cases_added": 0,
+    "verified_case_ids": [],
+    "status": "unavailable",
+    "complete": false,
+    "all_authority_flags": false
+  },
+  "future_application_candidate_sha": null,
+  "historical_application_candidate_sha": "2de36a1305bfbe45992995e6caf0ba52f30fddcc",
+  "remaining_blockers": [
+    "Complete independently attested paid12 and DTO120 semantics/provenance",
+    "Final immutable application candidate remains unselected; final-head180 fixture inventory and supporting identity/catalog/commerce/API21 evidence remain required",
+    "Raw-wire/transport/capture/CI provenance, runtime/migration/supervisor/reviewer identities and complete Git provenance",
+    "Security, container images, SDK/license and licensed-source/current-rights evidence",
+    "All eight real staging gates, actual Firebase/Stripe TEST/both-bank provider configuration and final cars.tk cutover proof"
+  ],
+  "implementation_dispatch_authorized": false,
+  "runtime_execution_authorized": false,
+  "cloud_execution_authorized": false,
+  "profile_promotion_authorized": false,
+  "merge_authorized": false,
+  "deployment_authorized": false,
+  "cutover_verified": false,
+  "release_state": "unverified",
+  "documentation_preflight": "Run at the full pushed SHA containing this record; final receipt is reported externally to the coordinator, without a circular self-SHA claim."
+}

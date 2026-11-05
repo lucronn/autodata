@@ -1,141 +1,4178 @@
 {
   "openapi": "3.0.3",
   "info": {
-    "title": "AutoData Catalog Media API",
+    "title": "AutoData Catalog API",
     "version": "1.0.0",
-    "description": "Consumer catalog article and stored-source media contract. Public image URLs are minted by AutoData for already-localized assets. Storage keys and provider URLs are private and are never returned by these routes."
+    "description": "Provider-neutral public selector metadata and purchased configuration catalog. Firebase Google customers use an opaque secure session cookie and a current exact configuration/region grant for every protected read. Paid GETs are observational; explicit CSRF-protected preparation reuses durable source and canonical jobs. Explicit local headless fixtures retain their injected bearer/legacy behavior."
   },
-  "servers": [{ "url": "/" }],
-  "security": [{ "bearerAuth": [] }],
-  "tags": [{ "name": "Catalog media" }],
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "security": [
+    {
+      "customerSession": []
+    },
+    {
+      "bearerAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Catalog media"
+    },
+    {
+      "name": "Customer identity"
+    },
+    {
+      "name": "Workshop commerce"
+    }
+  ],
   "paths": {
     "/v1/catalog/vehicles/{vehicle_id}/articles": {
       "get": {
-        "tags": ["Catalog media"],
+        "tags": [
+          "Catalog media"
+        ],
         "operationId": "listCatalogArticles",
-        "summary": "List a vehicle's catalog articles and opaque image URLs",
-        "parameters": [{ "$ref": "#/components/parameters/VehicleId" }],
+        "summary": "List purchased configuration article descriptors",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/VehicleId"
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Z]{2}$"
+            },
+            "description": "Optional assertion of the selected configuration region; it must match exactly."
+          }
+        ],
         "responses": {
-          "200": { "description": "Catalog article list. Missing or unlocalized images have no display URL.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CatalogArticlesResponse" } } } },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "403": { "$ref": "#/components/responses/Forbidden" },
-          "500": { "$ref": "#/components/responses/Unavailable" }
-        }
+          "200": {
+            "description": "Metadata-only canonical descriptors and safe current progress; images is always an empty array.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogArticlesResponse"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "example": "private, no-store"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "description": "In Firebase mode vehicle_id is the exact canonical configuration UUID, not a base vehicle UUID. A verified session and current owner/configuration/region grant precede descriptor/progress reads. GET never schedules an index or article job. Only canonical identities are returned; document, body, steps and image URLs are omitted."
       }
     },
     "/v1/catalog/vehicles/{vehicle_id}/articles/{article_id}": {
       "get": {
-        "tags": ["Catalog media"],
+        "tags": [
+          "Catalog media"
+        ],
         "operationId": "getCatalogArticle",
         "summary": "Read a catalog article and its opaque image URLs",
-        "parameters": [{ "$ref": "#/components/parameters/VehicleId" }, { "$ref": "#/components/parameters/ArticleId" }],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/VehicleId"
+          },
+          {
+            "$ref": "#/components/parameters/ArticleId"
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Z]{2}$"
+            },
+            "description": "Optional assertion of the selected configuration region; it must match exactly."
+          }
+        ],
         "responses": {
-          "200": { "description": "Normalized article; internal object keys and provider URLs are omitted.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CatalogArticleResponse" } } } },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "403": { "$ref": "#/components/responses/Forbidden" },
-          "404": { "$ref": "#/components/responses/NotFound" },
-          "500": { "$ref": "#/components/responses/Unavailable" }
-        }
+          "200": {
+            "description": "Normalized article; internal object keys and provider URLs are omitted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogArticleResponse"
+                },
+                "examples": {
+                  "source-rewriting": {
+                    "value": {
+                      "version": "v1",
+                      "article": {
+                        "id": "article-1",
+                        "vehicle_id": "vehicle-1",
+                        "title": "Pump removal",
+                        "canonical_article_id": "article-1",
+                        "source_revision_id": "source-1",
+                        "canonical_revision_id": null,
+                        "content_origin": "source",
+                        "availability": "available",
+                        "view_revision": "view-source-1",
+                        "review_status": "UNREVIEWED",
+                        "content_status": "content_partial",
+                        "complete": false,
+                        "document": {
+                          "schema_version": 1,
+                          "normalization_version": "ordered-article-v1",
+                          "blocks": [
+                            {
+                              "block_id": "pump:1",
+                              "source_order": 1,
+                              "type": "paragraph",
+                              "text": "Remove the pump.",
+                              "evidence_ids": [
+                                "evidence-1"
+                              ]
+                            },
+                            {
+                              "block_id": "pump:2",
+                              "source_order": 2,
+                              "type": "table",
+                              "columns": [
+                                "Torque",
+                                "Value"
+                              ],
+                              "rows": [
+                                [
+                                  "Pump bolts",
+                                  "10 N\u00b7m"
+                                ]
+                              ]
+                            },
+                            {
+                              "block_id": "pump:3",
+                              "source_order": 3,
+                              "type": "warning",
+                              "label": "Warning",
+                              "text": "Disconnect the battery."
+                            }
+                          ]
+                        },
+                        "body": "Remove the pump.",
+                        "images": [],
+                        "processing": {
+                          "job_id": "job-1",
+                          "state": "rewriting",
+                          "retryable": false,
+                          "retry_after_seconds": 2,
+                          "error_code": null,
+                          "updated_at": "2026-11-03T12:00:00Z"
+                        }
+                      }
+                    }
+                  },
+                  "pending-source": {
+                    "value": {
+                      "version": "v1",
+                      "article": {
+                        "id": "article-1",
+                        "vehicle_id": "vehicle-1",
+                        "title": "Pump removal",
+                        "canonical_article_id": "article-1",
+                        "source_revision_id": null,
+                        "canonical_revision_id": null,
+                        "content_origin": null,
+                        "availability": "pending",
+                        "view_revision": null,
+                        "review_status": "UNREVIEWED",
+                        "content_status": "list_only",
+                        "complete": false,
+                        "document": null,
+                        "body": "",
+                        "images": [],
+                        "processing": {
+                          "job_id": "job-1",
+                          "state": "queued",
+                          "retryable": false,
+                          "retry_after_seconds": 2,
+                          "error_code": null,
+                          "updated_at": "2026-11-03T12:00:00Z"
+                        }
+                      }
+                    }
+                  },
+                  "canonical-completed": {
+                    "value": {
+                      "version": "v1",
+                      "article": {
+                        "id": "article-1",
+                        "vehicle_id": "vehicle-1",
+                        "title": "Pump removal",
+                        "canonical_article_id": "article-1",
+                        "source_revision_id": "source-1",
+                        "canonical_revision_id": "canonical-1",
+                        "content_origin": "canonical",
+                        "availability": "available",
+                        "view_revision": "view-canonical-1",
+                        "review_status": "UNREVIEWED",
+                        "content_status": "content_complete",
+                        "complete": true,
+                        "document": {
+                          "schema_version": 1,
+                          "normalization_version": "ordered-article-v1",
+                          "blocks": [
+                            {
+                              "block_id": "pump:1",
+                              "source_order": 1,
+                              "type": "paragraph",
+                              "text": "Take off the pump.",
+                              "evidence_ids": [
+                                "evidence-1"
+                              ]
+                            },
+                            {
+                              "block_id": "pump:2",
+                              "source_order": 2,
+                              "type": "table",
+                              "columns": [
+                                "Torque",
+                                "Value"
+                              ],
+                              "rows": [
+                                [
+                                  "Pump bolts",
+                                  "10 N\u00b7m"
+                                ]
+                              ]
+                            },
+                            {
+                              "block_id": "pump:3",
+                              "source_order": 3,
+                              "type": "warning",
+                              "label": "Warning",
+                              "text": "Disconnect the battery."
+                            }
+                          ]
+                        },
+                        "body": "Take off the pump.",
+                        "images": [],
+                        "processing": {
+                          "job_id": "job-1",
+                          "state": "completed",
+                          "retryable": false,
+                          "retry_after_seconds": null,
+                          "error_code": null,
+                          "updated_at": "2026-11-03T12:00:00Z"
+                        }
+                      }
+                    }
+                  },
+                  "source-needs-review": {
+                    "value": {
+                      "version": "v1",
+                      "article": {
+                        "id": "article-1",
+                        "vehicle_id": "vehicle-1",
+                        "title": "Pump removal",
+                        "canonical_article_id": "article-1",
+                        "source_revision_id": "source-1",
+                        "canonical_revision_id": null,
+                        "content_origin": "source",
+                        "availability": "available",
+                        "view_revision": "view-source-1",
+                        "review_status": "UNREVIEWED",
+                        "content_status": "content_partial",
+                        "complete": false,
+                        "document": {
+                          "schema_version": 1,
+                          "normalization_version": "ordered-article-v1",
+                          "blocks": [
+                            {
+                              "block_id": "pump:1",
+                              "source_order": 1,
+                              "type": "paragraph",
+                              "text": "Remove the pump.",
+                              "evidence_ids": [
+                                "evidence-1"
+                              ]
+                            },
+                            {
+                              "block_id": "pump:2",
+                              "source_order": 2,
+                              "type": "table",
+                              "columns": [
+                                "Torque",
+                                "Value"
+                              ],
+                              "rows": [
+                                [
+                                  "Pump bolts",
+                                  "10 N\u00b7m"
+                                ]
+                              ]
+                            },
+                            {
+                              "block_id": "pump:3",
+                              "source_order": 3,
+                              "type": "warning",
+                              "label": "Warning",
+                              "text": "Disconnect the battery."
+                            }
+                          ]
+                        },
+                        "body": "Remove the pump.",
+                        "images": [],
+                        "processing": {
+                          "job_id": "job-1",
+                          "state": "needs_review",
+                          "retryable": false,
+                          "retry_after_seconds": null,
+                          "error_code": "CATALOG_REWRITE_REJECTED",
+                          "updated_at": "2026-11-03T12:00:00Z"
+                        }
+                      }
+                    }
+                  },
+                  "legacy-unmanaged": {
+                    "value": {
+                      "version": "v1",
+                      "article": {
+                        "id": "article-1",
+                        "vehicle_id": "vehicle-1",
+                        "title": "Pump removal",
+                        "canonical_article_id": null,
+                        "source_revision_id": null,
+                        "canonical_revision_id": null,
+                        "content_origin": "source",
+                        "availability": "available",
+                        "view_revision": "view-source-1",
+                        "review_status": null,
+                        "content_status": "content_partial",
+                        "complete": false,
+                        "document": {
+                          "schema_version": 1,
+                          "normalization_version": "ordered-article-v1",
+                          "blocks": [
+                            {
+                              "block_id": "pump:1",
+                              "source_order": 1,
+                              "type": "paragraph",
+                              "text": "Remove the pump.",
+                              "evidence_ids": [
+                                "evidence-1"
+                              ]
+                            },
+                            {
+                              "block_id": "pump:2",
+                              "source_order": 2,
+                              "type": "table",
+                              "columns": [
+                                "Torque",
+                                "Value"
+                              ],
+                              "rows": [
+                                [
+                                  "Pump bolts",
+                                  "10 N\u00b7m"
+                                ]
+                              ]
+                            },
+                            {
+                              "block_id": "pump:3",
+                              "source_order": 3,
+                              "type": "warning",
+                              "label": "Warning",
+                              "text": "Disconnect the battery."
+                            }
+                          ]
+                        },
+                        "body": "Remove the pump.",
+                        "images": [],
+                        "processing": null
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "example": "private, no-store"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "202": {
+            "description": "Durable job accepted; no readable source yet, availability pending.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogArticleResponse"
+                },
+                "examples": {
+                  "source-rewriting": {
+                    "value": {
+                      "version": "v1",
+                      "article": {
+                        "id": "article-1",
+                        "vehicle_id": "vehicle-1",
+                        "title": "Pump removal",
+                        "canonical_article_id": "article-1",
+                        "source_revision_id": "source-1",
+                        "canonical_revision_id": null,
+                        "content_origin": "source",
+                        "availability": "available",
+                        "view_revision": "view-source-1",
+                        "review_status": "UNREVIEWED",
+                        "content_status": "content_partial",
+                        "complete": false,
+                        "document": {
+                          "schema_version": 1,
+                          "normalization_version": "ordered-article-v1",
+                          "blocks": [
+                            {
+                              "block_id": "pump:1",
+                              "source_order": 1,
+                              "type": "paragraph",
+                              "text": "Remove the pump.",
+                              "evidence_ids": [
+                                "evidence-1"
+                              ]
+                            },
+                            {
+                              "block_id": "pump:2",
+                              "source_order": 2,
+                              "type": "table",
+                              "columns": [
+                                "Torque",
+                                "Value"
+                              ],
+                              "rows": [
+                                [
+                                  "Pump bolts",
+                                  "10 N\u00b7m"
+                                ]
+                              ]
+                            },
+                            {
+                              "block_id": "pump:3",
+                              "source_order": 3,
+                              "type": "warning",
+                              "label": "Warning",
+                              "text": "Disconnect the battery."
+                            }
+                          ]
+                        },
+                        "body": "Remove the pump.",
+                        "images": [],
+                        "processing": {
+                          "job_id": "job-1",
+                          "state": "rewriting",
+                          "retryable": false,
+                          "retry_after_seconds": 2,
+                          "error_code": null,
+                          "updated_at": "2026-11-03T12:00:00Z"
+                        }
+                      }
+                    }
+                  },
+                  "pending-source": {
+                    "value": {
+                      "version": "v1",
+                      "article": {
+                        "id": "article-1",
+                        "vehicle_id": "vehicle-1",
+                        "title": "Pump removal",
+                        "canonical_article_id": "article-1",
+                        "source_revision_id": null,
+                        "canonical_revision_id": null,
+                        "content_origin": null,
+                        "availability": "pending",
+                        "view_revision": null,
+                        "review_status": "UNREVIEWED",
+                        "content_status": "list_only",
+                        "complete": false,
+                        "document": null,
+                        "body": "",
+                        "images": [],
+                        "processing": {
+                          "job_id": "job-1",
+                          "state": "queued",
+                          "retryable": false,
+                          "retry_after_seconds": 2,
+                          "error_code": null,
+                          "updated_at": "2026-11-03T12:00:00Z"
+                        }
+                      }
+                    }
+                  },
+                  "canonical-completed": {
+                    "value": {
+                      "version": "v1",
+                      "article": {
+                        "id": "article-1",
+                        "vehicle_id": "vehicle-1",
+                        "title": "Pump removal",
+                        "canonical_article_id": "article-1",
+                        "source_revision_id": "source-1",
+                        "canonical_revision_id": "canonical-1",
+                        "content_origin": "canonical",
+                        "availability": "available",
+                        "view_revision": "view-canonical-1",
+                        "review_status": "UNREVIEWED",
+                        "content_status": "content_complete",
+                        "complete": true,
+                        "document": {
+                          "schema_version": 1,
+                          "normalization_version": "ordered-article-v1",
+                          "blocks": [
+                            {
+                              "block_id": "pump:1",
+                              "source_order": 1,
+                              "type": "paragraph",
+                              "text": "Take off the pump.",
+                              "evidence_ids": [
+                                "evidence-1"
+                              ]
+                            },
+                            {
+                              "block_id": "pump:2",
+                              "source_order": 2,
+                              "type": "table",
+                              "columns": [
+                                "Torque",
+                                "Value"
+                              ],
+                              "rows": [
+                                [
+                                  "Pump bolts",
+                                  "10 N\u00b7m"
+                                ]
+                              ]
+                            },
+                            {
+                              "block_id": "pump:3",
+                              "source_order": 3,
+                              "type": "warning",
+                              "label": "Warning",
+                              "text": "Disconnect the battery."
+                            }
+                          ]
+                        },
+                        "body": "Take off the pump.",
+                        "images": [],
+                        "processing": {
+                          "job_id": "job-1",
+                          "state": "completed",
+                          "retryable": false,
+                          "retry_after_seconds": null,
+                          "error_code": null,
+                          "updated_at": "2026-11-03T12:00:00Z"
+                        }
+                      }
+                    }
+                  },
+                  "source-needs-review": {
+                    "value": {
+                      "version": "v1",
+                      "article": {
+                        "id": "article-1",
+                        "vehicle_id": "vehicle-1",
+                        "title": "Pump removal",
+                        "canonical_article_id": "article-1",
+                        "source_revision_id": "source-1",
+                        "canonical_revision_id": null,
+                        "content_origin": "source",
+                        "availability": "available",
+                        "view_revision": "view-source-1",
+                        "review_status": "UNREVIEWED",
+                        "content_status": "content_partial",
+                        "complete": false,
+                        "document": {
+                          "schema_version": 1,
+                          "normalization_version": "ordered-article-v1",
+                          "blocks": [
+                            {
+                              "block_id": "pump:1",
+                              "source_order": 1,
+                              "type": "paragraph",
+                              "text": "Remove the pump.",
+                              "evidence_ids": [
+                                "evidence-1"
+                              ]
+                            },
+                            {
+                              "block_id": "pump:2",
+                              "source_order": 2,
+                              "type": "table",
+                              "columns": [
+                                "Torque",
+                                "Value"
+                              ],
+                              "rows": [
+                                [
+                                  "Pump bolts",
+                                  "10 N\u00b7m"
+                                ]
+                              ]
+                            },
+                            {
+                              "block_id": "pump:3",
+                              "source_order": 3,
+                              "type": "warning",
+                              "label": "Warning",
+                              "text": "Disconnect the battery."
+                            }
+                          ]
+                        },
+                        "body": "Remove the pump.",
+                        "images": [],
+                        "processing": {
+                          "job_id": "job-1",
+                          "state": "needs_review",
+                          "retryable": false,
+                          "retry_after_seconds": null,
+                          "error_code": "CATALOG_REWRITE_REJECTED",
+                          "updated_at": "2026-11-03T12:00:00Z"
+                        }
+                      }
+                    }
+                  },
+                  "legacy-unmanaged": {
+                    "value": {
+                      "version": "v1",
+                      "article": {
+                        "id": "article-1",
+                        "vehicle_id": "vehicle-1",
+                        "title": "Pump removal",
+                        "canonical_article_id": null,
+                        "source_revision_id": null,
+                        "canonical_revision_id": null,
+                        "content_origin": "source",
+                        "availability": "available",
+                        "view_revision": "view-source-1",
+                        "review_status": null,
+                        "content_status": "content_partial",
+                        "complete": false,
+                        "document": {
+                          "schema_version": 1,
+                          "normalization_version": "ordered-article-v1",
+                          "blocks": [
+                            {
+                              "block_id": "pump:1",
+                              "source_order": 1,
+                              "type": "paragraph",
+                              "text": "Remove the pump.",
+                              "evidence_ids": [
+                                "evidence-1"
+                              ]
+                            },
+                            {
+                              "block_id": "pump:2",
+                              "source_order": 2,
+                              "type": "table",
+                              "columns": [
+                                "Torque",
+                                "Value"
+                              ],
+                              "rows": [
+                                [
+                                  "Pump bolts",
+                                  "10 N\u00b7m"
+                                ]
+                              ]
+                            },
+                            {
+                              "block_id": "pump:3",
+                              "source_order": 3,
+                              "type": "warning",
+                              "label": "Warning",
+                              "text": "Disconnect the battery."
+                            }
+                          ]
+                        },
+                        "body": "Remove the pump.",
+                        "images": [],
+                        "processing": null
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "example": "private, no-store"
+                }
+              },
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        },
+        "description": "Read the currently permitted immutable source or canonical projection after current session, exact configuration grant and canonical article membership checks. Firebase GET never schedules work: a cold descriptor without readable content or durable processing returns503 CATALOG_SOURCE_UNAVAILABLE. POST prepare explicitly starts or joins durable processing. Readable source returns200 while rewriting; complete means validated canonical publication. Explicit local fixtures retain legacy lazy GET preparation."
       }
     },
     "/v1/catalog/vehicles/{vehicle_id}/articles/{article_id}/source": {
       "get": {
-        "tags": ["Catalog media"],
+        "tags": [
+          "Catalog media"
+        ],
         "operationId": "getStoredArticleSource",
         "summary": "Read sanitized stored source content",
-        "description": "Reads the stored snapshot without calling a provider. Source images are rendered only when mapped to an already-localized object; otherwise they are omitted. HTML is CSP-protected.",
+        "description": "Read the permitted ordered source HTML or JSON after current session and exact purchased configuration grant. source_revision_id may select a historical revision of this article, while current membership, source rights and quarantine still apply. Embedded media uses authenticated short-lived contextual references. No provider, model or scheduling call occurs.",
         "parameters": [
-          { "$ref": "#/components/parameters/VehicleId" },
-          { "$ref": "#/components/parameters/ArticleId" },
-          { "name": "Accept", "in": "header", "required": false, "schema": { "type": "string", "enum": ["application/json", "text/html"] } }
+          {
+            "$ref": "#/components/parameters/VehicleId"
+          },
+          {
+            "$ref": "#/components/parameters/ArticleId"
+          },
+          {
+            "name": "Accept",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "application/json",
+                "text/html"
+              ]
+            }
+          },
+          {
+            "name": "source_revision_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Pins an immutable revision belonging to this authorized article and vehicle."
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Z]{2}$"
+            },
+            "description": "Optional assertion of the selected configuration region; it must match exactly."
+          }
         ],
         "responses": {
           "200": {
             "description": "Sanitized stored source in the requested representation.",
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/SourceContentResponse" } },
-              "text/html": { "schema": { "type": "string" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceContentResponse"
+                }
+              },
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
             },
             "headers": {
-              "Content-Security-Policy": { "schema": { "type": "string" } },
-              "X-Content-Type-Options": { "schema": { "type": "string", "example": "nosniff" } }
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "example": "private, no-store"
+                }
+              }
             }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "403": { "$ref": "#/components/responses/Forbidden" },
-          "404": { "$ref": "#/components/responses/NotFound" },
-          "500": { "$ref": "#/components/responses/Unavailable" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          }
         }
       }
     },
     "/v1/catalog/images/{token}": {
       "get": {
-        "tags": ["Catalog media"],
+        "tags": [
+          "Catalog media"
+        ],
         "operationId": "getLocalizedCatalogImage",
         "summary": "Fetch an AutoData-localized image",
-        "description": "The token is randomly minted by AutoData and resolves only to a validated local object key. It is not a provider URL or storage key. No bearer token is required; invalid or unavailable references fail closed. Tokens are environment-specific and must not be constructed from this document.",
-        "security": [],
-        "parameters": [{ "name": "token", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$", "minLength": 1, "maxLength": 6000 } }],
+        "description": "In Firebase mode require the current customer session and a valid v2 contextual media reference. A reference is not an authorization credential: current exact grant, owner, configuration, article/provider identity, current revision anchors, selected source, asset mapping and rights are rechecked before S3. References expire after300 seconds; refresh the authorized article/source projection to renew. No v1/key-only fallback. Invalid/context-obsolete references404; expired/revoked session401; grant denial403; current withdrawal410; dependency outage503. Explicit injected local fixtures retain their legacy v1 behavior.",
+        "security": [
+          {
+            "customerSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^v2\\.[A-Za-z0-9_-]+$",
+              "minLength": 1,
+              "maxLength": 6000
+            }
+          }
+        ],
         "responses": {
-          "200": { "description": "Localized image bytes.", "content": { "image/*": { "schema": { "type": "string", "format": "binary" } } } },
-          "404": { "description": "Invalid reference, missing local object, or invalid media.", "content": { "text/plain": { "schema": { "type": "string", "example": "catalog image not found" } } } },
-          "503": { "description": "Image key or local object storage is unavailable.", "content": { "text/plain": { "schema": { "type": "string", "example": "catalog image storage is unavailable" } } } }
+          "200": {
+            "description": "Localized image bytes.",
+            "content": {
+              "image/*": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "example": "private, no-store"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid reference, missing local object, or invalid media.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "example": "catalog image not found"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Image key or local object storage is unavailable.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "example": "catalog image storage is unavailable"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          }
         }
       }
     },
     "/v1/catalog/images": {
       "get": {
-        "tags": ["Catalog media"],
+        "tags": [
+          "Catalog media"
+        ],
         "operationId": "rejectLegacyCatalogImageReference",
         "summary": "Reject the legacy source-bearing image route",
-        "description": "The src query parameter is not accepted; the handler never fetches caller-supplied URLs.",
+        "description": "In Firebase mode require the current customer session and a valid v2 contextual media reference. A reference is not an authorization credential: current exact grant, owner, configuration, article/provider identity, current revision anchors, selected source, asset mapping and rights are rechecked before S3. References expire after300 seconds; refresh the authorized article/source projection to renew. No v1/key-only fallback. Invalid/context-obsolete references404; expired/revoked session401; grant denial403; current withdrawal410; dependency outage503. Explicit injected local fixtures retain their legacy v1 behavior.",
         "deprecated": true,
+        "security": [
+          {
+            "customerSession": []
+          }
+        ],
+        "responses": {
+          "400": {
+            "description": "An opaque image path token is required.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "example": "opaque image reference required"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          }
+        }
+      }
+    },
+    "/v1/catalog/years": {
+      "get": {
+        "tags": [
+          "Catalog media"
+        ],
+        "operationId": "listCatalogYears",
+        "summary": "List catalog years",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Available selector rows and durable completeness.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "version",
+                    "items"
+                  ],
+                  "properties": {
+                    "version": {
+                      "type": "string",
+                      "enum": [
+                        "v1"
+                      ]
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "year": {
+                            "type": "integer",
+                            "minimum": 1886,
+                            "maximum": 2100
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
         "security": [],
-        "responses": { "400": { "description": "An opaque image path token is required.", "content": { "text/plain": { "schema": { "type": "string", "example": "opaque image reference required" } } } } }
+        "description": "Public safe selector metadata only. Bounded read-through hydration stays within this selector scope and never reads articles, source bodies, article processing or models."
+      }
+    },
+    "/v1/catalog/years/{year}/makes": {
+      "get": {
+        "tags": [
+          "Catalog media"
+        ],
+        "operationId": "listCatalogMakes",
+        "summary": "List catalog makes",
+        "parameters": [
+          {
+            "name": "year",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1886,
+              "maximum": 2100
+            }
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "default": "US"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Available selector rows and durable completeness.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "version",
+                    "items"
+                  ],
+                  "properties": {
+                    "version": {
+                      "type": "string",
+                      "enum": [
+                        "v1"
+                      ]
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "complete": {
+                      "type": "boolean"
+                    },
+                    "hydrating": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "security": [],
+        "description": "Public safe selector metadata only. Bounded read-through hydration stays within this selector scope and never reads articles, source bodies, article processing or models."
+      }
+    },
+    "/v1/catalog/years/{year}/makes/{make}/models": {
+      "get": {
+        "tags": [
+          "Catalog media"
+        ],
+        "operationId": "listCatalogModels",
+        "summary": "List catalog models",
+        "parameters": [
+          {
+            "name": "year",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1886,
+              "maximum": 2100
+            }
+          },
+          {
+            "name": "make",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "default": "US"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Available selector rows and durable completeness.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "version",
+                    "items"
+                  ],
+                  "properties": {
+                    "version": {
+                      "type": "string",
+                      "enum": [
+                        "v1"
+                      ]
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "complete": {
+                      "type": "boolean"
+                    },
+                    "hydrating": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "security": [],
+        "description": "Public safe selector metadata only. Bounded read-through hydration stays within this selector scope and never reads articles, source bodies, article processing or models."
+      }
+    },
+    "/v1/catalog/years/{year}/makes/{make}/models/{model}/configurations": {
+      "get": {
+        "tags": [
+          "Catalog media"
+        ],
+        "operationId": "listCatalogConfigurations",
+        "summary": "List catalog configurations",
+        "parameters": [
+          {
+            "name": "year",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1886,
+              "maximum": 2100
+            }
+          },
+          {
+            "name": "make",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "model",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "default": "US"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Available selector rows and durable completeness.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "version",
+                    "items"
+                  ],
+                  "properties": {
+                    "version": {
+                      "type": "string",
+                      "enum": [
+                        "v1"
+                      ]
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "vehicle_id": {
+                            "type": "string"
+                          },
+                          "make": {
+                            "type": "string"
+                          },
+                          "model": {
+                            "type": "string"
+                          },
+                          "region": {
+                            "type": "string"
+                          },
+                          "trim": {
+                            "type": "string"
+                          },
+                          "engine": {
+                            "type": "string"
+                          },
+                          "year": {
+                            "type": "integer"
+                          },
+                          "complete": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    },
+                    "complete": {
+                      "type": "boolean"
+                    },
+                    "hydrating": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "422": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "security": [],
+        "description": "Public safe selector metadata only. Bounded read-through hydration stays within this selector scope and never reads articles, source bodies, article processing or models."
+      }
+    },
+    "/auth/config": {
+      "get": {
+        "tags": [
+          "Customer identity"
+        ],
+        "operationId": "getCustomerAuthConfig",
+        "summary": "Read public sign-in configuration",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Public Firebase configuration or explicit unavailable local mode.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerAuthConfig"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/session": {
+      "get": {
+        "tags": [
+          "Customer identity"
+        ],
+        "operationId": "getCustomerSession",
+        "summary": "Read current session and CSRF token",
+        "security": [
+          {
+            "customerSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current PostgreSQL session and live Firebase user verified.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerSession"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid, expired, revoked or deleted identity. Definite denial clears the cookie.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Account blocked or Origin/CSRF rejected.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Authentication dependency unavailable; retryable, no stale acceptance. Cookie retained on dependency outage. Local exchange returns login_available=false and retryable=false.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/firebase/session": {
+      "post": {
+        "tags": [
+          "Customer identity"
+        ],
+        "operationId": "exchangeFirebaseSession",
+        "summary": "Exchange a fresh Firebase Google token for a durable opaque session",
+        "security": [],
+        "responses": {
+          "204": {
+            "description": "Account and new session committed; any presented old session revoked atomically.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              },
+              "Set-Cookie": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Opaque secure cookie is set only after database commit; logout expires it."
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid, expired, revoked or deleted identity. Definite denial clears the cookie.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Account blocked or Origin/CSRF rejected.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Authentication dependency unavailable; retryable, no stale acceptance. Cookie retained on dependency outage. Local exchange returns login_available=false and retryable=false.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid JSON or unknown fields.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Body exceeds 32 KiB.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Content-Type must be application/json.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Must exactly match configured public origin; cross-site Fetch Metadata is rejected."
+          },
+          {
+            "name": "X-Autodata-Session-Exchange",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Must be 1."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FirebaseSessionExchange"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "tags": [
+          "Customer identity"
+        ],
+        "operationId": "logoutCustomerSession",
+        "summary": "Revoke the current session across replicas",
+        "security": [
+          {
+            "customerSession": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Session revocation committed. Firebase availability is not required for logout.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              },
+              "Set-Cookie": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Opaque secure cookie is set only after database commit; logout expires it."
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid, expired, revoked or deleted identity. Definite denial clears the cookie.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Account blocked or Origin/CSRF rejected.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Authentication dependency unavailable; retryable, no stale acceptance. Cookie retained on dependency outage. Local exchange returns login_available=false and retryable=false.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Must exactly match configured public origin; cross-site Fetch Metadata is rejected."
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Session-bound token returned by GET /auth/session."
+          }
+        ]
+      }
+    },
+    "/v1/workshop/quote": {
+      "get": {
+        "tags": [
+          "Workshop commerce"
+        ],
+        "operationId": "getWorkshopQuote",
+        "summary": "Read a DB-only USD20 configuration quote without provider hydration",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Server-resolved read-only quote.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkshopQuote"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid shape, scope or pagination.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommerceAPIError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown configuration or owner-scoped order.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommerceAPIError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Commerce or authentication dependency unavailable; safe retryable error.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommerceAPIError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "configuration_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            }
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Z]{2}$"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/workshop/checkout-sessions": {
+      "post": {
+        "tags": [
+          "Workshop commerce"
+        ],
+        "operationId": "createWorkshopCheckout",
+        "summary": "Create or reuse the verified customer checkout; server owns price and ownership",
+        "security": [
+          {
+            "customerSession": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "New confirmed hosted checkout.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkshopCheckout"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Existing hosted checkout or permanent ownership.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkshopCheckoutResponse"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Creation/payment unresolved; do not repay.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              },
+              "Retry-After": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "2"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkshopProcessing"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid shape, scope or pagination.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommerceAPIError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Verified customer session required.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommerceAPIError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Origin/CSRF rejected, account blocked or entitlement revoked.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommerceAPIError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown configuration or owner-scoped order.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommerceAPIError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Idempotency/terms/payment conflict.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommerceAPIError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request exceeds the body limit.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommerceAPIError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "JSON content type required.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommerceAPIError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Commerce or authentication dependency unavailable; safe retryable error.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommerceAPIError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uri"
+            },
+            "description": "Must exactly match the configured public origin."
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Token from GET /auth/session for the same verified customer session."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkshopCheckoutRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/workshop/orders/{order_id}": {
+      "get": {
+        "tags": [
+          "Workshop commerce"
+        ],
+        "operationId": "getWorkshopOrder",
+        "summary": "Read a verified customer-owned order and safe retry disposition",
+        "security": [
+          {
+            "customerSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Unknown/other-owner orders are indistinguishable 404.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkshopOrder"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid shape, scope or pagination.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommerceAPIError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Verified customer session required.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommerceAPIError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Origin/CSRF rejected, account blocked or entitlement revoked.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommerceAPIError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown configuration or owner-scoped order.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommerceAPIError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Commerce or authentication dependency unavailable; safe retryable error.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommerceAPIError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "order_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            }
+          }
+        ]
+      }
+    },
+    "/v1/workshop/library": {
+      "get": {
+        "tags": [
+          "Workshop commerce"
+        ],
+        "operationId": "getWorkshopLibrary",
+        "summary": "Read the permanent owner-only library with stable keyset pagination",
+        "security": [
+          {
+            "customerSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Account-scoped library and opaque next cursor. Another account cursor is invalid.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkshopLibrary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid shape, scope or pagination.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommerceAPIError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Verified customer session required.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommerceAPIError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Origin/CSRF rejected, account blocked or entitlement revoked.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommerceAPIError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Commerce or authentication dependency unavailable; safe retryable error.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommerceAPIError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 2048
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20
+            }
+          }
+        ]
+      }
+    },
+    "/v1/payments/stripe/webhook": {
+      "post": {
+        "tags": [
+          "Workshop commerce"
+        ],
+        "operationId": "receiveStripeWebhook",
+        "summary": "Relay bounded signed raw bytes to the authenticated private settlement authority",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Verified, replay-safe accepted/pending/quarantined/ignored event.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StripeWebhookDisposition"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid shape, scope or pagination.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommerceAPIError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request exceeds the body limit.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommerceAPIError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Commerce or authentication dependency unavailable; safe retryable error.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommerceAPIError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "Stripe-Signature",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "Exact unmodified raw body, maximum 1 MiB. No customer session or CSRF required. Signature verification belongs to the private payment authority.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "string",
+                "format": "binary",
+                "maxLength": 1048576
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/catalog/vehicles/{vehicle_id}/articles/{article_id}/prepare": {
+      "post": {
+        "tags": [
+          "Catalog media"
+        ],
+        "operationId": "preparePaidCatalogArticle",
+        "summary": "Explicitly prepare a purchased canonical article",
+        "responses": {
+          "200": {
+            "description": "Current readable source or canonical article.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogArticleResponse"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "example": "private, no-store"
+                }
+              },
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Actual durable article processing observed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogArticleResponse"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "example": "private, no-store"
+                }
+              },
+              "Retry-After": {
+                "schema": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "410": {
+            "$ref": "#/components/responses/Gone"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          },
+          "400": {
+            "description": "Malformed/nonempty JSON or trailing data.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Body exceeds2KiB.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Content-Type must be application/json.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Firebase customer mode only. Require current verified session, exact configured Origin, session-bound X-CSRF-Token, exact purchased configuration and canonical article eligibility; recheck current grant immediately before durable ensure. The body must be exactly an empty JSON object, at most2KiB. Concurrent requests and separately entitled owners reuse the same durable article job. Return the actual reread lifecycle view:202 only with observed durable processing,200 for readable source/canonical,409/410 for current lifecycle/rights,503 without durable acknowledgement. No client provider, model, source URI or idempotency key is accepted.",
+        "security": [
+          {
+            "customerSession": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/VehicleId"
+          },
+          {
+            "$ref": "#/components/parameters/ArticleId"
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Exact configured application origin."
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Session-bound token from GET /auth/session."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "maxProperties": 0
+              },
+              "example": {}
+            }
+          }
+        }
       }
     }
   },
   "components": {
-    "securitySchemes": { "bearerAuth": { "type": "http", "scheme": "bearer" } },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Explicit local headless fixtures only. Rejected in Firebase customer mode."
+      },
+      "customerSession": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "__Host-autodata_session",
+        "description": "Opaque session, Secure; HttpOnly; SameSite=Lax; Path=/; no Domain. Absolute expiry 12 hours; revocable across replicas. No raw Firebase token stored. State-changing requests require exact Origin and X-CSRF-Token from GET /auth/session."
+      }
+    },
     "parameters": {
-      "VehicleId": { "name": "vehicle_id", "in": "path", "required": true, "schema": { "type": "string" } },
-      "ArticleId": { "name": "article_id", "in": "path", "required": true, "schema": { "type": "string" } }
+      "VehicleId": {
+        "name": "vehicle_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "Firebase paid routes require the exact canonical configuration UUID returned by selectors. Base vehicle IDs are not aliases. Explicit local fixtures retain legacy vehicle IDs."
+      },
+      "ArticleId": {
+        "name": "article_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "Canonical article UUID returned by the exact configuration descriptor list; unmanaged legacy IDs are rejected in Firebase mode."
+      }
     },
     "schemas": {
       "CatalogImage": {
         "type": "object",
-        "description": "Public image projection; object-storage keys are deliberately not part of this schema.",
+        "additionalProperties": false,
         "properties": {
-          "id": { "type": "string" },
-          "url": { "type": "string", "description": "AutoData-issued same-origin opaque URL; omitted when the asset is unavailable locally." },
-          "alt": { "type": "string" },
-          "media_type": { "type": "string" },
-          "image_id": { "type": "string" }
+          "id": {
+            "type": "string"
+          },
+          "image_id": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string",
+            "pattern": "^/v1/catalog/images/[^?]+$"
+          },
+          "alt": {
+            "type": "string"
+          },
+          "media_type": {
+            "enum": [
+              "image/png",
+              "image/jpeg",
+              "image/gif",
+              "image/webp",
+              "image/svg+xml"
+            ]
+          },
+          "status": {
+            "enum": [
+              "available",
+              "unavailable",
+              "localized"
+            ]
+          },
+          "unavailable_reason": {
+            "type": "string"
+          },
+          "asset_id": {
+            "type": "string"
+          },
+          "caption": {
+            "type": "string"
+          }
         },
-        "additionalProperties": false
+        "description": "Localized image metadata; storage keys are deliberately not part of this schema."
       },
       "CatalogArticle": {
         "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "vehicle_id",
+          "title",
+          "content_status",
+          "complete"
+        ],
         "properties": {
-          "id": { "type": "string" },
-          "vehicle_id": { "type": "string" },
-          "title": { "type": "string" },
-          "content_status": { "type": "string" },
-          "complete": { "type": "boolean" },
-          "images": { "type": "array", "items": { "$ref": "#/components/schemas/CatalogImage" } }
-        },
-        "additionalProperties": true
+          "id": {
+            "type": "string"
+          },
+          "vehicle_id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "component": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
+          "canonical_article_id": {
+            "type": "string",
+            "minLength": 1,
+            "nullable": true
+          },
+          "source_revision_id": {
+            "type": "string",
+            "minLength": 1,
+            "nullable": true
+          },
+          "canonical_revision_id": {
+            "type": "string",
+            "minLength": 1,
+            "nullable": true
+          },
+          "view_revision": {
+            "type": "string",
+            "minLength": 1,
+            "nullable": true
+          },
+          "content_status": {
+            "enum": [
+              "list_only",
+              "content_partial",
+              "content_complete"
+            ]
+          },
+          "complete": {
+            "type": "boolean"
+          },
+          "content_origin": {
+            "enum": [
+              "source",
+              "canonical"
+            ],
+            "nullable": true
+          },
+          "availability": {
+            "enum": [
+              "available",
+              "pending",
+              "unavailable"
+            ]
+          },
+          "review_status": {
+            "enum": [
+              "UNREVIEWED",
+              "APPROVED",
+              "REJECTED"
+            ],
+            "nullable": true
+          },
+          "processing": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "job_id",
+              "state",
+              "retryable",
+              "retry_after_seconds",
+              "error_code",
+              "updated_at"
+            ],
+            "properties": {
+              "job_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "state": {
+                "$ref": "#/components/schemas/CatalogProcessingState"
+              },
+              "retryable": {
+                "type": "boolean"
+              },
+              "retry_after_seconds": {
+                "type": "integer",
+                "minimum": 1,
+                "nullable": true
+              },
+              "error_code": {
+                "enum": [
+                  "CATALOG_SOURCE_UNAVAILABLE",
+                  "CATALOG_REWRITE_UNAVAILABLE",
+                  "CATALOG_REWRITE_REJECTED",
+                  "CATALOG_REVIEW_REQUIRED"
+                ],
+                "nullable": true
+              },
+              "updated_at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "nullable": true
+          },
+          "document": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CatalogDocument"
+              },
+              {
+                "nullable": true
+              }
+            ]
+          },
+          "images": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "image_id": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string",
+                  "pattern": "^/v1/catalog/images/[^?]+$"
+                },
+                "alt": {
+                  "type": "string"
+                },
+                "media_type": {
+                  "enum": [
+                    "image/png",
+                    "image/jpeg",
+                    "image/gif",
+                    "image/webp",
+                    "image/svg+xml"
+                  ]
+                },
+                "status": {
+                  "enum": [
+                    "available",
+                    "unavailable",
+                    "localized"
+                  ]
+                },
+                "unavailable_reason": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "instructions"
+              ],
+              "properties": {
+                "number": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "Explicit source step number, when present. Canonical document traversal does not fabricate numbers."
+                },
+                "heading": {
+                  "type": "string"
+                },
+                "instructions": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "image_ids": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "text": {
+                  "type": "string"
+                },
+                "evidence_ids": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "action": {
+                  "type": "string"
+                },
+                "images": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CatalogImage"
+                  }
+                }
+              }
+            }
+          },
+          "provenance": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "source_review": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "available"
+            ],
+            "properties": {
+              "available": {
+                "type": "boolean"
+              },
+              "snapshot_id": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              },
+              "content_sha256": {
+                "type": "string"
+              },
+              "format": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string",
+                "pattern": "^/v1/catalog/vehicles/[^?]+/articles/[^?]+/source(?:\\?source_revision_id=[^&]+)?$"
+              }
+            }
+          }
+        }
       },
-      "CatalogArticleResponse": { "type": "object", "required": ["version", "article"], "properties": { "version": { "type": "string", "example": "v1" }, "article": { "$ref": "#/components/schemas/CatalogArticle" } } },
-      "CatalogArticlesResponse": { "type": "object", "required": ["version", "items"], "properties": { "version": { "type": "string", "example": "v1" }, "items": { "type": "array", "items": { "$ref": "#/components/schemas/CatalogArticle" } } } },
-      "SourceContentResponse": { "type": "object", "properties": { "source": { "$ref": "#/components/schemas/SourceReview" }, "content": { "type": "string" } } },
-      "SourceReview": { "type": "object", "properties": { "available": { "type": "boolean" }, "snapshot_id": { "type": "string" }, "version": { "type": "string" }, "content_sha256": { "type": "string" }, "format": { "type": "string", "enum": ["html", "json"] }, "url": { "type": "string" } } }
+      "CatalogArticleResponse": {
+        "type": "object",
+        "required": [
+          "version",
+          "article"
+        ],
+        "properties": {
+          "version": {
+            "type": "string",
+            "enum": [
+              "v1"
+            ]
+          },
+          "article": {
+            "$ref": "#/components/schemas/CatalogArticle"
+          }
+        }
+      },
+      "CatalogArticlesResponse": {
+        "type": "object",
+        "required": [
+          "version",
+          "items"
+        ],
+        "properties": {
+          "version": {
+            "type": "string",
+            "example": "v1"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CatalogArticle"
+            }
+          }
+        }
+      },
+      "SourceContentResponse": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/SourceReview"
+          },
+          "content": {
+            "type": "string"
+          },
+          "document": {
+            "$ref": "#/components/schemas/CatalogDocument"
+          },
+          "images": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CatalogImage"
+            }
+          },
+          "view_revision": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "SourceReview": {
+        "type": "object",
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "snapshot_id": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "content_sha256": {
+            "type": "string"
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "html",
+              "json"
+            ]
+          },
+          "url": {
+            "type": "string"
+          }
+        }
+      },
+      "CatalogDocument": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "normalization_version",
+          "blocks"
+        ],
+        "properties": {
+          "schema_version": {
+            "enum": [
+              1
+            ]
+          },
+          "normalization_version": {
+            "enum": [
+              "ordered-article-v1"
+            ]
+          },
+          "blocks": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "type"
+              ],
+              "properties": {
+                "block_id": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "alt": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "unavailable_reason": {
+                  "type": "string"
+                },
+                "asset_id": {
+                  "type": "string"
+                },
+                "image_id": {
+                  "type": "string"
+                },
+                "source_locator": {
+                  "type": "string"
+                },
+                "source_order": {
+                  "type": "integer"
+                },
+                "level": {
+                  "type": "integer"
+                },
+                "number": {
+                  "type": "integer"
+                },
+                "columns": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "evidence_ids": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "rows": {
+                  "type": "array",
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "nullable": true
+                        },
+                        {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "properties": {
+                            "text": {
+                              "type": "string"
+                            },
+                            "asset_id": {
+                              "type": "string"
+                            },
+                            "image_id": {
+                              "type": "string"
+                            },
+                            "status": {
+                              "type": "string"
+                            },
+                            "unavailable_reason": {
+                              "type": "string"
+                            },
+                            "evidence_ids": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "images": {
+                              "type": "array",
+                              "items": {
+                                "$ref": "#/components/schemas/CatalogImage"
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                "caption": {
+                  "type": "string"
+                },
+                "images": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CatalogImage"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "CatalogProcessingState": {
+        "type": "string",
+        "enum": [
+          "queued",
+          "fetching_source",
+          "normalizing",
+          "rewriting",
+          "validating",
+          "publishing",
+          "completed",
+          "failed",
+          "needs_review"
+        ]
+      },
+      "CatalogContentOrigin": {
+        "type": "string",
+        "enum": [
+          "source",
+          "canonical"
+        ]
+      },
+      "CatalogReviewStatus": {
+        "type": "string",
+        "enum": [
+          "UNREVIEWED",
+          "APPROVED",
+          "REJECTED"
+        ]
+      },
+      "APIError": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": [
+              "code",
+              "message",
+              "request_id",
+              "retryable",
+              "details"
+            ],
+            "properties": {
+              "code": {
+                "type": "string",
+                "enum": [
+                  "UNAUTHENTICATED",
+                  "FORBIDDEN",
+                  "INVALID_REQUEST",
+                  "CATALOG_NOT_FOUND",
+                  "CATALOG_WITHDRAWN",
+                  "CATALOG_SCHEDULING_UNAVAILABLE",
+                  "CATALOG_SOURCE_UNAVAILABLE",
+                  "CATALOG_UNAVAILABLE",
+                  "CATALOG_REVIEW_REQUIRED",
+                  "CATALOG_PROCESSING_FAILED"
+                ]
+              },
+              "message": {
+                "type": "string"
+              },
+              "request_id": {
+                "type": "string"
+              },
+              "retryable": {
+                "type": "boolean"
+              },
+              "details": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "article_id": {
+                    "type": "string"
+                  },
+                  "job_id": {
+                    "type": "string"
+                  },
+                  "retry_after_seconds": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "FirebaseWebConfig": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "apiKey",
+          "authDomain",
+          "projectId",
+          "appId"
+        ],
+        "properties": {
+          "apiKey": {
+            "type": "string"
+          },
+          "authDomain": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "appId": {
+            "type": "string"
+          }
+        }
+      },
+      "CustomerAuthConfig": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "version",
+          "mode",
+          "login_available",
+          "providers"
+        ],
+        "properties": {
+          "version": {
+            "type": "string",
+            "enum": [
+              "v1"
+            ]
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "firebase",
+              "local"
+            ]
+          },
+          "login_available": {
+            "type": "boolean"
+          },
+          "providers": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "google.com"
+              ]
+            }
+          },
+          "firebase": {
+            "$ref": "#/components/schemas/FirebaseWebConfig"
+          }
+        },
+        "description": "Public web configuration only. Local mode returns login_available=false, providers=[] and omits firebase; it creates no demo identity."
+      },
+      "CustomerSession": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "authenticated",
+          "roles",
+          "expires_at",
+          "csrf_token"
+        ],
+        "properties": {
+          "authenticated": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "dataset_viewer"
+              ]
+            }
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "csrf_token": {
+            "type": "string"
+          }
+        },
+        "description": "No project, UID, token hash, account identifier or raw provider payload is exposed."
+      },
+      "FirebaseSessionExchange": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id_token"
+        ],
+        "properties": {
+          "id_token": {
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "description": "Fresh Google Firebase ID token with iat/auth_time within 5 minutes, at most 60 seconds future skew. Signature, issuer, audience, provider, expiry and live user state are verified. SDK revocation uses iat; application additionally compares auth_time. The same still-fresh token may be exchanged again."
+      },
+      "WorkshopQuote": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "version": {
+            "type": "string",
+            "enum": [
+              "v1"
+            ]
+          },
+          "product_key": {
+            "type": "string",
+            "enum": [
+              "workshop-configuration-v1"
+            ]
+          },
+          "configuration_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "region": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "configuration_label": {
+            "type": "string",
+            "maxLength": 1024
+          },
+          "amount_minor": {
+            "type": "integer",
+            "format": "int64",
+            "enum": [
+              2000
+            ]
+          },
+          "currency": {
+            "type": "string",
+            "enum": [
+              "USD"
+            ]
+          },
+          "purchase_terms_version": {
+            "type": "string",
+            "enum": [
+              "workshop-v1"
+            ]
+          },
+          "purchasable": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          }
+        },
+        "required": [
+          "version",
+          "product_key",
+          "configuration_id",
+          "region",
+          "configuration_label",
+          "amount_minor",
+          "currency",
+          "purchase_terms_version",
+          "purchasable"
+        ]
+      },
+      "WorkshopCheckoutRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "configuration_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "region": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "terms_version": {
+            "type": "string",
+            "enum": [
+              "workshop-v1"
+            ]
+          }
+        },
+        "required": [
+          "configuration_id",
+          "region",
+          "terms_version"
+        ]
+      },
+      "WorkshopCheckout": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "version": {
+            "type": "string",
+            "enum": [
+              "v1"
+            ]
+          },
+          "order_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "configuration_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "region": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "checkout"
+            ]
+          },
+          "checkout_url": {
+            "type": "string",
+            "format": "uri",
+            "pattern": "^https://checkout[.]stripe[.]com/c/pay/",
+            "description": "Exact validated Stripe-hosted HTTPS URL, including its opaque provider fragment when present."
+          },
+          "provider_expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "RFC3339 UTC timestamp."
+          }
+        },
+        "required": [
+          "version",
+          "order_id",
+          "configuration_id",
+          "region",
+          "state",
+          "checkout_url",
+          "provider_expires_at"
+        ]
+      },
+      "WorkshopProcessing": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "version": {
+            "type": "string",
+            "enum": [
+              "v1"
+            ]
+          },
+          "order_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "configuration_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "region": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "processing"
+            ]
+          }
+        },
+        "required": [
+          "version",
+          "order_id",
+          "configuration_id",
+          "region",
+          "state"
+        ]
+      },
+      "WorkshopOwned": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "version": {
+            "type": "string",
+            "enum": [
+              "v1"
+            ]
+          },
+          "order_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "configuration_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "region": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "owned"
+            ]
+          },
+          "library_item_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          }
+        },
+        "required": [
+          "version",
+          "order_id",
+          "configuration_id",
+          "region",
+          "state",
+          "library_item_id"
+        ]
+      },
+      "WorkshopCheckoutResponse": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/WorkshopCheckout"
+          },
+          {
+            "$ref": "#/components/schemas/WorkshopProcessing"
+          },
+          {
+            "$ref": "#/components/schemas/WorkshopOwned"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "state",
+          "mapping": {
+            "checkout": "#/components/schemas/WorkshopCheckout",
+            "processing": "#/components/schemas/WorkshopProcessing",
+            "owned": "#/components/schemas/WorkshopOwned"
+          }
+        }
+      },
+      "WorkshopOrder": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "version": {
+            "type": "string",
+            "enum": [
+              "v1"
+            ]
+          },
+          "order_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "configuration_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "region": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "creating",
+              "open",
+              "processing",
+              "paid",
+              "expired",
+              "canceled",
+              "reconciliation_required",
+              "revoked"
+            ]
+          },
+          "retry_disposition": {
+            "type": "string",
+            "enum": [
+              "new_key",
+              "do_not_repay"
+            ],
+            "description": "Only remotely confirmed expired/canceled orders permit a new key. Browser return parameters never establish payment."
+          }
+        },
+        "required": [
+          "version",
+          "order_id",
+          "configuration_id",
+          "region",
+          "state",
+          "retry_disposition"
+        ]
+      },
+      "WorkshopLibraryItem": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "library_item_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "configuration_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "region": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 1024
+          },
+          "access_state": {
+            "type": "string",
+            "enum": [
+              "paid",
+              "preparing",
+              "viewable",
+              "revoked"
+            ]
+          },
+          "granted_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Actual RFC3339 UTC grant time. Null only for a revoked order that never received an entitlement; no synthetic grant time.",
+            "nullable": true
+          },
+          "revoked_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "RFC3339 UTC timestamp."
+          },
+          "dataset_id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          },
+          "content_error_code": {
+            "type": "string",
+            "enum": [
+              "CATALOG_PREPARATION_UNAVAILABLE",
+              "CATALOG_PREPARATION_REVIEW",
+              "CATALOG_SOURCE_UNAVAILABLE"
+            ]
+          }
+        },
+        "required": [
+          "library_item_id",
+          "configuration_id",
+          "region",
+          "label",
+          "access_state",
+          "granted_at"
+        ],
+        "description": "Permanent account ownership with current source readiness. No normal grant expiry. Revoked tombstones remain visible; viewable does not promise all articles are complete.",
+        "oneOf": [
+          {
+            "properties": {
+              "access_state": {
+                "type": "string",
+                "enum": [
+                  "revoked"
+                ]
+              }
+            },
+            "required": [
+              "access_state"
+            ]
+          },
+          {
+            "properties": {
+              "access_state": {
+                "type": "string",
+                "enum": [
+                  "paid",
+                  "preparing",
+                  "viewable"
+                ]
+              },
+              "granted_at": {
+                "type": "string",
+                "format": "date-time",
+                "nullable": false
+              }
+            },
+            "required": [
+              "access_state",
+              "granted_at"
+            ]
+          }
+        ]
+      },
+      "WorkshopLibrary": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "version": {
+            "type": "string",
+            "enum": [
+              "v1"
+            ]
+          },
+          "items": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {
+              "$ref": "#/components/schemas/WorkshopLibraryItem"
+            }
+          },
+          "next_cursor": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 2048
+          }
+        },
+        "required": [
+          "version",
+          "items",
+          "next_cursor"
+        ]
+      },
+      "StripeWebhookDisposition": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "pending",
+              "quarantined",
+              "ignored"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "CommerceAPIError": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": [
+              "code",
+              "message",
+              "request_id",
+              "retryable",
+              "details"
+            ],
+            "properties": {
+              "code": {
+                "type": "string",
+                "enum": [
+                  "UNAUTHENTICATED",
+                  "FORBIDDEN",
+                  "AUTHENTICATION_UNAVAILABLE",
+                  "INVALID_REQUEST",
+                  "COMMERCE_UNAVAILABLE",
+                  "NOT_FOUND",
+                  "CONFIGURATION_NOT_FOUND",
+                  "ORDER_NOT_FOUND",
+                  "CUSTOMER_ACCESS_REQUIRED",
+                  "ENTITLEMENT_REQUIRED",
+                  "ENTITLEMENT_REVOKED",
+                  "IDEMPOTENCY_CONFLICT",
+                  "TERMS_VERSION_REQUIRED",
+                  "PAYMENT_FINANCIAL_CONFLICT",
+                  "PAYMENT_EVENT_CONFLICT",
+                  "PAYMENT_MODE_CONFLICT",
+                  "REQUEST_TOO_LARGE",
+                  "INVALID_STRIPE_SIGNATURE",
+                  "INVALID_CURSOR",
+                  "INVALID_PAYMENT_EVENT"
+                ]
+              },
+              "message": {
+                "type": "string"
+              },
+              "request_id": {
+                "type": "string"
+              },
+              "retryable": {
+                "type": "boolean"
+              },
+              "details": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "article_id": {
+                    "type": "string"
+                  },
+                  "job_id": {
+                    "type": "string"
+                  },
+                  "retry_after_seconds": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     },
     "responses": {
-      "Unauthorized": { "description": "Authentication is required." },
-      "Forbidden": { "description": "The caller lacks the required role." },
-      "NotFound": { "description": "Article or source snapshot not found." },
-      "Unavailable": { "description": "The catalog is temporarily unavailable." }
+      "Unauthorized": {
+        "description": "Authentication is required."
+      },
+      "Forbidden": {
+        "description": "The caller lacks the required role."
+      },
+      "NotFound": {
+        "description": "Article or source snapshot not found."
+      },
+      "Unavailable": {
+        "description": "Catalog temporarily unavailable.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/APIError"
+            }
+          }
+        },
+        "headers": {
+          "Retry-After": {
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "Cache-Control": {
+            "schema": {
+              "type": "string",
+              "example": "private, no-store"
+            }
+          }
+        }
+      },
+      "Conflict": {
+        "description": "Known article requires review or processing has stopped.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/APIError"
+            }
+          }
+        },
+        "headers": {
+          "Retry-After": {
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "Cache-Control": {
+            "schema": {
+              "type": "string",
+              "example": "private, no-store"
+            }
+          }
+        }
+      },
+      "Gone": {
+        "description": "Known authorized article has been withdrawn.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/APIError"
+            }
+          }
+        },
+        "headers": {
+          "Retry-After": {
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "Cache-Control": {
+            "schema": {
+              "type": "string",
+              "example": "private, no-store"
+            }
+          }
+        }
+      },
+      "InvalidRequest": {
+        "description": "Selector or request shape is invalid.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/APIError"
+            }
+          }
+        },
+        "headers": {
+          "Retry-After": {
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "Cache-Control": {
+            "schema": {
+              "type": "string",
+              "example": "private, no-store"
+            }
+          }
+        }
+      },
+      "RateLimited": {
+        "description": "Admission limit; respect Retry-After.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/APIError"
+            }
+          }
+        },
+        "headers": {
+          "Retry-After": {
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "Cache-Control": {
+            "schema": {
+              "type": "string",
+              "example": "private, no-store"
+            }
+          }
+        }
+      }
     }
   }
 }

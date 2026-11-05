@@ -13,255 +13,61 @@ _JOB_STATUSES = {"pending", "completed", "needs_review", "failed"}
 _TERMINAL_JOB_STATUSES = {"completed", "needs_review", "dead_letter"}
 
 
-def persist_bankone_article_fetch_jobs(
-    batches: Iterable[Any],
-    results: Iterable[Mapping[str, Any]],
-    *,
-    selector_persistence: Mapping[str, Any] | None,
-    source_version: str,
-    adapter_name: str = "bankone-local",
-    address: str | None = None,
-) -> dict[str, Any]:
-    """Persist one replayable all-articles job for every planned vehicle.
+def _binding_review(idempotency_key=None):
+    result={"status":"needs_review","error_code":"ARTICLE_BINDING_REVIEW_REQUIRED"}
+    if idempotency_key is not None:result["idempotency_key"]=idempotency_key
+    return result
 
-    Selector persistence supplies the stable vehicle IDs and selector snapshot
-    used to prove why each job exists. A bundle result then advances the same
-    job to ``completed``, ``needs_review``, or ``failed``. The idempotency key
-    includes the source version and location, so a later source refresh gets a
-    new auditable job without duplicating a replay of the same drop.
+
+def persist_bankone_article_fetch_jobs(batches,results,*,selector_persistence,source_version,adapter_name="bankone-local",address=None):
+    """Compatibility boundary. Historical bundle status cannot authorize new IO.
+
+    New callers supply proven canonical IDs; unbound source drops require offline
+    reviewed mapping and do not create or update either historical queue.
     """
-
-    batch_list = list(batches)
-    result_by_vehicle = {str(item["vehicle_key"]): item for item in results}
-    vehicle_ids = _vehicle_ids(selector_persistence)
-    if not vehicle_ids:
-        raise ValueError("selector persistence is required to create Bankone jobs")
-
-    import psycopg
-    from psycopg.types.json import Jsonb
-    from autodata_ingestion.bundle_persistence import _resolve_database_address
-
-    host, port_text = _resolve_database_address(address).rsplit(":", 1)
-    conninfo = {
-        "host": host,
-        "port": int(port_text),
-        "dbname": os.getenv("AUTODATA_POSTGRES_DB", "autodata"),
-        "user": os.getenv("AUTODATA_POSTGRES_USER", "autodata"),
-        "password": os.getenv("AUTODATA_POSTGRES_PASSWORD", "local-dev-only"),
-    }
-    now = datetime.now(UTC).replace(microsecond=0)
-    selector_snapshot_id = selector_persistence.get("source_snapshot_id")
-    jobs: list[dict[str, Any]] = []
-    with psycopg.connect(**conninfo) as connection:
-        with connection.cursor() as cursor:
-            for batch in batch_list:
-                vehicle_key = str(batch.vehicle_key)
-                vehicle_id = vehicle_ids.get(vehicle_key)
-                if vehicle_id is None:
-                    raise ValueError(f"selector persistence has no vehicle ID for {vehicle_key}")
-                result = result_by_vehicle.get(vehicle_key, {"status": "failed", "error": "missing batch result"})
-                status = _job_status(result.get("status"))
-                source_locations = _source_locations(batch)
-                source_location = "|".join(source_locations) or None
-                source_snapshot_id = _source_snapshot_id(result) or selector_snapshot_id
-                idempotency_key = _idempotency_key(
-                    adapter_name,
-                    source_version,
-                    vehicle_key,
-                    source_location,
-                )
-                checkpoint = {
-                    "vehicle_key": vehicle_key,
-                    "source_location": source_location,
-                    "source_locations": source_locations,
-                    "result": dict(result),
-                }
-                last_error = (
-                    {"message": str(result.get("error"))}
-                    if result.get("error")
-                    else None
-                )
-                cursor.execute(
-                    """
-                    INSERT INTO autoapi_article_fetch_jobs
-                        (autoapi_article_fetch_job_id, vehicle_id, vehicle_key,
-                         selector_source_snapshot_id, source_snapshot_id,
-                         source_location, source_version, adapter_name,
-                         idempotency_key, status, attempt_count, checkpoint,
-                         last_error, created_at, updated_at)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (idempotency_key)
-                    DO UPDATE SET vehicle_id = EXCLUDED.vehicle_id,
-                                  vehicle_key = EXCLUDED.vehicle_key,
-                                  selector_source_snapshot_id = COALESCE(
-                                      EXCLUDED.selector_source_snapshot_id,
-                                      autoapi_article_fetch_jobs.selector_source_snapshot_id),
-                                  source_snapshot_id = COALESCE(
-                                      EXCLUDED.source_snapshot_id,
-                                      autoapi_article_fetch_jobs.source_snapshot_id),
-                                  status = EXCLUDED.status,
-                                  checkpoint = EXCLUDED.checkpoint,
-                                  last_error = EXCLUDED.last_error,
-                                  updated_at = EXCLUDED.updated_at
-                    """,
-                    (
-                        _stable_uuid(f"autoapi-article-fetch-job:{idempotency_key}"),
-                        vehicle_id,
-                        vehicle_key,
-                        selector_snapshot_id,
-                        source_snapshot_id,
-                        source_location,
-                        source_version,
-                        adapter_name,
-                        idempotency_key,
-                        status,
-                        1 if status != "pending" else 0,
-                        Jsonb(checkpoint),
-                        Jsonb(last_error) if last_error is not None else None,
-                        now,
-                        now,
-                    ),
-                )
-                jobs.append(
-                    {
-                        "vehicle_key": vehicle_key,
-                        "vehicle_id": vehicle_id,
-                        "idempotency_key": idempotency_key,
-                        "status": status,
-                        "source_location": source_location,
-                    }
-                )
-        connection.commit()
-    return {"status": "persisted", "job_count": len(jobs), "jobs": jobs}
+    from uuid import UUID
+    from .worker import ArticleRepository
+    from .source_job_persistence import ensure_article_job
+    from psycopg.rows import dict_row
+    result_by_vehicle={str(item["vehicle_key"]):item for item in results}
+    vehicles=_vehicle_ids(selector_persistence)
+    planned=[]
+    for batch in batches:
+        result=result_by_vehicle.get(str(batch.vehicle_key),{})
+        ids=result.get("canonical_article_ids")
+        if not isinstance(ids,list) or not ids or str(batch.vehicle_key) not in vehicles:
+            return {**_binding_review(),"job_count":0,"jobs":[]}
+        try:
+            planned.extend((UUID(str(identifier)),UUID(str(vehicles[str(batch.vehicle_key)]))) for identifier in ids)
+        except (ValueError, TypeError, AttributeError):
+            return {**_binding_review(),"job_count":0,"jobs":[]}
+    repo=ArticleRepository(address=address) if address else ArticleRepository()
+    rows=[]
+    with repo.connect() as conn,conn.cursor(row_factory=dict_row) as cur:
+        for identifier,vehicle in planned:
+            row=cur.execute("SELECT * FROM canonical_articles WHERE canonical_article_id=%s AND vehicle_id=%s AND provider_slug='bankone'",(identifier,vehicle)).fetchone()
+            if row is None:return {**_binding_review(),"job_count":0,"jobs":[]}
+            rows.append(row)
+    jobs=[]
+    for row in rows:
+        item=ensure_article_job(repo,row["canonical_article_id"],normalization_version=row["target_normalization_version"],rewrite_profile_version=row["target_rewrite_profile_version"])
+        jobs.append({"job_id":str(item.job_id),"canonical_article_id":str(item.canonical_article_id),"status":item.state})
+    return {"status":"scheduled","job_count":len(jobs),"jobs":jobs}
 
 
-def claim_autoapi_article_fetch_job(
-    idempotency_key: str,
-    *,
-    max_attempts: int = 3,
-) -> dict[str, Any]:
-    """Atomically claim a pending/retryable AutoAPI bundle job."""
-
-    if not str(idempotency_key).strip():
-        raise ValueError("AutoAPI job idempotency key is required")
-    if max_attempts < 1:
-        raise ValueError("maximum AutoAPI job attempts must be positive")
-    with _connection() as connection:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT autoapi_article_fetch_job_id::text, status, attempt_count,
-                       checkpoint, last_error
-                FROM autoapi_article_fetch_jobs
-                WHERE idempotency_key = %s
-                FOR UPDATE
-                """,
-                (idempotency_key,),
-            )
-            row = cursor.fetchone()
-            if row is None:
-                return {"status": "not_found", "idempotency_key": idempotency_key}
-            job_id, status, attempt_count, checkpoint, last_error = row
-            if status in _TERMINAL_JOB_STATUSES:
-                return _job_result(job_id, status, attempt_count, checkpoint, last_error)
-            if status == "processing":
-                return _job_result(job_id, status, attempt_count, checkpoint, last_error)
-            if int(attempt_count) >= max_attempts:
-                cursor.execute(
-                    """
-                    UPDATE autoapi_article_fetch_jobs
-                    SET status = 'dead_letter', updated_at = now()
-                    WHERE autoapi_article_fetch_job_id = %s
-                    """,
-                    (job_id,),
-                )
-                connection.commit()
-                return _job_result(job_id, "dead_letter", attempt_count, checkpoint, last_error)
-            next_attempt = int(attempt_count) + 1
-            cursor.execute(
-                """
-                UPDATE autoapi_article_fetch_jobs
-                SET status = 'processing', attempt_count = %s, updated_at = now()
-                WHERE autoapi_article_fetch_job_id = %s
-                """,
-                (next_attempt, job_id),
-            )
-            connection.commit()
-            return _job_result(job_id, "processing", next_attempt, checkpoint, last_error)
+def claim_autoapi_article_fetch_job(idempotency_key,*,max_attempts=3):
+    if not str(idempotency_key).strip():raise ValueError("AutoAPI job idempotency key is required")
+    if not 1<=max_attempts<=3:raise ValueError("maximum AutoAPI job attempts must be between one and three")
+    return _binding_review(idempotency_key)
 
 
-def record_autoapi_article_fetch_success(
-    idempotency_key: str,
-    *,
-    checkpoint: Mapping[str, Any] | None = None,
-) -> dict[str, Any]:
-    """Record a successful fetch without reopening a terminal job."""
-
-    with _connection() as connection:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                UPDATE autoapi_article_fetch_jobs
-                SET status = CASE
-                                 WHEN status IN ('completed', 'needs_review', 'dead_letter')
-                                 THEN status ELSE 'completed' END,
-                    checkpoint = COALESCE(%s, checkpoint),
-                    last_error = NULL,
-                    updated_at = now()
-                WHERE idempotency_key = %s
-                RETURNING autoapi_article_fetch_job_id::text, status, attempt_count,
-                          checkpoint, last_error
-                """,
-                (_jsonb(dict(checkpoint)) if checkpoint is not None else None, idempotency_key),
-            )
-            row = cursor.fetchone()
-            if row is None:
-                return {"status": "not_found", "idempotency_key": idempotency_key}
-        connection.commit()
-    return _job_result(*row)
+def record_autoapi_article_fetch_success(idempotency_key,*,checkpoint=None):
+    return _binding_review(idempotency_key)
 
 
-def record_autoapi_article_fetch_failure(
-    idempotency_key: str,
-    error: str,
-    *,
-    max_attempts: int = 3,
-) -> dict[str, Any]:
-    """Record a failure and dead-letter only after bounded attempts."""
-
-    if not str(error).strip():
-        raise ValueError("AutoAPI job failure message is required")
-    if max_attempts < 1:
-        raise ValueError("maximum AutoAPI job attempts must be positive")
-    with _connection() as connection:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT autoapi_article_fetch_job_id::text, status, attempt_count,
-                       checkpoint, last_error
-                FROM autoapi_article_fetch_jobs
-                WHERE idempotency_key = %s
-                FOR UPDATE
-                """,
-                (idempotency_key,),
-            )
-            row = cursor.fetchone()
-            if row is None:
-                return {"status": "not_found", "idempotency_key": idempotency_key}
-            job_id, status, attempt_count, checkpoint, _last_error = row
-            if status in _TERMINAL_JOB_STATUSES:
-                return _job_result(job_id, status, attempt_count, checkpoint, _last_error)
-            next_status = "dead_letter" if int(attempt_count) >= max_attempts else "failed"
-            cursor.execute(
-                """
-                UPDATE autoapi_article_fetch_jobs
-                SET status = %s, last_error = %s, updated_at = now()
-                WHERE autoapi_article_fetch_job_id = %s
-                """,
-                (next_status, _jsonb({"message": str(error)}), job_id),
-            )
-            connection.commit()
-            return _job_result(job_id, next_status, attempt_count, checkpoint, {"message": str(error)})
+def record_autoapi_article_fetch_failure(idempotency_key,error,*,max_attempts=3):
+    if not str(error).strip():raise ValueError("AutoAPI job failure message is required")
+    return _binding_review(idempotency_key)
 
 
 def _vehicle_ids(selector_persistence: Mapping[str, Any] | None) -> dict[str, str]:

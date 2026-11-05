@@ -1,0 +1,267 @@
+# Release Acceptance Implementation Plan
+
+> **R6 scope update (2026-11-03):** The [bounded Workshop product-evidence assembler plan](2026-11-03-workshop-product-evidence-assembler.md) supersedes the R6a/R6 implementation paths, dependencies and dispatch instructions below. First3 is offline structural tooling with all unfinished evidence profiles disabled; later2 is separately gated real staging provenance. Historical full-release requirements below remain open, but they do not authorize broad runner, orchestration, infrastructure or collector edits.
+
+> **For agentic workers:** Use superpowers:subagent-driven-development or superpowers:executing-plans task by task, after the exact-base planning preflight passes. This dependent plan grants no implementation authority.
+
+**Goal:** Produce a reviewable dual-bank release candidate with independently replayable staging, identity, migration and recovery evidence, without production deployment.
+
+**Architecture:** Extend R0's strict typed evidence adapter with one explicitly versioned staging adapter. Promote the independently reviewed adapter to a trusted checkpoint before it evaluates an integrated application candidate; keep deterministic fixtures, real staging provenance and live issuer/bank acceptance separately identified.
+
+**Tech Stack:** Python standard-library evidence validation, existing psycopg/S3 clients, Go 1.26, PostgreSQL 17/pgvector, NATS JetStream, Docker Compose, existing Kubernetes manifests and planned Playwright acceptance.
+
+**Spec:** [Release design](../specs/2026-11-03-production-release-orchestration-design.md); [parent R6a/R6 queue](2026-11-03-production-release-orchestration.md).
+**Issue:** https://github.com/lucronn/autodata/issues/186
+**Project:** https://github.com/users/lucronn/projects/8
+**Inspection checkpoint:** `d09ef282c3756efd78bac112236660bff4471dad`.
+**Status:** Plan only. R0 evidence and the separately synchronized direct-dispatch R1 intake lane are currently authorized. R6a and R6 remain blocked pending verified dependencies, synchronized task/record updates, committed plans and fresh machine preflights.
+
+## Global constraints and dependency gate
+
+- Every implementation, verification and review agent uses `gpt-6.1-sol`, `medium`, Fast mode (`service_tier = "fast"`, request tier `priority`), with no fallback.
+- Preserve bank identity, opaque IDs, immutable source/transformation/publication revisions, ordered document/media positions, technical values and warnings. Source fallback remains honest when rewriting fails.
+- Preserve all eight policy gates, zero critical/high findings, no blocking findings, and measured evidence/provenance coverage of 1.0 with nonempty denominators. No policy weakening or no-publication exemption.
+- No production apply, deployment, image publication, credential rotation, source-rights change or destructive operation on a shared database. Use isolated dev/ephemeral services and protected staging evidence storage.
+- Follow `SECURITY.md`: no credentials, tokens, callback codes, raw licensed documents/media, extracted source passages, PII or exploit payloads in public GitHub/log/artifact output. Public evidence uses safe IDs, hashes and outcomes; protected proof has access control, retention and private security reporting.
+- R6a starts only after independently verified R0 evidence tooling and frozen R2 persistence/R3 read contracts. R6 starts only after independently reviewed R0–R5, the separate release-controller preflight lane, R0 real-provider runtime certification and promoted R6a tooling. A provider outage or unavailable required environment remains blocked.
+- The coordinator owns Issue/Project synchronization, machine task JSON, canonical tracking updates and trust promotion. Builders use disjoint worktrees and exact bounded paths. Any extra path or changed contract requires coordinator review, synchronized record and re-pin before editing.
+
+## Existing checks and their limits
+
+At the inspection checkpoint, `.github/workflows/autonomous-verification.yml` runs the commands below. They are entry points to reuse, not results of this plan.
+
+| Existing command / working directory | What it establishes |
+| --- | --- |
+| `python3 -m unittest discover -s scripts/autonomy -p 'test_*.py' -v` / root | Tooling regressions; not unattended real-provider certification |
+| `python3 scripts/autonomy/validate_run.py --manifest scripts/autonomy/fixtures/pass.json --policy .autodata-autonomy-policy.json --evidence-root scripts/autonomy/fixtures/evidence --json` / root | Legacy synthetic fixture validation only |
+| `go test ./...` / `apps/api-go` and separately `packages/contracts/go` | Existing API/shared Go suites |
+| `python3 scripts/contracts/generate.py`, then `git diff --exit-code -- packages/contracts/go/contracts.go packages/contracts/python/autodata_contracts/contracts.py` / root | Generated binding agreement |
+| `python3 -m unittest discover -s scripts/contracts -p 'test_*.py' -v` / root | Shared contract checks; requires PyYAML, jsonschema, referencing |
+| `python3 -m pytest tests -q` / `workers/ingestion-python` | Ingestion suite; database skips do not prove database behavior |
+| `python3 -m unittest discover -s tests -p 'test_*.py' -v` / `workers/enrichment-python` | Enrichment suite |
+| `python3 -m unittest discover -s scripts/dev -p 'test_*.py' -v` / root | Developer/governance/topology/migration adapter suites |
+
+CI validates `docker compose -f infra/compose/compose.yaml -f infra/compose/compose.ci.yaml config --quiet`, runs `fake-integrations` from the base Compose file, then uses both Compose files to start `postgres nats minio`, run `migration-runner`, `ingest-fixture`, start `api`, run `api-runtime-smoke`, and run `ingestion-smoke --no-deps`. Keep its failure-log retention and isolated-volume cleanup behavior. The CI override pins SeaweedFS; plain local Compose still references MinIO and may fail to pull it.
+
+This fixture-backed smoke does not certify both authenticated banks, issuer login, browser engines, article lifecycle races, production image scans or recovery. `/healthz` is liveness; `/readyz` checks dependencies, not population completeness. Base44 is a sandbox-only alternative (`docker-compose.base44.yml`, API port 3000); it does not replace deployment Compose. Embedded Go/UI changes require rebuild/restart. Never read `/run/base44/app.env` during deterministic tests.
+
+## Task 1 — R6a: Add the staging evidence adapter
+
+**Bounded builder files:** modify only `scripts/autonomy/{runner.py,orchestrator.py,agent-output.schema.json,test_runner.py,test_orchestrator.py}` and `docs/agents/agent-contracts.md`; create only `scripts/dev/{collect_staging_provenance.py,test_collect_staging_provenance.py}` and `scripts/dev/fixtures/staging_provenance_v1/{population.json,source.json,revision.json,receipt.json}`. Fixtures are explicitly synthetic. Do not edit `validate_run.py`, policy, registry/prompts, application/schema/deployment files, or R0's fixture population. Coordinator-owned task/record changes are separate.
+
+**Consumes:** reviewed R0 `ArtifactRecord`, `CommandRecord`, `Finding`, `ProvenanceResult`, `measure_provenance(population, retained_inputs, report, subject_sha)`, `calculate_coverage(...)`, and `validate_evidence_bundle(manifest, trusted, evidence_root)`. Keep the same entry points and final manifest fields. Retain R0's trusted code/input hashes, command execution, artifact containment, secret withholding, failure retention and exact-SHA checks. No generic schema engine or new framework.
+
+**Produces:** strict `staging-population-v1` population/result records and collector replay support, with `scope: "staging"` and `adapter_version: 1`. Preserve the synthetic adapter unchanged. Scope is an enforced adapter choice in the committed task, never a provider-controlled label. Unknown fields, versions, primitives and scope combinations fail closed in explicit validators plus matching schema `$defs` tests.
+
+### Frozen population contract
+
+Before builder dispatch, the coordinator commits the exact staging adapter contract and selection definition in the R6a task/checkpoint. Selection has explicit bank set `["bankone","banktwo"]`, vehicle/configuration scope, ingestion cohort, source time/cutoff rules, required fast-lane field paths and article/revision states. No SQL supplied by a provider, random sampling, limit, successful-only filter or mutable latest-row selection. Pending, failed, quarantined and withdrawn rows remain in the inventory with their disposition; required published facts never disappear from the denominator because verification failed. Successful empty upstream scopes are represented as coverage records, not invented articles; the release population must still have eligible records from each bank.
+
+Use these fixed logical records; exact database column/locator mapping is frozen from reviewed R2/R3 before implementation:
+
+| Record | Required fields |
+| --- | --- |
+| Population | `contract: "staging-population-v1"`, `adapter_version: 1`, `scope: "staging"`, `population_id`, `subject_sha`, `selection_sha256`, `environment_id`, `cohort_id`, `migration_sha256`, `database_snapshot_id`, `inventory_sha256`, `receipt_ids`, `banks`, `inventory`, `coverage`, `facts` |
+| Inventory record | `record_id`, `bank`, `vehicle_id`, nullable `configuration_id`, `article_id`, nullable `source_revision_id`, nullable `transformation_revision_id`, nullable `published_revision_id`, `disposition`, `required_outcome`, `eligibility`, nullable `exclusion_reason`, nullable `exclusion_rule_id` |
+| Provider coverage | `coverage_id`, `bank`, `scope_key`, `job_id`, `scan_generation`, `state`, `item_count`, nullable `coverage_proof_ref`, nullable `error_code` |
+| Eligible fact | `fact_id`, `record_id`, `field_path`, `source_revision_id`, nullable `transformation_revision_id`, nullable `published_revision_id`, `source_sha256`, `document_sha256`, `source_locator`, `evidence_id` |
+| Collection result | `contract`, `adapter_version`, `scope`, `subject_sha`, `population_id`, `population_sha256`, `selection_sha256`, `inventory_sha256`, `collector_sha256`, `command_id`, `artifact_ids`, `eligible_ids`, `covered_ids`, `uncovered`, `inventory_failures`, `coverage_failures`, `proofs` |
+| Verified proof | `fact_id`, `source_revision_id`, nullable `transformation_revision_id`, nullable `published_revision_id`, `source_sha256`, `document_sha256`, `evidence_sha256`, `value_sha256`, `receipt_id`, `proof_ref` |
+
+Use R0 ID/hash/SHA/path formats. Inventory `eligibility` is exactly `required` or `excluded`; `disposition` is `published`, `source-only`, `pending`, `failed`, `quarantined`, or `withdrawn`. `required_outcome` is `published`, `readable-source`, or `observe-only`, fixed by the committed cohort/scenario selection before collection. Required release-publication targets cannot be changed into observation-only targets after failure. An excluded record requires nonempty `exclusion_reason` and an `exclusion_rule_id` present in the frozen selection/rights rules; required records have both null. Exclusion cannot cure missing evidence for a required publication. Every nullable field is still present in the record.
+
+Pre-capture pending or failed inventory has null source/transformation/publication IDs and no fabricated hashes, locator, evidence or fact rows. Captured readable source requires its source ID; a published disposition additionally requires matching transformation/publication IDs. Failed, quarantined or withdrawn inventory may retain real revision IDs if capture previously completed. Facts are derived from captured required source/published fields and use nonnull source revision, hashes, locator and evidence IDs. Verify each fact belongs to its inventory record and selected revision. Every required published technical/evidence slot and localized asset association, including policy-required vehicle identity/source metadata/core specifications, has a bank-scoped fact ID. Missing expected captured-field evidence produces an uncovered fact, not a fabricated verified proof.
+
+Independently check each required inventory outcome before coverage can pass. A required article lacking its selected published/readable-source outcome yields a strict `{record_id, reason}` inventory failure even if it has no fact rows yet; it cannot disappear from the decision by shrinking the fact denominator. `uncovered` retains R0's `{fact_id, reason}` shape. Verified proofs remain strict and never accept null source hashes, evidence hashes, locators or proof references.
+
+Coverage `state` is `complete`, `partial`, `failed`, `not_configured`, or `needs_review`; `item_count` and generation are nonnegative integers. Complete coverage requires a verified `coverage_proof_ref` and null error code, including an authenticated successful empty scope with `item_count: 0`. Other states may have partial proof but never imply completeness, and record a safe error code when applicable. A strict `{coverage_id, reason}` failure records missing/invalid required bank coverage. Successful-empty scope records remain valid inventory evidence, but an entirely empty release population or a bank with no eligible facts still fails the separate nonempty per-bank release requirement. IDs remain bank-scoped; local ID/title collisions cannot merge.
+
+The committed selection definition is the trust input. Its materialized population is generated only by the trusted collector from an identified, quiesced staging cohort in a repeatable-read database transaction. Capture immutable object version IDs/hashes alongside that transaction. The runner freezes the full inventory/population bytes and their hashes once before gate assessment, in its immutable run directory. Extend R0's committed synthetic `population_ref` path with this explicit staging binding; do not pretend a mutable external population is a committed fixture. Candidate SHA/environment/cohort/selection/migration hashes bind the run. Re-enumerate the same cohort before final validation; insertion, removal, changed associations/object versions or changed required eligibility invalidates the run and requires a new population/run. An application change requires a new subject SHA and new collection.
+
+### Trusted collection and independent replay
+
+Use an isolated runner-owned capture manifest for the enrollment receipt below,
+not a new attestation service or PKI. It records the verified candidate checkout
+and built-image digest, inspected database/Compose identity, configured connector
+identity, actual authenticated request outcomes, capture times and object hashes
+from the executed staging job. Retain it outside candidate/provider write access
+and bind its hash through R0 command/artifact records. Runtime attestation here
+means checking those concrete process/image/database identities; no separate
+hardware attestation product or external receipt issuer is required. A candidate
+or provider assertion alone remains insufficient.
+
+- [ ] Add failing tests first for valid 2-bank proof, pre-capture pending, failed-before-capture, justified/invalid exclusion, successful-empty bank scope coverage, unmet required inventory outcomes, missing bank, empty denominator, duplicate/cross-bank ID, dropped eligible row, foreign covered ID, wrong source pointer/association, value mutation, hash mismatch, stale candidate/migration, changed inventory, missing object version, unavailable storage and fixture relabeling. Run `python3 -m unittest discover -s scripts/dev -p 'test_collect_staging_provenance.py' -v`; initial missing collector behavior must fail.
+- [ ] Implement `collect_staging_provenance.py --selection <pinned-file> --output <runner-output-dir>` with fixed read-only queries against the reviewed R2 schema and fixed object-store reads. Candidate/check metadata comes from runner-owned `AUTODATA_SUBJECT_SHA`, `AUTODATA_CHECK_ID`, `AUTODATA_EVIDENCE_ROOT`; secret-manager mounts and service addresses are supplied by the isolated staging job, never command arguments/provider output. Refuse fallback defaults, unknown environments or fixture mode in this command.
+- [ ] Verify actual article → source revision → extraction/evidence → transformation → publication/outbox and article → immutable media associations. Recompute object hashes from fetched versioned bytes, resolve evidence locators in the retained source, replay deterministic normalization/unit rules, and compare typed values to the published field. Rewriting proof uses R2's reviewed recursive technical/structure preservation validator pinned in the trusted checkpoint plus retained transformation output, not prose equality or a model's assessment. Verify source-only states without falsely marking publication complete. Record lineage/model/profile/version, rights/retention/takedown outcomes and discrepancies without source text.
+- [ ] Independently enumerate the full selected database inventory, compare exact eligible IDs, validate each proof, and compute coverage from verified IDs. Do not trust report counts/ratios or union different source/quality reports to obtain a better score. Empty population yields null ratio and a block; per-bank and combined required coverage must each equal 1.0.
+- [ ] Bind real provenance to protected ingestion enrollment receipts issued by the trusted staging job: candidate image/source digest, environment/database identity, bank connector identity, cohort, authenticated capture interval and immutable object versions. Collector verifies receipts against protected job/transport records and actual rows/bytes; a database `synthetic=false` flag or self-authored JSON receipt is insufficient. Require separate authenticated per-bank canary outcomes. Fixtures use an injected test store only in unit tests and have no production CLI path. Missing trustworthy enrollment/transport proof blocks live certification; hashes alone cannot establish a real bank origin or source rights.
+- [ ] Retain raw proof only in the restricted evidence store. Public result artifacts contain safe proof identifiers/hashes and redacted outcomes. An independent evaluator must have authorized read access to protected proof for replay; an opaque inaccessible URI cannot count as verified evidence. Runner hashes exact safe exported bytes and separately binds protected proof digests. Secret-bearing output is withheld and blocks its check. Do not copy protected bytes into generic stdout/stderr or the public bundle.
+- [ ] Extend strict task/response validation and `validate_evidence_bundle` to require the pinned staging adapter, trusted collector code hash, enrollment binding, full inventory and measured proof for staging tasks. Reject changing only fixture scope/adapter strings, replaying fixture receipts, unsupported versions and evidence from another candidate. R0 synthetic artifacts remain incapable of satisfying a staging-required slot.
+- [ ] Run collector tests, `python3 -m unittest discover -s scripts/autonomy -p 'test_*.py' -v`, schema inventory tests and `git diff --check`. Preserve real command outcomes and sample failure bundles. Independently review the resulting exact adapter commit before the coordinator promotes it to `trusted_base_sha`; do not execute candidate-supplied evaluator code to approve itself.
+
+These deterministic collector tests certify adapter behavior against fake stores only. Actual staging collection and live banks/issuer are separate required R6 results. R0 v2 currently accepts only `synthetic-regression`; neither its unit tests nor the legacy validator can stand in for this adapter.
+
+## Task 2 — R6: Assemble deterministic candidate verification
+
+**Bounded builder files:** modify only `.github/workflows/autonomous-verification.yml`, `infra/compose/{compose.yaml,compose.ci.yaml}`, `infra/k8s/base.yaml`, `scripts/dev/{backup_restore_smoke.py,test_backup_restore_smoke.py,test_k8s_manifests.py,test_bank_topology.py,test_storage_messaging_operations.py}`, `docs/architecture/infrastructure-and-dev.md`, and `docs/agents/runbooks.md`; create only `infra/compose/compose.release-test.yaml`, `scripts/dev/{release_acceptance.py,test_release_acceptance.py}`, and `docs/verification/release-acceptance-runbook.md`. R6 does not edit R1–R5 application/test files, Dockerfiles, migrations, auth contracts or R6a validator files. A needed image/build-source fix goes back to its owning lane and forces a reviewed candidate re-pin. Protected workflow changes require the separately bounded coordinator-approved workflow; R0 has no override flag.
+
+**Consumes:** integrated reviewed R0–R5 SHA, R2 worker/service runtime contract, R3 OpenAPI/schema, R4 browser runner, R5 issuer/session contract, trusted R6a collector. **Produces:** pinned fixed check matrix and isolated candidate orchestration; no arbitrary command strings, provider-selected environment or deployment target.
+
+- [ ] Write failing `test_release_acceptance.py` cases for a missing required check, skipped DB/browser suite, unavailable scanner, stale SHA/image, nonzero command, missing recovery proof and redacted failure retention; implement minimal fixed orchestration afterward. Expose `python3 scripts/dev/release_acceptance.py --mode deterministic --output <runner-output-dir>`. It invokes fixed subprocess argv with per-check timeouts frozen in the task (each within R0's 1–1800 second range; split longer stages into separate checks) and records exact SHA, image digest, tool versions, check IDs/status/exits and artifact IDs using R0 records. Live mode is a separately provisioned staging job, not a deterministic-test switch that loads host credentials.
+- [ ] Keep existing unit/contract and CI fixture smoke entry points above. Add `go vet ./...` and `go test -race ./...` from `apps/api-go`, `node --test apps/api-go/workshop-client.test.mjs`, and R4's `python3 scripts/dev/workshop_browser_smoke.py --base-url http://127.0.0.1:18080 --browser all --output <runner-output-dir>`. Use actual embedded assets, synthetic intercepted DTO/session fixtures and no outbound identity/bank access. Missing Chromium/Firefox/WebKit or Playwright is unavailable, never passed by skip.
+- [ ] Run R2's separately isolated `infra/compose/compose.article-lifecycle-test.yaml`: real PostgreSQL schema/source/job/transform/publication/integration suites and `scripts/dev/article_lifecycle_smoke.py --mode fixture --output /artifacts/lifecycle-smoke.json`. Run all named suites and races/restart/warm replay groups from the reviewed lifecycle plan; assert they actually executed, including Go `TestPostgresCatalogLifecycle` against R2 migrations. R2/R4 files are planned dependencies absent at this inspection checkpoint; do not advertise these commands as available or passed before integration.
+- [ ] Use isolated `compose.release-test.yaml` volumes/network, no developer/source-secret mounts. Run zero → candidate migrations and upgrade from a pinned prior-release database (inspection schema ends at 036; planned R2 037/038 and R5 039 need integrated confirmation). Preserve legacy UUIDs/idempotency/retry/snapshot links, revision hashes, constraints and migration checksum ledger; compare clean/upgrade schema and rerun idempotent migration behavior. Existing Compose `migration-runner` applies sorted SQL with `ON_ERROR_STOP`; the upgrade comparison is additional acceptance, not implied by its clean run. Never rewrite an integrated migration.
+- [ ] Build from the clean candidate with `docker compose -f infra/compose/compose.yaml -f infra/compose/compose.ci.yaml build api ingestion-worker ingestion-http enrichment-worker outbox-relay payment-reconciler`; retain resulting immutable image IDs/digests and source/build metadata. Assert the R2 background article worker command is present and running in Compose and Kubernetes topology; readiness of the API alone cannot prove that work is serviced. Validate `infra/k8s/base.yaml` structurally with `python3 scripts/dev/test_k8s_manifests.py`; no cluster apply.
+- [ ] Freeze scanner versions and vulnerability database timestamps in the machine task/environment before dispatch. Run `govulncheck ./...` in `apps/api-go` and `packages/contracts/go`, `python3 -m pip_audit` in each built worker image, `gitleaks git --redact` over the candidate, and `trivy image --exit-code 1 --severity HIGH,CRITICAL <candidate-image-id>` for each built image. Scanner installation is environment provisioning, not an unpinned download during a gate. Export only redacted reports; unavailable scanner/DB or findings leave security non-pass and require reviewed remediation. Existing CI has no such scan certification.
+- [ ] Run focused new tests, the existing developer/autonomy suites, generated-binding diff and `git diff --check`; independently review the bounded verification/wiring commit. Coordinator re-pins the integrated application candidate after this change and re-runs all required exact-SHA checks.
+
+## Task 3 — R6: Exercise staging, recovery and final gates
+
+This task executes reviewed tooling and writes only evidence outside the checkout. It must not repair application/evaluator code during verification. Each failure returns to the owning builder, then receives a new SHA, review and affected/full required gate rerun.
+
+- [ ] Provision an isolated staging environment with candidate-built images/digests and recorded migration checksums. Freeze the selection/cohort and runtime identity; run authenticated Bankone and Banktwo canaries separately, then both together, then one-bank-unavailable. Prove bank-specific coverage and honest partial state, source-first readability, ordered document/media preservation, one canonical identity per bank-scoped article, durable rewrite/publication and warm restart reads with zero bank/model calls. No fixture result is promoted to live evidence.
+- [ ] Run trusted R6a collection against the actual staging DB/object store, retain private proof and safe reports, independently replay proof and re-enumerate the frozen cohort. Source/data gates assess the same exact eligible population; require combined and per-bank 100% coverage plus required-field/evidence correctness. Live model success does not override R2 preservation validation or missing provenance.
+- [ ] Execute R5's `production_access_smoke.py` from its reviewed runbook with the real registered issuer, HTTPS origin, secret-managed client and accounts in two organizations. Check login/logout/expiry, two-replica session revocation, mapped viewer/reviewer/operator/admin behavior, invalid issuer/audience denial, dataset entitlement revocation/cross-org isolation, shared-catalog role access, source/canonical/review reads, withdrawal and old media URL denial. Verify ingress/app logging excludes cookies, authorization and callback query secrets. Deterministic local issuer/fixture credentials remain separate evidence.
+- [ ] In isolated recovery services, kill the article worker before/after source persistence, model-result persistence, revision commit and outbox delivery. Restart two workers; prove expired leases/fencing, one revision/logical publication event, retained successful model output, idempotent redelivery and bounded retry/dead-letter behavior. Stop/restart NATS, verify pending outbox survival and consumer deduplication; stop object storage, verify honest retry/read failure and unchanged published revisions, then restore access and hashes. Record before/after IDs/counts, call counters and bounded recovery durations.
+- [ ] Run existing `python3 scripts/dev/backup_restore_smoke.py --compose-file infra/compose/compose.yaml --project-name autodata-release-test` only against the designated isolated stack, never the default shared development service. Its current implementation restores a temporary DB and checks only a nonempty migration ledger; extend it within Task 2 with an explicit `--project-name` passed to every Compose subprocess (release mode rejects an absent/default/shared project), and verify exact migration checksums, selected article/revision/outbox/entitlement counts and hashes, plus replayable object-version associations. Restore protected object versions into a separate bucket/namespace and verify DB→object proof and authorized reads there. A PostgreSQL-only backup cannot certify object or NATS recovery. Retain backups privately and clean only the exact temporary resources owned by the run.
+- [ ] Rehearse forward recovery for each additive migration and an application rollback only to a schema-compatible pinned previous image. Restore into an isolated environment when compatibility fails; do not promise reversing immutable publication or run down migrations without an approved strategy. Runbooks record prior-image digest, candidate schema compatibility, dependency failure/abort criteria, backup IDs, restore validation and measured recovery time. No production recovery-time objective is inferred from fixture duration.
+- [ ] Record readiness, bounded request timing, queue lag/age, retries/dead letters, outbox status, source watermark, denied/takedown reads and request/correlation IDs using existing `operational_metrics.py`, `nats_health.py` and restricted API `/metrics`. `object_storage_health.py` can create buckets/enable versioning, so use it only during isolated provisioning, not as a supposedly read-only collector.
+- [ ] Obtain independent exact-candidate reports for `deterministic_ci`, `contract_compatibility`, `schema_integrity`, `source_provenance`, `data_quality`, `security`, `reliability`, and `independent_review`. Frozen check/artifact slots include all mandatory stages above. Run the promoted `validate_evidence_bundle` and existing final policy evaluator with unchanged trusted policy; retain all failures and disagreements. The reviewer cannot approve their own implementation. Alternate review after disagreement is required; unavailable scheduling/reviewer capability remains blocked.
+
+## Go/no-go and reviewable release output
+
+**Go for a reviewable candidate** requires one clean, in-scope candidate SHA descended from the trusted tooling checkpoint; recorded component/reviewer SHAs and image digests; synchronized Issue/Project/canonical task record and passing preflight; all required commands completed with exit zero; all eight independent gates passing at that same SHA; no unresolved blocking/critical/high finding; all required retained artifact slots verified; nonempty eligible populations from both banks; measured required evidence and per-bank/combined provenance coverage of 1.0; completed live issuer/bank and recovery checks; and successful deterministic revalidation by the promoted trusted adapter. Lower-severity findings require explicit disposition and evidence. A complete bundle can document a failure; completeness alone is not a pass.
+
+Any failed, missing, skipped, unavailable, stale, synthetic-substituted or non-replayable required result is **no-go** (`fail`, `blocked` or `needs_review` with the actual reason). Never emit a success summary because health probes, the old fixture manifest or most tests passed. Preserve attempted command logs, redacted findings and safe artifact hashes even for no-go; new attempts create new immutable run IDs.
+
+The output is a reviewable release PR/candidate and canonical release runbook linking the exact SHA, image inventory, migration/contract versions, independent reports, safe bundle manifest, restricted proof identifiers, actual gate outcomes, deployment-target configuration requirements, recovery procedure and unresolved findings. Creating/publishing that PR is coordinator-owned under the existing release-controller checks. No merge or production deployment is required by this plan; production deployment needs separate user authority.
+
+## Concrete todo and unresolved external prerequisites
+
+- [ ] Coordinator confirms reviewed R0/runtime/release-controller checkpoints and R2/R3 producer contracts; synchronizes this plan, Issue #186, Project #8, canonical docs and bounded R6a task/record at a committed base; runs preflight.
+- [ ] R6a builder adds strict staging adapter/collector/negative tests; independent review promotes its exact commit as trusted tooling.
+- [ ] Coordinator freezes integrated R0–R5 candidate, R6 task/check slots, scanner/environment versions and protected evidence interface; synchronizes and re-runs preflight for bounded R6 implementation.
+- [ ] R6 builder completes isolated CI/build/migration/browser/recovery wiring; independent review establishes the final candidate SHA.
+- [ ] Verification runs deterministic, live bank/issuer, staging population and recovery stages independently; coordinator records actual outcomes and reviewable candidate without deploying production.
+
+Unresolved prerequisites are concrete: reachable authenticated Bankone/Banktwo connectors with licensed staging rights and stable opaque IDs; a nonempty approved vehicle/configuration/cohort selection for each bank; real bounded rewrite-provider capability; isolated staging DB/S3 versioning/NATS and backup capacity; protected evidence storage/access/retention plus trusted ingestion enrollment/transport receipts; candidate image/runtime identity attestation; scanner/browser/Go/Python/Docker availability; and R5's HTTPS issuer, RS256/PKCE web-client registration, secret-manager delivery, origin/callback allowlist, org/role claim mapping and two-organization test accounts. Verified bearer mode additionally needs its registered API audience and ≤15-minute JWT access tokens. Bank credentials cannot provide user identity. None of these prerequisites was exercised in this planning task.
+
+Before R6a dispatch, freeze actual R2 migrations 037/038 (or reviewed successors), `catalog_article_current`, source/evidence/media associations, transformation/publication/outbox fields, R3 shared lifecycle schema/locator rules and the staging enrollment/selection-to-SQL mapping. Before R6 dispatch also freeze R5 session schema (planned 039), R2 worker command/env and R4 browser DTO/session interfaces. A different migration sequence, contract/eligibility/proof rule, collector interface, issuer capability or required runtime topology changes the trusted contract: revise the plan/task/schema/tests, synchronize tracking, commit a new checkpoint and re-pin consumers. Do not invent SQL or source-authentication proof from the present plan-only documents.
+
+## Bounded R6 selector-work successor (plan only)
+
+Next offline dispatch is only the [selector-work plan](2026-11-03-workshop-r6-paid-selector-work.md) at source `eddcf724028683dbb083191e4f8c42064b866bf0`, task `docs/agents/tasks/2026-11-03-production-release/r6-paid-selector-work.json`, record `docs/agents/records/2026-11-03-r6-paid-selector-work.json`. Preserve the canonical first3 paths and disabled task profiles. This inspects two fixed GrantBeforeWork selector/work receipt families, fourteen snapshot diagnostics and zero verified cases. It preserves every missing validation family and false verification/deployment/cutover flag; no HTTP outcome, product180, staging or trust promotion follows. The dedicated plan contains the concrete todo, closed typed schema and exact preflight; independent review is required before implementation.
+
+## Bounded R6 DTO120 receipt successor (plan only)
+
+Next prospective offline family is the [DTO120 receipt plan](2026-11-03-workshop-r6-dto120-receipts.md), source `99df69caaeb4d5ccf6d0ffbf0377fe6d5d872a3d` stacked on draft PR188; task `docs/agents/tasks/2026-11-03-production-release/r6-dto120-receipts.json`, record `docs/agents/records/2026-11-03-r6-dto120-receipts.json`. Tracking readback is synchronized in Issue186 comment6621102242 and Project8 Source/dependency index (879 characters; SHA256 f6b01dc0fe6cb7909d045b567505549909e71d4fe8853ac40d55f1a6d649e6b0); full predecessor text and every prior ID are retained. Exact committed preflight and independent gate review remain required. The three implementation paths remain unchanged. Closed40x3 DTO outcomes and fixed source-derived six-input/eleven-asset expectations add diagnostic consistency only; no verified cases, enabled profiles, CLI dispatch or true authority flags. Existing selector-work/history references and every paid/CI/source/SDK/TLS/supervisor/reviewer/staging gap remain. No implementation or release certification is authorized.
+
+
+## Paid HTTP receipt successor — original pending checkpoint (2026-11-04)
+
+The next prospective bounded HTTP family is [the paid HTTP receipt plan](2026-11-04-workshop-r6-paid-http-receipts.md), inspected at integrated PR198 head `e5fed171bb36fdb759c592cbcd0e15aea5490c97`. Dedicated task `docs/agents/tasks/2026-11-03-production-release/r6-paid-http-receipts.json` and record `docs/agents/records/2026-11-04-r6-paid-http-receipts.json` are pending; they do not supersede any prior tracking receipt, status or authority. Implementation is limited to `scripts/dev/release_acceptance.py`, `scripts/dev/test_release_acceptance.py`, and `docs/verification/release-acceptance-runbook.md` only after the canonical gate passes.
+
+This adds only internal `inspect_paid_http_receipts` after the common/PG/migration/selector-work chain, interpreting the retained 18 HTTP observations in each fixed GrantBeforeWork bank case. Exactly two observed HTTP IDs and 36 observations are diagnostics with zero logical acceptance cases. Raw wire bodies, full headers and authenticated transport/supervisor/reviewer authority are unavailable; projected JSON and matching declared hashes do not establish that proof. Preserve every inherited missing family, append explicit wire-body/transport-authority gaps, keep unavailable/incomplete and no verified IDs, zero CLI counts, all profiles/tiers disabled and every verification/deployment/cutover flag false. Media rights/model lifecycle, other ten paid cases, full180/CI/support/image/security, real staging and release authority remain separately gated.
+
+At checkpoint `444a701`, `integration_status_audit` was designated the sole Issue186/Project8 writer; the synchronized readback below records the later writer-slot transfer. The local draft received coordinator-reported independent review PASS at SHA256 `783f16baf8a3a97458841094e9dc9075785da32c8f4340d0854796c950e75fdd`; exact committed-checkpoint review remains pending. No implementation dispatch is authorized. The concrete todo to synchronize verbatim is:
+
+1. Synchronize this HTTP-only family, exact producer-derived schema, three-path implementation allowlist and todo in Issue186/Project8/canonical plan/task/record/queue; commit/push B, pass pinned preflight and obtain independent exact-B review.
+2. Independently construct failing synthetic 18×2 HTTP observations and adversarial tests that repair enclosing copies/hashes to reach semantic validation.
+3. Implement only internal inspect_paid_http_receipts chained after inspect_paid_selector_work, with closed projected bodies/headers/routes and counter/PG identity relationships; report only two target IDs and 36 diagnostic observations.
+4. Preserve every missing family and append explicit wire-body/transport-authority gaps; keep unavailable/incomplete, no verified IDs, zero CLI counts, disabled profiles/tiers and every false flag.
+5. Update runbook, run focused/developer/autonomy/syntax/confinement/allowlist checks, commit/push the coherent candidate and obtain independent exact-SHA review before any coordinator integration decision.
+
+
+### Paid HTTP tracking readback (2026-11-04)
+
+Issue186 detail [comment6623187020](https://github.com/lucronn/autodata/issues/186#issuecomment-6623187020) has body SHA256 `c6d3fa5f4888a469ae0b4703c04ebd3c609f5e91d0dc2c29423633fe69ee85e7`. Authorized sole writer `paid_evidence_plan` reread the complete unchanged Issue body and all123 predecessor comment bodies, plus the exact new detail. Complete preserved bytes/hashes and before/after Project field values are in `docs/agents/records/2026-11-04-r6-paid-http-tracking-evidence.json`. Source index is927 characters, SHA256 `37db77872fa6791b28289e9d52b9d26c0a7c62c1a219721d048b304060c8f959`; Status remains In Progress and every other Project field is unchanged. Latest PG retrospective detail6623105546/pin6623119656 and integration completion detail6623150233/checkpointd2e2270/pin6623168382/gate2728ac/receipt507e3d remain indexed. Record/task/queue are synchronized after readback at `2026-11-04T05:14:43.079569+00:00`; independent exact committed gate review and full-SHA passing preflight remain required. No implementation, profile/trust promotion, runtime, cloud, activation or acceptance authority is granted. The five concrete todos above remain unchanged.
+
+
+### Reviewed paid HTTP implementation completion (2026-11-04)
+
+The bounded code candidate `66781084bde3ea382b35b4e33cdeace713f1096a` is pushed and independently reviewed PASS (coordinator-relayed exact-SHA review by `/root/paid_http_code_review`; no saved review file/hash). Draft [PR200](https://github.com/lucronn/autodata/pull/200) is open. Gate `a899eac8c66674bf7b9d75741e51401cb45c0ffd` and final plan receipt `2ea5b696` remain the planning provenance. Fresh focused 92/developer 244/autonomy 146 tests, syntax, whitespace, three-path allowlist and unchanged CLI/policy/profile/parser-limit checks passed. The independent reviewer reran 11 HTTP tests plus the disabled-CLI regression.
+
+Completion [detail 6624255418](https://github.com/lucronn/autodata/issues/186#issuecomment-6624255418) and `docs/verification/2026-11-04-r6-paid-http-completion.md` record the completed five implementation todos and separately gated coordinator integration. `docs/agents/records/2026-11-04-r6-paid-http-completion.json` and `docs/agents/records/2026-11-04-r6-paid-http-completion-tracking-evidence.json` retain exact scope, test/review provenance, complete current Issue body/all 129 predecessor comment bodies/full Project fields and Source index verbatim plus SHA256. Project Status remains In Progress and all other fields are unchanged. The docs-only completion checkpoint `94a5809ae7ac37656c9f586d971f48eb21c74be6` is pushed; full-SHA preflight passed (`status: synchronized`, `errors: []`, exit 0, empty stderr). Exact [pin 6624284510](https://github.com/lucronn/autodata/issues/186#issuecomment-6624284510) and final live readback are preserved in the completion tracking evidence. The Issue body/all 129 predecessor comment bodies and both new comments match exactly; Project Status remains In Progress and all seven other fields are unchanged. Source is 881 characters. The sole writer slot was released after final live readback. Independent review of the final docs receipt remains separate from the code PASS.
+
+Only two HTTP diagnostic IDs / 36 projected observations are added. All inherited gaps persist; wire-body provenance/transport authority are explicit gaps. There is no CLI dispatch, enabled profile/tier, verified case, runtime/fixture/staging acceptance, merge, deployment or cutover authority. All authority flags remain false and release state remains unverified.
+
+
+## R6 exact-scope paid receipt successor — synchronized tracking (2026-11-04)
+
+**Status: tracking synchronized, planning only.** The coordinator selected source `545f32098a659c75c11e4dd7ad7c00fbc9a2a976` (PR202 completion containing PR200 code `66781084bde3ea382b35b4e33cdeace713f1096a`) for the dedicated planning branch. This source adoption is not a merge or application acceptance. The [exact-scope receipt plan](2026-11-04-workshop-r6-paid-scope-receipts.md), task `docs/agents/tasks/2026-11-03-production-release/r6-paid-scope-receipts.json` and record `docs/agents/records/2026-11-04-r6-paid-scope-receipts.json` define one successor to the reviewed GrantBeforeWork HTTP inspector. The existing R6 parent task and all historical gates remain unchanged. Issue186 detail6624437136 and the matching996-character Project Source have been independently read back. Commit/push, exact-base preflight, independent exact-gate review and explicit builder dispatch still precede implementation.
+
+Goal: Add one unselected internal consistency inspector for both ExactScopeAndOwnerIsolation bank cases, covering exactly 22 projected HTTP observations, exact configuration/owner/region row relationships and two no-work/final snapshot pairs; preserve zero verified cases and all false authority flags.
+
+Implementation allowlist remains exactly `scripts/dev/release_acceptance.py`, `scripts/dev/test_release_acceptance.py`, `docs/verification/release-acceptance-runbook.md`, after the full gate and explicit dispatch. New API `inspect_paid_scope_receipts` chains after existing paid HTTP checks; its two ExactScopeAndOwnerIsolation cases add 22 observed HTTP rows and four isolated/final snapshot diagnostics, zero logical acceptance cases. Preserve every inherited missing family and append terminal-entitlement provenance; terminal snapshots cannot prove an interim revoked state and redacted bodies cannot establish wire/transport authority. No new profile/CLI dispatch, verified IDs, true authority flag or API21 change is permitted.
+
+Historical application candidate `2de36a1305bfbe45992995e6caf0ba52f30fddcc` stays historical. Source545f32098, predecessor tool66781084, future planning checkpoint, implementation candidate and future application candidate are distinct; future candidates are unselected. DTO120 remains independently inspected and unverified. Full paid12/DTO120/final-head180/support/security/images/SDK/license/CI/reviewer evidence and all eight staging gates remain requirements; this milestone supplies no release/merge/deploy/cutover authority.
+
+Issue: https://github.com/lucronn/autodata/issues/186
+Project: https://github.com/users/lucronn/projects/8 (existing item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4`; status remains separately tracked). Only the coordinator may serialize a live tracking update; the API21 completion writer remains separate. Exact five todos to synchronize:
+
+1. Synchronize closed two-case exact-scope22-observation/four-snapshot contract, literal three-path scope and references; commit/push checkpoint and pass exact-base preflight plus independent review before implementation.
+2. Add independent inline red/green fixtures and repaired-semantic/unrepaired-transport adversarial tests for scope/owner/region/legacy/revocation projections, no-work and confined transport.
+3. Implement only unselected inspect_paid_scope_receipts after existing paid HTTP chain, add diagnostic IDs/counts and terminal-entitlement gap; preserve predecessor/DTO/CLI/policy/profile bytes and allfalse/unavailable/emptyverified behavior.
+4. Run focused/developer/autonomy/syntax/shallow/exact-scope checks, update runbook, commit/push coherent green milestones and obtain independent exact-SHA review.
+5. Retain complete paid12/DTO120/final-head180/support/CI/security/image/SDK/license/reviewer/staging blockers; enable no tier/profile and leave API21/live evidence and later collection separately gated.
+
+Exact-scope tracking receipt: [Issue186 detail6624437136](https://github.com/lucronn/autodata/issues/186#issuecomment-6624437136), body SHA256 `2f815f6ac0a2cb584f740b5162baa56e759309add23e2096074e2c9af5cedc93`; Project Source SHA256 `7dc2f3e86b4b2d7aa8ff225b19be9e4c3eac9ebe580e3d632f1d15700df4d2f9`,996 characters, In Progress/all other fields unchanged; readback `2026-11-04T06:42:35.484222+00:00`. Full Issue body/all133 comments/Project item/Source predecessor bytes are preserved in `docs/agents/records/2026-11-04-r6-paid-scope-tracking-evidence.json`; historical131 comment bodies and unchanged Issue body independently match retained completion evidence. New owner/request/projection/product joins are explicitly assigned to this milestone, not inherited. The third configuration CA role is producer-labeled; retained region rows are absent. Every implementation/runtime/cloud/profile/merge/deploy/cutover authorization stays false. The coordinator remains sole GitHub writer.
+
+
+## Exact-scope implementation completion — code30ea7a0
+
+The bounded internal tool is implemented at `30ea7a0f3d0d7f2c185ba74d84b8fd94a3f57abe`
+(draft [PR209](https://github.com/lucronn/autodata/pull/209)), from synchronized
+gate `281ec742e88d9dcde5fb16d1bb778f2778a5c5b3`. Three coherent green milestones
+were pushed: `bd54fc9fcdb38c9b43bd57677cf2bf169ce1dcc6` added the inspector and
+positive/no-dispatch coverage; `1b4b52d94cc742b9c3b6c53e7246efa51c69b54a` added
+adversarial coverage; final code30ea7a0 repaired the demonstrated missing
+canonical configuration-column case with a regression covering all eight rows.
+The earlier missing-column candidate is superseded; only final-code reruns supply
+current parser-tool proof.
+
+Fresh checks at exact code30ea7a0 passed: focused **16**, full module **108**,
+developer discovery **260**, autonomy **146**, and fresh shallow-clone focused plus
+disabled-CLI **17**. Syntax, diff, three-path scope, unchanged predecessor/DTO/CLI/
+constants/limits and exact-gate preflight checks passed. Commands, durations,
+SHA256-bound durable logs and milestone disposition are recorded in
+`docs/agents/records/2026-11-04-r6-paid-scope-completion.json`. This is parser-tool
+verification, never application ancestry or runtime acceptance.
+
+The coordinator relayed independent exact-code review **PASS**, with no outstanding
+finding; Issue186 completion [detail6634324284](https://github.com/lucronn/autodata/issues/186#issuecomment-6634324284)
+independently repeats that result. This documentation does not invent a separate
+reviewer receipt or claim that completion-document review has passed. The new
+docs-only branch starts at exact code30ea7a0 and requires separate exact-SHA review.
+
+All five bounded todos are disposed: synchronized gate/review preceded code;
+independent inline fixtures and repaired semantic/transport mutations exist; the
+unselected inspector emits only22 HTTP/four snapshot diagnostics; required
+verification and independent code review passed; external release blockers remain
+explicit. Original planning text and readback remain historical evidence, not a
+new implementation dispatch. Every authorization flag stays false.
+
+Fresh complete readback at 2026-11-04T15:15:56.466530+00:00 retains the Issue body, all137 comments,
+full Project8 item and all eight field values in
+`docs/agents/records/2026-11-04-r6-paid-scope-completion-tracking-evidence.json`.
+The1541-byte completion detail SHA256 is
+`17557639c66501083e26a14b490222ba7e14b5f7cf549c4f721704c825f0ba37`;
+Project Source is966 characters, SHA256
+`7988162779e1b526fef566c7288f0ab2a99dc7b34dd74650ce06c79673cbd2b5`.
+All133 planning-era comment bodies and the seven non-Source fields are unchanged.
+Coordinator-supplied Source before/after is retained verbatim; no absent full
+pre-update snapshot is invented. Issue186 and Project8 remain In Progress.
+
+`inspect_paid_scope_receipts` stays unselected. Results remain unavailable,
+incomplete, with no verified IDs, zero added logical acceptance cases, all false
+authority flags and disabled profiles/tiers. Terminal rows cannot prove historical
+revocation; no retained configuration-region row independently proves the third
+configuration's CA label; projected bodies cannot establish raw-wire provenance.
+Complete paid12/DTO120, final immutable application-head180 and supporting contracts,
+CI/capture/Git/supervisor/reviewer provenance, security, images, SDK/license and
+licensed-source evidence remain required. All eight real staging gates and actual
+Firebase/Stripe TEST/both-bank provider configuration remain open. Historical
+application candidate `2de36a1305bfbe45992995e6caf0ba52f30fddcc` remains immutable
+history; the future application candidate is unselected. API21 and live evidence
+remain separately gated. No merge, charge, runtime, deployment or cars.tk cutover
+authority follows from this completion.

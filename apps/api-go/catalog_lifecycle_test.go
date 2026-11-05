@@ -1,0 +1,323 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+)
+
+func TestCatalogDetailLifecycle(t *testing.T) {
+	for _, tc := range []struct {
+		name, state string
+		want        int
+	}{{"accepted", "queued", 202}, {"review required", "needs_review", 409}} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := newMemoryCatalogStore()
+			var article CatalogArticle
+			err := json.Unmarshal([]byte(`{"id":"article-1","vehicle_id":"vehicle-1","title":"Pump","canonical_article_id":"article-1","availability":"pending","complete":false,"content_status":"list_only","processing":{"job_id":"job-1","state":"`+tc.state+`","retryable":false,"retry_after_seconds":2}}`), &article)
+			if err != nil {
+				t.Fatal(err)
+			}
+			store.PutArticle(article)
+			server := NewServerWithCatalogStore(staticReadiness{}, &fakeAuthenticator{principal: Principal{OrganizationID: "org-1", Roles: []string{"dataset_viewer"}}}, newMemoryRequestStore(), store)
+			response := httptest.NewRecorder()
+			server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/catalog/vehicles/vehicle-1/articles/article-1", nil))
+			if response.Code != tc.want {
+				t.Fatalf("status=%d want=%d body=%s", response.Code, tc.want, response.Body)
+			}
+			if response.Header().Get("Cache-Control") != "private, no-store" {
+				t.Fatal("detail lifecycle must not cache")
+			}
+		})
+	}
+}
+
+func TestCatalogLifecycleReadableSourceIgnoresWorkerOutage(t *testing.T) {
+	for _, state := range []string{"rewriting", "failed", "needs_review"} {
+		t.Run(state, func(t *testing.T) {
+			store := newMemoryCatalogStore()
+			a := CatalogArticle{ID: "a", VehicleID: "v", Title: "Pump", CanonicalArticleID: stringPointer("a"), SourceRevisionID: stringPointer("s"), ContentOrigin: stringPointer("source"), Availability: "available", ContentStatus: "content_partial", Body: "Remove pump.", Document: &CatalogDocument{SchemaVersion: 1, NormalizationVersion: "ordered-article-v1", Blocks: []CatalogDocumentBlock{{Type: "paragraph", Text: "Remove pump."}}}, Processing: &CatalogProcessing{JobID: "job", State: state}}
+			store.PutArticle(a)
+			server := catalogServer(store)
+			server.ingestionClient = &fakeIngestionClient{status: 503}
+			response := catalogRequest(server, "/v1/catalog/vehicles/v/articles/a")
+			if response.Code != 200 {
+				t.Fatalf("readable source lost: %d %s", response.Code, response.Body)
+			}
+			var body CatalogArticleResponse
+			json.Unmarshal(response.Body.Bytes(), &body)
+			if body.Article.Complete || body.Article.CanonicalRevisionID != nil || !r3Origin(body.Article, "source") {
+				t.Fatal("source falsely complete")
+			}
+		})
+	}
+}
+func TestCatalogSchedulingAcknowledgmentCannotInventJob(t *testing.T) {
+	store := newMemoryCatalogStore()
+	store.PutArticle(CatalogArticle{ID: "a", VehicleID: "v", Title: "Pump", CanonicalArticleID: stringPointer("a"), Availability: "unavailable"})
+	server := catalogServer(store)
+	server.ingestionClient = &fakeIngestionClient{status: 202}
+	response := catalogRequest(server, "/v1/catalog/vehicles/v/articles/a")
+	if response.Code != 503 {
+		t.Fatalf("unobservable acceptance must fail: %d %s", response.Code, response.Body)
+	}
+}
+func TestCatalogLifecycleViewRevisionIgnoresProcessingAndURLs(t *testing.T) {
+	a := CatalogArticle{ID: "a", VehicleID: "v", CanonicalArticleID: stringPointer("a"), SourceRevisionID: stringPointer("s"), ContentOrigin: stringPointer("source"), Document: &CatalogDocument{SchemaVersion: 1, NormalizationVersion: "ordered-article-v1", Blocks: []CatalogDocumentBlock{{Type: "paragraph", Text: "Pump"}}}, Images: []CatalogImage{{ID: "asset", URL: "/v1/catalog/images/first"}}, Processing: &CatalogProcessing{JobID: "job", State: "rewriting", UpdatedAt: "first"}}
+	before := lifecycleArticle(a)
+	a.Images[0].URL = "/v1/catalog/images/second"
+	a.Processing.State = "validating"
+	a.Processing.UpdatedAt = "second"
+	after := lifecycleArticle(a)
+	if *before.ViewRevision != *after.ViewRevision {
+		t.Fatal("processing or token rotation changed immutable view")
+	}
+	a.SourceRevisionID = stringPointer("new-source")
+	if *lifecycleArticle(a).ViewRevision == *before.ViewRevision {
+		t.Fatal("new source did not change view")
+	}
+}
+func TestCatalogSourceOrderedTablesWarningsAndUnavailableMedia(t *testing.T) {
+	doc := &CatalogDocument{SchemaVersion: 1, NormalizationVersion: "ordered-article-v1", Blocks: []CatalogDocumentBlock{{BlockID: "warning", Type: "warning", Label: "Warning", Text: "Disconnect <battery>."}, {BlockID: "table", Type: "table", Columns: []string{"Torque", "Diagram"}, Rows: [][]any{{"10 N·m", map[string]any{"text": "Pump", "asset_id": "missing"}}}}, {BlockID: "unknown", Type: "unknown", Text: "Retained unknown block"}}}
+	rendered := renderCatalogOrderedSource(doc, nil)
+	for _, text := range []string{"Warning", "Disconnect &lt;battery&gt;.", "<table>", "10 N·m", "Image unavailable", "Retained unknown block"} {
+		if !strings.Contains(rendered, text) {
+			t.Fatalf("lost ordered content %q: %s", text, rendered)
+		}
+	}
+	sanitized, err := sanitizeCatalogSourceHTML(`<p data-secret="hidden" onclick="bad()">Text</p><video src="https://external.invalid/video"></video><img src="https://external.invalid/image"><table><tr><td>Value</td></tr></table>`, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(sanitized, "external.invalid") || strings.Contains(sanitized, "data-secret") || strings.Contains(sanitized, "onclick") {
+		t.Fatal("active external surface leaked")
+	}
+	if !strings.Contains(sanitized, "Image unavailable") || !strings.Contains(sanitized, "<table>") {
+		t.Fatal(sanitized)
+	}
+}
+
+func TestCatalogLifecycleConsumesR2StepsAndProjectsNestedImages(t *testing.T) {
+	var step CatalogStep
+	if err := json.Unmarshal([]byte(`{"number":3,"text":"Disconnect the battery.","evidence_ids":["evidence-1"]}`), &step); err != nil {
+		t.Fatal(err)
+	}
+	if len(step.Instructions) != 1 || step.Instructions[0] != "Disconnect the battery." {
+		t.Fatalf("R2 step prose lost: %#v", step)
+	}
+}
+func TestCatalogLifecycleProjectsNestedImages(t *testing.T) {
+	var article CatalogArticle
+	key := "sources/" + strings.Repeat("a", 16) + "/" + strings.Repeat("a", 64)
+	raw := `{"id":"a","vehicle_id":"v","document":{"schema_version":1,"normalization_version":"ordered-article-v1","blocks":[{"type":"table","rows":[[{"text":"Pump","images":[{"asset_id":"` + key + `","image_id":"` + strings.Repeat("a", 64) + `","storage_key":"` + key + `","url":"https://provider.invalid/private","status":"available"}]}]]}]}}`
+	if err := json.Unmarshal([]byte(raw), &article); err != nil {
+		t.Fatal(err)
+	}
+	article = lifecycleArticle(article)
+	encoded, _ := json.Marshal(article)
+	if strings.Contains(string(encoded), "storage_key") || strings.Contains(string(encoded), "sources/") || strings.Contains(string(encoded), "provider.invalid") {
+		t.Fatalf("nested image leaked private locator: %s", encoded)
+	}
+	content := renderCatalogOrderedSource(article.Document, nil)
+	if !strings.Contains(content, "Image unavailable") {
+		t.Fatalf("nested image position lost: %s", content)
+	}
+}
+
+func TestCatalogSourceOrderedStepNumbers(t *testing.T) {
+	rendered := renderCatalogOrderedSource(&CatalogDocument{Blocks: []CatalogDocumentBlock{{Type: "step", Number: 3, Text: "Remove pump."}}}, nil)
+	if !strings.Contains(rendered, `<ol start="3"><li>Remove pump.</li></ol>`) {
+		t.Fatalf("stored step number lost: %s", rendered)
+	}
+}
+
+func TestCatalogLifecyclePersistedEmptyImagesSurviveHTTP(t *testing.T) {
+	var persisted CatalogArticle
+	if err := json.Unmarshal([]byte(`{"id":"a","vehicle_id":"v","canonical_article_id":"a","source_revision_id":"s","content_origin":"source","availability":"available","document":{"schema_version":1,"normalization_version":"ordered-article-v1","blocks":[{"type":"ordered_list","items":["Remove the pump."]}]},"body":"Remove the pump.","steps":[{"number":1,"text":"Remove the pump.","evidence_ids":["e"]}],"images":[]}`), &persisted); err != nil {
+		t.Fatal(err)
+	}
+	store := newMemoryCatalogStore()
+	store.PutArticle(persisted)
+	response := catalogRequest(catalogServer(store), "/v1/catalog/vehicles/v/articles/a")
+	if response.Code != 200 {
+		t.Fatal(response.Code, response.Body.String())
+	}
+	var decoded CatalogArticleResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if decoded.Article.Images == nil {
+		t.Fatalf("persisted empty image array lost over HTTP: %s", response.Body)
+	}
+	want, _ := json.Marshal(r3Projection(lifecycleArticle(persisted)))
+	got, _ := json.Marshal(r3Projection(decoded.Article))
+	if string(want) != string(got) {
+		t.Fatalf("PG/public projection differs: want=%s got=%s", want, got)
+	}
+}
+
+func TestCatalogLifecyclePendingAndLegacyImagesAreArrays(t *testing.T) {
+	for _, pending := range []bool{true, false} {
+		article := CatalogArticle{ID: "a", VehicleID: "v", Body: "Legacy source"}
+		wantStatus := 200
+		if pending {
+			article.Body = ""
+			article.CanonicalArticleID = stringPointer("a")
+			article.Processing = &CatalogProcessing{JobID: "j", State: "queued"}
+			wantStatus = 202
+		}
+		store := newMemoryCatalogStore()
+		store.PutArticle(article)
+		response := catalogRequest(catalogServer(store), "/v1/catalog/vehicles/v/articles/a")
+		var envelope map[string]any
+		if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
+			t.Fatal(err)
+		}
+		if response.Code != wantStatus {
+			t.Fatal(response.Code, response.Body.String())
+		}
+		wireArticle := envelope["article"].(map[string]any)
+		images, ok := wireArticle["images"].([]any)
+		if !ok || len(images) != 0 {
+			t.Fatalf("pending=%v images must be []: %s", pending, response.Body)
+		}
+	}
+}
+
+type descriptorOnlyCatalogStore struct {
+	CatalogStore
+	detailReads int
+}
+
+func (s *descriptorOnlyCatalogStore) ArticleView(context.Context, Principal, string, string) (CatalogArticleView, error) {
+	s.detailReads++
+	return CatalogArticleView{}, ErrCatalogNotFound
+}
+func (s *descriptorOnlyCatalogStore) Article(context.Context, Principal, string, string) (CatalogArticle, error) {
+	s.detailReads++
+	return CatalogArticle{}, ErrCatalogNotFound
+}
+func (s *descriptorOnlyCatalogStore) ArticleSource(context.Context, Principal, string, string) (CatalogSourceContent, error) {
+	s.detailReads++
+	return CatalogSourceContent{}, ErrCatalogNotFound
+}
+func (s *descriptorOnlyCatalogStore) ArticleSourceRevision(context.Context, Principal, string, string, string) (CatalogSourceContent, error) {
+	s.detailReads++
+	return CatalogSourceContent{}, ErrCatalogNotFound
+}
+func (s *descriptorOnlyCatalogStore) CatalogArticleProgress(context.Context, Principal, string) (*CatalogArticleProgress, error) {
+	return &CatalogArticleProgress{Status: "complete", Complete: true}, nil
+}
+func TestCatalogDescriptorListImagesAreArraysWithoutDetailWork(t *testing.T) {
+	memory := newMemoryCatalogStore()
+	memory.PutArticle(CatalogArticle{ID: "canonical", VehicleID: "v", CanonicalArticleID: stringPointer("canonical"), Title: "Managed descriptor"})
+	memory.PutArticle(CatalogArticle{ID: "legacy", VehicleID: "v", Title: "Legacy descriptor"})
+	store := &descriptorOnlyCatalogStore{CatalogStore: memory}
+	client := &fakeIngestionClient{status: 503}
+	server := catalogServer(store)
+	server.ingestionClient = client
+	response := catalogRequest(server, "/v1/catalog/vehicles/v/articles")
+	if response.Code != 200 {
+		t.Fatal(response.Code, response.Body.String())
+	}
+	var envelope struct {
+		Items []map[string]any `json:"items"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	if len(envelope.Items) != 2 {
+		t.Fatal(response.Body.String())
+	}
+	for _, item := range envelope.Items {
+		images, ok := item["images"].([]any)
+		if !ok || len(images) != 0 {
+			t.Fatalf("descriptor %v images must be []: %s", item["id"], response.Body)
+		}
+		for _, field := range []string{"body", "document", "steps"} {
+			if _, ok := item[field]; ok {
+				t.Fatalf("descriptor loaded %s: %s", field, response.Body)
+			}
+		}
+	}
+	if store.detailReads != 0 || client.path != "" {
+		t.Fatalf("list performed source/model detail work: reads=%d ingestion=%s", store.detailReads, client.path)
+	}
+}
+
+func TestCatalogCanonicalR2StepPreservesActualCompatibilityShape(t *testing.T) {
+	for _, raw := range []string{
+		`{"action":"Take off the pump.","instructions":[],"images":[],"evidence_ids":["e1","e2"]}`,
+		`{"action":"Take off the pump.","instructions":[],"evidence_ids":["e1"]}`,
+		`{"action":"Take off the pump.","text":"Additional source context.","instructions":[],"images":[],"evidence_ids":["e1"]}`,
+		`{"number":7,"action":"Take off the pump.","instructions":["Keep the seal.","Inspect the bracket."],"images":[],"evidence_ids":["e2","e1"]}`,
+	} {
+		var step CatalogStep
+		if err := json.Unmarshal([]byte(raw), &step); err != nil {
+			t.Fatal(err)
+		}
+		encoded, err := json.Marshal(step)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var actual, expected map[string]any
+		json.Unmarshal(encoded, &actual)
+		json.Unmarshal([]byte(raw), &expected)
+		if len(actual) != len(expected) {
+			t.Fatalf("canonical step fields lost or fabricated: expected=%s actual=%s", raw, encoded)
+		}
+		for key, want := range expected {
+			got, _ := json.Marshal(actual[key])
+			required, _ := json.Marshal(want)
+			if string(got) != string(required) {
+				t.Fatalf("canonical %s changed: expected=%s actual=%s", key, raw, encoded)
+			}
+		}
+	}
+}
+
+func TestCatalogCanonicalStepImagesUseSafeLocalReferences(t *testing.T) {
+	key := "sources/" + strings.Repeat("a", 16) + "/" + strings.Repeat("a", 64)
+	raw := `{"action":"Inspect pump.","instructions":["Keep the seal."],"images":[{"image_id":"` + strings.Repeat("a", 64) + `","storage_key":"` + key + `","url":"https://provider.invalid/private","alt":"Seal","media_type":"image/png","status":"available"}],"evidence_ids":["e"]}`
+	var step CatalogStep
+	if err := json.Unmarshal([]byte(raw), &step); err != nil {
+		t.Fatal(err)
+	}
+	article := CatalogArticle{Steps: []CatalogStep{step}}
+	rewriteCatalogImageURLs(&article, deriveCatalogImageReferenceKey("r3-step-fixture-only-media-key-1234567890"))
+	encoded, _ := json.Marshal(article.Steps)
+	if strings.Contains(string(encoded), "storage_key") || strings.Contains(string(encoded), "sources/") || strings.Contains(string(encoded), "provider.invalid") {
+		t.Fatalf("step image leaked private source: %s", encoded)
+	}
+	var projected []map[string]any
+	json.Unmarshal(encoded, &projected)
+	images, ok := projected[0]["images"].([]any)
+	if !ok || len(images) != 1 {
+		t.Fatalf("step image position lost: %s", encoded)
+	}
+	image := images[0].(map[string]any)
+	url, _ := image["url"].(string)
+	if image["image_id"] != strings.Repeat("a", 64) || image["alt"] != "Seal" || !strings.HasPrefix(url, "/v1/catalog/images/") {
+		t.Fatalf("step image reference changed: %s", encoded)
+	}
+}
+
+func TestCatalogCanonicalStepImageURLsDoNotChangeViewRevision(t *testing.T) {
+	images := []CatalogImage{{ImageID: "figure-1", URL: "first-local-url", StorageKey: "first-private-key", Alt: "Seal"}}
+	article := CatalogArticle{CanonicalArticleID: stringPointer("a"), SourceRevisionID: stringPointer("s"), CanonicalRevisionID: stringPointer("c"), ContentOrigin: stringPointer("canonical"), Document: &CatalogDocument{Blocks: []CatalogDocumentBlock{{Type: "paragraph", Text: "Inspect pump."}}}, Steps: []CatalogStep{{Action: "Inspect pump.", Instructions: []string{}, Images: &images}}}
+	first := lifecycleArticle(article)
+	images[0].URL = "second-local-url"
+	images[0].StorageKey = "second-private-key"
+	second := lifecycleArticle(article)
+	if first.ViewRevision == nil || second.ViewRevision == nil || *first.ViewRevision != *second.ViewRevision {
+		t.Fatal("step image transport reference changed view identity")
+	}
+	images[0].Alt = "Bracket"
+	changed := lifecycleArticle(article)
+	if *changed.ViewRevision == *first.ViewRevision {
+		t.Fatal("step image content did not change view identity")
+	}
+}

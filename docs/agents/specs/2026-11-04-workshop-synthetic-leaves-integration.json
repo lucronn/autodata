@@ -1,0 +1,1560 @@
+{
+  "schema_version": 1,
+  "status": "tracking_synchronized_pending_exact_checkpoint_review",
+  "goal": "Integrate the exact reviewed Workshop synthetic-only diagnostic, browser supervisor and R3 preparation leaves plus conditional completion documentation into one history-preserving candidate, preserving predecessor bytes and all runtime, acceptance and release blocks.",
+  "todo": [
+    "Freeze and independently review exact product217, code242/246/247 and corrected completion248/249 heads, source manifests, review receipts and honest CI readbacks; reject any changed or superseded pin.",
+    "Synchronize this literal goal, six-path gate scope,102-path source adoption manifest plus one narrow workflow CI coverage repair and concrete todo in Issue186, existing Project8 item and canonical plan/spec/record/task/verification/queue; preserve tracking history and read back actual contents.",
+    "Commit and push the documentation-only checkpoint on codex/workshop-synthetic-leaves-integration-gate from exact product217, record its actual full SHA externally as B, run standalone and extracted nested machine preflights at B and obtain independent checkpoint review before coordinator implementation dispatch.",
+    "On a separate integration-build branch from B, merge exact242,246,247, corrected248 and249 histories in order, preserving every source blob/mode except deterministic queue union; preserve all33 original tasks, the new integration task and all10 source additions with249 completion fields, without changing original states or granting authority.",
+    "Verify exact allowed paths, source pins,43-task source projection and44-task gate-inclusive queue, all retained code/document blobs and product source identity; add only the specified R3 workflow paths/job, then run the explicitly admitted offline synthetic/owned-child tests and canonical preflights, retaining every failure.",
+    "Commit and promptly push validated integration milestones only after coordinator dispatch, collect exact-head normal CI and independent full-candidate review, and return the integrated synthetic-only candidate with credit0 and all runtime/trust/master-merge/release/deployment/cutover flags false."
+  ],
+  "paths": {
+    "plan": "docs/superpowers/plans/2026-11-04-workshop-synthetic-leaves-integration.md",
+    "spec": "docs/agents/specs/2026-11-04-workshop-synthetic-leaves-integration.json",
+    "record": "docs/agents/records/2026-11-04-workshop-synthetic-leaves-integration.json",
+    "task": "docs/agents/tasks/2026-11-03-production-release/workshop-synthetic-leaves-integration.json",
+    "verification": "docs/verification/2026-11-04-workshop-synthetic-leaves-integration.md",
+    "queue": "docs/agents/tasks/2026-11-03-production-release/queue.json"
+  },
+  "source_heads": {
+    "217": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+    "242": "7db388c70abf41f10bfccd1132e48de4554995d9",
+    "246": "a9156c4c90b843c54742c0c068763ca52d0aac1b",
+    "247": "e88f8a9602ea9dcb67b1de31b281a8f0eb0faa4a",
+    "248": "6d6e20565ccee4245f3514de82dc1e4af00f9158",
+    "249": "a0ecc5d50c82ed66a6b1c5c773289b1edc8bef0a"
+  },
+  "source_refs_are_frozen_observations_not_rolling_branches": true,
+  "required_source_refresh": {
+    "pr": 248,
+    "confirmed_remote_sha": "6d6e20565ccee4245f3514de82dc1e4af00f9158",
+    "status": "remote_correction_confirmed_and_simulation_refreshed",
+    "supersedes": "cec57e4a76416e17eccab19478f8b1e69c626f8b",
+    "tracking_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6642016133",
+    "reason": "Four documentary attribution corrections only; no code or queue change."
+  },
+  "predecessor_handling": [
+    {
+      "pr": 240,
+      "sha": "0da0be85b864ab829200d170a656ad6ea87651dd",
+      "ancestry_included_by": [],
+      "byte_adoption_only": true
+    },
+    {
+      "pr": 241,
+      "sha": "8f0129cf21ca818c87eb1a3097ad055de9771082",
+      "ancestry_included_by": [
+        "247",
+        "248"
+      ],
+      "byte_adoption_only": false
+    },
+    {
+      "pr": 243,
+      "sha": "d082d394ec7b64ae34f0f4db8cc22189a700c687",
+      "ancestry_included_by": [
+        "246",
+        "249"
+      ],
+      "byte_adoption_only": false
+    },
+    {
+      "pr": 244,
+      "sha": "20b2696fcfeef580b43aeb026567e1ab9dd010ee",
+      "ancestry_included_by": [
+        "247",
+        "248"
+      ],
+      "byte_adoption_only": false
+    },
+    {
+      "pr": 245,
+      "sha": "47f9a6e1735669cc3ea7bd7e1b20b293409a5d9d",
+      "ancestry_included_by": [
+        "246",
+        "249"
+      ],
+      "byte_adoption_only": false
+    }
+  ],
+  "checkpoint_paths": [
+    "docs/superpowers/plans/2026-11-04-workshop-synthetic-leaves-integration.md",
+    "docs/agents/specs/2026-11-04-workshop-synthetic-leaves-integration.json",
+    "docs/agents/records/2026-11-04-workshop-synthetic-leaves-integration.json",
+    "docs/agents/tasks/2026-11-03-production-release/workshop-synthetic-leaves-integration.json",
+    "docs/verification/2026-11-04-workshop-synthetic-leaves-integration.md",
+    "docs/agents/tasks/2026-11-03-production-release/queue.json"
+  ],
+  "gate_base_product_sha": "4d82e413e04fb2401ac7bc28dc828375ac662180",
+  "actual_checkpoint_sha": null,
+  "import_paths": [
+    {
+      "path": "docs/agents/records/2026-11-04-workshop-browser-execution-contract.json",
+      "expected_blob_oid": "f8fa6e9ad67c4c6cd2a02e0a6b8f90d7c1a711ef",
+      "expected_mode": "100644",
+      "sha256": "11f4e982c8597f8a812b469f643b7093e7a7b8e371196ce11e1ff7485426637b",
+      "bytes": 5502,
+      "exact_source_prs": [
+        "246",
+        "249"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/agents/records/2026-11-04-workshop-browser-static-supervisor.json",
+      "expected_blob_oid": "53fbd2a8d39f55aa7e6b3a88394be8e52c9226f6",
+      "expected_mode": "100644",
+      "sha256": "747eb7d8c31e9e69f35d93ce464d83ab3a844d377aa08d86033a8384a4c31be1",
+      "bytes": 13929,
+      "exact_source_prs": [
+        "249"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/agents/records/2026-11-04-workshop-final180-cd-integration.json",
+      "expected_blob_oid": "74ab43feef825da9abb02828507fcc5e4e3a3a09",
+      "expected_mode": "100644",
+      "sha256": "8b35c9f119204727abc679850c5f9f345bde5536d2ecdd04f4f17708afe7c5b4",
+      "bytes": 11436,
+      "exact_source_prs": [
+        "242"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/agents/records/2026-11-04-workshop-final180-ci-integration.json",
+      "expected_blob_oid": "adc84903321c9de8949d92f9dad531e1b4796512",
+      "expected_mode": "100644",
+      "sha256": "4f2e865bfc79fb4cd6b8a2e3d329913091b07e8660d93c2857357718aa09b986",
+      "bytes": 9588,
+      "exact_source_prs": [
+        "242"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/agents/records/2026-11-04-workshop-final180-inventory.json",
+      "expected_blob_oid": "ce6ad09ddee409a0503a9e6eeec7c8cbef9b697e",
+      "expected_mode": "100644",
+      "sha256": "5f1e39289471256331a873aa3be65be50479d11c92a83353b78ce59f60ba30c0",
+      "bytes": 2292,
+      "exact_source_prs": [
+        "242"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/agents/records/2026-11-04-workshop-final180-runner.json",
+      "expected_blob_oid": "76fad048ba8369375623fdb19126adda482a976c",
+      "expected_mode": "100644",
+      "sha256": "90f083cf65c116cd9660269805a764e433ad0f34bf92ad5f1b6a92596e6f4752",
+      "bytes": 2818,
+      "exact_source_prs": [
+        "242"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/agents/records/2026-11-04-workshop-final180-stage-b1-identity.json",
+      "expected_blob_oid": "e52a6813c24dbf71ebcf9ebcb209d447cac48e1c",
+      "expected_mode": "100644",
+      "sha256": "8b518c6c467906768f3b00cf83d78fac8b64ad9469f5182c86a198286b6f29a0",
+      "bytes": 5060,
+      "exact_source_prs": [
+        "242"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/agents/records/2026-11-04-workshop-final180-stage-b2-catalog-go.json",
+      "expected_blob_oid": "176f16b2e7595f0831263fb0bc1829e33f7257e6",
+      "expected_mode": "100644",
+      "sha256": "2d8234d8ff2deeaa9bf9f698b55ddfa3d3c3ad1888698d46deef3d36634bb263",
+      "bytes": 5948,
+      "exact_source_prs": [
+        "242"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/agents/records/2026-11-04-workshop-final180-stage-c-commerce.json",
+      "expected_blob_oid": "6c84711e5fd2af7a803e4d6dca16b00b777a386f",
+      "expected_mode": "100644",
+      "sha256": "615ce1d531b96736acb6734a96e1af51a951988b9570311672a4f95f04f5b68e",
+      "bytes": 11016,
+      "exact_source_prs": [
+        "242"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/agents/records/2026-11-04-workshop-final180-stage-d-paid.json",
+      "expected_blob_oid": "c98dfa65a396d3ad9265da8988242bbb50124e93",
+      "expected_mode": "100644",
+      "sha256": "412451fce7f22388db540541a640d9483a3f51e85e9ba6dd45b454bdd5c3d9aa",
+      "bytes": 9471,
+      "exact_source_prs": [
+        "242"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/agents/records/2026-11-04-workshop-integrated-r3-runtime.json",
+      "expected_blob_oid": "32ac77322c594977b8cde2a335310dd6fd936425",
+      "expected_mode": "100644",
+      "sha256": "20595019540cedb706ab4052c2cc27539037e1c17b23b456557b282609fa35ef",
+      "bytes": 5258,
+      "exact_source_prs": [
+        "247",
+        "248"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/agents/records/2026-11-04-workshop-r3-host-launcher.json",
+      "expected_blob_oid": "babf1bd2766870ea8f21c9e9b01481f67559a424",
+      "expected_mode": "100644",
+      "sha256": "97a07970b70145dc07988c4d6c27d2cb40fcf29e50cb7485cc1b71b255427796",
+      "bytes": 11461,
+      "exact_source_prs": [
+        "247",
+        "248"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/agents/records/2026-11-04-workshop-r3-immutable-supervisor.json",
+      "expected_blob_oid": "d43c171d61d7a1ccba68ed9929c4aa8873dfba93",
+      "expected_mode": "100644",
+      "sha256": "69df6b27e72bcb97ca4e0e582f95bfc300f03dbeb391e09c70902eb10befcba5",
+      "bytes": 8907,
+      "exact_source_prs": [
+        "247",
+        "248"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/agents/records/2026-11-04-workshop-r3-preparation-collector.json",
+      "expected_blob_oid": "0f29b9f9442d21adbf2d7d77d69b5d1a7c4b43aa",
+      "expected_mode": "100644",
+      "sha256": "9abd8cb4280f3375b8d452af39efc4b8e81ec90e0c98d6eca50a4b6ed525b8aa",
+      "bytes": 10436,
+      "exact_source_prs": [
+        "247",
+        "248"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/agents/records/2026-11-04-workshop-r3-probe-launcher-code-review.json",
+      "expected_blob_oid": "dc9783ed577c02c215498b5c2fba7f3c2543c2c2",
+      "expected_mode": "100644",
+      "sha256": "a6a9b779f2d3b41ad46bb61f72b82e3a8f77356782c5ebdf3e8037fc10fbc778",
+      "bytes": 5136,
+      "exact_source_prs": [
+        "247",
+        "248"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/agents/records/2026-11-04-workshop-r3-process-transport.json",
+      "expected_blob_oid": "4a62580b764dc0dab935caffeeafe9b592bcd0ec",
+      "expected_mode": "100644",
+      "sha256": "f14bf4dd46e7905ecbe7075ab35dc274df5110ea28a90a5b47e6e3d1513e640c",
+      "bytes": 8391,
+      "exact_source_prs": [
+        "247",
+        "248"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/agents/records/2026-11-04-workshop-r3-real-preparation-adapter.json",
+      "expected_blob_oid": "1e980c84edadb75cc1d38f67cab8f1af12b8767e",
+      "expected_mode": "100644",
+      "sha256": "577aec222a7b71f8d5446a13208d5b88e8b974bb3f9bbfe006efade273138d6a",
+      "bytes": 25542,
+      "exact_source_prs": [
+        "248"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/agents/specs/2026-11-04-workshop-browser-execution-contract.json",
+      "expected_blob_oid": "6f46fa66fb773b6ea05e3e57bec8c21aec9c34fa",
+      "expected_mode": "100644",
+      "sha256": "cf54cb4292b084c1b8a69fb9f76a963d4ac393507ebd1f6593052c0cf55eef66",
+      "bytes": 64664,
+      "exact_source_prs": [
+        "246",
+        "249"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/agents/specs/2026-11-04-workshop-browser-static-supervisor.json",
+      "expected_blob_oid": "63fc36696501c3b4d84515614121051b9326a248",
+      "expected_mode": "100644",
+      "sha256": "1b02fc74ecfc954b8b20e4927410dc60b2a030db51fe977cfd9ec270ef42744f",
+      "bytes": 227543,
+      "exact_source_prs": [
+        "249"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/agents/specs/2026-11-04-workshop-final180-cd-integration.md",
+      "expected_blob_oid": "852518bc3a0530719a9ae16e8444825e68378ea2",
+      "expected_mode": "100644",
+      "sha256": "5094cb58324be82148b6a68f07567efa00037bdc35fce24561fb146b7cd32f01",
+      "bytes": 157237,
+      "exact_source_prs": [
+        "242"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/agents/specs/2026-11-04-workshop-final180-ci-integration.md",
+      "expected_blob_oid": "4946383f665f5ca7861eb63f295245cdc09b1a37",
+      "expected_mode": "100644",
+      "sha256": "e244ad120aa75ffbb5b5a965be2a236982178aae355a57664706ee2c95fa2425",
+      "bytes": 23483,
+      "exact_source_prs": [
+        "242"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/agents/specs/2026-11-04-workshop-final180-inventory.json",
+      "expected_blob_oid": "24ac3e9264b85eb914daa7805d183e15f58d374a",
+      "expected_mode": "100644",
+      "sha256": "c4e9293875d22e04469c6a3fb4cdab27889328d6519243cee3862f9ecf490b39",
+      "bytes": 122350,
+      "exact_source_prs": [
+        "242"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/agents/specs/2026-11-04-workshop-final180-inventory.md",
+      "expected_blob_oid": "97a3ee48e443547f538e369ebd4557644e9fec3c",
+      "expected_mode": "100644",
+      "sha256": "55fc12a771576778fb652ea8fcc3e8b81492ff3abc6fef0f00cc7fa3b015037a",
+      "bytes": 10852,
+      "exact_source_prs": [
+        "242"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/agents/specs/2026-11-04-workshop-final180-runner.md",
+      "expected_blob_oid": "c0948a5b604b9ae5f0ce31ab2e7864cbc9b8d527",
+      "expected_mode": "100644",
+      "sha256": "24d209a60ae2dcda461d1a65932c2dd37d6894ed7a9c3920f989fe8ff0b20ba3",
+      "bytes": 33663,
+      "exact_source_prs": [
+        "242"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/agents/specs/2026-11-04-workshop-final180-stage-b1-identity.md",
+      "expected_blob_oid": "4a29e0915c677a2f07e3ca6b0ab9109e888651d1",
+      "expected_mode": "100644",
+      "sha256": "285e5abfe824b4b9490af8e4b2fa3655f53ea34d8afc631e69a88feb909d242a",
+      "bytes": 82081,
+      "exact_source_prs": [
+        "242"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/agents/specs/2026-11-04-workshop-final180-stage-b2-catalog-go.md",
+      "expected_blob_oid": "584b12c2b880ae328ab39da73753a6f0e4a7a8ba",
+      "expected_mode": "100644",
+      "sha256": "c8e9a3f4c663fcc9e43bab3ef84e9e8dd978a4d29fa75122acf9372e5e22cb7b",
+      "bytes": 73739,
+      "exact_source_prs": [
+        "242"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/agents/specs/2026-11-04-workshop-final180-stage-c-commerce.md",
+      "expected_blob_oid": "67e98b099ff814d3891d8764a307b4845bff576c",
+      "expected_mode": "100644",
+      "sha256": "cbe819f806c7f86c35d12c101611e73fc150766897c0d593720520c53bce99b7",
+      "bytes": 75248,
+      "exact_source_prs": [
+        "242"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/agents/specs/2026-11-04-workshop-final180-stage-d-paid.md",
+      "expected_blob_oid": "66271c20ef12064bd03862ce85ff24c76510e147",
+      "expected_mode": "100644",
+      "sha256": "ab0cf25549dfc0e829600af8d275ef4e528865a2dd35ca56307b71b1bc740a90",
+      "bytes": 109926,
+      "exact_source_prs": [
+        "242"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/agents/specs/2026-11-04-workshop-r3-host-launcher.md",
+      "expected_blob_oid": "7d990e6c5777f44f231b3c27fbc69f4723a29c25",
+      "expected_mode": "100644",
+      "sha256": "bb46cc361384d54b4d6dd046315f6555ff1a6db7df78fb81600f3263827bfaa5",
+      "bytes": 7241,
+      "exact_source_prs": [
+        "247",
+        "248"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/agents/specs/2026-11-04-workshop-r3-preparation-collector.md",
+      "expected_blob_oid": "3a4069db7ea6b863f9d9a88d82110a2d8734d6ed",
+      "expected_mode": "100644",
+      "sha256": "425aa18d14dc42044306d696775231803a83c9b9a3cddfd9918bbb34cab666ba",
+      "bytes": 60114,
+      "exact_source_prs": [
+        "247",
+        "248"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/agents/specs/2026-11-04-workshop-r3-process-transport.md",
+      "expected_blob_oid": "05c52a3736a2a12b235a078c488ccfae0c5f5c4b",
+      "expected_mode": "100644",
+      "sha256": "536d294ff283080a9a71eae743c2bf8e1ef9d58bc46575416742ffb01844d94d",
+      "bytes": 21349,
+      "exact_source_prs": [
+        "247",
+        "248"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/agents/specs/2026-11-04-workshop-r3-real-preparation-adapter.md",
+      "expected_blob_oid": "727ef9340eba8648012f87d655af22d1a8c706b0",
+      "expected_mode": "100644",
+      "sha256": "3e7852d358477487d861f1bee6ef94c07a0275e742699e37369ee5cbeb364eef",
+      "bytes": 61447,
+      "exact_source_prs": [
+        "247",
+        "248"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/agents/tasks/2026-11-03-production-release/2026-11-04-workshop-browser-execution-contract.json",
+      "expected_blob_oid": "c696f300fc29b7df89c36dc3edaf34e5bb73ad52",
+      "expected_mode": "100644",
+      "sha256": "d6a6c926c2a33dca0c39faddf2b87cb0810409f279b1691334232e50bce039e1",
+      "bytes": 10972,
+      "exact_source_prs": [
+        "246",
+        "249"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/agents/tasks/2026-11-03-production-release/2026-11-04-workshop-browser-static-supervisor.json",
+      "expected_blob_oid": "0ec1fb0c5f596e17b2a64494fa9a050f03c1e330",
+      "expected_mode": "100644",
+      "sha256": "4af6dd54c1426ee26e6a3e95a55ce3e53d6ac9c38bff1316d7404650a2214dea",
+      "bytes": 21002,
+      "exact_source_prs": [
+        "249"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/agents/tasks/2026-11-03-production-release/queue.json",
+      "expected_blob_oid": "1b13a5d2f7ee847c41b5f5dac2290ac12dcb0f9c",
+      "expected_mode": "100644",
+      "sha256": "76823bec943785d4d3d58dcedb15151776d87fc19b7dc8a780d86838e803783d",
+      "bytes": 198372,
+      "exact_source_prs": [],
+      "resolution_required": true
+    },
+    {
+      "path": "docs/agents/tasks/2026-11-03-production-release/workshop-final180-cd-integration.json",
+      "expected_blob_oid": "d35168ea2e6ec79e9c514ebcaf35d3aafe06d091",
+      "expected_mode": "100644",
+      "sha256": "77efdd1c32bae4ea9eba957d7d986d385d7dff99a6e477dbf50b3392acf0d4c6",
+      "bytes": 16599,
+      "exact_source_prs": [
+        "242"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/agents/tasks/2026-11-03-production-release/workshop-final180-ci-integration.json",
+      "expected_blob_oid": "8ed54b75225ac03831f94d7ac7ac9b6d7715b8bd",
+      "expected_mode": "100644",
+      "sha256": "b039bdaf9c6d3fadb1d862c547ca97559179c505dc6fa2de564d272591039e87",
+      "bytes": 14559,
+      "exact_source_prs": [
+        "242"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/agents/tasks/2026-11-03-production-release/workshop-final180-inventory.json",
+      "expected_blob_oid": "1647f0b2336f8120f67f48982f0b0e058d8ea43a",
+      "expected_mode": "100644",
+      "sha256": "2865b74f92553928a78a1fb793c98f818f0f371634836c28741b6082ec1e4795",
+      "bytes": 4767,
+      "exact_source_prs": [
+        "242"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/agents/tasks/2026-11-03-production-release/workshop-final180-runner.json",
+      "expected_blob_oid": "660a14557b1bbb9123b5a648b654d45182fdc6a5",
+      "expected_mode": "100644",
+      "sha256": "b2fb8ad4a73316e0296bdbc477a458a29d10d14c88483ae321bb23cd4eb901b7",
+      "bytes": 5206,
+      "exact_source_prs": [
+        "242"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/agents/tasks/2026-11-03-production-release/workshop-final180-stage-b1-identity.json",
+      "expected_blob_oid": "3120ae8753aedb4cb5ff0ac3dd9c8c662675e2f4",
+      "expected_mode": "100644",
+      "sha256": "7f8f437f7b536c327ad7135ebc8aab64ba8ff263363358f58bd19739df81a573",
+      "bytes": 9719,
+      "exact_source_prs": [
+        "242"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/agents/tasks/2026-11-03-production-release/workshop-final180-stage-b2-catalog-go.json",
+      "expected_blob_oid": "c67e0546ad2a14d6d10c526a90f5b86c113359d4",
+      "expected_mode": "100644",
+      "sha256": "07f82e707b106816ac533b86c24a7f8c3abffdc1422ac4aa16198ea91a4b3ce7",
+      "bytes": 10698,
+      "exact_source_prs": [
+        "242"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/agents/tasks/2026-11-03-production-release/workshop-final180-stage-c-commerce.json",
+      "expected_blob_oid": "abd06c8aeede5a8d18d631fa2ebea1051f0ca11e",
+      "expected_mode": "100644",
+      "sha256": "a00e7028a70c50c953964aee73168795064ee6c2d82fa8e8dc9ea7aba35a448e",
+      "bytes": 16245,
+      "exact_source_prs": [
+        "242"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/agents/tasks/2026-11-03-production-release/workshop-final180-stage-d-paid.json",
+      "expected_blob_oid": "5386c3726e036f01c16a0cc14552621d4ccdc639",
+      "expected_mode": "100644",
+      "sha256": "4401118e70017a5318372bfa893ff90fb3c3e20b99cacd5ae9dd6cf79c984abb",
+      "bytes": 14435,
+      "exact_source_prs": [
+        "242"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/agents/tasks/2026-11-03-production-release/workshop-integrated-r3-runtime.json",
+      "expected_blob_oid": "83e4cb3a4e4b17da53d5378a5853d1bb8250d754",
+      "expected_mode": "100644",
+      "sha256": "b2e8974774e86187f9ebd7f9cc58f33d7993f8f05811e3d433bfbf4ea407a786",
+      "bytes": 8484,
+      "exact_source_prs": [
+        "247",
+        "248"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/agents/tasks/2026-11-03-production-release/workshop-r3-host-launcher.json",
+      "expected_blob_oid": "6ae822733c4b8c328fe39bcb48d6f1bfc12fafb0",
+      "expected_mode": "100644",
+      "sha256": "a6b0ec8626978fbb1def9835b0767bea37f2e4a2dd6a06a1a41fdbc8cde394a2",
+      "bytes": 19014,
+      "exact_source_prs": [
+        "247",
+        "248"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/agents/tasks/2026-11-03-production-release/workshop-r3-immutable-supervisor.json",
+      "expected_blob_oid": "8aa8e2573195c4e1f436df5b91a7f770f1a82656",
+      "expected_mode": "100644",
+      "sha256": "ef528523a49cfa2ab448f4382b0007b17a6f8a6b4da9f695d1fbd5e218ad28be",
+      "bytes": 16580,
+      "exact_source_prs": [
+        "247",
+        "248"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/agents/tasks/2026-11-03-production-release/workshop-r3-preparation-collector.json",
+      "expected_blob_oid": "479031434a7b1f86e6daf7ca661c4c32b5c95b37",
+      "expected_mode": "100644",
+      "sha256": "a9e2688ab60783ccccc7fa38a54e08669d527fa4803c652daa6e8451f81573f9",
+      "bytes": 19135,
+      "exact_source_prs": [
+        "247",
+        "248"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/agents/tasks/2026-11-03-production-release/workshop-r3-process-transport.json",
+      "expected_blob_oid": "adb7d6bdcb10a47ac71e0063e5ea7d5ba175152e",
+      "expected_mode": "100644",
+      "sha256": "5a653638ec511670d951c51000e731fc859ad341966d2db274ec0c1e990dc101",
+      "bytes": 16816,
+      "exact_source_prs": [
+        "247",
+        "248"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/agents/tasks/2026-11-03-production-release/workshop-r3-real-preparation-adapter.json",
+      "expected_blob_oid": "fea9a6f6285a053edef7e7e65b536542d6dff8fc",
+      "expected_mode": "100644",
+      "sha256": "d82afef6a0d5884c9ba9f628041b02ab38a195e19e36e93902e9b2e56fe33ccb",
+      "bytes": 37516,
+      "exact_source_prs": [
+        "248"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/superpowers/plans/2026-11-03-workshop-product-evidence-assembler.md",
+      "expected_blob_oid": "99cbdc4b3495716249f0fe4ed12c5f9c65e1eca9",
+      "expected_mode": "100644",
+      "sha256": "8919715785d51d689613fdf657a048fc85c6d92172ef6eec5a0d9af0956905f7",
+      "bytes": 98742,
+      "exact_source_prs": [
+        "242"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/superpowers/plans/2026-11-04-workshop-browser-execution-contract.md",
+      "expected_blob_oid": "281a4656c95bf5398484ca4925cec4c8fcfba1c4",
+      "expected_mode": "100644",
+      "sha256": "2cf0675798797c21cdc3bf9aee08452482a205dfaf53798104e50f20843a3fd5",
+      "bytes": 13773,
+      "exact_source_prs": [
+        "246",
+        "249"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/superpowers/plans/2026-11-04-workshop-browser-static-supervisor.md",
+      "expected_blob_oid": "3c80105bb0ec0859a9f6fdbf367fa6125b15c8c2",
+      "expected_mode": "100644",
+      "sha256": "32a556cf914866d605b2c5a6a128eb7dbb20d4579c36a2b7d867e855ff969389",
+      "bytes": 73780,
+      "exact_source_prs": [
+        "249"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/superpowers/plans/2026-11-04-workshop-final180-cd-integration.md",
+      "expected_blob_oid": "bcc4a608f4ca3f68ff2bb49ddf862fe7d2257f93",
+      "expected_mode": "100644",
+      "sha256": "388ac220fc969a97e094df95a4e28fa24b183666019d5db79e56b199b654105b",
+      "bytes": 16309,
+      "exact_source_prs": [
+        "242"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/superpowers/plans/2026-11-04-workshop-final180-ci-integration.md",
+      "expected_blob_oid": "008838ca55d242aeae03bb49d9d8ee5316656ad5",
+      "expected_mode": "100644",
+      "sha256": "c8026d2baec9894a7f50b55bad62800182d8a4be6d1795f5c7a51a673b3ee937",
+      "bytes": 17531,
+      "exact_source_prs": [
+        "242"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/superpowers/plans/2026-11-04-workshop-final180-inventory.md",
+      "expected_blob_oid": "7f50c024fc38fec72b41014751641d1d2d3f8073",
+      "expected_mode": "100644",
+      "sha256": "52deaa68198a05fec94dbcce5fc461b38e7984934556b47fdaa7676eb348cd18",
+      "bytes": 8785,
+      "exact_source_prs": [
+        "242"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/superpowers/plans/2026-11-04-workshop-final180-runner.md",
+      "expected_blob_oid": "c8617fee8e43d27f80ca29c6f1a9ddae6ac79ed2",
+      "expected_mode": "100644",
+      "sha256": "6d1d5f4e8da9310669419703b298eeb17cd7c14a5e3719ea416cf5b1145ebaa9",
+      "bytes": 7888,
+      "exact_source_prs": [
+        "242"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/superpowers/plans/2026-11-04-workshop-final180-stage-b1-identity.md",
+      "expected_blob_oid": "8979973a5124d4f3f7a439dba31ca8104e488971",
+      "expected_mode": "100644",
+      "sha256": "02f92b355c5dcd3144f1ec80c21118a86a9624b466dfa756a6795edd13fa21ca",
+      "bytes": 13657,
+      "exact_source_prs": [
+        "242"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/superpowers/plans/2026-11-04-workshop-final180-stage-b2-catalog-go.md",
+      "expected_blob_oid": "5d79004dca6add657533ef6883895c7698adb988",
+      "expected_mode": "100644",
+      "sha256": "0b2899864f1964e50b4e5ca7f7d70d48331c3f1f1aad6898b8d2f7eb83b9889f",
+      "bytes": 50477,
+      "exact_source_prs": [
+        "242"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/superpowers/plans/2026-11-04-workshop-final180-stage-c-commerce.md",
+      "expected_blob_oid": "8e4a84383c3e21486f663572e88d9d8cd1517b1a",
+      "expected_mode": "100644",
+      "sha256": "58fabe156fa57c2b750d392fc1dc476334477ee89b2673a0afd35c2d7e235da0",
+      "bytes": 28362,
+      "exact_source_prs": [
+        "242"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/superpowers/plans/2026-11-04-workshop-final180-stage-d-paid.md",
+      "expected_blob_oid": "417d42723aeb31e9b868de8d310f41ac85f5257f",
+      "expected_mode": "100644",
+      "sha256": "701145fb15691f4063f67e4024472bd661fd2c17edc789a1c119a45a7e374294",
+      "bytes": 17590,
+      "exact_source_prs": [
+        "242"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/superpowers/plans/2026-11-04-workshop-integrated-r3-runtime.md",
+      "expected_blob_oid": "6d58b5b765ebb02b7211c4419524f70514fa0ec2",
+      "expected_mode": "100644",
+      "sha256": "070c0a1a58794a156df56b4e9db0bb7cf7546dc9cfea893e8bb3b93df7253852",
+      "bytes": 56330,
+      "exact_source_prs": [
+        "248"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/superpowers/plans/2026-11-04-workshop-r3-host-launcher.md",
+      "expected_blob_oid": "57275e81e682fa20ec3008d5f8b63b6357c6b2e2",
+      "expected_mode": "100644",
+      "sha256": "1fe71e83e8c02f3cbba1931b07c6a8dced8613948523f1d2b198bc1165b0dc88",
+      "bytes": 30493,
+      "exact_source_prs": [
+        "247",
+        "248"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/superpowers/plans/2026-11-04-workshop-r3-immutable-supervisor.md",
+      "expected_blob_oid": "84ffce83cb57861ba21054d16447e2876a94efff",
+      "expected_mode": "100644",
+      "sha256": "f77a90182cfeb45e3fe50e8eaf5adab76b94a2bd6d1c25354f4e2c81bcdb8b43",
+      "bytes": 27811,
+      "exact_source_prs": [
+        "247",
+        "248"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/superpowers/plans/2026-11-04-workshop-r3-preparation-collector.md",
+      "expected_blob_oid": "abad1a9ae4967431cc87e603956b55dcfdcdfdee",
+      "expected_mode": "100644",
+      "sha256": "b5bc7f7041afba7ec58570b84a25964170c70c7c80406fdf37fad87acc1c9d16",
+      "bytes": 17481,
+      "exact_source_prs": [
+        "247",
+        "248"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/superpowers/plans/2026-11-04-workshop-r3-process-transport.md",
+      "expected_blob_oid": "3e2495fbea95f7d3ec733e3f348dceb2cd2b6b47",
+      "expected_mode": "100644",
+      "sha256": "cee763b02788a2e1afd8670047be71193ee1bce7d858682cebe8d958157ace0b",
+      "bytes": 35933,
+      "exact_source_prs": [
+        "247",
+        "248"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/superpowers/plans/2026-11-04-workshop-r3-real-preparation-adapter.md",
+      "expected_blob_oid": "90a112375d2abf5282b9bf3029b66fba43e06814",
+      "expected_mode": "100644",
+      "sha256": "38e13e89d8edfb6fb0d0679df101c5ad9cc55a673399c6aaee38091cffb6399b",
+      "bytes": 80382,
+      "exact_source_prs": [
+        "248"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/verification/2026-11-03-canonical-article-lifecycle.md",
+      "expected_blob_oid": "58a3ded479dea2df67a0fa234298370a917d77f2",
+      "expected_mode": "100644",
+      "sha256": "e3e7693be3bf68403711c4ea7c9a93ae768db7269a54d3cec9b260cb2e2df5f9",
+      "bytes": 47472,
+      "exact_source_prs": [
+        "247",
+        "248"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/verification/2026-11-04-workshop-browser-execution-contract.md",
+      "expected_blob_oid": "6b717947238d5b1d9d3e193f429ee5a2bfcfc400",
+      "expected_mode": "100644",
+      "sha256": "4bdbe8c57b36af6b57b816b45f6ba259cc57b470c2921f7f234ccf5f197f7889",
+      "bytes": 13632,
+      "exact_source_prs": [
+        "246",
+        "249"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/verification/2026-11-04-workshop-browser-static-supervisor.md",
+      "expected_blob_oid": "146bea24b2fb0a062605b8989baece56d143f143",
+      "expected_mode": "100644",
+      "sha256": "729cf234e3502a26013c9fe07b05116ab38c0aaef76a8d6690f5c8b32ff53141",
+      "bytes": 13775,
+      "exact_source_prs": [
+        "249"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/verification/release-acceptance-runbook.md",
+      "expected_blob_oid": "23c85c2e468b45b38b84a42524d8e2b5b6c84e5a",
+      "expected_mode": "100644",
+      "sha256": "52ba7b0b77fe800565464cc0431d9405ed427ea1856d513ca2359c351c6c4e55",
+      "bytes": 32636,
+      "exact_source_prs": [
+        "246",
+        "249"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/verification/workshop-customer-ui-runbook.md",
+      "expected_blob_oid": "ca6e9e802003420443aa252d299a9cba6e89f91e",
+      "expected_mode": "100644",
+      "sha256": "b8b85b0fc5e87350705918415386146dd483fe40422f0550906b910ee4645042",
+      "bytes": 30620,
+      "exact_source_prs": [
+        "246",
+        "249"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "docs/verification/workshop-final180-runbook.md",
+      "expected_blob_oid": "0661b6279c13f3c208a03ddc186f6cefce3e3b5e",
+      "expected_mode": "100644",
+      "sha256": "37c9dc0447675751f78c442df5aab02194000565945ddb47d7518d8b7256098d",
+      "bytes": 43853,
+      "exact_source_prs": [
+        "242"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "scripts/dev/test_workshop_browser_execution_contract.py",
+      "expected_blob_oid": "2889dfb64a06abb9104d023325729f5c208fc4a2",
+      "expected_mode": "100644",
+      "sha256": "069c283652fca14426ac016cd0b5df95dcf85f429858e3a43985766bbbc83289",
+      "bytes": 8057,
+      "exact_source_prs": [
+        "246"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "scripts/dev/test_workshop_browser_execution_evidence.py",
+      "expected_blob_oid": "b1f3fb8222483478826654e9d42d52edca03f773",
+      "expected_mode": "100644",
+      "sha256": "c0eeaad07f48c1896d22782dc303925eb52dffe8499e6e16f3127a9b242e3b60",
+      "bytes": 14411,
+      "exact_source_prs": [
+        "246"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "scripts/dev/test_workshop_browser_execution_supervisor.py",
+      "expected_blob_oid": "12813a612734326d47521305f4cb350904d3ed10",
+      "expected_mode": "100644",
+      "sha256": "6bc26b51b5552dbd5d86b7f676e54080b624abdd8e76216417e4f27e73e025ce",
+      "bytes": 16553,
+      "exact_source_prs": [
+        "246"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "scripts/dev/test_workshop_browser_preparation_probe.py",
+      "expected_blob_oid": "c02906089fe7510c979869727f54e8143e26298a",
+      "expected_mode": "100644",
+      "sha256": "81404fe1d9de4ac395971b0e57f84ac25b3ad6a7c17af2d698e79b6c6b2665e6",
+      "bytes": 16983,
+      "exact_source_prs": [
+        "246"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "scripts/dev/test_workshop_final180_catalog_adapter.py",
+      "expected_blob_oid": "86e78aef564c216ede5780dccadd56366d4d0a63",
+      "expected_mode": "100644",
+      "sha256": "978cbb594d9bc42f0cb02b3447e2afed6bb6764c155b657db6e5b3676cc319a9",
+      "bytes": 26977,
+      "exact_source_prs": [
+        "242"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "scripts/dev/test_workshop_final180_commerce_adapter.py",
+      "expected_blob_oid": "49c975563a65d320f2ff081a1e98e0970d245724",
+      "expected_mode": "100644",
+      "sha256": "193db3d21667b0aecb87648512f6ee8792ddcc1176bab247b9d17319625a78ca",
+      "bytes": 39932,
+      "exact_source_prs": [
+        "242"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "scripts/dev/test_workshop_final180_identity_adapter.py",
+      "expected_blob_oid": "7391263cb874e2505f4f110df6343c8b466fc692",
+      "expected_mode": "100644",
+      "sha256": "a3f3017b1d7a85da9ae4d1883758f2494d722fb321d45c1ff758994ab6d2653c",
+      "bytes": 29838,
+      "exact_source_prs": [
+        "242"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "scripts/dev/test_workshop_final180_paid_adapter.py",
+      "expected_blob_oid": "98eda0b70e61eb2c25cc68cf7add6c438888a9cc",
+      "expected_mode": "100644",
+      "sha256": "1f66999eebc61a2a7f7218627bf9c54c45b8bc1ae6f8070cd8f1403acfaa83f1",
+      "bytes": 42741,
+      "exact_source_prs": [
+        "242"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "scripts/dev/test_workshop_final180_runner.py",
+      "expected_blob_oid": "f4db092e0d1a83fce47b51f7c68021b6dc2053bd",
+      "expected_mode": "100644",
+      "sha256": "c0bac62eb756d84593191e82b2b240fdd77bd5128242f212e9b508e15c1740c1",
+      "bytes": 33237,
+      "exact_source_prs": [
+        "242"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "scripts/dev/workshop_browser_execution_contract.py",
+      "expected_blob_oid": "cd49bfa40dd95e00df1346c3fe14e46f7718d024",
+      "expected_mode": "100644",
+      "sha256": "042fe9e21c9fcab442ff39f6faca85c3c6fff919978b9733d8b691be032de260",
+      "bytes": 23851,
+      "exact_source_prs": [
+        "246"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "scripts/dev/workshop_browser_execution_evidence.py",
+      "expected_blob_oid": "ec31e9304f043eda93124580ab3491132f4c9f78",
+      "expected_mode": "100644",
+      "sha256": "37df0791a9fad1158f1ef057b589aa8e784d9d019803dcf96c6e3b7f1ff37cee",
+      "bytes": 42878,
+      "exact_source_prs": [
+        "246"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "scripts/dev/workshop_browser_execution_supervisor.py",
+      "expected_blob_oid": "e945cc4d121db7a991a461b0fc99ec6d1b3d95ac",
+      "expected_mode": "100644",
+      "sha256": "c4972604193815a742b13cb2b48275c648eb995e0c541ee300d242226cf6bc4b",
+      "bytes": 25865,
+      "exact_source_prs": [
+        "246"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "scripts/dev/workshop_browser_preparation_probe.py",
+      "expected_blob_oid": "53d32a830093926d543dd38787675b663cc38871",
+      "expected_mode": "100644",
+      "sha256": "696065d0560cebe1b8d8a2010e7aa2d8283a29d32d793e8fdf32685680504458",
+      "bytes": 13414,
+      "exact_source_prs": [
+        "246"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "scripts/dev/workshop_final180_catalog_adapter.py",
+      "expected_blob_oid": "060d1407ee5e71880cf7e441195cac4274f04937",
+      "expected_mode": "100644",
+      "sha256": "88f481104d66d9bda8bdf6c1a8038e8514b69d63db813b85c5ec13e40f0c6ddf",
+      "bytes": 15467,
+      "exact_source_prs": [
+        "242"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "scripts/dev/workshop_final180_commerce_adapter.py",
+      "expected_blob_oid": "6fa4ed8325b15cdd230a6ed36fb2106be95d66d8",
+      "expected_mode": "100644",
+      "sha256": "68fe9d269f595f6ea361cf713591bc2735e1ba87a364001bd78cbfe697dabfc4",
+      "bytes": 25450,
+      "exact_source_prs": [
+        "242"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "scripts/dev/workshop_final180_identity_adapter.py",
+      "expected_blob_oid": "8c7fa87bab906955c145d7cc965be641aea48c5f",
+      "expected_mode": "100644",
+      "sha256": "0474a85c33d4f2722ad01d6e55e69a8080dc0f1983c856ca7caa1b94510a767d",
+      "bytes": 22290,
+      "exact_source_prs": [
+        "242"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "scripts/dev/workshop_final180_paid_adapter.py",
+      "expected_blob_oid": "92de32b5500f68f91848a064f733f689d99f22dc",
+      "expected_mode": "100644",
+      "sha256": "563d2b3f426270dac34ae3117a64b9253748aa4c2755445d5b50f1bfcc9a224a",
+      "bytes": 17676,
+      "exact_source_prs": [
+        "242"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "scripts/dev/workshop_final180_runner.py",
+      "expected_blob_oid": "ca48cd988c5579a7d385dc1844b84306eae0861e",
+      "expected_mode": "100644",
+      "sha256": "693a408a73f3ccd37bf945bfc94d427f742878580932dab382ea9a244a141c91",
+      "bytes": 47124,
+      "exact_source_prs": [
+        "242"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "scripts/r3_preparation/collector.py",
+      "expected_blob_oid": "5d4e898c844ceaafe3baf01d2f3f8f7cc3c41345",
+      "expected_mode": "100644",
+      "sha256": "3fddb096d25ca7f1281a41469d1ca846e2ae776f986390e6479fe9df5d573599",
+      "bytes": 27852,
+      "exact_source_prs": [
+        "247"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "scripts/r3_preparation/file_transport.py",
+      "expected_blob_oid": "4282cbb0e22079d6cf8edab9a8e70f05f539e1fe",
+      "expected_mode": "100644",
+      "sha256": "a9cd5a04a2aef76fb0f3ce41ae3f14125e8f40580ec75484e0760c9a4f1aef35",
+      "bytes": 28667,
+      "exact_source_prs": [
+        "247"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "scripts/r3_preparation/host_adapter.py",
+      "expected_blob_oid": "9975169727ce73feab881848406ca3c858c2b237",
+      "expected_mode": "100644",
+      "sha256": "5ad75ca2e18c329dcf223220fc29eb74e6cc4942f0129e923dd57907db02041c",
+      "bytes": 22005,
+      "exact_source_prs": [
+        "247"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "scripts/r3_preparation/policy.py",
+      "expected_blob_oid": "7e3118f145f2ad34d60296b3b3813477e9c1a14f",
+      "expected_mode": "100644",
+      "sha256": "36d8eb70f27277faefc831c1ca3ace18695509e97e4e65352ce0f3cb01120507",
+      "bytes": 28978,
+      "exact_source_prs": [
+        "247"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "scripts/r3_preparation/process_transport.py",
+      "expected_blob_oid": "fa27c6987121f4d515caf0b2d1e2988a22450391",
+      "expected_mode": "100644",
+      "sha256": "ebfb286f8048437ddc222c0ee1fb7475be2667a5b225174c61f4ea8ef0d3be4c",
+      "bytes": 14031,
+      "exact_source_prs": [
+        "247",
+        "248"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "scripts/r3_preparation/real_admission.py",
+      "expected_blob_oid": "aeea05d62dee31ba74065fb08c2b94857ff8ed65",
+      "expected_mode": "100644",
+      "sha256": "ee33ee1a445a187950d786f24a00c5c7164a318e2d8fcaf53a58b2665389da76",
+      "bytes": 27604,
+      "exact_source_prs": [
+        "247"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "scripts/r3_preparation/test_collector.py",
+      "expected_blob_oid": "ac29560649783c692dd676da34d450223e75bff6",
+      "expected_mode": "100644",
+      "sha256": "20557de448cd3a51fcf780627c2a016a6605b91b3f485e3590d4d41cb59863af",
+      "bytes": 33188,
+      "exact_source_prs": [
+        "247"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "scripts/r3_preparation/test_file_transport.py",
+      "expected_blob_oid": "5d9c3f2c7bc68f4198ba167f87fe83c7ba8f1875",
+      "expected_mode": "100644",
+      "sha256": "75a17023de398384b458445da53065e434830f99948a3c5a4b0547435704980a",
+      "bytes": 13866,
+      "exact_source_prs": [
+        "247"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "scripts/r3_preparation/test_host_adapter.py",
+      "expected_blob_oid": "0fb6f11e43e4a09dcabcb19642ee00df594d145c",
+      "expected_mode": "100644",
+      "sha256": "bb145851ae1a18cd1db1e5f52eb27b040de13077cac41befe26e93181be2c4d5",
+      "bytes": 19680,
+      "exact_source_prs": [
+        "247"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "scripts/r3_preparation/test_policy.py",
+      "expected_blob_oid": "b1165f18e82cbf742d968a66adfca5468557c46c",
+      "expected_mode": "100644",
+      "sha256": "3980f876f3d93197ec70d4281c1693051f7d1eaea33c28076a2502ecde7996d2",
+      "bytes": 20945,
+      "exact_source_prs": [
+        "247"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "scripts/r3_preparation/test_process_transport.py",
+      "expected_blob_oid": "5a65561db4bb6871afa535c08c83ce9ab06a308e",
+      "expected_mode": "100644",
+      "sha256": "2d452341a1946b7dc2080dee59d1053324f019d0e90f104c999a6f4a15ee74bd",
+      "bytes": 29350,
+      "exact_source_prs": [
+        "247",
+        "248"
+      ],
+      "resolution_required": false
+    },
+    {
+      "path": "scripts/r3_preparation/test_real_admission.py",
+      "expected_blob_oid": "a96ed0d21b2fbcba33455acf18c4d45b862a9d77",
+      "expected_mode": "100644",
+      "sha256": "60edf11a1f5b6c7a8318e1aeb95107d27c297365034ccb073b1c24320a6f6fee",
+      "bytes": 14209,
+      "exact_source_prs": [
+        "247"
+      ],
+      "resolution_required": false
+    }
+  ],
+  "implementation_allowed_paths": [
+    "docs/agents/records/2026-11-04-workshop-browser-execution-contract.json",
+    "docs/agents/records/2026-11-04-workshop-browser-static-supervisor.json",
+    "docs/agents/records/2026-11-04-workshop-final180-cd-integration.json",
+    "docs/agents/records/2026-11-04-workshop-final180-ci-integration.json",
+    "docs/agents/records/2026-11-04-workshop-final180-inventory.json",
+    "docs/agents/records/2026-11-04-workshop-final180-runner.json",
+    "docs/agents/records/2026-11-04-workshop-final180-stage-b1-identity.json",
+    "docs/agents/records/2026-11-04-workshop-final180-stage-b2-catalog-go.json",
+    "docs/agents/records/2026-11-04-workshop-final180-stage-c-commerce.json",
+    "docs/agents/records/2026-11-04-workshop-final180-stage-d-paid.json",
+    "docs/agents/records/2026-11-04-workshop-integrated-r3-runtime.json",
+    "docs/agents/records/2026-11-04-workshop-r3-host-launcher.json",
+    "docs/agents/records/2026-11-04-workshop-r3-immutable-supervisor.json",
+    "docs/agents/records/2026-11-04-workshop-r3-preparation-collector.json",
+    "docs/agents/records/2026-11-04-workshop-r3-probe-launcher-code-review.json",
+    "docs/agents/records/2026-11-04-workshop-r3-process-transport.json",
+    "docs/agents/records/2026-11-04-workshop-r3-real-preparation-adapter.json",
+    "docs/agents/specs/2026-11-04-workshop-browser-execution-contract.json",
+    "docs/agents/specs/2026-11-04-workshop-browser-static-supervisor.json",
+    "docs/agents/specs/2026-11-04-workshop-final180-cd-integration.md",
+    "docs/agents/specs/2026-11-04-workshop-final180-ci-integration.md",
+    "docs/agents/specs/2026-11-04-workshop-final180-inventory.json",
+    "docs/agents/specs/2026-11-04-workshop-final180-inventory.md",
+    "docs/agents/specs/2026-11-04-workshop-final180-runner.md",
+    "docs/agents/specs/2026-11-04-workshop-final180-stage-b1-identity.md",
+    "docs/agents/specs/2026-11-04-workshop-final180-stage-b2-catalog-go.md",
+    "docs/agents/specs/2026-11-04-workshop-final180-stage-c-commerce.md",
+    "docs/agents/specs/2026-11-04-workshop-final180-stage-d-paid.md",
+    "docs/agents/specs/2026-11-04-workshop-r3-host-launcher.md",
+    "docs/agents/specs/2026-11-04-workshop-r3-preparation-collector.md",
+    "docs/agents/specs/2026-11-04-workshop-r3-process-transport.md",
+    "docs/agents/specs/2026-11-04-workshop-r3-real-preparation-adapter.md",
+    "docs/agents/tasks/2026-11-03-production-release/2026-11-04-workshop-browser-execution-contract.json",
+    "docs/agents/tasks/2026-11-03-production-release/2026-11-04-workshop-browser-static-supervisor.json",
+    "docs/agents/tasks/2026-11-03-production-release/queue.json",
+    "docs/agents/tasks/2026-11-03-production-release/workshop-final180-cd-integration.json",
+    "docs/agents/tasks/2026-11-03-production-release/workshop-final180-ci-integration.json",
+    "docs/agents/tasks/2026-11-03-production-release/workshop-final180-inventory.json",
+    "docs/agents/tasks/2026-11-03-production-release/workshop-final180-runner.json",
+    "docs/agents/tasks/2026-11-03-production-release/workshop-final180-stage-b1-identity.json",
+    "docs/agents/tasks/2026-11-03-production-release/workshop-final180-stage-b2-catalog-go.json",
+    "docs/agents/tasks/2026-11-03-production-release/workshop-final180-stage-c-commerce.json",
+    "docs/agents/tasks/2026-11-03-production-release/workshop-final180-stage-d-paid.json",
+    "docs/agents/tasks/2026-11-03-production-release/workshop-integrated-r3-runtime.json",
+    "docs/agents/tasks/2026-11-03-production-release/workshop-r3-host-launcher.json",
+    "docs/agents/tasks/2026-11-03-production-release/workshop-r3-immutable-supervisor.json",
+    "docs/agents/tasks/2026-11-03-production-release/workshop-r3-preparation-collector.json",
+    "docs/agents/tasks/2026-11-03-production-release/workshop-r3-process-transport.json",
+    "docs/agents/tasks/2026-11-03-production-release/workshop-r3-real-preparation-adapter.json",
+    "docs/superpowers/plans/2026-11-03-workshop-product-evidence-assembler.md",
+    "docs/superpowers/plans/2026-11-04-workshop-browser-execution-contract.md",
+    "docs/superpowers/plans/2026-11-04-workshop-browser-static-supervisor.md",
+    "docs/superpowers/plans/2026-11-04-workshop-final180-cd-integration.md",
+    "docs/superpowers/plans/2026-11-04-workshop-final180-ci-integration.md",
+    "docs/superpowers/plans/2026-11-04-workshop-final180-inventory.md",
+    "docs/superpowers/plans/2026-11-04-workshop-final180-runner.md",
+    "docs/superpowers/plans/2026-11-04-workshop-final180-stage-b1-identity.md",
+    "docs/superpowers/plans/2026-11-04-workshop-final180-stage-b2-catalog-go.md",
+    "docs/superpowers/plans/2026-11-04-workshop-final180-stage-c-commerce.md",
+    "docs/superpowers/plans/2026-11-04-workshop-final180-stage-d-paid.md",
+    "docs/superpowers/plans/2026-11-04-workshop-integrated-r3-runtime.md",
+    "docs/superpowers/plans/2026-11-04-workshop-r3-host-launcher.md",
+    "docs/superpowers/plans/2026-11-04-workshop-r3-immutable-supervisor.md",
+    "docs/superpowers/plans/2026-11-04-workshop-r3-preparation-collector.md",
+    "docs/superpowers/plans/2026-11-04-workshop-r3-process-transport.md",
+    "docs/superpowers/plans/2026-11-04-workshop-r3-real-preparation-adapter.md",
+    "docs/verification/2026-11-03-canonical-article-lifecycle.md",
+    "docs/verification/2026-11-04-workshop-browser-execution-contract.md",
+    "docs/verification/2026-11-04-workshop-browser-static-supervisor.md",
+    "docs/verification/release-acceptance-runbook.md",
+    "docs/verification/workshop-customer-ui-runbook.md",
+    "docs/verification/workshop-final180-runbook.md",
+    "scripts/dev/test_workshop_browser_execution_contract.py",
+    "scripts/dev/test_workshop_browser_execution_evidence.py",
+    "scripts/dev/test_workshop_browser_execution_supervisor.py",
+    "scripts/dev/test_workshop_browser_preparation_probe.py",
+    "scripts/dev/test_workshop_final180_catalog_adapter.py",
+    "scripts/dev/test_workshop_final180_commerce_adapter.py",
+    "scripts/dev/test_workshop_final180_identity_adapter.py",
+    "scripts/dev/test_workshop_final180_paid_adapter.py",
+    "scripts/dev/test_workshop_final180_runner.py",
+    "scripts/dev/workshop_browser_execution_contract.py",
+    "scripts/dev/workshop_browser_execution_evidence.py",
+    "scripts/dev/workshop_browser_execution_supervisor.py",
+    "scripts/dev/workshop_browser_preparation_probe.py",
+    "scripts/dev/workshop_final180_catalog_adapter.py",
+    "scripts/dev/workshop_final180_commerce_adapter.py",
+    "scripts/dev/workshop_final180_identity_adapter.py",
+    "scripts/dev/workshop_final180_paid_adapter.py",
+    "scripts/dev/workshop_final180_runner.py",
+    "scripts/r3_preparation/collector.py",
+    "scripts/r3_preparation/file_transport.py",
+    "scripts/r3_preparation/host_adapter.py",
+    "scripts/r3_preparation/policy.py",
+    "scripts/r3_preparation/process_transport.py",
+    "scripts/r3_preparation/real_admission.py",
+    "scripts/r3_preparation/test_collector.py",
+    "scripts/r3_preparation/test_file_transport.py",
+    "scripts/r3_preparation/test_host_adapter.py",
+    "scripts/r3_preparation/test_policy.py",
+    "scripts/r3_preparation/test_process_transport.py",
+    "scripts/r3_preparation/test_real_admission.py",
+    ".github/workflows/autonomous-verification.yml",
+    "docs/verification/2026-11-04-workshop-synthetic-leaves-integration.md"
+  ],
+  "source_delta_path_count": 102,
+  "import_code_paths": 30,
+  "import_document_paths": 72,
+  "sole_semantic_conflict_path": "docs/agents/tasks/2026-11-03-production-release/queue.json",
+  "queue_contract": {
+    "source_projection_count": 43,
+    "with_gate_task_count": 44,
+    "base_original_count": 33,
+    "gate_task_id": "workshop-synthetic-leaves-integration",
+    "source_addition_count": 10,
+    "ordering": "Preserve pinned checkpoint B queue order: original33 then integration task. Append source additions in242,246,247 order, preserving each source list order.248 appends no task.249 upgrades only browser-static task with its exact two completion/tracking payloads.",
+    "forbidden": [
+      "dropping or duplicating tasks",
+      "changing original states/goals/todos/flags",
+      "wholesale selecting one queue branch",
+      "rewriting source additions",
+      "treating historical source statuses as fresh acceptance"
+    ],
+    "comparison": "Remove integration task, compare parsed queue to proposed-union-queue.json. Every root field and original33 entry must equal product217. Final browser-static task must equal249 exactly."
+  },
+  "merge_order": [
+    242,
+    246,
+    247,
+    248,
+    249
+  ],
+  "source_blob_policy": "For every102 imported path other than queue, exact expected mode/blob/sha256 must match reviewed source manifest. Never resolve nonqueue conflict automatically; unexpected conflict or source change stops integration for a new reviewed gate. Gate verification page alone may append actual evidence.",
+  "application_source_policy": "All apps/, workers/, infra/, shared product contracts and dependencies remain byte/mode-identical to product217. No fixes or refactors permitted.",
+  "preflight": {
+    "base": "Actual full pushed plan-containing checkpoint B on product217, not product217 itself or external synthetic commit",
+    "record": "docs/agents/records/2026-11-04-workshop-synthetic-leaves-integration.json",
+    "nested_record": "docs/agents/tasks/2026-11-03-production-release/workshop-synthetic-leaves-integration.json#pre_implementation",
+    "nested_handling": "Extract pre_implementation dict to external JSON; CLI reads supplied top-level JSON only. Do not pass whole task file as record.",
+    "synchronization_required": "Actual readback before status synchronized and updated_at set; original existing source records remain unchanged.",
+    "external_proposal_pass_claimed": false
+  },
+  "verification": {
+    "collection_precheck": "Inspect test collection and environment from exact integration tree. No real provider/host/Docker/network acceptance tests admitted.",
+    "focused_test_paths": [
+      "scripts/dev/test_workshop_browser_execution_contract.py",
+      "scripts/dev/test_workshop_browser_execution_evidence.py",
+      "scripts/dev/test_workshop_browser_execution_supervisor.py",
+      "scripts/dev/test_workshop_browser_preparation_probe.py",
+      "scripts/dev/test_workshop_final180_catalog_adapter.py",
+      "scripts/dev/test_workshop_final180_commerce_adapter.py",
+      "scripts/dev/test_workshop_final180_identity_adapter.py",
+      "scripts/dev/test_workshop_final180_paid_adapter.py",
+      "scripts/dev/test_workshop_final180_runner.py",
+      "scripts/r3_preparation/test_collector.py",
+      "scripts/r3_preparation/test_file_transport.py",
+      "scripts/r3_preparation/test_host_adapter.py",
+      "scripts/r3_preparation/test_policy.py",
+      "scripts/r3_preparation/test_process_transport.py",
+      "scripts/r3_preparation/test_real_admission.py"
+    ],
+    "focused_command": "python -m pytest -q scripts/dev/test_workshop_browser_execution_contract.py scripts/dev/test_workshop_browser_execution_evidence.py scripts/dev/test_workshop_browser_execution_supervisor.py scripts/dev/test_workshop_browser_preparation_probe.py scripts/dev/test_workshop_final180_catalog_adapter.py scripts/dev/test_workshop_final180_commerce_adapter.py scripts/dev/test_workshop_final180_identity_adapter.py scripts/dev/test_workshop_final180_paid_adapter.py scripts/dev/test_workshop_final180_runner.py scripts/r3_preparation/test_collector.py scripts/r3_preparation/test_file_transport.py scripts/r3_preparation/test_host_adapter.py scripts/r3_preparation/test_policy.py scripts/r3_preparation/test_process_transport.py scripts/r3_preparation/test_real_admission.py",
+    "owned_child_permission": "Only explicitly owned synthetic Python children and temporary descriptor fixtures used by these reviewed tests; no real Git/Docker observation graph, service processes or credential access.",
+    "broader_commands": [
+      "python -m pytest -q scripts/autonomy",
+      "git diff --check B..HEAD",
+      "python scripts/autonomy/pre_implementation.py --repo-root . --record docs/agents/records/2026-11-04-workshop-synthetic-leaves-integration.json --base-sha B",
+      "python -m unittest discover -s scripts/r3_preparation -p test_*.py -v"
+    ],
+    "broader_scope_rule": "Any existing developer/contract/unit regression suite may run only after enumerated no-network/owned-fixture scope is frozen in canonical verification plan. Full browser smoke, final180 producers, migrations, Docker, Go integration roots and actual host-preparation probes stay blocked. No unreviewed scripts or patched code to make tests pass.",
+    "receipts": [
+      "full commands/filtered environment/runtime versions",
+      "exit codes, full stdout/stderr, test counts/skips/failures",
+      "path/blob/mode and product source hash checks",
+      "standalone/nested preflight JSON",
+      "queue comparison and reference/source-pin coverage",
+      "exact-head GitHub Actions jobs/conclusions/run URLs and independent whole-head review"
+    ],
+    "minimum_required_result": "All admitted local tests and structural checks pass; any new failure blocks completion and remains retained. CI absent/pending/failure is reported accurately and prevents CI-green completion, but not independently authorized local synthetic integration."
+  },
+  "ci_caveats": {
+    "pr246": "PR246 source push41910284615 and PR merge41910292856 both COMPLETED SUCCESS for source a9156c4c90b843c54742c0c068763ca52d0aac1b; both validator and synthetic DTO120 jobs succeeded. Push checkout is source SHA; PR-merge fixture checkout is49aa5be617209beef9cb8acfb67aec0b9b0bacbd. Retained receipt records120 synthetic DTO fixture cases each. This is no real API acceptance, final180/staging credit or runtime/release authority. Vercel rate-limit is a separate status.",
+    "pr247": "No normal Actions code CI because scripts/r3_preparation/** falls outside current path filters; Vercel exact-head FAILURE cause unconfirmed; older quota bot comment predates e88f8a9 and proves no current cause.",
+    "pr248_249": "Fresh completion-doc normal CI still pending at observation; completion payloads are conditional.",
+    "integration": "New integration-only workflow scope adds scripts/r3_preparation/** to both triggers and a deterministic130-test job. Normal verification must be read at exact integrated head. Existing baseline workflow jobs are unchanged; local integration gate does not authorize manually running their Docker/browser graph. Neither CI success nor inventory yields final180/staging credit."
+  },
+  "blockers": [
+    "fresh literal Issue/Project gate tracking",
+    "actual committed and pushed B containing gate docs",
+    "standalone+nested preflight and independent exact-B review",
+    "explicit coordinator history-integration dispatch",
+    "source and final integration CI/review caveats resolved or accurately retained",
+    "independent review and canonical tracking must explicitly include the extra workflow path and exact130-test job",
+    "exact integration R3 CI job success required to close historic code CI gap"
+  ],
+  "accepted_new_case_credit": 0,
+  "authorities": {
+    "implementation_dispatch": false,
+    "github_write": false,
+    "provider": false,
+    "payment": false,
+    "account_mutation": false,
+    "secrets": false,
+    "host_observation": false,
+    "runtime_preparation_probe": false,
+    "docker_execution": false,
+    "network": false,
+    "image_acquisition": false,
+    "service_start": false,
+    "fixture_execution": false,
+    "staging": false,
+    "trust_promotion": false,
+    "merge_to_master": false,
+    "release": false,
+    "deployment": false,
+    "cutover": false
+  },
+  "source_reference_semantics": "Source product217 pins remain historical product-source bindings; new integration commit/tree are distinct tooling/candidate identities. Preserve original pins, inventories and blocked statements. New acceptance later must bind actual candidate bytes and source mapping; never rewrite pins to imply old evidence certifies integrated head.",
+  "implementation_total_path_allowlist_count": 104,
+  "ci_coverage_decision": {
+    "decision": "Include narrow workflow coverage repair in this new integration gate; do not modify PR247.",
+    "path": ".github/workflows/autonomous-verification.yml",
+    "baseline_sha256": "d38f4b1a5f414775b494ee801c83ebbc0473a7ab7e970cbf573529d08f1010aa",
+    "allowed_edits": [
+      "Insert exact scripts/r3_preparation/** path immediately after scripts/dev/** in both pull_request and push paths.",
+      "Append exact r3-preparation-unit job below; preserve every existing workflow byte other than these additive insertions."
+    ],
+    "path_filter_literal": "      - \"scripts/r3_preparation/**\"",
+    "exact_job": "  r3-preparation-unit:\n    name: R3 preparation synthetic and owned-child tests\n    runs-on: ubuntu-24.04\n    timeout-minutes: 5\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-python@v5\n        with:\n          python-version: \"3.12\"\n      - name: Run all 130 R3 preparation unit tests\n        env:\n          PYTHONDONTWRITEBYTECODE: \"1\"\n        run: |\n          python - <<'PYTEST'\n          import sys\n          import unittest\n          suite = unittest.defaultTestLoader.discover(\"scripts/r3_preparation\", pattern=\"test_*.py\")\n          if suite.countTestCases() != 130:\n              raise SystemExit(\"expected exact reviewed 130-test inventory\")\n          result = unittest.TextTestRunner(verbosity=2).run(suite)\n          if result.testsRun != 130 or result.skipped or not result.wasSuccessful():\n              raise SystemExit(1)\n          PYTEST\n",
+    "scope": "Owned synthetic unit tests only, no actual host observation/Docker/network provider/payment or fixture acceptance. GitHub runner setup/checkout are CI infrastructure, not product provider calls. Existing workflow jobs remain unchanged; their fixture output supplies no release acceptance.",
+    "check_required_for_code_ci_gap_closure": "New named R3 job SUCCESS at exact integrated head,130 tests/no skips plus normal validator result. Preserve previous PR247 gap as history.",
+    "local_verification": "Parse YAML and compare old workflow after removing only two inserted paths and appended job byte-for-byte. Discover exact130-test inventory; run unit job command locally in approved environment.",
+    "no_automatic_claim": "Workflow proposal and old documentation CI do not certify R3 code; if job cannot pass or be observed, promotion remains blocked."
+  },
+  "pr246_final_ci_readback": {
+    "status": "COMPLETED_SUCCESS_SOURCE_PUSH_AND_PR_MERGE_WORKFLOWS",
+    "source_sha": "a9156c4c90b843c54742c0c068763ca52d0aac1b",
+    "pr_merge_checkout_sha": "49aa5be617209beef9cb8acfb67aec0b9b0bacbd",
+    "runs": [
+      {
+        "id": 41910284615,
+        "url": "https://github.com/lucronn/autodata/actions/runs/41910284615",
+        "status": "completed",
+        "conclusion": "success",
+        "jobs": [
+          {
+            "name": "Validate autonomy policy and evidence contract",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "name": "Workshop DTO browser inventory (not real API acceptance)",
+            "status": "completed",
+            "conclusion": "success"
+          }
+        ]
+      },
+      {
+        "id": 41910292856,
+        "url": "https://github.com/lucronn/autodata/actions/runs/41910292856",
+        "status": "completed",
+        "conclusion": "success",
+        "jobs": [
+          {
+            "name": "Workshop DTO browser inventory (not real API acceptance)",
+            "status": "completed",
+            "conclusion": "success"
+          },
+          {
+            "name": "Validate autonomy policy and evidence contract",
+            "status": "completed",
+            "conclusion": "success"
+          }
+        ]
+      }
+    ],
+    "dto_fixture_cases_each": 120,
+    "receipt": "/home/corp/autodata-evidence/browser-code-final-ci/receipt.json",
+    "receipt_sha256": "c9d558ab309d447253dd68fa04197739886b0a348068fc4543698c2284d86561",
+    "raw_sha256": {
+      "pr246.json": "a9f2f98e13a1f7b2266bbe14f6f82578906849d9341f89eb57dc085b5788c6c9",
+      "pull_request.json": "9cac2d32d911bb68a7f7cff5b2e957a907ddc7671d4573be947f23b33b66533c",
+      "push.json": "822df3a7272139dba2f2e9752facf12d1a2af5ca39a780ebdec26a3352f6fa0c"
+    },
+    "evidence_scope": "Saved final CI receipt and raw run readback authenticated; artifact case counts and PR merge checkout come from coordinator retained receipt, not artifact re-execution by this design task.",
+    "real_api_acceptance": false,
+    "accepted_new_case_credit": 0,
+    "runtime_staging_release_authority": false
+  },
+  "revision": 2,
+  "historical_source_ci_wording_policy": "Keep imported PR249 completion payloads and source queue bytes unchanged: their pending statements describe their committed historical observation. Current integration plan/spec/verification overlay records later completed CI and supersedes historical pending for source246 only; source246 CI never certifies the future integration head.",
+  "tracking_sync": {
+    "status": "synchronized_live_readback_for_planning_only",
+    "observed_at": "2026-11-04T21:09:27Z",
+    "timestamp_source": "Issue186 coordinator planning comment createdAt from retained readback",
+    "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6642177142",
+    "receipt": "/home/corp/autodata-evidence/release-integration-gate-tracking/receipt.json",
+    "receipt_sha256": "29110664421b49b95641d2e071f2604e21d01e974f682daab88f07500031f3a3",
+    "issue_after_sha256": "ce94d77667f90997ddf2c1787deaf865df8ddb0a0cbe5fa4aed66005dde59e55",
+    "project_after_sha256": "7b3906a275d02646e03a7485fa307ce6cc5a8cb50a64a9df54f6b233d1c1cdb4",
+    "other_project_fields_unchanged": true,
+    "previous_source_archived_verbatim": true,
+    "implementation_dispatched": false,
+    "checkpoint_B": null
+  },
+  "independent_external_design_review": {
+    "status": "PASS_EXTERNAL_INTEGRATION_GATE_DESIGN",
+    "revision": 2,
+    "receipt": "/home/corp/autodata-evidence/release-integration-gate-design-review/revision2/verdict.json",
+    "receipt_sha256": "9d9c2fefff94b0c4fc5b6c10fd931328ac557981d9bb43d97c19f270739b3037",
+    "reviewed_plan_sha256": "3970b9ad1f5aecf10682adb1d1ca517c541e5eeacad54d7ecba74fc9a45c48e2",
+    "reviewed_spec_sha256": "9ed34d498442b557b496257cfbb6b0d8e742d661236009e9aac9ac40ca5233bb",
+    "approved_scope": "external design only; exact canonical checkpoint review remains required",
+    "runtime_authorized": false,
+    "implementation_dispatched": false
+  }
+}

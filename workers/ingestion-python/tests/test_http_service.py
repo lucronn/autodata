@@ -126,3 +126,122 @@ class HTTPServiceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+from lifecycle_support import runtime,fresh_database
+
+
+def test_actual_http_article_ensure_only_commits_job_within_two_seconds(runtime,monkeypatch):
+    from autodata_ingestion.http_service import make_handler
+    from http.server import ThreadingHTTPServer
+    from threading import Thread
+    from urllib.request import Request,urlopen
+    import time
+    monkeypatch.setattr("autodata_ingestion.worker.ArticleRepository",lambda:runtime.repo)
+    server=ThreadingHTTPServer(("127.0.0.1",0),make_handler("fixture-internal"))
+    thread=Thread(target=server.serve_forever,daemon=True);thread.start()
+    try:
+        request=Request(f"http://127.0.0.1:{server.server_port}/v1/catalog/ensure",data=json.dumps({"scope":"article","vehicle_id":str(runtime.vehicle),"canonical_article_id":str(runtime.article_id),"idempotency_key":"fixture"}).encode(),headers={"Content-Type":"application/json","X-Autodata-Internal-Token":"fixture-internal"},method="POST")
+        started=time.monotonic()
+        with urlopen(request,timeout=2) as response:
+            assert response.status==202
+            body=json.load(response)
+        assert time.monotonic()-started<2
+        assert body["state"]=="queued" and body["job_id"]==str(runtime.current_job_id())
+        assert runtime.counters()=={"source":0,"asset":0,"model":0,"schedule":1}
+        runtime.start_workers(2);revision=runtime.await_publication();runtime.stop_workers();runtime.reset_counters()
+        with urlopen(request,timeout=2) as response:
+            assert response.status==200 and json.load(response)["state"]=="completed"
+        assert runtime.counters()=={"source":0,"asset":0,"model":0,"schedule":0}
+        assert runtime.read_current()["canonical_revision_id"]==revision
+    finally:server.shutdown();server.server_close();thread.join()
+
+
+def test_actual_http_scheduling_dependency_failure_is_503(runtime,monkeypatch):
+    from autodata_ingestion.http_service import make_handler
+    from http.server import ThreadingHTTPServer
+    from threading import Thread
+    from urllib.request import Request,urlopen
+    from urllib.error import HTTPError
+    import pytest
+    class Unavailable:
+        def connect(self):raise OSError("fixture database unavailable")
+    monkeypatch.setattr("autodata_ingestion.worker.ArticleRepository",Unavailable)
+    server=ThreadingHTTPServer(("127.0.0.1",0),make_handler("fixture-internal"));thread=Thread(target=server.serve_forever,daemon=True);thread.start()
+    try:
+        request=Request(f"http://127.0.0.1:{server.server_port}/v1/catalog/ensure",data=json.dumps({"scope":"article","vehicle_id":str(runtime.vehicle),"canonical_article_id":str(runtime.article_id),"idempotency_key":"fixture"}).encode(),headers={"X-Autodata-Internal-Token":"fixture-internal"},method="POST")
+        with pytest.raises(HTTPError) as error:urlopen(request,timeout=2)
+        assert error.value.code==503
+        assert runtime.counters()["schedule"]==0
+    finally:server.shutdown();server.server_close();thread.join()
+
+
+def test_commerce_private_raw_bytes_and_mandatory_auth():
+    from autodata_ingestion.http_service import make_handler
+    from http.server import ThreadingHTTPServer
+    from threading import Thread
+    from urllib.request import Request,urlopen
+    from urllib.error import HTTPError
+    from unittest.mock import patch
+    import pytest
+    calls=[]
+    class Commerce:
+        def webhook(self,signature,body):
+            calls.append((signature,body));return {'status':'accepted'}
+    raw=b'{ "data": "unaltered \\u0041", "newline":"\\n" }\n'
+    for configured in ('','fixture-internal'):
+        with patch.dict('os.environ',{'AUTODATA_INGESTION_INTERNAL_TOKEN':''}):
+            server=ThreadingHTTPServer(('127.0.0.1',0),make_handler(configured,commerce=Commerce()))
+        thread=Thread(target=server.serve_forever,daemon=True);thread.start()
+        try:
+            url=f'http://127.0.0.1:{server.server_port}/internal/commerce/stripe/webhook'
+            for token in ('','wrong'):
+                request=Request(url,data=raw,headers={'X-Autodata-Internal-Token':token,'Stripe-Signature':'t=fixture'},method='POST')
+                with pytest.raises(HTTPError) as error:urlopen(request,timeout=2)
+                assert error.value.code==401
+            if configured:
+                request=Request(url,data=raw,headers={'X-Autodata-Internal-Token':configured,'Stripe-Signature':'t=fixture'},method='POST')
+                with urlopen(request,timeout=2) as response:assert json.load(response)=={'status':'accepted'}
+        finally:server.shutdown();server.server_close();thread.join()
+    assert calls==[('t=fixture',raw)]
+
+
+def test_commerce_dispatch_rejects_browser_authority_fields():
+    from autodata_ingestion.http_service import dispatch_commerce
+    from autodata_ingestion.commerce_service import CommerceError
+    import pytest
+    class Commerce:
+        def checkout(self,*args):raise AssertionError('invalid request reached authority')
+    with pytest.raises(CommerceError):
+        dispatch_commerce(Commerce(),'/internal/commerce/checkouts',{'customer_account_id':'x','organization_id':'y',
+            'configuration_id':'z','region':'US','terms_version':'workshop-v1','idempotency_key':'k','amount_minor':1})
+
+
+class PurchaseConfigurationHTTPTests(unittest.TestCase):
+    def test_private_purchase_config_requires_token_exact_body_and_no_dependencies(self):
+        from autodata_ingestion.commerce_service import CommerceService, CommerceConfig
+        from autodata_ingestion.http_service import make_handler
+        from http.server import ThreadingHTTPServer
+        from urllib.request import Request, urlopen
+        from urllib.error import HTTPError
+        from unittest.mock import patch
+        import threading
+        def forbidden():raise AssertionError('config read reached database')
+        service=CommerceService(forbidden,CommerceConfig('stripe_test','acct_fixture','price_fixture'),object())
+        for configured in ('fixture-token',''):
+            with patch.dict('os.environ',{},clear=True):
+                server=ThreadingHTTPServer(('127.0.0.1',0),make_handler(configured,commerce=service))
+            thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
+            try:
+                for token in ('','wrong','fixture-token'):
+                    for body in ({},{'extra':1},None,[]):
+                        request=Request(f'http://127.0.0.1:{server.server_port}/internal/commerce/purchase-config',data=json.dumps(body).encode(),headers={'X-Autodata-Internal-Token':token},method='POST')
+                        try:
+                            with urlopen(request,timeout=3) as response:status,value=response.status,json.load(response)
+                        except HTTPError as error:
+                            with error:status,value=error.code,json.load(error)
+                        expected=401 if not configured or token!=configured else (200 if body=={} else 400)
+                        self.assertEqual(status,expected,(configured,token,body,value))
+                        if status==200:
+                            self.assertEqual(value,{'enabled':False,'terms_version':'workshop-v1','terms_url':None,'privacy_url':None,'refund_url':None,'contact_url':None,'tax_notice':None})
+            finally:server.shutdown();server.server_close();thread.join(timeout=3)

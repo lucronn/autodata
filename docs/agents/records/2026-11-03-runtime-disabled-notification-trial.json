@@ -1,0 +1,20 @@
+{
+  "goal": "Run one bounded real Codex app-server success trial after independent promotion of the disabled startup snapshot amendment, preserving exact execution settings and isolation.",
+  "plan_ref": "docs/superpowers/plans/2026-11-03-runtime-disabled-notification-trial.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/agents/runner-interface.md",
+    "docs/verification/2026-11-03-agent-evidence-hardening.md",
+    "docs/superpowers/plans/2026-11-03-production-release-orchestration.md"
+  ],
+  "todo": [
+    "Obtain independent exact-candidate approval and coordinator verification of 0da3c88; integrate unchanged and retain all previous failed trials.",
+    "Synchronize this one-trial plan, Issue186, Project8 and canonical evidence; commit a fresh checkpoint and pass its machine preflight.",
+    "Verify the unchanged supervisor hash and existing nonroot bubblewrap image/CLI, then execute exactly one bounded success trial in a fresh owned clone.",
+    "Retain actual protocol, profile, role/check, outcome and cleanup evidence; independently replay at the original root before any runtime success claim.",
+    "Record success or the actual next failure without retries or fallback; interrupted and genuine-unavailable cases remain separate requirements."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-03T11:30:36.636100+00:00"
+}

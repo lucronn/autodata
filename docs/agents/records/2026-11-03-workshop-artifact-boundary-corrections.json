@@ -1,0 +1,49 @@
+{
+  "goal": "Authenticate installed toolkit bytes and enforce an owned process-and-pipe termination boundary plus nonblocking archive preflight while preserving dormant publisher execution.",
+  "plan_ref": "docs/superpowers/plans/2026-11-03-workshop-artifact-boundary-corrections.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/operations/workshop-gcp.md",
+    "docs/superpowers/plans/2026-11-03-workshop-authenticated-publisher.md"
+  ],
+  "todo": [
+    "Synchronize the three review findings, exact two-file correction scope and retained red evidence across Issue186, Project8 and canonical docs; commit and pass pinned preflight for independent review before implementation.",
+    "Bind a complete independently approved installed package-tree manifest to the exact reviewed lock and immutable toolchain; reject package or transitive file drift before import or runtime credential use.",
+    "Replace in-process SDK callbacks and Promise-only cancellation with one fixed verified child process, private result pipe, bounded log pipes, termination and reap proof before any cancellation or upload result returns.",
+    "Open release.zip nonblocking and no-follow, reject nonregular or replaced files, and put filesystem preflight under the same deadline and cleanup reserve.",
+    "Run real local tamper, late-output, process-group, cancellation, deadline, overflow and FIFO red/green regressions plus existing focused suites; push exact candidates for independent review with every activation denial and audit limitation intact."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-04T03:26:44.691186+00:00",
+  "source_integration_base_sha": "a2453848ed596a00574d63a2ca5cc77d28464c99",
+  "implementation_allowlist": [
+    "infra/deploy/gce/publisher_artifact.mjs",
+    "infra/deploy/gce/test_publisher_artifact.mjs"
+  ],
+  "independent_checkpoint_review": "pending",
+  "runtime_execution_authorized": false,
+  "staging_activation_authorized": false,
+  "production_publication_authorized": false,
+  "deployment_authorized": false,
+  "tracking_sync": {
+    "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6621724515",
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhhJhxU",
+    "project_note_field": "Source or dependency reference",
+    "verified_at": "2026-11-04T03:27:14.495209+00:00",
+    "issue_comment_sha256": "f70951466ec2db56e3500dee142cc2fd7e06435c7f9a22cc7490a7e9f3d5cb2c",
+    "project_text_sha256": "82a77f4a8183dc8db4bef09339500f9cc506f16203dfa376f45391c4200c4daf",
+    "prior_project_index_sha256": "f12d14df5ad9f193c92fde37a7b95ea8170393fbd69916392f779f2f1d6f971c",
+    "full_prior_project_index_preserved_in_issue_comment": true
+  },
+  "retained_review": {
+    "candidate_sha": "a2453848ed596a00574d63a2ca5cc77d28464c99",
+    "review_path": "/tmp/autodata-artifact-a2453848-review.md",
+    "findings": [
+      "installed_toolkit_bytes_unverified",
+      "sdk_continues_and_logs_after_cancellation",
+      "fifo_blocks_before_deadline"
+    ]
+  }
+}
