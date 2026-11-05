@@ -96,7 +96,7 @@ class ToolRunner:
         if credentials:
             environment = {'DOCKER_CONFIG': str(CREDS/'docker'), 'CLOUDSDK_CONFIG': str(CREDS/'gcloud'),
                            'GOOGLE_APPLICATION_CREDENTIALS': str(CREDS/'gcp.json')}
-        deadline = min(self.budget.end,time.monotonic()+seconds) if cleanup else self.budget.deadline(seconds)
+        deadline = time.monotonic()+seconds if cleanup else self.budget.deadline(seconds)
         code, out, _ = a.bounded_process([pin['path'], *arguments], cwd=cwd or self.root,
                                        deadline=deadline, maximum=maximum,
                                        input_bytes=input_bytes, env=environment)
@@ -191,6 +191,7 @@ class LiveDependencies:
         self.http = None
         self.token = None
         self.builder = None
+        self.builder_owner = None
         self.archive = None
         self.image_evidence = {}
         self.layer_sizes = {}
@@ -285,10 +286,7 @@ class LiveDependencies:
         a._v1(a.rt.validate_migration_tree, build_input, self.source/'db/migrations',
               self.source/'scripts/dev/migrate_sql.sh', len(build_input['migrations']['files']))
         if self.builder is None:
-            builder = 'workshop-'+context['run_id']+'-'+str(context['run_attempt'])
-            self.tools.run('docker', ['buildx','create','--name',builder,'--driver','docker-container',
-                                     '--driver-opt','image='+self.policy['tools']['buildkit-image']['version']], credentials=True)
-            self.builder = builder
+            self.create_builder(context)
         argv = a.build_argv(role, '/usr/bin/docker', self.source, self.policy['registry'], context,
                             build_input['source_epoch'], build_input['dependency_images']['postgres']['reference'], self.builder)
         self.tools.run('docker', argv[1:], seconds=3600, maximum=4*a.MiB, credentials=True)
@@ -297,6 +295,71 @@ class LiveDependencies:
         a.match(image_digest, r'sha256:[0-9a-f]{64}')
         reference = self.policy['registry']+'/'+role+'@'+image_digest
         return a.verify_registry_image(reference, self.registry_fetch, deadline=self.budget.deadline(1800))
+
+    def builder_resources(self, owner, *, cleanup=False):
+        """Exact daemon-name observations, including stopped containers."""
+        container = self.tools.run('docker', ['container','ls','--all','--no-trunc',
+                    '--filter','name=^/'+owner['container_name']+'$','--format','{{.ID}}'],
+                    seconds=20,maximum=4096,credentials=True,cleanup=cleanup).strip()
+        volume = self.tools.run('docker', ['volume','ls','--filter',
+                    'name=^'+owner['container_name']+'_state$','--format','{{.Name}}'],
+                    seconds=20,maximum=4096,credentials=True,cleanup=cleanup).strip()
+        return container,volume
+
+    def owned_builder_container(self, owner, *, cleanup=False):
+        raw = self.tools.run('docker', ['container','inspect',owner['container_name']],
+                             seconds=20,credentials=True,cleanup=cleanup)
+        items = a.strict_json(raw,65536)
+        a.require(type(items) is list and len(items) == 1,'builder_ownership')
+        item = items[0]
+        a.match(item.get('Id'),r'[0-9a-f]{64}')
+        a.require(item.get('Name') == '/'+owner['container_name'] and
+                  item.get('Config',{}).get('Image') == owner['buildkit_image'],'builder_ownership')
+        env = item['Config'].get('Env')
+        a.require(type(env) is list and [entry for entry in env if type(entry) is str and
+                  entry.startswith('AUTODATA_PUBLISHER_OWNER=')] ==
+                  ['AUTODATA_PUBLISHER_OWNER='+owner['owner_nonce']],'builder_ownership')
+        return item['Id']
+
+    def owned_builder_volume(self, owner, *, cleanup=False):
+        name = owner['container_name']+'_state'
+        raw = self.tools.run('docker',['volume','inspect',name],seconds=20,
+                             credentials=True,cleanup=cleanup)
+        items = a.strict_json(raw,65536)
+        a.require(type(items) is list and len(items) == 1,'builder_ownership')
+        item = items[0]
+        a.require(item.get('Name') == name and (item.get('Labels') or {}).get('autodata.publisher.owner') ==
+                  owner['owner_nonce'],'builder_ownership')
+        return name
+
+    def create_builder(self, context):
+        """Use the workflow's private write-ahead identity; never adopt a builder."""
+        a.require(not self.readonly and self.builder_owner is None,'builder_ownership')
+        owner = read_json(CREDS,'buildx-owner.json',4096)
+        a.object_fields(owner,('protocol_version','context_sha256','builder_name','container_name',
+                               'owner_nonce','buildkit_image'))
+        builder = 'workshop-'+self.base['run_id']+'-'+str(self.base['run_attempt'])
+        a.require(type(owner['protocol_version']) is int and owner['protocol_version'] == 1 and
+                  {key:context[key] for key in a.CONTEXT_FIELDS} == self.base and
+                  owner['context_sha256'] == a.digest(a.canonical(self.base)) and
+                  owner['builder_name'] == builder and owner['container_name'] == 'buildx_buildkit_'+builder+'0' and
+                  owner['buildkit_image'] == self.policy['tools']['buildkit-image']['version'],'builder_ownership')
+        a.sha(owner['owner_nonce']); a.immutable(owner['buildkit_image'])
+        a.require(not os.path.lexists(CREDS/'docker/buildx/instances'/builder),'builder_collision')
+        a.require(self.builder_resources(owner) == (b'',b''),'builder_collision')
+        # Arm cleanup BEFORE any mutating child: a timeout can occur after the
+        # daemon mutation but before that child's exit reaches the caller.
+        self.builder_owner = owner
+        self.tools.run('docker',['volume','create','--label','autodata.publisher.owner='+owner['owner_nonce'],
+                                  owner['container_name']+'_state'],credentials=True)
+        self.owned_builder_volume(owner)
+        self.tools.run('docker',['buildx','create','--name',builder,'--driver','docker-container',
+                      '--driver-opt','image='+owner['buildkit_image'],
+                      '--driver-opt','env.AUTODATA_PUBLISHER_OWNER='+owner['owner_nonce']],credentials=True)
+        self.tools.run('docker',['buildx','inspect','--bootstrap',builder],seconds=300,credentials=True)
+        self.owned_builder_container(owner)
+        self.owned_builder_volume(owner)
+        self.builder = builder
 
     def registry_fetch(self, reference, kind, expected):
         a.immutable(reference); a.match(expected, r'sha256:[0-9a-f]{64}')
@@ -540,9 +603,26 @@ class LiveDependencies:
 
     def cleanup(self):
         try:
-            if self.builder is not None:
-                self.tools.run('docker', ['buildx','rm','--force',self.builder], seconds=20, credentials=True, cleanup=True)
+            if self.builder_owner is not None:
+                owner = self.builder_owner
+                container,volume = self.builder_resources(owner,cleanup=True)
+                if container:
+                    identity = self.owned_builder_container(owner,cleanup=True)
+                    a.require(container == identity.encode(),'builder_ownership')
+                    self.tools.run('docker',['container','rm','--force',identity],seconds=20,
+                                   credentials=True,cleanup=True)
+                # Never ask buildx rm to select a daemon container by name.
+                # The config is private workspace data; the daemon ID is the
+                # only container removal target after nonce/image proof.
+                remaining,volume = self.builder_resources(owner,cleanup=True)
+                a.require(not remaining,'cleanup_failed')
+                if volume:
+                    name = self.owned_builder_volume(owner,cleanup=True)
+                    a.require(volume == name.encode(),'builder_ownership')
+                    self.tools.run('docker',['volume','rm',name],seconds=20,credentials=True,cleanup=True)
+                a.require(self.builder_resources(owner,cleanup=True) == (b'',b''),'cleanup_failed')
                 self.builder = None
+                self.builder_owner = None
         finally:
             self.token = None
             token = self.root/'identity-token'
