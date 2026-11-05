@@ -1,0 +1,19 @@
+{
+  "goal": "Bound Mercury-2 completion requests so the Workshop canonical rewrite can use an Inception-compatible route without an unaffordable default credit reservation.",
+  "plan_ref": "docs/superpowers/plans/2026-11-05-mercury2-output-budget.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/327",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/normalized-article-document.md",
+    "docs/agents/pre-implementation-gate.md"
+  ],
+  "todo": [
+    "Commit the synchronized plan, Project item, and canonical document at the pinned base SHA, then pass machine preflight.",
+    "Add failing request-payload and invalid-setting tests before implementation.",
+    "Include a validated bounded max_tokens in every Mercury-2 request while retaining the official endpoint default.",
+    "Run focused and worker verification, push a reviewable PR, and verify a bounded live TEST model call.",
+    "Separately recover terminal model jobs and confirm source rights and publication before production release."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-05T17:25:19Z"
+}
