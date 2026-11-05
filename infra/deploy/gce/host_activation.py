@@ -242,16 +242,39 @@ class Lifecycle:
         self.rt.validate_mount_observations(config,*values)
         self.checks['disk_uuid'] = True
 
+    def guards(self):
+        snapshots = {}
+        for family in ('inet','bridge'):
+            output = self.command(['/usr/sbin/nft','--json','--numeric','list','table',family,'autodata_guard'])
+            snapshots[family] = self.rt.strict_json(output)
+        self.rt.validate_guard_tables(snapshots)
+        return 0, {}
+
+    def cached_images(self, manifest):
+        template = '{"image_id":{{json .ID}},"repo_digests":{{json .RepoDigests}},"os":{{json .Os}},"architecture":{{json .Architecture}},"variant":{{json .Variant}}}'
+        observations = {}
+        for role in self.rt.IMAGE_ROLES:
+            reference = manifest['images'][role]['reference']
+            output = self.command(DOCKER + ['image','inspect','--platform','linux/amd64','--format',template,reference])
+            value = self.rt.strict_json(output)
+            require(type(value) is dict and set(value) == {'image_id','repo_digests','os','architecture','variant'})
+            digests = value['repo_digests']
+            require(type(digests) is list and 1 <= len(digests) <= 256 and all(type(item) is str and len(item) <= 4096 for item in digests))
+            require(len(set(digests)) == len(digests) and reference in digests)
+            require(value['os'] == 'linux' and value['architecture'] == 'amd64' and value['variant'] == '')
+            observations[role] = {'reference':reference,'image_id':value['image_id'],'platform':'linux/amd64'}
+        self.rt.validate_cached_images(manifest,observations)
+
     def prerequisites(self, manifest, config):
         self.pins.recheck()
         self.mounts(config)
-        code, _ = self.rt.guard_cli()
+        code, _ = self.guards()
         if code == 5: raise subprocess.TimeoutExpired('local guard observation',5)
         require(code == 0)
         self.checks.update(metadata_guard=True,storage_guard=True)
         self.rt.validate_runtime_secret_files()
         self.checks['secrets'] = True
-        self.rt.collect_cached_images(manifest)
+        self.cached_images(manifest)
         self.checks['cached_images'] = True
         self.rt.validate_installed_migration_tree(manifest)
         self.checks['migration_tree'] = True
