@@ -1519,34 +1519,56 @@ class DeployCheckTests(unittest.TestCase):
                                        'started_at', 'finished_at', 'checks', 'failure_code'})
         return code, receipt
 
-    def test_valid_local_prerequisites_do_not_claim_unimplemented_runtime_evidence(self):
+    def test_valid_local_prerequisites_do_not_certify_missing_live_evidence(self):
         code, receipt = self.deploy()
         self.assertEqual(code, 3)
         self.assertEqual(receipt['failure_code'], 'missing_dependency')
         self.assertEqual(receipt['checks'], {'config': True, 'manifest': True, 'disk_uuid': True,
             'metadata_guard': True, 'storage_guard': True, 'secrets': True, 'cached_images': True, 'migration_tree': True,
-            'schema': False, 'services': False, 'runtime_evidence': False})
+            'schema': False, 'services': False, 'postgres': False, 'nats': False, 's3': False, 'no_work': False, 'runtime_evidence': False})
         self.assertEqual(len(self.calls), 11)
 
-    def test_catalog_and_cached_validators_cannot_promote_schema_or_readiness(self):
-        fixture = CatalogObservationTests(); fixture.rt = self.rt; fixture.manifest = self.manifest
-        fixture.container = postgres_wire(self.manifest['images']['postgres']['image_id'], self.rt.DATA_ROOT, self.rt.SECRET_ROOT)
-        fixture.observation = catalog_wire(); fixture.calls = []; fixture.children = []; fixture.after = None; fixture.sql_payload = None
-        fixture.application_code_executions = 0
-        for result in (True, False, AssertionError('offline validator must be unreachable')):
-            option = {'side_effect': result} if isinstance(result, Exception) else {'return_value': result}
-            with patch.object(self.rt, 'validate_schema_ledger', **option) as offline, patch.object(subprocess, 'Popen', side_effect=fixture.fake_exec), patch.object(self.rt.selectors, 'DefaultSelector', side_effect=FakeSchemaSelector):
-                code, receipt = self.deploy()
-            offline.assert_not_called()
-            self.assertEqual(code, 3); self.assertEqual(receipt['failure_code'], 'missing_dependency')
-            self.assertTrue(receipt['checks']['cached_images']); self.assertTrue(receipt['checks']['migration_tree'])
-            self.assertFalse(receipt['checks']['schema']); self.assertFalse(receipt['checks']['services']); self.assertFalse(receipt['checks']['runtime_evidence'])
-            self.assertEqual(len(fixture.calls), 3); self.assertEqual(fixture.application_code_executions, 0)
-            fixture.calls.clear()
-        for error, expected in ((FileNotFoundError('opaque-do-not-print'), 3), (subprocess.TimeoutExpired('fake', 5), 5)):
-            with patch.object(subprocess, 'Popen', side_effect=error):
-                code, receipt = self.deploy()
-            self.assertEqual(code, expected); self.assertFalse(receipt['checks']['schema'])
+    def test_check_passes_only_after_live_schema_graph_and_readyz_observations(self):
+        events=[]
+        def schema(manifest):
+            self.assertEqual(manifest,self.manifest);events.append('schema')
+            return {'version':2,'migrations':['001_initial','002_next']}
+        def graph(manifest,config,deadline):
+            self.assertEqual((manifest,config),(self.manifest,self.config));events.append('graph')
+            return {'services':'fresh-identities'}
+        with patch.object(self.rt,'collect_postgres_schema',side_effect=schema), patch.object(
+                self.rt,'_collect_service_graph',side_effect=graph), patch.object(
+                self.rt,'_collect_readyz',side_effect=lambda:events.append('readyz')), patch.object(
+                self.rt,'collect_postgres_catalog',side_effect=AssertionError('legacy catalog cannot certify check')):
+            code,receipt=self.rt.deploy_cli(['check',SHA])
+        self.assertEqual(code,0);self.assertEqual(receipt['status'],'passed')
+        self.assertEqual(events,['schema','graph','readyz','graph'])
+        self.assertEqual(set(receipt['checks']),self.rt.CHECK_NAMES)
+        self.assertTrue(all(value is True for value in receipt['checks'].values()))
+
+    def test_check_rejects_missing_false_extra_and_nonboolean_runtime_evidence(self):
+        valid=dict.fromkeys(('schema','services','postgres','nats','s3','no_work','runtime_evidence'),True)
+        candidates=[None,{},dict(valid,extra=True)]
+        for name in valid:
+            missing=dict(valid);missing.pop(name);candidates.append(missing)
+            for wrong in (False,1,None):
+                malformed=dict(valid);malformed[name]=wrong;candidates.append(malformed)
+        for value in candidates:
+            with self.subTest(value=value),patch.object(self.rt,'collect_runtime_readiness',return_value=value):
+                code,receipt=self.deploy()
+                self.assertEqual(code,3)
+                self.assertFalse(receipt['checks']['schema']);self.assertFalse(receipt['checks']['runtime_evidence'])
+
+    def test_catalog_only_and_collector_failures_never_promote_check(self):
+        for error,expected in ((self.rt.ContractError('opaque-do-not-print'),3),
+                               (FileNotFoundError('opaque-do-not-print'),3),
+                               (subprocess.TimeoutExpired('fake',5),5)):
+            with patch.object(self.rt,'collect_postgres_catalog',return_value={}) as catalog, patch.object(
+                    self.rt,'collect_postgres_schema',side_effect=error) as schema:
+                code,receipt=self.deploy()
+            self.assertEqual(code,expected);self.assertFalse(receipt['checks']['schema'])
+            self.assertFalse(receipt['checks']['runtime_evidence'])
+            schema.assert_called_once_with(self.manifest);catalog.assert_not_called()
 
     def test_every_cached_role_requires_selected_digest_and_local_image_id(self):
         for role in self.images:

@@ -1431,10 +1431,10 @@ def validate_runtime_secret_files():
 
 
 def deploy_cli(argv):
-    """Bounded check-only stage. Every mutation verb remains unavailable.
+    """Observe installed prerequisites and live schema/service readiness.
 
-    Partial local observations never certify start: actual schema, service/no-work
-    readiness and native credential rights collectors are absent.
+    This read-only path uses the same real collectors as lifecycle readiness.
+    It never schedules work or broadens the separate mutation entry point.
     """
     try:
         args = parse_helper_args('deploy.sh', argv)
@@ -1443,7 +1443,7 @@ def deploy_cli(argv):
     if argv[0] != 'check':
         return 3, operation_receipt(args['operation'], args['source_sha'], None, 3, {'runtime_evidence': False}, 'missing_dependency')
     checks = {name: False for name in ('config', 'manifest', 'disk_uuid', 'metadata_guard', 'storage_guard',
-                                      'secrets', 'cached_images', 'migration_tree', 'schema', 'services', 'runtime_evidence')}
+                                      'secrets', 'cached_images', 'migration_tree', 'schema', 'services', 'postgres', 'nats', 's3', 'no_work', 'runtime_evidence')}
     code, failure = 3, 'missing_dependency'
     try:
         require(os.geteuid() == 0)
@@ -1471,9 +1471,11 @@ def deploy_cli(argv):
         checks['cached_images'] = True
         validate_installed_migration_tree(manifest)
         checks['migration_tree'] = True
-        collect_postgres_catalog(manifest)
-        # Catalog metadata cannot establish the live schema version.
-        # Intentionally retain missing_dependency/exit3 even when all above pass.
+        runtime = collect_runtime_readiness(manifest, config)
+        exact_object(runtime, ('schema', 'services', 'postgres', 'nats', 's3', 'no_work', 'runtime_evidence'))
+        require(all(type(value) is bool and value is True for value in runtime.values()))
+        checks.update(runtime)
+        code, failure = 0, None
     except subprocess.TimeoutExpired:
         code, failure = 5, 'operation_timed_out'
     except (OSError, ContractError, UnicodeError):
