@@ -133,10 +133,10 @@ class ProvisionOrderingTests(unittest.TestCase):
                     def validate_guard_tables(self,*args):
                         events.append(('validated','guard'))
                         if not guard_ok: raise ValueError('synthetic missing guard')
-                op = p.Provision(Files(),{'packages':[],'data_filesystem_uuid':'a'}, {},[])
+                op = p.Provision(Files(),{'packages':[],'data_filesystem_uuid':'a','data_device_major_minor':'8:16'}, {},[])
                 def run(argv,*args,**kwargs):
                     events.append(('command',argv))
-                    if 'findmnt' in argv[0]: return b'{"filesystems":[{"fstype":"ext4","options":"rw,nodev,nosuid"}]}'
+                    if 'findmnt' in argv[0]: return b'{"filesystems":[{"target":"/var/lib/autodata","uuid":"a","fstype":"ext4","options":"rw,nodev,nosuid","maj:min":"8:16"}]}'
                     if 'nft' in argv[0]: return b'{}'
                     if 'version' in argv: return b'1'
                     return b''
@@ -150,7 +150,7 @@ class ProvisionOrderingTests(unittest.TestCase):
                     if str(path) in ('/usr/bin/docker','/usr/sbin/nft','/usr/bin/findmnt','/usr/sbin/mkfs.ext4','/usr/bin/python3'):
                         return SimpleNamespace(st_mode=0o100755,st_uid=0)
                     return original_stat(path,*args,**kwargs)
-                with patch.object(op,'observe'),patch.object(op,'device',return_value='/dev/accepted'),patch.object(op,'run',side_effect=verified_run),patch.object(p,'inhibit_starts',return_value=nullcontext()),patch.object(p,'Journal',Journal),patch.object(p,'make_directory',side_effect=lambda path,*args: events.append(('directory',path))),patch.object(p,'write_new'),patch.object(p,'tighten_mount_root'),patch.object(p,'load_module',return_value=Runtime()),patch.object(p.os,'stat',side_effect=binaries):
+                with patch.object(op,'observe'),patch.object(op,'device',return_value='/dev/accepted'),patch.object(op,'run',side_effect=verified_run),patch.object(p.os.path,'exists',return_value=False),patch.object(p,'inhibit_starts',return_value=nullcontext()),patch.object(p,'Journal',Journal),patch.object(p,'make_directory',side_effect=lambda path,*args: events.append(('directory',path))),patch.object(p,'write_new'),patch.object(p,'initialize_data_directories',side_effect=lambda *args: events.append(('directory',p.DATA+'/postgres'))),patch.object(p,'pristine_docker',side_effect=lambda *args,**kwargs: events.append(('validated','docker-empty'))),patch.object(p,'tighten_mount_root'),patch.object(p,'load_module',return_value=Runtime()),patch.object(p.os,'stat',side_effect=binaries):
                     if guard_ok: self.assertEqual(op.apply()['status'],'passed')
                     else:
                         with self.assertRaises(ValueError): op.apply()
@@ -158,6 +158,7 @@ class ProvisionOrderingTests(unittest.TestCase):
                 if guard_ok:
                     self.assertLess(events.index(('validated','mount')),events.index(('directory',p.DATA+'/postgres')))
                     self.assertLess(events.index(('validated','guard')),events.index(start))
+                    self.assertLess(events.index(('validated','docker-empty')),events.index(start))
                 else: self.assertNotIn(start,events)
                 formatting = [argv for kind,argv in events if kind == 'command' and 'mkfs.ext4' in argv[0]]
                 self.assertEqual(formatting,[['/usr/sbin/mkfs.ext4','-U','a','/dev/accepted']])
@@ -193,3 +194,62 @@ class MaterializedBundleTests(unittest.TestCase):
             # Owner inventory acceptance cannot authorize paths outside the fixed layout.
             expected['files'][0]['path'] = '../outside'
             with self.assertRaises(ValueError): provision.validate_inventory(first,expected,sha)
+
+class ReviewDeviceAndDaemonTests(unittest.TestCase):
+    def test_uuid_collision_is_rejected_before_formatting(self):
+        p = load('host_provision')
+        op = p.Provision(None,{'data_filesystem_uuid':'12345678-1234-4234-8234-123456789abc'},None,[])
+        calls = []
+        def scan(argv,**kwargs): calls.append(argv); return b'/dev/other\n'
+        with patch.object(op,'run',side_effect=scan),patch.object(p.os.path,'lexists',return_value=False):
+            with self.assertRaises(ValueError): op.uuid_unused()
+        self.assertFalse(any('mkfs.ext4' in arg for argv in calls for arg in argv))
+        self.assertIn('--cache-file',calls[0]); self.assertIn('/dev/null',calls[0])
+        with patch.object(op,'run',return_value=b''),patch.object(p.os.path,'lexists',return_value=False): op.uuid_unused()
+
+    def test_mount_same_uuid_on_wrong_device_is_rejected(self):
+        p = load('host_provision')
+        a = {'data_filesystem_uuid':'12345678-1234-4234-8234-123456789abc','data_device_major_minor':'8:16'}
+        op = p.Provision(None,a,None,[])
+        for device in ('8:0','8:16'):
+            data = json.dumps({'filesystems':[{'target':p.DATA,'uuid':a['data_filesystem_uuid'],'fstype':'ext4','options':'rw,nodev,nosuid','maj:min':device}]}).encode()
+            with patch.object(op,'run',return_value=data):
+                if device == '8:16': op.verify_data_mount()
+                else:
+                    with self.assertRaises(ValueError): op.verify_data_mount()
+
+    @unittest.skipUnless(os.geteuid() == 0,'root-owned temporary filesystem test')
+    def test_persisted_docker_containers_and_containerd_state_are_rejected(self):
+        p = load('host_provision')
+        with tempfile.TemporaryDirectory(dir='/root') as directory:
+            root = Path(directory); docker = root/'docker'; containerd = root/'containerd'
+            docker.mkdir(); containerd.mkdir()
+            with patch.object(p,'DOCKER_STATE_DIRS',(str(docker),str(containerd))),patch.object(p,'DOCKER_CONFIGURATION_DIRS',()),patch.object(p,'DOCKER_UNIT_OVERRIDES',()):
+                with p.Pins() as pins: p.pristine_docker(pins)
+                container = docker/'containers'; container.mkdir(); (container/'restartable').write_text('synthetic stopped container')
+                with p.Pins() as pins:
+                    with self.assertRaises(ValueError): p.pristine_docker(pins)
+                (container/'restartable').unlink(); container.rmdir(); (containerd/'metadata.db').write_text('synthetic metadata')
+                with p.Pins() as pins:
+                    with self.assertRaises(ValueError): p.pristine_docker(pins)
+
+    def test_mismatched_mount_descriptor_never_chmods(self):
+        from types import SimpleNamespace
+        p = load('host_provision')
+        with patch.object(p.os,'open',return_value=123),patch.object(p.os,'close'),patch.object(p.os,'fstat',return_value=SimpleNamespace(st_uid=0,st_gid=0,st_mode=0o40755,st_dev=os.makedev(8,0))),patch.object(p.os,'fchmod') as chmod:
+            with self.assertRaises(ValueError): p.tighten_mount_root('8:16')
+            chmod.assert_not_called()
+
+class BoundDataDirectoryTests(unittest.TestCase):
+    @unittest.skipUnless(os.geteuid() == 0,'root-owned temporary filesystem test')
+    def test_directory_creation_stays_on_the_pinned_accepted_filesystem(self):
+        p = load('host_provision')
+        with tempfile.TemporaryDirectory(dir='/root') as directory,patch.object(p,'DATA',directory):
+            value = os.stat(directory); accepted = str(os.major(value.st_dev))+':'+str(os.minor(value.st_dev))
+            with p.Pins() as pins:
+                with self.assertRaises(ValueError): p.initialize_data_directories(pins,'999:999')
+                self.assertEqual(os.listdir(directory),[])
+                p.initialize_data_directories(pins,accepted)
+            for name,uid in (('postgres',999),('caddy',0),('nats',1000),('seaweedfs',1000),('operations',0)):
+                actual = os.stat(Path(directory)/name)
+                self.assertEqual((actual.st_uid,actual.st_gid,actual.st_mode & 0o777,actual.st_dev),(uid,uid,0o700,value.st_dev))

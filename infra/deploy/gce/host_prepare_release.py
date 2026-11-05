@@ -46,6 +46,19 @@ def validate_resume(manifest,journal,observed,accepted):
             journal.get('status') == 'incomplete' and 'postgres-created' in journal.get('stages',[]))
     require(type(observed) is list and observed == accepted and observed == names[:len(observed)]); return True
 
+def validate_resume_journal(manifest,journal,approval,accepted_prefix):
+    # All authority that can be checked without PostgreSQL must precede even
+    # lock-file/rendered-file creation, not merely the migration command.
+    require(type(journal) is dict and journal.get('source_sha') == manifest['source_sha'] and
+            journal.get('operation') in ('initialize-fresh-staging-database','resume-created-staging-database') and
+            journal.get('status') == 'incomplete' and type(journal.get('stages')) is list and
+            'postgres-created' in journal['stages'])
+    for key in ('manifest_raw_sha256','service_config_sha256','bundle_inventory_sha256','image_cache_receipt_sha256'):
+        require(journal.get(key) == approval[key])
+    names = [item['name'][:-4] for item in manifest['migrations']['files']]
+    require(type(accepted_prefix) is list and accepted_prefix == names[:len(accepted_prefix)])
+    return True
+
 class Preparation:
     def __init__(self,pins,approval,config,runtime,executor=p.command):
         self.pins,self.a,self.config,self.rt,self.execute = pins,approval,config,runtime,executor
@@ -139,8 +152,18 @@ class Preparation:
         query = ("SELECT json_agg(json_build_object('name',rolname,'safe',NOT(rolsuper OR rolcreatedb OR rolcreaterole OR rolreplication OR rolbypassrls OR rolinherit) AND rolcanlogin AND NOT EXISTS(SELECT FROM pg_auth_members WHERE member=r.oid))) FROM pg_roles r WHERE rolname IN ("+names+");\n").encode()
         values = p.strict_json(self.sql(query)); require(type(values) is list and len(values) == len(ROLES))
         require({item.get('name') for item in values} == {'autodata_'+name for name in ROLES} and all(item == {'name':item['name'],'safe':True} for item in values))
+    def resume_journal(self,manifest):
+        if self.a['resume'] is None: return None
+        matches = []
+        for path in Path(p.RECEIPTS).glob('*.json'):
+            raw = self.pins.read(str(path))
+            if p.digest(raw) == self.a['resume']['journal_sha256']: matches.append(p.strict_json(raw))
+        require(len(matches) == 1)
+        validate_resume_journal(manifest,matches[0],self.a,self.a['resume']['observed_ledger_prefix'])
+        return matches[0]
     def database(self):
         self.prerequisites(); manifest = self.installed(); self.cached()
+        resume_record = self.resume_journal(manifest)
         role_sql = self.pins.read(BIN+'/host-bootstrap-roles.sql',0o444)
         grants = self.pins.read(BIN+'/runtime-grants.sql',0o444)
         require(p.digest(role_sql) == self.a['bootstrap_roles_sha256'] and p.digest(grants) == self.a['runtime_grants_sha256'])
@@ -174,11 +197,7 @@ class Preparation:
                 self.pins.directory(p.DATA+'/postgres',0o700,999,999)
                 if not resume: require(os.listdir(p.DATA+'/postgres') == [])
                 else:
-                    journals = []
-                    for path in Path(p.RECEIPTS).glob('*.json'):
-                        raw = self.pins.read(str(path))
-                        if p.digest(raw) == self.a['resume']['journal_sha256']: journals.append(p.strict_json(raw))
-                    require(len(journals) == 1)
+                    validate_resume_journal(manifest,resume_record,self.a,self.a['resume']['observed_ledger_prefix'])
                 lifecycle = sibling('host_activation')
                 bundle = self.rt.render_bundle(manifest,self.config)
                 # Existing activation materializer requires its own Pins, keeping
@@ -199,8 +218,7 @@ class Preparation:
                 self.rt.validate_postgres_container(manifest,p.strict_json(self.run(p.DOCKER+['container','inspect','--format',self.rt.POSTGRES_INSPECT_TEMPLATE,CONTAINER])))
                 if resume:
                     observed = p.strict_json(self.sql(b"SELECT COALESCE(json_agg(version ORDER BY version COLLATE \"C\"),'[]'::json) FROM ONLY public.schema_migrations;\n"))
-                    validate_resume(manifest,journals[0],observed,self.a['resume']['observed_ledger_prefix'])
-                    require(journals[0].get('manifest_raw_sha256') == self.a['manifest_raw_sha256'])
+                    validate_resume(manifest,resume_record,observed,self.a['resume']['observed_ledger_prefix'])
                     self.role_facts()
                 self.sql(role_sql)
                 for name in ROLES: self.sql(password_sql('autodata_'+name,passwords[name]))

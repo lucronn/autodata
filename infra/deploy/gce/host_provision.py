@@ -25,6 +25,9 @@ DATA = '/var/lib/autodata'
 RUN = '/run/autodata'
 DEVICE = '/dev/disk/by-id/google-autodata-data'
 POLICY = '/usr/sbin/policy-rc.d'
+DOCKER_STATE_DIRS = ('/var/lib/docker','/var/lib/containerd','/run/docker','/run/containerd')
+DOCKER_CONFIGURATION_DIRS = ('/etc/docker','/etc/containerd')
+DOCKER_UNIT_OVERRIDES = tuple(prefix+'/'+name for prefix in ('/etc/systemd/system','/run/systemd/system','/usr/local/lib/systemd/system') for name in ('docker.service','docker.socket','containerd.service','docker.service.d','docker.socket.d','containerd.service.d')) + ('/etc/default/docker',)
 ENV = {'PATH':'/usr/sbin:/usr/bin:/sbin:/bin','HOME':'/nonexistent','LANG':'C','LC_ALL':'C'}
 DOCKER = ['/usr/bin/docker','--host','unix:///var/run/docker.sock']
 COMMON = ('schema_version','operation','authorization_id','expires_at','source_sha','service_config_sha256','bundle_inventory_sha256','environment')
@@ -228,12 +231,28 @@ def make_directory(path,mode=0o700,uid=0,gid=0):
         value = os.lstat(path); require(stat.S_ISDIR(value.st_mode) and value.st_uid == uid and value.st_gid == gid and stat.S_IMODE(value.st_mode) == mode); return
     os.chown(path,uid,gid); os.chmod(path,mode)
 
-def tighten_mount_root():
+def tighten_mount_root(expected_major_minor):
     fd = os.open(DATA,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW|os.O_CLOEXEC)
     try:
         value = os.fstat(fd); require(value.st_uid == value.st_gid == 0 and not value.st_mode & 0o022)
+        require(str(os.major(value.st_dev))+':'+str(os.minor(value.st_dev)) == expected_major_minor)
         os.fchmod(fd,0o700); os.fsync(fd)
     finally: os.close(fd)
+
+def initialize_data_directories(pins,expected_major_minor):
+    root = pins.directory(DATA,0o700)
+    device = os.fstat(root).st_dev
+    require(str(os.major(device))+':'+str(os.minor(device)) == expected_major_minor)
+    for name,uid in (('postgres',999),('caddy',0),('nats',1000),('seaweedfs',1000),('operations',0)):
+        # mkdirat remains on the accepted mount even if its pathname disappears.
+        # Never let an absolute-path retry fall back to the underlying boot disk.
+        os.mkdir(name,0o700,dir_fd=root)
+        child = os.open(name,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW|os.O_CLOEXEC,dir_fd=root)
+        try:
+            require(os.fstat(child).st_dev == device)
+            os.fchown(child,uid,uid); os.fchmod(child,0o700); os.fsync(child)
+        finally: os.close(child)
+    os.fsync(root)
 
 def write_new(path,data,mode=0o600):
     fd = os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW|os.O_CLOEXEC,mode)
@@ -285,6 +304,17 @@ def inhibit_starts(pins):
         require(Path(path).read_bytes() == b'#!/bin/sh\nexit 101\n'); os.unlink(path)
         if prior is not None: os.rename(path+'.autodata-saved',path)
 
+def pristine_docker(pins,check_configuration=True):
+    # A stopped daemon can retain restartable containers; never start it to ask.
+    # This first-host profile accepts only empty default state locations and no
+    # preexisting daemon configuration that could redirect those locations.
+    for path in DOCKER_STATE_DIRS + (DOCKER_CONFIGURATION_DIRS if check_configuration else ()):
+        if os.path.lexists(path):
+            pins.directory(path)
+            require(os.listdir(path) == [])
+    if check_configuration:
+        require(all(not os.path.lexists(path) for path in DOCKER_UNIT_OVERRIDES))
+
 class Provision:
     def __init__(self,pins,approval,config,inventory,executor=command):
         self.pins,self.a,self.config,self.inventory,self.execute = pins,approval,config,inventory,executor
@@ -292,6 +322,22 @@ class Provision:
     def run(self,argv,timeout=120,allowed_codes=(0,)):
         self.pins.recheck(); validate_approval(self.a,self.a['source_sha'],'provision')
         return self.execute(argv,timeout=timeout,deadline=self.deadline,allowed_codes=allowed_codes)
+    def uuid_unused(self):
+        # Never trust the persistent blkid cache when accepting format authority.
+        alias = '/dev/disk/by-uuid/'+self.a['data_filesystem_uuid']
+        require(not os.path.lexists(alias))
+        output = self.run(['/usr/sbin/blkid','--cache-file','/dev/null','--output','device',
+                           '--match-token','UUID='+self.a['data_filesystem_uuid']],allowed_codes=(0,2))
+        require(output == b'')
+    def verify_data_mount(self):
+        observation = strict_json(self.run(['/usr/bin/findmnt','--json','--list','--mountpoint',DATA,
+            '--output','TARGET,UUID,FSTYPE,OPTIONS,MAJ:MIN']))
+        exact(observation,('filesystems',)); require(type(observation['filesystems']) is list and len(observation['filesystems']) == 1)
+        mounted = observation['filesystems'][0]; exact(mounted,('target','uuid','fstype','options','maj:min'))
+        require(mounted['target'] == DATA and mounted['uuid'] == self.a['data_filesystem_uuid'] and
+                mounted['maj:min'] == self.a['data_device_major_minor'] and mounted['fstype'] == 'ext4')
+        require(type(mounted['options']) is str and {'rw','nodev','nosuid'} <= set(mounted['options'].split(',')) and
+                'ro' not in mounted['options'].split(','))
     def observe(self):
         a = self.a
         require(Path('/etc/os-release').read_text().split('VERSION_ID=')[1].splitlines()[0].strip('"') == '12')
@@ -299,9 +345,11 @@ class Provision:
         require(self.run(['/usr/bin/dpkg','--print-architecture']).strip() == b'amd64')
         require(Path('/proc/sys/kernel/random/boot_id').read_text().strip() == a['boot_id'])
         require(digest(Path('/etc/machine-id').read_bytes()) == a['machine_id_sha256'])
+        self.uuid_unused()
         self.device()
         require(not os.path.exists('/var/run/docker.sock'))
         require(self.run(['/usr/bin/systemctl','is-active','docker.service'],allowed_codes=(3,4)).strip() in (b'inactive',b'unknown'))
+        pristine_docker(self.pins)
         # A persistent prior journal must be explicitly recovered, never retried.
         require(not any(strict_json(self.pins.read(str(path))).get('operation') == 'prepare-new-empty-staging-host' for path in Path(RECEIPTS).glob('*.json')))
         require(not os.path.lexists('/usr/sbin/policy-rc.d.autodata-saved'))
@@ -359,7 +407,7 @@ class Provision:
         plugin = self.run(DOCKER+['compose','version','--short']).decode().strip().removeprefix('v')
         package_version = next(item['version'] for item in self.a['packages'] if item['name'] == 'docker-compose-plugin').split(':')[-1].split('-')[0]
         require(plugin == package_version)
-        path = self.device(); self.run(['/usr/sbin/mkfs.ext4','-U',self.a['data_filesystem_uuid'],path]); journal.stage('formatted')
+        path = self.device(); self.uuid_unused(); self.run(['/usr/sbin/mkfs.ext4','-U',self.a['data_filesystem_uuid'],path]); journal.stage('formatted')
         make_directory('/opt/autodata'); make_directory('/opt/autodata/bin',0o755); make_directory('/opt/autodata/releases'); make_directory('/opt/compose',0o755)
         for item in self.inventory:
             target = '/'+item['path']
@@ -384,13 +432,16 @@ class Provision:
         observations = [strict_json(self.run(['/usr/bin/findmnt','--json','--list','--mountpoint',target,'--output','TARGET,UUID,FSTYPE,OPTIONS'])) for target in (DATA,RUN)]
         rt.validate_mount_observations(self.config,*observations)
         require(observations[0]['filesystems'][0]['fstype'] == 'ext4' and {'nodev','nosuid'} <= set(observations[0]['filesystems'][0]['options'].split(',')))
-        tighten_mount_root()
+        self.verify_data_mount()
+        tighten_mount_root(self.a['data_device_major_minor'])
         self.pins.directory(DATA,0o700); self.pins.directory(RUN,0o700)
-        for name,uid in (('postgres',999),('caddy',0),('nats',1000),('seaweedfs',1000),('operations',0)): make_directory(DATA+'/'+name,0o700,uid,uid)
+        initialize_data_directories(self.pins,self.a['data_device_major_minor'])
         journal.stage('mounted')
         self.run(['/usr/bin/systemctl','start','autodata-metadata-guard.service'])
         tables = {family:strict_json(self.run(['/usr/sbin/nft','--json','--numeric','list','table',family,'autodata_guard'])) for family in ('inet','bridge')}
         rt.validate_guard_tables(tables); journal.stage('guard-verified')
+        pristine_docker(self.pins,check_configuration=False)
+        require(not os.path.exists('/var/run/docker.sock'))
         self.run(['/usr/bin/systemctl','start','docker.service']); journal.stage('docker-started'); journal.success()
         return journal.value
 

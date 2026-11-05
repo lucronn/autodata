@@ -176,3 +176,29 @@ class DatabaseQuiescenceTests(unittest.TestCase):
                 with self.assertRaises(ValueError): operation.no_applications()
         with patch.object(p.os.path,'lexists',return_value=False),patch.object(operation,'run',return_value=b'abc123456789 postgres\n'):
             operation.no_applications(resume=True)
+
+class ResumePreMutationTests(unittest.TestCase):
+    def test_static_resume_authority_is_checked_before_private_inputs_or_mutation(self):
+        import tempfile
+        p = load('host_prepare_release')
+        manifest = {'source_sha':'a'*40,'migrations':{'files':[{'name':'001_initial.sql'}]}}
+        a = {'source_sha':'a'*40,'manifest_raw_sha256':'b'*64,'service_config_sha256':'c'*64,
+             'bundle_inventory_sha256':'d'*64,'image_cache_receipt_sha256':'e'*64}
+        valid = {**a,'operation':'initialize-fresh-staging-database','status':'incomplete','stages':['postgres-created']}
+        cases = [('source_sha','f'*40),('operation','cache-accepted-staging-images'),('status','passed'),
+                 ('stages',[]),('manifest_raw_sha256','0'*64),('service_config_sha256','0'*64),
+                 ('bundle_inventory_sha256','0'*64),('image_cache_receipt_sha256','0'*64)]
+        for key,value in cases:
+            with self.subTest(key=key),tempfile.TemporaryDirectory() as directory:
+                record = {**valid,key:value}; raw = json.dumps(record).encode(); target = Path(directory)/'prior.json'; target.write_bytes(raw)
+                approval = {**a,'resume':{'journal_sha256':hashlib.sha256(raw).hexdigest(),'observed_ledger_prefix':[]}}
+                class Files:
+                    def read(self,path,*args,**kwargs):
+                        if path == str(target): return raw
+                        raise AssertionError('unvalidated resume reached later input')
+                op = p.Preparation(Files(),approval,None,None)
+                with patch.object(p.p,'RECEIPTS',directory),patch.object(op,'prerequisites'),patch.object(op,'installed',return_value=manifest),patch.object(op,'cached'),patch.object(p,'make_state') as make_state,patch.object(op,'compose') as compose,patch.object(p,'sibling') as sibling:
+                    with self.assertRaises(ValueError): op.database()
+                    make_state.assert_not_called(); compose.assert_not_called(); sibling.assert_not_called()
+        self.assertTrue(p.validate_resume_journal(manifest,valid,a,[]))
+        with self.assertRaises(ValueError): p.validate_resume_journal(manifest,valid,a,['999_foreign'])
