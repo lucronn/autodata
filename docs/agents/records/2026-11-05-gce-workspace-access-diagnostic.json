@@ -137,12 +137,36 @@
   "ordinal": 67,
   "branch_assignment": "codex/gce-workspace-access-diagnostic",
   "approved_proposal": {
-    "path": "/home/corp/autodata-evidence/task67-standalone-diagnostic-design/PROPOSAL.md",
-    "sha256": "e8a9e4ebc22e270e36c887ab3aa687b0d679a92f0f772f71adf36aebe5d720f2",
-    "review_path": "/home/corp/autodata-evidence/task67-standalone-diagnostic-review/REPORT.md",
-    "review_sha256": "4463136c0a6a4f7b50e93956b41d4cc9c9ce1d5482c59ac3e62d03950c2ef53b",
-    "review_verdict": "PASS_EXTERNAL_DESIGN_ONLY"
+    "path": "/home/corp/autodata-evidence/task67-standalone-diagnostic-design-revised/PROPOSAL.md",
+    "sha256": "559b97b40993099bc00c87b64d6cc6bc337fe14d34d713b036fc64e2afa299df",
+    "review_path": "/home/corp/autodata-evidence/task67-corrected-design-review/REPORT.md",
+    "review_sha256": "0557d89e14ac9ec8982855cf377cc37b55b98446e9a0d0e5326608079b1d0644",
+    "review_verdict": "PASS_EXTERNAL_DESIGN_ONLY",
+    "historical_original": {
+      "path": "/home/corp/autodata-evidence/task67-standalone-diagnostic-design/PROPOSAL.md",
+      "sha256": "e8a9e4ebc22e270e36c887ab3aa687b0d679a92f0f772f71adf36aebe5d720f2",
+      "review_path": "/home/corp/autodata-evidence/task67-standalone-diagnostic-review/REPORT.md",
+      "review_sha256": "4463136c0a6a4f7b50e93956b41d4cc9c9ce1d5482c59ac3e62d03950c2ef53b",
+      "review_verdict": "PASS_EXTERNAL_DESIGN_ONLY"
+    }
   },
   "reviewed_gce_script_sha256": "5adc3b0b3b56c75f8df1faed2dd461a71ac37c3622b973af185baf99941e3502",
-  "frozen_diagnostic_script_sha256": "124c6b8b45971344417a94c2efd6702f950ab7bcffbc9edcf14fab1551aa137c"
+  "frozen_diagnostic_script_sha256": "7f4557b390b433a14cc8cdfe6dbf82bfeec86c11898c22603cb7c2b8a4adb3d6",
+  "planning_correction": {
+    "superseded_checkpoint_sha": "2ba3d923112092e9ae98975f2e09496e3a755569",
+    "historical_frozen_diagnostic_script_sha256": "124c6b8b45971344417a94c2efd6702f950ab7bcffbc9edcf14fab1551aa137c",
+    "reason": "Independent script preflight REVISE: subprocess PIPE collection and security read_text sliced only after unbounded collection.",
+    "review_path": "/home/corp/autodata-evidence/task67-script-preflight/REPORT.md",
+    "review_sha256": "91956f0978c48f95b786b2c6585f7857b51cd383146fbe4953f582c79353567e",
+    "review_verdict": "REVISE_ORIGINAL_FROZEN_LISTING",
+    "replacement_path": "/home/corp/autodata-evidence/task67-script-preflight/BOUNDED-REPLACEMENT.md",
+    "replacement_sha256": "f419da9be78a3f5c1c6b57e40b806ab9e55bdfeb1985a90c877a6a865f2bc98d",
+    "replacement_controls_path": "/home/corp/autodata-evidence/task67-script-preflight/bounded-capture-checks.json",
+    "replacement_controls_sha256": "8fcda5925b6aed0e06892179189fc90bfa77c159170338c3ab838e2a57dad151",
+    "corrected_design_review": "PASS_EXTERNAL_DESIGN_ONLY",
+    "corrected_checkpoint_review": "pending",
+    "implementation_dispatch": false,
+    "corrected_design_review_path": "/home/corp/autodata-evidence/task67-corrected-design-review/REPORT.md",
+    "corrected_design_review_sha256": "0557d89e14ac9ec8982855cf377cc37b55b98446e9a0d0e5326608079b1d0644"
+  }
 }

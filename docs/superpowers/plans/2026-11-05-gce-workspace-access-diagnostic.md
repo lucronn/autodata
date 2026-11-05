@@ -8,7 +8,7 @@
 
 **Tech stack:** GitHub Actions, Bash, Python3.12 and existing host metadata tools. No package installation.
 
-**Spec:** `docs/agents/specs/2026-11-05-gce-workspace-access-diagnostic.json`. The approved proposal below supplies the complete frozen assembly, inline Bash and validation contract.
+**Spec:** `docs/agents/specs/2026-11-05-gce-workspace-access-diagnostic.json`. The corrected proposal below supplies the complete frozen assembly, inline Bash and validation contract; independent corrected-design review passed (external design only; receipt below).
 
 ## Task67: standalone GCE workspace-access diagnostic — synchronized planning; checkpoint pending
 
@@ -30,7 +30,9 @@ Task65 source-push41983350226 and actual-PR41983396445 are terminal failures aft
 
 The future job observes metadata and runs the exact original UID1000 first preflight only. Preserve the existing required workflow/governance/R6 bytes and disabled profile. No helper/test/production change, source export, ACL/mode/group repair, alias creation, package install, GCE discovery, Compose or suite replacement is authorized. Missing/incomplete/mismatched provenance or cleanup evidence fails diagnosis. Green diagnostic grants no repair or acceptance credit.
 
-Approved external proposal `/home/corp/autodata-evidence/task67-standalone-diagnostic-design/PROPOSAL.md` SHA256 `e8a9e4ebc22e270e36c887ab3aa687b0d679a92f0f772f71adf36aebe5d720f2`; independent design PASS `/home/corp/autodata-evidence/task67-standalone-diagnostic-review/REPORT.md` SHA256 `4463136c0a6a4f7b50e93956b41d4cc9c9ce1d5482c59ac3e62d03950c2ef53b`. That verdict applies only to design.
+Historical approved external proposal `/home/corp/autodata-evidence/task67-standalone-diagnostic-design/PROPOSAL.md` SHA256 `e8a9e4ebc22e270e36c887ab3aa687b0d679a92f0f772f71adf36aebe5d720f2`; historical independent design PASS `/home/corp/autodata-evidence/task67-standalone-diagnostic-review/REPORT.md` SHA256 `4463136c0a6a4f7b50e93956b41d4cc9c9ce1d5482c59ac3e62d03950c2ef53b`. That verdict applies to the original design only.
+
+Planning correction after independent script preflight REVISE of checkpoint `2ba3d923112092e9ae98975f2e09496e3a755569`: both observer subprocess collectors now retain bounded output while draining/discarding excess under the existing deadline and cleaning their owned sessions; security labels read at most4097 bytes and report truncation. The original `run_gce` wrapper, original first preflight and DEVNULL search are unchanged. Revised immutable external proposal `/home/corp/autodata-evidence/task67-standalone-diagnostic-design-revised/PROPOSAL.md` SHA256 `559b97b40993099bc00c87b64d6cc6bc337fe14d34d713b036fc64e2afa299df`; corrected frozen Bash SHA256 (including final newline) `7f4557b390b433a14cc8cdfe6dbf82bfeec86c11898c22603cb7c2b8a4adb3d6`. Exact replacement `/home/corp/autodata-evidence/task67-script-preflight/BOUNDED-REPLACEMENT.md` SHA256 `f419da9be78a3f5c1c6b57e40b806ab9e55bdfeb1985a90c877a6a865f2bc98d`; independent original-script REVISE `/home/corp/autodata-evidence/task67-script-preflight/REPORT.md` SHA256 `91956f0978c48f95b786b2c6585f7857b51cd383146fbe4953f582c79353567e`. The original proposal/design PASS and gate-draft PASS remain historical and do not approve the corrected design. Independent corrected-design PASS (external design only) `/home/corp/autodata-evidence/task67-corrected-design-review/REPORT.md` SHA256 `0557d89e14ac9ec8982855cf377cc37b55b98446e9a0d0e5326608079b1d0644` approves the corrected frozen design only. Corrected checkpoint review and fresh narrow dispatch remain pending; synchronized goal/todos/tracking are unchanged. All authorities remain false, current implementation allowlist=[], credits0 and release unverified.
 
 Todo:
 
@@ -64,9 +66,9 @@ Tracking synchronization is retained above. Actual checkpoint sealing, standalon
 5. Obtain independent exact-candidate review before committing/pushing. A separate narrow coordinator push-run dispatch permits one coherent validated workflow-only push; retain actual candidate/workflow revision, raw terminal run/jobs/logs and artifact provenance. No PR is required. No automatic rerun.
 6. Report original probe, observer and cleanup outcomes independently and preserve unverified release/credits0. Follow the separately gated terminal decision in the contract.
 
-## Frozen approved design contract
+## Frozen corrected design contract
 
-The proposal was independently approved after its own pending-review status line was written. That historical line is omitted here; the rest of the approved contract is copied verbatim. Neither the proposal's imperative future steps nor design PASS establishes present synchronization, execution authority or test results.
+The original proposal was independently approved and subsequently received the bounded-collection REVISE above. Its historical pending-review status line is omitted here; the corrected external proposal remainder is copied verbatim. Independent corrected-design review passed (external design only; receipt above). Neither historical design PASS nor the proposal's imperative future steps establishes execution authority or test results.
 
 
 Goal: Diagnose UID1000 source and temporary-path access on a fresh hosted checkout of exact Task65 source without modifying the required verification workflow or granting repair or acceptance credit.
@@ -176,14 +178,50 @@ run_gce() {
 observe() {
   /usr/bin/timeout 45 /usr/bin/python3 -B - "$gce_temp" <<'PY'
 import json, os, pathlib, stat, subprocess, sys
+import os, selectors, signal, subprocess, time
+
+def bounded_capture(argv, *, limit, timeout):
+    # Retain at most limit bytes, drain/discard excess, and time-bound our owned session.
+    process = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                               start_new_session=True)
+    selector = selectors.DefaultSelector()
+    retained = bytearray()
+    truncated = False
+    deadline = time.monotonic() + timeout
+    selector.register(process.stdout, selectors.EVENT_READ)
+    try:
+        while selector.get_map() or process.poll() is None:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise subprocess.TimeoutExpired(argv, timeout, output=bytes(retained))
+            for key, _ in selector.select(min(remaining, 0.1)):
+                chunk = os.read(key.fd, 65536)
+                if not chunk:
+                    selector.unregister(key.fileobj)
+                    continue
+                room = limit - len(retained)
+                retained.extend(chunk[:room])
+                if len(chunk) > room:
+                    truncated = True
+        return process.returncode, bytes(retained), truncated
+    finally:
+        # Also stop descendants that could otherwise retain our pipe after the leader exits.
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        selector.close()
+        process.stdout.close()
+        process.wait(timeout=1)
+
 def emit(**value): print(json.dumps(value, sort_keys=True), flush=True)
 def attempt(label, operation):
     try: emit(label=label, result=operation())
     except OSError as error: emit(label=label, errno=error.errno, error=type(error).__name__)
 def command(argv):
     try:
-        result=subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=5, check=False)
-        emit(command=argv, exit=result.returncode, output=result.stdout[:16384].decode('utf-8','replace'), truncated=len(result.stdout)>16384)
+        code, output, truncated = bounded_capture(argv, limit=16384, timeout=5)
+        emit(command=argv, exit=code, output=output.decode('utf-8','replace'), truncated=truncated)
     except (OSError, subprocess.TimeoutExpired) as error:
         emit(command=argv, unavailable=type(error).__name__, errno=getattr(error,'errno',None))
 emit(observer='ambient', uid=os.getuid(), gid=os.getgid(), euid=os.geteuid(), egid=os.getegid(), groups=os.getgroups(), cwd=os.getcwd(), runner_temp=os.environ['RUNNER_TEMP'], interpreter=sys.executable, version=sys.version)
@@ -215,8 +253,12 @@ for target in paths:
                 command(['/usr/bin/findmnt','--noheadings','--target',name,'--output','TARGET,FSTYPE,OPTIONS'])
 emit(optional_getfacl_available=os.path.isfile('/usr/bin/getfacl'),optional_findmnt_available=os.path.isfile('/usr/bin/findmnt'))
 # Metadata only, bounded security labels; no complete /proc, environment or mount dumps.
+def security_label(name):
+    with open(name, 'rb') as stream:
+        value = stream.read(4097)
+    return dict(text=value[:4096].decode('utf-8','replace'), truncated=len(value)>4096)
 for name in ('/proc/self/attr/current','/sys/kernel/security/lsm'):
-    attempt(name,lambda: pathlib.Path(name).read_text()[:4096])
+    attempt(name,lambda: security_label(name))
 PY
 }
 observe >> "$evidence/metadata.log" 2>&1 || diag_rc=1
@@ -226,6 +268,42 @@ sudo -n /bin/chown 1000:1000 "$gce_temp" "$gce_temp/home" "$gce_temp/tmp"
 observe >> "$evidence/metadata.log" 2>&1 || diag_rc=1
 run_gce /usr/bin/timeout 45 /usr/bin/python3 -B - "$gce_python" <<'PY' > "$evidence/uid1000.log" 2>&1 || diag_rc=1
 import errno, json, os, pathlib, stat, subprocess, sys, tempfile
+import os, selectors, signal, subprocess, time
+
+def bounded_capture(argv, *, limit, timeout):
+    # Retain at most limit bytes, drain/discard excess, and time-bound our owned session.
+    process = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                               start_new_session=True)
+    selector = selectors.DefaultSelector()
+    retained = bytearray()
+    truncated = False
+    deadline = time.monotonic() + timeout
+    selector.register(process.stdout, selectors.EVENT_READ)
+    try:
+        while selector.get_map() or process.poll() is None:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise subprocess.TimeoutExpired(argv, timeout, output=bytes(retained))
+            for key, _ in selector.select(min(remaining, 0.1)):
+                chunk = os.read(key.fd, 65536)
+                if not chunk:
+                    selector.unregister(key.fileobj)
+                    continue
+                room = limit - len(retained)
+                retained.extend(chunk[:room])
+                if len(chunk) > room:
+                    truncated = True
+        return process.returncode, bytes(retained), truncated
+    finally:
+        # Also stop descendants that could otherwise retain our pipe after the leader exits.
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        selector.close()
+        process.stdout.close()
+        process.wait(timeout=1)
+
 def emit(**value): print(json.dumps(value, sort_keys=True),flush=True)
 def attempt(label,operation):
     try: emit(label=label,result=operation())
@@ -266,8 +344,10 @@ def temporary():
     return 'create_write_cleanup_ok'
 attempt('temporary_file',temporary)
 def interpreter():
-    result=subprocess.run([sys.argv[1],'-B','-c','import sys; print(sys.executable); print(sys.version)'],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=5,check=False)
-    return dict(exit=result.returncode,output=result.stdout[:4096].decode('utf-8','replace'))
+    code, output, truncated = bounded_capture(
+        [sys.argv[1],'-B','-c','import sys; print(sys.executable); print(sys.version)'],
+        limit=4096, timeout=5)
+    return dict(exit=code, output=output.decode('utf-8','replace'), truncated=truncated)
 try: attempt('setup_python_execution',interpreter)
 except subprocess.TimeoutExpired: emit(label='setup_python_execution',error='TimeoutExpired')
 PY
