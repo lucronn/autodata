@@ -204,6 +204,64 @@ class PreparationTests(unittest.TestCase):
             with self.subTest(mapping=list(mapping)):
                 self.assertEqual(merchant.evaluate_files(**{**self.paths,'policies':mapping})['status'],'blocked')
 
+    def test_symlinked_parent_directory_is_rejected(self):
+        alias = self.dir/'alias'
+        actual = self.dir/'actual'
+        actual.mkdir()
+        alias.symlink_to(actual, target_is_directory=True)
+        for key in ('manifest', 'approval', 'build_recipe', 'embed_source'):
+            original = self.paths[key]
+            (actual/original.name).write_bytes(original.read_bytes())
+            self.paths[key] = alias/original.name
+            with self.subTest(input=key): self.blocked()
+            self.paths[key] = original
+        for kind in KINDS:
+            original = self.paths['policies'][kind]
+            (actual/original.name).write_bytes(original.read_bytes())
+            self.paths['policies'][kind] = alias/original.name
+            with self.subTest(input=kind): self.blocked()
+            self.paths['policies'][kind] = original
+
+    def test_relative_paths_and_invalid_path_values(self):
+        original = self.paths['manifest']
+        self.paths['manifest'] = Path(os.path.relpath(original))
+        self.assertEqual(self.evaluate()['status'], 'prepared_offline')
+        for invalid in (None, 0, b'bytes-path', 'bad\x00path'):
+            with self.subTest(path=repr(invalid)):
+                self.paths['manifest'] = invalid
+                result = self.evaluate()
+                self.assertEqual(result['status'], 'blocked')
+                self.assertIn('manifest_file_invalid', result['reasons'])
+                self.assertIsNone(result['manifest_sha256'])
+        self.paths['manifest'] = original
+
+    def test_opened_ancestor_remains_pinned_during_directory_swap(self):
+        parent = self.dir/'parent'
+        parent.mkdir()
+        original = self.paths['manifest']
+        (parent/original.name).write_bytes(original.read_bytes())
+        self.paths['manifest'] = parent/original.name
+        moved = self.dir/'moved'
+        replacement = self.dir/'replacement'
+        replacement.mkdir()
+        (replacement/original.name).write_bytes(b'invalid replacement')
+        real_open = os.open
+        swapped = False
+
+        def swap_after_open(path, flags, **kwargs):
+            nonlocal swapped
+            descriptor = real_open(path, flags, **kwargs)
+            if path == 'parent' and not swapped:
+                parent.rename(moved)
+                parent.symlink_to(replacement, target_is_directory=True)
+                swapped = True
+            return descriptor
+
+        with patch('os.open', side_effect=swap_after_open):
+            self.assertEqual(self.evaluate()['status'], 'prepared_offline')
+        self.assertTrue(swapped)
+        self.blocked()  # A later evaluation must reject the new symlink ancestor.
+
     def test_nonregular_and_unreadable_files(self):
         path = self.paths['manifest']
         path.unlink()

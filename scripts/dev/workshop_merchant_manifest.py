@@ -34,14 +34,27 @@ EXTERNAL_PREREQUISITES = (
 
 
 def _read(path: Path, limit: int) -> bytes | None:
-    """Open once without following a leaf symlink; bound even changing files.
+    """Read through pinned directory descriptors without following any symlink.
 
-    O_NONBLOCK also prevents a nonregular input such as a FIFO from blocking
-    before fstat can reject it. No content or exception text escapes this helper.
+    Every path component is opened relative to the previously opened directory.
+    O_NONBLOCK prevents a FIFO leaf from blocking before fstat rejects it.
+    No content or exception text escapes this helper.
     """
-    descriptor = None
+    directory = descriptor = None
     try:
-        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        path = Path(path)
+        parts = path.parts
+        directory = os.open(path.anchor or '.', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        components = parts[1:] if path.anchor else parts
+        if not components:
+            return None
+        for component in components[:-1]:
+            child = os.open(component, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                            dir_fd=directory)
+            os.close(directory)
+            directory = child
+        descriptor = os.open(components[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                             dir_fd=directory)
         if not stat.S_ISREG(os.fstat(descriptor).st_mode):
             return None
         with os.fdopen(descriptor, 'rb') as stream:
@@ -53,6 +66,8 @@ def _read(path: Path, limit: int) -> bytes | None:
     finally:
         if descriptor is not None:
             os.close(descriptor)
+        if directory is not None:
+            os.close(directory)
 
 
 def _binding(raw: bytes) -> dict[str, object]:
