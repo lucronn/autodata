@@ -153,7 +153,7 @@ def main(argv: list[str] | None = None) -> None:
         args.base_url,
         token=source_connector_token("bankone"),
         provider="bankone",
-        timeout_seconds=args.timeout_seconds,
+        timeout=args.timeout_seconds,
     )
     batches, selection_rows, catalog_summary = fetch_bankone_batches(
         connector,
