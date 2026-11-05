@@ -183,12 +183,13 @@ The plan defines the authoritative file allowlist and secret/ACL details.
 Existing delivery leases, stable Nats-Msg-Id/idempotency_key and consumer
 deduplication remain required. Actual credential/role provisioning, private
 broker-config delivery and live service activation require separate deployment
-authorization. Candidate `e8473a792e86d7b19f7b2de2e22bc35b3c1cf5b3` has passed
+authorization. Candidate `8f3735820670a027e2237c62bf2b85dcb94f0cd3` has passed
 local real-service delivery/replay/ACL/outage verification; see
-`docs/verification/2026-11-05-production-outbox-relay.md`. Independent review
-identified the separate host activation application-list omission. Integration
-remains incomplete pending implementation of the synchronized scope amendment;
-no deployment has occurred.
+`docs/verification/2026-11-05-production-outbox-relay.md`. The separately gated
+host activation fix includes relay startup, stop, recovery and a bounded exact
+nine-service inventory. Local verification passes (433 host tests, 104 focused
+activation tests and the real-service smoke); final independent review remains
+pending. No deployment has occurred.
 
 ### Production relay activation scope amendment
 
@@ -202,7 +203,7 @@ Task index: `docs/agents/tasks/2026-11-03-production-release/production-outbox-r
 
 Additional concrete todo:
 
-- [ ] Include outbox-relay in host activation startup, stop, recovery and inventory, replace the eight-service inventory cap with the exact nine-service graph, and prove missing, stopped, duplicate, foreign or tenth-container rejection in activation regressions.
+- [x] Include outbox-relay in host activation startup, stop, recovery and inventory, replace the eight-service inventory cap with the exact nine-service graph, and prove missing, stopped, duplicate, foreign or tenth-container rejection in activation regressions.
 
 The exact normal-service graph is nine services: caddy, api, ingestion-http,
 article-worker, payment-reconciler, outbox-relay, postgres, nats and minio.

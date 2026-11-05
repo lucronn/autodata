@@ -10,7 +10,8 @@ Implementation branch `codex/production-outbox-relay-code`, worktree
 `/home/corp/.codex/worktrees/production-outbox-relay-code/autodata`.
 First wiring milestone `65867aae6731695fe71275fcae173ed8a75527c1` and real-smoke
 milestone `e8473a792e86d7b19f7b2de2e22bc35b3c1cf5b3` are committed and pushed.
-Both descend from planning receipt `e5cb6775bb56621a7898a53dee743c323de9571e`.
+Lifecycle milestone `8f3735820670a027e2237c62bf2b85dcb94f0cd3` is the final
+locally tested implementation candidate. All three descend from planning receipt `e5cb6775bb56621a7898a53dee743c323de9571e`.
 Before the first implementation edit the builder independently read Issue #303,
 its Project Ready item `PVTI_lAHOCSJ8cc4BiQ2BzhGO9Go` and ran:
 
@@ -19,15 +20,17 @@ python3 scripts/autonomy/pre_implementation.py --record docs/agents/records/2026
 ```
 
 Result: exit 0, `{"status": "synchronized", "errors": []}`.
-The implementation diff against the receipt matches exactly the approved 13
-implementation paths. JSON parsing, shell syntax and `git diff --check` pass.
+The original implementation diff matched the approved 13 paths. The final
+diff matches exactly the amended 15 implementation paths plus permitted gate
+and evidence documents. JSON parsing, shell syntax and `git diff --check` pass.
 No production service, existing database, provider or cloud endpoint was used.
 
 ## Local verification
 
 - Focused runtime tests: 95 pass. Private-material tests: 38 pass.
 - Outbox pytest: 10 pass and 4 subtests pass (`PYTHONPATH=packages/contracts/python python3 -m pytest workers/enrichment-python/tests/test_outbox.py -q`).
-- Full GCE suite: 418 tests, OK, 2 expected opt-in skips (existing PG17 protocol and the relay smoke, which was separately enabled below).
+- Focused activation tests: 104 pass after the new tests failed against the old launcher.
+- Full GCE suite: 433 tests, OK, 2 expected opt-in skips (existing PG17 protocol and the relay smoke, which was separately enabled below).
 - Autonomy suite: 146 tests, OK. Repository governance: 9 tests, OK.
 - Deterministic evidence fixture: passed, 8 required gates, no failures.
 - Failing packaging/graph/manifest/ACL/grants/authentication/redaction regressions were observed before implementation; corresponding focused suites pass afterward.
@@ -47,7 +50,7 @@ AUTODATA_OUTBOX_RELAY_SMOKE=1 AUTODATA_OUTBOX_SMOKE_IMAGE=autodata-outbox-relay-
 ```
 
 Built local image: `sha256:887ea92dc348d6c94cc99bc0262156de9954ad7a9c1d7fbc722004727a3a663a`.
-The 6-test enabled suite passed in 12.121 seconds. It imported all three packaged
+The final 6-test enabled suite passed in 11.976 seconds. It imported all three packaged
 Python modules and ran relay `--help`, applied the repository migration runner
 output and provisioning-only grants to disposable pgvector/PostgreSQL17,
 inserted valid constrained canonical article/source/transform/event lineage,
@@ -62,19 +65,36 @@ Synthetic observer credentials exist only in the disposable test broker. Its
 metrics/publisher permission blocks retain the production template's exact ACL.
 All fixture containers, anonymous volumes and the private network were removed.
 
-Raw local logs are retained under `/tmp/autodata-outbox-evidence/`:
-`image-build.log`, `real-smoke.log`, `gce-suite-final.log`, `outbox-pytest.log`,
-`governance.log`, `repository-governance.log`, and `evidence-fixture.json`.
+Sanitized raw local logs are retained durably under
+`/home/corp/autodata-evidence/production-outbox-relay/`: `image-build.log`,
+`real-smoke-final.log`, `gce-suite-amended.log`, `activation-red.log`,
+`activation-green.log`, `outbox-pytest.log`, `governance.log`,
+`repository-governance.log`, and `evidence-fixture.json`. `manifest.json` pins
+the tested candidate, all 15 source hashes, image ID and each log SHA256.
+The source/image packaging is unchanged by the later host-launcher changes;
+the same built image was rerun after that fix. Both amended gate preflight
+outputs are retained alongside the logs.
 
 ## Integration status and provisioning prerequisites
 
-Independent review of the candidate identified that
-`infra/deploy/gce/host_activation.py` maintains a separate application list and
-launcher path that also needs the relay. That path is outside the initial
-13-file allowlist. Implementation is paused pending a synchronized scope
-amendment; the current candidate alone does not complete host activation.
-GitHub CI run https://github.com/lucronn/autodata/actions/runs/42008323408 was
-in progress at evidence recording time; no CI success is claimed here.
+Independent review identified that `infra/deploy/gce/host_activation.py`
+maintained a separate application list and eight-container bound. Work on that
+file remained paused until docs-only scope amendment
+`1f7ca55d5983899566c5e96240cbd5ba1717ab06` was adopted as exact builder base
+`01ee4c43edcf8183341c33b1f8814c72528be3b2`. Before the two added paths were
+edited, both the standalone record and task record preflights passed at that
+exact base (`status: synchronized`, `errors: []`), and the builder read back the
+Issue #303/Project #8 amendment. The old documentation conflict was resolved by
+preserving both the existing evidence and new scope amendment.
+
+The final launcher includes the relay in startup, orderly stop, failed-first
+activation recovery and inventory. Its finite cap derives the exact nine-service
+graph. Regressions reject missing/stopped relay maintenance, duplicate IDs,
+duplicate service names, foreign services and a tenth container while preserving
+existing maintenance-first and security checks. The local integration gap is
+resolved; independent final review is pending. Candidate CI run
+https://github.com/lucronn/autodata/actions/runs/42008825298 was in progress at
+evidence recording time; no CI success is claimed here.
 
 Deployment must separately provision the nonowner/nonmember `autodata_outbox`
 LOGIN, remove broad PUBLIC/inherited/column grants, apply its restricted SELECT

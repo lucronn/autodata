@@ -43,10 +43,10 @@ Planning/evidence updates may touch this plan, its record, `docs/architecture/in
 
 ## Concrete todo
 
-- [ ] Include outbox-relay in host activation startup, stop, recovery and inventory, replace the eight-service inventory cap with the exact nine-service graph, and prove missing, stopped, duplicate, foreign or tenth-container rejection in activation regressions.
-- [ ] Add failing relay packaging, render/topology, secret-contract, NATS authentication/ACL and runtime graph/readiness regressions.
-- [ ] Package the existing relay in the ingestion image and wire its dedicated backend-only service, credentials, manifest/private-material contract and narrowly scoped database/broker privileges.
-- [ ] Run focused and complete host regressions plus an isolated real PostgreSQL/NATS relay smoke proving canonical event delivery, replay identity and denied unrelated permissions; retain exact candidate evidence.
+- [x] Include outbox-relay in host activation startup, stop, recovery and inventory, replace the eight-service inventory cap with the exact nine-service graph, and prove missing, stopped, duplicate, foreign or tenth-container rejection in activation regressions.
+- [x] Add failing relay packaging, render/topology, secret-contract, NATS authentication/ACL and runtime graph/readiness regressions.
+- [x] Package the existing relay in the ingestion image and wire its dedicated backend-only service, credentials, manifest/private-material contract and narrowly scoped database/broker privileges.
+- [x] Run focused and complete host regressions plus an isolated real PostgreSQL/NATS relay smoke proving canonical event delivery, replay identity and denied unrelated permissions; retain exact candidate evidence.
 - [ ] Commit and push validated milestones, independently review the exact candidate, and synchronize Issue/Project/canonical documentation with verification evidence; deployment remains a separate decision.
 
 ## Task 1: Wire the smallest working relay
@@ -84,3 +84,22 @@ Original gate `a13cf0879d3551eec23c119829c7993b6b5bd6de` and original source bas
 - [ ] Run focused `python3 -m unittest discover -s infra/deploy/gce -p 'test_host_activation.py'` plus complete required GCE regressions under the existing sanitized numeric UID/GID1000 test contract. Retain failures and exact candidate evidence.
 
 No live activation, stop, recovery or inventory operation is performed or authorized by this amendment. Only repository code/tests after fresh coordinator adoption and exact-base preflight are in scope. The builder must incorporate the docs-only amendment before touching either added implementation path; if cherry-picking changes its SHA, run preflight again against the resulting exact full base SHA.
+
+## Local implementation verification receipt
+
+Final tested implementation: `8f3735820670a027e2237c62bf2b85dcb94f0cd3` on
+`codex/production-outbox-relay-code`, pushed. The activation amendment was
+adopted at `01ee4c43edcf8183341c33b1f8814c72528be3b2`; standalone record and
+task preflights both passed at that exact base before the two added paths were
+edited. Issue #303 and Project #8 amendment readback was completed first.
+
+Local required GCE verification: 433 tests OK with 2 opt-in skips; focused
+activation: 104 tests OK. The separately enabled real packaged-image relay
+smoke: 6 tests OK, including canonical delivery/replay identity, broker/DB ACL
+denials and outage retention. Outbox pytest: 10 tests and 4 subtests passed;
+autonomy: 146; repository governance: 9; deterministic fixture: 8 gates passed.
+Evidence and exact commands: `docs/verification/2026-11-05-production-outbox-relay.md`;
+durable sanitized raw logs/hashes:
+`/home/corp/autodata-evidence/production-outbox-relay/manifest.json`.
+Independent final review and CI remain pending at receipt recording time.
+No merge, activation or deployment was performed.
