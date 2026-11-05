@@ -529,3 +529,17 @@ def test_inherited_binding_mismatch_remains_partial(producer,monkeypatch,tmp_pat
     child=producer._binding(ROOT_NAME,'chromium','bankone','child-pytest')
     assert child['binding_state']=='partial' and child['unavailable_reason']=='source_binding_failed'
     assert child['candidate_sha']=='a'*40 and len(child['source_input_sha256'])==7
+
+
+def test_failure_publication_releases_preallocated_reserve_before_retry(producer,monkeypatch,tmp_path):
+    tmp_path.chmod(0o700);reserve=bytearray(16384);original=producer._publish;count=0
+    def publish(directory,name,value,limit):
+        nonlocal count
+        count+=1
+        if count==1:raise MemoryError()
+        assert len(reserve)==0
+        return original(directory,name,value,limit)
+    monkeypatch.setattr(producer,'_publish',publish)
+    value={'status':'failed','primary_failure':'timeout','publication_failure':None}
+    assert producer._safe_publish(tmp_path,'parent-process.json',value,65536,reserve=reserve) is False
+    assert json.loads((tmp_path/'parent-process.json').read_text())['primary_failure']=='timeout'

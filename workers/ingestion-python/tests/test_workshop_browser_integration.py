@@ -237,9 +237,10 @@ def _binding_env(binding,role):
         AUTODATA_API21_ATTEMPT_ID=value['attempt_id'],AUTODATA_API21_SOURCE_TREE=value['source_tree'] or '')
 
 
-def _safe_publish(directory,name,receipt,limit):
+def _safe_publish(directory,name,receipt,limit,reserve=None):
     try:_publish(directory,name,receipt,limit);return True
     except BaseException:
+        if reserve is not None:reserve.clear()
         receipt['status']='failed';receipt['publication_failure']='publication_failed'
         if receipt.get('primary_failure') is None:receipt['primary_failure']='publication_failed'
         # Keep the same closed schema, with bounded unavailable collections.
@@ -336,6 +337,7 @@ class BrowserBridge(PaidBridge):
 
 def _child(root_name,engine,provider,directory,monkeypatch):
     deadline=time.monotonic()+78
+    result_reserve=bytearray(16384);sidecar_reserve=bytearray(16384)
     binding=_binding(root_name,engine,provider,'child-pytest')
     runtime=bridge=process=None;capture=([],'unavailable');closed=False;failure=None
     google=root_name=='test_browser_google_exchange_checkout_library_real_api'
@@ -454,10 +456,11 @@ def _child(root_name,engine,provider,directory,monkeypatch):
         sidecar.update(status='passed' if result['passed'] else 'failed',primary_failure=failure)
         try:_publish(directory,'result.json',result,4194304)
         except BaseException:
+            result_reserve.clear()
             failure=failure or 'publication_failed';result['passed']=False;sidecar.update(status='failed',primary_failure=failure,publication_failure='publication_failed')
             try:_publish(directory,'result.json',{k:v for k,v in result.items() if k not in ('final_snapshot','worker_exits')},16384)
             except BaseException:print('API21_PUBLICATION_FAILED',file=sys.stderr)
-        if not _safe_publish(directory,'child-processes.json',sidecar,262144):
+        if not _safe_publish(directory,'child-processes.json',sidecar,262144,reserve=sidecar_reserve):
             failure=failure or 'publication_failed';result['passed']=False
             try:_publish(directory,'result.json',{k:v for k,v in result.items() if k not in ('final_snapshot','worker_exits')},16384)
             except BaseException:print('API21_PUBLICATION_FAILED',file=sys.stderr)
@@ -475,6 +478,7 @@ def _case(root_name,engine,provider,fresh_database,monkeypatch):
         info=parent.lstat()
         assert stat.S_ISDIR(info.st_mode) and info.st_uid==os.getuid() and stat.S_IMODE(info.st_mode)==0o700,'API21 private directory required'
     directory.mkdir(mode=0o700,exist_ok=False)
+    publication_reserve=bytearray(16384)
     binding=_binding(root_name,engine,provider,'parent-pytest')
     suffix=engine if root_name=='test_browser_google_exchange_checkout_library_real_api' else engine+'-'+provider
     node='workers/ingestion-python/tests/test_workshop_browser_integration.py::'+root_name+'['+suffix+']'
@@ -525,7 +529,7 @@ def _case(root_name,engine,provider,fresh_database,monkeypatch):
         except BaseException as exc:
             failure=failure or ('over_limit' if isinstance(exc,ValueError) and exc.args==('over_limit',) else 'read_failed')
             receipt.update(status='failed',primary_failure=failure)
-        if not _safe_publish(directory,'parent-process.json',receipt,65536):failure=failure or 'publication_failed'
+        if not _safe_publish(directory,'parent-process.json',receipt,65536,reserve=publication_reserve):failure=failure or 'publication_failed'
     if failure:raise AssertionError('API21 '+failure) from None
 
 
