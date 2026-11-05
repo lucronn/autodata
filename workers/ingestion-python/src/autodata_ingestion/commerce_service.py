@@ -5,6 +5,7 @@ import base64
 import hashlib
 import ipaddress
 import json
+import logging
 import os
 import re
 import uuid
@@ -12,6 +13,8 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlsplit
+
+from .purchase_config import PurchaseConfig, parse_purchase_config
 
 PRODUCT = "workshop-configuration-v1"
 TERMS = "workshop-v1"
@@ -139,11 +142,21 @@ class CommerceConfig:
 
 
 class CommerceService:
-    def __init__(self, connection_factory, config, provider, *, clock=None):
+    def __init__(self, connection_factory, config, provider, *, clock=None, purchase_config=None):
         if config.mode not in {'stripe_test', 'stripe_live'} or not config.account_id or not config.price_id:
             raise CommerceError('COMMERCE_UNAVAILABLE', 503)
+        if purchase_config is not None and type(purchase_config) is not PurchaseConfig:
+            raise ValueError("validated purchase configuration required")
+        self.__purchase_config = purchase_config if purchase_config is not None else PurchaseConfig.disabled()
         self.connect, self.config, self.provider = connection_factory, config, provider
         self.clock = clock or (lambda: datetime.now(UTC))
+
+    @property
+    def _purchase_config(self):
+        return self.__purchase_config
+
+    def purchase_configuration(self):
+        return CommerceResult(self._purchase_config.public())
 
     @contextmanager
     def transaction(self):
@@ -218,6 +231,8 @@ class CommerceService:
         validate_uuid(key)
         if payload['terms_version'] != TERMS:
             raise CommerceError('TERMS_VERSION_REQUIRED', 409)
+        if not self._purchase_config.enabled:
+            raise CommerceError("COMMERCE_UNAVAILABLE", 503)
         digest = canonical_checkout_hash(config_id, region, TERMS)
         created = False
         with self.transaction() as (_, cursor):
@@ -544,6 +559,9 @@ def configured_commerce(*, connection_factory=database_connection):
         return None
     if mode not in {'stripe_test', 'stripe_live'}:
         raise CommerceError('COMMERCE_CONFIGURATION_INVALID', 503)
+    purchase_config, malformed = parse_purchase_config(os.environ.get('AUTODATA_WORKSHOP_PURCHASE_CONFIG_JSON'))
+    if malformed:
+        logging.getLogger(__name__).warning('Workshop purchase configuration invalid; new checkout disabled')
     origin = checkout_return_origin(os.environ.get('AUTODATA_ENV', ''), os.environ.get('AUTODATA_PUBLIC_ORIGIN', ''))
     key, webhook, account, price, token = [os.environ.get(name, '').strip() for name in
         ('AUTODATA_STRIPE_SECRET_KEY', 'AUTODATA_STRIPE_WEBHOOK_SECRET', 'AUTODATA_STRIPE_ACCOUNT_ID', 'AUTODATA_STRIPE_PRICE_ID', 'AUTODATA_INGESTION_INTERNAL_TOKEN')]
@@ -554,7 +572,7 @@ def configured_commerce(*, connection_factory=database_connection):
     client = stripe.StripeClient(key, max_network_retries=0, http_client=stripe.RequestsClient(timeout=8))
     provider = StripePaymentProvider(stripe_module=stripe, client=client, webhook_secret=webhook,
         success_url=origin + '/workshop/', cancel_url=origin + '/workshop/')
-    service = CommerceService(connection_factory, CommerceConfig(mode, account, price), provider)
+    service = CommerceService(connection_factory, CommerceConfig(mode, account, price), provider, purchase_config=purchase_config)
     # This network probe is outside a transaction and must succeed before readiness.
     try:
         provider.verify_merchant(account)

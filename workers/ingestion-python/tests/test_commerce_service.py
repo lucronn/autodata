@@ -70,3 +70,13 @@ class CommerceAuthorityTests(unittest.TestCase):
         self.assertEqual(response['version'],'v1')
         self.assertEqual(response.http_status,200)
         self.assertEqual(response['library_item_id'],order['order_id'])
+
+
+class PurchaseInterlockTests(unittest.TestCase):
+    def test_paused_checkout_validates_shape_before_touching_database(self):
+        def forbidden():raise AssertionError('paused transaction opened')
+        service=CommerceService(forbidden,CommerceConfig('stripe_test','acct_fixture','price_fixture'),object())
+        key='11111111-1111-4111-8111-111111111111'
+        for payload,status in (({},400),({'configuration_id':key,'region':'US','terms_version':'wrong'},409),({'configuration_id':key,'region':'US','terms_version':'workshop-v1'},503)):
+            with self.assertRaises(CommerceError) as error:service.checkout('owner','org',key,payload)
+            self.assertEqual(error.exception.http_status,status)

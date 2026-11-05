@@ -32,10 +32,11 @@ if not REQUIRED:pytestmark=pytest.mark.skip(reason='explicit paid catalog fixtur
 class PaidBridge(Bridge):
     def __init__(self,runtime):
         super().__init__(runtime,R3_NAMES[1])
+        from autodata_ingestion.purchase_config import PurchaseConfig
         from autodata_ingestion.commerce_service import CommerceService,CommerceConfig
         from test_commerce_postgres import StripeFixture
         self.payment=StripeFixture()
-        self.commerce=CommerceService(runtime.repo.connect,CommerceConfig('stripe_test','acct_fixture','price_fixture'),self.payment.provider)
+        self.commerce=CommerceService(runtime.repo.connect,CommerceConfig('stripe_test','acct_fixture','price_fixture'),self.payment.provider,purchase_config=PurchaseConfig.from_public(dict(enabled=True,terms_version='workshop-v1',terms_url='https://legal.example.test/terms',privacy_url='https://legal.example.test/privacy',refund_url='https://legal.example.test/refund',contact_url='https://legal.example.test/contact',tax_notice='Synthetic fixture notice')))
         self.grant_calls=[]
         self.grant_unavailable=False
         self.selector_ensure=dict(entered=0,completed=0,active=0)

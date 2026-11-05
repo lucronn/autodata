@@ -23,6 +23,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parents[1] / 'src'))
 from lifecycle_support import ROOT, fresh_database, seed_vehicle, seed_configuration, seed_snapshot
+from autodata_ingestion.purchase_config import PurchaseConfig
 from autodata_ingestion.commerce_service import (CommerceService, CommerceConfig, CommerceError,
     TERMS, reconcile_workshop_preparation)
 from autodata_ingestion.stripe_adapter import StripePaymentProvider
@@ -127,7 +128,7 @@ def commerce(fresh_database, request):
     config = str(seed_configuration(repo, seed_vehicle(repo)))
     stripe = StripeFixture()
     now = [datetime.now(UTC)]
-    service = CommerceService(repo.connect, CommerceConfig('stripe_test','acct_fixture','price_fixture'), stripe.provider,clock=lambda:now[0])
+    service = CommerceService(repo.connect, CommerceConfig('stripe_test','acct_fixture','price_fixture'), stripe.provider,clock=lambda:now[0],purchase_config=PurchaseConfig.from_public(dict(enabled=True,terms_version='workshop-v1',terms_url='https://legal.example.test/terms',privacy_url='https://legal.example.test/privacy',refund_url='https://legal.example.test/refund',contact_url='https://legal.example.test/contact',tax_notice='Synthetic fixture notice')))
     with repo.connect() as conn:
         account = conn.execute("INSERT INTO customer_accounts(firebase_project_id,firebase_uid) VALUES('fixture',%s) RETURNING customer_account_id,personal_organization_id",(uuid.uuid4().hex,)).fetchone()
     owner = (str(account['customer_account_id']),str(account['personal_organization_id']))

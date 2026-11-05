@@ -215,3 +215,33 @@ def test_commerce_dispatch_rejects_browser_authority_fields():
     with pytest.raises(CommerceError):
         dispatch_commerce(Commerce(),'/internal/commerce/checkouts',{'customer_account_id':'x','organization_id':'y',
             'configuration_id':'z','region':'US','terms_version':'workshop-v1','idempotency_key':'k','amount_minor':1})
+
+
+class PurchaseConfigurationHTTPTests(unittest.TestCase):
+    def test_private_purchase_config_requires_token_exact_body_and_no_dependencies(self):
+        from autodata_ingestion.commerce_service import CommerceService, CommerceConfig
+        from autodata_ingestion.http_service import make_handler
+        from http.server import ThreadingHTTPServer
+        from urllib.request import Request, urlopen
+        from urllib.error import HTTPError
+        from unittest.mock import patch
+        import threading
+        def forbidden():raise AssertionError('config read reached database')
+        service=CommerceService(forbidden,CommerceConfig('stripe_test','acct_fixture','price_fixture'),object())
+        for configured in ('fixture-token',''):
+            with patch.dict('os.environ',{},clear=True):
+                server=ThreadingHTTPServer(('127.0.0.1',0),make_handler(configured,commerce=service))
+            thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
+            try:
+                for token in ('','wrong','fixture-token'):
+                    for body in ({},{'extra':1},None,[]):
+                        request=Request(f'http://127.0.0.1:{server.server_port}/internal/commerce/purchase-config',data=json.dumps(body).encode(),headers={'X-Autodata-Internal-Token':token},method='POST')
+                        try:
+                            with urlopen(request,timeout=3) as response:status,value=response.status,json.load(response)
+                        except HTTPError as error:
+                            with error:status,value=error.code,json.load(error)
+                        expected=401 if not configured or token!=configured else (200 if body=={} else 400)
+                        self.assertEqual(status,expected,(configured,token,body,value))
+                        if status==200:
+                            self.assertEqual(value,{'enabled':False,'terms_version':'workshop-v1','terms_url':None,'privacy_url':None,'refund_url':None,'contact_url':None,'tax_notice':None})
+            finally:server.shutdown();server.server_close();thread.join(timeout=3)
