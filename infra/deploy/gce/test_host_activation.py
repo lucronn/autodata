@@ -143,7 +143,7 @@ class LifecycleTests(FileTests):
             validate_guard_tables=lambda *args: True,
             validate_cached_images=lambda *args: True,
             SERVICE_INSPECT_TEMPLATE='fixed-full-inspection',
-            _runtime_rendered_compose=lambda *a: {'services':{s:{} for s in ('api','ingestion-http','article-worker','payment-reconciler','postgres','nats','minio','caddy')}},
+            _runtime_rendered_compose=lambda *a: {'services':{s:{} for s in ('api','ingestion-http','article-worker','payment-reconciler','outbox-relay','postgres','nats','minio','caddy')}},
             _validate_service_container=lambda *a, **k: a[3],
             HOST_CONFIG=str(self.base / 'host.json'),
             _installed_deploy_inputs=manifest,
@@ -195,8 +195,8 @@ class LifecycleTests(FileTests):
             self.assertIn('--no-deps', argv); self.assertIn('never', argv)
             services = argv[argv.index('never') + 1:]
             for service in services:
-                role = 'ingestion' if service in ('ingestion-http','article-worker','payment-reconciler') else service
-                container = (str(('api','ingestion-http','article-worker','payment-reconciler','postgres','nats','minio','caddy').index(service) + 1) * 64)
+                role = 'ingestion' if service in ('ingestion-http','article-worker','payment-reconciler','outbox-relay') else service
+                container = (str(('api','ingestion-http','article-worker','payment-reconciler','outbox-relay','postgres','nats','minio','caddy').index(service) + 1) * 64)
                 self.graph[container] = {'id': container, 'project':'autodata-production','service':service,
                     'image':self.manifest['images'][role]['image_id'], 'running':True,'paused':False,'restarting':False,'dead':False}
         elif 'stop' in argv:
@@ -217,7 +217,55 @@ class LifecycleTests(FileTests):
         self.assertIn('ready:' + SHA, self.events)
         ups = [event for event in self.events if isinstance(event,list) and 'up' in event]
         self.assertEqual(ups[0][-3:], ['postgres','nats','minio'])
-        self.assertEqual(ups[1][-5:], ['api','ingestion-http','article-worker','payment-reconciler','caddy'])
+        self.assertEqual(ups[1][-6:], ['api','ingestion-http','article-worker','payment-reconciler','outbox-relay','caddy'])
+
+    def test_relay_start_stop_and_failed_start_recovery_follow_application_lifecycle(self):
+        self.assertEqual(self.start()[0], 0)
+        self.assertEqual({value['service'] for value in self.graph.values()},
+            {'api','ingestion-http','article-worker','payment-reconciler','outbox-relay','caddy','postgres','nats','minio'})
+        self.assertEqual(self.a.activation_cli(['stop', SHA])[0], 0)
+        stops=[event for event in self.events if isinstance(event,list) and 'stop' in event]
+        self.assertIn('outbox-relay',stops[0])
+        self.assertEqual(stops[-1][-3:],['postgres','nats','minio'])
+        (self.base/'current').unlink()  # failed first activation has no prior release
+        self.failed_ready=True
+        self.assertNotEqual(self.start()[0],0)
+        recovery_stops=[event for event in self.events if isinstance(event,list) and 'stop' in event]
+        self.assertIn('outbox-relay',recovery_stops[-1])
+        relay=next(value for value in self.graph.values() if value['service']=='outbox-relay')
+        self.assertFalse(relay['running'])
+
+    def test_maintenance_rejects_missing_or_stopped_relay(self):
+        self.assertEqual(self.start()[0],0)
+        relay_id=next((identifier for identifier,value in self.graph.items() if value['service']=='outbox-relay'),None)
+        self.assertIsNotNone(relay_id)
+        relay=self.graph.pop(relay_id)
+        self.assertNotEqual(self.a.activation_cli(['maintenance',SHA])[0],0)
+        self.graph[relay_id]=dict(relay,running=False)
+        self.assertNotEqual(self.a.activation_cli(['maintenance',SHA])[0],0)
+
+    def test_inventory_accepts_exact_nine_and_rejects_duplicate_foreign_or_tenth(self):
+        import types
+        # Construct the complete expected inventory even before the launcher is
+        # fixed, so the old hard-coded eight-container cap is directly exercised.
+        expected=('api','ingestion-http','article-worker','payment-reconciler','outbox-relay','postgres','nats','minio','caddy')
+        self.execute(self.a.DOCKER+['compose','--env-file','/dev/null','up','--no-deps','--pull','never',*expected])
+        host=self.a.Lifecycle(self.rt,types.SimpleNamespace(recheck=lambda:None)); host.config=self.config
+        self.assertEqual(set(host.graph([self.manifest])),set(expected))
+        original=dict(self.graph)
+        spare='f'*64
+        self.graph[spare]=dict(next(iter(self.graph.values())),id=spare)
+        with self.assertRaises(self.a.ActivationError): host.graph([self.manifest])
+        self.graph=dict(original)
+        relay_id=next(identifier for identifier,value in self.graph.items() if value['service']=='outbox-relay')
+        self.graph[relay_id]=dict(self.graph[relay_id],service='foreign')
+        with self.assertRaises(self.a.ActivationError): host.graph([self.manifest])
+        self.graph=dict(original)
+        another=next(identifier for identifier,value in self.graph.items() if value['service']=='api')
+        self.graph[relay_id]=dict(self.graph[another],id=relay_id)
+        with self.assertRaises(self.a.ActivationError): host.graph([self.manifest])
+        with patch.object(host,'command',return_value=((another+'\n')*2).encode()):
+            with self.assertRaises(self.a.ActivationError): host.graph([self.manifest])
 
     def test_failed_first_start_leaves_current_absent_and_maintenance(self):
         self.failed_ready = True

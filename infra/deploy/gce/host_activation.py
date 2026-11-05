@@ -23,7 +23,7 @@ ENV = {'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'LANG': 'C', 'LC_ALL': 'C', 'HOM
 MAXIMUM = 1048576
 SHA = r'[0-9a-f]{40}'
 MAINTENANCE = b'respond "Maintenance" 503\n'
-APPS = ('api', 'ingestion-http', 'article-worker', 'payment-reconciler')
+APPS = ('api', 'ingestion-http', 'article-worker', 'payment-reconciler', 'outbox-relay')
 STATEFUL = ('postgres', 'nats', 'minio')
 
 
@@ -332,7 +332,7 @@ class Lifecycle:
     def graph(self, manifests):
         output = self.command(DOCKER + ['container','ls','--all','--quiet','--no-trunc','--filter','label=com.docker.compose.project=autodata-production'])
         ids = output.decode('ascii').splitlines()
-        require(len(ids) <= 8 and len(set(ids)) == len(ids))
+        require(len(ids) <= len(APPS + STATEFUL + ('caddy',)) and len(set(ids)) == len(ids))
         result = {}
         for container in ids:
             # Docker IDs, never service names/commands supplied by a caller.
