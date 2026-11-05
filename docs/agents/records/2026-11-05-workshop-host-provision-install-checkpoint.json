@@ -1,0 +1,24 @@
+{
+  "gate_sha": "36cf3728e210990e250cc7c072a7e66c169f10d0",
+  "branch": "codex/workshop-host-install-gate",
+  "source_base_sha": "5d14c891e8efd14a297b07e482304ea2a6b9cd7f",
+  "record_ref": "docs/agents/records/2026-11-05-workshop-host-provision-install.json",
+  "preflight": {
+    "exit_code": 0,
+    "stdout": {
+      "status": "synchronized",
+      "errors": []
+    }
+  },
+  "issue_ref": "https://github.com/lucronn/autodata/issues/307",
+  "parent_issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhGPuN0",
+  "pin_comment_ref": "https://github.com/lucronn/autodata/issues/307#issuecomment-6656289555",
+  "pin_comment_sha256": "88cc4ba101827375ae1265ac4949a768a94c92745a76d8553f5d5716f6f63fb2",
+  "project_index_sha256": "dc8e537ef6ca432f751036c2169c11cf79eb71f2ca6e559b5759fe0be362a1fa",
+  "exact_readback_verified": true,
+  "implementation_files_modified": false,
+  "cloud_execution_authorized": false,
+  "production_ready": false
+}
