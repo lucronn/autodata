@@ -433,6 +433,7 @@ a=sys.argv
 if a[1]=='version':
     print(json.dumps({'gitVersion':'local-test-fixture'}))
     sys.exit(0)
+assert '--offline' in a and '--insecure-ignore-tlog' in a
 r=subprocess.run(['/usr/bin/openssl','dgst','-sha256','-verify',a[a.index('--key')+1],'-signature',a[a.index('--signature')+1],a[-1]],capture_output=True)
 sys.exit(r.returncode)
 """)

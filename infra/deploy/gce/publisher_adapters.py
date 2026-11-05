@@ -1092,5 +1092,5 @@ class PinnedCosignApproval:
             statement=private_write(directory,'approval.json',envelope['approval_bytes'])
             signature=private_write(directory,'approval.sig',envelope['signature_bytes'])
             code,_,_=self.process([self.pin['path'],'verify-blob','--key',str(key_path),'--signature',str(signature),
-                                   '--offline',str(statement)],cwd=directory,deadline=deadline,maximum=65536)
+                                   '--offline','--insecure-ignore-tlog',str(statement)],cwd=directory,deadline=deadline,maximum=65536)
             require(type(code) is int and code==0, 'approval_signature_invalid')
