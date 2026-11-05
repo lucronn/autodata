@@ -311,7 +311,7 @@ def test_parent_missing_originals_cannot_pass(producer,monkeypatch,tmp_path):
     assert receipt['status']=='failed' and receipt['child_artifact_status']=='partial'
 
 
-def test_worker_changed_original_inode_is_unavailable(producer,tmp_path):
+def test_worker_changed_original_inode_is_unavailable(producer,monkeypatch,tmp_path):
     logs=[];workers=[]
     for n in (1,2):
         log=(tmp_path/('worker-'+str(n)*32+'.log')).open('w');logs.append(log);workers.append(Process([-15]))
@@ -320,9 +320,65 @@ def test_worker_changed_original_inode_is_unavailable(producer,tmp_path):
     exits=[]
     for worker,log in zip(workers,logs):
         worker.wait(3);log.close();exits.append(dict(kind='cli',exit_code=-15,terminated=True,intentional_cleanup=True,alive_before_cleanup=True))
-    path=Path(logs[0].name);path.unlink();path.write_text('replacement')
+    path=Path(logs[0].name);original=path.stat();path.unlink();path.write_text('replacement')
+    replacement=path.stat();real_stat=os.stat;real_fstat=os.fstat
+    def reused_identity(info):
+        # Deterministically model a filesystem reusing the released inode number.
+        if (info.st_dev,info.st_ino)==(replacement.st_dev,replacement.st_ino):
+            return types.SimpleNamespace(st_dev=original.st_dev,st_ino=original.st_ino,
+                **{key:getattr(info,key) for key in ('st_mode','st_nlink','st_uid','st_size','st_mtime_ns')})
+        return info
+    monkeypatch.setattr(os,'stat',lambda *args,**kwargs:reused_identity(real_stat(*args,**kwargs)))
+    monkeypatch.setattr(os,'fstat',lambda *args,**kwargs:reused_identity(real_fstat(*args,**kwargs)))
     records,status=producer._finalize_workers(captured,exits,True)
     assert status=='unavailable' and records[0]['log_hash'] is None
+
+
+@pytest.mark.parametrize('failure',['none','exit-count','writer-open','hash-error','capture-second','dup-second'])
+def test_worker_identity_is_pinned_until_finalization_without_descriptor_leaks(producer,monkeypatch,tmp_path,failure):
+    logs=[];workers=[];pins=[]
+    real_dup=os.dup
+    def duplicate(fd):
+        if failure=='dup-second' and pins:raise OSError('injected descriptor exhaustion')
+        pinned=real_dup(fd);pins.append(pinned);return pinned
+    monkeypatch.setattr(os,'dup',duplicate)
+    for n in (1,2):
+        log=(tmp_path/('worker-'+str(n)*32+'.log')).open('w')
+        log.write('owned original');log.flush();logs.append(log);workers.append(Process([-15]))
+    if failure=='capture-second':workers[1].returncode=9
+    try:
+        capture=producer._capture_workers(types.SimpleNamespace(workers=workers,logs=logs,barrier=None),False,artifact_root=tmp_path)
+        if failure in ('capture-second','dup-second'):
+            assert capture==([], 'unavailable') and len(pins)==1
+        else:
+            assert capture[1]=='observed' and len(pins)==2
+            assert all(not os.get_inheritable(fd) for fd in pins)
+            exits=[]
+            for worker,log in zip(workers,logs):
+                worker.wait(3)
+                if failure!='writer-open':log.close()
+                exits.append(dict(kind='cli',exit_code=-15,terminated=True,intentional_cleanup=True,alive_before_cleanup=True))
+            # Original identity remains owned even after all runtime writers close.
+            assert all(os.fstat(fd).st_nlink==1 for fd in pins)
+            if failure=='exit-count':exits=[]
+            if failure=='hash-error':monkeypatch.setattr(producer,'_hash_artifact',forbidden)
+            records,status=producer._finalize_workers(capture,exits,failure!='writer-open')
+            assert status==('observed' if failure=='none' else 'unavailable')
+            if failure=='none':assert all(row['log_hash'] for row in records)
+            else:assert all(row['log_hash'] is None for row in records)
+        for fd in pins:
+            with pytest.raises(OSError):os.fstat(fd)
+        if failure=='none':
+            # Cleanup is idempotent even when a later open reuses a released fd.
+            with (tmp_path/'unrelated').open('w') as unrelated:
+                assert producer._finalize_workers(capture,exits,True)[1]=='unavailable'
+                unrelated.write('still owned by its caller');unrelated.flush()
+    finally:
+        for log in logs:log.close()
+        # A failing implementation must not leak descriptors into later tests.
+        for fd in pins:
+            try:os.close(fd)
+            except OSError:pass
 
 
 @pytest.mark.parametrize('raw',[b'{"x":1,"x":2}',b'{"x":NaN}',b'"\xff"'])

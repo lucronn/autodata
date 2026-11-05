@@ -170,43 +170,61 @@ class _OwnedProcess:
         self.data['reaped']=False
 
 
+class _WorkerLogPin:
+    """Keep the original inode allocated until its final pathname/hash check."""
+    def __init__(self,log):self.fd=os.dup(log.fileno())
+    def close(self):
+        if self.fd is not None:
+            fd=self.fd;self.fd=None;os.close(fd)
+
+
 def _capture_workers(runtime,google,artifact_root=ARTIFACT_ROOT):
     workers=list(runtime.workers);logs=list(runtime.logs)
     if google and not workers and not logs:return ([], 'not_started')
     if google or runtime.barrier or len(workers)!=2 or len(logs)!=2 or len({id(w) for w in workers})!=2 or len({id(l) for l in logs})!=2:return ([], 'unavailable')
     captured=[]
-    try:
-        for worker,log in zip(workers,logs):
-            path=Path(log.name)
-            if path.parent!=artifact_root or not re.fullmatch(r'worker-[a-f0-9]{32}\.log',path.name):raise ValueError('mapping_unavailable')
-            info=os.fstat(log.fileno());_regular(info)
-            os.fchmod(log.fileno(),0o600)
-            if worker.poll() is not None:raise ValueError('mapping_unavailable')
-            captured.append((worker,log,path,(info.st_dev,info.st_ino)))
-        if len({item[3] for item in captured})!=2:raise ValueError('mapping_unavailable')
-    except BaseException:return ([], 'unavailable')
+    with ExitStack() as pins:
+        try:
+            for worker,log in zip(workers,logs):
+                path=Path(log.name)
+                if path.parent!=artifact_root or not re.fullmatch(r'worker-[a-f0-9]{32}\.log',path.name):raise ValueError('mapping_unavailable')
+                info=os.fstat(log.fileno());_regular(info)
+                os.fchmod(log.fileno(),0o600)
+                if worker.poll() is not None:raise ValueError('mapping_unavailable')
+                pin=_WorkerLogPin(log);pins.callback(pin.close)
+                pinned=os.fstat(pin.fd);_regular(pinned)
+                if (pinned.st_dev,pinned.st_ino)!=(info.st_dev,info.st_ino):raise ValueError('mapping_unavailable')
+                captured.append((worker,log,path,(info.st_dev,info.st_ino),pin))
+            if len({item[3] for item in captured})!=2:raise ValueError('mapping_unavailable')
+        except BaseException:return ([], 'unavailable')
+        # Transfer pin ownership to finalization, including its early/failure paths.
+        pins.pop_all()
     return (captured,'observed')
 
 
 def _finalize_workers(capture,exits,closed):
     pairs,status=capture
-    if status!='observed':return [],status
-    if len(exits)!=len(pairs):return [],'unavailable'
-    records=[]
-    for index,(worker,log,path,identity) in enumerate(pairs):
-        row=dict(ordinal=index+1,kind='cli',original_ref=path.name,mapping='observed',alive_before_cleanup=True,
-            intentional_cleanup=None,terminated=None,exit_code=None,reaped=None,log_finalized=False,log_hash=None,reason=None)
-        try:
-            outcome=exits[index]
-            if set(outcome)!={'kind','exit_code','terminated','intentional_cleanup','alive_before_cleanup'} or outcome['kind']!='cli' or type(outcome['exit_code']) is not int:raise ValueError('mapping_unavailable')
-            if not all(outcome[key] is True for key in ('terminated','intentional_cleanup','alive_before_cleanup')):raise ValueError('mapping_unavailable')
-            if worker.poll()!=outcome['exit_code']:raise ValueError('mapping_unavailable')
-            row.update({key:outcome[key] for key in ('alive_before_cleanup','intentional_cleanup','terminated','exit_code')});row['reaped']=True
-            if not closed or not log.closed:raise ValueError('log_not_finalized')
-            row['log_hash']=_hash_artifact(path,path.name,identity);row['log_finalized']=True
-        except BaseException:row.update(mapping='unavailable',reason='log_not_finalized' if not closed or not log.closed else 'mapping_unavailable');status='unavailable'
-        records.append(row)
-    return records,status
+    with ExitStack() as pins:
+        for *_,pin in pairs:pins.callback(pin.close)
+        if status!='observed':return [],status
+        if len(exits)!=len(pairs):return [],'unavailable'
+        records=[]
+        for index,(worker,log,path,identity,pin) in enumerate(pairs):
+            row=dict(ordinal=index+1,kind='cli',original_ref=path.name,mapping='observed',alive_before_cleanup=True,
+                intentional_cleanup=None,terminated=None,exit_code=None,reaped=None,log_finalized=False,log_hash=None,reason=None)
+            try:
+                outcome=exits[index]
+                if set(outcome)!={'kind','exit_code','terminated','intentional_cleanup','alive_before_cleanup'} or outcome['kind']!='cli' or type(outcome['exit_code']) is not int:raise ValueError('mapping_unavailable')
+                if not all(outcome[key] is True for key in ('terminated','intentional_cleanup','alive_before_cleanup')):raise ValueError('mapping_unavailable')
+                if worker.poll()!=outcome['exit_code']:raise ValueError('mapping_unavailable')
+                row.update({key:outcome[key] for key in ('alive_before_cleanup','intentional_cleanup','terminated','exit_code')});row['reaped']=True
+                if not closed or not log.closed:raise ValueError('log_not_finalized')
+                pinned=os.fstat(pin.fd);_regular(pinned)
+                if (pinned.st_dev,pinned.st_ino)!=identity:raise ValueError('mapping_unavailable')
+                row['log_hash']=_hash_artifact(path,path.name,identity);row['log_finalized']=True
+            except BaseException:row.update(mapping='unavailable',reason='log_not_finalized' if not closed or not log.closed else 'mapping_unavailable');status='unavailable'
+            records.append(row)
+        return records,status
 
 
 def _binding(root,engine,bank,role):
