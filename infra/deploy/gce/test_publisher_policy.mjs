@@ -234,7 +234,7 @@ test('fixture-only mount and fdinfo parsers retain RO/nested mount identity and 
 
 function liveFixture(changes={},options={}) {
   const f=fixture();
-  const adapter=bytes({registry:'us-central1-docker.pkg.dev/owner-project/releases'});
+  const adapter=options.adapter??bytes({registry:'us-central1-docker.pkg.dev/owner-project/releases'});
   const policy={...f.policy,protocol_version:2,purpose:'autodata.publisher.staging.live.v1',
     upload_enabled:true,runtime_bearer_authentication:'service-challenge-v1',
     adapter_policy_sha256:hash(adapter),toolchain_image_digest:'sha256:'+'1'.repeat(64),
@@ -242,7 +242,7 @@ function liveFixture(changes={},options={}) {
     dependency_review_sha256:'5'.repeat(64),runtime_origins:['https://results.actions.githubusercontent.com'],
     storage_origins:['https://productionresultssa0.blob.core.windows.net'],
     approval_keys:{[hash(Buffer.from('independent-owner-key'))]:'independent-owner-key'},
-    oidc:{...f.policy.oidc,audience:'urn:autodata:publisher:staging:live:v1'},...changes};
+    oidc:{...f.policy.oidc,audience:'sigstore'},...changes};
   const payload=bytes(policy),envelope=bytes({protocol_version:2,key_id:keyId,payload:payload.toString('base64'),
     signature:sign(null,Buffer.concat([Buffer.from(options.domain??'AutoData-Publisher-Owner-Policy-v2\0'),payload]),owner.privateKey).toString('base64')});
   const bootstrap=bytes({protocol_version:2,purpose:'autodata.publisher.bootstrap.live.v1',key_id:keyId,
@@ -292,24 +292,155 @@ test('real installed live policy acquires private handle only from root-owned re
   const directory=await mkdtemp(tmpdir()+'/autodata-live-install-');
   try {
     for(const [name,raw] of [['bootstrap-live-v1.json',f.bootstrap],['policy-live-v1.envelope.json',f.envelope],['github-oidc-jwks-live-v1.json',f.jwks],['adapter-policy-v2.json',f.adapter]])await writeFile(directory+'/'+name,raw,{mode:0o600});
+    const certificate=spawnSync('/usr/bin/openssl',['req','-x509','-newkey','rsa:2048','-nodes','-days','1','-subj','/CN=api.github.com','-addext','subjectAltName=DNS:api.github.com,DNS:oidc.actions.githubusercontent.com','-keyout',directory+'/tls.key','-out',directory+'/ca.pem'],{encoding:'utf8',timeout:10000,maxBuffer:65536});
+    assert.equal(certificate.status,0,certificate.stderr);
     const script=`set -eu
+/usr/sbin/ip link set lo up
+/usr/sbin/ip addr add 8.8.8.8/32 dev lo
 mount -t tmpfs -o mode=755 tmpfs /etc
 mkdir -p /etc/autodata/publisher
+printf "8.8.8.8 api.github.com oidc.actions.githubusercontent.com\\n" > /etc/hosts
 for name in bootstrap-live-v1.json policy-live-v1.envelope.json github-oidc-jwks-live-v1.json adapter-policy-v2.json; do
   cp -- "$1/$name" "/etc/autodata/publisher/$name"
   chmod 444 "/etc/autodata/publisher/$name"
 done
 mount --bind /etc/autodata/publisher /etc/autodata/publisher
 mount -o remount,bind,ro /etc/autodata/publisher
-exec "$2" --input-type=module -e "$3"
+NODE_EXTRA_CA_CERTS="$1/ca.pem" exec "$2" --input-type=module -e "$3"
 `;
-    const program=`import {loadInstalledLiveOwnerPolicy,installedLivePolicyClaims,installedPolicyClaims} from ${JSON.stringify(new URL('./publisher_policy.mjs',import.meta.url).href)};
+    const claims={iss:f.policy.oidc.issuer,aud:f.policy.oidc.audience,sub:f.policy.oidc.subject,exp:current+240,iat:current-60,nbf:current-60,jti:'real-installed-test',repository:f.policy.repository,repository_id:f.policy.repository_id,repository_owner_id:f.policy.repository_owner_id,run_id:'123',run_attempt:'2',workflow_ref:f.policy.workflow_ref,workflow_sha:f.policy.workflow_sha,ref:f.policy.ref,sha:f.policy.workflow_sha,event_name:f.policy.event_name,environment:f.policy.protected_environment};
+    const jwtInput=bytes({alg:'RS256',typ:'JWT',kid:'fixture-key'}).toString('base64url')+'.'+bytes(claims).toString('base64url');
+    const token=jwtInput+'.'+sign('RSA-SHA256',Buffer.from(jwtInput),rsa.privateKey).toString('base64url');
+    const program=`import {createServer} from 'node:https';
+import {readFile} from 'node:fs/promises';
+import {verifyInstalledLiveGithubOidc,fetchInstalledGithubOidc,installedServiceRequest,writeVerifiedSigstoreToken} from ${JSON.stringify(new URL('./publisher_identity.mjs',import.meta.url).href)};
+import {loadInstalledLiveOwnerPolicy,installedLivePolicyClaims,installedPolicyClaims} from ${JSON.stringify(new URL('./publisher_policy.mjs',import.meta.url).href)};
 const handle=await loadInstalledLiveOwnerPolicy();
 const result=installedLivePolicyClaims(handle);
+const identity=verifyInstalledLiveGithubOidc(Buffer.from(${JSON.stringify(token)}),handle,{run_id:'123',run_attempt:2});
+if(identity.run_id!=='123')process.exit(5);
+const server=createServer({key:await readFile(${JSON.stringify(directory+'/tls.key')}),cert:await readFile(${JSON.stringify(directory+'/ca.pem')})},(request,response)=>{
+if(request.headers.authorization!=='Bearer owned-test-token'){response.writeHead(401);response.end();return;}
+const raw=Buffer.from(JSON.stringify(request.url.startsWith('/_apis/')?{value:${JSON.stringify(token)}}:{authenticated:true}));response.setHeader('Content-Length',raw.length);response.end(raw);
+});
+await new Promise(resolve=>server.listen(443,'8.8.8.8',resolve));
+try {
+process.env.ACTIONS_ID_TOKEN_REQUEST_URL='https://oidc.actions.githubusercontent.com/_apis/distributedtask/hubs/build/plans/11111111-1111-1111-1111-111111111111/jobs/22222222-2222-2222-2222-222222222222/idtoken?api-version=2.0';
+process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN='owned-test-token';
+const fetched=await fetchInstalledGithubOidc(handle,{run_id:'123',run_attempt:2});if(fetched.jti!=='real-installed-test')process.exit(6);
+const fs=await import('node:fs/promises'),original=process.cwd(),privateCwd=await fs.mkdtemp('/tmp/autodata-identity-file-');
+try {process.chdir(privateCwd);await writeVerifiedSigstoreToken(handle,fetched);const file=await fs.lstat('identity-token');if((file.mode&0o7777)!==0o600 || file.nlink!==1 || (await fs.readFile('identity-token','utf8'))!==${JSON.stringify(token)})process.exit(8);
+try{await writeVerifiedSigstoreToken(handle,fetched);process.exit(9);}catch{}
+try{await writeVerifiedSigstoreToken(handle,{});process.exit(10);}catch{}
+} finally {process.chdir(original);await fs.rm(privateCwd,{recursive:true,force:true});}
+
+const response=await installedServiceRequest(handle,'github','https://api.github.com/repos/lucronn/autodata/actions/runs/123',{token:'owned-test-token'});
+if(response.status!==200 || JSON.parse(response.bytes).authenticated!==true)process.exit(7);
+} finally {server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
+
 if(result.policy.purpose!=='autodata.publisher.staging.live.v1')process.exit(2);
 try {installedPolicyClaims(handle);process.exit(4);} catch {}
 console.log('installed-live-policy-verified');`;
-    const result=spawnSync('sudo',['-n','unshare','--mount','--propagation','private','/bin/sh','-c',script,'trust-test',directory,process.execPath,program],{encoding:'utf8',timeout:15000,maxBuffer:65536});
+    const result=spawnSync('sudo',['-n','unshare','--mount','--net','--propagation','private','/bin/sh','-c',script,'trust-test',directory,process.execPath,program],{encoding:'utf8',timeout:15000,maxBuffer:65536});
     assert.equal(result.status,0,result.stderr);assert.equal(result.stdout,'installed-live-policy-verified\n');
   } finally {await rm(directory,{recursive:true,force:true});}
+});
+
+test('real bridge authenticates owned SDK probe, independent REST ZIP readback, deletion and release upload',async t=>{
+ const toolkit=process.env.AUTODATA_REAL_TOOLKIT_ROOT;
+ if(!toolkit){assert.notEqual(process.env.AUTODATA_REQUIRE_REAL_TOOLKIT,'1','required official toolkit absent');t.skip('requires independently installed test toolkit');return;}
+ const current=Math.floor(Date.now()/1000),directory=await mkdtemp(tmpdir()+'/autodata-sdk-live-');
+ try {
+  const control=new URL('./',import.meta.url),helper=await readFile(new URL('./publisher_artifact.mjs',import.meta.url));
+  const lock=await readFile(toolkit+'/package-lock.json'),tree=await readFile(toolkit+'/installed-tree.json');
+  assert.deepEqual(lock,await readFile(new URL('./publisher-toolkit/package-lock.json',import.meta.url)));
+  const context={protocol_version:3,environment:'staging',repository:'lucronn/autodata',repository_id:'123',repository_owner_id:'456',run_id:'123',run_attempt:2,workflow_ref:'lucronn/autodata/.github/workflows/release-workshop.yml@refs/heads/master',workflow_sha:'a'.repeat(40),source_sha:'b'.repeat(40),service_config_sha256:'c'.repeat(64),protected_environment:'workshop-staging-publish',activation_sha256:'d'.repeat(64),toolchain_sha256:'e'.repeat(64),trust_policy_sha256:'f'.repeat(64)};
+  const approvalKeys={[hash(Buffer.from('independent-owner-key'))]:'independent-owner-key'};
+  const adapter={...Object.fromEntries(['activation_sha256','repository_id','repository_owner_id','workflow_sha','toolchain_sha256','trust_policy_sha256'].map(k=>[k,context[k]])),tools:{node:{path:'/usr/local/bin/node',sha256:'94efd062ed066c1a0b332e18249859c905e920eeada5df55d24c99b919629a90',version:'v22.23.4'}},storage_origins:['productionresultssa0.blob.core.windows.net'],upstream_policy_sha256:'0'.repeat(64),approval_keys:approvalKeys,approvers:['independent-owner'],registry:'us-central1-docker.pkg.dev/owner-project/releases',evidence_layout:'https://productionresultssa0.blob.core.windows.net/evidence',toolkit_lock_sha256:hash(lock),runtime_service_origin:'https://results.actions.githubusercontent.com'};
+  const review=bytes({protocol_version:1,toolkit_lock_sha256:hash(lock),audit_report_sha256:'0'.repeat(64),audit_findings:[{id:'independently-reviewed-test-findings',decision:'accepted'}],buffers_license_decision:'accepted',reviewed_by:'independent-owner',expires_at:new Date((current+600)*1000).toISOString().replace('.000Z','Z')});
+  const f=liveFixture({issued_at:current-60,expires_at:current+600,toolkit_lock_sha256:hash(lock),toolkit_tree_sha256:hash(tree),helper_sha256:hash(helper),dependency_review_sha256:hash(review),approval_keys:approvalKeys,oidc:{...liveFixture().policy.oidc,jwks_issued_at:current-100,jwks_expires_at:current+1000}},{adapter:bytes(adapter)});
+  await mkdir(directory+'/control');
+  for(const name of ['publisher_policy.mjs','publisher_identity.mjs','publisher_artifact.mjs'])await writeFile(directory+'/control/'+name,await readFile(new URL(name,control)),{mode:0o400});
+  for(const [name,raw] of [['bootstrap-live-v1.json',f.bootstrap],['policy-live-v1.envelope.json',f.envelope],['github-oidc-jwks-live-v1.json',f.jwks],['adapter-policy-v2.json',f.adapter],['dependency-review-v1.json',review]])await writeFile(directory+'/'+name,raw,{mode:0o600});
+  const certificate=spawnSync('/usr/bin/openssl',['req','-x509','-newkey','rsa:2048','-nodes','-days','1','-subj','/CN=api.github.com','-addext','subjectAltName=DNS:api.github.com,DNS:oidc.actions.githubusercontent.com,DNS:results.actions.githubusercontent.com,DNS:productionresultssa0.blob.core.windows.net','-keyout',directory+'/tls.key','-out',directory+'/ca.pem'],{encoding:'utf8',timeout:10000,maxBuffer:65536});assert.equal(certificate.status,0,certificate.stderr);
+  const claims={iss:f.policy.oidc.issuer,aud:f.policy.oidc.audience,sub:f.policy.oidc.subject,exp:current+240,iat:current-60,nbf:current-60,jti:'actual-sdk-service-test',repository:f.policy.repository,repository_id:f.policy.repository_id,repository_owner_id:f.policy.repository_owner_id,run_id:context.run_id,run_attempt:String(context.run_attempt),workflow_ref:f.policy.workflow_ref,workflow_sha:f.policy.workflow_sha,ref:f.policy.ref,sha:f.policy.workflow_sha,event_name:f.policy.event_name,environment:f.policy.protected_environment};
+  const jwtInput=bytes({alg:'RS256',typ:'JWT',kid:'fixture-key'}).toString('base64url')+'.'+bytes(claims).toString('base64url'),oidcToken=jwtInput+'.'+sign('RSA-SHA256',Buffer.from(jwtInput),rsa.privateKey).toString('base64url');
+  const runtimeToken='e30.'+bytes({scp:'Actions.Results:11111111-1111-1111-1111-111111111111:22222222-2222-2222-2222-222222222222'}).toString('base64url')+'.c2ln';
+  const credentials={ACTIONS_ID_TOKEN_REQUEST_URL:'https://oidc.actions.githubusercontent.com/_apis/distributedtask/hubs/build/plans/11111111-1111-1111-1111-111111111111/jobs/22222222-2222-2222-2222-222222222222/idtoken?api-version=2.0',ACTIONS_ID_TOKEN_REQUEST_TOKEN:'oidc-request-token',ACTIONS_RUNTIME_TOKEN:runtimeToken,ACTIONS_RESULTS_URL:'https://results.actions.githubusercontent.com',GITHUB_TOKEN:'independent-actions-read'};
+  const program=`
+import {createServer} from 'node:https';import {readFile,mkdtemp,writeFile,rm,lstat} from 'node:fs/promises';import {spawn} from 'node:child_process';import {createHash} from 'node:crypto';
+const hash=b=>createHash('sha256').update(b).digest('hex'),context=${JSON.stringify(context)},credentials=${JSON.stringify(credentials)},oidcToken=${JSON.stringify(oidcToken)},runtimeToken=${JSON.stringify(runtimeToken)};
+const state=new Map();let next=900,created=0,deleted=0,releaseUploads=0;const utc=()=>new Date().toISOString().replace(/\\.[0-9]{3}Z$/,'Z');
+const json=(response,value,status=200)=>{const raw=Buffer.from(JSON.stringify(value));response.writeHead(status,{'Content-Length':raw.length,'Content-Type':'application/json'});response.end(raw);};
+const metadata=a=>({id:a.id,name:a.name,expired:false,digest:'sha256:'+hash(a.zip),size_in_bytes:a.zip.length,created_at:a.created,expires_at:new Date(Date.now()+86400000).toISOString().replace(/\\.[0-9]{3}Z$/,'Z'),workflow_run:{id:123,repository_id:123,head_sha:context.workflow_sha}});
+const server=createServer({key:await readFile(${JSON.stringify(directory+'/tls.key')}),cert:await readFile(${JSON.stringify(directory+'/ca.pem')})},async(request,response)=>{
+ try {
+ const url=new URL(request.url,'https://'+request.headers.host),chunks=[];for await(const chunk of request)chunks.push(chunk);const body=Buffer.concat(chunks);
+ if(request.headers.host==='oidc.actions.githubusercontent.com'){if(request.headers.authorization!=='Bearer oidc-request-token')return json(response,{},401);return json(response,{value:oidcToken});}
+ if(request.headers.host==='api.github.com'){
+ if(request.headers.authorization!=='Bearer independent-actions-read')return json(response,{},401);
+ if(url.pathname.endsWith('/attempts/2'))return json(response,{id:123,run_attempt:2,head_sha:context.workflow_sha,status:'in_progress',conclusion:null,repository:{id:123,owner:{id:456}},run_started_at:new Date(Date.now()-60000).toISOString().replace(/\\.[0-9]{3}Z$/,'Z')});
+ if(url.pathname.endsWith('/runs/123/artifacts'))return json(response,{total_count:state.size,artifacts:[...state.values()].map(a=>({id:a.id,name:a.name}))});
+ const match=/\\/artifacts\\/(\\d+)(\\/zip)?$/.exec(url.pathname),a=match&&state.get(Number(match[1]));if(!a)return json(response,{},404);
+ if(match[2]){response.writeHead(302,{Location:'https://productionresultssa0.blob.core.windows.net/download/'+a.id+'?sig=owned-test'});response.end();return;}
+ return json(response,metadata(a));
+ }
+ if(request.headers.host==='results.actions.githubusercontent.com'){
+ if(request.headers.authorization!=='Bearer '+runtimeToken)return json(response,{},401);
+ const input=JSON.parse(body),operation=url.pathname.split('/').at(-1);
+ if(operation==='ListArtifacts')return json(response,{artifacts:[...state.values()].map(a=>({workflowRunBackendId:'11111111-1111-1111-1111-111111111111',workflowJobRunBackendId:'22222222-2222-2222-2222-222222222222',databaseId:String(a.id),name:a.name,size:String(a.zip?.length??0)}))});
+ if(operation==='CreateArtifact'){if([...state.values()].some(a=>a.name===input.name))return json(response,{},409);const a={id:next++,name:input.name,created:utc(),blocks:new Map()};state.set(a.id,a);created++;return json(response,{ok:true,signedUploadUrl:'https://productionresultssa0.blob.core.windows.net/upload/'+a.id+'?sig=owned-test'});}
+ if(operation==='FinalizeArtifact'){const a=[...state.values()].find(a=>a.name===input.name);if(!a?.zip || Number(input.size)!==a.zip.length || (input.hash?.value??input.hash)!=='sha256:'+hash(a.zip))return json(response,{},400);if(a.name.startsWith('workshop-release-'))releaseUploads++;return json(response,{ok:true,artifactId:String(a.id)});}
+ if(operation==='DeleteArtifact'){const a=[...state.values()].find(a=>a.name===input.name);if(!a)return json(response,{},404);state.delete(a.id);deleted++;return json(response,{ok:true,artifactId:String(a.id)});}
+ return json(response,{},404);
+ }
+ if(request.headers.host==='productionresultssa0.blob.core.windows.net'){
+ const id=Number(url.pathname.split('/').at(-1)),a=state.get(id);if(!a)return json(response,{},404);
+ if(request.method==='GET'){response.writeHead(200,{'Content-Length':a.zip.length});response.end(a.zip);return;}
+ if(url.searchParams.get('comp')==='block')a.blocks.set(url.searchParams.get('blockid'),body);
+ else if(url.searchParams.get('comp')==='blocklist')a.zip=Buffer.concat([...a.blocks.values()]);else a.zip=body;
+ response.writeHead(201,{'Content-Length':'0',etag:'"owned"','x-ms-request-id':'owned','x-ms-version':'2023-11-03'});response.end();return;
+ }
+ json(response,{},403);
+ }catch(error){json(response,{error:'bounded-local-service-test'},500);}
+});
+await new Promise(resolve=>server.listen(443,'8.8.8.8',resolve));
+async function bridge(mode,input,cwd){return new Promise((resolve,reject)=>{const child=spawn('/opt/autodata/node',['/opt/autodata/control/publisher_artifact.mjs',mode],{cwd,env:{PATH:'/usr/bin:/bin',NODE_OPTIONS:'--use-openssl-ca'},stdio:['pipe','pipe','pipe']});let out='',err='';const timer=setTimeout(()=>{child.kill('SIGKILL');reject(Error('bridge-timeout'));},90000);child.stdout.on('data',b=>{out+=b;if(out.length>65536)child.kill('SIGKILL');});child.stderr.on('data',b=>{err+=b;if(err.length>65536)child.kill('SIGKILL');});child.on('close',code=>{clearTimeout(timer);if(code!==0)reject(Error('bridge-rejected '+mode+' '+err));else resolve(JSON.parse(out));});child.stdin.end(JSON.stringify(input));});}
+const authCwd=await mkdtemp('/tmp/autodata-sdk-auth-'),uploadCwd=await mkdtemp('/tmp/autodata-sdk-upload-');
+try {
+ const installed=await bridge('--installed-policy',context,authCwd);if(installed.adapter_policy.registry!==${JSON.stringify(adapter.registry)})throw Error('installed-policy');
+ const authenticated=await bridge('--authenticate-context',{context,credentials},authCwd);if(authenticated.status!=='runtime_authenticated' || state.size!==0 || deleted!==1)throw Error('probe-unaccepted');
+ const token=await readFile(authCwd+'/identity-token','utf8'),st=await lstat(authCwd+'/identity-token');if(token!==oidcToken || (st.mode&0o777)!==0o600)throw Error('token-private-file');
+ const inner=Buffer.from('real upload inner bytes');await writeFile(uploadCwd+'/release.zip',inner,{mode:0o600});
+ const uploaded=await bridge('--upload-release',{request:{protocol_version:3,operation:'upload',context,archive_sha256:hash(inner),archive_bytes:inner.length,artifact_name:'workshop-release-'+context.source_sha+'-run-123-attempt-2'},credentials},uploadCwd);
+ if(uploaded.protocol_version!==3 || uploaded.run_id!=='123' || uploaded.run_attempt!==2 || !uploaded.artifact_id || state.size!==1 || releaseUploads!==1 || deleted!==3 || created!==4)throw Error('upload-unaccepted');
+ console.log('real-sdk-probe-rest-deletion-upload-verified');
+}finally{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));await rm(authCwd,{recursive:true,force:true});await rm(uploadCwd,{recursive:true,force:true});}
+`;
+  await writeFile(directory+'/positive.mjs',program,{mode:0o600});
+  const script=`set -eu
+/usr/sbin/ip link set lo up
+/usr/sbin/ip addr add 8.8.8.8/32 dev lo
+mount -t tmpfs -o mode=755 tmpfs /etc
+mkdir -p /etc/autodata/publisher /etc/ssl/certs
+printf '8.8.8.8 api.github.com oidc.actions.githubusercontent.com results.actions.githubusercontent.com productionresultssa0.blob.core.windows.net\\n' > /etc/hosts
+cp "$1/ca.pem" /etc/ssl/cert.pem
+cp "$1/ca.pem" /etc/ssl/certs/ca-certificates.crt
+for name in bootstrap-live-v1.json policy-live-v1.envelope.json github-oidc-jwks-live-v1.json adapter-policy-v2.json dependency-review-v1.json; do cp "$1/$name" "/etc/autodata/publisher/$name"; chmod 444 "/etc/autodata/publisher/$name"; done
+mount --bind /etc/autodata/publisher /etc/autodata/publisher
+mount -o remount,bind,ro /etc/autodata/publisher
+mount -t tmpfs -o mode=755 tmpfs /opt
+mkdir -p /opt/autodata/control/publisher-toolkit
+cp "$1/control/"*.mjs /opt/autodata/control/
+cp -R "$4/." /opt/autodata/control/publisher-toolkit/
+cp "$2" /opt/autodata/node
+chmod 555 /opt/autodata/node
+chmod -R a-w /opt/autodata/control
+mount --bind /opt/autodata /opt/autodata
+mount -o remount,bind,ro /opt/autodata
+NODE_OPTIONS=--use-openssl-ca exec /opt/autodata/node "$1/positive.mjs"
+`;
+  const result=spawnSync('sudo',['-n','unshare','--mount','--net','--pid','--fork','--kill-child=SIGKILL','--propagation','private','/bin/sh','-c',script,'sdk-test',directory,process.execPath,'unused',toolkit],{encoding:'utf8',timeout:240000,maxBuffer:65536});
+  assert.equal(result.status,0,result.stderr);assert.equal(result.stdout,'real-sdk-probe-rest-deletion-upload-verified\n');
+ } finally {await rm(directory,{recursive:true,force:true});}
 });

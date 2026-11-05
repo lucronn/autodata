@@ -153,7 +153,7 @@ export function verifyLiveOwnerPolicyBytes(bootstrapBytes,envelopeBytes,jwksByte
     const approvals=Object.entries(policy.approval_keys);requireValue(approvals.length>=1 && approvals.length<=16);
     for(const [fingerprint,key] of approvals)requireValue(hex(fingerprint) && typeof key==='string' && Buffer.byteLength(key)>0 && Buffer.byteLength(key)<=16384 && digest(Buffer.from(key))===fingerprint);
     const oidc=policy.oidc;fields(oidc,['issuer','audience','subject','jwks_sha256','jwks_issued_at','jwks_expires_at']);
-    requireValue(oidc.issuer==='https://token.actions.githubusercontent.com' && oidc.audience==='urn:autodata:publisher:staging:live:v1' && oidc.subject==='repo:lucronn/autodata:environment:workshop-staging-publish' && hex(oidc.jwks_sha256) && digest(jwksRaw)===oidc.jwks_sha256);
+    requireValue(oidc.issuer==='https://token.actions.githubusercontent.com' && oidc.audience==='sigstore' && oidc.subject==='repo:lucronn/autodata:environment:workshop-staging-publish' && hex(oidc.jwks_sha256) && digest(jwksRaw)===oidc.jwks_sha256);
     requireValue(safeTime(oidc.jwks_issued_at) && safeTime(oidc.jwks_expires_at) && oidc.jwks_issued_at<=policy.issued_at && policy.expires_at<=oidc.jwks_expires_at && oidc.jwks_expires_at-oidc.jwks_issued_at>0 && oidc.jwks_expires_at-oidc.jwks_issued_at<=86400);
     const jwks=parseStrictJsonBytes(jwksRaw);validateJwks(jwks);
     return freeze({policy,jwks,adapter_policy:adapter,activation_sha256:digest(envelopeRaw),trust_bytes:{bootstrap_base64:bootstrapRaw.toString('base64'),envelope_base64:envelopeRaw.toString('base64'),jwks_base64:jwksRaw.toString('base64'),adapter_base64:adapterRaw.toString('base64')}});
