@@ -28,6 +28,38 @@ def load():
 
 
 class LiveTests(unittest.TestCase):
+    def test_unresolved_runtime_fields_fail_before_trust_tokens_or_processes(self):
+        import unittest.mock
+        import test_host_runtime
+        import test_publisher_adapters
+        fixture = test_host_runtime.ContractTests(); fixture.setUp()
+        try: config = fixture.config
+        finally: fixture.doCleanups()
+        p = load()
+        context = test_publisher_adapters.context_fixture()
+        context['service_config_sha256'] = p.a.digest(p.a.canonical(config))
+        resources = config['resources']
+        runtime = {'project_id':resources['host_project_id'],'region':resources['region'],'zone':resources['zone'],
+                   'maximum_monthly_budget_usd':20,'staging_origin':config['public_origin'],
+                   'wif_provider':'projects/123456/locations/global/workloadIdentityPools/staging/providers/github',
+                   'publisher_service_account':'publisher@autodata-host.iam.gserviceaccount.com',
+                   'registry':resources['artifact_repository'],
+                   'toolchain_image_digest':'registry.example/toolchain@sha256:'+'a'*64}
+        p.runtime_config(runtime,config)
+        with p.a.private_workspace() as root:
+            p.a.private_write(root,'context.json',p.a.canonical(context))
+            p.a.private_write(root,'config.json',p.a.canonical(config))
+            with unittest.mock.patch.object(p,'INPUT',root), unittest.mock.patch.object(p,'OUTPUT',root/'output'), \
+                 unittest.mock.patch.object(p,'bridge',side_effect=AssertionError('trust process before resolved config')), \
+                 unittest.mock.patch.object(p,'credentials',side_effect=AssertionError('credential read before resolved config')):
+                for key in p.RUNTIME_FIELDS:
+                    with self.subTest(field=key):
+                        path = root/'runtime.json'
+                        if path.exists(): path.unlink()
+                        p.a.private_write(root,'runtime.json',p.a.canonical(runtime|{key:None}))
+                        with self.assertRaises(p.a.AdapterError): p.execute('staging-build-candidate',context['source_sha'])
+                        self.assertFalse((root/'output').exists())
+
     def test_sigint_popen_assignment_race_and_repeated_cleanup_cancel(self):
         import unittest.mock
         p = load()

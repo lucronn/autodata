@@ -641,7 +641,7 @@ def execute(phase, source):
             a.require(deps.archive is not None)
             archive = a.decode_actions_outer_zip(deps.archive, binding['archive_sha256'], binding['archive_bytes'])
             outputs = {'binding.json':a.canonical(binding),'release.json':a.canonical(manifest),
-                       'release.zip':archive,'receipt.json':a.canonical(result)}
+                       'release.zip':archive,'verification.json':a.canonical(result)}
         OUTPUT.mkdir(mode=0o700)
         for name, data in outputs.items(): a.private_write(OUTPUT, name, data)
         return result
