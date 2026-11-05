@@ -257,3 +257,20 @@ TODO:
 - [ ] Retain exact candidate review and fresh source-push and actual-PR three-job CI evidence, record remaining blockers and keep credits0, verified IDs[] and runtime/release authorities disabled.
 
 Root confirmed Issue186 [comment6652770502](https://github.com/lucronn/autodata/issues/186#issuecomment-6652770502) exact-body readback PASS and Project8 Source appended-pointer readback PASS (1016 bytes, prior prefix preserved), status In Progress. Recorded at `2026-11-05T07:55:25.114444+00:00`. This tracking synchronization grants no implementation or runtime authority.
+
+
+## CI cost: feature-push verification deduplication — synchronized planning
+
+Goal: Avoid duplicate Autonomous Verification suites for feature-branch pushes while retaining pull_request verification and push verification on master.
+
+Issue: https://github.com/lucronn/autodata/issues/315; Project: https://github.com/users/lucronn/projects/8; item `PVTI_lAHOCSJ8cc4BiQ2BzhGR-0Q`. Plan: `docs/superpowers/plans/2026-11-05-ci-cost-trigger-deduplication.md`. Machine record: `docs/agents/records/2026-11-05-ci-cost-trigger-deduplication.json`. Status: synchronized. Planning source: `2e5c483e40bd6fa930382319dfaea1c8bbfdedce`. The subsequent planning checkpoint is the pinned implementation base; exact SHA is sealed in the Issue and supplied to preflight.
+
+Todo:
+
+- [ ] Re-run the exact-checkpoint planning preflight before implementation.
+- [ ] Add focused governance regression coverage for feature push, master push, pull_request and manual dispatch.
+- [ ] Limit push to master while preserving all existing paths, jobs and required checks.
+- [ ] Run structural/workflow-binding checks, inspect unchanged job definitions and push a validated implementation milestone for independent review and actual PR CI evidence.
+- [ ] Synchronize exact-source evidence and remaining blockers in canonical docs and GitHub; retain master-push verification as pending until available.
+
+Future implementation scope: `.github/workflows/autonomous-verification.yml` and focused regression coverage in `scripts/dev/test_repository_governance.py`. Limit only push events to master; keep existing pull_request/workflow_dispatch events, path filters, all jobs, steps, required check names, permissions and timeouts. Any extra whole-workflow digest binding correction requires a separately reviewed scope update before editing. This is a documentation-only planning checkpoint, with no implementation/PR/merge/deployment or CI-success claim.
