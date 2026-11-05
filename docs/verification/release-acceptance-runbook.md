@@ -574,3 +574,40 @@ A present final snapshot additionally requires selected-engine browser-version
 metadata: the child assigns that snapshot only after a successful browser exit.
 The interrupted row-without-version branch remains valid when no final snapshot
 or cleanup records have yet been assigned.
+
+## Internal API21 producer-v2 retained-byte inspection (Task52)
+
+`inspect_api21_v2_receipts(store, *, candidate_sha, trusted_base_sha,
+profile_sha256, profile_version="api21-retained-v2")` is a separate internal,
+offline consistency inspector. Its source candidate is
+`6949eb1b1a5b93c9b2eb0579328e24c697f6f331`, tree
+`47ec54b1896c83a39b6637a6ce944d3620414f4e`, producer marker
+`api21-producer-v2`. The schema selector does not enable a trust profile.
+Historical `inspect_api21_receipts`, `api21-fixture-v1`, and their candidate and
+asset bindings retain their existing behavior.
+
+The v2 inspector binds the seven frozen producer input digests and the current
+11 served asset byte manifests, including the 37,870-byte `app.mjs` with SHA256
+`2bfe85a3f5e0b77bc55fe0c18b50b35a9bab6444f6a640bf6a6a36bd57ab4c46`.
+Original `workshop-browser-api.xml`, per-case JSON/process receipts, logs and
+observed global worker log names remain private ArtifactStore declarations.
+No producer module is imported or executed. Original entity bytes are decoded
+and hashed directly; parsed JSON cannot replace missing original bytes.
+Source-defined partial bindings, prelaunch/timeout, publication fallback and
+failed-child cleanup branches remain diagnostic outcomes. A failed child may
+retain observed worker exits without a final snapshot.
+
+Even internally consistent bytes yield `status: unavailable`, `complete: false`,
+`verified_case_ids: []`, both case credits zero, `release_state: unverified`, and
+all acceptance flags false. Caller-supplied trusted-base/profile digests are
+correlation values: the producer does not authenticate them. Retained process
+results do not establish an engine OS exit, descendant containment, outer
+pytest exit or authentic capture. Fixture settlement/refund observations do
+not authenticate external webhook delivery. Public CLI/profile dispatch stays
+disabled and exits 3.
+
+The existing 4 MiB JSON, 8 MiB per-support-file and 64 MiB total limits remain
+strict. A 16 MiB producer diagnostic trace is rejected intact; trimming,
+renaming or raising consumer ceilings is not an admission path. Finite API
+scheduling, authenticated transport/capture, real API21/fixture180 execution,
+profile promotion, host/runtime, staging and release remain separately gated.
