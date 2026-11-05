@@ -15,7 +15,7 @@ Issue: https://github.com/lucronn/autodata/issues/307 ; parent https://github.co
 ## Global constraints
 
 - Planning checkpoint only on this turn; no implementation/cloud execution.
-- Implementation allowlist is exactly the seven paths below; existing relay, Compose, runtime/activation/private-delivery files remain read-only dependencies.
+- Implementation allowlist is exactly the eight paths below; existing relay, Compose, runtime/activation/private-delivery files remain read-only dependencies.
 - Fixed Debian12/linux-amd64 staging-only profile; pinned accepted packages/images, no latest/tag/credential fallback.
 - No production, DNS, paid/provider/model traffic or resource mutation during implementation tests.
 - Test each milestone before commit/push. Independent exact-candidate review precedes integration; passing this gate alone authorizes no live host command.
@@ -29,6 +29,7 @@ Issue: https://github.com/lucronn/autodata/issues/307 ; parent https://github.co
 - `infra/deploy/gce/test_host_provision.py`
 - `infra/deploy/gce/test_host_prepare_release.py`
 - `docs/operations/workshop-host-provision-install.md`
+- `infra/deploy/gce/test_host_schema_pg17.py` (only the baseline PG17 fixture correction below)
 
 ## Task 1: Deterministic bundle and host preparation
 
@@ -66,7 +67,7 @@ Extend host_prepare_release.py/test_host_prepare_release.py and create host-boot
 ## Concrete todo
 
 - [ ] Build a deterministic credential-free host bundle with exact file inventory and existing runtime helpers, templates and source migration material.
-- [ ] Prepare only an explicitly accepted staging host using offline version-pinned packages, observed blank data-device identity, UUID mount, tmpfs, guards and systemd dependencies; prevent early Docker startup.
+- [ ] Prepare the accepted staging host with exact seaweedfs1000:10000700 data path, strict helper/release modes, explicit approval fields and credential paths, offline pinned packages, UUID mount and guard dependencies.
 - [ ] Install accepted inert release material and populate the exact manifest image cache with transient externally supplied registry authentication, verifying every digest/platform/config identity.
 - [ ] Initialize only a fresh staging PostgreSQL17 database, provision fixed scoped roles, run the exact accepted migration image/runner and grants, and verify the manifest ledger before existing activation.
 - [ ] Run reject-before-mutation, mount/guard ordering, image failure, migration/retry and reboot tests with fake execution plus disposable PG17; push coherent validated milestones and synchronize evidence.
@@ -74,3 +75,14 @@ Extend host_prepare_release.py/test_host_prepare_release.py and create host-boot
 ## Verification record
 
 The synchronized JSON record is `docs/agents/records/2026-11-05-workshop-host-provision-install.json`; task envelope `docs/agents/tasks/2026-11-03-production-release/workshop-host-provision-install.json`. Pinned checkpoint SHA and actual machine-preflight output are recorded in the subsequent receipt. No implementation or live staging evidence is claimed by this plan.
+
+## Pre-edit contract amendment
+
+The storage bind source is exactly `/var/lib/autodata/seaweedfs`, owner1000:1000 mode0700; service name minio does not select a minio data path. Preserve strict `/opt/autodata` and release-directory modes required by existing installers. The canonical spec now names every operation-specific approval key, first-install/resume journal field, and temporary credential path/owner/mode. Existing postgres restart behavior may resume PostgreSQL behind mount/guard dependencies; this gate creates no application containers and does not authorize application auto-activation. These are corrections to compatibility with read-only dependencies; the original live-operation boundary is unchanged; the fixture-only eighth path is added explicitly below.
+
+### Baseline fixture prerequisite within Task3
+
+- [ ] Preserve reported untouched baseline249 tests/4 failures/1 skip. In the eighth allowed path test_host_schema_pg17.py, create the dedicated nonprivileged autodata_outbox role and minimal publication_events eight-column table named in the canonical spec before existing runtime-grants.sql. Change no collector assertions, skips, production grants or runtime code.
+- [ ] Run `AUTODATA_REQUIRE_PG17=1 python3 -m unittest discover -s infra/deploy/gce -p test_host_schema_pg17.py -v` with the cached disposable PG17 image, then rerun the full host suite. Retain actual outcomes; do not replace real cases with mocks.
+
+- [ ] Repair only the existing real PG17 fixture by creating nonprivileged autodata_outbox and the minimal eight grant-target publication_events columns before unchanged runtime-grants.sql; preserve all collector assertions and rerun real PG17/full host tests.
