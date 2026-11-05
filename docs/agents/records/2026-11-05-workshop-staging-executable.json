@@ -15,7 +15,7 @@
     "Prove real publication and disposable Debian12/PG17 host deployment through readyz; retain failures and independent exact-SHA review before staging application."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-05T12:26:05.860535+00:00",
+  "updated_at": "2026-11-05T12:41:42.690970+00:00",
   "source_base_sha": "e42bd471ee545193f664de9a3b677aed875f3271",
   "parent_issue_ref": "https://github.com/lucronn/autodata/issues/186",
   "implementation_allowlist": [
@@ -70,7 +70,7 @@
     "project_status": "In Progress",
     "readback_verified": true,
     "parent_link_verified": true,
-    "issue_body_sha256": "931d86a71c62c5ff95b6c56321c90e6b8e9040ce0c37cacc9eb7b9b489024532",
+    "issue_body_sha256": "911b863f7901277cd03e1992c1376565b3c3fec9e5b4a6556a055354c73f46f2",
     "project_index_sha256": "483bab6a9b59e8875c66df42d529827059d1dec4ef139a4fd7fb9330b34ec99f"
   }
 }
