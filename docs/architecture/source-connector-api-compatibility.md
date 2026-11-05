@@ -125,3 +125,20 @@ Concrete todo:
 - [ ] Run red/green focused checks, Bankone batch regressions and diff checks; commit/push the validated two-file fix for independent exact-SHA review.
 
 Bankone CLI implementation `f15ce05bd29d0f5a0cceb9ab8f3642c6f73b268c` changes only the connector constructor keyword to `timeout`. Three real-constructor CLI regressions and ten Bankone batch tests passed after the original TypeError was reproduced. Exact-head GitHub verification passed in run `42044574931`; PR #320 merged as `ccdfbbedab0a90957ddb077595bcc8f050373c02`. The bounded real-source staging rerun remains a separate acceptance step.
+
+
+## Banktwo maintenance XML source fidelity
+
+Goal: Preserve authentic Banktwo custom maintenance XML as ordered, readable source content without changing rewrite eligibility.
+
+Issue: https://github.com/lucronn/autodata/issues/321; parent #186; related #300/#317; Project https://github.com/users/lucronn/projects/8, item PVTI_lAHOCSJ8cc4BiQ2BzhGTyPY. Plan: `docs/superpowers/plans/2026-11-05-banktwo-maintenance-xml.md`; record: `docs/agents/records/2026-11-05-banktwo-maintenance-xml.json`.
+
+Eight of 20 retained authentic Banktwo HAL resources contain maintenance_schedule XML. The existing fallback exposes tags as prose; this repair projects the observed strict grammar into existing ordered blocks. Preserve root title, operation/component id/name, component notes/warranty/qualifier, root footnote, inline br/a href, CDATA literal text, mixed-content tails and original order. Reject DTD/entities, malformed XML and unknown structure; preserve existing scope, applicability, original bytes/hash, evidence and safe-link behavior. Only source_adapters.py and its source capture/adapter tests are in scope. All 40 retained cross-bank resources currently have zero v2 eligible documents; source adaptation is measured separately from rewrite eligibility and publication. Private bodies remain local; no provider/model calls, activation, deployment, eligibility policy, schema or UI changes.
+
+Concrete todo:
+- [x] Add failing synthetic regressions for maintenance XML structure, mixed content, source identity and fail-closed rejection.
+- [x] Add the bounded maintenance_schedule parser and route direct XML and nested HAL XML through it without changing eligibility policy.
+- [x] Run focused adapter/capture/normalization regressions and replay retained authentic resources with unchanged hashes; report source fidelity and eligibility separately.
+- [x] Obtain independent exact-SHA review and synchronize plan, canonical documentation, Issue and Project evidence before integration.
+
+Status: candidate `1aa8e81acc19476e32f539ba000e9fd96438e908` independently reviewed PASS; Project Review; PR #322 and final-head CI pending. The source suite passed 171 tests and 60 subtests. Offline replay of identical retained40 kept original hashes, strict validity 24/40 and v2 eligibility 0/40, while complete observed XML fidelity improved 0/8 to 8/8. The private replay report SHA-256 is `42f2ccc7245c1cb6657a56d64521a096e790e3ff72605a6386bbba2f09ee1f2b`. Source repair alone does not establish rewrite acceptance or production readiness.

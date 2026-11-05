@@ -1577,6 +1577,129 @@ def _binary_artifact(kind: str, resource: SourceResource, metadata: dict[str, An
     )
 
 
+def _looks_like_bound_article_xml(text: str) -> bool:
+    """Recognize leading XML syntax without treating comparison prose as XML."""
+    leading = text.lstrip("\ufeff \t\r\n")
+    if re.match(r"<(?:[!?]|/?[A-Za-z_][\w:.-]*(?=[\s/>]|$))", leading) is None:
+        return False
+    # Preserve the existing nested HTML path. Unknown XML roots must not become
+    # fabricated prose, even when their children happen to use HTML tag names.
+    html_leading = re.sub(r"^(?:<!--.*?-->\s*)+", "", leading, flags=re.S)
+    html_leading = re.sub(
+        r"^<!doctype\s+html(?:\s+[^>\[]*)?>\s*", "", html_leading, flags=re.I
+    )
+    html_root = re.match(r"<([A-Za-z][\w.-]*)(?=[\s/>])", html_leading)
+    html_tags = {
+        "a", "abbr", "address", "area", "article", "aside", "audio", "b", "base",
+        "bdi", "bdo", "blockquote", "body", "br", "button", "canvas", "caption",
+        "center", "cite", "code", "col", "colgroup", "data", "datalist", "dd",
+        "del", "details", "dfn", "dialog", "div", "dl", "dt", "em", "embed",
+        "fieldset", "figcaption", "figure", "font", "footer", "form", "h1", "h2",
+        "h3", "h4", "h5", "h6", "head", "header", "hgroup", "hr", "html", "i",
+        "iframe", "img", "input", "ins", "kbd", "label", "legend", "li", "link",
+        "main", "map", "mark", "menu", "meta", "meter", "nav", "noscript", "object",
+        "ol", "optgroup", "option", "output", "p", "picture", "pre", "progress",
+        "q", "rp", "rt", "ruby", "s", "samp", "script", "search", "section",
+        "select", "slot", "small", "source", "span", "strong", "style", "sub",
+        "summary", "sup", "table", "tbody", "td", "template", "textarea", "tfoot",
+        "th", "thead", "time", "title", "tr", "track", "u", "ul", "var", "video", "wbr",
+    }
+    return not (html_root and html_root.group(1).casefold() in html_tags)
+
+
+def _maintenance_xml_blocks(text: str) -> list[dict[str, Any]]:
+    """Project only the observed, fixed-depth maintenance grammar into blocks."""
+    error = "invalid maintenance XML"
+    # Reject declarations before invoking Expat; no entity or external-resource
+    # resolution is part of this adapter. Decode bytes before this check so
+    # alternate byte encodings cannot bypass it.
+    if re.search(r"<!\s*(?:DOCTYPE|ENTITY)\b", text, re.I):
+        raise ValueError(error)
+
+    class MaintenanceTreeBuilder(ElementTree.TreeBuilder):
+        def start_ns(self, prefix, uri):
+            # Includes unused namespace declarations that ElementTree would
+            # otherwise discard, as well as namespaced elements/attributes.
+            raise ValueError(error)
+
+    try:
+        root = ElementTree.fromstring(
+            text.lstrip("\ufeff"),
+            parser=ElementTree.XMLParser(target=MaintenanceTreeBuilder(
+                insert_comments=True, insert_pis=True
+            )),
+        )
+    except ElementTree.ParseError:
+        raise ValueError(error) from None
+
+    blocks: list[dict[str, Any]] = []
+
+    def attributes(node, tag, names):
+        if node.tag != tag or set(node.attrib) != names:
+            raise ValueError(error)
+
+    def structure(node, allowed):
+        if (node.text or "").strip():
+            raise ValueError(error)
+        for child in node:
+            if child.tag not in allowed or (child.tail or "").strip():
+                raise ValueError(error)
+
+    def heading(node, level):
+        blocks.append({
+            "kind": "heading", "level": level,
+            "text": f"{node.attrib['name']} ({node.attrib['id']})",
+        })
+
+    def content(node):
+        attributes(node, node.tag, set())
+
+        def text_block(value):
+            if value and value.strip():
+                # All XML fields are explicit source notes, not unstructured
+                # prose: avoid plain-text page/number/step inference here.
+                blocks.append({"kind": "callout", "label": node.tag.title(), "text": value})
+
+        text_block(node.text)
+        for child in node:
+            if node.tag != "notes":
+                raise ValueError(error)
+            if child.tag == "br":
+                attributes(child, "br", set())
+                if child.text or len(child):
+                    raise ValueError(error)
+            elif child.tag == "a":
+                attributes(child, "a", {"href"})
+                if len(child) or not (child.text or "").strip():
+                    raise ValueError(error)
+                blocks.append({
+                    # Capture strips raw href/url fields. The existing target
+                    # alias reaches the normalizer's same safe-link filter.
+                    "kind": "link", "text": child.text, "target": child.attrib["href"],
+                })
+            else:
+                raise ValueError(error)
+            text_block(child.tail)
+
+    attributes(root, "maintenance_schedule", {"title"})
+    structure(root, {"operation", "footnote"})
+    blocks.append({"kind": "heading", "level": 1, "text": root.attrib["title"]})
+    for operation in root:
+        if operation.tag == "footnote":
+            content(operation)
+            continue
+        attributes(operation, "operation", {"id", "name"})
+        structure(operation, {"component"})
+        heading(operation, 2)
+        for component in operation:
+            attributes(component, "component", {"id", "name"})
+            structure(component, {"notes", "warranty", "qualifier"})
+            heading(component, 3)
+            for field in component:
+                content(field)
+    return blocks
+
+
 def adapt_bound_article(resource: SourceResource, context) -> dict[str, Any]:
     """Adapt fetched bytes under proven connector scope, without weakening URL intake."""
     from .banktwo_connector import ArticleParser
@@ -1659,6 +1782,11 @@ def adapt_bound_article(resource: SourceResource, context) -> dict[str, Any]:
                     or article.get("content")
                     or ""
                 )
+                if _looks_like_bound_article_xml(text):
+                    return {
+                        "blocks": _maintenance_xml_blocks(text),
+                        "asset_resource_refs": article.get("asset_resource_refs", []),
+                    }
                 if re.search(
                     r"</?(?:p|div|ol|ul|li|table|h[1-6]|script|style|img)\b", text, re.I
                 ):
@@ -1675,6 +1803,11 @@ def adapt_bound_article(resource: SourceResource, context) -> dict[str, Any]:
         return {
             "blocks": blocks,
             "asset_resource_refs": article.get("asset_resource_refs", []),
+        }
+    if media in {"application/xml", "text/xml"}:
+        return {
+            "blocks": _maintenance_xml_blocks(resource.payload.decode("utf-8-sig")),
+            "asset_resource_refs": [],
         }
     if media == "text/html":
 
