@@ -971,7 +971,7 @@ def api21_write_bytes(target,raw):
     info=os.fstat(directory)
     if info.st_uid!=os.getuid() or stat.S_IMODE(info.st_mode)!=0o700:
         os.close(directory);raise OSError('unsafe output directory')
-    temp='.api21-'+os.urandom(16).hex()+'.tmp'
+    temp='.api21-'+os.urandom(16).hex()+'.tmp';owned=None
     def identity():
         try:
             info=os.stat(target.name,dir_fd=directory,follow_symlinks=False)
@@ -981,14 +981,20 @@ def api21_write_bytes(target,raw):
     try:
         original=identity()
         descriptor=os.open(temp,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600,dir_fd=directory)
+        info=os.fstat(descriptor);owned=(info.st_dev,info.st_ino)
         with os.fdopen(descriptor,'wb') as stream:stream.write(raw);stream.flush();os.fsync(stream.fileno())
+        info=os.stat(temp,dir_fd=directory,follow_symlinks=False)
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink!=1 or (info.st_dev,info.st_ino)!=owned:raise OSError('temporary replaced')
         if identity()!=original:raise OSError('output replaced')
         os.replace(temp,target.name,src_dir_fd=directory,dst_dir_fd=directory)
         os.fsync(directory)
     finally:
-        try:os.unlink(temp,dir_fd=directory)
+        try:
+            if owned is not None:
+                info=os.stat(temp,dir_fd=directory,follow_symlinks=False)
+                if (info.st_dev,info.st_ino)==owned:os.unlink(temp,dir_fd=directory)
         except FileNotFoundError:pass
-        os.close(directory)
+        finally:os.close(directory)
 
 
 def api21_write(target,value):
