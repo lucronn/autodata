@@ -206,7 +206,11 @@ def test_postgres_export_contains_real_source_and_candidate_in_private_files(dra
     args,response=draft;destination=tmp_path/'comparison'
     result=review.export_review(args['repo'],expected=args['expected'],destination=destination)
     assert result['status']=='exported'
-    assert 'Remove the pump.' in json.dumps(json.loads((destination/'source.json').read_text()))
+    source_export=json.loads((destination/'source.json').read_text())
+    assert source_export['source_body']=='Remove the pump.'
+    assert source_export['observation']['captured_context']['descriptor']['title']=='Pump'
+    assert source_export['observation']['captured_context']['vehicle']['make']=='Example'
+    assert 'Remove the pump.' in json.dumps(source_export)
     assert 'Take the pump off.' in json.dumps(json.loads((destination/'candidate.json').read_text()))
     assert 'Remove the pump.' not in json.dumps(result)
 

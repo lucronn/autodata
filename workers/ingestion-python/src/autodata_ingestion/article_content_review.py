@@ -256,7 +256,10 @@ def export_review(repo, *, expected, destination):
         job, article, candidate, source = _load_locked(cur, expected)
         _original_and_effective(cur, job, candidate)
         reviews = cur.execute("SELECT * FROM canonical_article_reviews WHERE canonical_article_revision_id=%s ORDER BY reviewed_at DESC,canonical_article_review_id DESC", (candidate["canonical_article_revision_id"],)).fetchall()
-        payloads = {"source": {"document": source["source_document"], "normalized_document": candidate["normalized_source_document"], "images": source["source_images"]},
+        observation = cur.execute("SELECT * FROM canonical_article_source_observations WHERE source_revision_id=%s ORDER BY (source_fetch_job_id=%s) DESC,captured_at,source_observation_id LIMIT 1", (job["source_revision_id"], job["source_fetch_job_id"])).fetchone()
+        if observation is None:
+            raise ValueError("CONTENT_REVIEW_SOURCE_CONTEXT_MISSING")
+        payloads = {"source": {**source, "observation": observation, "document": source["source_document"], "normalized_document": candidate["normalized_source_document"], "images": source["source_images"]},
             "candidate": candidate["canonical_document"], "reviews": reviews,
             "manifest": {"schema": REASON_SCHEMA, "bindings": expected, "validation_report": candidate["validation_report"]}}
     write_private_export(destination, payloads)
