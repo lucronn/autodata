@@ -29,6 +29,7 @@ Lane A owns authenticated publication only:
 - `infra/deploy/gce/publisher_live.py`
 - `infra/deploy/gce/test_publisher_live.py`
 - `infra/deploy/gce/test_publisher_adapters.py`
+- `infra/deploy/gce/publisher_adapters.py`
 - `infra/deploy/gce/publisher_policy.mjs`
 - `infra/deploy/gce/publisher_identity.mjs`
 - `infra/deploy/gce/publisher_artifact.mjs`
@@ -44,7 +45,7 @@ Lane B owns staging orchestration only:
 - `infra/deploy/gce/staging_deploy.py`
 - `infra/deploy/gce/test_staging_deploy.py`
 
-Coordinator alone updates `docs/operations/workshop-staging-executable.md` and this plan with verified evidence. No other implementation file is allowed. In particular publisher_adapters.py and existing host/bootstrap/private/database helpers are reused unchanged; if their interfaces prevent the path, stop for a synchronized scope amendment rather than silently bypassing a validator. Lane A owns the workflow and contract-test changes. Lane B must not modify them. No new general deployment framework, cloud resource architecture or fake-only facade.
+Coordinator alone updates `docs/operations/workshop-staging-executable.md` and this plan with verified evidence. No other implementation file is allowed. Existing host/bootstrap/private/database helpers are reused unchanged. Lane A may make one narrow change in publisher_adapters.py: verify real OCI layers larger than 4 MiB by streaming and hashing original bytes with explicit per-layer/aggregate bounds and deadline, while retaining manifest/config digest checks, declared size checks and all v3 acceptance semantics. The former 4 MiB limit rejects ordinary production image layers before fetching them; no layer may be trusted from a supplied descriptor alone. Lane A owns the workflow and contract-test changes. Lane B must not modify them. No new general deployment framework, cloud resource architecture or fake-only facade.
 
 ## Task 1: real authenticated publication (Lane A)
 
