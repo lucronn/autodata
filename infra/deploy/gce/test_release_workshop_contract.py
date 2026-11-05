@@ -35,23 +35,62 @@ class ReleaseWorkflowContract(unittest.TestCase):
             for guard in ["vars.WORKSHOP_STAGING_PUBLISH_ENABLED == 'true'", "github.repository == 'lucronn/autodata'", "github.ref == 'refs/heads/master'", "github.event_name == 'workflow_dispatch'", f"inputs.operation == '{name}'"]:
                 self.assertIn(guard, job['if'])
 
-    def test_no_step_can_bypass_the_unconditional_precredential_blocker(self):
+    def test_executable_staging_launch_uses_pinned_control_and_owner_runner(self):
         for name in ('staging-build-candidate', 'staging-finalize'):
-            steps = self.workflow['jobs'][name]['steps']
+            job = self.workflow['jobs'][name]
+            self.assertEqual(job['runs-on'], ['self-hosted','linux','x64','workshop-staging-publisher'])
+            steps = job['steps']
             self.assertEqual(len(steps), 3)
-            self.assertEqual(steps[2]['uses'], 'actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683')
-            self.assertEqual(steps[2]['with'], {'ref': '${{ github.workflow_sha }}', 'path': 'control', 'persist-credentials': False, 'fetch-depth': 1, 'submodules': False, 'lfs': False})
             self.assertEqual(steps[0]['id'], 'validate')
-            self.assertEqual(steps[1]['id'], 'activation-blocker')
-            for step in steps[:2]:
-                self.assertNotIn('if', step)
-                self.assertNotIn('uses', step)
-                self.assertNotIn('continue-on-error', step)
-                self.assertNotIn('${{', step['run'])
-            result = subprocess.run(['bash', '-c', steps[1]['run']], env={}, capture_output=True, timeout=3)
-            self.assertEqual(result.returncode, 3)
-            self.assertEqual(result.stdout, b'')
-            self.assertIn(b'missing_dependency:', result.stderr)
+            self.assertEqual(steps[1]['uses'], 'actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683')
+            self.assertEqual(steps[1]['with'], {'ref': '${{ github.workflow_sha }}', 'path': 'control', 'persist-credentials': False, 'fetch-depth': 1, 'submodules': False, 'lfs': False})
+            self.assertEqual(steps[2]['uses'], 'actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd')
+            self.assertEqual(steps[2]['env'], {'GITHUB_TOKEN':'${{ github.token }}'})
+            for step in steps:
+                for field in ('if','continue-on-error'): self.assertNotIn(field, step)
+            script = steps[2]['with']['script']
+            self.assertNotIn('${{', script)
+            self.assertNotIn('GITHUB_ENV', script)
+            self.assertNotIn('npm install', script)
+            self.assertIn("'--pull=never'", script)
+            self.assertIn("'--read-only'", script)
+            self.assertIn("'--cap-drop=ALL'", script)
+            self.assertIn('readonly', script)
+            self.assertIn("'--installed-policy'", script)
+            self.assertIn("'--authenticate-context'", script)
+            self.assertIn("'auth','login','--cred-file'", script)
+            self.assertIn("'auth','print-access-token'", script)
+            self.assertIn("'/control/infra/deploy/gce/publisher_cli.py',e.OPERATION,e.SOURCE_SHA", script)
+            self.assertLess(script.index("helper,'--installed-policy'"), script.index('const credentials='))
+            self.assertLess(script.index("await container('/usr/bin/python3',['-I','-c',preflight"), script.index('const credentials='))
+            self.assertLess(script.index("helper,'--authenticate-context'"), script.index('const external='))
+            self.assertIn("runtime[field]===installed.live_policy[field]", script)
+            self.assertIn('service_account_impersonation_url', script)
+            self.assertIn("ownedContainers.add", script)
+
+    def test_launch_script_and_embedded_python_are_executable_and_precredential_failure_is_bounded(self):
+        script = self.workflow['jobs']['staging-build-candidate']['steps'][2]['with']['script']
+        # Compile the actual action body and both finite Python programs. No
+        # service or SDK fixture is involved in this workflow syntax check.
+        node = '/tmp/node-v22.23.4-linux-x64/bin/node'
+        if not Path(node).exists(): node = 'node'
+        import re
+        for name in ('preflight','exchange'):
+            template = re.search(r'const '+name+r' = `([\s\S]*?)`;', script).group(1)
+            decoded = subprocess.run([node,'-e','process.stdout.write(Function("return `"+process.argv[1]+"`")())',template],capture_output=True,check=True,timeout=3).stdout.decode()
+            compile(decoded, '<workflow-'+name+'>', 'exec')
+        harness = r"""
+const fs=require('node:fs');
+const script=fs.readFileSync(0,'utf8');
+const AsyncFunction=Object.getPrototypeOf(async function(){}).constructor;
+let secretReads=0;
+const allowed={EVENT_NAME:'workflow_dispatch',REPOSITORY:'wrong',REF:'refs/heads/master'};
+const fakeProcess={getuid:()=>0,platform:'linux',env:new Proxy(allowed,{get(target,key){if(!(key in target)){secretReads++;throw Error('secret access');}return target[key];}})};
+new AsyncFunction('require','process','core',script)(require,fakeProcess,{info(){throw Error('unexpected output');}}).then(()=>process.exit(9)).catch(error=>{if(secretReads||!error.message.startsWith('missing_dependency:'))process.exit(8);});
+"""
+        result = subprocess.run([node,'-e',harness],input=script.encode(),capture_output=True,timeout=3)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, b'')
 
     def env(self, operation):
         return {
