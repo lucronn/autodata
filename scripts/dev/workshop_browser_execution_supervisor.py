@@ -297,7 +297,10 @@ def reduce(state: dict, event: c.Event) -> tuple[dict, tuple[dict, ...]]:
             _fail(next_state, "recovery_blocked", "observation_fsync_receipt_mismatch")
         elif (event.monotonic_ns >= min(pending["deadline_ns"], state["lease_until_ns"])
               or not state["broker_alive"] or not state["lock_held"]
-              or pending["ticket"]["epoch"] != state["epoch"] or state["status"] in NONPASS):
+              or pending["ticket"]["epoch"] != state["epoch"]
+              or (state["status"] in NONPASS and (state["holder"] != "watchdog_cleanup"
+                  or pending["ticket"]["holder"] != "watchdog_cleanup"
+                  or pending["kind"] not in ("stop", "signal", "remove", "reap", "inspect")))):
             _fail(next_state, "recovery_blocked", "late_or_revoked_observation_requires_reconcile")
         else:
             next_state["journal_sequence"] = p["sequence"]

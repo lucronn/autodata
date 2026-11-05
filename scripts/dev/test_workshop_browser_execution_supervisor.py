@@ -635,3 +635,18 @@ def test_rewritten_runner_receipt_preserves_first_readiness_history():
     st,_=s.reduce(st,event('receipt',105,name='runner_started',sha256='b'*64))
     assert st['status']=='recovery_blocked' and st['failure_reasons']==['receipt_rewritten']
     assert st['services_readiness_deadline_ns']==end and st['receipts']['runner_started']=='a'*64
+
+
+def test_fresh_watchdog_cleanup_observation_can_finish_without_upgrading_failure():
+    st,_=s.reduce(state(),event('takeover',1100,expected_epoch=1))
+    st,_=s.reduce(st,event('fence_fsynced',1101,epoch=2,sequence=1))
+    end=st['cleanup_deadline_ns']
+    incoming=request(st,action='cleanup',now=1102)
+    incoming=dataclasses.replace(incoming,payload={**incoming.payload,'kind':'inspect'})
+    st,_=s.reduce(st,incoming)
+    st,_=s.reduce(st,event('intent_fsynced',1103,action_id='cleanup',sequence=2,parent_fsynced=True))
+    st,_=s.reduce(st,event('action_completed',1104,action_id='cleanup',success=True,observation={}))
+    st,actions=s.reduce(st,event('observation_fsynced',1105,action_id='cleanup',sequence=3))
+    assert 'cleanup' in st['completed_actions'] and st['pending'] is None
+    assert st['status']=='interrupted' and not st['pass'] and st['new_case_credit']==0
+    assert st['cleanup_deadline_ns']==end and not actions
