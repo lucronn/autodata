@@ -160,3 +160,31 @@ def test_sidecar_rejects_c1_controls_even_when_ref_is_declared(field):
     body = {**text_body([binding]), "asset_resource_refs": [binding["resource_ref"]]}
     with pytest.raises(SourceConnectorError):
         client_for(body).read_resource("body")
+
+
+def test_bound_embedded_url_uses_declared_asset_without_duplicate_gallery():
+    import base64
+    url = "data:image/png;base64,ZW1iZWRkZWQ="
+    body = text_body([{"source_url": url, "resource_ref": "asset-1"}])
+    raw = f'<p>Remove pump.</p><img src="{url}">'.encode()
+    body.update(content=raw.decode(), sha256=sha256(raw).hexdigest())
+    asset = b"declared-image"
+    clients = {"body": client_for(body), "asset-1": client_for(dict(kind="asset", media_type="image/png",
+        content_base64=base64.b64encode(asset).decode(), sha256=sha256(asset).hexdigest()))}
+
+    class Client:
+        provider = "bankone"
+
+        def read_resource(self, ref, *, timeout):
+            return clients[ref].read_resource(ref, timeout=timeout)
+
+    class Store:
+        def put_object(self, *_):
+            pass
+
+    context = SourceArticleContext(ArticleKey("bankone", uuid4(), None, "vehicle", "article"),
+        {"year": 2024}, {"title": "Pump", "resource_ref": "body"}, uuid4(), uuid4(), ("evidence",))
+    captured = capture_source_article(context, registry={"bankone": Client()}, object_store=Store())
+    assert len(captured.source_images) == 1
+    assert captured.source_images[0]["content_sha256"] == sha256(asset).hexdigest()
+    assert len(captured.resources) == 2

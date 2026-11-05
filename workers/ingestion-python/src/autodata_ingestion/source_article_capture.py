@@ -303,8 +303,10 @@ def capture_source_article(context, *, registry, object_store, deadline_seconds=
     # Embedded figures are derived only from verified body bytes and never fetched by URL.
     for node in _walk(blocks):
         uri = node.get("url", "")
-        if (node.get("kind") or node.get("type")) == "image" and uri.startswith(
-            "data:image/"
+        if (
+            (node.get("kind") or node.get("type")) == "image"
+            and not node.get("asset_resource_ref")
+            and uri.startswith("data:image/")
         ):
             try:
                 header, encoded = uri.split(",", 1)
