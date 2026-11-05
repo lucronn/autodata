@@ -2303,6 +2303,878 @@ def inspect_api21_receipts(store, *, candidate_sha, trusted_base_sha, profile_sh
         missing_validation_families=list(API21_MISSING_FAMILIES),**{flag:False for flag in FLAGS})
 
 
+# Current producer-v2 is a separate internal schema, never an enabled profile.
+API21_V2_SOURCE_SHA = '6949eb1b1a5b93c9b2eb0579328e24c697f6f331'
+API21_V2_SOURCE_TREE = '47ec54b1896c83a39b6637a6ce944d3620414f4e'
+API21_V2_SOURCE_INPUTS = {'apps/api-go/workshop_browser_fixture_test.go': '7520a24bcfa06fe64810c6c17625563d29a2387c6d0531a61713f50b2098bf33',
+ 'scripts/dev/fixtures/workshop_customer/firebase_transport.js': '96bd315271bf05f363dc74ebb8d60c243f0ede8f0e7a649d3d7eeb7ea8f9dc63',
+ 'scripts/dev/fixtures/workshop_customer/hostile_source.json': '076b68d46991bd32a8ba73f61b93d7c22b52784c3df2d58d0c9e8d33891483d1',
+ 'scripts/dev/fixtures/workshop_customer/scenarios.json': '83ae0b9a08148fc5321663ce1f4647d29535726d7af93f6299abd4171ebc65d9',
+ 'scripts/dev/fixtures/workshop_customer/stripe_checkout.html': '26c1c7ea312630626792f89290b318ca36d01f72c7906d94cab9baf03dc74083',
+ 'scripts/dev/workshop_browser_smoke.py': 'e5424bfeb412d321638ebab31362774226d49caeacd53ffc929a54c00bbf9a7a',
+ 'workers/ingestion-python/tests/test_workshop_browser_integration.py': '1d83bcaa7e57b59cc2a6b8e64d9e4ab9dc327389c21a905b85dbec7267bc976b'}
+API21_V2_INPUT_ORDER = ('scripts/dev/workshop_browser_smoke.py',
+ 'scripts/dev/fixtures/workshop_customer/scenarios.json',
+ 'scripts/dev/fixtures/workshop_customer/firebase_transport.js',
+ 'scripts/dev/fixtures/workshop_customer/hostile_source.json',
+ 'scripts/dev/fixtures/workshop_customer/stripe_checkout.html',
+ 'apps/api-go/workshop_browser_fixture_test.go',
+ 'workers/ingestion-python/tests/test_workshop_browser_integration.py')
+API21_V2_SOURCE_ASSETS = {'app.mjs': {'bytes': 37870, 'sha256': '2bfe85a3f5e0b77bc55fe0c18b50b35a9bab6444f6a640bf6a6a36bd57ab4c46'},
+ 'article-read.mjs': {'bytes': 2579,
+                      'sha256': '2957242037d4bc3ce7894ae2c7e4bae1636406d0256dd75b6150e78c1c4e5178'},
+ 'auth.mjs': {'bytes': 7908, 'sha256': 'ec71ad49dc21fc8633e1165ff759f1d05467f40d045ca056c8be5460cce285e2'},
+ 'catalog.mjs': {'bytes': 11688,
+                 'sha256': 'cf518ae376f7d61ac6dc09e9a09b12baca6be66e64b8b79d54bab2393286db52'},
+ 'commerce.mjs': {'bytes': 7369,
+                  'sha256': 'e7f8e2fd45d6cd9f4ec2ef2f3a50d3f090f34e2562d4bbc58f9c23d06e8a1142'},
+ 'firebase-web.mjs': {'bytes': 112641,
+                      'sha256': 'bd2f3d36daaecdb5556e601603bea4e80cd202fc515faa931b2b0c5d0f7344f1'},
+ 'firebase-web.mjs.LEGAL.txt': {'bytes': 35536,
+                                'sha256': '70b7365a8d96e19330fbc64e69fa03c03452787b8bcf52d0fc7ad2e184dfd319'},
+ 'firebase-web.provenance.json': {'bytes': 2237,
+                                  'sha256': '0ac4b7ddfa58ef0ac800095a4a16f29d96518792b9b81c8dcc81b262a918fa9a'},
+ 'index.html': {'bytes': 10868, 'sha256': '8910a2b9021af306f1f3698a094bbc0b8da01b9038666ec2c57879b8fb65ac68'},
+ 'progress.mjs': {'bytes': 1076,
+                  'sha256': 'dd41a36c18871aacb6c1dfb16cfb6c3659c51e92acb479481897f77cffbe7e48'},
+ 'styles.css': {'bytes': 20773, 'sha256': 'c57c63c0661c500a83f2c3e5ffd57d18eac5910733a0d978e829dfa23ac09a0c'}}
+API21_V2_PHASES = {'test_browser_account_scope_and_revocation_real_api': ['setup',
+                                                        'metadata',
+                                                        'initial-measurement',
+                                                        'signed-in-measurement',
+                                                        'checkout-http',
+                                                        'pending-checkout-measurement',
+                                                        'return-without-grant-measurement',
+                                                        'settlement-control',
+                                                        'settled-measurement',
+                                                        'owner-library-initial-http',
+                                                        'owner-library-reload-http',
+                                                        'library-reload-measurement',
+                                                        'restart-before-measurement',
+                                                        'runtime-before',
+                                                        'restart-control',
+                                                        'runtime-poll',
+                                                        'owner-library-restart-http',
+                                                        'restart-after-measurement',
+                                                        'start-workers-control',
+                                                        'source-page-http',
+                                                        'source-image-http',
+                                                        'source-review-http',
+                                                        'release-model-control',
+                                                        'warm-before-snapshot',
+                                                        'reader-before-measurement',
+                                                        'warm-page-http',
+                                                        'warm-image-http',
+                                                        'warm-pinned-source-http',
+                                                        'warm-after-snapshot',
+                                                        'reader-after-measurement',
+                                                        'adjacent-denial',
+                                                        'other-region-denial',
+                                                        'unscoped-article-denial',
+                                                        'legacy-vehicle-denial',
+                                                        'other-catalogue-denial',
+                                                        'other-library-http',
+                                                        'other-image-denial',
+                                                        'logout-image-denial',
+                                                        'disable-control',
+                                                        'disabled-image-denial',
+                                                        'final-measurement'],
+ 'test_browser_google_exchange_checkout_library_real_api': ['setup',
+                                                            'metadata',
+                                                            'initial-measurement',
+                                                            'signed-in-measurement',
+                                                            'checkout-first-http',
+                                                            'checkout-first-delivery',
+                                                            'response-lost-measurement',
+                                                            'response-lost-snapshot',
+                                                            'checkout-retry-http',
+                                                            'checkout-retry-delivery',
+                                                            'pending-checkout-measurement',
+                                                            'retry-pending-snapshot',
+                                                            'return-without-grant-measurement',
+                                                            'settlement-control',
+                                                            'settled-measurement',
+                                                            'owner-library-initial-http',
+                                                            'owner-library-reload-http',
+                                                            'library-reload-measurement',
+                                                            'restart-before-measurement',
+                                                            'runtime-before',
+                                                            'restart-control',
+                                                            'runtime-poll',
+                                                            'owner-library-restart-http',
+                                                            'restart-after-measurement',
+                                                            'final-measurement'],
+ 'test_browser_owned_source_canonical_and_media_real_api': ['setup',
+                                                            'metadata',
+                                                            'initial-measurement',
+                                                            'signed-in-measurement',
+                                                            'checkout-http',
+                                                            'pending-checkout-measurement',
+                                                            'return-without-grant-measurement',
+                                                            'settlement-control',
+                                                            'settled-measurement',
+                                                            'owner-library-initial-http',
+                                                            'owner-library-reload-http',
+                                                            'library-reload-measurement',
+                                                            'restart-before-measurement',
+                                                            'runtime-before',
+                                                            'restart-control',
+                                                            'runtime-poll',
+                                                            'owner-library-restart-http',
+                                                            'restart-after-measurement',
+                                                            'start-workers-control',
+                                                            'source-page-http',
+                                                            'source-image-http',
+                                                            'source-review-http',
+                                                            'release-model-control',
+                                                            'warm-before-snapshot',
+                                                            'reader-before-measurement',
+                                                            'warm-page-http',
+                                                            'warm-image-http',
+                                                            'warm-pinned-source-http',
+                                                            'warm-after-snapshot',
+                                                            'reader-after-measurement',
+                                                            'final-measurement'],
+ 'test_browser_signed_refund_blocks_old_links_real_api': ['setup',
+                                                          'metadata',
+                                                          'initial-measurement',
+                                                          'signed-in-measurement',
+                                                          'checkout-http',
+                                                          'pending-checkout-measurement',
+                                                          'return-without-grant-measurement',
+                                                          'settlement-control',
+                                                          'settled-measurement',
+                                                          'owner-library-initial-http',
+                                                          'owner-library-reload-http',
+                                                          'library-reload-measurement',
+                                                          'restart-before-measurement',
+                                                          'runtime-before',
+                                                          'restart-control',
+                                                          'runtime-poll',
+                                                          'owner-library-restart-http',
+                                                          'restart-after-measurement',
+                                                          'start-workers-control',
+                                                          'source-page-http',
+                                                          'source-image-http',
+                                                          'source-review-http',
+                                                          'release-model-control',
+                                                          'warm-before-snapshot',
+                                                          'reader-before-measurement',
+                                                          'warm-page-http',
+                                                          'warm-image-http',
+                                                          'warm-pinned-source-http',
+                                                          'warm-after-snapshot',
+                                                          'reader-after-measurement',
+                                                          'refund-control',
+                                                          'refund-old-image-denial',
+                                                          'refund-source-denial',
+                                                          'refund-detail-denial',
+                                                          'revoked-measurement',
+                                                          'final-measurement']}
+API21_V2_REASONS = ('not_observed',
+ 'unsupported_byte_source',
+ 'not_required_image_body',
+ 'over_limit',
+ 'invalid_json',
+ 'invalid_utf8',
+ 'read_failed',
+ 'secret_detected',
+ 'launch_failed',
+ 'timeout',
+ 'cancelled',
+ 'assertion_failed',
+ 'http_failed',
+ 'close_failed',
+ 'signal_failed',
+ 'reap_failed',
+ 'mapping_unavailable',
+ 'log_not_finalized',
+ 'source_binding_failed',
+ 'publication_failed',
+ 'prior_failure',
+ 'internal_error')
+API21_V2_MISSING_FAMILIES = ('actual_child_go_browser_exit_receipts',
+ 'parent_pytest_exit_and_command_receipts',
+ 'signed_settlement_refund_http_bytes_and_authentic_delivery',
+ 'runtime_image_browser_cache_sdk_install_identity',
+ 'authenticated_capture_source_observer_and_containment',
+ 'global_worker_log_per_case_ownership_mapping',
+ 'finite_api_success_schedule',
+ 'junit_byte_preserving_capture_mapping',
+ 'all_final180_families_and_profile_promotion',
+ 'independent_authentic_raw_review',
+ 'actual_engine_os_exit_and_descendant_reap',
+ 'original_go_webhook_request_signature_response_capture',
+ 'source_contract_current_integration_rebinding',
+ 'dto_trace_16MiB_producer_8MiB_consumer_conflict',
+ 'v2_consumer_schema_validator_and_profile',
+ 'producer_observations_are_unexecuted_until_separate_capture_gate')
+API21_V2_COMMANDS = {'browser-runner': {'argv': ['$PYTHON',
+                             '$REPO/scripts/dev/workshop_browser_smoke.py',
+                             '--base-url',
+                             '$ORIGIN',
+                             '--mode',
+                             'api-fixture',
+                             '--browser',
+                             '{engine}',
+                             '--candidate-sha',
+                             '6949eb1b1a5b93c9b2eb0579328e24c697f6f331',
+                             '--output',
+                             '$CASE/browser'],
+                    'cwd': '.',
+                    'logs': ['browser.stdout.log', 'browser.stderr.log'],
+                    'observer_role': 'child-pytest'},
+ 'child-pytest': {'argv': ['$PYTHON',
+                           '-m',
+                           'pytest',
+                           '-q',
+                           '-p',
+                           'no:cacheprovider',
+                           'workers/ingestion-python/tests/test_workshop_browser_integration.py::{case_id}'],
+                  'cwd': '.',
+                  'logs': ['child.log', 'child.log'],
+                  'observer_role': 'parent-pytest'},
+ 'go-test': {'argv': ['go',
+                      'test',
+                      '-count=1',
+                      '-run',
+                      '^TestWorkshopBrowserFixtureHTTP$',
+                      '-timeout=85s',
+                      '.'],
+             'cwd': 'apps/api-go',
+             'logs': ['go-fixture.log', 'go-fixture.log'],
+             'observer_role': 'child-pytest'}}
+API21_V2_PHASE_ROUTES = {'adjacent-denial': '/v1/catalog/vehicles/{adjacent}/articles',
+ 'checkout-first-http': '/v1/workshop/checkout-sessions',
+ 'checkout-http': '/v1/workshop/checkout-sessions',
+ 'checkout-retry-http': '/v1/workshop/checkout-sessions',
+ 'disable-control': '/__fixture/disable',
+ 'disabled-image-denial': '/v1/catalog/images/{capability}',
+ 'legacy-vehicle-denial': '/v1/catalog/vehicles/{vehicle}/articles',
+ 'logout-image-denial': '/v1/catalog/images/{capability}',
+ 'metadata': '/__fixture/metadata',
+ 'other-catalogue-denial': '/v1/catalog/vehicles/{configuration}/articles',
+ 'other-image-denial': '/v1/catalog/images/{capability}',
+ 'other-library-http': '/v1/workshop/library',
+ 'other-region-denial': '/v1/catalog/vehicles/{other_region}/articles',
+ 'refund-control': '/__fixture/payment/refund',
+ 'refund-detail-denial': '/v1/catalog/vehicles/{configuration}/articles/{article}',
+ 'refund-old-image-denial': '/v1/catalog/images/{capability}',
+ 'refund-source-denial': '/v1/catalog/vehicles/{configuration}/articles/{article}/source',
+ 'release-model-control': '/__fixture/control/release-model',
+ 'restart-control': '/__fixture/restart',
+ 'runtime-before': '/__fixture/runtime',
+ 'runtime-poll': '/__fixture/runtime',
+ 'settlement-control': '/__fixture/payment/settle',
+ 'source-image-http': '/v1/catalog/images/{capability}',
+ 'source-page-http': '/v1/catalog/vehicles/{configuration}/articles/{article}',
+ 'source-review-http': '/v1/catalog/vehicles/{configuration}/articles/{article}/source',
+ 'start-workers-control': '/__fixture/control/start-workers',
+ 'unscoped-article-denial': '/v1/catalog/vehicles/{configuration}/articles/{unscoped}',
+ 'warm-image-http': '/v1/catalog/images/{capability}',
+ 'warm-page-http': '/v1/catalog/vehicles/{configuration}/articles/{article}',
+ 'warm-pinned-source-http': '/v1/catalog/vehicles/{configuration}/articles/{article}/source'}
+API21_V2_ROUTES = ('/__fixture/control/release-model',
+ '/__fixture/control/start-workers',
+ '/__fixture/disable',
+ '/__fixture/measurement',
+ '/__fixture/metadata',
+ '/__fixture/payment/refund',
+ '/__fixture/payment/settle',
+ '/__fixture/restart',
+ '/__fixture/runtime',
+ '/__fixture/snapshot',
+ '/v1/catalog/images/{capability}',
+ '/v1/catalog/vehicles/{adjacent}/articles',
+ '/v1/catalog/vehicles/{configuration}/articles',
+ '/v1/catalog/vehicles/{configuration}/articles/{article}',
+ '/v1/catalog/vehicles/{configuration}/articles/{article}/source',
+ '/v1/catalog/vehicles/{configuration}/articles/{unscoped}',
+ '/v1/catalog/vehicles/{other_region}/articles',
+ '/v1/catalog/vehicles/{vehicle}/articles',
+ '/v1/workshop/checkout-sessions',
+ '/v1/workshop/library')
+
+def _api21_v2_size(value, limit):
+    try:
+        raw=(json.dumps(value,sort_keys=True,separators=(',',':'),ensure_ascii=False,allow_nan=False)+'\n').encode('utf-8')
+    except (ValueError,TypeError,UnicodeError,RecursionError):
+        raise ContractError('api21_v2_json') from None
+    require(len(raw)<=limit,'api21_v2_size')
+    return len(raw)
+
+
+def _api21_v2_reason(value, *, required=False):
+    valid=type(value) is str and value in API21_V2_REASONS
+    require(valid or value is None and not required,'api21_v2_reason')
+
+
+def _api21_v2_binding(binding, case, role):
+    case_id,root,engine,bank=case
+    exact(binding,('binding_state','unavailable_reason','api_observability_version','run_id','attempt_id','case_id','root','engine','bank','candidate_sha','source_tree','source_input_sha256','producer_role'))
+    require(binding['api_observability_version']=='api21-producer-v2' and binding['producer_role']==role and binding['root']==root and binding['engine']==engine,'api21_v2_binding')
+    enum(binding['binding_state'],('complete','partial'));complete=binding['binding_state']=='complete'
+    require(binding['unavailable_reason']==(None if complete else 'source_binding_failed'),'api21_v2_binding')
+    fallback=not complete and role=='browser-runner' and binding['source_input_sha256'] is None
+    for key in ('run_id','attempt_id'):
+        value=binding[key]
+        require(value is None and not complete or type(value) is str and re.fullmatch('[a-f0-9]{32}',value) is not None,'api21_v2_binding_token')
+    if fallback:
+        require(binding['candidate_sha']==API21_V2_SOURCE_SHA and all(binding[key] is None for key in ('run_id','attempt_id','case_id','bank','source_tree','source_input_sha256')),'api21_v2_browser_fallback')
+        return False
+    require(binding['case_id']==case_id and binding['bank']==bank,'api21_v2_binding_identity')
+    candidate=binding['candidate_sha'];tree=binding['source_tree'];inputs=binding['source_input_sha256']
+    assigned=candidate==API21_V2_SOURCE_SHA and tree==API21_V2_SOURCE_TREE
+    require(assigned or not complete and role!='browser-runner' and candidate is None and tree is None,'api21_v2_binding_source')
+    require(type(inputs) is dict,'api21_v2_binding_inputs')
+    expected={key:API21_V2_SOURCE_INPUTS[key] for key in API21_V2_INPUT_ORDER[:len(inputs)]}
+    require(inputs==expected and len(inputs)<=7 and (assigned or inputs=={}),'api21_v2_binding_inputs')
+    if complete or role=='browser-runner':require(inputs==API21_V2_SOURCE_INPUTS,'api21_v2_binding_inputs')
+    return complete
+
+
+def _api21_v2_secret(raw, parsed, invalid):
+    protected=re.compile(r'(?i)^(authorization|cookie|set-cookie|token|id_?token|access_?token|refresh_?token|password|csrf(?:_?token)?|firebase_?token|api_?key|client_secret|fixture_token|x-r3-fixture-token)$')
+    pattern=re.compile(r'(?i)(bearer |__Host-autodata_session=|eyJ[A-Za-z0-9_-]+\.eyJ)')
+    pending=[parsed];nodes=0
+    while pending:
+        value=pending.pop();nodes+=1;require(nodes<=100000,'api21_v2_body_complexity')
+        if type(value) is dict:
+            require(not any(protected.fullmatch(key) for key in value),'api21_v2_secret')
+            pending.extend(value.values())
+        elif type(value) is list:pending.extend(value)
+        elif type(value) is str:require(pattern.search(value) is None,'api21_v2_secret')
+    text=raw.decode('utf-8',errors='replace')
+    require(pattern.search(text) is None and not any(protected.fullmatch(key) for key in re.findall(r'[\"\']([^\"\']+)[\"\']\s*:',text)),'api21_v2_secret')
+    require(not invalid or '\\' not in text,'api21_v2_secret')
+
+
+def _api21_v2_body(body, *, request=False, image=False, empty=False, passed=False):
+    import base64
+    import binascii
+    exact(body,('availability','byte_source','encoding','base64','length','sha256','parsed','reason'))
+    available=body['availability'];reason=body['reason'];_api21_v2_reason(reason)
+    if available=='unavailable':
+        require(body['byte_source']=='unavailable' and reason is not None and all(body[key] is None for key in ('encoding','base64','length','sha256','parsed')) and not passed,'api21_v2_unavailable_body')
+        return None
+    require(body['byte_source']==('playwright-request-post-data-buffer' if request else 'playwright-response-body'),'api21_v2_body_source')
+    integer(body['length']);require(body['length']<=131072,'api21_v2_body_size');digest(body['sha256'])
+    if available=='hash_only':
+        require(image and not request and body['length']>0 and reason=='not_required_image_body' and all(body[key] is None for key in ('encoding','base64','parsed')),'api21_v2_hash_only')
+        return None
+    require(available=='retained' and body['encoding']=='base64' and type(body['base64']) is str and reason in (None,'invalid_json','invalid_utf8'),'api21_v2_retained_body')
+    try:raw=base64.b64decode(body['base64'],validate=True)
+    except (ValueError,binascii.Error):raise ContractError('api21_v2_body_base64') from None
+    require(base64.b64encode(raw).decode('ascii')==body['base64'] and len(raw)==body['length'] and hashlib.sha256(raw).hexdigest()==body['sha256'],'api21_v2_body_digest')
+    if not raw and empty and not request:
+        require(reason is None and body['parsed'] is None,'api21_v2_empty_body');return raw
+    parsed=None;failure=None
+    try:
+        raw.decode('utf-8',errors='strict')
+        def pairs(items):
+            result={}
+            for key,value in items:
+                require(key not in result,'api21_v2_duplicate_key');result[key]=value
+            return result
+        def nonfinite(_):raise ContractError('api21_v2_nonfinite')
+        parsed=json.loads(raw.decode('utf-8',errors='strict'),object_pairs_hook=pairs,parse_constant=nonfinite)
+        _api21_v2_size(parsed,262144)
+        # Canonical encoding checks Unicode scalar validity without replacing original bytes.
+        json.dumps(parsed,ensure_ascii=False,allow_nan=False).encode('utf-8',errors='strict')
+    except UnicodeError:failure='invalid_utf8'
+    except (ContractError,ValueError,TypeError,RecursionError,OverflowError):failure='invalid_json'
+    _api21_v2_secret(raw,parsed,failure is not None)
+    require(reason==failure and (failure is None or body['parsed'] is None and not passed),'api21_v2_body_json')
+    if failure is None:
+        require(_api21_v2_json_equal(parsed,body['parsed']),'api21_v2_body_parsed')
+    require(bool(raw) or not passed,'api21_v2_empty_body')
+    return raw
+
+
+def _api21_v2_json_equal(left,right):
+    # JSON booleans and numbers are distinct, unlike Python's True == 1.
+    def encoded(value):
+        try:return json.dumps(value,sort_keys=True,separators=(',',':'),ensure_ascii=False,allow_nan=False)
+        except (ValueError,TypeError,RecursionError):raise ContractError('api21_v2_json') from None
+    return encoded(left)==encoded(right)
+
+
+def _api21_v2_hash(row, raw, allowed):
+    exact(row,('ref','length','sha256'));ref=row['ref'];safe_ref(ref)
+    require(ref in allowed and ref in raw,'api21_v2_hash_ref');integer(row['length']);digest(row['sha256'])
+    require(row['length']==len(raw[ref]) and row['sha256']==hashlib.sha256(raw[ref]).hexdigest(),'api21_v2_hash')
+
+
+def _api21_v2_process(process, case, role, raw, *, passed, publication=False):
+    fields=('role','observer_role','argv','cwd','launched','events','return_code','return_code_source','wait_kind','intentional_cleanup','reaped','alive_final','started_us','finished_us','stdout_ref','stderr_ref','output_hashes')
+    exact(process,fields);case_id,root,engine,bank=case;prefix='workshop-browser/'+root+'/'+engine+'-'+bank+'/'
+    schedule=API21_V2_COMMANDS[role];expected=[part.replace('{case_id}',case_id).replace('{engine}',engine) for part in schedule['argv']]
+    precommand=role=='browser-runner' and process['argv']==[] and not passed
+    require(process['role']==role and process['observer_role']==schedule['observer_role'] and process['cwd']==schedule['cwd'] and (precommand or process['argv']==expected),'api21_v2_process_command')
+    for key in ('launched','intentional_cleanup'):require(type(process[key]) is bool,'api21_v2_process_bool')
+    for key in ('reaped','alive_final'):require(process[key] is None or type(process[key]) is bool,'api21_v2_process_bool')
+    for key in ('started_us','finished_us'):
+        if process[key] is not None:integer(process[key])
+    if process['started_us'] is not None and process['finished_us'] is not None:require(process['finished_us']>=process['started_us'],'api21_v2_process_time')
+    enum(process['return_code_source'],('wait','poll','unavailable'));enum(process['wait_kind'],('normal','cleanup','unavailable'))
+    code=process['return_code'];require(code is None or type(code) is int,'api21_v2_process_code')
+    events=process['events'];array(events);require(len(events)<=32,'api21_v2_process_events');kinds=[];last=-1
+    allowed=('launch-requested','launch-succeeded','launch-failed','wait-completed','timeout','cancelled','term-requested','term-sent','kill-requested','kill-sent','signal-failed','reap-failed')
+    for index,event in enumerate(events):
+        exact(event,('seq','kind','elapsed_us','return_code','reason'));integer(event['seq'],1);integer(event['elapsed_us'])
+        require(event['seq']==index+1 and event['elapsed_us']>=last,'api21_v2_process_sequence');last=event['elapsed_us'];enum(event['kind'],allowed);_api21_v2_reason(event['reason']);kind=event['kind']
+        if kind=='launch-requested':require(not kinds,'api21_v2_process_sequence')
+        elif kind in ('launch-succeeded','launch-failed'):require(kinds==['launch-requested'],'api21_v2_process_sequence')
+        else:require('launch-requested' in kinds and 'launch-failed' not in kinds,'api21_v2_process_sequence')
+        if kind=='wait-completed':require(type(event['return_code']) is int and process['launched'] and 'launch-succeeded' in kinds,'api21_v2_process_wait')
+        else:require(event['return_code'] is None,'api21_v2_process_code')
+        if kind=='term-sent':require(kinds[-1]=='term-requested','api21_v2_process_signal')
+        if kind=='kill-sent':require(kinds[-1]=='kill-requested','api21_v2_process_signal')
+        if kind=='kill-requested':require('term-requested' in kinds and 'timeout' in kinds,'api21_v2_process_signal')
+        require(not kinds or kinds[-1]!='wait-completed','api21_v2_process_sequence');kinds.append(kind)
+    if code is not None:
+        require(process['launched'] and process['return_code_source'] in ('wait','poll') and process['wait_kind'] in ('normal','cleanup') and process['reaped'] is True and process['alive_final'] is False and process['finished_us'] is not None and process['started_us'] is not None,'api21_v2_process_wait')
+        require(publication or kinds and kinds[-1]=='wait-completed' and events[-1]['return_code']==code,'api21_v2_process_wait')
+    else:require(process['return_code_source']=='unavailable' and process['reaped'] is not True and process['finished_us'] is None,'api21_v2_process_wait')
+    if not process['launched']:
+        require(code is None and process['reaped'] is None and process['alive_final'] is None and process['wait_kind']=='unavailable' and kinds in ([],['launch-requested','launch-failed'],['launch-requested']),'api21_v2_process_unlaunched')
+        if precommand:require(not kinds and process['started_us'] is None,'api21_v2_process_unlaunched')
+    elif not publication:
+        timeout=role=='browser-runner' and kinds==['launch-requested','timeout'] and code is None and events[-1]['reason']=='timeout'
+        require('launch-succeeded' in kinds or timeout,'api21_v2_process_launch')
+        if timeout:require(process['started_us'] is not None and process['reaped'] is None and process['alive_final'] is None and process['wait_kind']=='unavailable','api21_v2_process_timeout')
+    refs=[prefix+name for name in schedule['logs']]
+    require([process['stdout_ref'],process['stderr_ref']]==refs,'api21_v2_process_logs')
+    hashes=process['output_hashes'];array(hashes);require(len(hashes)<=2,'api21_v2_process_hashes')
+    for row in hashes:_api21_v2_hash(row,raw,refs)
+    unique([row['ref'] for row in hashes])
+    if process['reaped'] is True and not publication:require([row['ref'] for row in hashes]==list(dict.fromkeys(refs)),'api21_v2_process_hashes')
+    else:require(not hashes,'api21_v2_process_hashes')
+    if passed:require(code==0 and process['launched'] and process['wait_kind']=='normal' and not process['intentional_cleanup'] and not publication,'api21_v2_process_success')
+
+
+def _api21_v2_checkout(payload):
+    from urllib.parse import urlsplit
+    _paid_uuid(payload['idempotency_key']);identity=payload['checkout_identity'];exact(identity,('order_id','configuration_id','region','checkout_url'))
+    for key in ('order_id','configuration_id'):_paid_uuid(identity[key])
+    require(identity['region']=='US','api21_v2_checkout_scope');hosted=identity['checkout_url'];require(type(hosted) is str,'api21_v2_checkout_url')
+    try:url=urlsplit(hosted)
+    except ValueError:raise ContractError('api21_v2_checkout_url') from None
+    require(url.scheme=='https' and url.netloc=='checkout.stripe.com' and re.fullmatch('/c/pay/cs_test_[a-f0-9]{32}',url.path) is not None and not url.query,'api21_v2_checkout_url')
+    posted=payload['request']['parsed'];checkout=payload['response']['parsed']
+    require(type(posted) is dict and type(checkout) is dict and posted.get('configuration_id')==identity['configuration_id'] and posted.get('region')=='US' and checkout.get('version')=='v1' and checkout.get('state')=='checkout' and {key:checkout.get(key) for key in identity}==identity,'api21_v2_checkout_identity')
+    return identity
+
+
+def _api21_v2_http(payload,phase,*,passed):
+    exact(payload,('kind','channel','method','route_template','actor','attempt','status','idempotency_key','request','response','checkout_identity'))
+    route=payload['route_template'];string(route);require(route in API21_V2_ROUTES,'api21_v2_http_route')
+    control=route.startswith('/__fixture/')
+    expected_actor='fixture-control' if control else 'other' if phase.startswith('other-') else 'logged-out' if phase=='logout-image-denial' else 'disabled' if phase=='disabled-image-denial' else 'owner'
+    require(payload['channel']==('fixture-control' if control else 'application') and payload['actor']==expected_actor,'api21_v2_http_actor')
+    checkout=phase in ('checkout-first-http','checkout-retry-http','checkout-http')
+    expected_method='POST' if checkout or phase.endswith('-control') else 'GET';require(payload['method']==expected_method,'api21_v2_http_method')
+    attempt=payload['attempt'];integer(attempt,1);limit=100 if phase=='runtime-poll' else 16 if phase.startswith('owner-library-') else 2 if phase=='checkout-retry-http' else 1
+    require(attempt<=limit and (phase!='checkout-retry-http' or attempt==2),'api21_v2_http_attempt')
+    expected=API21_V2_PHASE_ROUTES.get(phase)
+    if expected is None:
+        if phase.endswith('-measurement'):expected='/__fixture/measurement'
+        elif phase.endswith('-snapshot'):expected='/__fixture/snapshot'
+        elif phase.startswith('owner-library-'):expected='/v1/workshop/library'
+    require(route in expected if type(expected) is tuple else route==expected,'api21_v2_http_phase_route')
+    status=payload['status']
+    require(status is None or type(status) is int and 100<=status<=599,'api21_v2_http_status')
+    allowed=(403,404) if phase in ('adjacent-denial','other-region-denial','unscoped-article-denial','legacy-vehicle-denial') else (404,) if phase=='other-image-denial' else (401,) if phase in ('logout-image-denial','disabled-image-denial') else (403,) if 'denial' in phase else (200,201) if checkout else (200,204) if phase.endswith('-control') else (200,)
+    require(not passed or status in allowed,'api21_v2_http_status')
+    image=phase in ('source-image-http','warm-image-http') and status==200
+    response=payload['response'];_api21_v2_body(response,image=image,empty=status==204 and phase in ('restart-control','disable-control'),passed=passed)
+    if status==204:require(phase in ('restart-control','disable-control') and response['length']==0 and response['availability']=='retained','api21_v2_empty_control')
+    if 'denial' in phase and passed:require(response['availability']=='retained' and type(response['parsed']) is dict and bool(response['parsed']),'api21_v2_denial_body')
+    if image and passed:require(response['length']>0,'api21_v2_image_body')
+    if payload['request'] is not None:_api21_v2_body(payload['request'],request=True,passed=passed)
+    if checkout:
+        if passed or payload['checkout_identity'] is not None:
+            require(payload['request'] is not None and payload['request']['availability']==response['availability']=='retained','api21_v2_checkout_body');_api21_v2_checkout(payload)
+    else:require(payload['idempotency_key'] is None and payload['checkout_identity'] is None,'api21_v2_checkout_phase')
+
+
+def _api21_v2_lifecycle(payload):
+    exact(payload,('kind','operation','state','reason'));require(payload['kind']=='lifecycle','api21_v2_lifecycle')
+    enum(payload['operation'],('setup','context-create','page-create','metadata','browser-launch','context-close','browser-close','fixture-stop','worker-start','worker-stop','runtime-close','publish'))
+    enum(payload['state'],('requested','completed','failed','unavailable'));_api21_v2_reason(payload['reason'])
+    require(payload['state']!='failed' or payload['reason'] is not None,'api21_v2_lifecycle_reason')
+
+
+def _api21_v2_observations(observations,binding,case,row,*,passed):
+    exact(observations,('binding','status','events','primary_failure','publication','unavailable_families','engine_os_exit','outer_pytest_exit'))
+    require(observations['binding']==binding,'api21_v2_observation_binding');_api21_v2_terminal(observations,passed=passed)
+    enum(observations['publication'],('written','failed','not_attempted'))
+    missing=observations['unavailable_families'];array(missing);unique(missing);require(all(type(x) is str and x in (*API21_V2_MISSING_FAMILIES,*API21_MISSING_FAMILIES) for x in missing),'api21_v2_missing_families')
+    _api21_v2_size(observations,1048576)
+    events=observations['events'];array(events);require(len(events)<=512,'api21_v2_events');phases=API21_V2_PHASES[case[1]];seen=[];last=-1;elapsed=-1;by_phase={};assertions=[]
+    for index,event in enumerate(events):
+        exact(event,('seq','phase','caused_by','elapsed_us','payload'));integer(event['seq'],1);integer(event['elapsed_us']);require(event['seq']==index+1 and event['elapsed_us']>=elapsed,'api21_v2_event_sequence');elapsed=event['elapsed_us'];_api21_v2_size(event,262144)
+        phase=event['phase'];require(type(phase) is str and phase in phases,'api21_v2_phase');rank=phases.index(phase);require(rank>=last,'api21_v2_phase_order');last=rank
+        if phase not in seen:seen.append(phase)
+        refs=event['caused_by'];array(refs);require(len(refs)<=8,'api21_v2_causes')
+        for ref in refs:_api21_v2_ref(ref,index)
+        payload=event['payload'];require(type(payload) is dict,'api21_v2_payload');kind=payload.get('kind')
+        if kind=='http':_api21_v2_http(payload,phase,passed=passed)
+        elif kind=='lifecycle':_api21_v2_lifecycle(payload)
+        elif kind=='producer-assertion':
+            exact(payload,('kind','name','result','reason'));require(payload['name'] in API21_ASSERTIONS[case[1]] and (payload['result'] is None or type(payload['result']) is bool),'api21_v2_assertion');_api21_v2_reason(payload['reason']);assertions.append(payload['name']);require(not passed or payload['result'] is True,'api21_v2_assertion')
+        elif kind=='checkout-delivery':
+            exact(payload,('kind','attempt','state','http_event'));integer(payload['attempt'],1);require(phase in ('checkout-first-delivery','checkout-retry-delivery') and payload['attempt']==(1 if 'first' in phase else 2),'api21_v2_delivery')
+            ref=payload['http_event'];_api21_v2_ref(ref,index);require(refs==[ref],'api21_v2_delivery_ref');target=events[ref['seq']-1]
+            require(target['phase']==phase.replace('-delivery','-http') and target['payload']['kind']=='http' and target['payload']['attempt']==payload['attempt'],'api21_v2_delivery_ref')
+        else:raise ContractError('api21_v2_payload_kind')
+        by_phase.setdefault(phase,[]).append(payload)
+    unique(assertions)
+    for phase,payloads in by_phase.items():
+        http=[p for p in payloads if p['kind']=='http'];attempts=[p['attempt'] for p in http];unique(attempts)
+        if http:
+            start=2 if phase=='checkout-retry-http' else 1;require(attempts==list(range(start,start+len(attempts))),'api21_v2_http_sequence')
+    require(seen==list(phases[:len(seen)]),'api21_v2_phase_prefix')
+    if passed:
+        require(seen==list(phases) and observations['publication']=='written','api21_v2_phase_complete')
+        for phase in phases:
+            payloads=by_phase.get(phase,[]);http=[p for p in payloads if p['kind']=='http']
+            if phase=='setup':require(any(p['kind']=='lifecycle' for p in payloads),'api21_v2_setup');continue
+            if phase.endswith('-delivery'):
+                states=['fetch-completed','response-abort-requested','response-aborted'] if 'first' in phase else ['fetch-completed','response-fulfill-requested','response-fulfilled']
+                require([p['state'] for p in payloads if p['kind']=='checkout-delivery']==states,'api21_v2_delivery_sequence');continue
+            require(bool(http) and (len(http)==1 or phase=='runtime-poll' or phase.startswith('owner-library-')),'api21_v2_http_cardinality')
+        require(set(assertions)==set(API21_ASSERTIONS[case[1]]),'api21_v2_assertion_inventory')
+        cleanup=[(e['payload']['operation'],e['payload']['state']) for e in events if e['payload']['kind']=='lifecycle' and e['payload']['operation'] in ('context-close','browser-close')]
+        require(cleanup==[('context-close','requested'),('context-close','completed'),('browser-close','requested'),('browser-close','completed')],'api21_v2_browser_cleanup')
+        _api21_v2_wire_semantics(by_phase,case,row)
+    return by_phase
+
+
+def _api21_v2_ref(ref, earlier):
+    exact(ref,('stream','producer_role','seq'));integer(ref['seq'],1)
+    require(ref['stream']=='observations' and ref['producer_role']=='browser-runner' and ref['seq']<=earlier,'api21_v2_reference')
+
+
+def _api21_v2_terminal(value,*,passed):
+    enum(value['status'],('passed','failed','partial','unavailable'));_api21_v2_reason(value['primary_failure'])
+    require(value['engine_os_exit'] is None and value['outer_pytest_exit'] is None,'api21_v2_unobserved_exit')
+    require(value['status']!='passed' or value['primary_failure'] is None,'api21_v2_sticky_failure')
+    if passed:require(value['status']=='passed','api21_v2_outcome')
+
+
+
+def _api21_v2_pending_snapshot(snapshot,identity,owner):
+    exact(snapshot,('article','asset_calls','counts','ensure','ensure_requests','grant_calls','immutable_rows','immutable_sha256','model_calls','paid_rows','payment_calls','provider_calls','provider_traces','proxy','selector_ensure','selector_ensure_requests','source_calls','workers'))
+    for key in ('grant_calls','model_calls'):integer(snapshot[key]);require(snapshot[key]==0,'api21_v2_pending_work')
+    integer(snapshot['payment_calls'],1);require(snapshot['workers']==[],'api21_v2_pending_workers')
+    for group in ('provider_calls','source_calls','asset_calls'):
+        exact(snapshot[group],('bankone','banktwo'))
+        for value in snapshot[group].values():integer(value);require(value==0,'api21_v2_pending_work')
+    exact(snapshot['provider_traces'],('bankone','banktwo'));require(all(v==[] for v in snapshot['provider_traces'].values()),'api21_v2_pending_work')
+    for group in ('ensure','selector_ensure'):
+        exact(snapshot[group],('entered','completed','active'))
+        require(all(type(v) is int and v==0 for v in snapshot[group].values()) and snapshot[group+'_requests']==[],'api21_v2_pending_work')
+    exact(snapshot['counts'],('article_jobs','source_revisions','canonical_revisions','published_revisions','publication_events','source_observations'))
+    require(all(type(v) is int and v==0 for v in snapshot['counts'].values()),'api21_v2_pending_work')
+    exact(snapshot['proxy'],('request_received','upstream_completed','downstream_completed','downstream_waiting','response_captured','errors'))
+    require(all(type(snapshot['proxy'][k]) is int and snapshot['proxy'][k]==0 for k in ('request_received','upstream_completed','downstream_completed','downstream_waiting')) and snapshot['proxy']['response_captured'] is False and snapshot['proxy']['errors']==[],'api21_v2_pending_work')
+    paid=snapshot['paid_rows'];exact(paid,PAID_ROW_FIELDS)
+    for table,fields in PAID_ROW_FIELDS.items():
+        array(paid[table]);require(len(paid[table])<=64,'api21_v2_pending_rows')
+        for item in paid[table]:exact(item,fields.split())
+    require(len(paid['customer_accounts'])==len(paid['auth_sessions'])==len(paid['workshop_orders'])==1 and all(paid[k]==[] for k in ('entitlements','dataset_requests','dataset_projections')),'api21_v2_pending_grants')
+    order=paid['workshop_orders'][0];account=paid['customer_accounts'][0];session=paid['auth_sessions'][0]
+    require(order['status']=='open' and all(order[k]==identity[k] for k in ('order_id','configuration_id','region')) and order['customer_account_id']==account['customer_account_id']==session['customer_account_id']==owner and order['organization_id']==account['personal_organization_id'],'api21_v2_pending_owner')
+    require(account['firebase_uid']=='fixture-user' and account['firebase_project_id']=='fixture-project' and account['status']=='active','api21_v2_pending_owner')
+    for key in ('paid_at','dataset_request_id','entitlement_id'):require(order[key] is None,'api21_v2_pending_grants')
+    require(type(order['amount_minor']) is int and order['amount_minor']==2000 and order['currency']=='USD' and order['livemode'] is False and order['stripe_account_id']=='acct_fixture' and order['expected_price_id']=='price_fixture','api21_v2_pending_payment')
+    require(order['checkout_url']==identity['checkout_url'] and order['checkout_session_id']==identity['checkout_url'].split('/c/pay/')[1].split('#')[0],'api21_v2_pending_payment')
+    rows=snapshot['immutable_rows'];exact(rows,PAID_PG_TABLES)
+    for values in rows.values():array(values);require(len(values)<=4096 and all(type(r) is dict and r for r in values),'api21_v2_pending_rows')
+    digest(snapshot['immutable_sha256']);require(hashlib.sha256(json.dumps(rows,sort_keys=True,allow_nan=False).encode()).hexdigest()==snapshot['immutable_sha256'],'api21_v2_pending_row_hash')
+    for table in ('customer_accounts','auth_sessions','workshop_orders'):require(rows[table]==paid[table],'api21_v2_pending_row_seam')
+    require(len(rows['workshop_checkout_requests'])==1 and rows['workshop_checkout_requests'][0].get('order_id')==identity['order_id'],'api21_v2_pending_request')
+
+def _api21_v2_wire_semantics(by_phase,case,row):
+    def http(phase):return [p for p in by_phase[phase] if p['kind']=='http']
+    def value(phase):return http(phase)[-1]['response']['parsed']
+    google=case[1]==API21_CASES[0][1];checkout=http('checkout-first-http' if google else 'checkout-http')[0];identity=_api21_v2_checkout(checkout)
+    require(identity['configuration_id']==row['measurement']['orders'][0]['configuration_id'] and identity['order_id']==row['measurement']['orders'][0]['order_id'],'api21_v2_checkout_order')
+    pending=value('pending-checkout-measurement');returned=value('return-without-grant-measurement')
+    for measure in (pending,returned,value('response-lost-measurement') if google else pending):
+        exact(measure,(*API21_MEASUREMENT,'orders'))
+        for key in API21_MEASUREMENT:integer(measure[key])
+        require(measure['workshop_orders']==measure['workshop_checkout_requests']==1 and all(measure[key]==0 for key in ('entitlements','dataset_requests','dataset_projections','payment_events')) and len(measure['orders'])==1,'api21_v2_pending_counts')
+        order=measure['orders'][0];require(order['state']=='open' and all(order[k]==identity[k] for k in ('order_id','configuration_id','region')),'api21_v2_pending_scope')
+    if google:
+        retry=http('checkout-retry-http')[0];require(retry['idempotency_key']==checkout['idempotency_key'] and retry['request']==checkout['request'] and retry['checkout_identity']==identity,'api21_v2_checkout_retry')
+        snapshots=[value('response-lost-snapshot'),value('retry-pending-snapshot')]
+        for snapshot in snapshots:
+            _api21_v2_pending_snapshot(snapshot,identity,row['measurement']['orders'][0]['owner'])
+            rows=snapshot['paid_rows'];orders=rows['workshop_orders'];require(len(orders)==1 and rows['entitlements']==[] and snapshot['grant_calls']==0,'api21_v2_pending_snapshot')
+            order=orders[0];require(order['status']=='open' and all(order[k]==identity[k] for k in ('order_id','configuration_id','region')) and order['checkout_session_id']==identity['checkout_url'].split('/c/pay/')[1].split('#')[0],'api21_v2_pending_snapshot');integer(snapshot['payment_calls'],1)
+        require(snapshots[0]['payment_calls']==snapshots[1]['payment_calls'],'api21_v2_retry_payment')
+    initial=value('initial-measurement');signed=value('signed-in-measurement')
+    require(signed['auth_sessions']==initial['auth_sessions']+1 and signed['hashed_sessions']==signed['auth_sessions'] and signed['sdk_cert_calls']>=1 and signed['sdk_user_calls']>=2 and signed['sdk_unexpected']==0,'api21_v2_signin')
+    for phase in ('owner-library-initial-http','owner-library-reload-http','owner-library-restart-http'):
+        responses=http(phase)
+        def matching(payload):
+            body=payload['response']['parsed']
+            if type(body) is not dict or type(body.get('items')) is not list or len(body['items'])!=1:return False
+            item=body['items'][0]
+            return type(item) is dict and item.get('library_item_id')==identity['order_id'] and item.get('configuration_id')==identity['configuration_id'] and item.get('region')=='US' and item.get('access_state') in ('paid','preparing','viewable')
+        require(1<=len(responses)<=16 and any(matching(p) for p in responses),'api21_v2_library')
+    scope=dict(configuration=identity['configuration_id'])
+    _api21_measurement(value('settled-measurement'),scope,state='paid')
+    require(value('restart-before-measurement')==row['restart']['before'] and value('restart-after-measurement')==row['restart']['after'] and value('runtime-before')==row['restart']['runtime_before'] and value('runtime-poll')==row['restart']['runtime_after'] and value('final-measurement')==row['measurement'],'api21_v2_retained_measurement')
+    if not google:
+        warm=row['warm'];require(value('warm-before-snapshot')==warm['before'] and value('warm-after-snapshot')==warm['after'] and value('reader-before-measurement')['image_reads']==warm['reader_before'] and value('reader-after-measurement')['image_reads']==warm['reader_after'],'api21_v2_retained_warm')
+    if 'other-library-http' in by_phase:require(value('other-library-http').get('items')==[],'api21_v2_other_library')
+    if 'revoked-measurement' in by_phase:_api21_measurement(value('revoked-measurement'),scope,state='revoked')
+
+
+def _api21_v2_business(result,row,evidence,scope,case,*,passed):
+    _,root,engine,provider=case
+    google=root == API21_CASES[0][1]; isolation=root == 'test_browser_account_scope_and_revocation_real_api'
+    refund=root == 'test_browser_signed_refund_blocks_old_links_real_api'
+    require(not passed or 'final_snapshot' in result and 'worker_exits' in result, 'api21_v2_success_snapshot')
+    require('final_snapshot' not in result or row is not None and row['status'] == 'passed' and
+            'browser_versions' in evidence,
+            'api21_retained_source_order')
+    final_order=None
+    if 'final_snapshot' in result:
+        final_order=_api21_snapshot(result['final_snapshot'],scope,work=not google,isolation=isolation,revoked=refund)
+    if row is not None and 'measurement' in row:
+        measurement=row['measurement']; measured=_api21_measurement(measurement,scope,state='revoked' if refund else 'paid')
+        if final_order is not None:
+            _api21_order_seam(measured,final_order)
+            paid=result['final_snapshot']['paid_rows']
+            for key in ('auth_sessions','workshop_orders','entitlements','dataset_requests','dataset_projections'):
+                require(measurement[key] == len(paid[key]), 'api21_measurement_pg_seam')
+            require(measurement['workshop_checkout_requests'] == len(result['final_snapshot']['immutable_rows']['workshop_checkout_requests']),
+                    'api21_measurement_pg_seam')
+        restart=row['restart']; exact(restart, ('runtime_before','runtime_after','before','after'))
+        for key in ('runtime_before','runtime_after'):
+            exact(restart[key], ('application_generation',)); integer(restart[key]['application_generation'])
+        require(restart['runtime_after']['application_generation'] == restart['runtime_before']['application_generation']+1,
+                'api21_restart_generation')
+        for key in ('before','after'):
+            order=_api21_measurement(restart[key],scope,state='paid')
+            require(all(order[field] == measured[field] for field in ('order_id','owner','configuration_id','region')),
+                    'api21_restart_order')
+        require(all(restart['before'][key] == restart['after'][key] for key in API21_DURABLE), 'api21_restart_durability')
+        for key in API21_MEASUREMENT:
+            require(measurement[key] >= restart['after'][key], 'api21_measurement_regression')
+        require(isolation or measurement['auth_sessions'] == restart['after']['auth_sessions'], 'api21_session_phase')
+        warm=row['warm']
+        if google: exact(warm, ())
+        else:
+            exact(warm, ('before','after','reader_before','reader_after'))
+            for key in ('before','after'):
+                order=_api21_snapshot(warm[key],scope,work=True)
+                require(order['order_id'] == measured['order_id'] and order['customer_account_id'] == measured['owner'] and
+                    order['configuration_id'] == measured['configuration_id'] and order['region'] == measured['region'],
+                    'api21_warm_order')
+                if final_order is not None:
+                    require(all(order[field] == final_order[field] for field in
+                        ('order_id','customer_account_id','organization_id','configuration_id','dataset_request_id',
+                         'dataset_product_id','entitlement_id')), 'api21_warm_order')
+            for key in ('provider_calls','source_calls','asset_calls','model_calls','counts','immutable_sha256'):
+                require(warm['before'][key] == warm['after'][key], 'api21_warm_drift')
+            integer(warm['reader_before']); integer(warm['reader_after'])
+            require(warm['reader_after'] > warm['reader_before'] and measurement['image_reads'] >= warm['reader_after'],
+                    'api21_warm_reader')
+    if 'worker_exits' in result:
+        exits=result['worker_exits']; array(exits)
+        require(len(exits) <= 2 and (not passed or len(exits) == (0 if google else 2)), 'api21_v2_worker_cleanup_inventory')
+        # Equal records are valid: source retains no distinct process identifiers.
+        for worker in exits:
+            exact(worker, ('kind','exit_code','terminated','intentional_cleanup','alive_before_cleanup'))
+            require(worker['kind'] == 'cli' and type(worker['exit_code']) is int and
+                all(worker[key] is True for key in ('terminated','intentional_cleanup','alive_before_cleanup')),
+                'api21_worker_cleanup')
+
+def _api21_v2_evidence(evidence,ready,case):
+    case_id,root,engine,bank=case
+    base=('version','mode','candidate_sha','api_observability_version','binding','results')
+    metadata=('engine_revisions','input_sha256','sdk_sha256','playwright_version','provenance')
+    has_metadata='engine_revisions' in evidence
+    exact(evidence, (*base,*metadata,'browser_versions') if 'browser_versions' in evidence else (*base,*metadata) if has_metadata else base)
+    require(evidence['version']=='v1' and evidence['mode']=='api-fixture' and evidence['candidate_sha']==API21_V2_SOURCE_SHA and evidence['api_observability_version']=='api21-producer-v2','api21_v2_evidence_identity')
+    complete=_api21_v2_binding(evidence['binding'],case,'browser-runner')
+    if has_metadata:
+        require(ready is not None and evidence['playwright_version']=='1.64.1' and evidence['input_sha256']=={k:v for k,v in API21_V2_SOURCE_INPUTS.items() if k!='workers/ingestion-python/tests/test_workshop_browser_integration.py'},'api21_v2_provenance')
+        revisions=evidence['engine_revisions'];require(type(revisions) is dict and 0<len(revisions)<=32,'api21_v2_engine_revisions')
+        for key,value in revisions.items():string(key);string(value);require(len(key)<=96 and len(value)<=256,'api21_v2_engine_revisions')
+        provenance=evidence['provenance'];exact(provenance,('assets','certificate_sha256'))
+        require(provenance['assets']==API21_V2_SOURCE_ASSETS and provenance['certificate_sha256']==ready['certificate_sha256'] and evidence['sdk_sha256']==ready['sdk_sha256']==API21_V2_SOURCE_ASSETS['firebase-web.mjs']['sha256'],'api21_v2_provenance')
+        for asset in provenance['assets'].values():exact(asset,('sha256','bytes'));digest(asset['sha256']);integer(asset['bytes'])
+    if 'browser_versions' in evidence:
+        require(has_metadata,'api21_v2_browser_versions');exact(evidence['browser_versions'],(engine,));string(evidence['browser_versions'][engine]);require(len(evidence['browser_versions'][engine])<=256,'api21_v2_browser_versions')
+    rows=evidence['results'];array(rows);require(len(rows)==1,'api21_v2_result_inventory');row=rows[0]
+    require(type(row) is dict and row.get('browser')==engine and row.get('scenario')==root,'api21_v2_row_identity');enum(row.get('status'),('passed','failed','unavailable'))
+    full='measurement' in row
+    if full:
+        exact(row,('browser','scenario','elapsed_seconds','status','assertions','provider','requests','measurement','restart','warm','observations'))
+        require(has_metadata and ready is not None and row['provider']==bank,'api21_v2_row_metadata');_api21_elapsed(row['elapsed_seconds'])
+        assertions=row['assertions'];exact(assertions,API21_ASSERTIONS[root]);require(all(type(x) is bool for x in assertions.values()),'api21_v2_assertions')
+        if row['status']=='passed':require(all(assertions.values()),'api21_v2_assertions')
+        requests=row['requests']; array(requests); require(len(requests) <= 8192, 'api21_request_limit')
+        get_paths={'/workshop/','/workshop/purchase-config.json','/workshop/fonts/InstrumentSans.ttf',
+                   '/auth/config','/auth/session','/v1/catalog/years','/v1/workshop/quote','/v1/workshop/library'}
+        get_paths.update('/workshop/'+name for name in API21_V2_SOURCE_ASSETS)
+        get_patterns=(r'/v1/workshop/orders/\{uuid\}',
+            r'/v1/catalog/years/2024/makes(?:/example/models(?:/car/configurations)?)?',
+            r'/v1/catalog/vehicles/\{uuid\}/articles(?:/\{uuid\}(?:/source)?)?',
+            r'/v1/catalog/images/\{capability\}')
+        for request in requests:
+            exact(request, ('method','path'))
+            method,path=request['method'],request['path']
+            require(type(method) is str and type(path) is str, 'api21_request_template')
+            allowed=(method == 'GET' and (path in get_paths or any(re.fullmatch(pattern,path) for pattern in get_patterns))) or (
+                method == 'POST' and (path in ('/auth/firebase/session','/auth/logout','/v1/workshop/checkout-sessions') or
+                re.fullmatch(r'/v1/catalog/vehicles/\{uuid\}/articles/\{uuid\}/prepare',path) is not None))
+            require(allowed, 'api21_request_template')
+    else:
+        exact(row,('browser','scenario','status','observations'));require(row['status']!='passed','api21_v2_minimal_row')
+    passed=row['status']=='passed'
+    require(not passed or complete and has_metadata and 'browser_versions' in evidence,'api21_v2_browser_success')
+    phases=_api21_v2_observations(row['observations'],evidence['binding'],case,row,passed=passed)
+    if passed:
+        metadata=next(p['response']['parsed'] for p in phases['metadata'] if p['kind']=='http')
+        require(metadata==dict(kind='api-fixture',scope=ready['scope']),'api21_v2_metadata_scope')
+    require((row['observations']['status']=='passed')==passed,'api21_v2_observation_outcome')
+    return row
+
+
+def _api21_v2_sidecars(parent,child,result,case,raw,*,passed,used_workers):
+    prefix='workshop-browser/'+case[1]+'/'+case[2]+'-'+case[3]+'/'
+    exact(parent,('binding','status','child','child_artifacts','child_artifact_status','child_launch_cause','primary_failure','publication_failure','engine_os_exit','outer_pytest_exit'))
+    _api21_v2_terminal(parent,passed=passed);_api21_v2_reason(parent['publication_failure']);publication=parent['publication_failure'] is not None
+    require(not publication or parent['publication_failure']=='publication_failed' and parent['status']=='failed','api21_v2_publication')
+    _api21_v2_process(parent['child'],case,'child-pytest',raw,passed=passed,publication=publication)
+    artifacts=parent['child_artifacts'];array(artifacts);require(len(artifacts)<=8,'api21_v2_child_artifacts')
+    expected=[prefix+name for name in (*API21_SUPPORT,'child-processes.json')]
+    for artifact in artifacts:_api21_v2_hash(artifact,raw,expected)
+    unique([a['ref'] for a in artifacts]);enum(parent['child_artifact_status'],('finalized','partial','unavailable'))
+    if artifacts:require(parent['child']['reaped'] is True,'api21_v2_hash_before_reap')
+    if parent['child_artifact_status']=='finalized':require([a['ref'] for a in artifacts]==expected,'api21_v2_finalized_artifacts')
+    if passed:require(parent['child_artifact_status']=='finalized','api21_v2_finalized_artifacts')
+    cause=parent['child_launch_cause']
+    if cause is not None:
+        exact(cause,('stream','producer_role','seq'));integer(cause['seq'],1)
+        events=parent['child']['events'];require(cause['stream']=='process-child' and cause['producer_role']=='parent-pytest' and cause['seq']<=len(events) and events[cause['seq']-1]['kind']=='launch-succeeded','api21_v2_parent_launch_cause')
+    if passed or not publication and any(e['kind']=='launch-succeeded' for e in parent['child']['events']):require(cause is not None,'api21_v2_parent_launch_cause')
+    if child is None:
+        require(not passed and parent['status']!='passed','api21_v2_unpublished_child');return
+    exact(child,('binding','status','go','browser_runner','workers','worker_mapping_status','finalization_events','primary_failure','publication_failure','engine_os_exit','outer_pytest_exit'))
+    _api21_v2_terminal(child,passed=passed);_api21_v2_reason(child['publication_failure']);publication=child['publication_failure'] is not None
+    require(not publication or child['publication_failure']=='publication_failed' and child['status']=='failed','api21_v2_publication')
+    for field,role in (('go','go-test'),('browser_runner','browser-runner')):_api21_v2_process(child[field],case,role,raw,passed=passed,publication=publication)
+    events=child['finalization_events'];array(events);require(len(events)<=64,'api21_v2_finalization');last=-1;sequence=[]
+    for index,event in enumerate(events):
+        exact(event,('seq','phase','caused_by','elapsed_us','payload'));integer(event['seq'],1);integer(event['elapsed_us']);require(event['seq']==index+1 and event['elapsed_us']>=last and event['caused_by']==[],'api21_v2_finalization');last=event['elapsed_us'];_api21_v2_lifecycle(event['payload'])
+        require(event['phase']==event['payload']['operation'] and event['phase'] in ('fixture-stop','worker-stop','runtime-close'),'api21_v2_finalization');sequence.append((event['phase'],event['payload']['state']))
+    success_sequence=[('fixture-stop','completed'),('worker-stop','requested'),('worker-stop','completed'),('runtime-close','requested'),('runtime-close','completed')]
+    if passed:require(sequence==success_sequence,'api21_v2_finalization_order')
+    if ('runtime-close','completed') in sequence and ('worker-stop','completed') in sequence:require(sequence.index(('worker-stop','completed'))<sequence.index(('runtime-close','completed')),'api21_v2_finalization_order')
+    workers=child['workers'];array(workers);require(len(workers)<=2,'api21_v2_workers');enum(child['worker_mapping_status'],('observed','unavailable','not_started'))
+    exits=result.get('worker_exits',[]) if result is not None else []
+    if child['worker_mapping_status']=='observed':require(len(workers)==2 and len(exits)==2,'api21_v2_worker_mapping_inventory')
+    if child['worker_mapping_status']=='not_started':require(case[1]==API21_CASES[0][1] and workers==[],'api21_v2_worker_mapping_inventory')
+    if passed:require(len(workers)==(0 if case[1]==API21_CASES[0][1] else 2) and child['worker_mapping_status']==('not_started' if not workers else 'observed'),'api21_v2_worker_inventory')
+    for index,worker in enumerate(workers):
+        exact(worker,('ordinal','kind','original_ref','mapping','alive_before_cleanup','intentional_cleanup','terminated','exit_code','reaped','log_finalized','log_hash','reason'))
+        integer(worker['ordinal'],1);require(worker['ordinal']==index+1 and worker['kind']=='cli','api21_v2_worker_ordinal');ref=worker['original_ref'];require(type(ref) is str and re.fullmatch('worker-[a-f0-9]{32}\\.log',ref) is not None and ref not in used_workers,'api21_v2_worker_ref');used_workers.add(ref)
+        enum(worker['mapping'],('observed','unavailable'));_api21_v2_reason(worker['reason'])
+        for key in ('alive_before_cleanup','intentional_cleanup','terminated','reaped'):require(worker[key] is None or type(worker[key]) is bool,'api21_v2_worker_bool')
+        require(type(worker['log_finalized']) is bool and (worker['exit_code'] is None or type(worker['exit_code']) is int),'api21_v2_worker_exit')
+        if worker['mapping']=='observed':
+            require(index<len(exits) and all(worker[key]==exits[index][key] for key in ('kind','alive_before_cleanup','intentional_cleanup','terminated','exit_code')) and worker['reaped'] is True and worker['reason'] is None,'api21_v2_worker_mapping')
+        if worker['log_finalized']:
+            require(worker['mapping']=='observed' and ('runtime-close','completed') in sequence,'api21_v2_log_finalization');_api21_v2_hash(worker['log_hash'],raw,[ref])
+        else:require(worker['log_hash'] is None and not passed,'api21_v2_log_finalization')
+        if passed:require(worker['mapping']=='observed' and worker['log_finalized'],'api21_v2_worker_success')
+    if workers:require(('worker-stop','completed') in sequence or child['worker_mapping_status']=='unavailable','api21_v2_worker_cleanup')
+
+
+def _api21_v2_inspect(store, *, candidate_sha, trusted_base_sha, profile_sha256,
+                      profile_version='api21-retained-v2'):
+    """Inspect current retained bytes offline; never authenticate or accept a run."""
+    digest(candidate_sha,40);digest(trusted_base_sha,40);digest(profile_sha256)
+    require(candidate_sha==API21_V2_SOURCE_SHA and profile_version=='api21-retained-v2','api21_v2_selector')
+    required={'workshop-browser-api.xml'};allowed=set(required);prefixes=[]
+    for case in API21_CASES:
+        _,root,engine,bank=case;prefix='workshop-browser/'+root+'/'+engine+'-'+bank+'/';prefixes.append(prefix)
+        required.add(prefix+'parent-process.json');allowed.update(prefix+name for name in (*API21_SUPPORT,'parent-process.json','child-processes.json'));allowed.add(prefix+'browser/'+engine+'/'+root+'-failure.png')
+    require(required<=set(store.by_ref),'api21_v2_support_inventory')
+    raw={};total=0
+    for ref,record in store.by_ref.items():
+        require(ref in allowed or re.fullmatch('worker-[a-f0-9]{32}\\.log',ref) is not None,'api21_v2_support_inventory')
+        require(record['visibility']=='private' and record['kind']==('junit' if ref=='workshop-browser-api.xml' else 'raw'),'api21_v2_artifact_declaration')
+        data=store.read(record['artifact_id']);require(type(data) is bytes and len(data)<=8388608,'api21_v2_artifact_size');total+=len(data);require(total<=67108864,'api21_v2_total_size');raw[ref]=data
+    outcomes=_api21_junit(raw['workshop-browser-api.xml']);observed=[];diagnostics=[];databases=[];run_ids=[];attempt_ids=[];used_workers=set();observation_bytes=0
+    for index,(case,prefix) in enumerate(zip(API21_CASES,prefixes)):
+        docs={}
+        for name in ('parent-process.json','child-processes.json','result.json','ready.json','browser/evidence.json'):
+            if prefix+name in raw:
+                data=raw[prefix+name]
+                require(len(data)<= (65536 if name=='parent-process.json' else 262144 if name=='child-processes.json' else 4194304),'api21_v2_document_size');docs[name]=strict_raw_json(data)
+        parent=docs['parent-process.json'];parent_complete=_api21_v2_binding(parent['binding'],case,'parent-pytest')
+        pb=parent['binding']
+        if pb['run_id'] is not None:run_ids.append(pb['run_id'])
+        if pb['attempt_id'] is not None:attempt_ids.append(pb['attempt_id'])
+        child=docs.get('child-processes.json');result=docs.get('result.json');ready=docs.get('ready.json');evidence=docs.get('browser/evidence.json');row=None;scope=None
+        require(parent_complete or not parent['child']['launched'] and child is None and result is None,'api21_v2_partial_launch')
+        child_complete=False
+        if child is not None:
+            child_complete=_api21_v2_binding(child['binding'],case,'child-pytest')
+            require(child_complete or not child['go']['launched'] and not child['browser_runner']['launched'],'api21_v2_partial_launch')
+            if child_complete and parent_complete:require(child['binding']==dict(pb,producer_role='child-pytest'),'api21_v2_role_binding')
+        if result is not None:
+            require(type(result) is dict,'api21_v2_result');result_complete=_api21_v2_binding(result['binding'],case,'child-pytest')
+            if child is not None:require(result['binding']==child['binding'],'api21_v2_result_binding')
+            fields=('version','mode','candidate_sha','browser','provider','test','fixture_database','passed','api_observability_version','binding')
+            require(set(fields)<=set(result)<=set((*fields,'final_snapshot','worker_exits')),'api21_v2_result_shape')
+            require(result['version']=='v1' and result['mode']=='api-fixture' and result['candidate_sha']==result['binding']['candidate_sha'] and result['api_observability_version']=='api21-producer-v2' and (result['test'],result['browser'],result['provider'])==(case[1],case[2],case[3]) and type(result['passed']) is bool,'api21_v2_result_identity')
+            database=result['fixture_database']
+            require(database is None and not result['passed'] or type(database) is str and re.fullmatch('[a-z][a-z0-9_]{0,62}',database) is not None,'api21_v2_database')
+            if database is not None:databases.append(database)
+            require(not result['passed'] or result_complete and (child is None or child_complete and child['status']=='passed'),'api21_v2_child_success')
+        if ready is not None:scope=_api21_ready(ready,case[3])
+        if evidence is not None:
+            row=_api21_v2_evidence(evidence,ready,case);observation_bytes+=_api21_v2_size(row['observations'],1048576);require(observation_bytes<=22020096,'api21_v2_run_observations')
+            if evidence['binding']['binding_state']=='complete' and child is not None and child['binding']['binding_state']=='complete':require(evidence['binding']==dict(child['binding'],producer_role='browser-runner'),'api21_v2_role_binding')
+        passed=outcomes[index]=='passed'
+        require(not passed or child is not None and result is not None and result['passed'] and parent_complete and parent['status']=='passed' and row is not None and row['status']=='passed','api21_v2_outcome')
+        require(not result or not result['passed'] or row is not None and row['status']=='passed','api21_v2_result_evidence')
+        if parent['status']=='passed':require(passed and result is not None and result['passed'],'api21_v2_parent_success')
+        if result is not None:
+            _api21_v2_business(result,row,evidence,scope,case,passed=result['passed'])
+        _api21_v2_sidecars(parent,child,result,case,raw,passed=passed,used_workers=used_workers)
+        if passed:
+            require(prefix+'browser/'+case[2]+'/'+case[1]+'-failure.png' not in raw,'api21_v2_success_screenshot');observed.append(case[0])
+        else:diagnostics.append(dict(case_id=case[0],category='producer_partial'))
+    require(len(set(run_ids))<=1,'api21_v2_run_binding');unique(attempt_ids);unique(databases)
+    require({ref for ref in raw if re.fullmatch('worker-[a-f0-9]{32}\\.log',ref)}==used_workers,'api21_v2_worker_inventory')
+    store.recheck()
+    return dict(status='unavailable',complete=False,profile_version=profile_version,candidate_sha=candidate_sha,
+        trusted_base_sha=trusted_base_sha,profile_sha256=profile_sha256,observed_case_ids=observed,verified_case_ids=[],
+        accepted_case_credit=0,accepted_new_case_credit=0,diagnostics=diagnostics,missing_validation_families=list(API21_V2_MISSING_FAMILIES),
+        release_state='unverified',**{flag:False for flag in FLAGS})
+
+
+def inspect_api21_v2_receipts(store, *, candidate_sha, trusted_base_sha, profile_sha256,
+                              profile_version='api21-retained-v2'):
+    """Separate offline v2 entry point; malformed data yields nonsecret codes."""
+    try:
+        return _api21_v2_inspect(store,candidate_sha=candidate_sha,trusted_base_sha=trusted_base_sha,
+            profile_sha256=profile_sha256,profile_version=profile_version)
+    except (KeyError,TypeError,IndexError,AttributeError,OverflowError,RecursionError,UnicodeError):
+        raise ContractError('api21_v2_malformed_shape') from None
+
+
 def references(value, artifacts):
     array(value)
     for ref in value:
