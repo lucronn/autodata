@@ -422,3 +422,27 @@ driver25 tests OK before the final test-only line. Original lifecycle113 earlier
 isolated cases, exact-source-candidate33 focused/no skips and independent review
 remain separately bound evidence. The coordinator confirmed independent exact-SHA repair review of `66efbf55ac3658e7a86d3adb2341b512453bb047` with zero actionable findings. Seventh local repair/review todo is complete; fresh final-head required CI, stage apply and browser acceptance remain open.
 See `docs/verification/2026-11-05-source-projection-v2.md` for exact SHAs and limits.
+
+### Mercury-2 output budget for canonical publication
+
+Goal: let the existing canonical rewrite client use the exact Mercury-2 model
+through an Inception-compatible endpoint without an unbounded provider credit
+reservation. The official Inception endpoint and `mercury-2` model remain the
+defaults. Each completion request will declare `max_tokens=8192`; operators may
+set `INCEPTION_MAX_TOKENS` to an integer from 1 through 32768. The model key and
+optional alternate endpoint remain private runtime configuration, never source
+control. This bounded request does not change source rights, transformation
+ownership, validation, or atomic canonical publication.
+
+Plan: `docs/superpowers/plans/2026-11-05-mercury2-output-budget.md`.
+Tracking: https://github.com/lucronn/autodata/issues/327 in
+https://github.com/users/lucronn/projects/8. Parent release issue:
+https://github.com/lucronn/autodata/issues/186.
+
+Concrete todo:
+
+- [ ] Commit the synchronized planning checkpoint and pass its exact-base preflight.
+- [ ] Add failing payload/invalid-setting tests, then implement the bounded request.
+- [ ] Verify and push the focused change for review and required CI.
+- [ ] Verify a live bounded Mercury-2 TEST call and separately recover terminal
+  model jobs before claiming any published canonical article.
