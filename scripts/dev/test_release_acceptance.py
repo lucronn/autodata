@@ -3667,4 +3667,801 @@ class API21RawInspectorTests(unittest.TestCase):
                     'producer_partial' if status in ('passed','empty') else 'producer_'+status)
 
 
+
+
+class Api21V2RawInspectorTests(unittest.TestCase):
+    """Independent fake retained bytes; no producer module is imported or run."""
+    candidate = '6949eb1b1a5b93c9b2eb0579328e24c697f6f331'
+    tree = '47ec54b1896c83a39b6637a6ce944d3620414f4e'
+    inputs = {'apps/api-go/workshop_browser_fixture_test.go': '7520a24bcfa06fe64810c6c17625563d29a2387c6d0531a61713f50b2098bf33',
+     'scripts/dev/fixtures/workshop_customer/firebase_transport.js': '96bd315271bf05f363dc74ebb8d60c243f0ede8f0e7a649d3d7eeb7ea8f9dc63',
+     'scripts/dev/fixtures/workshop_customer/hostile_source.json': '076b68d46991bd32a8ba73f61b93d7c22b52784c3df2d58d0c9e8d33891483d1',
+     'scripts/dev/fixtures/workshop_customer/scenarios.json': '83ae0b9a08148fc5321663ce1f4647d29535726d7af93f6299abd4171ebc65d9',
+     'scripts/dev/fixtures/workshop_customer/stripe_checkout.html': '26c1c7ea312630626792f89290b318ca36d01f72c7906d94cab9baf03dc74083',
+     'scripts/dev/workshop_browser_smoke.py': 'e5424bfeb412d321638ebab31362774226d49caeacd53ffc929a54c00bbf9a7a',
+     'workers/ingestion-python/tests/test_workshop_browser_integration.py': '1d83bcaa7e57b59cc2a6b8e64d9e4ab9dc327389c21a905b85dbec7267bc976b'}
+    assets = {'app.mjs': {'bytes': 37870, 'sha256': '2bfe85a3f5e0b77bc55fe0c18b50b35a9bab6444f6a640bf6a6a36bd57ab4c46'},
+     'article-read.mjs': {'bytes': 2579,
+                          'sha256': '2957242037d4bc3ce7894ae2c7e4bae1636406d0256dd75b6150e78c1c4e5178'},
+     'auth.mjs': {'bytes': 7908, 'sha256': 'ec71ad49dc21fc8633e1165ff759f1d05467f40d045ca056c8be5460cce285e2'},
+     'catalog.mjs': {'bytes': 11688,
+                     'sha256': 'cf518ae376f7d61ac6dc09e9a09b12baca6be66e64b8b79d54bab2393286db52'},
+     'commerce.mjs': {'bytes': 7369,
+                      'sha256': 'e7f8e2fd45d6cd9f4ec2ef2f3a50d3f090f34e2562d4bbc58f9c23d06e8a1142'},
+     'firebase-web.mjs': {'bytes': 112641,
+                          'sha256': 'bd2f3d36daaecdb5556e601603bea4e80cd202fc515faa931b2b0c5d0f7344f1'},
+     'firebase-web.mjs.LEGAL.txt': {'bytes': 35536,
+                                    'sha256': '70b7365a8d96e19330fbc64e69fa03c03452787b8bcf52d0fc7ad2e184dfd319'},
+     'firebase-web.provenance.json': {'bytes': 2237,
+                                      'sha256': '0ac4b7ddfa58ef0ac800095a4a16f29d96518792b9b81c8dcc81b262a918fa9a'},
+     'index.html': {'bytes': 10868, 'sha256': '8910a2b9021af306f1f3698a094bbc0b8da01b9038666ec2c57879b8fb65ac68'},
+     'progress.mjs': {'bytes': 1076,
+                      'sha256': 'dd41a36c18871aacb6c1dfb16cfb6c3659c51e92acb479481897f77cffbe7e48'},
+     'styles.css': {'bytes': 20773, 'sha256': 'c57c63c0661c500a83f2c3e5ffd57d18eac5910733a0d978e829dfa23ac09a0c'}}
+    phases = {'test_browser_account_scope_and_revocation_real_api': ['setup',
+                                                            'metadata',
+                                                            'initial-measurement',
+                                                            'signed-in-measurement',
+                                                            'checkout-http',
+                                                            'pending-checkout-measurement',
+                                                            'return-without-grant-measurement',
+                                                            'settlement-control',
+                                                            'settled-measurement',
+                                                            'owner-library-initial-http',
+                                                            'owner-library-reload-http',
+                                                            'library-reload-measurement',
+                                                            'restart-before-measurement',
+                                                            'runtime-before',
+                                                            'restart-control',
+                                                            'runtime-poll',
+                                                            'owner-library-restart-http',
+                                                            'restart-after-measurement',
+                                                            'start-workers-control',
+                                                            'source-page-http',
+                                                            'source-image-http',
+                                                            'source-review-http',
+                                                            'release-model-control',
+                                                            'warm-before-snapshot',
+                                                            'reader-before-measurement',
+                                                            'warm-page-http',
+                                                            'warm-image-http',
+                                                            'warm-pinned-source-http',
+                                                            'warm-after-snapshot',
+                                                            'reader-after-measurement',
+                                                            'adjacent-denial',
+                                                            'other-region-denial',
+                                                            'unscoped-article-denial',
+                                                            'legacy-vehicle-denial',
+                                                            'other-catalogue-denial',
+                                                            'other-library-http',
+                                                            'other-image-denial',
+                                                            'logout-image-denial',
+                                                            'disable-control',
+                                                            'disabled-image-denial',
+                                                            'final-measurement'],
+     'test_browser_google_exchange_checkout_library_real_api': ['setup',
+                                                                'metadata',
+                                                                'initial-measurement',
+                                                                'signed-in-measurement',
+                                                                'checkout-first-http',
+                                                                'checkout-first-delivery',
+                                                                'response-lost-measurement',
+                                                                'response-lost-snapshot',
+                                                                'checkout-retry-http',
+                                                                'checkout-retry-delivery',
+                                                                'pending-checkout-measurement',
+                                                                'retry-pending-snapshot',
+                                                                'return-without-grant-measurement',
+                                                                'settlement-control',
+                                                                'settled-measurement',
+                                                                'owner-library-initial-http',
+                                                                'owner-library-reload-http',
+                                                                'library-reload-measurement',
+                                                                'restart-before-measurement',
+                                                                'runtime-before',
+                                                                'restart-control',
+                                                                'runtime-poll',
+                                                                'owner-library-restart-http',
+                                                                'restart-after-measurement',
+                                                                'final-measurement'],
+     'test_browser_owned_source_canonical_and_media_real_api': ['setup',
+                                                                'metadata',
+                                                                'initial-measurement',
+                                                                'signed-in-measurement',
+                                                                'checkout-http',
+                                                                'pending-checkout-measurement',
+                                                                'return-without-grant-measurement',
+                                                                'settlement-control',
+                                                                'settled-measurement',
+                                                                'owner-library-initial-http',
+                                                                'owner-library-reload-http',
+                                                                'library-reload-measurement',
+                                                                'restart-before-measurement',
+                                                                'runtime-before',
+                                                                'restart-control',
+                                                                'runtime-poll',
+                                                                'owner-library-restart-http',
+                                                                'restart-after-measurement',
+                                                                'start-workers-control',
+                                                                'source-page-http',
+                                                                'source-image-http',
+                                                                'source-review-http',
+                                                                'release-model-control',
+                                                                'warm-before-snapshot',
+                                                                'reader-before-measurement',
+                                                                'warm-page-http',
+                                                                'warm-image-http',
+                                                                'warm-pinned-source-http',
+                                                                'warm-after-snapshot',
+                                                                'reader-after-measurement',
+                                                                'final-measurement'],
+     'test_browser_signed_refund_blocks_old_links_real_api': ['setup',
+                                                              'metadata',
+                                                              'initial-measurement',
+                                                              'signed-in-measurement',
+                                                              'checkout-http',
+                                                              'pending-checkout-measurement',
+                                                              'return-without-grant-measurement',
+                                                              'settlement-control',
+                                                              'settled-measurement',
+                                                              'owner-library-initial-http',
+                                                              'owner-library-reload-http',
+                                                              'library-reload-measurement',
+                                                              'restart-before-measurement',
+                                                              'runtime-before',
+                                                              'restart-control',
+                                                              'runtime-poll',
+                                                              'owner-library-restart-http',
+                                                              'restart-after-measurement',
+                                                              'start-workers-control',
+                                                              'source-page-http',
+                                                              'source-image-http',
+                                                              'source-review-http',
+                                                              'release-model-control',
+                                                              'warm-before-snapshot',
+                                                              'reader-before-measurement',
+                                                              'warm-page-http',
+                                                              'warm-image-http',
+                                                              'warm-pinned-source-http',
+                                                              'warm-after-snapshot',
+                                                              'reader-after-measurement',
+                                                              'refund-control',
+                                                              'refund-old-image-denial',
+                                                              'refund-source-denial',
+                                                              'refund-detail-denial',
+                                                              'revoked-measurement',
+                                                              'final-measurement']}
+    missing = ['actual_child_go_browser_exit_receipts',
+     'parent_pytest_exit_and_command_receipts',
+     'signed_settlement_refund_http_bytes_and_authentic_delivery',
+     'runtime_image_browser_cache_sdk_install_identity',
+     'authenticated_capture_source_observer_and_containment',
+     'global_worker_log_per_case_ownership_mapping',
+     'finite_api_success_schedule',
+     'junit_byte_preserving_capture_mapping',
+     'all_final180_families_and_profile_promotion',
+     'independent_authentic_raw_review',
+     'actual_engine_os_exit_and_descendant_reap',
+     'original_go_webhook_request_signature_response_capture',
+     'source_contract_current_integration_rebinding',
+     'dto_trace_16MiB_producer_8MiB_consumer_conflict',
+     'v2_consumer_schema_validator_and_profile',
+     'producer_observations_are_unexecuted_until_separate_capture_gate']
+
+    uid = staticmethod(API21RawInspectorTests.uid)
+    def paid(self, **kwargs):
+        paid=API21RawInspectorTests.paid(self,**kwargs)
+        paid['workshop_orders'][0].update(checkout_session_id='cs_test_'+'1'*32,checkout_url='https://checkout.stripe.com/c/pay/cs_test_'+'1'*32+'#fixture')
+        return paid
+    snapshot = API21RawInspectorTests.snapshot
+    measurement = API21RawInspectorTests.measurement
+    store = API21RawInspectorTests.store
+    cases = API21RawInspectorTests.cases
+
+    def body(self, value, *, request=False, raw=None):
+        import base64
+        raw=json.dumps(value,separators=(',',':')).encode() if raw is None else raw
+        return dict(availability='retained',byte_source='playwright-request-post-data-buffer' if request else 'playwright-response-body',
+            encoding='base64',base64=base64.b64encode(raw).decode(),length=len(raw),sha256=hashlib.sha256(raw).hexdigest(),parsed=value,reason=None)
+
+    def binding(self, case, index, role):
+        return dict(binding_state='complete',unavailable_reason=None,api_observability_version='api21-producer-v2',
+            run_id='a'*32,attempt_id=format(index+1,'032x'),case_id=case['case_id'],root=case['root'],engine=case['engine'],
+            bank=case['provider'],candidate_sha=self.candidate,source_tree=self.tree,source_input_sha256=copy.deepcopy(self.inputs),producer_role=role)
+
+    def process(self, case, role):
+        prefix=case['case_prefix'];engine=case['engine']
+        if role=='child-pytest':
+            argv=['$PYTHON','-m','pytest','-q','-p','no:cacheprovider','workers/ingestion-python/tests/test_workshop_browser_integration.py::'+case['case_id']]
+            owner='parent-pytest';cwd='.';refs=[prefix+'child.log']*2
+        elif role=='go-test':
+            argv=['go','test','-count=1','-run','^TestWorkshopBrowserFixtureHTTP$','-timeout=85s','.']
+            owner='child-pytest';cwd='apps/api-go';refs=[prefix+'go-fixture.log']*2
+        else:
+            argv=['$PYTHON','$REPO/scripts/dev/workshop_browser_smoke.py','--base-url','$ORIGIN','--mode','api-fixture','--browser',engine,'--candidate-sha',self.candidate,'--output','$CASE/browser']
+            owner='child-pytest';cwd='.';refs=[prefix+'browser.stdout.log',prefix+'browser.stderr.log']
+        events=[dict(seq=i+1,kind=k,elapsed_us=i+1,return_code=0 if k=='wait-completed' else None,reason=None)
+            for i,k in enumerate(('launch-requested','launch-succeeded','wait-completed'))]
+        return dict(role=role,observer_role=owner,argv=argv,cwd=cwd,launched=True,events=events,return_code=0,
+            return_code_source='wait',wait_kind='normal',intentional_cleanup=False,reaped=True,alive_final=False,
+            started_us=2,finished_us=3,stdout_ref=refs[0],stderr_ref=refs[1],output_hashes=[])
+
+    def events(self, item):
+        case=item['case'];row=item['evidence']['results'][0];ready=item['ready'];events=[]
+        pending=self.measurement();pending.update(entitlements=0,dataset_requests=0,dataset_projections=0,payment_events=0)
+        pending['orders'][0]['state']='open'
+        initial=copy.deepcopy(pending);initial.update(auth_sessions=0,hashed_sessions=0,workshop_orders=0,workshop_checkout_requests=0,orders=[])
+        signed=copy.deepcopy(initial);signed.update(auth_sessions=1,hashed_sessions=1)
+        identity=dict(order_id=self.uid(20),configuration_id=self.uid(1),region='US',checkout_url='https://checkout.stripe.com/c/pay/cs_test_'+'1'*32+'#fixture')
+        request=self.body(dict(configuration_id=self.uid(1),region='US'),request=True)
+        response=self.body(dict(version='v1',state='checkout',**identity))
+        before_pending=self.snapshot(case['provider'],work=False)
+        before_pending['paid_rows']['entitlements']=[];before_pending['paid_rows']['dataset_requests']=[];before_pending['paid_rows']['dataset_projections']=[]
+        before_pending['paid_rows']['workshop_orders'][0].update(status='open',checkout_session_id='cs_test_'+'1'*32,checkout_url=identity['checkout_url'])
+        before_pending['grant_calls']=0
+        before_pending['paid_rows']['workshop_orders'][0].update(paid_at=None,dataset_request_id=None,entitlement_id=None,payment_intent_id=None)
+        before_pending['immutable_rows']['workshop_orders']=copy.deepcopy(before_pending['paid_rows']['workshop_orders'])
+        before_pending['immutable_sha256']=hashlib.sha256(json.dumps(before_pending['immutable_rows'],sort_keys=True).encode()).hexdigest()
+        for phase in self.phases[case['root']]:
+            if phase=='setup':
+                for operation,state in (('setup','completed'),('metadata','requested'),('metadata','completed'),('browser-launch','requested'),('browser-launch','completed'),('context-create','requested'),('context-create','completed'),('page-create','requested'),('page-create','completed')):
+                    events.append(dict(seq=len(events)+1,phase=phase,elapsed_us=len(events)+1,caused_by=[],payload=dict(kind='lifecycle',operation=operation,state=state,reason=None)))
+                continue
+            elif phase.endswith('-delivery'):
+                http=next(e for e in reversed(events) if e['payload']['kind']=='http')
+                ref=dict(stream='observations',producer_role='browser-runner',seq=http['seq'])
+                states=('fetch-completed','response-abort-requested','response-aborted') if 'first' in phase else ('fetch-completed','response-fulfill-requested','response-fulfilled')
+                for state in states:events.append(dict(seq=len(events)+1,phase=phase,elapsed_us=len(events)+1,caused_by=[ref],payload=dict(kind='checkout-delivery',attempt=http['payload']['attempt'],state=state,http_event=ref)))
+                continue
+            else:
+                route='/__fixture/measurement';method='GET';actor='fixture-control';status=200;value=row['measurement'];req=None;checkout=None;key=None
+                if phase=='metadata':route='/__fixture/metadata';value=dict(kind='api-fixture',scope=copy.deepcopy(ready['scope']))
+                elif phase=='initial-measurement':value=initial
+                elif phase=='signed-in-measurement':value=signed
+                elif phase in ('response-lost-measurement','pending-checkout-measurement','return-without-grant-measurement'):value=pending
+                elif phase in ('response-lost-snapshot','retry-pending-snapshot'):route='/__fixture/snapshot';value=before_pending
+                elif phase in ('settled-measurement','library-reload-measurement','restart-before-measurement','restart-after-measurement'):value=row['restart']['before']
+                elif phase in ('runtime-before','runtime-poll'):route='/__fixture/runtime';value=dict(application_generation=int(phase=='runtime-poll'))
+                elif phase in ('warm-before-snapshot','warm-after-snapshot'):route='/__fixture/snapshot';value=row['warm']['before' if phase=='warm-before-snapshot' else 'after']
+                elif phase in ('reader-before-measurement','reader-after-measurement'):
+                    value=copy.deepcopy(row['restart']['before']);value['image_reads']=row['warm']['reader_before' if phase=='reader-before-measurement' else 'reader_after']
+                elif phase.endswith('-control'):
+                    route='/__fixture/'+{'settlement-control':'payment/settle','refund-control':'payment/refund','restart-control':'restart','disable-control':'disable','start-workers-control':'control/start-workers','release-model-control':'control/release-model'}[phase]
+                    method='POST';status=204 if phase in ('restart-control','disable-control') else 200;value=None if status==204 else dict(ok=True)
+                elif phase.startswith('checkout'):
+                    route='/v1/workshop/checkout-sessions';method='POST';actor='owner';value=response['parsed'];req=request;checkout=identity;key=self.uid(30)
+                elif phase.startswith('owner-library'):
+                    route='/v1/workshop/library';actor='owner';value=dict(items=[dict(library_item_id=self.uid(20),configuration_id=self.uid(1),region='US',access_state='paid')])
+                elif phase=='other-library-http':route='/v1/workshop/library';actor='other';value=dict(items=[])
+                elif phase.endswith('denial'):
+                    actor='other' if phase.startswith('other-') else 'logged-out' if phase.startswith('logout') else 'disabled' if phase.startswith('disabled') else 'owner'
+                    status=404 if phase=='other-image-denial' else 401 if phase in ('logout-image-denial','disabled-image-denial') else 403
+                    route={'adjacent-denial':'/v1/catalog/vehicles/{adjacent}/articles','other-region-denial':'/v1/catalog/vehicles/{other_region}/articles','unscoped-article-denial':'/v1/catalog/vehicles/{configuration}/articles/{unscoped}','legacy-vehicle-denial':'/v1/catalog/vehicles/{vehicle}/articles','other-catalogue-denial':'/v1/catalog/vehicles/{configuration}/articles','refund-source-denial':'/v1/catalog/vehicles/{configuration}/articles/{article}/source','refund-detail-denial':'/v1/catalog/vehicles/{configuration}/articles/{article}'}.get(phase,'/v1/catalog/images/{capability}')
+                    value=dict(error='denied')
+                elif phase in ('source-image-http','warm-image-http'):route='/v1/catalog/images/{capability}';actor='owner';value=None
+                elif phase in ('source-page-http','warm-page-http'):route='/v1/catalog/vehicles/{configuration}/articles/{article}';actor='owner';value=dict(version='v1',kind='source' if phase=='source-page-http' else 'canonical')
+                elif phase in ('source-review-http','warm-pinned-source-http'):route='/v1/catalog/vehicles/{configuration}/articles/{article}/source';actor='owner';value=dict(version='v1',kind='source')
+                body=self.body(value,raw=b'' if status==204 else None)
+                if phase in ('source-image-http','warm-image-http'):body=dict(availability='hash_only',byte_source='playwright-response-body',encoding=None,base64=None,length=5,sha256=hashlib.sha256(b'image').hexdigest(),parsed=None,reason='not_required_image_body')
+                payload=dict(kind='http',channel='fixture-control' if actor=='fixture-control' else 'application',method=method,route_template=route,actor=actor,attempt=2 if phase=='checkout-retry-http' else 1,status=status,idempotency_key=key,request=req,response=body,checkout_identity=checkout)
+            events.append(dict(seq=len(events)+1,phase=phase,elapsed_us=len(events)+1,caused_by=[],payload=payload))
+            assertion_phases={'signed-in-measurement':'official_sdk_cookie_and_pg_session','retry-pending-snapshot':'client_response_loss_same_key_one_checkout','return-without-grant-measurement':'return_does_not_grant','settled-measurement':'signed_public_webhook_grants_once','library-reload-measurement':'permanent_owner_library_reload','restart-after-measurement':'permanent_owner_library_server_restart','source-review-http':'paid_source_and_actual_s3_image','reader-after-measurement':'warm_raw_runtime_unchanged_with_approved_s3_delivery','other-image-denial':'account_and_exact_scope_isolation','disabled-image-denial':'logout_bfcache_and_firebase_disable_deny','revoked-measurement':'signed_full_refund_denies_old_content_and_media'}
+            if phase=='reader-after-measurement':
+                events.append(dict(seq=len(events)+1,phase=phase,elapsed_us=len(events)+1,caused_by=[],payload=dict(kind='producer-assertion',name='source_to_canonical_and_warm_reuse',result=True,reason=None)))
+            if phase in assertion_phases:
+                events.append(dict(seq=len(events)+1,phase=phase,elapsed_us=len(events)+1,caused_by=[],payload=dict(kind='producer-assertion',name=assertion_phases[phase],result=True,reason=None)))
+        for operation in ('context-close','browser-close'):
+            for state in ('requested','completed'):
+                events.append(dict(seq=len(events)+1,phase=phase,elapsed_us=len(events)+1,caused_by=[],payload=dict(kind='lifecycle',operation=operation,state=state,reason=None)))
+        return events
+
+    def model(self):
+        # Only the historical test's independently authored business fixtures are reused.
+        items=API21RawInspectorTests.model(self)
+        for index,item in enumerate(items):
+            case=item['case'];binding=self.binding(case,index,'browser-runner')
+            evidence=item['evidence'];evidence.update(api_observability_version='api21-producer-v2',binding=binding)
+            evidence['input_sha256'].pop('workers/ingestion-python/tests/test_workshop_browser_integration.py')
+            row=evidence['results'][0]
+            row['observations']=dict(binding=copy.deepcopy(binding),status='passed',events=self.events(item),primary_failure=None,publication='written',unavailable_families=list(self.missing),engine_os_exit=None,outer_pytest_exit=None)
+            item['result'].update(api_observability_version='api21-producer-v2',binding=self.binding(case,index,'child-pytest'))
+            item['child']=dict(binding=self.binding(case,index,'child-pytest'),status='passed',go=self.process(case,'go-test'),browser_runner=self.process(case,'browser-runner'),workers=[],worker_mapping_status='not_started' if index<3 else 'observed',finalization_events=[],primary_failure=None,publication_failure=None,engine_os_exit=None,outer_pytest_exit=None)
+            for op,state in (('fixture-stop','completed'),('worker-stop','requested'),('worker-stop','completed'),('runtime-close','requested'),('runtime-close','completed')):
+                seq=len(item['child']['finalization_events'])+1
+                item['child']['finalization_events'].append(dict(seq=seq,phase=op,caused_by=[],elapsed_us=seq,payload=dict(kind='lifecycle',operation=op,state=state,reason=None)))
+            if index>=3:
+                for ordinal in (1,2):item['child']['workers'].append(dict(ordinal=ordinal,kind='cli',original_ref='worker-'+format(index*2+ordinal,'032x')+'.log',mapping='observed',alive_before_cleanup=True,intentional_cleanup=True,terminated=True,exit_code=-15,reaped=True,log_finalized=True,log_hash=None,reason=None))
+            item['parent']=dict(binding=self.binding(case,index,'parent-pytest'),status='passed',child=self.process(case,'child-pytest'),child_artifacts=[],child_artifact_status='finalized',child_launch_cause=dict(stream='process-child',producer_role='parent-pytest',seq=2),primary_failure=None,publication_failure=None,engine_os_exit=None,outer_pytest_exit=None)
+        return items
+
+    @staticmethod
+    def artifact(ref,data):return dict(ref=ref,length=len(data),sha256=hashlib.sha256(data).hexdigest())
+
+    def files(self,model):
+        # Rehash enclosing copies after semantic mutations, independently of production validation.
+        raw=API21RawInspectorTests.files(self,model)
+        for item in model:
+            prefix=item['case']['case_prefix'];child=item['child'];parent=item['parent']
+            for worker in child['workers']:
+                ref=worker['original_ref'];raw[ref]=b'opaque worker output';worker['log_hash']=self.artifact(ref,raw[ref])
+            for process in (child['go'],child['browser_runner']):
+                process['output_hashes']=[self.artifact(ref,raw[ref]) for ref in dict.fromkeys((process['stdout_ref'],process['stderr_ref'])) if ref in raw] if process['reaped'] else []
+            raw[prefix+'child-processes.json']=json.dumps(child).encode()
+            refs=[prefix+name for name in ('child.log','result.json','ready.json','go-fixture.log','browser.stdout.log','browser.stderr.log','browser/evidence.json','child-processes.json') if prefix+name in raw]
+            parent['child_artifacts']=[self.artifact(ref,raw[ref]) for ref in refs] if parent['child']['reaped'] else []
+            parent['child']['output_hashes']=[self.artifact(prefix+'child.log',raw[prefix+'child.log'])] if parent['child']['reaped'] else []
+            raw[prefix+'parent-process.json']=json.dumps(parent).encode()
+        return raw
+
+    def inspect(self,model=None,*,raw=None):
+        self.assertTrue(callable(getattr(assembler,'inspect_api21_v2_receipts',None)), 'internal v2 inspector is missing')
+        raw=self.files(self.model() if model is None else model) if raw is None else raw
+        with tempfile.TemporaryDirectory() as directory:
+            with self.store(raw,directory) as store:
+                return assembler.inspect_api21_v2_receipts(store,candidate_sha=self.candidate,trusted_base_sha=TRUSTED_BASE,profile_sha256='b'*64)
+
+    def reject(self,model=None,*,raw=None):
+        with self.assertRaises(assembler.ContractError) as caught:self.inspect(model,raw=raw)
+        self.assertNotIn('SECRET_SENTINEL',str(caught.exception))
+
+    def test_complete_fake_bytes_have_no_acceptance_authority(self):
+        result=self.inspect()
+        self.assertEqual(result['observed_case_ids'],[c['case_id'] for c in self.cases])
+        self.assertEqual(result['status'],'unavailable');self.assertIs(result['complete'],False)
+        self.assertEqual(result['verified_case_ids'],[]);self.assertEqual(result['accepted_case_credit'],0)
+        self.assertEqual(result['accepted_new_case_credit'],0);self.assertEqual(result['release_state'],'unverified')
+        self.assertEqual(result['profile_sha256'],'b'*64)
+        for flag in assembler.FLAGS:self.assertIs(result[flag],False)
+
+
+    def fail(self,item,reason='assertion_failed',*,minimal=False):
+        item['result']['passed']=False
+        for process in (item['parent']['child'],item['child']['browser_runner']):
+            process['return_code']=1;process['events'][-1]['return_code']=1
+        for name in ('child','parent'):
+            item[name].update(status='failed',primary_failure=reason)
+        row=item['evidence']['results'][0];obs=row['observations'];obs.update(status='failed',primary_failure=reason)
+        row['status']='failed'
+        if minimal:
+            item['result'].pop('final_snapshot',None)
+            item['evidence']['results']=[dict(browser=row['browser'],scenario=row['scenario'],status='failed',observations=obs)]
+            obs['events']=[dict(seq=1,phase='setup',elapsed_us=1,caused_by=[],payload=dict(kind='lifecycle',operation='setup',state='failed',reason=reason))];item['evidence'].pop('browser_versions',None)
+        return item
+
+    def test_body_semantic_negatives_preserve_outer_hashes(self):
+        def mutate(body,key,value):body[key]=value
+        checks=[('length',1),('sha256','0'*64),('base64','e30'),('base64','e30==='),('parsed',{}),('byte_source','text'),('availability','hash_only'),('encoding',None)]
+        for key,value in checks:
+            with self.subTest(key=key):
+                model=self.model();body=next(e for e in model[0]['evidence']['results'][0]['observations']['events'] if e['phase']=='checkout-first-http')['payload']['response']
+                mutate(body,key,value);self.reject(model)
+        for raw in (b'{"x":1,"x":2}',b'{"x":NaN}',b'\xff',b'{"nest":{"to\\u006ben":"SECRET_SENTINEL"}}',b'{"x":"Bearer SECRET_SENTINEL"}',b'{"x":"eyJabc.eyJabc"}',b'{"\\token":'):
+            with self.subTest(raw_sha256=hashlib.sha256(raw).hexdigest()):
+                model=self.model();payload=next(e for e in model[0]['evidence']['results'][0]['observations']['events'] if e['phase']=='checkout-first-http')['payload']
+                payload['response']=self.body(None,raw=raw);self.reject(model)
+
+    def test_phase_identity_source_and_semantic_mutations(self):
+        checks=[lambda i:i['evidence']['binding'].update(candidate_sha='0'*40),
+            lambda i:i['evidence']['input_sha256'].update({'scripts/dev/workshop_browser_smoke.py':'0'*64}),
+            lambda i:i['evidence']['provenance']['assets']['app.mjs'].update(bytes=37545),
+            lambda i:i['parent'].update(engine_os_exit=0),lambda i:i['result'].update(extra=True),
+            lambda i:i['evidence']['results'][0]['observations']['events'].pop(4),
+            lambda i:next(e for e in i['evidence']['results'][0]['observations']['events'] if e['phase']=='checkout-first-http').update(seq=True),
+            lambda i:next(e for e in i['evidence']['results'][0]['observations']['events'] if e['phase']=='checkout-first-http').update(elapsed_us=False),
+            lambda i:next(e for e in i['evidence']['results'][0]['observations']['events'] if e['phase']=='checkout-first-http').update(caused_by=[dict(stream='observations',producer_role='child-pytest',seq=1)]),
+            lambda i:i['evidence']['results'][0]['restart']['runtime_after'].update(application_generation=0),
+            lambda i:i['evidence']['results'][0]['observations'].update(primary_failure='SECRET_SENTINEL')]
+        for index,change in enumerate(checks):
+            with self.subTest(mutation=index):model=self.model();change(model[0]);self.reject(model)
+        for change in (lambda m:m[1]['parent']['binding'].update(attempt_id=m[0]['parent']['binding']['attempt_id']),lambda m:m[1]['parent']['binding'].update(run_id='b'*32)):
+            model=self.model();change(model);self.reject(model)
+
+    def test_http_windows_checkout_delivery_and_pending_mutations(self):
+        phases=['owner-library-initial-http','owner-library-reload-http','owner-library-restart-http']
+        mutations=[('checkout-retry-http','request',self.body(dict(configuration_id=self.uid(1),region='US'),request=True,raw=b'{ "configuration_id": "'+self.uid(1).encode()+b'", "region":"US"}')),
+            ('pending-checkout-measurement','response',self.body(self.measurement())),
+            ('runtime-poll','attempt',101),('settlement-control','status',204),('checkout-first-http','actor','other')]
+        for phase,key,value in mutations:
+            with self.subTest(phase=phase):
+                model=self.model();event=next(e for e in model[0]['evidence']['results'][0]['observations']['events'] if e['phase']==phase)
+                event['payload'][key]=value;self.reject(model)
+        for phase in phases:
+            with self.subTest(phase=phase):
+                model=self.model();event=next(e for e in model[0]['evidence']['results'][0]['observations']['events'] if e['phase']==phase)
+                event['payload']['response']=self.body(dict(items=[dict(library_item_id=self.uid(99),configuration_id=self.uid(1),region='US',access_state='paid')]))
+                self.reject(model)
+        model=self.model();events=model[0]['evidence']['results'][0]['observations']['events'];next(e for e in events if e['phase']=='checkout-first-delivery')['payload']['http_event']['seq']=1;self.reject(model)
+
+    def test_checkout_url_exact_predicate_and_retry_identity(self):
+        invalid=['https://checkout.stripe.com.evil.test/c/pay/cs_test_'+'1'*32,'https://CHECKOUT.STRIPE.COM/c/pay/cs_test_'+'1'*32,'https://checkout.stripe.com./c/pay/cs_test_'+'1'*32,'https://checkout.stripe.com:443/c/pay/cs_test_'+'1'*32,'https://user@checkout.stripe.com/c/pay/cs_test_'+'1'*32,'http://checkout.stripe.com/c/pay/cs_test_'+'1'*32,'https://checkout.stripe.com/pay/cs_test_'+'1'*32,'https://checkout.stripe.com/c/pay/cs_live_'+'1'*32,'https://checkout.stripe.com/c/pay/cs_test_'+'A'*32,'https://checkout.stripe.com/c/pay/cs_test_'+'1'*32+'?x=1']
+        for url in invalid:
+            with self.subTest(url_index=invalid.index(url)):
+                model=self.model()
+                for event in model[0]['evidence']['results'][0]['observations']['events']:
+                    payload=event['payload']
+                    if payload.get('checkout_identity'):
+                        payload['checkout_identity']['checkout_url']=url;value=copy.deepcopy(payload['response']['parsed']);value['checkout_url']=url;payload['response']=self.body(value)
+                self.reject(model)
+        model=self.model();payload=next(e['payload'] for e in model[0]['evidence']['results'][0]['observations']['events'] if e['phase']=='checkout-retry-http');payload['checkout_identity']=dict(payload['checkout_identity'],checkout_url=payload['checkout_identity']['checkout_url']+'changed');value=dict(payload['response']['parsed'],checkout_url=payload['checkout_identity']['checkout_url']);payload['response']=self.body(value);self.reject(model)
+        model=self.model();payload=next(e['payload'] for e in model[0]['evidence']['results'][0]['observations']['events'] if e['phase']=='checkout-retry-http');payload['response']=self.body(payload['response']['parsed'],raw=json.dumps(payload['response']['parsed'],indent=2).encode());self.assertEqual(len(self.inspect(model)['observed_case_ids']),21)
+
+    def test_exact_process_commands_and_result_states(self):
+        for role in ('child','go','browser_runner'):
+            for field,value in (('cwd','other'),('argv',['fake']),('return_code',7),('return_code_source','unavailable'),('reaped',False),('alive_final',True)):
+                with self.subTest(role=role,field=field):
+                    model=self.model();process=model[0]['parent']['child'] if role=='child' else model[0]['child'][role];process[field]=value;self.reject(model)
+        for role,slot,value in (('child',6,'workers/ingestion-python/tests/test_workshop_browser_integration.py::wrong'),('go',5,'-timeout=99s'),('browser_runner',3,'$REPO'),('browser_runner',11,'$CASE/other')):
+            model=self.model();process=model[0]['parent']['child'] if role=='child' else model[0]['child'][role];process['argv'][slot]=value;self.reject(model)
+
+    def test_partial_source_binding_and_failed_cleanup_are_nonpass(self):
+        order=['scripts/dev/workshop_browser_smoke.py','scripts/dev/fixtures/workshop_customer/scenarios.json','scripts/dev/fixtures/workshop_customer/firebase_transport.js','scripts/dev/fixtures/workshop_customer/hostile_source.json','scripts/dev/fixtures/workshop_customer/stripe_checkout.html','apps/api-go/workshop_browser_fixture_test.go','workers/ingestion-python/tests/test_workshop_browser_integration.py']
+        for observer in ('parent','child'):
+            for prefix_count in (0,3,7):
+                with self.subTest(observer=observer,prefix_count=prefix_count):
+                    model=self.model();item=self.fail(model[0],minimal=True);prefix=item['case']['case_prefix']
+                    bindings=[item['parent']['binding']] if observer=='parent' else [item['child']['binding'],item['result']['binding']]
+                    for binding in bindings:
+                        binding.update(binding_state='partial',unavailable_reason='source_binding_failed',source_input_sha256={key:self.inputs[key] for key in order[:prefix_count]})
+                        if prefix_count==0:binding.update(candidate_sha=None,source_tree=None)
+                    item['result']['candidate_sha']=item['result']['binding']['candidate_sha'];item['result']['fixture_database']=None;item['result'].pop('worker_exits',None)
+                    targets=[item['parent']['child']] if observer=='parent' else [item['child']['go'],item['child']['browser_runner']]
+                    for process in targets:
+                        if process['role']=='browser-runner':process['argv']=[]
+                        process.update(launched=False,events=[],return_code=None,return_code_source='unavailable',wait_kind='unavailable',reaped=None,alive_final=None,started_us=None,finished_us=None,output_hashes=[])
+                    item['child'].update(worker_mapping_status='unavailable',finalization_events=[])
+                    item['parent'].update(child_artifact_status='unavailable' if observer=='parent' else 'partial')
+                    if observer=='parent':item['parent']['child_launch_cause']=None
+                    raw=self.files(model)
+                    keep={'parent-process.json'} if observer=='parent' else {'parent-process.json','child-processes.json','result.json','child.log'}
+                    for ref in list(raw):
+                        if ref.startswith(prefix) and ref[len(prefix):] not in keep:del raw[ref]
+                    parent=json.loads(raw[prefix+'parent-process.json']);parent['child_artifacts']=[self.artifact(ref,raw[ref]) for ref in (prefix+name for name in ('child.log','result.json','child-processes.json')) if ref in raw]
+                    raw[prefix+'parent-process.json']=json.dumps(parent).encode()
+                    self.assertEqual(len(self.inspect(raw=raw)['observed_case_ids']),20)
+                    parent['binding']['source_input_sha256']={'not-an-input':'0'*64};raw[prefix+'parent-process.json']=json.dumps(parent).encode();self.reject(raw=raw)
+        # Browser's earliest fallback retains nulls rather than integration's empty map.
+        model=self.model();item=self.fail(model[0],minimal=True);browser=item['evidence']['binding']
+        browser.update(binding_state='partial',unavailable_reason='source_binding_failed',run_id=None,attempt_id=None,case_id=None,bank=None,source_tree=None,source_input_sha256=None)
+        item['evidence']['results'][0]['observations']['binding']=copy.deepcopy(browser)
+        item['evidence']={key:item['evidence'][key] for key in ('version','mode','candidate_sha','api_observability_version','binding','results')}
+        self.assertEqual(len(self.inspect(model)['observed_case_ids']),20)
+        browser['source_input_sha256']={};self.reject(model)
+        model=self.model();item=self.fail(model[3],minimal=True);item['result']['worker_exits']=[dict(kind='cli',exit_code=-15,terminated=True,intentional_cleanup=True,alive_before_cleanup=True) for _ in range(2)]
+        self.assertEqual(len(self.inspect(model)['observed_case_ids']),20)
+        item['result']['final_snapshot']=self.snapshot('bankone',work=True);self.reject(model)
+        item['result'].pop('final_snapshot');item['result']['passed']=True;self.reject(model)
+
+    def test_browser_precommand_and_timeout_source_branches(self):
+        for timeout in (False,True):
+            model=self.model();item=self.fail(model[0],minimal=True);process=item['child']['browser_runner']
+            process.update(argv=process['argv'] if timeout else [],launched=timeout,events=[dict(seq=1,kind='launch-requested',elapsed_us=1,return_code=None,reason=None),dict(seq=2,kind='timeout',elapsed_us=2,return_code=None,reason='timeout')] if timeout else [],return_code=None,return_code_source='unavailable',wait_kind='unavailable',reaped=None,alive_final=None,started_us=1 if timeout else None,finished_us=None,output_hashes=[])
+            self.assertEqual(len(self.inspect(model)['observed_case_ids']),20)
+            process['return_code']=0;self.reject(model)
+
+    def test_original_support_hash_inventory_and_json_bounds(self):
+        raw=self.files(self.model());ref=self.cases[0]['case_prefix']+'browser/evidence.json';raw[ref]=raw[ref][:-1];self.reject(raw=raw)
+        raw=self.files(self.model());raw['workshop-browser-tests.xml']=raw.pop('workshop-browser-api.xml');self.reject(raw=raw)
+        raw=self.files(self.model());raw['undeclared-worker.log']=b'opaque';self.reject(raw=raw)
+        raw=self.files(self.model());raw[self.cases[0]['case_prefix']+'browser.stdout.log']+=b'tamper';self.reject(raw=raw)
+        raw=self.files(self.model());raw[self.cases[0]['case_prefix']+'browser/evidence.json']=b' '*4194305;self.reject(raw=raw)
+        raw=self.files(self.model());raw[self.cases[0]['case_prefix']+'browser.stdout.log']=b'x'*(16*1024*1024)
+        with self.assertRaises(assembler.ContractError):self.inspect(raw=raw)
+
+
+    def test_retained_json_values_and_failed_decode_bytes(self):
+        # The entity parser accepts all strict JSON values, independent of response business shape.
+        for value in ([1,False,None],None,True,1,'safe'):
+            with self.subTest(kind=type(value).__name__):
+                body=self.body(value);self.assertIsInstance(assembler._api21_v2_body(body),bytes)
+        for raw,reason in ((b'{"x":1,"x":2}','invalid_json'),(b'{"x":NaN}','invalid_json'),(b'\xff','invalid_utf8')):
+            body=self.body(None,raw=raw);body['reason']=reason
+            self.assertEqual(assembler._api21_v2_body(body),raw)
+            with self.assertRaises(assembler.ContractError):assembler._api21_v2_body(body,passed=True)
+
+        # Malformed escaped Unicode is conservatively secret-bearing at untrusted boundaries.
+        body=self.body(None,raw=b'{"x":"\\ud800"}');body['reason']='invalid_utf8'
+        with self.assertRaises(assembler.ContractError):assembler._api21_v2_body(body)
+
+    def test_denial_refund_warm_and_scope_semantic_negatives(self):
+        mutations=[(9,'adjacent-denial','actor','other'),(9,'other-catalogue-denial','status',200),(9,'logout-image-denial','status',403),(9,'disabled-image-denial','actor','owner'),(9,'other-library-http','response',self.body(dict(items=[{}]))),(15,'refund-old-image-denial','status',200),(15,'revoked-measurement','response',self.body(self.measurement()))]
+        for ordinal,phase,key,value in mutations:
+            with self.subTest(ordinal=ordinal,phase=phase):
+                model=self.model();payload=next(e['payload'] for e in model[ordinal]['evidence']['results'][0]['observations']['events'] if e['phase']==phase);payload[key]=value;self.reject(model)
+        for mutation in (lambda r:r['warm'].update(reader_after=0),lambda r:r['warm']['after'].update(model_calls=2),lambda r:r['warm']['after']['counts'].update(published_revisions=2),lambda r:r['measurement']['orders'][0].update(owner=self.uid(99))):
+            model=self.model();mutation(model[3]['evidence']['results'][0]);self.reject(model)
+
+    def test_all_known_failure_publication_branches_remain_unavailable(self):
+        model=self.model();item=self.fail(model[0],minimal=True);obs=item['evidence']['results'][0]['observations'];obs['publication']='failed';obs['primary_failure']='publication_failed'
+        evidence=item['evidence'];item['evidence']={key:evidence[key] for key in ('version','mode','candidate_sha','api_observability_version','binding','results')}
+        self.assertEqual(len(self.inspect(model)['observed_case_ids']),20)
+        # A later parent publication failure can follow an earlier successful child.
+        model=self.model();item=model[0];item['parent'].update(status='failed',primary_failure='publication_failed')
+        raw=self.files(model);raw['workshop-browser-api.xml']=raw['workshop-browser-api.xml'].replace(b'failures="0"',b'failures="1"').replace(b'time="70.5"></testcase>',b'time="70.5"><failure /></testcase>',1)
+        self.assertEqual(len(self.inspect(raw=raw)['observed_case_ids']),20)
+
+    def test_parent_prelaunch_has_no_fabricated_child_or_wait(self):
+        model=self.model();item=self.fail(model[0],minimal=True);process=item['parent']['child']
+        process.update(launched=False,events=[],return_code=None,return_code_source='unavailable',wait_kind='unavailable',reaped=None,alive_final=None,started_us=None,finished_us=None,output_hashes=[])
+        item['parent'].update(child_launch_cause=None,child_artifact_status='unavailable',child_artifacts=[])
+        raw=self.files(model);prefix=item['case']['case_prefix']
+        for ref in list(raw):
+            if ref.startswith(prefix) and not ref.endswith('parent-process.json'):del raw[ref]
+        self.assertEqual(len(self.inspect(raw=raw)['observed_case_ids']),20)
+        parent=json.loads(raw[prefix+'parent-process.json']);parent['child']['return_code']=0;raw[prefix+'parent-process.json']=json.dumps(parent).encode();self.reject(raw=raw)
+
+    def test_no_runtime_or_producer_is_invoked_and_v1_stays_separate(self):
+        model=self.model();raw=self.files(model)
+        with patch('socket.socket',side_effect=AssertionError('socket forbidden')),patch.object(assembler.subprocess,'run',side_effect=AssertionError('process forbidden')),patch.object(assembler.subprocess,'Popen',side_effect=AssertionError('process forbidden')):
+            result=self.inspect(raw=raw)
+        self.assertEqual(len(result['observed_case_ids']),21)
+        with self.assertRaises(assembler.ContractError):
+            with tempfile.TemporaryDirectory() as directory:
+                with self.store(raw,directory) as store:assembler.inspect_api21_receipts(store,**API21RawInspectorTests.invocation(API21RawInspectorTests()))
+
+
+    def test_stream_assertion_cleanup_and_metadata_conservation(self):
+        for kind in ('assertion','context-close','browser-close','metadata-scope','failed-gap'):
+            with self.subTest(kind=kind):
+                model=self.model();row=model[0]['evidence']['results'][0];events=row['observations']['events']
+                if kind=='assertion':events[:]=[e for e in events if not(e['payload']['kind']=='producer-assertion' and e['payload']['name']=='return_does_not_grant')]
+                elif kind in ('context-close','browser-close'):events[:]=[e for e in events if not(e['payload'].get('operation')==kind)]
+                elif kind=='metadata-scope':
+                    p=next(e['payload'] for e in events if e['phase']=='metadata');value=copy.deepcopy(p['response']['parsed']);value['scope']['configuration']=self.uid(99);p['response']=self.body(value)
+                else:
+                    self.fail(model[0]);events[:]=[e for e in events if e['phase']!='initial-measurement']
+                for index,event in enumerate(events):
+                    event['seq']=index+1
+                    # Update retained delivery refs after deleting unrelated earlier slots.
+                    if event['payload']['kind']=='checkout-delivery':
+                        phase=event['phase'].replace('-delivery','-http');seq=next(e['seq'] for e in events if e['phase']==phase)
+                        ref=dict(stream='observations',producer_role='browser-runner',seq=seq);event['caused_by']=[ref];event['payload']['http_event']=ref
+                self.reject(model)
+
+
+    def test_partial_binding_cannot_claim_a_later_launch(self):
+        for observer in ('parent','child'):
+            with self.subTest(observer=observer):
+                model=self.model();item=self.fail(model[0],minimal=True)
+                binding=item[observer]['binding'];binding.update(binding_state='partial',unavailable_reason='source_binding_failed')
+                if observer=='child':item['result']['binding']=copy.deepcopy(binding)
+                self.reject(model)
+
+    def test_unpublished_child_sidecar_retains_available_result(self):
+        model=self.model();item=self.fail(model[0],minimal=True);prefix=item['case']['case_prefix'];raw=self.files(model)
+        del raw[prefix+'child-processes.json'];parent=json.loads(raw[prefix+'parent-process.json']);parent['child_artifact_status']='partial';parent['child_artifacts']=[a for a in parent['child_artifacts'] if a['ref']!=prefix+'child-processes.json'];raw[prefix+'parent-process.json']=json.dumps(parent).encode()
+        self.assertEqual(len(self.inspect(raw=raw)['observed_case_ids']),20)
+
+    def test_minimal_sidecar_publication_preserves_unknown_process_facts(self):
+        model=self.model();item=self.fail(model[0],minimal=True)
+        child=item['child'];child.update(publication_failure='publication_failed',primary_failure='publication_failed',workers=[],finalization_events=[],worker_mapping_status='unavailable')
+        for key in ('go','browser_runner'):child[key].update(events=[],output_hashes=[])
+        # files() finalizes known outputs; replace only the exact source fallback and enclosing parent hash.
+        raw=self.files(model);prefix=item['case']['case_prefix']
+        for key in ('go','browser_runner'):child[key]['output_hashes']=[]
+        raw[prefix+'child-processes.json']=json.dumps(child).encode();parent=json.loads(raw[prefix+'parent-process.json'])
+        parent['child_artifacts']=[self.artifact(a['ref'],raw[a['ref']]) for a in parent['child_artifacts']];raw[prefix+'parent-process.json']=json.dumps(parent).encode()
+        self.assertEqual(len(self.inspect(raw=raw)['observed_case_ids']),20)
+
+
+    def test_malformed_nested_shapes_always_raise_safe_contract_errors(self):
+        for mutation in (lambda i:i['parent'].pop('binding'),lambda i:i['parent'].update(child=[]),lambda i:i['child'].pop('binding'),lambda i:i['result'].pop('binding'),lambda i:i['evidence']['results'][0]['observations'].update(events=[None]),lambda i:i['evidence']['results'][0]['restart'].update(before=[])):
+            with self.subTest(mutation_index=id(mutation)):
+                model=self.model();mutation(model[0])
+                # Serialize with the ordinary corpus writer before mutating structures it uses for rehashing.
+                if 'binding' not in model[0]['parent'] or 'binding' not in model[0]['child'] or 'binding' not in model[0]['result'] or model[0]['parent']['child']==[]:
+                    clean=self.model();raw=self.files(clean);prefix=clean[0]['case']['case_prefix']
+                    for filename,key in (('parent-process.json','parent'),('child-processes.json','child'),('result.json','result')):raw[prefix+filename]=json.dumps(model[0][key]).encode()
+                    self.reject(raw=raw)
+                else:self.reject(model)
+
+
+    def test_pending_snapshot_closed_shape_and_raw_row_conservation(self):
+        for kind in ('unknown','row-hash','scope','already-granted','paid-at'):
+            with self.subTest(kind=kind):
+                model=self.model();payload=next(e['payload'] for e in model[0]['evidence']['results'][0]['observations']['events'] if e['phase']=='response-lost-snapshot');snapshot=copy.deepcopy(payload['response']['parsed'])
+                if kind=='unknown':snapshot['unknown']=True
+                elif kind=='row-hash':snapshot['immutable_sha256']='0'*64
+                elif kind=='scope':snapshot['paid_rows']['workshop_orders'][0]['customer_account_id']=self.uid(99)
+                elif kind=='already-granted':snapshot['paid_rows']['dataset_projections']=[dict(dataset_product_id=self.uid(22))]
+                else:snapshot['paid_rows']['workshop_orders'][0]['paid_at']='2026-11-04T00:00:00Z'
+                payload['response']=self.body(snapshot);self.reject(model)
+
+    def test_checkout_source_urlsplit_predicate_retains_original_fragments(self):
+        payload=next(e['payload'] for e in self.model()[0]['evidence']['results'][0]['observations']['events'] if e['phase']=='checkout-first-http')
+        for url in ('https://checkout.stripe.com/c/pay/cs_test_'+'1'*32,'https://checkout.stripe.com/c/pay/cs_test_'+'1'*32+'#fixture fragment',' HTTPS://checkout.stripe.com/c/pay/cs_test_'+'1'*32+'#fixture'):
+            with self.subTest(url_index=len(url)):
+                payload['checkout_identity']=dict(payload['checkout_identity'],checkout_url=url);payload['response']=self.body(dict(payload['response']['parsed'],checkout_url=url))
+                self.assertEqual(assembler._api21_v2_checkout(payload)['checkout_url'],url)
+
+
+    def test_process_log_and_request_accounting_cannot_drop_known_facts(self):
+        for kind in ('request-method','launch-cause','worker-mapping','worker-exit','finalization-order'):
+            with self.subTest(kind=kind):
+                model=self.model();item=self.fail(model[3],minimal=True)
+                if kind=='request-method':
+                    item=model[0];item['evidence']['results'][0]['requests'][0]['method']='POST'
+                elif kind=='launch-cause':item['parent']['child_launch_cause']=None
+                elif kind=='worker-mapping':item['child']['workers']=[]
+                elif kind=='worker-exit':item['result']['worker_exits'][0]['exit_code']=-9
+                else:item['child']['finalization_events'].reverse()
+                self.reject(model)
+
+
+    def test_process_cleanup_events_cannot_masquerade_as_normal_success(self):
+        for role in ('child','go','browser_runner'):
+            with self.subTest(role=role):
+                model=self.model();process=model[0]['parent']['child'] if role=='child' else model[0]['child'][role]
+                wait=process['events'].pop()
+                for kind in ('term-requested','term-sent'):
+                    process['events'].append(dict(seq=len(process['events'])+1,kind=kind,elapsed_us=len(process['events'])+1,return_code=None,reason=None))
+                wait.update(seq=5,elapsed_us=5);process['events'].append(wait);process['finished_us']=5
+                self.reject(model)
+
+
+    def test_reviewed_lifecycle_measurement_and_assertion_contradictions(self):
+        for kind in ('failed-setup','bad-initial','bad-pending-owner','unknown-pending-order','wrong-assertion-phase','assertion-before-http'):
+            with self.subTest(kind=kind):
+                model=self.model();events=model[0]['evidence']['results'][0]['observations']['events']
+                if kind=='failed-setup':events[0]['payload'].update(state='failed',reason='launch_failed')
+                elif kind in ('bad-initial','bad-pending-owner','unknown-pending-order'):
+                    phase='initial-measurement' if kind=='bad-initial' else 'pending-checkout-measurement'
+                    payload=next(e['payload'] for e in events if e['phase']==phase);value=copy.deepcopy(payload['response']['parsed'])
+                    if kind=='bad-initial':value.update(entitlements=-1,orders=['fabricated'],unknown_business_field=True)
+                    elif kind=='bad-pending-owner':value['orders'][0]['owner']='invalid-owner'
+                    else:value['orders'][0]['unknown_business_field']=True
+                    payload['response']=self.body(value)
+                else:
+                    event=next(e for e in events if e['payload']['kind']=='producer-assertion');events.remove(event)
+                    if kind=='wrong-assertion-phase':event['phase']='setup';events.insert(1,event)
+                    else:events.insert(next(i for i,e in enumerate(events) if e['phase']=='signed-in-measurement'),event)
+                    for i,e in enumerate(events):e.update(seq=i+1,elapsed_us=i+1)
+                    for e in events:
+                        if e['payload']['kind']=='checkout-delivery':
+                            target=next(h for h in events if h['phase']==e['phase'].replace('-delivery','-http'));ref=dict(stream='observations',producer_role='browser-runner',seq=target['seq']);e['caused_by']=[ref];e['payload']['http_event']=ref
+                self.reject(model)
+
+    def test_browser_lifecycle_requires_source_schedule(self):
+        for kind in ('wrong-setup-operation','missing-setup-completion','missing-page-request','duplicate-setup','cleanup-in-setup','setup-after-http','cleanup-before-final-http','lifecycle-cause','completed-with-failure-reason'):
+            with self.subTest(kind=kind):
+                model=self.model();events=model[0]['evidence']['results'][0]['observations']['events']
+                if kind=='wrong-setup-operation':events[0]['payload']['operation']='worker-stop'
+                elif kind=='missing-setup-completion':events[0]['payload']['state']='requested'
+                elif kind=='missing-page-request':events.pop(7)
+                elif kind=='duplicate-setup':events.insert(1,copy.deepcopy(events[0]))
+                elif kind=='cleanup-in-setup':events[-4]['phase']='setup'
+                elif kind=='setup-after-http':events[0]['phase']='metadata'
+                elif kind=='cleanup-before-final-http':events[-4],events[-5]=events[-5],events[-4]
+                elif kind=='lifecycle-cause':events[1]['caused_by']=[dict(stream='observations',producer_role='browser-runner',seq=1)]
+                else:events[-1]['payload']['reason']='close_failed'
+                # Re-number references so the schedule, rather than stale offsets, is tested.
+                for i,event in enumerate(events):event.update(seq=i+1,elapsed_us=i+1)
+                for event in events:
+                    if event['payload']['kind']=='checkout-delivery':
+                        target=next(h for h in events if h['phase']==event['phase'].replace('-delivery','-http'));ref=dict(stream='observations',producer_role='browser-runner',seq=target['seq']);event['caused_by']=[ref];event['payload']['http_event']=ref
+                self.reject(model)
+
+    def test_failed_browser_lifecycle_retains_only_source_transitions(self):
+        for kind in ('wrong-operation','completion-without-request','request-after-completion','premature-cleanup','event-after-cleanup'):
+            with self.subTest(kind=kind):
+                model=self.model();item=self.fail(model[0]);events=item['evidence']['results'][0]['observations']['events']
+                item['result'].pop('final_snapshot',None)
+                if kind=='wrong-operation':events[0]['payload']['operation']='worker-stop'
+                elif kind=='completion-without-request':events[1]['payload']['state']='completed'
+                elif kind=='request-after-completion':events[2]['payload']['state']='requested'
+                elif kind=='premature-cleanup':events[0]['payload'].update(operation='context-close',state='requested')
+                else:events[-1]['payload'].update(operation='page-create',state='completed')
+                self.reject(model)
+
+    def test_child_finalization_requires_source_schedule_and_reasons(self):
+        for failed in (False,True):
+            for kind in ('completed-with-failure-reason','unavailable','fixture-requested','runtime-before-workers','duplicate-worker-request'):
+                with self.subTest(failed=failed,kind=kind):
+                    model=self.model();item=self.fail(model[0]) if failed else model[0];events=item['child']['finalization_events']
+                    if failed:item['result'].pop('final_snapshot',None)
+                    if kind=='completed-with-failure-reason':events[-1]['payload']['reason']='close_failed'
+                    elif kind=='unavailable':events[-1]['payload']['state']='unavailable'
+                    elif kind=='fixture-requested':events[0]['payload']['state']='requested'
+                    elif kind=='runtime-before-workers':events[1]['phase']=events[1]['payload']['operation']='runtime-close'
+                    else:events[2]['payload']['state']='requested'
+                    self.reject(model)
+
+    def test_failed_lifecycle_source_prefixes_and_finally_cleanup_remain_nonpass(self):
+        for kind in ('metadata-failed','context-create-failed','page-route-failed','page-create-failed','case-failed','context-close-failed','browser-close-failed'):
+            with self.subTest(kind=kind):
+                model=self.model();original=model[0]['evidence']['results'][0]['observations']['events'];item=self.fail(model[0],minimal=True)
+                if kind=='metadata-failed':
+                    events=copy.deepcopy(original[:2]);events.append(dict(phase='setup',payload=dict(kind='lifecycle',operation='metadata',state='failed',reason='source_binding_failed')))
+                elif kind in ('context-create-failed','page-route-failed','page-create-failed'):
+                    count=6 if kind=='context-create-failed' else 7 if kind=='page-route-failed' else 8
+                    events=copy.deepcopy(original[:count]);events.append(dict(phase='setup',payload=dict(kind='lifecycle',operation='context-create' if kind=='context-create-failed' else 'page-create',state='failed',reason='launch_failed' if kind=='context-create-failed' else 'http_failed')))
+                else:
+                    events=copy.deepcopy(original[:10])
+                    if kind=='case-failed':events.append(dict(phase='metadata',payload=dict(kind='lifecycle',operation='setup',state='failed',reason='http_failed')))
+                if kind!='metadata-failed':
+                    for operation in (() if kind=='context-create-failed' else ('context-close',))+('browser-close',):
+                        for state in ('requested','failed' if kind==operation+'-failed' else 'completed'):
+                            events.append(dict(phase=events[-1]['phase'],payload=dict(kind='lifecycle',operation=operation,state=state,reason='close_failed' if state=='failed' else None)))
+                for i,event in enumerate(events):event.update(seq=i+1,elapsed_us=i+1,caused_by=[])
+                item['evidence']['results'][0]['observations']['events']=events
+                # Source finally may complete worker/runtime cleanup without requested receipts.
+                item['child']['finalization_events']=item['child']['finalization_events'][2::2]
+                for i,event in enumerate(item['child']['finalization_events']):event.update(seq=i+1,elapsed_us=i+1)
+                self.assertEqual(len(self.inspect(model)['observed_case_ids']),20)
+
+    def test_failed_context_cleanup_can_retain_pending_page_response(self):
+        model=self.model();original=model[0]['evidence']['results'][0]['observations']['events'];item=self.fail(model[0],minimal=True)
+        ordinal=next(i for i,e in enumerate(original) if e['phase']=='owner-library-initial-http')
+        events=copy.deepcopy(original[:ordinal]);pending=copy.deepcopy(original[ordinal]);phase=pending['phase']
+        for operation,state,reason in (('setup','failed','http_failed'),('context-close','requested',None),('context-close','completed',None)):
+            events.append(dict(phase=phase,payload=dict(kind='lifecycle',operation=operation,state=state,reason=reason)))
+        events.append(pending)
+        for state in ('requested','completed'):events.append(dict(phase=phase,payload=dict(kind='lifecycle',operation='browser-close',state=state,reason=None)))
+        for i,event in enumerate(events):event.update(seq=i+1,elapsed_us=i+1,caused_by=event.get('caused_by',[]))
+        item['evidence']['results'][0]['observations']['events']=events
+        self.assertEqual(len(self.inspect(model)['observed_case_ids']),20)
+
+    def test_outer_manager_exit_failure_is_a_terminal_nonpass_marker(self):
+        for reason,earlier_failure in (('internal_error',False),('cancelled',False),('internal_error',True)):
+            with self.subTest(reason=reason,earlier_failure=earlier_failure):
+                model=self.model();item=self.fail(model[0],reason='http_failed' if earlier_failure else reason);item['result'].pop('final_snapshot',None)
+                events=item['evidence']['results'][0]['observations']['events']
+                if earlier_failure:
+                    events.insert(len(events)-4,dict(phase=events[-1]['phase'],caused_by=[],payload=dict(kind='lifecycle',operation='setup',state='failed',reason='http_failed')))
+                    for i,event in enumerate(events):event.update(seq=i+1,elapsed_us=i+1)
+                events.append(dict(seq=len(events)+1,phase='setup',elapsed_us=events[-1]['elapsed_us']+1,caused_by=[],payload=dict(kind='lifecycle',operation='setup',state='failed',reason=reason)))
+                self.assertEqual(len(self.inspect(model)['observed_case_ids']),20)
+
+    def test_outer_manager_failure_cannot_authorize_general_phase_resets(self):
+        for kind in ('success','not-terminal','wrong-operation','wrong-state','wrong-reason','missing-browser-close','before-cleanup','cause'):
+            with self.subTest(kind=kind):
+                model=self.model();item=model[0] if kind=='success' else self.fail(model[0],reason='internal_error')
+                if kind!='success':item['result'].pop('final_snapshot',None)
+                events=item['evidence']['results'][0]['observations']['events']
+                terminal=dict(phase='setup',caused_by=[],payload=dict(kind='lifecycle',operation='setup',state='failed',reason='internal_error'))
+                if kind=='wrong-operation':terminal['payload']['operation']='metadata'
+                elif kind=='wrong-state':terminal['payload']['state']='completed';terminal['payload']['reason']=None
+                elif kind=='wrong-reason':terminal['payload']['reason']='close_failed'
+                elif kind=='cause':terminal['caused_by']=[dict(stream='observations',producer_role='browser-runner',seq=1)]
+                elif kind=='missing-browser-close':events.pop()
+                if kind=='before-cleanup':events.insert(len(events)-4,terminal)
+                else:events.append(terminal)
+                if kind=='not-terminal':events.append(copy.deepcopy(events[-2]))
+                for i,event in enumerate(events):event.update(seq=i+1,elapsed_us=i+1)
+                self.reject(model)
+
+
+    def test_every_retained_measurement_phase_has_closed_nonnegative_shape(self):
+        covered=set()
+        for ordinal in (0,3,15):
+            fixture=self.model();events=fixture[ordinal]['evidence']['results'][0]['observations']['events']
+            phases=[e['phase'] for e in events if e['payload']['kind']=='http' and e['phase'].endswith('-measurement')]
+            for phase in phases:
+                if phase in covered:continue
+                covered.add(phase)
+                for kind in ('negative-counter','unknown-field','malformed-order'):
+                    with self.subTest(phase=phase,kind=kind):
+                        model=copy.deepcopy(fixture);payload=next(e['payload'] for e in model[ordinal]['evidence']['results'][0]['observations']['events'] if e['phase']==phase);value=copy.deepcopy(payload['response']['parsed'])
+                        if kind=='negative-counter':value['entitlements']=-1
+                        elif kind=='unknown-field':value['unknown_business_field']=True
+                        else:value['orders']=['fabricated']
+                        payload['response']=self.body(value);self.reject(model)
+        self.assertTrue({'initial-measurement','signed-in-measurement','pending-checkout-measurement','reader-after-measurement','library-reload-measurement','revoked-measurement'}<=covered)
+
+
+    def test_failed_checkout_delivery_still_has_closed_state_enum(self):
+        model=self.model();item=self.fail(model[0]);item['result'].pop('final_snapshot',None)
+        self.assertEqual(len(self.inspect(model)['observed_case_ids']),20)
+        payload=next(e['payload'] for e in item['evidence']['results'][0]['observations']['events'] if e['payload']['kind']=='checkout-delivery')
+        payload['state']='invented-delivery-state';self.reject(model)
+
+
+    def test_measurement_phase_counts_and_owner_are_conserved(self):
+        for phase,field,value in (('initial-measurement','workshop_orders',1),('signed-in-measurement','entitlements',1),('pending-checkout-measurement','owner',self.uid(99)),('library-reload-measurement','owner',self.uid(99)),('reader-after-measurement','entitlements',0)):
+            with self.subTest(phase=phase,field=field):
+                model=self.model();payload=next(e['payload'] for e in model[3]['evidence']['results'][0]['observations']['events'] if e['phase']==phase);measure=copy.deepcopy(payload['response']['parsed'])
+                if field=='owner':measure['orders'][0][field]=value
+                else:measure[field]=value
+                payload['response']=self.body(measure);self.reject(model)
+
+
 if __name__ == '__main__': unittest.main()
