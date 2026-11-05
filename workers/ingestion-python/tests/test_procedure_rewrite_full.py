@@ -57,7 +57,8 @@ def test_full_rewrites_declarative_multisentence_conditional_prose_without_seman
     report = rewrite.validate_article_rewrite(source, result.document, profile_version=PROFILE).report
     assert report["structural_integrity_passed"] and report["content_acceptance_required"]
     assert report["complete_rewrite"] is False
-    assert report["changed_slots"] == ["/blocks/0/text", "/blocks/1/text"]
+    assert report["changed_slots"] == ["/introduction", "/blocks/0/text", "/blocks/1/text"]
+    assert report["changed_prose_slots"] == ["/blocks/0/text", "/blocks/1/text"]
     assert report["source_protected_hash"] == report["target_protected_hash"]
     assert report["source_hash"] == digest_json(source)
     assert report["candidate_hash"] == digest_json(result.document)
@@ -94,7 +95,7 @@ def test_table_only_introduction_preserves_exact_technical_table():
     result = run(source, payload)
     assert result.error_code is None
     assert result.document["blocks"][1] == {**source["blocks"][0], "source_order":2}
-    assert rewrite.validate_article_rewrite(source,result.document,profile_version=PROFILE).report["changed_slots"] == []
+    assert rewrite.validate_article_rewrite(source,result.document,profile_version=PROFILE).report["changed_slots"] == ["/introduction"]
     payload["introduction"] = "The table lists the cover torque of 250 Nm."
     assert run(source, payload).error_code == "REWRITE_TECHNICAL_MUTATION"
 
@@ -319,3 +320,35 @@ def test_repeated_separator_identifiers_preserve_every_letter_segment(original,c
     payload["replacements"][0]["text"] = candidate["blocks"][1]["text"]
     validation = validate_full(source,candidate,response=payload)
     assert not validation.passed and "REWRITE_TECHNICAL_MUTATION" in validation.error_codes
+
+
+@pytest.mark.parametrize("table_only", [True, False])
+def test_generated_introduction_is_a_stable_changed_content_slot_with_source_accounting(table_only):
+    from autodata_ingestion.procedure_rewrite_full import render_full, validate_full
+    if table_only:
+        source = document()
+        source["blocks"] = [{"block_id":"specs","source_order":1,"type":"table",
+            "rows":[["Cover","25 Nm"]],"evidence_ids":["e-table"]}]
+        payload = response(introduction="The table lists the cover torque of 25 Nm.")
+        retained = []
+    else:
+        source = document("Exact cover label")
+        payload = response("Exact cover label")
+        payload["replacements"][0].update(action="retain",reason="Exact component label")
+        retained = ["/blocks/0/text"]
+    candidate = render_full(source,payload)
+    for validation in (validate_full(source,candidate,response=payload),
+                       validate_full(source,candidate)):
+        assert validation.passed
+        report = validation.report
+        assert report["changed_slots"] == ["/introduction"]
+        assert report["changed_prose_slots"] == []
+        assert report["prose_slots"] == len(retained)
+        assert report["retained_paths"] == retained
+        assert report["content_acceptance_required"] and not report["complete_rewrite"]
+    assert run(source,payload).changed_slots == ("/introduction",)
+    corrupted = deepcopy(candidate)
+    corrupted["blocks"][0]["block_id"] = "unbound-introduction"
+    invalid = validate_full(source,corrupted,response=payload)
+    assert not invalid.passed
+    assert "/introduction" not in invalid.report["changed_slots"]
