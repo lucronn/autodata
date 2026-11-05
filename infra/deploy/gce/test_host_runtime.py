@@ -1223,7 +1223,7 @@ class CatalogObservationTests(unittest.TestCase):
             self.assertIsNone(self.rt.validate_postgres_catalog(self.observation))
             for candidate in candidates:
                 with self.assertRaises(self.rt.ContractError): self.rt.validate_postgres_catalog(candidate)
-        self.assertFalse(hasattr(self.rt, 'collect_postgres_schema'))
+        self.assertTrue(callable(getattr(self.rt, 'collect_postgres_schema', None)))
         self.assertFalse(hasattr(self.rt, 'validate_schema_observation'))
 
     def test_wire_numeric_string_depth_and_framing_bounds(self):
@@ -1270,6 +1270,67 @@ class CatalogObservationTests(unittest.TestCase):
             self.assertEqual(self.application_code_executions, 0)
             self.assertEqual(sum('--command=' + sql in cmd for cmd in self.calls), 1)
 
+
+
+class LockedSchemaTests(unittest.TestCase):
+    def setUp(self):
+        ContractTests.setUp(self)
+
+    def test_schema_cannot_be_inferred_from_catalog(self):
+        self.assertTrue(callable(getattr(self.rt, 'collect_postgres_schema', None)), 'locked schema collector missing')
+        with patch.object(self.rt, 'collect_postgres_catalog', return_value={}), patch.object(
+                self.rt, '_bounded_schema_command', side_effect=self.rt.ContractError('unavailable')):
+            with self.assertRaises(self.rt.ContractError):
+                self.rt.collect_postgres_schema(self.manifest)
+
+    def test_locked_protocol_gates_ledger_and_bounds_inventory(self):
+        self.assertTrue(callable(getattr(self.rt, '_postgres_schema_script', None)), 'locked protocol missing')
+        script = self.rt._postgres_schema_script(self.manifest).decode()
+        self.assertLess(script.index('LOCK TABLE ONLY public.schema_migrations'), script.index('WITH'))
+        self.assertLess(script.index('\\if :safe'), script.index('FROM ONLY public.schema_migrations'))
+        self.assertIn('LIMIT 3', script)
+        self.assertIn('COMMIT;', script)
+        self.assertIn('idle_in_transaction_session_timeout', script)
+
+    def test_runtime_readiness_does_not_accept_missing_dependency_fields(self):
+        self.assertTrue(callable(getattr(self.rt, '_validate_readyz', None)), 'readyz validator missing')
+        for value in ({}, {'database':'ready'}, {'database':'ready','nats':'ready','object_storage':'ready','paid_catalog':'unavailable'}):
+            with self.assertRaises(self.rt.ContractError): self.rt._validate_readyz(value)
+        self.rt._validate_readyz({'database':'ready','nats':'ready','object_storage':'ready'})
+
+
+class RuntimeReadinessTests(unittest.TestCase):
+    def setUp(self):
+        ContractTests.setUp(self)
+
+    def test_fixed_readyz_uses_bodyless_get_and_fails_closed(self):
+        self.assertTrue(callable(getattr(self.rt, '_collect_readyz', None)), 'readyz collector missing')
+        class Response:
+            status = 200
+            def __init__(self, payload): self.payload = payload
+            def read1(self, size): data,self.payload=self.payload[:size],self.payload[size:]; return data
+        class Sock:
+            def shutdown(self, how): pass
+        class Connection:
+            def __init__(inner, host, port, timeout):
+                self.assertEqual((host,port),('172.30.10.10',8080)); inner.sock=Sock()
+            def connect(inner): pass
+            def request(inner, method, path, body=None, headers=None):
+                self.assertEqual((method,path,body),('GET','/readyz',None))
+            def getresponse(inner): return Response(b'{"database":"ready","nats":"ready","object_storage":"ready"}')
+            def close(inner): pass
+        with patch.object(self.rt.http.client,'HTTPConnection',Connection): self.rt._collect_readyz()
+
+    def test_runtime_evidence_requires_fresh_identical_graph_and_schema(self):
+        self.assertTrue(callable(getattr(self.rt, 'collect_runtime_readiness', None)), 'readiness collector missing')
+        with patch.object(self.rt,'collect_postgres_schema',return_value={'version':2}), patch.object(
+                self.rt,'_collect_service_graph',side_effect=[{'id':'first'},{'id':'changed'}]), patch.object(
+                self.rt,'_collect_readyz'):
+            with self.assertRaises(self.rt.ContractError): self.rt.collect_runtime_readiness(self.manifest,self.config)
+        with patch.object(self.rt,'collect_postgres_schema',return_value={'version':2}), patch.object(
+                self.rt,'_collect_service_graph',return_value={'id':'first'}), patch.object(self.rt,'_collect_readyz'):
+            result=self.rt.collect_runtime_readiness(self.manifest,self.config)
+        self.assertEqual(result,dict.fromkeys(('schema','services','postgres','nats','s3','no_work','runtime_evidence'),True))
 
 
 class DeployCheckTests(unittest.TestCase):
