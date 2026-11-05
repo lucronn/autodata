@@ -1,6 +1,6 @@
 # Workshop local backup and isolated restore contract
 
-Status: implementation pending independent review; complete local fixture proof blocked by pinned SeaweedFS Mini shutdown. No live recovery or production-readiness claim.
+Status: inactive helpers merged in PR #310; complete local disposable fixture proof passed in attempt 9 on the reviewed volume-capacity follow-up. Live installed-host recovery and production readiness remain unverified.
 Parent [#186](https://github.com/lucronn/autodata/issues/186); delivery [#308](https://github.com/lucronn/autodata/issues/308); [Project #8](https://github.com/users/lucronn/projects/8).
 Plan: `docs/superpowers/plans/2026-11-05-workshop-backup-restore.md`.
 Source baseline: `5d14c891e8efd14a297b07e482304ea2a6b9cd7f`.
