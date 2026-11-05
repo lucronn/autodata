@@ -53,7 +53,8 @@ class FileTests(unittest.TestCase):
     def setUp(self):
         self.assertTrue((HERE / 'host_activation.py').exists(), 'fixed activation filesystem is missing')
         self.a = load()
-        self.temp = tempfile.TemporaryDirectory(dir=HERE)
+        # CI provides a writable TMPDIR while the checkout remains read-only.
+        self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.base = Path(self.temp.name)
         self.a.OPT = str(self.base)
