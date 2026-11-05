@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import subprocess
 import socket
+import signal
 import ssl
 import stat
 import sys
@@ -27,6 +28,44 @@ def load():
 
 
 class LiveTests(unittest.TestCase):
+    def test_sigint_popen_assignment_race_and_repeated_cleanup_cancel(self):
+        import unittest.mock
+        p = load()
+        spec = importlib.util.spec_from_file_location('publisher_cli_signal_test',HERE/'publisher_cli.py')
+        cli = importlib.util.module_from_spec(spec); spec.loader.exec_module(cli)
+        interrupt = cli._forward_interrupt
+        children = []; second = None
+        original = subprocess.Popen
+        def stop(signum, frame): raise p.a.AdapterError('operation_cancelled')
+        old_term = signal.signal(signal.SIGTERM,stop)
+        old_int = signal.signal(signal.SIGINT,interrupt)
+        def launch(*args, **kwargs):
+            nonlocal second
+            child = original(*args, **kwargs); children.append(child)
+            self.assertEqual(child.stdout.readline(),b'ready\n')
+            # The real child exists, but bounded_process has not received its
+            # Popen result. A raising SIGINT handler leaks this child.
+            os.kill(os.getpid(),signal.SIGINT)
+            def again():
+                time.sleep(.1); os.kill(os.getpid(),signal.SIGINT)
+            second = threading.Thread(target=again); second.start()
+            return child
+        try:
+            with p.a.private_workspace() as root, unittest.mock.patch.object(p.a.subprocess,'Popen',launch):
+                with self.assertRaisesRegex(p.a.AdapterError,'operation_cancelled'):
+                    p.a.bounded_process([sys.executable,'-u','-c',
+                        'import signal,time;signal.signal(signal.SIGTERM,signal.SIG_IGN);print("ready");time.sleep(30)'],
+                        cwd=root,deadline=time.monotonic()+10)
+            self.assertEqual(len(children),1)
+            self.assertIsNotNone(children[0].poll())
+            self.assertFalse(p.a._process_owner)
+        finally:
+            if second is not None: second.join(timeout=3)
+            for child in children:
+                if child.poll() is None:
+                    os.killpg(child.pid,signal.SIGKILL); child.wait(timeout=3)
+            signal.signal(signal.SIGINT,old_int); signal.signal(signal.SIGTERM,old_term)
+
     def test_real_buildx_metadata_explicit0644_is_adopted_privately(self):
         p = load()
         with p.a.private_workspace() as root:

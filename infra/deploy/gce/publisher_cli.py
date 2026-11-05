@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
 """Fixed authenticated staging publication entry point; imports perform no I/O."""
 import importlib.util
+import os
 from pathlib import Path
 import re
 import signal
 import sys
+
+
+def _forward_interrupt(signum, frame):
+    # bounded_process owns SIGTERM, including the Popen return/assignment
+    # boundary and deferred cleanup. SIGINT must enter that same protocol.
+    os.kill(os.getpid(),signal.SIGTERM)
 
 
 def main(argv=None):
@@ -17,7 +24,8 @@ def main(argv=None):
     live = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(live)
     def cancelled(signum, frame): raise live.a.AdapterError('operation_cancelled')
-    old_handlers = {number:signal.signal(number,cancelled) for number in (signal.SIGTERM,signal.SIGINT)}
+    old_handlers = {signal.SIGTERM:signal.signal(signal.SIGTERM,cancelled),
+                    signal.SIGINT:signal.signal(signal.SIGINT,_forward_interrupt)}
     try:
         result = live.execute(*argv)
         sys.stdout.buffer.write(live.a.canonical(result)+b'\n')
