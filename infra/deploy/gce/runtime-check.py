@@ -224,10 +224,19 @@ def _validate_workshop_purchase_config(value):
         raise ContractError('invalid purchase configuration') from None
 
 
+def _purchase_config_environment_json(value):
+    """Canonical UTF-8 wire with literal dollars encoded before Compose sees it."""
+    wire = canonical_bytes(value).decode('utf-8').replace('$', r'\u0024')
+    if len(wire.encode('utf-8')) > 16384:
+        raise ContractError('purchase_config_transport_limit')
+    return wire
+
+
 def validate_config(config):
     exact_object(config, ('schema_version', 'environment', 'public_origin', 'firebase', 'resources', 'topology', 'commands', 'tuning', 'workshop_purchase_config'))
     require(type(config['schema_version']) is int and config['schema_version'] == 2)
     _validate_workshop_purchase_config(config['workshop_purchase_config'])
+    _purchase_config_environment_json(config['workshop_purchase_config'])
     require(config['environment'] in ('production', 'staging'))
     _https(config['public_origin'], origin=True)
     require((config['public_origin'] == 'https://cars.tk') == (config['environment'] == 'production'))
@@ -759,6 +768,7 @@ def _service_environments(config):
     result['ingestion-http'].update(s3, **bank, **stripe, AUTODATA_INGESTION_HTTP_ADDR=':8081',
                                     AUTODATA_SOURCE_HTTP_TIMEOUT_SECONDS=str(tuning['source_http_timeout_seconds']),
                                     AUTODATA_SOURCE_MAX_BYTES=str(tuning['source_max_bytes']))
+    result['ingestion-http']['AUTODATA_WORKSHOP_PURCHASE_CONFIG_JSON'] = _purchase_config_environment_json(config['workshop_purchase_config'])
     result['payment-reconciler'].update(stripe)
     result['article-worker'].update(s3, **bank, INCEPTION_API_BASE_URL=tuning['inception_api_base_url'], INCEPTION_MODEL=tuning['inception_model'],
                                     INCEPTION_API_TIMEOUT_SECONDS=str(tuning['inception_api_timeout_seconds']))
