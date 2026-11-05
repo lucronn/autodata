@@ -153,3 +153,33 @@ engine displacement, body style and drivetrain from the owning configuration
 and identity base, retains their snapshot/evidence references, and compares
 explicit source applicability before storing content or invoking Mercury. That
 captured context remains immutable when configuration records later change.
+
+## Finite authenticated canary tooling gate (November 5, 2026)
+
+Build and offline-verify a finite dual-bank connector capture executor that preserves raw failure evidence before parsing; authenticated execution remains separately gated.
+
+Child [#304](https://github.com/lucronn/autodata/issues/304) of #186 and its
+[Project #8](https://github.com/users/lucronn/projects/8) item
+`PVTI_lAHOCSJ8cc4BiQ2BzhGO_X0` track this narrow offline tool. The
+[plan](../superpowers/plans/2026-11-05-bank-canary-capture-executor.md),
+[canonical contract](../agents/specs/2026-11-05-bank-canary-capture-executor.md),
+[record](../agents/records/2026-11-05-bank-canary-capture-executor.json) and
+[task](../agents/tasks/2026-11-03-production-release/bank-canary-capture-executor.json)
+freeze exactly one selected article per bank, 58 requests/bank, 116 total,
+10 pages/branch, one in flight, one start/second, zero retries/redirects,
+20 MB/response, 100 MB/bank, 25-second socket timeout, 900 seconds/bank and
+1,800 seconds including 10-second reserved cleanup. Raw non-200, partial and
+parser-rejected bytes remain private evidence with explicit failure states.
+
+Concrete todo:
+
+- [ ] Implement strict frozen enrollment validation and the sequential 58-request-per-bank operation graph using the unchanged provider-bound source client.
+- [ ] Implement a cancellable streaming transport with fixed request/page/rate/byte/time budgets, no retries or redirects, and raw response capture before validation.
+- [ ] Implement private append-only attempt/raw-inventory and failure outcomes with fixed denominators, quarantine handling and an allowlisted public summary.
+- [ ] Prove all limits and failure retention offline with inert credentials and fake transport/socketpair tests; independently review the exact implementation SHA before any later enrolled execution gate.
+
+The current gate authorizes only separately preflighted offline implementation.
+No authentic article has been captured or accepted by this milestone. Owner
+origins/keys/rights/selection/storage/reviewer enrollment and a separate exact
+executor/run gate remain required before any authenticated read. Product source
+client and application behavior remain outside this implementation allowlist.

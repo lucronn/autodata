@@ -1,0 +1,99 @@
+{
+  "task_id": "production-release-bank-canary-capture-executor",
+  "repository": "lucronn/autodata",
+  "goal": "Build and offline-verify a finite dual-bank connector capture executor that preserves raw failure evidence before parsing; authenticated execution remains separately gated.",
+  "allowed_paths": [
+    "scripts/dev/bank_canary_capture.py",
+    "scripts/dev/bank_canary_transport.py",
+    "scripts/dev/tests/test_bank_canary_capture.py",
+    "docs/superpowers/plans/2026-11-05-bank-canary-capture-executor.md",
+    "docs/agents/specs/2026-11-05-bank-canary-capture-executor.md",
+    "docs/agents/records/2026-11-05-bank-canary-capture-executor.json",
+    "docs/agents/tasks/2026-11-03-production-release/bank-canary-capture-executor.json",
+    "docs/architecture/independent-bank-connectors.md"
+  ],
+  "inputs": [
+    "docs/superpowers/plans/2026-11-05-bank-canary-capture-executor.md",
+    "docs/agents/specs/2026-11-05-bank-canary-capture-executor.md",
+    "docs/agents/pre-implementation-gate.md"
+  ],
+  "pre_implementation": {
+    "goal": "Build and offline-verify a finite dual-bank connector capture executor that preserves raw failure evidence before parsing; authenticated execution remains separately gated.",
+    "todo": [
+      "Implement strict frozen enrollment validation and the sequential 58-request-per-bank operation graph using the unchanged provider-bound source client.",
+      "Implement a cancellable streaming transport with fixed request/page/rate/byte/time budgets, no retries or redirects, and raw response capture before validation.",
+      "Implement private append-only attempt/raw-inventory and failure outcomes with fixed denominators, quarantine handling and an allowlisted public summary.",
+      "Prove all limits and failure retention offline with inert credentials and fake transport/socketpair tests; independently review the exact implementation SHA before any later enrolled execution gate."
+    ],
+    "plan_ref": "docs/superpowers/plans/2026-11-05-bank-canary-capture-executor.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/304",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/agents/specs/2026-11-05-bank-canary-capture-executor.md",
+      "docs/architecture/independent-bank-connectors.md"
+    ],
+    "status": "synchronized",
+    "updated_at": "2026-11-05T10:08:44.318384+00:00",
+    "parent_issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhGO_X0",
+    "planning_parent_sha": "c0be267fe31dc578bec0b8528679b6fd6671ed12",
+    "planning_branch": "codex/bank-canary-executor-gate",
+    "allowed_paths": [
+      "scripts/dev/bank_canary_capture.py",
+      "scripts/dev/bank_canary_transport.py",
+      "scripts/dev/tests/test_bank_canary_capture.py",
+      "docs/superpowers/plans/2026-11-05-bank-canary-capture-executor.md",
+      "docs/agents/specs/2026-11-05-bank-canary-capture-executor.md",
+      "docs/agents/records/2026-11-05-bank-canary-capture-executor.json",
+      "docs/agents/tasks/2026-11-03-production-release/bank-canary-capture-executor.json",
+      "docs/architecture/independent-bank-connectors.md"
+    ],
+    "authority": {
+      "offline_tooling_implementation_after_exact_base_preflight": true,
+      "authenticated_calls": false,
+      "secret_access": false,
+      "article_capture": false,
+      "deployment": false,
+      "merge": false,
+      "release_acceptance": false
+    },
+    "source_client_sha256": "1761065413b0a3b04170172055c5b1c5db3c71c1ae559ea3b65bf8cd051485b8",
+    "input_evidence": [
+      {
+        "path": "/home/corp/autodata-evidence/authentic-bank-canary-plan/PLAN.md",
+        "sha256": "dd940de4c74ea73a8552ea1981395d08b66f605144d1de59207e042f25410b06"
+      },
+      {
+        "path": "/home/corp/autodata-evidence/authentic-bank-canary-review/REPORT.md",
+        "sha256": "3c0620ad4d8a9059703c712d5b1db3928ae5dfb6dbe1279aa8a5a0006e8843db"
+      }
+    ],
+    "tracking_sync": {
+      "issue_url": "https://github.com/lucronn/autodata/issues/304",
+      "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhGO_X0",
+      "project_status": "Ready",
+      "goal_and_todo_literal_match": true,
+      "issue_and_project_content_body_match": true,
+      "parent_issue": 186,
+      "issue_readback_sha256": "9aabede5a5be898178f9eb77cc8a51b4961772d59b3a0776eb4d6b25c8f19771",
+      "project_readback_sha256": "9ffe76ab9b008dcb0811c1f0102ae2a15fcee6085a110b2ebf5a91b8123448ea",
+      "issue_body_sha256": "163ec99f0555d366c55c8e7a18e9fa1d12ef4458af5fbaa8b9daed365a436699",
+      "project_source": "Parent #186; offline-only executor/raw-failure contract. Plan docs/superpowers/plans/2026-11-05-bank-canary-capture-executor.md; spec docs/agents/specs/2026-11-05-bank-canary-capture-executor.md; record docs/agents/records/2026-11-05-bank-canary-capture-executor.json. No bank execution authority. Exact gate SHA follows checkpoint push.",
+      "evidence_directory": "/home/corp/autodata-evidence/bank-canary-executor-gate"
+    }
+  },
+  "dispatch_mode": "coordinator_direct",
+  "forbidden_scope": [
+    "Authenticated provider calls or reading actual credential material",
+    "Capturing real articles/resources",
+    "Changing existing source client or production application behavior",
+    "Application/ingestion/database/S3/model/payment/cloud operations",
+    "Dependencies, compose/CI, policy, merge, deploy, cutover or release acceptance"
+  ],
+  "acceptance_tests": [
+    "Offline maximum graph is exactly 58 requests per bank/116 total with only one approved resolution POST per bank.",
+    "Attempted page 11, request 59, response/aggregate overflow, slow trickle, blocked connect, cancellation and cleanup obey hard bounds.",
+    "All rejected/non-200/partial/HTTP-error/parser-error bytes are inventoried before validation; absent and truncated evidence never passes.",
+    "Wrong bank/selector/region/revision/membership, null terminal cursor, missing enrollment and secret-bearing outputs fail closed without retries or leakage."
+  ]
+}
