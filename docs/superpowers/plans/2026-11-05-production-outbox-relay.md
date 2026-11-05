@@ -27,6 +27,8 @@ This work permits repository implementation and isolated test infrastructure aft
 - `infra/deploy/gce/runtime-check.py`
 - `infra/deploy/gce/runtime-entrypoint.sh`
 - `infra/deploy/gce/release.schema.json`
+- `infra/deploy/gce/host_activation.py`
+- `infra/deploy/gce/test_host_activation.py`
 - `infra/deploy/gce/private_material.py`
 - `infra/deploy/gce/nats.conf.template`
 - `infra/deploy/gce/runtime-grants.sql`
@@ -41,6 +43,7 @@ Planning/evidence updates may touch this plan, its record, `docs/architecture/in
 
 ## Concrete todo
 
+- [ ] Include outbox-relay in host activation startup, stop, recovery and inventory, replace the eight-service inventory cap with the exact nine-service graph, and prove missing, stopped, duplicate, foreign or tenth-container rejection in activation regressions.
 - [ ] Add failing relay packaging, render/topology, secret-contract, NATS authentication/ACL and runtime graph/readiness regressions.
 - [ ] Package the existing relay in the ingestion image and wire its dedicated backend-only service, credentials, manifest/private-material contract and narrowly scoped database/broker privileges.
 - [ ] Run focused and complete host regressions plus an isolated real PostgreSQL/NATS relay smoke proving canonical event delivery, replay identity and denied unrelated permissions; retain exact candidate evidence.
@@ -70,3 +73,14 @@ Planning/evidence updates may touch this plan, its record, `docs/architecture/in
 ## Gate handoff
 
 The planning-only checkpoint contains this plan, canonical document and synchronized JSON record. After commit, pin its full SHA externally in the child Issue, run `python3 scripts/autonomy/pre_implementation.py --record docs/agents/records/2026-11-05-production-outbox-relay.json --base-sha <full-checkpoint-sha> --repo-root <worktree>` and retain status synchronized/errors[]. The literal SHA is recorded in a following verification receipt to avoid a self-referential commit. Builder must use that exact base and read back the Issue/Project before its first implementation edit.
+
+## Synchronized activation scope amendment (2026-11-05)
+
+Original gate `a13cf0879d3551eec23c119829c7993b6b5bd6de` and original source baseline remain historical records. This docs-only amendment starts from builder candidate `e8473a792e86d7b19f7b2de2e22bc35b3c1cf5b3`; neither added implementation file was modified there. Child Issue https://github.com/lucronn/autodata/issues/303 and Project https://github.com/users/lucronn/projects/8 retain the existing goal and add this bounded activation work. Task index: `docs/agents/tasks/2026-11-03-production-release/production-outbox-relay.json`. The current implementation allowlist is15 paths, adding only `infra/deploy/gce/host_activation.py` and `infra/deploy/gce/test_host_activation.py` to the original13.
+
+- [ ] Add outbox-relay to host_activation.py APPS so existing start, stop and recovery use the relay as an application process; preserve stateful ordering, maintenance-first behavior, exact-image checks and recovery failure receipts.
+- [ ] Update inventory's maximum from8 to9, preferably deriving the maximum from `len(APPS + STATEFUL + ('caddy',))`, while retaining unique container IDs, unique service identities, exact project/image/security checks and complete required-graph equality. The graph is exactly caddy, api, ingestion-http, article-worker, payment-reconciler, outbox-relay, postgres, nats, minio. This is a finite nine-service contract, not permission for arbitrary extra containers.
+- [ ] Add failing then passing activation cases proving startup includes relay, stop includes relay, recovery stops/restarts it appropriately, successful inventory observes exactly9 services and a missing/stopped relay cannot pass start/resume. Reject duplicate IDs/services, foreign or tenth containers before mutation. Adapt the hardcoded eight-service synthetic fixture to9 without weakening its negative cases.
+- [ ] Run focused `python3 -m unittest discover -s infra/deploy/gce -p 'test_host_activation.py'` plus complete required GCE regressions under the existing sanitized numeric UID/GID1000 test contract. Retain failures and exact candidate evidence.
+
+No live activation, stop, recovery or inventory operation is performed or authorized by this amendment. Only repository code/tests after fresh coordinator adoption and exact-base preflight are in scope. The builder must incorporate the docs-only amendment before touching either added implementation path; if cherry-picking changes its SHA, run preflight again against the resulting exact full base SHA.

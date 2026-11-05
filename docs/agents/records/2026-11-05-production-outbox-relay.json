@@ -9,11 +9,12 @@
   "todo": [
     "Add failing relay packaging, render/topology, secret-contract, NATS authentication/ACL and runtime graph/readiness regressions.",
     "Package the existing relay in the ingestion image and wire its dedicated backend-only service, credentials, manifest/private-material contract and narrowly scoped database/broker privileges.",
+    "Include outbox-relay in host activation startup, stop, recovery and inventory, replace the eight-service inventory cap with the exact nine-service graph, and prove missing, stopped, duplicate, foreign or tenth-container rejection in activation regressions.",
     "Run focused and complete host regressions plus an isolated real PostgreSQL/NATS relay smoke proving canonical event delivery, replay identity and denied unrelated permissions; retain exact candidate evidence.",
     "Commit and push validated milestones, independently review the exact candidate, and synchronize Issue/Project/canonical documentation with verification evidence; deployment remains a separate decision."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-05T10:04:29.368864Z",
+  "updated_at": "2026-11-05T10:10:38.609976Z",
   "source_baseline": "c0be267fe31dc578bec0b8528679b6fd6671ed12",
   "intended_implementation_allowlist": [
     "infra/compose/compose.production.yaml",
@@ -28,8 +29,24 @@
     "infra/deploy/gce/test_host_outbox_relay.py",
     "workers/ingestion-python/Dockerfile",
     "workers/enrichment-python/src/autodata_enrichment/outbox.py",
-    "workers/enrichment-python/tests/test_outbox.py"
+    "workers/enrichment-python/tests/test_outbox.py",
+    "infra/deploy/gce/host_activation.py",
+    "infra/deploy/gce/test_host_activation.py"
   ],
   "parent_issue_ref": "https://github.com/lucronn/autodata/issues/186",
-  "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhGO9Go"
+  "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhGO9Go",
+  "original_gate_sha": "a13cf0879d3551eec23c119829c7993b6b5bd6de",
+  "amendment_source_sha": "e8473a792e86d7b19f7b2de2e22bc35b3c1cf5b3",
+  "task_ref": "docs/agents/tasks/2026-11-03-production-release/production-outbox-relay.json",
+  "scope_amendments": [
+    {
+      "reason": "Host activation APPS and inventory cap excluded relay; runtime renderer changes alone cannot start or verify the required nine-service graph.",
+      "added_implementation_paths": [
+        "infra/deploy/gce/host_activation.py",
+        "infra/deploy/gce/test_host_activation.py"
+      ],
+      "implementation_before_amendment": "These two files remain unmodified at amendment source.",
+      "previous_gate_sha": "a13cf0879d3551eec23c119829c7993b6b5bd6de"
+    }
+  ]
 }
