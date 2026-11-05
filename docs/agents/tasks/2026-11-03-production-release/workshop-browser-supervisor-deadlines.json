@@ -1,0 +1,417 @@
+{
+  "goal": "Implement offline supervisor temporal conformance to immutable Option A abort budgets: ordinary9300 plus protected cancellation120 equals hard9420 seconds, API serial readiness360 and shared DTO5100; preserve producer/product pins, existing transition guards, absent DTO start and every runtime/acceptance/release block.",
+  "plan_ref": "docs/superpowers/plans/2026-11-05-workshop-browser-supervisor-deadlines.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/agents/specs/2026-11-05-workshop-browser-supervisor-deadlines.json",
+    "docs/verification/2026-11-05-workshop-browser-supervisor-deadlines.md"
+  ],
+  "todo": [
+    "Review retained terminal Task57 local verification and independent source/actual PR-checkout CI audit for exact parent ea3797717599c27362eb78a94888762ca598239b/tree f5fb201b70bc6b9b836b8cc38c0b146899c657d1, then independently review this blocked six-document Task58 draft and immutable Option A policy; parent CI prerequisite is satisfied, while product6949 identity, all prior57 queue objects/root bytes and four-file implementation scope remain fixed.",
+    "Synchronize the literal goal, six todos, six gate paths, four implementation paths and exact9420 abort policy in existing Issue186/Project8 with fresh ownership and before/after preservation readbacks; only then mark standalone/nested records synchronized, commit/push the checkpoint, externally seal actual SHA/tree and require dual exact-checkpoint preflights errors=[] plus independent review before explicit coordinator dispatch.",
+    "Add pure immutable composition/deadline helpers and reducer deadline accounting in only the two supervisor/contract modules: ordinary9300, emergency120 once, hard9420; preserve TRANSITIONS guards byte for byte, creation480 then one readiness360 inside services_starting840, ready inherits readiness deadline, DTO5100 is a shared hypothetical envelope with no DTO start transition; remove only supervisor_dto_deadline_mismatch after exact policy verification.",
+    "Add genuine red-then-green offline tests in only the two paired test modules for exact policy/deadline equality, composition/type/tampering negatives, serial readiness and late handoffs, per-operation minima, protected reserve, first-failure cleanup/no reset, heartbeat/takeover/reconcile/stop/reap/seal boundaries, unchanged generic4560 validity, source/digest bindings and absent live DTO/no acceptance.",
+    "Run the frozen focused/offline/browser/ingestion/developer/autonomy/Node/Go checks on exact candidate, preserve all source timers, commands, inventories, evidence schemas and trace16MiB/8MiB conflict; commit/promptly push validated small milestones, obtain independent exact-source/diff review and fresh source-push plus actual PR-checkout CI with terminal success for all required jobs/live Compose and exact checkout SHA/tree evidence.",
+    "Keep accepted_case_credit=0, accepted_new_case_credit=0, verified_case_ids=[] and release_state=unverified; retain blocked_timer_dependency for missing execution/success proof and all live adapter, observer, watchdog, ownership, capture, API-success, trace transport, API21/DTO120/final180, merchant, authentic staging, protected merge/deployment/release boundaries as separate measured gates."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-05T05:07:29Z",
+  "schema_version": 1,
+  "task_id": "workshop-browser-supervisor-deadlines",
+  "id": "workshop-browser-supervisor-deadlines",
+  "ordinal": 58,
+  "state": "blocked",
+  "planning_status": "synchronized",
+  "tracking_status": "synchronized",
+  "spec_ref": "docs/agents/specs/2026-11-05-workshop-browser-supervisor-deadlines.json",
+  "record_ref": "docs/agents/records/2026-11-05-workshop-browser-supervisor-deadlines.json",
+  "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-browser-supervisor-deadlines.json",
+  "verification_ref": "docs/verification/2026-11-05-workshop-browser-supervisor-deadlines.md",
+  "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+  "planning_materialization_parent_sha": "ea3797717599c27362eb78a94888762ca598239b",
+  "planning_materialization_parent_tree": "f5fb201b70bc6b9b836b8cc38c0b146899c657d1",
+  "source_candidate_sha": "6949eb1b1a5b93c9b2eb0579328e24c697f6f331",
+  "source_candidate_tree": "47ec54b1896c83a39b6637a6ce944d3620414f4e",
+  "checkpoint_sha": null,
+  "checkpoint_tree": null,
+  "implementation_base_sha": null,
+  "checkpoint_seal_ref": null,
+  "allowed_gate_document_paths": [
+    "docs/superpowers/plans/2026-11-05-workshop-browser-supervisor-deadlines.md",
+    "docs/agents/specs/2026-11-05-workshop-browser-supervisor-deadlines.json",
+    "docs/agents/records/2026-11-05-workshop-browser-supervisor-deadlines.json",
+    "docs/agents/tasks/2026-11-03-production-release/workshop-browser-supervisor-deadlines.json",
+    "docs/verification/2026-11-05-workshop-browser-supervisor-deadlines.md",
+    "docs/agents/tasks/2026-11-03-production-release/queue.json"
+  ],
+  "allowed_implementation_paths": [
+    "scripts/dev/workshop_browser_execution_supervisor.py",
+    "scripts/dev/test_workshop_browser_execution_supervisor.py",
+    "scripts/dev/workshop_browser_execution_contract.py",
+    "scripts/dev/test_workshop_browser_execution_contract.py"
+  ],
+  "current_implementation_allowlist": [],
+  "accepted_case_credit": 0,
+  "accepted_new_case_credit": 0,
+  "verified_case_ids": [],
+  "release_state": "unverified",
+  "authorities": {
+    "implementation": false,
+    "implementation_dispatch": false,
+    "provider": false,
+    "runtime": false,
+    "host": false,
+    "host_execution": false,
+    "docker": false,
+    "network": false,
+    "cloud": false,
+    "dns": false,
+    "capture": false,
+    "profile_activation": false,
+    "acceptance": false,
+    "fixture_execution": false,
+    "image_build_pull_install": false,
+    "service_start": false,
+    "payment": false,
+    "account_mutation": false,
+    "staging": false,
+    "release": false,
+    "merge": false,
+    "deployment": false,
+    "cutover": false,
+    "secrets": false,
+    "github_write": false,
+    "code_approval": false,
+    "ci_success": false,
+    "merchant_enablement": false,
+    "manifest_injection": false,
+    "artifact_admission": false,
+    "owner_approval": false,
+    "stripe_test_acceptance": false,
+    "live_sales": false,
+    "code_import": false,
+    "ci_execution": false,
+    "capture_admission": false,
+    "fixture_api21": false,
+    "fixture_dto120": false,
+    "final180": false,
+    "current_source_browser_acceptance": false,
+    "owner_tax_decision": false,
+    "firebase_enrollment": false,
+    "stripe_test_enrollment": false,
+    "supervisor_timing_change": false,
+    "merge_to_protected_branch": false
+  },
+  "tracking_sync": {
+    "status": "synchronized",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "ownership_verified": true,
+    "literal_readback_verified": true,
+    "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6650205812",
+    "issue_comment_id": 6650205812,
+    "issue_comment_created_at": "2026-11-05T05:05:51Z",
+    "issue_comment_body_sha256": "d6ddc001eab2906512432e17ff719b0d9d40bd83c59c2fe1c7778c931c4fef1b",
+    "before_readback": {
+      "path": "/home/corp/autodata-evidence/task58-before-tracking.json",
+      "sha256": "9794244b04211afe62c6ec96058a7c3aa25743f2a6b2977c13ae63e6cd29de46",
+      "observed_at": "2026-11-05T05:05:14.393312+00:00"
+    },
+    "after_readback": {
+      "path": "/home/corp/autodata-evidence/task58-after-tracking.json",
+      "sha256": "48c894d9315095a55c8ce8890152fa03e48856279f29d510b9e636d3d9b6382d",
+      "observed_at": "2026-11-05T05:06:01.429879+00:00"
+    },
+    "issue_body_sha256": "927b46ef47b1dbf5b117273e3d3f5c0e6d9f23b722a5245869eb5323b96c4f25",
+    "project_source_sha256_before": "60b7625bad23cdc6372da8b169b49932b062ba7b9bed35d799eefdc50e215df8",
+    "project_source_sha256_after": "9d094dde8fa74141a953bde96e2a76707b00b2ab47dfdbadc90797dc6e870cdc",
+    "issue_body_unchanged": true,
+    "prior_259_comments_unchanged": true,
+    "project_other_fields_unchanged": true,
+    "prior_project_source_preserved_verbatim_in_comment": true,
+    "literal_goal_six_todos_six_gate_paths_four_implementation_paths_verified": true,
+    "coordinator_sync_completed": true,
+    "independent_revised_draft_review": {
+      "path": "/home/corp/autodata-evidence/task58-supervisor-temporal-draft-review/REPORT.md",
+      "sha256": "a80d899e0a958ceec358021165daaae76df574968409fe4bf586f081b4a1d6e7",
+      "verdict": "PASS_REVISED_DRAFT",
+      "passing_checks": 112
+    },
+    "scope": "Planning synchronization only. Six-document checkpoint commit/push, external actual SHA/tree seal, dual exact-checkpoint preflights, independent checkpoint review and explicit four-file dispatch remain required. All implementation/runtime/acceptance/release authorities false."
+  },
+  "pre_implementation_record": {
+    "goal": "Implement offline supervisor temporal conformance to immutable Option A abort budgets: ordinary9300 plus protected cancellation120 equals hard9420 seconds, API serial readiness360 and shared DTO5100; preserve producer/product pins, existing transition guards, absent DTO start and every runtime/acceptance/release block.",
+    "plan_ref": "docs/superpowers/plans/2026-11-05-workshop-browser-supervisor-deadlines.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/agents/specs/2026-11-05-workshop-browser-supervisor-deadlines.json",
+      "docs/verification/2026-11-05-workshop-browser-supervisor-deadlines.md"
+    ],
+    "todo": [
+      "Review retained terminal Task57 local verification and independent source/actual PR-checkout CI audit for exact parent ea3797717599c27362eb78a94888762ca598239b/tree f5fb201b70bc6b9b836b8cc38c0b146899c657d1, then independently review this blocked six-document Task58 draft and immutable Option A policy; parent CI prerequisite is satisfied, while product6949 identity, all prior57 queue objects/root bytes and four-file implementation scope remain fixed.",
+      "Synchronize the literal goal, six todos, six gate paths, four implementation paths and exact9420 abort policy in existing Issue186/Project8 with fresh ownership and before/after preservation readbacks; only then mark standalone/nested records synchronized, commit/push the checkpoint, externally seal actual SHA/tree and require dual exact-checkpoint preflights errors=[] plus independent review before explicit coordinator dispatch.",
+      "Add pure immutable composition/deadline helpers and reducer deadline accounting in only the two supervisor/contract modules: ordinary9300, emergency120 once, hard9420; preserve TRANSITIONS guards byte for byte, creation480 then one readiness360 inside services_starting840, ready inherits readiness deadline, DTO5100 is a shared hypothetical envelope with no DTO start transition; remove only supervisor_dto_deadline_mismatch after exact policy verification.",
+      "Add genuine red-then-green offline tests in only the two paired test modules for exact policy/deadline equality, composition/type/tampering negatives, serial readiness and late handoffs, per-operation minima, protected reserve, first-failure cleanup/no reset, heartbeat/takeover/reconcile/stop/reap/seal boundaries, unchanged generic4560 validity, source/digest bindings and absent live DTO/no acceptance.",
+      "Run the frozen focused/offline/browser/ingestion/developer/autonomy/Node/Go checks on exact candidate, preserve all source timers, commands, inventories, evidence schemas and trace16MiB/8MiB conflict; commit/promptly push validated small milestones, obtain independent exact-source/diff review and fresh source-push plus actual PR-checkout CI with terminal success for all required jobs/live Compose and exact checkout SHA/tree evidence.",
+      "Keep accepted_case_credit=0, accepted_new_case_credit=0, verified_case_ids=[] and release_state=unverified; retain blocked_timer_dependency for missing execution/success proof and all live adapter, observer, watchdog, ownership, capture, API-success, trace transport, API21/DTO120/final180, merchant, authentic staging, protected merge/deployment/release boundaries as separate measured gates."
+    ],
+    "status": "synchronized",
+    "updated_at": "2026-11-05T05:07:29Z",
+    "parent_verification": {
+      "status": "verified_terminal_parent_evidence",
+      "source_sha": "ea3797717599c27362eb78a94888762ca598239b",
+      "source_tree": "f5fb201b70bc6b9b836b8cc38c0b146899c657d1",
+      "local_report": {
+        "path": "/home/corp/autodata-evidence/task57-smoke-timeout-assertion-code/REPORT.md",
+        "sha256": "e77aa53a0a1d43fc6594ef528e69e45635a14e5e97f156888e1b7af56bd169c7",
+        "scope": "Local implementation verification only; terminal CI established separately by independent audit.",
+        "results": {
+          "release_acceptance": 160,
+          "developer": 603,
+          "browser_smoke": 137,
+          "merchant_manifest": 20,
+          "browser_execution": 202,
+          "browser_execution_subtests": 14,
+          "browser_observability": 67,
+          "autonomy": 146,
+          "node_client": 184,
+          "prescribed_final_commands": 15,
+          "all_final_exits": 0
+        }
+      },
+      "independent_terminal_ci_audit": {
+        "path": "/home/corp/autodata-evidence/task57-final-ci-audit/REPORT.md",
+        "sha256": "3c6842ef134a435928e18126585c53d3b942fc36ba803c43f586d4a41bf11059",
+        "source_push_run": {
+          "id": 41969316863,
+          "url": "https://github.com/lucronn/autodata/actions/runs/41969316863",
+          "status": "completed",
+          "conclusion": "success",
+          "jobs_success": 3,
+          "jobs_total": 3,
+          "steps_success": 41,
+          "steps_total": 41,
+          "live_compose_step": "completed_success"
+        },
+        "actual_pr_checkout_run": {
+          "id": 41969338446,
+          "url": "https://github.com/lucronn/autodata/actions/runs/41969338446",
+          "status": "completed",
+          "conclusion": "success",
+          "jobs_success": 3,
+          "jobs_total": 3,
+          "steps_success": 41,
+          "steps_total": 41,
+          "live_compose_step": "completed_success",
+          "actual_checkout_sha": "b3f3e4cf97d9438ccfd2508c76f2fb96039d76c3",
+          "actual_checkout_tree": "f5fb201b70bc6b9b836b8cc38c0b146899c657d1",
+          "tree_equals_source": true
+        },
+        "ingestion_skips": "207 skipped and25 subtests in each CI run; retained as skips, not accepted cases.",
+        "cleanup_caveat": "Duplicate-stop error followed by Removed in both Compose logs; required steps/jobs succeeded. No independent post-down inventory; exhaustive host cleanup not asserted."
+      },
+      "external_vercel": {
+        "status": "failure",
+        "reason": "Deployment rate limited \u2014 retry in 24 hours.",
+        "scope": "Separate external deployment result; Actions success is not full-rollup/deployment acceptance."
+      },
+      "effect": "Task57 pending-CI prerequisite satisfied for Task58 planning synchronization; Task58 own draft review/tracking/checkpoint/preflight/dispatch remain required.",
+      "acceptance_effect": "No inherited real API21/DTO120/final180, runtime, merchant, staging or release credit."
+    }
+  },
+  "draft_only": false,
+  "canonical_gate_passed": false,
+  "depends_on": [
+    "workshop-smoke-timeout-assertion"
+  ],
+  "dispatch_mode": "coordinator_only_after_gate",
+  "branch_assignment": null,
+  "proposed_gate_branch": "codex/workshop-supervisor-temporal-plan",
+  "reserved_implementation_branch": null,
+  "temporal_policy": {
+    "version": "immutable_abort_composition_v1",
+    "option": "A",
+    "clock": "integer_monotonic_nanoseconds",
+    "slots": [
+      {
+        "id": "reserved",
+        "seconds": 480
+      },
+      {
+        "id": "preparing",
+        "seconds": 180
+      },
+      {
+        "id": "api_creation",
+        "seconds": 480
+      },
+      {
+        "id": "api_bootstrap_readiness",
+        "seconds": 360
+      },
+      {
+        "id": "api_active",
+        "seconds": 2100
+      },
+      {
+        "id": "api_cleanup_seal",
+        "seconds": 240
+      },
+      {
+        "id": "dto_creation",
+        "seconds": 120
+      },
+      {
+        "id": "dto_shared_active",
+        "seconds": 5100
+      },
+      {
+        "id": "dto_cleanup_seal",
+        "seconds": 240
+      }
+    ],
+    "ordinary_seconds": 9300,
+    "emergency_cancellation_seconds": 120,
+    "hard_seconds": 9420,
+    "attempts": 1,
+    "additional_retries": 0,
+    "api_readiness": {
+      "operations": [
+        "api.service.pg",
+        "api.service.nats",
+        "api.service.s3"
+      ],
+      "order": "serial",
+      "per_operation_seconds": 120,
+      "shared_seconds": 360,
+      "start": "first valid runner_started receipt during services_starting",
+      "ready_state": "inherits same absolute readiness deadline; no new handoff allowance"
+    },
+    "dto": {
+      "envelope_seconds": 5100,
+      "start": "admission of asynchronous Go launch",
+      "readiness_seconds": 120,
+      "readiness_nested": true,
+      "go_browser_wait_overlap": true,
+      "go_command_ceiling_seconds": 5100,
+      "browser_command_ceiling_seconds": 5100,
+      "wait_command_ceiling_seconds": 5100,
+      "go_own_timeout_seconds": 5040,
+      "browser_after_full_readiness_remaining_seconds": 4980,
+      "go_absolute_deadline_never_shifted": true,
+      "dto_start_transition_added": false
+    },
+    "phase_seconds": {
+      "reserved": 480,
+      "preparing": 180,
+      "services_starting": 840,
+      "ready": 360,
+      "api_running": 2100,
+      "dto_running": 5100,
+      "stopping": 240,
+      "reaping": 240,
+      "sealing": 240
+    },
+    "state_mapping": {
+      "services_starting": "aggregate creation480 + readiness360; active deadline initially creation end; first runner_started switches once to readiness end within aggregate cap",
+      "ready": "shared services readiness deadline, not additive",
+      "dto_running": "reference cap only; remains unreachable through TRANSITIONS",
+      "stopping_reaping_sealing": "one normal240 interval per hypothetical generation, never three240 intervals"
+    },
+    "deadline_rules": {
+      "ordinary_end": "start_ns + 9300*NS",
+      "hard_end": "start_ns + 9420*NS",
+      "slot_end": "min(entry_ns + slot_seconds*NS, ordinary_end)",
+      "operation_end": "min(operation_start_ns + command_seconds*NS, slot_end)",
+      "api_creation_end": "min(services_entry_ns+480*NS,ordinary_end)",
+      "api_readiness_end": "min(first_runner_started_ns+360*NS,services_entry_ns+840*NS,ordinary_end)",
+      "normal_cleanup_end": "min(first_stopping_ns+240*NS,ordinary_end)",
+      "emergency_cleanup_end": "min(first_failure_ns+120*NS,hard_end)",
+      "equality": "no action starts or completion passes at or after deadline",
+      "reset": "never on duplicate receipt, heartbeat, takeover, reconcile, stop/reap/seal or late receipt",
+      "slack": "unused prior slot time never increases any slot cap",
+      "late_failure": "first failure at/after hard_end has zero actionable cleanup time; no reserve extension"
+    },
+    "claims": {
+      "abort_policy_only": true,
+      "finite_success_schedule_proved": false,
+      "runtime_admission": false,
+      "real_cleanup_proved": false,
+      "accepted_case_credit": 0
+    }
+  },
+  "temporal_policy_sha256": "64414c30570fc7ee36b72c6e0c7b494418357a200fe4fcec727dd74ff75a8295",
+  "source_binding": {
+    "parent_sha": "ea3797717599c27362eb78a94888762ca598239b",
+    "parent_tree": "f5fb201b70bc6b9b836b8cc38c0b146899c657d1",
+    "task57_broad_ci": "verified_terminal_parent_evidence_retained",
+    "product_sha": "6949eb1b1a5b93c9b2eb0579328e24c697f6f331",
+    "product_tree": "47ec54b1896c83a39b6637a6ce944d3620414f4e",
+    "parent_verification_ref": "parent_verification"
+  },
+  "dispatch_prerequisite": "Task58 planning/tracking synchronized with literal verified Issue186 comment6650205812 and Project8 readback, independent revised-draft PASS112 and verified terminal Task57 parent. Six-document committed/pushed checkpoint, external actual SHA/tree seal, standalone+nested exact-checkpoint preflights errors=[], independent checkpoint review and explicit coordinator four-file implementation dispatch remain required. Execution blocked and all authorities false; no future-tool SHA belongs in predecessor bytes.",
+  "parent_verification": {
+    "status": "verified_terminal_parent_evidence",
+    "source_sha": "ea3797717599c27362eb78a94888762ca598239b",
+    "source_tree": "f5fb201b70bc6b9b836b8cc38c0b146899c657d1",
+    "local_report": {
+      "path": "/home/corp/autodata-evidence/task57-smoke-timeout-assertion-code/REPORT.md",
+      "sha256": "e77aa53a0a1d43fc6594ef528e69e45635a14e5e97f156888e1b7af56bd169c7",
+      "scope": "Local implementation verification only; terminal CI established separately by independent audit.",
+      "results": {
+        "release_acceptance": 160,
+        "developer": 603,
+        "browser_smoke": 137,
+        "merchant_manifest": 20,
+        "browser_execution": 202,
+        "browser_execution_subtests": 14,
+        "browser_observability": 67,
+        "autonomy": 146,
+        "node_client": 184,
+        "prescribed_final_commands": 15,
+        "all_final_exits": 0
+      }
+    },
+    "independent_terminal_ci_audit": {
+      "path": "/home/corp/autodata-evidence/task57-final-ci-audit/REPORT.md",
+      "sha256": "3c6842ef134a435928e18126585c53d3b942fc36ba803c43f586d4a41bf11059",
+      "source_push_run": {
+        "id": 41969316863,
+        "url": "https://github.com/lucronn/autodata/actions/runs/41969316863",
+        "status": "completed",
+        "conclusion": "success",
+        "jobs_success": 3,
+        "jobs_total": 3,
+        "steps_success": 41,
+        "steps_total": 41,
+        "live_compose_step": "completed_success"
+      },
+      "actual_pr_checkout_run": {
+        "id": 41969338446,
+        "url": "https://github.com/lucronn/autodata/actions/runs/41969338446",
+        "status": "completed",
+        "conclusion": "success",
+        "jobs_success": 3,
+        "jobs_total": 3,
+        "steps_success": 41,
+        "steps_total": 41,
+        "live_compose_step": "completed_success",
+        "actual_checkout_sha": "b3f3e4cf97d9438ccfd2508c76f2fb96039d76c3",
+        "actual_checkout_tree": "f5fb201b70bc6b9b836b8cc38c0b146899c657d1",
+        "tree_equals_source": true
+      },
+      "ingestion_skips": "207 skipped and25 subtests in each CI run; retained as skips, not accepted cases.",
+      "cleanup_caveat": "Duplicate-stop error followed by Removed in both Compose logs; required steps/jobs succeeded. No independent post-down inventory; exhaustive host cleanup not asserted."
+    },
+    "external_vercel": {
+      "status": "failure",
+      "reason": "Deployment rate limited \u2014 retry in 24 hours.",
+      "scope": "Separate external deployment result; Actions success is not full-rollup/deployment acceptance."
+    },
+    "effect": "Task57 pending-CI prerequisite satisfied for Task58 planning synchronization; Task58 own draft review/tracking/checkpoint/preflight/dispatch remain required.",
+    "acceptance_effect": "No inherited real API21/DTO120/final180, runtime, merchant, staging or release credit."
+  }
+}
