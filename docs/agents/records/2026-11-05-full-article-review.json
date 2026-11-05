@@ -1,0 +1,53 @@
+{
+  "goal": "Publish uniquely rewritten complete dual-bank articles once through full-prose drafting, exact-hash human content approval and durable review resume, serving source until publication.",
+  "plan_ref": "docs/superpowers/plans/2026-11-05-full-article-review.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/333",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/normalized-article-document.md"
+  ],
+  "todo": [
+    "Freeze intended dual-bank source scope, hashes and retained40 baseline.",
+    "Add immutable full-prose-review-v1 drafting and complete document integrity checks.",
+    "Persist review waits; add exact-hash human approve/reject/correct and zero-redraft resume.",
+    "Enforce approval at publication; test races, budgets, recovery and zero-call warm reads.",
+    "Verify isolated lifecycle and every authentic final article; separately authorize live Mercury acceptance."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-05T22:48:36.960076Z",
+  "parent_issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhGaXx0",
+  "inspected_source_sha": "008669db6782d6e26b0eee645decb1868295e5e9",
+  "branch": "codex/full-article-review-gate",
+  "implementation_allowlist": [
+    "workers/ingestion-python/src/autodata_ingestion/procedure_rewrite_full.py",
+    "workers/ingestion-python/src/autodata_ingestion/procedure_rewrite.py",
+    "workers/ingestion-python/src/autodata_ingestion/article_lifecycle.py",
+    "workers/ingestion-python/src/autodata_ingestion/article_lifecycle_store.py",
+    "workers/ingestion-python/src/autodata_ingestion/source_job_persistence.py",
+    "workers/ingestion-python/src/autodata_ingestion/article_content_review.py",
+    "scripts/dev/article_content_review.py",
+    "workers/ingestion-python/tests/test_procedure_rewrite_full.py",
+    "workers/ingestion-python/tests/test_article_content_review.py",
+    "workers/ingestion-python/tests/test_article_worker.py",
+    "workers/ingestion-python/tests/test_article_publication.py",
+    "workers/ingestion-python/tests/test_source_job_persistence.py",
+    "workers/ingestion-python/tests/test_article_lifecycle_integration.py",
+    "scripts/dev/test_article_content_review.py",
+    "docs/verification/2026-11-05-full-article-review.md",
+    "docs/superpowers/plans/2026-11-05-full-article-review.md",
+    "docs/architecture/normalized-article-document.md",
+    "docs/agents/records/2026-11-05-full-article-review.json"
+  ],
+  "checkpoint_kind": "planning_only",
+  "implementation_authorized_on_planning_turn": false,
+  "provider_calls_authorized_on_planning_turn": false,
+  "production_activation_authorized": false,
+  "human_content_acceptance_required": true,
+  "tracking": {
+    "issue_body_sha256": "8dd528af11ecd9b6d9ecaac57729487f21e8b828129d3212b77bf4ba1c9270c6",
+    "project_source_sha256": "084b926376d5c3ec21b3ff87847253156b26619bd3a4d18b0a8afc82dae6bc6b",
+    "project_status": "Review",
+    "literal_goal_todo_refs_readback_verified": true
+  }
+}
