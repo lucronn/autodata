@@ -153,3 +153,34 @@ engine displacement, body style and drivetrain from the owning configuration
 and identity base, retains their snapshot/evidence references, and compares
 explicit source applicability before storing content or invoking Mercury. That
 captured context remains immutable when configuration records later change.
+
+## Production host relay wiring follow-up (2026-11-05)
+
+At source baseline `c0be267fe31dc578bec0b8528679b6fd6671ed12`, development
+Compose includes the publication relay, but the GCE production template and
+normal-service runtime graph omit it. The host ingestion image also lacks the
+enrichment relay package/script, and its NATS configuration permits only the
+metrics identity. These repository omissions prevent the required publication
+event path; this statement is not a live-host inspection.
+
+The bounded plan is `docs/superpowers/plans/2026-11-05-production-outbox-relay.md`,
+tracked in [child Issue #303](https://github.com/lucronn/autodata/issues/303) of
+#186 and [Project #8](https://github.com/users/lucronn/projects/8). The synchronized
+record is `docs/agents/records/2026-11-05-production-outbox-relay.json`.
+Goal: Wire the existing publication outbox relay into the production GCE host graph with packaged code, dedicated PostgreSQL/NATS credentials, restricted broker permissions and fail-closed runtime verification.
+
+Concrete todo:
+
+- [ ] Add failing relay packaging, render/topology, secret-contract, NATS authentication/ACL and runtime graph/readiness regressions.
+- [ ] Package the existing relay in the ingestion image and wire its dedicated backend-only service, credentials, manifest/private-material contract and narrowly scoped database/broker privileges.
+- [ ] Run focused and complete host regressions plus an isolated real PostgreSQL/NATS relay smoke proving canonical event delivery, replay identity and denied unrelated permissions; retain exact candidate evidence.
+- [ ] Commit and push validated milestones, independently review the exact candidate, and synchronize Issue/Project/canonical documentation with verification evidence; deployment remains a separate decision.
+
+The intended contract uses the existing ingestion image, backend-only relay
+address `172.30.20.14`, dedicated `autodata_outbox` database identity and a
+separate NATS publisher with exact publication/stream-create/info permissions.
+The plan defines the authoritative file allowlist and secret/ACL details.
+Existing delivery leases, stable Nats-Msg-Id/idempotency_key and consumer
+deduplication remain required. Actual credential/role provisioning, private
+broker-config delivery and live service activation require separate deployment
+authorization. This planning checkpoint performs no implementation or deployment.

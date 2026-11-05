@@ -1,0 +1,35 @@
+{
+  "goal": "Wire the existing publication outbox relay into the production GCE host graph with packaged code, dedicated PostgreSQL/NATS credentials, restricted broker permissions and fail-closed runtime verification.",
+  "plan_ref": "docs/superpowers/plans/2026-11-05-production-outbox-relay.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/303",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/independent-bank-connectors.md"
+  ],
+  "todo": [
+    "Add failing relay packaging, render/topology, secret-contract, NATS authentication/ACL and runtime graph/readiness regressions.",
+    "Package the existing relay in the ingestion image and wire its dedicated backend-only service, credentials, manifest/private-material contract and narrowly scoped database/broker privileges.",
+    "Run focused and complete host regressions plus an isolated real PostgreSQL/NATS relay smoke proving canonical event delivery, replay identity and denied unrelated permissions; retain exact candidate evidence.",
+    "Commit and push validated milestones, independently review the exact candidate, and synchronize Issue/Project/canonical documentation with verification evidence; deployment remains a separate decision."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-05T10:04:29.368864Z",
+  "source_baseline": "c0be267fe31dc578bec0b8528679b6fd6671ed12",
+  "intended_implementation_allowlist": [
+    "infra/compose/compose.production.yaml",
+    "infra/deploy/gce/runtime-check.py",
+    "infra/deploy/gce/runtime-entrypoint.sh",
+    "infra/deploy/gce/release.schema.json",
+    "infra/deploy/gce/private_material.py",
+    "infra/deploy/gce/nats.conf.template",
+    "infra/deploy/gce/runtime-grants.sql",
+    "infra/deploy/gce/test_host_runtime.py",
+    "infra/deploy/gce/test_private_material.py",
+    "infra/deploy/gce/test_host_outbox_relay.py",
+    "workers/ingestion-python/Dockerfile",
+    "workers/enrichment-python/src/autodata_enrichment/outbox.py",
+    "workers/enrichment-python/tests/test_outbox.py"
+  ],
+  "parent_issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhGO9Go"
+}
