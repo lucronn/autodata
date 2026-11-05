@@ -57,7 +57,7 @@ def test_full_chain_restart_preserves_every_marker_and_schema(fresh_database):
     before = versions(repo)
     schema = snapshot(repo)
     result = run_driver(repo)
-    assert result.stdout.count('AUTODATA_SKIPPED ') == 40
+    assert result.stdout.count('AUTODATA_SKIPPED ') == 41
     assert 'AUTODATA_APPLIED ' not in result.stdout
     assert versions(repo) == before
     assert snapshot(repo) == schema
@@ -92,8 +92,8 @@ def test_empty_bootstrap_and_untracked_application_rejection(fresh_database, emp
     if empty_ledger:
         with repo.connect() as conn:
             conn.execute('CREATE TABLE schema_migrations(version text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())')
-    assert len(applied(run_driver(repo))) == 40
-    assert len(versions(repo)) == 40
+    assert len(applied(run_driver(repo))) == 41
+    assert len(versions(repo)) == 41
     for table in ('vehicles', 'canonical_article_revisions', 'customer_accounts', 'auth_sessions', 'workshop_orders', 'workshop_checkout_requests'):
         untracked = fresh_database(through=0)
         with untracked.connect() as conn:
@@ -171,7 +171,7 @@ def test_genuine_036_upgrade_preserves_jobs_and_matches_fresh_schema(fresh_datab
     old_versions = versions(legacy)
     assert applied(run_driver(legacy)) == ['033_catalog_scope_coverage.sql',
         '037_article_source_lifecycle.sql', '038_article_transform_publication.sql',
-        '039_production_identity_sessions.sql', '040_workshop_commerce.sql']
+        '039_production_identity_sessions.sql', '040_workshop_commerce.sql', '041_article_source_projection_v2.sql']
     assert read_imported_job_invariants(legacy) == jobs
     assert [r for r in versions(legacy) if r['version'] in {v['version'] for v in old_versions}] == old_versions
     assert snapshot(legacy) == snapshot(fresh_database())
@@ -179,7 +179,7 @@ def test_genuine_036_upgrade_preserves_jobs_and_matches_fresh_schema(fresh_datab
     assert read_imported_job_invariants(legacy) == jobs
 
 
-@pytest.mark.parametrize('number', [2, 33, 36, 37, 38, 39, 40])
+@pytest.mark.parametrize('number', [2, 33, 36, 37, 38, 39, 40, 41])
 def test_migration_failure_rolls_back_only_active_file_then_retry(fresh_database, tmp_path, number):
     repo = fresh_database(through=number - 1)
     directory = fixture_prefix(tmp_path, number)
@@ -209,8 +209,8 @@ def test_recorded_001_and_partial_unmarked_next_file_remain_retryable(fresh_data
     body = (ROOT / 'db/migrations/002_platform_spine.sql').read_text()
     with repo.connect() as conn:
         conn.execute(body[:body.index(';') + 1])
-    assert len(applied(run_driver(repo))) == 39
-    assert len(versions(repo)) == 40
+    assert len(applied(run_driver(repo))) == 40
+    assert len(versions(repo)) == 41
 
 
 @pytest.mark.parametrize('upgrade', [False, True])
@@ -239,9 +239,9 @@ def test_two_full_runners_serialize_and_apply_each_version_once(fresh_database, 
         assert waiting, 'second full driver never waited on the session advisory lock'
         results = [first.result(), second.result()]
     all_applied = sum((applied(r) for r in results), [])
-    expected = ['033_catalog_scope_coverage.sql', '037_article_source_lifecycle.sql', '038_article_transform_publication.sql', '039_production_identity_sessions.sql', '040_workshop_commerce.sql'] if upgrade else [p.name for p in sorted((ROOT/'db/migrations').glob('*.sql'))]
+    expected = ['033_catalog_scope_coverage.sql', '037_article_source_lifecycle.sql', '038_article_transform_publication.sql', '039_production_identity_sessions.sql', '040_workshop_commerce.sql', '041_article_source_projection_v2.sql'] if upgrade else [p.name for p in sorted((ROOT/'db/migrations').glob('*.sql'))]
     assert sorted(all_applied) == sorted(expected)
-    assert len(versions(repo)) == 40
+    assert len(versions(repo)) == 41
     assert applied(run_driver(repo)) == []
 
 
@@ -271,7 +271,7 @@ def test_connection_death_releases_lock_and_rolls_back_active_file(fresh_databas
         with repo.connect() as conn:
             assert conn.execute("SELECT to_regclass('killed_backend_ddl') AS object").fetchone()['object'] is None
             assert conn.execute("SELECT to_regclass('dataset_products') AS object").fetchone()['object'] is None
-        assert len(applied(run_driver(repo))) == 39
+        assert len(applied(run_driver(repo))) == 40
     finally:
         if process.poll() is None:
             process.kill()
@@ -281,7 +281,7 @@ def test_connection_death_releases_lock_and_rolls_back_active_file(fresh_databas
 def test_restart_after_committed_037_only_applies_038_and_039(fresh_database):
     repo = fresh_database(through=37)
     old_versions = versions(repo)
-    assert applied(run_driver(repo)) == ['038_article_transform_publication.sql', '039_production_identity_sessions.sql', '040_workshop_commerce.sql']
+    assert applied(run_driver(repo)) == ['038_article_transform_publication.sql', '039_production_identity_sessions.sql', '040_workshop_commerce.sql', '041_article_source_projection_v2.sql']
     assert versions(repo)[:37] == old_versions
     assert applied(run_driver(repo)) == []
 
@@ -294,7 +294,7 @@ def test_native_python_adapter_applies_then_skips_in_one_session(fresh_database)
     from unittest.mock import patch
     with patch.dict(os.environ, {'AUTODATA_POSTGRES_USER':'lifecycle_test',
          'AUTODATA_POSTGRES_PASSWORD':'lifecycle_test_only', 'AUTODATA_POSTGRES_DB':repo.database_name}):
-        assert len(apply_migrations(ROOT, 'postgres:5432')) == 40
+        assert len(apply_migrations(ROOT, 'postgres:5432')) == 41
         old_versions, schema = versions(repo), snapshot(repo)
         assert apply_migrations(ROOT, 'postgres:5432') == []
     assert versions(repo) == old_versions
@@ -360,7 +360,7 @@ def test_populated_038_upgrade_only_adds_identity_schema(fresh_database, tmp_pat
         assert conn.execute("SELECT to_regclass('customer_accounts') AS name").fetchone()['name']
         assert conn.execute("SELECT to_regclass('auth_sessions') AS name").fetchone()['name']
     assert snapshot(repo) == snapshot(fresh_database(through=39))
-    assert applied(run_driver(repo)) == ['040_workshop_commerce.sql']
+    assert applied(run_driver(repo)) == ['040_workshop_commerce.sql', '041_article_source_projection_v2.sql']
     assert snapshot(repo) == snapshot(fresh_database())
     assert applied(run_driver(repo)) == []
 
@@ -380,3 +380,22 @@ def test_populated_customer_identity_restart_preserves_rows_and_ledger(fresh_dat
     assert identity_rows() == before
     assert versions(repo) == ledger
     assert snapshot(repo) == schema
+
+
+def test_populated_040_projection_upgrade_and_restart_preserve_rows(fresh_database):
+    from test_article_lifecycle_schema import seed_v1_publication, lifecycle_history, append_projection
+
+    repo = fresh_database(through=40)
+    _, source = seed_v1_publication(repo)
+    before, ledger = lifecycle_history(repo), versions(repo)
+    assert applied(run_driver(repo)) == ['041_article_source_projection_v2.sql']
+    assert lifecycle_history(repo) == before
+    assert versions(repo)[:40] == ledger
+    append_projection(repo, source, 'source-projection-v2')
+    populated, upgraded_schema, upgraded_ledger = lifecycle_history(repo), snapshot(repo), versions(repo)
+    result = run_driver(repo)
+    assert applied(result) == []
+    assert result.stdout.count('AUTODATA_SKIPPED ') == 41
+    assert lifecycle_history(repo) == populated
+    assert snapshot(repo) == upgraded_schema
+    assert versions(repo) == upgraded_ledger
