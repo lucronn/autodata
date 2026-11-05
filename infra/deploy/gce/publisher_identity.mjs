@@ -1,6 +1,6 @@
 import {createPublicKey,verify,constants} from 'node:crypto';
 import {types} from 'node:util';
-import {parseStrictJsonBytes,verifyOwnerPolicyBytes,installedPolicyClaims} from './publisher_policy.mjs';
+import {parseStrictJsonBytes,verifyOwnerPolicyBytes,installedPolicyClaims,installedLivePolicyClaims} from './publisher_policy.mjs';
 
 const fail=()=>{throw new Error('invalid_oidc_input');};
 const requireValue=condition=>{if(!condition)fail();};
@@ -68,4 +68,101 @@ export function verifyInstalledGithubOidc(tokenBytes,installedPolicyHandle,expec
     return verifyJwt(tokenBytes,validated,expectedContext,Math.floor(Date.now()/1000));
   } catch {fail();}
 }
-export function authenticateActionsRuntime() {throw new Error('missing_dependency');}
+export function verifyInstalledLiveGithubOidc(tokenBytes,installedPolicyHandle,expectedContext) {
+  try {
+    const validated=installedLivePolicyClaims(installedPolicyHandle);
+    return verifyJwt(tokenBytes,validated,expectedContext,Math.floor(Date.now()/1000));
+  } catch {fail();}
+}
+export function authenticateActionsRuntime(handle,runtime,context) {
+  // WeakMap selection occurs before any hostile argument or environment access.
+  try {installedLivePolicyClaims(handle);} catch {throw Error('missing_dependency');}
+  return (async()=>{
+    const {runRuntimeChallenge}=await import('./publisher_artifact.mjs');
+    return runRuntimeChallenge(handle,runtime,context);
+  })();
+}
+
+// Node's HTTPS client does not consume proxy environment variables or .netrc.
+// Every credential-bearing request has a fixed GitHub service scope and cannot
+// follow a redirect. DNS is resolved once and public peers are checked again.
+function publicAddress(address) {
+  if(address.includes(':'))return /^[23][0-9a-f]{3}:/i.test(address) && !/^2001:db8:/i.test(address);
+  const a=address.split('.').map(Number);if(a.length!==4 || a.some(n=>!Number.isInteger(n)||n<0||n>255))return false;
+  return !(a[0]===0 || a[0]===10 || a[0]===127 || a[0]>=224 || (a[0]===100&&a[1]>=64&&a[1]<=127) ||
+    (a[0]===169&&a[1]===254) || (a[0]===172&&a[1]>=16&&a[1]<=31) ||
+    (a[0]===192&&(a[1]===168||a[1]===0||a[1]===2)) || (a[0]===198&&(a[1]===18||a[1]===19||a[1]===51)) || (a[0]===203&&a[1]===0));
+}
+function serviceURL(validated,kind,rawURL,token) {
+  requireValue(typeof rawURL==='string' && rawURL.length<=8192 && !/[\x00-\x20\\]/.test(rawURL));
+  const url=new URL(rawURL);requireValue(url.protocol==='https:' && !url.username && !url.password && !url.port && !url.hash);
+  if(kind==='github')requireValue(url.origin==='https://api.github.com' && /^\/repos\/lucronn\/autodata\/actions\//.test(url.pathname) && !url.search);
+  else if(kind==='storage')requireValue(validated.policy.storage_origins.includes(url.origin) && token===undefined);
+  else if(kind==='oidc') {
+    requireValue(/^[a-z0-9-]+\.actions\.githubusercontent\.com$/.test(url.hostname));
+    requireValue(/^\/_apis\/distributedtask\/hubs\/build\/plans\/[0-9a-f-]{36}\/jobs\/[0-9a-f-]{36}\/idtoken$/.test(url.pathname));
+    requireValue([...url.searchParams.keys()].every(k=>['api-version','audience'].includes(k)) && url.searchParams.getAll('api-version').length===1 && url.searchParams.get('api-version')==='2.0' && url.searchParams.getAll('audience').length===1 && url.searchParams.get('audience')===validated.policy.oidc.audience);
+  } else fail();
+  return url;
+}
+export async function installedServiceRequest(handle,kind,rawURL,{token,maximum=65536,deadline=Date.now()+30000}={}) {
+  const validated=installedLivePolicyClaims(handle);
+  const url=serviceURL(validated,kind,rawURL,token);
+  requireValue(token===undefined || (typeof token==='string' && /^[\x21-\x7e]{1,16384}$/.test(token)));
+  requireValue(Number.isInteger(maximum) && maximum>=1 && maximum<=16*1024*1024 && Number.isSafeInteger(deadline) && deadline>Date.now() && deadline-Date.now()<=60000);
+  const {request}=await import('node:https'),{lookup}=await import('node:dns/promises');
+  const addresses=await Promise.race([lookup(url.hostname,{all:true,verbatim:true}),new Promise((_,reject)=>{const timer=setTimeout(()=>reject(Error('operation_timed_out')),Math.max(1,deadline-Date.now()));timer.unref();})]);
+  requireValue(addresses.length>=1 && addresses.length<=32 && addresses.every(a=>publicAddress(a.address)) && Date.now()<deadline);
+  return new Promise((resolve,reject)=>{
+    let done=false,requestObject;const sockets=new Set();
+    const finish=(error,value)=>{if(done)return;done=true;clearTimeout(timer);if(error){requestObject?.destroy();for(const socket of sockets)socket.destroy();reject(Error('service_request_failed'));}else resolve(value);};
+    const timer=setTimeout(()=>finish(Error('operation_timed_out')),Math.max(1,deadline-Date.now()));
+    const headers={'User-Agent':'autodata-workshop-publisher-v3','Accept-Encoding':'identity'};
+    if(token!==undefined)headers.Authorization='Bearer '+token;
+    if(kind==='github'){headers.Accept='application/vnd.github+json';headers['X-GitHub-Api-Version']='2022-11-28';}
+    requestObject=request(url,{method:'GET',agent:false,headers,lookup:(_host,opts,callback)=>{const selected=addresses[0];callback(null,opts.all?[selected]:selected.address,selected.family);}},response=>{
+      const lengths=response.rawHeaders.filter((_,i)=>i%2===0&&response.rawHeaders[i].toLowerCase()==='content-length');
+      if(lengths.length>1 || ![undefined,'identity'].includes(response.headers['content-encoding'])){finish(Error('invalid_response'));return;}
+      const length=response.headers['content-length'];if(length!==undefined&&(!/^[0-9]{1,10}$/.test(length)||Number(length)>maximum)){finish(Error('output_limit'));return;}
+      const chunks=[];let size=0;
+      response.on('data',chunk=>{size+=chunk.length;if(size>maximum || Date.now()>=deadline){finish(Error('output_limit'));return;}chunks.push(chunk);});
+      response.on('error',finish);response.on('end',()=>{if(length!==undefined&&Number(length)!==size){finish(Error('invalid_response'));return;}finish(null,{status:response.statusCode,location:response.headers.location,bytes:Buffer.concat(chunks,size)});});
+    });
+    requestObject.on('socket',socket=>{sockets.add(socket);socket.on('secureConnect',()=>{if(!addresses.some(a=>a.address===socket.remoteAddress)||!publicAddress(socket.remoteAddress))finish(Error('unsafe_address'));});socket.once('close',()=>sockets.delete(socket));});
+    requestObject.on('error',finish);requestObject.end();
+  });
+}
+export async function fetchInstalledGithubOidc(handle,context,requestCredentials) {
+  const {policy}=installedLivePolicyClaims(handle);validateContext(context);
+  if(requestCredentials!==undefined)ownData(requestCredentials,['ACTIONS_ID_TOKEN_REQUEST_URL','ACTIONS_ID_TOKEN_REQUEST_TOKEN']);
+  const rawURL=requestCredentials===undefined?process.env.ACTIONS_ID_TOKEN_REQUEST_URL:requestCredentials.ACTIONS_ID_TOKEN_REQUEST_URL;
+  requireValue(typeof rawURL==='string' && !rawURL.includes('audience='));
+  const url=new URL(rawURL);url.searchParams.append('audience',policy.oidc.audience);
+  serviceURL({policy},'oidc',url.href);
+  const response=await installedServiceRequest(handle,'oidc',url.href,{token:requestCredentials===undefined?process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN:requestCredentials.ACTIONS_ID_TOKEN_REQUEST_TOKEN,maximum:32768});
+  requireValue(response.status===200);const data=parseStrictJsonBytes(response.bytes,{maxBytes:32768});ownData(data,['value']);
+  const raw=Buffer.from(data.value,'utf8'),claims=verifyInstalledLiveGithubOidc(raw,handle,context);
+  verifiedTokens.set(claims,{handle,raw});return claims;
+}
+
+export const isPublicServiceAddress=publicAddress;
+
+const verifiedTokens=new WeakMap();
+/** Only genuine verified-token handles can create the fixed private signing file. */
+export async function writeVerifiedSigstoreToken(handle,claims) {
+ const {policy}=installedLivePolicyClaims(handle),token=verifiedTokens.get(claims);
+ requireValue(token?.handle===handle && policy.oidc.audience==='sigstore' && claims.exp>Math.floor(Date.now()/1000)+30);
+ const {open,realpath,unlink}=await import('node:fs/promises'),{constants}=await import('node:fs');
+ const cwd=process.cwd();requireValue(await realpath(cwd)===cwd);
+ const directory=await open(cwd,constants.O_RDONLY|constants.O_DIRECTORY|constants.O_NOFOLLOW);let file,created=false;
+ try {
+  const before=await directory.stat();requireValue(before.uid===process.getuid() && (before.mode&0o7777)===0o700);
+  const name=`/proc/self/fd/${directory.fd}/identity-token`;
+  try {
+   file=await open(name,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,0o600);created=true;
+   await file.writeFile(token.raw);await file.sync();const after=await file.stat();
+   requireValue(after.isFile() && after.nlink===1 && after.uid===process.getuid() && (after.mode&0o7777)===0o600 && after.size===token.raw.length);
+   const later=await directory.stat();requireValue(before.dev===later.dev && before.ino===later.ino && before.mode===later.mode && before.uid===later.uid);
+  } catch {if(created)await unlink(name);fail();}
+ } finally {await file?.close();await directory.close();}
+}
