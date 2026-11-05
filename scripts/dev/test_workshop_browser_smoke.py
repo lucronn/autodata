@@ -1259,7 +1259,137 @@ class DTOWorkflowBindingTests(unittest.TestCase):
         self.assertEqual(r6['product_evidence']['ci_profile']['workflow_sha256'],smoke.hashlib.sha256(workflow).hexdigest())
 
 
+class API21FakeResponse:
+    def __init__(self,url,data,status=200,request=None):
+        self.url,self.data,self.status=url,data,status
+        self.request=request or SimpleNamespace(method='GET')
+    async def body(self):return self.data if isinstance(self.data,bytes) else json.dumps(self.data).encode()
+    async def json(self):return self.data
+
+
+class API21FakeBrowser:
+    """Scripted browser surfaces only; real API producer logic remains exercised."""
+    def __init__(self,name,bank='bankone',missing=None):
+        self.name,self.bank,self.missing=name,bank,missing
+        self.contexts=[];self.version='fake-browser';self.closed=False
+        self.scope=dict(configuration=smoke.CONFIG,article=smoke.ARTICLE,adjacent=smoke.OTHER,
+            other_region=smoke.REVISION,unscoped=smoke.ORDER,vehicle=smoke.OTHER,provider=bank)
+        self.paid=False;self.revoked=False;self.generation=1;self.reads=0
+    async def new_context(self,**kwargs):
+        context=API21FakeContext(self,other=bool(self.contexts));self.contexts.append(context);return context
+    async def close(self):self.closed=True
+    def measurement(self,context):
+        exists=bool(context.transport and context.transport.checkout_count) or self.paid
+        order=dict(order_id=smoke.ORDER,configuration_id=smoke.CONFIG,region='US',
+            state='revoked' if self.revoked else 'paid' if self.paid else 'open',owner='owner')
+        return dict(auth_sessions=int(context.signed),hashed_sessions=int(context.signed),sdk_cert_calls=1,
+            sdk_user_calls=2,sdk_unexpected=0,workshop_orders=int(exists),workshop_checkout_requests=int(exists),
+            entitlements=int(self.paid),dataset_requests=int(self.paid),dataset_projections=int(self.paid),
+            payment_events=int(self.paid),image_reads=self.reads,orders=[order] if exists else [])
+    def snapshot(self):
+        return dict(payment_calls=1,paid_rows=dict(workshop_orders=[dict(order_id=smoke.ORDER,
+            configuration_id=smoke.CONFIG,region='US',status='open',checkout_session_id='cs_test_'+'a'*32)],entitlements=[]),
+            provider_calls={'bankone':1,'banktwo':0},source_calls={'bankone':1,'banktwo':0},asset_calls={'bankone':1,'banktwo':0},
+            model_calls=1,counts={'published_revisions':1},immutable_sha256='a'*64)
+
+
+class API21FakeContext:
+    def __init__(self,browser,other=False):
+        self.browser,self.other=browser,other
+        self.request=self;self.transport=None;self.signed=False;self.disabled=False;self.page=None;self.closed=False
+    async def route(self,pattern,handler):self.transport=handler.__self__
+    async def new_page(self):self.page=API21FakePage(self);return self.page
+    async def close(self):self.closed=True
+    async def cookies(self,origin):return [dict(name='__Host-autodata_session',secure=True,httpOnly=True,sameSite='Lax')]
+    async def get(self,url,**kwargs):
+        browser=self.browser;path=smoke.urlsplit(url).path
+        phase=getattr(getattr(self,'_api21',None),'phase','')
+        data={};status=200
+        if path=='/__fixture/metadata':data=dict(kind='api-fixture',scope=browser.scope)
+        elif path=='/__fixture/measurement':data=browser.measurement(self)
+        elif path=='/__fixture/snapshot':data=browser.snapshot()
+        elif path=='/__fixture/runtime':data={'application_generation':browser.generation}
+        elif 'denial' in phase:
+            status=404 if phase in ('other-image-denial','adjacent-denial','other-region-denial','unscoped-article-denial','legacy-vehicle-denial') else 401 if phase in ('logout-image-denial','disabled-image-denial') else 403
+            data={'error':'denied'}
+        elif phase=='other-library-http':data={'items':[]}
+        elif '/images/' in path:browser.reads+=1;data=b'image-original-bytes'
+        return API21FakeResponse(url,data,status)
+    async def post(self,url):
+        path=smoke.urlsplit(url).path
+        if path=='/__fixture/payment/settle':self.browser.paid=True
+        if path=='/__fixture/payment/refund':self.browser.revoked=True
+        if path=='/__fixture/restart':self.browser.generation+=1
+        if path=='/__fixture/disable':self.disabled=True
+        return API21FakeResponse(url,{},200)
+
+
+class API21FakePage:
+    def __init__(self,context):self.context=context;self.handlers={};self.url='about:blank'
+    def on(self,event,callback):self.handlers[event]=callback
+    def locator(self,selector):return API21FakeLocator(self,selector)
+    def emit(self,url,data,request=None):
+        observations=getattr(self.context,'_api21',None)
+        if observations and observations.phase==self.context.browser.missing:return
+        callback=self.handlers.get('response')
+        if callback:callback(API21FakeResponse(url,data,request=request))
+    def library(self):
+        self.emit('https://127.0.0.1:32001/v1/workshop/library?limit=20',dict(items=[dict(
+            library_item_id=smoke.ORDER,configuration_id=smoke.CONFIG,region='US',access_state='paid')]))
+    async def goto(self,url):
+        self.url=url
+        if 'article=' in url:
+            self.emit('https://127.0.0.1:32001/v1/catalog/vehicles/'+smoke.CONFIG+'/articles/'+smoke.ARTICLE,{'content':'source'})
+    async def reload(self):
+        phase=getattr(getattr(self.context,'_api21',None),'phase','')
+        if phase.startswith('owner-library-'):self.library()
+        elif phase=='warm-page-http':self.emit('https://127.0.0.1:32001/v1/catalog/vehicles/'+smoke.CONFIG+'/articles/'+smoke.ARTICLE,{'content':'canonical'})
+    async def wait_for_url(self,pattern):pass
+    async def evaluate(self,code):return []
+    async def screenshot(self,**kwargs):raise RuntimeError('fake screenshot unavailable')
+
+
+class API21FakeLocator:
+    def __init__(self,page,selector):self.page,self.selector=page,selector;self.first=self
+    async def click(self,**kwargs):
+        context=self.page.context;browser=context.browser
+        if self.selector=='#signin':context.signed=True
+        elif self.selector=='#signout':context.signed=False
+        elif self.selector=='#my-vehicles':self.page.library()
+        elif self.selector=='#source-review-load':
+            self.page.emit('https://127.0.0.1:32001/v1/catalog/vehicles/'+smoke.CONFIG+'/articles/'+smoke.ARTICLE+'/source',{'source':'Remove the pump.'})
+        elif self.selector in ('#purchase-action','#retry'):
+            route=CheckoutRoute()
+            route.request.post_data_buffer=route.request.post_data.encode()
+            route.fetched_response.body=lambda:asyncio.sleep(0,result=json.dumps(route.fetched_response.data).encode())
+            await context.transport.route(route)
+            if browser.name!=smoke.API_CASES[0]:
+                context.transport.checkout_count=1
+                self.page.emit(route.request.url,route.fetched_response.data,route.request)
+            if browser.name!=smoke.API_CASES[0] or self.selector=='#retry':self.page.url=route.fetched_response.data['checkout_url']
+    async def check(self):pass
+    async def get_attribute(self,name):
+        if name=='src':return 'https://127.0.0.1:32001/v1/catalog/images/v2.fake-capability'
+        return '/v1/catalog/vehicles/'+smoke.CONFIG+'/articles/'+smoke.ARTICLE+'/source?source_revision_id='+smoke.REVISION
+    def __getattr__(self,name):
+        async def expectation(*args,**kwargs):pass
+        return expectation
+
+
 class API21ObservationsTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        # Any accidental service, process, socket or urllib use fails this suite.
+        self.sentinels=[]
+        for owner,name in ((smoke.subprocess,'Popen'),(smoke.subprocess,'run'),(smoke,'urlopen'),
+                (smoke.socket,'socket'),(smoke.os,'killpg')):
+            item=patch.object(owner,name,side_effect=AssertionError('forbidden real operation'))
+            item.start();self.sentinels.append(item)
+        import urllib.request
+        item=patch.object(urllib.request,'urlopen',side_effect=AssertionError('forbidden real operation'))
+        item.start();self.sentinels.append(item)
+    async def asyncTearDown(self):
+        for item in reversed(self.sentinels):item.stop()
+
     def binding(self):
         return dict(binding_state='complete',unavailable_reason=None,
             api_observability_version='api21-producer-v2',run_id='a'*32,attempt_id='b'*32,
@@ -1346,6 +1476,134 @@ class API21ObservationsTests(unittest.IsolatedAsyncioTestCase):
             self.assertFalse((root/'elsewhere').exists())
             self.assertEqual(buffer.snapshot()['primary_failure'],'assertion_failed')
             self.assertIn('API21_PUBLICATION_FAILED',str(stderr.write.call_args_list))
+
+    async def test_api_case_retains_failure_before_context_creation(self):
+        buffer=self.buffer()
+        class Browser:
+            async def new_context(self,**kwargs):raise RuntimeError('secret-from-browser')
+        with patch.dict(sys.modules,{'playwright.async_api':SimpleNamespace(expect=lambda value:None)}):
+            with self.assertRaises(RuntimeError):
+                await smoke.api_case(Browser(),'https://127.0.0.1:32001',smoke.API_CASES[0],Path('/unused'),observations=buffer)
+        snapshot=buffer.snapshot()
+        self.assertEqual(snapshot['status'],'failed')
+        self.assertEqual(snapshot['primary_failure'],'launch_failed')
+        self.assertNotIn('secret-from-browser',json.dumps(snapshot))
+        self.assertEqual(snapshot['events'][-1]['payload']['state'],'failed')
+
+    async def test_run_metadata_failure_publishes_safe_failed_prefix(self):
+        buffer=self.buffer()
+        with TemporaryDirectory() as temp:
+            args=SimpleNamespace(mode='api-fixture',browser='chromium',output=temp,
+                base_url='https://127.0.0.1:32001',candidate_sha='c'*40)
+            with (patch.dict(smoke.os.environ,{
+                    'AUTODATA_WORKSHOP_BROWSER_CASE':smoke.API_CASES[0],
+                    'AUTODATA_API21_BINDING':json.dumps(self.binding())}),
+                    patch.object(smoke,'verify_provenance',side_effect=RuntimeError('secret-token')),
+                    patch.dict(sys.modules,{'playwright.async_api':SimpleNamespace(async_playwright=lambda:None)})):
+                with self.assertRaises(Exception):await smoke.run(args)
+            value=json.loads((Path(temp)/'evidence.json').read_bytes())
+            self.assertEqual(value['results'][0]['status'],'failed')
+            self.assertNotIn('secret-token',json.dumps(value))
+            self.assertEqual(value['results'][0]['observations']['primary_failure'],'source_binding_failed')
+
+    async def test_actual_api_case_all_21_scripted_surfaces_retain_phase_matrix(self):
+        matrix=json.loads((smoke.ROOT/'docs/agents/specs/2026-11-04-workshop-api21-producer-observability.json').read_text())['phase_matrix']
+        count=0
+        for name in smoke.API_CASES:
+            for engine in smoke.ENGINES:
+                for bank in ('bankone',) if name==smoke.API_CASES[0] else ('bankone','banktwo'):
+                    binding=self.binding();binding.update(root=name,engine=engine,bank=bank)
+                    buffer=smoke.APIObservations(binding);browser=API21FakeBrowser(name,bank)
+                    with self.subTest(name=name,engine=engine,bank=bank),TemporaryDirectory() as temp, \
+                            patch.dict(sys.modules,{'playwright.async_api':SimpleNamespace(expect=lambda value:value)}):
+                        result=await smoke.api_case(browser,'https://127.0.0.1:32001',name,Path(temp),observations=buffer)
+                        self.assertEqual(result['status'],'passed',buffer.snapshot())
+                        phases=list(dict.fromkeys(e['phase'] for e in result['observations']['events']))
+                        self.assertEqual(phases,matrix[name])
+                        self.assertTrue(all(c.closed for c in browser.contexts));count+=1
+        self.assertEqual(count,21)
+
+    async def test_source_window_without_actual_response_cannot_pass(self):
+        buffer=self.buffer();browser=API21FakeBrowser(smoke.API_CASES[1],missing='source-page-http')
+        with TemporaryDirectory() as temp,patch.dict(sys.modules,{'playwright.async_api':SimpleNamespace(expect=lambda value:value)}):
+            result=await smoke.api_case(browser,'https://127.0.0.1:32001',smoke.API_CASES[1],Path(temp),observations=buffer)
+        self.assertEqual(result['status'],'failed')
+        self.assertEqual(result['observations']['primary_failure'],'assertion_failed')
+
+    async def test_runtime_poll_ceiling_is_phase_specific(self):
+        buffer=self.buffer();response=API21FakeResponse('https://local/__fixture/runtime',{'application_generation':1})
+        for attempt in range(100):await buffer.http(response,response.url,phase='runtime-poll')
+        self.assertEqual(buffer.snapshot()['events'][-1]['payload']['attempt'],100)
+        with self.assertRaises(smoke.APIObservationError):await buffer.http(response,response.url,phase='runtime-poll')
+        buffer=self.buffer()
+        for attempt in range(16):await buffer.http(response,response.url,phase='runtime-before')
+        with self.assertRaises(smoke.APIObservationError):await buffer.http(response,response.url,phase='runtime-before')
+
+    async def test_actual_run_fake_playwright_success_keeps_exact_extensions_and_binding(self):
+        with TemporaryDirectory() as temp:
+            root=Path(temp);manifest=root/'browsers.json';manifest.write_text('{"browsers":[{"name":"chromium","revision":"123"}]}')
+            output=root/'browser'
+            args=SimpleNamespace(mode='api-fixture',browser='chromium',output=str(output),
+                base_url='https://127.0.0.1:32001',candidate_sha='c'*40)
+            binding=self.binding()
+            names=['scripts/dev/workshop_browser_smoke.py','scripts/dev/fixtures/workshop_customer/scenarios.json',
+                'scripts/dev/fixtures/workshop_customer/firebase_transport.js','scripts/dev/fixtures/workshop_customer/hostile_source.json',
+                'scripts/dev/fixtures/workshop_customer/stripe_checkout.html','apps/api-go/workshop_browser_fixture_test.go',
+                'workers/ingestion-python/tests/test_workshop_browser_integration.py']
+            binding['source_input_sha256']={name:smoke.hashlib.sha256((smoke.ROOT/name).read_bytes()).hexdigest() for name in names}
+            browser=API21FakeBrowser(smoke.API_CASES[0]);calls=[]
+            class Manager:
+                async def __aenter__(self):return SimpleNamespace(chromium=self)
+                async def __aexit__(self,*args):return False
+                async def launch(self,**kwargs):calls.append(kwargs);return browser
+            with (patch.dict(smoke.os.environ,{'AUTODATA_WORKSHOP_BROWSER_CASE':smoke.API_CASES[0],
+                    'AUTODATA_API21_BINDING':json.dumps(binding)}),
+                    patch.object(smoke,'verify_provenance',return_value={'kind':'api-fixture'}),
+                    patch.object(smoke.importlib.metadata,'distribution',return_value=SimpleNamespace(locate_file=lambda path:manifest)),
+                    patch.object(smoke.importlib.metadata,'version',return_value='1.64.1'),
+                    patch.dict(sys.modules,{'playwright.async_api':SimpleNamespace(async_playwright=Manager,expect=lambda value:value)})):
+                result=await smoke.run(args)
+            value=smoke.api21_load((output/'evidence.json').read_bytes())
+            self.assertEqual(value['binding'],binding)
+            self.assertEqual(set(value['input_sha256']),set(names[:-1]))
+            self.assertEqual(value['results'][0]['provider'],'bankone')
+            self.assertEqual(value['results'][0]['observations']['publication'],'written')
+            self.assertEqual(value['results'][0]['observations']['status'],'passed')
+            self.assertEqual(calls,[{}]);self.assertTrue(browser.closed)
+            self.assertEqual(result,value)
+
+    async def test_capacity_failure_does_not_prevent_context_cleanup(self):
+        browser=API21FakeBrowser(smoke.API_CASES[1]);buffer=self.buffer(max_events=4)
+        with TemporaryDirectory() as temp,patch.dict(sys.modules,{'playwright.async_api':SimpleNamespace(expect=lambda value:value)}):
+            try:await smoke.api_case(browser,'https://127.0.0.1:32001',smoke.API_CASES[1],Path(temp),observations=buffer)
+            except smoke.APIObservationError:pass
+        self.assertEqual(buffer.snapshot()['primary_failure'],'over_limit')
+        self.assertTrue(browser.contexts[0].closed)
+
+    async def test_empty_control_and_nonjson_denial_keep_original_bytes(self):
+        buffer=self.buffer()
+        for status,raw,content_type in ((204,b'',''),(404,b'404 page not found\n','text/plain; charset=utf-8')):
+            response=API21FakeResponse('https://local/__fixture/disable',raw,status)
+            response.headers={'content-type':content_type}
+            await buffer.http(response,response.url,phase='disable-control')
+            body=buffer.snapshot()['events'][-1]['payload']['response']
+            self.assertEqual(body['availability'],'retained')
+            self.assertEqual(smoke.base64.b64decode(body['base64']),raw)
+            self.assertIsNone(body['parsed'])
+
+    def test_failed_publication_retries_minimal_receipt_and_keeps_primary(self):
+        buffer=self.buffer();buffer.fail('assertion_failed');writes=[]
+        def write(path,value):
+            writes.append(copy.deepcopy(value))
+            if len(writes)==1:raise OSError('secret disk detail')
+        with patch.object(smoke,'api21_write',side_effect=write):
+            self.assertFalse(smoke.api21_publish(Path('/unused'),{'results':[]},buffer))
+        self.assertEqual(len(writes),2)
+        row=writes[1]['results'][0]
+        self.assertEqual(row['status'],'failed')
+        self.assertEqual(row['observations']['primary_failure'],'assertion_failed')
+        self.assertEqual(row['observations']['publication'],'failed')
+        self.assertNotIn('secret disk detail',json.dumps(writes))
 
     def test_safe_routes_exclude_auth_and_all_capabilities_queries_hosts(self):
         self.assertIsNone(smoke.api21_route('https://local/v1/auth/session'))
