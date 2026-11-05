@@ -1,0 +1,32 @@
+{
+  "goal": "Restore Bankone ingestion CLI construction by passing --timeout-seconds to the existing SourceConnectorClient timeout parameter.",
+  "plan_ref": "docs/superpowers/plans/2026-11-05-bankone-cli-timeout-compatibility.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/318",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/source-connector-api-compatibility.md"
+  ],
+  "todo": [
+    "Add a focused offline CLI regression using the real SourceConnectorClient constructor and mocked traversal/persistence.",
+    "Change only the CLI constructor keyword from timeout_seconds to timeout, retaining the flag, default, credentials and persist behavior.",
+    "Run red/green focused checks, Bankone batch regressions and diff checks; commit/push the validated two-file fix for independent exact-SHA review."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-05T14:20:34.907569+00:00",
+  "parent_issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhGS3rE",
+  "inspected_source_sha": "27b959bf3845bb6bc3f20c3b40db5a582c61573e",
+  "branch": "codex/bankone-cli-timeout-gate",
+  "checkpoint_kind": "planning_only",
+  "implementation_allowlist": [
+    "scripts/dev/ingest_bankone_service.py",
+    "scripts/dev/test_ingest_bankone_service.py"
+  ],
+  "provider_calls_authorized": false,
+  "production_activation_authorized": false,
+  "tracking": {
+    "issue_body_sha256": "8a534a663479ff839b54dd8b70e525f32a0d45a0f9b707c6fd938a684281f617",
+    "project_source_sha256": "cf10acf4337d54dc46cdb9f4d82c513beab502dcd4a351d334d97802cf3ee937",
+    "verified_at": "2026-11-05T14:20:34.907620+00:00"
+  }
+}

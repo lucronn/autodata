@@ -93,3 +93,19 @@ compatibility/rollback; no bank service receives access to them.
 For ownership and local-versus-live status, see
 [Independent Bankone and Banktwo connectors](independent-bank-connectors.md)
 and [Bankone/Banktwo domain routing](bankone-banktwo-domain-routing.md).
+
+
+## Bankone CLI timeout compatibility
+
+Goal: Restore Bankone ingestion CLI construction by passing --timeout-seconds to the existing SourceConnectorClient timeout parameter.
+
+Issue: https://github.com/lucronn/autodata/issues/318; parent #186; Project https://github.com/users/lucronn/projects/8. Plan: `docs/superpowers/plans/2026-11-05-bankone-cli-timeout-compatibility.md`; record: `docs/agents/records/2026-11-05-bankone-cli-timeout-compatibility.json`.
+
+The public --timeout-seconds flag forwards its float to SourceConnectorClient timeout; default30.0 and existing client validation stay authoritative. Scope is only the CLI constructor keyword plus a focused offline test using the real constructor and mocked traversal/persistence. Credentials, selectors, output and persistence behavior remain intact. No live ingestion, shared-client alias, deployment or unrelated compatibility work is authorized.
+
+Concrete todo:
+- [ ] Add a focused offline CLI regression using the real SourceConnectorClient constructor and mocked traversal/persistence.
+- [ ] Change only the CLI constructor keyword from timeout_seconds to timeout, retaining the flag, default, credentials and persist behavior.
+- [ ] Run red/green focused checks, Bankone batch regressions and diff checks; commit/push the validated two-file fix for independent exact-SHA review.
+
+Bankone CLI implementation `f15ce05bd29d0f5a0cceb9ab8f3642c6f73b268c` changes only the connector constructor keyword to `timeout`. Three real-constructor CLI regressions and ten Bankone batch tests passed after the original TypeError was reproduced. The bounded real-source staging rerun and exact-head GitHub CI are pending.
