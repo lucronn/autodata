@@ -274,7 +274,8 @@ def test_exact_current_commands_and_dto_abort_bounds():
         "dto.go.start": 5100000, "dto.browser.start": 5100000}
     assert all(op.timeout_ms == 120000 for op in ops if op.readiness or op.id == "dto.seal")
     admitted = dataclasses.replace(b, runtime_admission_sha256="f" * 64)
-    assert {"blocked_timer_dependency", "supervisor_dto_deadline_mismatch"} <= set(c.graph_blockers(admitted, "dto"))
+    assert "blocked_timer_dependency" in c.graph_blockers(admitted, "dto")
+    assert "supervisor_dto_deadline_mismatch" not in c.graph_blockers(admitted, "dto")
     assert {"api_finite_success_proof_missing", "source_observer_not_admitted",
         "runtime_admission_not_verified", "filesystem_identity_not_observed",
         "go_path_resolution_not_observed", "live_adapter_not_admitted"} <= set(c.graph_blockers(admitted, "api"))
@@ -388,3 +389,13 @@ def test_temporal_structure_cannot_self_admit(mutation):
     changed['frozen_section_digests']['temporal_policy']=c.digest(policy)
     with pytest.raises(ValueError): c.validate_temporal_policy(policy)
     with pytest.raises(ValueError): c.validate_source_contract(changed)
+
+
+@pytest.mark.parametrize('field',['ordinary_seconds','emergency_cancellation_seconds','hard_seconds','attempts','additional_retries'])
+@pytest.mark.parametrize('replacement',[True,'120',0,-1])
+def test_policy_scalar_types_and_composition_cannot_drift(field,replacement):
+    policy=c.temporal_policy(); original=policy[field]
+    if type(original) is type(replacement) and original==replacement:
+        replacement=1
+    policy[field]=replacement
+    with pytest.raises(ValueError): c.validate_temporal_policy(policy)

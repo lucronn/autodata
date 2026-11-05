@@ -438,7 +438,7 @@ def graph_blockers(bindings: RuntimeBindings, lane: str) -> tuple[str, ...]:
     if bindings.runtime_admission_sha256 is None:
         result.add("runtime_admission_missing")
     if lane == "dto":
-        result.update(("blocked_timer_dependency", "supervisor_dto_deadline_mismatch"))
+        result.add("blocked_timer_dependency")
     else:
         result.add("api_finite_success_proof_missing")
     return tuple(sorted(result))

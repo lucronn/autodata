@@ -123,7 +123,7 @@ def test_failure_events_stop_dispatch_without_laundering(kind):
     assert st["status"] != "sealed_unreviewed"
 
 
-@pytest.mark.parametrize("now", [99, 7500000000100])
+@pytest.mark.parametrize("now", [99, state()["deadline_ns"]])
 def test_backward_clock_and_at_deadline_stop(now):
     st, actions = s.reduce(state(), event("tick", now))
     assert st["status"] in ("failed", "interrupted")
@@ -382,3 +382,256 @@ def test_emergency_helper_freezes_first_failure_and_clips_hard_end():
     assert s.emergency_cleanup_deadline_ns(200,200)==200
     assert s.emergency_cleanup_deadline_ns(201,200)==200
     with pytest.raises(ValueError): s.emergency_cleanup_deadline_ns(100,200,201)
+
+
+def services_state():
+    st=state()
+    st,_=s.reduce(st,event('advance',101,target='preparing'))
+    for name in ('preparation_complete','runtime_binding_observed'):
+        st,_=s.reduce(st,event('receipt',102,name=name,sha256='a'*64))
+    st,_=s.reduce(st,event('advance',103,target='services_starting'))
+    assert st['status']=='services_starting'
+    return st
+
+
+def ready_state(runner_ns=104):
+    st=services_state()
+    for i,name in enumerate(('runner_started','postgres_ready','nats_ready','s3_ready')):
+        st,_=s.reduce(st,event('receipt',runner_ns+i,name=name,sha256='a'*64))
+    st,_=s.reduce(st,event('advance',runner_ns+4,target='ready'))
+    assert st['status']=='ready'
+    return st
+
+
+def api_state():
+    st=ready_state()
+    st,_=s.reduce(st,event('receipt',109,name='api_producer_started',sha256='a'*64))
+    st,_=s.reduce(st,event('advance',110,target='api_running'))
+    assert st['status']=='api_running'
+    return st
+
+
+def test_initial_ordinary_end_protects_reserve_and_clips_long_lease():
+    st=s.initial_state(bindings(),100,broker_process=process(),lease_ns=99999*s.NS)
+    assert st['ordinary_deadline_ns']==100+9300*s.NS
+    assert st['deadline_ns']-st['ordinary_deadline_ns']==120*s.NS
+    assert st['lease_until_ns']==st['phase_deadline_ns']==100+480*s.NS
+
+
+@pytest.mark.parametrize('offset',[0,480_000_000_000-1])
+def test_runner_creation_subslot_starts_one_shared_readiness_interval(offset):
+    st=services_state(); entry=103; now=entry+offset
+    assert st['services_entry_ns']==entry
+    assert st['phase_deadline_ns']==entry+480*s.NS
+    st,_=s.reduce(st,event('receipt',now,name='runner_started',sha256='a'*64))
+    deadline=now+360*s.NS
+    assert st['phase_deadline_ns']==st['services_readiness_deadline_ns']==deadline
+    assert st['service_operation_deadline_ns']==now+120*s.NS
+    st,_=s.reduce(st,event('receipt',now+1,name='runner_started',sha256='a'*64))
+    assert st['phase_deadline_ns']==deadline and st['service_operation_deadline_ns']==now+120*s.NS
+
+
+@pytest.mark.parametrize('offset',[480_000_000_000,480_000_000_001])
+def test_runner_at_creation_equality_cannot_open_readiness(offset):
+    st,_=s.reduce(services_state(),event('receipt',103+offset,name='runner_started',sha256='a'*64))
+    assert st['status'] in s.NONPASS
+    assert st['services_readiness_deadline_ns'] is None
+    assert 'runner_started' not in st['receipts']
+
+
+@pytest.mark.parametrize('name',['runner_started','postgres_ready','nats_ready','s3_ready'])
+def test_service_receipts_cannot_be_preseeded_before_services(name):
+    st,_=s.reduce(state(),event('receipt',name=name,sha256='a'*64))
+    assert st['status']=='recovery_blocked' and name not in st['receipts']
+
+
+@pytest.mark.parametrize('names',[('postgres_ready',),('runner_started','nats_ready'),
+    ('runner_started','postgres_ready','s3_ready')])
+def test_readiness_requires_runner_then_serial_service_order(names):
+    st=services_state()
+    for i,name in enumerate(names):
+        st,_=s.reduce(st,event('receipt',104+i,name=name,sha256='a'*64))
+    assert st['status']=='recovery_blocked'
+
+
+def test_serial_readiness_receipts_advance_once_and_preserve_shared_end():
+    st=services_state(); start=104
+    st,_=s.reduce(st,event('receipt',start,name='runner_started',sha256='a'*64))
+    for i,name in enumerate(('postgres_ready','nats_ready','s3_ready')):
+        now=start+(i+1)*100*s.NS
+        st,_=s.reduce(st,event('receipt',now,name=name,sha256='a'*64))
+        assert st['service_readiness_index']==i+1
+        end=st['service_operation_deadline_ns']
+        st,_=s.reduce(st,event('receipt',now+1,name=name,sha256='a'*64))
+        assert st['service_readiness_index']==i+1 and st['service_operation_deadline_ns']==end
+        assert st['phase_deadline_ns']==start+360*s.NS
+    st,_=s.reduce(st,event('advance',start+350*s.NS,target='ready'))
+    assert st['phase_deadline_ns']==start+360*s.NS
+
+
+@pytest.mark.parametrize('kind',['tick','receipt','request'])
+def test_individual_readiness_operation_equality_fails_with_shared_time_remaining(kind):
+    st=services_state(); st,_=s.reduce(st,event('receipt',104,name='runner_started',sha256='a'*64))
+    now=104+120*s.NS
+    payload={'name':'postgres_ready','sha256':'a'*64} if kind=='receipt' else {}
+    incoming=request(st,now=now) if kind=='request' else event(kind,now,**payload)
+    st,actions=s.reduce(st,incoming)
+    assert st['status'] in s.NONPASS and 'postgres_ready' not in st['receipts']
+    assert st['service_operation_deadline_ns'] is None
+    assert not any(a['kind'] in ('create','append_fsync') for a in actions)
+
+
+@pytest.mark.parametrize('delta',[-1,0,1])
+def test_ready_to_api_handoff_inherits_readiness_deadline(delta):
+    st=ready_state(); end=104+360*s.NS
+    assert st['phase_deadline_ns']==end
+    st,_=s.reduce(st,event('receipt',108,name='api_producer_started',sha256='a'*64))
+    st,_=s.reduce(st,event('advance',end+delta,target='api_running'))
+    if delta<0:
+        assert st['status']=='api_running' and st['phase_deadline_ns']==end-1+2100*s.NS
+    else:
+        assert st['status'] in s.NONPASS
+
+
+def test_first_failure_freezes_cleanup_across_failure_and_receipt():
+    st,_=s.reduce(state(),event('source_failed',101,reason='first'))
+    end=101+120*s.NS
+    assert st['cleanup_deadline_ns']==st['phase_deadline_ns']==end
+    for now,kind,payload in [(102,'reap_failed',{'reason':'second'}),
+        (103,'receipt',{'name':'late','sha256':'a'*64}),
+        (104,'cleanup_finished',{'residual_resource_keys':[]})]:
+        st,_=s.reduce(st,event(kind,now,**payload))
+        assert st['cleanup_deadline_ns']==st['phase_deadline_ns']==end
+    assert st['failure_reasons'][0]=='first' and not st['pass'] and st['new_case_credit']==0
+
+
+@pytest.mark.parametrize('delta',[-1,0,1])
+def test_ordinary_cutoff_reserves_exactly_one_emergency_interval(delta):
+    st=api_state(); ordinary=st['ordinary_deadline_ns']; hard=st['deadline_ns']
+    # Internal invariant fixture places the active slot at the ordinary boundary.
+    st['phase_deadline_ns']=ordinary
+    st,_=s.reduce(st,event('source_failed',ordinary+delta,reason='first'))
+    assert st['cleanup_deadline_ns']==min(ordinary+delta+120*s.NS,hard)
+    assert st['failure_reasons'][0]=='first'
+    st,actions=s.reduce(st,event('reap_failed',hard,reason='too late'))
+    assert st['cleanup_deadline_ns']<=hard and not actions
+
+
+@pytest.mark.parametrize('delta',[-1,0,1])
+@pytest.mark.parametrize('kind',['tick','takeover','fence_fsynced','intent_fsynced','crash','reap_failed'])
+def test_emergency_end_never_resets_or_emits_expired_actions(delta,kind):
+    st,_=s.reduce(state(),request(state()))
+    st,_=s.reduce(st,event('source_failed',102,reason='first'))
+    end=102+120*s.NS
+    payload={'takeover':{'expected_epoch':1},'fence_fsynced':{'epoch':2,'sequence':1},
+        'intent_fsynced':{'action_id':'act','sequence':1,'parent_fsynced':True},
+        'crash':{'reason':'late crash'},'reap_failed':{'reason':'late reap'}}.get(kind,{})
+    st,actions=s.reduce(st,event(kind,end+delta,**payload))
+    assert st['cleanup_deadline_ns']==st['phase_deadline_ns']==end
+    assert st['failure_reasons'][0]=='first'
+    if delta>=0: assert not actions
+    assert all(a['deadline_ns']>st['now_ns'] for a in actions)
+
+
+def test_normal_cleanup_is_one240_interval_then_failure_switches_once_to120():
+    st=api_state(); st,_=s.reduce(st,event('receipt',111,name='producer_exited',sha256='a'*64))
+    st,_=s.reduce(st,event('advance',112,target='stopping'))
+    end=112+240*s.NS
+    assert st['phase_deadline_ns']==end
+    for now,target,names in [(113,'reaping',('owned_stop_complete',)),
+        (114,'sealing',('all_children_reaped','all_logs_flushed','inventory_accounted'))]:
+        for name in names: st,_=s.reduce(st,event('receipt',now,name=name,sha256='a'*64))
+        st,_=s.reduce(st,event('advance',now,target=target))
+        assert st['phase_deadline_ns']==end
+    st,_=s.reduce(st,event('signal',115,reason='cancel'))
+    assert st['cleanup_deadline_ns']==st['phase_deadline_ns']==115+120*s.NS
+    st,_=s.reduce(st,event('reap_failed',116,reason='repeat'))
+    assert st['cleanup_deadline_ns']==115+120*s.NS
+
+
+def test_watchdog_suppresses_expired_readiness_and_cleanup_actions():
+    st=services_state(); st,_=s.reduce(st,event('receipt',104,name='runner_started',sha256='a'*64))
+    assert not s.watchdog(st,104+120*s.NS)
+    st,_=s.reduce(st,event('source_failed',105,reason='first'))
+    assert not s.watchdog(st,105+120*s.NS)
+
+
+def test_heartbeat_clips_lease_to_active_end_without_changing_deadlines():
+    st=s.initial_state(bindings(),100,broker_process=process(),lease_ns=1000*s.NS)
+    before=st['phase_deadline_ns']
+    st,_=s.reduce(st,event('heartbeat',101,ticket=ticket(st)))
+    assert st['lease_until_ns']==st['phase_deadline_ns']==before
+
+
+def test_intent_and_observation_journal_actions_use_the_operation_minimum():
+    st,actions=s.reduce(state(),request(state()))
+    assert actions[0]['deadline_ns']==151
+    st,_=s.reduce(st,event('intent_fsynced',102,action_id='act',sequence=1,parent_fsynced=True))
+    st,actions=s.reduce(st,event('action_completed',103,action_id='act',success=True,observation={}))
+    assert actions[0]['deadline_ns']==151
+
+
+@pytest.mark.parametrize('delta',[0,1])
+def test_observation_fsync_at_operation_deadline_never_completes_action(delta):
+    st,_=s.reduce(state(),request(state()))
+    st,_=s.reduce(st,event('intent_fsynced',102,action_id='act',sequence=1,parent_fsynced=True))
+    st,_=s.reduce(st,event('action_completed',103,action_id='act',success=True,observation={}))
+    st,actions=s.reduce(st,event('observation_fsynced',151+delta,action_id='act',sequence=2))
+    assert st['status'] in s.NONPASS and 'act' not in st['completed_actions']
+    assert st['pending'] is not None and not actions
+
+
+@pytest.mark.parametrize('delta',[-1,0,1])
+def test_first_failure_at_hard_boundary_cannot_extend_cleanup(delta):
+    st=state(); hard=st['deadline_ns']
+    st,actions=s.reduce(st,event('source_failed',hard+delta,reason='late first'))
+    assert st['cleanup_deadline_ns']==st['phase_deadline_ns']==hard
+    assert st['failure_reasons']==['late first']
+    if delta>=0: assert not actions
+
+
+@pytest.mark.parametrize('target',['ready','api_running','stopping'])
+def test_phase_entry_clips_to_ordinary_deadline(target):
+    st=services_state() if target=='ready' else ready_state() if target=='api_running' else api_state()
+    if target=='ready':
+        for i,name in enumerate(('runner_started','postgres_ready','nats_ready','s3_ready')):
+            st,_=s.reduce(st,event('receipt',104+i,name=name,sha256='a'*64))
+    elif target=='api_running':
+        st,_=s.reduce(st,event('receipt',109,name='api_producer_started',sha256='a'*64))
+    else:
+        st,_=s.reduce(st,event('receipt',111,name='producer_exited',sha256='a'*64))
+    # Internal boundary fixture; no DTO reachability or real elapsed execution claim.
+    st['ordinary_deadline_ns']=1000
+    st['phase_deadline_ns']=1000
+    if target=='ready': st['services_readiness_deadline_ns']=1000
+    st,_=s.reduce(st,event('advance',999,target=target))
+    assert st['status']==target and st['phase_deadline_ns']==1000
+    st,actions=s.reduce(st,event('tick',1000))
+    assert st['status'] in s.NONPASS
+    assert st['cleanup_deadline_ns']==1000+120*s.NS
+    assert not any(a['kind']=='append_fsync' for a in actions)
+
+
+@pytest.mark.parametrize('delta',[-1,0,1])
+def test_normal_cleanup_seal_has_no_additional_allowance_at_equality(delta):
+    st=api_state()
+    for now,name in [(111,'producer_exited'),(113,'owned_stop_complete')]:
+        st,_=s.reduce(st,event('receipt',now,name=name,sha256='a'*64))
+        st,_=s.reduce(st,event('advance',now+1,target='stopping' if name=='producer_exited' else 'reaping'))
+    for name in ('all_children_reaped','all_logs_flushed','inventory_accounted'):
+        st,_=s.reduce(st,event('receipt',115,name=name,sha256='a'*64))
+    st,_=s.reduce(st,event('advance',116,target='sealing'))
+    st,_=s.reduce(st,event('receipt',117,name='seal_written',sha256='a'*64))
+    end=112+240*s.NS
+    assert st['phase_deadline_ns']==end
+    st,_=s.reduce(st,event('advance',end+delta,target='sealed_unreviewed'))
+    assert st['status']==('sealed_unreviewed' if delta<0 else 'interrupted')
+    assert not st['pass'] and st['new_case_credit']==0
+
+
+def test_rewritten_runner_receipt_preserves_first_readiness_history():
+    st=services_state(); st,_=s.reduce(st,event('receipt',104,name='runner_started',sha256='a'*64))
+    end=st['services_readiness_deadline_ns']
+    st,_=s.reduce(st,event('receipt',105,name='runner_started',sha256='b'*64))
+    assert st['status']=='recovery_blocked' and st['failure_reasons']==['receipt_rewritten']
+    assert st['services_readiness_deadline_ns']==end and st['receipts']['runner_started']=='a'*64
