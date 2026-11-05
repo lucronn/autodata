@@ -17,6 +17,24 @@ class ReleaseWorkflowContract(unittest.TestCase):
     def setUpClass(cls):
         cls.workflow = json.loads(WORKFLOW.read_text())
 
+    def node_runtime(self):
+        import os
+        import shutil
+        configured = os.environ.get('AUTODATA_WORKFLOW_NODE')
+        executable = shutil.which(configured or 'node')
+        if executable: return executable
+        if configured or os.environ.get('AUTODATA_REQUIRE_NODE_PROBES') == '1' or os.environ.get('AUTODATA_REQUIRE_DOCKER_CLEANUP') == '1':
+            self.fail('required executable workflow Node probe is unavailable')
+        self.skipTest('optional executable JS probe requires Node; static workflow contracts still run')
+
+    def test_missing_node_skips_optional_probe_but_required_probe_fails(self):
+        import os
+        from unittest.mock import patch
+        with patch('shutil.which',return_value=None), patch.dict(os.environ,{'AUTODATA_WORKFLOW_NODE':'','AUTODATA_REQUIRE_NODE_PROBES':'','AUTODATA_REQUIRE_DOCKER_CLEANUP':''}):
+            with self.assertRaises(unittest.SkipTest): self.node_runtime()
+            with patch.dict(os.environ,{'AUTODATA_REQUIRE_NODE_PROBES':'1'}):
+                with self.assertRaises(self.failureException): self.node_runtime()
+
     def test_production_authority_equals_pinned_checkpoint(self):
         self.assertEqual(self.workflow['permissions'], {'contents': 'read'})
         for name, digest in BASELINE.items():
@@ -77,14 +95,19 @@ class ReleaseWorkflowContract(unittest.TestCase):
 
     def test_static_registry_token_window_bounds_the_entire_cli_and_cleanup(self):
         import re
-        node = '/tmp/node-v22.23.4-linux-x64/bin/node'
-        if not Path(node).exists(): node = 'node'
         for name in ('staging-build-candidate', 'staging-finalize'):
             script = self.workflow['jobs'][name]['steps'][2]['with']['script']
             self.assertIn('service_account_impersonation:{token_lifetime_seconds:3600}', script)
             self.assertNotIn('7200000', script)
             self.assertLess(script.index('const credentialStartedAt=performance.now()'), script.index("await container('/usr/bin/python3',['-I','-c',exchange]"))
             self.assertIn('credentialWindow(credentialStartedAt)', script)
+            self.assertIsNotNone(re.search(r'function credentialWindow\(startedAt,now=performance.now\(\)\) \{([\s\S]*?)\n\}',script))
+
+    def test_registry_token_window_executable_boundaries(self):
+        import re
+        node = self.node_runtime()
+        for name in ('staging-build-candidate', 'staging-finalize'):
+            script = self.workflow['jobs'][name]['steps'][2]['with']['script']
             body = re.search(r'function credentialWindow\(startedAt,now=performance.now\(\)\) \{([\s\S]*?)\n\}', script).group(1)
             harness = r"""
 const assert=require('node:assert/strict');
@@ -102,6 +125,7 @@ assert.ok(credentialWindow(1000,1000)+5*60*1000<=3600*1000-10*60*1000);
             self.assertEqual(result.returncode,0,result.stderr)
 
     def test_outer_cleanup_requires_nonce_ownership_and_removes_daemon_worker(self):
+        node = self.node_runtime()
         import os
         import re
         import secrets
@@ -122,8 +146,6 @@ assert.ok(credentialWindow(1000,1000)+5*60*1000<=3600*1000-10*60*1000);
         match=re.search(r'// BEGIN OWNED BUILDER CLEANUP\n([\s\S]*?)// END OWNED BUILDER CLEANUP',script)
         self.assertIsNotNone(match,'outer timeout has no daemon-owned builder cleanup')
         helper=match.group(1)
-        node='/tmp/node-v22.23.4-linux-x64/bin/node'
-        if not Path(node).exists(): node='node'
         harness=r"""
 const assert=require('node:assert/strict'),{execFile}=require('node:child_process');
 const requireValue=value=>{if(!value)throw Error('cleanup_failed');};
@@ -163,8 +185,7 @@ new AsyncFunction('docker','requireValue','owner',process.argv[1]+';return clean
         script = self.workflow['jobs']['staging-build-candidate']['steps'][2]['with']['script']
         # Compile the actual action body and both finite Python programs. No
         # service or SDK fixture is involved in this workflow syntax check.
-        node = '/tmp/node-v22.23.4-linux-x64/bin/node'
-        if not Path(node).exists(): node = 'node'
+        node = self.node_runtime()
         import re
         for name in ('preflight','exchange'):
             template = re.search(r'const '+name+r' = `([\s\S]*?)`;', script).group(1)
