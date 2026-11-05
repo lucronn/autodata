@@ -15,9 +15,11 @@ import workshop_browser_execution_contract as c
 import workshop_browser_execution_evidence as evidence
 
 
-ATTEMPT_NS = 7500 * 1000000000
-PHASE_NS = {"reserved": 480, "preparing": 180, "services_starting": 120, "ready": 120,
-            "api_running": 2100, "dto_running": 4560, "stopping": 120, "reaping": 120, "sealing": 120}
+NS = 1_000_000_000
+_POLICY = c.temporal_policy()
+SLOT_SECONDS = {row['id']: row['seconds'] for row in _POLICY['slots']}
+ATTEMPT_NS = _POLICY['hard_seconds'] * NS
+PHASE_NS = copy.deepcopy(_POLICY['phase_seconds'])
 TRANSITIONS = {
     "preparing": (("reserved",), ("reserved",)),
     "services_starting": (("preparing",), ("preparation_complete", "runtime_binding_observed")),
@@ -36,6 +38,41 @@ NONPASS = {"failed", "interrupted", "recovery_blocked"}
 LIVE_MODES = {"execute", "probe-execute", "cleanup-live", "recover-live", "execute-runner", "broker-live", "watchdog-live"}
 
 
+def _instant(value):
+    if type(value) is not int or value < 0:
+        raise ValueError('nonnegative integer monotonic instant required')
+    return value
+
+
+def operation_deadline_ns(start_ns: int, cap_seconds: int, phase_end_ns: int) -> int:
+    _instant(start_ns); _instant(phase_end_ns)
+    if type(cap_seconds) is not int or cap_seconds <= 0 or start_ns >= phase_end_ns:
+        raise ValueError('expired or invalid operation budget')
+    return min(start_ns + cap_seconds * NS, phase_end_ns)
+
+
+def slot_deadline_ns(slot: str, entry_ns: int, ordinary_end_ns: int) -> int:
+    return operation_deadline_ns(entry_ns, SLOT_SECONDS[slot], ordinary_end_ns)
+
+
+def services_readiness_deadline_ns(entry_ns: int, runner_started_ns: int, ordinary_end_ns: int) -> int:
+    _instant(entry_ns); _instant(runner_started_ns); _instant(ordinary_end_ns)
+    creation_end = slot_deadline_ns('api_creation', entry_ns, ordinary_end_ns)
+    if not entry_ns <= runner_started_ns < creation_end:
+        raise ValueError('runner receipt outside creation subslot')
+    return min(runner_started_ns + 360 * NS, entry_ns + 840 * NS, ordinary_end_ns)
+
+
+def emergency_cleanup_deadline_ns(first_failure_ns: int, hard_end_ns: int, existing_end_ns: int | None = None) -> int:
+    _instant(first_failure_ns); _instant(hard_end_ns)
+    if existing_end_ns is not None:
+        _instant(existing_end_ns)
+        if existing_end_ns > hard_end_ns:
+            raise ValueError('cleanup exceeds hard deadline')
+        return existing_end_ns
+    return min(first_failure_ns + 120 * NS, hard_end_ns)
+
+
 def initial_state(bindings: c.RuntimeBindings, now_ns: int, *, broker_process=None, lease_ns=1000000000) -> dict:
     c.validate_bindings(bindings)
     if type(now_ns) is not int or now_ns < 0 or type(lease_ns) is not int or lease_ns <= 0:
@@ -43,12 +80,16 @@ def initial_state(bindings: c.RuntimeBindings, now_ns: int, *, broker_process=No
     if broker_process is not None and evidence.validate_value("Process", broker_process):
         raise ValueError("invalid broker process identity")
     inv = c.inventory()
+    ordinary_end = now_ns + _POLICY["ordinary_seconds"] * NS
+    reserved_end = slot_deadline_ns("reserved", now_ns, ordinary_end)
     return dict(status="reserved", mode="offline_replay", attempt_id=bindings.attempt_id,
                 candidate_sha=bindings.candidate_sha, supervisor_sha256=bindings.supervisor_sha256,
                 start_ns=now_ns, now_ns=now_ns, deadline_ns=now_ns + ATTEMPT_NS,
-                phase_deadline_ns=now_ns + PHASE_NS["reserved"] * 1000000000,
+                phase_deadline_ns=reserved_end, ordinary_deadline_ns=ordinary_end,
+                cleanup_deadline_ns=None, services_entry_ns=None, services_readiness_deadline_ns=None,
+                service_readiness_index=None, service_operation_deadline_ns=None,
                 epoch=1, holder="supervisor", broker_process=copy.deepcopy(broker_process), broker_alive=True,
-                lock_held=True, lease_ns=lease_ns, lease_until_ns=now_ns + lease_ns,
+                lock_held=True, lease_ns=lease_ns, lease_until_ns=min(now_ns + lease_ns, reserved_end),
                 journal_sequence=0, fence_pending=None, pending=None, completed_actions=[],
                 receipts={"reserved": "offline_reserved"}, resources={}, artifacts={}, residual_resource_keys=[],
                 cases={"api": {row["id"]: "not_started" for row in inv["api_cases"]},
@@ -63,8 +104,11 @@ def _fail(state, status, reason):
     # observation. It must never revive the cancelled external action.
     if state["pending"] is not None and state["pending"]["stage"] == "intent_wait":
         state["pending"]["stage"] = "cancelled"
-    if state["status"] not in NONPASS:
-        state["phase_deadline_ns"] = min(state["deadline_ns"], state["now_ns"] + 120000000000)
+    state["cleanup_deadline_ns"] = emergency_cleanup_deadline_ns(
+        state["now_ns"], state["deadline_ns"], state["cleanup_deadline_ns"])
+    state["phase_deadline_ns"] = state["cleanup_deadline_ns"]
+    state["service_operation_deadline_ns"] = None
+    state["lease_until_ns"] = min(state["lease_until_ns"], state["phase_deadline_ns"])
     if state["status"] != "recovery_blocked" or status == "recovery_blocked":
         state["status"] = status
     if reason not in state["failure_reasons"]:
@@ -72,10 +116,27 @@ def _fail(state, status, reason):
     state["pass"], state["new_case_credit"] = False, 0
 
 
+def _active_deadline_ns(state):
+    ends = [state['phase_deadline_ns'], state['deadline_ns']]
+    if state['status'] not in NONPASS:
+        ends.append(state['ordinary_deadline_ns'])
+    if state['service_operation_deadline_ns'] is not None:
+        ends.append(state['service_operation_deadline_ns'])
+    return min(ends)
+
+
+def _bounded_actions(state, actions):
+    return tuple(a for a in actions if state['now_ns'] < a['deadline_ns'])
+
+
 def _action(state, kind, action_id, resource_key=None, **extra):
+    end = _active_deadline_ns(state)
+    pending = state["pending"]
+    if pending is not None and pending["action_id"] == action_id and pending["stage"] != "cancelled":
+        end = min(end, pending["deadline_ns"], state["lease_until_ns"])
     return dict(kind=kind, action_id=action_id, resource_key=resource_key,
                 journal_sequence=state["journal_sequence"], epoch=state["epoch"], holder=state["holder"],
-                deadline_ns=min(state["phase_deadline_ns"], state["deadline_ns"]), **extra)
+                deadline_ns=end, **extra)
 
 
 def _journal_action(state, name, action_id, resource_key=None):
@@ -101,7 +162,8 @@ def _ticket_valid(state, ticket):
 def _cleanup_actions(state):
     # Request read-only reconciliation first. No mutation without a fresh exact
     # ownership observation and separately persisted mutation intent.
-    if not state["broker_alive"] or not state["lock_held"]:
+    if (not state["broker_alive"] or not state["lock_held"]
+            or state["now_ns"] >= _active_deadline_ns(state)):
         return ()
     return tuple(_action(state, "inspect", "cleanup-inspect:" + key, key) for key in sorted(state["resources"]))
 
@@ -118,7 +180,7 @@ def reduce(state: dict, event: c.Event) -> tuple[dict, tuple[dict, ...]]:
         raise ValueError("sealed replay cannot be rewritten")
     if state["status"] == "sealed_unreviewed" and event.kind == "request":
         return next_state, ()
-    if event.monotonic_ns >= min(state["deadline_ns"], state["phase_deadline_ns"]) and event.kind not in ("cleanup_finished", "broker_dead", "broker_lock_lost", "takeover", "fence_fsynced"):
+    if event.monotonic_ns >= _active_deadline_ns(state) and event.kind not in (*FAILURE_EVENTS, 'cleanup_finished'):
         _fail(next_state, "interrupted", "absolute_deadline_reached")
         return next_state, _cleanup_actions(next_state)
     p = event.payload
@@ -139,7 +201,7 @@ def reduce(state: dict, event: c.Event) -> tuple[dict, tuple[dict, ...]]:
         p = _payload(event, ("ticket",))
         if (_ticket_valid(state, p["ticket"]) and state["holder"] == "supervisor" and event.monotonic_ns < state["lease_until_ns"]
                 and state["broker_alive"] and state["lock_held"] and state["status"] not in NONPASS):
-            next_state["lease_until_ns"] = min(state["deadline_ns"], event.monotonic_ns + state["lease_ns"])
+            next_state["lease_until_ns"] = min(_active_deadline_ns(state), event.monotonic_ns + state["lease_ns"])
         else:
             if "expired_or_stale_heartbeat" not in next_state["failure_reasons"]:
                 next_state["failure_reasons"].append("expired_or_stale_heartbeat")
@@ -149,6 +211,7 @@ def reduce(state: dict, event: c.Event) -> tuple[dict, tuple[dict, ...]]:
             _fail(next_state, "recovery_blocked", "broker_unavailable_no_client_fallback")
         elif (state["holder"] == "supervisor" and p["expected_epoch"] == state["epoch"]
               and event.monotonic_ns >= state["lease_until_ns"] and state["fence_pending"] is None):
+            _fail(next_state, "interrupted", "supervisor_lease_expired")
             next_state["fence_pending"] = state["epoch"] + 1
             actions = (_journal_action(next_state, "fence_advance", "fence:" + str(state["epoch"] + 1)),)
     elif event.kind == "fence_fsynced":
@@ -157,13 +220,13 @@ def reduce(state: dict, event: c.Event) -> tuple[dict, tuple[dict, ...]]:
             _fail(next_state, "recovery_blocked", "fence_fsync_receipt_mismatch")
         else:
             next_state.update(epoch=p["epoch"], holder="watchdog_cleanup", fence_pending=None, journal_sequence=p["sequence"])
-            next_state["lease_until_ns"] = min(state["deadline_ns"], event.monotonic_ns + 120000000000)
             if state["pending"]:
                 _fail(next_state, "recovery_blocked", "inflight_completion_uncertain_reconcile_required")
                 actions = (_action(next_state, "inspect", "reconcile:" + state["pending"]["action_id"], state["pending"]["resource_key"]),)
             else:
                 _fail(next_state, "interrupted", "supervisor_lease_expired")
                 actions = _cleanup_actions(next_state)
+            next_state["lease_until_ns"] = min(_active_deadline_ns(next_state), event.monotonic_ns + 120 * NS)
     elif event.kind == "request":
         p = _payload(event, ("ticket", "kind", "resource_key", "timeout_ns", "prerequisite_receipts", "command"))
         if p["kind"] not in ("create", "start", "stop", "signal", "remove", "reap", "inspect"):
@@ -189,7 +252,7 @@ def reduce(state: dict, event: c.Event) -> tuple[dict, tuple[dict, ...]]:
                 raise ValueError("invalid bound command")
             pending = copy.deepcopy(p)
             pending.update(action_id=p["ticket"]["action_id"], stage="intent_wait",
-                           deadline_ns=min(event.monotonic_ns + p["timeout_ns"], state["phase_deadline_ns"], state["deadline_ns"]))
+                           deadline_ns=min(event.monotonic_ns + p["timeout_ns"], _active_deadline_ns(state), state["lease_until_ns"]))
             next_state["pending"] = pending
             actions = (_journal_action(next_state, "intent", pending["action_id"], p["resource_key"]),)
     elif event.kind == "intent_fsynced":
@@ -233,6 +296,13 @@ def reduce(state: dict, event: c.Event) -> tuple[dict, tuple[dict, ...]]:
         pending = state["pending"]
         if pending is None or pending["stage"] != "observation_wait" or pending["action_id"] != p["action_id"] or p["sequence"] != state["journal_sequence"] + 1:
             _fail(next_state, "recovery_blocked", "observation_fsync_receipt_mismatch")
+        elif (event.monotonic_ns >= min(pending["deadline_ns"], state["lease_until_ns"])
+              or not state["broker_alive"] or not state["lock_held"]
+              or pending["ticket"]["epoch"] != state["epoch"]
+              or (state["status"] in NONPASS and (state["holder"] != "watchdog_cleanup"
+                  or pending["ticket"]["holder"] != "watchdog_cleanup"
+                  or pending["kind"] not in ("stop", "signal", "remove", "reap", "inspect")))):
+            _fail(next_state, "recovery_blocked", "late_or_revoked_observation_requires_reconcile")
         else:
             next_state["journal_sequence"] = p["sequence"]
             next_state["completed_actions"].append(p["action_id"])
@@ -252,10 +322,35 @@ def reduce(state: dict, event: c.Event) -> tuple[dict, tuple[dict, ...]]:
     elif event.kind == "receipt":
         p = _payload(event, ("name", "sha256"))
         c.hex_value(p["sha256"], 64)
-        if p["name"] in state["receipts"] and state["receipts"][p["name"]] != p["sha256"]:
-            _fail(next_state, "recovery_blocked", "receipt_rewritten")
+        name = p['name']
+        readiness = ('postgres_ready', 'nats_ready', 's3_ready')
+        if name in state['receipts'] and state['receipts'][name] != p['sha256']:
+            _fail(next_state, 'recovery_blocked', 'receipt_rewritten')
+        elif name == 'runner_started' or name in readiness:
+            if state['status'] != 'services_starting' or state['services_entry_ns'] is None:
+                _fail(next_state, 'recovery_blocked', 'service_receipt_outside_services')
+            elif name in state['receipts']:
+                pass  # Identical observations never restart an interval or poll.
+            elif name == 'runner_started':
+                end = services_readiness_deadline_ns(state['services_entry_ns'], event.monotonic_ns,
+                                                     state['ordinary_deadline_ns'])
+                next_state.update(services_readiness_deadline_ns=end, phase_deadline_ns=end,
+                                  service_readiness_index=0,
+                                  service_operation_deadline_ns=operation_deadline_ns(event.monotonic_ns,120,end))
+                next_state['receipts'][name] = p['sha256']
+            elif (state['service_readiness_index'] is None
+                  or state['service_readiness_index'] >= len(readiness)
+                  or name != readiness[state['service_readiness_index']]):
+                _fail(next_state, 'recovery_blocked', 'service_readiness_out_of_order')
+            else:
+                index = state['service_readiness_index'] + 1
+                next_state['service_readiness_index'] = index
+                next_state['service_operation_deadline_ns'] = (
+                    operation_deadline_ns(event.monotonic_ns,120,state['services_readiness_deadline_ns'])
+                    if index < len(readiness) else None)
+                next_state['receipts'][name] = p['sha256']
         else:
-            next_state["receipts"][p["name"]] = p["sha256"]
+            next_state['receipts'][name] = p['sha256']
     elif event.kind == "advance":
         p = _payload(event, ("target",))
         target = p["target"]
@@ -264,13 +359,21 @@ def reduce(state: dict, event: c.Event) -> tuple[dict, tuple[dict, ...]]:
         sources, required = TRANSITIONS[target]
         if state["status"] not in sources or any(name not in state["receipts"] for name in required) or state["pending"]:
             _fail(next_state, "recovery_blocked", "forbidden_transition_or_missing_receipt")
+        elif target == 'ready' and state['services_readiness_deadline_ns'] is None:
+            _fail(next_state, 'recovery_blocked', 'readiness_deadline_missing')
         else:
-            next_state["status"] = target
-            if target in PHASE_NS:
-                if target in ("reaping", "sealing"):
-                    next_state["phase_deadline_ns"] = state["phase_deadline_ns"]
-                else:
-                    next_state["phase_deadline_ns"] = min(state["deadline_ns"], event.monotonic_ns + PHASE_NS[target] * 1000000000)
+            next_state['status'] = target
+            if target == 'services_starting':
+                next_state.update(services_entry_ns=event.monotonic_ns,
+                                  services_readiness_deadline_ns=None, service_readiness_index=None,
+                                  service_operation_deadline_ns=None,
+                                  phase_deadline_ns=slot_deadline_ns('api_creation',event.monotonic_ns,state['ordinary_deadline_ns']))
+            elif target == 'ready':
+                next_state['phase_deadline_ns'] = state['services_readiness_deadline_ns']
+            elif target in ('preparing','api_running','stopping'):
+                slot = {'preparing':'preparing','api_running':'api_active','stopping':'api_cleanup_seal'}[target]
+                next_state['phase_deadline_ns'] = slot_deadline_ns(slot,event.monotonic_ns,state['ordinary_deadline_ns'])
+            # Reaping and sealing inherit the one normal cleanup deadline.
     elif event.kind == "dto_requested":
         _payload(event)
         # Static success-shaped API replay confers no timer/runtime admission.
@@ -308,7 +411,8 @@ def reduce(state: dict, event: c.Event) -> tuple[dict, tuple[dict, ...]]:
     else:
         raise ValueError("unknown event kind: " + event.kind)
     next_state["pass"], next_state["new_case_credit"] = False, 0
-    return next_state, actions
+    next_state["lease_until_ns"] = min(next_state["lease_until_ns"], _active_deadline_ns(next_state))
+    return next_state, _bounded_actions(next_state, actions)
 
 
 def watchdog(state: dict, now_ns: int) -> tuple[dict, ...]:
@@ -318,7 +422,9 @@ def watchdog(state: dict, now_ns: int) -> tuple[dict, ...]:
         return (_action(state, "external_failure_receipt", "broker-unavailable", reason="recovery_blocked"),)
     if state["status"] == "sealed_unreviewed" or state["holder"] != "supervisor" or state["fence_pending"]:
         return ()
-    if now_ns >= min(state["lease_until_ns"], state["phase_deadline_ns"], state["deadline_ns"]):
+    if now_ns >= _active_deadline_ns(state):
+        return ()
+    if now_ns >= state["lease_until_ns"]:
         return (_action(state, "takeover_request", "takeover:" + str(state["epoch"]), expected_epoch=state["epoch"]),)
     return ()
 
