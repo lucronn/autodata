@@ -210,5 +210,134 @@ class PurchaseDeliveryTests(unittest.TestCase):
         with self.assertRaises(self.rt.ContractError): self.rt.validate_manifest(current, self.config, previous)
 
 
+# Fixed harmless child. No HTTP listener, DB/provider call or session creation.
+TRANSPORT_CHILD = r"""
+import hashlib, json, os, pathlib, sys
+from autodata_ingestion.purchase_config import parse_purchase_config
+from autodata_ingestion.commerce_service import CommerceService, CommerceConfig, CommerceError
+
+def digest(value):
+    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(',', ':'), ensure_ascii=False).encode()).hexdigest()
+
+wire = os.environ['AUTODATA_WORKSHOP_PURCHASE_CONFIG_JSON']
+initial, malformed = parse_purchase_config(wire)
+assert not malformed
+private = pathlib.Path(sys.argv[1]) / 'ingestion-http' / 'AUTODATA_INGESTION_INTERNAL_TOKEN'
+token_matches = private.read_text() == os.environ['AUTODATA_INGESTION_INTERNAL_TOKEN']
+calls = {'database': 0, 'provider': 0}
+def forbidden_database():
+    calls['database'] += 1
+    raise AssertionError('database forbidden')
+class ForbiddenProvider:
+    def __getattr__(self, name):
+        calls['provider'] += 1
+        raise AssertionError('provider forbidden')
+financial = CommerceConfig(os.environ['AUTODATA_COMMERCE_MODE'], os.environ['AUTODATA_STRIPE_ACCOUNT_ID'], os.environ['AUTODATA_STRIPE_PRICE_ID'])
+old = CommerceService(forbidden_database, financial, ForbiddenProvider(), purchase_config=initial)
+initial_projection = old.purchase_configuration()
+os.environ['AUTODATA_WORKSHOP_PURCHASE_CONFIG_JSON'] = sys.argv[2]
+paused, malformed = parse_purchase_config(os.environ['AUTODATA_WORKSHOP_PURCHASE_CONFIG_JSON'])
+assert not malformed and not paused.enabled
+replacement = CommerceService(forbidden_database, financial, ForbiddenProvider(), purchase_config=paused)
+denials = []
+for key in ('11111111-1111-4111-8111-111111111111', '11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222'):
+    try:
+        replacement.checkout('synthetic-account', 'synthetic-org', key, dict(configuration_id='33333333-3333-4333-8333-333333333333', region='US', terms_version='workshop-v1'))
+    except CommerceError as error:
+        denials.append(error.code == 'COMMERCE_UNAVAILABLE' and error.http_status == 503)
+    else:
+        denials.append(False)
+print(json.dumps({'projection_sha256': digest(initial_projection), 'wire_sha256': hashlib.sha256(wire.encode()).hexdigest(),
+    'token_matches_private_file': token_matches, 'old_object_still_enabled': old.purchase_configuration()['enabled'],
+    'replacement_disabled': replacement.purchase_configuration()['enabled'] is False,
+    'disabled_projection_sha256': digest(replacement.purchase_configuration()), 'checkout_denials': denials,
+    'database_calls': calls['database'], 'provider_calls': calls['provider']}))
+"""
+
+
+class PurchaseTransportTests(unittest.TestCase):
+    def setUp(self):
+        self.rt, self.config, self.manifest = fixture()
+        guard = patch.object(socket, 'socket', side_effect=AssertionError('network forbidden'))
+        guard.start(); self.addCleanup(guard.stop)
+        self.assertEqual((os.getuid(), os.getgid()), (1000, 1000), 'required wrapper fixture ownership missing')
+        self.temp = tempfile.TemporaryDirectory(prefix='purchase-delivery-')
+        self.addCleanup(self.cleanup_tree)
+        self.base = Path(self.temp.name)
+        self.secret_root = self.base / 'secrets'; self.secret_root.mkdir(mode=0o700)
+        directory = self.secret_root / 'ingestion-http'; directory.mkdir(mode=0o700)
+        for name in self.rt.SECRET_NAMES['ingestion-http']:
+            path = directory / name
+            path.write_text('synthetic-opaque-$()`;"\\-value')
+            path.chmod(0o400)
+        directory.chmod(0o500)
+        source = (HERE / 'runtime-entrypoint.sh').read_text()
+        self.assertEqual(source.count('secret_root=/run/autodata'), 1)
+        self.wrapper = self.base / 'entrypoint.sh'
+        self.wrapper.write_text(source.replace('secret_root=/run/autodata', 'secret_root=' + str(self.secret_root)))
+        self.value = dict(enabled_public(), tax_notice='$20 ${UNTRUSTED_ENV} $(id) `id` $$ \\" café 🚗',
+                          terms_url='https://legal.example.test/$20/${UNTRUSTED_ENV}/$(id)/`id`/$$/\\/%20')
+
+    def cleanup_tree(self):
+        for base, _, _ in os.walk(self.temp.name):
+            Path(base).chmod(0o700)
+        self.temp.cleanup()
+
+    def render(self, value):
+        self.config['workshop_purchase_config'] = copy.deepcopy(value)
+        self.manifest['service_config_sha256'] = hashlib.sha256(canonical(self.config)).hexdigest()
+        self.rendered_compose = self.rt.render_bundle(self.manifest, self.config)['compose.production.yaml']
+        return json.loads(self.rendered_compose)
+
+    def through_wrapper(self, environment):
+        disabled_env = self.render(DISABLED)['services']['ingestion-http']['environment']
+        for key in ('AUTODATA_COMMERCE_MODE', 'AUTODATA_STRIPE_ACCOUNT_ID', 'AUTODATA_STRIPE_PRICE_ID'):
+            self.assertEqual(environment[key], disabled_env[key])
+        child_env = dict(environment, PATH='/usr/bin:/bin', PYTHONPATH=str(ROOT / 'workers/ingestion-python/src'),
+                         PYTHONDONTWRITEBYTECODE='1')
+        result = subprocess.run(['/bin/sh', str(self.wrapper), sys.executable, '-B', '-c', TRANSPORT_CHILD,
+                                 str(self.secret_root), disabled_env[ENV_NAME]], env=child_env,
+                                cwd=self.base, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, 'required wrapper/parser child failed: ' + result.stderr)
+        self.assertEqual(result.stderr, '')
+        observation = json.loads(result.stdout)
+        self.assertEqual(observation, {
+            'projection_sha256': hashlib.sha256(canonical(self.value)).hexdigest(),
+            'wire_sha256': hashlib.sha256(environment[ENV_NAME].encode()).hexdigest(),
+            'token_matches_private_file': True, 'old_object_still_enabled': True, 'replacement_disabled': True,
+            'disabled_projection_sha256': hashlib.sha256(canonical(DISABLED)).hexdigest(),
+            'checkout_denials': [True, True, True], 'database_calls': 0, 'provider_calls': 0})
+        return observation
+
+    def test_actual_renderer_wrapper_parser_and_frozen_service_replacement(self):
+        for value in (self.value, boundary_public(16384)):
+            with self.subTest(wire_bytes=len(canonical(value).decode().replace('$', r'\u0024').encode())):
+                self.value = value
+                environment = self.render(value)['services']['ingestion-http']['environment']
+                self.through_wrapper(environment)
+
+    def test_local_compose_preserves_wire_before_wrapper_required_mode(self):
+        required = os.environ.get('AUTODATA_REQUIRE_PURCHASE_CONFIG_DELIVERY_COMPOSE') == '1'
+        if not required:
+            self.skipTest('local Compose phase requires AUTODATA_REQUIRE_PURCHASE_CONFIG_DELIVERY_COMPOSE=1')
+        for value in (self.value, boundary_public(16384)):
+            with self.subTest(wire_bytes=len(canonical(value).decode().replace('$', r'\u0024').encode())):
+                self.value = value
+                compose = self.render(value)
+                path = self.base / 'compose.json'; path.write_text(self.rendered_compose)
+                cli_env = {'PATH': '/usr/bin:/bin', 'LANG': 'C', 'LC_ALL': 'C',
+                           'UNTRUSTED_ENV': 'hostile-interpolation-would-corrupt-projection'}
+                result = subprocess.run(['/usr/bin/docker', 'compose', '--project-directory', str(self.base),
+                                         '-f', str(path), 'config', '--format', 'json'],
+                                        env=cli_env, cwd=self.base, stdin=subprocess.DEVNULL,
+                                        capture_output=True, text=True, timeout=15)
+                self.assertEqual(result.returncode, 0, 'required local Compose config failed: ' + result.stderr)
+                configured = json.loads(result.stdout)
+                actual = configured['services']['ingestion-http']['environment']
+                expected = compose['services']['ingestion-http']['environment']
+                self.assertEqual(actual, expected)
+                self.through_wrapper(actual)
+
+
 if __name__ == '__main__':
     unittest.main()

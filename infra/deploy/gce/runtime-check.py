@@ -816,7 +816,7 @@ def render_bundle(manifest, config, rollback_manifest=None):
     for token, value in {'PUBLIC_ORIGIN': config['public_origin'], 'ACME_EMAIL': config['resources']['acme_email']}.items():
         caddy = caddy.replace('${' + token + ':?required}', value)
     require('${' not in caddy)
-    return {'compose.production.yaml': json.dumps(compose, indent=2) + '\n', 'Caddyfile': caddy,
+    return {'compose.production.yaml': json.dumps(compose, indent=2, ensure_ascii=False) + '\n', 'Caddyfile': caddy,
             'nats.conf.template': (here / 'nats.conf.template').read_text(),
             'seaweedfs-s3.json.template': (here / 'seaweedfs-s3.json.template').read_text()}
 
