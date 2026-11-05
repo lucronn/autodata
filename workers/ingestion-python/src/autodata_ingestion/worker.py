@@ -1415,6 +1415,20 @@ class ArticleObjectStore:
         self.client=Minio(endpoint,access_key=access_key,secret_key=secret_key,secure=secure,
             http_client=PoolManager(timeout=Timeout(connect=2,read=5),retries=Retry(total=0,connect=0,read=0,redirect=0,status=0)))
 
+    def get_object(self, key, *, max_bytes):
+        """Read at most the approved body limit and always release the SDK response."""
+        if not isinstance(max_bytes, int) or not 0 < max_bytes <= 1024 * 1024:
+            raise ValueError("SOURCE_BODY_LIMIT_INVALID")
+        response = self.client.get_object(self.bucket, key)
+        try:
+            payload = response.read(max_bytes + 1)
+            if len(payload) > max_bytes:
+                raise ValueError("SOURCE_BODY_TOO_LARGE")
+            return payload
+        finally:
+            response.close()
+            response.release_conn()
+
     def put_object(self,key,payload,media_type):
         from io import BytesIO
         from hashlib import sha256

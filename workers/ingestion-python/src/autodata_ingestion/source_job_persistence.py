@@ -157,7 +157,7 @@ def claim_source_job(repo, *, worker_id):
     with repo.connect() as conn, _cursor(conn) as cur:
         cur.execute(
             """WITH exhausted AS (SELECT source_fetch_job_id FROM source_fetch_jobs
-        WHERE job_kind IN ('article','catalog_index') AND status='processing' AND retry_count>=max_attempts AND lease_expires_at<clock_timestamp() FOR UPDATE SKIP LOCKED)
+        WHERE job_kind IN ('article','catalog_index') AND NOT (checkpoint @> '{"source_only_reprojection":true}'::jsonb) AND status='processing' AND retry_count>=max_attempts AND lease_expires_at<clock_timestamp() FOR UPDATE SKIP LOCKED)
         UPDATE source_fetch_jobs j SET status='dead_letter',error_code='LEASE_ATTEMPTS_EXHAUSTED',retryable=false,lease_owner=NULL,lease_expires_at=NULL,heartbeat_at=NULL,updated_at=clock_timestamp()
         FROM exhausted e WHERE j.source_fetch_job_id=e.source_fetch_job_id
         RETURNING j.source_fetch_job_id,j.lease_token"""
@@ -165,7 +165,7 @@ def claim_source_job(repo, *, worker_id):
         for exhausted in cur.fetchall():
             _mark_delivery_ambiguous(cur, exhausted)
         job = cur.execute(
-            """SELECT * FROM source_fetch_jobs WHERE job_kind IN ('article','catalog_index') AND retry_count<max_attempts AND
+            """SELECT * FROM source_fetch_jobs WHERE job_kind IN ('article','catalog_index') AND NOT (checkpoint @> '{"source_only_reprojection":true}'::jsonb) AND retry_count<max_attempts AND
         ((status IN ('pending','failed') AND COALESCE(next_attempt_at,'-infinity'::timestamptz)<=clock_timestamp()) OR (status='processing' AND lease_expires_at<clock_timestamp()))
         ORDER BY created_at,source_fetch_job_id FOR UPDATE SKIP LOCKED LIMIT 1"""
         ).fetchone()
@@ -179,21 +179,41 @@ def claim_source_job(repo, *, worker_id):
         phase=CASE WHEN phase='queued' THEN 'fetching_source' ELSE phase END WHERE source_fetch_job_id=%s RETURNING *""",
             (worker_id, job["source_fetch_job_id"]),
         ).fetchone()
-        return JobLease(
-            row["source_fetch_job_id"],
-            worker_id,
-            row["lease_token"],
-            row["request_generation"],
-            row["job_kind"],
-            row["phase"],
-            row["canonical_article_id"],
-            row["catalog_provider_scope_id"],
-            row["source_revision_id"],
-            row["normalization_version"],
-            row["rewrite_profile_version"],
-            row["checkpoint"],
-            row["lease_expires_at"],
-        )
+        return _lease_from_row(row, worker_id)
+
+
+
+def _lease_from_row(row, worker_id):
+    return JobLease(
+        row["source_fetch_job_id"],
+        worker_id,
+        row["lease_token"],
+        row["request_generation"],
+        row["job_kind"],
+        row["phase"],
+        row["canonical_article_id"],
+        row["catalog_provider_scope_id"],
+        row["source_revision_id"],
+        row["normalization_version"],
+        row["rewrite_profile_version"],
+        row["checkpoint"],
+        row["lease_expires_at"],
+    )
+
+
+def claim_source_only_job(cur, job_id, canonical_article_id, *, worker_id):
+    """Claim only the specified offline job in its caller's transaction."""
+    row = cur.execute("""UPDATE source_fetch_jobs SET status='processing',
+        retry_count=retry_count+1,lease_token=lease_token+1,lease_owner=%s,
+        lease_expires_at=clock_timestamp()+interval '90 seconds',heartbeat_at=clock_timestamp(),
+        phase='fetching_source',updated_at=clock_timestamp()
+        WHERE source_fetch_job_id=%s AND canonical_article_id=%s AND job_kind='article'
+          AND status='pending' AND retry_count<max_attempts
+          AND checkpoint @> '{"source_only_reprojection":true}'::jsonb
+        RETURNING *""", (worker_id, job_id, canonical_article_id)).fetchone()
+    if row is None:
+        raise LeaseLost("source-only exact claim rejected")
+    return _lease_from_row(row, worker_id)
 
 
 def lock_live_lease(cur, lease):
