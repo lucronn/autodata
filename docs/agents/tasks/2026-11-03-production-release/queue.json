@@ -3249,6 +3249,248 @@
         "literal_goal_todos_paths_verified": true,
         "readback_verified": true
       }
+    },
+    {
+      "id": "workshop-api21-producer-observability",
+      "task_id": "workshop-api21-producer-observability",
+      "goal": "Retain bounded API21 producer observations and owned-process/worker receipts through failure using offline fake tests, preserving every runtime, capture, profile and acceptance block",
+      "plan_ref": "docs/superpowers/plans/2026-11-04-workshop-api21-producer-observability.md",
+      "spec_ref": "docs/agents/specs/2026-11-04-workshop-api21-producer-observability.json",
+      "record_ref": "docs/agents/records/2026-11-04-workshop-api21-producer-observability.json",
+      "verification_ref": "docs/verification/2026-11-04-workshop-api21-producer-observability.md",
+      "state": "synchronized",
+      "planning_status": "synchronized",
+      "tracking_status": "synchronized",
+      "depends_on": [
+        "workshop-current-source-api21-raw-inspector"
+      ],
+      "source_binding": {
+        "source_integration_sha": "dddefe365ca600518f89f13512c16a690688a8ef",
+        "source_integration_tree": "e4b51785e612f9a1e0e744237a8cdc0f28cb96af",
+        "g1_exact_final_sha": "dddefe365ca600518f89f13512c16a690688a8ef",
+        "g1_exact_source_ci": "success_source_only_Actions_41938139519",
+        "g1_actual_merge_checkout_sha": "2729269bbba3c8196b135422cf63c17db0055f2d",
+        "g1_actual_merge_checkout_ci": "success_source_only_Actions_41938145888",
+        "checkpoint_K3": null,
+        "implementation_base_sha": null,
+        "immutable_K2": "50289d1215fa335786ba2aab620321e36d209e95",
+        "immutable_K2_tree": "cadb88a172c4b7caca05f627769bcb5abd5da154",
+        "immutable_C": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+        "immutable_C_tree": "9105b372988ca2fc2827310c4806cb826a395bda",
+        "rule": "No current HEAD, historical C success, natural-language approval or draft content is a replacement for reviewed exact G1 integration and fresh CI/readback.",
+        "provisional_candidate_observation": {
+          "status": "synchronized",
+          "materialization_kind": "committed_planning_checkpoint_only",
+          "candidate_label": "M5",
+          "candidate_sha": "dddefe365ca600518f89f13512c16a690688a8ef",
+          "candidate_tree": "e4b51785e612f9a1e0e744237a8cdc0f28cb96af",
+          "immediate_parent_sha": "414dec460e594241ec96ae293cdc9305b23c4932",
+          "planning_ancestor_K2": "50289d1215fa335786ba2aab620321e36d209e95",
+          "source_admitted": true,
+          "candidate_selected_as_source_integration": true,
+          "exact_github_policy_ci": "source_push_and_actual_PR_merge_checkout_Actions_success_independently_audited",
+          "actual_merge_checkout_sha": "2729269bbba3c8196b135422cf63c17db0055f2d",
+          "actual_merge_checkout_ci": "success_source_only",
+          "checkpoint_K3": null,
+          "implementation_base_sha": null,
+          "tracking_sync": "synchronized",
+          "accepted_case_credit": 0,
+          "accepted_new_case_credit": 0,
+          "verified_case_ids": [],
+          "release_state": "unverified",
+          "rule": "M5 admitted source-only for G2 planning; source Actions passed while full rollup/Vercel failed. G2 planning/tracking synchronized; K3 exact identity and machine results sealed externally after commit. No implementation dispatch, runtime/capture or acceptance authority.",
+          "revision": "R2-source-only-CI",
+          "source_admission_scope": "M5 source-only for G2 planning; no runtime/product/merchant/real API/capture/acceptance/merge/release permission",
+          "actual_merge_checkout_tree": "e4b51785e612f9a1e0e744237a8cdc0f28cb96af",
+          "full_check_rollup_conclusion": "failure",
+          "external_vercel_state": "FAILURE",
+          "source_ci_receipt": {
+            "path": "/home/corp/autodata-evidence/api21-g1-ci-audit-final/receipt.json",
+            "snapshot": "receipts/source_ci_audit.json",
+            "bytes": 3476,
+            "sha256": "4152f474d0e40535f2642d4d1232e848807e7e9ceb27e241e37d05405e92080c"
+          },
+          "source_review_receipt": {
+            "path": "/home/corp/autodata-evidence/api21-g1-m5-review/report.md",
+            "snapshot": "receipts/source_review.md",
+            "bytes": 5420,
+            "sha256": "477981e1deeba269d631836aec50aff462c900c18b7ce2eb20071be8e87f8a53"
+          },
+          "local_verification_receipt": {
+            "path": "/home/corp/autodata-evidence/api21-g1-code/final-m5.json",
+            "snapshot": "receipts/local_verification.json",
+            "bytes": 4219,
+            "sha256": "c77cec574ae2aea08a7a4627651ccd6c9c069b6a7630e7a111d38265a6625bb5"
+          },
+          "ci_result_issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6645992673",
+          "ci_result_tracking_scope": "Coordinator-provided literal Issue186/Project8 CI result reference only; not fresh G2 goal/todo/six-path/four-code synchronization/readback"
+        },
+        "source_admitted": true,
+        "admission_scope": "M5 source-only for G2 planning; no runtime/product/merchant/real API/capture/acceptance/merge/release permission",
+        "source_ci_evidence": {
+          "status": "admitted_source_only_actions_success_external_failed",
+          "source_sha": "dddefe365ca600518f89f13512c16a690688a8ef",
+          "source_tree": "e4b51785e612f9a1e0e744237a8cdc0f28cb96af",
+          "source_admitted": true,
+          "admission_scope": "M5 source-only for G2 planning; no runtime/product/merchant/real API/capture/acceptance/merge/release permission",
+          "actions_success_observed": true,
+          "full_rollup_success_claimed": false,
+          "full_check_rollup_conclusion": "failure",
+          "external_vercel": {
+            "context": "Vercel",
+            "state": "FAILURE",
+            "description": "Deployment rate limited — retry in 24 hours.",
+            "target_url": "https://vercel.com/curtt?upgradeToPro=build-rate-limit",
+            "cause_established": false,
+            "preview_comments_check_is_distinct": true
+          },
+          "actual_merge_checkout_sha": "2729269bbba3c8196b135422cf63c17db0055f2d",
+          "actual_merge_checkout_tree": "e4b51785e612f9a1e0e744237a8cdc0f28cb96af",
+          "runs": [
+            {
+              "id": "41938139519",
+              "url": "https://github.com/lucronn/autodata/actions/runs/41938139519",
+              "event": "push",
+              "reported_head_sha": "dddefe365ca600518f89f13512c16a690688a8ef",
+              "expected_checkout_sha": "dddefe365ca600518f89f13512c16a690688a8ef",
+              "actual_checkout_sha": "dddefe365ca600518f89f13512c16a690688a8ef",
+              "status": "completed",
+              "conclusion": "success",
+              "job_count": 3,
+              "successful_step_count": 41,
+              "all_jobs_and_steps_success": true,
+              "checkout_verified_all_jobs": true
+            },
+            {
+              "id": "41938145888",
+              "url": "https://github.com/lucronn/autodata/actions/runs/41938145888",
+              "event": "pull_request",
+              "reported_head_sha": "dddefe365ca600518f89f13512c16a690688a8ef",
+              "expected_checkout_sha": "2729269bbba3c8196b135422cf63c17db0055f2d",
+              "actual_checkout_sha": "2729269bbba3c8196b135422cf63c17db0055f2d",
+              "status": "completed",
+              "conclusion": "success",
+              "job_count": 3,
+              "successful_step_count": 41,
+              "all_jobs_and_steps_success": true,
+              "checkout_verified_all_jobs": true
+            }
+          ],
+          "audit_receipt": {
+            "path": "/home/corp/autodata-evidence/api21-g1-ci-audit-final/receipt.json",
+            "snapshot": "receipts/source_ci_audit.json",
+            "bytes": 3476,
+            "sha256": "4152f474d0e40535f2642d4d1232e848807e7e9ceb27e241e37d05405e92080c"
+          },
+          "source_review": {
+            "path": "/home/corp/autodata-evidence/api21-g1-m5-review/report.md",
+            "snapshot": "receipts/source_review.md",
+            "bytes": 5420,
+            "sha256": "477981e1deeba269d631836aec50aff462c900c18b7ce2eb20071be8e87f8a53"
+          },
+          "local_verification": {
+            "path": "/home/corp/autodata-evidence/api21-g1-code/final-m5.json",
+            "snapshot": "receipts/local_verification.json",
+            "bytes": 4219,
+            "sha256": "c77cec574ae2aea08a7a4627651ccd6c9c069b6a7630e7a111d38265a6625bb5"
+          },
+          "ci_result_issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6645992673",
+          "tracking_boundary": "Coordinator-provided literal Issue186/Project8 CI result reference only; not fresh G2 goal/todo/six-path/four-code synchronization/readback",
+          "checkpoint_K3": null,
+          "accepted_case_credit": 0,
+          "accepted_new_case_credit": 0,
+          "verified_case_ids": []
+        }
+      },
+      "allowed_gate_document_paths": [
+        "docs/superpowers/plans/2026-11-04-workshop-api21-producer-observability.md",
+        "docs/agents/specs/2026-11-04-workshop-api21-producer-observability.json",
+        "docs/agents/records/2026-11-04-workshop-api21-producer-observability.json",
+        "docs/agents/tasks/2026-11-03-production-release/workshop-api21-producer-observability.json",
+        "docs/verification/2026-11-04-workshop-api21-producer-observability.md",
+        "docs/agents/tasks/2026-11-03-production-release/queue.json"
+      ],
+      "allowed_implementation_paths": [
+        "scripts/dev/workshop_browser_smoke.py",
+        "scripts/dev/test_workshop_browser_smoke.py",
+        "workers/ingestion-python/tests/test_workshop_browser_integration.py",
+        "workers/ingestion-python/tests/test_workshop_browser_observability.py"
+      ],
+      "todo": [
+        "Finish independent exact-final G1 review and inspect exact-source plus actual PR merge-checkout CI; reconcile source/parent graph and pin source-integration SHA/tree only after that evidence. Keep K2/C immutable and resolve shared smoke-source drift.",
+        "Review and adopt this precise v2 contract, complete phase/owner/failure matrix, four producer code paths and isolated fake test strategy; resolve any source-dependent mismatch before implementation dispatch.",
+        "Verify Issue186/Project8 ownership and synchronize literal goal, six checkpoint paths, four prospective code paths and this full todo with fresh readback. Materialize queue append against the selected base preserving every prior object/root field/order.",
+        "Commit/push only the six planning paths as K3; seal exact K3 externally, extract standalone/nested records and policy from K3, pass both machine preflights, obtain independent exact-K3 review and explicit narrow code-only dispatch. No authority is granted by this draft.",
+        "Write red offline tests first; implement API-only observation buffering/failure-safe publication as one small validated milestone and owned process/worker mapping as another. Promptly commit/push coherent validated milestones under coordinator branch ownership.",
+        "Verify exact four-code-path diff, 21/120 inventory, original JUnit name, deadlines, provenance and disabled CLI/profiles; run frozen fake suites without services/provider/browser/Go. Independently review exact code and honestly read source/actual-checkout CI, failures and skips.",
+        "Leave v2 consumer/profile, authentic capture/containment, outer launcher/engine exits, finite API schedule, static compiler rebinding, original JUnit/worker-log transport, independent raw review and all final180/release work separately gated with zero case credit."
+      ],
+      "tracking_sync": {
+        "status": "synchronized",
+        "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+        "project_ref": "https://github.com/users/lucronn/projects/8",
+        "ownership_verified": true,
+        "literal_readback_verified": true,
+        "observed_at": "2026-11-05T00:24:02Z",
+        "planning_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6646051229",
+        "readback_receipt": {
+          "path": "/home/corp/autodata-evidence/api21-g2-tracking-receipt.json",
+          "sha256": "37501c71d8debe71f4b5bb506dc070913273edd48f37b9b1cf78eefb0780e097"
+        },
+        "clarification": "Coordinator-owned literal Issue186/Project8 planning write and fresh readback verified by receipt; prior225 comments, Issue body and other Project fields preserved. Planning synchronization is not implementation dispatch or runtime/acceptance authority."
+      },
+      "current_implementation_allowlist": [],
+      "accepted_case_credit": 0,
+      "accepted_new_case_credit": 0,
+      "verified_case_ids": [],
+      "release_state": "unverified",
+      "authorities": {
+        "implementation_dispatch": false,
+        "repository_edit": false,
+        "github_write": false,
+        "host_execution": false,
+        "host_process_execution": false,
+        "runtime_preparation_probe": false,
+        "image_build_pull_install": false,
+        "docker_execution": false,
+        "service_start": false,
+        "fixture_execution": false,
+        "network": false,
+        "provider": false,
+        "payment": false,
+        "account_mutation": false,
+        "cloud": false,
+        "secrets": false,
+        "probe_output_admission": false,
+        "trust_profile_promotion": false,
+        "cli_enablement": false,
+        "profiles_enabled": false,
+        "code_approval": false,
+        "ci_success": false,
+        "merge": false,
+        "release": false,
+        "deployment": false,
+        "cutover": false,
+        "fixture_api21": false,
+        "fixture_dto120": false,
+        "final180": false,
+        "staging": false,
+        "current_source_browser_acceptance": false,
+        "product_candidate_verified": false,
+        "release_authorized": false,
+        "capture_admission": false
+      },
+      "draft_revision": "R1-review-B1-B2-N1-N3",
+      "checkpoint_sealing": {
+        "source_integration_base": "M5 dddefe365ca600518f89f13512c16a690688a8ef tree e4b51785e612f9a1e0e744237a8cdc0f28cb96af admitted source-only; source push/actual PR checkout Actions passed, full rollup/Vercel failed. G2 tracking synchronized with actual receipt. K3 self-SHA null; external seal /home/corp/autodata-evidence/api21-g2-k3-checkpoint/seal.json",
+        "checkpoint_K3": "The actual SHA/tree of the committed six-document checkpoint is sealed ONLY in an external receipt after commit/push. Its own SHA cannot be embedded in its tree. Do not amend K3 merely to insert K3. Committed record may omit self-hash fields or leave them null with explicit external-seal references; no literal UNPINNED masquerading as a verified self-hash.",
+        "implementation_base": "For machine dispatch/preflight the implementation base is externally resolved exact K3, distinct from the earlier source-integration base. Extract committed standalone/nested record and policy from exact K3 and invoke validator with that external base SHA. Both pass before dispatch.",
+        "synchronization": "Planning/tracking synchronized at 2026-11-05T00:24:02Z using literal coordinator-owned Issue186/Project8 receipt. Source route/phase/command/helper feasibility statically reconciled at exact M5 in spec precommit_source_reconciliation; actual fake execution remains required during later code phase. All authorities false.",
+        "placeholder_rule": "Resolve source/tracking/command/schema adoption prerequisites before commit; future self-SHA is external sealing, not an unresolved source/tracking prerequisite or reason to rewrite published history.",
+        "external_seal_ref": "/home/corp/autodata-evidence/api21-g2-k3-checkpoint/seal.json"
+      },
+      "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-api21-producer-observability.json",
+      "updated_at": "2026-11-05T00:24:02Z"
     }
   ],
   "execution": {
