@@ -171,16 +171,21 @@ Goal: Wire the existing publication outbox relay into the production GCE host gr
 
 Concrete todo:
 
-- [ ] Add failing relay packaging, render/topology, secret-contract, NATS authentication/ACL and runtime graph/readiness regressions.
-- [ ] Package the existing relay in the ingestion image and wire its dedicated backend-only service, credentials, manifest/private-material contract and narrowly scoped database/broker privileges.
-- [ ] Run focused and complete host regressions plus an isolated real PostgreSQL/NATS relay smoke proving canonical event delivery, replay identity and denied unrelated permissions; retain exact candidate evidence.
+- [x] Add failing relay packaging, render/topology, secret-contract, NATS authentication/ACL and runtime graph/readiness regressions.
+- [x] Package the existing relay in the ingestion image and wire its dedicated backend-only service, credentials, manifest/private-material contract and narrowly scoped database/broker privileges.
+- [x] Run focused and complete host regressions plus an isolated real PostgreSQL/NATS relay smoke proving canonical event delivery, replay identity and denied unrelated permissions; retain exact candidate evidence.
 - [ ] Commit and push validated milestones, independently review the exact candidate, and synchronize Issue/Project/canonical documentation with verification evidence; deployment remains a separate decision.
 
-The intended contract uses the existing ingestion image, backend-only relay
+The implemented relay contract uses the existing ingestion image, backend-only relay
 address `172.30.20.14`, dedicated `autodata_outbox` database identity and a
 separate NATS publisher with exact publication/stream-create/info permissions.
 The plan defines the authoritative file allowlist and secret/ACL details.
 Existing delivery leases, stable Nats-Msg-Id/idempotency_key and consumer
 deduplication remain required. Actual credential/role provisioning, private
 broker-config delivery and live service activation require separate deployment
-authorization. This planning checkpoint performs no implementation or deployment.
+authorization. Candidate `e8473a792e86d7b19f7b2de2e22bc35b3c1cf5b3` has passed
+local real-service delivery/replay/ACL/outage verification; see
+`docs/verification/2026-11-05-production-outbox-relay.md`. Independent review
+identified the separate host activation application-list omission. Integration
+remains incomplete pending its synchronized scope amendment and implementation;
+no deployment has occurred.
