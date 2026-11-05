@@ -160,7 +160,6 @@ class LeaseTests(unittest.TestCase):
         self.assertEqual(calls, self.host.calls)
 
 
-if __name__ == '__main__': unittest.main()
 
 class ExecutorTests(unittest.TestCase):
     def setUp(self):
@@ -355,3 +354,69 @@ class ResourceIdentityTests(unittest.TestCase):
         with tarfile.open(fileobj=output,mode='w',format=tarfile.PAX_FORMAT) as archive:
             item=tarfile.TarInfo('a'*200);item.size=1;archive.addfile(item,io.BytesIO(b'x'))
         with self.assertRaises(ValueError):self.m.archive_metadata(output.getvalue())
+
+class InstalledHostGuardTests(unittest.TestCase):
+    """Exercise new adapter guards with a fake lifecycle, never a real host."""
+    def setUp(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        self.m=load('installed_backup_guard_test','backup_restore.py')
+        self.apps=('api','ingestion-http','article-worker','payment-reconciler','outbox-relay')
+        self.stateful=('postgres','nats','minio')
+        self.events=[]
+        self.manifest={'source_sha':'a'*40}; self.config={'resources':{'data_disk_filesystem_uuid':RUN}}
+        self.graph={name:{'running':True} for name in self.apps+self.stateful+('caddy',)}
+        outer=self
+        class Life:
+            def __init__(self,*args):self.checks={};self.expected_current=None
+            def lock(self):outer.events.append('lock')
+            def inputs(self,sha):outer.events.append('inputs');return outer.manifest,outer.config
+            def recheck(self,*args):outer.events.append('recheck')
+            def graph(self,*args):outer.events.append('graph');return outer.graph
+        self.selected=('a'*40,'pinned-symlink')
+        a=SimpleNamespace(Lifecycle=Life,selection=lambda pins:self.selected,APPS=self.apps,STATEFUL=self.stateful,
+            validate_data_directories=lambda rt:True,DOCKER=['docker'])
+        self.host=self.m.InstalledHost(a,None,None,999999999.)
+        for item in (patch.object(self.m.os,'geteuid',return_value=0),patch.object(self.m.os,'statvfs',return_value=SimpleNamespace(f_bavail=2**30+1048576,f_frsize=1))):
+            item.start();self.addCleanup(item.stop)
+    def test_exact_graph_and_free_space_required_before_mutation(self):
+        self.assertEqual(self.host.preflight('begin'),(self.manifest,self.config))
+        self.graph['unknown']={'running':False}
+        with self.assertRaises(ValueError):self.host.preflight('begin')
+        self.graph.pop('unknown');self.graph.pop('outbox-relay')
+        with self.assertRaises(ValueError):self.host.preflight('begin')
+        self.assertEqual(set(self.events),{'lock','inputs','recheck','graph'})
+    def test_guard_and_missing_secret_failure_propagates_before_mutation(self):
+        for reason in ('wrong mount','missing secrets','wrong cached images'):
+            with self.subTest(reason=reason):
+                def fail(*args):raise ValueError(reason)
+                self.host.life.recheck=fail
+                with self.assertRaises(ValueError):self.host.preflight('begin')
+                self.assertNotIn('graph',self.events)
+    def test_pinned_release_and_low_space_rejected(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        self.host.preflight('begin');self.selected=('b'*40,'other-inode')
+        with self.assertRaises(ValueError):self.host.preflight('begin')
+        self.selected=('a'*40,'pinned-symlink')
+        with patch.object(self.m.os,'statvfs',return_value=SimpleNamespace(f_bavail=10,f_frsize=1)):
+            with self.assertRaises(ValueError):self.host.preflight('begin')
+
+    def test_quiescence_rejects_forced_or_oom_stateful_stop(self):
+        self.host.preflight('begin')
+        for name in self.apps+self.stateful:
+            self.graph[name]={'running':False,'id':name}
+        states={name:{'Running':False,'OOMKilled':False,'ExitCode':0} for name in self.stateful}
+        commands=[]
+        def command(argv,*args):
+            commands.append(argv);return self.m.canonical(states[argv[-1]])
+        self.host.life.command=command
+        self.host.check_stopped()
+        self.assertEqual({argv[-1] for argv in commands},set(self.stateful))
+        for changed in ({'ExitCode':137},{'OOMKilled':True},{'Running':True},{'ExitCode':True}):
+            with self.subTest(changed=changed):
+                states['minio']={'Running':False,'OOMKilled':False,'ExitCode':0,**changed}
+                with self.assertRaises(ValueError):self.host.check_stopped()
+
+
+if __name__ == '__main__': unittest.main()

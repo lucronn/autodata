@@ -422,6 +422,12 @@ class InstalledHost:
     def check_stopped(self):
         graph = self._graph()
         require(graph['caddy']['running'] and all(not graph[name]['running'] for name in self.a.APPS + self.a.STATEFUL))
+        # A forced stop is not evidence of a consistent cold data tree. Inspect
+        # immutable container IDs again after the graph check, before promotion.
+        for name in self.a.STATEFUL:
+            state = strict_json(self.life.command(self.a.DOCKER + ['container','inspect','--format','{{json .State}}',graph[name]['id']]))
+            require(type(state) is dict and state.get('Running') is False and state.get('OOMKilled') is False)
+            require(type(state.get('ExitCode')) is int and state['ExitCode'] == 0)
         self.checks['services'] = True
     def observe_ready(self):
         require(all(value['running'] for value in self._graph().values()))
