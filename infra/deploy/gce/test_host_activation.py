@@ -53,8 +53,9 @@ class FileTests(unittest.TestCase):
     def setUp(self):
         self.assertTrue((HERE / 'host_activation.py').exists(), 'fixed activation filesystem is missing')
         self.a = load()
-        # CI provides a writable TMPDIR while the checkout remains read-only.
-        self.temp = tempfile.TemporaryDirectory()
+        # Fake host ancestors must be readable by descriptor; CI TMPDIR can sit
+        # below a traversal-only runner home. Keep production trust checks strict.
+        self.temp = tempfile.TemporaryDirectory(dir="/tmp")
         self.addCleanup(self.temp.cleanup)
         self.base = Path(self.temp.name)
         self.a.OPT = str(self.base)
