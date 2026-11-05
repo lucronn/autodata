@@ -114,3 +114,10 @@ test('runtime authenticator always denies with zero argument and environment ins
   } finally {process.env=originalEnvironment;}
   assert.equal(inspections,0);
 });
+
+test('live installed token verifier does not accept passive results or hostile fake handles',async()=>{
+ const module=await import('./publisher_identity.mjs');assert.equal(typeof module.verifyInstalledLiveGithubOidc,'function');
+ let inspected=0;const hostile=new Proxy({}, {get(){inspected++;throw Error('secret');},ownKeys(){inspected++;throw Error('secret');}});
+ for(const handle of [{},hostile,fixture().result])assert.throws(()=>module.verifyInstalledLiveGithubOidc(hostile,handle,hostile),{message:'invalid_oidc_input'});
+ assert.equal(inspected,0);
+});

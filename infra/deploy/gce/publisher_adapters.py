@@ -501,9 +501,11 @@ def build_argv(role, docker, source_dir, registry, context, epoch, postgres, bui
     return argv + ['--file', str(Path(source_dir) / files[role]), str(source_dir)]
 
 
-def verify_registry_image(reference, fetch):
+def verify_registry_image(reference, fetch, *, deadline=None):
     """Fetch original OCI bytes; config digest is image ID, never index digest."""
     immutable(reference)
+    deadline = time.monotonic() + 300 if deadline is None else deadline
+    require(type(deadline) in (int, float) and 0 < deadline - time.monotonic() <= 7200, 'operation_timed_out')
     def read(kind, expected, length=None):
         match(expected, r'sha256:[0-9a-f]{64}')
         data = fetch(reference, kind, expected)
@@ -533,12 +535,36 @@ def verify_registry_image(reference, fetch):
     descriptor = manifest['config']
     config = read('blobs', descriptor['digest'], descriptor['size'])
     require(config.get('os') == 'linux' and config.get('architecture') == 'amd64', 'registry_mismatch')
-    # All layer descriptor digests/sizes are validated; the registry download path
-    # streams and verifies the full bytes when the consumer selects the image.
+    # Descriptors alone never authenticate layers. Hash original bytes with a
+    # bounded chunk size and total budget; the concrete transport owns socket
+    # timeouts and closes when this generator is closed on every outcome.
+    total = 0
     for layer in manifest['layers']:
-        match(layer.get('digest'), r'sha256:[0-9a-f]{64}'); integer(layer.get('size'), 1, 4 * MiB)
+        match(layer.get('digest'), r'sha256:[0-9a-f]{64}')
+        integer(layer.get('size'), 1, 1024 * MiB)
+        total += layer['size']
+        require(total <= 4 * 1024 * MiB, 'output_overflow')
+    for layer in manifest['layers']:
+        require(time.monotonic() < deadline, 'operation_timed_out')
         raw = fetch(reference, 'blobs', layer['digest'])
-        require(type(raw) is bytes and len(raw) == layer['size'] and digest(raw) == layer['digest'][7:], 'registry_mismatch')
+        if type(raw) is bytes:
+            require(len(raw) <= 4 * MiB and len(raw) == layer['size'] and digest(raw) == layer['digest'][7:], 'registry_mismatch')
+            require(time.monotonic() < deadline, 'operation_timed_out')
+            continue
+        require(callable(getattr(raw, '__next__', None)) and callable(getattr(raw, 'close', None)), 'registry_mismatch')
+        observed = 0; hasher = hashlib.sha256()
+        try:
+            for chunk in raw:
+                require(time.monotonic() < deadline, 'operation_timed_out')
+                require(type(chunk) is bytes and 0 < len(chunk) <= MiB, 'registry_mismatch')
+                observed += len(chunk)
+                require(observed <= layer['size'], 'registry_mismatch')
+                hasher.update(chunk)
+            require(observed == layer['size'] and hasher.hexdigest() == layer['digest'][7:], 'registry_mismatch')
+            require(time.monotonic() < deadline, 'operation_timed_out')
+        finally:
+            try: raw.close()
+            except Exception: raise AdapterError('cleanup_failed') from None
     return {'reference': reference, 'image_id': descriptor['digest'], 'platform': 'linux/amd64'}
 
 
@@ -595,6 +621,9 @@ class PinnedHTTPS:
                 chunk = response.read1(min(65536, maximum + 1 - len(output)))
                 if not chunk: break
                 output.extend(chunk); require(len(output) <= maximum, 'output_overflow')
+                # HTTPResponse closes an HTTP/1.0 socket after the declared
+                # final byte. Do not touch that closed socket for an EOF read.
+                if length is not None and len(output) == length: break
             require(length is None or len(output) == length, 'http_failed')
             return 200, bytes(output)
         except (OSError, http.client.HTTPException, ssl.SSLError): raise AdapterError('http_failed') from None
@@ -1063,5 +1092,5 @@ class PinnedCosignApproval:
             statement=private_write(directory,'approval.json',envelope['approval_bytes'])
             signature=private_write(directory,'approval.sig',envelope['signature_bytes'])
             code,_,_=self.process([self.pin['path'],'verify-blob','--key',str(key_path),'--signature',str(signature),
-                                   '--offline',str(statement)],cwd=directory,deadline=deadline,maximum=65536)
+                                   '--offline','--insecure-ignore-tlog',str(statement)],cwd=directory,deadline=deadline,maximum=65536)
             require(type(code) is int and code==0, 'approval_signature_invalid')

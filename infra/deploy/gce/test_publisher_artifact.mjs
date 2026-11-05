@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {fileURLToPath} from 'node:url';
 import assert from 'node:assert/strict';
 import {mkdtemp, writeFile, chmod, rm, symlink, link, mkdir, readFile, stat} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
@@ -282,6 +283,7 @@ async function descriptorDeadlineProbe({mode,source,context:c,runtime}) {
  const hash=b=>createHash('sha256').update(b).digest('hex');
  const root=await fs.mkdtemp('/tmp/artifact-deadline-contract-'),tree=path.join(root,'publisher-toolkit'),self=path.join(root,'publisher_artifact.mjs');
  await fs.mkdir(tree);await fs.copyFile(source,self);
+ for(const name of ['publisher_policy.mjs','publisher_identity.mjs'])await fs.copyFile(path.join(path.dirname(source),name),path.join(root,name));
  const packages={'node_modules/@actions/artifact':{version:'6.3.1',resolved:'https://registry.npmjs.org/@actions/artifact/-/artifact-6.3.1.tgz',integrity:'sha512-DBXgdB9T4yj2KSe0tFg+MTi9T5se+16bdrFQh+3Y6Nq1lZ3gYQk1BjHoTof+7Zf36bEAlfVMf+8ifRKeyGJugQ=='}};
  const lock=Buffer.from(JSON.stringify({packages:{'':{},...packages}}));
  const contents={'package.json':JSON.stringify({dependencies:{'@actions/artifact':'6.3.1'},engines:{node:'22.23.4'}}),'package-lock.json':lock,'node_modules/@actions/artifact/package.json':JSON.stringify({name:'@actions/artifact',version:'6.3.1'}),'node_modules/@actions/artifact/index.js':`throw Error('fixture must never import');`};
@@ -390,4 +392,47 @@ for(const [mode,want,openAtReturn] of [
  assert.equal(r.auth,mode==='close-archive'?0:1);
  assert.equal(r.lateOperations,0,'failed inspection must not start further file operations');
  if(mode.endsWith('abort') || mode.endsWith('deadline')){assert.equal(r.transitioned,true);assert.equal(r.released,true);assert.equal(r.returnedBeforeRelease,false);}
+});
+
+test('toolkit tree builder emits deterministic complete read-only byte inventory from real files',async t=>{
+ const f=await treeFixture(t),builder=new URL('./publisher-toolkit/build_tree.mjs',import.meta.url);
+ await writableDirs(f.root);
+ const child=spawnSync(process.execPath,[fileURLToPath(builder)],{cwd:f.root,encoding:'utf8',timeout:10000});
+ assert.equal(child.status,0,child.stderr);
+ const manifest=await readFile(path.join(f.root,'installed-tree.json'));
+ assert.equal(await helper.verifyInstalledTree(f.root,manifest,sha(manifest),f.lockBytes),true);
+ await writableDirs(f.root);
+ const again=spawnSync(process.execPath,[fileURLToPath(builder)],{cwd:f.root,encoding:'utf8',timeout:10000});
+ assert.equal(again.status,0,again.stderr);assert.deepEqual(await readFile(path.join(f.root,'installed-tree.json')),manifest);
+});
+
+test('installed tree honors exact lock package name for npm aliases',async t=>{
+ const f=await treeFixture(t);await writableDirs(f.root);
+ const lock=JSON.parse(f.lockBytes);lock.packages['node_modules/transitive'].name='locked-alias-target';
+ const lockBytes=Buffer.from(JSON.stringify(lock));
+ const target='node_modules/transitive/package.json',installed=Buffer.from(JSON.stringify({name:'locked-alias-target',version:'1.0.0'}));
+ for(const [name,raw] of [['package-lock.json',lockBytes],[target,installed]]){await chmod(path.join(f.root,name),0o644);await writeFile(path.join(f.root,name),raw);await chmod(path.join(f.root,name),0o444);}
+ const m=JSON.parse(f.manifest);m.toolkit_lock_sha256=sha(lockBytes);
+ for(const entry of m.files){if(entry.path==='package-lock.json'){entry.bytes=lockBytes.length;entry.sha256=sha(lockBytes);}if(entry.path===target){entry.bytes=installed.length;entry.sha256=sha(installed);}}
+ const manifest=Buffer.from(JSON.stringify(m));await writableDirs(f.root,0o555);
+ assert.equal(await helper.verifyInstalledTree(f.root,manifest,sha(manifest),lockBytes),true);
+});
+
+test('runtime challenge denies passive or forged installation before runtime inspection',async()=>{
+ assert.equal(typeof helper.runRuntimeChallenge,'function');let reads=0;
+ const hostile=new Proxy({}, {get(){reads++;throw Error('secret');},ownKeys(){reads++;throw Error('secret');}});
+ for(const handle of [{},hostile])await assert.rejects(helper.runRuntimeChallenge(handle,hostile,hostile,hostile),{message:'missing_dependency'});
+ assert.equal(reads,0);
+});
+
+test('real Actions ZIP decoding retains original inner bytes and rejects envelope mutations',()=>{
+ assert.equal(typeof helper.decodeActionsOuter,'function');
+ const produced=spawnSync('/usr/bin/python3',['-c','import io,sys,zipfile; b=io.BytesIO(); z=zipfile.ZipFile(b,"w",compression=zipfile.ZIP_DEFLATED); z.writestr("release.zip",sys.stdin.buffer.read()); z.close(); sys.stdout.buffer.write(b.getvalue())'],{input:inner});
+ assert.equal(produced.status,0);const zip=produced.stdout;
+ assert.deepEqual(helper.decodeActionsOuter(zip,sha(inner),inner.length),inner);
+ const badCrc=Buffer.from(zip),central=badCrc.readUInt32LE(badCrc.length-6);badCrc[14]^=1;badCrc[central+16]^=1;
+ for(const changed of [Buffer.concat([zip,Buffer.from('x')]),Buffer.concat([Buffer.from('x'),zip]),Buffer.from(zip),badCrc]){
+  if(changed.length===zip.length && changed!==badCrc)changed[14]^=1;
+  assert.throws(()=>helper.decodeActionsOuter(changed,sha(inner),inner.length));
+ }
 });

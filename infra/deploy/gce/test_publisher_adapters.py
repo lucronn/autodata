@@ -433,6 +433,7 @@ a=sys.argv
 if a[1]=='version':
     print(json.dumps({'gitVersion':'local-test-fixture'}))
     sys.exit(0)
+assert '--offline' in a and '--insecure-ignore-tlog' in a
 r=subprocess.run(['/usr/bin/openssl','dgst','-sha256','-verify',a[a.index('--key')+1],'-signature',a[a.index('--signature')+1],a[-1]],capture_output=True)
 sys.exit(r.returncode)
 """)
@@ -776,3 +777,126 @@ assert p.bounded_process([sys.executable,'-c','pass'],cwd=directory,deadline=tim
         finally:
             signal.signal(signal.SIGTERM,previous)
             signal.pthread_sigmask(signal.SIG_SETMASK,previous_mask)
+
+class StreamingRegistryTests(unittest.TestCase):
+    def setUp(self): self.p = load()
+
+    def inventory(self, layers):
+        p = self.p
+        config = p.canonical({'architecture': 'amd64', 'os': 'linux'})
+        manifest = p.canonical({'schemaVersion': 2, 'mediaType': 'application/vnd.oci.image.manifest.v1+json',
+                               'config': {'digest': 'sha256:' + p.digest(config), 'size': len(config)}, 'layers': layers})
+        objects = {'sha256:' + p.digest(config): config, 'sha256:' + p.digest(manifest): manifest}
+        return 'registry.example/repo/api@sha256:' + p.digest(manifest), objects
+
+    def test_large_layer_hashes_original_file_chunks_and_closes_stream(self):
+        import tempfile
+        import time
+        p = self.p
+        with tempfile.TemporaryFile() as original:
+            block = b'x' * 65536
+            h = hashlib.sha256()
+            for _ in range(80): original.write(block); h.update(block)
+            original.seek(0)
+            size = 80 * len(block); layer = 'sha256:' + h.hexdigest(); closed = []
+            reference, objects = self.inventory([{'digest': layer, 'size': size}])
+            def chunks():
+                try:
+                    while True:
+                        data = original.read(65536)
+                        if not data: break
+                        yield data
+                finally: closed.append(True)
+            result = p.verify_registry_image(reference, lambda r,k,d: chunks() if d == layer else objects[d],
+                                             deadline=time.monotonic() + 3)
+            self.assertEqual(result['platform'], 'linux/amd64'); self.assertEqual(closed, [True])
+
+    def test_stream_rejects_changed_truncated_overlong_empty_and_oversized_chunks(self):
+        import time
+        p = self.p; layer = 'sha256:' + p.digest(b'abc')
+        reference, objects = self.inventory([{'digest': layer, 'size': 3}])
+        for pieces in ([b'abd'], [b'ab'], [b'abcd'], [b'',b'abc'], ['abc'], [b'x' * (p.MiB + 1)]):
+            closed=[]
+            def chunks():
+                try: yield from pieces
+                finally: closed.append(True)
+            with self.subTest(pieces=str(pieces)[:30]), self.assertRaises(p.AdapterError):
+                p.verify_registry_image(reference, lambda r,k,d: chunks() if d == layer else objects[d], deadline=time.monotonic()+1)
+            self.assertEqual(closed,[True])
+
+    def test_byte_layer_fetch_cannot_succeed_after_total_deadline(self):
+        import time
+        p = self.p; layer = 'sha256:' + p.digest(b'abc')
+        reference, objects = self.inventory([{'digest': layer, 'size': 3}])
+        def fetch(r, k, d):
+            if d == layer:
+                time.sleep(.08)
+                return b'abc'
+            return objects[d]
+        with self.assertRaisesRegex(p.AdapterError, 'operation_timed_out'):
+            p.verify_registry_image(reference, fetch, deadline=time.monotonic() + .03)
+
+    def test_stream_deadline_and_layer_aggregate_bounds_stop_before_fetch(self):
+        import time
+        p = self.p; layer = 'sha256:' + p.digest(b'abc')
+        reference, objects = self.inventory([{'digest': layer, 'size': 3}])
+        with self.assertRaises(p.AdapterError):
+            p.verify_registry_image(reference, lambda r,k,d: iter([b'abc']) if d == layer else objects[d], deadline=time.monotonic()-1)
+        calls=[]
+        reference,objects=self.inventory([{'digest':layer,'size':1024*p.MiB+1}])
+        def fetch(r,k,d): calls.append(d); return objects[d]
+        with self.assertRaises(p.AdapterError): p.verify_registry_image(reference, fetch)
+        self.assertEqual(len(calls),2)
+        reference,objects=self.inventory([{'digest':layer,'size':1024*p.MiB}]*5)
+        calls.clear()
+        with self.assertRaises(p.AdapterError): p.verify_registry_image(reference, fetch)
+        self.assertEqual(len(calls),2)
+
+
+class RealHTTP10TransportTests(unittest.TestCase):
+    def test_exact_length_eof_accepts_original_bytes_and_rejects_truncation(self):
+        import http.server
+        import socket
+        import ssl
+        import subprocess
+        import tempfile
+        import threading
+        import time
+        p = load()
+        # The TLS and HTTP streams are real. Only the connect boundary maps a
+        # pinned public test peer to the disposable local TLS listener.
+        class TestPeer(socket.socket):
+            def getpeername(self): return ('8.8.8.8', 443)
+        payload = b'original-http10-bytes'
+        class Handler(http.server.BaseHTTPRequestHandler):
+            protocol_version = 'HTTP/1.0'
+            def log_message(self, *args): pass
+            def do_GET(self):
+                self.send_response(200)
+                length = len(payload) + (1 if self.path == '/truncated' else 0)
+                self.send_header('Content-Length', str(length)); self.end_headers()
+                self.wfile.write(payload)
+        with tempfile.TemporaryDirectory() as directory:
+            cert = Path(directory) / 'cert.pem'; key = Path(directory) / 'key.pem'
+            subprocess.run(['openssl','req','-x509','-newkey','rsa:2048','-nodes','-days','1',
+                            '-subj','/CN=api.github.com','-addext','subjectAltName=DNS:api.github.com',
+                            '-keyout',str(key),'-out',str(cert)], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+            tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER); tls.load_cert_chain(cert, key)
+            server.socket = tls.wrap_socket(server.socket, server_side=True)
+            thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
+            def connect(address, timeout):
+                raw = socket.create_connection(server.server_address, timeout=timeout)
+                return TestPeer(fileno=raw.detach())
+            transport = p.PinnedHTTPS(str(cert), lambda host, deadline: ['8.8.8.8'], connect_factory=connect)
+            try:
+                self.assertEqual(transport.get('https://api.github.com/exact', origins={'api.github.com'},
+                                               deadline=time.monotonic()+3, maximum=100), (200, payload))
+                with self.assertRaises(p.AdapterError):
+                    transport.get('https://api.github.com/truncated', origins={'api.github.com'},
+                                  deadline=time.monotonic()+3, maximum=100)
+                with self.assertRaisesRegex(p.AdapterError, 'output_overflow'):
+                    transport.get('https://api.github.com/exact', origins={'api.github.com'},
+                                  deadline=time.monotonic()+3, maximum=3)
+            finally:
+                server.shutdown(); server.server_close(); thread.join(3)
