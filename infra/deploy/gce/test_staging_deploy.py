@@ -45,7 +45,7 @@ class OperatorContracts(unittest.TestCase):
             bad = config(); bad[key] = None
             with self.subTest(key=key), self.assertRaises(op.Rejected):
                 op.validate_config(bad, SHA)
-        for origin in ('https://cars.tk', 'https://www.cars.tk', 'http://staging.example.test',
+        for origin in ('https://cars.tk', 'https://www.cars.tk', 'https://autodata.cars.tk', 'http://staging.example.test',
                        'https://cars.tk.', 'https://user:pass@staging.example.test', 'https://staging.example.test/path'):
             bad = config(); bad['staging_origin'] = origin
             with self.subTest(origin=origin), self.assertRaises(op.Rejected):

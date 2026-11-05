@@ -111,7 +111,7 @@ def validate_config(value, source, *, bootstrap=False):
         require(origin.scheme == 'https' and origin.username is None and origin.password is None and origin.port is None)
         require(origin.path == '' and not origin.query and not origin.fragment)
         require(matches(origin.hostname, r'[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?'))
-        require(origin.hostname not in ('cars.tk', 'www.cars.tk'))
+        require(origin.hostname not in ('cars.tk', 'www.cars.tk', 'autodata.cars.tk'))
     except (ValueError, TypeError, AttributeError): raise Rejected() from None
 
 

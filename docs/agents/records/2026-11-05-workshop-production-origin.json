@@ -1,0 +1,18 @@
+{
+  "goal": "Align production Workshop authentication, checkout and hosted runtime origin validation with https://autodata.cars.tk while retaining exact https://cars.tk compatibility.",
+  "plan_ref": "docs/superpowers/plans/2026-11-05-workshop-production-origin.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/323",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/workshop-commerce.md"
+  ],
+  "todo": [
+    "Commit the synchronized plan/contract/record checkpoint and pass exact-checkpoint machine preflight.",
+    "Add failing Go/Python/runtime origin matrix cases and the independent staging deploy collision case.",
+    "Change only exact production origin allowlists and the staging deploy production-host exclusion.",
+    "Run focused suites, full Go API tests/vet, diff checks, and independent review; commit and push validated milestones.",
+    "Record exact source verification in canonical docs and GitHub tracking; deployment and live authentication/checkout remain separate."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-05T15:28:27.917787Z"
+}

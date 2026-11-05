@@ -35,10 +35,39 @@ func TestCustomerAuthConfiguration(t *testing.T) {
 			t.Fatalf("local mode env %s: %v", env, err)
 		}
 	}
-	m := identityTestConfig()
-	m["AUTODATA_ENV"] = "production"
-	m["AUTODATA_PUBLIC_ORIGIN"] = "https://other.example"
-	if _, err := loadCustomerAuthConfig(read(m)); err == nil {
-		t.Fatal("production non-canonical origin accepted")
+	for _, origin := range []string{"https://autodata.cars.tk", "https://cars.tk"} {
+		for _, domain := range []string{"fixture-project.firebaseapp.com", origin[len("https://"):]} {
+			t.Run("production_"+origin+"_"+domain, func(t *testing.T) {
+				m := identityTestConfig()
+				m["AUTODATA_ENV"] = "production"
+				m["AUTODATA_PUBLIC_ORIGIN"] = origin
+				m["AUTODATA_FIREBASE_AUTH_DOMAIN"] = domain
+				c, err := loadCustomerAuthConfig(read(m))
+				if err != nil || c.Origin != origin {
+					t.Fatalf("origin %q: got %q, error %v", origin, c.Origin, err)
+				}
+				m["FIREBASE_AUTH_EMULATOR_HOST"] = "localhost:9099"
+				if _, err := loadCustomerAuthConfig(read(m)); err == nil {
+					t.Fatal("production emulator accepted")
+				}
+			})
+		}
+	}
+	for _, origin := range []string{
+		"https://other.example", "https://www.cars.tk", "https://evil.autodata.cars.tk",
+		"https://autodata.cars.tk.evil.example", "http://autodata.cars.tk",
+		"https://autodata.cars.tk/", "https://autodata.cars.tk/workshop/",
+		"https://autodata.cars.tk:443", "https://user@autodata.cars.tk",
+		"https://autodata.cars.tk?q=1", "https://autodata.cars.tk#fragment",
+		"https://autodata.cars.tk.", "https://AUTODATA.cars.tk",
+	} {
+		t.Run("production_denied_"+origin, func(t *testing.T) {
+			m := identityTestConfig()
+			m["AUTODATA_ENV"] = "production"
+			m["AUTODATA_PUBLIC_ORIGIN"] = origin
+			if _, err := loadCustomerAuthConfig(read(m)); err == nil {
+				t.Fatal("production non-canonical origin accepted")
+			}
+		})
 	}
 }

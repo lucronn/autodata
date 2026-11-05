@@ -245,7 +245,7 @@ def validate_config(config):
     _purchase_config_environment_json(config['workshop_purchase_config'])
     require(config['environment'] in ('production', 'staging'))
     _https(config['public_origin'], origin=True)
-    require((config['public_origin'] == 'https://cars.tk') == (config['environment'] == 'production'))
+    require((config['public_origin'] in ('https://cars.tk', 'https://autodata.cars.tk')) == (config['environment'] == 'production'))
     firebase = config['firebase']
     exact_object(firebase, ('project_id', 'web_api_key', 'web_app_id', 'auth_domain'))
     match(firebase['project_id'], r'[a-z][a-z0-9-]{4,28}[a-z0-9]')

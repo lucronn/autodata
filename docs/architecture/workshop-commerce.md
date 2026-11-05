@@ -11,9 +11,10 @@ requires the committed planning gate and an exact-base preflight.
 ## Product and ownership
 
 The Workshop launch is a one-time purchase of one vehicle dataset for **$20**.
-The currency is **USD**, with exactly **2000 minor units total**. The
-customer-facing domain is **https://cars.tk**, with DNS managed through **Vercel**
-under the current user direction. This is a planning fact; no DNS action is recorded.
+The currency is **USD**, with exactly **2000 minor units total**. The public Workshop is **https://autodata.cars.tk/workshop/** behind the
+Vercel proxy; **https://cars.tk** is the marketing domain. Production origin
+validation alignment is tracked in Issue323 below; this contract records no DNS
+action or deployment.
 
 The initial purchasable unit is the selected normalized vehicle configuration
 and region. The server resolves this scope from the catalog; clients cannot
@@ -160,3 +161,43 @@ Remaining actual owner/legal/tax/support/merchant/Firebase/token/project/resourc
 Updated at 2026-11-05T06:11:06Z. Root synchronized the exact goal, six literal todos, nine gate paths and four prospective implementation paths in https://github.com/lucronn/autodata/issues/186#issuecomment-6651122921; Project8 item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4` indexes that comment. Before snapshot `/home/corp/autodata-evidence/task62-config-delivery-before-tracking.json` SHA256 185dea24ec804d096f159a9ded443477ea0cff0a8ded02c884eb037e46220044; after snapshot `/home/corp/autodata-evidence/task62-config-delivery-after-tracking.json` SHA256 c0d321f6d22bb037cd168a5b2a598372bb80219c70af47a9131f03e859e49ba5. Preservation `/home/corp/autodata-evidence/task62-config-delivery-tracking-verify.json` SHA256 739d2d0b1bacf132bd8ef144146c4d13b0811f0927cc90dfaa8dacf1433c5f7f passed10 checks; independent draft review `/home/corp/autodata-evidence/task62-config-delivery-draft-independent/REPORT.json` SHA256 e303d03951a62f6d38c82f549948f1371d8a04646bf053a228e3d927d1b0096d passed15 checks. Issue body and prior comments, other Project fields and prior Project Source were preserved. This agent performed no Issue/Project writes.
 
 Status/planning/tracking are synchronized; execution remains blocked, current implementation allowlist=[], all authorities=false, credits0, verified_case_ids=[], release_state=unverified. Planning synchronized by root with Issue186 comment6651122921/Project8 preservation PASS10 and independent draft PASS15. Nine-document planning-only checkpoint commit/push authorized. External actual SHA/tree seal, standalone+nested exact-checkpoint errors=[] preflights, independent checkpoint review and explicit four-path dispatch remain required. Task61 PR290/full CI dependency evidence remains pending. Execution blocked; all authorities false/current implementation allowlist empty; no predecessor self-hash. Task61 PR290/full CI remains pending and supplies no inherited green. Historical draft/proposal observations above remain provenance, not fresh implementation evidence.
+
+
+## Production Workshop origin alignment — Issue323
+
+Goal: Align production Workshop authentication, checkout and hosted runtime origin validation with https://autodata.cars.tk while retaining exact https://cars.tk compatibility.
+
+Issue: https://github.com/lucronn/autodata/issues/323
+Project: https://github.com/users/lucronn/projects/8
+Project item: `PVTI_lAHOCSJ8cc4BiQ2BzhGUEXg`
+Plan: `docs/superpowers/plans/2026-11-05-workshop-production-origin.md`
+Record: `docs/agents/records/2026-11-05-workshop-production-origin.json`
+Source base: `e8c1993dc317d8f05f73b5610123c90bde767b46`.
+
+Production origin strings are exactly `https://autodata.cars.tk` and legacy
+`https://cars.tk`. Go Firebase configuration, Python checkout return origins and
+the self-contained hosted runtime validator must use this same two-string
+allowlist, preserving strict URL parsing, production local-mode denial and all
+identity/session/commerce authorization. Hosted staging config must reject both
+production origins; its independent deployment origin guard also excludes the
+new public production hostname. Existing staging/test development behavior stays
+covered by focused regression tests. No wildcard, suffix match or normalization
+is permitted. Kubernetes' `https://cars.tk` example default remains compatible;
+changing deployment manifests or actual runtime configuration is outside this
+source-only change.
+
+Status: source implementation candidate `cecef79a6bdbeaccf8a0eeead58594d059dbf35d`
+in PR #324. Exact planning checkpoint `82f8545af205000e54c95bcad4074def5b1f5457`
+passed the synchronized machine preflight before source edits. The eight-path
+candidate passed full Go API tests and vet, commerce (5), hosted runtime (96),
+staging deployment (26), and independent exact-SHA review with focused
+rechecks. Final-head CI and merge remain pending. Source completion will not
+establish deployed Firebase domain authorization, session, checkout,
+credentials or live-sales readiness.
+
+Todo:
+- [x] Commit the synchronized plan/contract/record checkpoint and pass exact-checkpoint machine preflight.
+- [x] Add failing Go/Python/runtime origin matrix cases and the independent staging deploy collision case.
+- [x] Change only exact production origin allowlists and the staging deploy production-host exclusion.
+- [x] Run focused suites, full Go API tests/vet, diff checks, and independent review; commit and push validated milestones.
+- [x] Record exact source verification in canonical docs and GitHub tracking; deployment and live authentication/checkout remain separate.

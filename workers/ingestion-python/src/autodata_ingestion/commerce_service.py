@@ -90,7 +90,7 @@ def checkout_return_origin(environment, value):
                  and not p.username and not p.password and not p.path and not p.query and not p.fragment
                  and (p.scheme == 'https' or (environment == 'test' and p.scheme == 'http' and local)))
         if environment == 'production':
-            valid = valid and value == 'https://cars.tk'
+            valid = valid and value in {'https://cars.tk', 'https://autodata.cars.tk'}
         if any(c.isspace() or ord(c)<32 for c in value) or p.netloc.endswith(':'):
             valid = False
         if not valid or (port is not None and not 1 <= port <= 65535):

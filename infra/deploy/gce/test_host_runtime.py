@@ -223,8 +223,35 @@ class ContractTests(unittest.TestCase):
                        'https://staging.example/path', 'https://staging.example?token=x', 'https://cars.tk'):
             changed = copy.deepcopy(self.config); changed['public_origin'] = origin
             with self.subTest(origin=origin), self.assertRaises(self.rt.ContractError): self.rt.validate_config(changed)
-        production = copy.deepcopy(self.config); production.update(environment='production', public_origin='https://cars.tk')
-        self.rt.validate_config(production)
+        for origin in ('https://autodata.cars.tk', 'https://cars.tk'):
+            with self.subTest(origin=origin):
+                production = copy.deepcopy(self.config)
+                production.update(environment='production', public_origin=origin)
+                self.rt.validate_config(production)
+                staging = copy.deepcopy(self.config); staging['public_origin'] = origin
+                with self.assertRaises(self.rt.ContractError): self.rt.validate_config(staging)
+        for origin in ('https://other.example', 'https://www.cars.tk', 'https://evil.autodata.cars.tk',
+                       'https://autodata.cars.tk.evil.example', 'http://autodata.cars.tk',
+                       'https://autodata.cars.tk/', 'https://autodata.cars.tk/workshop/',
+                       'https://autodata.cars.tk:443', 'https://user@autodata.cars.tk',
+                       'https://autodata.cars.tk?q=1', 'https://autodata.cars.tk#fragment',
+                       'https://autodata.cars.tk.', 'https://AUTODATA.cars.tk'):
+            production = copy.deepcopy(self.config)
+            production.update(environment='production', public_origin=origin)
+            with self.subTest(origin=origin), self.assertRaises(self.rt.ContractError):
+                self.rt.validate_config(production)
+
+    def test_production_origin_is_rendered_literally_for_api_and_commerce(self):
+        for origin in ('https://autodata.cars.tk', 'https://cars.tk'):
+            with self.subTest(origin=origin):
+                production = copy.deepcopy(self.config)
+                production.update(environment='production', public_origin=origin)
+                manifest = copy.deepcopy(self.manifest)
+                manifest['service_config_sha256'] = digest(production)
+                bundle = self.rt.render_bundle(manifest, production)
+                services = json.loads(bundle['compose.production.yaml'])['services']
+                for name in ('api', 'ingestion-http'):
+                    self.assertEqual(services[name]['environment']['AUTODATA_PUBLIC_ORIGIN'], origin)
 
     def test_config_rejects_ambient_aliases_dynamic_graph_and_secret_values(self):
         for mutate in (lambda c: c.update(GOOGLE_APPLICATION_CREDENTIALS='/tmp/key'),
