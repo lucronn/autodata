@@ -300,7 +300,7 @@ class Fixture:
             for role in (pg,nats,s3):self.d.volume(role)
         self.d.container(pg,IMAGES['postgres']['id'],['postgres','-c','max_connections=15','-c','shared_buffers=64MB'],512,pg,'/var/lib/postgresql/data',env=['POSTGRES_USER=fixture','POSTGRES_DB=fixture','POSTGRES_PASSWORD=synthetic-fixture-only'])
         self.d.container(nats,IMAGES['nats']['id'],['nats-server','-js','-sd','/data','--name','backup-fixture','--user','fixture-user','--pass','fixture-password'],256,nats,'/data')
-        self.d.container(s3,IMAGES['seaweed']['id'],['mini','-dir=/data','-s3.port=9000'],256,s3,'/data',env=['AWS_ACCESS_KEY_ID=fixture-access','AWS_SECRET_ACCESS_KEY=fixture-secret','S3_BUCKET=fixture'])
+        self.d.container(s3,IMAGES['seaweed']['id'],['mini','-dir=/data','-s3.port=9000','-volume.max=4'],256,s3,'/data',env=['AWS_ACCESS_KEY_ID=fixture-access','AWS_SECRET_ACCESS_KEY=fixture-secret','S3_BUCKET=fixture'])
         for role in (pg,nats,s3):self.d.action(role,'start')
         self.pg,self.nats,self.s3=pg,nats,s3;self.wait_pg()
     def tcp(self,role,port,data):
@@ -533,7 +533,7 @@ def execute_fixture(evidence):
         # for cold-copy evidence; the target PG always gets the portable dump.
         fixture.nats,fixture.s3='cold-nats','cold-s3'
         owned.container('cold-nats',IMAGES['nats']['id'],['nats-server','-js','-sd','/data','--name','backup-fixture','--user','fixture-user','--pass','fixture-password'],256,'cold-nats','/data')
-        owned.container('cold-s3',IMAGES['seaweed']['id'],['mini','-dir=/data','-s3.port=9000'],256,'cold-s3','/data',env=['AWS_ACCESS_KEY_ID=fixture-access','AWS_SECRET_ACCESS_KEY=fixture-secret','S3_BUCKET=fixture'])
+        owned.container('cold-s3',IMAGES['seaweed']['id'],['mini','-dir=/data','-s3.port=9000','-volume.max=4'],256,'cold-s3','/data',env=['AWS_ACCESS_KEY_ID=fixture-access','AWS_SECRET_ACCESS_KEY=fixture-secret','S3_BUCKET=fixture'])
         for role in ('cold-nats','cold-s3'):owned.action(role,'start')
         fixture.plan={'schema_version':1,'run_id':run_id,'source_sha':source_sha,'manifest_sha256':digest(canonical(fixture.manifest)),
             'archive_sha256':digest(fixture.archive),'expected_disk_uuid':fixture.disk,'restore_disk_uuid':fixture.restore_disk,
