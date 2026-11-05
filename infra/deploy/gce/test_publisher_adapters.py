@@ -776,3 +776,65 @@ assert p.bounded_process([sys.executable,'-c','pass'],cwd=directory,deadline=tim
         finally:
             signal.signal(signal.SIGTERM,previous)
             signal.pthread_sigmask(signal.SIG_SETMASK,previous_mask)
+
+class StreamingRegistryTests(unittest.TestCase):
+    def setUp(self): self.p = load()
+
+    def inventory(self, layers):
+        p = self.p
+        config = p.canonical({'architecture': 'amd64', 'os': 'linux'})
+        manifest = p.canonical({'schemaVersion': 2, 'mediaType': 'application/vnd.oci.image.manifest.v1+json',
+                               'config': {'digest': 'sha256:' + p.digest(config), 'size': len(config)}, 'layers': layers})
+        objects = {'sha256:' + p.digest(config): config, 'sha256:' + p.digest(manifest): manifest}
+        return 'registry.example/repo/api@sha256:' + p.digest(manifest), objects
+
+    def test_large_layer_hashes_original_file_chunks_and_closes_stream(self):
+        import tempfile
+        import time
+        p = self.p
+        with tempfile.TemporaryFile() as original:
+            block = b'x' * 65536
+            h = hashlib.sha256()
+            for _ in range(80): original.write(block); h.update(block)
+            original.seek(0)
+            size = 80 * len(block); layer = 'sha256:' + h.hexdigest(); closed = []
+            reference, objects = self.inventory([{'digest': layer, 'size': size}])
+            def chunks():
+                try:
+                    while True:
+                        data = original.read(65536)
+                        if not data: break
+                        yield data
+                finally: closed.append(True)
+            result = p.verify_registry_image(reference, lambda r,k,d: chunks() if d == layer else objects[d],
+                                             deadline=time.monotonic() + 3)
+            self.assertEqual(result['platform'], 'linux/amd64'); self.assertEqual(closed, [True])
+
+    def test_stream_rejects_changed_truncated_overlong_empty_and_oversized_chunks(self):
+        import time
+        p = self.p; layer = 'sha256:' + p.digest(b'abc')
+        reference, objects = self.inventory([{'digest': layer, 'size': 3}])
+        for pieces in ([b'abd'], [b'ab'], [b'abcd'], [b'',b'abc'], ['abc'], [b'x' * (p.MiB + 1)]):
+            closed=[]
+            def chunks():
+                try: yield from pieces
+                finally: closed.append(True)
+            with self.subTest(pieces=str(pieces)[:30]), self.assertRaises(p.AdapterError):
+                p.verify_registry_image(reference, lambda r,k,d: chunks() if d == layer else objects[d], deadline=time.monotonic()+1)
+            self.assertEqual(closed,[True])
+
+    def test_stream_deadline_and_layer_aggregate_bounds_stop_before_fetch(self):
+        import time
+        p = self.p; layer = 'sha256:' + p.digest(b'abc')
+        reference, objects = self.inventory([{'digest': layer, 'size': 3}])
+        with self.assertRaises(p.AdapterError):
+            p.verify_registry_image(reference, lambda r,k,d: iter([b'abc']) if d == layer else objects[d], deadline=time.monotonic()-1)
+        calls=[]
+        reference,objects=self.inventory([{'digest':layer,'size':1024*p.MiB+1}])
+        def fetch(r,k,d): calls.append(d); return objects[d]
+        with self.assertRaises(p.AdapterError): p.verify_registry_image(reference, fetch)
+        self.assertEqual(len(calls),2)
+        reference,objects=self.inventory([{'digest':layer,'size':1024*p.MiB}]*5)
+        calls.clear()
+        with self.assertRaises(p.AdapterError): p.verify_registry_image(reference, fetch)
+        self.assertEqual(len(calls),2)
