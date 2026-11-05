@@ -1,4 +1,6 @@
 import test from 'node:test';
+import {spawnSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
 import assert from 'node:assert/strict';
 import {generateKeyPairSync, createHash, sign} from 'node:crypto';
 import {readFile, writeFile, mkdtemp, rm, open, link, unlink, symlink as symlinkFile, mkdir, chmod, lstat} from 'node:fs/promises';
@@ -228,4 +230,86 @@ test('fixture-only mount and fdinfo parsers retain RO/nested mount identity and 
     invalid(()=>mountId(Buffer.from([0xc0,0xaf])));
     // These are parser observations under supplied fixtures, never proof of a real immutable installation.
   });
+});
+
+function liveFixture(changes={},options={}) {
+  const f=fixture();
+  const adapter=bytes({registry:'us-central1-docker.pkg.dev/owner-project/releases'});
+  const policy={...f.policy,protocol_version:2,purpose:'autodata.publisher.staging.live.v1',
+    upload_enabled:true,runtime_bearer_authentication:'service-challenge-v1',
+    adapter_policy_sha256:hash(adapter),toolchain_image_digest:'sha256:'+'1'.repeat(64),
+    toolkit_lock_sha256:'2'.repeat(64),toolkit_tree_sha256:'3'.repeat(64),helper_sha256:'4'.repeat(64),
+    dependency_review_sha256:'5'.repeat(64),runtime_origins:['https://results.actions.githubusercontent.com'],
+    storage_origins:['https://productionresultssa0.blob.core.windows.net'],
+    approval_keys:{[hash(Buffer.from('independent-owner-key'))]:'independent-owner-key'},
+    oidc:{...f.policy.oidc,audience:'urn:autodata:publisher:staging:live:v1'},...changes};
+  const payload=bytes(policy),envelope=bytes({protocol_version:2,key_id:keyId,payload:payload.toString('base64'),
+    signature:sign(null,Buffer.concat([Buffer.from(options.domain??'AutoData-Publisher-Owner-Policy-v2\0'),payload]),owner.privateKey).toString('base64')});
+  const bootstrap=bytes({protocol_version:2,purpose:'autodata.publisher.bootstrap.live.v1',key_id:keyId,
+    owner_public_key:rawOwner.toString('base64'),policy_sha256:hash(envelope),minimum_epoch:1});
+  return {bootstrap,envelope,jwks:f.jwks,adapter,policy};
+}
+test('live policy uses separate signature domain, adapter bytes, purpose and immutable toolchain selection',async()=>{
+  const module=await import('./publisher_policy.mjs');
+  assert.equal(typeof module.verifyLiveOwnerPolicyBytes,'function');
+  const f=liveFixture(),result=module.verifyLiveOwnerPolicyBytes(f.bootstrap,f.envelope,f.jwks,f.adapter,now);
+  assert.equal(result.policy.protocol_version,2);assert.equal(result.policy.upload_enabled,true);
+  assert.equal(result.policy.adapter_policy_sha256,hash(f.adapter));assert.ok(Object.isFrozen(result.policy.approval_keys));
+  invalid(()=>installedPolicyClaims(result));
+  invalid(()=>verify(f));
+  invalid(()=>module.verifyLiveOwnerPolicyBytes(f.bootstrap,f.envelope,f.jwks,Buffer.concat([f.adapter,Buffer.from(' ')]),now));
+  const wrong=liveFixture({}, {domain:'AutoData-Publisher-Owner-Policy-v1\0'});
+  invalid(()=>module.verifyLiveOwnerPolicyBytes(wrong.bootstrap,wrong.envelope,wrong.jwks,wrong.adapter,now));
+});
+test('live policy rejects unresolved fields, insecure origins and passive policy substitution',async()=>{
+  const {verifyLiveOwnerPolicyBytes}=await import('./publisher_policy.mjs');
+  assert.equal(typeof verifyLiveOwnerPolicyBytes,'function');
+  for(const changes of [{protocol_version:1},{purpose:'autodata.publisher.stage1a.offline'},{upload_enabled:false},
+    {runtime_bearer_authentication:'unsupported'},{toolchain_image_digest:null},{toolchain_image_digest:'latest'},
+    {adapter_policy_sha256:'0'.repeat(64)},{helper_sha256:null},{dependency_review_sha256:''},
+    {runtime_origins:[]},{runtime_origins:['http://results.actions.githubusercontent.com']},
+    {runtime_origins:['https://localhost']},{storage_origins:['https://storage.invalid/path']},{approval_keys:{}}]) {
+    const f=liveFixture(changes);invalid(()=>verifyLiveOwnerPolicyBytes(f.bootstrap,f.envelope,f.jwks,f.adapter,now));
+  }
+});
+test('installed live loader grants no authority from supplied bytes, path or passive handles',async()=>{
+  const module=await import('./publisher_policy.mjs');
+  assert.equal(typeof module.loadInstalledLiveOwnerPolicy,'function');
+  assert.equal(typeof module.installedLivePolicyClaims,'function');
+  await assert.rejects(module.loadInstalledLiveOwnerPolicy(),{message:'missing_dependency'});
+  await assert.rejects(module.loadInstalledLiveOwnerPolicy({path:'/tmp/fixture'}),{message:'invalid_trust_input'});
+  for(const value of [{},liveFixture(),{installed:true}]) invalid(()=>module.installedLivePolicyClaims(value));
+});
+
+// This test installs real root-owned trust on a read-only mount in a private
+// mount namespace. It does not project fixture stat/mount data into the loader.
+test('real installed live policy acquires private handle only from root-owned read-only trust',async t=>{
+  const available=spawnSync('sudo',['-n','unshare','--mount','--propagation','private','true']);
+  if(available.status!==0){assert.notEqual(process.env.AUTODATA_REQUIRE_ROOT_TRUST,'1','required mount namespace unavailable');t.skip('requires sudo mount namespace');return;}
+  const current=Math.floor(Date.now()/1000),base=liveFixture();
+  const f=liveFixture({issued_at:current-60,expires_at:current+600,
+    oidc:{...base.policy.oidc,jwks_issued_at:current-100,jwks_expires_at:current+1000}});
+  const directory=await mkdtemp(tmpdir()+'/autodata-live-install-');
+  try {
+    for(const [name,raw] of [['bootstrap-live-v1.json',f.bootstrap],['policy-live-v1.envelope.json',f.envelope],['github-oidc-jwks-live-v1.json',f.jwks],['adapter-policy-v2.json',f.adapter]])await writeFile(directory+'/'+name,raw,{mode:0o600});
+    const script=`set -eu
+mount -t tmpfs -o mode=755 tmpfs /etc
+mkdir -p /etc/autodata/publisher
+for name in bootstrap-live-v1.json policy-live-v1.envelope.json github-oidc-jwks-live-v1.json adapter-policy-v2.json; do
+  cp -- "$1/$name" "/etc/autodata/publisher/$name"
+  chmod 444 "/etc/autodata/publisher/$name"
+done
+mount --bind /etc/autodata/publisher /etc/autodata/publisher
+mount -o remount,bind,ro /etc/autodata/publisher
+exec "$2" --input-type=module -e "$3"
+`;
+    const program=`import {loadInstalledLiveOwnerPolicy,installedLivePolicyClaims,installedPolicyClaims} from ${JSON.stringify(new URL('./publisher_policy.mjs',import.meta.url).href)};
+const handle=await loadInstalledLiveOwnerPolicy();
+const result=installedLivePolicyClaims(handle);
+if(result.policy.purpose!=='autodata.publisher.staging.live.v1')process.exit(2);
+try {installedPolicyClaims(handle);process.exit(4);} catch {}
+console.log('installed-live-policy-verified');`;
+    const result=spawnSync('sudo',['-n','unshare','--mount','--propagation','private','/bin/sh','-c',script,'trust-test',directory,process.execPath,program],{encoding:'utf8',timeout:15000,maxBuffer:65536});
+    assert.equal(result.status,0,result.stderr);assert.equal(result.stdout,'installed-live-policy-verified\n');
+  } finally {await rm(directory,{recursive:true,force:true});}
 });
