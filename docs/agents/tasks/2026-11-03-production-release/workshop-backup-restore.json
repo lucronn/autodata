@@ -61,7 +61,7 @@
     "state": "review_with_blocked_complete_fixture_proof",
     "branch": "codex/workshop-backup-restore-build",
     "verification_ref": "docs/verification/2026-11-05-workshop-backup-restore.md",
-    "tests_passed": 394,
+    "tests_passed": 396,
     "fixture_complete": false,
     "blocker": "Pinned SeaweedFS Mini source stop exceeded45 seconds, Exit137 without OOM; final candidate complete fixture proof unavailable.",
     "candidate_pin_ref": "https://github.com/lucronn/autodata/issues/308",

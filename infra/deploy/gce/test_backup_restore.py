@@ -236,6 +236,27 @@ class RecoveryReviewTests(unittest.TestCase):
         self.assertEqual(self.run_backup('resume')[0],6)
         self.assertIn('open_ingress',self.host.calls)
         self.assertEqual(self.host.calls[-1],'fail_closed')
+    def test_deadline_exhaustion_after_open_has_reserved_maintenance_time(self):
+        from types import SimpleNamespace
+        import subprocess
+        self.run_backup('begin');self.host.end=400.
+        closed=[]
+        def maintenance(enabled,*args):
+            if self.host.life.deadline<=self.clock.monotonic():raise subprocess.TimeoutExpired('expired lifecycle',300)
+            closed.append(enabled)
+        self.host.life=SimpleNamespace(deadline=400.,maintenance=maintenance)
+        self.host.fail_closed=lambda deadline:self.m.InstalledHost.fail_closed(self.host,deadline)
+        original=self.host.step
+        def step(phase,store,deadline):
+            original(phase,store,deadline)
+            if phase=='open_ingress':
+                self.clock.value=deadline+1
+                raise subprocess.TimeoutExpired('post-open readiness',300)
+        self.host.step=step
+        self.assertEqual(self.run_backup('resume')[0],6)
+        self.assertTrue(closed)
+        self.assertTrue(all(closed))
+        self.assertLessEqual(self.host.life.deadline,self.host.end)
     def test_watchdog_continues_after_missing_lease(self):
         from contextlib import contextmanager
         from unittest.mock import patch
@@ -262,6 +283,8 @@ class RestoreTarget:
         for table in ('auth_sessions','workshop_orders','entitlements','vehicle_configurations','dataset_requests'):
             relations[table]=[{'fixture_id':table+'1'},{'fixture_id':table+'2'}]
         relations['schema_migrations']=[{'version':'001_extensions'}]
+        relations['source_snapshots']=[{'source_snapshot_id':'snapshot','object_key':'source/article.json','content_sha256':'d'*64}]
+        relations['canonical_article_source_revisions']=[{'source_revision_id':'revision','body_source_snapshot_id':'snapshot','resource_manifest':[{'role':'body','bucket':'fixture','key':'source/article.json','sha256':'d'*64}]}]
         relations['customer_accounts']=[{'customer_account_id':'account'+str(i),'personal_organization_id':'org'+str(i)} for i in (1,2)]
         self.inventory = {'schema_version':1,'relations':relations,
             'objects':[{'bucket':'fixture','key':'source/article.json','sha256':'d'*64,'bytes':12}],
@@ -330,6 +353,19 @@ class RestoreTests(unittest.TestCase):
         for key,value in (('objects',[]),('jetstream',{})):
             self.target.inventory=copy.deepcopy(original)
             self.target.inventory[key]=value
+            self.target.plan['fixture_inventory_sha256']=hashlib.sha256(self.m.canonical(self.target.inventory)).hexdigest()
+            self.assertNotEqual(self.run_restore()[0],0)
+            self.assertNotIn('create',self.target.calls)
+    def test_snapshot_and_article_object_closure_required(self):
+        original=copy.deepcopy(self.target.inventory)
+        for mutate in ('snapshot_key','snapshot_hash','revision_object','revision_snapshot'):
+            self.target.inventory=copy.deepcopy(original)
+            if mutate=='snapshot_key':self.target.inventory['relations']['source_snapshots'][0]['object_key']='missing/A'
+            elif mutate=='snapshot_hash':self.target.inventory['relations']['source_snapshots'][0]['content_sha256']='f'*64
+            elif mutate=='revision_object':self.target.inventory['relations']['canonical_article_source_revisions'][0]['resource_manifest'][0]['key']='missing/A'
+            else:self.target.inventory['relations']['canonical_article_source_revisions'][0]['body_source_snapshot_id']='missing-snapshot'
+            self.target.observed=copy.deepcopy(self.target.inventory)
+            self.target.calls.clear()
             self.target.plan['fixture_inventory_sha256']=hashlib.sha256(self.m.canonical(self.target.inventory)).hexdigest()
             self.assertNotEqual(self.run_restore()[0],0)
             self.assertNotIn('create',self.target.calls)

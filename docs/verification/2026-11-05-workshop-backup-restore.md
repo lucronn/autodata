@@ -14,7 +14,7 @@ The production wrappers accept only their fixed verbs and UUIDv4, use an empty e
 
 ## Automated checks
 
-Final local checks: helper40 tests, fixture safety20 tests, cloud operations57, host activation104, host runtime95, host install40, private material38. All passed (394 total). Python compilation, shell syntax, diff whitespace checks and exact planning-SHA preflight passed. Review regressions first reproduced omitted required evidence, post-ingress lease persistence failure leaving maintenance open, and a malformed lease aborting later watchdog recoveries. The fixes require all15 nonempty relation categories, two distinct account/organization identities and the core row counts, objects and persisted JetStream shape; compensate failed recovery with maintenance independent of lease storage; and continue bounded watchdog processing after individual malformed leases while returning failure.
+Final local checks: helper42 tests, fixture safety20 tests, cloud operations57, host activation104, host runtime95, host install40, private material38. All passed (396 total). Python compilation, shell syntax, diff whitespace checks and exact planning-SHA preflight passed. Review regressions first reproduced omitted required evidence, post-ingress lease persistence failure leaving maintenance open, and a malformed lease aborting later watchdog recoveries. The fixes require all15 nonempty relation categories, two distinct account/organization identities and the core row counts, objects and persisted JetStream shape; compensate failed recovery with maintenance independent of lease storage; and continue bounded watchdog processing after individual malformed leases while returning failure.
 
 The helper tests first failed for missing implementation; subsequent streaming and clean-stop tests failed before their fixes. The clean-stop test rejects Exit137, OOM, still-running state and boolean ExitCode.
 
@@ -22,7 +22,7 @@ Only the eight allowlisted implementation files and this leaf's permitted docume
 
 ## Exact code and retained fixture outcomes
 
-Current engine SHA256: `4da25e932a8a01510cf679b9093af6b0e660454a5d024ccbb1e670f63f095cb5`. Current runner SHA256: `558a23e469a91df2f0291787f1d1f1ff09be18a74687a3cd09b3122d8d133913`; runner test SHA256: `d9438f9385e9d4c454ea4f21d4da1c60bec8c30f6f9ebfde30de4eb91671953b`. Review fixes were committed separately as `96867ed` after the real fixture attempts below. The final code has not completed a passing real fixture run.
+Current engine SHA256: `6a1996ccaebcc16264b23c0234465e48b14c13a9f3ec62a5299e418627bb780d`. Current runner SHA256: `558a23e469a91df2f0291787f1d1f1ff09be18a74687a3cd09b3122d8d133913`; runner test SHA256: `d9438f9385e9d4c454ea4f21d4da1c60bec8c30f6f9ebfde30de4eb91671953b`. Review fixes were committed separately as `96867ed` after the real fixture attempts below. The final code has not completed a passing real fixture run.
 
 | Attempt | Evidence | Actual result |
 | --- | --- | --- |
@@ -60,3 +60,9 @@ Failed/intermediate evidence is retained under `/tmp/autodata-workshop-restore-f
 Docker volume mountpoint inode observation is unavailable to the unprivileged runner on this host (PermissionError). Evidence explicitly records that limitation and uses exact Docker volume name, creation time, driver, options, labels and mountpoint identity; it does not claim an observed host inode.
 
 Earlier evidence demonstrates local portable PG17 and synthetic stopped-volume recovery only; the complete final-candidate fixture proof remains blocked. It does not prove installed host mount/guard/secret handling in operation, cloud snapshots, production object completeness, owner/privilege restoration, provider/account observation, representative scale/RPO/RTO or end-to-end ingress recovery. Host installation, live cloud adapters, staging restore drill, alert delivery and owner recovery choices remain separately gated. Parent186 remains open; no last-verified-backup timestamp advances.
+
+## Follow-up review regressions
+
+An exact deadline-exhaustion-after-open regression first failed because maintenance compensation inherited an expired deadline. Recovery now reserves30 seconds within the existing total300-second deadline and CLI alarm; normal recovery work uses at most270 seconds, and compensation uses the remaining bounded reserve. Resume timeout remains incomplete/exit6. The regression exercises InstalledHost.fail_closed with maintenance rejecting expired deadlines.
+
+A second regression first showed an inventory could name an unrelated object while restored snapshot/article rows referenced a missing object. Validation now requires every source snapshot key/hash and every article resource manifest bucket/key/hash to match an expected object, with the article body snapshot present. Missing keys/hashes/references fail before resource creation. Offline validation of the retained attempt7 real40-migration inventory/export passes these stricter checks; this is not a new restore run or completed fixture proof.

@@ -25,6 +25,7 @@ MAX_RECEIPT = 65536
 MAX_EXPORT = 1073741824
 LEASE_SECONDS = 1800
 RECOVERY_SECONDS = 300
+COMPENSATION_SECONDS = 30
 ROOT = '/var/lib/autodata/operations/backups'
 UUID = r'[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}'
 BEGIN = ('maintenance', 'stop_writers', 'dump', 'stop_stateful', 'sync')
@@ -209,7 +210,8 @@ def _intent(state, phase, store, clock):
 
 
 def _recover(state, host, store, clock, *, explicit):
-    end = clock.monotonic() + RECOVERY_SECONDS
+    compensation_end = min(clock.monotonic() + RECOVERY_SECONDS, getattr(host, 'end', float('inf')))
+    end = compensation_end - COMPENSATION_SECONDS
     host.preflight('resume', state)
     opened = False
     try:
@@ -221,7 +223,7 @@ def _recover(state, host, store, clock, *, explicit):
         state.update(state='resumed', phase='resumed', explicit_resume=explicit, incomplete=not explicit)
         store.write(state)
     except Exception:
-        if opened: host.fail_closed(end)
+        if opened: host.fail_closed(compensation_end)
         raise
 
 
@@ -281,7 +283,7 @@ def run_backup(verb, run_id, host, store, clock):
                 require(store.dump_identity() == (state['dump_bytes'], state['dump_sha256']))
         return 0, receipt(verb, run_id, state, clock, checks, 0)
     except Exception as error:
-        primary = 5 if isinstance(error, subprocess.TimeoutExpired) else (6 if verb == 'resume' and state else 4 if state else 3)
+        primary = 6 if verb == 'resume' and state else 5 if isinstance(error, subprocess.TimeoutExpired) else 4 if state else 3
         if mutated:
             # Persistence/readiness can fail after opening ingress. Maintenance
             # must not depend on the same failed lease storage to close again.
@@ -588,6 +590,23 @@ def validate_restore_inputs(run_id, plan, manifest, status, archive, inventory):
         require(type(obj['key']) is str and 1 <= len(obj['key']) <= 1024 and not obj['key'].startswith('/') and all(part not in ('','.','..') for part in obj['key'].split('/')))
         require(type(obj['sha256']) is str and re.fullmatch(r'[0-9a-f]{64}',obj['sha256']))
         require(type(obj['bytes']) is int and 0 < obj['bytes'] <= 1048576)
+    # Expected evidence must cover the objects referenced by the restored rows;
+    # validating an unrelated object cannot certify a missing source article.
+    object_pairs = {(obj['key'],obj['sha256']) for obj in objects}
+    object_triples = {(obj['bucket'],obj['key'],obj['sha256']) for obj in objects}
+    snapshots = relations['source_snapshots']
+    require(all(type(row.get('source_snapshot_id')) is str and
+        type(row.get('object_key')) is str and type(row.get('content_sha256')) is str and
+        (row['object_key'],row['content_sha256']) in object_pairs for row in snapshots))
+    snapshot_ids = {row['source_snapshot_id'] for row in snapshots}
+    require(len(snapshot_ids) == len(snapshots))
+    for revision in relations['canonical_article_source_revisions']:
+        require(revision.get('body_source_snapshot_id') in snapshot_ids)
+        resources = revision.get('resource_manifest')
+        require(type(resources) is list and len(resources) > 0)
+        for resource in resources:
+            require(type(resource) is dict and all(type(resource.get(key)) is str for key in ('bucket','key','sha256')))
+            require((resource['bucket'],resource['key'],resource['sha256']) in object_triples)
     migrations = manifest['migrations']['files']
     require(type(migrations) is list and 0 < len(migrations) <= 1000)
     names = [item['name'] for item in migrations]
