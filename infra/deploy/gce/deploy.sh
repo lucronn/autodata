@@ -1,5 +1,5 @@
 #!/bin/sh
-# Passive check or inert staging-material install. No caller-selected paths or commands.
+# Fixed local check, inert install and maintenance-first lifecycle.
 set +x
 set -eu
 exec /usr/bin/env -i /usr/bin/python3 -I - "$@" <<'PY'
@@ -33,8 +33,6 @@ def main(argv):
     if len(argv) != 2 or argv[0] not in verbs or re.fullmatch('[0-9a-f]{40}', argv[1]) is None:
         return 2, receipt('deploy.sh check', None, 2)
     operation = 'deploy.sh ' + argv[0]
-    if argv[0] not in ('check', 'install'):
-        return 3, receipt(operation, argv[1], 3)
     try:
         if argv[0] == 'install':
             os.chdir('/')
@@ -42,7 +40,13 @@ def main(argv):
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
             return module.install_cli(argv[1])
-        return load_runtime().deploy_cli(argv)
+        if argv[0] == 'check':
+            return load_runtime().deploy_cli(argv)
+        os.chdir('/')
+        spec = importlib.util.spec_from_file_location('autodata_activation', '/opt/autodata/bin/host_activation.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module.activation_cli(argv)
     except Exception:
         # Redact import, filesystem and unexpected implementation details.
         return 3, receipt(operation, argv[1], 3)
