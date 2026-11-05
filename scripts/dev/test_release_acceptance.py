@@ -3943,7 +3943,9 @@ class Api21V2RawInspectorTests(unittest.TestCase):
                 if phase in ('source-image-http','warm-image-http'):body=dict(availability='hash_only',byte_source='playwright-response-body',encoding=None,base64=None,length=5,sha256=hashlib.sha256(b'image').hexdigest(),parsed=None,reason='not_required_image_body')
                 payload=dict(kind='http',channel='fixture-control' if actor=='fixture-control' else 'application',method=method,route_template=route,actor=actor,attempt=2 if phase=='checkout-retry-http' else 1,status=status,idempotency_key=key,request=req,response=body,checkout_identity=checkout)
             events.append(dict(seq=len(events)+1,phase=phase,elapsed_us=len(events)+1,caused_by=[],payload=payload))
-            assertion_phases={'signed-in-measurement':'official_sdk_cookie_and_pg_session','retry-pending-snapshot':'client_response_loss_same_key_one_checkout','return-without-grant-measurement':'return_does_not_grant','settled-measurement':'signed_public_webhook_grants_once','library-reload-measurement':'permanent_owner_library_reload','restart-after-measurement':'permanent_owner_library_server_restart','source-review-http':'paid_source_and_actual_s3_image','warm-after-snapshot':'source_to_canonical_and_warm_reuse','reader-after-measurement':'warm_raw_runtime_unchanged_with_approved_s3_delivery','other-image-denial':'account_and_exact_scope_isolation','disabled-image-denial':'logout_bfcache_and_firebase_disable_deny','revoked-measurement':'signed_full_refund_denies_old_content_and_media'}
+            assertion_phases={'signed-in-measurement':'official_sdk_cookie_and_pg_session','retry-pending-snapshot':'client_response_loss_same_key_one_checkout','return-without-grant-measurement':'return_does_not_grant','settled-measurement':'signed_public_webhook_grants_once','library-reload-measurement':'permanent_owner_library_reload','restart-after-measurement':'permanent_owner_library_server_restart','source-review-http':'paid_source_and_actual_s3_image','reader-after-measurement':'warm_raw_runtime_unchanged_with_approved_s3_delivery','other-image-denial':'account_and_exact_scope_isolation','disabled-image-denial':'logout_bfcache_and_firebase_disable_deny','revoked-measurement':'signed_full_refund_denies_old_content_and_media'}
+            if phase=='reader-after-measurement':
+                events.append(dict(seq=len(events)+1,phase=phase,elapsed_us=len(events)+1,caused_by=[],payload=dict(kind='producer-assertion',name='source_to_canonical_and_warm_reuse',result=True,reason=None)))
             if phase in assertion_phases:
                 events.append(dict(seq=len(events)+1,phase=phase,elapsed_us=len(events)+1,caused_by=[],payload=dict(kind='producer-assertion',name=assertion_phases[phase],result=True,reason=None)))
         for operation in ('context-close','browser-close'):
@@ -4292,6 +4294,63 @@ class Api21V2RawInspectorTests(unittest.TestCase):
                     process['events'].append(dict(seq=len(process['events'])+1,kind=kind,elapsed_us=len(process['events'])+1,return_code=None,reason=None))
                 wait.update(seq=5,elapsed_us=5);process['events'].append(wait);process['finished_us']=5
                 self.reject(model)
+
+
+    def test_reviewed_lifecycle_measurement_and_assertion_contradictions(self):
+        for kind in ('failed-setup','bad-initial','bad-pending-owner','unknown-pending-order','wrong-assertion-phase','assertion-before-http'):
+            with self.subTest(kind=kind):
+                model=self.model();events=model[0]['evidence']['results'][0]['observations']['events']
+                if kind=='failed-setup':events[0]['payload'].update(state='failed',reason='launch_failed')
+                elif kind in ('bad-initial','bad-pending-owner','unknown-pending-order'):
+                    phase='initial-measurement' if kind=='bad-initial' else 'pending-checkout-measurement'
+                    payload=next(e['payload'] for e in events if e['phase']==phase);value=copy.deepcopy(payload['response']['parsed'])
+                    if kind=='bad-initial':value.update(entitlements=-1,orders=['fabricated'],unknown_business_field=True)
+                    elif kind=='bad-pending-owner':value['orders'][0]['owner']='invalid-owner'
+                    else:value['orders'][0]['unknown_business_field']=True
+                    payload['response']=self.body(value)
+                else:
+                    event=next(e for e in events if e['payload']['kind']=='producer-assertion');events.remove(event)
+                    if kind=='wrong-assertion-phase':event['phase']='setup';events.insert(1,event)
+                    else:events.insert(next(i for i,e in enumerate(events) if e['phase']=='signed-in-measurement'),event)
+                    for i,e in enumerate(events):e.update(seq=i+1,elapsed_us=i+1)
+                    for e in events:
+                        if e['payload']['kind']=='checkout-delivery':
+                            target=next(h for h in events if h['phase']==e['phase'].replace('-delivery','-http'));ref=dict(stream='observations',producer_role='browser-runner',seq=target['seq']);e['caused_by']=[ref];e['payload']['http_event']=ref
+                self.reject(model)
+
+
+    def test_every_retained_measurement_phase_has_closed_nonnegative_shape(self):
+        covered=set()
+        for ordinal in (0,3,15):
+            fixture=self.model();events=fixture[ordinal]['evidence']['results'][0]['observations']['events']
+            phases=[e['phase'] for e in events if e['payload']['kind']=='http' and e['phase'].endswith('-measurement')]
+            for phase in phases:
+                if phase in covered:continue
+                covered.add(phase)
+                for kind in ('negative-counter','unknown-field','malformed-order'):
+                    with self.subTest(phase=phase,kind=kind):
+                        model=copy.deepcopy(fixture);payload=next(e['payload'] for e in model[ordinal]['evidence']['results'][0]['observations']['events'] if e['phase']==phase);value=copy.deepcopy(payload['response']['parsed'])
+                        if kind=='negative-counter':value['entitlements']=-1
+                        elif kind=='unknown-field':value['unknown_business_field']=True
+                        else:value['orders']=['fabricated']
+                        payload['response']=self.body(value);self.reject(model)
+        self.assertTrue({'initial-measurement','signed-in-measurement','pending-checkout-measurement','reader-after-measurement','library-reload-measurement','revoked-measurement'}<=covered)
+
+
+    def test_failed_checkout_delivery_still_has_closed_state_enum(self):
+        model=self.model();item=self.fail(model[0]);item['result'].pop('final_snapshot',None)
+        self.assertEqual(len(self.inspect(model)['observed_case_ids']),20)
+        payload=next(e['payload'] for e in item['evidence']['results'][0]['observations']['events'] if e['payload']['kind']=='checkout-delivery')
+        payload['state']='invented-delivery-state';self.reject(model)
+
+
+    def test_measurement_phase_counts_and_owner_are_conserved(self):
+        for phase,field,value in (('initial-measurement','workshop_orders',1),('signed-in-measurement','entitlements',1),('pending-checkout-measurement','owner',self.uid(99)),('library-reload-measurement','owner',self.uid(99)),('reader-after-measurement','entitlements',0)):
+            with self.subTest(phase=phase,field=field):
+                model=self.model();payload=next(e['payload'] for e in model[3]['evidence']['results'][0]['observations']['events'] if e['phase']==phase);measure=copy.deepcopy(payload['response']['parsed'])
+                if field=='owner':measure['orders'][0][field]=value
+                else:measure[field]=value
+                payload['response']=self.body(measure);self.reject(model)
 
 
 if __name__ == '__main__': unittest.main()

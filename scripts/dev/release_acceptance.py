@@ -2770,6 +2770,32 @@ def _api21_v2_checkout(payload):
     return identity
 
 
+API21_V2_ASSERTION_PHASES = {
+    'official_sdk_cookie_and_pg_session':'signed-in-measurement',
+    'client_response_loss_same_key_one_checkout':'retry-pending-snapshot',
+    'return_does_not_grant':'return-without-grant-measurement',
+    'signed_public_webhook_grants_once':'settled-measurement',
+    'permanent_owner_library_reload':'library-reload-measurement',
+    'permanent_owner_library_server_restart':'restart-after-measurement',
+    'paid_source_and_actual_s3_image':'source-review-http',
+    'source_to_canonical_and_warm_reuse':'reader-after-measurement',
+    'warm_raw_runtime_unchanged_with_approved_s3_delivery':'reader-after-measurement',
+    'account_and_exact_scope_isolation':'other-image-denial',
+    'logout_bfcache_and_firebase_disable_deny':'disabled-image-denial',
+    'signed_full_refund_denies_old_content_and_media':'revoked-measurement',
+}
+
+
+def _api21_v2_measurement_shape(value):
+    exact(value,(*API21_MEASUREMENT,'orders'))
+    for key in API21_MEASUREMENT:integer(value[key])
+    array(value['orders']);require(len(value['orders'])<=64,'api21_v2_measurement_orders')
+    for order in value['orders']:
+        exact(order,('order_id','state','owner','configuration_id','region'))
+        for key in ('order_id','owner','configuration_id'):_paid_uuid(order[key])
+        enum(order['state'],('open','paid','revoked'));require(order['region']=='US','api21_v2_measurement_scope')
+
+
 def _api21_v2_http(payload,phase,*,passed):
     exact(payload,('kind','channel','method','route_template','actor','attempt','status','idempotency_key','request','response','checkout_identity'))
     route=payload['route_template'];string(route);require(route in API21_V2_ROUTES,'api21_v2_http_route')
@@ -2795,6 +2821,8 @@ def _api21_v2_http(payload,phase,*,passed):
     if status==204:require(phase in ('restart-control','disable-control') and response['length']==0 and response['availability']=='retained','api21_v2_empty_control')
     if 'denial' in phase and passed:require(response['availability']=='retained' and type(response['parsed']) is dict and bool(response['parsed']),'api21_v2_denial_body')
     if image and passed:require(response['length']>0,'api21_v2_image_body')
+    if phase.endswith('-measurement') and status==200 and response['availability']=='retained' and response['reason'] is None:
+        _api21_v2_measurement_shape(response['parsed'])
     if payload['request'] is not None:_api21_v2_body(payload['request'],request=True,passed=passed)
     if checkout:
         if passed or payload['checkout_identity'] is not None:
@@ -2824,11 +2852,16 @@ def _api21_v2_observations(observations,binding,case,row,*,passed):
         for ref in refs:_api21_v2_ref(ref,index)
         payload=event['payload'];require(type(payload) is dict,'api21_v2_payload');kind=payload.get('kind')
         if kind=='http':_api21_v2_http(payload,phase,passed=passed)
-        elif kind=='lifecycle':_api21_v2_lifecycle(payload)
+        elif kind=='lifecycle':
+            _api21_v2_lifecycle(payload)
+            require(not passed or payload['state'] in ('requested','completed') and payload['reason'] is None,'api21_v2_success_lifecycle')
         elif kind=='producer-assertion':
             exact(payload,('kind','name','result','reason'));require(payload['name'] in API21_ASSERTIONS[case[1]] and (payload['result'] is None or type(payload['result']) is bool),'api21_v2_assertion');_api21_v2_reason(payload['reason']);assertions.append(payload['name']);require(not passed or payload['result'] is True,'api21_v2_assertion')
+            require(phase==API21_V2_ASSERTION_PHASES[payload['name']] and any(p['kind']=='http' for p in by_phase.get(phase,[])),'api21_v2_assertion_order')
+            require(payload['result'] is not True or payload['reason'] is None,'api21_v2_assertion_reason')
         elif kind=='checkout-delivery':
             exact(payload,('kind','attempt','state','http_event'));integer(payload['attempt'],1);require(phase in ('checkout-first-delivery','checkout-retry-delivery') and payload['attempt']==(1 if 'first' in phase else 2),'api21_v2_delivery')
+            enum(payload['state'],('fetch-completed','response-abort-requested','response-aborted','response-fulfill-requested','response-fulfilled'))
             ref=payload['http_event'];_api21_v2_ref(ref,index);require(refs==[ref],'api21_v2_delivery_ref');target=events[ref['seq']-1]
             require(target['phase']==phase.replace('-delivery','-http') and target['payload']['kind']=='http' and target['payload']['attempt']==payload['attempt'],'api21_v2_delivery_ref')
         else:raise ContractError('api21_v2_payload_kind')
@@ -2905,12 +2938,22 @@ def _api21_v2_wire_semantics(by_phase,case,row):
     def value(phase):return http(phase)[-1]['response']['parsed']
     google=case[1]==API21_CASES[0][1];checkout=http('checkout-first-http' if google else 'checkout-http')[0];identity=_api21_v2_checkout(checkout)
     require(identity['configuration_id']==row['measurement']['orders'][0]['configuration_id'] and identity['order_id']==row['measurement']['orders'][0]['order_id'],'api21_v2_checkout_order')
+    owner=row['measurement']['orders'][0]['owner']
+    for phase in by_phase:
+        if not phase.endswith('-measurement'):continue
+        measure=value(phase)
+        if phase in ('initial-measurement','signed-in-measurement'):
+            require(measure['orders']==[] and all(measure[key]==0 for key in ('workshop_orders','workshop_checkout_requests','entitlements','dataset_requests','dataset_projections','payment_events')),'api21_v2_precheckout_counts')
+        elif phase not in ('response-lost-measurement','pending-checkout-measurement','return-without-grant-measurement'):
+            state='revoked' if phase=='revoked-measurement' or phase=='final-measurement' and case[1]=='test_browser_signed_refund_blocks_old_links_real_api' else 'paid'
+            order=_api21_measurement(measure,dict(configuration=identity['configuration_id']),state=state)
+            require(order['owner']==owner and order['order_id']==identity['order_id'],'api21_v2_measurement_owner')
     pending=value('pending-checkout-measurement');returned=value('return-without-grant-measurement')
     for measure in (pending,returned,value('response-lost-measurement') if google else pending):
         exact(measure,(*API21_MEASUREMENT,'orders'))
         for key in API21_MEASUREMENT:integer(measure[key])
         require(measure['workshop_orders']==measure['workshop_checkout_requests']==1 and all(measure[key]==0 for key in ('entitlements','dataset_requests','dataset_projections','payment_events')) and len(measure['orders'])==1,'api21_v2_pending_counts')
-        order=measure['orders'][0];require(order['state']=='open' and all(order[k]==identity[k] for k in ('order_id','configuration_id','region')),'api21_v2_pending_scope')
+        order=measure['orders'][0];require(order['state']=='open' and order['owner']==row['measurement']['orders'][0]['owner'] and all(order[k]==identity[k] for k in ('order_id','configuration_id','region')),'api21_v2_pending_scope')
     if google:
         retry=http('checkout-retry-http')[0];require(retry['idempotency_key']==checkout['idempotency_key'] and retry['request']==checkout['request'] and retry['checkout_identity']==identity,'api21_v2_checkout_retry')
         snapshots=[value('response-lost-snapshot'),value('retry-pending-snapshot')]
