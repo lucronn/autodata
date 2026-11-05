@@ -1,0 +1,66 @@
+# Task62 purchase configuration delivery verification — planning synchronized
+
+No Task62 implementation, positive gate, CI pass, product acceptance or live delivery is claimed. Parent `e200cfd6b473e9231844d133f63244f3a627a356`, tree `269bd94410df22a8718f005c1d0b0142238cdafc`. Approved proposal SHA25698f2ddd1068dab056db4426495d39db6da160ee6cc49720ad1eb7cfa05649cf9; external review APPROVE_PLAN_ONLY.
+
+Plan: `docs/superpowers/plans/2026-11-05-workshop-purchase-config-delivery.md`. Spec: `docs/agents/specs/2026-11-05-workshop-purchase-config-delivery.json`. Issue: https://github.com/lucronn/autodata/issues/186. Project: https://github.com/users/lucronn/projects/8. Status=synchronized, tracking_status=synchronized, current implementation allowlist=[], all authorities=false, credits0, verified_case_ids=[], release_state=unverified.
+
+## Required acceptance and command contract
+
+### Pure validation and render/hash tests
+
+- Baseline host-v1/current missing-field fails for the expected closed-contract reason before implementation; after implementation explicit complete host-v2 disabled and enabled synthetic objects succeed. Old/missing/unknown/null/string/partial disabled host configurations fail. No silent defaults at the deploy boundary.
+- Strict enabled bool, terms literal, exact seven keys, null/unknown/missing notices, whitespace-only tax notice, newline/control/UTF-8/surrogate and raw URL/DNS/length vectors must match Task59's parser except the explicitly documented escaped-wire ceiling. Include max URL2048/2049bytes, notice1024/1025bytes, all forbidden URL whitespace/codepoints and both exact false/null/default semantics.
+- Test serialized transport lengths exactly16384 and16385 using syntactically valid field values: first succeeds, second raises exactly purchase_config_transport_limit without raw JSON/notice/URL leakage. Also retain a pathological valid dollar-heavy input (four2048-byte URLs plus1024-byte notice): unescaped9343bytes is Task59-valid; escaped54883bytes is rejected at deployment validation. Do not claim malformed/silent-disabled runtime behavior as success.
+- Include $20, ${UNTRUSTED_ENV}, $(id), backticks, $$, backslashes/quotes and non-ASCII scalar text. Parse emitted wire with the unchanged Task59 parser and compare exact seven-key projections. Verify no shell expansion, normalization, interpolation or Unicode replacement.
+- Rendered JSON has the one derived environment entry on ingestion-http only, no literal dollars in that wire and no credential values in any Config.Env. Default disabled object is explicit. No new services, ports, volumes, commands, principals or role secrets.
+- Object key reorder preserves config hash. Mutating enabled or any notice/URL changes service_config_sha256; old manifest hashes fail before output. The config remains the original structured value even after render; rendering is deterministic and input mutation does not alias output.
+- api/ingestion same numeric secret-version reference succeeds. Different resources/versions, missing, latest/0/aliases/unknown secret names fail before any operation. Preserve strict file permissions, no-follow/inode/link/byte checks and no token output. Existing wrong/missing request-token401 behavior is retained by unchanged Task59 tests.
+- Rollback with identical config/platform/SQL tree still passes definition validation. Enabled→disabled or disabled→enabled hash changes reject the previous manifest as automatic rollback; no exception, hash substitution or permission bypass. Older pre-Task59 source is not a safe rollback target even when someone fabricates an equal manifest hash: only independently reviewed Task59-capable binaries may be selected in a later real release.
+- Preserve runtime check schema/services/runtime_evidence false and final missing_dependency; live mutation verbs/workflow blocks remain unchanged. Pure tests deny subprocess/socket access except explicitly scoped local child/Compose phases.
+
+### Separate synthetic transport and replacement proof
+
+Use the new stdlib module and temporary directories outside source. Read actual runtime-entrypoint.sh and change only its unique literal secret_root in a disposable copied wrapper, exactly like existing EntrypointTests. Use UID/GID1000 with synthetic credential files modes0400/directories0500, sanitized child env and fixed harmless Python child. Never loosen production root/path/identity validation. Missing ownership/runtime dependencies fail the required phase rather than skipping silently.
+
+Pass actual rendered ingestion environment through the wrapper, read the private token file and parse the config with the unchanged application parser; emit only exact projection hashes and booleans. Build one frozen enabled service with a forbidden DB/provider factory for config reads, replace it with an explicitly disabled service, prove the previously constructed object remains enabled while the replacement reports disabled, and prove all new/replayed checkout denials occur before factory calls. This establishes process reconstruction semantics only; no fleet-drain claim. Task59 already supplies actual HTTP/Go/PG authority integration, so this task must not duplicate or rename its roots as new product cases.
+
+Run local `/usr/bin/docker compose --project-directory <owned temp> -f <synthetic rendered file> config --format json` with a hostile ambient interpolation sentinel, zero daemon operations and no credentials. Verify exact wire preservation, then wrapper→Task59 parser equality; record Docker/Compose version. Define a separate required-mode env AUTODATA_REQUIRE_PURCHASE_CONFIG_DELIVERY_COMPOSE=1 for this new module: absent flag may explicitly skip this one optional local CLI phase during ordinary discovery, but the required command fails if CLI is missing/timed out/invalid and cannot return a skip. No existing collector flags/selectors/inventories change.
+
+Required integration artifacts outside source: source-before.json/source-after.json, versions.json, tests.xml or stdlib raw run/exit logs, transport-roundtrip.json, transport-boundaries.json, replacement-observations.json, rollback-matrix.json and scope.json. No raw tokens/session IDs/provider credentials. Hash each file; retain failures. Source regression evidence is separate from product acceptance.
+
+### Commands frozen at actual implementation gate
+
+From repository root using coordinator-pinned runtimes; capture real versions/paths and SHA/tree before/after. Exact external artifact paths are selected at that gate, not caller-selected production helper paths.
+
+    PYTHONDONTWRITEBYTECODE=1 python3 -B -m unittest discover -s infra/deploy/gce -p 'test_host_runtime.py' -v
+    PYTHONDONTWRITEBYTECODE=1 python3 -B -m unittest discover -s infra/deploy/gce -p 'test_purchase_config_delivery.py' -v
+    AUTODATA_REQUIRE_PURCHASE_CONFIG_DELIVERY_COMPOSE=1 PYTHONDONTWRITEBYTECODE=1 python3 -B -m unittest discover -s infra/deploy/gce -p 'test_purchase_config_delivery.py' -v
+    PYTHONDONTWRITEBYTECODE=1 python3 -B -m unittest discover -s infra/deploy/gce -p 'test_*.py' -v
+    PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=workers/ingestion-python/src:packages/contracts/python python3 -B -m pytest -q -p no:cacheprovider workers/ingestion-python/tests/test_purchase_config.py workers/ingestion-python/tests/test_http_service.py workers/ingestion-python/tests/test_commerce_service.py workers/ingestion-python/tests/test_payment_reconciliation.py
+    go -C apps/api-go test -count=1 -run 'PurchaseConfig|CommerceClient' ./...
+    node --test apps/api-go/workshop-client.test.mjs
+    git diff --check
+
+Also execute Task61 focused/full developer discovery and Task59's exact existing separate required three-Python-case/one-Go-root PG authority command in their coordinator-owned fixture when required by integrated-source verification. Use their existing committed verification instructions unchanged. Required integration unavailable/skipped remains unmet; ordinary skip does not substitute. Do not modify the frozen fourteen-commerce/five-identity/paid producers or reinterpret their historical CI as current evidence. Full Go/Python/autonomy checks and source-push/actual-PR live-Compose CI must follow the canonical integrated candidate's required verification, with honest failure attribution.
+
+## Historical draft-only observations
+
+Proposal digest and parent SHA/tree were checked. Native worktree creation succeeded; app registration failed identity count >100 and attachment retry reported overload. No application tests or CI success are claimed by this planning lane. Standalone/nested canonical preflight must reject this unsynchronized, uncommitted draft at parent; a later actual committed checkpoint must be externally sealed and pass errors=[] before dispatch. Exact external artifact paths/runtimes for implementation are coordinator-selected at that gate.
+
+## Remaining blockers
+
+- Planning synchronized by root with Issue186 comment6651122921/Project8 preservation PASS10 and independent draft PASS15. Nine-document planning-only checkpoint commit/push authorized. External actual SHA/tree seal, standalone+nested exact-checkpoint errors=[] preflights, independent checkpoint review and explicit four-path dispatch remain required. Task61 PR290/full CI dependency evidence remains pending. Execution blocked; all authorities false/current implementation allowlist empty; no predecessor self-hash.
+- Task61 source is pinned, not declared CI-green here. Coordinator must verify terminal required-job/live-Compose source-push and actual-PR CI, and stop before synchronization if source changes or CI fails; rebase/review needs a fresh gate.
+- Owner terms/privacy/refund/contact content and stable HTTPS URLs, support identity, workshop-v1 meaning, truthful tax notice and exactly USD20 tax obligations remain absent. Syntax does not prove content approval or domain ownership.
+- Real Firebase/Google/project/domain facts, Stripe account/price/webhook/credentials, internal token resource/numeric version, environment protections/distinct principals/WIF/IAM and reviewed host resources/config/manifest remain protected owner inputs.
+- Immutable same-source configuration generation, per-generation config retention/atomic switch/recovery and install capability remain missing. Do not overwrite /opt/autodata/releases/<source_sha>, hand-edit environment or manufacture empty commits.
+- Actual maintenance/drain/fencing/in-flight policy/install/all-authority-replica and API replacement/authenticated private-public equality/checkout denial/ingress resume and config-changing rollback are separately gated. Existing enabled process objects and issued Stripe URLs retain limitations.
+- Authentic TEST/staging identity/payments/paid recovery, host guards/TLS/restore, current-source API21/DTO120/browser/runtime and same-candidate final180 remain unmet; synthetic transport and renderer evidence confer zero acceptance credit.
+- Cars.tk DNS is Vercel by trusted coordinator/user direction; no DNS/cloud/merge/deploy/publication/live-sales action is authorized. Task60 OCI publication ownership and all frozen evidence/acceptance ledgers remain untouched.
+
+
+## Coordinator tracking readback — planning synchronized
+
+Updated at 2026-11-05T06:11:06Z. Root synchronized the exact goal, six literal todos, nine gate paths and four prospective implementation paths in https://github.com/lucronn/autodata/issues/186#issuecomment-6651122921; Project8 item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4` indexes that comment. Before snapshot `/home/corp/autodata-evidence/task62-config-delivery-before-tracking.json` SHA256 185dea24ec804d096f159a9ded443477ea0cff0a8ded02c884eb037e46220044; after snapshot `/home/corp/autodata-evidence/task62-config-delivery-after-tracking.json` SHA256 c0d321f6d22bb037cd168a5b2a598372bb80219c70af47a9131f03e859e49ba5. Preservation `/home/corp/autodata-evidence/task62-config-delivery-tracking-verify.json` SHA256 739d2d0b1bacf132bd8ef144146c4d13b0811f0927cc90dfaa8dacf1433c5f7f passed10 checks; independent draft review `/home/corp/autodata-evidence/task62-config-delivery-draft-independent/REPORT.json` SHA256 e303d03951a62f6d38c82f549948f1371d8a04646bf053a228e3d927d1b0096d passed15 checks. Issue body and prior comments, other Project fields and prior Project Source were preserved. This agent performed no Issue/Project writes.
+
+Status/planning/tracking are synchronized; execution remains blocked, current implementation allowlist=[], all authorities=false, credits0, verified_case_ids=[], release_state=unverified. Planning synchronized by root with Issue186 comment6651122921/Project8 preservation PASS10 and independent draft PASS15. Nine-document planning-only checkpoint commit/push authorized. External actual SHA/tree seal, standalone+nested exact-checkpoint errors=[] preflights, independent checkpoint review and explicit four-path dispatch remain required. Task61 PR290/full CI dependency evidence remains pending. Execution blocked; all authorities false/current implementation allowlist empty; no predecessor self-hash. Task61 PR290/full CI remains pending and supplies no inherited green. Historical draft/proposal observations above remain provenance, not fresh implementation evidence.
