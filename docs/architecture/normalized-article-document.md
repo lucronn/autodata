@@ -428,7 +428,7 @@ See `docs/verification/2026-11-05-source-projection-v2.md` for exact SHAs and li
 Goal: let the existing canonical rewrite client use the exact Mercury-2 model
 through an Inception-compatible endpoint without an unbounded provider credit
 reservation. The official Inception endpoint and `mercury-2` model remain the
-defaults. Each completion request will declare `max_tokens=8192`; operators may
+defaults. Each completion request declares `max_tokens=8192`; operators may
 set `INCEPTION_MAX_TOKENS` to an integer from 1 through 32768. The model key and
 optional alternate endpoint remain private runtime configuration, never source
 control. This bounded request does not change source rights, transformation
@@ -441,8 +441,16 @@ https://github.com/lucronn/autodata/issues/186.
 
 Concrete todo:
 
-- [ ] Commit the synchronized planning checkpoint and pass its exact-base preflight.
-- [ ] Add failing payload/invalid-setting tests, then implement the bounded request.
-- [ ] Verify and push the focused change for review and required CI.
+- [x] Commit the synchronized planning checkpoint and pass its exact-base preflight.
+- [x] Add failing payload/invalid-setting tests, then implement the bounded request.
+- [x] Verify and push the focused change.
+- [ ] Review the exact implementation SHA and pass required CI.
 - [ ] Verify a live bounded Mercury-2 TEST call and separately recover terminal
   model jobs before claiming any published canonical article.
+
+Local Mercury-2 evidence: exact-base preflight at
+`529af7a1db7fbbd384692d7ff5d17721fad07e5e` passed; the focused tests failed
+before the client change and then passed (16 tests, 3 subtests). Full ingestion
+worker verification passed (895 tests, 143 subtests, 239 skips) using the pinned
+Stripe SDK in a temporary test environment; `git diff --check` passed. Live
+provider acceptance remains pending.
