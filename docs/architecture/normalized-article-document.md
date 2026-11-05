@@ -287,7 +287,7 @@ dataset outcome and production activation remain blocked on that evidence and
 unsupported-family remediation. See `docs/verification/2026-11-05-article-rewrite-v2.md`.
 
 
-## Source projection v2 — planned, not activated
+## Source projection v2 — development implementation, not activated
 
 Issue: https://github.com/lucronn/autodata/issues/325. Project: https://github.com/users/lucronn/projects/8; item `PVTI_lAHOCSJ8cc4BiQ2BzhGUxxM`.
 Plan: `docs/superpowers/plans/2026-11-05-source-projection-v2.md`.
@@ -326,12 +326,13 @@ recapture is introduced. Existing API/current-source view remains the reader con
 
 Concrete todo:
 
-- [ ] Add migration 041 allowing v1/v2, three-column source uniqueness and database-enforced prevention of v2-to-v1 current-source downgrade; extend the migration driver and its tests through 041, then verify populated upgrade and migration-driver rerun.
-- [ ] Carry explicit projection identity through captured/stored sources and version-aware dedupe; preserve raw fingerprint/snapshot hashes and immutable history.
-- [ ] Keep legacy v1 transformation-key bytes stable, domain-separate v2 keys, and atomically switch current source with stale canonical cleared.
-- [ ] Prove identical-byte v1-to-v2 append, repeat-v2 reuse, historical reads, terminal/published v1 isolation, readable fallback before model and stale-worker rejection; run focused and isolated PostgreSQL regressions.
-- [ ] Add bounded body-only offline preview/apply from verified retained bytes, with atomic exact-job source-only storage, NULL transformation key, no provider/model calls and fail-closed reconstruction tests.
-- [ ] Commit/push validated milestones, obtain independent exact-SHA review and synchronize verification evidence in plan, canonical doc, Issue and Project.
+- [x] Add migration 041 allowing v1/v2, three-column source uniqueness and database-enforced prevention of v2-to-v1 current-source downgrade; extend the migration driver and its tests through 041, then verify populated upgrade and migration-driver rerun.
+- [x] Carry explicit projection identity through captured/stored sources and version-aware dedupe; preserve raw fingerprint/snapshot hashes and immutable history.
+- [x] Keep legacy v1 transformation-key bytes stable, domain-separate v2 keys, and atomically switch current source with stale canonical cleared.
+- [x] Prove identical-byte v1-to-v2 append, repeat-v2 reuse, historical reads, terminal/published v1 isolation, readable fallback before model and stale-worker rejection; run focused and isolated PostgreSQL regressions.
+- [x] Add bounded body-only offline preview/apply from verified retained bytes, with atomic exact-job source-only storage, NULL transformation key, no provider/model calls and fail-closed reconstruction tests.
+- [x] Commit/push validated milestones, obtain independent exact-SHA review and synchronize verification evidence in plan, canonical doc, Issue and Project.
+
 
 The bounded offline projector supports exactly one saved body resource (max 1 MiB,
 30-second deadline), complete immutable observation context/provenance and matching
@@ -369,3 +370,13 @@ prospectively adds only `scripts/dev/migrate_sql.sh` and `scripts/dev/test_migra
 to recognize 041 and verify ordered apply/restart behavior. Preserve ledger checks,
 ordering, locking, transaction and failure semantics. All prior source identity,
 offline-only implementation and separate stage-activation boundaries remain binding.
+
+Development candidate `e45541ca2058e9fa25b70b6eace329922ee96ca5` implements the
+versioned source/store and bounded offline source-only path. Local isolated
+schema/migration/integration tests passed 113 cases before the final added cases;
+the exact committed-candidate focused selection passed 33 cases with 45 deselected
+and no skips (21.07 s). The coordinator confirmed independent exact-SHA review with
+zero actionable findings; reviewer migration-driver unittests passed 25. All six
+development work items are complete; fresh CI/runtime acceptance remain open. See
+`docs/verification/2026-11-05-source-projection-v2.md` for run bindings and limitations.
+This does not establish stage application or authenticated browser acceptance.

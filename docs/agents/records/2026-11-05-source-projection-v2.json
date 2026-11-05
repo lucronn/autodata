@@ -15,7 +15,7 @@
     "Commit/push validated milestones, obtain independent exact-SHA review and synchronize verification evidence in plan, canonical doc, Issue and Project."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-05T16:21:31.278302+00:00",
+  "updated_at": "2026-11-05T16:29:38.613927+00:00",
   "parent_issue_ref": "https://github.com/lucronn/autodata/issues/186",
   "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhGUxxM",
   "inspected_source_sha": "140fdf132afb9d6efad0164e5c67d7e4a836200d",
@@ -44,11 +44,55 @@
   "stage_data_mutation_authorized": false,
   "production_activation_authorized": false,
   "tracking": {
-    "issue_body_sha256": "8cc7c78eb639a633c27f4c47cf2aa0a01161752a8aa9ce87c75b597b02252b6f",
-    "project_source_sha256": "3786bade5e4a2dec4e51796bafa253960770c69d9db2adae725d8090315bda0f",
-    "project_status": "Ready",
-    "verified_at": "2026-11-05T16:21:31.278302+00:00"
+    "issue_body_sha256": "3d2be6183417ca4f78300b656430e7206c56c1baac78e0e428ec064236d4cbdc",
+    "project_source_sha256": "f6f9ca32a7126587f39508b211fc1353f37982a13b9df0ee4324669e3415e60f",
+    "project_status": "Review",
+    "verified_at": "2026-11-05T16:29:38.613927+00:00"
   },
   "amends_checkpoint_sha": "dff1a1cda2c8e48433edec1d38a1d61816746391",
-  "amendment_reason": "The migration driver pins its expected chain through 040; include 041 recognition and driver regression tests before implementing those two paths."
+  "amendment_reason": "The migration driver pins its expected chain through 040; include 041 recognition and driver regression tests before implementing those two paths.",
+  "development_delivery": {
+    "candidate_sha": "e45541ca2058e9fa25b70b6eace329922ee96ca5",
+    "status": "locally_verified_and_independently_reviewed",
+    "completed_todo_indices": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "verification_ref": "docs/verification/2026-11-05-source-projection-v2.md",
+    "independent_review": {
+      "status": "confirmed_by_coordinator",
+      "actionable_findings": 0,
+      "candidate_sha": "e45541ca2058e9fa25b70b6eace329922ee96ca5"
+    },
+    "test_runs": [
+      {
+        "suite": "earlier broad isolated lifecycle",
+        "passed": 113,
+        "skipped": 0,
+        "seconds": 197.22,
+        "binding": "working tree before final added regressions and idempotency fix"
+      },
+      {
+        "suite": "exact candidate focused isolated lifecycle/reprojection",
+        "passed": 33,
+        "deselected": 45,
+        "skipped": 0,
+        "seconds": 21.07,
+        "candidate_sha": "e45541ca2058e9fa25b70b6eace329922ee96ca5"
+      },
+      {
+        "suite": "independent reviewer migration-driver unittest",
+        "passed": 25,
+        "candidate_sha": "e45541ca2058e9fa25b70b6eace329922ee96ca5"
+      }
+    ],
+    "fresh_ci_status": "pending",
+    "stage_apply_status": "not_performed",
+    "browser_acceptance_status": "pending",
+    "runtime_activation_authorized": false
+  }
 }

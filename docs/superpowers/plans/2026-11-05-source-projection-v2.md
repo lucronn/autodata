@@ -22,12 +22,13 @@ Source capture/store/schema/types, a bounded offline body-only projector/CLI and
 
 ## Concrete todo
 
-- [ ] Add migration 041 allowing v1/v2, three-column source uniqueness and database-enforced prevention of v2-to-v1 current-source downgrade; extend the migration driver and its tests through 041, then verify populated upgrade and migration-driver rerun.
-- [ ] Carry explicit projection identity through captured/stored sources and version-aware dedupe; preserve raw fingerprint/snapshot hashes and immutable history.
-- [ ] Keep legacy v1 transformation-key bytes stable, domain-separate v2 keys, and atomically switch current source with stale canonical cleared.
-- [ ] Prove identical-byte v1-to-v2 append, repeat-v2 reuse, historical reads, terminal/published v1 isolation, readable fallback before model and stale-worker rejection; run focused and isolated PostgreSQL regressions.
-- [ ] Add bounded body-only offline preview/apply from verified retained bytes, with atomic exact-job source-only storage, NULL transformation key, no provider/model calls and fail-closed reconstruction tests.
-- [ ] Commit/push validated milestones, obtain independent exact-SHA review and synchronize verification evidence in plan, canonical doc, Issue and Project.
+- [x] Add migration 041 allowing v1/v2, three-column source uniqueness and database-enforced prevention of v2-to-v1 current-source downgrade; extend the migration driver and its tests through 041, then verify populated upgrade and migration-driver rerun.
+- [x] Carry explicit projection identity through captured/stored sources and version-aware dedupe; preserve raw fingerprint/snapshot hashes and immutable history.
+- [x] Keep legacy v1 transformation-key bytes stable, domain-separate v2 keys, and atomically switch current source with stale canonical cleared.
+- [x] Prove identical-byte v1-to-v2 append, repeat-v2 reuse, historical reads, terminal/published v1 isolation, readable fallback before model and stale-worker rejection; run focused and isolated PostgreSQL regressions.
+- [x] Add bounded body-only offline preview/apply from verified retained bytes, with atomic exact-job source-only storage, NULL transformation key, no provider/model calls and fail-closed reconstruction tests.
+- [x] Commit/push validated milestones, obtain independent exact-SHA review and synchronize verification evidence in plan, canonical doc, Issue and Project.
+
 
 ## Exact implementation allowlist
 
@@ -117,3 +118,7 @@ Required result: `{"status": "synchronized", "errors": []}`. Live Issue body, Pr
 ## Migration-driver scope amendment
 
 Amends checkpoint `dff1a1cda2c8e48433edec1d38a1d61816746391`: the driver hardcodes the chain through 040, so 041 cannot run without adding its exact expected name. Only `scripts/dev/migrate_sql.sh` and `scripts/dev/test_migrations.py` are added to implementation scope; all prior invariants and runtime restrictions remain binding. This docs-only amendment must be committed, pushed and pass exact-SHA preflight before editing those paths.
+
+## Development implementation evidence
+
+Candidate `e45541ca2058e9fa25b70b6eace329922ee96ca5` implements the first five concrete work items. See `docs/verification/2026-11-05-source-projection-v2.md` for separately bound earlier broad and final focused test runs, fixture limitations and the exact-candidate review status. The detailed task checklists above are retained as original execution instructions, rather than additional release acceptance. The coordinator confirmed independent exact-SHA review with zero actionable findings. The exact committed-candidate focused run passed 33 tests, 45 deselected and zero skips (21.07 s); independent migration-driver unittests passed 25. All six development work items are complete. Stage application, fresh CI and browser acceptance remain open and receive no acceptance credit here.
