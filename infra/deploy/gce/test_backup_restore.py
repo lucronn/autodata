@@ -222,3 +222,136 @@ class BoundaryTests(unittest.TestCase):
             for key, value in [('schema_version', True), ('deadline', float('inf')), ('incomplete', 1), ('lease_expires_at','2027-11-05T12:30:00Z')]:
                 altered = dict(state); altered[key] = value
                 with self.subTest(key=key), self.assertRaises(ValueError): self.m.validate_state(altered, RUN)
+
+class RestoreTarget:
+    def __init__(self, module):
+        self.m = module; self.calls = []
+        self.manifest = {'source_sha':'a' * 40, 'images':{'postgres':{'image_id':'sha256:'+'b'*64}}, 'migrations':{'files':[{'name':'001_extensions.sql'}]}}
+        self.inventory = {'schema_version':1, 'relations':{'schema_migrations':[{'version':'001_extensions'}]}, 'objects':[], 'jetstream':{}}
+        host = Host(module); host.manifest = self.manifest
+        self.temp = tempfile.TemporaryDirectory(dir='/tmp')
+        self.store = module.LeaseStore(Path(self.temp.name), RUN, owner=__import__('os').getuid())
+        module.run_backup('begin', RUN, host, self.store, Clock())
+        module.run_backup('resume', RUN, host, self.store, Clock())
+        _, self.status = module.run_backup('status', RUN, host, self.store, Clock())
+        output = io.BytesIO(); module.export_archive(self.store, self.manifest, self.status, output)
+        self.archive = output.getvalue()
+        self.plan = {'schema_version':1,'run_id':RUN,'source_sha':'a'*40,
+            'manifest_sha256':hashlib.sha256(module.canonical(self.manifest)).hexdigest(),
+            'archive_sha256':hashlib.sha256(self.archive).hexdigest(), 'expected_disk_uuid':RUN,
+            'restore_disk_uuid':'22345678-1234-4234-8234-123456789abc',
+            'postgres_image_id':'sha256:'+'b'*64,
+            'fixture_inventory_sha256':hashlib.sha256(module.canonical(self.inventory)).hexdigest()}
+        self.observed = copy.deepcopy(self.inventory)
+    def preflight(self, verb, run_id):
+        self.calls.append('preflight')
+        return self.plan, self.manifest, self.status, self.archive, self.inventory
+    def create(self, plan, manifest): self.calls.append('create')
+    def restore_dump(self, data): self.calls.append('restore'); assert data.startswith(b'PGDMP')
+    def inspect(self, inventory): self.calls.append('inspect'); return self.observed
+    def cleanup(self): self.calls.append('cleanup')
+
+
+class RestoreTests(unittest.TestCase):
+    def setUp(self):
+        self.m = load('restore_test', 'backup_restore.py')
+        self.assertTrue(hasattr(self.m, 'run_restore'), 'isolated restore boundary is missing')
+        self.target = RestoreTarget(self.m); self.addCleanup(self.target.temp.cleanup)
+    def run_restore(self): return self.m.run_restore('restore', RUN, self.target, None, Clock())
+    def test_portable_restore_exact_inventory_and_cleanup(self):
+        self.assertEqual(self.run_restore()[0], 0)
+        self.assertEqual(self.target.calls, ['preflight','create','restore','inspect','cleanup'])
+    def test_same_disk_unknown_keys_and_scalar_confusion_fail_before_creation(self):
+        for key, value in [('restore_disk_uuid', RUN),('schema_version',True),('command','arbitrary'),('postgres_image_id','postgres:17')]:
+            with self.subTest(key=key):
+                original = dict(self.target.plan); self.target.plan[key] = value
+                self.assertNotEqual(self.run_restore()[0], 0)
+                self.assertNotIn('create', self.target.calls)
+                self.target.plan = original; self.target.calls.clear()
+    def test_corruption_and_migration_ledger_mismatch_fail(self):
+        self.target.archive = self.target.archive[:-512] + b'x'*512
+        self.assertNotEqual(self.run_restore()[0],0)
+        self.assertNotIn('create',self.target.calls)
+    def test_wrong_owner_missing_session_object_and_message_reject_independently(self):
+        for key in ('relations','objects','jetstream'):
+            with self.subTest(key=key):
+                self.target.observed = copy.deepcopy(self.target.inventory)
+                self.target.observed[key] = {'corrupt': True}
+                self.assertNotEqual(self.run_restore()[0],0)
+                self.assertEqual(self.target.calls[-1], 'cleanup')
+    def test_cleanup_failure_cannot_be_passed(self):
+        def fail(): raise ValueError('cleanup failure')
+        self.target.cleanup = fail
+        code, value = self.run_restore()
+        self.assertEqual(code,6); self.assertFalse(value['cleanup_verified'])
+
+class AdditionalGuardsTests(unittest.TestCase):
+    setUp = LeaseTests.setUp
+    run_backup = LeaseTests.run_backup
+    def test_store_write_rejects_substituted_lease(self):
+        self.run_backup('begin'); state = self.store.read()
+        lease = self.store.path/'lease.json'; lease.unlink()
+        outside = Path(self.temp.name)/'outside'; outside.write_bytes(b'private'); outside.chmod(0o600)
+        lease.symlink_to(outside)
+        with self.assertRaises((ValueError,OSError)): self.store.write(state)
+        self.assertEqual(outside.read_bytes(),b'private')
+    def test_replaced_run_directory_is_rejected(self):
+        self.run_backup('begin')
+        self.store.path.rename(self.store.path.with_name('old'))
+        self.store.path.mkdir(mode=0o700)
+        with self.assertRaises((ValueError,OSError)): self.store.read()
+    def test_stale_boot_with_missing_secrets_marks_incomplete_without_starting_apps(self):
+        self.run_backup('begin'); self.clock.boot_id=lambda:'different-boot'; self.host.fail='preflight'
+        self.assertEqual(self.run_backup('resume')[0],6)
+        self.assertTrue(self.store.read()['incomplete'])
+        self.assertNotIn('start_apps',self.host.calls)
+
+
+class ArchiveRestoreGuards(unittest.TestCase):
+    setUp = RestoreTests.setUp
+    run_restore = RestoreTests.run_restore
+    def test_raw_duplicate_and_link_members_rejected_after_hashes_updated(self):
+        for kind in ('duplicate','link','traversal'):
+            with self.subTest(kind=kind):
+                target=RestoreTarget(self.m); self.addCleanup(target.temp.cleanup)
+                output=io.BytesIO()
+                import tarfile
+                with tarfile.open(fileobj=io.BytesIO(target.archive),mode='r:') as old, tarfile.open(fileobj=output,mode='w',format=tarfile.USTAR_FORMAT) as new:
+                    for member in old.getmembers(): new.addfile(member,old.extractfile(member))
+                    member=tarfile.TarInfo('postgres.dump' if kind=='duplicate' else '../outside' if kind=='traversal' else 'extra')
+                    if kind=='link': member.type=tarfile.SYMTYPE; member.linkname='postgres.dump'
+                    new.addfile(member)
+                target.archive=output.getvalue(); target.plan['archive_sha256']=hashlib.sha256(target.archive).hexdigest()
+                self.assertNotEqual(self.m.run_restore('restore',RUN,target,None,Clock())[0],0)
+                self.assertNotIn('create',target.calls)
+    def test_migration_ledger_and_inventory_bounds_fail_before_creation(self):
+        target=self.target
+        target.inventory['relations']['schema_migrations'][0]['version']='wrong'
+        target.plan['fixture_inventory_sha256']=hashlib.sha256(self.m.canonical(target.inventory)).hexdigest()
+        before=(target.archive,self.m.canonical(target.inventory))
+        self.assertNotEqual(self.run_restore()[0],0); self.assertNotIn('create',target.calls)
+        self.assertEqual(before,(target.archive,self.m.canonical(target.inventory)))
+
+class ResourceIdentityTests(unittest.TestCase):
+    def setUp(self):
+        self.m=load('restore_identity_test','backup_restore.py')
+        self.target=self.m.InstalledRestoreTarget(None,None,RUN)
+    def test_image_labels_do_not_hide_run_ownership(self):
+        value={'Config':{'Labels':{'io.autodata.restore.run':RUN,'org.opencontainers.image.version':'4.48'}},'Name':self.target.prefix+'-minio','Id':'a'*64}
+        self.target.json=lambda args:[value]
+        self.assertEqual(self.target._owned('container','a'*64),value)
+    def test_volume_replacement_or_changed_driver_options_is_rejected(self):
+        value={'Name':self.target.prefix+'-nats','CreatedAt':'2026-11-05T12:00:00Z','Driver':'local','Options':{},'Mountpoint':'/tmp', 'Labels':{'io.autodata.restore.run':RUN}}
+        self.target.json=lambda args:[value]
+        self.target._owned('volume',value['Name'])
+        value['Options']={'device':'foreign'}
+        with self.assertRaises(ValueError):self.target._owned('volume',value['Name'])
+    def test_metadata_parser_rejects_extensions_duplicates_and_oversized_headers(self):
+        target=RestoreTarget(self.m);self.addCleanup(target.temp.cleanup)
+        manifest,status=self.m.archive_metadata(target.archive)
+        self.assertEqual(manifest,target.manifest);self.assertEqual(status,target.status)
+        import tarfile
+        output=io.BytesIO()
+        with tarfile.open(fileobj=output,mode='w',format=tarfile.PAX_FORMAT) as archive:
+            item=tarfile.TarInfo('a'*200);item.size=1;archive.addfile(item,io.BytesIO(b'x'))
+        with self.assertRaises(ValueError):self.m.archive_metadata(output.getvalue())
