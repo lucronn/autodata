@@ -95,6 +95,22 @@ For ownership and local-versus-live status, see
 and [Bankone/Banktwo domain routing](bankone-banktwo-domain-routing.md).
 
 
+## Authentic Banktwo HAL resources
+
+Goal: Accept authentic Banktwo application/hal+json article resources through the existing bound JSON/HTML adapter without losing source content, media references or provenance.
+
+Issue: https://github.com/lucronn/autodata/issues/317; related #300; parent #186; Project https://github.com/users/lucronn/projects/8. Plan: `docs/superpowers/plans/2026-11-05-banktwo-hal-source-adaptation.md`; record: `docs/agents/records/2026-11-05-banktwo-hal-source-adaptation.json`.
+
+Observed private capture: 20/20 authentic Banktwo resources have exact application/hal+json media and currently reject as unsupported article media. The observed body is `_embedded.data.article.content` HTML. Route only this exact media through the existing bound nested JSON/HTML adapter, preserving original bytes, hashes, provider scope, applicability, ordered tables/media and evidence. Reject malformed HAL; preserve existing media behavior. Only source_adapters.py and test_source_article_capture.py may change. Private corpus evidence paths/hashes and limitations are in the plan. This is an ingestion compatibility repair, not accepted rewrite coverage or release readiness; no live provider/model calls, activation or deployment.
+
+Concrete todo:
+- [ ] Add red regressions for HAL nested article HTML, ordered structure, source identity and malformed envelopes.
+- [ ] Accept exact application/hal+json through the existing bound JSON adaptation path with fail-closed envelope handling; preserve all other media behavior.
+- [ ] Run focused source capture/adapter regressions and offline replay of all 20 privately retained authentic Banktwo resources; record hashes, normalization and remaining media/rewrite blockers.
+- [ ] Obtain independent exact-SHA review and synchronize Issue/Project evidence; keep activation and deployment disabled.
+
+Implementation checkpoint `5d9fc1ad60cf899c46017417d7122914be6924ea` accepts all 20 retained authentic Banktwo HAL resources without changing original payload or envelope hashes. Focused tests passed (157 tests and six subtests); 11 raw normalized documents passed strict validation and nine retain unresolved image errors. The supported capture path records unavailable optional assets explicitly and yielded strict-valid source fallback for all 40 retained cross-bank resources in offline replay. Independent review found no P1/P2; exact-head CI is pending. This does not establish live asset availability, rewrite eligibility, lifecycle completion or production release readiness.
+
 ## Bankone CLI timeout compatibility
 
 Goal: Restore Bankone ingestion CLI construction by passing --timeout-seconds to the existing SourceConnectorClient timeout parameter.
@@ -108,4 +124,4 @@ Concrete todo:
 - [ ] Change only the CLI constructor keyword from timeout_seconds to timeout, retaining the flag, default, credentials and persist behavior.
 - [ ] Run red/green focused checks, Bankone batch regressions and diff checks; commit/push the validated two-file fix for independent exact-SHA review.
 
-Bankone CLI implementation `f15ce05bd29d0f5a0cceb9ab8f3642c6f73b268c` changes only the connector constructor keyword to `timeout`. Three real-constructor CLI regressions and ten Bankone batch tests passed after the original TypeError was reproduced. The bounded real-source staging rerun and exact-head GitHub CI are pending.
+Bankone CLI implementation `f15ce05bd29d0f5a0cceb9ab8f3642c6f73b268c` changes only the connector constructor keyword to `timeout`. Three real-constructor CLI regressions and ten Bankone batch tests passed after the original TypeError was reproduced. Exact-head GitHub verification passed in run `42044574931`; PR #320 merged as `ccdfbbedab0a90957ddb077595bcc8f050373c02`. The bounded real-source staging rerun remains a separate acceptance step.

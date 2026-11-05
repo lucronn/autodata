@@ -728,3 +728,119 @@ def test_embedded_asset_storage_failure_preserves_readable_source(
         captured.source_images[0]["unavailable_reason"] == "ASSET_STORAGE_UNAVAILABLE"
     )
     assert "private object endpoint" not in str(captured)
+
+
+@pytest.mark.parametrize("media", ["application/json", "application/hal+json"])
+def test_nested_html_capture_preserves_order_and_original_resource(capture_fixture, media):
+    """Synthetic connector content exercises the authentic HAL envelope shape."""
+    import json
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    payload = json.dumps({"_embedded": {"data": {"article": {
+        "title": "Pump",
+        "content": '<p>Remove the cover.</p><table><tr><td>25 Nm</td></tr></table>'
+                   '<img data-resource-ref="asset:one" src="https://source.invalid/a.png">',
+    }}}}).encode()
+    context = capture_fixture.context("banktwo", asset_ref="asset:one")
+    capture_fixture.body("banktwo", payload, media)
+    capture_fixture.body("banktwo", b"synthetic-figure", "image/png", ref="asset:one", kind="asset")
+    captured = capture_source_article(
+        context, registry=capture_fixture.registry, object_store=capture_fixture.objects
+    )
+    blocks = captured.source_document["blocks"]
+    assert [block["type"] for block in blocks] == ["paragraph", "table", "image"]
+    assert blocks[0]["text"] == "Remove the cover."
+    assert blocks[1]["rows"] == [["25 Nm"]]
+    assert captured.source_body == "Remove the cover.\n25 Nm"
+    assert all(block["evidence_ids"] == list(context.evidence_ids) for block in blocks)
+    image = blocks[2]
+    assert any(row["opaque_ref"] == "asset:one" and row["role"] == "asset"
+               for row in captured.resource_manifest)
+    assert image["status"] == "available"
+    assert image["content_sha256"] == sha256(b"synthetic-figure").hexdigest()
+    assert capture_fixture.objects.data[image["storage_key"]] == (b"synthetic-figure", "image/png")
+    body = next(row for row in captured.resource_provenance if row["role"] == "body")
+    assert body["provider"] == "banktwo"
+    assert body["sha256"] == sha256(payload).hexdigest()
+    assert body["media_type"] == media
+    assert capture_fixture.objects.data[body["object_key"]] == (payload, media)
+    assert capture_fixture.calls("bankone") == []
+    assert capture_fixture.resource_calls("banktwo", "asset:one") == 1
+    if media == "application/hal+json":
+        capture_fixture.body("banktwo", payload, "application/json")
+        json_capture = capture_source_article(
+            context, registry=capture_fixture.registry, object_store=capture_fixture.objects
+        )
+        assert captured.source_document == json_capture.source_document
+        assert captured.source_body == json_capture.source_body
+        assert captured.source_images == json_capture.source_images
+
+
+@pytest.mark.parametrize("payload", [
+    [], None, "article", {},
+    {"_embedded": []}, {"_embedded": {}},
+    {"_embedded": {"data": []}}, {"_embedded": {"data": {}}},
+    {"_embedded": {"data": {"article": []}}},
+    *({"_embedded": {"data": {"article": {"body": "Remove pump.", "content": value}}}}
+      for value in [None, 1, False, [], {}]),
+])
+def test_hal_malformed_envelope_rejected_before_projection(capture_fixture, payload):
+    import json
+    from autodata_ingestion.source_adapters import SourceResource, adapt_bound_article
+
+    resource = SourceResource.from_bytes(
+        "connector:synthetic", "fixture", json.dumps(payload).encode(), "application/hal+json"
+    )
+    with pytest.raises(ValueError, match="invalid article document"):
+        adapt_bound_article(resource, capture_fixture.context("banktwo"))
+
+
+@pytest.mark.parametrize("media", ["application/json", "application/hal+json"])
+@pytest.mark.parametrize("layer", ["root", "embedded", "data", "article"])
+@pytest.mark.parametrize("identity", [
+    {"vehicle": {"year": 1999}},
+    {"source_vehicle_ref": "another-provider/vehicle"},
+    {"vehicle_id": "00000000-0000-0000-0000-000000000000"},
+])
+def test_hal_identity_layers_cannot_override_bound_scope(capture_fixture, media, layer, identity):
+    import json
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    article = {"content": "<p>Remove pump.</p>"}
+    data = {"article": article}
+    embedded = {"data": data}
+    payload = {"_embedded": embedded}
+    {"root": payload, "embedded": embedded, "data": data, "article": article}[layer].update(identity)
+    capture_fixture.body("banktwo", json.dumps(payload).encode(), media)
+    with pytest.raises(SourceConnectorError, match="applicability"):
+        capture_source_article(
+            capture_fixture.context("banktwo"), registry=capture_fixture.registry,
+            object_store=capture_fixture.objects,
+        )
+    assert capture_fixture.calls("bankone") == []
+
+
+@pytest.mark.parametrize("media", ["application/json", "application/hal+json"])
+def test_hal_capture_rejects_registry_provider_mismatch(capture_fixture, media):
+    import json
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    payload = {"_embedded": {"data": {"article": {"content": "Remove pump."}}}}
+    capture_fixture.body("banktwo", json.dumps(payload).encode(), media)
+    registry = {"banktwo": capture_fixture.registry["bankone"]}
+    with pytest.raises(SourceConnectorError):
+        capture_source_article(
+            capture_fixture.context("banktwo"), registry=registry,
+            object_store=capture_fixture.objects,
+        )
+    assert capture_fixture.calls("bankone") == capture_fixture.calls("banktwo") == []
+
+
+def test_bound_article_does_not_accept_arbitrary_json_suffix(capture_fixture):
+    from autodata_ingestion.source_adapters import SourceResource, adapt_bound_article
+
+    resource = SourceResource.from_bytes(
+        "connector:synthetic", "fixture", b'{"body":"Remove pump."}', "application/custom+json"
+    )
+    with pytest.raises(ValueError, match="unsupported article media"):
+        adapt_bound_article(resource, capture_fixture.context("banktwo"))

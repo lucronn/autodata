@@ -1583,10 +1583,18 @@ def adapt_bound_article(resource: SourceResource, context) -> dict[str, Any]:
     from .article_document import segment_plain_article_text
 
     media = resource.media_type.split(";", 1)[0]
-    if media == "application/json":
+    if media in {"application/json", "application/hal+json"}:
         value = json.loads(resource.payload)
         if not isinstance(value, dict):
             raise ValueError("invalid article document")
+        if media == "application/hal+json":
+            embedded = value.get("_embedded")
+            data = embedded.get("data") if isinstance(embedded, dict) else None
+            article = data.get("article") if isinstance(data, dict) else None
+            if not isinstance(article, dict) or (
+                "content" in article and not isinstance(article["content"], str)
+            ):
+                raise ValueError("invalid article document")
         identity_layers = [value]
         embedded = value.get("_embedded")
         if isinstance(embedded, dict) and isinstance(embedded.get("data"), dict):
