@@ -153,11 +153,40 @@ def _mark_delivery_ambiguous(cur, job):
         (job["source_fetch_job_id"], job["lease_token"]))
 
 
+def _claim_review_resume(cur, worker_id):
+    """Saved full drafts have a publication lease, never another model attempt."""
+    from .article_lifecycle_store import _require_full_approval
+    jobs = cur.execute("""SELECT * FROM source_fetch_jobs WHERE job_kind='article'
+        AND rewrite_profile_version='full-prose-review-v1'
+        AND checkpoint->'content_review'->>'state'='approved'
+        AND ((status='pending' AND COALESCE(next_attempt_at,'-infinity'::timestamptz)<=clock_timestamp())
+          OR (status='processing' AND lease_expires_at<clock_timestamp()))
+        ORDER BY created_at,source_fetch_job_id FOR UPDATE SKIP LOCKED LIMIT 1""").fetchall()
+    for job in jobs:
+        article = cur.execute("SELECT * FROM canonical_articles WHERE canonical_article_id=%s FOR UPDATE", (job["canonical_article_id"],)).fetchone()
+        candidate = cur.execute("SELECT * FROM canonical_article_revisions WHERE transformation_key=%s FOR UPDATE", (job["transformation_key"],)).fetchone()
+        try:
+            _require_full_approval(cur, job, article, candidate)
+        except ValueError:
+            cur.execute("""UPDATE source_fetch_jobs SET status='needs_review',error_code='CONTENT_REVIEW_REQUIRED',retryable=false,
+                lease_owner=NULL,lease_expires_at=NULL,heartbeat_at=NULL,next_attempt_at=NULL,checkpoint=jsonb_set(checkpoint,'{content_review,state}','"awaiting_review"'::jsonb) WHERE source_fetch_job_id=%s""", (job["source_fetch_job_id"],))
+            continue
+        row = cur.execute("""UPDATE source_fetch_jobs SET status='processing',phase='publishing',lease_token=lease_token+1,
+            lease_owner=%s,lease_expires_at=clock_timestamp()+interval '90 seconds',heartbeat_at=clock_timestamp(),
+            error_code=NULL,next_attempt_at=NULL,updated_at=clock_timestamp() WHERE source_fetch_job_id=%s RETURNING *""",
+            (worker_id,job["source_fetch_job_id"])).fetchone()
+        return _lease_from_row(row,worker_id)
+    return None
+
+
 def claim_source_job(repo, *, worker_id):
     with repo.connect() as conn, _cursor(conn) as cur:
+        resumed = _claim_review_resume(cur, worker_id)
+        if resumed is not None:
+            return resumed
         cur.execute(
             """WITH exhausted AS (SELECT source_fetch_job_id FROM source_fetch_jobs
-        WHERE job_kind IN ('article','catalog_index') AND NOT (checkpoint @> '{"source_only_reprojection":true}'::jsonb) AND status='processing' AND retry_count>=max_attempts AND lease_expires_at<clock_timestamp() FOR UPDATE SKIP LOCKED)
+        WHERE job_kind IN ('article','catalog_index') AND NOT (checkpoint @> '{"source_only_reprojection":true}'::jsonb) AND NOT (rewrite_profile_version='full-prose-review-v1' AND checkpoint ? 'content_review') AND status='processing' AND retry_count>=max_attempts AND lease_expires_at<clock_timestamp() FOR UPDATE SKIP LOCKED)
         UPDATE source_fetch_jobs j SET status='dead_letter',error_code='LEASE_ATTEMPTS_EXHAUSTED',retryable=false,lease_owner=NULL,lease_expires_at=NULL,heartbeat_at=NULL,updated_at=clock_timestamp()
         FROM exhausted e WHERE j.source_fetch_job_id=e.source_fetch_job_id
         RETURNING j.source_fetch_job_id,j.lease_token"""
@@ -165,7 +194,7 @@ def claim_source_job(repo, *, worker_id):
         for exhausted in cur.fetchall():
             _mark_delivery_ambiguous(cur, exhausted)
         job = cur.execute(
-            """SELECT * FROM source_fetch_jobs WHERE job_kind IN ('article','catalog_index') AND NOT (checkpoint @> '{"source_only_reprojection":true}'::jsonb) AND retry_count<max_attempts AND
+            """SELECT * FROM source_fetch_jobs WHERE job_kind IN ('article','catalog_index') AND NOT (checkpoint @> '{"source_only_reprojection":true}'::jsonb) AND NOT (rewrite_profile_version='full-prose-review-v1' AND checkpoint ? 'content_review') AND retry_count<max_attempts AND
         ((status IN ('pending','failed') AND COALESCE(next_attempt_at,'-infinity'::timestamptz)<=clock_timestamp()) OR (status='processing' AND lease_expires_at<clock_timestamp()))
         ORDER BY created_at,source_fetch_job_id FOR UPDATE SKIP LOCKED LIMIT 1"""
         ).fetchone()

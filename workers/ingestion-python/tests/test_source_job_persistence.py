@@ -305,3 +305,17 @@ def test_expiry_at_actual_recovery_boundary(fresh_database, monkeypatch, final, 
     assert job["status"] == ("dead_letter" if final and not renewed else "processing")
     assert job["retry_count"] == (3 if final else 1 if renewed else 2)
     assert job["lease_token"] == lease.token + (not final and not renewed)
+
+
+def test_review_marker_never_uses_normal_model_claim_or_exhaustion(fresh_database):
+    """An unbound resume must never resurrect a model delivery or consume budget."""
+    from autodata_ingestion.source_job_persistence import claim_source_job
+    from psycopg.types.json import Jsonb
+    repo = fresh_database()
+    job = ensure(repo, seed_article(repo))
+    with repo.connect() as conn:
+        conn.execute("UPDATE source_fetch_jobs SET rewrite_profile_version='full-prose-review-v1',checkpoint=%s WHERE source_fetch_job_id=%s", (Jsonb({"content_review":{"version":1,"state":"approved","candidate_revision_id":str(uuid.uuid4()),"candidate_hash":"a"*64}}), job.job_id))
+    assert claim_source_job(repo, worker_id=uuid.uuid4()) is None
+    with repo.connect() as conn:
+        row = conn.execute("SELECT retry_count,status FROM source_fetch_jobs WHERE source_fetch_job_id=%s", (job.job_id,)).fetchone()
+    assert row["retry_count"] == 0
