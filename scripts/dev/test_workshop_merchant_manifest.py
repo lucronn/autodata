@@ -12,6 +12,11 @@ from unittest.mock import patch
 import workshop_merchant_manifest as merchant
 
 ROOT = Path(__file__).resolve().parents[2]
+# Archived disabled, non-deployable test inputs copied verbatim from
+# b6388596cf4419559fc6a8a5fbcd0b4fc33cc7cb: apps/api-go/main.go and
+# apps/api-go/workshop/purchase-config.json. These are historical bindings,
+# not evidence for the current server-owned purchase configuration route.
+FIXTURES = ROOT/'scripts/dev/fixtures/workshop_merchant_manifest'
 KINDS = ('terms', 'privacy', 'refund', 'contact')
 BASELINE_SHA = 'edb1d6d182c5eeee6c33885e873bc5b44ac7a3eb4465d9e92af5d1bc60d4b45f'
 AUTHORITIES = '''implementation implementation_dispatch provider runtime host host_execution docker network cloud dns capture profile_activation acceptance fixture_execution image_build_pull_install service_start payment account_mutation staging release merge deployment cutover secrets github_write code_approval ci_success merchant_enablement manifest_injection artifact_admission owner_approval stripe_test_acceptance live_sales'''.split()
@@ -34,7 +39,7 @@ class PreparationTests(unittest.TestCase):
         self.manifest = {'enabled': True, 'terms_version': 'workshop-v1', **{k+'_url': 'https://merchant.example/'+k for k in KINDS}, 'tax_notice': 'Synthetic final-price notice.\nNo extra collection. é'}
         self.policy_bytes = {k: ('Synthetic '+k+' snapshot.\n').encode() for k in KINDS}
         self.build = (ROOT/'apps/api-go/Dockerfile').read_bytes()
-        self.embed = (ROOT/'apps/api-go/main.go').read_bytes()
+        self.embed = (FIXTURES/'historical-main.go.txt').read_bytes()
         self.approval = {'schema': 'workshop-merchant-preparation-v1', 'provenance': 'synthetic', 'owner_approval_ref': 'synthetic reference only', 'policy_revision': 'synthetic-revision-1', 'source': {'sha': '6949eb1b1a5b93c9b2eb0579328e24c697f6f331', 'tree': '47ec54b1896c83a39b6637a6ce944d3620414f4e'}, 'build_recipe': binding(self.build), 'embed_source': binding(self.embed), 'manifest': {**binding(encoded(self.manifest)), 'served_path': '/workshop/purchase-config.json', 'terms_version': 'workshop-v1'}, 'policies': {k: {'url': self.manifest[k+'_url'], **binding(self.policy_bytes[k])} for k in KINDS}, 'tax': {'notice_sha256': hashlib.sha256(self.manifest['tax_notice'].encode()).hexdigest(), 'notice_bytes': len(self.manifest['tax_notice'].encode()), 'final_price_treatment': 'owner_confirms_usd20_final_no_additional_tax_collection', 'owner_decision_ref': 'synthetic decision reference'}, 'product': {'id': 'workshop-configuration-v1', 'currency': 'USD', 'amount_minor': 2000, 'recurrence': 'one_time'}, 'enrollment': {'mode': 'stripe_test', 'account_id': 'acct_SYNTHETIC', 'price_id': 'price_SYNTHETIC'}}
         self.paths = {'manifest': self.dir/'manifest.json', 'approval': self.dir/'approval.json', 'policies': {k: self.dir/(k+'.txt') for k in KINDS}, 'build_recipe': self.dir/'Dockerfile', 'embed_source': self.dir/'main.go'}
         self.write()
@@ -68,6 +73,19 @@ class PreparationTests(unittest.TestCase):
         self.assertEqual(binding(self.build), {'sha256':'bd7a4d022e89c76432cd5b8e086166252303710cb8cb24a72b5eeff31fc52559','bytes':928})
         self.assertEqual(binding(self.embed), {'sha256':'6a6c78c4d84604ec4e626b49dc10e20603018e9db398c709073e689723801a77','bytes':30491})
 
+    def test_current_embed_cannot_self_admit_historical_binding(self):
+        current = (ROOT/'apps/api-go/main.go').read_bytes()
+        self.assertEqual(binding(current), {'sha256': 'fde8eac2c45e27d7fcf07fd72dcf406453009a7d92689ddd62f4521b7d7045b8', 'bytes': 30989})
+        self.paths['embed_source'].write_bytes(current)
+        result = self.evaluate()
+        self.assertEqual(result['status'], 'blocked')
+        self.assertIn('embed_source_binding_mismatch', result['reasons'])
+        self.approval['embed_source'] = binding(current)
+        self.paths['approval'].write_bytes(encoded(self.approval))
+        result = self.evaluate()
+        self.assertEqual(result['status'], 'blocked')
+        self.assertIn('embed_source_binding_mismatch', result['reasons'])
+
     def test_synthetic_prepared_is_consistency_only(self):
         result = self.evaluate()
         self.assertEqual(result['status'], 'prepared_offline')
@@ -86,8 +104,8 @@ class PreparationTests(unittest.TestCase):
         self.rebind_manifest()
         self.assertEqual(self.evaluate()['status'], 'prepared_offline')
 
-    def test_exact_disabled_baseline_and_every_byte_mutation(self):
-        raw = (ROOT/'apps/api-go/workshop/purchase-config.json').read_bytes()
+    def test_historical_exact_disabled_baseline_and_every_byte_mutation(self):
+        raw = (FIXTURES/'historical-disabled-purchase-config.json').read_bytes()
         self.assertEqual(len(raw), 168)
         self.assertEqual(hashlib.sha256(raw).hexdigest(), BASELINE_SHA)
         self.assertIs(json.loads(raw)['enabled'], False)
