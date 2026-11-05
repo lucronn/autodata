@@ -51,6 +51,23 @@ class Daemon:
 
 class FixtureSafetyTests(unittest.TestCase):
     def setUp(self): self.m = module()
+    def test_both_seaweed_instances_reserve_a_metadata_volume_slot(self):
+        class RecordingDocker:
+            def __init__(self): self.containers=[]
+            def volume(self,role): return role
+            def container(self,role,image,args,*unused,**kwargs):
+                self.containers.append((role,image,args))
+            def action(self,role,action): pass
+        docker=RecordingDocker()
+        fixture=self.m.Fixture(docker,None,None,RUN,None)
+        fixture.wait_pg=lambda: None
+        fixture.services('source')
+        fixture.services('cold',cold=True)
+        s3=[args for role,image,args in docker.containers if image==self.m.IMAGES['seaweed']['id']]
+        self.assertEqual(len(s3),2)
+        for args in s3:
+            self.assertIn('-volume.max=4',args)
+
     def test_fail_closed_records_maintenance_without_lease_or_ingress(self):
         fixture=self.m.Fixture(None,None,None,RUN,None)
         fixture.fail_closed(123.0)

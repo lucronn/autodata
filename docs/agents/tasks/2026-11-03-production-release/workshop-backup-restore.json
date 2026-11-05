@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "task_id": "workshop-backup-restore",
-  "state": "review_with_blocked_complete_fixture_proof",
+  "state": "reviewed_local_fixture_passed_ci_pending",
   "record_ref": "docs/agents/records/2026-11-05-workshop-backup-restore.json",
   "pre_implementation_record": {
     "goal": "Implement the missing fixed Workshop backup lease/export and isolated restore helpers, with retained disposable local fixture proof.",
@@ -58,14 +58,17 @@
     "deployment/DNS/cutover"
   ],
   "implementation_result": {
-    "state": "review_with_blocked_complete_fixture_proof",
-    "branch": "codex/workshop-backup-restore-build",
+    "state": "reviewed_local_fixture_passed_ci_pending",
+    "branch": "codex/backup-fixture-volume-capacity",
     "verification_ref": "docs/verification/2026-11-05-workshop-backup-restore.md",
-    "tests_passed": 396,
-    "fixture_complete": false,
-    "blocker": "Pinned SeaweedFS Mini source stop exceeded45 seconds, Exit137 without OOM; final candidate complete fixture proof unavailable.",
+    "tests_passed": 501,
+    "fixture_complete": true,
     "candidate_pin_ref": "https://github.com/lucronn/autodata/issues/308",
-    "production_recovery_verified": false
+    "production_recovery_verified": false,
+    "fixture_safety_tests_passed": 21,
+    "fixture_result_path": "/tmp/autodata-workshop-restore-fixture-20261105-attempt9/result.json",
+    "fixture_result_sha256": "957fc6caaf84b985f07d24a67b74f322ad324b5490a1dccc2f3b3435c46df800",
+    "initial_implementation_merge_sha": "e42bd471ee545193f664de9a3b677aed875f3271"
   },
   "authorization_basis": "Coordinator exact-base dispatch from gate receipt056a0db74bb252cd7e53fa1c21d65ecdfa973d69; scope denials unchanged."
 }
