@@ -8,6 +8,7 @@ from pathlib import Path
 import subprocess
 import socket
 import ssl
+import stat
 import sys
 import tempfile
 import time
@@ -26,6 +27,38 @@ def load():
 
 
 class LiveTests(unittest.TestCase):
+    def test_real_buildx_metadata_explicit0644_is_adopted_privately(self):
+        p = load()
+        with p.a.private_workspace() as root:
+            source = root/'source'; source.mkdir(mode=0o700)
+            (source/'Dockerfile').write_text('FROM scratch\nLABEL review=metadata-mode\n')
+            metadata = root/'metadata.json'
+            result = subprocess.run(['/usr/bin/docker','buildx','build','--metadata-file',str(metadata),
+                                     '--output','type=cacheonly',str(source)], capture_output=True,
+                                    timeout=60, umask=0o077)
+            self.assertEqual(result.returncode, 0, result.stderr.decode()[-2000:])
+            self.assertEqual(stat.S_IMODE(metadata.stat().st_mode), 0o644)
+            original = metadata.read_bytes()
+            with self.assertRaises(p.a.AdapterError): p.a.private_read(root,'metadata.json',p.a.MiB)
+            value = p.read_tool_json(root,'metadata.json')
+            self.assertEqual(value,p.a.strict_json(original))
+            self.assertEqual(metadata.read_bytes(),original)
+            self.assertEqual(stat.S_IMODE(metadata.stat().st_mode),0o600)
+
+    def test_tool_metadata_adoption_rejects_links_writable_and_oversized_output(self):
+        p = load()
+        with p.a.private_workspace() as root:
+            path = p.a.private_write(root,'metadata.json',b'{}')
+            os.symlink(path,root/'alias.json')
+            with self.assertRaises(p.a.AdapterError): p.read_tool_json(root,'alias.json')
+            os.link(path,root/'linked.json')
+            with self.assertRaises(p.a.AdapterError): p.read_tool_json(root,'metadata.json')
+            (root/'linked.json').unlink()
+            path.chmod(0o666)
+            with self.assertRaises(p.a.AdapterError): p.read_tool_json(root,'metadata.json')
+            path.chmod(0o644)
+            with self.assertRaises(p.a.AdapterError): p.read_tool_json(root,'metadata.json',1)
+
     def test_cli_rejects_flags_urls_and_missing_source_without_credentials(self):
         for args in ([], ['staging-build-candidate'], ['verify-publication', 'https://evil.example'],
                      ['staging-finalize', 'a'*40, '--command', 'id'], ['production', 'a'*40]):
