@@ -484,8 +484,8 @@ https://github.com/users/lucronn/projects/8; parent release issue #186.
 
 Concrete todo:
 
-- [ ] Commit the synchronized planning checkpoint and pass exact-base preflight.
-- [ ] Test and implement the AutoData bounded, exact-URL consumer.
+- [x] Commit the synchronized planning checkpoint and pass exact-base preflight.
+- [x] Test and implement the AutoData bounded, exact-URL consumer.
 - [ ] Review and merge the consumer before deploying connector producers.
 - [ ] Verify Bankone and Banktwo producer refs and Banktwo binary image route.
 - [ ] Run bounded real dual-bank image-order and fallback canaries.

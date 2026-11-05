@@ -8,11 +8,32 @@ AutoData validates the bounded sidecar at its authenticated connector boundary, 
 
 Concrete todo:
 
-- [ ] Commit this plan, Project/Issue tracking, canonical document, and synchronized record at a pinned base SHA; run machine preflight.
-- [ ] Add failing connector-envelope and article-placement tests for valid, repeated, conflicting, unknown, and oversized bindings, including raw body/hash invariance.
-- [ ] Implement bounded AutoData consumer validation and exact-URL image binding with existing source fallback.
+- [x] Commit this plan, Project/Issue tracking, canonical document, and synchronized record at a pinned base SHA; run machine preflight.
+- [x] Add failing connector-envelope and article-placement tests for valid, repeated, conflicting, unknown, and oversized bindings, including raw body/hash invariance.
+- [x] Implement bounded AutoData consumer validation and exact-URL image binding with existing source fallback.
 - [ ] Review, test, and merge the AutoData consumer before the Bankone and Banktwo connector PRs.
 - [ ] Verify both connector producers' raw-byte invariance, binary image delivery, and authenticated references; merge and deploy in dependency order.
 - [ ] Run bounded real Bankone and Banktwo article canaries and confirm ordered images, no duplicate gallery, stable canonical/source hashes, and no unexpected model call.
 
 Acceptance requires exact-position images for declared refs, original content/hash/provenance, deterministic rejection of invalid sidecars, and unchanged source fallback while rewrite is pending. This plan does not authorize a production rollout or claim that historical missing S3 objects are recovered.
+
+## AutoData consumer implementation evidence
+
+The planning checkpoint `5be336ccfbe1bb2323a546eac0169291ecc485dc` passed the
+machine preflight before implementation. Consumer implementation and review
+fixes are pushed through `0b7cd11d230f16cb7287d0b3940486e77550d8b5` in
+[PR #332](https://github.com/lucronn/autodata/pull/332).
+
+Binding, Banktwo facade, ordered-document, and offline replay suites pass with
+100 tests, 2 subtests, and 7 database-dependent skips. The broader capture and
+connector run passed 184 tests and 9 subtests. Independent review found an
+embedded-image overwrite edge case; a failing regression reproduced it and the
+fix was re-reviewed with no remaining findings. Parent review also caught C1
+controls; both fields now reject them with regression coverage.
+
+Nonempty sidecars enter source identity without changing raw body hashes. A
+metadata-only recapture may therefore schedule another rewrite under the current
+lifecycle; canonical reuse/backfill is separate work. No merge, deployment, live
+provider canary, or historical article recapture has been performed by this
+implementation agent. CI and exact test commands are recorded in
+`docs/verification/2026-11-05-source-media-bindings.md`.
