@@ -42,6 +42,9 @@ class _Response:
         self.offset += len(result)
         return result
 
+    def read1(self, limit=-1):
+        return self.read(limit)
+
     def geturl(self):
         return self.url
 
@@ -63,6 +66,107 @@ def _envelope(provider="bankone", **extra):
 
 
 class SourceConnectorClientTests(unittest.TestCase):
+    def test_catalog_deadline_interrupts_trickled_chunk_framing(self):
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        from threading import Event, Thread
+        import time
+
+        stopped = Event()
+        class Handler(BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+
+            def do_GET(self):
+                body = json.dumps(_envelope(scope="years", items=[], complete=True, next_cursor=None)).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Transfer-Encoding", "chunked")
+                self.end_headers()
+                framing = f"{len(body):x};delay=123456789abcdef\r\n".encode()
+                try:
+                    for value in framing:
+                        self.wfile.write(bytes([value]))
+                        self.wfile.flush()
+                        if stopped.wait(0.04):
+                            return
+                    self.wfile.write(body + b"\r\n0\r\n\r\n")
+                    self.wfile.flush()
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
+
+            def log_message(self, *args):
+                pass
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        client = SourceConnectorClient(f"http://127.0.0.1:{server.server_port}")
+        try:
+            started = time.monotonic()
+            with self.assertRaises(SourceConnectorError) as caught:
+                client.catalog("years", timeout=0.1)
+            self.assertEqual(caught.exception.code, "UPSTREAM_UNAVAILABLE")
+            self.assertLess(time.monotonic() - started, 0.4)
+        finally:
+            stopped.set()
+            server.shutdown()
+            server.server_close()
+            thread.join(2)
+
+    def test_catalog_deadline_stops_trickling_response_body(self):
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        from threading import Event, Thread
+        import time
+
+        stopped = Event()
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                body = json.dumps(_envelope(scope="years", items=[], complete=True, next_cursor=None)).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                try:
+                    for offset in range(0, len(body), 8):
+                        self.wfile.write(body[offset:offset + 8])
+                        self.wfile.flush()
+                        if stopped.wait(0.04):
+                            break
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
+
+            def log_message(self, *args):
+                pass
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        client = SourceConnectorClient(f"http://127.0.0.1:{server.server_port}")
+        try:
+            started = time.monotonic()
+            with self.assertRaises(SourceConnectorError) as caught:
+                client.catalog("years", timeout=0.1)
+            self.assertEqual(caught.exception.code, "UPSTREAM_UNAVAILABLE")
+            self.assertLess(time.monotonic() - started, 0.5)
+        finally:
+            stopped.set()
+            server.shutdown()
+            server.server_close()
+            thread.join(2)
+
+    def test_catalog_timeout_is_per_request_and_preserves_client_default(self):
+        timeouts = []
+
+        def capture(request, timeout):
+            timeouts.append(timeout)
+            return _Response(_envelope(scope="years", items=[], complete=True, next_cursor=None), url=request.full_url)
+
+        client = SourceConnectorClient("https://bankone.test", timeout=25, opener=capture)
+        client.catalog("years", timeout=2)
+        client.catalog("years", timeout=120)
+        client.catalog("years")
+        self.assertEqual(timeouts, [2, 25, 25])
+        self.assertEqual(client.timeout, 25)
+
     def test_managed_keys_reach_only_the_matching_bank_and_override_legacy_tokens(self):
         env = {
             "AUTODATA_BANKONE_API_KEY": "managed-one-test",

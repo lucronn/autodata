@@ -10,7 +10,7 @@ import os
 import re
 import time
 from copy import deepcopy
-from threading import RLock, Thread
+from threading import Event, RLock, Thread
 from typing import Any, Callable, Iterable, Mapping
 from urllib.parse import quote
 
@@ -85,6 +85,8 @@ class CacheFirstCatalogService:
         for provider in self._providers:
             try:
                 payload = _call_provider(provider, request)
+            except _SelectorDeepeningStopped:
+                raise
             except Exception as error:  # noqa: BLE001 - one source may be unavailable while another is usable
                 missing.add("provider")
                 continue
@@ -301,6 +303,51 @@ def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
 
 _DEEPEN_LOCK = RLock()
 _DEEPEN_IN_FLIGHT: set[str] = set()
+_DEEPEN_CONTROL: _SelectorDeepeningControl | None = None
+# Keep the dispatch floor across successful, failed and canceled runs.
+_DEEPEN_NEXT_DISPATCH = 0.0
+
+
+class _SelectorDeepeningStopped(Exception):
+    """End background traversal without treating its budget as source failure."""
+
+
+class _SelectorDeepeningControl:
+    """Bound dispatch/body reads across providers; urllib headers use socket timeouts."""
+
+    def __init__(self):
+        self.cancelled = Event()
+        self.deadline = time.monotonic() + 120.0
+        self.remaining_attempts = 12
+
+    def remaining(self) -> float:
+        seconds = self.deadline - time.monotonic()
+        if self.cancelled.is_set() or seconds <= 0:
+            raise _SelectorDeepeningStopped()
+        return seconds
+
+    def before_request(self) -> float:
+        global _DEEPEN_NEXT_DISPATCH
+
+        if self.remaining_attempts <= 0:
+            raise _SelectorDeepeningStopped()
+        while True:
+            remaining = self.remaining()
+            with _DEEPEN_LOCK:
+                delay = _DEEPEN_NEXT_DISPATCH - time.monotonic()
+                if delay <= 0:
+                    self.remaining_attempts -= 1
+                    _DEEPEN_NEXT_DISPATCH = time.monotonic() + 6.0
+                    return self.remaining()
+            self.cancelled.wait(min(delay, remaining))
+
+
+def cancel_selector_deepening() -> None:
+    """Stop future background calls/writes; in-flight HTTP may finish first."""
+
+    with _DEEPEN_LOCK:
+        if _DEEPEN_CONTROL is not None:
+            _DEEPEN_CONTROL.cancelled.set()
 
 
 def _schedule_selector_deepening(
@@ -314,6 +361,8 @@ def _schedule_selector_deepening(
     detached thread and persist each complete vehicle row as it lands.
     """
 
+    global _DEEPEN_CONTROL
+
     year = int(request.get("year", 0))
     region = str(request.get("region") or "US").strip().upper()
     make = str(request.get("make", "")).strip()
@@ -321,21 +370,35 @@ def _schedule_selector_deepening(
     with _DEEPEN_LOCK:
         if key in _DEEPEN_IN_FLIGHT:
             return {"status": "already_running", "key": key}
+        if _DEEPEN_IN_FLIGHT:
+            return {"status": "busy", "key": key}
+        control = _SelectorDeepeningControl()
         _DEEPEN_IN_FLIGHT.add(key)
-    Thread(
-        target=_deepen_selector_scope,
-        args=(dict(request), scope, [dict(row) for row in rows], key),
-        name=f"catalog-deepen-{key}",
-        daemon=True,
-    ).start()
+        _DEEPEN_CONTROL = control
+    try:
+        Thread(
+            target=_deepen_selector_scope,
+            args=(dict(request), scope, [dict(row) for row in rows], key, control),
+            name=f"catalog-deepen-{key}",
+            daemon=True,
+        ).start()
+    except BaseException:
+        with _DEEPEN_LOCK:
+            _DEEPEN_IN_FLIGHT.discard(key)
+            _DEEPEN_CONTROL = None
+        raise
     return {"status": "scheduled", "key": key}
 
 
 def _deepen_selector_scope(
-    request: Mapping[str, Any], scope: str, rows: list[dict[str, Any]], key: str
+    request: Mapping[str, Any], scope: str, rows: list[dict[str, Any]], key: str,
+    control: _SelectorDeepeningControl,
 ) -> None:
+    global _DEEPEN_CONTROL
+
     try:
-        providers = _configured_catalog_providers()
+        control.remaining()
+        providers = _configured_catalog_providers(deepening_control=control)
         if not providers:
             return
         service = CacheFirstCatalogService(
@@ -349,23 +412,30 @@ def _deepen_selector_scope(
         else:
             makes = [str(request.get("make", "")).strip()]
         for make in makes:
+            control.remaining()
             if not make:
                 continue
             try:
                 models_result = service.resolve(
                     CatalogRequest(year, make, "unknown", region, scope="models")
                 )
+            except _SelectorDeepeningStopped:
+                raise
             except Exception:  # noqa: BLE001 - one make must not stop the walk
                 continue
             models = sorted({str(row.get("model")) for row in models_result.rows if row.get("model")})
             for model in models:
+                control.remaining()
                 try:
                     configurations = service.resolve(
                         CatalogRequest(year, make, model, region, scope="configurations")
                     )
+                except _SelectorDeepeningStopped:
+                    raise
                 except Exception:  # noqa: BLE001 - skip an unavailable model
                     continue
                 if configurations.rows:
+                    control.remaining()
                     try:
                         _persist_resolved_catalog_rows(
                             configurations.rows,
@@ -378,9 +448,12 @@ def _deepen_selector_scope(
                             f"{type(error).__name__}: {error}",
                             flush=True,
                         )
+    except _SelectorDeepeningStopped:
+        pass
     finally:
         with _DEEPEN_LOCK:
             _DEEPEN_IN_FLIGHT.discard(key)
+            _DEEPEN_CONTROL = None
 
 
 def _load_autoapitwo_article_detail(
@@ -1100,18 +1173,19 @@ def _persist_hydration_scope(request: Mapping[str, Any], result: CatalogResult) 
     return {"status": "persisted", "scope_key": scope_key}
 
 
-def _configured_catalog_providers() -> tuple[Any, ...]:
+def _configured_catalog_providers(*, deepening_control: _SelectorDeepeningControl | None = None) -> tuple[Any, ...]:
     from .source_connector_client import source_connector_registry
 
     clients = source_connector_registry()
-    return tuple(_SourceCatalogProvider(client) for client in clients.values())
+    return tuple(_SourceCatalogProvider(client, deepening_control=deepening_control) for client in clients.values())
 
 
 class _SourceCatalogProvider:
     """Project contract rows into the existing canonical catalog shape."""
 
-    def __init__(self, client: Any):
+    def __init__(self, client: Any, *, deepening_control: _SelectorDeepeningControl | None = None):
         self.client = client
+        self.deepening_control = deepening_control
 
     def resolve_catalog(self, request: CatalogRequest) -> Mapping[str, Any]:
         scope = request.scope if request.scope in {"years", "makes", "models", "configurations"} else "configurations"
@@ -1129,7 +1203,19 @@ class _SourceCatalogProvider:
         cursor: str | None = None
         seen: set[str] = set()
         for _ in range(1000):
-            page = self.client.catalog(scope, selector, cursor)
+            if self.deepening_control is None:
+                page = self.client.catalog(scope, selector, cursor)
+            else:
+                from .source_connector_client import SourceConnectorError
+
+                timeout = self.deepening_control.before_request()
+                try:
+                    page = self.client.catalog(scope, selector, cursor, timeout=timeout)
+                except SourceConnectorError as error:
+                    if error.status == 429:
+                        raise _SelectorDeepeningStopped() from error
+                    raise
+                self.deepening_control.remaining()
             provenance.append({
                 "provider": page.persisted_provider,
                 "source_uri": page.source_locator or f"{self.client.base_url}/v1/catalog/{scope}",
@@ -1349,6 +1435,7 @@ __all__ = [
     "CacheFirstCatalogService",
     "canonical_catalog_id",
     "ensure_catalog_hydration",
+    "cancel_selector_deepening",
 ]
 
 

@@ -280,7 +280,13 @@ def run_server(address: str) -> None:
         (host, int(port_text)),
         make_handler(os.getenv("AUTODATA_INGESTION_INTERNAL_TOKEN", ""), commerce=commerce),
     )
-    server.serve_forever()
+    try:
+        server.serve_forever()
+    finally:
+        from .catalog_service import cancel_selector_deepening
+
+        cancel_selector_deepening()
+        server.server_close()
 
 
 def main() -> None:
