@@ -1,0 +1,81 @@
+{
+  "task_id": "workshop-host-provision-install",
+  "repository": "lucronn/autodata",
+  "goal": "Provide an executable staging-first path from the accepted bare GCE VM to an installed host runtime, accepted immutable image cache, and migrated initial database; reuse existing inert release install and maintenance-first activation.",
+  "allowed_paths": [
+    "infra/deploy/gce/build_host_bundle.py",
+    "infra/deploy/gce/host_provision.py",
+    "infra/deploy/gce/host_prepare_release.py",
+    "infra/deploy/gce/host-bootstrap-roles.sql",
+    "infra/deploy/gce/test_host_provision.py",
+    "infra/deploy/gce/test_host_prepare_release.py",
+    "docs/operations/workshop-host-provision-install.md",
+    "infra/deploy/gce/test_host_schema_pg17.py"
+  ],
+  "inputs": [
+    "docs/superpowers/plans/2026-11-05-workshop-host-provision-install.md",
+    "docs/operations/workshop-host-provision-install.md"
+  ],
+  "pre_implementation": {
+    "goal": "Provide an executable staging-first path from the accepted bare GCE VM to an installed host runtime, accepted immutable image cache, and migrated initial database; reuse existing inert release install and maintenance-first activation.",
+    "plan_ref": "docs/superpowers/plans/2026-11-05-workshop-host-provision-install.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/307",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/operations/workshop-host-provision-install.md"
+    ],
+    "todo": [
+      "Build a deterministic credential-free host bundle with exact file inventory and existing runtime helpers, templates and source migration material.",
+      "Prepare the accepted staging host with exact seaweedfs1000:10000700 data path, strict helper/release modes, explicit approval fields and credential paths, offline pinned packages, UUID mount and guard dependencies.",
+      "Install accepted inert release material and populate the exact manifest image cache with transient externally supplied registry authentication, verifying every digest/platform/config identity.",
+      "Initialize only a fresh staging PostgreSQL17 database, provision fixed scoped roles, run the exact accepted migration image/runner and grants, and verify the manifest ledger before existing activation.",
+      "Run reject-before-mutation, mount/guard ordering, image failure, migration/retry and reboot tests with fake execution plus disposable PG17; push coherent validated milestones and synchronize evidence.",
+      "Repair only the existing real PG17 fixture by creating nonprivileged autodata_outbox and the minimal eight grant-target publication_events columns before unchanged runtime-grants.sql; preserve all collector assertions and rerun real PG17/full host tests."
+    ],
+    "status": "synchronized",
+    "updated_at": "2026-11-05T11:02:30.808864+00:00",
+    "source_base_sha": "5d14c891e8efd14a297b07e482304ea2a6b9cd7f",
+    "parent_issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "implementation_allowlist": [
+      "infra/deploy/gce/build_host_bundle.py",
+      "infra/deploy/gce/host_provision.py",
+      "infra/deploy/gce/host_prepare_release.py",
+      "infra/deploy/gce/host-bootstrap-roles.sql",
+      "infra/deploy/gce/test_host_provision.py",
+      "infra/deploy/gce/test_host_prepare_release.py",
+      "docs/operations/workshop-host-provision-install.md",
+      "infra/deploy/gce/test_host_schema_pg17.py"
+    ],
+    "cloud_execution_authorized": false,
+    "production_ready": false,
+    "tracking_sync": {
+      "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhGPuN0",
+      "project_status": "Ready",
+      "parent_link_verified": true,
+      "readback_verified": true,
+      "issue_body_sha256": "07aa51f8bc774c91ffe62a30237ad46d4f8330d1b700547010713b2bd45025be",
+      "project_index_sha256": "5ff30f1b25e1bbfe0e0061cf73c21200a5c75c990a5a69d24102f08d3a7f012b"
+    },
+    "supersedes_gate_sha": "36cf3728e210990e250cc7c072a7e66c169f10d0",
+    "amendment": "Consolidated read-only dependency compatibility: seaweedfs data path, strict install modes, exact approval fields/credential paths, postgres reboot boundary, and baseline PG17 fixture-only eighth path."
+  },
+  "execution": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "medium",
+    "service_tier": "priority",
+    "allow_fallback": false
+  },
+  "forbidden_scope": [
+    "Cloud/production/provider/payment/DNS operations",
+    "Existing relay/runtime/activation/private-delivery/Compose changes without synchronized amendment",
+    "Backup/restore implementation"
+  ],
+  "acceptance_tests": [
+    "Build a deterministic credential-free host bundle with exact file inventory and existing runtime helpers, templates and source migration material.",
+    "Prepare the accepted staging host with exact seaweedfs1000:10000700 data path, strict helper/release modes, explicit approval fields and credential paths, offline pinned packages, UUID mount and guard dependencies.",
+    "Install accepted inert release material and populate the exact manifest image cache with transient externally supplied registry authentication, verifying every digest/platform/config identity.",
+    "Initialize only a fresh staging PostgreSQL17 database, provision fixed scoped roles, run the exact accepted migration image/runner and grants, and verify the manifest ledger before existing activation.",
+    "Run reject-before-mutation, mount/guard ordering, image failure, migration/retry and reboot tests with fake execution plus disposable PG17; push coherent validated milestones and synchronize evidence.",
+    "Repair only the existing real PG17 fixture by creating nonprivileged autodata_outbox and the minimal eight grant-target publication_events columns before unchanged runtime-grants.sql; preserve all collector assertions and rerun real PG17/full host tests."
+  ]
+}

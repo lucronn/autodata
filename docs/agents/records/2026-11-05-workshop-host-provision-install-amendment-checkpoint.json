@@ -1,0 +1,29 @@
+{
+  "gate_sha": "67ca1053738ec39482ac6498e4dea1c8d2d7d441",
+  "supersedes_gate_sha": "36cf3728e210990e250cc7c072a7e66c169f10d0",
+  "branch": "codex/workshop-host-install-gate",
+  "record_ref": "docs/agents/records/2026-11-05-workshop-host-provision-install.json",
+  "preflight": {
+    "exit_code": 0,
+    "stdout": {
+      "status": "synchronized",
+      "errors": []
+    }
+  },
+  "issue_ref": "https://github.com/lucronn/autodata/issues/307",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhGPuN0",
+  "pin_comment_ref": "https://github.com/lucronn/autodata/issues/307#issuecomment-6656349099",
+  "pin_comment_sha256": "ccaea1d2129319ba3b82108bbffc2d74f3ad788b5e5590e01e9f13b1ce5f4a7a",
+  "project_index_sha256": "6befdc06bde2be7193c9fd6f5fd6fe66a20aef751caec7d4e4cef0d606d73d8f",
+  "exact_readback_verified": true,
+  "implementation_files_modified": false,
+  "baseline_tests_reported": {
+    "tests": 249,
+    "failures": 4,
+    "skips": 1,
+    "source": "builder untouched baseline report; no rerun by planning agent"
+  },
+  "cloud_execution_authorized": false,
+  "production_ready": false
+}
