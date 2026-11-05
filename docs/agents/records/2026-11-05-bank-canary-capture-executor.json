@@ -64,10 +64,10 @@
   },
   "implementation_verification": {
     "gate_sha": "8bb4f98b2701372fb3ed4ed7bb79e66e47e9ca7b",
-    "candidate_code_sha": "be9398ea052478fa954ba3ee33d159d2d23e0b35",
+    "candidate_code_sha": "4751213fe0299d7eb966181c297b3cd613b92a1c",
     "branch": "codex/bank-canary-executor-build",
     "status": "offline_candidate_review_pending",
-    "canary_tests": 46,
+    "canary_tests": 48,
     "source_client_tests": 19,
     "authenticated_calls": 0,
     "real_source_acceptance": 0,
@@ -76,7 +76,7 @@
       {
         "command": "PYTHONPATH=workers/ingestion-python/src python3 -m unittest discover -s scripts/dev/tests -p test_bank_canary_capture.py -q",
         "exit": 0,
-        "tests": 46
+        "tests": 48
       },
       {
         "command": "PYTHONPATH=workers/ingestion-python/src python3 -m unittest discover -s workers/ingestion-python/tests -p test_source_connector_client.py -q",

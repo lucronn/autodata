@@ -186,12 +186,12 @@ client and application behavior remain outside this implementation allowlist.
 
 ## Offline implementation candidate verification
 
-Code candidate `be9398ea052478fa954ba3ee33d159d2d23e0b35` on `codex/bank-canary-executor-build` derives from gate
+Code candidate `4751213fe0299d7eb966181c297b3cd613b92a1c` on `codex/bank-canary-executor-build` derives from gate
 `8bb4f98b2701372fb3ed4ed7bb79e66e47e9ca7b`. The builder independently read back Issue #304 and Project #8 item
 `PVTI_lAHOCSJ8cc4BiQ2BzhGO_X0` and ran exact-base preflight before any
 implementation edit: `status: synchronized`, `errors: []`.
 
-The focused offline suite passes **46 tests**; the unchanged source-client suite
+The focused offline suite passes **48 tests**; the unchanged source-client suite
 passes **19 tests**. Syntax compilation and `git diff --check` pass. The source
 client suite retains its pre-existing HTTPError ResourceWarning. Tests exercise
 116 calls/115 seconds of fake-clock start spacing; page 10 rejection; frozen
@@ -211,7 +211,10 @@ resource secrets are checked before client hash/schema rejection; socket read
 errors remain bank-local; interruption finalizes evidence. The candidate adds
 strict malformed-scalar rejection and scans JSON-decoded text before failed
 hash validation, closing the escaped-secret follow-up found on the revised
-candidate. Independent exact-final-SHA review remains
+candidate. A further review found an unpaired-surrogate inspection error that
+could omit persisted originals from inventory; the candidate makes scanning
+surrogate-safe, records inventory before inspection, and quarantines any
+unexpected inspection failure with regressions. Independent exact-final-SHA review remains
 pending; this is a tool-delivery candidate, with real-source acceptance zero.
 
 The `capture` command currently returns `EXECUTION_GATE_REQUIRED` before any
