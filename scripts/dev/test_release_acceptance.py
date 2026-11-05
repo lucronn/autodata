@@ -3904,7 +3904,9 @@ class Api21V2RawInspectorTests(unittest.TestCase):
         before_pending['immutable_sha256']=hashlib.sha256(json.dumps(before_pending['immutable_rows'],sort_keys=True).encode()).hexdigest()
         for phase in self.phases[case['root']]:
             if phase=='setup':
-                payload=dict(kind='lifecycle',operation='context-create',state='completed',reason=None)
+                for operation,state in (('setup','completed'),('metadata','requested'),('metadata','completed'),('browser-launch','requested'),('browser-launch','completed'),('context-create','requested'),('context-create','completed'),('page-create','requested'),('page-create','completed')):
+                    events.append(dict(seq=len(events)+1,phase=phase,elapsed_us=len(events)+1,caused_by=[],payload=dict(kind='lifecycle',operation=operation,state=state,reason=None)))
+                continue
             elif phase.endswith('-delivery'):
                 http=next(e for e in reversed(events) if e['payload']['kind']=='http')
                 ref=dict(stream='observations',producer_role='browser-runner',seq=http['seq'])
@@ -4317,6 +4319,86 @@ class Api21V2RawInspectorTests(unittest.TestCase):
                         if e['payload']['kind']=='checkout-delivery':
                             target=next(h for h in events if h['phase']==e['phase'].replace('-delivery','-http'));ref=dict(stream='observations',producer_role='browser-runner',seq=target['seq']);e['caused_by']=[ref];e['payload']['http_event']=ref
                 self.reject(model)
+
+    def test_browser_lifecycle_requires_source_schedule(self):
+        for kind in ('wrong-setup-operation','missing-setup-completion','missing-page-request','duplicate-setup','cleanup-in-setup','setup-after-http','cleanup-before-final-http','lifecycle-cause','completed-with-failure-reason'):
+            with self.subTest(kind=kind):
+                model=self.model();events=model[0]['evidence']['results'][0]['observations']['events']
+                if kind=='wrong-setup-operation':events[0]['payload']['operation']='worker-stop'
+                elif kind=='missing-setup-completion':events[0]['payload']['state']='requested'
+                elif kind=='missing-page-request':events.pop(7)
+                elif kind=='duplicate-setup':events.insert(1,copy.deepcopy(events[0]))
+                elif kind=='cleanup-in-setup':events[-4]['phase']='setup'
+                elif kind=='setup-after-http':events[0]['phase']='metadata'
+                elif kind=='cleanup-before-final-http':events[-4],events[-5]=events[-5],events[-4]
+                elif kind=='lifecycle-cause':events[1]['caused_by']=[dict(stream='observations',producer_role='browser-runner',seq=1)]
+                else:events[-1]['payload']['reason']='close_failed'
+                # Re-number references so the schedule, rather than stale offsets, is tested.
+                for i,event in enumerate(events):event.update(seq=i+1,elapsed_us=i+1)
+                for event in events:
+                    if event['payload']['kind']=='checkout-delivery':
+                        target=next(h for h in events if h['phase']==event['phase'].replace('-delivery','-http'));ref=dict(stream='observations',producer_role='browser-runner',seq=target['seq']);event['caused_by']=[ref];event['payload']['http_event']=ref
+                self.reject(model)
+
+    def test_failed_browser_lifecycle_retains_only_source_transitions(self):
+        for kind in ('wrong-operation','completion-without-request','request-after-completion','premature-cleanup','event-after-cleanup'):
+            with self.subTest(kind=kind):
+                model=self.model();item=self.fail(model[0]);events=item['evidence']['results'][0]['observations']['events']
+                item['result'].pop('final_snapshot',None)
+                if kind=='wrong-operation':events[0]['payload']['operation']='worker-stop'
+                elif kind=='completion-without-request':events[1]['payload']['state']='completed'
+                elif kind=='request-after-completion':events[2]['payload']['state']='requested'
+                elif kind=='premature-cleanup':events[0]['payload'].update(operation='context-close',state='requested')
+                else:events[-1]['payload'].update(operation='page-create',state='completed')
+                self.reject(model)
+
+    def test_child_finalization_requires_source_schedule_and_reasons(self):
+        for failed in (False,True):
+            for kind in ('completed-with-failure-reason','unavailable','fixture-requested','runtime-before-workers','duplicate-worker-request'):
+                with self.subTest(failed=failed,kind=kind):
+                    model=self.model();item=self.fail(model[0]) if failed else model[0];events=item['child']['finalization_events']
+                    if failed:item['result'].pop('final_snapshot',None)
+                    if kind=='completed-with-failure-reason':events[-1]['payload']['reason']='close_failed'
+                    elif kind=='unavailable':events[-1]['payload']['state']='unavailable'
+                    elif kind=='fixture-requested':events[0]['payload']['state']='requested'
+                    elif kind=='runtime-before-workers':events[1]['phase']=events[1]['payload']['operation']='runtime-close'
+                    else:events[2]['payload']['state']='requested'
+                    self.reject(model)
+
+    def test_failed_lifecycle_source_prefixes_and_finally_cleanup_remain_nonpass(self):
+        for kind in ('metadata-failed','context-create-failed','page-route-failed','page-create-failed','case-failed','context-close-failed','browser-close-failed'):
+            with self.subTest(kind=kind):
+                model=self.model();original=model[0]['evidence']['results'][0]['observations']['events'];item=self.fail(model[0],minimal=True)
+                if kind=='metadata-failed':
+                    events=copy.deepcopy(original[:2]);events.append(dict(phase='setup',payload=dict(kind='lifecycle',operation='metadata',state='failed',reason='source_binding_failed')))
+                elif kind in ('context-create-failed','page-route-failed','page-create-failed'):
+                    count=6 if kind=='context-create-failed' else 7 if kind=='page-route-failed' else 8
+                    events=copy.deepcopy(original[:count]);events.append(dict(phase='setup',payload=dict(kind='lifecycle',operation='context-create' if kind=='context-create-failed' else 'page-create',state='failed',reason='launch_failed' if kind=='context-create-failed' else 'http_failed')))
+                else:
+                    events=copy.deepcopy(original[:10])
+                    if kind=='case-failed':events.append(dict(phase='metadata',payload=dict(kind='lifecycle',operation='setup',state='failed',reason='http_failed')))
+                if kind!='metadata-failed':
+                    for operation in (() if kind=='context-create-failed' else ('context-close',))+('browser-close',):
+                        for state in ('requested','failed' if kind==operation+'-failed' else 'completed'):
+                            events.append(dict(phase=events[-1]['phase'],payload=dict(kind='lifecycle',operation=operation,state=state,reason='close_failed' if state=='failed' else None)))
+                for i,event in enumerate(events):event.update(seq=i+1,elapsed_us=i+1,caused_by=[])
+                item['evidence']['results'][0]['observations']['events']=events
+                # Source finally may complete worker/runtime cleanup without requested receipts.
+                item['child']['finalization_events']=item['child']['finalization_events'][2::2]
+                for i,event in enumerate(item['child']['finalization_events']):event.update(seq=i+1,elapsed_us=i+1)
+                self.assertEqual(len(self.inspect(model)['observed_case_ids']),20)
+
+    def test_failed_context_cleanup_can_retain_pending_page_response(self):
+        model=self.model();original=model[0]['evidence']['results'][0]['observations']['events'];item=self.fail(model[0],minimal=True)
+        ordinal=next(i for i,e in enumerate(original) if e['phase']=='owner-library-initial-http')
+        events=copy.deepcopy(original[:ordinal]);pending=copy.deepcopy(original[ordinal]);phase=pending['phase']
+        for operation,state,reason in (('setup','failed','http_failed'),('context-close','requested',None),('context-close','completed',None)):
+            events.append(dict(phase=phase,payload=dict(kind='lifecycle',operation=operation,state=state,reason=reason)))
+        events.append(pending)
+        for state in ('requested','completed'):events.append(dict(phase=phase,payload=dict(kind='lifecycle',operation='browser-close',state=state,reason=None)))
+        for i,event in enumerate(events):event.update(seq=i+1,elapsed_us=i+1,caused_by=event.get('caused_by',[]))
+        item['evidence']['results'][0]['observations']['events']=events
+        self.assertEqual(len(self.inspect(model)['observed_case_ids']),20)
 
 
     def test_every_retained_measurement_phase_has_closed_nonnegative_shape(self):

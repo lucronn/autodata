@@ -2835,6 +2835,38 @@ def _api21_v2_lifecycle(payload):
     enum(payload['operation'],('setup','context-create','page-create','metadata','browser-launch','context-close','browser-close','fixture-stop','worker-start','worker-stop','runtime-close','publish'))
     enum(payload['state'],('requested','completed','failed','unavailable'));_api21_v2_reason(payload['reason'])
     require(payload['state']!='failed' or payload['reason'] is not None,'api21_v2_lifecycle_reason')
+    require(payload['state'] in ('requested','completed','failed') and (payload['state']=='failed' or payload['reason'] is None),'api21_v2_lifecycle_reason')
+
+
+def _api21_v2_browser_lifecycle(events,*,passed):
+    # Frozen run()/api_case() setup, followed by case observations and finally cleanup.
+    setup=[('setup','completed'),('metadata','requested'),('metadata','completed'),('browser-launch','requested'),('browser-launch','completed'),('context-create','requested'),('context-create','completed'),('page-create','requested'),('page-create','completed')]
+    cursor=0;cleanup=[];phase='setup';failed=False
+    for event in events:
+        payload=event['payload']
+        if payload['kind']!='lifecycle':
+            trailing=not passed and payload['kind']=='http' and payload['channel']=='application' and event['phase']==phase and not any(op=='browser-close' for op,state in cleanup)
+            require(cursor==len(setup) and (not cleanup and not failed or trailing),'api21_v2_lifecycle_order');phase=event['phase'];continue
+        require(event['caused_by']==[],'api21_v2_lifecycle_cause')
+        operation,state=payload['operation'],payload['state']
+        if operation in ('context-close','browser-close'):
+            if not passed and not cleanup:phase=event['phase']
+            require(event['phase']==phase and cursor>=(7 if operation=='context-close' else 5),'api21_v2_cleanup_phase')
+            require(state!='failed' or payload['reason']=='close_failed','api21_v2_cleanup_reason')
+            cleanup.append((operation,state))
+            # A browser may close after context creation failed, without a context close.
+            expected=([('context-close','requested'),('context-close','completed')] if cursor>=7 else [])+[('browser-close','requested'),('browser-close','completed')]
+            normalized=[(op,'completed' if st=='failed' else st) for op,st in cleanup]
+            require(normalized==expected[:len(normalized)],'api21_v2_browser_cleanup')
+        elif state=='failed':
+            require(not passed and not cleanup and not failed,'api21_v2_lifecycle_failure');phase=event['phase']
+            # Routing the new context can fail before page-create/requested.
+            require(operation=='setup' or event['phase']=='setup' and (cursor<len(setup) and setup[cursor]==(operation,'completed') or operation=='page-create' and cursor==7),'api21_v2_lifecycle_failure')
+            failed=True
+        else:
+            require(not cleanup and not failed and event['phase']=='setup' and cursor<len(setup) and (operation,state)==setup[cursor],'api21_v2_setup_schedule');cursor+=1
+    if passed:
+        require(cursor==len(setup) and cleanup==[('context-close','requested'),('context-close','completed'),('browser-close','requested'),('browser-close','completed')],'api21_v2_lifecycle_complete')
 
 
 def _api21_v2_observations(observations,binding,case,row,*,passed):
@@ -2872,11 +2904,12 @@ def _api21_v2_observations(observations,binding,case,row,*,passed):
         if http:
             start=2 if phase=='checkout-retry-http' else 1;require(attempts==list(range(start,start+len(attempts))),'api21_v2_http_sequence')
     require(seen==list(phases[:len(seen)]),'api21_v2_phase_prefix')
+    _api21_v2_browser_lifecycle(events,passed=passed)
     if passed:
         require(seen==list(phases) and observations['publication']=='written','api21_v2_phase_complete')
         for phase in phases:
             payloads=by_phase.get(phase,[]);http=[p for p in payloads if p['kind']=='http']
-            if phase=='setup':require(any(p['kind']=='lifecycle' for p in payloads),'api21_v2_setup');continue
+            if phase=='setup':require(all(p['kind']=='lifecycle' for p in payloads),'api21_v2_setup');continue
             if phase.endswith('-delivery'):
                 states=['fetch-completed','response-abort-requested','response-aborted'] if 'first' in phase else ['fetch-completed','response-fulfill-requested','response-fulfilled']
                 require([p['state'] for p in payloads if p['kind']=='checkout-delivery']==states,'api21_v2_delivery_sequence');continue
@@ -3123,8 +3156,21 @@ def _api21_v2_sidecars(parent,child,result,case,raw,*,passed,used_workers):
     for index,event in enumerate(events):
         exact(event,('seq','phase','caused_by','elapsed_us','payload'));integer(event['seq'],1);integer(event['elapsed_us']);require(event['seq']==index+1 and event['elapsed_us']>=last and event['caused_by']==[],'api21_v2_finalization');last=event['elapsed_us'];_api21_v2_lifecycle(event['payload'])
         require(event['phase']==event['payload']['operation'] and event['phase'] in ('fixture-stop','worker-stop','runtime-close'),'api21_v2_finalization');sequence.append((event['phase'],event['payload']['state']))
+        require(event['payload']['state']!='failed' or event['payload']['reason']=='close_failed','api21_v2_finalization_reason')
     success_sequence=[('fixture-stop','completed'),('worker-stop','requested'),('worker-stop','completed'),('runtime-close','requested'),('runtime-close','completed')]
     if passed:require(sequence==success_sequence,'api21_v2_finalization_order')
+    else:
+        # An exception can interrupt any normal prefix. finally retries unfinished
+        # worker cleanup and closes the runtime, without emitting requested events.
+        schedules=[]
+        for count in range(len(success_sequence)+1):
+            prefix=success_sequence[:count];schedules.append(prefix)
+            if count==len(success_sequence):continue
+            for worker_state in ('completed','failed'):
+                for runtime_state in ('completed','failed'):
+                    suffix=([('worker-stop',worker_state)] if count<3 else [])+[('runtime-close',runtime_state)]
+                    schedules.extend(prefix+suffix[:end] for end in range(1,len(suffix)+1))
+        require(sequence in schedules,'api21_v2_finalization_order')
     if ('runtime-close','completed') in sequence and ('worker-stop','completed') in sequence:require(sequence.index(('worker-stop','completed'))<sequence.index(('runtime-close','completed')),'api21_v2_finalization_order')
     workers=child['workers'];array(workers);require(len(workers)<=2,'api21_v2_workers');enum(child['worker_mapping_status'],('observed','unavailable','not_started'))
     exits=result.get('worker_exits',[]) if result is not None else []
