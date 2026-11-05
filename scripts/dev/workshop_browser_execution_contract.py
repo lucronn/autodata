@@ -14,7 +14,7 @@ import re
 from urllib.parse import urlsplit
 
 
-SPEC_PATH = Path(__file__).resolve().parents[2] / "docs/agents/specs/2026-11-05-workshop-browser-current-source-contract.json"
+SPEC_PATH = Path(__file__).resolve().parents[2] / "docs/agents/specs/2026-11-05-workshop-browser-supervisor-deadlines.json"
 CANDIDATE_SHA = "6949eb1b1a5b93c9b2eb0579328e24c697f6f331"
 CANDIDATE_TREE = "47ec54b1896c83a39b6637a6ce944d3620414f4e"
 IMAGE_ROLES = ("runner", "postgres", "nats", "s3")
@@ -51,9 +51,9 @@ def digest(value) -> str:
     return digest_bytes(canonical_json(value))
 
 
-# Reviewed literals from the admitted c374f77 checkpoint. These expectations
+# Reviewed literals from the admitted b638859 Task58 checkpoint. These expectations
 # never come from the caller's spec or a runtime source/filesystem observation.
-_CURRENT_SPEC_SHA256 = '75f412ed9ff42366dc7382364e3de1e4c0b777b1ee43ef4fb2060153e4e544ad'
+_CURRENT_SPEC_SHA256 = '5bc7845e760f3a1a03692b370e777acd3b89d0d372d027208b1ac0e9eb42bdd1'
 _FROZEN_SECTION_DIGESTS = {
     "source_manifest": "316a4d15269d55b5229b4873653998c34cea80d75c5bbdfee401c991b98db722",
     "source_pins": "8217874c03373499d3a7678cf88540d4d7b755caed5dd111635a83bcfcf096a6",
@@ -65,7 +65,8 @@ _FROZEN_SECTION_DIGESTS = {
     "environments": "ad307ca5b1f87312b1c02c3d1c8874323e6859ab4eb30cadaf335dde9dc53bdb",
     "inventory": "0f197bd5aedecb2c0d996c5eeb0b5f34182d9614420833ab765e991695bbeead",
     "static_command_contract": "341e5d84be3a47e018d53219fafc5e10562eb918eda51514851bb4f8ec08f085",
-    "timeout_binding_rules": "6116d2709bafadc89bf5d21753ec1d016e25716093c696fd5aef904314b61fc4"
+    "timeout_binding_rules": "fcec6ce63ca56a7112e083bf9b0628cadf93e3516a173447c0e70a4334490169",
+    "temporal_policy": "64414c30570fc7ee36b72c6e0c7b494418357a200fe4fcec727dd74ff75a8295"
 }
 
 
@@ -83,10 +84,32 @@ def validate_source_contract(value: dict) -> None:
     for section, expected in _FROZEN_SECTION_DIGESTS.items():
         if section not in value or digest(value[section]) != expected:
             raise ValueError("current-source section mismatch: " + section)
+    validate_temporal_policy(value["temporal_policy"])
     # Also freeze schemas, deadlines, authority barriers and root shape. A
     # self-consistent replacement map cannot certify altered static inputs.
     if digest(value) != _CURRENT_SPEC_SHA256:
         raise ValueError("current-source specification mismatch")
+
+
+def validate_temporal_policy(value: dict) -> None:
+    """Reject any departure from the reviewed abort policy, without I/O."""
+    expected = _FROZEN_SECTION_DIGESTS['temporal_policy']
+    if not isinstance(value, dict) or digest(value) != expected:
+        raise ValueError('immutable temporal policy mismatch')
+    slots = value['slots']
+    if any(type(row['seconds']) is not int or row['seconds'] <= 0 for row in slots):
+        raise ValueError('invalid temporal slot')
+    if len({row['id'] for row in slots}) != len(slots):
+        raise ValueError('duplicate temporal slot')
+    if (sum(row['seconds'] for row in slots) != value['ordinary_seconds']
+            or value['ordinary_seconds'] + value['emergency_cancellation_seconds'] != value['hard_seconds']):
+        raise ValueError('temporal composition mismatch')
+
+
+def temporal_policy() -> dict:
+    value = specification()['temporal_policy']
+    validate_temporal_policy(value)
+    return copy.deepcopy(value)
 
 
 def specification() -> dict:

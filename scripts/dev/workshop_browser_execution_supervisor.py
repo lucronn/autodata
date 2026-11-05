@@ -15,9 +15,11 @@ import workshop_browser_execution_contract as c
 import workshop_browser_execution_evidence as evidence
 
 
-ATTEMPT_NS = 7500 * 1000000000
-PHASE_NS = {"reserved": 480, "preparing": 180, "services_starting": 120, "ready": 120,
-            "api_running": 2100, "dto_running": 4560, "stopping": 120, "reaping": 120, "sealing": 120}
+NS = 1_000_000_000
+_POLICY = c.temporal_policy()
+SLOT_SECONDS = {row['id']: row['seconds'] for row in _POLICY['slots']}
+ATTEMPT_NS = _POLICY['hard_seconds'] * NS
+PHASE_NS = copy.deepcopy(_POLICY['phase_seconds'])
 TRANSITIONS = {
     "preparing": (("reserved",), ("reserved",)),
     "services_starting": (("preparing",), ("preparation_complete", "runtime_binding_observed")),
@@ -34,6 +36,41 @@ FAILURE_EVENTS = {"broker_dead": "recovery_blocked", "broker_lock_lost": "recove
                   "signal": "interrupted"}
 NONPASS = {"failed", "interrupted", "recovery_blocked"}
 LIVE_MODES = {"execute", "probe-execute", "cleanup-live", "recover-live", "execute-runner", "broker-live", "watchdog-live"}
+
+
+def _instant(value):
+    if type(value) is not int or value < 0:
+        raise ValueError('nonnegative integer monotonic instant required')
+    return value
+
+
+def operation_deadline_ns(start_ns: int, cap_seconds: int, phase_end_ns: int) -> int:
+    _instant(start_ns); _instant(phase_end_ns)
+    if type(cap_seconds) is not int or cap_seconds <= 0 or start_ns >= phase_end_ns:
+        raise ValueError('expired or invalid operation budget')
+    return min(start_ns + cap_seconds * NS, phase_end_ns)
+
+
+def slot_deadline_ns(slot: str, entry_ns: int, ordinary_end_ns: int) -> int:
+    return operation_deadline_ns(entry_ns, SLOT_SECONDS[slot], ordinary_end_ns)
+
+
+def services_readiness_deadline_ns(entry_ns: int, runner_started_ns: int, ordinary_end_ns: int) -> int:
+    _instant(entry_ns); _instant(runner_started_ns); _instant(ordinary_end_ns)
+    creation_end = slot_deadline_ns('api_creation', entry_ns, ordinary_end_ns)
+    if not entry_ns <= runner_started_ns < creation_end:
+        raise ValueError('runner receipt outside creation subslot')
+    return min(runner_started_ns + 360 * NS, entry_ns + 840 * NS, ordinary_end_ns)
+
+
+def emergency_cleanup_deadline_ns(first_failure_ns: int, hard_end_ns: int, existing_end_ns: int | None = None) -> int:
+    _instant(first_failure_ns); _instant(hard_end_ns)
+    if existing_end_ns is not None:
+        _instant(existing_end_ns)
+        if existing_end_ns > hard_end_ns:
+            raise ValueError('cleanup exceeds hard deadline')
+        return existing_end_ns
+    return min(first_failure_ns + 120 * NS, hard_end_ns)
 
 
 def initial_state(bindings: c.RuntimeBindings, now_ns: int, *, broker_process=None, lease_ns=1000000000) -> dict:

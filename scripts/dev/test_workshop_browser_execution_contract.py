@@ -164,7 +164,7 @@ def test_modules_import_no_process_or_network_clients():
         assert not imports & {"subprocess", "socket", "docker", "requests", "http", "signal", "multiprocessing", "ctypes"}
 
 
-CURRENT_SPEC = Path(c.__file__).resolve().parents[2] / "docs/agents/specs/2026-11-05-workshop-browser-current-source-contract.json"
+CURRENT_SPEC = Path(c.__file__).resolve().parents[2] / "docs/agents/specs/2026-11-05-workshop-browser-supervisor-deadlines.json"
 
 
 def test_current_spec_is_fresh_and_validated():
@@ -340,3 +340,51 @@ def test_missing_or_malformed_current_spec_has_no_historical_fallback(monkeypatc
     missing.write_text('{}')
     with pytest.raises(ValueError):
         c.specification()
+
+
+def test_temporal_policy_is_exact_and_returns_fresh_copies():
+    assert "temporal_policy" in c.specification()
+    value=c.temporal_policy()
+    assert [r["seconds"] for r in value["slots"]]==[480,180,480,360,2100,240,120,5100,240]
+    assert (value["ordinary_seconds"],value["emergency_cancellation_seconds"],value["hard_seconds"])==(9300,120,9420)
+    assert c.validate_temporal_policy(value) is None
+    value["slots"][0]["seconds"]=1
+    assert c.temporal_policy()["slots"][0]["seconds"]==480
+
+
+@pytest.mark.parametrize("ordinary,hard", [(7380,7500),(7920,8040),(9060,9180),(9420,9540)])
+def test_recomputed_policy_digests_cannot_admit_other_totals(ordinary,hard):
+    changed=copy.deepcopy(c.specification())
+    assert "temporal_policy" in changed
+    changed['temporal_policy']['ordinary_seconds']=ordinary
+    changed['temporal_policy']['hard_seconds']=hard
+    changed['frozen_section_digests']['temporal_policy']=c.digest(changed['temporal_policy'])
+    with pytest.raises(ValueError): c.validate_source_contract(changed)
+
+
+@pytest.mark.parametrize("index",range(9))
+@pytest.mark.parametrize("replacement", [True,"120",0,-1,121])
+def test_each_temporal_slot_rejects_tampering_even_with_recomputed_digest(index,replacement):
+    assert "temporal_policy" in c.specification()
+    changed=c.specification(); changed['temporal_policy']['slots'][index]['seconds']=replacement
+    changed['frozen_section_digests']['temporal_policy']=c.digest(changed['temporal_policy'])
+    with pytest.raises(ValueError): c.validate_temporal_policy(changed['temporal_policy'])
+    with pytest.raises(ValueError): c.validate_source_contract(changed)
+
+
+@pytest.mark.parametrize("mutation", ["order","duplicate","reserve_zero","reserve_extra",
+    "api_shared120","dto4560","dto_separate_readiness","browser_fresh5100"])
+def test_temporal_structure_cannot_self_admit(mutation):
+    assert "temporal_policy" in c.specification()
+    changed=c.specification(); policy=changed['temporal_policy']
+    if mutation=='order': policy['slots'][0],policy['slots'][1]=policy['slots'][1],policy['slots'][0]
+    elif mutation=='duplicate': policy['slots'][1]['id']=policy['slots'][0]['id']
+    elif mutation=='reserve_zero': policy['emergency_cancellation_seconds']=0
+    elif mutation=='reserve_extra': policy['emergency_cancellation_seconds']=240
+    elif mutation=='api_shared120': policy['api_readiness']['shared_seconds']=120
+    elif mutation=='dto4560': policy['dto']['envelope_seconds']=4560
+    elif mutation=='dto_separate_readiness': policy['dto']['readiness_nested']=False
+    else: policy['dto']['browser_after_full_readiness_remaining_seconds']=5100
+    changed['frozen_section_digests']['temporal_policy']=c.digest(policy)
+    with pytest.raises(ValueError): c.validate_temporal_policy(policy)
+    with pytest.raises(ValueError): c.validate_source_contract(changed)

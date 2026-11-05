@@ -331,3 +331,54 @@ def test_offline_cli_validates_complete_bounded_nested_bundle(tmp_path, mutation
         assert report["errors"] == []
     else:
         assert report["errors"]
+
+
+def test_exact_option_a_policy_constants():
+    assert s.ATTEMPT_NS == 9420 * 1_000_000_000
+    assert s.PHASE_NS == dict(reserved=480, preparing=180, services_starting=840,
+        ready=360, api_running=2100, dto_running=5100, stopping=240, reaping=240, sealing=240)
+
+
+@pytest.mark.parametrize("slot,seconds", [("reserved",480),("preparing",180),
+    ("api_creation",480),("api_bootstrap_readiness",360),("api_active",2100),
+    ("api_cleanup_seal",240),("dto_creation",120),("dto_shared_active",5100),("dto_cleanup_seal",240)])
+def test_slots_cap_early_and_late_entries_without_borrowing(slot, seconds):
+    assert s.slot_deadline_ns(slot, 100, 100+9300*s.NS) == 100+seconds*s.NS
+    assert s.slot_deadline_ns(slot, 200, 201) == 201
+    with pytest.raises(ValueError): s.slot_deadline_ns(slot, 201, 201)
+
+
+@pytest.mark.parametrize("start,cap,end", [(True,1,10),(-1,1,10),(1,True,10),
+    (1,"1",10),(1,0,10),(1,-1,10),(1,1,True),(10,1,10),(11,1,10)])
+def test_operation_budget_requires_strict_integer_time_and_positive_remaining(start, cap, end):
+    with pytest.raises(ValueError): s.operation_deadline_ns(start,cap,end)
+
+
+def test_dto_shared_envelope_is_not_three_serial_ceilings():
+    t=100; ordinary=t+9300*s.NS
+    envelope=s.slot_deadline_ns('dto_shared_active',t,ordinary)
+    assert envelope == t+5100*s.NS
+    browser_start=t+120*s.NS
+    assert s.operation_deadline_ns(browser_start,5100,envelope)==envelope
+    assert envelope-browser_start==4980*s.NS
+    assert s.operation_deadline_ns(t,5040,envelope)==t+5040*s.NS
+    with pytest.raises(ValueError): s.operation_deadline_ns(envelope,5100,envelope)
+
+
+@pytest.mark.parametrize("offset,want", [(0,360_000_000_100),(479_999_999_999,840_000_000_099)])
+def test_services_helper_keeps_creation_and_readiness_nested(offset,want):
+    assert s.services_readiness_deadline_ns(100,100+offset,9300_000_000_100)==want
+    assert s.services_readiness_deadline_ns(100,100+offset,100+offset+1)==100+offset+1
+
+
+@pytest.mark.parametrize("offset", [-1,480_000_000_000,480_000_000_001])
+def test_services_helper_rejects_stale_or_expired_runner(offset):
+    with pytest.raises(ValueError): s.services_readiness_deadline_ns(100,100+offset,9300_000_000_100)
+
+
+def test_emergency_helper_freezes_first_failure_and_clips_hard_end():
+    assert s.emergency_cleanup_deadline_ns(100,100+9420*s.NS)==100+120*s.NS
+    assert s.emergency_cleanup_deadline_ns(101,200,150)==150
+    assert s.emergency_cleanup_deadline_ns(200,200)==200
+    assert s.emergency_cleanup_deadline_ns(201,200)==200
+    with pytest.raises(ValueError): s.emergency_cleanup_deadline_ns(100,200,201)
