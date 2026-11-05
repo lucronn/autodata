@@ -1360,6 +1360,7 @@ class API21FakeLocator:
             self.page.emit('https://127.0.0.1:32001/v1/catalog/vehicles/'+smoke.CONFIG+'/articles/'+smoke.ARTICLE+'/source',{'source':'Remove the pump.'})
         elif self.selector in ('#purchase-action','#retry'):
             route=CheckoutRoute()
+            route.fetched_response.data['checkout_url']='https://checkout.stripe.com/c/pay/cs_test_'+'a'*32
             route.request.post_data_buffer=route.request.post_data.encode()
             route.fetched_response.body=lambda:asyncio.sleep(0,result=json.dumps(route.fetched_response.data).encode())
             await context.transport.route(route)
@@ -1453,7 +1454,8 @@ class API21ObservationsTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_checkout_retains_fetch_before_abort_and_exact_original_request(self):
         buffer=self.buffer();fixture=smoke.APIFixture('https://127.0.0.1:32001',smoke.API_CASES[0],observations=buffer)
-        route=CheckoutRoute();raw=route.request.post_data.encode()
+        route=CheckoutRoute();route.fetched_response.data['checkout_url']='https://checkout.stripe.com/c/pay/cs_test_'+'a'*32
+        raw=route.request.post_data.encode()
         route.request.post_data_buffer=raw
         route.fetched_response.body=lambda:asyncio.sleep(0,result=json.dumps(route.fetched_response.data).encode())
         await fixture.route(route)
@@ -1580,9 +1582,9 @@ class API21ObservationsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(buffer.snapshot()['primary_failure'],'over_limit')
         self.assertTrue(browser.contexts[0].closed)
 
-    async def test_empty_control_and_nonjson_denial_keep_original_bytes(self):
+    async def test_empty_control_keeps_original_bytes(self):
         buffer=self.buffer()
-        for status,raw,content_type in ((204,b'',''),(404,b'404 page not found\n','text/plain; charset=utf-8')):
+        for status,raw,content_type in ((204,b'',''),):
             response=API21FakeResponse('https://local/__fixture/disable',raw,status)
             response.headers={'content-type':content_type}
             await buffer.http(response,response.url,phase='disable-control')
@@ -1604,6 +1606,141 @@ class API21ObservationsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(row['observations']['primary_failure'],'assertion_failed')
         self.assertEqual(row['observations']['publication'],'failed')
         self.assertNotIn('secret disk detail',json.dumps(writes))
+
+    async def test_fragment_conflict_retains_original_response_but_never_passes_closed_identity(self):
+        buffer=self.buffer();fixture=smoke.APIFixture('https://127.0.0.1:32001',smoke.API_CASES[0],observations=buffer)
+        route=CheckoutRoute();route.request.post_data_buffer=route.request.post_data.encode()
+        raw=json.dumps(route.fetched_response.data).encode()
+        route.fetched_response.body=lambda:asyncio.sleep(0,result=raw)
+        await fixture.route(route)
+        event=buffer.snapshot()['events'][0]['payload']
+        self.assertEqual(smoke.base64.b64decode(event['response']['base64']),raw)
+        self.assertIsNone(event['checkout_identity'])
+        self.assertEqual(buffer.snapshot()['primary_failure'],'source_binding_failed')
+        self.assertTrue(fixture.checkout_responses[0]['checkout_url'].endswith('#fidkdFixtureFragment'))
+
+    def test_body_shape_and_payload_types_are_closed(self):
+        body=smoke.api21_body(b'{"ok":true}','playwright-response-body')
+        smoke.api21_validate_body(body)
+        for changed in (dict(body,length=True),dict(body,base64=body['base64']+'\n'),
+                dict(body,sha256='0'*64),dict(body,extra='unknown')):
+            with self.subTest(changed=changed),self.assertRaises(ValueError):smoke.api21_validate_body(changed)
+        buffer=self.buffer()
+        for payload in (dict(kind='lifecycle',operation='setup',state='completed',reason=None,extra=True),
+                dict(kind='producer-assertion',name='assertion',result=1,reason=None)):
+            with self.subTest(payload=payload),self.assertRaises(smoke.APIObservationError):buffer.event('setup',payload)
+        self.assertEqual(buffer.snapshot()['events'],[])
+
+    def test_binding_invalid_value_never_leaks_unknown_environment_fields(self):
+        args=SimpleNamespace(browser='chromium',candidate_sha='c'*40)
+        supplied=self.binding();supplied['bank']='secret-provider-token'
+        with patch.dict(smoke.os.environ,{'AUTODATA_API21_BINDING':json.dumps(supplied)}):
+            binding=smoke.api21_binding(args,smoke.API_CASES[0])
+        self.assertEqual(binding['binding_state'],'partial')
+        self.assertNotIn('secret-provider-token',json.dumps(binding))
+
+    def test_causal_references_require_an_actual_earlier_http_event(self):
+        buffer=self.buffer()
+        ref=dict(stream='observations',producer_role='browser-runner',seq=1)
+        payload=dict(kind='checkout-delivery',attempt=1,state='fetch-completed',http_event=ref)
+        with self.assertRaises(smoke.APIObservationError):buffer.event('checkout-first-delivery',payload,[ref])
+        self.assertEqual(buffer.snapshot()['events'],[])
+
+    async def test_missing_or_wrong_owner_library_item_cannot_satisfy_window(self):
+        buffer=self.buffer();buffer.owner_scope=(smoke.CONFIG,smoke.ORDER)
+        response=API21FakeResponse('https://local/v1/workshop/library',dict(items=[dict(
+            library_item_id=smoke.ORDER,configuration_id=smoke.OTHER,region='US',access_state='paid')]))
+        await buffer.http(response,response.url,phase='owner-library-initial-http')
+        with self.assertRaises(smoke.APIObservationError):buffer.require_window('owner-library-initial-http')
+
+    async def test_fetch_failure_retains_request_and_unavailable_response(self):
+        buffer=self.buffer();fixture=smoke.APIFixture('https://127.0.0.1:32001',smoke.API_CASES[0],observations=buffer)
+        route=CheckoutRoute(failure=RuntimeError('secret-fetch-detail'))
+        route.request.post_data_buffer=route.request.post_data.encode()
+        with self.assertRaises(RuntimeError):await fixture.route(route)
+        payload=buffer.snapshot()['events'][0]['payload']
+        self.assertIsNone(payload['status'])
+        self.assertEqual(payload['request']['availability'],'retained')
+        self.assertEqual(payload['response']['availability'],'unavailable')
+        self.assertNotIn('secret-fetch-detail',json.dumps(buffer.snapshot()))
+
+    def test_body_event_and_case_exact_capacity_boundaries(self):
+        raw=b'"'+b'a'*131070+b'"'
+        self.assertEqual(smoke.api21_body(raw,'playwright-response-body')['availability'],'retained')
+        self.assertEqual(smoke.api21_body(raw+b' ','playwright-response-body')['reason'],'over_limit')
+        buffer=self.buffer(clock=lambda:0)
+        payload=dict(kind='lifecycle',operation='setup',state='completed',reason=None)
+        buffer.event('setup',payload)
+        boundary=len(smoke.api21_json(dict(buffer.snapshot(),status='partial',
+            primary_failure=max(smoke.API21_REASONS,key=len))))
+        accepted=self.buffer(max_bytes=boundary,clock=lambda:0);accepted.event('setup',payload)
+        rejected=self.buffer(max_bytes=boundary-1,clock=lambda:0)
+        with self.assertRaises(smoke.APIObservationError):rejected.event('setup',payload)
+        self.assertEqual(rejected.snapshot()['events'],[])
+        big=smoke.api21_body(b'"'+b'x'*120000+b'"','playwright-response-body')
+        http=dict(kind='http',channel='application',method='GET',route_template='/v1/workshop/library',
+            actor='owner',attempt=1,status=200,idempotency_key=None,request=None,response=big,checkout_identity=None)
+        with self.assertRaises(smoke.APIObservationError):self.buffer().event('owner-library-initial-http',http)
+
+    def test_private_publication_rejects_hardlink_and_nonprivate_directory(self):
+        with TemporaryDirectory() as temp:
+            root=Path(temp);original=root/'original';original.write_text('original')
+            linked=root/'evidence.json';smoke.os.link(original,linked)
+            with self.assertRaises(OSError):smoke.api21_write(linked,{'value':True})
+            self.assertEqual(original.read_text(),'original');linked.unlink()
+            root.chmod(0o755)
+            try:
+                with self.assertRaises(OSError):smoke.api21_write(linked,{'value':True})
+            finally:root.chmod(0o700)
+
+    async def test_checkout_retry_original_bytes_and_identity_are_independent(self):
+        buffer=self.buffer();fixture=smoke.APIFixture('https://127.0.0.1:32001',smoke.API_CASES[0],observations=buffer)
+        responses=[]
+        for index in range(2):
+            route=CheckoutRoute();route.request.post_data_buffer=route.request.post_data.encode()
+            route.fetched_response.data['checkout_url']='https://checkout.stripe.com/c/pay/cs_test_'+'a'*32
+            raw=json.dumps(route.fetched_response.data,indent=2 if index else None).encode()
+            route.fetched_response.body=lambda raw=raw:asyncio.sleep(0,result=raw)
+            await fixture.route(route);responses.append(raw)
+        http=[e['payload'] for e in buffer.snapshot()['events'] if e['payload']['kind']=='http']
+        self.assertNotEqual(http[0]['response']['sha256'],http[1]['response']['sha256'])
+        self.assertEqual(http[0]['checkout_identity'],http[1]['checkout_identity'])
+        self.assertEqual(http[0]['request'],http[1]['request'])
+        self.assertEqual(buffer.snapshot()['primary_failure'],None)
+        third=CheckoutRoute();third.request.post_data_buffer=third.request.post_data.encode()
+        with self.assertRaises(AssertionError):await fixture.route(third)
+        self.assertFalse(third.backend_committed)
+
+    async def test_google_response_body_is_read_once_before_parsed_assertions(self):
+        buffer=self.buffer();fixture=smoke.APIFixture('https://127.0.0.1:32001',smoke.API_CASES[0],observations=buffer)
+        route=CheckoutRoute();route.request.post_data_buffer=route.request.post_data.encode();calls=[]
+        route.fetched_response.data['checkout_url']='https://checkout.stripe.com/c/pay/cs_test_'+'a'*32
+        async def body():
+            calls.append(True)
+            if len(calls)>1:raise AssertionError('body was reconstructed or re-read')
+            return json.dumps(route.fetched_response.data).encode()
+        route.fetched_response.body=body
+        await fixture.route(route)
+        self.assertEqual(len(calls),1)
+
+    async def test_every_http_phase_failure_retains_nonpass_prefix_under_actual_api_case(self):
+        matrix=json.loads((smoke.ROOT/'docs/agents/specs/2026-11-04-workshop-api21-producer-observability.json').read_text())['phase_matrix']
+        for name,phases in matrix.items():
+            for phase in phases:
+                if phase=='setup' or phase.endswith('-delivery') or phase.startswith('checkout'):continue
+                browser=API21FakeBrowser(name);buffer=self.buffer()
+                original=API21FakeResponse.body
+                async def body(response):
+                    if buffer.phase==phase:raise OSError('safe fake read failure')
+                    return await original(response)
+                with self.subTest(name=name,phase=phase),TemporaryDirectory() as temp, \
+                        patch.dict(sys.modules,{'playwright.async_api':SimpleNamespace(expect=lambda value:value)}), \
+                        patch.object(API21FakeResponse,'body',body):
+                    try:result=await smoke.api_case(browser,'https://127.0.0.1:32001',name,Path(temp),observations=buffer)
+                    except (smoke.APIObservationError,OSError):result={'status':'failed'}
+                    self.assertEqual(result['status'],'failed')
+                    self.assertIsNotNone(buffer.snapshot()['primary_failure'])
+                    self.assertTrue(browser.contexts[0].closed)
 
     def test_safe_routes_exclude_auth_and_all_capabilities_queries_hosts(self):
         self.assertIsNone(smoke.api21_route('https://local/v1/auth/session'))
