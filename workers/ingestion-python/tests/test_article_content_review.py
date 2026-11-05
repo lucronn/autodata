@@ -1,9 +1,14 @@
 """Local content-review security and exact binding regressions; synthetic content only."""
 import json
 import os
+import sys
+from pathlib import Path
 from copy import deepcopy
 from uuid import uuid4
 import pytest
+
+sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
+
 from autodata_ingestion import article_content_review as review
 from autodata_ingestion.article_lifecycle_types import digest_json
 
