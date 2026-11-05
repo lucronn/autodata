@@ -71,7 +71,7 @@ def _gce_workflow_errors(text: str) -> tuple[str, ...]:
             raise ValueError('invalid run block')
         script = '\n'.join(line[10:] for line in raw.splitlines()).rstrip('\n') + '\n'
         # Literal approved script digest; never derive the expected hash from workflow.
-        if hashlib.sha256(script.encode('utf-8')).hexdigest() != '5adc3b0b3b56c75f8df1faed2dd461a71ac37c3622b973af185baf99941e3502':
+        if hashlib.sha256(script.encode('utf-8')).hexdigest() != 'd305124edec61fca89e86d463413305f02a8c37208538d46bbe1de6c2766a602':
             errors.append('gce_script_identity')
         identity = _workflow_section(script, 'run_gce() {', 0)
         actual = shlex.split(identity.replace('\\\n', ' '), comments=True)
@@ -248,6 +248,7 @@ class RepositoryGovernanceTests(unittest.TestCase):
             ("mkdir", '          mkdir -m 700 "$gce_temp/home" "$gce_temp/tmp"\n', "", "gce_script_identity"),
             ("chown", '          sudo -n /bin/chown 1000:1000 "$gce_temp" "$gce_temp/home" "$gce_temp/tmp"\n', "", "gce_script_identity"),
             ("ownership", "/bin/chown 1000:1000", "/bin/chown 1001:1001", "gce_script_identity"),
+            ("runner_traversal", '          sudo -n /bin/chmod o+x /home/runner\n', "", "gce_script_identity"),
         )
         for name, old, new, expected in changes:
             with self.subTest(mutation=name):

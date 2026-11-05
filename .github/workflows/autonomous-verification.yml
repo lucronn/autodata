@@ -177,6 +177,7 @@ jobs:
               HOME="$gce_temp/home" TMPDIR="$gce_temp/tmp" PATH=/usr/bin:/bin LANG=C.UTF-8 LC_ALL=C.UTF-8 \
               PYTHONDONTWRITEBYTECODE=1 AUTODATA_REQUIRE_PURCHASE_CONFIG_DELIVERY_COMPOSE=1 "$@"
           }
+          sudo -n /bin/chmod o+x /home/runner
           run_gce "$gce_python" -B -c 'import os,pathlib,sys,tempfile; assert (os.getuid(),os.getgid(),os.geteuid(),os.getegid())==(1000,1000,1000,1000); assert sys.version_info>=(3,12); root=pathlib.Path.cwd(); assert (root/"infra/deploy/gce/runtime-entrypoint.sh").read_bytes(); assert (root/"workers/ingestion-python/src/autodata_ingestion/commerce_service.py").read_bytes(); assert os.access(sys.executable,os.X_OK); d=tempfile.TemporaryDirectory(); d.cleanup(); print("gce_ci_preflight:identity_paths_temp_pass")'
           run_gce /usr/bin/python -B -c 'import sys; assert sys.version_info>=(3,12)'
           run_gce /usr/bin/python3 -B -c 'import sys; assert sys.version_info>=(3,12)'
