@@ -250,3 +250,16 @@ def test_explicit_profile_limits_and_invalid_source_do_not_dispatch():
     assert rewrite.rewrite_ordered_document(source,client=None,context={},profile_version=PROFILE).error_code == "MODEL_NOT_CONFIGURED"
     assert rewrite.rewrite_ordered_document(source,client=model,context={}).error_code == "REWRITE_NOT_APPLICABLE"
     assert model.calls == 0
+
+
+@pytest.mark.parametrize("original,changed", [
+    ("25 quarts", "25 gallons"), ("20 mΩ", "20 kΩ"),
+    ("T42/7", "T42 7"), ("25\u00a0Nm", "25 Nm"),
+    ("1\u202f234.50 psi", "1 234.50 psi"),
+])
+def test_unfamiliar_units_identifiers_and_unicode_number_separators_stay_literal(original,changed):
+    source = document(f"Use {original} for the cover.")
+    payload = response(f"For the cover, use {changed} as specified.")
+    assert run(source,payload).error_code == "REWRITE_TECHNICAL_MUTATION"
+    payload["replacements"][0]["text"] = f"For the cover, use {original} as specified."
+    assert run(source,payload).error_code is None
