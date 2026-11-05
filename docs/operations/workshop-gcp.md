@@ -693,3 +693,29 @@ Todo:
 - [ ] Append honest exact-source local/CI results and retain the prior R6 digest/Task64 failures as historical evidence; preserve all disabled profiles, trusted-loader boundaries, owner/staging/activation/payment/browser/provider/DNS blockers, credits0 and every release authority false; perform no merge/deployment/publication.
 
 Current implementation allowlist=[]; independent checkpoint review and explicit two-path dispatch required after actual checkpoint seal and standalone/nested exact-base preflights. Every authority false; credits0; verified_case_ids=[]; release_state=unverified. Preserve disabled profiles/trusted-loader contract and all owner/staging/activation/payment/browser/provider/DNS blockers. No merge/deployment/publication.
+
+
+## Provisioned-host activation successor (Issue299)
+
+The [activation plan](../superpowers/plans/2026-11-05-host-release-activation.md), [record](../agents/records/2026-11-05-host-release-activation.json), and [task](../agents/tasks/2026-11-03-production-release/host-release-activation.json) govern the next real host code milestone: Activate an already provisioned AutoData host using immutable local releases, maintenance-first lifecycle operations, actual PostgreSQL/service/dependency readiness, and schema-compatible rollback. Tracking: https://github.com/lucronn/autodata/issues/299, linked beneath https://github.com/lucronn/autodata/issues/186, and https://github.com/users/lucronn/projects/8 (separate activation item). The source base is `38b53eca633eee94f045fc33d9c90bb36da7618d`.
+
+This is a synchronized implementation plan, not an implemented capability or deployment receipt. It explicitly supersedes earlier lifecycle/locked-schema code exclusions only for this bounded successor. It authorizes real fixed on-host start/stop/maintenance/resume code, a single-transaction PG17 lock-before-catalog/ledger collector, actual container and GET-only local dependency readiness, immutable current selection and one schema-compatible rollback. Already provisioned tools/storage/guards/schema/socket identity/image cache/private files are prerequisites. Cloud operations, actual production credentials, image publication, SQL migration/role provisioning, provider calls and live activation are outside implementation scope.
+
+Concrete todo:
+
+- [ ] Implement a fixed bounded PG17 single-transaction collector: lock before catalog validation, reject unsafe ledger/catalog/role facts before reading ledger rows, compare exact migration inventory, and prove the protocol with real disposable PostgreSQL17 adversarial tests.
+- [ ] Implement real fixed-path host lifecycle execution with one host operation lock, verified immutable local Compose/Caddy material, cached images only, validated mounts/guards/secrets, and maintenance-first start/stop/maintenance/resume operations.
+- [ ] Collect actual service/container/image/configuration and local GET /readyz evidence without scheduling provider/payment/model work; set schema/services/postgres/nats/s3/no_work/runtime_evidence only from their corresponding successful observations.
+- [ ] Atomically select a successfully verified release and restore only the manifest-designated prior release with identical schema/configuration on activation failure; prove failure, timeout, concurrent invocation and recovery behavior with bounded executor tests.
+- [ ] Run focused host regressions, real disposable PG17 protocol tests, shell/Python syntax, exact-base preflight and diff checks; commit/push coherent milestones and independently review the exact candidate before integration. Update the runbook with actual executable prerequisites and remaining launch blockers.
+
+Implementation allowlist:
+
+- `infra/deploy/gce/deploy.sh`
+- `infra/deploy/gce/runtime-check.py`
+- `infra/deploy/gce/host_activation.py`
+- `infra/deploy/gce/runtime-grants.sql`
+- `infra/deploy/gce/test_host_runtime.py`
+- `infra/deploy/gce/test_host_activation.py`
+- `infra/deploy/gce/test_host_schema_pg17.py`
+- `docs/operations/workshop-gcp.md`

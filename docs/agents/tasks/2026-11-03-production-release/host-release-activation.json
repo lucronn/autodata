@@ -1,0 +1,81 @@
+{
+  "task_id": "host-release-activation",
+  "repository": "lucronn/autodata",
+  "goal": "Activate an already provisioned AutoData host using immutable local releases, maintenance-first lifecycle operations, actual PostgreSQL/service/dependency readiness, and schema-compatible rollback.",
+  "allowed_paths": [
+    "infra/deploy/gce/deploy.sh",
+    "infra/deploy/gce/runtime-check.py",
+    "infra/deploy/gce/host_activation.py",
+    "infra/deploy/gce/runtime-grants.sql",
+    "infra/deploy/gce/test_host_runtime.py",
+    "infra/deploy/gce/test_host_activation.py",
+    "infra/deploy/gce/test_host_schema_pg17.py",
+    "docs/operations/workshop-gcp.md"
+  ],
+  "inputs": [
+    "docs/superpowers/plans/2026-11-05-host-release-activation.md",
+    "docs/operations/workshop-gcp.md"
+  ],
+  "pre_implementation": {
+    "goal": "Activate an already provisioned AutoData host using immutable local releases, maintenance-first lifecycle operations, actual PostgreSQL/service/dependency readiness, and schema-compatible rollback.",
+    "plan_ref": "docs/superpowers/plans/2026-11-05-host-release-activation.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/299",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "todo": [
+      "Implement a fixed bounded PG17 single-transaction collector: lock before catalog validation, reject unsafe ledger/catalog/role facts before reading ledger rows, compare exact migration inventory, and prove the protocol with real disposable PostgreSQL17 adversarial tests.",
+      "Implement real fixed-path host lifecycle execution with one host operation lock, verified immutable local Compose/Caddy material, cached images only, validated mounts/guards/secrets, and maintenance-first start/stop/maintenance/resume operations.",
+      "Collect actual service/container/image/configuration and local GET /readyz evidence without scheduling provider/payment/model work; set schema/services/postgres/nats/s3/no_work/runtime_evidence only from their corresponding successful observations.",
+      "Atomically select a successfully verified release and restore only the manifest-designated prior release with identical schema/configuration on activation failure; prove failure, timeout, concurrent invocation and recovery behavior with bounded executor tests.",
+      "Run focused host regressions, real disposable PG17 protocol tests, shell/Python syntax, exact-base preflight and diff checks; commit/push coherent milestones and independently review the exact candidate before integration. Update the runbook with actual executable prerequisites and remaining launch blockers."
+    ],
+    "repository_doc_refs": [
+      "docs/operations/workshop-gcp.md",
+      "docs/architecture/infrastructure-and-dev.md"
+    ],
+    "status": "synchronized",
+    "updated_at": "2026-11-05T08:51:27.044998+00:00",
+    "source_base_sha": "38b53eca633eee94f045fc33d9c90bb36da7618d",
+    "parent_issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "implementation_allowlist": [
+      "infra/deploy/gce/deploy.sh",
+      "infra/deploy/gce/runtime-check.py",
+      "infra/deploy/gce/host_activation.py",
+      "infra/deploy/gce/runtime-grants.sql",
+      "infra/deploy/gce/test_host_runtime.py",
+      "infra/deploy/gce/test_host_activation.py",
+      "infra/deploy/gce/test_host_schema_pg17.py",
+      "docs/operations/workshop-gcp.md"
+    ],
+    "tracking_sync": {
+      "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhGN3dU",
+      "project_status": "Ready",
+      "issue_body_ref": "https://github.com/lucronn/autodata/issues/299",
+      "project_index_field": "Source or dependency reference",
+      "issue_body_sha256": "cab38924ea7525cf8af56c0f2d5632081d56cfb299509eb5c3d547895bf87f85",
+      "project_index_sha256": "5fb38ad4a4c5eb6a1d600ed893302b706cddb921628de41aa5b31bcb1f9880b4",
+      "readback_verified": true,
+      "parent_link_verified": true
+    }
+  },
+  "execution": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "medium",
+    "service_tier": "priority",
+    "features": {
+      "fast_mode": true
+    },
+    "allow_fallback": false
+  },
+  "forbidden_scope": [
+    "Cloud/live deployment, production credential or provider access during implementation",
+    "Changing Compose/application/workflow files without synchronized amendment",
+    "Admin fallback, schema migration, role provisioning or arbitrary release rollback"
+  ],
+  "acceptance_tests": [
+    "Implement a fixed bounded PG17 single-transaction collector: lock before catalog validation, reject unsafe ledger/catalog/role facts before reading ledger rows, compare exact migration inventory, and prove the protocol with real disposable PostgreSQL17 adversarial tests.",
+    "Implement real fixed-path host lifecycle execution with one host operation lock, verified immutable local Compose/Caddy material, cached images only, validated mounts/guards/secrets, and maintenance-first start/stop/maintenance/resume operations.",
+    "Collect actual service/container/image/configuration and local GET /readyz evidence without scheduling provider/payment/model work; set schema/services/postgres/nats/s3/no_work/runtime_evidence only from their corresponding successful observations.",
+    "Atomically select a successfully verified release and restore only the manifest-designated prior release with identical schema/configuration on activation failure; prove failure, timeout, concurrent invocation and recovery behavior with bounded executor tests.",
+    "Run focused host regressions, real disposable PG17 protocol tests, shell/Python syntax, exact-base preflight and diff checks; commit/push coherent milestones and independently review the exact candidate before integration. Update the runbook with actual executable prerequisites and remaining launch blockers."
+  ]
+}
