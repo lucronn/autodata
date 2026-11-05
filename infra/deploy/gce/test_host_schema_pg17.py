@@ -35,7 +35,7 @@ class Postgres17ProtocolTests(unittest.TestCase):
             if result.returncode == 0: break
             time.sleep(.1)
         else: raise AssertionError('disposable PG17 did not become ready')
-        cls.sql('CREATE ROLE autodata_metrics LOGIN NOINHERIT;')
+        cls.sql('CREATE ROLE autodata_metrics LOGIN NOINHERIT; CREATE ROLE autodata_outbox LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;')
         version = cls.sql('SHOW server_version_num;').stdout.strip()
         if not 170000 <= int(version) < 180000: raise AssertionError('test requires real PG17')
 
@@ -51,7 +51,9 @@ class Postgres17ProtocolTests(unittest.TestCase):
         self.rt = load_runtime()
         self.sql('ALTER ROLE autodata_metrics NOSUPERUSER NOBYPASSRLS NOINHERIT; DROP SCHEMA public CASCADE; CREATE SCHEMA public;'
             'CREATE TABLE public.schema_migrations(version text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now());'
-            "INSERT INTO public.schema_migrations(version) VALUES ('001_initial'),('002_next');")
+            "INSERT INTO public.schema_migrations(version) VALUES ('001_initial'),('002_next');"
+            'CREATE TABLE public.publication_events(delivery_status text,delivery_attempts integer,delivery_lease_owner text,'
+            'delivery_lease_token uuid,delivery_lease_expires_at timestamptz,last_delivery_error text,next_delivery_at timestamptz,delivered_at timestamptz);')
         self.sql((__import__('pathlib').Path(__file__).parent / 'runtime-grants.sql').read_text())
         self.manifest = {'migrations': {'files': [{'name': '001_initial.sql'}, {'name': '002_next.sql'}]},
                          'images': {'postgres': {'image_id': 'sha256:' + 'c' * 64}}}
