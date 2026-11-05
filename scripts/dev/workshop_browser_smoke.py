@@ -930,6 +930,16 @@ class APIObservations:
         expected=API21_PHASES[name]
         observed=list(dict.fromkeys(e['phase'] for e in self.events))
         if tuple(observed)!=expected:self.fail('assertion_failed')
+        ranks={phase:index for index,phase in enumerate(expected)};last=-1
+        for event in self.events:
+            rank=ranks.get(event['phase'],-1)
+            if rank<last:self.fail('assertion_failed')
+            last=max(last,rank)
+        if name==API_CASES[0]:
+            for phase,states in (('checkout-first-delivery',('fetch-completed','response-abort-requested','response-aborted')),
+                    ('checkout-retry-delivery',('fetch-completed','response-fulfill-requested','response-fulfilled'))):
+                actual=tuple(e['payload'].get('state') for e in self.events if e['phase']==phase and e['payload']['kind']=='checkout-delivery')
+                if actual!=states:self.fail('assertion_failed')
         for phase in expected:
             if phase.startswith('owner-library-'):
                 try:self.require_window(phase)
