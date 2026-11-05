@@ -342,7 +342,8 @@
         "minio",
         "migration",
         "bootstrap",
-        "metrics-probe"
+        "metrics-probe",
+        "outbox-relay"
       ],
       "properties": {
         "api": {
@@ -510,7 +511,9 @@
           "additionalProperties": false,
           "required": [
             "NATS_METRICS_USER",
-            "NATS_METRICS_PASSWORD"
+            "NATS_METRICS_PASSWORD",
+            "NATS_OUTBOX_USER",
+            "NATS_OUTBOX_PASSWORD"
           ],
           "properties": {
             "NATS_METRICS_USER": {
@@ -518,6 +521,14 @@
               "pattern": "^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/secrets/[A-Za-z0-9_-]+/versions/[1-9][0-9]*$"
             },
             "NATS_METRICS_PASSWORD": {
+              "type": "string",
+              "pattern": "^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/secrets/[A-Za-z0-9_-]+/versions/[1-9][0-9]*$"
+            },
+            "NATS_OUTBOX_USER": {
+              "type": "string",
+              "pattern": "^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/secrets/[A-Za-z0-9_-]+/versions/[1-9][0-9]*$"
+            },
+            "NATS_OUTBOX_PASSWORD": {
               "type": "string",
               "pattern": "^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/secrets/[A-Za-z0-9_-]+/versions/[1-9][0-9]*$"
             }
@@ -600,6 +611,29 @@
               "pattern": "^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/secrets/[A-Za-z0-9_-]+/versions/[1-9][0-9]*$"
             },
             "NATS_METRICS_PASSWORD": {
+              "type": "string",
+              "pattern": "^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/secrets/[A-Za-z0-9_-]+/versions/[1-9][0-9]*$"
+            }
+          }
+        },
+        "outbox-relay": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "AUTODATA_POSTGRES_PASSWORD",
+            "NATS_OUTBOX_USER",
+            "NATS_OUTBOX_PASSWORD"
+          ],
+          "properties": {
+            "AUTODATA_POSTGRES_PASSWORD": {
+              "type": "string",
+              "pattern": "^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/secrets/[A-Za-z0-9_-]+/versions/[1-9][0-9]*$"
+            },
+            "NATS_OUTBOX_USER": {
+              "type": "string",
+              "pattern": "^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/secrets/[A-Za-z0-9_-]+/versions/[1-9][0-9]*$"
+            },
+            "NATS_OUTBOX_PASSWORD": {
               "type": "string",
               "pattern": "^projects/[a-z][a-z0-9-]{4,28}[a-z0-9]/secrets/[A-Za-z0-9_-]+/versions/[1-9][0-9]*$"
             }

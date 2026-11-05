@@ -1,0 +1,994 @@
+{
+  "kind": "synthetic-development-only",
+  "authentic_documents": 0,
+  "selection": "All 14 authored development families; no bank attribution, authentic holdout, or acceptance credit.",
+  "held_out_authentic_documents": 0,
+  "documents": [
+    {
+      "identity": "synthetic:remove",
+      "family": "remove",
+      "provenance": "hand-authored synthetic development regression; no provider capture",
+      "source_hash": "d4331890b98e2d9c27d4099265c1ca29d2e353034e77dd469d54ca499c9f8b28",
+      "expected_v2_eligible": true,
+      "document": {
+        "schema_version": 1,
+        "normalization_version": "ordered-article-v1",
+        "blocks": [
+          {
+            "block_id": "p0",
+            "source_order": 1,
+            "type": "paragraph",
+            "text": "Remove the cover.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "p1",
+            "source_order": 2,
+            "type": "paragraph",
+            "text": "Tighten the bolts to 25 N·m.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "p2",
+            "source_order": 3,
+            "type": "paragraph",
+            "text": "Do not start the engine.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "warning",
+            "source_order": 4,
+            "type": "callout",
+            "text": "Warning: Allow the engine to cool.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "spec",
+            "source_order": 5,
+            "type": "table",
+            "rows": [
+              [
+                "Torque",
+                "25 N·m"
+              ]
+            ],
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "image",
+            "source_order": 6,
+            "type": "image",
+            "status": "unavailable",
+            "unavailable_reason": "synthetic fixture has no image",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "identity": "synthetic:install",
+      "family": "install",
+      "provenance": "hand-authored synthetic development regression; no provider capture",
+      "source_hash": "82fabc09a907816923b36883de14da94ab3c782d0f8dd7c82c4f0fd7cb4b4ac2",
+      "expected_v2_eligible": true,
+      "document": {
+        "schema_version": 1,
+        "normalization_version": "ordered-article-v1",
+        "blocks": [
+          {
+            "block_id": "p0",
+            "source_order": 1,
+            "type": "paragraph",
+            "text": "Install the cover.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "p1",
+            "source_order": 2,
+            "type": "paragraph",
+            "text": "Tighten the bolts to 25 N·m.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "p2",
+            "source_order": 3,
+            "type": "paragraph",
+            "text": "Do not start the engine.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "warning",
+            "source_order": 4,
+            "type": "callout",
+            "text": "Warning: Allow the engine to cool.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "spec",
+            "source_order": 5,
+            "type": "table",
+            "rows": [
+              [
+                "Torque",
+                "25 N·m"
+              ]
+            ],
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "image",
+            "source_order": 6,
+            "type": "image",
+            "status": "unavailable",
+            "unavailable_reason": "synthetic fixture has no image",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "identity": "synthetic:disconnect",
+      "family": "disconnect",
+      "provenance": "hand-authored synthetic development regression; no provider capture",
+      "source_hash": "9fecceef687da135206eb53337af8b45712a5029fcbfffebf933918761a3664e",
+      "expected_v2_eligible": true,
+      "document": {
+        "schema_version": 1,
+        "normalization_version": "ordered-article-v1",
+        "blocks": [
+          {
+            "block_id": "p0",
+            "source_order": 1,
+            "type": "paragraph",
+            "text": "Disconnect the cover.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "p1",
+            "source_order": 2,
+            "type": "paragraph",
+            "text": "Tighten the bolts to 25 N·m.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "p2",
+            "source_order": 3,
+            "type": "paragraph",
+            "text": "Do not start the engine.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "warning",
+            "source_order": 4,
+            "type": "callout",
+            "text": "Warning: Allow the engine to cool.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "spec",
+            "source_order": 5,
+            "type": "table",
+            "rows": [
+              [
+                "Torque",
+                "25 N·m"
+              ]
+            ],
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "image",
+            "source_order": 6,
+            "type": "image",
+            "status": "unavailable",
+            "unavailable_reason": "synthetic fixture has no image",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "identity": "synthetic:connect",
+      "family": "connect",
+      "provenance": "hand-authored synthetic development regression; no provider capture",
+      "source_hash": "de692e9cc88b464871592a620a1b77c5084afcb4cdbf10d771868e2dc4f24454",
+      "expected_v2_eligible": true,
+      "document": {
+        "schema_version": 1,
+        "normalization_version": "ordered-article-v1",
+        "blocks": [
+          {
+            "block_id": "p0",
+            "source_order": 1,
+            "type": "paragraph",
+            "text": "Connect the cover.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "p1",
+            "source_order": 2,
+            "type": "paragraph",
+            "text": "Tighten the bolts to 25 N·m.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "p2",
+            "source_order": 3,
+            "type": "paragraph",
+            "text": "Do not start the engine.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "warning",
+            "source_order": 4,
+            "type": "callout",
+            "text": "Warning: Allow the engine to cool.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "spec",
+            "source_order": 5,
+            "type": "table",
+            "rows": [
+              [
+                "Torque",
+                "25 N·m"
+              ]
+            ],
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "image",
+            "source_order": 6,
+            "type": "image",
+            "status": "unavailable",
+            "unavailable_reason": "synthetic fixture has no image",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "identity": "synthetic:loosen",
+      "family": "loosen",
+      "provenance": "hand-authored synthetic development regression; no provider capture",
+      "source_hash": "bff02e289960da75442cea0a1fafb74c4ca46864a1765fd84ce516b82b29bb9d",
+      "expected_v2_eligible": true,
+      "document": {
+        "schema_version": 1,
+        "normalization_version": "ordered-article-v1",
+        "blocks": [
+          {
+            "block_id": "p0",
+            "source_order": 1,
+            "type": "paragraph",
+            "text": "Loosen the cover.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "p1",
+            "source_order": 2,
+            "type": "paragraph",
+            "text": "Tighten the bolts to 25 N·m.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "p2",
+            "source_order": 3,
+            "type": "paragraph",
+            "text": "Do not start the engine.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "warning",
+            "source_order": 4,
+            "type": "callout",
+            "text": "Warning: Allow the engine to cool.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "spec",
+            "source_order": 5,
+            "type": "table",
+            "rows": [
+              [
+                "Torque",
+                "25 N·m"
+              ]
+            ],
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "image",
+            "source_order": 6,
+            "type": "image",
+            "status": "unavailable",
+            "unavailable_reason": "synthetic fixture has no image",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "identity": "synthetic:tighten",
+      "family": "tighten",
+      "provenance": "hand-authored synthetic development regression; no provider capture",
+      "source_hash": "334a1dc753c72a2d836504ce319d713fc0d681065bccf1ffe038023a24539ab5",
+      "expected_v2_eligible": true,
+      "document": {
+        "schema_version": 1,
+        "normalization_version": "ordered-article-v1",
+        "blocks": [
+          {
+            "block_id": "p0",
+            "source_order": 1,
+            "type": "paragraph",
+            "text": "Tighten the cover.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "p1",
+            "source_order": 2,
+            "type": "paragraph",
+            "text": "Tighten the bolts to 25 N·m.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "p2",
+            "source_order": 3,
+            "type": "paragraph",
+            "text": "Do not start the engine.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "warning",
+            "source_order": 4,
+            "type": "callout",
+            "text": "Warning: Allow the engine to cool.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "spec",
+            "source_order": 5,
+            "type": "table",
+            "rows": [
+              [
+                "Torque",
+                "25 N·m"
+              ]
+            ],
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "image",
+            "source_order": 6,
+            "type": "image",
+            "status": "unavailable",
+            "unavailable_reason": "synthetic fixture has no image",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "identity": "synthetic:replace",
+      "family": "replace",
+      "provenance": "hand-authored synthetic development regression; no provider capture",
+      "source_hash": "0dccbe00fcc14c0494c09a74cc77501ae5c348b0ffa98e72800d874aee6966a3",
+      "expected_v2_eligible": true,
+      "document": {
+        "schema_version": 1,
+        "normalization_version": "ordered-article-v1",
+        "blocks": [
+          {
+            "block_id": "p0",
+            "source_order": 1,
+            "type": "paragraph",
+            "text": "Replace the cover.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "p1",
+            "source_order": 2,
+            "type": "paragraph",
+            "text": "Tighten the bolts to 25 N·m.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "p2",
+            "source_order": 3,
+            "type": "paragraph",
+            "text": "Do not start the engine.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "warning",
+            "source_order": 4,
+            "type": "callout",
+            "text": "Warning: Allow the engine to cool.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "spec",
+            "source_order": 5,
+            "type": "table",
+            "rows": [
+              [
+                "Torque",
+                "25 N·m"
+              ]
+            ],
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "image",
+            "source_order": 6,
+            "type": "image",
+            "status": "unavailable",
+            "unavailable_reason": "synthetic fixture has no image",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "identity": "synthetic:inspect",
+      "family": "inspect",
+      "provenance": "hand-authored synthetic development regression; no provider capture",
+      "source_hash": "35291069393eb193d98ccfe004caf460dc8277efa1f9198421190063170c0323",
+      "expected_v2_eligible": true,
+      "document": {
+        "schema_version": 1,
+        "normalization_version": "ordered-article-v1",
+        "blocks": [
+          {
+            "block_id": "p0",
+            "source_order": 1,
+            "type": "paragraph",
+            "text": "Inspect the cover.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "p1",
+            "source_order": 2,
+            "type": "paragraph",
+            "text": "Tighten the bolts to 25 N·m.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "p2",
+            "source_order": 3,
+            "type": "paragraph",
+            "text": "Do not start the engine.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "warning",
+            "source_order": 4,
+            "type": "callout",
+            "text": "Warning: Allow the engine to cool.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "spec",
+            "source_order": 5,
+            "type": "table",
+            "rows": [
+              [
+                "Torque",
+                "25 N·m"
+              ]
+            ],
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "image",
+            "source_order": 6,
+            "type": "image",
+            "status": "unavailable",
+            "unavailable_reason": "synthetic fixture has no image",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "identity": "synthetic:clean",
+      "family": "clean",
+      "provenance": "hand-authored synthetic development regression; no provider capture",
+      "source_hash": "e0fac370bafd26d246ebfe025cc422d53e018318d382d7c6d083ebdfcd16eb2a",
+      "expected_v2_eligible": true,
+      "document": {
+        "schema_version": 1,
+        "normalization_version": "ordered-article-v1",
+        "blocks": [
+          {
+            "block_id": "p0",
+            "source_order": 1,
+            "type": "paragraph",
+            "text": "Clean the cover.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "p1",
+            "source_order": 2,
+            "type": "paragraph",
+            "text": "Tighten the bolts to 25 N·m.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "p2",
+            "source_order": 3,
+            "type": "paragraph",
+            "text": "Do not start the engine.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "warning",
+            "source_order": 4,
+            "type": "callout",
+            "text": "Warning: Allow the engine to cool.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "spec",
+            "source_order": 5,
+            "type": "table",
+            "rows": [
+              [
+                "Torque",
+                "25 N·m"
+              ]
+            ],
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "image",
+            "source_order": 6,
+            "type": "image",
+            "status": "unavailable",
+            "unavailable_reason": "synthetic fixture has no image",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "identity": "synthetic:lubricate",
+      "family": "lubricate",
+      "provenance": "hand-authored synthetic development regression; no provider capture",
+      "source_hash": "bd66edf48b126cee6284268996820df6d419dc945fb3d1a6756bc35079bfb11a",
+      "expected_v2_eligible": true,
+      "document": {
+        "schema_version": 1,
+        "normalization_version": "ordered-article-v1",
+        "blocks": [
+          {
+            "block_id": "p0",
+            "source_order": 1,
+            "type": "paragraph",
+            "text": "Lubricate the cover.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "p1",
+            "source_order": 2,
+            "type": "paragraph",
+            "text": "Tighten the bolts to 25 N·m.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "p2",
+            "source_order": 3,
+            "type": "paragraph",
+            "text": "Do not start the engine.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "warning",
+            "source_order": 4,
+            "type": "callout",
+            "text": "Warning: Allow the engine to cool.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "spec",
+            "source_order": 5,
+            "type": "table",
+            "rows": [
+              [
+                "Torque",
+                "25 N·m"
+              ]
+            ],
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "image",
+            "source_order": 6,
+            "type": "image",
+            "status": "unavailable",
+            "unavailable_reason": "synthetic fixture has no image",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "identity": "synthetic:coordinated",
+      "family": "coordinated",
+      "provenance": "hand-authored synthetic development regression; no provider capture",
+      "source_hash": "b3d71ed84172bf4177108c81c6c275f1c2a60fa89222a979f0bc4e5bd6674681",
+      "expected_v2_eligible": false,
+      "document": {
+        "schema_version": 1,
+        "normalization_version": "ordered-article-v1",
+        "blocks": [
+          {
+            "block_id": "p0",
+            "source_order": 1,
+            "type": "paragraph",
+            "text": "Remove the cover and disconnect the cable.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "p1",
+            "source_order": 2,
+            "type": "paragraph",
+            "text": "Install the pump.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "warning",
+            "source_order": 3,
+            "type": "callout",
+            "text": "Warning: Allow the engine to cool.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "spec",
+            "source_order": 4,
+            "type": "table",
+            "rows": [
+              [
+                "Torque",
+                "25 N·m"
+              ]
+            ],
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "image",
+            "source_order": 5,
+            "type": "image",
+            "status": "unavailable",
+            "unavailable_reason": "synthetic fixture has no image",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "identity": "synthetic:declarative",
+      "family": "declarative",
+      "provenance": "hand-authored synthetic development regression; no provider capture",
+      "source_hash": "1f2703bc571350db6be38e7c029bc060df851bc410cca7389391365ee57d36bd",
+      "expected_v2_eligible": false,
+      "document": {
+        "schema_version": 1,
+        "normalization_version": "ordered-article-v1",
+        "blocks": [
+          {
+            "block_id": "p0",
+            "source_order": 1,
+            "type": "paragraph",
+            "text": "The cover provides access.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "p1",
+            "source_order": 2,
+            "type": "paragraph",
+            "text": "Inspect the pump.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "warning",
+            "source_order": 3,
+            "type": "callout",
+            "text": "Warning: Allow the engine to cool.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "spec",
+            "source_order": 4,
+            "type": "table",
+            "rows": [
+              [
+                "Torque",
+                "25 N·m"
+              ]
+            ],
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "image",
+            "source_order": 5,
+            "type": "image",
+            "status": "unavailable",
+            "unavailable_reason": "synthetic fixture has no image",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "identity": "synthetic:unknown-component",
+      "family": "unknown-component",
+      "provenance": "hand-authored synthetic development regression; no provider capture",
+      "source_hash": "1cec8d3c08dee460f8a0c2837e7e3cb7157a7ef36fc5ef9476aa664d328a4b1a",
+      "expected_v2_eligible": false,
+      "document": {
+        "schema_version": 1,
+        "normalization_version": "ordered-article-v1",
+        "blocks": [
+          {
+            "block_id": "p0",
+            "source_order": 1,
+            "type": "paragraph",
+            "text": "Remove the special widget.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "p1",
+            "source_order": 2,
+            "type": "paragraph",
+            "text": "Clean the cover.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "warning",
+            "source_order": 3,
+            "type": "callout",
+            "text": "Warning: Allow the engine to cool.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "spec",
+            "source_order": 4,
+            "type": "table",
+            "rows": [
+              [
+                "Torque",
+                "25 N·m"
+              ]
+            ],
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "image",
+            "source_order": 5,
+            "type": "image",
+            "status": "unavailable",
+            "unavailable_reason": "synthetic fixture has no image",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "identity": "synthetic:ambiguous-adjunct",
+      "family": "ambiguous-adjunct",
+      "provenance": "hand-authored synthetic development regression; no provider capture",
+      "source_hash": "499cc5345453bb9cf01fa3f9052a6f1b6eca809ffcd96e5a5ce45a4fee86dad2",
+      "expected_v2_eligible": false,
+      "document": {
+        "schema_version": 1,
+        "normalization_version": "ordered-article-v1",
+        "blocks": [
+          {
+            "block_id": "p0",
+            "source_order": 1,
+            "type": "paragraph",
+            "text": "Disconnect the cable from the pump.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "p1",
+            "source_order": 2,
+            "type": "paragraph",
+            "text": "Connect the cable.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "warning",
+            "source_order": 3,
+            "type": "callout",
+            "text": "Warning: Allow the engine to cool.",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "spec",
+            "source_order": 4,
+            "type": "table",
+            "rows": [
+              [
+                "Torque",
+                "25 N·m"
+              ]
+            ],
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          },
+          {
+            "block_id": "image",
+            "source_order": 5,
+            "type": "image",
+            "status": "unavailable",
+            "unavailable_reason": "synthetic fixture has no image",
+            "evidence_ids": [
+              "synthetic-evidence"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

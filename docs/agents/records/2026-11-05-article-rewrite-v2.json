@@ -1,0 +1,49 @@
+{
+  "goal": "Improve meaningful source-bound article rewriting through immutable technical-prose-v2, preserving complete technical instructions, consistent ordered-document display, and readable source fallback.",
+  "plan_ref": "docs/superpowers/plans/2026-11-05-article-rewrite-v2.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/300",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/normalized-article-document.md"
+  ],
+  "todo": [
+    "Freeze representative full-document corpus and baseline coverage, with provenance and unsupported cases.",
+    "Implement source-bound complete-clause operations and server rendering with exact technical span preservation and fail-closed validation.",
+    "Route immutable v1/v2 profiles through durable attempts, validation, publication and explicit refresh.",
+    "Verify corpus meaning, source fallback, dual-bank isolation, concurrency, restart and zero-call warm reads; publish exact coverage and independent review."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-05T08:57:28.921421Z",
+  "parent_issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhGN8dM",
+  "inspected_source_sha": "38b53eca633eee94f045fc33d9c90bb36da7618d",
+  "branch": "codex/article-rewrite-v2-gate",
+  "implementation_allowlist": [
+    "workers/ingestion-python/src/autodata_ingestion/procedure_rewrite.py",
+    "workers/ingestion-python/src/autodata_ingestion/procedure_rewrite_v2.py",
+    "workers/ingestion-python/src/autodata_ingestion/article_lifecycle.py",
+    "workers/ingestion-python/src/autodata_ingestion/article_lifecycle_types.py",
+    "workers/ingestion-python/src/autodata_ingestion/article_lifecycle_store.py",
+    "workers/ingestion-python/tests/test_procedure_rewrite_v2.py",
+    "workers/ingestion-python/tests/fixtures/article_rewrite_v2.json",
+    "workers/ingestion-python/tests/test_article_transform.py",
+    "workers/ingestion-python/tests/test_article_worker.py",
+    "workers/ingestion-python/tests/test_article_publication.py",
+    "workers/ingestion-python/tests/test_article_lifecycle_integration.py",
+    "workers/ingestion-python/tests/test_article_lifecycle_types.py",
+    "docs/verification/2026-11-05-article-rewrite-v2.md",
+    "docs/architecture/normalized-article-document.md",
+    "docs/superpowers/plans/2026-11-05-article-rewrite-v2.md",
+    "docs/agents/records/2026-11-05-article-rewrite-v2.json"
+  ],
+  "checkpoint_kind": "planning_only",
+  "production_activation_authorized": false,
+  "provider_calls_authorized_on_planning_turn": false,
+  "tracking": {
+    "parent_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6653871087",
+    "issue_body_sha256": "72e560b2c8092f345fa73242858d1efb996bf4857e8aa2a270db96afe12d7770",
+    "project_source_sha256": "caad22cae8ae4cf9a1a1c6673943169475fa6b290668928d1e798c36b3203612",
+    "parent_body_unchanged": true,
+    "verified_at": "2026-11-05T08:57:28.921421Z"
+  }
+}

@@ -48,7 +48,8 @@ class ContractTests(unittest.TestCase):
             'ingestion-http': ('AUTODATA_POSTGRES_PASSWORD', 'AUTODATA_S3_ACCESS_KEY', 'AUTODATA_S3_SECRET_KEY', 'AUTODATA_INGESTION_INTERNAL_TOKEN', 'AUTODATA_STRIPE_SECRET_KEY', 'AUTODATA_STRIPE_WEBHOOK_SECRET', 'BANKONE_API_TOKEN', 'BANKTWO_API_TOKEN'),
             'article-worker': ('AUTODATA_POSTGRES_PASSWORD', 'AUTODATA_S3_ACCESS_KEY', 'AUTODATA_S3_SECRET_KEY', 'BANKONE_API_TOKEN', 'BANKTWO_API_TOKEN', 'INCEPTION_API_KEY'),
             'payment-reconciler': ('AUTODATA_POSTGRES_PASSWORD', 'AUTODATA_INGESTION_INTERNAL_TOKEN', 'AUTODATA_STRIPE_SECRET_KEY', 'AUTODATA_STRIPE_WEBHOOK_SECRET'),
-            'postgres': ('POSTGRES_PASSWORD',), 'nats': ('NATS_METRICS_USER', 'NATS_METRICS_PASSWORD'),
+            'outbox-relay': ('AUTODATA_POSTGRES_PASSWORD', 'NATS_OUTBOX_USER', 'NATS_OUTBOX_PASSWORD'),
+            'postgres': ('POSTGRES_PASSWORD',), 'nats': ('NATS_METRICS_USER', 'NATS_METRICS_PASSWORD', 'NATS_OUTBOX_USER', 'NATS_OUTBOX_PASSWORD'),
             'minio': ('S3_WORKER_ACCESS_KEY', 'S3_WORKER_SECRET_KEY', 'S3_API_ACCESS_KEY', 'S3_API_SECRET_KEY'),
             'migration': ('PGPASSWORD',), 'bootstrap': ('AUTODATA_S3_ACCESS_KEY', 'AUTODATA_S3_SECRET_KEY'),
             'metrics-probe': ('AUTODATA_POSTGRES_PASSWORD', 'NATS_METRICS_USER', 'NATS_METRICS_PASSWORD')}
@@ -92,6 +93,8 @@ class ContractTests(unittest.TestCase):
         self.manifest['images']['minio']['image_id'] = 'sha256:7b5ca1f11aa4c91593612d2d4a9e253ec9152a4bd13a19e551290a042a4c52f5'
 
         self.manifest['secret_versions']['ingestion-http']['AUTODATA_INGESTION_INTERNAL_TOKEN'] = self.manifest['secret_versions']['api']['AUTODATA_INGESTION_INTERNAL_TOKEN']
+        for name in ('NATS_OUTBOX_USER', 'NATS_OUTBOX_PASSWORD'):
+            self.manifest['secret_versions']['outbox-relay'][name] = self.manifest['secret_versions']['nats'][name]
 
     def rejected_manifest(self, mutate):
         candidate = copy.deepcopy(self.manifest)
@@ -288,7 +291,7 @@ class ContractTests(unittest.TestCase):
         bundle = self.rt.render_bundle(self.manifest, self.config)
         compose = json.loads(bundle['compose.production.yaml'])
         services = compose['services']
-        self.assertEqual(set(services), {'caddy', 'api', 'ingestion-http', 'article-worker', 'payment-reconciler', 'postgres', 'nats', 'minio', 'migration', 'bootstrap', 'metrics-probe'})
+        self.assertEqual(set(services), {'caddy', 'api', 'ingestion-http', 'article-worker', 'payment-reconciler', 'outbox-relay', 'postgres', 'nats', 'minio', 'migration', 'bootstrap', 'metrics-probe'})
         for name, service in services.items():
             self.assertNotIn('build', service); self.assertNotIn('env_file', service)
             self.assertEqual(service['platform'], 'linux/amd64')
@@ -490,7 +493,7 @@ class EntrypointTests(unittest.TestCase):
                               capture_output=True, text=True, timeout=5)
 
     def test_each_service_loads_literal_approved_values_and_executes_child(self):
-        for service in ('api', 'ingestion-http', 'article-worker', 'payment-reconciler', 'migration', 'bootstrap', 'metrics-probe'):
+        for service in ('api', 'ingestion-http', 'article-worker', 'payment-reconciler', 'outbox-relay', 'migration', 'bootstrap', 'metrics-probe'):
             with self.subTest(service=service):
                 _, values = self.provision(service)
                 result = self.run_script(service)
@@ -595,7 +598,7 @@ class EntrypointTests(unittest.TestCase):
         attacker = self.base / 'caller-bin'; attacker.mkdir()
         malicious = attacker / 'python'
         malicious.write_text('#!/bin/sh\nprintf "%s\\n" caller-path-hijacked\n'); malicious.chmod(0o755)
-        for service in ('ingestion-http', 'article-worker', 'payment-reconciler', 'metrics-probe'):
+        for service in ('ingestion-http', 'article-worker', 'payment-reconciler', 'outbox-relay', 'metrics-probe'):
             with self.subTest(service=service):
                 self.provision(service)
                 command = self.rt.COMMANDS[service]
@@ -1339,7 +1342,7 @@ class RuntimeReadinessTests(unittest.TestCase):
 
     def service_fixture(self, service):
         desired=json.loads(self.rt.render_bundle(self.manifest,self.config)['compose.production.yaml'])['services'][service]
-        role='ingestion' if service in ('ingestion-http','article-worker','payment-reconciler') else service
+        role='ingestion' if service in ('ingestion-http','article-worker','payment-reconciler','outbox-relay') else service
         value=postgres_wire(self.manifest['images'][role]['image_id'])
         value.update(name='/autodata-production-'+service+'-1',user=desired['user'],service=service,
             command=desired['command'],entrypoint=desired.get('entrypoint',['/image-entrypoint']),
@@ -1444,10 +1447,10 @@ class DeployCheckTests(unittest.TestCase):
         self.images = {role: {'image_id': image['image_id'], 'repo_digests': [image['reference']],
                               'os': 'linux', 'architecture': 'amd64', 'variant': ''}
                        for role, image in self.manifest['images'].items()}
-        for service in ('api', 'ingestion-http', 'article-worker', 'payment-reconciler'):
+        for service in ('api', 'ingestion-http', 'article-worker', 'payment-reconciler', 'outbox-relay'):
             self.secret_directory(service, {name: b'opaque-do-not-print' for name in self.rt.SECRET_NAMES[service]})
         self.secret_directory('postgres', {'POSTGRES_PASSWORD': b'opaque-do-not-print'})
-        nats = (HERE / 'nats.conf.template').read_bytes().replace(b'@@NATS_METRICS_USER@@', b'metrics_user').replace(b'@@NATS_METRICS_PASSWORD@@', b'opaque-do-not-print')
+        nats = (HERE / 'nats.conf.template').read_bytes().replace(b'@@NATS_METRICS_USER@@', b'metrics_user').replace(b'@@NATS_METRICS_PASSWORD@@', b'opaque-do-not-print').replace(b'@@NATS_OUTBOX_USER@@', b'publisher_user').replace(b'@@NATS_OUTBOX_PASSWORD@@', b'publisher-opaque-do-not-print')
         self.secret_directory('nats', {'nats.conf': nats})
         s3 = (HERE / 'seaweedfs-s3.json.template').read_bytes()
         for name in ('S3_WORKER_ACCESS_KEY', 'S3_WORKER_SECRET_KEY', 'S3_API_ACCESS_KEY', 'S3_API_SECRET_KEY'):
@@ -1471,7 +1474,7 @@ class DeployCheckTests(unittest.TestCase):
             if relative is not None:
                 parts = relative.parts
                 service = parts[1] if len(parts) >= 2 and parts[0] == 'secrets' else None
-                owner = 999 if service == 'postgres' else (1000 if service in ('api', 'ingestion-http', 'article-worker', 'payment-reconciler', 'nats', 'minio') else 0)
+                owner = 999 if service == 'postgres' else (1000 if service in ('api', 'ingestion-http', 'article-worker', 'payment-reconciler', 'outbox-relay', 'nats', 'minio') else 0)
                 result[4] = result[5] = owner
                 if path == self.wrong_owner: result[4] = 12345
                 if path == self.wrong_group: result[5] = 12345
@@ -1721,6 +1724,9 @@ class DeployCheckTests(unittest.TestCase):
             self.assertFalse(self.deploy()[1]['checks']['secrets'])
             target.chmod(0o600); target.write_bytes(before); target.chmod(0o400)
         target = Path(self.rt.SECRET_ROOT) / 'nats/nats.conf'; before = target.read_bytes()
+        target.chmod(0o600); target.write_bytes(before.replace(b'publisher_user', b'metrics_user')); target.chmod(0o400)
+        self.assertFalse(self.deploy()[1]['checks']['secrets'])
+        target.chmod(0o600); target.write_bytes(before); target.chmod(0o400)
         target.chmod(0o600); target.write_bytes(before.replace(b'["$JS.API.INFO"]', b'[">"]')); target.chmod(0o400)
         self.assertFalse(self.deploy()[1]['checks']['secrets'])
         target.chmod(0o600); target.write_bytes(before); target.chmod(0o400)

@@ -214,8 +214,9 @@ hash validation, closing the escaped-secret follow-up found on the revised
 candidate. A further review found an unpaired-surrogate inspection error that
 could omit persisted originals from inventory; the candidate makes scanning
 surrogate-safe, records inventory before inspection, and quarantines any
-unexpected inspection failure with regressions. Independent exact-final-SHA review remains
-pending; this is a tool-delivery candidate, with real-source acceptance zero.
+unexpected inspection failure with regressions. Independent review of
+`6e7105a5280345006a9e67cc88205ffbc22c2126` found no remaining P1/P2
+within the offline-tool scope; real-source acceptance remains zero.
 
 The `capture` command currently returns `EXECUTION_GATE_REQUIRED` before any
 approval/credential descriptor is read. `validate` checks syntax only.
@@ -225,3 +226,60 @@ transports use the same watched-child spool path. The direct standard-library
 HTTPS worker has no authorized real-run entrypoint under this gate. A later
 committed enrolled gate must provide the distinct approval boundary before
 authenticated execution; a fabricated receipt cannot unlock this candidate.
+
+## Production host relay wiring follow-up (2026-11-05)
+
+At source baseline `c0be267fe31dc578bec0b8528679b6fd6671ed12`, development
+Compose includes the publication relay, but the GCE production template and
+normal-service runtime graph omit it. The host ingestion image also lacks the
+enrichment relay package/script, and its NATS configuration permits only the
+metrics identity. These repository omissions prevent the required publication
+event path; this statement is not a live-host inspection.
+
+The bounded plan is `docs/superpowers/plans/2026-11-05-production-outbox-relay.md`,
+tracked in [child Issue #303](https://github.com/lucronn/autodata/issues/303) of
+#186 and [Project #8](https://github.com/users/lucronn/projects/8). The synchronized
+record is `docs/agents/records/2026-11-05-production-outbox-relay.json`.
+Goal: Wire the existing publication outbox relay into the production GCE host graph with packaged code, dedicated PostgreSQL/NATS credentials, restricted broker permissions and fail-closed runtime verification.
+
+Concrete todo:
+
+- [x] Add failing relay packaging, render/topology, secret-contract, NATS authentication/ACL and runtime graph/readiness regressions.
+- [x] Package the existing relay in the ingestion image and wire its dedicated backend-only service, credentials, manifest/private-material contract and narrowly scoped database/broker privileges.
+- [x] Run focused and complete host regressions plus an isolated real PostgreSQL/NATS relay smoke proving canonical event delivery, replay identity and denied unrelated permissions; retain exact candidate evidence.
+- [ ] Commit and push validated milestones, independently review the exact candidate, and synchronize Issue/Project/canonical documentation with verification evidence; deployment remains a separate decision.
+
+The implemented relay contract uses the existing ingestion image, backend-only relay
+address `172.30.20.14`, dedicated `autodata_outbox` database identity and a
+separate NATS publisher with exact publication/stream-create/info permissions.
+The plan defines the authoritative file allowlist and secret/ACL details.
+Existing delivery leases, stable Nats-Msg-Id/idempotency_key and consumer
+deduplication remain required. Actual credential/role provisioning, private
+broker-config delivery and live service activation require separate deployment
+authorization. Candidate `8f3735820670a027e2237c62bf2b85dcb94f0cd3` has passed
+local real-service delivery/replay/ACL/outage verification; see
+`docs/verification/2026-11-05-production-outbox-relay.md`. The separately gated
+host activation fix includes relay startup, stop, recovery and a bounded exact
+nine-service inventory. Local verification passes (433 host tests, 104 focused
+activation tests and the real-service smoke); final independent review remains
+pending. No deployment has occurred.
+
+### Production relay activation scope amendment
+
+Original gate `a13cf0879d3551eec23c119829c7993b6b5bd6de` remains preserved.
+Review at candidate `e8473a792e86d7b19f7b2de2e22bc35b3c1cf5b3` found that
+`host_activation.py` APPS/start/stop/recovery/inventory and its eight-service cap
+would omit or reject the relay. The synchronized Issue #303/Project #8 plan now
+adds exactly `infra/deploy/gce/host_activation.py` and
+`infra/deploy/gce/test_host_activation.py`, for15 intended implementation paths.
+Task index: `docs/agents/tasks/2026-11-03-production-release/production-outbox-relay.json`.
+
+Additional concrete todo:
+
+- [x] Include outbox-relay in host activation startup, stop, recovery and inventory, replace the eight-service inventory cap with the exact nine-service graph, and prove missing, stopped, duplicate, foreign or tenth-container rejection in activation regressions.
+
+The exact normal-service graph is nine services: caddy, api, ingestion-http,
+article-worker, payment-reconciler, outbox-relay, postgres, nats and minio.
+Preserve maintenance-first startup, orderly stop/recovery, exact inventory
+identity/security checks, duplicate rejection and foreign/tenth-container denial.
+This amendment authorizes no live host or service operation.

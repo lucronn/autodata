@@ -28,6 +28,7 @@ DATA, RUN = '/var/lib/autodata', '/run/autodata'
 BIN = '/opt/autodata/bin/'
 OPERATION = 'install-first-application-private-material'
 SERVICE_NAMES = {
+    'outbox-relay': ('AUTODATA_POSTGRES_PASSWORD', 'NATS_OUTBOX_USER', 'NATS_OUTBOX_PASSWORD'),
     'api': ('AUTODATA_POSTGRES_PASSWORD', 'AUTODATA_S3_ACCESS_KEY', 'AUTODATA_S3_SECRET_KEY', 'AUTODATA_INGESTION_INTERNAL_TOKEN', 'AUTODATA_IMAGE_URL_KEY'),
     'ingestion-http': ('AUTODATA_POSTGRES_PASSWORD', 'AUTODATA_S3_ACCESS_KEY', 'AUTODATA_S3_SECRET_KEY', 'AUTODATA_INGESTION_INTERNAL_TOKEN', 'AUTODATA_STRIPE_SECRET_KEY', 'AUTODATA_STRIPE_WEBHOOK_SECRET', 'BANKONE_API_TOKEN', 'BANKTWO_API_TOKEN'),
     'article-worker': ('AUTODATA_POSTGRES_PASSWORD', 'AUTODATA_S3_ACCESS_KEY', 'AUTODATA_S3_SECRET_KEY', 'BANKONE_API_TOKEN', 'BANKTWO_API_TOKEN', 'INCEPTION_API_KEY'),
@@ -164,6 +165,7 @@ def validate_pinned_first_manifest(manifest, config, schema_bytes, runtime):
     require(len(runtime.canonical_bytes(manifest)) <= runtime.MAX_JSON_BYTES)
     require(manifest['service_config_sha256'] == config_hash)
     runtime._validate_immutable_images(manifest, config)
+    runtime._validate_internal_token_reference(manifest)
     files = manifest['migrations']['files']
     require(len(files) <= 999)
     require([f['name'] for f in files] == sorted(f['name'] for f in files))

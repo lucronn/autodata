@@ -245,8 +245,9 @@ hash validation, closing the escaped-secret follow-up found on the revised
 candidate. A further review found an unpaired-surrogate inspection error that
 could omit persisted originals from inventory; the candidate makes scanning
 surrogate-safe, records inventory before inspection, and quarantines any
-unexpected inspection failure with regressions. Independent exact-final-SHA review remains
-pending; this is a tool-delivery candidate, with real-source acceptance zero.
+unexpected inspection failure with regressions. Independent review of
+`6e7105a5280345006a9e67cc88205ffbc22c2126` found no remaining P1/P2
+within the offline-tool scope; real-source acceptance remains zero.
 
 The `capture` command currently returns `EXECUTION_GATE_REQUIRED` before any
 approval/credential descriptor is read. `validate` checks syntax only.

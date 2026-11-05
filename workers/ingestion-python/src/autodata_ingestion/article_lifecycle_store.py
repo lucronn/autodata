@@ -401,6 +401,18 @@ def mark_rewrite_dispatched(repo,lease,attempt):
         if changed is None: raise ValueError("attempt cannot dispatch again")
 
 
+def _bind_v2_operations(source, candidate, response):
+    """Rebuild from the persisted selector response, under the caller's lock."""
+    from .procedure_rewrite_v2 import render_v2
+    from .article_lifecycle_types import digest_json
+    try:
+        expected = render_v2(source, response)
+    except ValueError as error:
+        raise ValueError("rewrite operation binding mismatch") from error
+    if digest_json(candidate) != digest_json(expected):
+        raise ValueError("rewrite operation binding mismatch")
+
+
 def store_rewrite_result(repo,lease,result):
     from .article_lifecycle_types import digest_json
     from .article_document import project_ordered_document
@@ -422,6 +434,8 @@ def store_rewrite_result(repo,lease,result):
             or result.model_metadata.get("prompt_hash")!=attempt["prompt_hash"]
             or result.output_hash!=digest_json(result.document)):
             raise ValueError("rewrite input/output binding mismatch")
+        if result.profile_version == "technical-prose-v2" and not result.error_code:
+            _bind_v2_operations(job["checkpoint"]["normalized_document"], result.document, result.raw_response)
         revision=uuid4()
         cur.execute("""INSERT INTO canonical_article_revisions
             (canonical_article_revision_id,canonical_article_id,source_revision_id,transformation_key,normalization_version,rewrite_profile_version,status,
@@ -449,7 +463,13 @@ def store_validation(repo,lease,validation):
         candidate=cur.execute("SELECT * FROM canonical_article_revisions WHERE transformation_key=%s FOR UPDATE",(job["transformation_key"],)).fetchone()
         if candidate is None: raise ValueError("missing candidate")
         expected=validate_article_rewrite(candidate["normalized_source_document"],candidate["canonical_document"],profile_version=job["rewrite_profile_version"])
-        if expected != validation: raise ValueError("validation report binding mismatch")
+        if (expected != validation or (job["rewrite_profile_version"] == "technical-prose-v2"
+            and (type(validation.passed) is not bool or digest_json(expected.report) != digest_json(validation.report)))):
+            raise ValueError("validation report binding mismatch")
+        if expected.passed and job["rewrite_profile_version"] == "technical-prose-v2":
+            attempt=cur.execute("SELECT response FROM canonical_article_rewrite_attempts WHERE canonical_article_revision_id=%s AND status='succeeded'",(candidate["canonical_article_revision_id"],)).fetchone()
+            if attempt is None: raise ValueError("rewrite operation binding mismatch")
+            _bind_v2_operations(candidate["normalized_source_document"], candidate["canonical_document"], attempt["response"])
         if candidate["status"] in ("validated","rejected"):
             if candidate["validation_report"]!=validation.report: raise ValueError("validation is immutable")
             return
@@ -477,6 +497,9 @@ def publish_article_revision(repo,lease,revision_id,*,hooks=None):
         if row is None: raise ValueError("missing candidate")
         projection=project_ordered_document(row["canonical_document"])
         validation=validate_article_rewrite(row["normalized_source_document"],row["canonical_document"],profile_version=job["rewrite_profile_version"])
+        if (job["rewrite_profile_version"] == "technical-prose-v2"
+            and digest_json(row["validation_report"]) != digest_json(validation.report)):
+            raise ValueError("publication binding validation failed")
         if (row["status"]!="validated" or row["transformation_key"]!=job["transformation_key"]
             or row["source_revision_id"]!=job["source_revision_id"] or row["canonical_article_id"]!=job["canonical_article_id"]
             or row["normalization_version"]!=job["normalization_version"] or row["rewrite_profile_version"]!=job["rewrite_profile_version"]
@@ -493,6 +516,8 @@ def publish_article_revision(repo,lease,revision_id,*,hooks=None):
             or attempt["model"]!=row["model_metadata"].get("model")
             or attempt["profile_version"]!=row["model_metadata"].get("profile_version")):
             raise ValueError("publication attempt binding failed")
+        if job["rewrite_profile_version"] == "technical-prose-v2":
+            _bind_v2_operations(row["normalized_source_document"], row["canonical_document"], attempt["response"])
         cur.execute("UPDATE canonical_article_revisions SET status='published',published_at=clock_timestamp() WHERE canonical_article_revision_id=%s",(revision_id,))
         if hooks is not None:hooks("inside_publication")
         cur.execute("UPDATE canonical_articles SET current_canonical_revision_id=%s,updated_at=clock_timestamp() WHERE canonical_article_id=%s",(revision_id,lease.canonical_article_id))
