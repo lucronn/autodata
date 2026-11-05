@@ -3455,7 +3455,7 @@ class API21RawInspectorTests(unittest.TestCase):
             self.assertEqual(result['verified_case_ids'],[])
         model=self.model();model[0]['result']['passed']=False
         model[0]['result'].pop('final_snapshot');model[0]['result'].pop('worker_exits')
-        model[0]['evidence']['results']=[]
+        model[0]['evidence']['results']=[];model[0]['evidence'].pop('browser_versions')
         result=self.inspect(model)
         self.assertEqual(result['diagnostics'][0]['category'],'producer_partial')
 
@@ -3565,7 +3565,7 @@ class API21RawInspectorTests(unittest.TestCase):
     def test_source_early_failure_can_omit_only_ready_and_evidence(self):
         model=self.model();item=model[0];item['result']['passed']=False
         item['result'].pop('final_snapshot');item['result'].pop('worker_exits')
-        item['evidence']['results']=[]
+        item['evidence']['results']=[];item['evidence'].pop('browser_versions')
         raw=self.files(model);prefix=item['case']['case_prefix']
         for names in (('browser/evidence.json',),('ready.json','browser/evidence.json')):
             changed=raw.copy()
@@ -3634,9 +3634,37 @@ class API21RawInspectorTests(unittest.TestCase):
             item['result'].pop('worker_exits')
             item['evidence']['results']=[] if status=='empty' else [dict(browser=item['case']['engine'],
                 scenario=item['case']['root'],status='failed',elapsed_seconds=1,error='PRIVATE_SENTINEL')]
+            if status=='empty':item['evidence'].pop('browser_versions')
             with self.subTest(status=status),self.assertRaises(assembler.ContractError):self.inspect(model,real=True)
         model=self.model();item=model[3];item['result']['passed']=False;item['result'].pop('final_snapshot')
         with self.assertRaises(assembler.ContractError):self.inspect(model,real=True)
+
+    def test_closed_nonpass_browser_version_and_elapsed_branch_matrix(self):
+        def branch(status,versions,elapsed):
+            model=self.model();item=model[3];item['result']['passed']=False
+            item['result'].pop('final_snapshot');item['result'].pop('worker_exits')
+            if status=='empty':item['evidence']['results']=[]
+            elif status!='passed':
+                row=dict(browser=item['case']['engine'],scenario=item['case']['root'],status=status,error='PRIVATE_SENTINEL')
+                if elapsed:row['elapsed_seconds']=1
+                item['evidence']['results']=[row]
+            if not versions:item['evidence'].pop('browser_versions')
+            return model
+        for status,versions,elapsed in (('unavailable',True,False),('empty',True,False),('unavailable',False,True)):
+            with self.subTest(status=status,versions=versions,elapsed=elapsed),self.assertRaises(assembler.ContractError):
+                self.inspect(branch(status,versions,elapsed),real=True)
+        model=self.model();item=model[3];item['result']['passed']=False
+        item['evidence'].pop('browser_versions')
+        with self.assertRaises(assembler.ContractError):self.inspect(model,real=True)
+        for status,versions,elapsed in (('passed',True,True),('failed',True,True),
+            ('passed',False,True),('failed',False,True),('unavailable',False,False),('empty',False,False)):
+            with self.subTest(positive=status):
+                result=self.inspect(branch(status,versions,elapsed),real=True)
+                self.assertEqual(len(result['observed_case_ids']),20)
+                self.assertEqual(result['verified_case_ids'],[])
+                self.assertEqual(result['accepted_case_credit'],0)
+                self.assertEqual(result['diagnostics'][0]['category'],
+                    'producer_partial' if status in ('passed','empty') else 'producer_'+status)
 
 
 if __name__ == '__main__': unittest.main()

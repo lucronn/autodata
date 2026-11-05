@@ -2141,14 +2141,18 @@ def _api21_evidence(evidence, ready, engine, root, *, passed):
     require(evidence['sdk_sha256'] == ready['sdk_sha256'] == API21_SOURCE_ASSETS['firebase-web.mjs']['sha256'] and
         provenance['certificate_sha256'] == ready['certificate_sha256'], 'api21_provenance_seam')
     rows=evidence['results']; array(rows); require(len(rows) <= 1 and (not passed or len(rows) == 1), 'api21_result_inventory')
-    if not rows: return None
+    if not rows:
+        require('browser_versions' not in evidence, 'api21_browser_metadata_branch')
+        return None
     row=rows[0]
     require(type(row) is dict and row.get('browser') == engine and row.get('scenario') == root,
             'api21_row_identity')
     enum(row.get('status'), ('passed','failed','unavailable'))
     if row['status'] != 'passed':
         fields=('browser','scenario','status','error')
-        exact(row, (*fields,'elapsed_seconds') if 'elapsed_seconds' in row else fields)
+        require(row['status'] != 'unavailable' or 'browser_versions' not in evidence,
+                'api21_browser_metadata_branch')
+        exact(row, (*fields,'elapsed_seconds') if row['status'] == 'failed' else fields)
         require(row['status'] != 'failed' or 'elapsed_seconds' in row, 'api21_failed_row')
         if 'elapsed_seconds' in row: _api21_elapsed(row['elapsed_seconds'])
         require(type(row['error']) is str and len(row['error']) <= 65536, 'api21_failed_row')
@@ -2232,7 +2236,8 @@ def inspect_api21_receipts(store, *, candidate_sha, trusted_base_sha, profile_sh
         google=root == API21_CASES[0][1]; isolation=root == 'test_browser_account_scope_and_revocation_real_api'
         refund=root == 'test_browser_signed_refund_blocks_old_links_real_api'
         require('worker_exits' not in result or 'final_snapshot' in result, 'api21_retained_source_order')
-        require('final_snapshot' not in result or row is not None and row['status'] == 'passed',
+        require('final_snapshot' not in result or row is not None and row['status'] == 'passed' and
+                'browser_versions' in evidence,
                 'api21_retained_source_order')
         final_order=None
         if 'final_snapshot' in result:

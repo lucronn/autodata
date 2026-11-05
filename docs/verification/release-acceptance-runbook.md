@@ -562,3 +562,15 @@ requires a retained successful browser row, and worker cleanup records require a
 final snapshot. Failed/empty browser observations cannot acquire those later
 fields. Genuine early failures and failures after successful browser observation
 remain nonpass without inventing absent records.
+
+The single-engine nonpass browser branches remain closed: launch-unavailable
+rows contain no elapsed time or browser-version metadata, and empty results
+contain no browser-version metadata. A retained passed/failed row in an overall
+nonpass result may lack browser-version metadata because the source appends its
+row before reading that property; this legitimate interrupted branch is retained.
+An overall successful result still requires its exact selected-engine version.
+
+A present final snapshot additionally requires selected-engine browser-version
+metadata: the child assigns that snapshot only after a successful browser exit.
+The interrupted row-without-version branch remains valid when no final snapshot
+or cleanup records have yet been assigned.
