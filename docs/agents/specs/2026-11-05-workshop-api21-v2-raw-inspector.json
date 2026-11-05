@@ -1,0 +1,2337 @@
+{
+  "schema_version": 1,
+  "task_id": "workshop-api21-v2-raw-inspector",
+  "status": "synchronized",
+  "goal": "Add an internal API21 producer-v2 retained-byte consistency inspector bound to the exact Task51 source candidate while preserving historical v1 semantics and every runtime, acceptance and release block",
+  "todo": [
+    "Admit exact Task51 candidate 6949eb1b1a5b93c9b2eb0579328e24c697f6f331 and tree 47ec54b1896c83a39b6637a6ce944d3620414f4e only after completed source-push and actual PR checkout CI review; preserve every failure, skip and external status, freeze current seven producer inputs, served assets, 21 ordered cases and source-to-receipt mapping without transferring historical fixture credit.",
+    "Independently review the closed v2 schema, branch matrix, source manifests, redaction and semantic mutation matrix in this six-document draft; preserve all 51 queue objects and root fields and append only ordinal52, with all authorities false until exact checkpoint admission.",
+    "Synchronize this literal goal, six todo strings, six gate paths and exact three implementation paths in Issue186 and existing Project8 item PVTI_lAHOCSJ8cc4BiQ2BzhFocs4 with before/after readbacks; commit/push the six-document checkpoint from the admitted Task51 source, externally seal its actual SHA/tree, extract standalone and nested records and policy at that SHA, require both canonical preflights errors=[] and independent exact-checkpoint review before explicit code-only dispatch.",
+    "Write independent fake-byte red tests, then add only inspect_api21_v2_receipts and private v2 helpers in scripts/dev/release_acceptance.py with confined ArtifactStore reads, exact current candidate/source/asset bindings, closed schemas and retained-body/hash/process/log/phase consistency; preserve inspect_api21_receipts and all v1 behavior, with no producer import, execution, CLI dispatch, profile registration or transport activation.",
+    "Add semantic tamper, truncation, stale or mixed binding, identity, checkout loss/retry, scope denial, settlement/refund, owner/restart/warm, process/log/publication/cleanup interruption and secret-bearing body tests; append the current-source v2 limitations to the runbook, keeping status unavailable, complete false, verified IDs empty, both credits zero, all acceptance flags false and disabled public CLI exit3.",
+    "Run focused and full release-acceptance, applicable developer/autonomy and existing fake browser/observability checks plus exact-path preservation and diff checks; retain actual commands/counts/skips/failures, commit and promptly push validated coherent milestones after dispatch, obtain independent exact-code review and fresh push plus actual PR checkout CI, leaving capture, compiler/timers, host/runtime, profile, fixture180, staging and release separately gated."
+  ],
+  "source_binding": {
+    "candidate_sha": "6949eb1b1a5b93c9b2eb0579328e24c697f6f331",
+    "candidate_tree": "47ec54b1896c83a39b6637a6ce944d3620414f4e",
+    "source_admitted": true,
+    "admission_status": "terminal_source_CI_admitted_tracking_synchronized_checkpoint_pending",
+    "checkpoint_sha": null,
+    "checkpoint_tree": null,
+    "implementation_sha": null,
+    "historical_B": "b8371e305066574b5845c58ac70fca4b5ed197ea",
+    "historical_B_already_ancestor": true,
+    "historical_v1_candidate": "b6279480dc57f81f11f93435ae5b3d10b5ae262f",
+    "historical_v1_tree": "9105b372988ca2fc2827310c4806cb826a395bda",
+    "identity_rule": "Source candidate, future checkpoint and future consumer implementation identities are distinct; own-tree checkpoint identity remains null and is externally sealed. V2 producer/served bytes bind fixed Task51, never old C/product217 or changed consumer bytes.",
+    "ci": {
+      "status": "terminal_success_source_only_admitted",
+      "captured_at": "2026-11-05T01:57:11.011081+00:00",
+      "source_sha": "6949eb1b1a5b93c9b2eb0579328e24c697f6f331",
+      "source_tree": "47ec54b1896c83a39b6637a6ce944d3620414f4e",
+      "audit_report_ref": "/home/corp/autodata-evidence/task51-terminal-ci-audit/REPORT.md",
+      "audit_report_sha256": "f0fa41ef50facfaa1f6d317dc3bee98a554c3b5ecc53ec15b5a28ab511fb9ece",
+      "audit_summary_ref": "/home/corp/autodata-evidence/task51-terminal-ci-audit/summary.json",
+      "audit_summary_sha256": "fce2b8c9d7401e6529078e92e6f3c8258ae722b3f1b0ae55f004420439f0fcf0",
+      "all_run_count": 8,
+      "all_job_count": 24,
+      "all_step_count": 328,
+      "failed_or_skipped_jobs_or_steps": 0,
+      "policy_suite_skip_free": false,
+      "scope": "Source/unit/contract/local-Compose, DTO120 fixture and synthetic/owned-child R3 preparation CI only; no real provider/live API21 browser/fixture180/staging/deployment acceptance.",
+      "source_actions_success_observed": true,
+      "actual_PR_checkout_sha": "e06844fddd3c8dbc3315bf4414b39de007f11f29",
+      "actual_PR_checkout_tree": "47ec54b1896c83a39b6637a6ce944d3620414f4e",
+      "actual_PR_checkout_logs_verified": true,
+      "source_and_PR_checkout_trees_equal": true,
+      "full_rollup_success_claimed": false,
+      "full_check_rollup": "not_green_external_vercel_failure",
+      "external_statuses": {
+        "271": [
+          {
+            "context": "Vercel",
+            "state": "failure",
+            "description": "Deployment rate limited \u2014 retry in 24 hours.",
+            "target_url": "https://vercel.com/curtt?upgradeToPro=build-rate-limit"
+          }
+        ],
+        "270": [
+          {
+            "context": "Vercel",
+            "state": "failure",
+            "description": "Deployment has failed \u2014 run this Vercel CLI command: npx vercel inspect dpl_EcgHcY1XuoUeDY9G2G9tkYkyVWUD --logs",
+            "target_url": "https://vercel.com/curtt/autodata-key-manager/EcgHcY1XuoUeDY9G2G9tkYkyVWUD"
+          }
+        ],
+        "269": [
+          {
+            "context": "Vercel",
+            "state": "failure",
+            "description": "Deployment rate limited \u2014 retry in 24 hours.",
+            "target_url": "https://vercel.com/curtt?upgradeToPro=build-rate-limit"
+          }
+        ],
+        "268": [
+          {
+            "context": "Vercel",
+            "state": "failure",
+            "description": "Deployment rate limited \u2014 retry in 24 hours.",
+            "target_url": "https://vercel.com/curtt?upgradeToPro=build-rate-limit"
+          }
+        ]
+      },
+      "real_acceptance_credit": 0,
+      "runs": [
+        {
+          "pr": 271,
+          "id": 41949840671,
+          "url": "https://github.com/lucronn/autodata/actions/runs/41949840671",
+          "event": "pull_request",
+          "reported_head_sha": "6949eb1b1a5b93c9b2eb0579328e24c697f6f331",
+          "actual_checkout_sha": "e06844fddd3c8dbc3315bf4414b39de007f11f29",
+          "actual_checkout_tree": "47ec54b1896c83a39b6637a6ce944d3620414f4e",
+          "status": "completed",
+          "conclusion": "success",
+          "job_count": 3,
+          "successful_step_count": 41,
+          "checkout_verified_all_jobs": true,
+          "dto_artifacts": [
+            {
+              "id": 13379788962,
+              "zip_sha256": "83769afc8e2afaaee9141bfc42597204cd2f217a15e73c594e5dfab83035417e",
+              "candidate_sha": "e06844fddd3c8dbc3315bf4414b39de007f11f29",
+              "receipt": {
+                "attempt_id": "1a40dd3b81e10cdfff853348f04716fc",
+                "candidate_sha": "e06844fddd3c8dbc3315bf4414b39de007f11f29",
+                "cleanup_status": "verified",
+                "epoch": 0,
+                "evidence_sha256": "e299d5eadf2c354f0cb0290dec7c4bdb23ff0ddbf64dad98ef08cba6dc1e0143",
+                "terminal_state": "committed",
+                "timing_contract_sha256": "a838b45f1f4960b997103cfaeb5edfb9f0e43f84ce7595ab13ea55116adf3db3",
+                "version": "v1"
+              },
+              "mode": "dto-fixture",
+              "result_count": 120,
+              "unique_pairs": 120,
+              "status_counts": {
+                "passed": 120
+              },
+              "browser_counts": {
+                "chromium": 40,
+                "firefox": 40,
+                "webkit": 40
+              },
+              "runtime_blockers": [
+                "independent_watchdog_not_admitted",
+                "descendant_containment_not_admitted",
+                "trace_16MiB_producer_8MiB_consumer_not_admitted"
+              ],
+              "timing_contract_sha256": "a838b45f1f4960b997103cfaeb5edfb9f0e43f84ce7595ab13ea55116adf3db3"
+            }
+          ]
+        },
+        {
+          "pr": 271,
+          "id": 41949810868,
+          "url": "https://github.com/lucronn/autodata/actions/runs/41949810868",
+          "event": "push",
+          "reported_head_sha": "6949eb1b1a5b93c9b2eb0579328e24c697f6f331",
+          "actual_checkout_sha": "6949eb1b1a5b93c9b2eb0579328e24c697f6f331",
+          "actual_checkout_tree": "47ec54b1896c83a39b6637a6ce944d3620414f4e",
+          "status": "completed",
+          "conclusion": "success",
+          "job_count": 3,
+          "successful_step_count": 41,
+          "checkout_verified_all_jobs": true,
+          "dto_artifacts": [
+            {
+              "id": 13381200356,
+              "zip_sha256": "b2975c4d4947662c5d552026b6d9e33f7a3dbb0d7d6576c6ee9a7c48b197a20e",
+              "candidate_sha": "6949eb1b1a5b93c9b2eb0579328e24c697f6f331",
+              "receipt": {
+                "attempt_id": "de0391f87d25a76a76f27e10a275cad0",
+                "candidate_sha": "6949eb1b1a5b93c9b2eb0579328e24c697f6f331",
+                "cleanup_status": "verified",
+                "epoch": 0,
+                "evidence_sha256": "b4bc336f5b3a39cab7b2f845bdbd445b2b878ba7e0f0f0b77d900fab4feec33c",
+                "terminal_state": "committed",
+                "timing_contract_sha256": "a838b45f1f4960b997103cfaeb5edfb9f0e43f84ce7595ab13ea55116adf3db3",
+                "version": "v1"
+              },
+              "mode": "dto-fixture",
+              "result_count": 120,
+              "unique_pairs": 120,
+              "status_counts": {
+                "passed": 120
+              },
+              "browser_counts": {
+                "chromium": 40,
+                "firefox": 40,
+                "webkit": 40
+              },
+              "runtime_blockers": [
+                "independent_watchdog_not_admitted",
+                "descendant_containment_not_admitted",
+                "trace_16MiB_producer_8MiB_consumer_not_admitted"
+              ],
+              "timing_contract_sha256": "a838b45f1f4960b997103cfaeb5edfb9f0e43f84ce7595ab13ea55116adf3db3"
+            }
+          ]
+        },
+        {
+          "pr": 270,
+          "id": 41949573403,
+          "url": "https://github.com/lucronn/autodata/actions/runs/41949573403",
+          "event": "pull_request",
+          "reported_head_sha": "5fd390081be2a4210fdc223326e190d30990969b",
+          "actual_checkout_sha": "e1e444ae2b29ea8751bcf4eb857fd480afc72101",
+          "actual_checkout_tree": "8000dd785bbb08604ae15589b215b3b6ba32972d",
+          "status": "completed",
+          "conclusion": "success",
+          "job_count": 3,
+          "successful_step_count": 41,
+          "checkout_verified_all_jobs": true,
+          "dto_artifacts": [
+            {
+              "id": 13380252653,
+              "zip_sha256": "b00888bd899b90056cb0e4494af7cc39debc21aeb7045d860681f752ccbe025c",
+              "candidate_sha": "e1e444ae2b29ea8751bcf4eb857fd480afc72101",
+              "receipt": {
+                "attempt_id": "a9c408f1c715646a785b4914dc88a244",
+                "candidate_sha": "e1e444ae2b29ea8751bcf4eb857fd480afc72101",
+                "cleanup_status": "verified",
+                "epoch": 0,
+                "evidence_sha256": "769732f0edd9b45930470225b89590d92de8a720693058703a3c8adcd2886a27",
+                "terminal_state": "committed",
+                "timing_contract_sha256": "a838b45f1f4960b997103cfaeb5edfb9f0e43f84ce7595ab13ea55116adf3db3",
+                "version": "v1"
+              },
+              "mode": "dto-fixture",
+              "result_count": 120,
+              "unique_pairs": 120,
+              "status_counts": {
+                "passed": 120
+              },
+              "browser_counts": {
+                "chromium": 40,
+                "firefox": 40,
+                "webkit": 40
+              },
+              "runtime_blockers": [
+                "independent_watchdog_not_admitted",
+                "descendant_containment_not_admitted",
+                "trace_16MiB_producer_8MiB_consumer_not_admitted"
+              ],
+              "timing_contract_sha256": "a838b45f1f4960b997103cfaeb5edfb9f0e43f84ce7595ab13ea55116adf3db3"
+            }
+          ]
+        },
+        {
+          "pr": 270,
+          "id": 41949392306,
+          "url": "https://github.com/lucronn/autodata/actions/runs/41949392306",
+          "event": "push",
+          "reported_head_sha": "5fd390081be2a4210fdc223326e190d30990969b",
+          "actual_checkout_sha": "5fd390081be2a4210fdc223326e190d30990969b",
+          "actual_checkout_tree": "8000dd785bbb08604ae15589b215b3b6ba32972d",
+          "status": "completed",
+          "conclusion": "success",
+          "job_count": 3,
+          "successful_step_count": 41,
+          "checkout_verified_all_jobs": true,
+          "dto_artifacts": [
+            {
+              "id": 13380626198,
+              "zip_sha256": "65571e3682f41af53f5afc007f3b0990e96b31d43fbd9ae9d922f77e5fe9c3d9",
+              "candidate_sha": "5fd390081be2a4210fdc223326e190d30990969b",
+              "receipt": {
+                "attempt_id": "54361682b560b41d64b702ebeb867145",
+                "candidate_sha": "5fd390081be2a4210fdc223326e190d30990969b",
+                "cleanup_status": "verified",
+                "epoch": 0,
+                "evidence_sha256": "fa650106dfb7b473ad45e8859a16e63ff06e9727903934572a1cd9a450657e25",
+                "terminal_state": "committed",
+                "timing_contract_sha256": "a838b45f1f4960b997103cfaeb5edfb9f0e43f84ce7595ab13ea55116adf3db3",
+                "version": "v1"
+              },
+              "mode": "dto-fixture",
+              "result_count": 120,
+              "unique_pairs": 120,
+              "status_counts": {
+                "passed": 120
+              },
+              "browser_counts": {
+                "chromium": 40,
+                "firefox": 40,
+                "webkit": 40
+              },
+              "runtime_blockers": [
+                "independent_watchdog_not_admitted",
+                "descendant_containment_not_admitted",
+                "trace_16MiB_producer_8MiB_consumer_not_admitted"
+              ],
+              "timing_contract_sha256": "a838b45f1f4960b997103cfaeb5edfb9f0e43f84ce7595ab13ea55116adf3db3"
+            }
+          ]
+        },
+        {
+          "pr": 269,
+          "id": 41948467742,
+          "url": "https://github.com/lucronn/autodata/actions/runs/41948467742",
+          "event": "pull_request",
+          "reported_head_sha": "7ce2a6f7decde5a59a3d9b3cb018d0e7373003a3",
+          "actual_checkout_sha": "3fe3e7f1ab03b54d64269e706ed1ab8325c0057f",
+          "actual_checkout_tree": "2300acbac301355338237c5cd9a649d8f5e35fe5",
+          "status": "completed",
+          "conclusion": "success",
+          "job_count": 3,
+          "successful_step_count": 41,
+          "checkout_verified_all_jobs": true,
+          "dto_artifacts": [
+            {
+              "id": 13379966654,
+              "zip_sha256": "9dc483fd0c8dacee466d32a697d17d79e4521b53836c709c8e4d51ceb946c736",
+              "candidate_sha": "3fe3e7f1ab03b54d64269e706ed1ab8325c0057f",
+              "receipt": {
+                "attempt_id": "f00eaaabb2a6b8162b2ddc295e7fad16",
+                "candidate_sha": "3fe3e7f1ab03b54d64269e706ed1ab8325c0057f",
+                "cleanup_status": "verified",
+                "epoch": 0,
+                "evidence_sha256": "22eb33beab1330a8873f8432753dc9da4f263fde9aac883535e01520f55627f7",
+                "terminal_state": "committed",
+                "timing_contract_sha256": "a838b45f1f4960b997103cfaeb5edfb9f0e43f84ce7595ab13ea55116adf3db3",
+                "version": "v1"
+              },
+              "mode": "dto-fixture",
+              "result_count": 120,
+              "unique_pairs": 120,
+              "status_counts": {
+                "passed": 120
+              },
+              "browser_counts": {
+                "chromium": 40,
+                "firefox": 40,
+                "webkit": 40
+              },
+              "runtime_blockers": [
+                "independent_watchdog_not_admitted",
+                "descendant_containment_not_admitted",
+                "trace_16MiB_producer_8MiB_consumer_not_admitted"
+              ],
+              "timing_contract_sha256": "a838b45f1f4960b997103cfaeb5edfb9f0e43f84ce7595ab13ea55116adf3db3"
+            }
+          ]
+        },
+        {
+          "pr": 269,
+          "id": 41948409051,
+          "url": "https://github.com/lucronn/autodata/actions/runs/41948409051",
+          "event": "push",
+          "reported_head_sha": "7ce2a6f7decde5a59a3d9b3cb018d0e7373003a3",
+          "actual_checkout_sha": "7ce2a6f7decde5a59a3d9b3cb018d0e7373003a3",
+          "actual_checkout_tree": "2300acbac301355338237c5cd9a649d8f5e35fe5",
+          "status": "completed",
+          "conclusion": "success",
+          "job_count": 3,
+          "successful_step_count": 41,
+          "checkout_verified_all_jobs": true,
+          "dto_artifacts": [
+            {
+              "id": 13379821981,
+              "zip_sha256": "97272db2d226b8b89b989b887f7acfb28d4bf62525e98745d99e0633da7d784f",
+              "candidate_sha": "7ce2a6f7decde5a59a3d9b3cb018d0e7373003a3",
+              "receipt": {
+                "attempt_id": "3682ca4f84002af2ef88f8d72d58b989",
+                "candidate_sha": "7ce2a6f7decde5a59a3d9b3cb018d0e7373003a3",
+                "cleanup_status": "verified",
+                "epoch": 0,
+                "evidence_sha256": "993b6f3cd5133e2d7658302740ef0679a8cfdb7a417e4b86301a04a3b3f27199",
+                "terminal_state": "committed",
+                "timing_contract_sha256": "a838b45f1f4960b997103cfaeb5edfb9f0e43f84ce7595ab13ea55116adf3db3",
+                "version": "v1"
+              },
+              "mode": "dto-fixture",
+              "result_count": 120,
+              "unique_pairs": 120,
+              "status_counts": {
+                "passed": 120
+              },
+              "browser_counts": {
+                "chromium": 40,
+                "firefox": 40,
+                "webkit": 40
+              },
+              "runtime_blockers": [
+                "independent_watchdog_not_admitted",
+                "descendant_containment_not_admitted",
+                "trace_16MiB_producer_8MiB_consumer_not_admitted"
+              ],
+              "timing_contract_sha256": "a838b45f1f4960b997103cfaeb5edfb9f0e43f84ce7595ab13ea55116adf3db3"
+            }
+          ]
+        },
+        {
+          "pr": 268,
+          "id": 41948405342,
+          "url": "https://github.com/lucronn/autodata/actions/runs/41948405342",
+          "event": "pull_request",
+          "reported_head_sha": "50269b207e707a9c927ed1d71c92a2de57e311b6",
+          "actual_checkout_sha": "a522e0256da5e32de61fa6d29e86c05c94a74469",
+          "actual_checkout_tree": "b420c3661c48ce55af92ae3fc0c716cf11fb8da5",
+          "status": "completed",
+          "conclusion": "success",
+          "job_count": 3,
+          "successful_step_count": 41,
+          "checkout_verified_all_jobs": true,
+          "dto_artifacts": [
+            {
+              "id": 13380535122,
+              "zip_sha256": "ff2489f367d6797ced15854ee70be9eefefdd383a81b0a056f8ffa53ff95c150",
+              "candidate_sha": "a522e0256da5e32de61fa6d29e86c05c94a74469",
+              "receipt": {
+                "attempt_id": "726583848a7da92c94ec8a4f50ca3576",
+                "candidate_sha": "a522e0256da5e32de61fa6d29e86c05c94a74469",
+                "cleanup_status": "verified",
+                "epoch": 0,
+                "evidence_sha256": "c06f570f42d3096e63ee30558e2761a551b436411574368b5baada333162b7c0",
+                "terminal_state": "committed",
+                "timing_contract_sha256": "a838b45f1f4960b997103cfaeb5edfb9f0e43f84ce7595ab13ea55116adf3db3",
+                "version": "v1"
+              },
+              "mode": "dto-fixture",
+              "result_count": 120,
+              "unique_pairs": 120,
+              "status_counts": {
+                "passed": 120
+              },
+              "browser_counts": {
+                "chromium": 40,
+                "firefox": 40,
+                "webkit": 40
+              },
+              "runtime_blockers": [
+                "independent_watchdog_not_admitted",
+                "descendant_containment_not_admitted",
+                "trace_16MiB_producer_8MiB_consumer_not_admitted"
+              ],
+              "timing_contract_sha256": "a838b45f1f4960b997103cfaeb5edfb9f0e43f84ce7595ab13ea55116adf3db3"
+            }
+          ]
+        },
+        {
+          "pr": 268,
+          "id": 41948332293,
+          "url": "https://github.com/lucronn/autodata/actions/runs/41948332293",
+          "event": "push",
+          "reported_head_sha": "50269b207e707a9c927ed1d71c92a2de57e311b6",
+          "actual_checkout_sha": "50269b207e707a9c927ed1d71c92a2de57e311b6",
+          "actual_checkout_tree": "b420c3661c48ce55af92ae3fc0c716cf11fb8da5",
+          "status": "completed",
+          "conclusion": "success",
+          "job_count": 3,
+          "successful_step_count": 41,
+          "checkout_verified_all_jobs": true,
+          "dto_artifacts": [
+            {
+              "id": 13379024898,
+              "zip_sha256": "d62d750620d502d6360044f3c4a9069f9e13f1a8ff9bd2299af324968fadb84d",
+              "candidate_sha": "50269b207e707a9c927ed1d71c92a2de57e311b6",
+              "receipt": {
+                "attempt_id": "d402caec161949e9c343cb2c7c514801",
+                "candidate_sha": "50269b207e707a9c927ed1d71c92a2de57e311b6",
+                "cleanup_status": "verified",
+                "epoch": 0,
+                "evidence_sha256": "1101a9e8b3cae36956470c7604e563415b562a77a5a4bc64be050bdc5f7a7a81",
+                "terminal_state": "committed",
+                "timing_contract_sha256": "a838b45f1f4960b997103cfaeb5edfb9f0e43f84ce7595ab13ea55116adf3db3",
+                "version": "v1"
+              },
+              "mode": "dto-fixture",
+              "result_count": 120,
+              "unique_pairs": 120,
+              "status_counts": {
+                "passed": 120
+              },
+              "browser_counts": {
+                "chromium": 40,
+                "firefox": 40,
+                "webkit": 40
+              },
+              "runtime_blockers": [
+                "independent_watchdog_not_admitted",
+                "descendant_containment_not_admitted",
+                "trace_16MiB_producer_8MiB_consumer_not_admitted"
+              ],
+              "timing_contract_sha256": "a838b45f1f4960b997103cfaeb5edfb9f0e43f84ce7595ab13ea55116adf3db3"
+            }
+          ]
+        }
+      ],
+      "policy_PR271_counts": [
+        {
+          "pr": 271,
+          "event": "pull_request",
+          "run": 41949840671,
+          "job": 126990911624,
+          "autonomy": 146,
+          "node": {
+            "tests": 184,
+            "pass": 184,
+            "fail": 0,
+            "skipped": 0
+          },
+          "browser_contract": 137,
+          "shared_contract": 19,
+          "enrichment": 46,
+          "development_adapter": 549,
+          "ingestion_passed": 727,
+          "ingestion_skipped": 207,
+          "ingestion_subtests_passed": 25,
+          "go_api": "passed",
+          "go_contract": "passed"
+        },
+        {
+          "pr": 271,
+          "event": "push",
+          "run": 41949810868,
+          "job": 126990818135,
+          "autonomy": 146,
+          "node": {
+            "tests": 184,
+            "pass": 184,
+            "fail": 0,
+            "skipped": 0
+          },
+          "browser_contract": 137,
+          "shared_contract": 19,
+          "enrichment": 46,
+          "development_adapter": 549,
+          "ingestion_passed": 727,
+          "ingestion_skipped": 207,
+          "ingestion_subtests_passed": 25,
+          "go_api": "passed",
+          "go_contract": "passed"
+        }
+      ],
+      "R3_scope": "130 discovered/run tests per each of8 runs, successful and no skips; synthetic/owned-child preparation only, watchdog/descendant containment/trace-size runtime blockers unchanged."
+    }
+  },
+  "tracking_sync": {
+    "status": "synchronized",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6647549390",
+    "issue_comment_id": 6647549390,
+    "issue_comment_created_at": "2026-11-05T02:00:18Z",
+    "issue_comment_body_sha256": "8315c424095002bc7d9215815245a66117ef49c3d81165388cbc8bd88e2b32c3",
+    "before_readback": {
+      "path": "/home/corp/autodata-evidence/api21-v2-task52-before-tracking.json",
+      "sha256": "463cc5681651f95b153b7113ff21af62b21432e1d25e31b1290be1c30a0a9e65",
+      "observed_at": "2026-11-05T02:00:12Z"
+    },
+    "after_readback": {
+      "path": "/home/corp/autodata-evidence/api21-v2-task52-after-tracking.json",
+      "sha256": "1e664f8390cb461e32a50047e96cab965fe889324cd81bdb0c48a5ba3b07401c",
+      "observed_at": "2026-11-05T02:00:30Z"
+    },
+    "issue_body_sha256": "927b46ef47b1dbf5b117273e3d3f5c0e6d9f23b722a5245869eb5323b96c4f25",
+    "project_source_sha256_before": "b51e2c1c7c929fdfd899ecf6efd4c692b859beb454a8fdbd3165abfcd43d2486",
+    "project_source_sha256_after": "073003a8ab91b113d0c2652d132d6c0c7425568d12934b7dd74ca4f346038004",
+    "issue_body_unchanged": true,
+    "prior_239_comments_unchanged": true,
+    "project_other_fields_unchanged": true,
+    "prior_project_source_preserved_verbatim_in_comment": true,
+    "literal_goal_todo_six_gate_paths_three_implementation_paths_verified": true,
+    "writes_performed_by_this_agent": false,
+    "coordinator_sync_completed": true,
+    "scope": "Planning synchronization only; committed exact checkpoint, positive preflights, independent checkpoint review and explicit code-only dispatch remain required."
+  },
+  "allowed_gate_document_paths": [
+    "docs/superpowers/plans/2026-11-05-workshop-api21-v2-raw-inspector.md",
+    "docs/agents/specs/2026-11-05-workshop-api21-v2-raw-inspector.json",
+    "docs/agents/records/2026-11-05-workshop-api21-v2-raw-inspector.json",
+    "docs/agents/tasks/2026-11-03-production-release/workshop-api21-v2-raw-inspector.json",
+    "docs/verification/2026-11-05-workshop-api21-v2-raw-inspector.md",
+    "docs/agents/tasks/2026-11-03-production-release/queue.json"
+  ],
+  "allowed_implementation_paths": [
+    "scripts/dev/release_acceptance.py",
+    "scripts/dev/test_release_acceptance.py",
+    "docs/verification/release-acceptance-runbook.md"
+  ],
+  "current_implementation_allowlist": [],
+  "accepted_case_credit": 0,
+  "accepted_new_case_credit": 0,
+  "verified_case_ids": [],
+  "release_state": "unverified",
+  "authorities": {
+    "implementation": false,
+    "provider": false,
+    "runtime": false,
+    "host": false,
+    "docker": false,
+    "network": false,
+    "cloud": false,
+    "dns": false,
+    "capture": false,
+    "profile_activation": false,
+    "acceptance": false,
+    "fixture_execution": false,
+    "staging": false,
+    "release": false,
+    "merge": false,
+    "deployment": false
+  },
+  "updated_at": "2026-11-05T02:00:18Z",
+  "contract": {
+    "api_signature": "inspect_api21_v2_receipts(store, *, candidate_sha, trusted_base_sha, profile_sha256, profile_version=\"api21-retained-v2\")",
+    "schema_selector": "api21-retained-v2",
+    "producer_version": "api21-producer-v2",
+    "definitions": {
+      "binding": {
+        "binding_state": "complete|partial",
+        "unavailable_reason": "safe_reason|null",
+        "api_observability_version": "const api21-producer-v2",
+        "run_id": "32 lowercase hex from parent secrets.token_hex(16)",
+        "attempt_id": "32 lowercase hex allocated once by parent per case launch",
+        "case_id": "exact ordered case ID",
+        "root": "exact case root",
+        "engine": "chromium|firefox|webkit matching case",
+        "bank": "bankone|banktwo matching case",
+        "candidate_sha": "Complete: const 6949eb1b1a5b93c9b2eb0579328e24c697f6f331; partial: observer-specific contract.partial_binding_rule below (parent/child null allowed, otherwise exact known source candidate).",
+        "source_tree": "Complete: const 47ec54b1896c83a39b6637a6ce944d3620414f4e; partial: observer-specific contract.partial_binding_rule below.",
+        "source_input_sha256": "Complete: exact seven-entry producer_source_input_sha256 map. Partial parent/child: empty or exact source-order prefix; partial browser: null in fallback, or exact complete map in later source-binding failure. See contract.partial_binding_rule.",
+        "producer_role": "parent-pytest|child-pytest|browser-runner"
+      },
+      "event_ref": {
+        "stream": "observations|lifecycle|process-child|process-go|process-browser",
+        "producer_role": "parent-pytest|child-pytest|browser-runner",
+        "seq": "int 1..512; non-bool"
+      },
+      "body": {
+        "availability": "retained|hash_only|unavailable",
+        "byte_source": "playwright-request-post-data-buffer|playwright-response-body|unavailable",
+        "encoding": "base64|null",
+        "base64": "canonical RFC4648 padded string|null",
+        "length": "int 0..131072|null",
+        "sha256": "64 lowercase hex|null",
+        "parsed": "JSON value|null",
+        "reason": "null|not_observed|unsupported_byte_source|not_required_image_body|over_limit|invalid_json|invalid_utf8|read_failed|secret_detected"
+      },
+      "http": {
+        "kind": "const http",
+        "channel": "application|fixture-control",
+        "method": "GET|POST",
+        "route_template": "frozen safe template, no query/UUID/capability/host/token",
+        "actor": "owner|other|logged-out|disabled|fixture-control",
+        "attempt": "integer excluding bool, validated jointly with phase: runtime-poll 1..100; owner-library-initial-http/owner-library-reload-http/owner-library-restart-http 1..16; checkout-first-http 1; checkout-retry-http 2; checkout-http 1; all other one-exchange HTTP phases 1 unless an existing frozen phase explicitly declares repetition",
+        "status": "int 100..599|null",
+        "idempotency_key": "canonical UUID|null; only checkout",
+        "request": "body|null",
+        "response": "body",
+        "checkout_identity": "{order_id:UUID,configuration_id:UUID,region:const US,checkout_url:full original string satisfying source-bound HTTPS checkout URL predicate below, fragment allowed and retained verbatim}|null"
+      },
+      "lifecycle": {
+        "kind": "const lifecycle",
+        "operation": "setup|context-create|page-create|metadata|browser-launch|context-close|browser-close|fixture-stop|worker-start|worker-stop|runtime-close|publish",
+        "state": "requested|completed|failed|unavailable",
+        "reason": "safe_reason|null"
+      },
+      "checkout_delivery": {
+        "kind": "const checkout-delivery",
+        "attempt": "int 1..2",
+        "state": "fetch-completed|response-abort-requested|response-aborted|response-fulfill-requested|response-fulfilled",
+        "http_event": "event_ref"
+      },
+      "assertion": {
+        "kind": "const producer-assertion",
+        "name": "exact existing root assertion name",
+        "result": "true|false|null",
+        "reason": "safe_reason|null"
+      },
+      "event": {
+        "seq": "int 1..512 strictly increasing contiguous per producer",
+        "phase": "exact phase matrix ID",
+        "caused_by": "event_ref[] max8; cross-role only references earlier observed/passed events, no invented clock ordering",
+        "elapsed_us": "int >=0; local monotonic relative to producer start; never absolute wall clock",
+        "payload": "one exact http|lifecycle|checkout_delivery|assertion payload"
+      },
+      "observations": {
+        "binding": "binding with role browser-runner",
+        "status": "passed|failed|partial|unavailable",
+        "events": "event[] max512",
+        "primary_failure": "safe_reason|null",
+        "publication": "written|failed|not_attempted",
+        "unavailable_families": "unique string[] from frozen missing family list",
+        "engine_os_exit": "const null",
+        "outer_pytest_exit": "const null"
+      },
+      "process_event": {
+        "seq": "int 1..32 contiguous local",
+        "kind": "launch-requested|launch-succeeded|launch-failed|wait-completed|timeout|cancelled|term-requested|term-sent|kill-requested|kill-sent|signal-failed|reap-failed",
+        "elapsed_us": "int >=0",
+        "return_code": "int|null; actual wait/poll only",
+        "reason": "safe_reason|null"
+      },
+      "artifact_hash": {
+        "ref": "confined original support ref",
+        "length": "int 0..8388608",
+        "sha256": "64 lowercase hex"
+      },
+      "process": {
+        "role": "child-pytest|go-test|browser-runner",
+        "observer_role": "parent-pytest|child-pytest matching owner",
+        "argv": "exact selected argv from process_command_schedule, normalized only at declared path substitution slots; string[] max32 each max512 bytes",
+        "cwd": "const .|apps/api-go",
+        "launched": "bool",
+        "events": "process_event[] max32",
+        "return_code": "int|null; observed OS result, never synthesized",
+        "return_code_source": "wait|poll|unavailable",
+        "wait_kind": "normal|cleanup|unavailable",
+        "intentional_cleanup": "bool",
+        "reaped": "bool|null",
+        "alive_final": "bool|null",
+        "started_us": "int >=0|null",
+        "finished_us": "int >=0|null",
+        "stdout_ref": "original support ref|null",
+        "stderr_ref": "original support ref|null",
+        "output_hashes": "artifact_hash[] max2; finalized only"
+      },
+      "worker": {
+        "ordinal": "int 1..2",
+        "kind": "const cli",
+        "original_ref": "const basename matching ^worker-[a-f0-9]{32}[.]log$ under /artifacts, exactly the original observed uuid.uuid4().hex filename; no hyphen insertion, renaming or copy",
+        "mapping": "observed|unavailable",
+        "alive_before_cleanup": "bool|null",
+        "intentional_cleanup": "bool|null",
+        "terminated": "bool|null",
+        "exit_code": "int|null",
+        "reaped": "bool|null",
+        "log_finalized": "bool",
+        "log_hash": "artifact_hash|null",
+        "reason": "safe_reason|null"
+      },
+      "child_sidecar": {
+        "binding": "binding with role child-pytest",
+        "status": "passed|failed|partial|unavailable",
+        "go": "process with role go-test",
+        "browser_runner": "process with role browser-runner",
+        "workers": "worker[] max2",
+        "worker_mapping_status": "observed|unavailable|not_started",
+        "finalization_events": "event[] max64; lifecycle only",
+        "primary_failure": "safe_reason|null",
+        "publication_failure": "safe_reason|null",
+        "engine_os_exit": "const null",
+        "outer_pytest_exit": "const null"
+      },
+      "parent_sidecar": {
+        "binding": "binding with role parent-pytest",
+        "status": "passed|failed|partial|unavailable",
+        "child": "process with role child-pytest",
+        "child_artifacts": "artifact_hash[] max8; only finalized original seven per-case refs plus child-processes.json; no parent/self hash",
+        "child_artifact_status": "finalized|partial|unavailable",
+        "child_launch_cause": "event_ref|null",
+        "primary_failure": "safe_reason|null",
+        "publication_failure": "safe_reason|null",
+        "engine_os_exit": "const null",
+        "outer_pytest_exit": "const null"
+      }
+    },
+    "safe_reasons": [
+      "not_observed",
+      "unsupported_byte_source",
+      "not_required_image_body",
+      "over_limit",
+      "invalid_json",
+      "invalid_utf8",
+      "read_failed",
+      "secret_detected",
+      "launch_failed",
+      "timeout",
+      "cancelled",
+      "assertion_failed",
+      "http_failed",
+      "close_failed",
+      "signal_failed",
+      "reap_failed",
+      "mapping_unavailable",
+      "log_not_finalized",
+      "source_binding_failed",
+      "publication_failed",
+      "prior_failure",
+      "internal_error"
+    ],
+    "semantics": [
+      "Keep the historical inspect_api21_receipts signature/constants/all helper behavior and api21-fixture-v1 regression outputs unchanged. Add inspect_api21_v2_receipts(store, *, candidate_sha, trusted_base_sha, profile_sha256, profile_version=\"api21-retained-v2\"). Require candidate_sha exactly Task51 and producer tag exactly api21-producer-v2. The new internal inspector profile is a schema selector only; it is never registered/enabled. trusted_base_sha and profile_sha256 are required caller correlation values, returned unchanged, not authentic producer facts: v2 producer bindings do not contain them. Never claim independently verified trusted-base/profile binding.",
+      "All raw reads use existing ArtifactStore declarations/read/recheck and strict_raw_json, bounded XML parser and existing private declaration checks. Validate every declared byte before semantic dispatch and call store.recheck after all validation. No direct arbitrary filesystem reads, imports of producer/test modules, runtime schema loading, archive transport, aliases, byte rewriting, copy/remap or raw-kind inference.",
+      "Per root, ordered case identities/engine/provider/prefix/JUnit names and assertion names are frozen by inventory. Exactly21 JUnit leaves in order and consistent counters; reject nested/extra/reordered/duplicate names, unsafe XML/entity content, skipped/failure/error as success. Failed leaves are diagnostic outcomes, never credit. JUnit original ref workshop-browser-api.xml only; workshop-browser-tests.xml is not alias.",
+      "Complete role bindings repeat same run_id across cases and a distinct attempt_id for each case, exact case/root/engine/bank/candidate/source-tree/seven input digests. Compare each parent/child/browser binding after role substitution only. Parent/child IDs or source fields known before failure stay known; partial fields follow the complete observer-specific contract.partial_binding_rule, including parent/child null candidate/tree with empty or source-prefix maps and browser null fallback map, and reason source_binding_failed forces nonpass. A partial binding may never authorize success. Reject stale C, checkpoint identity, product217, mixed source maps or role spoofing.",
+      "Validate current served11 asset manifest from Task51, especially media-modified app.mjs; provenance ready/sdk/evidence repeated fields agree, source input six-map equals frozen six producer inputs, binding seven-map adds exact integration input. Do not reuse historical C served hashes. Source map itself is self-report, not authenticated runtime source witness.",
+      "Closed object key sets compose v1 retained business fields and explicit v2 extensions in schema definitions; do not route v2 through v1 identity check or mutate v1 constants. Reuse immutable business shape helpers only where independent tests establish same semantics. Exact v1 business retained rows/counters/snapshots/orders/restart/warm rules remain consistency invariants, not assertions proving wire facts. Explicit exception to inherited v1 ordering: failed_child_cleanup_without_final_snapshot branch permits observed worker_exits absent final_snapshot; never call the v1 worker_exits-implies-final_snapshot rule on that v2 failed branch.",
+      "Observation seq contiguous 1..N <=512; elapsed_us nonnegative nonbool local monotonic. Validate phase ranks against selected root, complete exact phase sequence for success, allowed prefix plus terminal cleanup for failed. References resolve earlier retained event in declared stream/role; no cross-process timestamp total order, forward ref, invented cause or duplicate HTTP attempt. Parent child_launch_cause references actual parent launch-succeeded event, not browser event. Child finalization phases are lifecycle operation names, not API business phase names.",
+      "HTTP channel/method/actor/template/attempt/status jointly follow root/phase matrix. Fixture controls actor fixture-control, application owner except explicit other/logged-out/disabled phases. No raw query/host/capability/UUID in route templates or header dump. runtime-poll 1..100, owner library each1..16, checkout first1/retry2, other single1. Current source-page/source-review/warm-page repetitions are source constrained by actual event attempt validation; never invent broader1..16 allowance.",
+      "Body closed eight fields. Decode canonical base64 and compare exact original length/SHA256, strict UTF8/duplicate-key/nonfinite JSON and parsed value, never reserialize to recompute original hash. Require supported byte_source; request only post-data-buffer, response only response-body. Required JSON reason null on success; safe retained decode failure reason invalid_json/invalid_utf8 forces failed observation. unavailable means all raw/length/hash/parsed fields null and safe reason; hash_only only successful image with response source, positive length/hash, null base64/encoding/parsed and not_required_image_body. Source-defined empty204 control has b64 empty, length0, true empty digest, parsed null/reason null. Other empty, malformed denial JSON, unsupported text fallback or secret-bearing raw cannot pass.",
+      "Independently implement producer-equivalent conservative secret rejection including nested protected keys, bearer/session/JWT patterns, malformed JSON escaping and raw quoted keys. Secret detected bytes cannot appear retained even in private input. Never print raw body/log/exception/credential to result or test failure diagnostics. No new regex widening that silently permits protected content; tests cover escaped/nested keys, invalid UTF8, duplicate-key, NaN and malformed backslash boundaries.",
+      "Google checkout exact first HTTP then fetch-completed/abort-requested/aborted chain, lost measurement/snapshot, retry HTTP then fetch-completed/fulfill-requested/fulfilled chain. Delivery references exact same attempt HTTP in caused_by and http_event. Both UUID idempotency keys and original request bytes identical; parsed configuration/US/order/full hosted URL identities equal, including optional fragment. Response serialization/hash may differ if parsed identity matches. Pending measurements/snapshots show one open order, one checkout request, zero grants/entitlements; retry payment_calls unchanged.",
+      "NonGoogle18 cases contain exactly one actual checkout at checkout-http and no fabricated Google retry/delivery. Before settlement return has zero entitlements. settlement-control plus settled measurement prove only retained fixture control/state consistency, never webhook authentication. Validate one2000USD fixture order/active entitlement/request/projection and scope/owner/foreign-key conservation; refund root later revoked with actual refund-control/denials/revoked measurements. Existing producer assertion true alone cannot replace retained facts.",
+      "Owner library initial/reload/restart1..16 real200 retained JSON responses per named window, all safe, at least one single expected owner order/configuration/US item paid/preparing/viewable. Restart runtime generation increments1, durable measurements/owner unchanged; permit source-defined later session differences/refund transitions. NonGoogle warm snapshots preserve provider/source/asset/model/counts/immutable digest, actual reader count increases and paid order ownership matches; Google warm {}.",
+      "Denial statuses exact adjacent/other-region/unscoped/legacy403|404, other-image404, logout/disable401, remaining named denials403; other-library200 with empty scoped items, other catalogue source-defined403; retain JSON error bytes and correct actor/channel. Tie denial capability/order/configuration to allowed source scope without interpreting scrubbed route template as authentic identity. Signed refund and settlement are fixture observations only.",
+      "Process closed schemas preserve argv exact source schedule, declared substitutions only, cwd and observer/owned roles, launched/events/return_code/source/wait_kind/reaped/alive/timing consistency. Recompute final output_hashes against original declared bytes; no wait/poll code on unlaunched child, no synthesized0, no missing process sequence inferred from log text. Go/browser exit0 only when actual receipt observed wait/poll normal; intentional worker SIGTERM negative exit valid cleanup. engine_os_exit/outer_pytest_exit null in every member, never infer engine descendant reaping.",
+      "Parent hashes8 original child artifacts only after reaping; no parent/self hash. Child process stdout/stderr original scoped refs and same Go/child stdout+stderr may name same log, dedupe only same physical declared ref. Worker entries ordinal1..2 map unique observed original basename worker-[a-f0-9]{32}.log from global artifact root, bound log_hash.ref same basename and actual retained log digest. No invented per-case workers. Map only declared unique original logs, max2 per nonGoogle case, none for successful Google. Partial/unknown mapping retains unavailable, not credit. Child finalization stop-worker/runtime-close and process cleanup publication must agree with result.worker_exits and parent finalized hash copies.",
+      "Output remains status unavailable, complete false, profile_version api21-retained-v2, candidate_sha/trusted_base_sha/profile_sha256 correlation, ordered observed_case_ids, verified_case_ids [], accepted_case_credit0, accepted_new_case_credit0, nonsecret per-case diagnostics and missing_validation_families, with every existing FLAGS member false. Include release_state unverified. Never return pass/verified/acceptance; preserve public CLI disabled exit3 on even internally consistent fake bytes."
+    ],
+    "closed_schema_rule": "All object fields listed in definitions are exact; existing business fields retain historical v1 shape/nullable constraints only when present in actual v2 source branch. Current source and explicit branch matrix govern absent fields; historical producer narrative mentioning immutable C assets is not adopted.",
+    "event_reference_rule": "Browser stream references only earlier observations/browser-runner seq. Parent child_launch_cause is process-child/parent-pytest launch-succeeded ref. No arbitrary cross-role cause supported.",
+    "partial_binding_rule": {
+      "closed_keys": "Same exact binding key set for every observer. Partial binding_state=partial and unavailable_reason=source_binding_failed; no success ID. Partial is diagnostic only, not permission for stale nonnull values or invented unknowns.",
+      "parent_child": {
+        "source": "integration._binding232\u2013250",
+        "known_identity": "version/role/root/engine/bank/case_id always exact selected values, even earliest source read failure; role parent-pytest or child-pytest. run_id/attempt_id each valid32hex when present, else null after source sanitization. Parent uses run token and fresh attempt; child uses inherited env tokens. Do not erase known valid identifiers.",
+        "candidate_tree": "Initially candidate_sha=null and source_tree=null. Missing/malformed env source values before binding.update leave both null. Once both env values match40hex, both are assigned atomically and retained through later failure; require exact Task51 candidate/tree for nonnull values. Null/non-null pair contradiction rejected. Stale otherwise syntactically valid source values are rejected, never accepted as compatible partial evidence.",
+        "source_input_sha256": "Initially {}. After candidate/tree assignment source reads in integration._INPUTS order listed below; each successful read appends current exact digest. Allow exactly prefix length0..7, keys/digests for that prefix only, JSON map order immaterial but membership must be source prefix (no gaps/reordered conceptual prefix). Early failure can have null pair and {}; populated map requires assigned exact candidate/tree. Full seven-map may remain partial after inherited handoff/identity mismatch or missing run/attempt. Do not require full seven map for early/mid source failure or fabricate unread entries.",
+        "input_order": [
+          "scripts/dev/workshop_browser_smoke.py",
+          "scripts/dev/fixtures/workshop_customer/scenarios.json",
+          "scripts/dev/fixtures/workshop_customer/firebase_transport.js",
+          "scripts/dev/fixtures/workshop_customer/hostile_source.json",
+          "scripts/dev/fixtures/workshop_customer/stripe_checkout.html",
+          "apps/api-go/workshop_browser_fixture_test.go",
+          "workers/ingestion-python/tests/test_workshop_browser_integration.py"
+        ],
+        "handoff": "For complete child require inherited parent identity exactly after role substitution. Partial child can differ because _binding rejected absent/malformed/mismatched handoff; retain only observed internally valid known values and nonpass. Do not describe partial role agreement as successful handoff.",
+        "result_candidate": "Failed result.json candidate_sha is copied from integration binding and may therefore be null exactly when binding candidate_sha null; require equality, passed=false and corresponding source_binding_failed partial branch. Complete result candidate remains exact Task51. Do not replace a known candidate with null or apply complete candidate constant before branch selection."
+      },
+      "browser_runner": {
+        "source": "smoke.api21_binding1620\u20131648 and run source reconciliation1691\u20131695",
+        "fallback": "Same closed keys: retain args candidate_sha (require Task51),root,engine,version and producer_role browser-runner. binding_state partial/reason source_binding_failed; run_id,attempt_id,case_id,bank,source_tree,source_input_sha256 all null from dict.fromkeys, even if args include browser. Do not replace null map with {} or copy parent values.",
+        "later_reconciliation": "Supplied complete binding accepted before run source reconciliation can later be demoted partial while retaining all known complete fields and exact seven-map; validate all known values and classify nonpass. No arbitrary partial browser map allowed by fallback source."
+      },
+      "tests": [
+        "early parent/child missing source env: candidate/tree null,map {},known case/root/engine/bank/role and valid token preserved",
+        "mid integration input read failure after first3 source reads: exact candidate/tree and first3 digest entries,valid tokens retained,remaining4 absent; valid nonpass",
+        "child missing/malformed handoff with full seven-map remains partial nonpass",
+        "browser fallback null map/case/bank/tree differs from integration {}",
+        "reject input gap/wrong current digest/stale nonnull source/unknown field",
+        "reject partial branch reported passed or upgraded by synthetic full map"
+      ]
+    },
+    "checkout_url_predicate": {
+      "source": "scripts/dev/workshop_browser_smoke.py api21_checkout_identity at exact source candidate",
+      "algorithm": "Retain full original string. Use urllib.parse.urlsplit. Require split.scheme == https, split.netloc == checkout.stripe.com exactly, re.fullmatch(r\"/c/pay/cs_test_[a-f0-9]{32}\",split.path), split.query empty. Fragment optional and retained verbatim. Compare full original checkout_url across retries; do not strip or normalize fragment.",
+      "netloc_effects": "Reject userinfo, explicit port including443, mixed-case/alternate/Unicode/trailing-dot hostname, suffix domain and empty host because raw netloc must exactly equal checkout.stripe.com. Scheme semantics follow urlsplit.scheme comparison; do not invent additional normalization.",
+      "mutations": [
+        "hostname checkout.stripe.com.evil.test",
+        "hostname CHECKOUT.STRIPE.COM",
+        "hostname checkout.stripe.com.",
+        "explicit :443",
+        "userinfo user@checkout.stripe.com",
+        "nonhttps scheme",
+        "wrong/missing c/pay prefix",
+        "cs_live_ prefix",
+        "uppercase or non32hex session suffix",
+        "query even if otherwise valid",
+        "changed fragment across retries invalid",
+        "optional fragment absent or source fixture fragment present valid",
+        "same parsed identity with independently hashed different response JSON serialization valid"
+      ]
+    }
+  },
+  "inventory": {
+    "ordered_cases": [
+      {
+        "ordinal": 1,
+        "case_id": "test_browser_google_exchange_checkout_library_real_api[chromium]",
+        "root": "test_browser_google_exchange_checkout_library_real_api",
+        "engine": "chromium",
+        "provider": "bankone",
+        "case_prefix": "workshop-browser/test_browser_google_exchange_checkout_library_real_api/chromium-bankone/",
+        "junit_classname": "tests.test_workshop_browser_integration",
+        "junit_name": "test_browser_google_exchange_checkout_library_real_api[chromium]",
+        "required_refs": [
+          "workshop-browser/test_browser_google_exchange_checkout_library_real_api/chromium-bankone/child.log",
+          "workshop-browser/test_browser_google_exchange_checkout_library_real_api/chromium-bankone/result.json",
+          "workshop-browser/test_browser_google_exchange_checkout_library_real_api/chromium-bankone/ready.json",
+          "workshop-browser/test_browser_google_exchange_checkout_library_real_api/chromium-bankone/go-fixture.log",
+          "workshop-browser/test_browser_google_exchange_checkout_library_real_api/chromium-bankone/browser.stdout.log",
+          "workshop-browser/test_browser_google_exchange_checkout_library_real_api/chromium-bankone/browser.stderr.log",
+          "workshop-browser/test_browser_google_exchange_checkout_library_real_api/chromium-bankone/browser/evidence.json",
+          "workshop-browser/test_browser_google_exchange_checkout_library_real_api/chromium-bankone/child-processes.json",
+          "workshop-browser/test_browser_google_exchange_checkout_library_real_api/chromium-bankone/parent-process.json"
+        ],
+        "conditional_failure_ref": "workshop-browser/test_browser_google_exchange_checkout_library_real_api/chromium-bankone/browser/chromium/test_browser_google_exchange_checkout_library_real_api-failure.png",
+        "expected_assertions": [
+          "official_sdk_cookie_and_pg_session",
+          "return_does_not_grant",
+          "signed_public_webhook_grants_once",
+          "permanent_owner_library_reload",
+          "permanent_owner_library_server_restart",
+          "client_response_loss_same_key_one_checkout"
+        ]
+      },
+      {
+        "ordinal": 2,
+        "case_id": "test_browser_google_exchange_checkout_library_real_api[firefox]",
+        "root": "test_browser_google_exchange_checkout_library_real_api",
+        "engine": "firefox",
+        "provider": "bankone",
+        "case_prefix": "workshop-browser/test_browser_google_exchange_checkout_library_real_api/firefox-bankone/",
+        "junit_classname": "tests.test_workshop_browser_integration",
+        "junit_name": "test_browser_google_exchange_checkout_library_real_api[firefox]",
+        "required_refs": [
+          "workshop-browser/test_browser_google_exchange_checkout_library_real_api/firefox-bankone/child.log",
+          "workshop-browser/test_browser_google_exchange_checkout_library_real_api/firefox-bankone/result.json",
+          "workshop-browser/test_browser_google_exchange_checkout_library_real_api/firefox-bankone/ready.json",
+          "workshop-browser/test_browser_google_exchange_checkout_library_real_api/firefox-bankone/go-fixture.log",
+          "workshop-browser/test_browser_google_exchange_checkout_library_real_api/firefox-bankone/browser.stdout.log",
+          "workshop-browser/test_browser_google_exchange_checkout_library_real_api/firefox-bankone/browser.stderr.log",
+          "workshop-browser/test_browser_google_exchange_checkout_library_real_api/firefox-bankone/browser/evidence.json",
+          "workshop-browser/test_browser_google_exchange_checkout_library_real_api/firefox-bankone/child-processes.json",
+          "workshop-browser/test_browser_google_exchange_checkout_library_real_api/firefox-bankone/parent-process.json"
+        ],
+        "conditional_failure_ref": "workshop-browser/test_browser_google_exchange_checkout_library_real_api/firefox-bankone/browser/firefox/test_browser_google_exchange_checkout_library_real_api-failure.png",
+        "expected_assertions": [
+          "official_sdk_cookie_and_pg_session",
+          "return_does_not_grant",
+          "signed_public_webhook_grants_once",
+          "permanent_owner_library_reload",
+          "permanent_owner_library_server_restart",
+          "client_response_loss_same_key_one_checkout"
+        ]
+      },
+      {
+        "ordinal": 3,
+        "case_id": "test_browser_google_exchange_checkout_library_real_api[webkit]",
+        "root": "test_browser_google_exchange_checkout_library_real_api",
+        "engine": "webkit",
+        "provider": "bankone",
+        "case_prefix": "workshop-browser/test_browser_google_exchange_checkout_library_real_api/webkit-bankone/",
+        "junit_classname": "tests.test_workshop_browser_integration",
+        "junit_name": "test_browser_google_exchange_checkout_library_real_api[webkit]",
+        "required_refs": [
+          "workshop-browser/test_browser_google_exchange_checkout_library_real_api/webkit-bankone/child.log",
+          "workshop-browser/test_browser_google_exchange_checkout_library_real_api/webkit-bankone/result.json",
+          "workshop-browser/test_browser_google_exchange_checkout_library_real_api/webkit-bankone/ready.json",
+          "workshop-browser/test_browser_google_exchange_checkout_library_real_api/webkit-bankone/go-fixture.log",
+          "workshop-browser/test_browser_google_exchange_checkout_library_real_api/webkit-bankone/browser.stdout.log",
+          "workshop-browser/test_browser_google_exchange_checkout_library_real_api/webkit-bankone/browser.stderr.log",
+          "workshop-browser/test_browser_google_exchange_checkout_library_real_api/webkit-bankone/browser/evidence.json",
+          "workshop-browser/test_browser_google_exchange_checkout_library_real_api/webkit-bankone/child-processes.json",
+          "workshop-browser/test_browser_google_exchange_checkout_library_real_api/webkit-bankone/parent-process.json"
+        ],
+        "conditional_failure_ref": "workshop-browser/test_browser_google_exchange_checkout_library_real_api/webkit-bankone/browser/webkit/test_browser_google_exchange_checkout_library_real_api-failure.png",
+        "expected_assertions": [
+          "official_sdk_cookie_and_pg_session",
+          "return_does_not_grant",
+          "signed_public_webhook_grants_once",
+          "permanent_owner_library_reload",
+          "permanent_owner_library_server_restart",
+          "client_response_loss_same_key_one_checkout"
+        ]
+      },
+      {
+        "ordinal": 4,
+        "case_id": "test_browser_owned_source_canonical_and_media_real_api[chromium-bankone]",
+        "root": "test_browser_owned_source_canonical_and_media_real_api",
+        "engine": "chromium",
+        "provider": "bankone",
+        "case_prefix": "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-bankone/",
+        "junit_classname": "tests.test_workshop_browser_integration",
+        "junit_name": "test_browser_owned_source_canonical_and_media_real_api[chromium-bankone]",
+        "required_refs": [
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-bankone/child.log",
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-bankone/result.json",
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-bankone/ready.json",
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-bankone/go-fixture.log",
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-bankone/browser.stdout.log",
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-bankone/browser.stderr.log",
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-bankone/browser/evidence.json",
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-bankone/child-processes.json",
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-bankone/parent-process.json"
+        ],
+        "conditional_failure_ref": "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-bankone/browser/chromium/test_browser_owned_source_canonical_and_media_real_api-failure.png",
+        "expected_assertions": [
+          "official_sdk_cookie_and_pg_session",
+          "return_does_not_grant",
+          "signed_public_webhook_grants_once",
+          "permanent_owner_library_reload",
+          "permanent_owner_library_server_restart",
+          "paid_source_and_actual_s3_image",
+          "source_to_canonical_and_warm_reuse",
+          "warm_raw_runtime_unchanged_with_approved_s3_delivery"
+        ]
+      },
+      {
+        "ordinal": 5,
+        "case_id": "test_browser_owned_source_canonical_and_media_real_api[chromium-banktwo]",
+        "root": "test_browser_owned_source_canonical_and_media_real_api",
+        "engine": "chromium",
+        "provider": "banktwo",
+        "case_prefix": "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-banktwo/",
+        "junit_classname": "tests.test_workshop_browser_integration",
+        "junit_name": "test_browser_owned_source_canonical_and_media_real_api[chromium-banktwo]",
+        "required_refs": [
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-banktwo/child.log",
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-banktwo/result.json",
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-banktwo/ready.json",
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-banktwo/go-fixture.log",
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-banktwo/browser.stdout.log",
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-banktwo/browser.stderr.log",
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-banktwo/browser/evidence.json",
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-banktwo/child-processes.json",
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-banktwo/parent-process.json"
+        ],
+        "conditional_failure_ref": "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/chromium-banktwo/browser/chromium/test_browser_owned_source_canonical_and_media_real_api-failure.png",
+        "expected_assertions": [
+          "official_sdk_cookie_and_pg_session",
+          "return_does_not_grant",
+          "signed_public_webhook_grants_once",
+          "permanent_owner_library_reload",
+          "permanent_owner_library_server_restart",
+          "paid_source_and_actual_s3_image",
+          "source_to_canonical_and_warm_reuse",
+          "warm_raw_runtime_unchanged_with_approved_s3_delivery"
+        ]
+      },
+      {
+        "ordinal": 6,
+        "case_id": "test_browser_owned_source_canonical_and_media_real_api[firefox-bankone]",
+        "root": "test_browser_owned_source_canonical_and_media_real_api",
+        "engine": "firefox",
+        "provider": "bankone",
+        "case_prefix": "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-bankone/",
+        "junit_classname": "tests.test_workshop_browser_integration",
+        "junit_name": "test_browser_owned_source_canonical_and_media_real_api[firefox-bankone]",
+        "required_refs": [
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-bankone/child.log",
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-bankone/result.json",
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-bankone/ready.json",
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-bankone/go-fixture.log",
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-bankone/browser.stdout.log",
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-bankone/browser.stderr.log",
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-bankone/browser/evidence.json",
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-bankone/child-processes.json",
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-bankone/parent-process.json"
+        ],
+        "conditional_failure_ref": "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-bankone/browser/firefox/test_browser_owned_source_canonical_and_media_real_api-failure.png",
+        "expected_assertions": [
+          "official_sdk_cookie_and_pg_session",
+          "return_does_not_grant",
+          "signed_public_webhook_grants_once",
+          "permanent_owner_library_reload",
+          "permanent_owner_library_server_restart",
+          "paid_source_and_actual_s3_image",
+          "source_to_canonical_and_warm_reuse",
+          "warm_raw_runtime_unchanged_with_approved_s3_delivery"
+        ]
+      },
+      {
+        "ordinal": 7,
+        "case_id": "test_browser_owned_source_canonical_and_media_real_api[firefox-banktwo]",
+        "root": "test_browser_owned_source_canonical_and_media_real_api",
+        "engine": "firefox",
+        "provider": "banktwo",
+        "case_prefix": "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-banktwo/",
+        "junit_classname": "tests.test_workshop_browser_integration",
+        "junit_name": "test_browser_owned_source_canonical_and_media_real_api[firefox-banktwo]",
+        "required_refs": [
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-banktwo/child.log",
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-banktwo/result.json",
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-banktwo/ready.json",
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-banktwo/go-fixture.log",
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-banktwo/browser.stdout.log",
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-banktwo/browser.stderr.log",
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-banktwo/browser/evidence.json",
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-banktwo/child-processes.json",
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-banktwo/parent-process.json"
+        ],
+        "conditional_failure_ref": "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/firefox-banktwo/browser/firefox/test_browser_owned_source_canonical_and_media_real_api-failure.png",
+        "expected_assertions": [
+          "official_sdk_cookie_and_pg_session",
+          "return_does_not_grant",
+          "signed_public_webhook_grants_once",
+          "permanent_owner_library_reload",
+          "permanent_owner_library_server_restart",
+          "paid_source_and_actual_s3_image",
+          "source_to_canonical_and_warm_reuse",
+          "warm_raw_runtime_unchanged_with_approved_s3_delivery"
+        ]
+      },
+      {
+        "ordinal": 8,
+        "case_id": "test_browser_owned_source_canonical_and_media_real_api[webkit-bankone]",
+        "root": "test_browser_owned_source_canonical_and_media_real_api",
+        "engine": "webkit",
+        "provider": "bankone",
+        "case_prefix": "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-bankone/",
+        "junit_classname": "tests.test_workshop_browser_integration",
+        "junit_name": "test_browser_owned_source_canonical_and_media_real_api[webkit-bankone]",
+        "required_refs": [
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-bankone/child.log",
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-bankone/result.json",
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-bankone/ready.json",
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-bankone/go-fixture.log",
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-bankone/browser.stdout.log",
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-bankone/browser.stderr.log",
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-bankone/browser/evidence.json",
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-bankone/child-processes.json",
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-bankone/parent-process.json"
+        ],
+        "conditional_failure_ref": "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-bankone/browser/webkit/test_browser_owned_source_canonical_and_media_real_api-failure.png",
+        "expected_assertions": [
+          "official_sdk_cookie_and_pg_session",
+          "return_does_not_grant",
+          "signed_public_webhook_grants_once",
+          "permanent_owner_library_reload",
+          "permanent_owner_library_server_restart",
+          "paid_source_and_actual_s3_image",
+          "source_to_canonical_and_warm_reuse",
+          "warm_raw_runtime_unchanged_with_approved_s3_delivery"
+        ]
+      },
+      {
+        "ordinal": 9,
+        "case_id": "test_browser_owned_source_canonical_and_media_real_api[webkit-banktwo]",
+        "root": "test_browser_owned_source_canonical_and_media_real_api",
+        "engine": "webkit",
+        "provider": "banktwo",
+        "case_prefix": "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-banktwo/",
+        "junit_classname": "tests.test_workshop_browser_integration",
+        "junit_name": "test_browser_owned_source_canonical_and_media_real_api[webkit-banktwo]",
+        "required_refs": [
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-banktwo/child.log",
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-banktwo/result.json",
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-banktwo/ready.json",
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-banktwo/go-fixture.log",
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-banktwo/browser.stdout.log",
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-banktwo/browser.stderr.log",
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-banktwo/browser/evidence.json",
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-banktwo/child-processes.json",
+          "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-banktwo/parent-process.json"
+        ],
+        "conditional_failure_ref": "workshop-browser/test_browser_owned_source_canonical_and_media_real_api/webkit-banktwo/browser/webkit/test_browser_owned_source_canonical_and_media_real_api-failure.png",
+        "expected_assertions": [
+          "official_sdk_cookie_and_pg_session",
+          "return_does_not_grant",
+          "signed_public_webhook_grants_once",
+          "permanent_owner_library_reload",
+          "permanent_owner_library_server_restart",
+          "paid_source_and_actual_s3_image",
+          "source_to_canonical_and_warm_reuse",
+          "warm_raw_runtime_unchanged_with_approved_s3_delivery"
+        ]
+      },
+      {
+        "ordinal": 10,
+        "case_id": "test_browser_account_scope_and_revocation_real_api[chromium-bankone]",
+        "root": "test_browser_account_scope_and_revocation_real_api",
+        "engine": "chromium",
+        "provider": "bankone",
+        "case_prefix": "workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-bankone/",
+        "junit_classname": "tests.test_workshop_browser_integration",
+        "junit_name": "test_browser_account_scope_and_revocation_real_api[chromium-bankone]",
+        "required_refs": [
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-bankone/child.log",
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-bankone/result.json",
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-bankone/ready.json",
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-bankone/go-fixture.log",
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-bankone/browser.stdout.log",
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-bankone/browser.stderr.log",
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-bankone/browser/evidence.json",
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-bankone/child-processes.json",
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-bankone/parent-process.json"
+        ],
+        "conditional_failure_ref": "workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-bankone/browser/chromium/test_browser_account_scope_and_revocation_real_api-failure.png",
+        "expected_assertions": [
+          "official_sdk_cookie_and_pg_session",
+          "return_does_not_grant",
+          "signed_public_webhook_grants_once",
+          "permanent_owner_library_reload",
+          "permanent_owner_library_server_restart",
+          "paid_source_and_actual_s3_image",
+          "source_to_canonical_and_warm_reuse",
+          "warm_raw_runtime_unchanged_with_approved_s3_delivery",
+          "account_and_exact_scope_isolation",
+          "logout_bfcache_and_firebase_disable_deny"
+        ]
+      },
+      {
+        "ordinal": 11,
+        "case_id": "test_browser_account_scope_and_revocation_real_api[chromium-banktwo]",
+        "root": "test_browser_account_scope_and_revocation_real_api",
+        "engine": "chromium",
+        "provider": "banktwo",
+        "case_prefix": "workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-banktwo/",
+        "junit_classname": "tests.test_workshop_browser_integration",
+        "junit_name": "test_browser_account_scope_and_revocation_real_api[chromium-banktwo]",
+        "required_refs": [
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-banktwo/child.log",
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-banktwo/result.json",
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-banktwo/ready.json",
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-banktwo/go-fixture.log",
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-banktwo/browser.stdout.log",
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-banktwo/browser.stderr.log",
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-banktwo/browser/evidence.json",
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-banktwo/child-processes.json",
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-banktwo/parent-process.json"
+        ],
+        "conditional_failure_ref": "workshop-browser/test_browser_account_scope_and_revocation_real_api/chromium-banktwo/browser/chromium/test_browser_account_scope_and_revocation_real_api-failure.png",
+        "expected_assertions": [
+          "official_sdk_cookie_and_pg_session",
+          "return_does_not_grant",
+          "signed_public_webhook_grants_once",
+          "permanent_owner_library_reload",
+          "permanent_owner_library_server_restart",
+          "paid_source_and_actual_s3_image",
+          "source_to_canonical_and_warm_reuse",
+          "warm_raw_runtime_unchanged_with_approved_s3_delivery",
+          "account_and_exact_scope_isolation",
+          "logout_bfcache_and_firebase_disable_deny"
+        ]
+      },
+      {
+        "ordinal": 12,
+        "case_id": "test_browser_account_scope_and_revocation_real_api[firefox-bankone]",
+        "root": "test_browser_account_scope_and_revocation_real_api",
+        "engine": "firefox",
+        "provider": "bankone",
+        "case_prefix": "workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-bankone/",
+        "junit_classname": "tests.test_workshop_browser_integration",
+        "junit_name": "test_browser_account_scope_and_revocation_real_api[firefox-bankone]",
+        "required_refs": [
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-bankone/child.log",
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-bankone/result.json",
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-bankone/ready.json",
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-bankone/go-fixture.log",
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-bankone/browser.stdout.log",
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-bankone/browser.stderr.log",
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-bankone/browser/evidence.json",
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-bankone/child-processes.json",
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-bankone/parent-process.json"
+        ],
+        "conditional_failure_ref": "workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-bankone/browser/firefox/test_browser_account_scope_and_revocation_real_api-failure.png",
+        "expected_assertions": [
+          "official_sdk_cookie_and_pg_session",
+          "return_does_not_grant",
+          "signed_public_webhook_grants_once",
+          "permanent_owner_library_reload",
+          "permanent_owner_library_server_restart",
+          "paid_source_and_actual_s3_image",
+          "source_to_canonical_and_warm_reuse",
+          "warm_raw_runtime_unchanged_with_approved_s3_delivery",
+          "account_and_exact_scope_isolation",
+          "logout_bfcache_and_firebase_disable_deny"
+        ]
+      },
+      {
+        "ordinal": 13,
+        "case_id": "test_browser_account_scope_and_revocation_real_api[firefox-banktwo]",
+        "root": "test_browser_account_scope_and_revocation_real_api",
+        "engine": "firefox",
+        "provider": "banktwo",
+        "case_prefix": "workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-banktwo/",
+        "junit_classname": "tests.test_workshop_browser_integration",
+        "junit_name": "test_browser_account_scope_and_revocation_real_api[firefox-banktwo]",
+        "required_refs": [
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-banktwo/child.log",
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-banktwo/result.json",
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-banktwo/ready.json",
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-banktwo/go-fixture.log",
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-banktwo/browser.stdout.log",
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-banktwo/browser.stderr.log",
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-banktwo/browser/evidence.json",
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-banktwo/child-processes.json",
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-banktwo/parent-process.json"
+        ],
+        "conditional_failure_ref": "workshop-browser/test_browser_account_scope_and_revocation_real_api/firefox-banktwo/browser/firefox/test_browser_account_scope_and_revocation_real_api-failure.png",
+        "expected_assertions": [
+          "official_sdk_cookie_and_pg_session",
+          "return_does_not_grant",
+          "signed_public_webhook_grants_once",
+          "permanent_owner_library_reload",
+          "permanent_owner_library_server_restart",
+          "paid_source_and_actual_s3_image",
+          "source_to_canonical_and_warm_reuse",
+          "warm_raw_runtime_unchanged_with_approved_s3_delivery",
+          "account_and_exact_scope_isolation",
+          "logout_bfcache_and_firebase_disable_deny"
+        ]
+      },
+      {
+        "ordinal": 14,
+        "case_id": "test_browser_account_scope_and_revocation_real_api[webkit-bankone]",
+        "root": "test_browser_account_scope_and_revocation_real_api",
+        "engine": "webkit",
+        "provider": "bankone",
+        "case_prefix": "workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-bankone/",
+        "junit_classname": "tests.test_workshop_browser_integration",
+        "junit_name": "test_browser_account_scope_and_revocation_real_api[webkit-bankone]",
+        "required_refs": [
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-bankone/child.log",
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-bankone/result.json",
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-bankone/ready.json",
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-bankone/go-fixture.log",
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-bankone/browser.stdout.log",
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-bankone/browser.stderr.log",
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-bankone/browser/evidence.json",
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-bankone/child-processes.json",
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-bankone/parent-process.json"
+        ],
+        "conditional_failure_ref": "workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-bankone/browser/webkit/test_browser_account_scope_and_revocation_real_api-failure.png",
+        "expected_assertions": [
+          "official_sdk_cookie_and_pg_session",
+          "return_does_not_grant",
+          "signed_public_webhook_grants_once",
+          "permanent_owner_library_reload",
+          "permanent_owner_library_server_restart",
+          "paid_source_and_actual_s3_image",
+          "source_to_canonical_and_warm_reuse",
+          "warm_raw_runtime_unchanged_with_approved_s3_delivery",
+          "account_and_exact_scope_isolation",
+          "logout_bfcache_and_firebase_disable_deny"
+        ]
+      },
+      {
+        "ordinal": 15,
+        "case_id": "test_browser_account_scope_and_revocation_real_api[webkit-banktwo]",
+        "root": "test_browser_account_scope_and_revocation_real_api",
+        "engine": "webkit",
+        "provider": "banktwo",
+        "case_prefix": "workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-banktwo/",
+        "junit_classname": "tests.test_workshop_browser_integration",
+        "junit_name": "test_browser_account_scope_and_revocation_real_api[webkit-banktwo]",
+        "required_refs": [
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-banktwo/child.log",
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-banktwo/result.json",
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-banktwo/ready.json",
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-banktwo/go-fixture.log",
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-banktwo/browser.stdout.log",
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-banktwo/browser.stderr.log",
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-banktwo/browser/evidence.json",
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-banktwo/child-processes.json",
+          "workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-banktwo/parent-process.json"
+        ],
+        "conditional_failure_ref": "workshop-browser/test_browser_account_scope_and_revocation_real_api/webkit-banktwo/browser/webkit/test_browser_account_scope_and_revocation_real_api-failure.png",
+        "expected_assertions": [
+          "official_sdk_cookie_and_pg_session",
+          "return_does_not_grant",
+          "signed_public_webhook_grants_once",
+          "permanent_owner_library_reload",
+          "permanent_owner_library_server_restart",
+          "paid_source_and_actual_s3_image",
+          "source_to_canonical_and_warm_reuse",
+          "warm_raw_runtime_unchanged_with_approved_s3_delivery",
+          "account_and_exact_scope_isolation",
+          "logout_bfcache_and_firebase_disable_deny"
+        ]
+      },
+      {
+        "ordinal": 16,
+        "case_id": "test_browser_signed_refund_blocks_old_links_real_api[chromium-bankone]",
+        "root": "test_browser_signed_refund_blocks_old_links_real_api",
+        "engine": "chromium",
+        "provider": "bankone",
+        "case_prefix": "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-bankone/",
+        "junit_classname": "tests.test_workshop_browser_integration",
+        "junit_name": "test_browser_signed_refund_blocks_old_links_real_api[chromium-bankone]",
+        "required_refs": [
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-bankone/child.log",
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-bankone/result.json",
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-bankone/ready.json",
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-bankone/go-fixture.log",
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-bankone/browser.stdout.log",
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-bankone/browser.stderr.log",
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-bankone/browser/evidence.json",
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-bankone/child-processes.json",
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-bankone/parent-process.json"
+        ],
+        "conditional_failure_ref": "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-bankone/browser/chromium/test_browser_signed_refund_blocks_old_links_real_api-failure.png",
+        "expected_assertions": [
+          "official_sdk_cookie_and_pg_session",
+          "return_does_not_grant",
+          "signed_public_webhook_grants_once",
+          "permanent_owner_library_reload",
+          "permanent_owner_library_server_restart",
+          "paid_source_and_actual_s3_image",
+          "source_to_canonical_and_warm_reuse",
+          "warm_raw_runtime_unchanged_with_approved_s3_delivery",
+          "signed_full_refund_denies_old_content_and_media"
+        ]
+      },
+      {
+        "ordinal": 17,
+        "case_id": "test_browser_signed_refund_blocks_old_links_real_api[chromium-banktwo]",
+        "root": "test_browser_signed_refund_blocks_old_links_real_api",
+        "engine": "chromium",
+        "provider": "banktwo",
+        "case_prefix": "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-banktwo/",
+        "junit_classname": "tests.test_workshop_browser_integration",
+        "junit_name": "test_browser_signed_refund_blocks_old_links_real_api[chromium-banktwo]",
+        "required_refs": [
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-banktwo/child.log",
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-banktwo/result.json",
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-banktwo/ready.json",
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-banktwo/go-fixture.log",
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-banktwo/browser.stdout.log",
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-banktwo/browser.stderr.log",
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-banktwo/browser/evidence.json",
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-banktwo/child-processes.json",
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-banktwo/parent-process.json"
+        ],
+        "conditional_failure_ref": "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/chromium-banktwo/browser/chromium/test_browser_signed_refund_blocks_old_links_real_api-failure.png",
+        "expected_assertions": [
+          "official_sdk_cookie_and_pg_session",
+          "return_does_not_grant",
+          "signed_public_webhook_grants_once",
+          "permanent_owner_library_reload",
+          "permanent_owner_library_server_restart",
+          "paid_source_and_actual_s3_image",
+          "source_to_canonical_and_warm_reuse",
+          "warm_raw_runtime_unchanged_with_approved_s3_delivery",
+          "signed_full_refund_denies_old_content_and_media"
+        ]
+      },
+      {
+        "ordinal": 18,
+        "case_id": "test_browser_signed_refund_blocks_old_links_real_api[firefox-bankone]",
+        "root": "test_browser_signed_refund_blocks_old_links_real_api",
+        "engine": "firefox",
+        "provider": "bankone",
+        "case_prefix": "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-bankone/",
+        "junit_classname": "tests.test_workshop_browser_integration",
+        "junit_name": "test_browser_signed_refund_blocks_old_links_real_api[firefox-bankone]",
+        "required_refs": [
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-bankone/child.log",
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-bankone/result.json",
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-bankone/ready.json",
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-bankone/go-fixture.log",
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-bankone/browser.stdout.log",
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-bankone/browser.stderr.log",
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-bankone/browser/evidence.json",
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-bankone/child-processes.json",
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-bankone/parent-process.json"
+        ],
+        "conditional_failure_ref": "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-bankone/browser/firefox/test_browser_signed_refund_blocks_old_links_real_api-failure.png",
+        "expected_assertions": [
+          "official_sdk_cookie_and_pg_session",
+          "return_does_not_grant",
+          "signed_public_webhook_grants_once",
+          "permanent_owner_library_reload",
+          "permanent_owner_library_server_restart",
+          "paid_source_and_actual_s3_image",
+          "source_to_canonical_and_warm_reuse",
+          "warm_raw_runtime_unchanged_with_approved_s3_delivery",
+          "signed_full_refund_denies_old_content_and_media"
+        ]
+      },
+      {
+        "ordinal": 19,
+        "case_id": "test_browser_signed_refund_blocks_old_links_real_api[firefox-banktwo]",
+        "root": "test_browser_signed_refund_blocks_old_links_real_api",
+        "engine": "firefox",
+        "provider": "banktwo",
+        "case_prefix": "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-banktwo/",
+        "junit_classname": "tests.test_workshop_browser_integration",
+        "junit_name": "test_browser_signed_refund_blocks_old_links_real_api[firefox-banktwo]",
+        "required_refs": [
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-banktwo/child.log",
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-banktwo/result.json",
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-banktwo/ready.json",
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-banktwo/go-fixture.log",
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-banktwo/browser.stdout.log",
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-banktwo/browser.stderr.log",
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-banktwo/browser/evidence.json",
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-banktwo/child-processes.json",
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-banktwo/parent-process.json"
+        ],
+        "conditional_failure_ref": "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/firefox-banktwo/browser/firefox/test_browser_signed_refund_blocks_old_links_real_api-failure.png",
+        "expected_assertions": [
+          "official_sdk_cookie_and_pg_session",
+          "return_does_not_grant",
+          "signed_public_webhook_grants_once",
+          "permanent_owner_library_reload",
+          "permanent_owner_library_server_restart",
+          "paid_source_and_actual_s3_image",
+          "source_to_canonical_and_warm_reuse",
+          "warm_raw_runtime_unchanged_with_approved_s3_delivery",
+          "signed_full_refund_denies_old_content_and_media"
+        ]
+      },
+      {
+        "ordinal": 20,
+        "case_id": "test_browser_signed_refund_blocks_old_links_real_api[webkit-bankone]",
+        "root": "test_browser_signed_refund_blocks_old_links_real_api",
+        "engine": "webkit",
+        "provider": "bankone",
+        "case_prefix": "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-bankone/",
+        "junit_classname": "tests.test_workshop_browser_integration",
+        "junit_name": "test_browser_signed_refund_blocks_old_links_real_api[webkit-bankone]",
+        "required_refs": [
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-bankone/child.log",
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-bankone/result.json",
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-bankone/ready.json",
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-bankone/go-fixture.log",
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-bankone/browser.stdout.log",
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-bankone/browser.stderr.log",
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-bankone/browser/evidence.json",
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-bankone/child-processes.json",
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-bankone/parent-process.json"
+        ],
+        "conditional_failure_ref": "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-bankone/browser/webkit/test_browser_signed_refund_blocks_old_links_real_api-failure.png",
+        "expected_assertions": [
+          "official_sdk_cookie_and_pg_session",
+          "return_does_not_grant",
+          "signed_public_webhook_grants_once",
+          "permanent_owner_library_reload",
+          "permanent_owner_library_server_restart",
+          "paid_source_and_actual_s3_image",
+          "source_to_canonical_and_warm_reuse",
+          "warm_raw_runtime_unchanged_with_approved_s3_delivery",
+          "signed_full_refund_denies_old_content_and_media"
+        ]
+      },
+      {
+        "ordinal": 21,
+        "case_id": "test_browser_signed_refund_blocks_old_links_real_api[webkit-banktwo]",
+        "root": "test_browser_signed_refund_blocks_old_links_real_api",
+        "engine": "webkit",
+        "provider": "banktwo",
+        "case_prefix": "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-banktwo/",
+        "junit_classname": "tests.test_workshop_browser_integration",
+        "junit_name": "test_browser_signed_refund_blocks_old_links_real_api[webkit-banktwo]",
+        "required_refs": [
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-banktwo/child.log",
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-banktwo/result.json",
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-banktwo/ready.json",
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-banktwo/go-fixture.log",
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-banktwo/browser.stdout.log",
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-banktwo/browser.stderr.log",
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-banktwo/browser/evidence.json",
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-banktwo/child-processes.json",
+          "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-banktwo/parent-process.json"
+        ],
+        "conditional_failure_ref": "workshop-browser/test_browser_signed_refund_blocks_old_links_real_api/webkit-banktwo/browser/webkit/test_browser_signed_refund_blocks_old_links_real_api-failure.png",
+        "expected_assertions": [
+          "official_sdk_cookie_and_pg_session",
+          "return_does_not_grant",
+          "signed_public_webhook_grants_once",
+          "permanent_owner_library_reload",
+          "permanent_owner_library_server_restart",
+          "paid_source_and_actual_s3_image",
+          "source_to_canonical_and_warm_reuse",
+          "warm_raw_runtime_unchanged_with_approved_s3_delivery",
+          "signed_full_refund_denies_old_content_and_media"
+        ]
+      }
+    ],
+    "api_case_count": 21,
+    "prior_required_refs": 148,
+    "sidecars_per_case": 2,
+    "required_ref_count": 190,
+    "junit_original_producer_path": "/artifacts/workshop-browser-api.xml",
+    "junit_ref": "workshop-browser-api.xml",
+    "dto_engines": [
+      "chromium",
+      "firefox",
+      "webkit"
+    ],
+    "dto_scenarios_per_engine": 40,
+    "dto_case_count": 120,
+    "preservation": "Preserve original inventory and full original bytes from each new run. Do not demand equality with historical C output bytes. Optional screenshots and declared original global worker logs are extra support only; transport remains unadmitted.",
+    "worker_logs": "Dynamic optional original global refs exclusively listed by observed child worker mapping; maximum42 unique logs across21, private/raw only; no unstated transport or provenance authority.",
+    "success_required_ref_count": 190,
+    "failed_inventory_rule": "Original JUnit and21 parent sidecars required to classify all cases; child artifacts may be absent only where failed parent/child source branch never published them. Present bytes all validated; missing mandatory parent/JUnit means ContractError, not repaired evidence."
+  },
+  "phase_matrix": {
+    "test_browser_google_exchange_checkout_library_real_api": [
+      "setup",
+      "metadata",
+      "initial-measurement",
+      "signed-in-measurement",
+      "checkout-first-http",
+      "checkout-first-delivery",
+      "response-lost-measurement",
+      "response-lost-snapshot",
+      "checkout-retry-http",
+      "checkout-retry-delivery",
+      "pending-checkout-measurement",
+      "retry-pending-snapshot",
+      "return-without-grant-measurement",
+      "settlement-control",
+      "settled-measurement",
+      "owner-library-initial-http",
+      "owner-library-reload-http",
+      "library-reload-measurement",
+      "restart-before-measurement",
+      "runtime-before",
+      "restart-control",
+      "runtime-poll",
+      "owner-library-restart-http",
+      "restart-after-measurement",
+      "final-measurement"
+    ],
+    "test_browser_owned_source_canonical_and_media_real_api": [
+      "setup",
+      "metadata",
+      "initial-measurement",
+      "signed-in-measurement",
+      "checkout-http",
+      "pending-checkout-measurement",
+      "return-without-grant-measurement",
+      "settlement-control",
+      "settled-measurement",
+      "owner-library-initial-http",
+      "owner-library-reload-http",
+      "library-reload-measurement",
+      "restart-before-measurement",
+      "runtime-before",
+      "restart-control",
+      "runtime-poll",
+      "owner-library-restart-http",
+      "restart-after-measurement",
+      "start-workers-control",
+      "source-page-http",
+      "source-image-http",
+      "source-review-http",
+      "release-model-control",
+      "warm-before-snapshot",
+      "reader-before-measurement",
+      "warm-page-http",
+      "warm-image-http",
+      "warm-pinned-source-http",
+      "warm-after-snapshot",
+      "reader-after-measurement",
+      "final-measurement"
+    ],
+    "test_browser_account_scope_and_revocation_real_api": [
+      "setup",
+      "metadata",
+      "initial-measurement",
+      "signed-in-measurement",
+      "checkout-http",
+      "pending-checkout-measurement",
+      "return-without-grant-measurement",
+      "settlement-control",
+      "settled-measurement",
+      "owner-library-initial-http",
+      "owner-library-reload-http",
+      "library-reload-measurement",
+      "restart-before-measurement",
+      "runtime-before",
+      "restart-control",
+      "runtime-poll",
+      "owner-library-restart-http",
+      "restart-after-measurement",
+      "start-workers-control",
+      "source-page-http",
+      "source-image-http",
+      "source-review-http",
+      "release-model-control",
+      "warm-before-snapshot",
+      "reader-before-measurement",
+      "warm-page-http",
+      "warm-image-http",
+      "warm-pinned-source-http",
+      "warm-after-snapshot",
+      "reader-after-measurement",
+      "adjacent-denial",
+      "other-region-denial",
+      "unscoped-article-denial",
+      "legacy-vehicle-denial",
+      "other-catalogue-denial",
+      "other-library-http",
+      "other-image-denial",
+      "logout-image-denial",
+      "disable-control",
+      "disabled-image-denial",
+      "final-measurement"
+    ],
+    "test_browser_signed_refund_blocks_old_links_real_api": [
+      "setup",
+      "metadata",
+      "initial-measurement",
+      "signed-in-measurement",
+      "checkout-http",
+      "pending-checkout-measurement",
+      "return-without-grant-measurement",
+      "settlement-control",
+      "settled-measurement",
+      "owner-library-initial-http",
+      "owner-library-reload-http",
+      "library-reload-measurement",
+      "restart-before-measurement",
+      "runtime-before",
+      "restart-control",
+      "runtime-poll",
+      "owner-library-restart-http",
+      "restart-after-measurement",
+      "start-workers-control",
+      "source-page-http",
+      "source-image-http",
+      "source-review-http",
+      "release-model-control",
+      "warm-before-snapshot",
+      "reader-before-measurement",
+      "warm-page-http",
+      "warm-image-http",
+      "warm-pinned-source-http",
+      "warm-after-snapshot",
+      "reader-after-measurement",
+      "refund-control",
+      "refund-old-image-denial",
+      "refund-source-denial",
+      "refund-detail-denial",
+      "revoked-measurement",
+      "final-measurement"
+    ]
+  },
+  "phase_payload_schedule": {
+    "checkout-http": {
+      "roots": "source,scope,refund (18 cases)",
+      "payload": "one http payload, channel application, POST /v1/workshop/checkout-sessions, actor owner, attempt1, actual status200 or201",
+      "cardinality": "Exactly1 completed checkout exchange in a passed case; original request and response bodies retained; absent/duplicate/unavailable fails. UI double activation does not authorize a second successful checkout.",
+      "order": "after signed-in measurement and purchase activation, before pending-checkout-measurement",
+      "identity": "Retain actual idempotency UUID and original request bytes, exact response bytes and parsed checkout identity. Same original byte/hash rules as Google, with no fabricated loss/retry/abort/fulfill events."
+    },
+    "checkout-first-http/checkout-retry-http": {
+      "roots": "Google only (3 cases)",
+      "payload": "one actual application POST checkout http payload per named phase; attempts1 then2, actual status200/201",
+      "cardinality": "Exactly1 exchange each. Exactly2 total, first completed response lost by abort; second retry fulfilled.",
+      "order": "as existing Google phase/delivery chain; first and retry keys/requests/parsed identities compared independently; response serialization need not match"
+    },
+    "owner-library-initial-http": {
+      "roots": "all21",
+      "payload": "http, application GET /v1/workshop/library, actor owner, real status200, full original JSON response bytes and parsed body retained",
+      "cardinality": "1..16 actual completed matching responses in the initial post-settlement owner library action window; retain every matching response, not only the last. At least one response contains the single expected owner-scoped paid library item before the library assertion. Absent bytes/unavailable response fails a passed row.",
+      "order": "after settled-measurement and owner page navigation; window includes initial My vehicles activation, ends before explicit page.reload"
+    },
+    "owner-library-reload-http": {
+      "roots": "all21",
+      "payload": "same original owner library HTTP response requirements",
+      "cardinality": "1..16 actual completed matching responses associated with explicit library page.reload; retain each, at least one matching single paid item before count assertion. Zero/missing body/unavailable fails.",
+      "order": "after explicit reload and before library-reload-measurement"
+    },
+    "owner-library-restart-http": {
+      "roots": "all21",
+      "payload": "same original owner library HTTP response requirements",
+      "cardinality": "1..16 actual completed matching responses associated with post-restart page.reload; retain each, at least one matching single paid item before count assertion. Zero/missing body/unavailable fails.",
+      "order": "after runtime-poll observes generation increment and post-restart reload, before restart-after-measurement"
+    },
+    "repetition_and_attribution": "Within each library slot attempt numbers1..16 reflect actual observation order, no duplicates or synthetic polls. Bound callbacks to the initiating existing action window, await owned observation completion before next phase/assertion, preserve actual causal refs/local seq. Record all matching response bodies before assertions. Other page responses remain in their listed source/warm slots. If integrated source does not actually emit a required response in a defined window, stop for reviewed phase-contract revision before adoption; do not manufacture network operations or alias adjacent fixture measurement as library HTTP."
+  },
+  "branch_matrix": [
+    {
+      "id": "success_retained",
+      "conditions": "All21 original JUnit leaves passed, every result passed=true, complete role bindings, ready/evidence/child/parent complete, finalization observed and hashes match; every source-defined applicable phase/HTTP/entity and business seam consistent.",
+      "action": "Record observed_case_ids only. Always unavailable/complete=false/zero credit; no authentic observation claimed."
+    },
+    {
+      "id": "parent_prelaunch_failed",
+      "conditions": "Parent retained, child.launched=false, no wait/poll code invented, primary failure present, child artifacts empty/unavailable. JUnit failure/error/skipped is nonpass. Result/ready/browser/child files may be absent because never published.",
+      "action": "Diagnostic producer_partial, no observed success ID; reject fabricated result/child success or impossible launch/wait sequence."
+    },
+    {
+      "id": "child_setup_failed",
+      "conditions": "Child launched but source binding, repository, HOME, fixture setup or Go launch failed. Result fixed base keys plus v2 binding; fixture_database may be null before repository creation, otherwise valid isolated database. final_snapshot absent unless reached; worker_exits may independently be written by failed-child finally cleanup under failed_child_cleanup_without_final_snapshot. Failed result candidate_sha repeats observer binding including source-defined null candidate; exact top-level identity is branch-aware, never a fabricated Task51 value.",
+      "action": "Retain failed/partial diagnostic and all declared bytes; do not require successful-source fields or fabricate them. Reject passed=true or invented complete binding."
+    },
+    {
+      "id": "failed_child_cleanup_without_final_snapshot",
+      "source": "integration._child439 versus454\u2013466",
+      "conditions": "result.passed=false with safe primary failure before final_snapshot assignment; runtime exists, bridge may exist, workers_stopped false. finally captures worker handles, calls bridge.stop when bridge exists and assigns returned worker_exits even though final_snapshot absent; else runtime.stop_workers emits no worker_exits. Worker-stop completed and runtime-close completed/failed reflect actual retained cleanup. Fields result version/mode/candidate/browser/provider/test/database/version-extension/binding stay source-selected closed base, plus worker_exits only; never invent final_snapshot.",
+      "validation": "Validate every retained exit exact keys/types and available worker mapping/sidecar/finalization/original log hash consistency. Google may have []; nonGoogle can have [] if failure precedes worker start, or source-observed exits for started workers; failed partial cleanup never inherits success exactly2 requirement absent successful start/mapping. Unknown worker facts remain unavailable, no synthetic cleanup success. Primary failure sticky; result/child/parent/JUnit must remain nonpass.",
+      "action": "Valid nonpass diagnostic, observed_case_ids excludes case; no successful state inferred. Contradictory worker mapping/finalized hash or fabricated success/final snapshot rejected. Complete success still requires all source final_snapshot/worker_exits/phase/process invariants."
+    },
+    {
+      "id": "browser_setup_or_launch_failed",
+      "conditions": "Ready may exist; browser evidence may have only fixed version/mode/candidate/version-extension/binding/results keys, with metadata extensions absent or full metadata group present. Failed row minimal browser/scenario/status/observations; browser_versions absent before successful case return.",
+      "action": "Allow only exact source-defined prefix shapes and null known-unavailable binding fields; source_binding_failed remains nonpass. No missing phase inferred from assertions."
+    },
+    {
+      "id": "case_failed_timeout_cancelled",
+      "conditions": "Observation events retain contiguous locally ordered prefix with sticky first safe failure. Row may retain legacy case fields from api_case finally; assertions only completed prefix. Phase prefix plus terminal cleanup lifecycle may finish at current phase. HTTP read/status/body unavailability explicit.",
+      "action": "No success ID; validate every retained member, cross-reference and hash. Timeout/cancel cannot be turned passed by later context/browser close or final snapshot."
+    },
+    {
+      "id": "case_passed_cleanup_failed",
+      "conditions": "Retained api_case legacy row can exist while run overwrites status failed after browser close or publication failure. final_snapshot may exist only after browser runner observed normal success; In this case-passed branch only, worker_exits follows final_snapshot; separate failed-child-finally branch explicitly permits worker_exits without it. Result/child/parent may disagree on final success only in source-defined later failure direction.",
+      "action": "Use conjunction of JUnit/result/child/parent/evidence/observations success for observed ID. Parent JUnit failure may accompany earlier passed child/result if subsequent support accounting/publication/cleanup failed; never accept inverse fabricated JUnit pass."
+    },
+    {
+      "id": "minimal_browser_publication",
+      "conditions": "Exact evidence keys api_observability_version,binding,version,mode,candidate_sha,results. Exactly one row with browser,scenario,status failed,observations. observations.events=[]; publication failed; primary_failure preserves earlier failure or publication_failed.",
+      "action": "Recognize source fallback, no prefix completeness claim. Explicit empty fallback differs from truncated JSON, which is rejected."
+    },
+    {
+      "id": "sidecar_minimal_publication",
+      "conditions": "Same closed child/parent sidecar key sets. status failed/publication_failure publication_failed; collections workers/finalization_events/child_artifacts/events/output_hashes emptied; child_launch_cause null; child_artifact_status unavailable; observed worker mapping demoted unavailable. Retained scalar facts are not erased into success.",
+      "action": "Recognize bounded source fallback, retain unknown facts as null/unavailable and no successful mapping/hash claim. Missing unpublished sidecar is missing evidence, never reconstructed."
+    },
+    {
+      "id": "support_missing_or_oversize",
+      "conditions": "Required success member missing, any declared byte truncated/replaced/hash-mismatched, JSON malformed, unknown schema member, unsafe path/link, oversized support or undeclared worker log.",
+      "action": "Raise ContractError with stable nonsecret reason. No truncation, omission, copy/rename alias, increase of bounds or fabricated successful fallback."
+    }
+  ],
+  "bounds": {
+    "per_body_decoded_bytes": 131072,
+    "per_event_canonical_bytes": 262144,
+    "per_case_observations_canonical_bytes": 1048576,
+    "per_case_events": 512,
+    "per_run_observations_canonical_bytes": 22020096,
+    "child_sidecar_bytes": 262144,
+    "parent_sidecar_bytes": 65536,
+    "per_process_events": 32,
+    "per_case_worker_logs": 2,
+    "raw_json_file_bytes": 4194304,
+    "any_support_file_bytes": 8388608,
+    "total_declared_support_bytes": 67108864,
+    "minimal_failure_reserve_per_file_bytes": 16384,
+    "accounting": "Count complete final serialized keys/strings, parsed duplicate representation, base64 expansion and repeated bindings; check addition before retaining body/event, then check serialized case/file/run totals. All files/logs/JUnit/screenshots count toward64MiB. Full valid artifacts may hit aggregate cap: fail closed; caps are not guarantee all runs fit. Retention never truncates originals into a successful record. Fixed caps do not raise time budgets.",
+    "consumer_16MiB_trace_policy": "Reject intact oversize; do not trim/copy/raise ArtifactStore ceilings. Producer diagnostic retention remains separate."
+  },
+  "source_manifest": [
+    {
+      "path": "scripts/dev/release_acceptance.py",
+      "blob": "29640ff1f9def5e42d7b8cebc51e26c162255ec0",
+      "sha256": "8af9bb5b51258f3950472df314305f68bd996bb8112ecc2d8277bb555b09616a",
+      "bytes": 166236
+    },
+    {
+      "path": "scripts/dev/test_release_acceptance.py",
+      "blob": "e903361f46244571c983b09f80412e4c83580086",
+      "sha256": "01708cac12162978467b5f38865b62ef719fd73cc89a4f7c592d5a43c7817185",
+      "bytes": 275213
+    },
+    {
+      "path": "docs/verification/release-acceptance-runbook.md",
+      "blob": "ef6c47188b0bf4ca3c2b842d33330df364e94c46",
+      "sha256": "922c45f551e5cd9402b2591a705d4d8c276e1ea168fcfd9671c836962ba60e01",
+      "bytes": 38973
+    },
+    {
+      "path": "scripts/dev/workshop_browser_smoke.py",
+      "blob": "24bbd65d42d5edc4e9184b52173004ef1a5efb42",
+      "sha256": "e5424bfeb412d321638ebab31362774226d49caeacd53ffc929a54c00bbf9a7a",
+      "bytes": 153318
+    },
+    {
+      "path": "scripts/dev/fixtures/workshop_customer/scenarios.json",
+      "blob": "bff0b0a52aa900e144ad8e3062632e8859a87c30",
+      "sha256": "83ae0b9a08148fc5321663ce1f4647d29535726d7af93f6299abd4171ebc65d9",
+      "bytes": 1027
+    },
+    {
+      "path": "scripts/dev/fixtures/workshop_customer/firebase_transport.js",
+      "blob": "38616cde5dc9f0ba45663638e772511b8adeb233",
+      "sha256": "96bd315271bf05f363dc74ebb8d60c243f0ede8f0e7a649d3d7eeb7ea8f9dc63",
+      "bytes": 1386
+    },
+    {
+      "path": "scripts/dev/fixtures/workshop_customer/hostile_source.json",
+      "blob": "24bdbea86de6f54abab0c26581d77675cf2d2f24",
+      "sha256": "076b68d46991bd32a8ba73f61b93d7c22b52784c3df2d58d0c9e8d33891483d1",
+      "bytes": 485
+    },
+    {
+      "path": "scripts/dev/fixtures/workshop_customer/stripe_checkout.html",
+      "blob": "acc3a065b4b6cc6c4c32f0eedb203d2cdd59c096",
+      "sha256": "26c1c7ea312630626792f89290b318ca36d01f72c7906d94cab9baf03dc74083",
+      "bytes": 503
+    },
+    {
+      "path": "apps/api-go/workshop_browser_fixture_test.go",
+      "blob": "2e993a713bdaddef4b9ab5f3f17bf9e6a0143a42",
+      "sha256": "7520a24bcfa06fe64810c6c17625563d29a2387c6d0531a61713f50b2098bf33",
+      "bytes": 25015
+    },
+    {
+      "path": "workers/ingestion-python/tests/test_workshop_browser_integration.py",
+      "blob": "075b3d1bea3e94eaaa8393955cd7eb887a755e0b",
+      "sha256": "1d83bcaa7e57b59cc2a6b8e64d9e4ab9dc327389c21a905b85dbec7267bc976b",
+      "bytes": 37702
+    },
+    {
+      "path": "apps/api-go/workshop/index.html",
+      "blob": "fa2bf7a6a8dfb580267ece998234148036d56030",
+      "sha256": "8910a2b9021af306f1f3698a094bbc0b8da01b9038666ec2c57879b8fb65ac68",
+      "bytes": 10868
+    },
+    {
+      "path": "apps/api-go/workshop/app.mjs",
+      "blob": "963eca5d2a559986bd062e34d6187af6ada7b876",
+      "sha256": "2bfe85a3f5e0b77bc55fe0c18b50b35a9bab6444f6a640bf6a6a36bd57ab4c46",
+      "bytes": 37870
+    },
+    {
+      "path": "apps/api-go/workshop/auth.mjs",
+      "blob": "53edaacf0c5f3d472f2cf0b65e2261f70b7bbc03",
+      "sha256": "ec71ad49dc21fc8633e1165ff759f1d05467f40d045ca056c8be5460cce285e2",
+      "bytes": 7908
+    },
+    {
+      "path": "apps/api-go/workshop/catalog.mjs",
+      "blob": "0d91ddb47e6f0ae1bafda0a4cd1c9ae0869e5860",
+      "sha256": "cf518ae376f7d61ac6dc09e9a09b12baca6be66e64b8b79d54bab2393286db52",
+      "bytes": 11688
+    },
+    {
+      "path": "apps/api-go/workshop/progress.mjs",
+      "blob": "07769f5e8a25ef0571df4c7622a5f68e004f106b",
+      "sha256": "dd41a36c18871aacb6c1dfb16cfb6c3659c51e92acb479481897f77cffbe7e48",
+      "bytes": 1076
+    },
+    {
+      "path": "apps/api-go/workshop/commerce.mjs",
+      "blob": "b14557f5c31b5e06f116121291d6c8f1ca6d2adf",
+      "sha256": "e7f8e2fd45d6cd9f4ec2ef2f3a50d3f090f34e2562d4bbc58f9c23d06e8a1142",
+      "bytes": 7369
+    },
+    {
+      "path": "apps/api-go/workshop/article-read.mjs",
+      "blob": "cd845362a707d512c5d0cf56b4e1b9b057c576a1",
+      "sha256": "2957242037d4bc3ce7894ae2c7e4bae1636406d0256dd75b6150e78c1c4e5178",
+      "bytes": 2579
+    },
+    {
+      "path": "apps/api-go/workshop/styles.css",
+      "blob": "3208e18430187486c7033ca7499134b790fcf33f",
+      "sha256": "c57c63c0661c500a83f2c3e5ffd57d18eac5910733a0d978e829dfa23ac09a0c",
+      "bytes": 20773
+    },
+    {
+      "path": "apps/api-go/workshop/firebase-web.mjs",
+      "blob": "0c9639ded829e72f88a11f8af4169abe62d1f8e7",
+      "sha256": "bd2f3d36daaecdb5556e601603bea4e80cd202fc515faa931b2b0c5d0f7344f1",
+      "bytes": 112641
+    },
+    {
+      "path": "apps/api-go/workshop/firebase-web.mjs.LEGAL.txt",
+      "blob": "56d5e326693d8648eece9d0b1f057c68a7979da1",
+      "sha256": "70b7365a8d96e19330fbc64e69fa03c03452787b8bcf52d0fc7ad2e184dfd319",
+      "bytes": 35536
+    },
+    {
+      "path": "apps/api-go/workshop/firebase-web.provenance.json",
+      "blob": "b5d611aaf078dfbc2bb556f9ed21b8d085e6fd1a",
+      "sha256": "0ac4b7ddfa58ef0ac800095a4a16f29d96518792b9b81c8dcc81b262a918fa9a",
+      "bytes": 2237
+    },
+    {
+      "path": "scripts/dev/test_workshop_browser_smoke.py",
+      "blob": "fc3722c27d677a4f9efa1e278c61c01bf58a4d74",
+      "sha256": "8b86b5aaba6ddc4766fb261b68f0ebaf55ba8b03cc2fdcc66e0606b2f5a59ee6",
+      "bytes": 133603
+    },
+    {
+      "path": "workers/ingestion-python/tests/test_workshop_browser_observability.py",
+      "blob": "19863c213e1da8490cad49308793e6164cd29918",
+      "sha256": "c998af5373f4aad083493336fad82f6f6e89f821d957fbec66ff8956f852c47d",
+      "bytes": 41766
+    },
+    {
+      "path": "scripts/dev/test_workshop_browser_environment.py",
+      "blob": "030ac978fa1ddd983f2db13f7c9511d093de584f",
+      "sha256": "770b29386cbd8a04fa517065c395a76ea4f508376e33fab63e06d685aa37d5e8",
+      "bytes": 16961
+    },
+    {
+      "path": "workers/ingestion-python/tests/lifecycle_support.py",
+      "blob": "ac52c479e5e4a7f625cddd409d8d61573c271765",
+      "sha256": "746eba57bfffb760e2f779d0d0494125f8b559b07de5ff6ec11099d517bf76dc",
+      "bytes": 19309
+    },
+    {
+      "path": "workers/ingestion-python/tests/test_paid_catalog_api_integration.py",
+      "blob": "d4d8b6d26ead3023dbbe5084d1376c0009404aae",
+      "sha256": "efd3098953dde54d3fc38c167db1f56ab97225c185fb73f032fe7f3289b70198",
+      "bytes": 19378
+    },
+    {
+      "path": "workers/ingestion-python/tests/test_catalog_api_integration.py",
+      "blob": "5b16ff5b5428547fcdeb09fb63c36c94a406ff6c",
+      "sha256": "88e6c1fd339da60614056abd7689b6a7fcd1d16bc1e239cec888b06bb6a61974",
+      "bytes": 30980
+    },
+    {
+      "path": "scripts/dev/workshop_browser_execution_contract.py",
+      "blob": "cd49bfa40dd95e00df1346c3fe14e46f7718d024",
+      "sha256": "042fe9e21c9fcab442ff39f6faca85c3c6fff919978b9733d8b691be032de260",
+      "bytes": 23851
+    },
+    {
+      "path": ".autodata-autonomy-policy.json",
+      "blob": "be4d8088b3fd28c84c101a723ecc7c26768de9e7",
+      "sha256": "798e91b9854098a706ea4ab66a414492c044059a1c98edb9d2f1d003e3baad98",
+      "bytes": 2201
+    },
+    {
+      "path": "docs/agents/pre-implementation-gate.md",
+      "blob": "41076af1db25f0cff8ca41d0203c050af9b772df",
+      "sha256": "fa6e9c95c2674164c90d78e046a0427f6b406c313fb82ff627a2a2facb560ad0",
+      "bytes": 5659
+    },
+    {
+      "path": ".github/workflows/backup-workshop.yml",
+      "blob": "1762153aa370be2eead4d73b0e85fc28c4fa9edf",
+      "sha256": "063defd79405e92ea0bbfce0ecbe72364839757b96f6707531c6973e378fcb17",
+      "bytes": 4950
+    },
+    {
+      "path": ".github/workflows/monitor-workshop.yml",
+      "blob": "224b91c9fe5e30b12824306e5976364cf2682fac",
+      "sha256": "aaa9fd2e5c246c49168de499552da8f2dba8324d9dfd37c46a82c49362dce72d",
+      "bytes": 4570
+    },
+    {
+      "path": ".github/workflows/release-workshop.yml",
+      "blob": "a8f5ef0fc4ab79ee7a42afb58662a3fbe81766e9",
+      "sha256": "d74d596e6f4e2650d028afa4639c35a0da5a6fb71040ff3b58d1747fcd297975",
+      "bytes": 21962
+    },
+    {
+      "path": ".github/workflows/autonomous-verification.yml",
+      "blob": "c312c57f19b809c87338170e661800e5d55b5c93",
+      "sha256": "adbe6221e09c0427d5abaf0ddaa566331abb483f8e246dad3dd42a3dbd6d23a3",
+      "bytes": 15003
+    }
+  ],
+  "producer_source_input_sha256": {
+    "scripts/dev/workshop_browser_smoke.py": "e5424bfeb412d321638ebab31362774226d49caeacd53ffc929a54c00bbf9a7a",
+    "scripts/dev/fixtures/workshop_customer/scenarios.json": "83ae0b9a08148fc5321663ce1f4647d29535726d7af93f6299abd4171ebc65d9",
+    "scripts/dev/fixtures/workshop_customer/firebase_transport.js": "96bd315271bf05f363dc74ebb8d60c243f0ede8f0e7a649d3d7eeb7ea8f9dc63",
+    "scripts/dev/fixtures/workshop_customer/hostile_source.json": "076b68d46991bd32a8ba73f61b93d7c22b52784c3df2d58d0c9e8d33891483d1",
+    "scripts/dev/fixtures/workshop_customer/stripe_checkout.html": "26c1c7ea312630626792f89290b318ca36d01f72c7906d94cab9baf03dc74083",
+    "apps/api-go/workshop_browser_fixture_test.go": "7520a24bcfa06fe64810c6c17625563d29a2387c6d0531a61713f50b2098bf33",
+    "workers/ingestion-python/tests/test_workshop_browser_integration.py": "1d83bcaa7e57b59cc2a6b8e64d9e4ab9dc327389c21a905b85dbec7267bc976b"
+  },
+  "current_served_asset_manifest": {
+    "index.html": {
+      "blob": "fa2bf7a6a8dfb580267ece998234148036d56030",
+      "sha256": "8910a2b9021af306f1f3698a094bbc0b8da01b9038666ec2c57879b8fb65ac68",
+      "bytes": 10868
+    },
+    "app.mjs": {
+      "blob": "963eca5d2a559986bd062e34d6187af6ada7b876",
+      "sha256": "2bfe85a3f5e0b77bc55fe0c18b50b35a9bab6444f6a640bf6a6a36bd57ab4c46",
+      "bytes": 37870
+    },
+    "auth.mjs": {
+      "blob": "53edaacf0c5f3d472f2cf0b65e2261f70b7bbc03",
+      "sha256": "ec71ad49dc21fc8633e1165ff759f1d05467f40d045ca056c8be5460cce285e2",
+      "bytes": 7908
+    },
+    "catalog.mjs": {
+      "blob": "0d91ddb47e6f0ae1bafda0a4cd1c9ae0869e5860",
+      "sha256": "cf518ae376f7d61ac6dc09e9a09b12baca6be66e64b8b79d54bab2393286db52",
+      "bytes": 11688
+    },
+    "progress.mjs": {
+      "blob": "07769f5e8a25ef0571df4c7622a5f68e004f106b",
+      "sha256": "dd41a36c18871aacb6c1dfb16cfb6c3659c51e92acb479481897f77cffbe7e48",
+      "bytes": 1076
+    },
+    "commerce.mjs": {
+      "blob": "b14557f5c31b5e06f116121291d6c8f1ca6d2adf",
+      "sha256": "e7f8e2fd45d6cd9f4ec2ef2f3a50d3f090f34e2562d4bbc58f9c23d06e8a1142",
+      "bytes": 7369
+    },
+    "article-read.mjs": {
+      "blob": "cd845362a707d512c5d0cf56b4e1b9b057c576a1",
+      "sha256": "2957242037d4bc3ce7894ae2c7e4bae1636406d0256dd75b6150e78c1c4e5178",
+      "bytes": 2579
+    },
+    "styles.css": {
+      "blob": "3208e18430187486c7033ca7499134b790fcf33f",
+      "sha256": "c57c63c0661c500a83f2c3e5ffd57d18eac5910733a0d978e829dfa23ac09a0c",
+      "bytes": 20773
+    },
+    "firebase-web.mjs": {
+      "blob": "0c9639ded829e72f88a11f8af4169abe62d1f8e7",
+      "sha256": "bd2f3d36daaecdb5556e601603bea4e80cd202fc515faa931b2b0c5d0f7344f1",
+      "bytes": 112641
+    },
+    "firebase-web.mjs.LEGAL.txt": {
+      "blob": "56d5e326693d8648eece9d0b1f057c68a7979da1",
+      "sha256": "70b7365a8d96e19330fbc64e69fa03c03452787b8bcf52d0fc7ad2e184dfd319",
+      "bytes": 35536
+    },
+    "firebase-web.provenance.json": {
+      "blob": "b5d611aaf078dfbc2bb556f9ed21b8d085e6fd1a",
+      "sha256": "0ac4b7ddfa58ef0ac800095a4a16f29d96518792b9b81c8dcc81b262a918fa9a",
+      "bytes": 2237
+    }
+  },
+  "legacy_business_contract_ref": {
+    "source_spec_ref": "docs/agents/specs/2026-11-04-workshop-current-source-api21-raw-inspector.json",
+    "source_sha": "6949eb1b1a5b93c9b2eb0579328e24c697f6f331",
+    "rule": "Read only retained business shape/invariant clauses; no v1 candidate/profile/assets identity or old missing-family completion claim adopted."
+  },
+  "negative_test_matrix": {
+    "identity_and_inventory": [
+      "v1 receipt in v2",
+      "v2 through v1",
+      "stale candidate/source tree/checkpoint/product217",
+      "one changed input digest",
+      "old served app.mjs",
+      "mixed run_id",
+      "duplicate attempt_id",
+      "case/bank/role substitution",
+      "missing/extra/reordered JUnit leaf",
+      "wrong JUnit filename",
+      "unknown/ref escape/link/replaced file",
+      "undeclared or duplicate worker log",
+      "early parent/child missing source env: candidate/tree null,map {},known case/root/engine/bank/role and valid token preserved",
+      "mid integration input read failure after first3 source reads: exact candidate/tree and first3 digest entries,valid tokens retained,remaining4 absent; valid nonpass",
+      "child missing/malformed handoff with full seven-map remains partial nonpass",
+      "browser fallback null map/case/bank/tree differs from integration {}",
+      "reject input gap/wrong current digest/stale nonnull source/unknown field",
+      "reject partial branch reported passed or upgraded by synthetic full map"
+    ],
+    "raw_body": [
+      "single byte tamper with old hash",
+      "truncated base64",
+      "length mismatch",
+      "noncanonical padding",
+      "parsed field mismatch",
+      "duplicate key/nonfinite/invalid UTF8",
+      "nested/escaped protected key/JWT/session content",
+      "malformed backslash JSON",
+      "fake hash-only denial",
+      "unavailable with nonnull fabricated hash",
+      "empty204 vs missing body",
+      "nonempty204",
+      "over131072 original body",
+      "wrong byte source"
+    ],
+    "phase_semantics": [
+      "delete success event but leave assertion true",
+      "phase reversal/rank regression",
+      "seq gap/duplicate",
+      "forward/cross-role ref",
+      "bool ordinal/time",
+      "runtime poll101",
+      "library missing one window",
+      "library wrong owner/region/order",
+      "checkout first request differs on retry",
+      "same semantic but different original request bytes",
+      "changed URL fragment",
+      "different response serialization with same identity valid",
+      "abort/fulfill chain truncated",
+      "pending grant already present",
+      "retry payment work incremented",
+      "settlement only assertion",
+      "denial wrong actor/status/route",
+      "refund state not revoked",
+      "restart generation not incremented",
+      "warm immutable/model/source drift",
+      "reader does not increase",
+      "hostname checkout.stripe.com.evil.test",
+      "hostname CHECKOUT.STRIPE.COM",
+      "hostname checkout.stripe.com.",
+      "explicit :443",
+      "userinfo user@checkout.stripe.com",
+      "nonhttps scheme",
+      "wrong/missing c/pay prefix",
+      "cs_live_ prefix",
+      "uppercase or non32hex session suffix",
+      "query even if otherwise valid",
+      "changed fragment across retries invalid",
+      "optional fragment absent or source fixture fragment present valid",
+      "same parsed identity with independently hashed different response JSON serialization valid"
+    ],
+    "process_and_failure": [
+      "fake wait0 before launch",
+      "launch-failed plus successful return",
+      "cleanup signal/reap failure",
+      "stdout swapped across case",
+      "stale output hash",
+      "parent self hash",
+      "child artifacts truncated/omitted finalized",
+      "worker wrong ordinal/ref/hash",
+      "log hashed before close",
+      "unmapped worker success",
+      "Go exit nonzero",
+      "browser return unavailable",
+      "engine or outer pytest exit fabricated",
+      "result passed true but evidence missing",
+      "parent failure after child success valid nonpass",
+      "publication minimal fallback valid nonpass",
+      "truncated JSON never fallback",
+      "failed prefix then cleanup valid nonpass",
+      "primary failure overwritten by cleanup",
+      "oversize4MiB JSON/8MiB support/64MiB total",
+      "16MiB trace rejected intact",
+      "child exact argv/cwd/node flags/order mutation rejected",
+      "Go85s flag substitution mutation rejected",
+      "browser wrong $ORIGIN/$CASE/$REPO substitution slot rejected",
+      "browser precommand argv[] valid failed nonpass",
+      "browser timeout launched=true without launch-succeeded/return/reap valid failed nonpass",
+      "failed-child bridge.stop worker_exits present and final_snapshot absent valid nonpass",
+      "same failed-child receipt with fabricated passed=true/final_snapshot rejected"
+    ],
+    "authority": [
+      "all-consistent fake21 yields only observed IDs",
+      "both credits0 and verified[] in every valid branch",
+      "all FLAGS false",
+      "CLI remains exit3",
+      "enabled policy/profile unchanged",
+      "v1 fixtures/regressions unchanged",
+      "no producer import/socket/subprocess during internal inspection"
+    ]
+  },
+  "verification_commands": [
+    "PYTHONDONTWRITEBYTECODE=1 python3 -B -m unittest scripts.dev.test_release_acceptance -v",
+    "PYTHONDONTWRITEBYTECODE=1 python3 -B -m unittest discover -s scripts/autonomy -p \"test_*.py\"",
+    "PYTHONDONTWRITEBYTECODE=1 python3 -B -m unittest discover -s scripts/dev -p \"test_*.py\"",
+    "env -u AUTODATA_REQUIRE_WORKSHOP_BROWSER_INTEGRATION -u AUTODATA_LIFECYCLE_TEST -u AUTODATA_WORKSHOP_BROWSER_CHILD PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=scripts/dev python3 -B -m pytest -q -p no:cacheprovider scripts/dev/test_workshop_browser_environment.py scripts/dev/test_workshop_browser_execution_contract.py scripts/dev/test_workshop_browser_execution_evidence.py scripts/dev/test_workshop_browser_execution_supervisor.py scripts/dev/test_workshop_browser_preparation_probe.py",
+    "env -u AUTODATA_REQUIRE_WORKSHOP_BROWSER_INTEGRATION -u AUTODATA_LIFECYCLE_TEST -u AUTODATA_WORKSHOP_BROWSER_CHILD PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -B -m pytest -q -p no:cacheprovider --confcutdir=workers/ingestion-python/tests workers/ingestion-python/tests/test_workshop_browser_observability.py",
+    "git diff --check"
+  ],
+  "missing_validation_families": [
+    "actual_child_go_browser_exit_receipts",
+    "parent_pytest_exit_and_command_receipts",
+    "signed_settlement_refund_http_bytes_and_authentic_delivery",
+    "runtime_image_browser_cache_sdk_install_identity",
+    "authenticated_capture_source_observer_and_containment",
+    "global_worker_log_per_case_ownership_mapping",
+    "finite_api_success_schedule",
+    "junit_byte_preserving_capture_mapping",
+    "all_final180_families_and_profile_promotion",
+    "independent_authentic_raw_review",
+    "actual_engine_os_exit_and_descendant_reap",
+    "original_go_webhook_request_signature_response_capture",
+    "source_contract_current_integration_rebinding",
+    "dto_trace_16MiB_producer_8MiB_consumer_conflict",
+    "v2_consumer_schema_validator_and_profile",
+    "producer_observations_are_unexecuted_until_separate_capture_gate"
+  ],
+  "missing_family_disposition": "Inspector can implement offline v2 schema consistency, but producer static missing flags are immutable in this slice. Keep missing profile/current runtime source rebind/authenticated capture/outer exit/finite schedule/webhook/full transport/staging facts truthful; never claim all historical fourteen v1 families solved.",
+  "adoption_gate": [
+    "Exact Task51 terminal source CI admitted by sealed audit at2026-11-05T01:57:11.011081+00:00; source/tree/manifest identities remain frozen. Any moved source requires new review/manifests and fresh admission, never silent repin.",
+    "Independent six-document draft review",
+    "Literal goal/todo/six gate paths/three implementation paths synchronized in Issue186 comment6647549390 and existing Project8 item with preserved before/after readbacks; future changes require fresh synchronization.",
+    "Commit/push six-path checkpoint and external SHA/tree seal",
+    "Extract standalone and nested record plus policy/validator from checkpoint, exact equality, both canonical errors=[]",
+    "Independent exact-checkpoint review and explicit three-file code-only dispatch"
+  ],
+  "prohibited_changes": [
+    "Everything outside exact three implementation paths",
+    "All producer/browser/application/SQL/Compose/workflow/dependency/inventory/compiler/supervisor/R3/R6 profile/policy bytes",
+    "Historical plan/record/source identity rewriting",
+    "Provider/host/runtime/capture/cloud/DNS/fixture/staging/release actions"
+  ],
+  "execution_preference": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "medium",
+    "fast_toggle": "unavailable_not_claimed",
+    "provider_dispatch": false
+  },
+  "actual_verification": {
+    "status": "documentation_checks_passed_gate_expected_blocked",
+    "tests_run": false,
+    "preflight_pass_claimed": false,
+    "documentation_checks": [
+      "Exact source SHA/tree and historical B ancestry",
+      "52 tasks; source tasks1-51 and all queue root fields unchanged",
+      "Standalone/task52/queue52 record equality and literal goal/todo equality",
+      "All authorities false and current implementation allowlist empty",
+      "21 ordered identities,7 input digests,11 current served assets",
+      "34 Git blob/SHA256/length manifests equal current pinned checkout bytes",
+      "Six exact draft paths only and git diff --check"
+    ],
+    "canonical_preflight": {
+      "exit_code": 1,
+      "expected_blocked": true,
+      "status": "synchronized_record_but_uncommitted_checkpoint_not_at_source_base",
+      "errors": [
+        "pre_implementation.plan_ref is absent at base_sha",
+        "pre_implementation.repository_doc_refs[0] is absent at base_sha",
+        "pre_implementation.repository_doc_refs[1] is absent at base_sha"
+      ]
+    }
+  },
+  "process_command_schedule": {
+    "source": "workers/ingestion-python/tests/test_workshop_browser_integration.py at exact source_binding.candidate_sha; _normalized281\u2013290, _OwnedProcess133\u2013173, _child368\u2013427 and _case508\u2013529",
+    "normalization": {
+      "algorithm": "For each original str argv operand, in this precedence: exact sys.executable -> $PYTHON; exact observed private loopback origin when supplied -> $ORIGIN; exact case directory or its slash-delimited descendant -> $CASE plus unchanged suffix; repository absolute slash-delimited descendant -> $REPO plus unchanged suffix; otherwise preserve original operand. No shell parsing or environment expansion.",
+      "substitution_slots": "Only child.argv[0]=$PYTHON; browser.argv[0]=$PYTHON,[1]=$REPO/scripts/dev/workshop_browser_smoke.py,[3]=$ORIGIN,[11]=$CASE/browser. Go has no substitutions. Resolve node/candidate/engine from exact selected case and fixed source; no arbitrary placeholders or extra substitution slots.",
+      "bounds": "argv max32 operands, each strictUTF8 length<=512 bytes; exact order and flags; cwd literal . or apps/api-go as below; no env/header/credentials."
+    },
+    "child": {
+      "role": "child-pytest",
+      "observer_role": "parent-pytest",
+      "cwd": ".",
+      "argv": [
+        "$PYTHON",
+        "-m",
+        "pytest",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+        "workers/ingestion-python/tests/test_workshop_browser_integration.py::{root}[{suffix}]"
+      ],
+      "node_substitution": "root from ordered case; suffix engine only for Google root, otherwise engine-bank. Exact case_id bracket contents; no extra -k, flags or selected node.",
+      "stdout_ref": "{case_prefix}child.log",
+      "stderr_ref": "{case_prefix}child.log",
+      "schedule": "Parent start precedes directory/binding/database setup. Popen start_new_session=True then actual launch-succeeded; wait timeout=max(1,84-(time.monotonic()-parent_start)). Timeout invokes cleanup(group=True); poll result may be recorded as poll/cleanup. TERM then KILL have2s waits each. No outer pytest exit recorded.",
+      "prelaunch": "Fixed argv exists even on binding/database/Popen failure. Before launch request: launched=false,events=[],started/finished/return/reaped/alive null,code source/wait kind unavailable. Popen failure after launch-requested may add launch-failed. No success/wait0 invented."
+    },
+    "go": {
+      "role": "go-test",
+      "observer_role": "child-pytest",
+      "cwd": "apps/api-go",
+      "argv": [
+        "go",
+        "test",
+        "-count=1",
+        "-run",
+        "^TestWorkshopBrowserFixtureHTTP$",
+        "-timeout=85s",
+        "."
+      ],
+      "stdout_ref": "{case_prefix}go-fixture.log",
+      "stderr_ref": "{case_prefix}go-fixture.log",
+      "schedule": "Child deadline=time.monotonic()+78 before binding/setup. Readiness requires process still alive and time<deadline-15, with0.05s polling; early observed nonnull poll exit retained. Fixture stop POST timeout2; normal Go wait3; cleanup TERM/KILL wait2 each. These receipts do not prove finite full API scheduling.",
+      "prelaunch": "Fixed argv at constructor even before source/repository setup. launched=false/events[]/no known result before request; launch-requested then launch-failed on failed Popen, no wait receipt unless actual process exists."
+    },
+    "browser": {
+      "role": "browser-runner",
+      "observer_role": "child-pytest",
+      "cwd": ".",
+      "argv": [
+        "$PYTHON",
+        "$REPO/scripts/dev/workshop_browser_smoke.py",
+        "--base-url",
+        "$ORIGIN",
+        "--mode",
+        "api-fixture",
+        "--browser",
+        "{engine}",
+        "--candidate-sha",
+        "6949eb1b1a5b93c9b2eb0579328e24c697f6f331",
+        "--output",
+        "$CASE/browser"
+      ],
+      "stdout_ref": "{case_prefix}browser.stdout.log",
+      "stderr_ref": "{case_prefix}browser.stderr.log",
+      "schedule": "Command assigned only after ready metadata and isolated HOME creation. launch-requested then started_us set. subprocess.run timeout=max(1,deadline-time.monotonic()-8). Normal run returns: launched=true, launch-succeeded then observed return code wait/normal, reaped=true,alive_final=false,finished_us known. Nonzero actual code is failed, retained. API run launch() has no explicit timeout; api_case uses65s. Do not replace any existing timer or infer finite global success.",
+      "prelaunch_branches": [
+        "Before command assignment: argv=[],launched=false,events=[],all timing/result/reaped/alive null; source failure remains nonpass. stdout/stderr refs still known.",
+        "After command assignment but before run completion: exact full argv; log-open or run creation failure may have launch-requested then launch-failed,launched=false,started_us nonnull and no return result. Do not reject known started_us merely because launched=false.",
+        "subprocess.TimeoutExpired: exact full argv,launched=true,launch-requested then timeout(reason timeout); no launch-succeeded or wait-completed,return_code null,return_code_source/wait_kind unavailable,reaped/alive_final/finished_us null. browser._OwnedProcess.process stays None because subprocess.run owns child; cleanup supplies no later wait. Never fabricate0 or engine/descendant reap."
+      ]
+    },
+    "failure_policy": "All command/prelaunch/timeout variants above are nonpass. Publication fallback may clear events/output_hashes while preserving scalars, only in exact failed publication branch. Validate known fields and original logs; absence never upgrades success."
+  },
+  "review_corrections": {
+    "review_ref": "/home/corp/autodata-evidence/api21-v2-consumer-draft-review/review.md",
+    "status": "corrected_pending_independent_rereview",
+    "scope": [
+      "Exact normalized process commands/substitutions/prelaunch/timeout and checkout URL predicate/mutations",
+      "Observer-specific partial source bindings and independent early/mid-input tests",
+      "Precise failed-child cleanup ordering exception and nonpass/fabricated-success tests"
+    ],
+    "implementation_edits": false
+  }
+}

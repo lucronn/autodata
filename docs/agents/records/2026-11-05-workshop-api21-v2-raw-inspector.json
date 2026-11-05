@@ -1,0 +1,20 @@
+{
+  "goal": "Add an internal API21 producer-v2 retained-byte consistency inspector bound to the exact Task51 source candidate while preserving historical v1 semantics and every runtime, acceptance and release block",
+  "plan_ref": "docs/superpowers/plans/2026-11-05-workshop-api21-v2-raw-inspector.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/agents/specs/2026-11-05-workshop-api21-v2-raw-inspector.json",
+    "docs/verification/2026-11-05-workshop-api21-v2-raw-inspector.md"
+  ],
+  "todo": [
+    "Admit exact Task51 candidate 6949eb1b1a5b93c9b2eb0579328e24c697f6f331 and tree 47ec54b1896c83a39b6637a6ce944d3620414f4e only after completed source-push and actual PR checkout CI review; preserve every failure, skip and external status, freeze current seven producer inputs, served assets, 21 ordered cases and source-to-receipt mapping without transferring historical fixture credit.",
+    "Independently review the closed v2 schema, branch matrix, source manifests, redaction and semantic mutation matrix in this six-document draft; preserve all 51 queue objects and root fields and append only ordinal52, with all authorities false until exact checkpoint admission.",
+    "Synchronize this literal goal, six todo strings, six gate paths and exact three implementation paths in Issue186 and existing Project8 item PVTI_lAHOCSJ8cc4BiQ2BzhFocs4 with before/after readbacks; commit/push the six-document checkpoint from the admitted Task51 source, externally seal its actual SHA/tree, extract standalone and nested records and policy at that SHA, require both canonical preflights errors=[] and independent exact-checkpoint review before explicit code-only dispatch.",
+    "Write independent fake-byte red tests, then add only inspect_api21_v2_receipts and private v2 helpers in scripts/dev/release_acceptance.py with confined ArtifactStore reads, exact current candidate/source/asset bindings, closed schemas and retained-body/hash/process/log/phase consistency; preserve inspect_api21_receipts and all v1 behavior, with no producer import, execution, CLI dispatch, profile registration or transport activation.",
+    "Add semantic tamper, truncation, stale or mixed binding, identity, checkout loss/retry, scope denial, settlement/refund, owner/restart/warm, process/log/publication/cleanup interruption and secret-bearing body tests; append the current-source v2 limitations to the runbook, keeping status unavailable, complete false, verified IDs empty, both credits zero, all acceptance flags false and disabled public CLI exit3.",
+    "Run focused and full release-acceptance, applicable developer/autonomy and existing fake browser/observability checks plus exact-path preservation and diff checks; retain actual commands/counts/skips/failures, commit and promptly push validated coherent milestones after dispatch, obtain independent exact-code review and fresh push plus actual PR checkout CI, leaving capture, compiler/timers, host/runtime, profile, fixture180, staging and release separately gated."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-05T02:00:18Z"
+}
