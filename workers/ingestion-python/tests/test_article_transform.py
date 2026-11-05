@@ -143,3 +143,31 @@ def test_nested_images_must_be_local_verified_with_evidence():
     source=document();source["blocks"][2]["rows"][0][0]["images"]=[{"image_id":"nested","status":"available","url":"https://provider.invalid/image","evidence_ids":["e"]}]
     candidate=deepcopy(source);candidate["blocks"][0]["text"]="Take off the pump."
     assert not rewrite.validate_article_rewrite(source,candidate,profile_version="technical-prose-v1").passed
+
+
+from lifecycle_support import runtime
+
+
+def test_v2_result_store_reconstructs_operations_from_checkpoint(runtime):
+    from autodata_ingestion import article_lifecycle_store as store
+    from test_article_lifecycle_integration import target_v2
+    from test_procedure_rewrite_v2 import Selector
+    from autodata_ingestion.source_job_persistence import claim_source_job
+    from autodata_ingestion.procedure_normalize import normalize_procedure_article
+    from dataclasses import replace
+    from uuid import uuid4
+    target_v2(runtime)
+    runtime.pause("after_source_commit"); runtime.start_workers(1); runtime.await_barrier()
+    job = runtime.current_job_id(); runtime.kill_worker(); runtime.expire_lease(job)
+    lease = claim_source_job(runtime.repo, worker_id=uuid4())
+    source = store.load_source_revision(runtime.repo, lease.source_revision_id)
+    normalized = normalize_procedure_article(source.as_article())
+    store.save_normalized_input(runtime.repo, lease, normalized)
+    document = normalized["normalized_document"]
+    attempt = store.prepare_rewrite_attempt(runtime.repo, lease, document, context=source.vehicle, model="fixture")
+    store.mark_rewrite_dispatched(runtime.repo, lease, attempt)
+    result = rewrite.rewrite_ordered_document(document, client=Selector(), context=source.vehicle, profile_version="technical-prose-v2")
+    with pytest.raises(ValueError, match="operation binding"):
+        store.store_rewrite_result(runtime.repo, lease, replace(result, raw_response={"operations": []}))
+    assert store.load_candidate(runtime.repo, lease) is None
+    store.store_rewrite_result(runtime.repo, lease, result)
