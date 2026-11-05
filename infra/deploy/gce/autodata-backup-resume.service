@@ -1,0 +1,15 @@
+[Unit]
+Description=Recover abandoned local AutoData backup leases
+RequiresMountsFor=/var/lib/autodata /run/autodata
+After=docker.service autodata-metadata-guard.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/
+ExecStart=/usr/bin/env -i /usr/bin/python3 -I /opt/autodata/bin/backup_restore.py watchdog
+TimeoutStartSec=330
+KillMode=control-group
+UMask=0077
+NoNewPrivileges=true
