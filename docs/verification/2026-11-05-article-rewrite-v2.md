@@ -228,3 +228,14 @@ review and all-ten-verb coverage on real articles are unmeasured. The 14 authore
 synthetic documents demonstrate bounded development behavior only. This evidence
 does not establish production readiness, authorize activation, or close the
 purchased-dataset acceptance objective.
+
+## Inactive-code integration decision
+
+Independent merge review at parent `c0be267fe31dc578bec0b8528679b6fd6671ed12`
+found no automatic v2 activation path: both default profile constants remain
+`technical-prose-v1`, and v2 requires an explicit persisted profile selection.
+The conflict-free combined tree passed the focused v1/v2/types suite (102 tests).
+The code may be integrated after up-to-date required CI passes, while v2
+activation, real-source content acceptance and production deployment remain
+blocked by the authentic Bankone/Banktwo/held-out denominator of 0/0/0. This
+integration decision does not convert synthetic evidence into release evidence.
