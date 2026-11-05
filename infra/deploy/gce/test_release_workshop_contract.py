@@ -68,6 +68,32 @@ class ReleaseWorkflowContract(unittest.TestCase):
             self.assertIn('service_account_impersonation_url', script)
             self.assertIn("ownedContainers.add", script)
 
+    def test_static_registry_token_window_bounds_the_entire_cli_and_cleanup(self):
+        import re
+        node = '/tmp/node-v22.23.4-linux-x64/bin/node'
+        if not Path(node).exists(): node = 'node'
+        for name in ('staging-build-candidate', 'staging-finalize'):
+            script = self.workflow['jobs'][name]['steps'][2]['with']['script']
+            self.assertIn('service_account_impersonation:{token_lifetime_seconds:3600}', script)
+            self.assertNotIn('7200000', script)
+            self.assertLess(script.index('const credentialStartedAt=performance.now()'), script.index("await container('/usr/bin/python3',['-I','-c',exchange]"))
+            self.assertIn('credentialWindow(credentialStartedAt)', script)
+            body = re.search(r'function credentialWindow\(startedAt,now=performance.now\(\)\) \{([\s\S]*?)\n\}', script).group(1)
+            harness = r"""
+const assert=require('node:assert/strict');
+const requireValue=value=>{if(!value)throw Error('credential_window_expired');};
+const credentialWindow=Function('requireValue','return function(startedAt,now){'+process.argv[1]+'}')(requireValue);
+assert.equal(credentialWindow(1000,1000),45*60*1000);
+assert.equal(credentialWindow(1000,1000+5*60*1000),40*60*1000);
+assert.equal(credentialWindow(1000,1000+45*60*1000-30001),30001);
+for(const [start,now] of [[1000,1000+45*60*1000-30000],[1000,1000+45*60*1000],[1000,1000+60*60*1000],[1000,999],[NaN,1000],[1000,Infinity]])assert.throws(()=>credentialWindow(start,now));
+// The fixed one-hour IAM token request leaves at least ten minutes beyond
+// the maximum45-minute operation and five-minute cleanup reserve.
+assert.ok(credentialWindow(1000,1000)+5*60*1000<=3600*1000-10*60*1000);
+"""
+            result=subprocess.run([node,'-e',harness,body],capture_output=True,timeout=3)
+            self.assertEqual(result.returncode,0,result.stderr)
+
     def test_launch_script_and_embedded_python_are_executable_and_precredential_failure_is_bounded(self):
         script = self.workflow['jobs']['staging-build-candidate']['steps'][2]['with']['script']
         # Compile the actual action body and both finite Python programs. No
