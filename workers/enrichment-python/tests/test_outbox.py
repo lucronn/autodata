@@ -105,3 +105,40 @@ def test_dataset_envelope_still_requires_dataset_identity():
     import pytest
     event=OutboxEvent("e","dataset.viewable",1,None,None,None,"c","k",{},datetime.now(UTC),"worker")
     with pytest.raises(ValueError,match="request_id"):build_event_envelope(event)
+
+
+class BrokerAuthenticationTests(unittest.TestCase):
+    def run_relay(self, environment, connect):
+        from unittest.mock import patch
+        import types
+        from autodata_enrichment import outbox
+        with patch.dict('os.environ',environment,clear=True), patch.dict(sys.modules,{'nats':types.SimpleNamespace(connect=connect)}):
+            return asyncio.run(outbox.relay_pending_events(nats_url='nats://nats:4222'))
+
+    def test_authentication_pair_is_passed_separately_and_errors_are_redacted(self):
+        from unittest.mock import AsyncMock
+        connect=AsyncMock(side_effect=RuntimeError('synthetic-secret credentials'))
+        result=self.run_relay({'NATS_OUTBOX_USER':'publisher','NATS_OUTBOX_PASSWORD':'synthetic-secret'},connect)
+        self.assertEqual(connect.call_args.kwargs.get('user'),'publisher')
+        self.assertEqual(connect.call_args.kwargs.get('password'),'synthetic-secret')
+        self.assertEqual(connect.call_args.args,('nats://nats:4222',))
+        self.assertEqual(result['status'],'skipped (broker unreachable)')
+        self.assertNotIn('synthetic-secret',str(result))
+
+    def test_partial_or_empty_authentication_fails_before_connect(self):
+        from unittest.mock import AsyncMock
+        for env in ({'NATS_OUTBOX_USER':'publisher'},{'NATS_OUTBOX_PASSWORD':'password'},
+                    {'NATS_OUTBOX_USER':'','NATS_OUTBOX_PASSWORD':'password'},
+                    {'NATS_OUTBOX_USER':'publisher','NATS_OUTBOX_PASSWORD':''}):
+            connect=AsyncMock(side_effect=RuntimeError("must not connect"))
+            with self.subTest(env=env), self.assertRaisesRegex(ValueError,'invalid outbox broker credentials'):
+                self.run_relay(env,connect)
+            connect.assert_not_called()
+
+    def test_development_without_authentication_retains_anonymous_connection(self):
+        from unittest.mock import AsyncMock
+        connect=AsyncMock(side_effect=RuntimeError('sensitive-url'))
+        result=self.run_relay({},connect)
+        self.assertNotIn('user',connect.call_args.kwargs)
+        self.assertNotIn('password',connect.call_args.kwargs)
+        self.assertEqual(result['status'],'skipped (broker unreachable)')

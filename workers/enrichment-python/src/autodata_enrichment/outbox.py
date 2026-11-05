@@ -138,6 +138,12 @@ async def relay_pending_events(
     import nats
 
     resolved_nats_url = _resolve_nats_url(nats_url)
+    authentication = {}
+    if "NATS_OUTBOX_USER" in os.environ or "NATS_OUTBOX_PASSWORD" in os.environ:
+        user, password = os.getenv("NATS_OUTBOX_USER"), os.getenv("NATS_OUTBOX_PASSWORD")
+        if not user or not password:
+            raise ValueError("invalid outbox broker credentials")
+        authentication = {"user": user, "password": password}
 
     async def _silent_nats_error(error: Exception) -> None:
         pass
@@ -149,10 +155,11 @@ async def relay_pending_events(
             max_reconnect_attempts=1,
             allow_reconnect=False,
             error_cb=_silent_nats_error,
+            **authentication,
         )
-    except Exception as error:
+    except Exception:
         return {
-            "status": f"skipped (broker unreachable: {error})",
+            "status": "skipped (broker unreachable)",
             "claimed": 0,
             "published": 0,
             "failed": 0,
