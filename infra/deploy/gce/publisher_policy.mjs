@@ -119,6 +119,47 @@ export function verifyOwnerPolicyBytes(bootstrapBytes,envelopeBytes,jwksBytes,no
   } catch {fail();}
 }
 
+/** Pure verification only: this result can never activate runtime operations. */
+export function verifyLiveOwnerPolicyBytes(bootstrapBytes,envelopeBytes,jwksBytes,adapterBytes,nowSeconds) {
+  try {
+    requireValue(safeTime(nowSeconds));
+    const bootstrapRaw=copyBytes(bootstrapBytes,16384),envelopeRaw=copyBytes(envelopeBytes,65536),jwksRaw=copyBytes(jwksBytes,65536),adapterRaw=copyBytes(adapterBytes,65536);
+    const bootstrap=parseStrictJsonBytes(bootstrapRaw,{maxBytes:16384});
+    fields(bootstrap,['protocol_version','purpose','key_id','owner_public_key','policy_sha256','minimum_epoch']);
+    requireValue(bootstrap.protocol_version===2 && bootstrap.purpose==='autodata.publisher.bootstrap.live.v1' && hex(bootstrap.key_id) && hex(bootstrap.policy_sha256) && Number.isSafeInteger(bootstrap.minimum_epoch) && bootstrap.minimum_epoch>=1 && bootstrap.minimum_epoch<=2147483647);
+    const rawKey=decode(bootstrap.owner_public_key,32);requireValue(rawKey.length===32 && digest(rawKey)===bootstrap.key_id && digest(envelopeRaw)===bootstrap.policy_sha256);
+    const envelope=parseStrictJsonBytes(envelopeRaw);fields(envelope,['protocol_version','key_id','payload','signature']);
+    requireValue(envelope.protocol_version===2 && envelope.key_id===bootstrap.key_id);
+    const payload=decode(envelope.payload,32768),signature=decode(envelope.signature,64);requireValue(signature.length===64);
+    const publicKey=createPublicKey({key:Buffer.concat([Buffer.from('302a300506032b6570032100','hex'),rawKey]),format:'der',type:'spki'});
+    requireValue(verify(null,Buffer.concat([Buffer.from('AutoData-Publisher-Owner-Policy-v2\0','ascii'),payload]),publicKey,signature));
+    const policy=parseStrictJsonBytes(payload,{maxBytes:32768});
+    fields(policy,['protocol_version','purpose','epoch','issued_at','expires_at','repository','repository_id','repository_owner_id','environment','protected_environment','workflow_ref','workflow_sha','ref','event_name','upload_enabled','runtime_bearer_authentication','oidc','adapter_policy_sha256','toolchain_image_digest','toolkit_lock_sha256','toolkit_tree_sha256','helper_sha256','dependency_review_sha256','runtime_origins','storage_origins','approval_keys']);
+    requireValue(policy.protocol_version===2 && policy.purpose==='autodata.publisher.staging.live.v1' && Number.isSafeInteger(policy.epoch) && policy.epoch>=bootstrap.minimum_epoch && policy.epoch<=2147483647);
+    requireValue(safeTime(policy.issued_at) && safeTime(policy.expires_at) && policy.issued_at<=nowSeconds && nowSeconds<policy.expires_at && policy.expires_at-policy.issued_at<=86400);
+    requireValue(policy.repository==='lucronn/autodata' && decimal(policy.repository_id) && decimal(policy.repository_owner_id) && policy.environment==='staging' && policy.protected_environment==='workshop-staging-publish' && policy.workflow_ref==='lucronn/autodata/.github/workflows/release-workshop.yml@refs/heads/master' && typeof policy.workflow_sha==='string' && /^[0-9a-f]{40}$/.test(policy.workflow_sha) && policy.ref==='refs/heads/master' && policy.event_name==='workflow_dispatch' && policy.upload_enabled===true && policy.runtime_bearer_authentication==='service-challenge-v1');
+    for(const name of ['adapter_policy_sha256','toolkit_lock_sha256','toolkit_tree_sha256','helper_sha256','dependency_review_sha256'])requireValue(hex(policy[name]));
+    requireValue(/^sha256:[0-9a-f]{64}$/.test(policy.toolchain_image_digest) && digest(adapterRaw)===policy.adapter_policy_sha256);
+    const adapter=parseStrictJsonBytes(adapterRaw);requireValue(adapter!==null && typeof adapter==='object' && !Array.isArray(adapter));
+    function origins(values) {
+      requireValue(Array.isArray(values) && values.length>=1 && values.length<=8 && new Set(values).size===values.length);
+      for(const origin of values) {
+        requireValue(typeof origin==='string' && /^https:\/\/[a-z0-9](?:[a-z0-9.-]*[a-z0-9])$/.test(origin));
+        const u=new URL(origin);requireValue(u.origin===origin && !u.port && u.hostname.includes('.') && !/^[0-9.]+$/.test(u.hostname) && !['metadata.google.internal','localhost'].includes(u.hostname));
+      }
+    }
+    origins(policy.runtime_origins);origins(policy.storage_origins);
+    requireValue(policy.approval_keys!==null && typeof policy.approval_keys==='object' && !Array.isArray(policy.approval_keys));
+    const approvals=Object.entries(policy.approval_keys);requireValue(approvals.length>=1 && approvals.length<=16);
+    for(const [fingerprint,key] of approvals)requireValue(hex(fingerprint) && typeof key==='string' && Buffer.byteLength(key)>0 && Buffer.byteLength(key)<=16384 && digest(Buffer.from(key))===fingerprint);
+    const oidc=policy.oidc;fields(oidc,['issuer','audience','subject','jwks_sha256','jwks_issued_at','jwks_expires_at']);
+    requireValue(oidc.issuer==='https://token.actions.githubusercontent.com' && oidc.audience==='urn:autodata:publisher:staging:live:v1' && oidc.subject==='repo:lucronn/autodata:environment:workshop-staging-publish' && hex(oidc.jwks_sha256) && digest(jwksRaw)===oidc.jwks_sha256);
+    requireValue(safeTime(oidc.jwks_issued_at) && safeTime(oidc.jwks_expires_at) && oidc.jwks_issued_at<=policy.issued_at && policy.expires_at<=oidc.jwks_expires_at && oidc.jwks_expires_at-oidc.jwks_issued_at>0 && oidc.jwks_expires_at-oidc.jwks_issued_at<=86400);
+    const jwks=parseStrictJsonBytes(jwksRaw);validateJwks(jwks);
+    return freeze({policy,jwks,adapter_policy:adapter,activation_sha256:digest(envelopeRaw),trust_bytes:{bootstrap_base64:bootstrapRaw.toString('base64'),envelope_base64:envelopeRaw.toString('base64'),jwks_base64:jwksRaw.toString('base64'),adapter_base64:adapterRaw.toString('base64')}});
+  } catch {fail();}
+}
+
 // Only state, pending work and owned descriptors survive failed cleanup. No late authority.
 const scopeStates=new WeakMap(),quarantine=new Set();
 let installedScope=null;
@@ -190,9 +231,7 @@ export class OwnedTrustReadScope {
   }
 }
 
-const installedPolicies=new WeakMap();
-const fileNames=['bootstrap-v1.json','policy-v1.envelope.json','github-oidc-jwks-v1.json'];
-const bounds=[16384,65536,65536];
+const installedPolicies=new WeakMap(),installedLivePolicies=new WeakMap();
 const trustDirectory='/etc/autodata/publisher';
 const fileFlags=constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK|(constants.O_CLOEXEC??0);
 const directoryFlags=fileFlags|constants.O_DIRECTORY;
@@ -217,7 +256,11 @@ function mountId(raw) {
   const text=raw.toString('utf8');requireValue(Buffer.from(text).equals(raw));
   const matches=[...text.matchAll(/^mnt_id:\s+([1-9][0-9]*)\s*$/gm)];requireValue(matches.length===1);return matches[0][1];
 }
-export async function loadInstalledOwnerPolicy(options={}) {
+export async function loadInstalledOwnerPolicy(options={}) {return loadInstalledPolicy(options,false);}
+export async function loadInstalledLiveOwnerPolicy(options={}) {return loadInstalledPolicy(options,true);}
+async function loadInstalledPolicy(options,live) {
+  const fileNames=live?['bootstrap-live-v1.json','policy-live-v1.envelope.json','github-oidc-jwks-live-v1.json','adapter-policy-v2.json']:['bootstrap-v1.json','policy-v1.envelope.json','github-oidc-jwks-v1.json'];
+  const bounds=live?[16384,65536,65536,65536]:[16384,65536,65536];
   const {signal}=dataOptions(options,['signal']);
   if(installedScope)fail('cleanup_failed');
   const scope=new OwnedTrustReadScope({signal,budgetMs:5000,cleanupReserveMs:1000});
@@ -260,7 +303,7 @@ export async function loadInstalledOwnerPolicy(options={}) {
       return ids;
     }
     const ids=await checkMounts(nodes,initialMounts);const trust=[];
-    for(let i=0;i<3;i++)trust.push(await read(nodes[i+4].handle,bounds[i],nodes[i+4].stat.size));
+    for(let i=0;i<fileNames.length;i++)trust.push(await read(nodes[i+4].handle,bounds[i],nodes[i+4].stat.size));
     for(let i=0;i<nodes.length;i++) {
       const after=await op(()=>nodes[i].handle.stat());validateStat(after,i<4,bounds[i-4]);requireValue(identity(after)===identity(nodes[i].stat));
     }
@@ -268,13 +311,13 @@ export async function loadInstalledOwnerPolicy(options={}) {
     const laterIds=await checkMounts(nodes,laterMounts);requireValue(ids.every((id,i)=>id===laterIds[i]));
     const reopened=await chain();requireValue(reopened.every((node,i)=>identity(node.stat)===identity(nodes[i].stat)));
     const reopenedIds=await checkMounts(reopened,laterMounts);requireValue(ids.every((id,i)=>id===reopenedIds[i]));
-    scope.check();result=verifyOwnerPolicyBytes(...trust,Math.floor(Date.now()/1000));scope.check();
+    scope.check();result=(live?verifyLiveOwnerPolicyBytes:verifyOwnerPolicyBytes)(...trust,Math.floor(Date.now()/1000));scope.check();
   } catch(caught) {
     error=new Error(caught?.code==='ENOENT'?'missing_dependency':['missing_dependency','operation_timed_out','operation_cancelled'].includes(caught?.message)?caught.message:'invalid_trust_input');
   }
   try {await scope.finish();}catch(cleanup){error=cleanup;}
   if(error)throw error;
-  const handle=Object.freeze(Object.create(null));installedPolicies.set(handle,result.trust_bytes);return handle;
+  const handle=Object.freeze(Object.create(null));(live?installedLivePolicies:installedPolicies).set(handle,result.trust_bytes);return handle;
 }
 export function installedPolicyClaims(handle) {
   try {
@@ -282,5 +325,13 @@ export function installedPolicyClaims(handle) {
     // Revalidate original private bytes with a trusted current clock on every access.
     const verified=verifyOwnerPolicyBytes(decode(trust.bootstrap_base64,16384),decode(trust.envelope_base64,65536),decode(trust.jwks_base64,65536),Math.floor(Date.now()/1000));
     return freeze({policy:verified.policy,jwks:verified.jwks,activation_sha256:verified.activation_sha256});
+  } catch {fail();}
+}
+
+export function installedLivePolicyClaims(handle) {
+  try {
+    const trust=installedLivePolicies.get(handle);requireValue(Boolean(trust));
+    const verified=verifyLiveOwnerPolicyBytes(decode(trust.bootstrap_base64,16384),decode(trust.envelope_base64,65536),decode(trust.jwks_base64,65536),decode(trust.adapter_base64,65536),Math.floor(Date.now()/1000));
+    return freeze({policy:verified.policy,jwks:verified.jwks,adapter_policy:verified.adapter_policy,activation_sha256:verified.activation_sha256});
   } catch {fail();}
 }
