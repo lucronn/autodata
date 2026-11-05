@@ -34,6 +34,7 @@ if not REQUIRED:
 API21_VERSION='api21-producer-v2'
 ARTIFACT_ROOT=Path('/artifacts')
 _RUN_ID=secrets.token_hex(16)
+_RUN_SUPPORT_BYTES=0
 _INPUTS=('scripts/dev/workshop_browser_smoke.py','scripts/dev/fixtures/workshop_customer/scenarios.json',
     'scripts/dev/fixtures/workshop_customer/firebase_transport.js','scripts/dev/fixtures/workshop_customer/hostile_source.json',
     'scripts/dev/fixtures/workshop_customer/stripe_checkout.html','apps/api-go/workshop_browser_fixture_test.go',
@@ -58,31 +59,53 @@ def _regular(info):
     if not stat.S_ISREG(info.st_mode) or info.st_nlink!=1 or info.st_uid!=os.getuid():raise ValueError('unsafe artifact')
 
 
+def _read_original(path,limit,expected=None):
+    directory=_open_directory(path.parent)
+    try:
+        before=os.stat(path.name,dir_fd=directory,follow_symlinks=False);_regular(before)
+        if expected is not None and (before.st_dev,before.st_ino)!=expected:raise ValueError('replaced artifact')
+        fd=os.open(path.name,os.O_RDONLY|os.O_NOFOLLOW,dir_fd=directory)
+        with os.fdopen(fd,'rb') as stream:
+            actual=os.fstat(stream.fileno());_regular(actual)
+            if (actual.st_dev,actual.st_ino)!=(before.st_dev,before.st_ino):raise ValueError('replaced artifact')
+            raw=stream.read(limit+1);after=os.fstat(stream.fileno());_regular(after)
+        if len(raw)>limit:raise ValueError('over_limit')
+        if (after.st_size,after.st_mtime_ns)!=(actual.st_size,actual.st_mtime_ns):raise ValueError('unfinalized artifact')
+        final=os.stat(path.name,dir_fd=directory,follow_symlinks=False);_regular(final)
+        if (final.st_dev,final.st_ino,final.st_size,final.st_mtime_ns)!=(actual.st_dev,actual.st_ino,actual.st_size,actual.st_mtime_ns):raise ValueError('replaced artifact')
+        return raw
+    finally:os.close(directory)
+
+
 def _hash_artifact(path,ref,expected=None):
-    before=path.lstat();_regular(before)
-    if expected is not None and (before.st_dev,before.st_ino)!=expected:raise ValueError('replaced artifact')
-    fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW)
-    with os.fdopen(fd,'rb') as stream:
-        actual=os.fstat(stream.fileno());_regular(actual)
-        if (actual.st_dev,actual.st_ino)!=(before.st_dev,before.st_ino):raise ValueError('replaced artifact')
-        raw=stream.read(8388609)
-        after=os.fstat(stream.fileno())
-    if len(raw)>8388608 or (after.st_size,after.st_mtime_ns)!=(actual.st_size,actual.st_mtime_ns):raise ValueError('unfinalized artifact')
-    final=path.lstat()
-    if (final.st_dev,final.st_ino)!=(actual.st_dev,actual.st_ino):raise ValueError('replaced artifact')
+    raw=_read_original(path,8388608,expected)
     return {'ref':ref,'length':len(raw),'sha256':hashlib.sha256(raw).hexdigest()}
+
+
+def _read_json(path):return _strict_json(_read_original(path,4194304))
 
 
 def _private_log(path):
     return os.fdopen(os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600),'wb')
 
 
+def _open_directory(directory):
+    path=Path(directory).absolute()
+    if '..' in path.parts:raise ValueError('unsafe directory')
+    fd=os.open('/',os.O_RDONLY|os.O_DIRECTORY)
+    try:
+        for part in path.parts[1:]:
+            child=os.open(part,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=fd)
+            os.close(fd);fd=child
+        return fd
+    except BaseException:os.close(fd);raise
+
+
 def _publish(directory,name,value,limit):
     if Path(name).name!=name or name in ('.','..'):raise ValueError('unsafe destination')
     raw=_canonical(value)
     if len(raw)>limit:raise ValueError('over_limit')
-    flags=os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW
-    fd=os.open(directory,flags);temporary='.'+name+'.'+secrets.token_hex(8)
+    fd=_open_directory(directory);temporary='.'+name+'.'+secrets.token_hex(8)
     try:
         info=os.fstat(fd)
         if info.st_uid!=os.getuid() or stat.S_IMODE(info.st_mode)!=0o700:raise ValueError('unsafe directory')
@@ -157,6 +180,7 @@ def _capture_workers(runtime,google,artifact_root=ARTIFACT_ROOT):
             path=Path(log.name)
             if path.parent!=artifact_root or not re.fullmatch(r'worker-[a-f0-9]{32}\.log',path.name):raise ValueError('mapping_unavailable')
             info=os.fstat(log.fileno());_regular(info)
+            os.fchmod(log.fileno(),0o600)
             if worker.poll() is not None:raise ValueError('mapping_unavailable')
             captured.append((worker,log,path,(info.st_dev,info.st_ino)))
         if len({item[3] for item in captured})!=2:raise ValueError('mapping_unavailable')
@@ -188,14 +212,14 @@ def _finalize_workers(capture,exits,closed):
 def _binding(root,engine,bank,role):
     suffix=engine if root=='test_browser_google_exchange_checkout_library_real_api' else engine+'-'+bank
     binding=dict(binding_state='partial',unavailable_reason='source_binding_failed',api_observability_version=API21_VERSION,
-        run_id=os.environ.get('AUTODATA_API21_RUN_ID',_RUN_ID),attempt_id=os.environ.get('AUTODATA_API21_ATTEMPT_ID') or secrets.token_hex(16),
+        run_id=_RUN_ID if role=='parent-pytest' else os.environ.get('AUTODATA_API21_RUN_ID',_RUN_ID),attempt_id=secrets.token_hex(16) if role=='parent-pytest' else os.environ.get('AUTODATA_API21_ATTEMPT_ID') or secrets.token_hex(16),
         case_id=root+'['+suffix+']',root=root,engine=engine,bank=bank,candidate_sha=None,source_tree=None,source_input_sha256={},producer_role=role)
     try:
         candidate=os.environ['AUTODATA_R3_CANDIDATE_SHA'];tree=os.environ['AUTODATA_API21_SOURCE_TREE']
         if not re.fullmatch('[a-f0-9]{40}',candidate) or not re.fullmatch('[a-f0-9]{40}',tree):raise ValueError('source_binding_failed')
         binding.update(candidate_sha=candidate,source_tree=tree)
-        binding['source_input_sha256']={name:hashlib.sha256((ROOT/name).read_bytes()).hexdigest() for name in _INPUTS}
-        inherited=os.environ.get('AUTODATA_API21_BINDING')
+        for name in _INPUTS:binding['source_input_sha256'][name]=hashlib.sha256((ROOT/name).read_bytes()).hexdigest()
+        inherited=os.environ.get('AUTODATA_API21_BINDING') if role!='parent-pytest' else None
         if inherited:
             expected=_strict_json(inherited);expected['producer_role']=role
             binding.update(run_id=os.environ['AUTODATA_API21_RUN_ID'],attempt_id=os.environ['AUTODATA_API21_ATTEMPT_ID'])
@@ -243,10 +267,34 @@ def _normalized(command,directory,origin=None):
     return result
 
 
-def _lifecycle(receipt,operation,state,reason=None):
+def _account_support(directory,receipt):
+    # Only bytes actually visible to this owner count here. The later outer JUnit
+    # is unavailable to this process and still requires full transport admission.
+    global _RUN_SUPPORT_BYTES
+    cost=len(_canonical(receipt))
+    for artifact in receipt['child_artifacts']:
+        if type(artifact['length']) is not int or not 0<=artifact['length']<=8388608:raise ValueError('over_limit')
+        cost+=artifact['length']
+    child_path=directory/'child-processes.json'
+    if child_path.exists():
+        child=_read_json(child_path)
+        for worker in child.get('workers',[]):
+            name=worker['original_ref']
+            if not re.fullmatch(r'worker-[a-f0-9]{32}\.log',name):raise ValueError('mapping_unavailable')
+            actual=_hash_artifact(ARTIFACT_ROOT/name,name)
+            if worker['log_hash']!=actual:raise ValueError('log_not_finalized')
+            cost+=actual['length']
+    binding=receipt['binding']
+    screenshot=directory/'browser'/binding['engine']/(binding['root']+'-failure.png')
+    if screenshot.exists():cost+=_hash_artifact(screenshot,str(screenshot.relative_to(ARTIFACT_ROOT)))['length']
+    _RUN_SUPPORT_BYTES+=cost
+    if _RUN_SUPPORT_BYTES>67108864:raise ValueError('over_limit')
+
+
+def _lifecycle(receipt,operation,state,reason=None,elapsed_us=0):
     events=receipt['finalization_events']
     if len(events)>=64:raise ValueError('over_limit')
-    events.append(dict(seq=len(events)+1,phase=operation,caused_by=[],elapsed_us=0,
+    events.append(dict(seq=len(events)+1,phase=operation,caused_by=[],elapsed_us=elapsed_us,
         payload=dict(kind='lifecycle',operation=operation,state=state,reason=reason)))
 
 
@@ -335,7 +383,7 @@ def _child(root_name,engine,provider,directory,monkeypatch):
                     assert code is None,'API21 fixture exited before readiness'
                     assert time.monotonic()<deadline-15,'fixture readiness budget exhausted'
                     time.sleep(.05)
-                metadata=json.loads(ready.read_text());assert metadata['kind']=='api-fixture'
+                metadata=_read_json(ready);assert metadata['kind']=='api-fixture'
                 browser_env={key:value for key,value in env.items() if key in allowed}
                 browser_env.update(_binding_env(binding,'browser-runner'))
                 browser_env.update(CANDIDATE_SHA=candidate,AUTODATA_WORKSHOP_BROWSER_CASE=root_name)
@@ -353,7 +401,7 @@ def _child(root_name,engine,provider,directory,monkeypatch):
                     browser.data.update(launched=True);browser.event('launch-succeeded')
                     browser.observed(tested.returncode,'wait','normal')
                 assert tested.returncode==0,'API21 browser runner failed'
-                evidence=_strict_json((directory/'browser/evidence.json').read_bytes())
+                evidence=_read_json(directory/'browser/evidence.json')
                 assert len(evidence['results'])==1 and evidence['results'][0]['status']=='passed' and evidence['mode']=='api-fixture'
                 expected_binding=dict(binding,producer_role='browser-runner')
                 assert evidence['api_observability_version']==API21_VERSION and evidence['candidate_sha']==candidate
@@ -366,13 +414,13 @@ def _child(root_name,engine,provider,directory,monkeypatch):
                 final=bridge.snapshot();assert not final['proxy']['errors'] and final['ensure']['active']==0
                 result['final_snapshot']=final
                 with urlopen(Request(metadata['origin']+'/__fixture/stop',method='POST'),context=ssl._create_unverified_context(),timeout=2) as response:assert response.status==204
-                _lifecycle(sidecar,'fixture-stop','completed')
+                _lifecycle(sidecar,'fixture-stop','completed',elapsed_us=go.elapsed())
                 assert go.wait(3)==0,'API21 fixture stop failed';process=None
             capture=_capture_workers(runtime,google)
-            _lifecycle(sidecar,'worker-stop','requested')
-            result['worker_exits']=bridge.stop();_lifecycle(sidecar,'worker-stop','completed')
-            _lifecycle(sidecar,'runtime-close','requested')
-            runtime.close();closed=True;runtime=None;_lifecycle(sidecar,'runtime-close','completed')
+            _lifecycle(sidecar,'worker-stop','requested',elapsed_us=go.elapsed())
+            result['worker_exits']=bridge.stop();_lifecycle(sidecar,'worker-stop','completed',elapsed_us=go.elapsed())
+            _lifecycle(sidecar,'runtime-close','requested',elapsed_us=go.elapsed())
+            runtime.close();closed=True;runtime=None;_lifecycle(sidecar,'runtime-close','completed',elapsed_us=go.elapsed())
         result['passed']=True
     except BaseException as exc:
         failure=_failure(exc);sidecar['primary_failure']=failure
@@ -388,12 +436,12 @@ def _child(root_name,engine,provider,directory,monkeypatch):
                 if bridge is not None:
                     bridge.release_model.set();result['worker_exits']=bridge.stop()
                 else:runtime.stop_workers()
-                _lifecycle(sidecar,'worker-stop','completed')
+                _lifecycle(sidecar,'worker-stop','completed',elapsed_us=go.elapsed())
             except BaseException:
-                failure=failure or 'close_failed';_lifecycle(sidecar,'worker-stop','failed','close_failed')
-            try:runtime.close();closed=True;_lifecycle(sidecar,'runtime-close','completed')
+                failure=failure or 'close_failed';_lifecycle(sidecar,'worker-stop','failed','close_failed',elapsed_us=go.elapsed())
+            try:runtime.close();closed=True;_lifecycle(sidecar,'runtime-close','completed',elapsed_us=go.elapsed())
             except BaseException:
-                failure=failure or 'close_failed';_lifecycle(sidecar,'runtime-close','failed','close_failed')
+                failure=failure or 'close_failed';_lifecycle(sidecar,'runtime-close','failed','close_failed',elapsed_us=go.elapsed())
         sidecar['workers'],sidecar['worker_mapping_status']=_finalize_workers(capture,result.get('worker_exits',[]),closed)
         if sidecar['worker_mapping_status']=='unavailable':failure=failure or 'mapping_unavailable'
         for owned in (go,browser):
@@ -409,7 +457,10 @@ def _child(root_name,engine,provider,directory,monkeypatch):
             failure=failure or 'publication_failed';result['passed']=False;sidecar.update(status='failed',primary_failure=failure,publication_failure='publication_failed')
             try:_publish(directory,'result.json',{k:v for k,v in result.items() if k not in ('final_snapshot','worker_exits')},16384)
             except BaseException:print('API21_PUBLICATION_FAILED',file=sys.stderr)
-        if not _safe_publish(directory,'child-processes.json',sidecar,262144):failure=failure or 'publication_failed'
+        if not _safe_publish(directory,'child-processes.json',sidecar,262144):
+            failure=failure or 'publication_failed';result['passed']=False
+            try:_publish(directory,'result.json',{k:v for k,v in result.items() if k not in ('final_snapshot','worker_exits')},16384)
+            except BaseException:print('API21_PUBLICATION_FAILED',file=sys.stderr)
     if failure:raise RuntimeError('API21 '+failure) from None
 
 
@@ -443,12 +494,15 @@ def _case(root_name,engine,provider,fresh_database,monkeypatch):
             child.event('launch-requested')
             process=subprocess.Popen(command,cwd=ROOT,env=env,stdout=log,stderr=subprocess.STDOUT,start_new_session=True)
             child.launched(process)
+            receipt['child_launch_cause']=dict(stream='process-child',producer_role='parent-pytest',seq=child.data['events'][-1]['seq'])
             try:code=child.wait(max(1,84-(time.monotonic()-start)))
             except subprocess.TimeoutExpired:
                 child.cleanup(group=True);raise
         assert code==0,'API21 child failed'
-        assert _strict_json((directory/'result.json').read_bytes())['passed'] is True,'API21 child result failed'
-        assert _strict_json((directory/'child-processes.json').read_bytes())['status']=='passed','API21 child receipts failed'
+        child_result=_read_json(directory/'result.json');child_sidecar=_read_json(directory/'child-processes.json')
+        expected_binding=dict(binding,producer_role='child-pytest')
+        assert child_result['passed'] is True and child_result['binding']==expected_binding,'API21 child result failed'
+        assert child_sidecar['status']=='passed' and child_sidecar['binding']==expected_binding,'API21 child receipts failed'
         receipt['status']='passed'
     except BaseException as exc:
         failure=_failure(exc)
@@ -467,6 +521,10 @@ def _case(root_name,engine,provider,fresh_database,monkeypatch):
             if receipt['child_artifact_status']!='finalized':failure=failure or 'log_not_finalized'
             child.data['output_hashes']=[row for row in receipt['child_artifacts'] if row['ref'].endswith('/child.log')]
         receipt.update(status='passed' if failure is None and receipt['status']=='passed' else 'failed',primary_failure=failure)
+        try:_account_support(directory,receipt)
+        except BaseException as exc:
+            failure=failure or ('over_limit' if isinstance(exc,ValueError) and exc.args==('over_limit',) else 'read_failed')
+            receipt.update(status='failed',primary_failure=failure)
         if not _safe_publish(directory,'parent-process.json',receipt,65536):failure=failure or 'publication_failed'
     if failure:raise AssertionError('API21 '+failure) from None
 

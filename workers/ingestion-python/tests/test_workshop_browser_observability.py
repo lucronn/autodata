@@ -153,8 +153,8 @@ def test_parent_publishes_after_actual_child_wait(producer,monkeypatch,tmp_path,
         binding=json.loads(kwargs['env']['AUTODATA_API21_BINDING'])
         assert binding['producer_role']=='child-pytest' and binding['case_id']==ROOT_NAME+'[chromium]'
         assert len(binding['source_input_sha256'])==7
-        (directory/'result.json').write_text('{"passed":true}')
-        (directory/'child-processes.json').write_text('{"status":"passed"}')
+        (directory/'result.json').write_text(json.dumps({'passed':True,'binding':binding}))
+        (directory/'child-processes.json').write_text(json.dumps({'status':'passed','binding':binding}))
         for name in ('ready.json','go-fixture.log','browser.stdout.log','browser.stderr.log','browser/evidence.json'):
             path=directory/name;path.parent.mkdir(mode=0o700,exist_ok=True);path.write_text('original')
         return Process([code])
@@ -167,7 +167,7 @@ def test_parent_publishes_after_actual_child_wait(producer,monkeypatch,tmp_path,
     assert receipt['status']==('passed' if code==0 else 'failed')
     assert receipt['engine_os_exit'] is None and receipt['outer_pytest_exit'] is None
     assert next(r for r in receipt['child_artifacts'] if r['ref'].endswith('child.log'))['length']==0
-    assert (directory/'result.json').read_text()=='{"passed":true}'
+    assert json.loads((directory/'result.json').read_text())['passed'] is True
 
 
 def test_child_setup_failure_retains_failed_sidecar_without_services(producer,monkeypatch,tmp_path):
@@ -184,7 +184,7 @@ def test_child_setup_failure_retains_failed_sidecar_without_services(producer,mo
     assert json.loads((tmp_path/'result.json').read_text())['passed'] is False
 
 
-def fake_child_dependencies(producer,monkeypatch,tmp_path,browser_code=0,stale=False):
+def fake_child_dependencies(producer,monkeypatch,tmp_path,browser_code=0,stale=False,root=ROOT_NAME):
     import contextlib
     import threading
     configure_case(producer,monkeypatch,tmp_path)
@@ -209,7 +209,7 @@ def fake_child_dependencies(producer,monkeypatch,tmp_path,browser_code=0,stale=F
         assert binding['producer_role']=='browser-runner' and kwargs['env']['AUTODATA_API21_RUN_ID']==binding['run_id']
         if stale:binding['attempt_id']='0'*32
         output=tmp_path/'browser';output.mkdir(mode=0o700)
-        row={'status':'passed','browser':'chromium','scenario':ROOT_NAME,'provider':'bankone','observations':{'binding':binding,'status':'passed','primary_failure':None,'publication':'written'}}
+        row={'status':'passed','browser':'chromium','scenario':root,'provider':'bankone','observations':{'binding':binding,'status':'passed','primary_failure':None,'publication':'written'}}
         evidence={'mode':'api-fixture','candidate_sha':'a'*40,'api_observability_version':'api21-producer-v2','binding':binding,
             'input_sha256':{k:v for k,v in binding['source_input_sha256'].items() if not k.endswith('test_workshop_browser_integration.py')},'results':[row]}
         (output/'evidence.json').write_text(json.dumps(evidence))
@@ -326,3 +326,206 @@ def test_worker_changed_original_inode_is_unavailable(producer,tmp_path):
 @pytest.mark.parametrize('raw',[b'{"x":1,"x":2}',b'{"x":NaN}',b'"\xff"'])
 def test_strict_json_rejects_ambiguous_bytes(producer,raw):
     with pytest.raises((ValueError,UnicodeError)):producer._strict_json(raw)
+
+
+def test_publication_rejects_symlink_ancestor(producer,tmp_path):
+    real=tmp_path/'real';real.mkdir(mode=0o700)
+    link=tmp_path/'link';link.symlink_to(real,target_is_directory=True)
+    leaf=real/'leaf';leaf.mkdir(mode=0o700)
+    with pytest.raises((ValueError,OSError)):producer._publish(link/'leaf','child-processes.json',{},262144)
+    assert not list(leaf.iterdir())
+
+
+def test_parent_timeout_signals_only_owned_group_and_retains_reap(producer,monkeypatch,tmp_path):
+    directory=configure_case(producer,monkeypatch,tmp_path);signals=[]
+    process=Process([subprocess.TimeoutExpired('child',84),subprocess.TimeoutExpired('child',2),-9])
+    monkeypatch.setattr(subprocess,'Popen',lambda *a,**kw:process)
+    monkeypatch.setattr(os,'killpg',lambda pid,sig:signals.append((pid,sig)))
+    with pytest.raises(AssertionError,match='API21 timeout'):producer._case(ROOT_NAME,'chromium','bankone',lambda:types.SimpleNamespace(database_name='fake'),monkeypatch)
+    receipt=json.loads((directory/'parent-process.json').read_text())
+    assert signals==[(123,producer.signal.SIGTERM),(123,producer.signal.SIGKILL)]
+    assert receipt['child']['return_code']==-9 and receipt['child']['wait_kind']=='cleanup'
+    assert receipt['status']=='failed'
+
+
+def test_parent_launch_failure_does_not_signal_unowned_process(producer,monkeypatch,tmp_path):
+    directory=configure_case(producer,monkeypatch,tmp_path)
+    def fail(*a,**kw):raise OSError('secret-launch')
+    monkeypatch.setattr(subprocess,'Popen',fail)
+    with pytest.raises(AssertionError,match='API21'):producer._case(ROOT_NAME,'chromium','bankone',lambda:types.SimpleNamespace(database_name='fake'),monkeypatch)
+    receipt=json.loads((directory/'parent-process.json').read_text())
+    assert receipt['child']['return_code'] is None and receipt['child']['launched'] is False
+    assert receipt['child']['events'][-1]['kind']=='launch-failed'
+
+
+def test_repeated_cleanup_does_not_signal_finalized_process(producer):
+    process=Process([-15]);receipt=producer._OwnedProcess('go-test','child-pytest',['go'],'.',None,None);receipt.launched(process)
+    receipt.cleanup();before=list(receipt.data['events']);receipt.cleanup()
+    assert receipt.data['events']==before and process.signals==['term']
+
+
+def test_signal_and_reap_failure_never_invent_return_code(producer):
+    process=Process([OSError('secret-reap')])
+    def signal_failure():raise OSError('secret-signal')
+    process.terminate=signal_failure
+    receipt=producer._OwnedProcess('go-test','child-pytest',['go'],'.',None,None);receipt.launched(process);receipt.cleanup()
+    assert receipt.data['return_code'] is None and receipt.data['reaped'] is False
+    assert {e['kind'] for e in receipt.data['events']} >= {'signal-failed','reap-failed'}
+
+
+@pytest.mark.parametrize('kind',['symlink','hardlink','live'])
+def test_worker_unfinalized_log_does_not_get_a_hash(producer,tmp_path,kind):
+    workers=[];logs=[]
+    for n in (1,2):
+        log=(tmp_path/('worker-'+str(n)*32+'.log')).open('w');logs.append(log);workers.append(Process([-15]))
+    captured=producer._capture_workers(types.SimpleNamespace(workers=workers,logs=logs,barrier=None),False,artifact_root=tmp_path)
+    exits=[]
+    for worker,log in zip(workers,logs):
+        worker.wait(3)
+        if kind!='live':log.close()
+        exits.append(dict(kind='cli',exit_code=-15,terminated=True,intentional_cleanup=True,alive_before_cleanup=True))
+    path=Path(logs[0].name)
+    if kind=='symlink':path.unlink();path.symlink_to(Path(logs[1].name))
+    if kind=='hardlink':os.link(path,tmp_path/'extra-link')
+    records,status=producer._finalize_workers(captured,exits,True)
+    assert status=='unavailable' and records[0]['log_hash'] is None
+    for log in logs:log.close()
+
+
+def test_worker_unexpected_extra_exit_is_not_discarded(producer,tmp_path):
+    logs=[];workers=[]
+    for n in (1,2):
+        log=(tmp_path/('worker-'+str(n)*32+'.log')).open('w');logs.append(log);workers.append(Process([-15]))
+    capture=producer._capture_workers(types.SimpleNamespace(workers=workers,logs=logs,barrier=None),False,artifact_root=tmp_path)
+    for worker,log in zip(workers,logs):worker.wait(3);log.close()
+    outcome=dict(kind='cli',exit_code=-15,terminated=True,intentional_cleanup=True,alive_before_cleanup=True)
+    records,status=producer._finalize_workers(capture,[outcome]*3,True)
+    assert records==[] and status=='unavailable'
+
+
+def test_private_log_is_exclusive_and_0600(producer,tmp_path):
+    path=tmp_path/'go-fixture.log'
+    with producer._private_log(path) as log:log.write(b'original')
+    assert path.stat().st_mode & 0o777==0o600
+    with pytest.raises(FileExistsError):producer._private_log(path)
+    assert path.read_bytes()==b'original'
+
+
+def test_actual_child_worker_branch_hashes_originals_after_stop_and_close(producer,monkeypatch,tmp_path):
+    root='test_browser_owned_source_canonical_and_media_real_api'
+    runtime,bridge=fake_child_dependencies(producer,monkeypatch,tmp_path,root=root)
+    original_browser=subprocess.run
+    def browser(*args,**kwargs):
+        result=original_browser(*args,**kwargs)
+        for n in (1,2):
+            runtime.logs.append((tmp_path/('worker-'+str(n)*32+'.log')).open('w'))
+            runtime.logs[-1].write('worker original\n');runtime.workers.append(Process([-15]))
+        return result
+    monkeypatch.setattr(subprocess,'run',browser)
+    def stop():
+        records=[]
+        for worker in runtime.workers:
+            assert worker.poll() is None
+            code=worker.wait(3)
+            records.append(dict(kind='cli',exit_code=code,terminated=True,intentional_cleanup=True,alive_before_cleanup=True))
+        runtime.workers=[]
+        return records
+    bridge.stop=stop
+    runtime.close=lambda:[log.close() for log in runtime.logs]
+    # Resolve the runtime-owned root at call time rather than the default argument.
+    original_capture=producer._capture_workers
+    monkeypatch.setattr(producer,'_capture_workers',lambda runtime,google:original_capture(runtime,google,artifact_root=tmp_path))
+    producer._child(root,'chromium','bankone',tmp_path,monkeypatch)
+    receipt=json.loads((tmp_path/'child-processes.json').read_text())
+    assert receipt['status']=='passed' and receipt['worker_mapping_status']=='observed'
+    assert [row['original_ref'] for row in receipt['workers']]==['worker-'+'1'*32+'.log','worker-'+'2'*32+'.log']
+    assert all(row['log_hash']['sha256']==hashlib.sha256(b'worker original\n').hexdigest() for row in receipt['workers'])
+    assert all(row['exit_code']==-15 and row['reaped'] is True for row in receipt['workers'])
+
+
+def test_child_failed_sidecar_publication_cannot_leave_passed_result(producer,monkeypatch,tmp_path):
+    fake_child_dependencies(producer,monkeypatch,tmp_path)
+    original=producer._publish
+    def publish(directory,name,value,limit):
+        if name=='child-processes.json':raise OSError('secret-publication')
+        return original(directory,name,value,limit)
+    monkeypatch.setattr(producer,'_publish',publish)
+    with pytest.raises(RuntimeError,match='API21 publication_failed'):producer._child(ROOT_NAME,'chromium','bankone',tmp_path,monkeypatch)
+    assert json.loads((tmp_path/'result.json').read_text())['passed'] is False
+
+
+def test_event_capacity_preserves_prefix_and_rejects_next_event(producer):
+    receipt=producer._OwnedProcess('go-test','child-pytest',['go'],'.',None,None)
+    for _ in range(32):receipt.event('launch-requested')
+    with pytest.raises(ValueError,match='over_limit'):receipt.event('launch-requested')
+    assert [e['seq'] for e in receipt.data['events']]==list(range(1,33))
+
+
+def test_private_publication_exact_limit_counts_final_newline(producer,tmp_path):
+    tmp_path.chmod(0o700)
+    producer._publish(tmp_path,'x.json',{},3)
+    assert (tmp_path/'x.json').read_bytes()==b'{}\n'
+    with pytest.raises(ValueError):producer._publish(tmp_path,'x.json',{},2)
+    assert (tmp_path/'x.json').read_bytes()==b'{}\n'
+
+
+def test_json_support_read_is_bounded_before_parse(producer,tmp_path):
+    path=tmp_path/'evidence.json';path.write_bytes(b' '*4194305)
+    with pytest.raises(ValueError,match='over_limit'):producer._read_json(path)
+
+
+def test_parent_always_allocates_fresh_attempt(producer,monkeypatch,tmp_path):
+    configure_case(producer,monkeypatch,tmp_path)
+    monkeypatch.setenv('AUTODATA_API21_RUN_ID','0'*32);monkeypatch.setenv('AUTODATA_API21_ATTEMPT_ID','1'*32)
+    first=producer._binding(ROOT_NAME,'chromium','bankone','parent-pytest')
+    second=producer._binding(ROOT_NAME,'chromium','bankone','parent-pytest')
+    assert first['run_id']==second['run_id'] and first['run_id']!='0'*32
+    assert first['attempt_id']!=second['attempt_id'] and first['attempt_id']!='1'*32
+
+
+def test_hash_rejects_symlink_ancestor(producer,tmp_path):
+    real=tmp_path/'real';real.mkdir();(real/'log').write_bytes(b'original')
+    link=tmp_path/'link';link.symlink_to(real,target_is_directory=True)
+    with pytest.raises((ValueError,OSError)):producer._hash_artifact(link/'log','log')
+
+
+def test_support_budget_counts_parent_serialization_and_fails_at_limit_plus_one(producer,monkeypatch,tmp_path):
+    value={'binding':{'root':ROOT_NAME,'engine':'chromium'},'child_artifacts':[],'status':'failed'}
+    length=len((json.dumps(value,sort_keys=True,separators=(',',':'),ensure_ascii=False,allow_nan=False)+'\n').encode())
+    monkeypatch.setattr(producer,'_RUN_SUPPORT_BYTES',67108864-length)
+    producer._account_support(tmp_path,value)
+    assert producer._RUN_SUPPORT_BYTES==67108864
+    monkeypatch.setattr(producer,'_RUN_SUPPORT_BYTES',67108865-length)
+    with pytest.raises(ValueError,match='over_limit'):producer._account_support(tmp_path,value)
+
+
+def test_parent_rejects_stale_child_receipt_binding(producer,monkeypatch,tmp_path):
+    directory=configure_case(producer,monkeypatch,tmp_path)
+    def launch(*a,**kw):
+        binding=json.loads(kw['env']['AUTODATA_API21_BINDING']);binding['attempt_id']='0'*32
+        (directory/'result.json').write_text(json.dumps({'passed':True,'binding':binding}))
+        (directory/'child-processes.json').write_text(json.dumps({'status':'passed','binding':binding}))
+        for name in ('ready.json','go-fixture.log','browser.stdout.log','browser.stderr.log','browser/evidence.json'):
+            path=directory/name;path.parent.mkdir(mode=0o700,exist_ok=True);path.write_text('original')
+        return Process([0])
+    monkeypatch.setattr(subprocess,'Popen',launch)
+    with pytest.raises(AssertionError,match='API21'):producer._case(ROOT_NAME,'chromium','bankone',lambda:types.SimpleNamespace(database_name='fake'),monkeypatch)
+    assert json.loads((directory/'parent-process.json').read_text())['status']=='failed'
+
+
+def test_bool_is_not_an_observed_process_exit(producer):
+    receipt=producer._OwnedProcess('go-test','child-pytest',['go'],'.',None,None)
+    receipt.launched(Process([True]))
+    with pytest.raises(ValueError):receipt.wait(3)
+    assert receipt.data['return_code'] is None
+
+
+def test_inherited_binding_mismatch_remains_partial(producer,monkeypatch,tmp_path):
+    configure_case(producer,monkeypatch,tmp_path)
+    parent=producer._binding(ROOT_NAME,'chromium','bankone','parent-pytest')
+    env=producer._binding_env(parent,'child-pytest')
+    for name,value in env.items():monkeypatch.setenv(name,value)
+    monkeypatch.setenv('AUTODATA_API21_ATTEMPT_ID','0'*32)
+    child=producer._binding(ROOT_NAME,'chromium','bankone','child-pytest')
+    assert child['binding_state']=='partial' and child['unavailable_reason']=='source_binding_failed'
+    assert child['candidate_sha']=='a'*40 and len(child['source_input_sha256'])==7
