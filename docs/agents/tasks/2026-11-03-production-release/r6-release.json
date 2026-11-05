@@ -137,7 +137,7 @@
     ],
     "ci_profile": {
       "enabled": false,
-      "workflow_sha256": "b9ccf5f8c8fc974d113f0461871e9288e30a1a61ddeff6fc67cfd8a6fb3e7418",
+      "workflow_sha256": "3c54e7ba0613d1cd3a78819eede4915b1d268ffd904df83b2c034d914dca10e6",
       "dto_upload_required": true
     },
     "report_profile": {
