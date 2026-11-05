@@ -7,6 +7,7 @@ and ephemeral; publication output never contains tokens or owner acceptance.
 import base64
 from datetime import datetime, timezone
 import importlib.util
+import inspect
 import os
 from pathlib import Path
 import re
@@ -33,6 +34,37 @@ RUNTIME_FIELDS = ('project_id region zone maximum_monthly_budget_usd staging_ori
 def read_json(root, name, maximum=a.MiB):
     try: return a.strict_json(a.private_read(root, name, maximum), maximum)
     except OSError: raise a.AdapterError('invalid_input') from None
+
+
+def read_tool_json(root, name, maximum=a.MiB):
+    """Adopt original tool output without relaxing private input permissions.
+
+    Buildx's atomic writer explicitly chmods metadata to0644 after creation,
+    overriding its inherited umask. The containing workspace is already0700.
+    Pin the original regular file through one descriptor before making it0600.
+    """
+    a.match(name, r'[A-Za-z0-9._-]+'); a.integer(maximum, 1, a.MiB)
+    directory = None; fd = None
+    try:
+        directory = a._private_parent(root)
+        fd = os.open(name,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=directory)
+        before = os.fstat(fd)
+        a.require(stat.S_ISREG(before.st_mode) and before.st_uid == os.getuid() and before.st_nlink == 1)
+        a.require(stat.S_IMODE(before.st_mode) in (0o600,0o644) and 0 < before.st_size <= maximum)
+        with os.fdopen(fd,'rb',closefd=False) as stream: data = stream.read(maximum+1)
+        after = os.fstat(fd)
+        stable = lambda value:(value.st_dev,value.st_ino,value.st_size,value.st_mtime_ns)
+        a.require(stable(before) == stable(after) and len(data) == before.st_size)
+        os.fchmod(fd,0o600)
+        adopted = os.fstat(fd)
+        named = os.stat(name,dir_fd=directory,follow_symlinks=False)
+        a.require(stable(before) == stable(adopted) == stable(named) and adopted.st_nlink == named.st_nlink == 1
+                  and stat.S_ISREG(named.st_mode) and stat.S_IMODE(named.st_mode) == 0o600)
+        return a.strict_json(data, maximum)
+    except OSError: raise a.AdapterError('invalid_input') from None
+    finally:
+        if fd is not None: os.close(fd)
+        if directory is not None: os.close(directory)
 
 
 def runtime_config(runtime, config):
@@ -166,6 +198,7 @@ class LiveDependencies:
     def prepare(self, policy, context):
         a.require(policy == self.policy and context == self.context)
         a._policy(policy, context)
+        a.require('deadline' in inspect.signature(a.verify_registry_image).parameters, 'missing_dependency')
         for name in ('git', 'docker', 'oras', 'cosign', 'getent', 'sigstore-root', 'sigstore-signing-config', 'buildkit-image'):
             a.require(name in policy['tools'], 'missing_dependency')
             a.verify_tool(policy['tools'][name])
@@ -259,7 +292,7 @@ class LiveDependencies:
         argv = a.build_argv(role, '/usr/bin/docker', self.source, self.policy['registry'], context,
                             build_input['source_epoch'], build_input['dependency_images']['postgres']['reference'], self.builder)
         self.tools.run('docker', argv[1:], seconds=3600, maximum=4*a.MiB, credentials=True)
-        metadata = a.strict_json(a.private_read(self.root, role+'-metadata.json', a.MiB))
+        metadata = read_tool_json(self.root, role+'-metadata.json')
         image_digest = metadata.get('containerimage.digest')
         a.match(image_digest, r'sha256:[0-9a-f]{64}')
         reference = self.policy['registry']+'/'+role+'@'+image_digest
@@ -292,8 +325,9 @@ class LiveDependencies:
         # its stdout alone would leave downloaded files unbounded on disk.
         previous = resource.getrlimit(resource.RLIMIT_FSIZE)
         soft = maximum if previous[0] == resource.RLIM_INFINITY else min(maximum, previous[0])
-        resource.setrlimit(resource.RLIMIT_FSIZE, (soft, previous[1]))
-        try: self.tools.run('oras', command, seconds=300, credentials=True)
+        try:
+            resource.setrlimit(resource.RLIMIT_FSIZE, (soft, previous[1]))
+            self.tools.run('oras', command, seconds=300, credentials=True)
         finally: resource.setrlimit(resource.RLIMIT_FSIZE, previous)
         return output
 
