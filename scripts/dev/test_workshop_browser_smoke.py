@@ -1262,7 +1262,7 @@ class DTOWorkflowBindingTests(unittest.TestCase):
 class API21FakeResponse:
     def __init__(self,url,data,status=200,request=None):
         self.url,self.data,self.status=url,data,status
-        self.request=request or SimpleNamespace(method='GET')
+        self.request=request or SimpleNamespace(method='GET',url=url)
     async def body(self):return self.data if isinstance(self.data,bytes) else json.dumps(self.data).encode()
     async def json(self):return self.data
 
@@ -1332,7 +1332,10 @@ class API21FakePage:
         observations=getattr(self.context,'_api21',None)
         if observations and observations.phase==self.context.browser.missing:return
         callback=self.handlers.get('response')
-        if callback:callback(API21FakeResponse(url,data,request=request))
+        response=API21FakeResponse(url,data,request=request)
+        started=self.handlers.get('request')
+        if started:started(response.request)
+        if callback:callback(response)
     def library(self):
         self.emit('https://127.0.0.1:32001/v1/workshop/library?limit=20',dict(items=[dict(
             library_item_id=smoke.ORDER,configuration_id=smoke.CONFIG,region='US',access_state='paid')]))
@@ -1360,7 +1363,6 @@ class API21FakeLocator:
             self.page.emit('https://127.0.0.1:32001/v1/catalog/vehicles/'+smoke.CONFIG+'/articles/'+smoke.ARTICLE+'/source',{'source':'Remove the pump.'})
         elif self.selector in ('#purchase-action','#retry'):
             route=CheckoutRoute()
-            route.fetched_response.data['checkout_url']='https://checkout.stripe.com/c/pay/cs_test_'+'a'*32
             route.request.post_data_buffer=route.request.post_data.encode()
             route.fetched_response.body=lambda:asyncio.sleep(0,result=json.dumps(route.fetched_response.data).encode())
             await context.transport.route(route)
@@ -1412,9 +1414,10 @@ class API21ObservationsTests(unittest.IsolatedAsyncioTestCase):
                 (b'"\xff"','invalid_utf8'),(b'{"token":"secret"}','secret_detected')]:
             with self.subTest(raw=raw):
                 body=smoke.api21_body(raw,'playwright-response-body')
-                self.assertEqual(body['availability'],'unavailable')
+                self.assertEqual(body['availability'],'unavailable' if reason=='secret_detected' else 'retained')
                 self.assertEqual(body['reason'],reason)
-                self.assertIsNone(body['base64'])
+                if reason=='secret_detected':self.assertIsNone(body['base64'])
+                else:self.assertEqual(smoke.base64.b64decode(body['base64']),raw)
 
     def test_bounds_fail_without_discarding_prefix_or_promoting_pass(self):
         buffer=self.buffer(max_events=1)
@@ -1435,7 +1438,9 @@ class API21ObservationsTests(unittest.IsolatedAsyncioTestCase):
                 await gate.wait()
                 return b'{"items":[{"order_id":"paid"}]}'
         buffer.phase='owner-library-initial-http'
-        buffer.page_response(Response());buffer.page_response(Response())
+        for _ in range(2):
+            response=Response();response.request=SimpleNamespace(method='GET',url=response.url)
+            buffer.page_request(response.request);buffer.page_response(response)
         buffer.phase='owner-library-reload-http';gate.set()
         await buffer.drain()
         events=buffer.snapshot()['events']
@@ -1449,7 +1454,8 @@ class API21ObservationsTests(unittest.IsolatedAsyncioTestCase):
             buffer=self.buffer();buffer.phase='owner-library-initial-http'
             response=SimpleNamespace(status=200,url='https://127.0.0.1:32001/v1/workshop/library',
                 request=SimpleNamespace(method='GET'),body=lambda:asyncio.sleep(0,result=raw))
-            buffer.page_response(response);await buffer.drain()
+            response.request.url=response.url
+            buffer.page_request(response.request);buffer.page_response(response);await buffer.drain()
             with self.assertRaises(smoke.APIObservationError):buffer.require_window(buffer.phase)
 
     async def test_checkout_retains_fetch_before_abort_and_exact_original_request(self):
@@ -1533,13 +1539,153 @@ class API21ObservationsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result['observations']['primary_failure'],'assertion_failed')
 
     async def test_runtime_poll_ceiling_is_phase_specific(self):
-        buffer=self.buffer();response=API21FakeResponse('https://local/__fixture/runtime',{'application_generation':1})
-        for attempt in range(100):await buffer.http(response,response.url,phase='runtime-poll')
-        self.assertEqual(buffer.snapshot()['events'][-1]['payload']['attempt'],100)
-        with self.assertRaises(smoke.APIObservationError):await buffer.http(response,response.url,phase='runtime-poll')
+        response=API21FakeResponse('https://local/__fixture/runtime',{'application_generation':1})
+        for phase,limit in [('runtime-poll',100)]+[(phase,16) for phase in (
+                'owner-library-initial-http','owner-library-reload-http','owner-library-restart-http')]:
+            buffer=self.buffer()
+            for attempt in range(1,limit+1):
+                await buffer.http(response,response.url,phase=phase)
+                self.assertEqual(buffer.events[-1]['payload']['attempt'],attempt)
+            for ordinal in (16,17,100):
+                if ordinal<=limit:self.assertEqual(buffer.events[ordinal-1]['payload']['attempt'],ordinal)
+            with self.assertRaises(smoke.APIObservationError):await buffer.http(response,response.url,phase=phase)
+            self.assertEqual(len(buffer.events),limit)
+            self.assertEqual(buffer.primary,'over_limit')
+        for phase,attempt in [('runtime-before',2),('checkout-first-http',2),('checkout-retry-http',1),
+                ('checkout-http',2),('runtime-poll',True),('runtime-poll',0)]:
+            buffer=self.buffer()
+            with self.subTest(phase=phase,attempt=attempt),self.assertRaises(smoke.APIObservationError):
+                await buffer.http(response,response.url,phase=phase,attempt=attempt)
+
+    async def test_required_json_invalid_entities_retain_original_bytes_and_fail(self):
+        for raw,reason in [(b'fixture control error\n','invalid_json'),(b'not json','invalid_json'),
+                (b'{"x":1,"x":2}','invalid_json'),(b'{"x":NaN}','invalid_json'),(b'"\xff"','invalid_utf8')]:
+            buffer=self.buffer();response=API21FakeResponse('https://local/v1/workshop/library',raw,403)
+            await buffer.http(response,response.url,phase='refund-source-denial')
+            body=buffer.events[0]['payload']['response']
+            self.assertEqual(body['availability'],'retained');self.assertEqual(body['reason'],reason)
+            self.assertEqual(smoke.base64.b64decode(body['base64']),raw)
+            self.assertIsNone(body['parsed']);self.assertEqual(buffer.primary,'http_failed')
+            smoke.api21_validate_body(body)
+
+    async def test_failed_controls_and_polls_retain_each_actual_attempt(self):
         buffer=self.buffer()
-        for attempt in range(16):await buffer.http(response,response.url,phase='runtime-before')
-        with self.assertRaises(smoke.APIObservationError):await buffer.http(response,response.url,phase='runtime-before')
+        class Context:
+            _api21=buffer
+            @property
+            def request(self):return self
+            async def post(self,url):raise TimeoutError('secret control failure')
+            async def get(self,url,**kwargs):raise TimeoutError('secret poll failure')
+        with self.assertRaises(TimeoutError):await smoke.api_control(Context(),'https://local','payment/settle','settlement-control')
+        for _ in range(2):
+            with self.assertRaises(TimeoutError):await smoke.api21_get(Context(),'https://local/__fixture/runtime',phase='runtime-poll')
+        self.assertEqual([e['payload']['attempt'] for e in buffer.events],[1,1,2])
+        self.assertEqual([e['payload']['method'] for e in buffer.events],['POST','GET','GET'])
+        self.assertTrue(all(e['payload']['status'] is None and e['payload']['response']['availability']=='unavailable' for e in buffer.events))
+        self.assertNotIn('secret',json.dumps(buffer.snapshot()))
+
+    async def test_actual_api_control_transport_timeout_and_cancellation_keep_failed_exchange(self):
+        original=API21FakeContext.post
+        for name in smoke.API_CASES:
+            controls=[phase for phase in smoke.API21_PHASES[name] if phase.endswith('-control')]
+            for phase in controls:
+                for failure_type in (TimeoutError,asyncio.CancelledError):
+                    buffer=self.buffer();browser=API21FakeBrowser(name)
+                    async def post(context,url):
+                        if buffer.phase==phase:raise failure_type('secret transport details')
+                        return await original(context,url)
+                    with self.subTest(name=name,phase=phase,failure_type=failure_type),TemporaryDirectory() as temp, \
+                            patch.dict(sys.modules,{'playwright.async_api':SimpleNamespace(expect=lambda value:value)}),patch.object(API21FakeContext,'post',post):
+                        with self.assertRaises(failure_type):await smoke.api_case(browser,'https://127.0.0.1:32001',name,Path(temp),observations=buffer)
+                    rows=[e['payload'] for e in buffer.events if e['phase']==phase and e['payload']['kind']=='http']
+                    self.assertEqual(len(rows),1);self.assertEqual(rows[0]['method'],'POST')
+                    self.assertIsNone(rows[0]['status']);self.assertEqual(rows[0]['response']['availability'],'unavailable')
+                    self.assertEqual(buffer.primary,'cancelled' if failure_type is asyncio.CancelledError else 'http_failed')
+                    self.assertTrue(browser.contexts[0].closed);self.assertNotIn('secret transport',json.dumps(buffer.snapshot()))
+
+    async def test_delayed_headers_keep_request_start_window_and_drain_pending(self):
+        buffer=self.buffer();buffer.phase='owner-library-initial-http'
+        request=SimpleNamespace(method='GET',url='https://local/v1/workshop/library')
+        buffer.page_request(request)
+        drain=asyncio.create_task(buffer.drain());await asyncio.sleep(0)
+        self.assertFalse(drain.done())
+        buffer.phase='owner-library-reload-http'
+        buffer.page_response(API21FakeResponse(request.url,{'items':[{'order_id':'paid'}]},request=request))
+        await drain
+        self.assertEqual([e['phase'] for e in buffer.events],['owner-library-initial-http'])
+        with self.assertRaises(smoke.APIObservationError):buffer.require_window('owner-library-reload-http')
+        buffer.phase='owner-library-restart-http';buffer.page_request(request);buffer.page_request_failed(request)
+        await buffer.drain()
+        self.assertEqual(buffer.events[-1]['phase'],'owner-library-restart-http')
+        self.assertIsNone(buffer.events[-1]['payload']['status'])
+
+    async def test_reverse_header_arrival_keeps_actual_request_ordinals(self):
+        buffer=self.buffer();buffer.phase='owner-library-initial-http'
+        first=API21FakeResponse('https://local/v1/workshop/library',{'items':[{'order_id':'first'}]})
+        second=API21FakeResponse(first.url,{'items':[{'order_id':'second'}]})
+        buffer.page_request(first.request);buffer.page_request(second.request)
+        buffer.page_response(second);buffer.page_response(first);await buffer.drain()
+        self.assertEqual([e['payload']['attempt'] for e in buffer.events],[2,1])
+        self.assertEqual([e['payload']['response']['parsed']['items'][0]['order_id'] for e in buffer.events],['second','first'])
+
+    async def test_duplicate_response_callback_cannot_create_second_exchange(self):
+        buffer=self.buffer();buffer.phase='owner-library-initial-http'
+        response=API21FakeResponse('https://local/v1/workshop/library',{'items':[{'order_id':'paid'}]})
+        buffer.page_request(response.request);buffer.page_response(response);buffer.page_response(response)
+        await buffer.drain();self.assertEqual(len(buffer.events),1);self.assertEqual(buffer.primary,'http_failed')
+
+    async def test_delayed_initial_headers_cannot_satisfy_reload_in_full_api_case(self):
+        buffer=self.buffer();browser=API21FakeBrowser(smoke.API_CASES[0])
+        original=API21FakePage.library
+        def library(page):
+            original(page)
+            if buffer.phase=='owner-library-initial-http':
+                response=API21FakeResponse('https://local/v1/workshop/library',{'items':[{
+                    'library_item_id':smoke.ORDER,'configuration_id':smoke.CONFIG,'region':'US','access_state':'paid'}]})
+                page.handlers['request'](response.request)
+                # Headers arrive only after the action yielded; drain must see
+                # the pending request before allowing a new action window.
+                asyncio.get_running_loop().call_soon(page.handlers['response'],response)
+        async def reload(page):
+            if buffer.phase!='owner-library-reload-http':await original_reload(page)
+        original_reload=API21FakePage.reload
+        with TemporaryDirectory() as temp,patch.dict(sys.modules,{'playwright.async_api':SimpleNamespace(expect=lambda value:value)}), \
+                patch.object(API21FakePage,'library',library),patch.object(API21FakePage,'reload',reload):
+            with self.assertRaises(smoke.APIObservationError):
+                await smoke.api_case(browser,'https://127.0.0.1:32001',smoke.API_CASES[0],Path(temp),observations=buffer)
+        self.assertEqual(sum(e['phase']=='owner-library-initial-http' and e['payload']['kind']=='http' for e in buffer.events),2)
+        self.assertFalse(any(e['phase']=='owner-library-reload-http' and e['payload']['kind']=='http' for e in buffer.events))
+        self.assertEqual(buffer.primary,'assertion_failed');self.assertTrue(browser.contexts[0].closed)
+
+    async def test_checkout_url_predicate_rejects_untrusted_components_and_keeps_fragment(self):
+        route=CheckoutRoute();request=smoke.api21_body(route.request.post_data.encode(),'playwright-request-post-data-buffer')
+        base=route.fetched_response.data.copy();hosted=base['checkout_url']
+        for url in (hosted,hosted.split('#')[0],hosted+'another fragment'):
+            response=smoke.api21_body(json.dumps(dict(base,checkout_url=url)).encode(),'playwright-response-body')
+            self.assertEqual(smoke.api21_checkout_identity(request,response,route.request.headers['idempotency-key'])['checkout_url'],url)
+        for url in (hosted.replace('https:','http:'),hosted.replace('checkout.stripe.com','evil.test'),
+                hosted.replace('checkout.stripe.com','user@checkout.stripe.com'),hosted.replace('checkout.stripe.com','checkout.stripe.com:443'),
+                hosted.replace('#','?unexpected=1#'),hosted.replace('cs_test_','cs_live_'),hosted.replace('/c/pay/','/pay/')):
+            response=smoke.api21_body(json.dumps(dict(base,checkout_url=url)).encode(),'playwright-response-body')
+            with self.subTest(url=url),self.assertRaises(ValueError):smoke.api21_checkout_identity(request,response,route.request.headers['idempotency-key'])
+
+    async def test_duplicate_actual_ordinal_is_nonpass(self):
+        buffer=self.buffer();response=API21FakeResponse('https://local/__fixture/runtime',{'application_generation':1})
+        await buffer.http(response,response.url,phase='runtime-poll',attempt=1)
+        with self.assertRaises(smoke.APIObservationError):await buffer.http(response,response.url,phase='runtime-poll',attempt=1)
+        self.assertEqual(len(buffer.events),1);self.assertEqual(buffer.status,'failed')
+
+    async def test_changed_checkout_fragment_rejected_without_normalization(self):
+        buffer=self.buffer();fixture=smoke.APIFixture('https://127.0.0.1:32001',smoke.API_CASES[0],observations=buffer)
+        for attempt in range(2):
+            route=CheckoutRoute();route.request.post_data_buffer=route.request.post_data.encode()
+            if attempt:route.fetched_response.data['checkout_url']+='_changed'
+            route.fetched_response.body=lambda:asyncio.sleep(0,result=json.dumps(route.fetched_response.data).encode())
+            if attempt:
+                with self.assertRaises(AssertionError):await fixture.route(route)
+            else:await fixture.route(route)
+        self.assertTrue(buffer.events[4]['payload']['checkout_identity']['checkout_url'].endswith('#fidkdFixtureFragment_changed'))
+
 
     async def test_actual_run_fake_playwright_success_keeps_exact_extensions_and_binding(self):
         with TemporaryDirectory() as temp:
@@ -1584,14 +1730,16 @@ class API21ObservationsTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_empty_control_keeps_original_bytes(self):
         buffer=self.buffer()
-        for status,raw,content_type in ((204,b'',''),):
+        for phase,status,raw,content_type in ((phase,204,b'','') for phase in ('restart-control','disable-control')):
             response=API21FakeResponse('https://local/__fixture/disable',raw,status)
             response.headers={'content-type':content_type}
-            await buffer.http(response,response.url,phase='disable-control')
+            await buffer.http(response,response.url,phase=phase)
             body=buffer.snapshot()['events'][-1]['payload']['response']
             self.assertEqual(body['availability'],'retained')
             self.assertEqual(smoke.base64.b64decode(body['base64']),raw)
-            self.assertIsNone(body['parsed'])
+            self.assertIsNone(body['parsed']);self.assertIsNone(body['reason'])
+            self.assertEqual(body['length'],0);self.assertEqual(body['base64'],'')
+            self.assertEqual(body['sha256'],smoke.hashlib.sha256(b'').hexdigest())
 
     def test_failed_publication_retries_minimal_receipt_and_keeps_primary(self):
         buffer=self.buffer();buffer.fail('assertion_failed');writes=[]
@@ -1607,7 +1755,7 @@ class API21ObservationsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(row['observations']['publication'],'failed')
         self.assertNotIn('secret disk detail',json.dumps(writes))
 
-    async def test_fragment_conflict_retains_original_response_but_never_passes_closed_identity(self):
+    async def test_authentic_fragment_retains_full_identity_and_retry_equality(self):
         buffer=self.buffer();fixture=smoke.APIFixture('https://127.0.0.1:32001',smoke.API_CASES[0],observations=buffer)
         route=CheckoutRoute();route.request.post_data_buffer=route.request.post_data.encode()
         raw=json.dumps(route.fetched_response.data).encode()
@@ -1615,8 +1763,13 @@ class API21ObservationsTests(unittest.IsolatedAsyncioTestCase):
         await fixture.route(route)
         event=buffer.snapshot()['events'][0]['payload']
         self.assertEqual(smoke.base64.b64decode(event['response']['base64']),raw)
-        self.assertIsNone(event['checkout_identity'])
-        self.assertEqual(buffer.snapshot()['primary_failure'],'source_binding_failed')
+        self.assertEqual(event['checkout_identity']['checkout_url'],route.fetched_response.data['checkout_url'])
+        self.assertIsNone(buffer.snapshot()['primary_failure'])
+        retry=CheckoutRoute();retry.request.post_data_buffer=retry.request.post_data.encode()
+        retry.fetched_response.body=lambda:asyncio.sleep(0,result=json.dumps(retry.fetched_response.data,indent=2).encode())
+        await fixture.route(retry)
+        self.assertEqual(fixture.checkout_responses[0],fixture.checkout_responses[1])
+        self.assertNotEqual(buffer.events[0]['payload']['response']['sha256'],buffer.events[4]['payload']['response']['sha256'])
         self.assertTrue(fixture.checkout_responses[0]['checkout_url'].endswith('#fidkdFixtureFragment'))
 
     def test_body_shape_and_payload_types_are_closed(self):

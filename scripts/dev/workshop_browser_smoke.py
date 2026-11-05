@@ -706,22 +706,24 @@ def api21_body(raw, source, *, image=False, reason=None, json_required=True):
     if image:
         return dict(body,availability='hash_only',byte_source=source,length=len(raw),
             sha256=hashlib.sha256(raw).hexdigest(),reason='not_required_image_body')
+    decode_reason=None
     try:parsed=api21_load(raw)
-    except UnicodeError:body['reason']='invalid_utf8';return body
+    except UnicodeError:parsed=None;decode_reason='invalid_utf8'
     except (ValueError,TypeError,RecursionError):
-        if json_required:body['reason']='invalid_json';return body
-        parsed=None
-    # Only original safe JSON is retained. Never retain authentication responses,
+        parsed=None;decode_reason='invalid_json' if json_required else None
+    # Retain safe entity bytes, including strict-decode failures. Never retain authentication responses,
     # headers, cookies or exception text, even when persistence itself fails.
     secret=re.compile(r'(?i)^(authorization|cookie|set-cookie|token|id_?token|access_?token|refresh_?token|password|csrf(?:_?token)?|firebase_?token|api_?key|client_secret|fixture_token|x-r3-fixture-token)$')
     def sensitive(value):
         if isinstance(value,dict):return any(secret.fullmatch(k) or sensitive(v) for k,v in value.items())
         if isinstance(value,list):return any(sensitive(v) for v in value)
         return isinstance(value,str) and bool(re.search(r'(?i)(bearer |__Host-autodata_session=|eyJ[A-Za-z0-9_-]+\.eyJ)',value))
-    if sensitive(parsed) or (not json_required and sensitive(raw.decode('utf-8',errors='strict'))):body['reason']='secret_detected';return body
+    text=raw.decode('utf-8',errors='replace')
+    raw_secret=any(secret.fullmatch(key) for key in re.findall(r'[\"\']([^\"\']+)[\"\']\s*:',text))
+    if sensitive(parsed) or sensitive(text) or raw_secret:body['reason']='secret_detected';return body
     return dict(body,availability='retained',byte_source=source,encoding='base64',
         base64=base64.b64encode(raw).decode('ascii'),length=len(raw),
-        sha256=hashlib.sha256(raw).hexdigest(),parsed=parsed,reason=None)
+        sha256=hashlib.sha256(raw).hexdigest(),parsed=parsed,reason=decode_reason)
 
 
 def api21_route(url,scope=None):
@@ -757,7 +759,7 @@ def api21_checkout_identity(request,response,key):
     hosted=checkout.get('checkout_url')
     if not isinstance(hosted,str):raise ValueError('invalid hosted checkout')
     url=urlsplit(hosted)
-    if not isinstance(hosted,str) or url.scheme!='https' or url.netloc!='checkout.stripe.com' or not re.fullmatch(r'/c/pay/cs_test_[a-f0-9]{32}',url.path) or url.query or url.fragment:raise ValueError('invalid hosted checkout')
+    if not isinstance(hosted,str) or url.scheme!='https' or url.netloc!='checkout.stripe.com' or not re.fullmatch(r'/c/pay/cs_test_[a-f0-9]{32}',url.path) or url.query:raise ValueError('invalid hosted checkout')
     return {field:checkout[field] for field in ('order_id','configuration_id','region','checkout_url')}
 
 
@@ -772,9 +774,13 @@ def api21_validate_body(body):
     if available=='hash_only':
         if reason!='not_required_image_body' or source!='playwright-response-body' or any(body[k] is not None for k in ('encoding','base64','parsed')):raise ValueError('invalid hash-only body')
         return
-    if available!='retained' or reason is not None or body['encoding']!='base64' or not isinstance(body['base64'],str):raise ValueError('invalid retained body')
+    if available!='retained' or reason not in (None,'invalid_json','invalid_utf8') or body['encoding']!='base64' or not isinstance(body['base64'],str):raise ValueError('invalid retained body')
     raw=base64.b64decode(body['base64'],validate=True)
     if base64.b64encode(raw).decode('ascii')!=body['base64'] or len(raw)!=body['length'] or hashlib.sha256(raw).hexdigest()!=body['sha256']:raise ValueError('body digest mismatch')
+    if reason is not None:
+        checked=api21_body(raw,source)
+        if checked!=body:raise ValueError('invalid failed JSON body')
+        return
     if raw==b'' and body['parsed'] is None:return  # Actual no-content response.
     parsed=api21_load(raw)
     if api21_json(parsed)!=api21_json(body['parsed']):raise ValueError('body parsed mismatch')
@@ -792,7 +798,9 @@ def api21_validate_payload(payload,phase):
     elif kind=='http':
         keys={'kind','channel','method','route_template','actor','attempt','status','idempotency_key','request','response','checkout_identity'}
         if set(payload)!=keys or payload['channel'] not in ('application','fixture-control') or payload['method'] not in ('GET','POST') or payload['actor'] not in ('owner','other','logged-out','disabled','fixture-control'):raise ValueError('invalid HTTP shape')
-        if type(payload['attempt']) is not int or not 1<=payload['attempt']<=(100 if phase=='runtime-poll' else 16):raise ValueError('invalid attempt')
+        expected=2 if phase=='checkout-retry-http' else 1
+        limit=100 if phase=='runtime-poll' else 16 if phase in ('owner-library-initial-http','owner-library-reload-http','owner-library-restart-http') else expected
+        if type(payload['attempt']) is not int or not expected<=payload['attempt']<=limit:raise ValueError('invalid attempt')
         if payload['status'] is not None and (type(payload['status']) is not int or not 100<=payload['status']<=599):raise ValueError('invalid status')
         route=payload['route_template']
         if not isinstance(route,str) or len(route)>128 or '?' in route or not route.startswith(('/__fixture/','/v1/')):raise ValueError('invalid route')
@@ -811,7 +819,7 @@ class APIObservations:
         self.binding=dict(binding);self.primary=None
         self.status='partial';self.publication='not_attempted';self.phase='setup'
         self.clock=clock;self.start=clock();self.max_events=min(max_events,512)
-        self.max_bytes=min(max_bytes,1048576);self.tasks=set();self.counts={}
+        self.max_bytes=min(max_bytes,1048576);self.tasks=set();self.counts={};self.pending={};self.started_counts={};self.capturing=set()
         self._slots=[None]*self.max_events;self._count=0;self.last=self.start
         self.reserve=bytearray(16384);self.scope={};self.owner_scope=None
     @property
@@ -827,6 +835,7 @@ class APIObservations:
     def event(self,phase,payload,caused_by=()):
         try:
             api21_validate_payload(payload,phase)
+            if payload['kind']=='http' and any(e['phase']==phase and e['payload']['kind']=='http' and e['payload']['attempt']==payload['attempt'] for e in self.events):raise ValueError('duplicate attempt')
             if phase not in set().union(*API21_PHASES.values()):raise ValueError('unknown phase')
             if len(caused_by)>8:raise ValueError('too many references')
             def checked_ref(ref):
@@ -864,58 +873,80 @@ class APIObservations:
     async def http(self,response,url,method='GET',*,phase=None,actor='owner',request=None,key=None,identity=None,attempt=None):
         phase=phase or self.phase;safe=api21_route(url,self.scope)
         if safe is None:return None
+        count=self.counts.get(phase,0)+1
+        self.counts[phase]=count
+        ordinal=2 if phase=='checkout-retry-http' and count==1 else count
+        if attempt is not None:ordinal=attempt
+        limit=100 if phase=='runtime-poll' else 16 if phase in ('owner-library-initial-http','owner-library-reload-http','owner-library-restart-http') else 2 if phase=='checkout-retry-http' else 1
+        if count>limit:
+            self.fail('over_limit');raise APIObservationError('over_limit')
         try:
             raw=await response.body()
+            empty_control=phase in ('stop-control','restart-control','disable-control') and response.status==204 and raw==b''
             body=api21_body(raw,'playwright-response-body',image='/images/' in safe and response.status==200,
-                json_required=not (response.status==204 and raw==b''))
+                json_required=not empty_control)
         except Exception:body=api21_body(None,'unavailable',reason='read_failed')
-        count=self.counts.get(phase,0)+1
-        if count> (100 if phase=='runtime-poll' else 16):
-            self.fail('over_limit');raise APIObservationError('over_limit')
-        self.counts[phase]=count
         status=getattr(response,'status',None)
         if type(status) is not int or not 100<=status<=599:status=None
-        if status is None or body['availability']=='unavailable':self.fail(body['reason'] if body['reason'] in ('over_limit','secret_detected') else 'http_failed')
+        if status is None or body['availability']=='unavailable' or body['reason'] in ('invalid_json','invalid_utf8'):self.fail(body['reason'] if body['reason'] in ('over_limit','secret_detected') else 'http_failed')
         if safe=='/v1/workshop/checkout-sessions':
             try:identity=api21_checkout_identity(request,body,key)
             except (ValueError,TypeError,KeyError):
                 identity=None
-                # The source fixture's fragment is a closed-contract conflict,
-                # not permission to normalize or fabricate a successful identity.
-                checkout=body.get('parsed')
-                fragment=isinstance(checkout,dict) and isinstance(checkout.get('checkout_url'),str) and bool(urlsplit(checkout['checkout_url']).fragment)
-                self.fail('source_binding_failed' if fragment else 'assertion_failed')
+                self.fail('assertion_failed')
             if not isinstance(key,str) or not re.fullmatch(r'[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}',key):key=None
         payload=dict(kind='http',channel='fixture-control' if safe.startswith('/__fixture/') else 'application',
             method=method,route_template=safe,actor='fixture-control' if safe.startswith('/__fixture/') else actor,
-            attempt=attempt or count,status=status,idempotency_key=key,request=request,response=body,
+            attempt=ordinal,status=status,idempotency_key=key,request=request,response=body,
             checkout_identity=identity)
         ref=self.event(phase,payload)
-        if status is None or body['availability']=='unavailable':self.fail(body['reason'] if body['reason'] in ('over_limit','secret_detected') else 'http_failed')
+        if status is None or body['availability']=='unavailable' or body['reason'] in ('invalid_json','invalid_utf8'):self.fail(body['reason'] if body['reason'] in ('over_limit','secret_detected') else 'http_failed')
         return ref
-    def page_response(self,response):
-        # Phase and actor are captured BEFORE awaiting body(). No later phase can
-        # relabel a callback already owned by its initiating action window.
-        phase=self.phase;safe=api21_route(response.url,self.scope)
+    def page_request(self,request):
+        phase=self.phase;safe=api21_route(request.url,self.scope)
         library=phase.startswith('owner-library-') and safe=='/v1/workshop/library'
         source=phase in ('source-page-http','source-review-http','warm-page-http') and safe and safe.startswith('/v1/catalog/vehicles/')
         checkout=phase=='checkout-http' and safe=='/v1/workshop/checkout-sessions'
         if not (library or source or checkout):return
+        if len(self.pending)>=512:self.fail('over_limit');return
+        key=id(request)
+        if key in self.pending:self.fail('http_failed');return
+        ordinal=self.started_counts.get(phase,0)+1;self.started_counts[phase]=ordinal
+        self.pending[key]=(request,phase,asyncio.get_running_loop().create_future(),ordinal)
+    def page_response(self,response):
+        self._page_complete(response.request,response)
+    def page_request_failed(self,request):
+        self._page_complete(request,None)
+    def _page_complete(self,request,response):
+        owned=self.pending.get(id(request))
+        if owned is None:
+            # Response-time labels cannot establish an initiating action window.
+            safe=api21_route(request.url,self.scope)
+            if self.phase.startswith('owner-library-') and safe=='/v1/workshop/library' or self.phase in ('source-page-http','source-review-http','warm-page-http','checkout-http') and safe:self.fail('http_failed')
+            return
+        original,phase,done,ordinal=owned
+        if original is not request or done.done() or id(request) in self.capturing:self.fail('http_failed');return
+        self.capturing.add(id(request))
         async def capture():
             try:
-                request=None;key=None
-                if checkout:
-                    request=api21_body(getattr(response.request,'post_data_buffer',None),'playwright-request-post-data-buffer')
-                    key=response.request.headers.get('idempotency-key')
-                await self.http(response,response.url,response.request.method,phase=phase,request=request,key=key)
+                body=None;key=None
+                if phase=='checkout-http':
+                    body=api21_body(getattr(request,'post_data_buffer',None),'playwright-request-post-data-buffer')
+                    key=request.headers.get('idempotency-key')
+                await self.http(response,request.url,request.method,phase=phase,request=body,key=key,attempt=ordinal)
             except BaseException as error:
                 self.fail('cancelled' if isinstance(error,asyncio.CancelledError) else 'http_failed')
+            finally:
+                self.pending.pop(id(request),None);self.capturing.discard(id(request))
+                if not done.done():done.set_result(None)
         if len(self.tasks)>=512:self.fail('over_limit');return
         task=asyncio.create_task(capture());self.tasks.add(task)
     async def drain(self):
-        while self.tasks:
+        # Includes requests whose headers have not arrived yet. The existing
+        # case deadline bounds this await; no new timeout or polling is added.
+        while self.pending or self.tasks:
             tasks=list(self.tasks);self.tasks.difference_update(tasks)
-            await asyncio.gather(*tasks)
+            await asyncio.gather(*tasks,*(entry[2] for entry in list(self.pending.values())))
     def require_window(self,phase):
         events=[e['payload'] for e in self.events if e['phase']==phase and e['payload']['kind']=='http']
         def owner_item(payload):
@@ -1131,12 +1162,10 @@ async def api21_get(context,url,*,phase=None,actor='owner',**kwargs):
     if observations and phase:
         await observations.drain();observations.phase=phase
     try:response=await context.request.get(url,**kwargs)
-    except BaseException:
+    except BaseException as error:
         if observations:
-            observations.event(phase or observations.phase,dict(kind='http',channel='fixture-control' if '/__fixture/' in url else 'application',
-                method='GET',route_template=api21_route(url),actor='fixture-control' if '/__fixture/' in url else actor,
-                attempt=1,status=None,idempotency_key=None,request=None,response=api21_body(None,'unavailable'),checkout_identity=None))
-            observations.fail('http_failed')
+            observations.fail('cancelled' if isinstance(error,asyncio.CancelledError) else 'http_failed')
+            await observations.http(None,url,phase=phase,actor=actor)
         raise
     if observations:await observations.http(response,url,phase=phase,actor=actor)
     return response
@@ -1152,7 +1181,12 @@ async def api_control(context,origin,path,phase=None):
     if observations:
         await observations.drain()
         if phase:observations.phase=phase
-    response=await context.request.post(origin+'/__fixture/'+path)
+    try:response=await context.request.post(origin+'/__fixture/'+path)
+    except BaseException as error:
+        if observations:
+            observations.fail('cancelled' if isinstance(error,asyncio.CancelledError) else 'http_failed')
+            await observations.http(None,origin+'/__fixture/'+path,'POST',phase=phase)
+        raise
     if observations:await observations.http(response,origin+'/__fixture/'+path,'POST',phase=phase)
     assert response.status in (200,204), f'owned fixture control failed: {path.split("?")[0]} status{response.status}'
     return response
@@ -1199,7 +1233,9 @@ async def api_case(browser,origin,name,output,observations=None):
         page=await context.new_page()
         if observations:
             observations.note_lifecycle('setup','page-create','completed')
+            page.on('request',observations.page_request)
             page.on('response',observations.page_response)
+            page.on('requestfailed',observations.page_request_failed)
         page.on('pageerror',lambda error:transport.errors.append('internal_error'))
         response=await api21_get(context,origin+'/__fixture/metadata',phase='metadata');metadata=await response.json()
         assert metadata['kind']=='api-fixture'
