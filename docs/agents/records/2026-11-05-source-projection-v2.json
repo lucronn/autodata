@@ -13,10 +13,10 @@
     "Prove identical-byte v1-to-v2 append, repeat-v2 reuse, historical reads, terminal/published v1 isolation, readable fallback before model and stale-worker rejection; run focused and isolated PostgreSQL regressions.",
     "Add bounded body-only offline preview/apply from verified retained bytes, with atomic exact-job source-only storage, NULL transformation key, no provider/model calls and fail-closed reconstruction tests.",
     "Commit/push validated milestones, obtain independent exact-SHA review and synchronize verification evidence in plan, canonical doc, Issue and Project.",
-    "Repair PR #326 required CI by changing only the GCE bundle migration-count assertions from 40 to 41 in host_provision.py and test_host_provision.py; run the host-provision tests and diff/scope checks, then obtain exact-SHA review and a fresh CI result."
+    "Repair PR #326 required CI by changing only the current GCE bundle and SQL-ledger migration-count assertions from 40 to 41 in host_provision.py, test_host_provision.py and test_host_prepare_release.py; run focused and full GCE tests plus driver/diff checks, then obtain exact-SHA review and fresh CI."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-05T16:47:05.760143+00:00",
+  "updated_at": "2026-11-05T16:49:40.535286+00:00",
   "parent_issue_ref": "https://github.com/lucronn/autodata/issues/186",
   "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhGUxxM",
   "inspected_source_sha": "140fdf132afb9d6efad0164e5c67d7e4a836200d",
@@ -40,17 +40,18 @@
     "scripts/dev/migrate_sql.sh",
     "scripts/dev/test_migrations.py",
     "infra/deploy/gce/host_provision.py",
-    "infra/deploy/gce/test_host_provision.py"
+    "infra/deploy/gce/test_host_provision.py",
+    "infra/deploy/gce/test_host_prepare_release.py"
   ],
   "provider_calls_authorized": false,
   "model_calls_authorized": false,
   "stage_data_mutation_authorized": false,
   "production_activation_authorized": false,
   "tracking": {
-    "issue_body_sha256": "48e9c1e99b03b8405363cd10305bd9dd3333d083fed4e8b48df6a077eafc5830",
-    "project_source_sha256": "60d9c46ba739d60afc355d8b8c5fff4b59ed80669a8af25b65712a037ecd6e83",
+    "issue_body_sha256": "97a8f081bb055cd8c5c777bbef1b1cbc2185bd01af81a3f382deb90c49323fa3",
+    "project_source_sha256": "29cf9b011e6df1f94de2af2874fb4bed4f2f0300b9d3ca53d09ce1a34ce2386f",
     "project_status": "Ready",
-    "verified_at": "2026-11-05T16:47:05.760143+00:00"
+    "verified_at": "2026-11-05T16:49:40.535286+00:00"
   },
   "amends_checkpoint_sha": "dff1a1cda2c8e48433edec1d38a1d61816746391",
   "amendment_reason": "The migration driver pins its expected chain through 040; include 041 recognition and driver regression tests before implementing those two paths.",
@@ -99,15 +100,27 @@
     "runtime_activation_authorized": false
   },
   "ci_repair": {
-    "status": "synchronized_pending_checkpoint_preflight_and_dispatch",
-    "inspected_base_sha": "62c5c9fb1168a7b136234f3234c3a8afcbb111ed",
+    "status": "two_path_fix_pushed_third_test_gate_pending",
+    "inspected_base_sha": "7aa196122953b3ba150f434dd10decfb5ce79a1d",
     "pull_request_ref": "https://github.com/lucronn/autodata/pull/326",
     "failed_run_ref": "https://github.com/lucronn/autodata/actions/runs/42065098477",
     "active_implementation_allowlist": [
       "infra/deploy/gce/host_provision.py",
-      "infra/deploy/gce/test_host_provision.py"
+      "infra/deploy/gce/test_host_provision.py",
+      "infra/deploy/gce/test_host_prepare_release.py"
     ],
     "completed_todo_indices": [],
-    "scope": "Only current GCE bundle migration-count assertions 40 to 41; historical frozen receipt collectors are excluded."
+    "scope": "Only current GCE bundle/SQL-ledger migration-count assertions 40 to 41 in three listed paths; current additional amendment permits only test_host_prepare_release.py:89. Historical frozen receipt collectors excluded.",
+    "two_path_fix_sha": "7aa196122953b3ba150f434dd10decfb5ce79a1d",
+    "remaining_implementation_allowlist": [
+      "infra/deploy/gce/test_host_prepare_release.py"
+    ],
+    "broader_suite_failure": {
+      "tests_run": 559,
+      "failures": 1,
+      "skips": 7,
+      "seconds": 44.977,
+      "assertion": "test_host_prepare_release.py:89 expected 40, actual 41; actual ledger contents already matched sorted manifest"
+    }
   }
 }

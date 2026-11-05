@@ -334,7 +334,7 @@ Concrete todo:
 - [x] Commit/push validated milestones, obtain independent exact-SHA review and synchronize verification evidence in plan, canonical doc, Issue and Project.
 
 
-- [ ] Repair PR #326 required CI by changing only the GCE bundle migration-count assertions from 40 to 41 in host_provision.py and test_host_provision.py; run the host-provision tests and diff/scope checks, then obtain exact-SHA review and a fresh CI result.
+- [ ] Repair PR #326 required CI by changing only the current GCE bundle and SQL-ledger migration-count assertions from 40 to 41 in host_provision.py, test_host_provision.py and test_host_prepare_release.py; run focused and full GCE tests plus driver/diff checks, then obtain exact-SHA review and fresh CI.
 
 The bounded offline projector supports exactly one saved body resource (max 1 MiB,
 30-second deadline), complete immutable observation context/provenance and matching
@@ -396,3 +396,16 @@ all bundle integrity checks and historical frozen receipt collectors. The first
 six development items retain prior evidence; the new CI-repair item is pending
 committed checkpoint/preflight, coordinator dispatch, focused tests, exact-SHA
 review and fresh required CI. This gate grants no runtime or merge authority.
+
+### Second required-CI repair amendment — current SQL-ledger test
+
+The first two count assertions were repaired at
+`7aa196122953b3ba150f434dd10decfb5ce79a1d`. Broader GCE verification ran 559
+tests with one failure/seven skips: the current real SQL-ledger test in
+`infra/deploy/gce/test_host_prepare_release.py:89` still expects 40 rows, actual41;
+ledger contents already matched the exact sorted manifest. Add only this test path
+(three active repair paths, 19 total historical/current paths), permitting only
+that current count40→41 assertion after committed preflight and coordinator
+dispatch. Preserve all role/grant/ledger/refusal checks and historical receipts.
+Focused/full GCE tests, review and fresh required CI remain pending; no runtime
+or merge authority is added.

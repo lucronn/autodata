@@ -30,7 +30,7 @@ Source capture/store/schema/types, a bounded offline body-only projector/CLI and
 - [x] Commit/push validated milestones, obtain independent exact-SHA review and synchronize verification evidence in plan, canonical doc, Issue and Project.
 
 
-- [ ] Repair PR #326 required CI by changing only the GCE bundle migration-count assertions from 40 to 41 in host_provision.py and test_host_provision.py; run the host-provision tests and diff/scope checks, then obtain exact-SHA review and a fresh CI result.
+- [ ] Repair PR #326 required CI by changing only the current GCE bundle and SQL-ledger migration-count assertions from 40 to 41 in host_provision.py, test_host_provision.py and test_host_prepare_release.py; run focused and full GCE tests plus driver/diff checks, then obtain exact-SHA review and fresh CI.
 
 ## Exact implementation allowlist
 
@@ -52,6 +52,7 @@ Source capture/store/schema/types, a bounded offline body-only projector/CLI and
 - `scripts/dev/test_migrations.py` (migration-driver 041 chain/restart regressions)
 - `infra/deploy/gce/host_provision.py` (current bundle migration-count assertion only)
 - `infra/deploy/gce/test_host_provision.py` (current inventory-count expectation only)
+- `infra/deploy/gce/test_host_prepare_release.py` (current real SQL-ledger count expectation only)
 
 Gate/evidence documents: this plan, its JSON record, `docs/architecture/normalized-article-document.md`, and new `docs/verification/2026-11-05-source-projection-v2.md`. No API/view/worker-runner/normalizer/adapter behavior changes are required; worker.py is limited to the object-store read helper. If a new implementation path is necessary, amend and revalidate the gate first.
 
@@ -136,3 +137,12 @@ Migration 041 correctly makes the current GCE bundle contain 41 migration files.
 - [ ] Reproduce the inventory assertion with `python3 -m unittest discover -s infra/deploy/gce -p test_host_provision.py`; retain the real 41-versus-40 failure.
 - [ ] In only the two allowlisted files, change the current migration-count expected value from 40 to 41. Preserve all required-file, hash, permission, credential, symlink and inventory checks; do not generalize or weaken validation.
 - [ ] Rerun the host-provision unittest command, `python3 -m unittest discover -s scripts/dev -p test_migrations.py`, and `git diff --check`; verify exactly the two authorized paths changed. Commit/push the validated repair, obtain exact-SHA independent review and fresh required-CI evidence before claiming CI repaired. No PR merge, stage apply or deployment follows from this gate.
+
+## Second required-CI repair amendment — one additional test path
+
+The two-path fix was committed/pushed at `7aa196122953b3ba150f434dd10decfb5ce79a1d`. The full current GCE suite then ran 559 tests with one failure and seven skips (44.977 s): `RealFreshDatabaseTests.test_real_migrations_roles_ledger_grants_and_malformed_refusal` in `infra/deploy/gce/test_host_prepare_release.py:89` expects 40 ledger rows, actual 41. Its exact ledger contents already matched the sorted migration manifest; only the stale count fails. This is a current real-database regression, not a frozen receipt collector.
+
+This amendment adds exactly `infra/deploy/gce/test_host_prepare_release.py` to the three-path active repair allowlist (19 historical/current implementation paths). After exact-checkpoint preflight and coordinator dispatch, change only its current `len(actual)` expectation from 40 to 41. Do not change migration/grant/role/ledger validation or malformed-input refusal. The two already-pushed implementation paths need no further edits.
+
+- [ ] Run `python3 -m unittest discover -s infra/deploy/gce -p test_host_prepare_release.py -k test_real_migrations_roles_ledger_grants_and_malformed_refusal` to retain red/green evidence around the single count change.
+- [ ] Run `python3 -m unittest discover -s infra/deploy/gce -p 'test_*.py'`, driver unittests and diff checks. Record skips explicitly. Commit/push only the one-line test repair, obtain exact-SHA review and fresh required CI; the seventh repair todo remains open until verified. No runtime/merge authority is added.
