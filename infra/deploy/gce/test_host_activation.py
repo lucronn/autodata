@@ -317,3 +317,16 @@ class RecoveryBoundaryTests(LifecycleTests):
                 code,receipt = self.start()
                 self.assertEqual(code,3,receipt)
                 self.assertFalse(any(isinstance(x,list) and 'compose' in x for x in self.events))
+
+class LifecycleDeadlineTests(unittest.TestCase):
+    def test_whole_lifecycle_watchdog_bounds_python_collectors_and_restores_signal(self):
+        import signal
+        a = load()
+        self.assertTrue(hasattr(a,'watchdog'),'whole-operation deadline is missing')
+        before = signal.getsignal(signal.SIGALRM)
+        began = time.monotonic()
+        with self.assertRaises(subprocess.TimeoutExpired):
+            with a.watchdog(.05): time.sleep(5)
+        self.assertLess(time.monotonic() - began,1)
+        self.assertEqual(signal.getsignal(signal.SIGALRM),before)
+        self.assertEqual(signal.getitimer(signal.ITIMER_REAL),(0.,0.))

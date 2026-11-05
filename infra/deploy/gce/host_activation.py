@@ -1,6 +1,6 @@
 #!/usr/bin/python3 -I
 """Fixed local release lifecycle; provisioning and credentials remain external."""
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 import fcntl
 import importlib.util
 import json
@@ -375,8 +375,13 @@ class Lifecycle:
         require(all(not value['running'] for value in graph.values()))
         self.checks.update(services=True,runtime_evidence=False)
 
-    def recover(self, target, config, prior, previous):
+    def recovery_budget(self):
         self.deadline = self.end
+        if signal.getsignal(signal.SIGALRM) is _expired:
+            signal.setitimer(signal.ITIMER_REAL,max(.001,self.end - time.monotonic()))
+
+    def recover(self, target, config, prior, previous):
+        self.recovery_budget()
         # Retain the closed ingress file even after a failed opening reload.
         self.maintenance(True,target,[m for m in (target,prior) if m is not None])
         self.compose(target['source_sha'],'stop',APPS + ('caddy',))
@@ -406,7 +411,7 @@ class Lifecycle:
         materialize(self.pins,self.operations,'activation-' + uuid.uuid4().hex + '.json',data)
 
 
-def activation_cli(argv):
+def _activation_cli(argv):
     """Only installed launcher arguments; injection is internal to unit tests."""
     rt = runtime()
     checks = {}
@@ -470,7 +475,7 @@ def activation_cli(argv):
                 try:
                     if verb == 'start': host.recover(manifest,config,prior,previous)
                     else:
-                        host.deadline = host.end
+                        host.recovery_budget()
                         host.maintenance(True,manifest,[manifest])
                 except BaseException: code,failure = 6,'recovery_incomplete'
         checks = dict(host.checks)
@@ -481,10 +486,34 @@ def activation_cli(argv):
             except BaseException:
                 if host.mutated and manifest is not None:
                     try:
-                        host.deadline = host.end
+                        host.recovery_budget()
                         host.maintenance(True,manifest,[m for m in (manifest,prior) if m is not None])
                     except BaseException: pass
                 code,failure = (6,'recovery_incomplete') if host.mutated else (3,'operation_failed')
                 checks['runtime_evidence'] = False
                 receipt = rt.operation_receipt(operation,sha,None,code,checks,failure)
         return code,receipt
+
+
+def _expired(signum, frame):
+    raise subprocess.TimeoutExpired('local operation',120)
+
+
+@contextmanager
+def watchdog(seconds):
+    """Bound Python collectors as well as child processes, preserving caller state."""
+    previous = signal.getsignal(signal.SIGALRM)
+    timer = signal.getitimer(signal.ITIMER_REAL)
+    started = time.monotonic()
+    signal.signal(signal.SIGALRM,_expired)
+    signal.setitimer(signal.ITIMER_REAL,seconds)
+    try: yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL,0)
+        signal.signal(signal.SIGALRM,previous)
+        if timer[0]: signal.setitimer(signal.ITIMER_REAL,max(.001,timer[0] - (time.monotonic()-started)),timer[1])
+
+
+def activation_cli(argv):
+    # Thirty final seconds are available only for one recovery attempt.
+    with watchdog(90): return _activation_cli(argv)
