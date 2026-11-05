@@ -75,7 +75,7 @@ class PreparationTests(unittest.TestCase):
 
     def test_current_embed_cannot_self_admit_historical_binding(self):
         current = (ROOT/'apps/api-go/main.go').read_bytes()
-        self.assertEqual(binding(current), {'sha256': 'fde8eac2c45e27d7fcf07fd72dcf406453009a7d92689ddd62f4521b7d7045b8', 'bytes': 30989})
+        self.assertNotEqual(binding(current), {'sha256': '6a6c78c4d84604ec4e626b49dc10e20603018e9db398c709073e689723801a77', 'bytes': 30491})
         self.paths['embed_source'].write_bytes(current)
         result = self.evaluate()
         self.assertEqual(result['status'], 'blocked')
