@@ -30,6 +30,8 @@ on:
       - "SECURITY.md"
       - "scripts/dev/test_repository_governance.py"
   push:
+    branches:
+      - master
     paths:
       - ".autodata-autonomy-policy.json"
       - "README.md"
