@@ -466,10 +466,11 @@ function renderBlocks(parent, blocks, images, review, g) {
       parent.append(element("p", block.text ?? ""));
     else if (type === "callout") {
       const aside = element("aside", undefined, "article-callout");
-      aside.append(
-        element("strong", block.label ?? "Note"),
-        element("span", block.text ?? ""),
-      );
+      const content = element("div");
+      content.append(element("span", block.text ?? ""));
+      for (const ref of block.images || [])
+        addImage(content, (ref?.asset_id || ref?.image_id) ? find(ref) : undefined, ref.alt, g);
+      aside.append(element("strong", block.label ?? "Note"), content);
       parent.append(aside);
     } else if (type === "image")
       addImage(parent, find(block), block.alt || block.caption, g);
@@ -496,6 +497,8 @@ function renderBlocks(parent, blocks, images, review, g) {
         list.append(li);
       }
       parent.append(list);
+      for (const ref of block.images || [])
+        addImage(parent, (ref?.asset_id || ref?.image_id) ? find(ref) : undefined, ref.alt, g);
     } else if (type === "table") {
       const table = element("table", undefined, "article-table");
       if (block.label || block.caption)

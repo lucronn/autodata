@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
-import { NavigationGeneration } from './workshop/article-read.mjs';
+import { NavigationGeneration, processingArticle, readableArticle } from './workshop/article-read.mjs';
 import { purchaseConfiguration, uuid, validScope } from './workshop/commerce.mjs';
 import { articlePresentation, configurationLabel, filterArticles, hasSourceReference, legacyArticleBlocks, localImageURL, readCollection, requestJSON, sourceReferenceURL } from './workshop/catalog.mjs';
 import { LOAD_STAGES, loadingProgress } from './workshop/progress.mjs';
@@ -984,3 +984,452 @@ test('purchase readiness fails closed for unavailable merchant fields', () => {
     }
   }
 });
+
+
+// A deliberately bounded DOM model: production renderers/helpers run unchanged.
+// This observes DOM/state contracts, not browser layout or accessibility trees.
+class ArticleMediaNode {
+  constructor(tagName) {
+    this.tagName = tagName;
+    this.children = [];
+    this.parentNode = null;
+    this.dataset = {};
+    this.attributes = new Map();
+    this.handlers = new Map();
+    this.hidden = false;
+    this.disabled = false;
+    this.open = false;
+    this._text = '';
+  }
+  get textContent() { return this._text + this.children.map(n => n.textContent).join(''); }
+  set textContent(value) { this.replaceChildren(); this._text = String(value); }
+  get isConnected() { return this.tagName === 'body' || Boolean(this.parentNode?.isConnected); }
+  get nextSibling() {
+    const siblings = this.parentNode?.children || [];
+    return siblings[siblings.indexOf(this) + 1] || null;
+  }
+  remove() {
+    if (this.parentNode) {
+      const siblings = this.parentNode.children;
+      siblings.splice(siblings.indexOf(this), 1);
+      this.parentNode = null;
+    }
+  }
+  append(...nodes) {
+    for (const node of nodes) {
+      if (node.tagName === '#fragment') this.append(...node.children);
+      else { node.remove(); node.parentNode = this; this.children.push(node); }
+    }
+  }
+  replaceChildren(...nodes) {
+    for (const child of [...this.children]) child.remove();
+    this._text = '';
+    this.append(...nodes);
+  }
+  replaceWith(node) {
+    if (!this.parentNode) return;
+    const parent = this.parentNode, index = parent.children.indexOf(this);
+    node.remove(); this.remove(); node.parentNode = parent;
+    parent.children.splice(index, 0, node);
+  }
+  setAttribute(name, value) { this.attributes.set(name, String(value)); }
+  getAttribute(name) { return this.attributes.get(name) ?? null; }
+  removeAttribute(name) { this.attributes.delete(name); delete this[name]; }
+  addEventListener(name, handler) {
+    const handlers = this.handlers.get(name) || [];
+    handlers.push(handler); this.handlers.set(name, handlers);
+  }
+  dispatch(name, event = {}) { for (const handler of this.handlers.get(name) || []) handler(event); }
+  querySelectorAll(selector) {
+    assert.equal(selector, 'img[data-asset-id]');
+    return mediaDescendants(this, 'img').filter(n => n.dataset.assetId !== undefined);
+  }
+}
+function mediaDescendants(node, tag) {
+  return node.children.flatMap(child => [
+    ...(child.tagName === tag ? [child] : []), ...mediaDescendants(child, tag),
+  ]);
+}
+const mediaTags = node => node.children.map(n => n.tagName);
+const mediaIDs = node => mediaDescendants(node, 'img').map(n => n.dataset.assetId);
+const mediaURL = token => `/v1/catalog/images/v2.${token}`;
+const mediaSourceURL = '/v1/catalog/vehicles/v/articles/a/source?source_revision_id=11111111-1111-4111-8111-111111111111';
+function mediaArticle(blocks, images = [], changes = {}) {
+  return { id: 'a', title: 'Pump service', content_origin: 'source', view_revision: 'view-1',
+    source_revision_id: '11111111-1111-4111-8111-111111111111',
+    document: { blocks }, images, ...changes };
+}
+function articleMediaHarness(overrides = {}) {
+  const body = new ArticleMediaNode('body'), nodes = new Map();
+  const ids = ['articles', 'article-content', 'source-review-frame', 'reference-data', 'library-items',
+    'article-title', 'catalog-count', 'article-note', 'source-review-meta', 'source-review', 'print',
+    'reader', 'catalog', 'source-review-link', 'reader-vehicle', 'reader-engine', 'purchase-selection',
+    'article-kind', 'article-reference', 'source-review-load'];
+  for (const id of ids) { const node = new ArticleMediaNode('div'); nodes.set(id, node); body.append(node); }
+  const navigation = new NavigationGeneration(), g = navigation.next();
+  const shows = [], statuses = [];
+  const context = {
+    URL, uuid, articlePresentation, localImageURL, sourceReferenceURL, processingArticle, readableArticle,
+    document: { body, title: '', createElement: tag => new ArticleMediaNode(tag),
+      createDocumentFragment: () => new ArticleMediaNode('#fragment') },
+    location: { origin: 'https://cars.example' },
+    $: id => { assert.ok(nodes.has(id), `known DOM node ${id}`); return nodes.get(id); },
+    navigation, currentArticle: null, renderedRevision: '', sourceData: null, sourceURL: '', sourceRevision: 0,
+    renewalUsed: false, renewal: null, renewalFailures: new Set(), articles: [], libraryItems: [], libraryCursor: null,
+    access: 'granted', quote: { configuration_label: '2005 Toyota' }, vehicle: { region: 'US' },
+    articlePath: id => `/v1/catalog/vehicles/v/articles/${id}`,
+    requestArticleJSON: () => assert.fail('unexpected article request'),
+    requestJSON: () => assert.fail('unexpected source request'),
+    show: id => shows.push(id), status: (message, options) => statuses.push({ message, options }),
+    ...overrides,
+  };
+  runInNewContext([
+    appSection('const element =', 'const session ='),
+    appSection('function clearProtected(', 'async function operation('),
+    appSection('const assetID =', 'async function loadArticle('),
+    appSection('function validSourceURL(', 'async function library('),
+  ].join('\n'), context);
+  return { context, g, nodes, navigation, shows, statuses,
+    render(article) { context.renderArticle(article, g); return nodes.get('article-content'); },
+    content(article) { const parent = new ArticleMediaNode('div'); body.append(parent); context.renderContent(parent, article, g); return parent; },
+  };
+}
+
+for (const [type, tag] of [['ordered_list', 'ol'], ['unordered_list', 'ul']]) {
+  test(`article block media ${type} keeps normalized items and retained sibling figure order`, () => {
+    const h = articleMediaHarness();
+    const parent = h.content(mediaArticle([
+      { type: 'paragraph', text: 'Before' },
+      { type, items: ['Check pump.', 'Install seal.'], images: [{ asset_id: 'direct' }, { image_id: 'flattened' }] },
+      { type: 'paragraph', text: 'After' },
+    ], [{ id: 'unrelated', url: mediaURL('unused') }, { id: 'flattened', url: mediaURL('flat') }, { id: 'direct', url: mediaURL('direct') }]));
+    assert.equal(mediaDescendants(parent, 'figure').length, 2, 'retained list block images must produce two figures');
+    assert.deepEqual(mediaTags(parent), ['p', tag, 'figure', 'figure', 'p']);
+    assert.deepEqual(mediaTags(parent.children[1]), ['li', 'li']);
+    assert.deepEqual(parent.children[1].children.map(n => n.textContent), ['Check pump.', 'Install seal.']);
+    assert.deepEqual(mediaIDs(parent), ['direct', 'flattened']);
+    assert.deepEqual(mediaDescendants(parent, 'img').map(n => n.src), ['https://cars.example/v1/catalog/images/v2.direct', 'https://cars.example/v1/catalog/images/v2.flat']);
+    assert.equal(parent.children[0].textContent, 'Before');
+    assert.equal(parent.children.at(-1).textContent, 'After');
+  });
+}
+for (const label of ['Warning', 'Note']) {
+  test(`article block media ${label} callout groups text and direct/flattened figures in its second child`, () => {
+    const h = articleMediaHarness();
+    const parent = h.content(mediaArticle([
+      { type: 'paragraph', text: 'Before' },
+      { type: 'callout', label, text: 'Keep clear.', images: [{ asset_id: 'direct' }, { asset_id: 'flattened' }], evidence_ids: ['e-7'], source_locator: 'body[3]' },
+      { type: 'paragraph', text: 'After' },
+    ], [{ id: 'flattened', url: mediaURL('flat') }, { id: 'direct', url: mediaURL('direct') }], { source_review: { available: true, url: mediaSourceURL } }));
+    const aside = parent.children[1];
+    assert.equal(mediaDescendants(aside, 'figure').length, 2, 'retained callout images must produce two figures');
+    assert.deepEqual(mediaTags(parent), ['p', 'aside', 'a', 'p']);
+    assert.equal(aside.className, 'article-callout');
+    assert.deepEqual(mediaTags(aside), ['strong', 'div']);
+    assert.equal(aside.children[0].textContent, label);
+    assert.deepEqual(mediaTags(aside.children[1]), ['span', 'figure', 'figure']);
+    assert.equal(aside.children[1].children[0].textContent, 'Keep clear.');
+    assert.deepEqual(mediaTags(aside.children[1].children[0]), []);
+    assert.deepEqual(mediaIDs(aside), ['direct', 'flattened']);
+    assert.equal(parent.children[2].textContent, 'Source ↗');
+    assert.equal(parent.children[3].textContent, 'After');
+  });
+}
+
+test('article block media mixed document preserves each contextual placement and supported consumers', () => {
+  const h = articleMediaHarness();
+  const parent = h.content(mediaArticle([
+    { type: 'ordered_list', items: ['First'], images: [{ asset_id: 'shared' }] },
+    { type: 'callout', text: 'Careful', images: [{ asset_id: 'callout' }] },
+    { type: 'step', number: 3, instructions: ['Remove'], images: [{ asset_id: 'step' }] },
+    { type: 'table', columns: ['Part'], rows: [[{ text: 'Seal', images: [{ asset_id: 'cell' }] }]] },
+    { type: 'image', asset_id: 'shared' },
+  ], ['cell', 'step', 'callout', 'shared', 'unused'].map(id => ({ id, url: mediaURL(id) }))));
+  assert.deepEqual(mediaIDs(parent), ['shared', 'callout', 'step', 'cell', 'shared']);
+  assert.deepEqual(mediaTags(parent), ['ol', 'figure', 'aside', 'section', 'div', 'figure']);
+  assert.deepEqual(mediaIDs(parent.children[3]), ['step']);
+  assert.deepEqual(mediaIDs(mediaDescendants(parent, 'td')[0]), ['cell']);
+});
+
+for (const type of ['ordered_list', 'unordered_list', 'callout']) {
+  for (const [name, ref] of [
+    ['missing IDs', { status: 'unavailable', unavailable_reason: 'source image reference is missing' }],
+    ['empty IDs', { asset_id: '', image_id: '' }],
+  ]) {
+    for (const origin of [undefined, 'source', 'canonical']) {
+      test(`article block media ${type} rejects ${name} with a valid unrelated pool in ${origin || 'renderContent'}`, () => {
+        const h = articleMediaHarness();
+        const article = mediaArticle([{ type, items: ['Check'], text: 'Note', images: [ref] }],
+          [{ id: 'unrelated', url: mediaURL('unrelated') }], origin ? { content_origin: origin } : {});
+        const parent = origin ? h.render(article) : h.content(article);
+        assert.equal(mediaDescendants(parent, 'img').length, 0, 'ID-less references must not render an unrelated pool image');
+        const figures = mediaDescendants(parent, 'figure');
+        assert.equal(figures.length, 1);
+        assert.deepEqual(mediaTags(figures[0]), ['p']);
+        assert.equal(figures[0].textContent, 'Illustration unavailable.');
+        assert.equal(figures[0].children[0].className, 'image-missing');
+        assert.equal(mediaDescendants(parent, 'figcaption').length, 0);
+      });
+    }
+  }
+}
+
+for (const type of ['ordered_list', 'unordered_list', 'callout']) {
+  for (const refKey of ['asset_id', 'image_id']) for (const poolKey of ['id', 'image_id', 'asset_id']) {
+    test(`article block media ${type} resolves ${refKey} through pool ${poolKey} and ignores inline URL`, () => {
+      const h = articleMediaHarness();
+      const parent = h.content(mediaArticle([{ type, items: ['Check'], text: 'Note', images: [{ [refKey]: 'mapped', url: 'https://provider.example/inline' }] }],
+        [{ [poolKey]: 'mapped', url: mediaURL('authorized') }]));
+      assert.deepEqual(mediaIDs(parent), ['mapped']);
+      const img = mediaDescendants(parent, 'img')[0];
+      assert.equal(img.src, 'https://cars.example/v1/catalog/images/v2.authorized');
+      assert.equal(img.referrerPolicy, 'no-referrer');
+    });
+  }
+  const unavailable = [
+    ['missing mapping', { asset_id: 'absent', url: mediaURL('inline') }, []],
+    ['absent ID', { url: mediaURL('inline') }, [{ id: 'unrelated', url: mediaURL('safe') }]],
+    ['missing URL', { asset_id: 'a' }, [{ id: 'a' }]],
+    ['unavailable asset', { asset_id: 'a' }, [{ id: 'a', unavailable: true }]],
+    ...['https://provider.example/image.png', 'javascript:alert(1)', 'data:image/png;base64,YQ==',
+      '/images/unsafe.png', '/v1/catalog/images/notopaque', '//provider.example/v1/catalog/images/v2.a',
+      'https://user:pass@cars.example/v1/catalog/images/v2.a', '/v1/catalog/images/v2.a?token=x', '/v1/catalog/images/v2.a#x']
+      .map(url => [url, { asset_id: 'a' }, [{ id: 'a', url }]]),
+  ];
+  for (const [name, ref, images] of unavailable) {
+    test(`article block media ${type} renders unavailable figure for ${name}`, () => {
+      const h = articleMediaHarness(), parent = h.content(mediaArticle([{ type, items: ['Check'], text: 'Note', images: [ref] }], images));
+      const figures = mediaDescendants(parent, 'figure');
+      assert.equal(figures.length, 1);
+      assert.deepEqual(mediaTags(figures[0]), ['p']);
+      assert.equal(figures[0].children[0].textContent, 'Illustration unavailable.');
+      assert.equal(figures[0].children[0].className, 'image-missing');
+      assert.deepEqual(mediaIDs(parent), []);
+      assert.equal(mediaDescendants(parent, 'figcaption').length, 0);
+    });
+  }
+  for (const [name, refAlt, poolAlt, expectedAlt, captions] of [
+    ['reference alt', '<b>Pump orientation</b>', 'Pool alt', '<b>Pump orientation</b>', ['<b>Pump orientation</b>']],
+    ['absent reference alt', undefined, 'Pool alt', 'Pool alt', []],
+    ['empty reference alt', '', 'Pool alt', 'Pool alt', []],
+    ['default alt', undefined, undefined, 'Article illustration', []],
+  ]) {
+    test(`article block media ${type} keeps exact ${name} and caption policy`, () => {
+      const h = articleMediaHarness(), parent = h.content(mediaArticle([{ type, items: ['Check'], text: 'Note', images: [{ asset_id: 'a', alt: refAlt }] }],
+        [{ id: 'a', url: mediaURL('a'), alt: poolAlt }]));
+      assert.equal(mediaDescendants(parent, 'img').length, 1);
+      assert.equal(mediaDescendants(parent, 'img')[0].alt, expectedAlt);
+      const renderedCaptions = mediaDescendants(parent, 'figcaption');
+      assert.deepEqual(renderedCaptions.map(n => n.textContent), captions);
+      assert.ok(renderedCaptions.every(n => n.children.length === 0), 'HTML-like caption stays inert text');
+    });
+  }
+}
+
+test('article block media object list item retains its own image alongside block sibling', () => {
+  const h = articleMediaHarness(), parent = h.content(mediaArticle([
+    { type: 'ordered_list', items: [{ text: 'Check', images: [{ asset_id: 'item' }] }], images: [{ asset_id: 'block' }] },
+  ], [{ id: 'block', url: mediaURL('block') }, { id: 'item', url: mediaURL('item') }]));
+  assert.deepEqual(mediaTags(parent), ['ol', 'figure']);
+  assert.deepEqual(mediaTags(parent.children[0]), ['li']);
+  assert.deepEqual(mediaIDs(parent.children[0].children[0]), ['item']);
+  assert.deepEqual(mediaIDs(parent), ['item', 'block']);
+});
+for (const images of [undefined, []]) {
+  test(`article block media empty ${images ? 'array' : 'absent'} media preserves text and native structure`, () => {
+    const h = articleMediaHarness(), parent = h.content(mediaArticle([
+      { type: 'ordered_list', items: ['Check'], images },
+      { type: 'unordered_list', items: ['Install'], images },
+      { type: 'callout', text: 'Keep clear.', images },
+    ], [{ id: 'unused', url: mediaURL('unused') }]));
+    assert.deepEqual(mediaTags(parent), ['ol', 'ul', 'aside']);
+    assert.deepEqual(mediaIDs(parent), []);
+    const aside = parent.children[2];
+    assert.deepEqual(mediaTags(aside), ['strong', 'div']);
+    assert.deepEqual(mediaTags(aside.children[1]), ['span']);
+    assert.equal(aside.children[0].textContent, 'Note');
+    assert.equal(aside.children[1].textContent, 'Keep clear.');
+  });
+}
+
+for (const [origin, state, retryable, note] of [
+  ['source', 'fetching', false, true], ['source', 'failed', true, true],
+  ['source', 'failed', false, false], ['source', 'needs_review', false, false], ['canonical', 'completed', false, false],
+]) {
+  test(`article block media actual renderArticle retains ${origin}/${state}/${retryable} UI policy`, () => {
+    const h = articleMediaHarness();
+    h.render(mediaArticle([{ type: 'paragraph', text: 'Old view' }], [], { view_revision: 'old' }));
+    const article = mediaArticle([
+      { type: 'ordered_list', items: ['Check'], images: [{ asset_id: 'list' }] },
+      { type: 'callout', label: 'Warning', text: 'Keep clear.', images: [{ asset_id: 'callout' }] },
+    ], [{ id: 'callout', url: mediaURL('callout') }, { id: 'list', url: mediaURL('list') }], {
+      content_origin: origin, processing: { job_id: 'job', state, retryable }, complete: origin === 'canonical',
+      source_review: { available: true, url: mediaSourceURL },
+      steps: [{ instructions: ['Conflicting legacy step'], images: [{ id: 'legacy', url: mediaURL('legacy') }] }], body: 'Conflicting body',
+    });
+    const before = JSON.stringify(article), parent = h.render(article);
+    assert.deepEqual(mediaIDs(parent), ['list', 'callout']);
+    assert.deepEqual(mediaTags(parent), ['ol', 'figure', 'aside']);
+    assert.equal(parent.textContent.includes('Conflicting'), false);
+    assert.equal(h.nodes.get('article-kind').textContent, origin === 'canonical' ? 'Workshop article' : 'Stored source');
+    assert.equal(h.nodes.get('article-note').hidden, !note);
+    assert.equal(h.nodes.get('article-note').textContent, note ? 'Preparing articles. Available source remains readable.' : '');
+    assert.equal(h.nodes.get('print').disabled, false);
+    assert.equal(h.context.document.body.dataset.printable, 'true');
+    assert.equal(h.nodes.get('source-review').hidden, false);
+    assert.equal(h.nodes.get('source-review-link').href, mediaSourceURL);
+    assert.equal(JSON.stringify(article), before, 'rendering cannot change origin or completion');
+    h.render(mediaArticle([], [], { view_revision: 'unreadable' }));
+    assert.equal(h.nodes.get('print').disabled, true);
+    assert.equal(h.context.document.body.dataset.printable, 'false');
+  });
+}
+
+test('article block media actual loadSource renders retained shapes and rejects changed or invalid references', async () => {
+  const calls = [];
+  let response = { source: { url: mediaSourceURL, format: 'json' }, document: { blocks: [
+    { type: 'ordered_list', items: ['Stored check'], images: [{ asset_id: 'list' }] },
+    { type: 'callout', text: 'Stored caution', images: [{ asset_id: 'callout' }] },
+  ] }, images: [{ id: 'list', url: mediaURL('list') }, { id: 'callout', url: mediaURL('callout') }] };
+  const h = articleMediaHarness({ requestJSON: async (path, options) => { calls.push({ path, options }); return response; } });
+  h.render(mediaArticle([{ type: 'paragraph', text: 'Article' }]));
+  await h.context.loadSource(mediaSourceURL, h.g);
+  const frame = h.nodes.get('source-review-frame'), first = frame.children[0];
+  assert.deepEqual(mediaTags(frame), ['ol', 'figure', 'aside']);
+  assert.deepEqual(mediaIDs(frame), ['list', 'callout']);
+  assert.equal(frame.hidden, false);
+  assert.equal(h.nodes.get('source-review-meta').textContent, 'Stored source loaded.');
+  assert.equal(h.nodes.get('article-reference').open, true);
+  assert.equal(h.nodes.get('source-review-load').disabled, false);
+  assert.equal(calls[0].path, mediaSourceURL);
+  assert.equal(calls[0].options.signal, h.g.signal);
+  response = { ...response, source: { url: mediaSourceURL.replace('11111111-', '22222222-') } };
+  await assert.rejects(h.context.loadSource(mediaSourceURL, h.g), /source reference changed/);
+  assert.equal(frame.children[0], first);
+  const count = calls.length;
+  await assert.rejects(h.context.loadSource('https://provider.example/source', h.g), /reference is unavailable/);
+  assert.equal(calls.length, count);
+  assert.equal(frame.children[0], first);
+  assert.equal(frame.hidden, false);
+});
+
+for (const type of ['ordered_list', 'unordered_list', 'callout']) {
+  test(`article block media ${type} source evidence handler and image error obey current generation`, async () => {
+    const loads = [], renewals = [];
+    const h = articleMediaHarness();
+    h.context.loadSource = async (url, g) => loads.push({ url, g });
+    h.context.renewMedia = (g, img) => renewals.push({ g, img });
+    const parent = h.content(mediaArticle([
+      { type, items: ['Check'], text: 'Careful', images: [{ asset_id: 'a' }], evidence_ids: ['e-7'], source_locator: 'body[3]' },
+      { type: 'paragraph', text: 'After' },
+    ], [{ id: 'a', url: mediaURL('a') }], { source_review: { url: mediaSourceURL } }));
+    assert.deepEqual(mediaTags(parent), type === 'callout' ? ['aside', 'a', 'p'] : [type === 'ordered_list' ? 'ol' : 'ul', 'figure', 'a', 'p']);
+    const link = mediaDescendants(parent, 'a')[0], img = mediaDescendants(parent, 'img')[0];
+    assert.ok(img, 'new block figure must expose the existing error handler');
+    let prevented = 0;
+    link.dispatch('click', { preventDefault() { prevented++; } }); img.dispatch('error');
+    await Promise.resolve();
+    assert.equal(loads.length, 1);
+    assert.equal(loads[0].url, mediaSourceURL + '&evidence_id=e-7&source_locator=body%5B3%5D');
+    assert.equal(loads[0].g, h.g);
+    assert.equal(renewals.length, 1); assert.equal(renewals[0].img, img); assert.equal(renewals[0].g, h.g);
+    h.navigation.next();
+    link.dispatch('click', { preventDefault() { prevented++; } }); img.dispatch('error');
+    assert.equal(prevented, 2); assert.equal(loads.length, 1); assert.equal(renewals.length, 1);
+  });
+}
+
+function renewalFixture() {
+  return mediaArticle([
+    { type: 'ordered_list', items: ['Check'], images: [{ asset_id: 'list' }] },
+    { type: 'callout', text: 'Careful', images: [{ asset_id: 'callout' }] },
+  ], [{ id: 'list', url: mediaURL('old-list') }, { id: 'callout', url: mediaURL('old-callout') }]);
+}
+const renewedArticle = () => ({ data: { article: { ...renewalFixture(), images: [
+  { id: 'list', url: mediaURL('new-list') }, { id: 'callout', url: mediaURL('new-callout') },
+] } } });
+
+test('article block media actual renewal shares one request and reconciles both shapes once per revision', async () => {
+  const pending = deferredAuthOperation(), calls = [];
+  const h = articleMediaHarness({ requestArticleJSON: (path, options) => { calls.push({ path, options }); return pending.promise; } });
+  const parent = h.render(renewalFixture()), images = mediaDescendants(parent, 'img');
+  assert.equal(images.length, 2);
+  images[0].dispatch('error'); const renewal = h.context.renewal;
+  images[1].dispatch('error');
+  assert.equal(calls.length, 1); assert.equal(h.context.renewal, renewal);
+  assert.equal(calls[0].path, '/v1/catalog/vehicles/v/articles/a'); assert.equal(calls[0].options.signal, h.g.signal);
+  pending.resolve(renewedArticle()); await renewal;
+  assert.deepEqual(mediaDescendants(parent, 'img'), images, 'stable revision retains image nodes');
+  assert.deepEqual(images.map(n => n.src), ['https://cars.example/v1/catalog/images/v2.new-list', 'https://cars.example/v1/catalog/images/v2.new-callout']);
+  assert.deepEqual(images.map(n => n.dataset.replacement), ['1', '1']);
+  assert.equal(h.context.renewal, null); assert.equal(h.context.renewalFailures.size, 0);
+  images[0].dispatch('error'); images[1].dispatch('error');
+  assert.equal(calls.length, 1);
+  assert.deepEqual(mediaIDs(parent), []);
+  assert.equal(mediaDescendants(parent, 'figure')[0].textContent, 'Illustration unavailable. Refresh this article to try again.');
+});
+for (const changed of [false, true]) {
+  test(`article block media actual renewal ${changed ? 'rejects changed' : 'reconciles matching'} stored-source revision`, async () => {
+    const calls = [];
+    const h = articleMediaHarness({ requestArticleJSON: async () => renewedArticle(), requestJSON: async (url, options) => {
+      calls.push({ url, options });
+      return { source: { url: changed ? mediaSourceURL.replace('11111111-', '22222222-') : mediaSourceURL },
+        images: [{ id: 'stored', url: mediaURL('new-stored') }] };
+    } });
+    h.render(renewalFixture());
+    const frame = h.nodes.get('source-review-frame');
+    h.context.renderBlocks(frame, [{ type: 'callout', text: 'Stored', images: [{ asset_id: 'stored' }] }],
+      [{ id: 'stored', url: mediaURL('old-stored') }], null, h.g);
+    frame.hidden = false; h.context.sourceData = { source: { url: mediaSourceURL } }; h.context.sourceURL = 'https://cars.example' + mediaSourceURL;
+    const image = mediaDescendants(frame, 'img')[0];
+    assert.ok(image, 'stored-source callout must contain a retained figure');
+    image.dispatch('error'); await h.context.renewal;
+    assert.equal(calls.length, 1); assert.equal(calls[0].url, 'https://cars.example' + mediaSourceURL); assert.equal(calls[0].options.signal, h.g.signal);
+    if (changed) {
+      assert.deepEqual(mediaIDs(frame), []);
+      assert.equal(frame.textContent, 'NoteStoredIllustration unavailable. Refresh this article to try again.');
+    } else {
+      assert.equal(mediaDescendants(frame, 'img')[0], image);
+      assert.equal(image.src, 'https://cars.example/v1/catalog/images/v2.new-stored');
+      assert.equal(image.dataset.replacement, '1');
+    }
+  });
+}
+for (const status of [401, 403, 410]) {
+  test(`article block media actual renewal ${status} invalidates protected content and generation`, async () => {
+    const h = articleMediaHarness({ requestArticleJSON: async () => { throw Object.assign(new Error('Access unavailable'), { status }); } });
+    h.render(renewalFixture());
+    for (const id of ['articles', 'source-review-frame', 'reference-data', 'library-items']) h.nodes.get(id).textContent = 'Protected';
+    h.nodes.get('source-review-link').href = mediaSourceURL;
+    const image = mediaDescendants(h.nodes.get('article-content'), 'img')[0];
+    assert.ok(image); image.dispatch('error'); await h.context.renewal;
+    assert.equal(h.g.current(), false);
+    assert.equal(h.g.signal.aborted, true);
+    for (const id of ['articles', 'article-content', 'source-review-frame', 'reference-data', 'library-items']) assert.equal(h.nodes.get(id).textContent, '', id);
+    assert.equal(h.context.currentArticle, null); assert.equal(h.context.sourceData, null); assert.equal(h.context.sourceURL, '');
+    assert.equal(h.nodes.get('source-review-link').href, undefined);
+    assert.equal(h.nodes.get('source-review-frame').hidden, true); assert.equal(h.nodes.get('print').disabled, true);
+    assert.equal(h.context.document.body.dataset.printable, 'false');
+    assert.deepEqual(h.shows, ['welcome']); assert.equal(h.statuses[0].message, 'Access unavailable'); assert.equal(h.statuses[0].options.error, true);
+  });
+}
+for (const outcome of ['resolve', 'reject']) {
+  test(`article block media actual renewal stale ${outcome} preserves newly selected content`, async () => {
+    const pending = deferredAuthOperation(); let sourceCalls = 0;
+    const h = articleMediaHarness({ requestArticleJSON: () => pending.promise, requestJSON: () => { sourceCalls++; assert.fail('stale renewal cannot fetch source'); } });
+    h.render(renewalFixture());
+    h.context.sourceData = { source: { url: mediaSourceURL } }; h.context.sourceURL = mediaSourceURL;
+    const image = mediaDescendants(h.nodes.get('article-content'), 'img')[0];
+    assert.ok(image); image.dispatch('error'); const renewal = h.context.renewal;
+    h.context.invalidate(); const next = h.navigation.next();
+    h.context.renderArticle(mediaArticle([{ type: 'paragraph', text: 'New selected article' }], [], { id: 'b', view_revision: 'view-b' }), next);
+    h.nodes.get('source-review-frame').textContent = 'New source';
+    if (outcome === 'resolve') pending.resolve(renewedArticle());
+    else pending.reject(Object.assign(new Error('Stale denial'), { status: 403 }));
+    await renewal;
+    assert.equal(h.nodes.get('article-content').textContent, 'New selected article');
+    assert.equal(h.nodes.get('source-review-frame').textContent, 'New source');
+    assert.equal(h.context.currentArticle.id, 'b'); assert.equal(next.current(), true);
+    assert.equal(sourceCalls, 0); assert.deepEqual(h.shows, []); assert.deepEqual(h.statuses, []);
+  });
+}
