@@ -549,6 +549,7 @@ def verify_registry_image(reference, fetch, *, deadline=None):
         raw = fetch(reference, 'blobs', layer['digest'])
         if type(raw) is bytes:
             require(len(raw) <= 4 * MiB and len(raw) == layer['size'] and digest(raw) == layer['digest'][7:], 'registry_mismatch')
+            require(time.monotonic() < deadline, 'operation_timed_out')
             continue
         require(callable(getattr(raw, '__next__', None)) and callable(getattr(raw, 'close', None)), 'registry_mismatch')
         observed = 0; hasher = hashlib.sha256()
@@ -620,6 +621,9 @@ class PinnedHTTPS:
                 chunk = response.read1(min(65536, maximum + 1 - len(output)))
                 if not chunk: break
                 output.extend(chunk); require(len(output) <= maximum, 'output_overflow')
+                # HTTPResponse closes an HTTP/1.0 socket after the declared
+                # final byte. Do not touch that closed socket for an EOF read.
+                if length is not None and len(output) == length: break
             require(length is None or len(output) == length, 'http_failed')
             return 200, bytes(output)
         except (OSError, http.client.HTTPException, ssl.SSLError): raise AdapterError('http_failed') from None
