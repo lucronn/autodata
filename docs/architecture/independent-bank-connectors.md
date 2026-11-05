@@ -154,6 +154,79 @@ and identity base, retains their snapshot/evidence references, and compares
 explicit source applicability before storing content or invoking Mercury. That
 captured context remains immutable when configuration records later change.
 
+## Finite authenticated canary tooling gate (November 5, 2026)
+
+Build and offline-verify a finite dual-bank connector capture executor that preserves raw failure evidence before parsing; authenticated execution remains separately gated.
+
+Child [#304](https://github.com/lucronn/autodata/issues/304) of #186 and its
+[Project #8](https://github.com/users/lucronn/projects/8) item
+`PVTI_lAHOCSJ8cc4BiQ2BzhGO_X0` track this narrow offline tool. The
+[plan](../superpowers/plans/2026-11-05-bank-canary-capture-executor.md),
+[canonical contract](../agents/specs/2026-11-05-bank-canary-capture-executor.md),
+[record](../agents/records/2026-11-05-bank-canary-capture-executor.json) and
+[task](../agents/tasks/2026-11-03-production-release/bank-canary-capture-executor.json)
+freeze exactly one selected article per bank, 58 requests/bank, 116 total,
+10 pages/branch, one in flight, one start/second, zero retries/redirects,
+20 MB/response, 100 MB/bank, 25-second socket timeout, 900 seconds/bank and
+1,800 seconds including 10-second reserved cleanup. Raw non-200, partial and
+parser-rejected bytes remain private evidence with explicit failure states.
+
+Concrete todo:
+
+- [ ] Implement strict frozen enrollment validation and the sequential 58-request-per-bank operation graph using the unchanged provider-bound source client.
+- [ ] Implement a cancellable streaming transport with fixed request/page/rate/byte/time budgets, no retries or redirects, and raw response capture before validation.
+- [ ] Implement private append-only attempt/raw-inventory and failure outcomes with fixed denominators, quarantine handling and an allowlisted public summary.
+- [ ] Prove all limits and failure retention offline with inert credentials and fake transport/socketpair tests; independently review the exact implementation SHA before any later enrolled execution gate.
+
+The current gate authorizes only separately preflighted offline implementation.
+No authentic article has been captured or accepted by this milestone. Owner
+origins/keys/rights/selection/storage/reviewer enrollment and a separate exact
+executor/run gate remain required before any authenticated read. Product source
+client and application behavior remain outside this implementation allowlist.
+
+## Offline implementation candidate verification
+
+Code candidate `4751213fe0299d7eb966181c297b3cd613b92a1c` on `codex/bank-canary-executor-build` derives from gate
+`8bb4f98b2701372fb3ed4ed7bb79e66e47e9ca7b`. The builder independently read back Issue #304 and Project #8 item
+`PVTI_lAHOCSJ8cc4BiQ2BzhGO_X0` and ran exact-base preflight before any
+implementation edit: `status: synchronized`, `errors: []`.
+
+The focused offline suite passes **48 tests**; the unchanged source-client suite
+passes **19 tests**. Syntax compilation and `git diff --check` pass. The source
+client suite retains its pre-existing HTTPError ResourceWarning. Tests exercise
+116 calls/115 seconds of fake-clock start spacing; page 10 rejection; frozen
+membership, provider, revision and applicability; non-200/HTTPError originals;
+parser/hash rejection; exact byte ceilings and framing; blocked/trickling child
+cancellation and reap; decoded secrets before failed hash validation; quarantine;
+output failure; cancellation finalization; and strict public summary fields.
+All origins are reserved `.invalid` fixtures, direct TLS is tested with an inert
+patched connection, and slow reads use a local socketpair. No real network,
+credential access, source capture or application stack was used.
+
+The first independent review of `fab03ae1e751674a3de543e6ac02be1d9274336d`
+found five failure-path gaps. They remain visible in history and are fixed with
+regressions in `233779b7c278a7586ef95a2ea95162bdae8dcff1`: the injected opener
+also runs in a watched child; 404/source error enums retain summaries; encoded
+resource secrets are checked before client hash/schema rejection; socket read
+errors remain bank-local; interruption finalizes evidence. The candidate adds
+strict malformed-scalar rejection and scans JSON-decoded text before failed
+hash validation, closing the escaped-secret follow-up found on the revised
+candidate. A further review found an unpaired-surrogate inspection error that
+could omit persisted originals from inventory; the candidate makes scanning
+surrogate-safe, records inventory before inspection, and quarantines any
+unexpected inspection failure with regressions. Independent review of
+`6e7105a5280345006a9e67cc88205ffbc22c2126` found no remaining P1/P2
+within the offline-tool scope; real-source acceptance remains zero.
+
+The `capture` command currently returns `EXECUTION_GATE_REQUIRED` before any
+approval/credential descriptor is read. `validate` checks syntax only.
+`offline-selftest` runs the committed inert test suite. `run_capture` requires
+an explicitly offline transport factory and two `.invalid` origins; its
+transports use the same watched-child spool path. The direct standard-library
+HTTPS worker has no authorized real-run entrypoint under this gate. A later
+committed enrolled gate must provide the distinct approval boundary before
+authenticated execution; a fabricated receipt cannot unlock this candidate.
+
 ## Production host relay wiring follow-up (2026-11-05)
 
 At source baseline `c0be267fe31dc578bec0b8528679b6fd6671ed12`, development
