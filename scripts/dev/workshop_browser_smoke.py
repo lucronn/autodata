@@ -653,9 +653,210 @@ API_CASES=(
     'test_browser_signed_refund_blocks_old_links_real_api',
 )
 
+API21_VERSION = 'api21-producer-v2'
+API21_MISSING = (
+    'actual_child_go_browser_exit_receipts','parent_pytest_exit_and_command_receipts',
+    'signed_settlement_refund_http_bytes_and_authentic_delivery',
+    'runtime_image_browser_cache_sdk_install_identity','authenticated_capture_source_observer_and_containment',
+    'global_worker_log_per_case_ownership_mapping','finite_api_success_schedule',
+    'junit_byte_preserving_capture_mapping','all_final180_families_and_profile_promotion',
+    'independent_authentic_raw_review','actual_engine_os_exit_and_descendant_reap',
+    'original_go_webhook_request_signature_response_capture','source_contract_current_integration_rebinding',
+    'dto_trace_16MiB_producer_8MiB_consumer_conflict','v2_consumer_schema_validator_and_profile',
+    'producer_observations_are_unexecuted_until_separate_capture_gate')
+
+
+class APIObservationError(ValueError):
+    pass
+
+
+def api21_json(value):
+    return (json.dumps(value,sort_keys=True,separators=(',',':'),ensure_ascii=False,allow_nan=False)+'\n').encode('utf-8',errors='strict')
+
+
+def api21_load(raw):
+    def pairs(items):
+        result={}
+        for key,value in items:
+            if key in result:raise ValueError('duplicate key')
+            result[key]=value
+        return result
+    def constant(value):raise ValueError('nonfinite JSON')
+    value=json.loads(raw.decode('utf-8',errors='strict'),object_pairs_hook=pairs,parse_constant=constant)
+    api21_json(value)  # Reject unpaired surrogates and nonfinite float overflow.
+    return value
+
+
+def api21_body(raw, source, *, image=False, reason=None):
+    body=dict(availability='unavailable',byte_source='unavailable',encoding=None,
+        base64=None,length=None,sha256=None,parsed=None,reason=reason or 'not_observed')
+    if reason:return body
+    if not isinstance(raw,bytes):body['reason']='unsupported_byte_source';return body
+    if len(raw)>131072:body['reason']='over_limit';return body
+    if image:
+        return dict(body,availability='hash_only',byte_source=source,length=len(raw),
+            sha256=hashlib.sha256(raw).hexdigest(),reason='not_required_image_body')
+    try:parsed=api21_load(raw)
+    except UnicodeError:body['reason']='invalid_utf8';return body
+    except (ValueError,TypeError,RecursionError):body['reason']='invalid_json';return body
+    # Only original safe JSON is retained. Never retain authentication responses,
+    # headers, cookies or exception text, even when persistence itself fails.
+    secret=re.compile(r'(?i)^(authorization|cookie|set-cookie|token|id_?token|access_?token|refresh_?token|password|csrf|firebase_?token)$')
+    def sensitive(value):
+        if isinstance(value,dict):return any(secret.fullmatch(k) or sensitive(v) for k,v in value.items())
+        if isinstance(value,list):return any(sensitive(v) for v in value)
+        return isinstance(value,str) and bool(re.search(r'(?i)(bearer |__Host-autodata_session=|eyJ[A-Za-z0-9_-]+\.eyJ)',value))
+    if sensitive(parsed):body['reason']='secret_detected';return body
+    return dict(body,availability='retained',byte_source=source,encoding='base64',
+        base64=base64.b64encode(raw).decode('ascii'),length=len(raw),
+        sha256=hashlib.sha256(raw).hexdigest(),parsed=parsed,reason=None)
+
+
+def api21_route(url):
+    path=urlsplit(url).path
+    if path.startswith('/__fixture/'):
+        allowed=('metadata','measurement','snapshot','runtime','restart','stop','disable',
+            'payment/settle','payment/refund','control/start-workers','control/release-model')
+        return path if path[len('/__fixture/'):] in allowed else None
+    if not (path=='/v1/workshop/checkout-sessions' or path=='/v1/workshop/library' or
+            path.startswith('/v1/catalog/vehicles/') or path.startswith('/v1/catalog/images/')):return None
+    safe=re.sub(r'/v2\.[^/]+','/{capability}',path)
+    return re.sub(r'[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}','{uuid}',safe)
+
+
+class APIObservations:
+    """One bounded producer stream; failures and original bytes are sticky."""
+    def __init__(self,binding,*,max_events=512,max_bytes=1048576,clock=time.monotonic):
+        self.binding=dict(binding);self.events=[];self.primary=None
+        self.status='partial';self.publication='not_attempted';self.phase='setup'
+        self.clock=clock;self.start=clock();self.max_events=min(max_events,512)
+        self.max_bytes=min(max_bytes,1048576);self.tasks=set();self.counts={}
+        self.reserve=bytearray(16384)
+    def fail(self,reason):
+        if self.primary is None:self.primary=reason
+        self.status='failed'
+    def snapshot(self):
+        return dict(binding=self.binding,status=self.status,events=list(self.events),
+            primary_failure=self.primary,publication=self.publication,
+            unavailable_families=list(API21_MISSING),engine_os_exit=None,outer_pytest_exit=None)
+    def event(self,phase,payload,caused_by=()):
+        event=dict(seq=len(self.events)+1,phase=phase,caused_by=list(caused_by),
+            elapsed_us=max(0,int((self.clock()-self.start)*1000000)),payload=payload)
+        try:
+            size=len(api21_json(event));candidate=dict(self.snapshot(),events=self.events+[event])
+            if len(self.events)>=self.max_events or size>262144 or len(api21_json(candidate))>self.max_bytes:
+                raise APIObservationError('over_limit')
+        except (ValueError,UnicodeError,TypeError,RecursionError):
+            self.fail('over_limit');raise APIObservationError('over_limit') from None
+        self.events.append(event)
+        return dict(stream='observations',producer_role='browser-runner',seq=event['seq'])
+    def lifecycle(self,phase,operation,state,reason=None):
+        return self.event(phase,dict(kind='lifecycle',operation=operation,state=state,reason=reason))
+    def assertion(self,name,result):
+        if not result:self.fail('assertion_failed')
+        self.event(self.phase,dict(kind='producer-assertion',name=name,result=result,
+            reason=None if result else 'assertion_failed'))
+    async def http(self,response,url,method='GET',*,phase=None,actor='owner',request=None,key=None,identity=None,attempt=None):
+        phase=phase or self.phase;safe=api21_route(url)
+        if safe is None:return None
+        try:raw=await response.body();body=api21_body(raw,'playwright-response-body',image='/images/' in safe)
+        except Exception:body=api21_body(None,'unavailable',reason='read_failed')
+        count=self.counts.get(phase,0)+1
+        if count> (100 if phase=='runtime-poll' else 16):
+            self.fail('over_limit');raise APIObservationError('over_limit')
+        self.counts[phase]=count
+        status=getattr(response,'status',None)
+        if type(status) is not int or not 100<=status<=599:status=None
+        payload=dict(kind='http',channel='fixture-control' if safe.startswith('/__fixture/') else 'application',
+            method=method,route_template=safe,actor='fixture-control' if safe.startswith('/__fixture/') else actor,
+            attempt=attempt or count,status=status,idempotency_key=key,request=request,response=body,
+            checkout_identity=identity)
+        ref=self.event(phase,payload)
+        if status is None or body['availability']=='unavailable':self.fail(body['reason'] if body['reason'] in ('over_limit','secret_detected') else 'http_failed')
+        return ref
+    def page_response(self,response):
+        # Phase and actor are captured BEFORE awaiting body(). No later phase can
+        # relabel a callback already owned by its initiating action window.
+        phase=self.phase;safe=api21_route(response.url)
+        library=phase.startswith('owner-library-') and safe=='/v1/workshop/library'
+        source=phase in ('source-page-http','source-review-http','warm-page-http') and safe and safe.startswith('/v1/catalog/vehicles/')
+        checkout=phase=='checkout-http' and safe=='/v1/workshop/checkout-sessions'
+        if not (library or source or checkout):return
+        async def capture():
+            try:
+                request=None;key=None;identity=None
+                if checkout:
+                    request=api21_body(getattr(response.request,'post_data_buffer',None),'playwright-request-post-data-buffer')
+                    key=response.request.headers.get('idempotency-key')
+                await self.http(response,response.url,response.request.method,phase=phase,request=request,key=key)
+            except BaseException as error:
+                self.fail('cancelled' if isinstance(error,asyncio.CancelledError) else 'http_failed')
+        if len(self.tasks)>=512:self.fail('over_limit');return
+        task=asyncio.create_task(capture());self.tasks.add(task)
+    async def drain(self):
+        while self.tasks:
+            tasks=list(self.tasks);self.tasks.difference_update(tasks)
+            await asyncio.gather(*tasks)
+    def require_window(self,phase):
+        events=[e['payload'] for e in self.events if e['phase']==phase and e['payload']['kind']=='http']
+        def owner_item(payload):
+            body=payload['response'];parsed=body['parsed']
+            return payload['status']==200 and body['availability']=='retained' and isinstance(parsed,dict) and isinstance(parsed.get('items'),list) and len(parsed['items'])==1
+        if not 1<=len(events)<=16 or not all(e['response']['availability']=='retained' and e['status']==200 for e in events) or not any(owner_item(e) for e in events):
+            self.fail('assertion_failed');raise APIObservationError('assertion_failed')
+    def finish(self):
+        self.status='failed' if self.primary else 'passed'
+
+
+def api21_write(target,value):
+    """Confined same-directory replacement; never follow or replace links."""
+    raw=api21_json(value)
+    if len(raw)>4194304:raise APIObservationError('over_limit')
+    parent=target.parent
+    for directory in (parent,*parent.parents):
+        if directory.is_symlink():raise OSError('unsafe output directory')
+    directory=os.open(parent,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+    temp='.api21-'+os.urandom(16).hex()+'.tmp'
+    def identity():
+        try:
+            info=os.stat(target.name,dir_fd=directory,follow_symlinks=False)
+            if not stat.S_ISREG(info.st_mode) or info.st_nlink!=1:raise OSError('unsafe output')
+            return (info.st_dev,info.st_ino)
+        except FileNotFoundError:return None
+    try:
+        original=identity()
+        descriptor=os.open(temp,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600,dir_fd=directory)
+        with os.fdopen(descriptor,'wb') as stream:stream.write(raw);stream.flush();os.fsync(stream.fileno())
+        if identity()!=original:raise OSError('output replaced')
+        os.replace(temp,target.name,src_dir_fd=directory,dst_dir_fd=directory)
+    finally:
+        try:os.unlink(temp,dir_fd=directory)
+        except FileNotFoundError:pass
+        os.close(directory)
+
+
+def api21_publish(target,evidence,observations):
+    observations.publication='written'
+    try:
+        api21_write(target,evidence);return True
+    except Exception:
+        observations.fail('publish_failed');observations.publication='failed'
+        observations.reserve=None
+        # A bounded last attempt retains binding and failure, without asserting
+        # that the full prefix or unavailable legacy fields were persisted.
+        minimal=dict(api_observability_version=API21_VERSION,binding=observations.binding,
+            version='v1',mode='api-fixture',candidate_sha=observations.binding.get('candidate_sha'),
+            results=[dict(browser=observations.binding.get('engine'),scenario=observations.binding.get('root'),
+                status='failed',observations=dict(observations.snapshot(),events=[]))])
+        try:api21_write(target,minimal)
+        except Exception:print('API21_PUBLICATION_FAILED',file=sys.stderr)
+        return False
+
+
 class APIFixture(DTOFixture):
-    def __init__(self,origin,scenario):
+    def __init__(self,origin,scenario,observations=None):
         super().__init__(origin,scenario)
+        self.observations=observations
         self.lost_response_count=0
         # Exact request/response identities stay in memory, never browser evidence.
         self.checkout_responses=[]
@@ -680,7 +881,7 @@ class APIFixture(DTOFixture):
                 key=request.headers.get('idempotency-key')
                 uuid_pattern=r'[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}'
                 assert isinstance(key,str) and re.fullmatch(uuid_pattern,key), 'checkout key must be a UUID'
-                try:body=json.loads(request.post_data)
+                try:body=api21_load(request.post_data_buffer) if self.observations else json.loads(request.post_data)
                 except (TypeError,ValueError):raise AssertionError('checkout request must be JSON') from None
                 assert isinstance(body,dict), 'checkout request must be an object'
                 configuration=body.get('configuration_id')
@@ -691,7 +892,7 @@ class APIFixture(DTOFixture):
                 self.keys.append(key);self.checkout_bodies.append(request.post_data)
                 response=await route.fetch(max_redirects=0,max_retries=0)
                 assert response.status in (200,201), 'actual API did not complete checkout'
-                checkout=await response.json()
+                checkout=api21_load(await response.body()) if self.observations else await response.json()
                 assert isinstance(checkout,dict) and checkout.get('version')=='v1' and checkout.get('state')=='checkout', 'invalid actual checkout response'
                 assert checkout.get('configuration_id')==configuration and checkout.get('region')==body['region'], 'checkout response changed scope'
                 order=checkout.get('order_id');hosted=checkout.get('checkout_url')
@@ -700,14 +901,28 @@ class APIFixture(DTOFixture):
                 hosted_url=urlsplit(hosted)
                 assert hosted_url.hostname=='checkout.stripe.com' and re.fullmatch(r'/c/pay/cs_test_[a-f0-9]{32}',hosted_url.path) and not hosted_url.query, 'invalid hosted checkout session'
                 identity={'order_id':order,'configuration_id':configuration,'region':body['region'],'checkout_url':hosted}
+                http_ref=None
+                if self.observations:
+                    phase='checkout-first-http' if attempt==1 else 'checkout-retry-http'
+                    http_ref=await self.observations.http(response,request.url,'POST',phase=phase,
+                        request=api21_body(request.post_data_buffer,'playwright-request-post-data-buffer'),
+                        key=key,identity=identity,attempt=attempt)
+                    def delivery(state):
+                        self.observations.event(phase.replace('-http','-delivery'),
+                            dict(kind='checkout-delivery',attempt=attempt,state=state,http_event=http_ref),[http_ref])
+                    delivery('fetch-completed')
                 if attempt==1:
                     self.checkout_responses.append(identity)
+                    if self.observations:delivery('response-abort-requested')
                     await route.abort()
+                    if self.observations:delivery('response-aborted')
                     self.lost_response_count+=1
                 else:
                     assert identity==self.checkout_responses[0], 'retry changed actual checkout identity'
                     self.checkout_responses.append(identity)
+                    if self.observations:delivery('response-fulfill-requested')
                     await route.fulfill(response=response)
+                    if self.observations:delivery('response-fulfilled')
                 return
             await route.continue_();return
         if not allowed_external(request.url):

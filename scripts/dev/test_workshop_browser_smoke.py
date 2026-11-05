@@ -1259,4 +1259,100 @@ class DTOWorkflowBindingTests(unittest.TestCase):
         self.assertEqual(r6['product_evidence']['ci_profile']['workflow_sha256'],smoke.hashlib.sha256(workflow).hexdigest())
 
 
+class API21ObservationsTests(unittest.IsolatedAsyncioTestCase):
+    def binding(self):
+        return dict(binding_state='complete',unavailable_reason=None,
+            api_observability_version='api21-producer-v2',run_id='a'*32,attempt_id='b'*32,
+            case_id=smoke.API_CASES[0]+'[chromium]',root=smoke.API_CASES[0],engine='chromium',
+            bank='bankone',candidate_sha='c'*40,source_tree='d'*40,
+            source_input_sha256={'input': 'e'*64},producer_role='browser-runner')
+
+    def buffer(self, **kwargs):
+        return smoke.APIObservations(self.binding(), **kwargs)
+
+    def test_original_body_bytes_and_strict_json(self):
+        raw=b' { "ok" : true } \n'
+        body=smoke.api21_body(raw,'playwright-response-body')
+        self.assertEqual(body['availability'],'retained')
+        self.assertEqual(smoke.base64.b64decode(body['base64']),raw)
+        self.assertEqual(body['sha256'],smoke.hashlib.sha256(raw).hexdigest())
+        self.assertEqual(body['parsed'],{'ok':True})
+        for raw,reason in [(b'{"a":1,"a":2}','invalid_json'),(b'{"x":NaN}','invalid_json'),
+                (b'"\xff"','invalid_utf8'),(b'{"token":"secret"}','secret_detected')]:
+            with self.subTest(raw=raw):
+                body=smoke.api21_body(raw,'playwright-response-body')
+                self.assertEqual(body['availability'],'unavailable')
+                self.assertEqual(body['reason'],reason)
+                self.assertIsNone(body['base64'])
+
+    def test_bounds_fail_without_discarding_prefix_or_promoting_pass(self):
+        buffer=self.buffer(max_events=1)
+        buffer.lifecycle('setup','setup','completed')
+        with self.assertRaises(smoke.APIObservationError):buffer.lifecycle('setup','page-create','requested')
+        self.assertEqual(len(buffer.snapshot()['events']),1)
+        self.assertEqual(buffer.snapshot()['primary_failure'],'over_limit')
+        buffer.finish()
+        self.assertEqual(buffer.snapshot()['status'],'failed')
+        self.assertEqual(smoke.api21_body(b'x'*131073,'playwright-response-body')['reason'],'over_limit')
+
+    async def test_response_tasks_keep_initiating_phase_and_all_library_replies(self):
+        buffer=self.buffer();gate=asyncio.Event()
+        class Response:
+            status=200;url='https://127.0.0.1:32001/v1/workshop/library?limit=20'
+            request=SimpleNamespace(method='GET')
+            async def body(self):
+                await gate.wait()
+                return b'{"items":[{"order_id":"paid"}]}'
+        buffer.phase='owner-library-initial-http'
+        buffer.page_response(Response());buffer.page_response(Response())
+        buffer.phase='owner-library-reload-http';gate.set()
+        await buffer.drain()
+        events=buffer.snapshot()['events']
+        self.assertEqual([e['phase'] for e in events],['owner-library-initial-http']*2)
+        self.assertEqual([e['payload']['attempt'] for e in events],[1,2])
+        buffer.require_window('owner-library-initial-http')
+        with self.assertRaises(smoke.APIObservationError):buffer.require_window('owner-library-reload-http')
+
+    async def test_library_missing_original_or_empty_body_cannot_pass(self):
+        for raw in (b'{"items":[]}',b'not json'):
+            buffer=self.buffer();buffer.phase='owner-library-initial-http'
+            response=SimpleNamespace(status=200,url='https://127.0.0.1:32001/v1/workshop/library',
+                request=SimpleNamespace(method='GET'),body=lambda:asyncio.sleep(0,result=raw))
+            buffer.page_response(response);await buffer.drain()
+            with self.assertRaises(smoke.APIObservationError):buffer.require_window(buffer.phase)
+
+    async def test_checkout_retains_fetch_before_abort_and_exact_original_request(self):
+        buffer=self.buffer();fixture=smoke.APIFixture('https://127.0.0.1:32001',smoke.API_CASES[0],observations=buffer)
+        route=CheckoutRoute();raw=route.request.post_data.encode()
+        route.request.post_data_buffer=raw
+        route.fetched_response.body=lambda:asyncio.sleep(0,result=json.dumps(route.fetched_response.data).encode())
+        await fixture.route(route)
+        events=buffer.snapshot()['events']
+        self.assertEqual(events[0]['phase'],'checkout-first-http')
+        self.assertEqual(smoke.base64.b64decode(events[0]['payload']['request']['base64']),raw)
+        self.assertEqual([e['payload'].get('state') for e in events[1:]],
+            ['fetch-completed','response-abort-requested','response-aborted'])
+        self.assertEqual(events[1]['payload']['http_event']['seq'],events[0]['seq'])
+
+    def test_private_atomic_publication_rejects_links_and_preserves_primary(self):
+        buffer=self.buffer();buffer.fail('assertion_failed')
+        with TemporaryDirectory() as temp:
+            root=Path(temp);target=root/'evidence.json'
+            self.assertTrue(smoke.api21_publish(target,{'results':[{'observations':buffer.snapshot()}]},buffer))
+            self.assertEqual(target.stat().st_mode & 0o777,0o600)
+            target.unlink();target.symlink_to(root/'elsewhere')
+            with patch('sys.stderr') as stderr:
+                self.assertFalse(smoke.api21_publish(target,{},buffer))
+            self.assertFalse((root/'elsewhere').exists())
+            self.assertEqual(buffer.snapshot()['primary_failure'],'assertion_failed')
+            self.assertIn('API21_PUBLICATION_FAILED',str(stderr.write.call_args_list))
+
+    def test_safe_routes_exclude_auth_and_all_capabilities_queries_hosts(self):
+        self.assertIsNone(smoke.api21_route('https://local/v1/auth/session'))
+        self.assertEqual(smoke.api21_route('https://local/v1/catalog/images/v2.secret?token=secret'),
+            '/v1/catalog/images/{capability}')
+        self.assertEqual(smoke.api21_route('https://local/__fixture/payment/settle?order_id=secret'),
+            '/__fixture/payment/settle')
+
+
 if __name__ == '__main__': unittest.main()
