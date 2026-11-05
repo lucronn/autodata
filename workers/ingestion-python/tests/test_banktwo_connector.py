@@ -83,6 +83,24 @@ class ConnectorTests(unittest.TestCase):
         self.assertEqual(parser.blocks[1]["text"], "Torque: 8.8 Nm")
         self.assertNotIn("bad()", str(parser.blocks))
 
+    def test_unbound_images_do_not_consume_refs_by_ordinal(self):
+        html = '<p>Remove pump.</p><img src="/unknown"><img src="/bound"><img src="/bound">'
+
+        def opener(request, timeout):
+            body = envelope(kind="article", media_type="text/html", content=html,
+                sha256=sha256(html.encode()).hexdigest(), asset_resource_refs=["figure"],
+                asset_bindings=[{"source_url": "/bound", "resource_ref": "figure"}])
+            return FixtureResponse(json.dumps(body).encode(), url=request.full_url,
+                                   headers={"Content-Type": "application/json"})
+
+        client = SourceConnectorClient("https://banktwo.cars.tk", provider="banktwo", opener=opener)
+        article = BanktwoConnector(source_client=client).article_by_descriptor(
+            "vehicle", {"opaque_ref": "article", "resource_ref": "body"})
+        images = [b for b in article["blocks"] if b.get("kind") == "image"]
+        self.assertEqual(images[0]["status"], "unavailable")
+        self.assertNotIn("asset_resource_ref", images[0])
+        self.assertEqual([i["asset_resource_ref"] for i in images[1:]], ["figure", "figure"])
+
     def test_selected_article_labor_and_asset_use_only_opaque_v1_refs(self):
         html = '<h2>REMOVAL</h2><p>Remove the pump.</p><img src="https://upstream.invalid/fig/pump.png"/><p>Torque 8.8 Nm.</p>'
         article_bytes = html.encode()
@@ -97,6 +115,7 @@ class ConnectorTests(unittest.TestCase):
                 body = envelope(
                     kind="article", media_type="text/html", sha256=sha256(article_bytes).hexdigest(),
                     content=html, asset_resource_refs=["asset-opaque-1"],
+                    asset_bindings=[{"source_url": "https://upstream.invalid/fig/pump.png", "resource_ref": "asset-opaque-1"}],
                 )
                 return FixtureResponse(json.dumps(body).encode(), url=request.full_url,
                                        headers={"Content-Type": "application/json"})

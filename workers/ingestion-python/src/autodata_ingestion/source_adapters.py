@@ -1811,24 +1811,7 @@ def adapt_bound_article(resource: SourceResource, context) -> dict[str, Any]:
         }
     if media == "text/html":
 
-        class BoundParser(ArticleParser):
-            def handle_starttag(self, tag, attrs):
-                super().handle_starttag(tag, attrs)
-                values = dict(attrs)
-                if tag == "img":
-                    targets = (
-                        self._table_cell
-                        if self._table_cell is not None
-                        else self.blocks
-                    )
-                    if targets and targets[-1].get("kind") == "image":
-                        ref = values.get("data-resource-ref") or values.get(
-                            "asset_resource_ref"
-                        )
-                        if ref:
-                            targets[-1]["asset_resource_ref"] = ref
-
-        parser = BoundParser()
+        parser = ArticleParser(asset_bindings=resource.metadata.get("asset_bindings", []))
         parser.feed(resource.payload.decode("utf-8-sig"))
         parser.close()
         parser.flush()

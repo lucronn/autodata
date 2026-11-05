@@ -40,6 +40,8 @@ def upload_resource(envelope, opaque_ref, role, object_store):
         "request_id": envelope.request_id,
         "fetched_at": envelope.fetched_at,
         "locator": envelope.source_locator or envelope.resource_uri,
+        **({"asset_bindings": deepcopy(resource.metadata["asset_bindings"])}
+           if "asset_bindings" in resource.metadata else {}),
     }
 
 
@@ -301,8 +303,10 @@ def capture_source_article(context, *, registry, object_store, deadline_seconds=
     # Embedded figures are derived only from verified body bytes and never fetched by URL.
     for node in _walk(blocks):
         uri = node.get("url", "")
-        if (node.get("kind") or node.get("type")) == "image" and uri.startswith(
-            "data:image/"
+        if (
+            (node.get("kind") or node.get("type")) == "image"
+            and not node.get("asset_resource_ref")
+            and uri.startswith("data:image/")
         ):
             try:
                 header, encoded = uri.split(",", 1)
@@ -450,6 +454,8 @@ def capture_source_article(context, *, registry, object_store, deadline_seconds=
             "body_sha256": resources[0]["sha256"],
             "body_media_type": resources[0]["media_type"],
             "resource_manifest": manifest,
+            **({"asset_bindings": sorted(body.body["asset_bindings"], key=lambda item: item["source_url"])}
+               if body.body.get("asset_bindings") else {}),
         }
     )
     return CapturedSource(

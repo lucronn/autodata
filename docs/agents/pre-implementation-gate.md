@@ -91,3 +91,12 @@ future tasks.
 ## Evidence and recovery
 
 The Issue and Project item must retain the goal, plan/document links, concrete todo, current status, and exact verified commit. The plan and gate document must record test and CI evidence after implementation. If GitHub or repository synchronization cannot be verified, leave the task blocked and do not begin implementation. Correct the record, commit the checkpoint, and run preflight again; do not bypass the gate or rewrite an earlier implementation result.
+
+### Source media binding consumer checkpoint
+
+The source media binding task passed the machine preflight at pinned planning
+base `5be336ccfbe1bb2323a546eac0169291ecc485dc` before implementation.
+[PR #332](https://github.com/lucronn/autodata/pull/332) carries the consumer;
+verification and remaining release boundaries are recorded in
+`docs/verification/2026-11-05-source-media-bindings.md`. This task does not alter
+the gate's canonical rule or waive any future checkpoint.
