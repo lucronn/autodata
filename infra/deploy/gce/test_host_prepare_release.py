@@ -125,15 +125,15 @@ class ImageExecutionTests(unittest.TestCase):
             def directory(self,*args,**kwargs): pass
             def recheck(self): pass
             def read(self,path,*args,**kwargs): return Path(path).read_bytes()
-        for fail in (False,True):
+        for fail in (False,True,'malformed','inspect','cleanup'):
             with self.subTest(fail=fail), tempfile.TemporaryDirectory() as directory:
-                root = Path(directory); registry = root/'registry'; registry.mkdir(); (registry/'config.json').write_bytes(b'{"auths":{}}')
+                root = Path(directory); registry = root/'registry'; registry.mkdir(); auth = b'{' if fail == 'malformed' else b'{"auths":{}}'; (registry/'config.json').write_bytes(auth)
                 (registry/'config.json').chmod(0o600); receipts = root/'receipts'; receipts.mkdir(); run = root/'run'; (run/'state').mkdir(parents=True); data = root/'data'; (data/'operations').mkdir(parents=True)
                 a = {'schema_version':1,'source_sha':'a'*40,'authorization_id':str(uuid.uuid4()),
                     'expires_at':(datetime.now(timezone.utc)+timedelta(hours=1)).strftime('%Y-%m-%dT%H:%M:%SZ'),
                     'environment':'staging','operation':'cache-accepted-staging-images','service_config_sha256':'d'*64,
                     'bundle_inventory_sha256':'e'*64,'manifest_raw_sha256':'f'*64,'publisher_acceptance_sha256':'1'*64,
-                    'registry_config_sha256':hashlib.sha256(b'{"auths":{}}').hexdigest(),
+                    'registry_config_sha256':hashlib.sha256(auth).hexdigest(),
                     'images':[{'role':role,**value} for role,value in sorted(manifest['images'].items())]}
                 calls = []
                 def execute(argv,**kwargs):
@@ -141,23 +141,38 @@ class ImageExecutionTests(unittest.TestCase):
                     if 'install' in argv: return json.dumps({'status':'passed','source_sha':a['source_sha'],'release_material_committed':True,
                         'commit_state':'receipt_committed','manifest_raw_sha256':a['manifest_raw_sha256'],'service_config_sha256':a['service_config_sha256']}).encode()
                     if 'pull' in argv:
-                        if fail: raise ValueError('synthetic pull failure')
+                        if fail is True: raise ValueError('synthetic pull failure')
                         return b''
                     image = next(value for value in manifest['images'].values() if value['reference'] == argv[-1])
                     template = argv[argv.index('--format')+1]
                     value = {'id':image['image_id'],'digests':[image['reference']],'os':'linux','arch':'amd64','variant':''} if '"id"' in template else {
                         'image_id':image['image_id'],'repo_digests':[image['reference']],'os':'linux','architecture':'amd64','variant':''}
+                    if fail == 'inspect': value['id' if 'id' in value else 'image_id'] = 'sha256:'+'9'*64
                     return json.dumps(value).encode()
                 op = p.Preparation(Files(),a,{},rt,execute)
                 def installed(): op.manifest = manifest; return manifest
                 with patch.object(p,'REGISTRY',str(registry)), patch.object(p.p,'RECEIPTS',str(receipts)),patch.object(p.p,'RUN',str(run)),patch.object(p.p,'DATA',str(data)),patch.object(p,'make_state'),patch.object(op,'prerequisites'),patch.object(op,'installed',side_effect=installed):
+                    if fail == 'cleanup': op.image_cleanup = lambda _: (_ for _ in ()).throw(ValueError('synthetic cleanup failure'))
                     if fail:
                         with self.assertRaises(ValueError): op.images()
                     else:
                         result = op.images(); self.assertEqual(result['status'],'passed')
                         pulls = [argv[-1] for argv in calls if 'pull' in argv]
                         self.assertEqual(pulls,[item['reference'] for item in a['images']])
-                    self.assertFalse(registry.exists())
+                    self.assertEqual(registry.exists(),fail == 'cleanup')
                     states = [json.loads(path.read_bytes())['status'] for path in receipts.glob('*.json')]
-                    self.assertEqual(states,['incomplete'] if fail else ['passed'])
+                    self.assertEqual(states,[] if fail == 'malformed' else ['incomplete'] if fail else ['passed'])
                     self.assertFalse(any('prune' in argv or 'tag' in argv for argv in calls))
+
+class DatabaseQuiescenceTests(unittest.TestCase):
+    def test_selected_release_and_any_application_container_block(self):
+        p = load('host_prepare_release')
+        operation = p.Preparation(None,{},None,None)
+        with patch.object(p.os.path,'lexists',return_value=True),patch.object(operation,'run') as run:
+            with self.assertRaises(ValueError): operation.no_applications()
+            run.assert_not_called()
+        for value in (b'abc123456789 api\n',b'abc123456789 postgres\n'):
+            with patch.object(p.os.path,'lexists',return_value=False),patch.object(operation,'run',return_value=value):
+                with self.assertRaises(ValueError): operation.no_applications()
+        with patch.object(p.os.path,'lexists',return_value=False),patch.object(operation,'run',return_value=b'abc123456789 postgres\n'):
+            operation.no_applications(resume=True)

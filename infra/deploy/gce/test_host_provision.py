@@ -150,7 +150,7 @@ class ProvisionOrderingTests(unittest.TestCase):
                     if str(path) in ('/usr/bin/docker','/usr/sbin/nft','/usr/bin/findmnt','/usr/sbin/mkfs.ext4','/usr/bin/python3'):
                         return SimpleNamespace(st_mode=0o100755,st_uid=0)
                     return original_stat(path,*args,**kwargs)
-                with patch.object(op,'observe'),patch.object(op,'device',return_value='/dev/accepted'),patch.object(op,'run',side_effect=verified_run),patch.object(p,'inhibit_starts',return_value=nullcontext()),patch.object(p,'Journal',Journal),patch.object(p,'make_directory',side_effect=lambda path,*args: events.append(('directory',path))),patch.object(p,'write_new'),patch.object(p,'load_module',return_value=Runtime()),patch.object(p.os,'stat',side_effect=binaries):
+                with patch.object(op,'observe'),patch.object(op,'device',return_value='/dev/accepted'),patch.object(op,'run',side_effect=verified_run),patch.object(p,'inhibit_starts',return_value=nullcontext()),patch.object(p,'Journal',Journal),patch.object(p,'make_directory',side_effect=lambda path,*args: events.append(('directory',path))),patch.object(p,'write_new'),patch.object(p,'tighten_mount_root'),patch.object(p,'load_module',return_value=Runtime()),patch.object(p.os,'stat',side_effect=binaries):
                     if guard_ok: self.assertEqual(op.apply()['status'],'passed')
                     else:
                         with self.assertRaises(ValueError): op.apply()
@@ -161,3 +161,35 @@ class ProvisionOrderingTests(unittest.TestCase):
                 else: self.assertNotIn(start,events)
                 formatting = [argv for kind,argv in events if kind == 'command' and 'mkfs.ext4' in argv[0]]
                 self.assertEqual(formatting,[['/usr/sbin/mkfs.ext4','-U','a','/dev/accepted']])
+
+class MaterializedBundleTests(unittest.TestCase):
+    def test_complete_clean_bundle_is_deterministic_and_renderer_uses_installed_layout(self):
+        import shutil
+        from test_host_runtime import ContractTests
+        builder = load('build_host_bundle'); provision = load('host_provision')
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)/'source'; root.mkdir()
+            source = HERE.parents[2]
+            for name in builder.source_inventory(source):
+                target = root/name; target.parent.mkdir(parents=True,exist_ok=True); shutil.copyfile(source/name,target)
+            subprocess.run(['git','init','-q',root],check=True)
+            subprocess.run(['git','-C',root,'add','.'],check=True)
+            subprocess.run(['git','-C',root,'-c','user.name=fixture','-c','user.email=fixture@example.invalid','commit','-qm','fixture'],check=True)
+            sha = subprocess.check_output(['git','-C',root,'rev-parse','HEAD']).decode().strip()
+            first = Path(directory)/'first'; second = Path(directory)/'second'
+            expected = builder.build(root,sha,first); actual = builder.build(root,sha,second)
+            self.assertEqual(expected,actual)
+            self.assertEqual((first/'inventory.json').read_bytes(),(second/'inventory.json').read_bytes())
+            provision.validate_inventory(first,expected,sha)
+            spec = importlib.util.spec_from_file_location('installed_runtime_test',first/'opt/autodata/bin/runtime-check.py')
+            runtime = importlib.util.module_from_spec(spec); spec.loader.exec_module(runtime)
+            fixture = ContractTests(); fixture.setUp()
+            try:
+                rendered = runtime.render_bundle(fixture.manifest,fixture.config)
+                self.assertEqual(set(rendered),{'compose.production.yaml','Caddyfile','nats.conf.template','seaweedfs-s3.json.template'})
+                self.assertNotIn('${',rendered['compose.production.yaml'])
+            finally: fixture.doCleanups()
+            with self.assertRaises(FileExistsError): builder.build(root,sha,first)
+            # Owner inventory acceptance cannot authorize paths outside the fixed layout.
+            expected['files'][0]['path'] = '../outside'
+            with self.assertRaises(ValueError): provision.validate_inventory(first,expected,sha)

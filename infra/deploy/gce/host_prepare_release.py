@@ -87,13 +87,13 @@ class Preparation:
         directory = REGISTRY; self.pins.directory(directory,0o700)
         require(os.listdir(directory) == ['config.json'])
         raw = self.pins.read(directory+'/config.json'); require(p.digest(raw) == self.a['registry_config_sha256'])
-        config_auth = p.strict_json(raw); p.exact(config_auth,('auths',)); require(type(config_auth['auths']) is dict)
-        for registry,credentials in config_auth['auths'].items():
-            require(p.match(registry,r'[a-z0-9.-]+(?::[0-9]+)?'))
-            p.exact(credentials,('auth',)); require(type(credentials['auth']) is str and 1 <= len(credentials['auth']) <= 65536)
         identity = os.stat(directory+'/config.json',follow_symlinks=False)
         journal = None
         try:
+            config_auth = p.strict_json(raw); p.exact(config_auth,('auths',)); require(type(config_auth['auths']) is dict)
+            for registry,credentials in config_auth['auths'].items():
+                require(p.match(registry,r'[a-z0-9.-]+(?::[0-9]+)?'))
+                p.exact(credentials,('auth',)); require(type(credentials['auth']) is str and 1 <= len(credentials['auth']) <= 65536)
             # Installer owns operation.lock: call outside both preparation locks.
             value = p.strict_json(self.run([BIN+'/deploy.sh','install',self.a['source_sha']],300))
             require(type(value) is dict and value.get('status') == 'passed' and value.get('source_sha') == self.a['source_sha'] and
@@ -154,18 +154,20 @@ class Preparation:
             prior.get('images') == {role:{'reference':value['reference'],'image_id':value['image_id'],'platform':'linux/amd64'} for role,value in manifest['images'].items()})
         self.pins.directory('/run/autodata/postgres',0o500,999,999)
         require(os.listdir('/run/autodata/postgres') == ['POSTGRES_PASSWORD'])
-        normal = secret(self.pins.read('/run/autodata/postgres/POSTGRES_PASSWORD',0o400,16384,999,999))
+        normal = self.pins.read('/run/autodata/postgres/POSTGRES_PASSWORD',0o400,16384,999,999)
         self.pins.directory('/run/autodata/migration',0o500,1000,1000)
         require(os.listdir('/run/autodata/migration') == ['PGPASSWORD'])
-        migration = secret(self.pins.read('/run/autodata/migration/PGPASSWORD',0o400,16384,1000,1000))
+        migration = self.pins.read('/run/autodata/migration/PGPASSWORD',0o400,16384,1000,1000)
         directory = '/run/autodata/database-bootstrap'; self.pins.directory(directory,0o700)
         require(sorted(os.listdir(directory)) == sorted(name+'-password' for name in ROLE_FILES))
-        passwords = {name:secret(self.pins.read(directory+'/'+name+'-password',maximum=16384)) for name in ROLE_FILES}
-        require(passwords['admin'] == normal and passwords['migrator'] == migration)
+        passwords = {name:self.pins.read(directory+'/'+name+'-password',maximum=16384) for name in ROLE_FILES}
         cleanup_paths = [(directory+'/'+name+'-password',os.stat(directory+'/'+name+'-password',follow_symlinks=False)) for name in ROLE_FILES]
         cleanup_paths += [('/run/autodata/migration/PGPASSWORD',os.stat('/run/autodata/migration/PGPASSWORD',follow_symlinks=False))]
-        journal = None; created = False
+        journal = None
         try:
+            secret(normal); secret(migration)
+            for value in passwords.values(): secret(value)
+            require(passwords['admin'] == normal and passwords['migrator'] == migration)
             make_state()
             with p.locked(p.RUN+'/state/operation.lock'), p.locked(p.DATA+'/operations/activation.lock'):
                 self.prerequisites(); resume = self.a['resume'] is not None; self.no_applications(resume)
@@ -186,7 +188,7 @@ class Preparation:
                     for name in ('compose.production.yaml','Caddyfile'):
                         lifecycle.materialize(installed_pins,target,name,bundle[name].encode())
                 journal = p.Journal(self.a); journal.value.update(manifest_raw_sha256=self.a['manifest_raw_sha256'],image_cache_receipt_sha256=self.a['image_cache_receipt_sha256']); journal.save()
-                self.compose(['up','-d','--no-deps','--pull','never','postgres']); created = True; journal.stage('postgres-created')
+                self.compose(['up','-d','--no-deps','--pull','never','postgres']); journal.stage('postgres-created')
                 end = min(self.deadline,time.monotonic()+120)
                 while True:
                     try:

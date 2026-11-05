@@ -228,6 +228,13 @@ def make_directory(path,mode=0o700,uid=0,gid=0):
         value = os.lstat(path); require(stat.S_ISDIR(value.st_mode) and value.st_uid == uid and value.st_gid == gid and stat.S_IMODE(value.st_mode) == mode); return
     os.chown(path,uid,gid); os.chmod(path,mode)
 
+def tighten_mount_root():
+    fd = os.open(DATA,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW|os.O_CLOEXEC)
+    try:
+        value = os.fstat(fd); require(value.st_uid == value.st_gid == 0 and not value.st_mode & 0o022)
+        os.fchmod(fd,0o700); os.fsync(fd)
+    finally: os.close(fd)
+
 def write_new(path,data,mode=0o600):
     fd = os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW|os.O_CLOEXEC,mode)
     try:
@@ -377,6 +384,7 @@ class Provision:
         observations = [strict_json(self.run(['/usr/bin/findmnt','--json','--list','--mountpoint',target,'--output','TARGET,UUID,FSTYPE,OPTIONS'])) for target in (DATA,RUN)]
         rt.validate_mount_observations(self.config,*observations)
         require(observations[0]['filesystems'][0]['fstype'] == 'ext4' and {'nodev','nosuid'} <= set(observations[0]['filesystems'][0]['options'].split(',')))
+        tighten_mount_root()
         self.pins.directory(DATA,0o700); self.pins.directory(RUN,0o700)
         for name,uid in (('postgres',999),('caddy',0),('nats',1000),('seaweedfs',1000),('operations',0)): make_directory(DATA+'/'+name,0o700,uid,uid)
         journal.stage('mounted')
