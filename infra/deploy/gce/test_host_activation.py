@@ -124,7 +124,7 @@ class LifecycleTests(FileTests):
             Path(path).mkdir(mode=0o700)
         self.config = {'resources': {'data_disk_filesystem_uuid': 'synthetic'}}
         self.manifest = {'source_sha': SHA, 'rollback_source_sha': None,
-                         'images': {name: {'image_id': 'sha256:' + name} for name in ('api','ingestion','caddy','postgres','nats','minio')}}
+                         'images': {name: {'image_id': 'sha256:' + name, 'reference': name + '@sha256:' + 'd'*64} for name in ('api','ingestion','caddy','postgres','nats','minio')}}
         self.events = []; self.graph = {}; self.failed_ready = False; self.failed_reload = False
         self.fail_recovery = False
         for name, value in (('host.json', json.dumps(self.config).encode()),):
@@ -137,6 +137,9 @@ class LifecycleTests(FileTests):
             if sha == OLD: value['rollback_source_sha'] = None
             return value, self.config
         self.rt = types.SimpleNamespace(
+            IMAGE_ROLES=tuple(self.manifest['images']),
+            validate_guard_tables=lambda *args: True,
+            validate_cached_images=lambda *args: True,
             SERVICE_INSPECT_TEMPLATE='fixed-full-inspection',
             _runtime_rendered_compose=lambda *a: {'services':{s:{} for s in ('api','ingestion-http','article-worker','payment-reconciler','postgres','nats','minio','caddy')}},
             _validate_service_container=lambda *a, **k: a[3],
@@ -171,11 +174,14 @@ class LifecycleTests(FileTests):
     def execute(self, argv, **kwargs):
         self.events.append(argv)
         self.assertLessEqual(kwargs.get('timeout', 5), 30)
-        if argv[0] == '/usr/bin/findmnt': return b'{}'
+        if argv[0] in ('/usr/bin/findmnt','/usr/sbin/nft'): return b'{}'
         self.assertEqual(argv[:3], ['/usr/bin/docker','--host','unix:///var/run/docker.sock'])
         if argv[3:5] == ['container','ls']:
             return ('\n'.join(self.graph) + ('\n' if self.graph else '')).encode()
-        if argv[3:5] == ['image','inspect']: return b'null'
+        if argv[3:5] == ['image','inspect']:
+            if argv[-2] == '{{json .Config.Entrypoint}}': return b'null'
+            role = argv[-1].split('@')[0]
+            return json.dumps({'image_id':self.manifest['images'][role]['image_id'],'repo_digests':[argv[-1]],'os':'linux','architecture':'amd64','variant':''}).encode()
         if argv[3:5] == ['container','inspect']:
             return json.dumps(self.graph[argv[-1]]).encode()
         if argv[3:5] == ['exec','--user']:
@@ -316,7 +322,7 @@ class RecoveryBoundaryTests(LifecycleTests):
         self.assertEqual(self.edge.read_bytes(),b'')
 
     def test_missing_disk_and_cache_never_run_compose(self):
-        for method in ('validate_mount_observations','collect_cached_images'):
+        for method in ('validate_mount_observations','validate_cached_images'):
             with self.subTest(method=method), patch.object(self.rt,method,side_effect=ValueError('private')):
                 code,receipt = self.start()
                 self.assertEqual(code,3,receipt)
@@ -363,8 +369,16 @@ class ReviewRegressionTests(LifecycleTests):
         self.assertTrue(all(not value['running'] for value in self.graph.values() if value['service'] not in ('postgres','nats','minio')))
 
     def test_guard_timeout_before_mutation_preserves_timeout_exit(self):
-        self.rt.guard_cli = lambda: (5,{'failure_code':'operation_timed_out'})
-        code,receipt = self.start()
+        with patch.object(self.a.Lifecycle,'guards',return_value=(5,{'failure_code':'operation_timed_out'})):
+            code,receipt = self.start()
         self.assertEqual(code,5,receipt)
         self.assertEqual(receipt['failure_code'],'operation_timed_out')
         self.assertEqual(self.edge.read_bytes(),b'')
+
+class BoundedObservationTests(LifecycleTests):
+    def test_lifecycle_does_not_call_legacy_unbounded_collectors(self):
+        self.rt.guard_cli = lambda: (_ for _ in ()).throw(AssertionError('legacy guard collector'))
+        self.rt.collect_cached_images = lambda *args: (_ for _ in ()).throw(AssertionError('legacy image collector'))
+        code,receipt = self.start()
+        self.assertEqual(code,0,receipt)
+        self.assertTrue(any(isinstance(x,list) and x[:3] == ['/usr/sbin/nft','--json','--numeric'] for x in self.events))
