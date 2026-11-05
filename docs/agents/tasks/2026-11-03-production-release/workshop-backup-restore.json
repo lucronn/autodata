@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "task_id": "workshop-backup-restore",
+  "state": "review_with_blocked_complete_fixture_proof",
+  "record_ref": "docs/agents/records/2026-11-05-workshop-backup-restore.json",
+  "pre_implementation_record": {
+    "goal": "Implement the missing fixed Workshop backup lease/export and isolated restore helpers, with retained disposable local fixture proof.",
+    "plan_ref": "docs/superpowers/plans/2026-11-05-workshop-backup-restore.md",
+    "issue_ref": "https://github.com/lucronn/autodata/issues/308",
+    "project_ref": "https://github.com/users/lucronn/projects/8",
+    "repository_doc_refs": [
+      "docs/operations/workshop-backup-restore.md"
+    ],
+    "todo": [
+      "Add failing lease, lock, ordering, timeout, crash/watchdog, export-integrity and isolated-restore guard tests against the existing backup receipt/export contract.",
+      "Implement fixed local backup begin/status/export/resume helpers and bounded lease watchdog using installed release, disk, guard, secrets and shared operation locks.",
+      "Implement isolated restore/validate helpers that restore the portable dump into fresh disposable PostgreSQL, reject production targets and validate exact schema/data/object evidence without provider calls.",
+      "Run retained disposable PostgreSQL/SeaweedFS/NATS fixture recovery proof, failure injection and cleanup verification; distinguish local portable proof from cloud snapshot and full restore-drill evidence.",
+      "Run affected host/cloud regressions, syntax/scope checks and exact-base preflight; commit/push coherent milestones and synchronize exact candidate evidence for independent review."
+    ],
+    "status": "synchronized",
+    "updated_at": "2026-11-05T10:58:12.349490Z",
+    "source_baseline": "5d14c891e8efd14a297b07e482304ea2a6b9cd7f",
+    "parent_issue_ref": "https://github.com/lucronn/autodata/issues/186",
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhGPueE",
+    "intended_implementation_allowlist": [
+      "infra/deploy/gce/backup-host.sh",
+      "infra/deploy/gce/backup_restore.py",
+      "infra/deploy/gce/restore.sh",
+      "infra/deploy/gce/autodata-backup-resume.service",
+      "infra/deploy/gce/autodata-backup-resume.timer",
+      "infra/deploy/gce/test_backup_restore.py",
+      "scripts/dev/workshop_backup_restore_fixture.py",
+      "scripts/dev/test_workshop_backup_restore_fixture.py"
+    ],
+    "task_ref": "docs/agents/tasks/2026-11-03-production-release/workshop-backup-restore.json"
+  },
+  "implementation_allowlist": [
+    "infra/deploy/gce/backup-host.sh",
+    "infra/deploy/gce/backup_restore.py",
+    "infra/deploy/gce/restore.sh",
+    "infra/deploy/gce/autodata-backup-resume.service",
+    "infra/deploy/gce/autodata-backup-resume.timer",
+    "infra/deploy/gce/test_backup_restore.py",
+    "scripts/dev/workshop_backup_restore_fixture.py",
+    "scripts/dev/test_workshop_backup_restore_fixture.py"
+  ],
+  "implementation_authorized": true,
+  "denials": [
+    "live cloud mutation",
+    "IAM/WIF",
+    "snapshot creation",
+    "remote SSH",
+    "production data or secrets",
+    "host installation or unit activation",
+    "provider or payment calls",
+    "workflow enablement",
+    "deployment/DNS/cutover"
+  ],
+  "implementation_result": {
+    "state": "review_with_blocked_complete_fixture_proof",
+    "branch": "codex/workshop-backup-restore-build",
+    "verification_ref": "docs/verification/2026-11-05-workshop-backup-restore.md",
+    "tests_passed": 396,
+    "fixture_complete": false,
+    "blocker": "Pinned SeaweedFS Mini source stop exceeded45 seconds, Exit137 without OOM; final candidate complete fixture proof unavailable.",
+    "candidate_pin_ref": "https://github.com/lucronn/autodata/issues/308",
+    "production_recovery_verified": false
+  },
+  "authorization_basis": "Coordinator exact-base dispatch from gate receipt056a0db74bb252cd7e53fa1c21d65ecdfa973d69; scope denials unchanged."
+}
