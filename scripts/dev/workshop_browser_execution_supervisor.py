@@ -211,6 +211,7 @@ def reduce(state: dict, event: c.Event) -> tuple[dict, tuple[dict, ...]]:
             _fail(next_state, "recovery_blocked", "broker_unavailable_no_client_fallback")
         elif (state["holder"] == "supervisor" and p["expected_epoch"] == state["epoch"]
               and event.monotonic_ns >= state["lease_until_ns"] and state["fence_pending"] is None):
+            _fail(next_state, "interrupted", "supervisor_lease_expired")
             next_state["fence_pending"] = state["epoch"] + 1
             actions = (_journal_action(next_state, "fence_advance", "fence:" + str(state["epoch"] + 1)),)
     elif event.kind == "fence_fsynced":

@@ -650,3 +650,22 @@ def test_fresh_watchdog_cleanup_observation_can_finish_without_upgrading_failure
     assert 'cleanup' in st['completed_actions'] and st['pending'] is None
     assert st['status']=='interrupted' and not st['pass'] and st['new_case_credit']==0
     assert st['cleanup_deadline_ns']==end and not actions
+
+
+@pytest.mark.parametrize('delay',[1,60_000_000_000,120_000_000_000-1,120_000_000_000,120_000_000_000+1])
+def test_takeover_freezes_cancellation_before_delayed_fence_ack(delay):
+    st=state(); takeover_ns=1100
+    st,actions=s.reduce(st,event('takeover',takeover_ns,expected_epoch=1))
+    end=takeover_ns+120*s.NS
+    assert st['cleanup_deadline_ns']==st['phase_deadline_ns']==end
+    assert st['status']=='interrupted' and st['epoch']==1 and st['holder']=='supervisor'
+    assert st['fence_pending']==2 and actions[0]['deadline_ns']==end
+    st,actions=s.reduce(st,event('fence_fsynced',takeover_ns+delay,epoch=2,sequence=1))
+    assert st['cleanup_deadline_ns']==st['phase_deadline_ns']==end
+    if delay<120*s.NS:
+        assert st['epoch']==2 and st['holder']=='watchdog_cleanup'
+        assert st['lease_until_ns']==end
+    else:
+        assert st['epoch']==1 and st['holder']=='supervisor' and not actions
+    assert st['failure_reasons'][0]=='supervisor_lease_expired'
+    assert not st['pass'] and st['new_case_credit']==0
