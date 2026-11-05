@@ -55,7 +55,7 @@ class IngestionSmokeContractTests(unittest.TestCase):
     def test_protected_workflow_runs_live_fast_lane_smoke_with_cleanup(self):
         workflow = (ROOT / ".github/workflows/autonomous-verification.yml").read_text()
 
-        self.assertIn("timeout-minutes: 20", workflow)
+        self.assertIn("timeout-minutes: 30", workflow)
         self.assertIn("Run live Compose fast-lane smoke", workflow)
         self.assertIn(
             "docker compose -f infra/compose/compose.yaml -f infra/compose/compose.ci.yaml "
