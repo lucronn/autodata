@@ -28,6 +28,14 @@ STATE = '/var/lib/autodata-staging-operator'
 BIN = '/opt/autodata/bin'
 PHASES = ('bootstrap', 'provision-check', 'provision', 'install', 'images', 'database', 'private', 'start', 'check')
 SERVICES = ('api', 'ingestion-http', 'article-worker', 'payment-reconciler', 'outbox-relay')
+# Frozen helper budgets include their existing cleanup reserves. Bootstrap
+# reads its owner token for up to30s before starting the1800s cloud budget.
+HELPER_LIMITS = {'bootstrap': 1830, 'provision-check': 900, 'provision': 900,
+                 'install': 300, 'images': 2400, 'database': 2400,
+                 'private': 330, 'start': 120, 'check': 120}
+WRAPPER_MARGIN = 180
+TRANSPORT_MARGIN = 180
+MAX_PROCESS_SECONDS = max(max(1800, value+WRAPPER_MARGIN)+TRANSPORT_MARGIN for value in HELPER_LIMITS.values())
 READINESS = ('config', 'manifest', 'disk_uuid', 'metadata_guard', 'storage_guard', 'secrets', 'cached_images',
              'migration_tree', 'schema', 'services', 'postgres', 'nats', 's3', 'no_work', 'runtime_evidence')
 MIB = 1048576
@@ -107,19 +115,39 @@ def validate_config(value, source, *, bootstrap=False):
     except (ValueError, TypeError, AttributeError): raise Rejected() from None
 
 
-def _run_process(argv, *, input_data=None, timeout=120, maximum=65536):
+def phase_timeout(phase, *, workstation):
+    require(phase in HELPER_LIMITS and type(workstation) is bool)
+    wrapper = max(1800, HELPER_LIMITS[phase]+WRAPPER_MARGIN)
+    return wrapper + (TRANSPORT_MARGIN if workstation else 0)
+
+
+def _bootstrap_descriptor(argv, approved):
+    require(type(approved) is bool)
+    if not approved: return ()
+    require(argv == [TOOLS['cloud-bootstrap.sh'], 'apply'])
+    try:
+        value = os.fstat(3)
+        require(stat.S_ISFIFO(value.st_mode))
+        require(fcntl.fcntl(3, fcntl.F_GETFL) & os.O_ACCMODE == os.O_RDONLY)
+    except OSError: raise Rejected() from None
+    return (3,)
+
+
+def _run_process(argv, *, input_data=None, timeout=120, maximum=65536, bootstrap_token=False):
     """Finite argv, bounded combined output, process-group deadline and cleanup.
 
     Child stderr is intentionally never returned or persisted, including errors.
     The supplied environment has no ambient proxy, token or SSH agent discovery.
     """
     require(type(argv) is list and argv and all(type(arg) is str and '\x00' not in arg for arg in argv))
-    require(argv[0].startswith('/') and 0 < timeout <= 1800 and 0 < maximum <= 70*MIB)
+    require(argv[0].startswith('/') and 0 < timeout <= MAX_PROCESS_SECONDS and 0 < maximum <= 70*MIB)
     require(input_data is None or type(input_data) is bytes and len(input_data) <= 70*MIB)
+    approved_fds = _bootstrap_descriptor(argv, bootstrap_token)
     end = time.monotonic() + timeout
     try:
         process = subprocess.Popen(argv, stdin=subprocess.PIPE if input_data is not None else subprocess.DEVNULL,
-                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd='/', env=ENV, start_new_session=True)
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd='/', env=ENV, start_new_session=True,
+                                   close_fds=True, pass_fds=approved_fds)
     except OSError: raise Incomplete() from None
     output, total = bytearray(), 0
     try:
@@ -157,7 +185,7 @@ def _run_process(argv, *, input_data=None, timeout=120, maximum=65536):
         process.wait(timeout=2)
 
 
-def run_process(argv, *, input_data=None, timeout=120, maximum=65536):
+def run_process(argv, *, input_data=None, timeout=120, maximum=65536, bootstrap_token=False):
     previous_handler = signal.getsignal(signal.SIGTERM)
     previous_mask = signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGTERM})
     require(signal.SIGTERM not in previous_mask)
@@ -165,7 +193,7 @@ def run_process(argv, *, input_data=None, timeout=120, maximum=65536):
     try:
         signal.signal(signal.SIGTERM, cancelled)
         signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
-        return _run_process(argv, input_data=input_data, timeout=timeout, maximum=maximum)
+        return _run_process(argv, input_data=input_data, timeout=timeout, maximum=maximum, bootstrap_token=bootstrap_token)
     finally:
         signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGTERM})
         signal.signal(signal.SIGTERM, previous_handler)
@@ -586,7 +614,8 @@ def operate(phase, source):
                 if phase == 'bootstrap':
                     # Preserve bootstrap's installed fixed-input authority.
                     _bound(pins.read(HOST_APPROVALS[phase]), approval['inputs']['host_approval_sha256'])
-                    output = run_process([TOOLS['cloud-bootstrap.sh'], 'apply'], timeout=1800)
+                    output = run_process([TOOLS['cloud-bootstrap.sh'], 'apply'],
+                        timeout=phase_timeout('bootstrap', workstation=True), bootstrap_token=True)
                     result = object_json(output); validate_bootstrap_receipt(result, config)
                 else:
                     described = object_json(run_process([TOOLS['gcloud'], '--quiet', 'compute', 'instances', 'describe',
@@ -602,7 +631,8 @@ def operate(phase, source):
                     data = len(control).to_bytes(4, 'big')+control
                     if phase == 'private': data += read_pipe(0, maximum=MIB, timeout=120)
                     pins.recheck()
-                    output = run_process(host_argv(config, phase, source, service), input_data=data, timeout=1800)
+                    output = run_process(host_argv(config, phase, source, service), input_data=data,
+                        timeout=phase_timeout(phase, workstation=True))
                     result = object_json(output)
                     validate_receipt(phase, result, source, config['service_config_sha256'], service)
                     if phase in ('provision', 'images', 'database'):
@@ -706,7 +736,8 @@ def host_phase(phase, source):
         command = commands[phase]
         if command[0].endswith('.py'): command = ['/usr/bin/python3', '-I']+command
         pins.recheck()
-        output = run_process(command, input_data=opaque if phase == 'private' else None, timeout=1800)
+        output = run_process(command, input_data=opaque if phase == 'private' else None,
+            timeout=phase_timeout(phase, workstation=False))
         result = object_json(output)
         # Existing helper owns its locking, journal and checks. The dispatcher
         # cannot convert a failing or malformed helper response into success.

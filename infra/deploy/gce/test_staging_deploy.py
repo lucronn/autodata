@@ -362,3 +362,80 @@ class ActualSSHConfiguration(unittest.TestCase):
         self.assertEqual(actual['identitiesonly'], 'yes')
         self.assertEqual(actual['forwardagent'], 'no')
         self.assertIn('/usr/bin/gcloud --quiet compute start-iap-tunnel workshop-staging 22 --listen-on-stdin', actual['proxycommand'])
+
+class BootstrapDescriptorRegression(unittest.TestCase):
+    def child(self, descriptor_kind, approved):
+        import os
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            helper = Path(folder)/'bootstrap'
+            helper.write_text('#!/usr/bin/python3 -I\nimport importlib.util,os\n'
+                's=importlib.util.spec_from_file_location("bootstrap", '+repr(str(HERE/'staging_bootstrap.py'))+')\n'
+                'b=importlib.util.module_from_spec(s); s.loader.exec_module(b)\n'
+                'assert b.read_token() == "owner-token"\n'
+                'try: os.fstat(19)\nexcept OSError: pass\nelse: raise AssertionError("unapproved FD inherited")\n'
+                'print("bootstrap-token-accepted")\n')
+            helper.chmod(0o700)
+            # Child owns FD3 so unittest's own descriptors are never replaced.
+            driver = '''import importlib.util,os,sys
+s=importlib.util.spec_from_file_location('op', MODULE)
+op=importlib.util.module_from_spec(s); s.loader.exec_module(op)
+op.TOOLS=dict(op.TOOLS, **{'cloud-bootstrap.sh': HELPER})
+if KIND == 'regular':
+ fd=os.open('/dev/null',os.O_RDONLY)
+else:
+ r,w=os.pipe()
+ os.write(w,b'owner-token')
+ fd = w if KIND == 'write-only' else r
+ os.dup2(fd,3)
+ if w != 3: os.close(w)
+ if r != 3: os.close(r)
+if KIND == 'regular':
+ os.dup2(fd,3)
+ if fd != 3: os.close(fd)
+extra=os.open('/dev/null',os.O_RDONLY)
+os.dup2(extra,19,inheritable=True)
+if extra != 19: os.close(extra)
+try:
+ result=op.run_process([HELPER,'apply'],timeout=2,bootstrap_token=APPROVED)
+ print(result.decode().strip())
+except op.Rejected:
+ print('rejected'); raise SystemExit(2)
+except op.Incomplete:
+ print('incomplete'); raise SystemExit(6)
+'''
+            driver = driver.replace('MODULE', repr(str(HERE/'staging_deploy.py'))).replace('HELPER', repr(str(helper))).replace('KIND', repr(descriptor_kind)).replace('APPROVED', repr(approved))
+            return subprocess.run([sys.executable, '-I', '-c', driver], capture_output=True, timeout=4)
+
+    def test_only_explicit_bootstrap_fifo_reaches_real_frozen_token_reader(self):
+        result = self.child('read-only', True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), b'bootstrap-token-accepted')
+        for kind, approved, code in [('read-only', False, 6), ('write-only', True, 2), ('regular', True, 2)]:
+            with self.subTest(kind=kind, approved=approved):
+                result = self.child(kind, approved)
+                self.assertEqual(result.returncode, code, result.stderr)
+                self.assertNotIn(b'owner-token', result.stdout+result.stderr)
+
+    def test_descriptor_opt_in_rejects_nonbootstrap_command(self):
+        op = load()
+        with self.assertRaises(op.Rejected):
+            op.run_process(['/usr/bin/python3', '-I', '-c', 'print("forbidden")'], bootstrap_token=True)
+
+
+class PhaseDeadlineRegression(unittest.TestCase):
+    def test_preparation_wrapper_outlives_frozen_helper_with_transport_margin(self):
+        import time
+        op = load(); helper = op._sibling('host_prepare_release')
+        started = time.monotonic(); preparation = helper.Preparation(None, None, None, None)
+        actual = preparation.deadline-started
+        for phase in ('images', 'database'):
+            wrapper = op.phase_timeout(phase, workstation=False)
+            workstation = op.phase_timeout(phase, workstation=True)
+            self.assertGreaterEqual(wrapper, actual+120)
+            self.assertGreaterEqual(workstation, wrapper+120)
+            self.assertEqual(op.run_process(['/usr/bin/python3', '-I', '-c', 'print("bounded")'], timeout=workstation), b'bounded\n')
+        # Bootstrap's token-reader has its own30-second budget before the
+        # frozen bootstrap engine starts its1800-second resource deadline.
+        self.assertGreaterEqual(op.phase_timeout('bootstrap', workstation=True), 30+1800+120)
+        with self.assertRaises(op.Rejected): op.phase_timeout('arbitrary', workstation=True)
