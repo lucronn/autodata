@@ -31,11 +31,11 @@ Source baseline: `5d14c891e8efd14a297b07e482304ea2a6b9cd7f`.
 
 ## Concrete todo (synchronized with Issue/record/canonical document)
 
-- [ ] Add failing lease, lock, ordering, timeout, crash/watchdog, export-integrity and isolated-restore guard tests against the existing backup receipt/export contract.
-- [ ] Implement fixed local backup begin/status/export/resume helpers and bounded lease watchdog using installed release, disk, guard, secrets and shared operation locks.
-- [ ] Implement isolated restore/validate helpers that restore the portable dump into fresh disposable PostgreSQL, reject production targets and validate exact schema/data/object evidence without provider calls.
+- [x] Add failing lease, lock, ordering, timeout, crash/watchdog, export-integrity and isolated-restore guard tests against the existing backup receipt/export contract.
+- [x] Implement fixed local backup begin/status/export/resume helpers and bounded lease watchdog using installed release, disk, guard, secrets and shared operation locks.
+- [x] Implement isolated restore/validate helpers that restore the portable dump into fresh disposable PostgreSQL, reject production targets and validate exact schema/data/object evidence without provider calls.
 - [ ] Run retained disposable PostgreSQL/SeaweedFS/NATS fixture recovery proof, failure injection and cleanup verification; distinguish local portable proof from cloud snapshot and full restore-drill evidence.
-- [ ] Run affected host/cloud regressions, syntax/scope checks and exact-base preflight; commit/push coherent milestones and synchronize exact candidate evidence for independent review.
+- [x] Run affected host/cloud regressions, syntax/scope checks and exact-base preflight; commit/push coherent milestones and synchronize exact candidate evidence for independent review.
 
 ## File map and shared interfaces
 
@@ -136,3 +136,7 @@ self.assertEqual(run_backup('resume', RUN_ID, host, store, clock)[0], 0)
 At source baseline, helpers/watchdog files are absent, `cloud-ops.py` is an offline simulation, and backup/monitor workflows explicitly exit3. Baseline `python3 -m unittest discover -s infra/deploy/gce -p 'test_cloud_ops.py' -q` passed57 tests. No implementation, Docker, provider or cloud operation was executed during planning.
 
 The machine preflight is run after this document/record/spec are committed; the receipt pins the full gate SHA. Gate readiness is scope readiness only. Coordinator adoption and fresh implementation dispatch remain required.
+
+## Implementation review checkpoint
+
+Implementation is on `codex/workshop-backup-restore-build`, isolated from the gate checkout. See `docs/verification/2026-11-05-workshop-backup-restore.md` for exact code hashes, 394 passing local tests, retained historical recovery/negative evidence and final attempt8's fail-closed stop rejection. Complete current-source fixture proof remains blocked by cached SeaweedFS Mini shutdown Exit137; it is not a pass or skip. The fixture todo stays open. Detailed design checklists above retain their original acceptance requirements; the verification matrix records actual executed coverage rather than claiming every planned assertion was separately exercised. Issue308 records the final candidate SHA and Project Review status. Parent186 remains open.

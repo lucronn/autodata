@@ -1,6 +1,6 @@
 # Workshop local backup and isolated restore contract
 
-Status: planned implementation; no live recovery or production-readiness claim.
+Status: implementation pending independent review; complete local fixture proof blocked by pinned SeaweedFS Mini shutdown. No live recovery or production-readiness claim.
 Parent [#186](https://github.com/lucronn/autodata/issues/186); delivery [#308](https://github.com/lucronn/autodata/issues/308); [Project #8](https://github.com/users/lucronn/projects/8).
 Plan: `docs/superpowers/plans/2026-11-05-workshop-backup-restore.md`.
 Source baseline: `5d14c891e8efd14a297b07e482304ea2a6b9cd7f`.
@@ -9,7 +9,7 @@ Source baseline: `5d14c891e8efd14a297b07e482304ea2a6b9cd7f`.
 
 Implement the missing fixed Workshop backup lease/export and isolated restore helpers, with retained disposable local fixture proof. The prior hosting plan defines the overall cold-snapshot operation; this document specifies the missing local path only. Existing `cloud-ops.py` backup evaluation is simulation. Existing backup/monitor workflows terminate with exit3 and remain so. No successful local receipt advances a cloud last-verified-backup timestamp.
 
-Eight prospective implementation paths are owned exclusively by this leaf: `infra/deploy/gce/backup-host.sh`, `backup_restore.py`, `restore.sh`, `autodata-backup-resume.service`, `autodata-backup-resume.timer`, `test_backup_restore.py`, and `scripts/dev/workshop_backup_restore_fixture.py`, `test_workshop_backup_restore_fixture.py` (the latter two use their full scripts/dev prefix). No changes to host installation, deploy/activation, shared runtime schema/renderer, cloud operations or GitHub workflows are included. Installing these files, changing sudoers, activating units and any real host run require a separate reviewed host-install scope. If an existing shared contract cannot support the implementation, stop and amend this gate before touching another path.
+Eight implementation paths are owned exclusively by this leaf: `infra/deploy/gce/backup-host.sh`, `backup_restore.py`, `restore.sh`, `autodata-backup-resume.service`, `autodata-backup-resume.timer`, `test_backup_restore.py`, and `scripts/dev/workshop_backup_restore_fixture.py`, `test_workshop_backup_restore_fixture.py` (the latter two use their full scripts/dev prefix). No changes to host installation, deploy/activation, shared runtime schema/renderer, cloud operations or GitHub workflows are included. Installing these files, changing sudoers, activating units and any real host run require a separate reviewed host-install scope. If an existing shared contract cannot support the implementation, stop and amend this gate before touching another path.
 
 ## Backup helper
 
@@ -43,11 +43,11 @@ Timeout for the entire disposable local proof is900seconds, including120seconds 
 
 ## Concrete todo
 
-- [ ] Add failing lease, lock, ordering, timeout, crash/watchdog, export-integrity and isolated-restore guard tests against the existing backup receipt/export contract.
-- [ ] Implement fixed local backup begin/status/export/resume helpers and bounded lease watchdog using installed release, disk, guard, secrets and shared operation locks.
-- [ ] Implement isolated restore/validate helpers that restore the portable dump into fresh disposable PostgreSQL, reject production targets and validate exact schema/data/object evidence without provider calls.
+- [x] Add failing lease, lock, ordering, timeout, crash/watchdog, export-integrity and isolated-restore guard tests against the existing backup receipt/export contract.
+- [x] Implement fixed local backup begin/status/export/resume helpers and bounded lease watchdog using installed release, disk, guard, secrets and shared operation locks.
+- [x] Implement isolated restore/validate helpers that restore the portable dump into fresh disposable PostgreSQL, reject production targets and validate exact schema/data/object evidence without provider calls.
 - [ ] Run retained disposable PostgreSQL/SeaweedFS/NATS fixture recovery proof, failure injection and cleanup verification; distinguish local portable proof from cloud snapshot and full restore-drill evidence.
-- [ ] Run affected host/cloud regressions, syntax/scope checks and exact-base preflight; commit/push coherent milestones and synchronize exact candidate evidence for independent review.
+- [x] Run affected host/cloud regressions, syntax/scope checks and exact-base preflight; commit/push coherent milestones and synchronize exact candidate evidence for independent review.
 
 ## Owner inputs and remaining release evidence
 
@@ -56,3 +56,7 @@ Local implementation uses synthetic identifiers and cached verified image IDs. I
 ## Synchronized planning checkpoint
 
 Gate `90bc004386a8b48afac98886108c91f0484c2925` is committed/pushed on `codex/workshop-backup-restore-plan`. Full-SHA preflight returned exit0, `status: synchronized`, errors `[]`; baseline cloud-ops57 tests passed. Actual Issue308 child link and Project8 item `PVTI_lAHOCSJ8cc4BiQ2BzhGPueE` references/all five todos were read back. [Exact pin](https://github.com/lucronn/autodata/issues/308#issuecomment-6656294952). Machine receipt: `docs/agents/records/2026-11-05-workshop-backup-restore-preflight.json`. No implementation or runtime operation was performed. Coordinator review and fresh dispatch remain required.
+
+## Implementation review checkpoint
+
+Implementation is on `codex/workshop-backup-restore-build`, isolated from the gate checkout. See `docs/verification/2026-11-05-workshop-backup-restore.md` for exact code hashes, 394 passing local tests, retained historical recovery/negative evidence and final attempt8's fail-closed stop rejection. Complete current-source fixture proof remains blocked by cached SeaweedFS Mini shutdown Exit137; it is not a pass or skip. The fixture todo stays open. Detailed design checklists above retain their original acceptance requirements; the verification matrix records actual executed coverage rather than claiming every planned assertion was separately exercised. Issue308 records the final candidate SHA and Project Review status. Parent186 remains open.
