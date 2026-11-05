@@ -720,7 +720,16 @@ def api21_body(raw, source, *, image=False, reason=None, json_required=True):
         return isinstance(value,str) and bool(re.search(r'(?i)(bearer |__Host-autodata_session=|eyJ[A-Za-z0-9_-]+\.eyJ)',value))
     text=raw.decode('utf-8',errors='replace')
     raw_secret=any(secret.fullmatch(key) for key in re.findall(r'[\"\']([^\"\']+)[\"\']\s*:',text))
-    if sensitive(parsed) or sensitive(text) or raw_secret:body['reason']='secret_detected';return body
+    # A malformed outer entity can still contain valid escaped JSON strings.
+    # Decode those strings independently so escaped secret keys/tokens cannot
+    # bypass the privacy check merely because the full entity did not parse.
+    escaped_secret=False
+    for match in re.finditer(r'"(?:\\.|[^"\\])*"',text):
+        try:value=api21_load(match.group().encode('utf-8'))
+        except (ValueError,UnicodeError,TypeError,RecursionError):continue
+        if sensitive(value) or secret.fullmatch(value) and text[match.end():].lstrip().startswith(':'):
+            escaped_secret=True;break
+    if sensitive(parsed) or sensitive(text) or raw_secret or escaped_secret:body['reason']='secret_detected';return body
     return dict(body,availability='retained',byte_source=source,encoding='base64',
         base64=base64.b64encode(raw).decode('ascii'),length=len(raw),
         sha256=hashlib.sha256(raw).hexdigest(),parsed=parsed,reason=decode_reason)
@@ -819,7 +828,7 @@ class APIObservations:
         self.binding=dict(binding);self.primary=None
         self.status='partial';self.publication='not_attempted';self.phase='setup'
         self.clock=clock;self.start=clock();self.max_events=min(max_events,512)
-        self.max_bytes=min(max_bytes,1048576);self.tasks=set();self.counts={};self.pending={};self.started_counts={};self.capturing=set()
+        self.max_bytes=min(max_bytes,1048576);self.tasks=set();self.counts={};self.pending={};self.started_counts={};self.capturing=set();self.responses={}
         self._slots=[None]*self.max_events;self._count=0;self.last=self.start
         self.reserve=bytearray(16384);self.scope={};self.owner_scope=None
     @property
@@ -902,12 +911,17 @@ class APIObservations:
         ref=self.event(phase,payload)
         if status is None or body['availability']=='unavailable' or body['reason'] in ('invalid_json','invalid_utf8'):self.fail(body['reason'] if body['reason'] in ('over_limit','secret_detected') else 'http_failed')
         return ref
+    def _page_owns(self,phase,url):
+        safe=api21_route(url,self.scope)
+        if phase.startswith('owner-library-'):return safe=='/v1/workshop/library'
+        if phase=='checkout-http':return safe=='/v1/workshop/checkout-sessions'
+        source='/v1/catalog/vehicles/{configuration}/articles/{article}'
+        if phase in ('source-page-http','warm-page-http'):return safe==source
+        if phase=='source-review-http':return safe==source+'/source'
+        return False
     def page_request(self,request):
-        phase=self.phase;safe=api21_route(request.url,self.scope)
-        library=phase.startswith('owner-library-') and safe=='/v1/workshop/library'
-        source=phase in ('source-page-http','source-review-http','warm-page-http') and safe and safe.startswith('/v1/catalog/vehicles/')
-        checkout=phase=='checkout-http' and safe=='/v1/workshop/checkout-sessions'
-        if not (library or source or checkout):return
+        phase=self.phase
+        if not self._page_owns(phase,request.url):return
         if len(self.pending)>=512:self.fail('over_limit');return
         key=id(request)
         if key in self.pending:self.fail('http_failed');return
@@ -921,12 +935,11 @@ class APIObservations:
         owned=self.pending.get(id(request))
         if owned is None:
             # Response-time labels cannot establish an initiating action window.
-            safe=api21_route(request.url,self.scope)
-            if self.phase.startswith('owner-library-') and safe=='/v1/workshop/library' or self.phase in ('source-page-http','source-review-http','warm-page-http','checkout-http') and safe:self.fail('http_failed')
+            if self._page_owns(self.phase,request.url):self.fail('http_failed')
             return
         original,phase,done,ordinal=owned
         if original is not request or done.done() or id(request) in self.capturing:self.fail('http_failed');return
-        self.capturing.add(id(request))
+        self.capturing.add(id(request));self.responses[id(request)]=response
         async def capture():
             try:
                 body=None;key=None
@@ -936,8 +949,10 @@ class APIObservations:
                 await self.http(response,request.url,request.method,phase=phase,request=body,key=key,attempt=ordinal)
             except BaseException as error:
                 self.fail('cancelled' if isinstance(error,asyncio.CancelledError) else 'http_failed')
+                try:self._unavailable_page_request(request,phase,ordinal,response)
+                except APIObservationError:pass
             finally:
-                self.pending.pop(id(request),None);self.capturing.discard(id(request))
+                self.pending.pop(id(request),None);self.capturing.discard(id(request));self.responses.pop(id(request),None)
                 if not done.done():done.set_result(None)
         if len(self.tasks)>=512:self.fail('over_limit');return
         task=asyncio.create_task(capture());self.tasks.add(task)
@@ -947,6 +962,31 @@ class APIObservations:
         while self.pending or self.tasks:
             tasks=list(self.tasks);self.tasks.difference_update(tasks)
             await asyncio.gather(*tasks,*(entry[2] for entry in list(self.pending.values())))
+    def _unavailable_page_request(self,request,phase,ordinal,response):
+        if any(e['phase']==phase and e['payload']['kind']=='http' and e['payload']['attempt']==ordinal for e in self.events):return
+        safe=api21_route(request.url,self.scope);body=None;key=None
+        if phase=='checkout-http':
+            body=api21_body(getattr(request,'post_data_buffer',None),'playwright-request-post-data-buffer')
+            key=request.headers.get('idempotency-key')
+            if not isinstance(key,str) or not re.fullmatch(r'[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}',key):key=None
+        status=getattr(response,'status',None)
+        if type(status) is not int or not 100<=status<=599:status=None
+        self.event(phase,dict(kind='http',channel='application',method=request.method,route_template=safe,
+            actor='owner',attempt=ordinal,status=status,idempotency_key=key,request=body,
+            response=api21_body(None,'unavailable',reason='read_failed'),checkout_identity=None))
+    async def abandon_pending(self):
+        # Terminal cleanup follows context.close(). Never await missing headers
+        # or a transport-dependent body to retain an already attempted request.
+        pending=[(entry,self.responses.get(key)) for key,entry in self.pending.items()]
+        tasks=list(self.tasks);self.tasks.clear()
+        for task in tasks:task.cancel()
+        if tasks:await asyncio.gather(*tasks,return_exceptions=True)
+        for (request,phase,done,ordinal),response in pending:
+            try:self._unavailable_page_request(request,phase,ordinal,response)
+            except APIObservationError:pass  # Preserve the bounded prefix and sticky failure.
+            finally:
+                self.pending.pop(id(request),None);self.capturing.discard(id(request));self.responses.pop(id(request),None)
+                if not done.done():done.set_result(None)
     def require_window(self,phase):
         events=[e['payload'] for e in self.events if e['phase']==phase and e['payload']['kind']=='http']
         def owner_item(payload):
@@ -1412,7 +1452,7 @@ async def api_case(browser,origin,name,output,observations=None):
             except Exception:pass
         raise
     finally:
-        if observations:
+        if observations and failure is None:
             try:await observations.drain()
             except BaseException:observations.fail('cancelled')
         if context is not None:
@@ -1425,6 +1465,7 @@ async def api_case(browser,origin,name,output,observations=None):
                     observations.fail('close_failed')
                     observations.note_lifecycle(observations.phase,'context-close','failed','close_failed')
                 if failure is None:raise
+        if observations and failure is not None:await observations.abandon_pending()
     if observations:
         observations.complete_case(name)
         result['observations']=observations.snapshot()

@@ -1419,6 +1419,23 @@ class API21ObservationsTests(unittest.IsolatedAsyncioTestCase):
                 if reason=='secret_detected':self.assertIsNone(body['base64'])
                 else:self.assertEqual(smoke.base64.b64decode(body['base64']),raw)
 
+    def test_malformed_entities_with_escaped_secret_keys_or_tokens_are_unavailable(self):
+        for raw in (b'{"to\\u006ben":"synthetic-secret",}',
+                b'{"nested":{"authoriz\\u0061tion":"synthetic-secret"},',
+                b'{"\\u0063lient_secret":"synthetic-secret",}',
+                b'{"message":"bearer\\u0020synthetic-secret",}',
+                b'{"to\\u006ben":"synthetic-secret", "bad":"\xff"}'):
+            with self.subTest(raw=raw):
+                body=smoke.api21_body(raw,'playwright-response-body')
+                self.assertEqual(body['availability'],'unavailable')
+                self.assertEqual(body['reason'],'secret_detected')
+                self.assertIsNone(body['base64']);self.assertIsNone(body['parsed'])
+                self.assertNotIn('synthetic-secret',json.dumps(body))
+        safe=b'{"safe\\u005fkey":"fixture text",}'
+        body=smoke.api21_body(safe,'playwright-response-body')
+        self.assertEqual(body['availability'],'retained');self.assertEqual(body['reason'],'invalid_json')
+        self.assertEqual(smoke.base64.b64decode(body['base64']),safe)
+
     def test_bounds_fail_without_discarding_prefix_or_promoting_pass(self):
         buffer=self.buffer(max_events=1)
         buffer.lifecycle('setup','setup','completed')
@@ -1531,6 +1548,41 @@ class API21ObservationsTests(unittest.IsolatedAsyncioTestCase):
                         self.assertTrue(all(c.closed for c in browser.contexts));count+=1
         self.assertEqual(count,21)
 
+    async def test_actual_source_cases_allow_automatic_unowned_image_responses(self):
+        original=API21FakePage.emit
+        for name in smoke.API_CASES[1:]:
+            buffer=self.buffer();browser=API21FakeBrowser(name);seen=[]
+            def emit(page,url,data,request=None):
+                original(page,url,data,request)
+                if buffer.phase in ('source-page-http','source-review-http','warm-page-http'):
+                    seen.append(buffer.phase)
+                    original(page,'https://127.0.0.1:32001/v1/catalog/images/v2.automatic',b'actual automatic image bytes')
+            with self.subTest(name=name),TemporaryDirectory() as temp, \
+                    patch.dict(sys.modules,{'playwright.async_api':SimpleNamespace(expect=lambda value:value)}),patch.object(API21FakePage,'emit',emit):
+                result=await smoke.api_case(browser,'https://127.0.0.1:32001',name,Path(temp),observations=buffer)
+            self.assertEqual(result['status'],'passed',buffer.primary)
+            self.assertEqual(set(seen),{'source-page-http','source-review-http','warm-page-http'})
+            images=[e['phase'] for e in buffer.events if e['payload']['kind']=='http' and e['payload']['route_template']=='/v1/catalog/images/{capability}']
+            self.assertEqual(images[:2],['source-image-http','warm-image-http'])
+
+    async def test_unowned_callbacks_fail_only_for_the_phase_owned_route(self):
+        article='https://local/v1/catalog/vehicles/'+smoke.CONFIG+'/articles/'+smoke.ARTICLE
+        phases={'source-page-http':article,'source-review-http':article+'/source','warm-page-http':article,
+            'checkout-http':'https://local/v1/workshop/checkout-sessions','owner-library-initial-http':'https://local/v1/workshop/library'}
+        for phase,url in phases.items():
+            buffer=self.buffer();buffer.phase=phase
+            buffer.page_response(API21FakeResponse('https://local/v1/catalog/images/v2.automatic',b'image'))
+            self.assertIsNone(buffer.primary,phase)
+            buffer.page_response(API21FakeResponse(url,{}))
+            self.assertEqual(buffer.primary,'http_failed',phase)
+            self.assertEqual(buffer.events,[])
+        # A source/detail response from a different frozen window must not be
+        # relabelled to satisfy review-source ownership.
+        buffer=self.buffer();buffer.phase='source-page-http';response=API21FakeResponse(article,{'content':'source'})
+        buffer.page_request(response.request);buffer.phase='source-review-http'
+        buffer.page_response(response);await buffer.drain()
+        self.assertEqual([e['phase'] for e in buffer.events],['source-page-http'])
+
     async def test_source_window_without_actual_response_cannot_pass(self):
         buffer=self.buffer();browser=API21FakeBrowser(smoke.API_CASES[1],missing='source-page-http')
         with TemporaryDirectory() as temp,patch.dict(sys.modules,{'playwright.async_api':SimpleNamespace(expect=lambda value:value)}):
@@ -1602,6 +1654,55 @@ class API21ObservationsTests(unittest.IsolatedAsyncioTestCase):
                     self.assertIsNone(rows[0]['status']);self.assertEqual(rows[0]['response']['availability'],'unavailable')
                     self.assertEqual(buffer.primary,'cancelled' if failure_type is asyncio.CancelledError else 'http_failed')
                     self.assertTrue(browser.contexts[0].closed);self.assertNotIn('secret transport',json.dumps(buffer.snapshot()))
+
+    async def test_cancelled_body_retains_observed_status_and_unavailable_entity(self):
+        buffer=self.buffer();buffer.phase='owner-library-initial-http';waiting=asyncio.Event();never=asyncio.Event()
+        response=API21FakeResponse('https://local/v1/workshop/library',{},200)
+        async def body():waiting.set();await never.wait()
+        response.body=body
+        buffer.page_request(response.request);buffer.page_response(response)
+        drain=asyncio.create_task(buffer.drain());await waiting.wait();drain.cancel()
+        with self.assertRaises(asyncio.CancelledError):await drain
+        await buffer.abandon_pending()
+        self.assertEqual(len(buffer.events),1)
+        payload=buffer.events[0]['payload'];self.assertEqual(payload['status'],200)
+        self.assertEqual(payload['attempt'],1);self.assertEqual(payload['response']['availability'],'unavailable')
+        self.assertEqual(buffer.primary,'cancelled');self.assertFalse(buffer.pending)
+
+    async def test_terminal_case_closes_context_and_retains_pending_request_without_headers(self):
+        original=API21FakePage.goto
+        for failure_type in (TimeoutError,asyncio.CancelledError):
+            with self.subTest(failure_type=failure_type):
+                buffer=self.buffer();browser=API21FakeBrowser(smoke.API_CASES[0]);started=asyncio.Event();never=asyncio.Event();prefix=[]
+                async def goto(page,url):
+                    if buffer.phase=='owner-library-initial-http':
+                        request=SimpleNamespace(method='GET',url='https://local/v1/workshop/library')
+                        page.handlers['request'](request);prefix.extend(copy.deepcopy(buffer.events));started.set()
+                        if failure_type is TimeoutError:raise TimeoutError('safe fake navigation failure')
+                        await never.wait()
+                    return await original(page,url)
+                with TemporaryDirectory() as temp,patch.dict(sys.modules,{'playwright.async_api':SimpleNamespace(expect=lambda value:value)}),patch.object(API21FakePage,'goto',goto):
+                    task=asyncio.create_task(smoke.api_case(browser,'https://127.0.0.1:32001',smoke.API_CASES[0],Path(temp),observations=buffer))
+                    await started.wait()
+                    if failure_type is asyncio.CancelledError:task.cancel()
+                    try:
+                        for _ in range(20):await asyncio.sleep(0)
+                        self.assertTrue(task.done(),'terminal cleanup waited for response headers')
+                        self.assertTrue(browser.contexts[0].closed)
+                        with self.assertRaises(failure_type):task.result()
+                        self.assertEqual(buffer.events[:len(prefix)],prefix)
+                        self.assertFalse(buffer.pending)
+                        rows=[e['payload'] for e in buffer.events if e['phase']=='owner-library-initial-http' and e['payload']['kind']=='http']
+                        self.assertEqual(len(rows),1);self.assertIsNone(rows[0]['status'])
+                        self.assertEqual(rows[0]['response']['availability'],'unavailable')
+                        closed=next(e['seq'] for e in buffer.events if e['payload'].get('operation')=='context-close' and e['payload'].get('state')=='completed')
+                        missing=next(e['seq'] for e in buffer.events if e['phase']=='owner-library-initial-http' and e['payload']['kind']=='http')
+                        self.assertLess(closed,missing)
+                        self.assertEqual(buffer.primary,'cancelled' if failure_type is asyncio.CancelledError else 'http_failed')
+                    finally:
+                        if not task.done():task.cancel()
+                        try:await task
+                        except (TimeoutError,asyncio.CancelledError):pass
 
     async def test_delayed_headers_keep_request_start_window_and_drain_pending(self):
         buffer=self.buffer();buffer.phase='owner-library-initial-http'
