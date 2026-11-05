@@ -64,33 +64,56 @@ S3 and JetStream. Only the coordinator's bounded supervisor against a clean
 immutable plain clone can certify its eight cases; unit tests and skipped
 integration cases do not. Production identity/media revocation remains R5/R6.
 
-## Selector-deepening traffic guard (planned, Issue #329)
+## Selector-deepening traffic guard (Issue #329)
 
-Goal: bound, pace and cancel background selector deepening so browsing leaves
-connector capacity for source-article ingestion. TEST observed approximately
-100 Bankone selector calls in 52 seconds; the current makes/models daemon walks
-all scopes without pacing and can compete with the shared 60/min bank limit.
-This is a planning checkpoint, not an implemented or deployed mitigation.
+Background selector deepening admits one active traversal per ingestion HTTP
+process. An occupied scope returns `already_running`; a different scope returns
+`busy`, without starting or queuing another traversal. A process-wide dispatch
+floor spaces actual background connector attempts by at least six seconds,
+including pagination, failed attempts, adjacent runs and runs stopped by 429.
+Each run allows twelve total attempts across both providers and has a
+120-second deadline for dispatch and response-body reads. A 429 ends the run.
 
-The focused fix targets the existing single ingestion HTTP process: one active
-background thread, six-second spacing between actual connector attempts
-(including paginated reads), twelve total attempts and a 120-second deadline
-per run. Cancellation interrupts pacing waits and prevents subsequent calls or
-writes; in-flight HTTP remains bounded by its existing timeout and remaining
-deadline. Busy requests do not queue additional daemons. Foreground selectors
-and articles keep their existing path; successful canonical rows/provenance
-remain available, and interrupted work must not establish completeness. There
-is no durable traversal-resume mechanism today; this change adds none.
-Multiple ingestion processes require an aggregate-budget review before rollout.
+Cancellation interrupts pacing waits and prevents subsequent calls and writes.
+An in-flight response is discarded after cancellation. Background body reads
+use the smaller of the existing client timeout (currently 25 seconds) and the
+remaining deadline; a canceled/joined timer shuts down the response socket if
+body reads or chunk-framing parsing block past that deadline. urllib parses
+response headers before this body guard is available. Those operations retain
+the socket idle timeout, and trickled headers can exceed the total wall-clock
+budget. The 120-second limit is therefore not an absolute wall-clock guarantee,
+and cancellation does not immediately interrupt an in-flight HTTP operation.
+
+Foreground selectors and articles retain their existing path. Canonical rows
+and provenance already persisted remain available, and interrupted traversal
+does not establish completeness. There is no durable traversal-resume
+mechanism. Multiple ingestion processes require aggregate-budget review before
+rollout; these tests do not establish live connector fairness. Deployment
+remains outside this change. Merge is authorized after required checks and
+independent review pass.
+
+Implementation: `0acac23e4b759d2ed8060824db97c6301a61276d`.
+Exact-base planning preflight at
+`02be27245af55ee7d6cac4a3df2cc80bb61335fb` returned
+`{"status": "synchronized", "errors": []}`. Focused local checks passed
+**66 tests and 11 subtests**, with **15 skipped** for unavailable integration
+prerequisites. Regression coverage includes distinct concurrent keys,
+thread/provider/persistence failures, cross-run pacing, both providers' attempt
+budget, cancellation, foreground isolation, and local HTTP body/framing
+trickles. The final full worker suite is running in a temporary environment
+with the repository-pinned Stripe 16.1.0 SDK; no live provider calls are used.
+The preceding implementation `392db99df134cc2a2492cf382bf2566e9eca3e60` passed
+912 tests and 142 subtests, with 239 skipped. `git diff --check` passed.
 
 Tracking: [Issue #329](https://github.com/lucronn/autodata/issues/329),
+[PR #330](https://github.com/lucronn/autodata/pull/330),
 [Project #8](https://github.com/users/lucronn/projects/8),
 [implementation plan](../superpowers/plans/2026-11-05-catalog-selector-pacing.md),
 and [gate record](../agents/records/2026-11-05-catalog-selector-pacing.json).
 
 Todo:
-- [ ] Verify the pinned planning-checkpoint preflight before implementation.
-- [ ] Add deterministic regression tests for single-flight, per-page pacing, budgets, cancellation and foreground isolation.
-- [ ] Add minimal bounded/cancelable controls to the existing selector-deepening path, preserving rows and completeness semantics.
-- [ ] Run focused catalog/connector tests and full ingestion tests; commit/push validated milestones.
-- [ ] Synchronize exact-SHA evidence and operational limits in canonical docs and GitHub; do not merge or deploy.
+- [x] Verify the pinned planning-checkpoint preflight before implementation.
+- [x] Add deterministic regression tests for single-flight, per-page pacing, budgets, cancellation and foreground isolation.
+- [x] Add minimal bounded/cancelable controls to the existing selector-deepening path, preserving rows and completeness semantics.
+- [ ] Run final full ingestion tests and record exact-SHA evidence.
+- [ ] Synchronize final evidence in GitHub; merge after required checks/review, without deploying.
