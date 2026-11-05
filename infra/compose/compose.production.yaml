@@ -711,6 +711,70 @@
           "condition": "service_healthy"
         }
       }
+    },
+    "outbox-relay": {
+      "image": "${IMAGE_INGESTION:?required}",
+      "platform": "linux/amd64",
+      "pull_policy": "never",
+      "restart": "unless-stopped",
+      "user": "1000:1000",
+      "read_only": true,
+      "cap_drop": [
+        "ALL"
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "init": true,
+      "pids_limit": 256,
+      "logging": {
+        "driver": "local",
+        "options": {
+          "max-size": "10m",
+          "max-file": "5"
+        }
+      },
+      "tmpfs": [
+        "/tmp:rw,nosuid,nodev,noexec,size=67108864,mode=1777"
+      ],
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "/run/autodata/outbox-relay",
+          "target": "/run/autodata/outbox-relay",
+          "read_only": true,
+          "bind": {
+            "create_host_path": false
+          }
+        }
+      ],
+      "networks": {
+        "backend": {
+          "ipv4_address": "172.30.20.14"
+        }
+      },
+      "command": [
+        "python",
+        "/app/scripts/outbox_relay.py",
+        "--poll-seconds",
+        "5",
+        "--batch-size",
+        "50",
+        "--max-attempts",
+        "3"
+      ],
+      "entrypoint": [
+        "/usr/local/bin/autodata-runtime-entrypoint"
+      ],
+      "environment": "${ENV_OUTBOX_RELAY:?required}",
+      "depends_on": {
+        "postgres": {
+          "condition": "service_healthy"
+        },
+        "nats": {
+          "condition": "service_started"
+        }
+      }
     }
   },
   "networks": {

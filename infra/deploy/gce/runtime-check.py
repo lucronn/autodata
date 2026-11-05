@@ -35,7 +35,7 @@ CURRENT_RELEASE = '/opt/autodata/current'
 HELPER_ROOT = '/opt/autodata/bin'
 DATA_ROOT = '/var/lib/autodata'
 SECRET_ROOT = '/run/autodata'
-NORMAL_SERVICES = ('caddy', 'api', 'ingestion-http', 'article-worker', 'payment-reconciler', 'postgres', 'nats', 'minio')
+NORMAL_SERVICES = ('caddy', 'api', 'ingestion-http', 'article-worker', 'payment-reconciler', 'outbox-relay', 'postgres', 'nats', 'minio')
 IMAGE_ROLES = ('api', 'ingestion', 'migration', 'caddy', 'postgres', 'nats', 'minio')
 SHA_PATTERN = r'[0-9a-f]{40}'
 HASH_PATTERN = r'[0-9a-f]{64}'
@@ -44,7 +44,7 @@ TOPOLOGY = {
              'addresses': {'api': '172.30.10.10', 'caddy': '172.30.10.20'}, 'enable_ipv6': False},
     'backend': {'bridge': 'br-ad-back', 'subnet': '172.30.20.0/24', 'internal': True,
                 'addresses': {'api': '172.30.20.10', 'ingestion-http': '172.30.20.11',
-                              'article-worker': '172.30.20.12', 'payment-reconciler': '172.30.20.13',
+                              'article-worker': '172.30.20.12', 'payment-reconciler': '172.30.20.13', 'outbox-relay': '172.30.20.14',
                               'postgres': '172.30.20.20', 'nats': '172.30.20.30', 'minio': '172.30.20.40',
                               'migration': '172.30.20.50', 'bootstrap': '172.30.20.51', 'metrics-probe': '172.30.20.52'},
                 'enable_ipv6': False},
@@ -56,6 +56,7 @@ COMMANDS = {
     'ingestion-http': ['python', '-m', 'autodata_ingestion.http_service'],
     'article-worker': ['python', '-c', 'from autodata_ingestion.worker import article_worker_main; raise SystemExit(article_worker_main())'],
     'payment-reconciler': ['python', '/app/scripts/reconcile_payments.py', '--poll-seconds', '15', '--batch-size', '50'],
+    'outbox-relay': ['python', '/app/scripts/outbox_relay.py', '--poll-seconds', '5', '--batch-size', '50', '--max-attempts', '3'],
     'migration': ['sh', '/release/scripts/dev/migrate_sql.sh', '--migrations-dir', '/release/db/migrations'],
     'metrics-probe': ['python', '/app/scripts/operational_metrics.py', '--address', 'postgres:5432']}
 # These are delivered file names, not Compose environment entries. Server config
@@ -70,8 +71,9 @@ SECRET_NAMES = {
     'ingestion-http': DB_SECRET + S3_SECRETS + INTERNAL_SECRET + STRIPE_SECRETS + BANK_SECRETS,
     'article-worker': DB_SECRET + S3_SECRETS + BANK_SECRETS + ('INCEPTION_API_KEY',),
     'payment-reconciler': DB_SECRET + INTERNAL_SECRET + STRIPE_SECRETS,
+    'outbox-relay': DB_SECRET + ('NATS_OUTBOX_USER', 'NATS_OUTBOX_PASSWORD'),
     'postgres': ('POSTGRES_PASSWORD',),
-    'nats': ('NATS_METRICS_USER', 'NATS_METRICS_PASSWORD'),
+    'nats': ('NATS_METRICS_USER', 'NATS_METRICS_PASSWORD', 'NATS_OUTBOX_USER', 'NATS_OUTBOX_PASSWORD'),
     'minio': ('S3_WORKER_ACCESS_KEY', 'S3_WORKER_SECRET_KEY', 'S3_API_ACCESS_KEY', 'S3_API_SECRET_KEY'),
     'migration': ('PGPASSWORD',),
     'bootstrap': ('AUTODATA_S3_ACCESS_KEY', 'AUTODATA_S3_SECRET_KEY'),
@@ -298,6 +300,8 @@ def _validate_internal_token_reference(manifest):
     # Schema validation has already required complete role maps and numeric versions.
     name = 'AUTODATA_INGESTION_INTERNAL_TOKEN'
     require(manifest['secret_versions']['api'][name] == manifest['secret_versions']['ingestion-http'][name])
+    for name in ('NATS_OUTBOX_USER', 'NATS_OUTBOX_PASSWORD'):
+        require(manifest['secret_versions']['outbox-relay'][name] == manifest['secret_versions']['nats'][name])
 
 
 def validate_manifest(manifest, config, rollback_manifest=None):
@@ -812,7 +816,7 @@ def _validate_service_container(manifest, service, desired, value, image_entrypo
     match(value['id'], HASH_PATTERN)
     require(value['name'] == '/autodata-production-' + service + '-1')
     require(value['project'] == 'autodata-production' and value['service'] == service)
-    role = 'ingestion' if service in ('ingestion-http','article-worker','payment-reconciler') else service
+    role = 'ingestion' if service in ('ingestion-http','article-worker','payment-reconciler','outbox-relay') else service
     require(value['image'] == manifest['images'][role]['image_id'])
     require(value['command'] == desired['command'] and value['user'] == desired['user'])
     require(value['entrypoint'] == desired.get('entrypoint', image_entrypoint))
@@ -875,7 +879,7 @@ def _collect_service_graph(manifest, config, deadline):
         value = strict_json(execute(['container','inspect','--format',SERVICE_INSPECT_TEMPLATE,identifier]))
         service = value.get('service') if type(value) is dict else None
         require(type(service) is str and service in NORMAL_SERVICES and service not in graph)
-        role = 'ingestion' if service in ('ingestion-http','article-worker','payment-reconciler') else service
+        role = 'ingestion' if service in ('ingestion-http','article-worker','payment-reconciler','outbox-relay') else service
         if role not in entrypoints:
             image = strict_json(execute(['image','inspect','--format','{{json .Config.Entrypoint}}',manifest['images'][role]['image_id']]))
             require(image is None or (type(image) is list and all(type(item) is str for item in image)))
@@ -1063,7 +1067,7 @@ def _service_environments(config):
     stripe = {'AUTODATA_STRIPE_ACCOUNT_ID': tuning['stripe_account_id'], 'AUTODATA_STRIPE_PRICE_ID': tuning['stripe_price_id']}
     result = {}
     for service, user in (('api', 'autodata_api'), ('ingestion-http', 'autodata_http'),
-                          ('article-worker', 'autodata_article'), ('payment-reconciler', 'autodata_reconciler')):
+                          ('article-worker', 'autodata_article'), ('payment-reconciler', 'autodata_reconciler'), ('outbox-relay', 'autodata_outbox')):
         result[service] = dict(shared, **db, AUTODATA_POSTGRES_USER=user, AUTODATA_RUNTIME_SERVICE=service)
     result['api'].update(s3, AUTODATA_AUTH_MODE='firebase', AUTODATA_PROJECTION_STORE='postgres', AUTODATA_API_ADDR=':8080',
                          AUTODATA_NATS_ADDRESS='nats:4222', AUTODATA_INGESTION_URL='http://ingestion-http:8081',
@@ -1073,6 +1077,8 @@ def _service_environments(config):
                                     AUTODATA_SOURCE_HTTP_TIMEOUT_SECONDS=str(tuning['source_http_timeout_seconds']),
                                     AUTODATA_SOURCE_MAX_BYTES=str(tuning['source_max_bytes']))
     result['ingestion-http']['AUTODATA_WORKSHOP_PURCHASE_CONFIG_JSON'] = _purchase_config_environment_json(config['workshop_purchase_config'])
+    result['outbox-relay'].update(AUTODATA_NATS_URL='nats://nats:4222', AUTODATA_OUTBOX_POLL_SECONDS='5',
+                                  AUTODATA_OUTBOX_BATCH_SIZE='50', AUTODATA_OUTBOX_MAX_ATTEMPTS='3')
     result['payment-reconciler'].update(stripe)
     result['article-worker'].update(s3, **bank, INCEPTION_API_BASE_URL=tuning['inception_api_base_url'], INCEPTION_MODEL=tuning['inception_model'],
                                     INCEPTION_API_TIMEOUT_SECONDS=str(tuning['inception_api_timeout_seconds']))
@@ -1405,10 +1411,11 @@ def validate_runtime_secret_files():
             elif service == 'nats':
                 template = (Path(__file__).parent / 'nats.conf.template').read_text()
                 pattern = re.escape(template)
-                for name in ('NATS_METRICS_USER', 'NATS_METRICS_PASSWORD'):
+                for name in ('NATS_METRICS_USER', 'NATS_METRICS_PASSWORD', 'NATS_OUTBOX_USER', 'NATS_OUTBOX_PASSWORD'):
                     pattern = pattern.replace(re.escape('@@' + name + '@@'), r'([^"\\\x00-\x20]+)')
                 matched = re.fullmatch(pattern, values['nats.conf'].decode('utf-8'))
                 require(matched is not None)
+                require(matched.group(1) != matched.group(3))
                 for value in matched.groups(): _opaque_secret(value.encode('utf-8'))
             elif service == 'minio':
                 expected = strict_json((Path(__file__).parent / 'seaweedfs-s3.json.template').read_bytes())

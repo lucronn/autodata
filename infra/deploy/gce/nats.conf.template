@@ -13,6 +13,15 @@ authorization {
         publish: { allow: ["$JS.API.INFO"] },
         subscribe: { allow: ["_INBOX.>"] }
       }
+    },
+    { user: "@@NATS_OUTBOX_USER@@", password: "@@NATS_OUTBOX_PASSWORD@@",
+      permissions: {
+        publish: { allow: ["catalog.article.published", "dataset.fast.requested", "dataset.viewable", "dataset.deep.requested",
+          "dataset.section.published", "dataset.enrichment.failed", "dataset.review.requested", "dataset.revision.revoked",
+          "dataset.knowledge.fallback.requested", "$JS.API.STREAM.INFO.AUTODATA", "$JS.API.STREAM.INFO.AUTODATA_CATALOG",
+          "$JS.API.STREAM.CREATE.AUTODATA", "$JS.API.STREAM.CREATE.AUTODATA_CATALOG"] },
+        subscribe: { allow: ["_INBOX.>"] }
+      }
     }
   ]
 }
