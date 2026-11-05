@@ -654,6 +654,7 @@ API_CASES=(
 )
 
 API21_VERSION = 'api21-producer-v2'
+API21_PHASES = {'test_browser_google_exchange_checkout_library_real_api': ('setup', 'metadata', 'initial-measurement', 'signed-in-measurement', 'checkout-first-http', 'checkout-first-delivery', 'response-lost-measurement', 'response-lost-snapshot', 'checkout-retry-http', 'checkout-retry-delivery', 'pending-checkout-measurement', 'retry-pending-snapshot', 'return-without-grant-measurement', 'settlement-control', 'settled-measurement', 'owner-library-initial-http', 'owner-library-reload-http', 'library-reload-measurement', 'restart-before-measurement', 'runtime-before', 'restart-control', 'runtime-poll', 'owner-library-restart-http', 'restart-after-measurement', 'final-measurement'), 'test_browser_owned_source_canonical_and_media_real_api': ('setup', 'metadata', 'initial-measurement', 'signed-in-measurement', 'checkout-http', 'pending-checkout-measurement', 'return-without-grant-measurement', 'settlement-control', 'settled-measurement', 'owner-library-initial-http', 'owner-library-reload-http', 'library-reload-measurement', 'restart-before-measurement', 'runtime-before', 'restart-control', 'runtime-poll', 'owner-library-restart-http', 'restart-after-measurement', 'start-workers-control', 'source-page-http', 'source-image-http', 'source-review-http', 'release-model-control', 'warm-before-snapshot', 'reader-before-measurement', 'warm-page-http', 'warm-image-http', 'warm-pinned-source-http', 'warm-after-snapshot', 'reader-after-measurement', 'final-measurement'), 'test_browser_account_scope_and_revocation_real_api': ('setup', 'metadata', 'initial-measurement', 'signed-in-measurement', 'checkout-http', 'pending-checkout-measurement', 'return-without-grant-measurement', 'settlement-control', 'settled-measurement', 'owner-library-initial-http', 'owner-library-reload-http', 'library-reload-measurement', 'restart-before-measurement', 'runtime-before', 'restart-control', 'runtime-poll', 'owner-library-restart-http', 'restart-after-measurement', 'start-workers-control', 'source-page-http', 'source-image-http', 'source-review-http', 'release-model-control', 'warm-before-snapshot', 'reader-before-measurement', 'warm-page-http', 'warm-image-http', 'warm-pinned-source-http', 'warm-after-snapshot', 'reader-after-measurement', 'adjacent-denial', 'other-region-denial', 'unscoped-article-denial', 'legacy-vehicle-denial', 'other-catalogue-denial', 'other-library-http', 'other-image-denial', 'logout-image-denial', 'disable-control', 'disabled-image-denial', 'final-measurement'), 'test_browser_signed_refund_blocks_old_links_real_api': ('setup', 'metadata', 'initial-measurement', 'signed-in-measurement', 'checkout-http', 'pending-checkout-measurement', 'return-without-grant-measurement', 'settlement-control', 'settled-measurement', 'owner-library-initial-http', 'owner-library-reload-http', 'library-reload-measurement', 'restart-before-measurement', 'runtime-before', 'restart-control', 'runtime-poll', 'owner-library-restart-http', 'restart-after-measurement', 'start-workers-control', 'source-page-http', 'source-image-http', 'source-review-http', 'release-model-control', 'warm-before-snapshot', 'reader-before-measurement', 'warm-page-http', 'warm-image-http', 'warm-pinned-source-http', 'warm-after-snapshot', 'reader-after-measurement', 'refund-control', 'refund-old-image-denial', 'refund-source-denial', 'refund-detail-denial', 'revoked-measurement', 'final-measurement')}
 API21_MISSING = (
     'actual_child_go_browser_exit_receipts','parent_pytest_exit_and_command_receipts',
     'signed_settlement_refund_http_bytes_and_authentic_delivery',
@@ -687,7 +688,7 @@ def api21_load(raw):
     return value
 
 
-def api21_body(raw, source, *, image=False, reason=None):
+def api21_body(raw, source, *, image=False, reason=None, json_required=True):
     body=dict(availability='unavailable',byte_source='unavailable',encoding=None,
         base64=None,length=None,sha256=None,parsed=None,reason=reason or 'not_observed')
     if reason:return body
@@ -698,7 +699,9 @@ def api21_body(raw, source, *, image=False, reason=None):
             sha256=hashlib.sha256(raw).hexdigest(),reason='not_required_image_body')
     try:parsed=api21_load(raw)
     except UnicodeError:body['reason']='invalid_utf8';return body
-    except (ValueError,TypeError,RecursionError):body['reason']='invalid_json';return body
+    except (ValueError,TypeError,RecursionError):
+        if json_required:body['reason']='invalid_json';return body
+        parsed=None
     # Only original safe JSON is retained. Never retain authentication responses,
     # headers, cookies or exception text, even when persistence itself fails.
     secret=re.compile(r'(?i)^(authorization|cookie|set-cookie|token|id_?token|access_?token|refresh_?token|password|csrf|firebase_?token)$')
@@ -706,7 +709,7 @@ def api21_body(raw, source, *, image=False, reason=None):
         if isinstance(value,dict):return any(secret.fullmatch(k) or sensitive(v) for k,v in value.items())
         if isinstance(value,list):return any(sensitive(v) for v in value)
         return isinstance(value,str) and bool(re.search(r'(?i)(bearer |__Host-autodata_session=|eyJ[A-Za-z0-9_-]+\.eyJ)',value))
-    if sensitive(parsed):body['reason']='secret_detected';return body
+    if sensitive(parsed) or (not json_required and sensitive(raw.decode('utf-8',errors='strict'))):body['reason']='secret_detected';return body
     return dict(body,availability='retained',byte_source=source,encoding='base64',
         base64=base64.b64encode(raw).decode('ascii'),length=len(raw),
         sha256=hashlib.sha256(raw).hexdigest(),parsed=parsed,reason=None)
@@ -722,6 +725,21 @@ def api21_route(url):
             path.startswith('/v1/catalog/vehicles/') or path.startswith('/v1/catalog/images/')):return None
     safe=re.sub(r'/v2\.[^/]+','/{capability}',path)
     return re.sub(r'[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}','{uuid}',safe)
+
+
+def api21_checkout_identity(request,response,key):
+    uuid_pattern=r'[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}'
+    if not isinstance(key,str) or not re.fullmatch(uuid_pattern,key):raise ValueError('invalid key')
+    if not request or request['availability']!='retained' or response['availability']!='retained':raise ValueError('original body unavailable')
+    posted=request['parsed'];checkout=response['parsed']
+    if not isinstance(posted,dict) or not isinstance(checkout,dict):raise ValueError('invalid JSON object')
+    if checkout.get('version')!='v1' or checkout.get('state')!='checkout':raise ValueError('invalid state')
+    if posted.get('configuration_id')!=checkout.get('configuration_id') or posted.get('region')!='US' or checkout.get('region')!='US':raise ValueError('invalid scope')
+    for field in ('configuration_id','order_id'):
+        if not isinstance(checkout.get(field),str) or not re.fullmatch(uuid_pattern,checkout[field]):raise ValueError('invalid identity')
+    hosted=checkout.get('checkout_url');url=urlsplit(hosted)
+    if not isinstance(hosted,str) or url.scheme!='https' or url.netloc!='checkout.stripe.com' or not re.fullmatch(r'/c/pay/cs_test_[a-f0-9]{32}',url.path) or url.query:raise ValueError('invalid hosted checkout')
+    return {field:checkout[field] for field in ('order_id','configuration_id','region','checkout_url')}
 
 
 class APIObservations:
@@ -752,6 +770,9 @@ class APIObservations:
         return dict(stream='observations',producer_role='browser-runner',seq=event['seq'])
     def lifecycle(self,phase,operation,state,reason=None):
         return self.event(phase,dict(kind='lifecycle',operation=operation,state=state,reason=reason))
+    def note_lifecycle(self,phase,operation,state,reason=None):
+        try:return self.lifecycle(phase,operation,state,reason)
+        except APIObservationError:return None
     def assertion(self,name,result):
         if not result:self.fail('assertion_failed')
         self.event(self.phase,dict(kind='producer-assertion',name=name,result=result,
@@ -759,7 +780,11 @@ class APIObservations:
     async def http(self,response,url,method='GET',*,phase=None,actor='owner',request=None,key=None,identity=None,attempt=None):
         phase=phase or self.phase;safe=api21_route(url)
         if safe is None:return None
-        try:raw=await response.body();body=api21_body(raw,'playwright-response-body',image='/images/' in safe)
+        try:
+            raw=await response.body()
+            content_type=getattr(response,'headers',{}).get('content-type','application/json').lower()
+            body=api21_body(raw,'playwright-response-body',image='/images/' in safe and response.status==200,
+                json_required=not (response.status==204 and raw==b'') and ('json' in content_type))
         except Exception:body=api21_body(None,'unavailable',reason='read_failed')
         count=self.counts.get(phase,0)+1
         if count> (100 if phase=='runtime-poll' else 16):
@@ -767,6 +792,9 @@ class APIObservations:
         self.counts[phase]=count
         status=getattr(response,'status',None)
         if type(status) is not int or not 100<=status<=599:status=None
+        if safe=='/v1/workshop/checkout-sessions':
+            try:identity=api21_checkout_identity(request,body,key)
+            except (ValueError,TypeError,KeyError):self.fail('assertion_failed')
         payload=dict(kind='http',channel='fixture-control' if safe.startswith('/__fixture/') else 'application',
             method=method,route_template=safe,actor='fixture-control' if safe.startswith('/__fixture/') else actor,
             attempt=attempt or count,status=status,idempotency_key=key,request=request,response=body,
@@ -804,6 +832,23 @@ class APIObservations:
             return payload['status']==200 and body['availability']=='retained' and isinstance(parsed,dict) and isinstance(parsed.get('items'),list) and len(parsed['items'])==1
         if not 1<=len(events)<=16 or not all(e['response']['availability']=='retained' and e['status']==200 for e in events) or not any(owner_item(e) for e in events):
             self.fail('assertion_failed');raise APIObservationError('assertion_failed')
+    def complete_case(self,name):
+        expected=API21_PHASES[name]
+        observed=list(dict.fromkeys(e['phase'] for e in self.events))
+        if tuple(observed)!=expected:self.fail('assertion_failed')
+        for phase in expected:
+            events=[e['payload'] for e in self.events if e['phase']==phase and e['payload']['kind']=='http']
+            if phase=='setup' or phase.endswith('-delivery'):continue
+            if not events:self.fail('assertion_failed');continue
+            repeat=phase.startswith('owner-library-') or phase in ('source-page-http','source-review-http','warm-page-http','runtime-poll')
+            if not repeat and len(events)!=1:self.fail('assertion_failed')
+            for event in events:
+                status=event['status'];body=event['response']
+                allowed=(403,404) if phase in ('adjacent-denial','other-region-denial','unscoped-article-denial','legacy-vehicle-denial') else (404,) if phase=='other-image-denial' else (401,) if phase in ('logout-image-denial','disabled-image-denial') else (403,) if 'denial' in phase else (200,201) if phase.startswith('checkout') else (200,204) if phase.endswith('-control') else (200,)
+                if status not in allowed or body['availability']=='unavailable':self.fail('http_failed')
+                if phase.endswith('-image-http') and (body['length'] is None or body['length']<=0):self.fail('http_failed')
+                if phase.startswith('checkout') and (event['request'] is None or event['request']['availability']!='retained' or event['checkout_identity'] is None):self.fail('assertion_failed')
+        self.finish()
     def finish(self):
         self.status='failed' if self.primary else 'passed'
 
@@ -840,7 +885,7 @@ def api21_publish(target,evidence,observations):
     try:
         api21_write(target,evidence);return True
     except Exception:
-        observations.fail('publish_failed');observations.publication='failed'
+        observations.fail('publication_failed');observations.publication='failed'
         observations.reserve=None
         # A bounded last attempt retains binding and failure, without asserting
         # that the full prefix or unavailable legacy fields were persisted.
@@ -891,6 +936,11 @@ class APIFixture(DTOFixture):
                     assert key==self.keys[0] and request.post_data==self.checkout_bodies[0], 'retry changed checkout request'
                 self.keys.append(key);self.checkout_bodies.append(request.post_data)
                 response=await route.fetch(max_redirects=0,max_retries=0)
+                http_ref=None
+                phase='checkout-first-http' if attempt==1 else 'checkout-retry-http'
+                if self.observations:
+                    http_ref=await self.observations.http(response,request.url,'POST',phase=phase,
+                        request=api21_body(request.post_data_buffer,'playwright-request-post-data-buffer'),key=key,attempt=attempt)
                 assert response.status in (200,201), 'actual API did not complete checkout'
                 checkout=api21_load(await response.body()) if self.observations else await response.json()
                 assert isinstance(checkout,dict) and checkout.get('version')=='v1' and checkout.get('state')=='checkout', 'invalid actual checkout response'
@@ -901,12 +951,7 @@ class APIFixture(DTOFixture):
                 hosted_url=urlsplit(hosted)
                 assert hosted_url.hostname=='checkout.stripe.com' and re.fullmatch(r'/c/pay/cs_test_[a-f0-9]{32}',hosted_url.path) and not hosted_url.query, 'invalid hosted checkout session'
                 identity={'order_id':order,'configuration_id':configuration,'region':body['region'],'checkout_url':hosted}
-                http_ref=None
                 if self.observations:
-                    phase='checkout-first-http' if attempt==1 else 'checkout-retry-http'
-                    http_ref=await self.observations.http(response,request.url,'POST',phase=phase,
-                        request=api21_body(request.post_data_buffer,'playwright-request-post-data-buffer'),
-                        key=key,identity=identity,attempt=attempt)
                     def delivery(state):
                         self.observations.event(phase.replace('-http','-delivery'),
                             dict(kind='checkout-delivery',attempt=attempt,state=state,http_event=http_ref),[http_ref])
@@ -948,13 +993,34 @@ class APIFixture(DTOFixture):
         if previous_snapshot is not None:
             assert snapshot['payment_calls']==previous_snapshot['payment_calls'], 'retry created provider work'
 
-async def api_measure(context,origin):
-    response=await context.request.get(origin+'/__fixture/measurement')
+async def api21_get(context,url,*,phase=None,actor='owner',**kwargs):
+    observations=getattr(context,'_api21',None)
+    if observations and phase:
+        await observations.drain();observations.phase=phase
+    try:response=await context.request.get(url,**kwargs)
+    except BaseException:
+        if observations:
+            observations.event(phase or observations.phase,dict(kind='http',channel='fixture-control' if '/__fixture/' in url else 'application',
+                method='GET',route_template=api21_route(url),actor='fixture-control' if '/__fixture/' in url else actor,
+                attempt=1,status=None,idempotency_key=None,request=None,response=api21_body(None,'unavailable'),checkout_identity=None))
+            observations.fail('http_failed')
+        raise
+    if observations:await observations.http(response,url,phase=phase,actor=actor)
+    return response
+
+
+async def api_measure(context,origin,phase=None):
+    response=await api21_get(context,origin+'/__fixture/measurement',phase=phase)
     assert response.status==200
     return await response.json()
 
-async def api_control(context,origin,path):
+async def api_control(context,origin,path,phase=None):
+    observations=getattr(context,'_api21',None)
+    if observations:
+        await observations.drain()
+        if phase:observations.phase=phase
     response=await context.request.post(origin+'/__fixture/'+path)
+    if observations:await observations.http(response,origin+'/__fixture/'+path,'POST',phase=phase)
     assert response.status in (200,204), f'owned fixture control failed: {path.split("?")[0]} status{response.status}'
     return response
 
@@ -971,45 +1037,57 @@ def validate_warm_runtime(before,after,reader_before,reader_after):
     assert reader_after>reader_before, 'explicit approved image delivery did not reach actual S3 reader'
 
 
-async def api_snapshot(context,origin):
-    response=await context.request.get(origin+'/__fixture/snapshot')
+async def api_snapshot(context,origin,phase=None):
+    response=await api21_get(context,origin+'/__fixture/snapshot',phase=phase)
     assert response.status==200
     return await response.json()
 
 
-async def api_case(browser,origin,name,output):
+async def api_case(browser,origin,name,output,observations=None):
     from playwright.async_api import expect
-    context=await browser.new_context(ignore_https_errors=True,viewport={'width':1280,'height':900})
-    transport=APIFixture(origin,name)
-    await context.route('**/*',transport.route)
-    page=await context.new_page();page.on('pageerror',lambda error:transport.errors.append(str(error)))
+    context=page=None;failure=None;result=None
+    transport=APIFixture(origin,name,observations=observations)
     assertions={};restart_receipt={};warm_receipt={}
     try:
-        response=await context.request.get(origin+'/__fixture/metadata');metadata=await response.json()
+        if observations:observations.note_lifecycle('setup','context-create','requested')
+        context=await browser.new_context(ignore_https_errors=True,viewport={'width':1280,'height':900})
+        if observations:
+            context._api21=observations
+            observations.note_lifecycle('setup','context-create','completed')
+        await context.route('**/*',transport.route)
+        if observations:observations.note_lifecycle('setup','page-create','requested')
+        page=await context.new_page()
+        if observations:
+            observations.note_lifecycle('setup','page-create','completed')
+            page.on('response',observations.page_response)
+        page.on('pageerror',lambda error:transport.errors.append('internal_error'))
+        response=await api21_get(context,origin+'/__fixture/metadata',phase='metadata');metadata=await response.json()
         assert metadata['kind']=='api-fixture'
         scope=metadata['scope'];configuration=scope['configuration'];article_id=scope['article']
         route=origin+'/workshop/?configuration='+configuration+'&region=US'
-        before=await api_measure(context,origin)
+        before=await api_measure(context,origin,'initial-measurement')
         await page.goto(route);await api_signin(page)
         cookies=await context.cookies(origin)
         cookie=next(c for c in cookies if c['name']=='__Host-autodata_session')
         assert cookie['secure'] and cookie['httpOnly'] and cookie['sameSite']=='Lax'
-        signed=await api_measure(context,origin)
+        signed=await api_measure(context,origin,'signed-in-measurement')
         assert signed['auth_sessions']==before['auth_sessions']+1 and signed['hashed_sessions']==signed['auth_sessions'] and signed['sdk_cert_calls']>=1 and signed['sdk_user_calls']>=2 and signed['sdk_unexpected']==0
         assertions['official_sdk_cookie_and_pg_session']=True
         await expect(page.locator('#purchase-action')).to_be_enabled()
         await expect(page.locator('#purchase-message')).to_contain_text('purchase')
         await page.locator('#agreement').check()
+        if observations:observations.phase='checkout-first-http' if name==API_CASES[0] else 'checkout-http'
         await page.locator('#purchase-action').click(click_count=2,delay=0)
         if name==API_CASES[0]:
             await expect(page.locator('#retry')).to_be_visible()
             assert transport.checkout_count==1 and transport.lost_response_count==1
-            lost_measurement=await api_measure(context,origin)
-            lost_snapshot=await api_snapshot(context,origin)
+            lost_measurement=await api_measure(context,origin,'response-lost-measurement')
+            lost_snapshot=await api_snapshot(context,origin,'response-lost-snapshot')
             transport.validate_pending_checkout(lost_measurement,lost_snapshot)
+            if observations:observations.phase='checkout-retry-http'
             await page.locator('#retry').click()
         await page.wait_for_url(re.compile(r'https://checkout\.stripe\.com/c/pay/cs_test_[a-f0-9]{32}.*'))
-        pending=await api_measure(context,origin)
+        pending=await api_measure(context,origin,'pending-checkout-measurement')
         assert pending['workshop_orders']==1 and pending['entitlements']==0
         if name==API_CASES[0]:
             assert transport.checkout_count==2 and transport.lost_response_count==1
@@ -1017,39 +1095,53 @@ async def api_case(browser,origin,name,output):
             assert len(transport.checkout_bodies)==2 and transport.checkout_bodies[0]==transport.checkout_bodies[1]
             assert len(transport.checkout_responses)==2 and transport.checkout_responses[0]==transport.checkout_responses[1]
             assert page.url==transport.checkout_responses[0]['checkout_url']
-            transport.validate_pending_checkout(pending,await api_snapshot(context,origin),lost_snapshot)
+            transport.validate_pending_checkout(pending,await api_snapshot(context,origin,'retry-pending-snapshot'),lost_snapshot)
             assertions['client_response_loss_same_key_one_checkout']=True
         order=pending['orders'][0]['order_id']
         # A provider return is only a request to check the owner-scoped ledger.
         await page.goto(origin+'/workshop/?order='+order)
         await expect(page.locator('#purchase-message')).to_contain_text('Do not pay again')
-        assert (await api_measure(context,origin))['entitlements']==0
+        assert (await api_measure(context,origin,'return-without-grant-measurement'))['entitlements']==0
         assertions['return_does_not_grant']=True
-        await api_control(context,origin,'payment/settle?order_id='+order)
-        settled=await api_measure(context,origin)
+        await api_control(context,origin,'payment/settle?order_id='+order,'settlement-control')
+        settled=await api_measure(context,origin,'settled-measurement')
         assert settled['workshop_orders']==1 and settled['entitlements']==1 and settled['dataset_requests']==1 and settled['dataset_projections']==1 and settled['payment_events']==1
         assertions['signed_public_webhook_grants_once']=True
+        if observations:observations.phase='owner-library-initial-http'
         await page.goto(route)
         await expect(page.locator('#articles a')).not_to_have_count(0)
         await page.locator('#my-vehicles').click()
+        if observations:
+            await expect(page.locator('#library-items > li')).to_have_count(1)
+            await observations.drain();observations.require_window('owner-library-initial-http')
         await expect(page.locator('#library-items > li')).to_have_count(1)
-        await page.reload();await expect(page.locator('#library-items > li')).to_have_count(1)
-        assert (await api_measure(context,origin))['workshop_orders']==1
+        if observations:observations.phase='owner-library-reload-http'
+        await page.reload()
+        if observations:
+            await expect(page.locator('#library-items > li')).to_have_count(1)
+            await observations.drain();observations.require_window('owner-library-reload-http')
+        await expect(page.locator('#library-items > li')).to_have_count(1)
+        assert (await api_measure(context,origin,'library-reload-measurement'))['workshop_orders']==1
         assertions['permanent_owner_library_reload']=True
-        restart_before=await api_measure(context,origin)
-        runtime_before=await (await context.request.get(origin+'/__fixture/runtime')).json()
-        await api_control(context,origin,'restart')
+        restart_before=await api_measure(context,origin,'restart-before-measurement')
+        runtime_before=await (await api21_get(context,origin+'/__fixture/runtime',phase='runtime-before')).json()
+        await api_control(context,origin,'restart','restart-control')
         deadline=time.monotonic()+5
         while True:
             try:
-                runtime_after=await (await context.request.get(origin+'/__fixture/runtime',timeout=1000)).json()
+                runtime_after=await (await api21_get(context,origin+'/__fixture/runtime',phase='runtime-poll',timeout=1000)).json()
                 if runtime_after['application_generation']==runtime_before['application_generation']+1:break
             except Exception:
                 if time.monotonic()>=deadline:raise
             assert time.monotonic()<deadline,'actual application restart did not finish'
             await asyncio.sleep(.05)
-        await page.reload();await expect(page.locator('#library-items > li')).to_have_count(1)
-        restart_after=await api_measure(context,origin)
+        if observations:observations.phase='owner-library-restart-http'
+        await page.reload()
+        if observations:
+            await expect(page.locator('#library-items > li')).to_have_count(1)
+            await observations.drain();observations.require_window('owner-library-restart-http')
+        await expect(page.locator('#library-items > li')).to_have_count(1)
+        restart_after=await api_measure(context,origin,'restart-after-measurement')
         durable=('workshop_orders','workshop_checkout_requests','entitlements','dataset_requests','dataset_projections','payment_events','orders','auth_sessions','hashed_sessions')
         assert {key:restart_before[key] for key in durable}=={key:restart_after[key] for key in durable}
         restart_receipt={'runtime_before':runtime_before,'runtime_after':runtime_after,'before':restart_before,'after':restart_after}
@@ -1057,7 +1149,8 @@ async def api_case(browser,origin,name,output):
         if name==API_CASES[0]:
             assert await page.evaluate('Object.keys(localStorage).filter(k=>/firebase:authUser|token|csrf/i.test(k))')==[]
         else:
-            await api_control(context,origin,'control/start-workers')
+            await api_control(context,origin,'control/start-workers','start-workers-control')
+            if observations:observations.phase='source-page-http'
             await page.goto(route+'&article='+article_id)
             await expect(page.locator('#article-kind')).to_have_text('Stored source',timeout=15000)
             await expect(page.locator('#article-content')).to_contain_text('Remove the pump.')
@@ -1065,69 +1158,99 @@ async def api_case(browser,origin,name,output):
             await expect(page.locator('#article-content img')).not_to_have_count(0)
             image_url=await page.locator('#article-content img').first.get_attribute('src')
             assert urlsplit(image_url).path.startswith('/v1/catalog/images/v2.')
-            image=await context.request.get(image_url);assert image.status==200 and len(await image.body())>0
+            image=await api21_get(context,image_url,phase='source-image-http');assert image.status==200 and len(await image.body())>0
+            if observations:observations.phase='source-review-http'
             await page.locator('#article-reference summary').click();await page.locator('#source-review-load').click()
             await expect(page.locator('#source-review-frame')).to_contain_text('Remove the pump.')
             source_path=await page.locator('#source-review-link').get_attribute('href')
             assert parse_qs(urlsplit(source_path).query).get('source_revision_id')
             assertions['paid_source_and_actual_s3_image']=True
-            await api_control(context,origin,'control/release-model')
+            await api_control(context,origin,'control/release-model','release-model-control')
             await expect(page.locator('#article-kind')).to_have_text('Workshop article',timeout=15000)
             await expect(page.locator('#article-content')).not_to_be_empty()
-            warm_before=await api_snapshot(context,origin)
-            reader_before=(await api_measure(context,origin))['image_reads']
+            warm_before=await api_snapshot(context,origin,'warm-before-snapshot')
+            reader_before=(await api_measure(context,origin,'reader-before-measurement'))['image_reads']
+            if observations:observations.phase='warm-page-http'
             await page.reload();await expect(page.locator('#article-kind')).to_have_text('Workshop article')
             await expect(page.locator('#article-content img')).not_to_have_count(0)
             warm_image=await page.locator('#article-content img').first.get_attribute('src')
-            delivered=await context.request.get(warm_image);assert delivered.status==200 and len(await delivered.body())>0
-            pinned=await context.request.get(origin+source_path);assert pinned.status==200
-            warm_after=await api_snapshot(context,origin)
-            reader_after=(await api_measure(context,origin))['image_reads']
+            delivered=await api21_get(context,warm_image,phase='warm-image-http');assert delivered.status==200 and len(await delivered.body())>0
+            pinned=await api21_get(context,origin+source_path,phase='warm-pinned-source-http');assert pinned.status==200
+            warm_after=await api_snapshot(context,origin,'warm-after-snapshot')
+            reader_after=(await api_measure(context,origin,'reader-after-measurement'))['image_reads']
             validate_warm_runtime(warm_before,warm_after,reader_before,reader_after)
             warm_receipt={'before':warm_before,'after':warm_after,'reader_before':reader_before,'reader_after':reader_after}
             assertions['source_to_canonical_and_warm_reuse']=True
             assertions['warm_raw_runtime_unchanged_with_approved_s3_delivery']=True
             if name==API_CASES[2]:
-                for denied in (f'/v1/catalog/vehicles/{scope["adjacent"]}/articles',f'/v1/catalog/vehicles/{scope["other_region"]}/articles',f'/v1/catalog/vehicles/{configuration}/articles/{scope["unscoped"]}',f'/v1/catalog/vehicles/{scope["vehicle"]}/articles'):
-                    denied_response=await context.request.get(origin+denied)
+                for denial_phase,denied in zip(('adjacent-denial','other-region-denial','unscoped-article-denial','legacy-vehicle-denial'),(f'/v1/catalog/vehicles/{scope["adjacent"]}/articles',f'/v1/catalog/vehicles/{scope["other_region"]}/articles',f'/v1/catalog/vehicles/{configuration}/articles/{scope["unscoped"]}',f'/v1/catalog/vehicles/{scope["vehicle"]}/articles')):
+                    denied_response=await api21_get(context,origin+denied,phase=denial_phase)
                     assert denied_response.status in (403,404), f'adjacent/legacy route exposed status{denied_response.status}'
                 other=await browser.new_context(ignore_https_errors=True)
+                if observations:other._api21=observations
                 other_transport=APIFixture(origin,name);other_transport.account='other';await other.route('**/*',other_transport.route)
                 other_page=await other.new_page()
                 try:
                     await other_page.goto(route);await api_signin(other_page)
-                    denied=await other.request.get(origin+f'/v1/catalog/vehicles/{configuration}/articles');assert denied.status==403
-                    library_response=await other.request.get(origin+'/v1/workshop/library?limit=20');assert (await library_response.json())['items']==[]
-                    denied_image=await other.request.get(image_url);assert denied_image.status==404
+                    denied=await api21_get(other,origin+f'/v1/catalog/vehicles/{configuration}/articles',phase='other-catalogue-denial',actor='other');assert denied.status==403
+                    library_response=await api21_get(other,origin+'/v1/workshop/library?limit=20',phase='other-library-http',actor='other');assert (await library_response.json())['items']==[]
+                    denied_image=await api21_get(other,image_url,phase='other-image-denial',actor='other');assert denied_image.status==404
                     assert not other_transport.unexpected and not other_transport.errors
                 finally:await other.close()
                 assertions['account_and_exact_scope_isolation']=True
                 await page.locator('#signout').click();await expect(page.locator('#article-content')).to_be_empty()
-                assert (await context.request.get(image_url)).status==401
+                assert (await api21_get(context,image_url,phase='logout-image-denial',actor='logged-out')).status==401
                 await page.evaluate('window.dispatchEvent(new PageTransitionEvent("pageshow",{persisted:true}))');await expect(page.locator('#article-content')).to_be_empty()
                 await api_signin(page);await page.goto(route+'&article='+article_id);await expect(page.locator('#article-kind')).to_have_text('Workshop article')
-                await api_control(context,origin,'disable')
-                assert (await context.request.get(image_url)).status==401
+                await api_control(context,origin,'disable','disable-control')
+                assert (await api21_get(context,image_url,phase='disabled-image-denial',actor='disabled')).status==401
                 await page.reload();await expect(page.locator('#article-content')).to_be_empty()
                 assertions['logout_bfcache_and_firebase_disable_deny']=True
             elif name==API_CASES[3]:
-                await api_control(context,origin,'payment/refund?order_id='+order)
-                old=await context.request.get(image_url);assert old.status==403
-                source=await context.request.get(origin+source_path);assert source.status==403
-                detail=await context.request.get(origin+f'/v1/catalog/vehicles/{configuration}/articles/{article_id}');assert detail.status==403
-                revoked=await api_measure(context,origin);assert revoked['orders'][0]['state']=='revoked' and revoked['entitlements']==1
+                await api_control(context,origin,'payment/refund?order_id='+order,'refund-control')
+                old=await api21_get(context,image_url,phase='refund-old-image-denial');assert old.status==403
+                source=await api21_get(context,origin+source_path,phase='refund-source-denial');assert source.status==403
+                detail=await api21_get(context,origin+f'/v1/catalog/vehicles/{configuration}/articles/{article_id}',phase='refund-detail-denial');assert detail.status==403
+                revoked=await api_measure(context,origin,'revoked-measurement');assert revoked['orders'][0]['state']=='revoked' and revoked['entitlements']==1
                 await page.reload();await expect(page.locator('#article-content')).to_be_empty();await expect(page.locator('#purchase-action')).to_be_disabled()
                 await page.locator('#my-vehicles').click();await expect(page.locator('#library-items')).to_contain_text('Access revoked')
                 assertions['signed_full_refund_denies_old_content_and_media']=True
         assert not transport.unexpected and not transport.errors, {'unexpected':transport.unexpected,'errors':transport.errors}
-        final=await api_measure(context,origin);assert final['sdk_unexpected']==0
-        return {'status':'passed','assertions':assertions,'provider':scope['provider'],'requests':transport.requests,'measurement':final,'restart':restart_receipt,'warm':warm_receipt}
-    except BaseException:
-        output.mkdir(mode=0o700,parents=True,exist_ok=True)
-        try:await page.screenshot(path=str(output/(name+'-failure.png')),timeout=1500)
-        except Exception:pass
+        final=await api_measure(context,origin,'final-measurement');assert final['sdk_unexpected']==0
+        result={'status':'passed','assertions':assertions,'provider':scope['provider'],'requests':transport.requests,'measurement':final,'restart':restart_receipt,'warm':warm_receipt}
+    except BaseException as error:
+        failure=error
+        if observations:
+            reason=('cancelled' if isinstance(error,asyncio.CancelledError) else
+                'launch_failed' if context is None else 'assertion_failed' if isinstance(error,AssertionError) else 'http_failed')
+            observations.fail(reason)
+            observations.note_lifecycle(observations.phase,'context-create' if context is None else 'page-create' if page is None else 'setup','failed',reason)
+        if page is not None:
+            try:
+                output.mkdir(mode=0o700,parents=True,exist_ok=True)
+                await page.screenshot(path=str(output/(name+'-failure.png')),timeout=1500)
+            except Exception:pass
         raise
-    finally:await context.close()
+    finally:
+        if observations:
+            try:await observations.drain()
+            except BaseException:observations.fail('cancelled')
+        if context is not None:
+            if observations:observations.note_lifecycle(observations.phase,'context-close','requested')
+            try:
+                await context.close()
+                if observations:observations.note_lifecycle(observations.phase,'context-close','completed')
+            except BaseException:
+                if observations:
+                    observations.fail('close_failed')
+                    observations.note_lifecycle(observations.phase,'context-close','failed','close_failed')
+                if failure is None:raise
+    if observations:
+        observations.complete_case(name)
+        for assertion,value in assertions.items():observations.assertion(assertion,value)
+        result['observations']=observations.snapshot()
+        if observations.primary:result['status']='failed'
+    return result
 
 
 def complete_dto_failure(expected, observations, *, stage, kind, cleanup):
@@ -1272,48 +1395,117 @@ class DTOPlaywrightLifecycle:
         elif self.manager is not None:await self.manager.__aexit__(None,None,None)
 
 
+def api21_binding(args,name):
+    keys=('binding_state','unavailable_reason','api_observability_version','run_id','attempt_id',
+        'case_id','root','engine','bank','candidate_sha','source_tree','source_input_sha256','producer_role')
+    fallback=dict.fromkeys(keys)
+    fallback.update(binding_state='partial',unavailable_reason='source_binding_failed',
+        api_observability_version=API21_VERSION,root=name,engine=args.browser,
+        candidate_sha=args.candidate_sha,producer_role='browser-runner')
+    try:
+        supplied=api21_load(os.environ.get('AUTODATA_API21_BINDING','').encode())
+        if set(supplied)!=set(keys):return fallback
+        fallback=dict(supplied,producer_role='browser-runner')
+        if (supplied['binding_state']!='complete' or supplied['unavailable_reason'] is not None or
+                supplied['api_observability_version']!=API21_VERSION or supplied['root']!=name or
+                supplied['engine']!=args.browser or supplied['candidate_sha']!=args.candidate_sha or
+                supplied['bank'] not in ('bankone','banktwo') or
+                any(not isinstance(supplied[k],str) or not re.fullmatch('[a-f0-9]{32}',supplied[k]) for k in ('run_id','attempt_id')) or
+                any(not isinstance(supplied[k],str) or not re.fullmatch('[a-f0-9]{40}',supplied[k]) for k in ('candidate_sha','source_tree'))):
+            raise ValueError('invalid binding')
+        suffix=args.browser if name==API_CASES[0] else args.browser+'-'+supplied['bank']
+        if supplied['case_id']!=name+'['+suffix+']':raise ValueError('invalid case')
+        return fallback
+    except (ValueError,TypeError,KeyError,UnicodeError):
+        fallback.update(binding_state='partial',unavailable_reason='source_binding_failed')
+        return fallback
+
+
 async def run(args):
     if args.mode=='dto-fixture':raise ValueError('DTO CLI requires the owned supervisor')
-    from playwright.async_api import async_playwright
     engines=ENGINES if args.browser=='all' else (args.browser,)
-    names=inventory() if args.mode=='dto-fixture' else [os.environ.get('AUTODATA_WORKSHOP_BROWSER_CASE')]
-    if args.mode=='api-fixture' and (len(engines)!=1 or names[0] not in API_CASES): raise ValueError('API mode requires one frozen owned pytest case/engine')
-    expected=[(engine,name) for engine in engines for name in names]
-    output=Path(args.output);output.mkdir(mode=0o700,parents=True,exist_ok=True)
-    os.chmod(output,0o700)
-    provenance=verify_provenance(args)
-    rows=[]
-    sdk=(ROOT/'apps/api-go/workshop/firebase-web.mjs').read_bytes()
-    browser_manifest=Path(importlib.metadata.distribution('playwright').locate_file('playwright/driver/package/browsers.json'))
-    revisions={item['name']:item['revision'] for item in json.loads(browser_manifest.read_text())['browsers']}
-    inputs={str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest() for path in [Path(__file__),FIXTURES/'scenarios.json',FIXTURES/'firebase_transport.js',FIXTURES/'hostile_source.json',FIXTURES/'stripe_checkout.html',ROOT/'apps/api-go/workshop_browser_fixture_test.go']}
-    evidence={'engine_revisions':revisions,'input_sha256':inputs,'version':'v1','mode':args.mode,'candidate_sha':args.candidate_sha,'sdk_sha256':hashlib.sha256(sdk).hexdigest(),'playwright_version':importlib.metadata.version('playwright'),'results':rows,'provenance':provenance}
-    if evidence['playwright_version']!='1.64.1': raise ValueError('exact Playwright 1.64.1 is required')
+    name=os.environ.get('AUTODATA_WORKSHOP_BROWSER_CASE')
+    if len(engines)!=1 or name not in API_CASES:raise ValueError('API mode requires one frozen owned pytest case/engine')
+    binding=api21_binding(args,name)
+    observations=APIObservations(binding)  # Buffer and reserve precede setup.
+    rows=[];browser=None;failure=None
+    evidence=dict(version='v1',mode='api-fixture',candidate_sha=args.candidate_sha,
+        api_observability_version=API21_VERSION,binding=binding,results=rows)
+    output=Path(args.output);target=output/'evidence.json'
+    stage='setup'
     try:
+        output.mkdir(mode=0o700,parents=True,exist_ok=True)
+        info=output.lstat()
+        if not stat.S_ISDIR(info.st_mode) or info.st_uid!=os.getuid() or stat.S_IMODE(info.st_mode)!=0o700:
+            raise OSError('unsafe output')
+        observations.note_lifecycle('setup','setup','completed')
+        stage='metadata'
+        observations.note_lifecycle('setup','metadata','requested')
+        provenance=verify_provenance(args)
+        sdk=(ROOT/'apps/api-go/workshop/firebase-web.mjs').read_bytes()
+        browser_manifest=Path(importlib.metadata.distribution('playwright').locate_file('playwright/driver/package/browsers.json'))
+        revisions={item['name']:item['revision'] for item in api21_load(browser_manifest.read_bytes())['browsers']}
+        paths=[Path(__file__),FIXTURES/'scenarios.json',FIXTURES/'firebase_transport.js',
+            FIXTURES/'hostile_source.json',FIXTURES/'stripe_checkout.html',ROOT/'apps/api-go/workshop_browser_fixture_test.go']
+        inputs={str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}
+        integration='workers/ingestion-python/tests/test_workshop_browser_integration.py'
+        seven=dict(inputs,**{integration:hashlib.sha256((ROOT/integration).read_bytes()).hexdigest()})
+        if binding['binding_state']!='complete' or binding['source_input_sha256']!=seven:
+            binding.update(binding_state='partial',unavailable_reason='source_binding_failed')
+            observations.binding.update(binding)
+            raise ValueError('source binding failed')
+        evidence.update(engine_revisions=revisions,input_sha256=inputs,
+            sdk_sha256=hashlib.sha256(sdk).hexdigest(),playwright_version=importlib.metadata.version('playwright'),
+            provenance=provenance)
+        if evidence['playwright_version']!='1.64.1':raise ValueError('exact Playwright 1.64.1 is required')
+        observations.note_lifecycle('setup','metadata','completed')
+        from playwright.async_api import async_playwright
         async with async_playwright() as playwright:
-            for engine in engines:
-                try: browser=await getattr(playwright,engine).launch()
-                except Exception as error:
-                    rows.extend(dict(browser=engine,scenario=name,status='unavailable',error=str(error)) for name in names);continue
+            stage='browser-launch';observations.note_lifecycle('setup','browser-launch','requested')
+            browser=await getattr(playwright,engines[0]).launch()
+            observations.note_lifecycle('setup','browser-launch','completed')
+            stage='case';start=time.monotonic()
+            try:
+                result=await asyncio.wait_for(api_case(browser,args.base_url,name,output/engines[0],observations=observations),timeout=65)
+                rows.append(dict(browser=engines[0],scenario=name,elapsed_seconds=round(time.monotonic()-start,3),**result))
+                evidence['browser_versions']={engines[0]:browser.version}
+            except BaseException as error:
+                failure=error
+                observations.fail('cancelled' if isinstance(error,asyncio.CancelledError) else
+                    'timeout' if isinstance(error,TimeoutError) else 'assertion_failed' if isinstance(error,AssertionError) else 'internal_error')
+            finally:
+                stage='browser-close';observations.note_lifecycle(observations.phase,'browser-close','requested')
                 try:
-                    for name in names:
-                        start=time.monotonic()
-                        try:
-                            if args.mode=='dto-fixture':
-                                result=await run_dto_case(browser,args.base_url,name,output/engine)
-                            else:
-                                result=await asyncio.wait_for(api_case(browser,args.base_url,name,output/engine),timeout=65)
-                        except Exception as error: result={'status':'failed','error':str(error) or type(error).__name__}
-                        rows.append(dict(browser=engine,scenario=name,elapsed_seconds=round(time.monotonic()-start,3),**result))
-                        evidence['browser_versions']=evidence.get('browser_versions',{})|{engine:browser.version}
-                        target=output/'evidence.json';target.write_text(json.dumps(evidence,indent=2)+'\n');os.chmod(target,0o600)
-                        print(f"{engine} {name}: {result['status']}",flush=True)
-                finally:
-                    if args.mode=='dto-fixture': await close_dto_browser(browser)
-                    else: await browser.close()
-        validate_results(rows,expected)
+                    await browser.close()
+                    observations.note_lifecycle(observations.phase,'browser-close','completed')
+                except BaseException as error:
+                    observations.fail('close_failed')
+                    observations.note_lifecycle(observations.phase,'browser-close','failed','close_failed')
+                    if failure is None:failure=error
+                browser=None
+    except BaseException as error:
+        if failure is None:failure=error
+        reason=('cancelled' if isinstance(error,asyncio.CancelledError) else
+            'source_binding_failed' if stage=='metadata' else 'launch_failed' if stage=='browser-launch' else 'internal_error')
+        observations.fail(reason)
+        try:observations.note_lifecycle('setup','metadata' if stage=='metadata' else 'browser-launch' if stage=='browser-launch' else 'setup','failed',reason)
+        except APIObservationError:pass
     finally:
-        target=output/'evidence.json';target.write_text(json.dumps(evidence,indent=2)+'\n');os.chmod(target,0o600)
+        try:await observations.drain()
+        except BaseException:observations.fail('cancelled')
+        if observations.binding.get('binding_state')!='complete':observations.fail('source_binding_failed')
+        observations.finish()
+        if not rows:rows.append(dict(browser=engines[0],scenario=name,status='failed'))
+        if observations.primary:
+            for row in rows:row['status']='failed'
+        observations.publication='written'
+        for row in rows:row['observations']=observations.snapshot()
+        if not api21_publish(target,evidence,observations) and failure is None:
+            failure=APIObservationError('publication_failed')
+    if failure is not None:
+        if isinstance(failure,asyncio.CancelledError):raise asyncio.CancelledError(observations.primary) from None
+        raise APIObservationError(observations.primary or 'internal_error') from None
+    validate_results(rows,[(engines[0],name)])
     return evidence
 
 
