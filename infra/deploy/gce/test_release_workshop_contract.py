@@ -67,6 +67,13 @@ class ReleaseWorkflowContract(unittest.TestCase):
             self.assertIn("runtime[field]===installed.live_policy[field]", script)
             self.assertIn('service_account_impersonation_url', script)
             self.assertIn("ownedContainers.add", script)
+            self.assertIn("fs.mkdir(lock,{mode:0o700})", script)
+            self.assertIn("credentials/buildx-owner.json", script)
+            self.assertIn("owner_nonce:crypto.randomBytes(32).toString('hex')", script)
+            self.assertLess(script.index("credentials/buildx-owner.json"),script.index('const credentials='))
+            self.assertLess(script.index('cleanupOwnedBuilder(builderOwner,cleanupRemaining)'),script.index('for(const id of ownedContainers)'))
+            self.assertIn('builderLock&&!cleanupFailed',script)
+            self.assertNotIn("['buildx','rm'",script)
 
     def test_static_registry_token_window_bounds_the_entire_cli_and_cleanup(self):
         import re
@@ -93,6 +100,64 @@ assert.ok(credentialWindow(1000,1000)+5*60*1000<=3600*1000-10*60*1000);
 """
             result=subprocess.run([node,'-e',harness,body],capture_output=True,timeout=3)
             self.assertEqual(result.returncode,0,result.stderr)
+
+    def test_outer_cleanup_requires_nonce_ownership_and_removes_daemon_worker(self):
+        import os
+        import re
+        import secrets
+        import shutil
+        import tempfile
+        import time
+        docker = shutil.which('docker')
+        required = os.environ.get('AUTODATA_REQUIRE_DOCKER_CLEANUP') == '1'
+        if not docker:
+            if required: self.fail('real Docker cleanup required')
+            self.skipTest('Docker unavailable')
+        image = subprocess.run([docker,'image','inspect','python:3.12-slim','--format','{{json .RepoDigests}}'],capture_output=True,timeout=5)
+        if image.returncode:
+            if required: self.fail('cached immutable local cleanup fixture required')
+            self.skipTest('cached immutable local cleanup fixture unavailable')
+        image = json.loads(image.stdout)[0]
+        script = self.workflow['jobs']['staging-build-candidate']['steps'][2]['with']['script']
+        match=re.search(r'// BEGIN OWNED BUILDER CLEANUP\n([\s\S]*?)// END OWNED BUILDER CLEANUP',script)
+        self.assertIsNotNone(match,'outer timeout has no daemon-owned builder cleanup')
+        helper=match.group(1)
+        node='/tmp/node-v22.23.4-linux-x64/bin/node'
+        if not Path(node).exists(): node='node'
+        harness=r"""
+const assert=require('node:assert/strict'),{execFile}=require('node:child_process');
+const requireValue=value=>{if(!value)throw Error('cleanup_failed');};
+const docker=(args,{timeout=5000}={})=>new Promise((resolve,reject)=>execFile('/usr/bin/docker',args,{timeout,maxBuffer:1048576},(error,out)=>error?reject(error):resolve(Buffer.from(out))));
+const AsyncFunction=Object.getPrototypeOf(async function(){}).constructor;
+new AsyncFunction('docker','requireValue','owner',process.argv[1]+';return cleanupOwnedBuilder(owner,()=>5000);')(docker,requireValue,JSON.parse(process.argv[2])).then(()=>process.exit(0)).catch(()=>process.exit(3));
+"""
+        def call(args): return subprocess.run([docker,*args],capture_output=True,check=True,timeout=15).stdout
+        for mismatch in ('none','container_nonce','volume_label','image'):
+            run_id=str(time.time_ns()//1000); builder='workshop-'+run_id+'-1'; name='buildx_buildkit_'+builder+'0'; volume=name+'_state'
+            nonce=secrets.token_hex(32)
+            owner={'protocol_version':1,'context_sha256':'a'*64,'builder_name':builder,'container_name':name,'owner_nonce':nonce,'buildkit_image':image}
+            with tempfile.TemporaryDirectory() as directory:
+                Path(directory).chmod(0o777)
+                call(['volume','create','--label','autodata.publisher.owner='+('c'*64 if mismatch=='volume_label' else nonce),volume])
+                try:
+                    call(['run','--pull=never','--detach','--network=none','--name',name,'--env','AUTODATA_PUBLISHER_OWNER='+('b'*64 if mismatch=='container_nonce' else nonce),
+                          '--mount','type=volume,src='+volume+',dst=/var/lib/buildkit','--mount','type=bind,src='+directory+',dst=/marker',image,
+                          'python','-c','import time;from pathlib import Path;time.sleep(2);Path("/marker/late").write_text("survived");time.sleep(30)'])
+                    # The Docker client exited; the daemon-owned worker remains.
+                    self.assertTrue(call(['container','ls','--quiet','--filter','name=^/'+name+'$']).strip())
+                    if mismatch=='image': owner['buildkit_image']=image.rsplit(':',1)[0]+':'+'0'*64
+                    result=subprocess.run([node,'-e',harness,helper,json.dumps(owner)],capture_output=True,timeout=15)
+                    self.assertEqual(result.returncode,0 if mismatch=='none' else 3,result.stderr)
+                    present=bool(call(['container','ls','--all','--quiet','--filter','name=^/'+name+'$']).strip())
+                    self.assertEqual(present,mismatch in ('container_nonce','image'))
+                    if mismatch=='none':
+                        self.assertFalse(call(['volume','ls','--quiet','--filter','name=^'+volume+'$']).strip())
+                        time.sleep(2.2);self.assertFalse((Path(directory)/'late').exists())
+                    else:
+                        self.assertTrue(call(['volume','ls','--quiet','--filter','name=^'+volume+'$']).strip())
+                finally:
+                    subprocess.run([docker,'container','rm','--force',name],capture_output=True,timeout=10)
+                    subprocess.run([docker,'volume','rm',volume],capture_output=True,timeout=10)
 
     def test_launch_script_and_embedded_python_are_executable_and_precredential_failure_is_bounded(self):
         script = self.workflow['jobs']['staging-build-candidate']['steps'][2]['with']['script']
