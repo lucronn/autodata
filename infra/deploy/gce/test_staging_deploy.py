@@ -34,7 +34,7 @@ def config():
         registry='us-east1-docker.pkg.dev/staging-project/workshop',
         toolchain_image='us-east1-docker.pkg.dev/staging-project/tools/publisher@sha256:' + HASH,
         service_config_sha256=HASH, bundle_inventory_sha256=HASH,
-        known_hosts_sha256=HASH, tools={name: HASH for name in ('gcloud', 'ssh', 'cloud-bootstrap.sh')})
+        known_hosts_sha256=HASH, ssh_identity_sha256=HASH, tools={name: HASH for name in ('gcloud', 'ssh', 'cloud-bootstrap.sh')})
 
 
 class OperatorContracts(unittest.TestCase):
@@ -55,12 +55,12 @@ class OperatorContracts(unittest.TestCase):
         op = load(); cfg = config()
         for phase in op.PHASES[1:]:
             command = op.remote_argv(cfg, phase, SHA, 'api' if phase == 'private' else None)
-            self.assertEqual(command[0], '/usr/bin/gcloud')
-            self.assertIn('--tunnel-through-iap', command)
-            self.assertIn('--ssh-flag=-oBatchMode=yes', command)
-            self.assertIn('--ssh-flag=-oForwardAgent=no', command)
-            self.assertIn('--ssh-flag=-oStrictHostKeyChecking=yes', command)
-            self.assertIn('--ssh-flag=-oUserKnownHostsFile=/etc/autodata/staging-operator/known_hosts', command)
+            self.assertEqual(command[0], '/usr/bin/ssh')
+            self.assertTrue(any('compute start-iap-tunnel' in item and '--listen-on-stdin' in item for item in command))
+            self.assertIn('BatchMode=yes', command)
+            self.assertIn('ForwardAgent=no', command)
+            self.assertIn('StrictHostKeyChecking=yes', command)
+            self.assertIn('UserKnownHostsFile=/etc/autodata/staging-operator/known_hosts', command)
         for phase in ('destroy', 'receive;touch /tmp/owned', 'stop', '--command'):
             with self.assertRaises(op.Rejected): op.remote_argv(cfg, phase, SHA)
         for value in ('x; touch /tmp/owned', '--project=production', 'a' * 39):
@@ -262,3 +262,103 @@ class BootstrapBoundary(unittest.TestCase):
         op = load()
         for args in (['--receive', SHA], ['--host-phase', 'private', SHA]):
             self.assertEqual(op.entry(args)[0], 2)
+
+class FrozenHelperCompatibility(unittest.TestCase):
+    """Exercise real frozen helper constructors; these are local unit evidence."""
+    def test_real_install_and_private_receipt_shapes(self):
+        op = load(); install = op._sibling('host_install'); private = op._sibling('private_material')
+        receipt = install._receipt(SHA)
+        receipt.update(service_config_sha256=HASH, release_material_committed=True, commit_state='receipt_committed')
+        for name in ('config', 'manifest', 'migration_tree', 'disk_uuid'): receipt['checks'][name] = True
+        _, receipt = install._finish(receipt, 0)
+        op.validate_receipt('install', receipt, SHA, HASH)
+        secret = private.receipt(SHA, 'api'); secret.update(service_config_sha256=HASH, secret_material_committed=True)
+        _, secret = private.finish(secret, 0)
+        op.validate_receipt('private', secret, SHA, HASH, 'api')
+        for phase, value, service in [('install', receipt, None), ('private', secret, 'api')]:
+            bad = copy.deepcopy(value); bad['unexpected_secret'] = 'must never persist'
+            with self.subTest(phase=phase), self.assertRaises(op.Rejected): op.validate_receipt(phase, bad, SHA, HASH, service)
+
+    def test_real_runtime_start_check_receipts(self):
+        op = load(); rt = op._sibling('runtime-check')
+        for phase in ('start', 'check'):
+            value = rt.operation_receipt('deploy.sh '+phase, SHA, None, 0, dict.fromkeys(op.READINESS, True))
+            op.validate_receipt(phase, value, SHA, HASH)
+            bad = copy.deepcopy(value); bad['unexpected_secret'] = 'must never persist'
+            with self.subTest(phase=phase), self.assertRaises(op.Rejected): op.validate_receipt(phase, bad, SHA, HASH)
+
+    def test_real_provision_and_preparation_journal_shapes(self):
+        from unittest.mock import patch
+        op = load(); helper = op._sibling('host_provision')
+        for phase, operation, stage in [('provision', 'prepare-new-empty-staging-host', 'docker-started'),
+                ('images', 'cache-accepted-staging-images', 'images-verified'),
+                ('database', 'initialize-fresh-staging-database', 'schema-verified')]:
+            approval = dict(authorization_id='12345678-1234-4234-8234-123456789abc', source_sha=SHA,
+                operation=operation, bundle_inventory_sha256=HASH, service_config_sha256=HASH)
+            with patch.object(helper.Journal, 'save'), patch.object(helper.os.path, 'lexists', return_value=False):
+                journal = helper.Journal(approval)
+                if phase in ('images', 'database'): journal.value['manifest_raw_sha256'] = HASH
+                if phase == 'images': journal.value['images'] = {}
+                if phase == 'database': journal.value['image_cache_receipt_sha256'] = HASH
+                journal.stage(stage); journal.success()
+            op.validate_receipt(phase, journal.value, SHA, HASH)
+            bad = copy.deepcopy(journal.value); bad['unexpected_secret'] = 'must never persist'
+            with self.subTest(phase=phase), self.assertRaises(op.Rejected): op.validate_receipt(phase, bad, SHA, HASH)
+
+class RealEntryValidation(unittest.TestCase):
+    def test_public_cli_process_reaches_real_bootstrap_config_validation(self):
+        """Local child with read-only test Pins; zero runtime processes allowed.
+
+        The wrapper changes only the file-reader boundary in its own test
+        process. It executes the public entry and real config validator; it
+        cannot grant cloud/host acceptance or invoke any live operation.
+        """
+        # A root check is replaced in the isolated child because this is an
+        # input preflight test, not root host execution or owner acceptance.
+        driver = '''import importlib.util, json
+s=importlib.util.spec_from_file_location('op', PATH)
+op=importlib.util.module_from_spec(s); s.loader.exec_module(op)
+class Pins:
+ def __enter__(self): return self
+ def __exit__(self,*args): pass
+ def read(self,path,**kwargs):
+  if path.endswith('/config.json'): return CONFIG
+  raise FileNotFoundError()
+class Host:
+ pass
+Host.Pins=Pins
+op.os.geteuid=lambda:0
+op._sibling=lambda name: Host
+original=op.validate_config
+def checked(value,source,**kwargs):
+ original(value,source,**kwargs)
+ print('real-config-validator-reached', file=op.sys.stderr)
+op.validate_config=checked
+op.run_process=lambda *a,**k: (_ for _ in ()).throw(AssertionError('no runtime process'))
+code,value=op.entry(['bootstrap', SOURCE])
+print(json.dumps(value))
+raise SystemExit(code)
+'''
+        initial = config(); initial['instance_id'] = None; initial['known_hosts_sha256'] = None
+        driver = driver.replace('PATH', repr(str(HERE/'staging_deploy.py'))).replace('CONFIG', repr(json.dumps(initial).encode())).replace('SOURCE', repr(SHA))
+        child = subprocess.run([sys.executable, '-I', '-c', driver], capture_output=True, timeout=3)
+        self.assertEqual(child.returncode, 6, child.stderr)
+        self.assertIn(b'real-config-validator-reached', child.stderr)
+        self.assertEqual(json.loads(child.stdout)['status'], 'incomplete')
+
+class ActualSSHConfiguration(unittest.TestCase):
+    def test_actual_openssh_effective_config_pins_host_key_and_iap(self):
+        op = load()
+        argv = op.host_argv(config(), 'check', SHA)
+        # -G performs config parsing only: no network, IAP or credential access.
+        result = subprocess.run([argv[0], '-G', *argv[1:]], capture_output=True, timeout=3)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        actual = dict(line.split(' ', 1) for line in result.stdout.decode().splitlines() if ' ' in line)
+        self.assertEqual(actual['stricthostkeychecking'], 'true')
+        self.assertEqual(actual['userknownhostsfile'], '/etc/autodata/staging-operator/known_hosts')
+        self.assertEqual(actual['globalknownhostsfile'], '/dev/null')
+        self.assertEqual(actual['hostkeyalias'], 'compute.123456789')
+        self.assertEqual(actual['identityfile'], '/etc/autodata/staging-operator/identity')
+        self.assertEqual(actual['identitiesonly'], 'yes')
+        self.assertEqual(actual['forwardagent'], 'no')
+        self.assertIn('/usr/bin/gcloud --quiet compute start-iap-tunnel workshop-staging 22 --listen-on-stdin', actual['proxycommand'])
