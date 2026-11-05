@@ -91,7 +91,6 @@ class GraphTests(unittest.TestCase):
             if 'selector' in env: env['selector']['region']='XX'
         result,files=self.run_fixture(Fixture(mutate=mutate));self.assertEqual(result['banks']['bankone']['stop_code'],'SELECTOR')
         self.assertTrue(any(b'"region": "XX"' in b for n,b in files.items() if n.endswith('.raw')))
-if __name__=='__main__': unittest.main()
 
 class TransportTests(unittest.TestCase):
     def transport(self,root,opener,allowance=100):
@@ -375,3 +374,52 @@ class BoundTests(unittest.TestCase):
         fixture=Fixture(mutate=mutate);result,_=self.run_fixture(fixture,doc)
         self.assertEqual(len(fixture.calls),16)
         self.assertTrue(all(b['successful']['required_resources']==1 for b in result['banks'].values()))
+
+class ChildBoundaryTests(unittest.TestCase):
+    def test_child_dns_failure_has_no_invented_http_evidence(self):
+        from urllib.request import Request
+        from bank_canary_transport import CaptureTransport,CaptureFailure
+        def dns_failure(spec):spec['completion'].send('DNS');spec['completion'].close()
+        with tempfile.TemporaryDirectory() as root:
+            transport=CaptureTransport(root,child_target=dns_failure)
+            with self.assertRaises(CaptureFailure):transport(Request('https://bankone.invalid/v1/capabilities'))
+            self.assertEqual(transport.last['reason'],'DNS');self.assertIsNone(transport.last['status']);self.assertIsNone(transport.last['raw_ref'])
+    def test_direct_child_uses_one_tls_connection_identity_encoding_and_allowlisted_headers(self):
+        from bank_canary_transport import _https_child
+        from unittest.mock import patch
+        class Completion:
+            values=[]
+            def send(self,value):self.values.append(value)
+            def close(self):pass
+        class Sock:
+            def getpeercert(self,binary_form):return b'inert-cert'
+            def version(self):return 'TLSv1.3'
+            def cipher(self):return ('INERT', 'TLSv1.3', 256)
+            def getpeername(self):return ('192.0.2.1',443)
+        class Connection:
+            calls=[]
+            def __init__(self,*args,**kwargs):self.sock=Sock();self.calls.append(('construct',args,kwargs))
+            def connect(self):self.calls.append(('connect',))
+            def request(self,*args,**kwargs):self.calls.append(('request',args,kwargs))
+            def getresponse(self):return Response(b'inert bytes','https://bankone.invalid/v1/capabilities',headers={'Content-Type':'text/plain','Content-Length':'11','Set-Cookie':'inert private cookie'})
+            def close(self):self.calls.append(('close',))
+        with tempfile.TemporaryDirectory() as root,patch('bank_canary_transport.http.client.HTTPSConnection',Connection):
+            _https_child(dict(url='https://bankone.invalid/v1/capabilities',method='GET',data=None,headers={'Accept':'application/json'},raw_path=str(Path(root,'r.raw')),journal_path=str(Path(root,'r.journal')),allowance=100,completion=Completion()))
+            self.assertEqual(Completion.values,[None])
+            self.assertNotIn('Set-Cookie',Path(root,'r.journal').read_text())
+        self.assertEqual([c[0] for c in Connection.calls].count('construct'),1)
+        headers=next(c[2]['headers'] for c in Connection.calls if c[0]=='request')
+        self.assertEqual(headers['Accept-Encoding'],'identity');self.assertNotIn('Cookie',headers)
+    def test_aggregate_allowance_bounds_failed_originals(self):
+        # The same ceiling mechanism receives the remaining per-bank allowance,
+        # including a failed response; it cannot consume a sentinel byte beyond it.
+        from urllib.request import Request
+        from bank_canary_transport import CaptureTransport,CaptureFailure
+        with tempfile.TemporaryDirectory() as root:
+            transport=CaptureTransport(root,opener=lambda r,**k:Response(b'123456789',r.full_url,status=500),allowance=5)
+            with self.assertRaises(CaptureFailure):transport(Request('https://bankone.invalid/v1/capabilities'))
+            self.assertEqual(transport.last['byte_count'],5);self.assertEqual(transport.last['status'],500)
+            self.assertEqual(Path(root,'0001.raw').read_bytes(),b'12345')
+
+if __name__ == '__main__':
+    unittest.main()

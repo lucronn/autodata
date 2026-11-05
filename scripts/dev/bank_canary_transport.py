@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import re
 import ssl
+import socket
 import time
 from urllib.error import HTTPError
 from urllib.parse import urlsplit
@@ -59,7 +60,8 @@ def _stream(response, url, raw_path, journal_path, allowance, credentials, tls=N
         declared=next((v for k,v in headers.items() if k.lower()=='content-length'),None)
         length=int(declared) if declared is not None and str(declared).isdigit() else None
         while size<allowance:
-            chunk=response.read(min(65536,allowance-size))
+            try: chunk=response.read(min(65536,allowance-size))
+            except OSError: raise CaptureFailure('READ') from None
             if not chunk:
                 state='complete';reason=None;break
             if not isinstance(chunk,bytes) or len(chunk)>min(65536,allowance-size):
@@ -77,7 +79,7 @@ def _stream(response, url, raw_path, journal_path, allowance, credentials, tls=N
 
 def _https_child(spec):
     """One connection in a disposable child; system TLS trust and no proxy lookup."""
-    conn=None
+    conn=None;stage='CONNECT'
     try:
         parsed=urlsplit(spec['url'])
         conn=http.client.HTTPSConnection(parsed.hostname,parsed.port or 443,timeout=25,context=ssl.create_default_context())
@@ -86,15 +88,19 @@ def _https_child(spec):
         cert=sock.getpeercert(binary_form=True)
         tls={'version':sock.version(),'cipher':sock.cipher(),'certificate_sha256':hashlib.sha256(cert).hexdigest(),'peer':sock.getpeername()[0]}
         headers=dict(spec['headers']);headers['Accept-Encoding']='identity';headers['Connection']='close'
+        stage='READ'
         conn.request(spec['method'],parsed.path+('?' + parsed.query if parsed.query else ''),body=spec['data'],headers=headers)
         response=conn.getresponse()
         _stream(response,spec['url'],spec['raw_path'],spec['journal_path'],spec['allowance'],(),tls)
-    except BaseException:
-        # Failure stages are recorded without exception strings or invented status.
-        if not Path(spec['journal_path']).exists():
-            with exclusive(spec['journal_path']) as file:
-                file.write(b'{"state":"absent","reason":"CONNECT_TLS"}\n')
+        spec['completion'].send(None)
+    except BaseException as error:
+        reason=('DNS' if isinstance(error,socket.gaierror) else 'TLS' if isinstance(error,ssl.SSLError)
+                else error.code if isinstance(error,CaptureFailure) else 'OUTPUT_FAILURE' if isinstance(error,OSError) and stage=='READ' else stage)
+        # Only a fixed enum crosses IPC. No raw exception or response text.
+        try: spec['completion'].send(reason)
+        except (OSError,EOFError): pass
     finally:
+        spec['completion'].close()
         if conn is not None: conn.close()
 
 
@@ -114,17 +120,19 @@ class CaptureTransport:
         if self.allowance<=0: raise CaptureFailure('BYTE_LIMIT')
         spec=dict(url=request.full_url,method=request.get_method(),headers=dict(request.header_items()),data=request.data,
                   raw_path=str(raw_path),journal_path=str(journal_path),allowance=self.allowance)
-        forced=None
+        forced=None;phase='OPEN'
         try:
             if self.opener is not None:
                 try: response=self.opener(request,timeout=min(25,timeout))
                 except HTTPError as error: response=error
+                phase='CAPTURE'
                 try: _stream(response,request.full_url,raw_path,journal_path,self.allowance,self.credentials)
                 finally: response.close()
             else:
                 ctx=multiprocessing.get_context('fork')
+                receive,send=ctx.Pipe(duplex=False);spec['completion']=send
                 child=ctx.Process(target=self.child_target,args=(spec,),daemon=True)
-                child.start();self.child_pid=child.pid
+                child.start();send.close();self.child_pid=child.pid
                 try:
                     while child.is_alive() and self.clock.monotonic()<self.deadline:
                         child.join(min(.025,max(0,self.deadline-self.clock.monotonic())))
@@ -133,11 +141,15 @@ class CaptureTransport:
                         if child.is_alive(): child.kill();child.join(1)
                     if child.is_alive(): raise CaptureFailure('CLEANUP')
                     child.join()
+                    if forced is None and receive.poll():
+                        try: forced=receive.recv()
+                        except EOFError: pass
                 finally:
+                    receive.close()
                     if child.is_alive(): child.kill();child.join(1)
                     child.close()
         except OSError:
-            forced='OUTPUT_FAILURE'
+            forced='CONNECT_TLS' if phase=='OPEN' and self.opener is not None else 'OUTPUT_FAILURE'
         except (TimeoutError,ConnectionError):
             forced='CONNECT_TLS'
         finally:
