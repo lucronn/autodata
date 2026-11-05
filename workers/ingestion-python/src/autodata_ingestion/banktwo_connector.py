@@ -18,8 +18,9 @@ from .source_connector_client import (
 
 class ArticleParser(HTMLParser):
     """Keep ordered paragraphs, figures and component links without executable HTML."""
-    def __init__(self):
+    def __init__(self, *, asset_bindings=()):
         super().__init__(convert_charrefs=True)
+        self._asset_bindings = {item["source_url"]: item["resource_ref"] for item in asset_bindings}
         self.blocks = []
         self.links = []
         self._text = []
@@ -145,6 +146,9 @@ class ArticleParser(HTMLParser):
         if tag == "img" and attrs.get("src"):
             self.flush()
             image = {"kind": "image", "url": attrs["src"], "alt": attrs.get("alt", ""), "name": attrs.get("img_name", "")}
+            ref = self._asset_bindings.get(attrs["src"]) or attrs.get("data-resource-ref") or attrs.get("asset_resource_ref")
+            if ref:
+                image["asset_resource_ref"] = ref
             if self._table_cell is not None:
                 self._table_cell.append(image)
             elif self._list_kind:
@@ -321,7 +325,7 @@ class BanktwoConnector:
         article_id = article_id or f"autoapitwo:{source_vehicle_ref}:{descriptor.get('opaque_ref', resource_ref)}"
         digest = sha256(resource.payload).hexdigest()
         evidence_id = f"{article_id}:{digest}"
-        parser = ArticleParser()
+        parser = ArticleParser(asset_bindings=resource.metadata.get("asset_bindings", []))
         parser.feed(html)
         parser.flush()
         asset_refs = []
@@ -330,7 +334,6 @@ class BanktwoConnector:
                 asset_refs.extend(str(item) for item in value if isinstance(item, str))
         asset_refs = list(dict.fromkeys(asset_refs))
         image_blocks: list[dict[str, Any]] = []
-        next_asset = iter(asset_refs)
 
         def annotate(block: Any, index: tuple[int, ...]) -> None:
             if not isinstance(block, dict):
@@ -339,10 +342,9 @@ class BanktwoConnector:
             block["evidence_ids"] = [evidence_id]
             block["block_id"] = f"{article_id}:block:{suffix}"
             if block.get("kind") == "image":
-                block.pop("url", None)
-                try:
-                    ref = next(next_asset)
-                except StopIteration:
+                url = block.pop("url", None)
+                ref = block.get("asset_resource_ref") or (url if url in asset_refs else None)
+                if not ref:
                     block["status"] = "unavailable"
                     block["unavailable_reason"] = "source asset reference was not provided"
                 else:

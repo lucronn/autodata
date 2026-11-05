@@ -467,6 +467,17 @@ original positions. No positional guess or detached duplicate gallery may
 substitute for a valid source position. The existing source fallback remains
 visible until canonical publication completes.
 
+The consumer accepts at most 128 bindings with exactly `source_url` and
+`resource_ref`, each a nonempty string of at most 2048 characters without control
+characters. Source URLs are unique and refs must be declared in the same text
+resource's `asset_resource_refs`. Matching uses HTMLParser's decoded attribute
+value directly, without URL normalization or a second HTML entity decode.
+Bindings remain in body provenance and nonempty bindings contribute to source
+identity in source-URL order; the raw body hash remains unchanged. A changed
+sidecar can therefore create a new transformation key and another rewrite under
+the existing lifecycle. Canonical reuse or historical backfill needs separate
+work; deployment canaries should use new or unpublished articles.
+
 Plan: `docs/superpowers/plans/2026-11-05-source-media-bindings.md`.
 Tracking: https://github.com/lucronn/autodata/issues/331 in
 https://github.com/users/lucronn/projects/8; parent release issue #186.

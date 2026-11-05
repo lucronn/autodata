@@ -113,6 +113,7 @@ class SourceEnvelopeV1:
                 "fetched_at": self.fetched_at,
                 "kind": kind,
                 "source_sha256": digest,
+                **({"asset_bindings": self.body["asset_bindings"]} if "asset_bindings" in self.body else {}),
             },
         )
 
@@ -437,7 +438,7 @@ def _validated_envelope(
         kind = body.get("kind")
         valid = isinstance(kind, str) and kind in {"article", "labor", "text", "asset", "binary"}
         allowed = common | {"kind", "media_type", "sha256"}
-        allowed |= {"content", "asset_resource_refs"} if kind in {"article", "labor", "text"} else {"content_base64"}
+        allowed |= {"content", "asset_resource_refs", "asset_bindings"} if kind in {"article", "labor", "text"} else {"content_base64"}
         valid = valid and isinstance(body.get("media_type"), str) and 0 < len(body["media_type"]) <= 128
         valid = valid and isinstance(body.get("sha256"), str) and bool(_SHA256.fullmatch(body["sha256"]))
         valid = valid and ("content" in body) != ("content_base64" in body)
@@ -447,6 +448,8 @@ def _validated_envelope(
             valid = kind in {"asset", "binary"} and isinstance(body["content_base64"], str) and len(body["content_base64"]) <= 20_000_000
         if valid and "asset_resource_refs" in body:
             valid = _valid_ref_list(body["asset_resource_refs"], 128)
+        if valid and "asset_bindings" in body:
+            valid = _valid_asset_bindings(body["asset_bindings"], body.get("asset_resource_refs", []))
     else:
         raise SourceConnectorError("INVALID_UPSTREAM_RESPONSE")
     if set(body) - allowed or not valid:
@@ -548,6 +551,20 @@ def _safe_locator(value: str) -> bool:
     if parsed.username or parsed.password:
         return False
     return not any(_SENSITIVE_QUERY_KEY.search(key) for key, _ in parse_qsl(parsed.query, keep_blank_values=True))
+
+
+def _valid_asset_bindings(value: Any, declared_refs: list[str]) -> bool:
+    if not isinstance(value, list) or len(value) > 128:
+        return False
+    seen = set()
+    for binding in value:
+        if not isinstance(binding, dict) or set(binding) != {"source_url", "resource_ref"}:
+            return False
+        url, ref = binding["source_url"], binding["resource_ref"]
+        if not _valid_ref(url, 2048) or not _valid_ref(ref, 2048) or ref not in declared_refs or url in seen:
+            return False
+        seen.add(url)
+    return True
 
 
 def _binary_envelope(raw: bytes, headers: Any, url: str, expected_provider: str | None) -> SourceEnvelopeV1:

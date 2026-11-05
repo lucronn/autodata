@@ -40,6 +40,8 @@ def upload_resource(envelope, opaque_ref, role, object_store):
         "request_id": envelope.request_id,
         "fetched_at": envelope.fetched_at,
         "locator": envelope.source_locator or envelope.resource_uri,
+        **({"asset_bindings": deepcopy(resource.metadata["asset_bindings"])}
+           if "asset_bindings" in resource.metadata else {}),
     }
 
 
@@ -450,6 +452,8 @@ def capture_source_article(context, *, registry, object_store, deadline_seconds=
             "body_sha256": resources[0]["sha256"],
             "body_media_type": resources[0]["media_type"],
             "resource_manifest": manifest,
+            **({"asset_bindings": sorted(body.body["asset_bindings"], key=lambda item: item["source_url"])}
+               if body.body.get("asset_bindings") else {}),
         }
     )
     return CapturedSource(
