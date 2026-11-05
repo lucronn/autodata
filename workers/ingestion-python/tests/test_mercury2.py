@@ -162,6 +162,7 @@ class Mercury2Tests(unittest.TestCase):
         def transport(request, timeout):
             del timeout
             seen["url"] = request.full_url
+            seen["payload"] = json.loads(request.data)
             return FakeResponse({"choices": [{"message": {"content": '{"ok": true}'}}]})
 
         with patch.dict(os.environ, {"INCEPTION_API_KEY": "test-key"}, clear=True):
@@ -171,6 +172,36 @@ class Mercury2Tests(unittest.TestCase):
             seen["url"],
             "https://api.inceptionlabs.ai/v1/chat/completions",
         )
+
+        self.assertEqual(seen["payload"]["max_tokens"], 8192)
+        self.assertEqual(seen["payload"]["model"], "mercury-2")
+
+    def test_client_sends_environment_output_token_budget(self):
+        seen = {}
+
+        def transport(request, timeout):
+            seen["payload"] = json.loads(request.data)
+            return FakeResponse({"choices": [{"message": {"content": '{"ok": true}'}}]})
+
+        with patch.dict(os.environ, {
+            "INCEPTION_API_KEY": "test-key",
+            "INCEPTION_MAX_TOKENS": "2048",
+        }, clear=True):
+            Mercury2Client.from_environment(transport=transport).complete_json("select")
+
+        self.assertEqual(seen["payload"]["max_tokens"], 2048)
+
+    def test_client_rejects_invalid_environment_output_token_budget_before_transport(self):
+        def transport(request, timeout):
+            self.fail("invalid token budget reached transport")
+
+        for value in ("0", "32769", "abc"):
+            with self.subTest(value=value), patch.dict(os.environ, {
+                "INCEPTION_API_KEY": "test-key",
+                "INCEPTION_MAX_TOKENS": value,
+            }, clear=True):
+                with self.assertRaises(ValueError):
+                    Mercury2Client.from_environment(transport=transport).complete_json("select")
 
     def test_adjudicator_accepts_only_a_supplied_high_confidence_candidate(self):
         def transport(_request, timeout):

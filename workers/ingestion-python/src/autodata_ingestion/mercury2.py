@@ -115,6 +115,7 @@ class Mercury2Client:
         base_url: str,
         model: str = "mercury-2",
         timeout_seconds: float = 20.0,
+        max_tokens: int = 8192,
         transport: JsonTransport = urlopen,
     ) -> None:
         if not api_key.strip():
@@ -123,10 +124,13 @@ class Mercury2Client:
             raise ValueError("Mercury-2 base URL is required")
         if timeout_seconds <= 0:
             raise ValueError("Mercury-2 timeout must be positive")
+        if not 1 <= max_tokens <= 32768:
+            raise ValueError("Mercury-2 max_tokens must be between 1 and 32768")
         self._api_key = api_key
         self._base_url = base_url.rstrip("/")
         self._model = model.strip() or "mercury-2"
         self._timeout_seconds = timeout_seconds
+        self._max_tokens = max_tokens
         self._transport = transport
 
     @classmethod
@@ -140,6 +144,7 @@ class Mercury2Client:
             base_url=base_url,
             model=os.getenv("INCEPTION_MODEL", "mercury-2"),
             timeout_seconds=float(os.getenv("INCEPTION_API_TIMEOUT_SECONDS", "20")),
+            max_tokens=int(os.getenv("INCEPTION_MAX_TOKENS", "8192")),
             transport=transport,
         )
 
@@ -154,6 +159,7 @@ class Mercury2Client:
                 {
                     "model": self._model,
                     "temperature": 0,
+                    "max_tokens": self._max_tokens,
                     "response_format": {"type": "json_object"},
                     "messages": [
                         {"role": "system", "content": "Return only valid JSON."},
