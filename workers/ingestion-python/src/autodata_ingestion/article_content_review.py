@@ -176,7 +176,7 @@ def _fixture_allowed(cur, fixture_mode):
     return fixture_mode
 
 
-def _load_locked(cur, expected):
+def _load_locked(cur, expected, *, allow_resume=False):
     """Match _lock_transform's job -> article -> candidate lock ordering."""
     job = cur.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s FOR UPDATE", (UUID(expected["job_id"]),)).fetchone()
     if job is None:
@@ -198,14 +198,16 @@ def _load_locked(cur, expected):
         or candidate["normalization_version"] != job["normalization_version"]
         or candidate["status"] != "validated"
         or article["current_canonical_revision_id"] == candidate["canonical_article_revision_id"]
-        or job["status"] != "needs_review" or job["lease_owner"] is not None
-        or job["lease_expires_at"] is not None
         or candidate["normalized_source_hash"] != digest_json(candidate["normalized_source_document"])
         or candidate["rewrite_result_hash"] != digest_json(candidate["canonical_document"])
         or expected != bindings_for(job, article, candidate, source["source_fingerprint"])):
         raise ValueError("CONTENT_REVIEW_STALE_BINDING")
     checkpoint = job["checkpoint"].get("content_review", {})
-    if (checkpoint.get("version") != 1 or checkpoint.get("state") != "awaiting_review"
+    waiting = (job["status"] == "needs_review" and job["lease_owner"] is None
+        and job["lease_expires_at"] is None and checkpoint.get("state") == "awaiting_review")
+    resuming = (allow_resume and job["status"] in ("pending", "processing")
+        and job["phase"] == "publishing" and checkpoint.get("state") == "approved")
+    if (not (waiting or resuming) or checkpoint.get("version") != 1
         or checkpoint.get("candidate_revision_id") != str(candidate["canonical_article_revision_id"])
         or checkpoint.get("candidate_hash") != candidate["rewrite_result_hash"]):
         raise ValueError("CONTENT_REVIEW_CHECKPOINT_INVALID")
@@ -213,7 +215,8 @@ def _load_locked(cur, expected):
 
 
 def _original_and_effective(cur, job, candidate):
-    from .procedure_rewrite_full import render_full
+    from .procedure_rewrite_full import render_full, validate_full
+    from .article_document import project_ordered_document
     attempt = cur.execute("SELECT * FROM canonical_article_rewrite_attempts WHERE canonical_article_revision_id=%s AND source_fetch_job_id=%s AND status='succeeded'", (candidate["canonical_article_revision_id"], job["source_fetch_job_id"])).fetchone()
     if (attempt is None or attempt["response_hash"] != digest_json(attempt["response"])
         or attempt["input_hash"] != candidate["normalized_source_hash"]
@@ -236,7 +239,14 @@ def _original_and_effective(cur, job, candidate):
                 raise ValueError("CONTENT_REVIEW_CORRECTION_INVALID")
             response = corrected
     effective = render_full(candidate["normalized_source_document"], response)
-    if effective != candidate["canonical_document"]:
+    validation = validate_full(candidate["normalized_source_document"], effective, response=response)
+    projection = project_ordered_document(effective)
+    if (effective != candidate["canonical_document"] or not validation.passed
+        or validation.report != candidate["validation_report"]
+        or digest_json(validation.report) != candidate["validation_hash"]
+        or candidate["normalized_source_document"] != job["checkpoint"].get("normalized_document")
+        or candidate["normalized_source_hash"] != job["checkpoint"].get("normalized_hash")
+        or projection != {"body": candidate["canonical_body"], "steps": candidate["canonical_steps"], "images": candidate["canonical_images"]}):
         raise ValueError("CONTENT_REVIEW_RENDER_INVALID")
     return attempt, original, response, correction
 
@@ -262,7 +272,7 @@ def record_review(repo, *, expected, reviewer_id, allowlist, decision, rationale
     from .article_document import project_ordered_document
     with repo.connect() as conn, conn.cursor(row_factory=dict_row) as cur:
         fixture_mode = _fixture_allowed(cur, fixture_mode)
-        job, article, candidate, source = _load_locked(cur, expected)
+        job, article, candidate, source = _load_locked(cur, expected, allow_resume=True)
         attempt, original, response, provenance = _original_and_effective(cur, job, candidate)
         kind = authorize_reviewer(allowlist, reviewer_id,
             drafting_identities=[attempt["provider"], attempt["model"], candidate["model_metadata"].get("drafting_actor", "")], fixture_mode=fixture_mode)
@@ -284,6 +294,14 @@ def record_review(repo, *, expected, reviewer_id, allowlist, decision, rationale
         reason = {"schema": REASON_SCHEMA, "bindings": bindings_for(job, article, candidate, source["source_fingerprint"]),
             "full_content_reviewed": full_content_reviewed, "retention_reviews": retentions, "rationale": rationale,
             "reviewer_kind": kind, "correction": provenance}
+        latest = cur.execute("SELECT * FROM canonical_article_reviews WHERE canonical_article_revision_id=%s ORDER BY reviewed_at DESC,canonical_article_review_id DESC LIMIT 1", (candidate["canonical_article_revision_id"],)).fetchone()
+        if (decision == "APPROVED" and correction is None and latest is not None
+            and latest["decision"] == decision and latest["authorized_reviewer_id"] == reviewer_id
+            and _reason(latest["reason"]) == reason
+            and job["checkpoint"]["content_review"].get("state") == "approved"):
+            return {"status": "approved", "review_id": str(latest["canonical_article_review_id"]), "bindings": reason["bindings"]}
+        if decision == "APPROVED" and job["status"] != "needs_review":
+            raise ValueError("CONTENT_REVIEW_ALREADY_RESUMING")
         review_id = uuid4()
         if decision == "APPROVED":
             validate_review(reason, job=job, article=article, candidate=candidate, source_fingerprint=source["source_fingerprint"],
@@ -297,14 +315,14 @@ def record_review(repo, *, expected, reviewer_id, allowlist, decision, rationale
             projection = project_ordered_document(candidate["canonical_document"])
             cur.execute("UPDATE canonical_article_revisions SET canonical_document=%s,canonical_body=%s,canonical_steps=%s,canonical_images=%s,rewrite_result_hash=%s,validation_report=%s,validation_hash=%s WHERE canonical_article_revision_id=%s",
                 (Jsonb(candidate["canonical_document"]), projection["body"], Jsonb(projection["steps"]), Jsonb(projection["images"]), candidate["rewrite_result_hash"], Jsonb(validation.report), digest_json(validation.report), candidate["canonical_article_revision_id"]))
-        cur.execute("INSERT INTO canonical_article_reviews(canonical_article_review_id,canonical_article_revision_id,authorized_reviewer_id,decision,reason,reviewed_at) VALUES (%s,%s,%s,%s,%s,clock_timestamp())",
-            (review_id, candidate["canonical_article_revision_id"], reviewer_id, decision, json.dumps(reason, sort_keys=True)))
+        cur.execute("INSERT INTO canonical_article_reviews(canonical_article_review_id,canonical_article_revision_id,authorized_reviewer_id,decision,reason,reviewed_at) SELECT %s,%s,%s,%s,%s,GREATEST(clock_timestamp(),COALESCE(max(reviewed_at)+interval '1 microsecond',clock_timestamp())) FROM canonical_article_reviews WHERE canonical_article_revision_id=%s",
+            (review_id, candidate["canonical_article_revision_id"], reviewer_id, decision, json.dumps(reason, sort_keys=True), candidate["canonical_article_revision_id"]))
         checkpoint = {"version": 1, "state": "approved" if decision == "APPROVED" else "awaiting_review",
             "candidate_revision_id": str(candidate["canonical_article_revision_id"]), "candidate_hash": candidate["rewrite_result_hash"], "review_id": str(review_id)}
         if decision == "APPROVED":
             cur.execute("UPDATE source_fetch_jobs SET status='pending',phase='publishing',retryable=true,error_code=NULL,next_attempt_at=clock_timestamp(),checkpoint=checkpoint||%s,updated_at=clock_timestamp() WHERE source_fetch_job_id=%s",
                 (Jsonb({"content_review": checkpoint, "validation_hash": digest_json(validation.report)}), job["source_fetch_job_id"]))
         else:
-            cur.execute("UPDATE source_fetch_jobs SET checkpoint=checkpoint||%s,updated_at=clock_timestamp() WHERE source_fetch_job_id=%s",
+            cur.execute("UPDATE source_fetch_jobs SET status='needs_review',phase='publishing',retryable=false,error_code='CONTENT_REVIEW_REQUIRED',next_attempt_at=NULL,lease_token=lease_token+CASE WHEN status='processing' THEN 1 ELSE 0 END,lease_owner=NULL,lease_expires_at=NULL,heartbeat_at=NULL,checkpoint=checkpoint||%s,updated_at=clock_timestamp() WHERE source_fetch_job_id=%s",
                 (Jsonb({"content_review": checkpoint, "validation_hash": digest_json(validation.report)}), job["source_fetch_job_id"]))
         return {"status": decision.lower(), "review_id": str(review_id), "bindings": reason["bindings"]}
