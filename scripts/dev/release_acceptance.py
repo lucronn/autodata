@@ -2750,7 +2750,11 @@ def _api21_v2_process(process, case, role, raw, *, passed, publication=False):
     unique([row['ref'] for row in hashes])
     if process['reaped'] is True and not publication:require([row['ref'] for row in hashes]==list(dict.fromkeys(refs)),'api21_v2_process_hashes')
     else:require(not hashes,'api21_v2_process_hashes')
-    if passed:require(code==0 and process['launched'] and process['wait_kind']=='normal' and not process['intentional_cleanup'] and not publication,'api21_v2_process_success')
+    signaling=any(kind in ('term-requested','term-sent','kill-requested','kill-sent','signal-failed') for kind in kinds)
+    require(not signaling or process['intentional_cleanup'] and process['wait_kind']=='cleanup','api21_v2_process_cleanup')
+    require(not process['intentional_cleanup'] or process['wait_kind']=='cleanup','api21_v2_process_cleanup')
+    if passed:
+        require(code==0 and process['launched'] and process['wait_kind']=='normal' and not process['intentional_cleanup'] and not publication and kinds==['launch-requested','launch-succeeded','wait-completed'],'api21_v2_process_success')
 
 
 def _api21_v2_checkout(payload):

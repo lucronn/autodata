@@ -4283,4 +4283,15 @@ class Api21V2RawInspectorTests(unittest.TestCase):
                 self.reject(model)
 
 
+    def test_process_cleanup_events_cannot_masquerade_as_normal_success(self):
+        for role in ('child','go','browser_runner'):
+            with self.subTest(role=role):
+                model=self.model();process=model[0]['parent']['child'] if role=='child' else model[0]['child'][role]
+                wait=process['events'].pop()
+                for kind in ('term-requested','term-sent'):
+                    process['events'].append(dict(seq=len(process['events'])+1,kind=kind,elapsed_us=len(process['events'])+1,return_code=None,reason=None))
+                wait.update(seq=5,elapsed_us=5);process['events'].append(wait);process['finished_us']=5
+                self.reject(model)
+
+
 if __name__ == '__main__': unittest.main()
