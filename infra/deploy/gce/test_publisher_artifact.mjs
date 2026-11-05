@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {fileURLToPath} from 'node:url';
 import assert from 'node:assert/strict';
 import {mkdtemp, writeFile, chmod, rm, symlink, link, mkdir, readFile, stat} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
@@ -390,4 +391,28 @@ for(const [mode,want,openAtReturn] of [
  assert.equal(r.auth,mode==='close-archive'?0:1);
  assert.equal(r.lateOperations,0,'failed inspection must not start further file operations');
  if(mode.endsWith('abort') || mode.endsWith('deadline')){assert.equal(r.transitioned,true);assert.equal(r.released,true);assert.equal(r.returnedBeforeRelease,false);}
+});
+
+test('toolkit tree builder emits deterministic complete read-only byte inventory from real files',async t=>{
+ const f=await treeFixture(t),builder=new URL('./publisher-toolkit/build_tree.mjs',import.meta.url);
+ await writableDirs(f.root);
+ const child=spawnSync(process.execPath,[fileURLToPath(builder)],{cwd:f.root,encoding:'utf8',timeout:10000});
+ assert.equal(child.status,0,child.stderr);
+ const manifest=await readFile(path.join(f.root,'installed-tree.json'));
+ assert.equal(await helper.verifyInstalledTree(f.root,manifest,sha(manifest),f.lockBytes),true);
+ await writableDirs(f.root);
+ const again=spawnSync(process.execPath,[fileURLToPath(builder)],{cwd:f.root,encoding:'utf8',timeout:10000});
+ assert.equal(again.status,0,again.stderr);assert.deepEqual(await readFile(path.join(f.root,'installed-tree.json')),manifest);
+});
+
+test('installed tree honors exact lock package name for npm aliases',async t=>{
+ const f=await treeFixture(t);await writableDirs(f.root);
+ const lock=JSON.parse(f.lockBytes);lock.packages['node_modules/transitive'].name='locked-alias-target';
+ const lockBytes=Buffer.from(JSON.stringify(lock));
+ const target='node_modules/transitive/package.json',installed=Buffer.from(JSON.stringify({name:'locked-alias-target',version:'1.0.0'}));
+ for(const [name,raw] of [['package-lock.json',lockBytes],[target,installed]]){await chmod(path.join(f.root,name),0o644);await writeFile(path.join(f.root,name),raw);await chmod(path.join(f.root,name),0o444);}
+ const m=JSON.parse(f.manifest);m.toolkit_lock_sha256=sha(lockBytes);
+ for(const entry of m.files){if(entry.path==='package-lock.json'){entry.bytes=lockBytes.length;entry.sha256=sha(lockBytes);}if(entry.path===target){entry.bytes=installed.length;entry.sha256=sha(installed);}}
+ const manifest=Buffer.from(JSON.stringify(m));await writableDirs(f.root,0o555);
+ assert.equal(await helper.verifyInstalledTree(f.root,manifest,sha(manifest),lockBytes),true);
 });
