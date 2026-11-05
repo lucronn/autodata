@@ -177,7 +177,7 @@ def selection(pins):
     return (target.rsplit('/', 1)[1], ident(value))
 
 
-def select(pins, source_sha, previous):
+def select(pins, source_sha, previous, on_publish=None):
     require(re.fullmatch(SHA, source_sha) is not None and selection(pins) == previous)
     pins.recheck()
     directory = pins.directory(OPT)
@@ -185,7 +185,10 @@ def select(pins, source_sha, previous):
     os.symlink(RELEASES + '/' + source_sha, name, dir_fd=directory)
     try:
         require(selection(pins) == previous)
+        published = (source_sha,ident(os.stat(name,dir_fd=directory,follow_symlinks=False)))
         os.replace(name, 'current', src_dir_fd=directory, dst_dir_fd=directory)
+        # Record the precise inode at publication, before durability can fail.
+        if on_publish is not None: on_publish(published)
         os.fsync(directory)
     finally:
         try: os.unlink(name, dir_fd=directory)
@@ -243,6 +246,7 @@ class Lifecycle:
         self.pins.recheck()
         self.mounts(config)
         code, _ = self.rt.guard_cli()
+        if code == 5: raise subprocess.TimeoutExpired('local guard observation',5)
         require(code == 0)
         self.checks.update(metadata_guard=True,storage_guard=True)
         self.rt.validate_runtime_secret_files()
@@ -387,6 +391,9 @@ class Lifecycle:
         require(all(not value['running'] for value in graph.values()))
         self.checks.update(services=True,runtime_evidence=False)
 
+    def track_selection(self, selected):
+        self.expected_current = selected
+
     def recovery_budget(self):
         self.deadline = self.end
         if signal.getsignal(signal.SIGALRM) is _expired:
@@ -411,8 +418,8 @@ class Lifecycle:
         self.bundle(prior,config)
         self.launch(prior,config)
         current = selection(self.pins)
-        require(current == previous or current is not None and current[0] == target['source_sha'])
-        if current != previous: select(self.pins,prior['source_sha'],current)
+        require(current == previous or current == self.expected_current and current is not None and current[0] == target['source_sha'])
+        if current != previous: select(self.pins,prior['source_sha'],current,self.track_selection)
         self.expected_current = selection(self.pins)
         self.recheck(prior,config)
         self.maintenance(True,prior,[prior])
@@ -469,7 +476,7 @@ def _activation_cli(argv):
                 validate_data_directories(rt)
                 host.launch(manifest,config)
                 host.recheck(manifest,config)
-                select(pins,sha,previous)
+                select(pins,sha,previous,host.track_selection)
                 host.expected_current = selection(pins)
                 host.recheck(manifest,config)
                 host.maintenance(False,manifest,[manifest])

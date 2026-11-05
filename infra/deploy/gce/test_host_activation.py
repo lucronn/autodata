@@ -343,3 +343,28 @@ class OwnershipTests(LifecycleTests):
             code,receipt = self.a.activation_cli(['stop',SHA])
         self.assertEqual(code,3,receipt)
         self.assertFalse(any(isinstance(x,list) and 'stop' in x for x in self.events[before:]))
+
+class ReviewRegressionTests(LifecycleTests):
+    def test_selection_directory_fsync_failure_removes_published_first_current(self):
+        real_fsync = os.fsync
+        failed = False
+        def fsync(fd):
+            nonlocal failed
+            if os.readlink('/proc/self/fd/' + str(fd)) == str(self.base) and not failed:
+                failed = True
+                raise OSError('directory fsync failure')
+            return real_fsync(fd)
+        with patch.object(os,'fsync',side_effect=fsync):
+            code,receipt = self.start()
+        self.assertTrue(failed)
+        self.assertEqual(code,4,receipt)
+        self.assertFalse((self.base/'current').is_symlink())
+        self.assertEqual(self.edge.read_bytes(),b'respond "Maintenance" 503\n')
+        self.assertTrue(all(not value['running'] for value in self.graph.values() if value['service'] not in ('postgres','nats','minio')))
+
+    def test_guard_timeout_before_mutation_preserves_timeout_exit(self):
+        self.rt.guard_cli = lambda: (5,{'failure_code':'operation_timed_out'})
+        code,receipt = self.start()
+        self.assertEqual(code,5,receipt)
+        self.assertEqual(receipt['failure_code'],'operation_timed_out')
+        self.assertEqual(self.edge.read_bytes(),b'')
