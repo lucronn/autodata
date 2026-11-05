@@ -263,3 +263,39 @@ def test_unfamiliar_units_identifiers_and_unicode_number_separators_stay_literal
     assert run(source,payload).error_code == "REWRITE_TECHNICAL_MUTATION"
     payload["replacements"][0]["text"] = f"For the cover, use {original} as specified."
     assert run(source,payload).error_code is None
+
+
+@pytest.mark.parametrize("original,changed", [
+    ("ABC/123", "XYZ/123"), ("123/ABC", "123/XYZ"),
+    ("123-ABC/456", "123-XYZ/456"), ("123.ABC", "123.XYZ"),
+    ("1KZ-TE", "1KZ-TD"), ("ABC/１２３", "XYZ/１２３"),
+])
+def test_complete_slash_and_leading_digit_identifiers_cannot_change(original,changed):
+    source = document(f"Use tool {original} for the cover.")
+    payload = response(f"For the cover, use tool {changed} as specified.")
+    assert run(source,payload).error_code == "REWRITE_TECHNICAL_MUTATION"
+    payload["replacements"][0]["text"] = f"For the cover, use tool {original} as specified."
+    assert run(source,payload).error_code is None
+    payload["introduction"] = f"The article describes tool {changed} for cover access."
+    assert run(source,payload).error_code == "REWRITE_TECHNICAL_MUTATION"
+
+
+@pytest.mark.parametrize("field,value", [("type", []), ("type", {}), ("type", True),
+    ("source_order", []), ("evidence_ids", True), ("evidence_ids", [{}]),
+    ("block_id", []), ("text", {})])
+@pytest.mark.parametrize("side", ["source", "candidate"])
+def test_malformed_json_member_types_return_failed_validation_instead_of_raising(field,value,side):
+    from autodata_ingestion.procedure_rewrite_full import render_full, validate_full
+    source = document("The cover provides access.")
+    payload = response("Access is provided by the cover.")
+    candidate = render_full(source,payload)
+    target = source if side == "source" else candidate
+    target["blocks"][0][field] = value
+    validation = validate_full(source,candidate,response=payload)
+    assert not validation.passed
+    assert "REWRITE_DOCUMENT_INVALID" in validation.error_codes
+    assert not validation.report["structural_integrity_passed"]
+    if side == "source":
+        with pytest.raises(ValueError, match="REWRITE_DOCUMENT_INVALID"):
+            render_full(source,payload)
+        assert run(source,payload).error_code == "REWRITE_DOCUMENT_INVALID"

@@ -37,7 +37,7 @@ _NUMERIC = (
 # URL and Markdown targets are preserved independently of the label; literal
 # mixed letter/digit references (including hyphenated tool IDs) stay together.
 _TARGET = r"(?<=\]\()[^\s)]+|(?:https?://|urn:)[^\s<>\[\]()]+|(?<!\w)#[\w.-]+"
-_IDENTIFIER = r"(?<!\w)(?=[\w.-]*\d)(?=[\w.-]*[^\W\d_])[^\W\d_][\w/-]*(?:[.]\w+)*"
+_IDENTIFIER = r"(?<![\w/.-])(?=[\w/.-]*\d)(?=[\w/.-]*[^\W\d_])\w+(?:[./-]\w+)*"
 _TOKENS = re.compile(_TARGET + "|" + _IDENTIFIER + "|" + _NUMERIC)
 
 
@@ -81,8 +81,13 @@ def _get(document, path):
 
 def _source_valid(document):
     from .article_document import validate_ordered_document
-    return (isinstance(document, dict) and type(document.get("schema_version")) is int
-            and bool(document.get("blocks")) and not validate_ordered_document(document, strict=True))
+    try:
+        return (isinstance(document, dict) and type(document.get("schema_version")) is int
+                and bool(document.get("blocks")) and not validate_ordered_document(document, strict=True))
+    except (TypeError, ValueError, KeyError, IndexError, AttributeError):
+        # The shared validator predates this untrusted-JSON boundary and some
+        # malformed members (for example an array-valued type) can raise.
+        return False
 
 
 def _technical_tokens(text):
@@ -227,15 +232,16 @@ def validate_full(source, candidate, *, response=None):
     retentions. Store/review consumers must also bind the saved response (or
     explicit corrected response) to recover its proposed retention reasons.
     """
-    from .article_document import validate_ordered_document
     errors, changed, retained, reasons = [], [], [], {}
     source_protected = target_protected = None
     source_valid = _source_valid(source)
-    if not source_valid or validate_ordered_document(candidate, strict=True):
+    candidate_valid = _source_valid(candidate)
+    if not source_valid or not candidate_valid:
         errors.append("REWRITE_DOCUMENT_INVALID")
     slots = prose_slots(source) if source_valid else []
     if source_valid:
         source_protected = digest_json(_masked(source, slots))
+    if source_valid and candidate_valid:
         try:
             restored = deepcopy(candidate)
             intro = restored["blocks"].pop(0)
