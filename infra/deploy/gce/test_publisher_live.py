@@ -28,6 +28,150 @@ def load():
 
 
 class LiveTests(unittest.TestCase):
+    def buildx_owner_fixture(self, p, root):
+        import hashlib
+        import test_publisher_adapters
+        context = test_publisher_adapters.context_fixture()
+        context['run_id'] = str(int.from_bytes(os.urandom(6),'big'))
+        builder = 'workshop-'+context['run_id']+'-'+str(context['run_attempt'])
+        image = 'moby/buildkit@sha256:c5f8862f52499773af85bc07695b2379ef08e8002352b0df2c4864c91d78dabe'
+        owner = {'protocol_version':1,'context_sha256':p.a.digest(p.a.canonical(context)),
+                 'builder_name':builder,'container_name':'buildx_buildkit_'+builder+'0',
+                 'owner_nonce':os.urandom(32).hex(),'buildkit_image':image}
+        creds = root/'credentials'; creds.mkdir(mode=0o700)
+        (creds/'docker').mkdir(mode=0o700)
+        p.a.private_write(creds,'buildx-owner.json',p.a.canonical(owner))
+        pin = {'path':'/usr/bin/docker','version':'28.5.2',
+               'sha256':hashlib.sha256(Path('/usr/bin/docker').read_bytes()).hexdigest()}
+        policy = {'tools':{'docker':pin,'buildkit-image':pin|{'version':image}}}
+        return p.LiveDependencies(root,policy,context,{},budget=p.a.Budget()),creds,owner
+
+    def test_real_buildx_owned_nonce_container_and_labeled_volume_cleanup(self):
+        import unittest.mock
+        p = load()
+        with p.a.private_workspace() as root:
+            deps,creds,owner = self.buildx_owner_fixture(p,root)
+            with unittest.mock.patch.object(p,'CREDS',creds):
+                try:
+                    deps.create_builder(deps.context)
+                    inspected = subprocess.run(['/usr/bin/docker','container','inspect',owner['container_name']],
+                                               capture_output=True,check=True,timeout=10)
+                    actual = p.a.strict_json(inspected.stdout)[0]
+                    self.assertIn('AUTODATA_PUBLISHER_OWNER='+owner['owner_nonce'],actual['Config']['Env'])
+                    self.assertEqual(actual['Config']['Image'],owner['buildkit_image'])
+                    deps.budget.end = time.monotonic()-1
+                    deps.cleanup()
+                    remaining = subprocess.run(['/usr/bin/docker','container','ls','--all','--quiet',
+                        '--filter','name=^/'+owner['container_name']+'$'],capture_output=True,check=True,timeout=10)
+                    self.assertEqual(remaining.stdout,b'')
+                    volumes = subprocess.run(['/usr/bin/docker','volume','ls','--quiet',
+                        '--filter','name=^'+owner['container_name']+'_state$'],capture_output=True,check=True,timeout=10)
+                    self.assertEqual(volumes.stdout,b'')
+                finally:
+                    deps.cleanup()
+
+    def test_real_buildx_preexisting_daemon_resources_are_never_adopted_or_removed(self):
+        import unittest.mock
+        p = load()
+        for collision in ('container','volume'):
+            with self.subTest(collision=collision),p.a.private_workspace() as root:
+                deps,creds,owner = self.buildx_owner_fixture(p,root)
+                name = owner['container_name'] if collision == 'container' else owner['container_name']+'_state'
+                args = (['container','create','--name',name,owner['buildkit_image']] if collision == 'container'
+                        else ['volume','create',name])
+                original = subprocess.run(['/usr/bin/docker',*args],capture_output=True,check=True,timeout=10).stdout.strip()
+                try:
+                    with unittest.mock.patch.object(p,'CREDS',creds):
+                        with self.assertRaisesRegex(p.a.AdapterError,'builder_collision'): deps.create_builder(deps.context)
+                        deps.cleanup()
+                    observed = subprocess.run(['/usr/bin/docker',collision,'inspect',name],capture_output=True,check=True,timeout=10)
+                    item = p.a.strict_json(observed.stdout)[0]
+                    self.assertEqual((item['Id'] if collision == 'container' else item['Name']).encode(),original)
+                finally:
+                    subprocess.run(['/usr/bin/docker',collision,'rm','--force',name] if collision == 'container'
+                                   else ['/usr/bin/docker','volume','rm',name],capture_output=True,check=True,timeout=10)
+
+    def test_real_buildx_failed_creation_retains_owner_for_cleanup(self):
+        import unittest.mock
+        p = load()
+        for phase in ('volume','bootstrap'):
+            with self.subTest(phase=phase),p.a.private_workspace() as root:
+                deps,creds,owner = self.buildx_owner_fixture(p,root)
+                original = deps.tools.run
+                def lose_create_reply(tool, arguments, **kwargs):
+                    result = original(tool,arguments,**kwargs)
+                    if (phase == 'volume' and arguments[:2] == ['volume','create'] or
+                        phase == 'bootstrap' and arguments[:3] == ['buildx','inspect','--bootstrap']):
+                        raise p.a.AdapterError('operation_failed')
+                    return result
+                with unittest.mock.patch.object(p,'CREDS',creds):
+                    try:
+                        with unittest.mock.patch.object(deps.tools,'run',lose_create_reply):
+                            with self.assertRaisesRegex(p.a.AdapterError,'operation_failed'): deps.create_builder(deps.context)
+                        deps.cleanup()
+                        for kind,name in (('container',owner['container_name']),('volume',owner['container_name']+'_state')):
+                            observed = subprocess.run(['/usr/bin/docker',kind,'ls','--quiet','--filter',
+                                        'name=^'+('/' if kind == 'container' else '')+name+'$'],
+                                        capture_output=True,check=True,timeout=10)
+                            self.assertEqual(observed.stdout,b'')
+                    finally: deps.cleanup()
+
+    def test_real_buildx_cleanup_refuses_replacement_container_with_wrong_nonce(self):
+        import unittest.mock
+        p = load()
+        with p.a.private_workspace() as root:
+            deps,creds,owner = self.buildx_owner_fixture(p,root)
+            replacement = None
+            with unittest.mock.patch.object(p,'CREDS',creds):
+                try:
+                    deps.create_builder(deps.context)
+                    actual = deps.owned_builder_container(owner)
+                    subprocess.run(['/usr/bin/docker','container','rm','--force',actual],capture_output=True,check=True,timeout=10)
+                    replacement = subprocess.run(['/usr/bin/docker','container','create','--name',owner['container_name'],
+                        '--env','AUTODATA_PUBLISHER_OWNER='+'0'*64,owner['buildkit_image']],
+                        capture_output=True,check=True,timeout=10).stdout.strip().decode()
+                    with self.assertRaisesRegex(p.a.AdapterError,'builder_ownership'): deps.cleanup()
+                    observed = subprocess.run(['/usr/bin/docker','container','inspect',replacement],capture_output=True,check=True,timeout=10)
+                    self.assertEqual(p.a.strict_json(observed.stdout)[0]['Id'],replacement)
+                finally:
+                    if replacement is not None:
+                        subprocess.run(['/usr/bin/docker','container','rm','--force',replacement],capture_output=True,check=True,timeout=10)
+                    deps.cleanup()
+
+    def test_real_buildx_cleanup_refuses_replacement_volume_without_owner_label(self):
+        import unittest.mock
+        p = load()
+        with p.a.private_workspace() as root:
+            deps,creds,owner = self.buildx_owner_fixture(p,root)
+            volume = owner['container_name']+'_state'
+            replacement = False
+            with unittest.mock.patch.object(p,'CREDS',creds):
+                try:
+                    deps.create_builder(deps.context)
+                    identity = deps.owned_builder_container(owner)
+                    subprocess.run(['/usr/bin/docker','container','rm','--force',identity],capture_output=True,check=True,timeout=10)
+                    subprocess.run(['/usr/bin/docker','volume','rm',volume],capture_output=True,check=True,timeout=10)
+                    subprocess.run(['/usr/bin/docker','volume','create',volume],capture_output=True,check=True,timeout=10)
+                    replacement = True
+                    with self.assertRaisesRegex(p.a.AdapterError,'builder_ownership'): deps.cleanup()
+                    observed = subprocess.run(['/usr/bin/docker','volume','inspect',volume],capture_output=True,check=True,timeout=10)
+                    self.assertEqual(p.a.strict_json(observed.stdout)[0]['Name'],volume)
+                finally:
+                    if replacement:
+                        subprocess.run(['/usr/bin/docker','volume','rm',volume],capture_output=True,check=True,timeout=10)
+                    deps.cleanup()
+
+    def test_buildx_changed_owner_record_denies_before_daemon_mutation(self):
+        import unittest.mock
+        p = load()
+        with p.a.private_workspace() as root:
+            deps,creds,owner = self.buildx_owner_fixture(p,root)
+            (creds/'buildx-owner.json').unlink()
+            p.a.private_write(creds,'buildx-owner.json',p.a.canonical(owner|{'context_sha256':'f'*64}))
+            with unittest.mock.patch.object(p,'CREDS',creds),unittest.mock.patch.object(
+                    deps.tools,'run',side_effect=AssertionError('daemon contacted before owner validation')):
+                with self.assertRaisesRegex(p.a.AdapterError,'builder_ownership'): deps.create_builder(deps.context)
+
     def test_unresolved_runtime_fields_fail_before_trust_tokens_or_processes(self):
         import unittest.mock
         import test_host_runtime
