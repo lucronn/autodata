@@ -187,5 +187,25 @@ authorization. Candidate `e8473a792e86d7b19f7b2de2e22bc35b3c1cf5b3` has passed
 local real-service delivery/replay/ACL/outage verification; see
 `docs/verification/2026-11-05-production-outbox-relay.md`. Independent review
 identified the separate host activation application-list omission. Integration
-remains incomplete pending its synchronized scope amendment and implementation;
+remains incomplete pending implementation of the synchronized scope amendment;
 no deployment has occurred.
+
+### Production relay activation scope amendment
+
+Original gate `a13cf0879d3551eec23c119829c7993b6b5bd6de` remains preserved.
+Review at candidate `e8473a792e86d7b19f7b2de2e22bc35b3c1cf5b3` found that
+`host_activation.py` APPS/start/stop/recovery/inventory and its eight-service cap
+would omit or reject the relay. The synchronized Issue #303/Project #8 plan now
+adds exactly `infra/deploy/gce/host_activation.py` and
+`infra/deploy/gce/test_host_activation.py`, for15 intended implementation paths.
+Task index: `docs/agents/tasks/2026-11-03-production-release/production-outbox-relay.json`.
+
+Additional concrete todo:
+
+- [ ] Include outbox-relay in host activation startup, stop, recovery and inventory, replace the eight-service inventory cap with the exact nine-service graph, and prove missing, stopped, duplicate, foreign or tenth-container rejection in activation regressions.
+
+The exact normal-service graph is nine services: caddy, api, ingestion-http,
+article-worker, payment-reconciler, outbox-relay, postgres, nats and minio.
+Preserve maintenance-first startup, orderly stop/recovery, exact inventory
+identity/security checks, duplicate rejection and foreign/tenth-container denial.
+This amendment authorizes no live host or service operation.
