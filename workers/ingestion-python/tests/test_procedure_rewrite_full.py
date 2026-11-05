@@ -299,3 +299,23 @@ def test_malformed_json_member_types_return_failed_validation_instead_of_raising
         with pytest.raises(ValueError, match="REWRITE_DOCUMENT_INVALID"):
             render_full(source,payload)
         assert run(source,payload).error_code == "REWRITE_DOCUMENT_INVALID"
+
+
+@pytest.mark.parametrize("original,changed", [
+    ("T-42--ABC", "T-42--XYZ"), ("T-42//ABC", "T-42//XYZ"),
+    ("T-42..ABC", "T-42..XYZ"), ("123--ABC/456", "123--XYZ/456"),
+    ("ABC//123", "XYZ//123"), ("T-42-./ABC", "T-42-./XYZ"),
+])
+def test_repeated_separator_identifiers_preserve_every_letter_segment(original,changed):
+    from autodata_ingestion.procedure_rewrite_full import render_full, validate_full
+    source = document(f"Use tool {original} for the cover.")
+    payload = response(f"For the cover, use tool {changed} as specified.")
+    with pytest.raises(ValueError, match="REWRITE_TECHNICAL_MUTATION"):
+        render_full(source,payload)
+    payload["replacements"][0]["text"] = f"For the cover, use tool {original} as specified."
+    candidate = render_full(source,payload)
+    assert validate_full(source,candidate,response=payload).passed
+    candidate["blocks"][1]["text"] = f"For the cover, use tool {changed} as specified."
+    payload["replacements"][0]["text"] = candidate["blocks"][1]["text"]
+    validation = validate_full(source,candidate,response=payload)
+    assert not validation.passed and "REWRITE_TECHNICAL_MUTATION" in validation.error_codes

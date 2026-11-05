@@ -35,9 +35,10 @@ _NUMERIC = (
     + r"(?:\s+(?:" + "|".join(_UNITS) + r"|[^\W\d_][\w·°%/^-]*)(?!\w)|[^\W\d_][\w·°%/^-]*|[%°])?"
 )
 # URL and Markdown targets are preserved independently of the label; literal
-# mixed letter/digit references (including hyphenated tool IDs) stay together.
+# mixed letter/digit references stay together, including repeated/mixed
+# separator runs inside tool IDs. A partial prefix must never hide a suffix.
 _TARGET = r"(?<=\]\()[^\s)]+|(?:https?://|urn:)[^\s<>\[\]()]+|(?<!\w)#[\w.-]+"
-_IDENTIFIER = r"(?<![\w/.-])(?=[\w/.-]*\d)(?=[\w/.-]*[^\W\d_])\w+(?:[./-]\w+)*"
+_IDENTIFIER = r"(?<![\w/.-])(?=[\w/.-]*\d)(?=[\w/.-]*[^\W\d_])\w+(?:[./-]+\w+)*"
 _TOKENS = re.compile(_TARGET + "|" + _IDENTIFIER + "|" + _NUMERIC)
 
 
