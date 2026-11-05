@@ -141,6 +141,13 @@ def _store_captured_source(cur, lease, captured):
     ):
         raise ValueError("captured article identity/body mismatch")
     job = lock_live_lease(cur, lease)
+    # A full review owner may be adopted below. Lock it before the article,
+    # matching review/publication's job -> article order even during refresh.
+    review_owner = None
+    if job["rewrite_profile_version"] == "full-prose-review-v1" and not job["checkpoint"].get("source_only_reprojection"):
+        review_key = transformation_key(lease.canonical_article_id,captured.source_fingerprint,
+            job["normalization_version"],job["rewrite_profile_version"],projection_version=captured.projection_version)
+        review_owner = cur.execute("SELECT * FROM source_fetch_jobs WHERE transformation_key=%s FOR UPDATE",(review_key,)).fetchone()
     article = cur.execute(
         "SELECT * FROM canonical_articles WHERE canonical_article_id=%s FOR UPDATE",
         (lease.canonical_article_id,),
@@ -278,6 +285,30 @@ def _store_captured_source(cur, lease, captured):
         )
         if terminal:
             current_job = owner["source_fetch_job_id"]
+            if (review_owner is not None and owner["status"] == "needs_review"
+                and job["rewrite_profile_version"] == "full-prose-review-v1"
+                and owner["source_revision_id"] == revision_id
+                and owner["normalization_version"] == job["normalization_version"]
+                and owner["rewrite_profile_version"] == job["rewrite_profile_version"]):
+                candidate = cur.execute("SELECT * FROM canonical_article_revisions WHERE transformation_key=%s FOR UPDATE",(key,)).fetchone()
+                if candidate is not None and candidate["status"] == "validated":
+                    from .article_lifecycle_types import digest_json
+                    if not full_candidate_validation(cur,owner,candidate).passed:
+                        raise ValueError("CONTENT_REVIEW_REQUIRED")
+                    # Inspection already owns its unique generation. Allocate
+                    # the next generation for the saved owner instead of moving
+                    # the original attempt or weakening any generation fence.
+                    adopted_generation = job["request_generation"] + 1
+                    review_checkpoint = {"version":1,"state":"awaiting_review",
+                        "candidate_revision_id":str(candidate["canonical_article_revision_id"]),
+                        "candidate_hash":digest_json(candidate["canonical_document"])}
+                    cur.execute("""UPDATE source_fetch_jobs SET request_generation=%s,
+                        checkpoint=checkpoint||%s,updated_at=clock_timestamp() WHERE source_fetch_job_id=%s""",
+                        (adopted_generation,Jsonb({"content_review":review_checkpoint,
+                            "review_owner_adoption":{"previous_generation":owner["request_generation"],
+                                "inspection_job_id":str(lease.job_id),"inspection_generation":job["request_generation"]}}),current_job))
+                    cur.execute("UPDATE canonical_articles SET request_generation=%s WHERE canonical_article_id=%s",
+                        (adopted_generation,lease.canonical_article_id))
     else:
         cur.execute(
             "UPDATE source_fetch_jobs SET source_revision_id=%s,transformation_key=%s,phase='normalizing',updated_at=clock_timestamp() WHERE source_fetch_job_id=%s",
