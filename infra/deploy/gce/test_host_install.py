@@ -332,18 +332,29 @@ class InstallTests(unittest.TestCase):
         self.assert_no_material()
 
     def test_temporary_tree_replacement_before_promotion_denied(self):
+        replacement_identities = []
         def replace(target):
             if self.probe_count == 3:
                 base = self.root / ('opt/autodata/releases/.install-' + AUTH)
                 base.chmod(0o700)
                 original = base / 'release.json'
+                retained = original.open('rb')
+                self.addCleanup(retained.close)
+                before = os.fstat(retained.fileno())
                 original.unlink()
                 original.write_bytes(b'injected')
                 original.chmod(0o600)
+                after = original.stat()
+                replacement_identities.append(((before.st_dev, before.st_ino),
+                                               (after.st_dev, after.st_ino)))
                 base.chmod(0o500)
         self.before_probe = replace
         code, receipt = self.install()
+        self.assertEqual(len(replacement_identities), 1)
+        self.assertNotEqual(*replacement_identities[0])
         self.assertEqual(code, 6)
+        self.assertEqual(receipt['failure_code'], 'recovery_incomplete')
+        self.assertEqual(receipt['commit_state'], 'incomplete')
         self.assertFalse(receipt['release_material_committed'])
         self.assertFalse((self.root / ('opt/autodata/releases/' + SHA)).exists())
         self.assertEqual((self.root / ('opt/autodata/releases/.install-' + AUTH + '/release.json')).read_bytes(), b'injected')
