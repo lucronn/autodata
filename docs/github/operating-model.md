@@ -241,3 +241,19 @@ Todo:
 - [ ] Append honest exact-source local/CI results and retain the prior R6 digest/Task64 failures as historical evidence; preserve all disabled profiles, trusted-loader boundaries, owner/staging/activation/payment/browser/provider/DNS blockers, credits0 and every release authority false; perform no merge/deployment/publication.
 
 Current implementation allowlist=[]; independent checkpoint review and explicit two-path dispatch required after actual checkpoint seal and standalone/nested exact-base preflights. Every authority false; credits0; verified_case_ids=[]; release_state=unverified. Preserve disabled profiles/trusted-loader contract and all owner/staging/activation/payment/browser/provider/DNS blockers. No merge/deployment/publication.
+
+
+## Task69 release essentials integration (tracking synchronized)
+
+Goal: Integrate the reviewed Task58 supervisor patch and private-material helper into the corrected release candidate, finish the remaining Vercel DNS plan corrections, and verify the combined source without runtime or release operations.
+
+Plan: [Task69 release essentials integration](../superpowers/plans/2026-11-05-workshop-release-essentials-integration.md). Issue: https://github.com/lucronn/autodata/issues/186; Project: https://github.com/users/lucronn/projects/8. Base `3421df91184e4a428450ee089a628ed144c05b15`; adopt exactly six reviewed technical files and the two remaining PR272 plan corrections listed in the plan. PR225 historical gate remains referenced at `ec93551a39c157ee4f5b428e248e8fd766f68dee`; no wholesale historical gate import. Tracking synchronized after root-confirmed Issue186 comment6652770502 exact-body readback and Project8 Source readback (1016 bytes, previous prefix preserved), status In Progress. Implementation blocked until committed synchronized checkpoint, canonical preflight and root checkpoint review/dispatch. Credits0/verified IDs[]; no runtime, release, DNS or deployment operations.
+
+TODO:
+
+- [ ] Synchronize Issue186/Project8, the Task69 plan and canonical operating-model entry; commit the planning checkpoint and pass canonical preflight at its exact SHA before implementation.
+- [ ] Adopt the exact four Task58 files and two reviewed private-material helper files, and apply only the two remaining Vercel DNS plan corrections while preserving all other source and historical gates.
+- [ ] Run focused supervisor, private-material, governance and workflow-binding checks plus exact byte/scope verification; commit and promptly push the validated candidate for independent review and full hosted CI.
+- [ ] Retain exact candidate review and fresh source-push and actual-PR three-job CI evidence, record remaining blockers and keep credits0, verified IDs[] and runtime/release authorities disabled.
+
+Root confirmed Issue186 [comment6652770502](https://github.com/lucronn/autodata/issues/186#issuecomment-6652770502) exact-body readback PASS and Project8 Source appended-pointer readback PASS (1016 bytes, prior prefix preserved), status In Progress. Recorded at `2026-11-05T07:55:25.114444+00:00`. This tracking synchronization grants no implementation or runtime authority.
