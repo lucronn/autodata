@@ -86,6 +86,10 @@ class EnrollmentTests(unittest.TestCase):
             with self.subTest(change=change):
                 doc=enrollment();change(doc)
                 with self.assertRaises(ValueError): validate_enrollment(doc)
+    def test_malformed_scalar_types_raise_only_sanitized_validation(self):
+        for mutate in (lambda d:d.update(run_id=[]),lambda d:d['banks']['bankone']['resources']['items'][0].update(role=[])):
+            doc=enrollment();mutate(doc)
+            with self.assertRaises(ValueError):validate_enrollment(doc)
     def test_invalid_enrollment_never_constructs_transport(self):
         with tempfile.TemporaryDirectory() as root:
             with self.assertRaises(ValueError): run_capture({},lambda *a:self.fail('transport created'),Clock(),root)

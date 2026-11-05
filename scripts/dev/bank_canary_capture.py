@@ -55,7 +55,7 @@ def validate_enrollment(document):
     """
     _fields(document,TOP)
     for k in REFS: _text(document[k])
-    _require(bool(re.fullmatch(r'[A-Za-z0-9_-]{1,80}',document['run_id'])))
+    _require(isinstance(document['run_id'],str) and bool(re.fullmatch(r'[A-Za-z0-9_-]{1,80}',document['run_id'])))
     for k in ('product_sha','product_tree','executor_sha'): _require(isinstance(document[k],str) and bool(re.fullmatch('[a-f0-9]{40}',document[k])))
     _require(isinstance(document['client_sha256'],str) and bool(re.fullmatch('[a-f0-9]{64}',document['client_sha256'])))
     start,end,delete=map(_utc,(document['window_start'],document['window_end'],document['retention_delete_at']))
@@ -86,7 +86,7 @@ def validate_enrollment(document):
             first='first_observed' in resource
             _fields(resource,frozen|({'first_observed','provider_revision_attestation_ref'} if first else {'sha256'}))
             for k in ('ref','media_type','source_revision'): _text(resource[k])
-            _require(resource['role'] in roles and type(resource['required']) is bool)
+            _require(isinstance(resource['role'],str) and resource['role'] in roles and type(resource['required']) is bool)
             _require(type(resource['expected_bytes']) is int and 0<resource['expected_bytes']<=20_000_000)
             _require(resource['source_revision']==b['expected_source_revision'])
             if first:
