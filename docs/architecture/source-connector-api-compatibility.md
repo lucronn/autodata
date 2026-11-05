@@ -107,3 +107,5 @@ Concrete todo:
 - [ ] Add a focused offline CLI regression using the real SourceConnectorClient constructor and mocked traversal/persistence.
 - [ ] Change only the CLI constructor keyword from timeout_seconds to timeout, retaining the flag, default, credentials and persist behavior.
 - [ ] Run red/green focused checks, Bankone batch regressions and diff checks; commit/push the validated two-file fix for independent exact-SHA review.
+
+Bankone CLI implementation `f15ce05bd29d0f5a0cceb9ab8f3642c6f73b268c` changes only the connector constructor keyword to `timeout`. Three real-constructor CLI regressions and ten Bankone batch tests passed after the original TypeError was reproduced. The bounded real-source staging rerun and exact-head GitHub CI are pending.
