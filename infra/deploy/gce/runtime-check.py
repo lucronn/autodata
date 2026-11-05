@@ -188,9 +188,46 @@ def _https(value, origin=False):
         raise ContractError('invalid HTTPS configuration') from None
 
 
+def _purchase_forbidden(code):
+    # Match Task59's raw scalar policy before any URL parser can normalize it.
+    return (code <= 32 or 127 <= code <= 160 or code == 0x1680 or
+            0x2000 <= code <= 0x200a or code in (0x2028, 0x2029, 0x202f, 0x205f, 0x3000, 0xfeff))
+
+
+def _validate_workshop_purchase_config(value):
+    """Self-contained validation of the original public object; no I/O/defaults."""
+    urls = ('terms_url', 'privacy_url', 'refund_url', 'contact_url')
+    exact_object(value, ('enabled', 'terms_version', *urls, 'tax_notice'))
+    require(type(value['enabled']) is bool and value['terms_version'] == 'workshop-v1')
+    if not value['enabled']:
+        require(all(value[key] is None for key in (*urls, 'tax_notice')))
+        return
+    try:
+        for key in urls:
+            url = value[key]
+            require(type(url) is str and 1 <= len(url.encode('utf-8')) <= 2048)
+            require(not any(_purchase_forbidden(ord(c)) for c in url))
+            parsed = re.fullmatch(r'https://([^/?#]+)(/[^?#]*)?', url)
+            require(parsed is not None)
+            authority, path = parsed.group(1), parsed.group(2) or ''
+            host = authority[:-4] if authority.endswith(':443') else authority
+            labels = host.split('.')
+            require(len(host) <= 253 and len(labels) >= 2)
+            require(all(re.fullmatch(r'[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?', label) for label in labels))
+            require(re.fullmatch(r'[A-Za-z]{2,63}', labels[-1]) is not None)
+            require(re.search(r'%(?![A-Fa-f0-9]{2})', path) is None)
+        notice = value['tax_notice']
+        require(type(notice) is str and len(notice.encode('utf-8')) <= 1024)
+        require(any(not _purchase_forbidden(ord(c)) for c in notice))
+        require(not any(ord(c) < 32 or 127 <= ord(c) <= 159 or ord(c) in (0x2028, 0x2029) for c in notice))
+    except (UnicodeError, TypeError):
+        raise ContractError('invalid purchase configuration') from None
+
+
 def validate_config(config):
-    exact_object(config, ('schema_version', 'environment', 'public_origin', 'firebase', 'resources', 'topology', 'commands', 'tuning'))
-    require(type(config['schema_version']) is int and config['schema_version'] == 1)
+    exact_object(config, ('schema_version', 'environment', 'public_origin', 'firebase', 'resources', 'topology', 'commands', 'tuning', 'workshop_purchase_config'))
+    require(type(config['schema_version']) is int and config['schema_version'] == 2)
+    _validate_workshop_purchase_config(config['workshop_purchase_config'])
     require(config['environment'] in ('production', 'staging'))
     _https(config['public_origin'], origin=True)
     require((config['public_origin'] == 'https://cars.tk') == (config['environment'] == 'production'))
@@ -244,6 +281,12 @@ def _validate_immutable_images(manifest, config):
             _https(image[key])
 
 
+def _validate_internal_token_reference(manifest):
+    # Schema validation has already required complete role maps and numeric versions.
+    name = 'AUTODATA_INGESTION_INTERNAL_TOKEN'
+    require(manifest['secret_versions']['api'][name] == manifest['secret_versions']['ingestion-http'][name])
+
+
 def validate_manifest(manifest, config, rollback_manifest=None):
     config_hash = validate_config(config)
     schema = strict_json((Path(__file__).parent / 'release.schema.json').read_bytes())
@@ -251,6 +294,7 @@ def validate_manifest(manifest, config, rollback_manifest=None):
     require(len(canonical_bytes(manifest)) <= MAX_JSON_BYTES)
     require(manifest['service_config_sha256'] == config_hash)
     _validate_immutable_images(manifest, config)
+    _validate_internal_token_reference(manifest)
     files = manifest['migrations']['files']
     require(len(files) <= 999)
     require([f['name'] for f in files] == sorted(f['name'] for f in files))
@@ -262,6 +306,7 @@ def validate_manifest(manifest, config, rollback_manifest=None):
         # Do not recursively demand older historical manifests for this boundary.
         _schema_validate(rollback_manifest, schema)
         _validate_immutable_images(rollback_manifest, config)
+        _validate_internal_token_reference(rollback_manifest)
         require(rollback_manifest['source_sha'] == previous)
         require(rollback_manifest['platform'] == manifest['platform'])
         require(rollback_manifest['service_config_sha256'] == config_hash)

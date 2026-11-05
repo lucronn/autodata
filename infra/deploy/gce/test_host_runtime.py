@@ -53,7 +53,7 @@ class ContractTests(unittest.TestCase):
             'migration': ('PGPASSWORD',), 'bootstrap': ('AUTODATA_S3_ACCESS_KEY', 'AUTODATA_S3_SECRET_KEY'),
             'metrics-probe': ('AUTODATA_POSTGRES_PASSWORD', 'NATS_METRICS_USER', 'NATS_METRICS_PASSWORD')}
         self.config = {
-            'schema_version': 1, 'environment': 'staging', 'public_origin': 'https://staging.cars.example',
+            'schema_version': 2, 'environment': 'staging', 'public_origin': 'https://staging.cars.example',
             'firebase': {'project_id': 'firebase-stage', 'web_api_key': 'public-web-key',
                          'web_app_id': '1:123456:web:abcdef', 'auth_domain': 'firebase-stage.firebaseapp.com'},
             'resources': {'host_project_id': 'autodata-host', 'backup_project_id': 'autodata-backup',
@@ -61,6 +61,9 @@ class ContractTests(unittest.TestCase):
                           'data_disk_name': 'workshop-data', 'data_disk_filesystem_uuid': '12345678-1234-4234-8234-123456789abc',
                           'static_ip_name': 'workshop-ip', 'artifact_repository': 'us-central1-docker.pkg.dev/autodata-host/workshop',
                           'backup_bucket': 'autodata-private-backup', 'acme_email': 'ops@example.com'},
+            'workshop_purchase_config': {'enabled': False, 'terms_version': 'workshop-v1',
+                                         'terms_url': None, 'privacy_url': None, 'refund_url': None,
+                                         'contact_url': None, 'tax_notice': None},
             'topology': copy.deepcopy(self.rt.TOPOLOGY), 'commands': copy.deepcopy(self.rt.COMMANDS),
             'tuning': {'bankone_base_url': 'https://bankone.example', 'banktwo_base_url': 'https://banktwo.example',
                        'inception_api_base_url': 'https://model.example/v1', 'inception_model': 'mercury-2',
@@ -88,11 +91,51 @@ class ContractTests(unittest.TestCase):
         self.manifest['images']['minio']['reference'] = 'ghcr.io/chrislusf/seaweedfs@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d'
         self.manifest['images']['minio']['image_id'] = 'sha256:7b5ca1f11aa4c91593612d2d4a9e253ec9152a4bd13a19e551290a042a4c52f5'
 
+        self.manifest['secret_versions']['ingestion-http']['AUTODATA_INGESTION_INTERNAL_TOKEN'] = self.manifest['secret_versions']['api']['AUTODATA_INGESTION_INTERNAL_TOKEN']
+
     def rejected_manifest(self, mutate):
         candidate = copy.deepcopy(self.manifest)
         mutate(candidate)
         with self.assertRaises(self.rt.ContractError):
             self.rt.validate_manifest(candidate, self.config)
+
+    def test_host_v2_requires_explicit_closed_purchase_object(self):
+        self.assertEqual(self.rt.validate_config(self.config), digest(self.config))
+        for mutate in (lambda c: c.update(schema_version=1),
+                       lambda c: c.pop('workshop_purchase_config'),
+                       lambda c: c.update(workshop_purchase_config=None),
+                       lambda c: c.update(workshop_purchase_config='disabled'),
+                       lambda c: c['workshop_purchase_config'].pop('tax_notice'),
+                       lambda c: c['workshop_purchase_config'].update(extra=False),
+                       lambda c: c['workshop_purchase_config'].update(enabled=0),
+                       lambda c: c['workshop_purchase_config'].update(terms_version='other'),
+                       lambda c: c['workshop_purchase_config'].update(tax_notice='disabled')):
+            candidate = copy.deepcopy(self.config); mutate(candidate)
+            with self.subTest(mutate=mutate), self.assertRaises(self.rt.ContractError):
+                self.rt.validate_config(candidate)
+
+    def test_enabled_purchase_config_validates_notices_and_raw_https_urls(self):
+        enabled = {'enabled': True, 'terms_version': 'workshop-v1',
+                   'terms_url': 'https://example.com/terms', 'privacy_url': 'https://example.com/privacy',
+                   'refund_url': 'https://example.com/refund', 'contact_url': 'https://example.com/contact',
+                   'tax_notice': 'Synthetic USD20 notice'}
+        candidate = copy.deepcopy(self.config); candidate['workshop_purchase_config'] = enabled
+        self.rt.validate_config(candidate)
+        for key, value in (('enabled', 1), ('tax_notice', None), ('tax_notice', '  '),
+                           ('tax_notice', 'line\nline'), ('tax_notice', '\ud800'),
+                           ('terms_url', ' https://example.com'), ('terms_url', 'https://127.0.0.1'),
+                           ('terms_url', 'https://example.com?x=1'), ('terms_url', 'https://example.com:444'),
+                           ('terms_url', 'https://example.com/%bad%'), ('terms_url', None)):
+            changed = copy.deepcopy(candidate); changed['workshop_purchase_config'][key] = value
+            with self.subTest(key=key, value=repr(value)), self.assertRaises(self.rt.ContractError):
+                self.rt.validate_config(changed)
+
+    def test_private_authority_requires_same_numeric_token_reference(self):
+        self.rt.validate_manifest(self.manifest, self.config)
+        for value in ('projects/autodata-host/secrets/other/versions/1',
+                      'projects/autodata-host/secrets/api-autodata-ingestion-internal-token/versions/2'):
+            self.rejected_manifest(lambda m: m['secret_versions']['ingestion-http'].update(
+                AUTODATA_INGESTION_INTERNAL_TOKEN=value))
 
     def test_valid_manifest_has_stable_canonical_digest(self):
         self.assertEqual(self.rt.validate_manifest(self.manifest, self.config), digest(self.manifest))
