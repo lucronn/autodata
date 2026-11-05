@@ -566,3 +566,67 @@ class SourceAdapterTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MaintenanceXMLAdapterTests(unittest.TestCase):
+    def adapt(self, xml, *, nested=False):
+        from types import SimpleNamespace
+        from autodata_ingestion.source_adapters import adapt_bound_article
+
+        context = SimpleNamespace(vehicle={}, key=SimpleNamespace(
+            vehicle_id="vehicle", vehicle_configuration_id=None, source_vehicle_ref="ref"
+        ))
+        payload, media = xml.encode(), "application/xml"
+        if nested:
+            payload = json.dumps({"_embedded": {"data": {"article": {"content": xml}}}}).encode()
+            media = "application/hal+json"
+        return adapt_bound_article(SourceResource.from_bytes(
+            "connector:synthetic", "fixture", payload, media
+        ), context)
+
+    def test_maintenance_xml_rejects_unobserved_grammar_in_direct_and_nested_forms(self):
+        valid = '<maintenance_schedule title="Service"><operation id="o" name="Inspect"><component id="c" name="Belt"><notes>Check belt.</notes></component></operation></maintenance_schedule>'
+        invalid = [
+            '<!DOCTYPE maintenance_schedule [<!ENTITY x "expanded">]>' + valid,
+            '<!DOCTYPE maintenance_schedule SYSTEM "file:///private">' + valid,
+            '<!DOCTYPE html>' + valid,
+            '<!ENTITY x SYSTEM "https://example.invalid/secret">' + valid,
+            valid.replace('maintenance_schedule', 'unknown'),
+            *(valid.replace('<notes>Check belt.</notes>', '<' + tag + '><br/>Check belt.</' + tag + '>')
+              for tag in ('warranty', 'qualifier')),
+            valid.replace('</maintenance_schedule>', '<footnote><a href="safe">link</a></footnote></maintenance_schedule>'),
+            valid[:-10],
+            '<maintenance_schedule',
+            '</maintenance_schedule>',
+            '<unknown',
+            valid.replace('<notes>', '<notes extra="unsupported">'),
+            valid.replace('<notes>', '<notes><unknown/>'),
+            valid.replace('<operation id=', '<operation surprise="x" id='),
+            valid.replace('<component id=', '<component xmlns="urn:unknown" id='),
+            valid.replace('<notes>', 'unexpected<notes>'),
+            valid.replace('<operation id="o" name="Inspect">', ''),
+            valid.replace('<notes>', '<notes><br>lost text</br>'),
+            valid.replace('<notes>', '<notes><br extra="x"/>'),
+            valid.replace('<notes>', '<notes><a href="https://example.invalid"><a href="nested">inner</a></a>'),
+            valid.replace('<notes>', '<notes><a href="https://example.invalid" extra="x">link</a>'),
+            valid.replace('<notes>', '<notes><a>missing href</a>'),
+            valid.replace('<notes>', '<notes><a href="safe"><br/></a>'),
+            valid.replace('<notes>', '<notes><!--unobserved-->'),
+            valid.replace('<notes>', '<notes><?unobserved instruction?>'),
+            valid.replace('title="Service"', 'title="Service" xmlns:unused="urn:unknown"'),
+        ]
+        for nested in (False, True):
+            for xml in invalid:
+                with self.subTest(nested=nested, xml=invalid.index(xml)):
+                    with self.assertRaisesRegex(ValueError, "maintenance XML"):
+                        self.adapt(xml, nested=nested)
+
+    def test_maintenance_xml_keeps_unsafe_link_text_for_existing_safe_link_filter(self):
+        from autodata_ingestion.article_document import build_ordered_document
+
+        xml = '<maintenance_schedule title="Service"><operation id="o" name="Inspect"><component id="c" name="Belt"><notes>Before<a href="javascript:bad()">Read note.</a>after</notes></component></operation></maintenance_schedule>'
+        article = self.adapt(xml)
+        document = build_ordered_document({"id": "synthetic", **article})
+        link = next(block for block in document["blocks"] if block["type"] == "link")
+        self.assertEqual(link["text"], "Read note.")
+        self.assertEqual(link.get("href", ""), "")

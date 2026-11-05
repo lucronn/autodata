@@ -844,3 +844,123 @@ def test_bound_article_does_not_accept_arbitrary_json_suffix(capture_fixture):
     )
     with pytest.raises(ValueError, match="unsupported article media"):
         adapt_bound_article(resource, capture_fixture.context("banktwo"))
+
+
+MAINTENANCE_XML = '''<?xml version="1.0"?>
+<maintenance_schedule title="Service &amp; checks">
+  <footnote>Initial footnote.</footnote>
+  <operation id="op1" name="Inspect &lt;inert&gt;">
+    <component id="c1" name="Belt">
+      <notes>Before<br/>After <a href="https://example.invalid/manual">manual</a> tail <![CDATA[<literal> & text]]></notes>
+      <warranty>Keep receipt.</warranty><qualifier>Severe service only.</qualifier>
+    </component>
+    <component id="c2" name="Hose"><notes>Check hose.</notes></component>
+  </operation>
+  <footnote>Do not omit footnote.</footnote>
+  <operation id="op2" name="Replace"><component id="c3" name="Filter"><notes>Replace filter.</notes></component></operation>
+</maintenance_schedule>'''
+
+
+@pytest.mark.parametrize("media", ["application/xml", "text/xml", "application/hal+json"])
+def test_maintenance_xml_capture_preserves_fields_order_and_resource(capture_fixture, media):
+    import json
+    from autodata_ingestion.source_article_capture import capture_source_article
+    from autodata_ingestion.article_document import validate_ordered_document
+
+    payload = MAINTENANCE_XML.encode()
+    if media == "application/hal+json":
+        payload = json.dumps({"_embedded": {"data": {"article": {"content": MAINTENANCE_XML}}}}).encode()
+    context = capture_fixture.context("banktwo")
+    capture_fixture.body("banktwo", payload, media)
+    captured = capture_source_article(
+        context, registry=capture_fixture.registry, object_store=capture_fixture.objects
+    )
+    assert captured.source_body.splitlines() == [
+        "Service & checks", "Initial footnote.", "Inspect <inert> (op1)", "Belt (c1)",
+        "Before", "After", "manual", "tail <literal> & text", "Keep receipt.",
+        "Severe service only.", "Hose (c2)", "Check hose.", "Do not omit footnote.",
+        "Replace (op2)", "Filter (c3)", "Replace filter.",
+    ]
+    blocks = captured.source_document["blocks"]
+    link = next(block for block in blocks if block["type"] == "link")
+    assert (link["text"], link["href"]) == ("manual", "https://example.invalid/manual")
+    assert validate_ordered_document(captured.source_document, strict=True) == []
+    assert all(block["evidence_ids"] == list(context.evidence_ids) for block in blocks)
+    assert captured.context == context
+    assert captured.projection_status == "readable"
+    provenance = next(row for row in captured.resource_provenance if row["role"] == "body")
+    assert provenance["provider"] == "banktwo"
+    assert provenance["sha256"] == sha256(payload).hexdigest()
+    assert provenance["media_type"] == media
+    assert capture_fixture.objects.data[provenance["object_key"]] == (payload, media)
+    assert capture_fixture.calls("bankone") == []
+    assert not any("example.invalid" in call for call in capture_fixture.calls("banktwo"))
+
+
+@pytest.mark.parametrize("text", ["Pressure < 3 bar is allowed.", "<p>Check pressure.</p>", "<br/><p>Check pressure.</p>"])
+def test_nested_maintenance_routing_preserves_existing_prose_and_html(capture_fixture, text):
+    import json
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    payload = {"_embedded": {"data": {"article": {"content": text}}}}
+    capture_fixture.body("banktwo", json.dumps(payload).encode(), "application/hal+json")
+    captured = capture_source_article(
+        capture_fixture.context("banktwo"), registry=capture_fixture.registry,
+        object_store=capture_fixture.objects,
+    )
+    assert captured.source_body == ("Check pressure." if "<p>" in text else text)
+
+
+def test_xml_validation_cannot_precede_hal_applicability(capture_fixture):
+    import json
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    payload = {"vehicle": {"year": 1999}, "_embedded": {"data": {"article": {
+        "content": "<maintenance_schedule malformed",
+    }}}}
+    capture_fixture.body("banktwo", json.dumps(payload).encode(), "application/hal+json")
+    with pytest.raises(SourceConnectorError, match="applicability"):
+        capture_source_article(
+            capture_fixture.context("banktwo"), registry=capture_fixture.registry,
+            object_store=capture_fixture.objects,
+        )
+
+
+@pytest.mark.parametrize("nested", [False, True])
+def test_maintenance_xml_rejection_never_creates_readable_capture(capture_fixture, nested):
+    import json
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    xml = '<maintenance_schedule title="Check"><unknown>Remove pump.</unknown></maintenance_schedule>'
+    payload, media = xml.encode(), "application/xml"
+    if nested:
+        payload = json.dumps({"_embedded": {"data": {"article": {"content": xml}}}}).encode()
+        media = "application/hal+json"
+    capture_fixture.body("banktwo", payload, media)
+    with pytest.raises(SourceConnectorError, match="invalid_article_body"):
+        capture_source_article(
+            capture_fixture.context("banktwo"), registry=capture_fixture.registry,
+            object_store=capture_fixture.objects,
+        )
+
+
+@pytest.mark.parametrize("note,expected", [
+    ("5.0 Nm\n6.0 Nm", "5.0 Nm 6.0 Nm"),
+    ("Page 1 of 2\nCheck belt.\nCheck hose.", "Page 1 of 2 Check belt. Check hose."),
+    ("1. Remove pump.", "1. Remove pump."),
+])
+def test_maintenance_xml_notes_preserve_literal_numbers_and_cdata(capture_fixture, note, expected):
+    import json
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    xml = ('<maintenance_schedule title="Service"><operation id="o" name="Inspect">'
+           '<component id="c" name="Belt"><notes><![CDATA[' + note +
+           ']]></notes></component></operation></maintenance_schedule>')
+    payload = {"_embedded": {"data": {"article": {"content": xml}}}}
+    capture_fixture.body("banktwo", json.dumps(payload).encode(), "application/hal+json")
+    captured = capture_source_article(
+        capture_fixture.context("banktwo"), registry=capture_fixture.registry,
+        object_store=capture_fixture.objects,
+    )
+    assert captured.source_body.splitlines() == ["Service", "Inspect (o)", "Belt (c)", expected]
+    assert captured.source_steps == []
