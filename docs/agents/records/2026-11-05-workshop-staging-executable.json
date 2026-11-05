@@ -1,0 +1,74 @@
+{
+  "goal": "Deliver one executable authenticated Workshop staging release path from reviewed source through accepted publication to existing host preparation and actual readiness.",
+  "plan_ref": "docs/superpowers/plans/2026-11-05-workshop-staging-executable.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/312",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/operations/workshop-staging-executable.md",
+    "docs/operations/workshop-host-provision-install.md",
+    "docs/operations/workshop-gcp.md"
+  ],
+  "todo": [
+    "Implement the authenticated publisher CLI and real bounded build/sign/registry/GitHub/upload dependencies, preserving existing v3 validators.",
+    "Install a reproducible pinned publisher toolchain and activate only the two protected staging workflow jobs.",
+    "Implement the fixed staging operator and acceptance-material handoff using existing host helpers, with per-phase owner approvals and no arbitrary remote command.",
+    "Prove real publication and disposable Debian12/PG17 host deployment through readyz; retain failures and independent exact-SHA review before staging application."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-05T12:19:09.505891+00:00",
+  "source_base_sha": "e42bd471ee545193f664de9a3b677aed875f3271",
+  "parent_issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "implementation_allowlist": [
+    "infra/deploy/gce/publisher_cli.py",
+    "infra/deploy/gce/publisher_live.py",
+    "infra/deploy/gce/test_publisher_live.py",
+    "infra/deploy/gce/test_publisher_adapters.py",
+    "infra/deploy/gce/publisher_policy.mjs",
+    "infra/deploy/gce/publisher_identity.mjs",
+    "infra/deploy/gce/publisher_artifact.mjs",
+    "infra/deploy/gce/test_publisher_policy.mjs",
+    "infra/deploy/gce/test_publisher_identity.mjs",
+    "infra/deploy/gce/test_publisher_artifact.mjs",
+    "infra/deploy/gce/publisher-toolkit/Dockerfile",
+    "infra/deploy/gce/publisher-toolkit/build_tree.mjs",
+    ".github/workflows/release-workshop.yml",
+    "infra/deploy/gce/test_release_workshop_contract.py",
+    "infra/deploy/gce/staging_deploy.py",
+    "infra/deploy/gce/test_staging_deploy.py",
+    "docs/operations/workshop-staging-executable.md"
+  ],
+  "lane_ownership": {
+    "authenticated_publication": [
+      "infra/deploy/gce/publisher_cli.py",
+      "infra/deploy/gce/publisher_live.py",
+      "infra/deploy/gce/test_publisher_live.py",
+      "infra/deploy/gce/test_publisher_adapters.py",
+      "infra/deploy/gce/publisher_policy.mjs",
+      "infra/deploy/gce/publisher_identity.mjs",
+      "infra/deploy/gce/publisher_artifact.mjs",
+      "infra/deploy/gce/test_publisher_policy.mjs",
+      "infra/deploy/gce/test_publisher_identity.mjs",
+      "infra/deploy/gce/test_publisher_artifact.mjs",
+      "infra/deploy/gce/publisher-toolkit/Dockerfile",
+      "infra/deploy/gce/publisher-toolkit/build_tree.mjs",
+      ".github/workflows/release-workshop.yml",
+      "infra/deploy/gce/test_release_workshop_contract.py"
+    ],
+    "staging_operator": [
+      "infra/deploy/gce/staging_deploy.py",
+      "infra/deploy/gce/test_staging_deploy.py"
+    ],
+    "coordinator_documentation": [
+      "docs/operations/workshop-staging-executable.md",
+      "docs/superpowers/plans/2026-11-05-workshop-staging-executable.md"
+    ]
+  },
+  "tracking_sync": {
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhGQ2zA",
+    "project_status": "Ready",
+    "readback_verified": true,
+    "parent_link_verified": true,
+    "issue_body_sha256": "6b6eee976138ef1a210f25dd8365ba3963104f8d6b05f23d22f326feadbb1970",
+    "project_index_sha256": "574fe4a8e161940a25f372fa4fd0f7dd928fd64fabc8c75616737fd045769716"
+  }
+}
