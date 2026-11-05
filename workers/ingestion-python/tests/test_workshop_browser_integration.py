@@ -1,6 +1,9 @@
 """Exactly 21 required browser cases over actual PG/auth/commerce/catalog/S3 HTTP."""
 from contextlib import ExitStack
 import json
+import hashlib
+import re
+import secrets
 import os
 from pathlib import Path
 import signal
@@ -26,6 +29,155 @@ if REQUIRED and os.environ.get('AUTODATA_LIFECYCLE_TEST')!='1':
     raise RuntimeError('required Workshop browser cases need isolated lifecycle runtime')
 if not REQUIRED:
     pytestmark=pytest.mark.skip(reason='explicit Workshop browser fixture acceptance only; not API proof')
+
+
+API21_VERSION='api21-producer-v2'
+ARTIFACT_ROOT=Path('/artifacts')
+_RUN_ID=secrets.token_hex(16)
+_INPUTS=('scripts/dev/workshop_browser_smoke.py','scripts/dev/fixtures/workshop_customer/scenarios.json',
+    'scripts/dev/fixtures/workshop_customer/firebase_transport.js','scripts/dev/fixtures/workshop_customer/hostile_source.json',
+    'scripts/dev/fixtures/workshop_customer/stripe_checkout.html','apps/api-go/workshop_browser_fixture_test.go',
+    'workers/ingestion-python/tests/test_workshop_browser_integration.py')
+
+
+def _canonical(value):
+    return (json.dumps(value,sort_keys=True,separators=(',',':'),ensure_ascii=False,allow_nan=False)+'\n').encode('utf-8')
+
+
+def _strict_json(raw):
+    def pairs(items):
+        result={}
+        for key,value in items:
+            if key in result:raise ValueError('invalid_json')
+            result[key]=value
+        return result
+    return json.loads(raw,object_pairs_hook=pairs,parse_constant=lambda _: (_ for _ in ()).throw(ValueError('invalid_json')))
+
+
+def _regular(info):
+    if not stat.S_ISREG(info.st_mode) or info.st_nlink!=1 or info.st_uid!=os.getuid():raise ValueError('unsafe artifact')
+
+
+def _hash_artifact(path,ref,expected=None):
+    before=path.lstat();_regular(before)
+    if expected is not None and (before.st_dev,before.st_ino)!=expected:raise ValueError('replaced artifact')
+    fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW)
+    with os.fdopen(fd,'rb') as stream:
+        actual=os.fstat(stream.fileno());_regular(actual)
+        if (actual.st_dev,actual.st_ino)!=(before.st_dev,before.st_ino):raise ValueError('replaced artifact')
+        raw=stream.read(8388609)
+        after=os.fstat(stream.fileno())
+    if len(raw)>8388608 or (after.st_size,after.st_mtime_ns)!=(actual.st_size,actual.st_mtime_ns):raise ValueError('unfinalized artifact')
+    final=path.lstat()
+    if (final.st_dev,final.st_ino)!=(actual.st_dev,actual.st_ino):raise ValueError('replaced artifact')
+    return {'ref':ref,'length':len(raw),'sha256':hashlib.sha256(raw).hexdigest()}
+
+
+def _publish(directory,name,value,limit):
+    if Path(name).name!=name or name in ('.','..'):raise ValueError('unsafe destination')
+    raw=_canonical(value)
+    if len(raw)>limit:raise ValueError('over_limit')
+    flags=os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW
+    fd=os.open(directory,flags);temporary='.'+name+'.'+secrets.token_hex(8)
+    try:
+        info=os.fstat(fd)
+        if info.st_uid!=os.getuid() or stat.S_IMODE(info.st_mode)!=0o700:raise ValueError('unsafe directory')
+        try:previous=os.stat(name,dir_fd=fd,follow_symlinks=False);_regular(previous)
+        except FileNotFoundError:previous=None
+        output=os.open(temporary,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600,dir_fd=fd)
+        with os.fdopen(output,'wb') as stream:stream.write(raw);stream.flush();os.fsync(stream.fileno())
+        try:current=os.stat(name,dir_fd=fd,follow_symlinks=False);_regular(current)
+        except FileNotFoundError:current=None
+        identity=lambda item:None if item is None else (item.st_dev,item.st_ino,item.st_size,item.st_mtime_ns)
+        if identity(previous)!=identity(current):raise ValueError('replaced destination')
+        os.replace(temporary,name,src_dir_fd=fd,dst_dir_fd=fd);os.fsync(fd)
+    finally:
+        try:os.unlink(temporary,dir_fd=fd)
+        except FileNotFoundError:pass
+        os.close(fd)
+
+
+def _failure(exc):
+    if isinstance(exc,subprocess.TimeoutExpired):return 'timeout'
+    if isinstance(exc,AssertionError):return 'assertion_failed'
+    if isinstance(exc,(KeyboardInterrupt,SystemExit)):return 'cancelled'
+    return 'internal_error'
+
+
+class _OwnedProcess:
+    def __init__(self,role,owner,argv,cwd,stdout,stderr):
+        self.start=time.monotonic();self.process=None
+        self.data=dict(role=role,observer_role=owner,argv=argv,cwd=cwd,launched=False,events=[],return_code=None,
+            return_code_source='unavailable',wait_kind='unavailable',intentional_cleanup=False,reaped=None,
+            alive_final=None,started_us=None,finished_us=None,stdout_ref=stdout,stderr_ref=stderr,output_hashes=[])
+    def elapsed(self):return max(0,int((time.monotonic()-self.start)*1000000))
+    def event(self,kind,code=None,reason=None):
+        if len(self.data['events'])>=32:raise ValueError('over_limit')
+        self.data['events'].append(dict(seq=len(self.data['events'])+1,kind=kind,elapsed_us=self.elapsed(),return_code=code,reason=reason))
+    def launched(self,process):
+        self.process=process;self.data.update(launched=True,started_us=self.elapsed());self.event('launch-succeeded')
+    def observed(self,code,source,kind):
+        if type(code) is not int:raise ValueError('unavailable exit')
+        self.data.update(return_code=code,return_code_source=source,wait_kind=kind,reaped=True,alive_final=False,finished_us=self.elapsed())
+        self.event('wait-completed',code)
+        return code
+    def wait(self,timeout,kind='normal'):
+        try:return self.observed(self.process.wait(timeout=timeout),'wait',kind)
+        except subprocess.TimeoutExpired:self.event('timeout',reason='timeout');raise
+        except BaseException:self.event('reap-failed',reason='reap_failed');raise
+    def cleanup(self,group=False):
+        if self.process is None or self.data['reaped'] is True:return
+        code=self.process.poll()
+        if code is not None:self.observed(code,'poll','cleanup');return
+        self.data.update(intentional_cleanup=True,alive_final=True,wait_kind='cleanup')
+        for name,sig in (('term',signal.SIGTERM),('kill',signal.SIGKILL)):
+            self.event(name+'-requested')
+            try:
+                if group:os.killpg(self.process.pid,sig)
+                else:getattr(self.process,'terminate' if name=='term' else 'kill')()
+                self.event(name+'-sent')
+            except BaseException:self.event('signal-failed',reason='signal_failed')
+            try:self.wait(2,'cleanup');return
+            except subprocess.TimeoutExpired:continue
+            except BaseException:break
+        self.data['reaped']=False
+
+
+def _capture_workers(runtime,google,artifact_root=ARTIFACT_ROOT):
+    workers=list(runtime.workers);logs=list(runtime.logs)
+    if google and not workers and not logs:return ([], 'not_started')
+    if google or runtime.barrier or len(workers)!=2 or len(logs)!=2 or len({id(w) for w in workers})!=2 or len({id(l) for l in logs})!=2:return ([], 'unavailable')
+    captured=[]
+    try:
+        for worker,log in zip(workers,logs):
+            path=Path(log.name)
+            if path.parent!=artifact_root or not re.fullmatch(r'worker-[a-f0-9]{32}\.log',path.name):raise ValueError('mapping_unavailable')
+            info=os.fstat(log.fileno());_regular(info)
+            if worker.poll() is not None:raise ValueError('mapping_unavailable')
+            captured.append((worker,log,path,(info.st_dev,info.st_ino)))
+        if len({item[3] for item in captured})!=2:raise ValueError('mapping_unavailable')
+    except BaseException:return ([], 'unavailable')
+    return (captured,'observed')
+
+
+def _finalize_workers(capture,exits,closed):
+    pairs,status=capture
+    if status!='observed':return [],status
+    records=[]
+    for index,(worker,log,path,identity) in enumerate(pairs):
+        row=dict(ordinal=index+1,kind='cli',original_ref=path.name,mapping='observed',alive_before_cleanup=True,
+            intentional_cleanup=None,terminated=None,exit_code=None,reaped=None,log_finalized=False,log_hash=None,reason=None)
+        try:
+            outcome=exits[index]
+            if set(outcome)!={'kind','exit_code','terminated','intentional_cleanup','alive_before_cleanup'} or outcome['kind']!='cli' or type(outcome['exit_code']) is not int:raise ValueError('mapping_unavailable')
+            if not all(outcome[key] is True for key in ('terminated','intentional_cleanup','alive_before_cleanup')):raise ValueError('mapping_unavailable')
+            if worker.poll()!=outcome['exit_code']:raise ValueError('mapping_unavailable')
+            row.update({key:outcome[key] for key in ('alive_before_cleanup','intentional_cleanup','terminated','exit_code')});row['reaped']=True
+            if not closed or not log.closed:raise ValueError('log_not_finalized')
+            row['log_hash']=_hash_artifact(path,path.name,identity);row['log_finalized']=True
+        except BaseException:row['reason']='log_not_finalized' if not closed or not log.closed else 'mapping_unavailable';status='unavailable'
+        records.append(row)
+    return records,status
 
 
 class BrowserBridge(PaidBridge):
