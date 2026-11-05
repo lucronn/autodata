@@ -108,3 +108,5 @@ Concrete todo:
 - [ ] Accept exact application/hal+json through the existing bound JSON adaptation path with fail-closed envelope handling; preserve all other media behavior.
 - [ ] Run focused source capture/adapter regressions and offline replay of all 20 privately retained authentic Banktwo resources; record hashes, normalization and remaining media/rewrite blockers.
 - [ ] Obtain independent exact-SHA review and synchronize Issue/Project evidence; keep activation and deployment disabled.
+
+Implementation checkpoint `5d9fc1ad60cf899c46017417d7122914be6924ea` accepts all 20 retained authentic Banktwo HAL resources without changing original payload or envelope hashes. Focused tests passed (157 tests and six subtests); 11 raw normalized documents passed strict validation and nine retain unresolved image errors. The supported capture path records unavailable optional assets explicitly and yielded strict-valid source fallback for all 40 retained cross-bank resources in offline replay. This does not establish live asset availability, rewrite eligibility, lifecycle completion or production release readiness. Independent review and exact-head CI are pending.

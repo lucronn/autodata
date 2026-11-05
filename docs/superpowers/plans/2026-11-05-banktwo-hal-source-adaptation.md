@@ -60,3 +60,9 @@ Required result: `{"status":"synchronized","errors":[]}`. Fresh Issue and Projec
 Issue: https://github.com/lucronn/autodata/issues/317
 Project item: PVTI_lAHOCSJ8cc4BiQ2BzhGS0GA
 Tracking readback: Issue body and Project Source/status Ready matched literally before checkpoint.
+
+## Implementation evidence
+
+The implementation milestone is `5d9fc1ad60cf899c46017417d7122914be6924ea`, after the synchronized gate at `ab2da36728c0089bd6e044d1751bcc6d8554d295`. The pre-fix HAL regressions failed as expected; the focused source-capture, adapter and normalization suite then passed with 157 tests and six subtests. The strengthened same-context HAL/JSON fidelity check passed two cases, and `git diff --check` passed. Offline replay adapted all 20 original Banktwo HAL payloads with unchanged body and envelope hashes. Eleven raw normalized documents passed strict validation; nine retained unresolved image verification errors. These are source-adaptation results, not rewrite or publication acceptance.
+
+A separate offline replay through `capture_source_article` with unavailable optional assets and a null asset store produced strict-valid source fallback for all 40 retained resources across both banks; the private report SHA256 is `aa349010066f37e905d1666322db98db8f351ce6b82004baf40b32d7104a4c95`. It records unavailable-image evidence rather than inventing media. Independent exact-SHA review, GitHub CI and any live ingestion remain separate checkpoints.
