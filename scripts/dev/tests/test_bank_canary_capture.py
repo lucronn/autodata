@@ -12,7 +12,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from bank_canary_capture import validate_enrollment, run_capture
 
 class Clock:
-    def __init__(self): self.value=0.0
+    def __init__(self):
+        import multiprocessing
+        self._value=multiprocessing.Value('d',0.0)
+    @property
+    def value(self):return self._value.value
+    @value.setter
+    def value(self,value):self._value.value=value
     def monotonic(self): return self.value
     def sleep(self,seconds): self.value+=seconds
     def utcnow(self): return datetime(2026,11,5,12,tzinfo=timezone.utc)
@@ -33,9 +39,25 @@ class Response(io.BytesIO):
         self.headers=headers or {'Content-Type':'application/json'}
     def geturl(self): return self.url
 
+class RequestLog:
+    def __init__(self):self.file=tempfile.TemporaryFile()
+    def append(self,request):
+        import os
+        os.lseek(self.file.fileno(),0,os.SEEK_END)
+        os.write(self.file.fileno(),json.dumps([request.full_url,request.get_method(),request.data.decode() if request.data else None]).encode()+b'\n')
+    def rows(self):
+        import os
+        from urllib.request import Request
+        os.lseek(self.file.fileno(),0,os.SEEK_SET)
+        raw=os.read(self.file.fileno(),1_000_000)
+        return [Request(url,data=data.encode() if data else None,method=method) for url,method,data in map(json.loads,raw.splitlines())]
+    def __len__(self):return len(self.rows())
+    def __iter__(self):return iter(self.rows())
+    def __del__(self):self.file.close()
+
 class Fixture:
     offline=True
-    def __init__(self,pages=1,mutate=None): self.calls=[];self.pages=pages;self.mutate=mutate
+    def __init__(self,pages=1,mutate=None): self.calls=RequestLog();self.pages=pages;self.mutate=mutate
     def __call__(self,bank,config):
         def opener(request,timeout):
             self.calls.append(request);path=urlsplit(request.full_url).path;query=parse_qs(urlsplit(request.full_url).query)
@@ -110,14 +132,15 @@ class TransportTests(unittest.TestCase):
     def test_unknown_framing_at_exact_ceiling_is_partial_without_sentinel(self):
         from urllib.request import Request
         from bank_canary_transport import CaptureFailure
+        import multiprocessing
+        count=multiprocessing.Value('i',0);size=multiprocessing.Value('i',0)
         class Counting(Response):
-            reads=[]
-            def read(self,n=-1): self.reads.append(n);return super().read(n)
+            def read(self,n=-1):count.value+=1;size.value=n;return super().read(n)
         response=Counting(b'abcdMORE','https://bankone.invalid/v1/capabilities')
         with tempfile.TemporaryDirectory() as root:
             transport=self.transport(root,lambda *a,**k:response,4)
             with self.assertRaises(CaptureFailure):transport(Request(response.url))
-            self.assertEqual(response.reads,[4]);self.assertEqual(Path(root,'0001.raw').read_bytes(),b'abcd')
+            self.assertEqual((count.value,size.value),(1,4));self.assertEqual(Path(root,'0001.raw').read_bytes(),b'abcd')
             self.assertEqual(transport.last['state'],'partial')
     def test_proven_eof_at_exact_ceiling_is_complete(self):
         from urllib.request import Request
@@ -322,6 +345,50 @@ class BoundTests(unittest.TestCase):
         self.assertEqual(len(planned),2)
         self.assertEqual(planned[0]['resources'][0]['role'],'body')
         self.assertEqual(planned[0]['resolution_posts'],1)
+    def test_source_not_found_still_writes_result_and_summary(self):
+        def not_found(bank,request,env):return Response(b'inert missing',request.full_url,404)
+        result,files=self.run_fixture(Fixture(mutate=not_found))
+        self.assertEqual(result['banks']['bankone']['stop_code'],'NOT_FOUND')
+        self.assertIn('result.json',files);self.assertIn('summary.json',files)
+    def test_encoded_secret_is_quarantined_even_when_client_hash_will_fail(self):
+        import base64
+        def mutate(bank,request,env):
+            if 'kind' in env:
+                env.pop('content');env.pop('asset_resource_refs')
+                env.update(kind='binary',content_base64=base64.b64encode(b'https://fixture.invalid/?token=INERT-HIDDEN').decode(),sha256='0'*64)
+        result,files=self.run_fixture(Fixture(mutate=mutate))
+        self.assertEqual(result['banks']['bankone']['stop_code'],'SECRET_INCIDENT')
+        self.assertEqual(result['banks']['banktwo']['state'],'withdrawn')
+        self.assertEqual(json.loads(files['inventory.json'])['objects'][-1]['state'],'quarantined')
+    def test_injected_blocked_opener_is_killed_at_bank_deadline(self):
+        import time
+        clock=Clock();fixture=Fixture()
+        class Blocked:
+            offline=True
+            def __call__(self,bank,config):
+                if bank=='banktwo':return fixture(bank,config)
+                def blocked(request,timeout):clock.value=901;time.sleep(30)
+                return blocked
+        started=time.monotonic()
+        with tempfile.TemporaryDirectory() as root:result=run_capture(enrollment(),Blocked(),clock,root)
+        self.assertLess(time.monotonic()-started,2)
+        self.assertEqual(result['banks']['bankone']['stop_code'],'DEADLINE')
+        self.assertEqual(result['banks']['banktwo']['state'],'observed_complete')
+    def test_keyboard_interrupt_finalizes_inventory_and_results(self):
+        def interrupt(bank,request,env):raise KeyboardInterrupt()
+        result,files=self.run_fixture(Fixture(mutate=interrupt))
+        self.assertEqual(result['banks']['bankone']['stop_code'],'CANCELLED')
+        self.assertIn('inventory.json',files);self.assertIn('result.json',files);self.assertIn('summary.json',files)
+    def test_socket_read_failure_keeps_other_bank_independent(self):
+        import socket
+        class BrokenResponse(Response):
+            def read(self,n=-1):raise socket.timeout('inert diagnostic')
+        def mutate(bank,request,env):
+            if bank=='bankone':return BrokenResponse(b'',request.full_url)
+        result,files=self.run_fixture(Fixture(mutate=mutate))
+        self.assertEqual(result['banks']['bankone']['stop_code'],'READ')
+        self.assertEqual(result['banks']['banktwo']['state'],'observed_complete')
+        self.assertEqual(json.loads(files['inventory.json'])['objects'][0]['reason'],'READ')
     def test_summary_unknown_fields_are_rejected(self):
         from bank_canary_capture import validate_summary
         _,files=self.run_fixture(Fixture());summary=json.loads(files['summary.json']);summary['path']='private'

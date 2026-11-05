@@ -26,7 +26,7 @@ BANK=set('origin owner_identity_ref deployment_revision key_version_ref egress_i
 REFS=set('operator_ref reviewer_ref custodian_ref execution_approval_ref protected_storage_ref rights_ref'.split())
 BANKREFS=set('owner_identity_ref deployment_revision key_version_ref egress_identity_ref license_ref revision_attestation_ref expected_source_revision source_vehicle_ref article_ref body_ref incident_procedure_ref'.split())
 
-STOP_CODES={'PAGE_LIMIT','PAGINATION','SELECTOR','IDENTITY','FETCHED_AT','CAPABILITIES','DEADLINE','REQUEST_LIMIT','BYTE_LIMIT','GRAPH','CATALOG_MEMBERSHIP','APPLICABILITY','VEHICLE_MEMBERSHIP','ARTICLE_MEMBERSHIP','RESOURCE_MEMBERSHIP','RESOURCE_CONTENT','PROCEDURE_CONTENT','SECRET_INCIDENT','OUTPUT_FAILURE','CONNECT_TLS','REDIRECT','FRAMING','INTERRUPTED','CLEANUP','TRANSPORT_PROTOCOL','UPSTREAM_UNAVAILABLE','INVALID_UPSTREAM_RESPONSE','RATE_LIMITED','UNAUTHORIZED','FORBIDDEN','TRANSPORT','DNS','TLS','CONNECT','READ'}
+STOP_CODES={'CANCELLED','VALIDATION','NOT_FOUND','INVALID_INPUT','AMBIGUOUS','PAGE_LIMIT','PAGINATION','SELECTOR','IDENTITY','FETCHED_AT','CAPABILITIES','DEADLINE','REQUEST_LIMIT','BYTE_LIMIT','GRAPH','CATALOG_MEMBERSHIP','APPLICABILITY','VEHICLE_MEMBERSHIP','ARTICLE_MEMBERSHIP','RESOURCE_MEMBERSHIP','RESOURCE_CONTENT','PROCEDURE_CONTENT','SECRET_INCIDENT','OUTPUT_FAILURE','CONNECT_TLS','REDIRECT','FRAMING','INTERRUPTED','CLEANUP','TRANSPORT_PROTOCOL','UPSTREAM_UNAVAILABLE','INVALID_UPSTREAM_RESPONSE','RATE_LIMITED','UNAUTHORIZED','FORBIDDEN','TRANSPORT','DNS','TLS','CONNECT','READ'}
 
 def _require(condition, code='ENROLLMENT'):
     if not condition: raise ValueError(code)
@@ -341,12 +341,12 @@ def run_capture(enrollment,transport_factory,clock,evidence_root):
                 evidence.decoded(bank,ref,payload,row['attempted']['requests'])
                 row['successful']['required_resources']+=1;row['resource_coverage'].append(ref)
             row['successful']['selected_articles']=1;row.update(state='observed_complete')
-        except Exception as error:
-            code=error.code if isinstance(error,(CaptureFailure,SourceConnectorError)) else (str(error) if isinstance(error,ValueError) else ('OUTPUT_FAILURE' if isinstance(error,OSError) else 'TRANSPORT'))
+        except (Exception,KeyboardInterrupt) as error:
+            code='CANCELLED' if isinstance(error,KeyboardInterrupt) else error.code if isinstance(error,(CaptureFailure,SourceConnectorError)) else (str(error) if isinstance(error,ValueError) else ('OUTPUT_FAILURE' if isinstance(error,OSError) else 'TRANSPORT'))
 
             code=code if code in STOP_CODES else 'VALIDATION'
             row.update(state='incomplete' if code in {'DEADLINE','BYTE_LIMIT','PAGE_LIMIT','OUTPUT_FAILURE','CONNECT_TLS','DNS','TLS','CONNECT','READ'} else 'failed',stop_code=code)
-            if code in {'SECRET_INCIDENT','OUTPUT_FAILURE','CLEANUP'}:shared=code
+            if code in {'SECRET_INCIDENT','OUTPUT_FAILURE','CLEANUP','CANCELLED'}:shared=code
             try:evidence.attempt(dict(event='validation',bank=bank,sequence=row['attempted']['requests'],outcome=code))
             except OSError: shared='OUTPUT_FAILURE';row.update(state='incomplete',stop_code=shared)
     result['ended_at']=clock.utcnow().isoformat();result['monotonic_seconds']=clock.monotonic()-run_start

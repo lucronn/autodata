@@ -5,6 +5,8 @@ this milestone's controller accepts only explicitly offline transports.
 """
 from __future__ import annotations
 import hashlib
+import base64
+import binascii
 import http.client
 import io
 import json
@@ -38,6 +40,18 @@ def private_json(path, value):
 
 def sensitive(data, credentials=()):
     return bool(SECRET_PATTERN.search(data) or any(token and token in data for token in credentials))
+
+
+def sensitive_payload(data,credentials=()):
+    """Inspect bounded resource bytes even when later schema/hash validation fails."""
+    if sensitive(data,credentials):return True
+    try:value=json.loads(data)
+    except (ValueError,UnicodeError):return False
+    if isinstance(value,dict) and isinstance(value.get('content_base64'),str):
+        try:decoded=base64.b64decode(value['content_base64'],validate=True)
+        except (ValueError,binascii.Error):return False
+        return sensitive(decoded,credentials)
+    return False
 
 
 class CapturedResponse(io.BytesIO):
@@ -89,19 +103,47 @@ def _https_child(spec):
         tls={'version':sock.version(),'cipher':sock.cipher(),'certificate_sha256':hashlib.sha256(cert).hexdigest(),'peer':sock.getpeername()[0]}
         headers=dict(spec['headers']);headers['Accept-Encoding']='identity';headers['Connection']='close'
         stage='READ'
-        conn.request(spec['method'],parsed.path+('?' + parsed.query if parsed.query else ''),body=spec['data'],headers=headers)
-        response=conn.getresponse()
+        try:
+            conn.request(spec['method'],parsed.path+('?' + parsed.query if parsed.query else ''),body=spec['data'],headers=headers)
+            response=conn.getresponse()
+        except OSError:raise CaptureFailure('READ') from None
+        stage='CAPTURE'
         _stream(response,spec['url'],spec['raw_path'],spec['journal_path'],spec['allowance'],(),tls)
         spec['completion'].send(None)
     except BaseException as error:
-        reason=('DNS' if isinstance(error,socket.gaierror) else 'TLS' if isinstance(error,ssl.SSLError)
-                else error.code if isinstance(error,CaptureFailure) else 'OUTPUT_FAILURE' if isinstance(error,OSError) and stage=='READ' else stage)
+        reason=('CANCELLED' if isinstance(error,KeyboardInterrupt) else 'DNS' if isinstance(error,socket.gaierror) else 'TLS' if isinstance(error,ssl.SSLError)
+                else error.code if isinstance(error,CaptureFailure) else 'OUTPUT_FAILURE' if isinstance(error,OSError) and stage=='CAPTURE' else stage)
         # Only a fixed enum crosses IPC. No raw exception or response text.
         try: spec['completion'].send(reason)
         except (OSError,EOFError): pass
     finally:
         spec['completion'].close()
-        if conn is not None: conn.close()
+        if conn is not None:
+            try:conn.close()
+            except BaseException:pass
+
+
+def _opener_child(spec,opener):
+    """Offline injected openers obey the same parent watchdog as HTTPS."""
+    response=None;stage='CONNECT'
+    try:
+        from urllib.request import Request
+        request=Request(spec['url'],data=spec['data'],headers=spec['headers'],method=spec['method'])
+        try:response=opener(request,timeout=spec['timeout'])
+        except HTTPError as error:response=error
+        stage='CAPTURE'
+        _stream(response,spec['url'],spec['raw_path'],spec['journal_path'],spec['allowance'],())
+        spec['completion'].send(None)
+    except BaseException as error:
+        reason=('CANCELLED' if isinstance(error,KeyboardInterrupt) else error.code if isinstance(error,CaptureFailure) else 'DNS' if isinstance(error,socket.gaierror)
+                else 'TLS' if isinstance(error,ssl.SSLError) else 'OUTPUT_FAILURE' if stage=='CAPTURE' else 'CONNECT')
+        try:spec['completion'].send(reason)
+        except (OSError,EOFError):pass
+    finally:
+        if response is not None:
+            try:response.close()
+            except BaseException:pass
+        spec['completion'].close()
 
 
 class CaptureTransport:
@@ -122,32 +164,30 @@ class CaptureTransport:
                   raw_path=str(raw_path),journal_path=str(journal_path),allowance=self.allowance)
         forced=None;phase='OPEN'
         try:
-            if self.opener is not None:
-                try: response=self.opener(request,timeout=min(25,timeout))
-                except HTTPError as error: response=error
-                phase='CAPTURE'
-                try: _stream(response,request.full_url,raw_path,journal_path,self.allowance,self.credentials)
-                finally: response.close()
-            else:
-                ctx=multiprocessing.get_context('fork')
-                receive,send=ctx.Pipe(duplex=False);spec['completion']=send
-                child=ctx.Process(target=self.child_target,args=(spec,),daemon=True)
-                child.start();send.close();self.child_pid=child.pid
-                try:
-                    while child.is_alive() and self.clock.monotonic()<self.deadline:
-                        child.join(min(.025,max(0,self.deadline-self.clock.monotonic())))
-                    if child.is_alive():
-                        forced='DEADLINE';child.terminate();child.join(.2)
-                        if child.is_alive(): child.kill();child.join(1)
-                    if child.is_alive(): raise CaptureFailure('CLEANUP')
-                    child.join()
-                    if forced is None and receive.poll():
-                        try: forced=receive.recv()
-                        except EOFError: pass
-                finally:
-                    receive.close()
-                    if child.is_alive(): child.kill();child.join(1)
-                    child.close()
+            ctx=multiprocessing.get_context('fork')
+            receive,send=ctx.Pipe(duplex=False);spec['completion']=send
+            spec['timeout']=min(25,timeout)
+            target=self.child_target if self.opener is None else _opener_child
+            args=(spec,) if self.opener is None else (spec,self.opener)
+            child=ctx.Process(target=target,args=args,daemon=True)
+            child.start();send.close();self.child_pid=child.pid
+            try:
+                while child.is_alive() and self.clock.monotonic()<self.deadline:
+                    child.join(min(.025,max(0,self.deadline-self.clock.monotonic())))
+                if child.is_alive():
+                    forced='DEADLINE';child.terminate();child.join(.2)
+                    if child.is_alive():child.kill();child.join(1)
+                if child.is_alive():raise CaptureFailure('CLEANUP')
+                child.join()
+                if forced is None and receive.poll():
+                    try:forced=receive.recv()
+                    except EOFError:pass
+            finally:
+                receive.close()
+                if child.is_alive():child.kill();child.join(1)
+                child.close()
+        except KeyboardInterrupt:
+            forced='CANCELLED'
         except OSError:
             forced='CONNECT_TLS' if phase=='OPEN' and self.opener is not None else 'OUTPUT_FAILURE'
         except (TimeoutError,ConnectionError):
@@ -167,7 +207,7 @@ class CaptureTransport:
                         raw_ref=raw_path.name if raw_path.exists() else None,journal_ref=journal_path.name if journal_path.exists() else None,
                         sealing='local_unsealed')
             header_bytes=json.dumps(meta.get('headers',{})).encode()
-            if sensitive(raw,self.credentials) or sensitive(header_bytes,self.credentials):
+            if sensitive_payload(raw,self.credentials) or sensitive(header_bytes,self.credentials):
                 meta.update(state='quarantined',reason='SECRET_INCIDENT',headers={},final_url=None)
             self.last=meta
         if meta['state']!='complete': raise CaptureFailure(meta['reason'] or 'TRANSPORT')
