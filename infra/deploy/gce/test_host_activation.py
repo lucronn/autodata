@@ -63,7 +63,7 @@ class FileTests(unittest.TestCase):
         self.release.mkdir(mode=0o700)
         original_stat, original_fstat = os.stat, os.fstat
         def owned(value):
-            fields = list(value); fields[4] = fields[5] = 0
+            fields = list(value); fields[4] = fields[5] = 0; fields[0] &= ~0o022
             return os.stat_result(fields)
         for mocked in (patch.object(os, 'fstat', side_effect=lambda fd: owned(original_fstat(fd))),
                        patch.object(os, 'stat', side_effect=lambda *a, **k: owned(original_stat(*a, **k)))):
