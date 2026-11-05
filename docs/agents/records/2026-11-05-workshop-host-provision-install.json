@@ -32,6 +32,8 @@
     "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhGPuN0",
     "project_status": "Ready",
     "parent_link_verified": true,
-    "readback_verified": false
+    "readback_verified": true,
+    "issue_body_sha256": "e4fc3fda72e8d556a5f9392c03c87e325e31307d1fbbf246f263c68228fb1323",
+    "project_index_sha256": "4c3fcc2e628c3e5e268c16a72bab47797d1c5ba439a8743db3d180db6243f728"
   }
 }
