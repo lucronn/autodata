@@ -211,12 +211,18 @@ def _intent(state, phase, store, clock):
 def _recover(state, host, store, clock, *, explicit):
     end = clock.monotonic() + RECOVERY_SECONDS
     host.preflight('resume', state)
-    for phase in RESUME:
-        require(clock.monotonic() < end)
-        _intent(state, phase, store, clock)
-        host.step(phase, store, end)
-    state.update(state='resumed', phase='resumed', explicit_resume=explicit)
-    store.write(state)
+    opened = False
+    try:
+        for phase in RESUME:
+            require(clock.monotonic() < end)
+            _intent(state, phase, store, clock)
+            if phase == 'open_ingress': opened = True
+            host.step(phase, store, end)
+        state.update(state='resumed', phase='resumed', explicit_resume=explicit, incomplete=not explicit)
+        store.write(state)
+    except Exception:
+        if opened: host.fail_closed(end)
+        raise
 
 
 def run_backup(verb, run_id, host, store, clock):
@@ -265,8 +271,6 @@ def run_backup(verb, run_id, host, store, clock):
                     state['incomplete'] = True
                     mutated = True
                     _recover(state, host, store, clock, explicit=not was_incomplete)
-                    state['incomplete'] = was_incomplete
-                    store.write(state)
                 require(not abandoned and not state['incomplete'] and state['explicit_resume'])
                 host.observe_ready()
             else:
@@ -279,6 +283,11 @@ def run_backup(verb, run_id, host, store, clock):
     except Exception as error:
         primary = 5 if isinstance(error, subprocess.TimeoutExpired) else (6 if verb == 'resume' and state else 4 if state else 3)
         if mutated:
+            # Persistence/readiness can fail after opening ingress. Maintenance
+            # must not depend on the same failed lease storage to close again.
+            if verb == 'resume':
+                try: host.fail_closed(clock.monotonic() + RECOVERY_SECONDS)
+                except Exception: primary = 6
             try:
                 state['incomplete'] = True; store.write(state)
                 if verb == 'begin': _recover(state, host, store, clock, explicit=False)
@@ -429,6 +438,9 @@ class InstalledHost:
             require(type(state) is dict and state.get('Running') is False and state.get('OOMKilled') is False)
             require(type(state.get('ExitCode')) is int and state['ExitCode'] == 0)
         self.checks['services'] = True
+    def fail_closed(self, deadline):
+        self.life.deadline = min(self.end, deadline)
+        self.life.maintenance(True, self.manifest, [self.manifest])
     def observe_ready(self):
         require(all(value['running'] for value in self._graph().values()))
         self.life.ready(self.manifest, self.config)
@@ -508,15 +520,18 @@ def watchdog_cli():
             require(len(runs) <= 100 and all(re.fullmatch(UUID, item) for item in runs))
             for run_id in sorted(runs):
                 require(time.monotonic() < host.end)
-                store = LeaseStore(ROOT, run_id)
-                state = validate_state(store.read(), run_id)
-                abandoned = state['incomplete'] or state['boot_id'] != clock.boot_id() or clock.monotonic() >= state['deadline'] or stamp(clock.utc()) < state['last_utc'] or stamp(clock.utc()) >= state['lease_expires_at']
-                if abandoned and (state['state'] != 'resumed' or not state['explicit_resume']):
-                    state['incomplete'] = True
-                    store.write(state)
-                    code, _ = run_backup('resume', run_id, host, store, clock)
-                    recovered += 1
-                    if code: failures += 1
+                try:
+                    store = LeaseStore(ROOT, run_id)
+                    state = validate_state(store.read(), run_id)
+                    abandoned = state['incomplete'] or state['boot_id'] != clock.boot_id() or clock.monotonic() >= state['deadline'] or stamp(clock.utc()) < state['last_utc'] or stamp(clock.utc()) >= state['lease_expires_at']
+                    if abandoned and (state['state'] != 'resumed' or not state['explicit_resume']):
+                        state['incomplete'] = True
+                        store.write(state)
+                        code, _ = run_backup('resume', run_id, host, store, clock)
+                        recovered += 1
+                        if code: failures += 1
+                except Exception:
+                    failures += 1
         return (6 if failures else 0), {'schema_version':1,'operation':'backup_restore.py watchdog','recovered':recovered,'incomplete':bool(failures)}
     except Exception:
         return 6, {'schema_version':1,'operation':'backup_restore.py watchdog','recovered':recovered,'incomplete':True}
@@ -549,9 +564,23 @@ def validate_restore_inputs(run_id, plan, manifest, status, archive, inventory):
     encoded = canonical(inventory)
     require(len(encoded) <= 1048576 and hashlib.sha256(encoded).hexdigest() == plan['fixture_inventory_sha256'])
     relations, objects, jetstream = inventory['relations'], inventory['objects'], inventory['jetstream']
-    require(type(relations) is dict and set(relations) <= RELATIONS and 'schema_migrations' in relations)
+    require(type(relations) is dict and set(relations) == RELATIONS)
     require(all(type(rows) is list and all(type(row) is dict for row in rows) for rows in relations.values()))
-    require(type(objects) is list and type(jetstream) is dict)
+    require(all(rows for rows in relations.values()))
+    for table in ('customer_accounts','auth_sessions','workshop_orders','entitlements','vehicle_configurations','dataset_requests'):
+        require(len(relations[table]) >= 2)
+    accounts = relations['customer_accounts']
+    require(all(type(row.get('customer_account_id')) is str and type(row.get('personal_organization_id')) is str for row in accounts))
+    require(len({row['customer_account_id'] for row in accounts}) == len(accounts))
+    require(len({row['personal_organization_id'] for row in accounts}) == len(accounts))
+    require(type(objects) is list and len(objects) > 0 and type(jetstream) is dict)
+    require(set(jetstream) == {'stream','sequence','subject','payload_sha256','consumer','delivered_stream_seq','ack_floor_stream_seq','messages'})
+    for key in ('stream','subject','consumer'):
+        require(type(jetstream[key]) is str and re.fullmatch(r'[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*',jetstream[key]))
+    for key in ('sequence','delivered_stream_seq','ack_floor_stream_seq','messages'):
+        require(type(jetstream[key]) is int and 0 <= jetstream[key] <= 1000)
+    require(jetstream['sequence'] > 0 and jetstream['messages'] > 0)
+    require(type(jetstream['payload_sha256']) is str and re.fullmatch(r'[0-9a-f]{64}',jetstream['payload_sha256']))
     require(sum(len(rows) for rows in relations.values()) + len(objects) + len(jetstream) <= 1000)
     for obj in objects:
         require(type(obj) is dict and set(obj) == {'bucket','key','sha256','bytes'})

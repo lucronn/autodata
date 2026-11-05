@@ -45,6 +45,7 @@ class Host:
         if name == 'dump':
             with store.create_dump() as output: output.write(b'PGDMP synthetic offline dump')
         if name == 'ready': self.checks.update(services=True, no_work=True)
+    def fail_closed(self, deadline): self.calls.append('fail_closed')
     def observe_ready(self): self.checks.update(services=True, no_work=True)
     def verify_dump(self, store, deadline):
         self.calls.append('verify_dump')
@@ -222,11 +223,50 @@ class BoundaryTests(unittest.TestCase):
                 altered = dict(state); altered[key] = value
                 with self.subTest(key=key), self.assertRaises(ValueError): self.m.validate_state(altered, RUN)
 
+class RecoveryReviewTests(unittest.TestCase):
+    setUp = LeaseTests.setUp
+    run_backup = LeaseTests.run_backup
+    def test_final_persistence_failure_after_ingress_recloses_maintenance(self):
+        self.run_backup('begin')
+        real_write=self.store.write
+        def fail(state):
+            if state['phase']=='resumed':raise OSError('durability failed')
+            return real_write(state)
+        self.store.write=fail
+        self.assertEqual(self.run_backup('resume')[0],6)
+        self.assertIn('open_ingress',self.host.calls)
+        self.assertEqual(self.host.calls[-1],'fail_closed')
+    def test_watchdog_continues_after_missing_lease(self):
+        from contextlib import contextmanager
+        from unittest.mock import patch
+        self.run_backup('begin');state=self.store.read();state['incomplete']=True;self.store.write(state)
+        broken='02345678-1234-4234-8234-123456789abc';(Path(self.temp.name)/broken).mkdir(mode=0o700)
+        class Pins:
+            def directory(inner,*args):return self.temp.name
+        class FixedHost:
+            pins=Pins();end=999999999.
+        @contextmanager
+        def host(seconds):yield FixedHost()
+        original=self.m.LeaseStore
+        def store(root,run):return original(root,run,owner=__import__('os').getuid())
+        with patch.object(self.m,'ROOT',self.temp.name),patch.object(self.m,'LeaseStore',store),patch.object(self.m,'installed_host',host),patch.object(self.m,'Clock',Clock),patch.object(self.m,'run_backup',return_value=(6,None)) as recover:
+            code,result=self.m.watchdog_cli()
+        self.assertEqual(code,6);self.assertEqual(result['recovered'],1)
+        self.assertEqual(recover.call_args.args[1],RUN)
+
 class RestoreTarget:
     def __init__(self, module):
         self.m = module; self.calls = []
         self.manifest = {'source_sha':'a' * 40, 'images':{'postgres':{'image_id':'sha256:'+'b'*64}}, 'migrations':{'files':[{'name':'001_extensions.sql'}]}}
-        self.inventory = {'schema_version':1, 'relations':{'schema_migrations':[{'version':'001_extensions'}]}, 'objects':[], 'jetstream':{}}
+        relations={table:[{'fixture_id':table}] for table in module.RELATIONS}
+        for table in ('auth_sessions','workshop_orders','entitlements','vehicle_configurations','dataset_requests'):
+            relations[table]=[{'fixture_id':table+'1'},{'fixture_id':table+'2'}]
+        relations['schema_migrations']=[{'version':'001_extensions'}]
+        relations['customer_accounts']=[{'customer_account_id':'account'+str(i),'personal_organization_id':'org'+str(i)} for i in (1,2)]
+        self.inventory = {'schema_version':1,'relations':relations,
+            'objects':[{'bucket':'fixture','key':'source/article.json','sha256':'d'*64,'bytes':12}],
+            'jetstream':{'stream':'FIXTURE','consumer':'fixture','subject':'fixture.event','sequence':1,'messages':1,
+                'delivered_stream_seq':0,'ack_floor_stream_seq':0,'payload_sha256':'e'*64}}
         host = Host(module); host.manifest = self.manifest
         self.temp = tempfile.TemporaryDirectory(dir='/tmp')
         self.store = module.LeaseStore(Path(self.temp.name), RUN, owner=__import__('os').getuid())
@@ -278,6 +318,31 @@ class RestoreTests(unittest.TestCase):
                 self.target.observed[key] = {'corrupt': True}
                 self.assertNotEqual(self.run_restore()[0],0)
                 self.assertEqual(self.target.calls[-1], 'cleanup')
+    def test_required_evidence_cannot_be_omitted_with_a_matching_hash(self):
+        for key in sorted(self.m.RELATIONS):
+            with self.subTest(key=key):
+                original=copy.deepcopy(self.target.inventory)
+                self.target.inventory['relations'].pop(key,None)
+                self.target.plan['fixture_inventory_sha256']=hashlib.sha256(self.m.canonical(self.target.inventory)).hexdigest()
+                self.assertNotEqual(self.run_restore()[0],0)
+                self.assertNotIn('create',self.target.calls)
+                self.target.inventory=original;self.target.calls.clear()
+        for key,value in (('objects',[]),('jetstream',{})):
+            self.target.inventory=copy.deepcopy(original)
+            self.target.inventory[key]=value
+            self.target.plan['fixture_inventory_sha256']=hashlib.sha256(self.m.canonical(self.target.inventory)).hexdigest()
+            self.assertNotEqual(self.run_restore()[0],0)
+            self.assertNotIn('create',self.target.calls)
+    def test_empty_categories_or_duplicate_owners_cannot_pass(self):
+        original=copy.deepcopy(self.target.inventory)
+        for table in self.m.RELATIONS:
+            self.target.inventory=copy.deepcopy(original);self.target.inventory['relations'][table]=[]
+            self.target.plan['fixture_inventory_sha256']=hashlib.sha256(self.m.canonical(self.target.inventory)).hexdigest()
+            self.assertNotEqual(self.run_restore()[0],0);self.assertNotIn('create',self.target.calls)
+        self.target.inventory=copy.deepcopy(original)
+        self.target.inventory['relations']['customer_accounts'][1]=copy.deepcopy(self.target.inventory['relations']['customer_accounts'][0])
+        self.target.plan['fixture_inventory_sha256']=hashlib.sha256(self.m.canonical(self.target.inventory)).hexdigest()
+        self.assertNotEqual(self.run_restore()[0],0);self.assertNotIn('create',self.target.calls)
     def test_cleanup_failure_cannot_be_passed(self):
         def fail(): raise ValueError('cleanup failure')
         self.target.cleanup = fail
@@ -402,6 +467,12 @@ class InstalledHostGuardTests(unittest.TestCase):
         with patch.object(self.m.os,'statvfs',return_value=SimpleNamespace(f_bavail=10,f_frsize=1)):
             with self.assertRaises(ValueError):self.host.preflight('begin')
 
+    def test_failed_recovery_closes_maintenance_without_lease_storage(self):
+        self.host.preflight('begin')
+        calls=[];self.host.life.maintenance=lambda *args:calls.append(args)
+        self.host.fail_closed(900.)
+        self.assertEqual(calls,[(True,self.manifest,[self.manifest])])
+        self.assertEqual(self.host.life.deadline,900.)
     def test_quiescence_rejects_forced_or_oom_stateful_stop(self):
         self.host.preflight('begin')
         for name in self.apps+self.stateful:
