@@ -232,3 +232,11 @@ def test_protected_clause_cannot_hide_unparsed_directives_behind_separators(text
     assert result.error_code == "REWRITE_UNSUPPORTED_PROSE"
     assert result.document == source and model.calls == 0
     assert not rewrite.validate_article_rewrite(source, source, profile_version=PROFILE).report["complete_rewrite"]
+
+
+@pytest.mark.parametrize("field,value", [("schema_version", True), ("schema_version", 1.0)])
+def test_protected_json_member_types_are_exact(field, value):
+    source = document("Inspect the pump.")
+    candidate = rewrite.rewrite_ordered_document(source, client=Selector(), context={}, profile_version=PROFILE).document
+    candidate[field] = value
+    assert not rewrite.validate_article_rewrite(source, candidate, profile_version=PROFILE).passed

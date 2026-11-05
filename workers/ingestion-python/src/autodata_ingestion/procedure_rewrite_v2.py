@@ -169,7 +169,7 @@ def validate_v2(source, candidate) -> ValidationResult:
     changed = []
     if plan["eligible"]:
         expected = render_v2(source, _selection(plan))
-        if candidate != expected:
+        if digest_json(candidate) != digest_json(expected):
             errors.append("REWRITE_PROTECTED_MUTATION")
         else:
             changed = [op["path"] for op in plan["operations"]]

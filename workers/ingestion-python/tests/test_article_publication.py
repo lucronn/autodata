@@ -159,6 +159,9 @@ def test_v2_publication_rebinds_saved_operation_response_even_with_rehashed_atte
     forged = replace(validation, report={**validation.report, "changed_clauses": 1000})
     with pytest.raises(ValueError, match="binding"):
         store.store_validation(runtime.repo, lease, forged)
+    forged_type = replace(validation, report={**validation.report, "changed_clauses": True})
+    with pytest.raises(ValueError, match="binding"):
+        store.store_validation(runtime.repo, lease, forged_type)
     store.store_validation(runtime.repo, lease, validation)
     with runtime.repo.connect() as conn:
         response = conn.execute("SELECT response FROM canonical_article_rewrite_attempts WHERE canonical_article_revision_id=%s", (candidate["canonical_article_revision_id"],)).fetchone()["response"]

@@ -151,3 +151,14 @@ Final pure suite after correction: **100 passed**.
 The intermediate exact-ba4bbfb full harness was deliberately interrupted when this
 code correction was required. Its partial log earns no exact-SHA acceptance credit.
 The complete harness will run against the subsequent committed corrected code.
+
+### JSON type fidelity correction
+
+Self-review found that Python structural equality treats `True`, `1` and `1.0` as
+equal. Two pure red cases confirmed that a mutated protected `schema_version`
+could pass v2 validation despite different protected hashes. A database red case
+also accepted a forged `changed_clauses: true` report in place of count 1.
+v2 expected candidates, persisted operation reconstruction and validation reports
+now use canonical JSON digest equality, preserving JSON scalar types. v1 remains
+unchanged. Focused pure suite: **102 passed**. The intermediate exact-6954236
+harness was interrupted for this correction and earns no complete-run credit.
