@@ -124,6 +124,13 @@ def run_article_job(repo,lease,*,registry,object_store,model_client,hooks=None):
                 if lease.rewrite_profile_version == "full-prose-review-v1" and not result.error_code:
                     return
                 candidate=store.load_candidate(repo,lease)
+            if lease.rewrite_profile_version == "full-prose-review-v1":
+                # A saved failed response is original evidence, not a successful
+                # draft to reconstruct; retain its specific mechanical failure.
+                lease=_live(repo,lease)
+                if lease.checkpoint.get("rewrite_error_code"):
+                    fail_source_job(repo,lease,code=lease.checkpoint["rewrite_error_code"],retryable=False)
+                    return
             validation=store.validate_saved_candidate(repo,lease,candidate)
             store.store_validation(repo,lease,validation)
             lease=_live(repo,lease)

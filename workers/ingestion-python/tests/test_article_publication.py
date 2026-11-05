@@ -176,12 +176,12 @@ def test_v2_publication_rebinds_saved_operation_response_even_with_rehashed_atte
         assert conn.execute("SELECT count(*) AS n FROM publication_events").fetchone()["n"] == 0
 
 
-def awaiting_full(repo,fixture,*,provider="bankone"):
+def awaiting_full(repo,fixture,*,provider="bankone",body=None,model=None):
     from test_article_worker import prepare_full,FullModel
     from autodata_ingestion.article_lifecycle import run_article_job
     from autodata_ingestion.article_content_review import bindings_for
-    lease,source = prepare_full(repo,fixture,provider=provider)
-    run_article_job(repo,lease,registry={},object_store=None,model_client=FullModel())
+    lease,source = prepare_full(repo,fixture,provider=provider,body=body)
+    run_article_job(repo,lease,registry={},object_store=None,model_client=model or FullModel())
     with repo.connect() as conn:
         job = conn.execute('SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s',(lease.job_id,)).fetchone()
         article = conn.execute('SELECT * FROM canonical_articles WHERE canonical_article_id=%s',(lease.canonical_article_id,)).fetchone()
@@ -190,14 +190,14 @@ def awaiting_full(repo,fixture,*,provider="bankone"):
     return lease,candidate,expected
 
 
-def approve_full(repo,expected,tmp_path):
+def approve_full(repo,expected,tmp_path,*,retention_reviews=None):
     import json
     from autodata_ingestion.article_content_review import record_review
     allowlist = tmp_path / 'reviewers.json'
     allowlist.write_text(json.dumps({'version':1,'drafting_identities':['fixture'], 'reviewers':{'independent-human':{'kind':'human'}}}))
     allowlist.chmod(0o600)
     return record_review(repo,expected=expected,reviewer_id='independent-human',allowlist=allowlist,decision='APPROVED',
-        rationale='Compared every complete sentence with the original source.',full_content_reviewed=True,retention_reviews={})
+        rationale='Compared every complete sentence with the original source.',full_content_reviewed=True,retention_reviews=retention_reviews or {})
 
 
 @pytest.mark.parametrize("provider",["bankone","banktwo"])
@@ -316,3 +316,56 @@ def test_full_resume_claim_revalidates_saved_report_and_projection(fresh_databas
         conn.execute("UPDATE canonical_article_revisions SET canonical_body='tampered saved projection'")
     assert claim_source_job(repo,worker_id=uuid4()) is None
     assert store.load_article_state(repo,old.canonical_article_id)['content_origin'] == 'source'
+
+
+@pytest.mark.parametrize("provider",["bankone","banktwo"])
+@pytest.mark.parametrize("content",["table_only","all_retained"])
+def test_full_introduction_only_candidate_approved_publish_recovery(fresh_database,capture_fixture,tmp_path,provider,content):
+    import json
+    from copy import deepcopy
+    from autodata_ingestion.article_lifecycle import run_article_job,run_article_worker_once
+    from autodata_ingestion.source_job_persistence import ensure_article_job
+    from test_article_worker import FullModel
+    class RetainingModel(FullModel):
+        def complete_json(self,prompt):
+            self.calls += 1
+            return {'introduction':'This article presents pump specifications.', 'replacements':[
+                {**slot,'action':'retain','reason':'Exact technical label retained for human comparison.'} for slot in json.loads(prompt)['slots']]}
+    body = (b'<table><tr><td>Pump</td><td>10 Nm</td></tr></table>' if content == 'table_only' else b'<p>Pump specifications.</p>')
+    model = RetainingModel()
+    repo = fresh_database()
+    old,candidate,expected = awaiting_full(repo,capture_fixture,provider=provider,body=body,model=model)
+    assert store.load_article_state(repo,old.canonical_article_id)['content_origin'] == 'source'
+    original_blocks = deepcopy(candidate['normalized_source_document']['blocks'])
+    for block in original_blocks:block['source_order'] += 1
+    assert candidate['canonical_document']['blocks'][1:] == original_blocks
+    assert candidate['validation_report']['changed_slots'] == ['/introduction']
+    assert candidate['validation_report']['changed_prose_slots'] == []
+    assert candidate['validation_report']['complete_rewrite'] is False
+    reasons = {path:'Compared this exact technical label against the complete source.' for path in candidate['validation_report']['retained_paths']}
+    approve_full(repo,expected,tmp_path,retention_reviews=reasons)
+    with repo.connect() as conn:
+        conn.execute('UPDATE source_fetch_jobs SET retry_count=3 WHERE source_fetch_job_id=%s',(old.job_id,))
+    first = claim_source_job(repo,worker_id=uuid4())
+    with repo.connect() as conn:
+        conn.execute("UPDATE source_fetch_jobs SET lease_expires_at=clock_timestamp()-interval '1 second' WHERE source_fetch_job_id=%s",(old.job_id,))
+    current = claim_source_job(repo,worker_id=uuid4())
+    assert current.token > first.token
+    class Never:
+        def complete_json(self,prompt):pytest.fail('saved approved introduction was redrafted')
+    run_article_job(repo,current,registry={},object_store=None,model_client=Never())
+    state = store.load_article_state(repo,old.canonical_article_id)
+    assert state['content_origin'] == 'canonical' and state['review_status'] == 'APPROVED'
+    assert state['canonical_revision_id'] == candidate['canonical_article_revision_id']
+    with pytest.raises(LeaseLost):store.publish_article_revision(repo,first,candidate['canonical_article_revision_id'])
+    assert store.publish_article_revision(repo,current,candidate['canonical_article_revision_id']) == state['canonical_revision_id']
+    source_calls = len(capture_fixture.calls(provider))
+    for _ in range(100):
+        assert not ensure_article_job(repo,old.canonical_article_id,normalization_version=old.normalization_version,rewrite_profile_version=old.rewrite_profile_version).created
+        assert not run_article_worker_once(repo,worker_id=uuid4(),registry={},object_store=None,model_client=Never())
+        assert store.load_article_state(repo,old.canonical_article_id)['canonical_revision_id'] == state['canonical_revision_id']
+    assert len(capture_fixture.calls(provider)) == source_calls and model.calls == 1
+    with repo.connect() as conn:
+        assert conn.execute('SELECT count(*) AS n FROM publication_events').fetchone()['n'] == 1
+        assert conn.execute('SELECT count(*) AS n FROM canonical_article_rewrite_attempts').fetchone()['n'] == 1
+        assert conn.execute('SELECT retry_count FROM source_fetch_jobs WHERE source_fetch_job_id=%s',(old.job_id,)).fetchone()['retry_count'] == 3

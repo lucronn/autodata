@@ -183,3 +183,38 @@ def test_full_saved_result_atomically_parks_at_exhausted_delivery_budget(fresh_d
         assert job['status'] == 'needs_review' and job['retry_count'] == 3
         assert job['error_code'] == 'CONTENT_REVIEW_REQUIRED' and job['lease_owner'] is None
         assert candidate['status'] == 'validated'
+
+
+@pytest.mark.parametrize('crash_after_save',[False,True])
+def test_full_failed_response_preserves_specific_error_and_original_response(fresh_database,capture_fixture,crash_after_save):
+    from autodata_ingestion.article_lifecycle import run_article_job,run_article_worker_once
+    from autodata_ingestion.source_job_persistence import claim_source_job
+    from test_article_source_persistence import InjectedFailure
+    class InvalidModel(FullModel):
+        def complete_json(self,prompt):
+            self.response = super().complete_json(prompt)
+            self.response['replacements'][0]['text'] += ' Use 10 Nm.'
+            return self.response
+    repo = fresh_database();lease,_ = prepare_full(repo,capture_fixture)
+    model = InvalidModel()
+    def crash(point):
+        if point == 'after_model_result_commit':raise InjectedFailure()
+    if crash_after_save:
+        with pytest.raises(InjectedFailure):
+            run_article_job(repo,lease,registry={},object_store=None,model_client=model,hooks=crash)
+        with repo.connect() as conn:
+            conn.execute("UPDATE source_fetch_jobs SET lease_expires_at=clock_timestamp()-interval '1 second' WHERE source_fetch_job_id=%s",(lease.job_id,))
+        current = claim_source_job(repo,worker_id=uuid4())
+        run_article_job(repo,current,registry={},object_store=None,model_client=model)
+    else:
+        run_article_job(repo,lease,registry={},object_store=None,model_client=model)
+    state = store.load_article_state(repo,lease.canonical_article_id)
+    assert state['content_origin'] == 'source' and state['processing_state'] == 'needs_review'
+    assert state['processing_error_code'] == 'REWRITE_TECHNICAL_MUTATION'
+    with repo.connect() as conn:
+        attempt = conn.execute('SELECT * FROM canonical_article_rewrite_attempts').fetchone()
+        assert attempt['status'] == 'failed' and attempt['error_code'] == state['processing_error_code']
+        assert attempt['response'] == model.response
+        assert conn.execute('SELECT count(*) AS n FROM canonical_article_rewrite_attempts').fetchone()['n'] == 1
+    assert model.calls == 1
+    assert not run_article_worker_once(repo,worker_id=uuid4(),registry={},object_store=None,model_client=model)
