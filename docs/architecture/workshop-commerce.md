@@ -186,14 +186,18 @@ is permitted. Kubernetes' `https://cars.tk` example default remains compatible;
 changing deployment manifests or actual runtime configuration is outside this
 source-only change.
 
-Status: synchronized planning checkpoint; implementation has not begun. The
-checkpoint SHA must pass the machine preflight before any eight-path source/test
-implementation. Source completion will not establish deployed Firebase domain
-authorization, session, checkout, credentials or live-sales readiness.
+Status: source implementation candidate `cecef79a6bdbeaccf8a0eeead58594d059dbf35d`
+in PR #324. Exact planning checkpoint `82f8545af205000e54c95bcad4074def5b1f5457`
+passed the synchronized machine preflight before source edits. The eight-path
+candidate passed full Go API tests and vet, commerce (5), hosted runtime (96),
+staging deployment (26), and independent exact-SHA review with focused
+rechecks. Final-head CI and merge remain pending. Source completion will not
+establish deployed Firebase domain authorization, session, checkout,
+credentials or live-sales readiness.
 
 Todo:
-- [ ] Commit the synchronized plan/contract/record checkpoint and pass exact-checkpoint machine preflight.
-- [ ] Add failing Go/Python/runtime origin matrix cases and the independent staging deploy collision case.
-- [ ] Change only exact production origin allowlists and the staging deploy production-host exclusion.
-- [ ] Run focused suites, full Go API tests/vet, diff checks, and independent review; commit and push validated milestones.
-- [ ] Record exact source verification in canonical docs and GitHub tracking; deployment and live authentication/checkout remain separate.
+- [x] Commit the synchronized plan/contract/record checkpoint and pass exact-checkpoint machine preflight.
+- [x] Add failing Go/Python/runtime origin matrix cases and the independent staging deploy collision case.
+- [x] Change only exact production origin allowlists and the staging deploy production-host exclusion.
+- [x] Run focused suites, full Go API tests/vet, diff checks, and independent review; commit and push validated milestones.
+- [x] Record exact source verification in canonical docs and GitHub tracking; deployment and live authentication/checkout remain separate.

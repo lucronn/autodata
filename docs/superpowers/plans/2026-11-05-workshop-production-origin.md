@@ -43,11 +43,11 @@ Audit findings: `publisher_live.runtime_config` and `staging_bootstrap.validate_
 
 ## Todo
 
-- [ ] Commit the synchronized plan/contract/record checkpoint and pass exact-checkpoint machine preflight.
-- [ ] Add failing Go/Python/runtime origin matrix cases and the independent staging deploy collision case.
-- [ ] Change only exact production origin allowlists and the staging deploy production-host exclusion.
-- [ ] Run focused suites, full Go API tests/vet, diff checks, and independent review; commit and push validated milestones.
-- [ ] Record exact source verification in canonical docs and GitHub tracking; deployment and live authentication/checkout remain separate.
+- [x] Commit the synchronized plan/contract/record checkpoint and pass exact-checkpoint machine preflight.
+- [x] Add failing Go/Python/runtime origin matrix cases and the independent staging deploy collision case.
+- [x] Change only exact production origin allowlists and the staging deploy production-host exclusion.
+- [x] Run focused suites, full Go API tests/vet, diff checks, and independent review; commit and push validated milestones.
+- [x] Record exact source verification in canonical docs and GitHub tracking; deployment and live authentication/checkout remain separate.
 
 ## Task 1: Establish failing strict origin cases
 
@@ -189,3 +189,9 @@ The standalone JSON is the handoff record; its contents are identical to this em
 ## Planning verification
 
 The checkpoint commit contains this plan, the canonical contract amendment and synchronized record. The coordinator must use that full commit SHA as implementation base and retain the passing machine preflight output. Exact checkpoint SHA and GitHub source links are recorded externally in Issue323 after commit to avoid a self-referential commit hash.
+
+## Source implementation verification
+
+Planning checkpoint `82f8545af205000e54c95bcad4074def5b1f5457` passed the exact-base machine preflight with `status: synchronized` and no errors before implementation. Implementation commit `cecef79a6bdbeaccf8a0eeead58594d059dbf35d` changes exactly the eight planned source/test paths. Added tests first demonstrated failures for the new production origin in Go auth, Python checkout, hosted runtime and independent staging deployment validation; the bounded allowlist edits then passed the same cases.
+
+Builder verification: focused Go auth test and full `go test ./...`, `go vet ./...`, Python commerce (5 tests), hosted runtime (96 tests), staging deployment (26 tests), and `git diff --check` all passed. Independent read-only review of exact commit `cecef79a6bdbeaccf8a0eeead58594d059dbf35d` found no actionable issues and independently passed checkpoint preflight, focused Go auth, commerce (5), hosted runtime (96), staging deployment (26), and diff check. The worktree was clean after that implementation commit. PR #324 contains this source candidate; final-head CI and merge are tracked separately. This is a source contract result only: actual Firebase authorized domains, deployed host configuration, login, checkout and live sales remain unverified.
