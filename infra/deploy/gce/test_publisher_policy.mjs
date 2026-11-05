@@ -239,7 +239,7 @@ function liveFixture(changes={},options={}) {
     upload_enabled:true,runtime_bearer_authentication:'service-challenge-v1',
     adapter_policy_sha256:hash(adapter),toolchain_image_digest:'sha256:'+'1'.repeat(64),
     toolkit_lock_sha256:'2'.repeat(64),toolkit_tree_sha256:'3'.repeat(64),helper_sha256:'4'.repeat(64),
-    dependency_review_sha256:'5'.repeat(64),runtime_origins:['https://results.actions.githubusercontent.com'],
+    dependency_review_sha256:'5'.repeat(64),wif_provider:'projects/123456/locations/global/workloadIdentityPools/staging-pool/providers/github-provider',publisher_service_account:'staging-publisher@test-project.iam.gserviceaccount.com',runtime_origins:['https://results.actions.githubusercontent.com'],
     storage_origins:['https://productionresultssa0.blob.core.windows.net'],
     approval_keys:{[hash(Buffer.from('independent-owner-key'))]:'independent-owner-key'},
     oidc:{...f.policy.oidc,audience:'sigstore'},...changes};
@@ -266,7 +266,7 @@ test('live policy rejects unresolved fields, insecure origins and passive policy
   assert.equal(typeof verifyLiveOwnerPolicyBytes,'function');
   for(const changes of [{protocol_version:1},{purpose:'autodata.publisher.stage1a.offline'},{upload_enabled:false},
     {runtime_bearer_authentication:'unsupported'},{toolchain_image_digest:null},{toolchain_image_digest:'latest'},
-    {adapter_policy_sha256:'0'.repeat(64)},{helper_sha256:null},{dependency_review_sha256:''},
+    {wif_provider:null},{publisher_service_account:''},{wif_provider:'projects/0/locations/global/workloadIdentityPools/staging/providers/github'}, {adapter_policy_sha256:'0'.repeat(64)},{helper_sha256:null},{dependency_review_sha256:''},
     {runtime_origins:[]},{runtime_origins:['http://results.actions.githubusercontent.com']},
     {runtime_origins:['https://localhost']},{storage_origins:['https://storage.invalid/path']},{approval_keys:{}}]) {
     const f=liveFixture(changes);invalid(()=>verifyLiveOwnerPolicyBytes(f.bootstrap,f.envelope,f.jwks,f.adapter,now));

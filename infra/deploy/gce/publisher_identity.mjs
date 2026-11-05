@@ -74,12 +74,12 @@ export function verifyInstalledLiveGithubOidc(tokenBytes,installedPolicyHandle,e
     return verifyJwt(tokenBytes,validated,expectedContext,Math.floor(Date.now()/1000));
   } catch {fail();}
 }
-export function authenticateActionsRuntime(handle,runtime,context) {
+export function authenticateActionsRuntime(handle,runtime,context,options) {
   // WeakMap selection occurs before any hostile argument or environment access.
   try {installedLivePolicyClaims(handle);} catch {throw Error('missing_dependency');}
   return (async()=>{
     const {runRuntimeChallenge}=await import('./publisher_artifact.mjs');
-    return runRuntimeChallenge(handle,runtime,context);
+    return runRuntimeChallenge(handle,runtime,context,options);
   })();
 }
 
@@ -105,18 +105,21 @@ function serviceURL(validated,kind,rawURL,token) {
   } else fail();
   return url;
 }
-export async function installedServiceRequest(handle,kind,rawURL,{token,maximum=65536,deadline=Date.now()+30000}={}) {
+export async function installedServiceRequest(handle,kind,rawURL,{token,maximum=65536,deadline=Date.now()+30000,signal}={}) {
   const validated=installedLivePolicyClaims(handle);
+  requireValue(!signal?.aborted);
   const url=serviceURL(validated,kind,rawURL,token);
   requireValue(token===undefined || (typeof token==='string' && /^[\x21-\x7e]{1,16384}$/.test(token)));
   requireValue(Number.isInteger(maximum) && maximum>=1 && maximum<=16*1024*1024 && Number.isSafeInteger(deadline) && deadline>Date.now() && deadline-Date.now()<=60000);
   const {request}=await import('node:https'),{lookup}=await import('node:dns/promises');
   const addresses=await Promise.race([lookup(url.hostname,{all:true,verbatim:true}),new Promise((_,reject)=>{const timer=setTimeout(()=>reject(Error('operation_timed_out')),Math.max(1,deadline-Date.now()));timer.unref();})]);
-  requireValue(addresses.length>=1 && addresses.length<=32 && addresses.every(a=>publicAddress(a.address)) && Date.now()<deadline);
+  requireValue(addresses.length>=1 && addresses.length<=32 && addresses.every(a=>publicAddress(a.address)) && Date.now()<deadline && !signal?.aborted);
   return new Promise((resolve,reject)=>{
     let done=false,requestObject;const sockets=new Set();
-    const finish=(error,value)=>{if(done)return;done=true;clearTimeout(timer);if(error){requestObject?.destroy();for(const socket of sockets)socket.destroy();reject(Error('service_request_failed'));}else resolve(value);};
+    const finish=(error,value)=>{if(done)return;done=true;clearTimeout(timer);signal?.removeEventListener('abort',cancel);if(error){requestObject?.destroy();for(const socket of sockets)socket.destroy();reject(Error('service_request_failed'));}else resolve(value);};
+    const cancel=()=>finish(Error('operation_cancelled'));
     const timer=setTimeout(()=>finish(Error('operation_timed_out')),Math.max(1,deadline-Date.now()));
+    signal?.addEventListener('abort',cancel,{once:true});if(signal?.aborted){cancel();return;}
     const headers={'User-Agent':'autodata-workshop-publisher-v3','Accept-Encoding':'identity'};
     if(token!==undefined)headers.Authorization='Bearer '+token;
     if(kind==='github'){headers.Accept='application/vnd.github+json';headers['X-GitHub-Api-Version']='2022-11-28';}
@@ -132,14 +135,14 @@ export async function installedServiceRequest(handle,kind,rawURL,{token,maximum=
     requestObject.on('error',finish);requestObject.end();
   });
 }
-export async function fetchInstalledGithubOidc(handle,context,requestCredentials) {
+export async function fetchInstalledGithubOidc(handle,context,requestCredentials,options={}) {
   const {policy}=installedLivePolicyClaims(handle);validateContext(context);
   if(requestCredentials!==undefined)ownData(requestCredentials,['ACTIONS_ID_TOKEN_REQUEST_URL','ACTIONS_ID_TOKEN_REQUEST_TOKEN']);
   const rawURL=requestCredentials===undefined?process.env.ACTIONS_ID_TOKEN_REQUEST_URL:requestCredentials.ACTIONS_ID_TOKEN_REQUEST_URL;
   requireValue(typeof rawURL==='string' && !rawURL.includes('audience='));
   const url=new URL(rawURL);url.searchParams.append('audience',policy.oidc.audience);
   serviceURL({policy},'oidc',url.href);
-  const response=await installedServiceRequest(handle,'oidc',url.href,{token:requestCredentials===undefined?process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN:requestCredentials.ACTIONS_ID_TOKEN_REQUEST_TOKEN,maximum:32768});
+  const response=await installedServiceRequest(handle,'oidc',url.href,{token:requestCredentials===undefined?process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN:requestCredentials.ACTIONS_ID_TOKEN_REQUEST_TOKEN,maximum:32768,...options});
   requireValue(response.status===200);const data=parseStrictJsonBytes(response.bytes,{maxBytes:32768});ownData(data,['value']);
   const raw=Buffer.from(data.value,'utf8'),claims=verifyInstalledLiveGithubOidc(raw,handle,context);
   verifiedTokens.set(claims,{handle,raw});return claims;

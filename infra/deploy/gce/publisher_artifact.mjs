@@ -425,8 +425,8 @@ async function liveToolkitPolicy(handle,context) {
  verifyReadOnlyMount(reviewPath,await readFile('/proc/self/mountinfo','utf8'));
  return {activation_sha256:a.activation_sha256,toolchain_sha256:a.toolchain_sha256,trust_policy_sha256:a.trust_policy_sha256,toolkit_lock_sha256:p.toolkit_lock_sha256,helper_sha256:p.helper_sha256,control_workflow_sha:p.workflow_sha,runtime_origins:p.runtime_origins,dependency_review_sha256:p.dependency_review_sha256,toolkit_tree_sha256:p.toolkit_tree_sha256};
 }
-async function liveRead(handle,url,maximum=65536,kind='github',restToken) {
- const options={maximum};if(kind==='github')options.token=restToken;
+async function liveRead(handle,url,maximum=65536,kind='github',restToken,limits={}) {
+ const options={maximum,...limits};if(kind==='github')options.token=restToken;
  require(kind!=='github' || typeof options.token==='string');
  return installedServiceRequest(handle,kind,url,options);
 }
@@ -457,17 +457,21 @@ export function decodeActionsOuter(outer,expectedSha,expectedBytes) {
  require(bytes.length===expectedBytes && hash(bytes)===expectedSha && crc32(bytes)===outer.readUInt32LE(offset+16));return bytes;
  }catch{throw Error(INVALID);}
 }
-async function serviceWorker(request,runtime,policy,cwd) {
- const start=performance.now(),remaining=()=>120000-(performance.now()-start),cleanupRemaining=()=>150000-(performance.now()-start);
- const worker=await loadOfficialToolkit(request.context,policy),scope=localInspection();
- try {return await ownedChild(request,{runtime,cwd},remaining,workers.get(worker),scope,new AbortController().signal,cleanupRemaining);}
+async function serviceWorker(request,runtime,policy,cwd,{signal=new AbortController().signal,deadline=Date.now()+120000}={}) {
+ const remaining=()=>deadline-Date.now(),cleanupRemaining=()=>deadline+30000-Date.now();
+ require(!signal.aborted && remaining()>0);
+ const worker=await loadOfficialToolkit(request.context,policy),scope=inspectionScope(remaining,signal,cleanupRemaining);
+ try {return await ownedChild(request,{runtime,cwd},remaining,workers.get(worker),scope,signal,cleanupRemaining);}
  finally {scope.dispose();}
 }
-export async function runRuntimeChallenge(handle,runtime,context) {
+export async function runRuntimeChallenge(handle,runtime,context,options) {
  try {installedLivePolicyClaims(handle);}catch {throw Error('missing_dependency');}
+ const {signal=new AbortController().signal,deadline=Date.now()+30000}=options??{};
+ require(!signal.aborted && Date.now()<deadline);
  const p=await liveToolkitPolicy(handle,context);
- const claims=await fetchInstalledGithubOidc(handle,{run_id:context.run_id,run_attempt:context.run_attempt},{ACTIONS_ID_TOKEN_REQUEST_URL:runtime.ACTIONS_ID_TOKEN_REQUEST_URL,ACTIONS_ID_TOKEN_REQUEST_TOKEN:runtime.ACTIONS_ID_TOKEN_REQUEST_TOKEN});
- const read=(url,maximum=65536,kind='github')=>liveRead(handle,url,maximum,kind,runtime.GITHUB_TOKEN);
+ require(!signal.aborted && Date.now()<deadline);
+ const claims=await fetchInstalledGithubOidc(handle,{run_id:context.run_id,run_attempt:context.run_attempt},{ACTIONS_ID_TOKEN_REQUEST_URL:runtime.ACTIONS_ID_TOKEN_REQUEST_URL,ACTIONS_ID_TOKEN_REQUEST_TOKEN:runtime.ACTIONS_ID_TOKEN_REQUEST_TOKEN},{signal,deadline});
+ const read=(url,maximum=65536,kind='github')=>liveRead(handle,url,maximum,kind,runtime.GITHUB_TOKEN,{signal,deadline});
  require(claims.run_id===context.run_id && Number(claims.run_attempt)===context.run_attempt);
  const origin=serviceOrigin(runtime.ACTIONS_RESULTS_URL);require(p.runtime_origins.includes(origin));
  const base='https://api.github.com/repos/lucronn/autodata/actions/',name=`workshop-runtime-probe-${context.run_id}-${context.run_attempt}`;
@@ -477,18 +481,18 @@ export async function runRuntimeChallenge(handle,runtime,context) {
  const inventory=strictJSON(before.bytes);require(Number.isInteger(inventory.total_count) && inventory.total_count===inventory.artifacts.length && inventory.total_count<=30 && !inventory.artifacts.some(a=>a.name===name));
  const nonce=randomBytes(32),cwd=await mkdtemp('/tmp/autodata-runtime-probe-');let uploaded,deleted=false,failure,result;
  try {
-  uploaded=await serviceWorker({protocol_version:3,operation:'probe-upload',context,nonce_base64:nonce.toString('base64')},runtime,p,cwd);
+  uploaded=await serviceWorker({protocol_version:3,operation:'probe-upload',context,nonce_base64:nonce.toString('base64')},runtime,p,cwd,{signal,deadline});
   require(Number.isSafeInteger(uploaded.id) && uploaded.id>0 && SHA.test(uploaded.digest));
   const metadataResponse=await read(base+'artifacts/'+uploaded.id);require(metadataResponse.status===200);
   const metadata=strictJSON(metadataResponse.bytes);require(metadata.id===uploaded.id && metadata.name===name && metadata.workflow_run.id===Number(context.run_id) && metadata.workflow_run.repository_id===Number(context.repository_id) && metadata.workflow_run.head_sha===context.workflow_sha && metadata.expired===false && metadata.digest==='sha256:'+uploaded.digest && metadata.size_in_bytes===uploaded.size && stamp(metadata.created_at)>=stamp(run.run_started_at)-60000 && stamp(metadata.created_at)<=Date.now()+60000);
   const redirect=await read(base+'artifacts/'+uploaded.id+'/zip',1024*1024);require(redirect.status===302 && typeof redirect.location==='string');
   const outer=await read(redirect.location,1024*1024,'storage');require(outer.status===200 && outer.bytes.length===uploaded.size && hash(outer.bytes)===uploaded.digest);require(decodeActionsOuter(outer.bytes,hash(nonce),nonce.length).equals(nonce));
-  const removed=await serviceWorker({protocol_version:3,operation:'probe-delete',context,artifact_id:uploaded.id},runtime,p,cwd);require(removed.id===uploaded.id);deleted=true;
+  const removed=await serviceWorker({protocol_version:3,operation:'probe-delete',context,artifact_id:uploaded.id},runtime,p,cwd,{signal,deadline});require(removed.id===uploaded.id);deleted=true;
   const absent=await read(base+'artifacts/'+uploaded.id);require(absent.status===404);
   result={repository_id:context.repository_id,repository_owner_id:context.repository_owner_id,run_id:context.run_id,run_attempt:context.run_attempt,runtime_service_origin:origin};
  } catch(error) {failure=error;}
  finally {
-  if(uploaded&&!deleted){try{const removed=await serviceWorker({protocol_version:3,operation:'probe-delete',context,artifact_id:uploaded.id},runtime,p,cwd);require(removed.id===uploaded.id);const absent=await read(base+'artifacts/'+uploaded.id);require(absent.status===404);}catch{failure=Error('cleanup_failed');}}
+  if(uploaded&&!deleted){try{const removed=await serviceWorker({protocol_version:3,operation:'probe-delete',context,artifact_id:uploaded.id},runtime,p,cwd);require(removed.id===uploaded.id);const absent=await liveRead(handle,base+'artifacts/'+uploaded.id,65536,'github',runtime.GITHUB_TOKEN,{deadline:Date.now()+30000});require(absent.status===404);}catch{failure=Error('cleanup_failed');}}
   await rm(cwd,{recursive:true,force:true});
  }
  if(failure)throw failure;return result;
@@ -582,7 +586,7 @@ async function bridge(handle,mode,input) {
  const read=(url,maximum=65536,kind='github')=>liveRead(handle,url,maximum,kind,runtime.GITHUB_TOKEN);
  try {
   return await uploadRelease(request,{worker,cwd:process.cwd(),runtime,policy:{runtime_origins:policy.runtime_origins,toolkit_lock_sha256:policy.toolkit_lock_sha256,control_workflow_sha:context.workflow_sha},deadline:performance.now()+600000,monotonic:()=>performance.now(),now:()=>new Date(),
-   authenticateRuntime:()=>authenticateActionsRuntime(handle,runtime,context),
+   authenticateRuntime:(_env,_context,{signal})=>authenticateActionsRuntime(handle,runtime,context,{signal}),
    async readback(id){
     uploadedId=Number(id);const metadataResponse=await read('https://api.github.com/repos/lucronn/autodata/actions/artifacts/'+id);require(metadataResponse.status===200);
     const metadata=strictJSON(metadataResponse.bytes);require(metadata.id===Number(id) && metadata.workflow_run.id===Number(context.run_id) && metadata.workflow_run.repository_id===Number(context.repository_id));
