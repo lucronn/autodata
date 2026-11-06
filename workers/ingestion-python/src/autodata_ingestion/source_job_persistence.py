@@ -410,9 +410,11 @@ def _finalize_expired_bankone_recovery(cur, job_id):
     _mark_delivery_ambiguous(cur, job)
     ambiguous = cur.execute("""SELECT 1 FROM canonical_article_rewrite_attempts
         WHERE source_fetch_job_id=%s AND lease_token=%s AND status='ambiguous'
+          AND response IS NULL AND dispatched_at IS NOT NULL
         LIMIT 1""", (job["source_fetch_job_id"], job["lease_token"])).fetchone()
-    consumed = job["checkpoint"]["bankone_exact_recovery"].get("dispatches_consumed") == 1
-    code = "MODEL_DELIVERY_AMBIGUOUS" if ambiguous or consumed else "RECOVERY_LEASE_EXPIRED"
+    # A consumed allowance proves dispatch, not unknown delivery: a saved
+    # response remains known evidence even when the publication lease expires.
+    code = "MODEL_DELIVERY_AMBIGUOUS" if ambiguous else "RECOVERY_LEASE_EXPIRED"
     cur.execute("""UPDATE source_fetch_jobs SET status='dead_letter',error_code=%s,retryable=false,
         lease_owner=NULL,lease_expires_at=NULL,heartbeat_at=NULL,next_attempt_at=NULL,
         updated_at=clock_timestamp() WHERE source_fetch_job_id=%s""",

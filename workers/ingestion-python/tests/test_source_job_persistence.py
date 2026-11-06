@@ -592,3 +592,30 @@ def test_expired_recovery_is_terminal_without_another_claim(fresh_database,dispa
     assert jobs.claim_source_job(repo,worker_id=uuid.uuid4()) is None
     assert recovery_snapshot(repo)==terminal
     with pytest.raises(jobs.BankoneRecoveryBlocked): jobs.claim_exact_bankone_recovery(repo,**args)
+
+
+@pytest.mark.parametrize('attempt_status',['succeeded','failed','dispatched'])
+def test_expired_recovery_with_saved_response_is_not_ambiguous(fresh_database,attempt_status):
+    from psycopg.types.json import Jsonb
+    from autodata_ingestion import source_job_persistence as jobs
+    repo=fresh_database(); args=recovery_fixture(repo)
+    lease=jobs.claim_exact_bankone_recovery(repo,**args)
+    candidate_id=uuid.uuid4()
+    with repo.connect() as conn:
+        conn.execute("""INSERT INTO canonical_article_revisions(canonical_article_revision_id,canonical_article_id,source_revision_id,transformation_key,normalization_version,rewrite_profile_version,status,normalized_source_document,normalized_source_hash,canonical_document,canonical_body,canonical_steps,canonical_images,validation_report,validation_hash,rewrite_result_hash,model_metadata)
+            SELECT %s,canonical_article_id,source_revision_id,transformation_key,normalization_version,rewrite_profile_version,'building',checkpoint->'normalized_document',checkpoint->>'normalized_hash','{}','fixture','[]','[]','{}',%s,%s,'{}' FROM source_fetch_jobs WHERE source_fetch_job_id=%s""",(candidate_id,'f'*64,'f'*64,BANKONE_JOB))
+        conn.execute("""INSERT INTO canonical_article_rewrite_attempts(rewrite_attempt_id,source_fetch_job_id,canonical_article_revision_id,lease_token,attempt_number,provider,model,profile_version,prompt_hash,input_hash,status,dispatched_at,completed_at,response,response_hash)
+            VALUES (%s,%s,%s,%s,2,'inception','mercury-3','full-prose-auto-v1',%s,%s,%s,now(),now(),'{}',%s)""",(uuid.uuid4(),BANKONE_JOB,candidate_id,lease.token,'a'*64,args['expected_normalized_hash'],attempt_status,'f'*64))
+        marker=dict(lease.checkpoint['bankone_exact_recovery'],state='dispatched',dispatches_consumed=1)
+        conn.execute("UPDATE source_fetch_jobs SET checkpoint=checkpoint||%s WHERE source_fetch_job_id=%s",(Jsonb({'bankone_exact_recovery':marker,'candidate_revision_id':str(candidate_id)}),BANKONE_JOB))
+    expire(repo,lease)
+    before=recovery_snapshot(repo)
+    assert jobs.claim_source_job(repo,worker_id=uuid.uuid4(),job_id=BANKONE_JOB) is None
+    after=recovery_snapshot(repo)
+    row=next(row for row in after[1] if str(row['source_fetch_job_id'])==BANKONE_JOB)
+    assert row['status']=='dead_letter' and row['error_code']=='RECOVERY_LEASE_EXPIRED'
+    assert row['retry_count']==2 and row['lease_token']==2
+    assert row['checkpoint']['bankone_exact_recovery']['dispatches_consumed']==1
+    assert after[0]==before[0] and after[2:]==before[2:]
+    assert jobs.claim_source_job(repo,worker_id=uuid.uuid4(),job_id=BANKONE_JOB) is None
+    assert recovery_snapshot(repo)==after
