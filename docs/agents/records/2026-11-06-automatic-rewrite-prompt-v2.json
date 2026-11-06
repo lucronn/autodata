@@ -34,6 +34,14 @@
     "script_review_before_execution": true,
     "max_model_attempts": 1,
     "frozen_jobs_untouched": true,
-    "no_code_or_validator_changes": true
+    "no_code_or_validator_changes": true,
+    "tracking_sync": {
+      "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6694563841",
+      "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2Bzho4qOI",
+      "readback_exact": true,
+      "previous_issue_body_sha256": "927b46ef47b1dbf5b117273e3d3f5c0e6d9f23b722a5245869eb5323b96c4f25",
+      "previous_issue_body_unchanged": true,
+      "other_project_fields_unchanged": true
+    }
   }
 }
