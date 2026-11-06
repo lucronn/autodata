@@ -14,10 +14,10 @@
     "After coordinator dispatch, use one fresh prose-bearing Bankone identity and at most one persisted provider attempt; preserve frozen-job counters and source fallback on failure.",
     "On publication prove all eligible prose changed, protected content retained and ten warm read/ensure pairs plus fresh-process reuse with measured zero source/media/model/schedule calls; synchronize sanitized evidence.",
     "Stage and independently review the exact private one-shot script for fresh Bankone candidate 8cc70d03-6794-577c-aba4-bd555996d0c9 before coordinator dispatch; preserve source-only park, exact fences, one persisted model attempt, backup/fingerprints and warm proof.",
-    "Independently review and apply one guarded exact-row max_attempts3-to1 reduction on the fresh parked candidate job before dispatch, preserving retry_count1 and verifying existing lease-expiry semantics prevent a second attempt."
+    "Independently review and apply one guarded exact-row max_attempts3-to1 reduction immediately after fresh ensure and before source-only run, preserving initial retry_count0; verify parked count1, zero model attempts and existing resume/lease-expiry semantics enforce one provider attempt."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-06T20:25:41.265385+00:00",
+  "updated_at": "2026-11-06T20:26:07.471862+00:00",
   "tracking_sync": {
     "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6694453449",
     "project_item": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
@@ -48,12 +48,15 @@
       "candidate_article_id": "8cc70d03-6794-577c-aba4-bd555996d0c9",
       "existing_max_attempts": 3,
       "new_max_attempts": 1,
-      "unchanged_retry_count": 1,
-      "timing": "after source-only park, before model dispatch",
+      "unchanged_retry_count": 0,
+      "timing": "immediately after exact fresh ensure, before source-only run",
       "exact_row_and_current_article_fences_required": true,
       "runtime_executed": false,
+      "required_request_generation": 0,
+      "required_initial_status": "pending",
+      "required_source_revision": null,
       "tracking_sync": {
-        "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6694686750",
+        "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6694696323",
         "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2Bzho4qOI",
         "readback_exact": true,
         "previous_issue_body_sha256": "927b46ef47b1dbf5b117273e3d3f5c0e6d9f23b722a5245869eb5323b96c4f25",
