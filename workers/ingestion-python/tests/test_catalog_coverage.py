@@ -31,6 +31,98 @@ def page(ref, complete=True, cursor=None, title="Pump"):
     }
 
 
+@pytest.mark.parametrize("completion", ["populated", "empty_page", "no_match"])
+def test_catalog_retry_success_clears_error_and_schedule(
+    fresh_database, capture_fixture, completion
+):
+    from autodata_ingestion.catalog_coverage import (
+        ensure_article_catalog_jobs,
+        run_catalog_index_job,
+    )
+
+    repo = fresh_database()
+    vehicle = seed_vehicle(repo)
+    ensure_article_catalog_jobs(repo, vehicle_id=vehicle, vehicle_configuration_id=None)
+    with repo.connect() as conn:
+        job = conn.execute(
+            "SELECT * FROM source_fetch_jobs WHERE provider_slug='banktwo'"
+        ).fetchone()
+        conn.execute(
+            "UPDATE source_fetch_jobs SET checkpoint=jsonb_build_object('retry_marker','preserve') WHERE source_fetch_job_id=%s",
+            (job["source_fetch_job_id"],),
+        )
+    job_id = job["source_fetch_job_id"]
+    capture_fixture.servers["banktwo"].error = 503
+    lease = claim_source_job(repo, worker_id=uuid.uuid4(), job_id=job_id)
+    run_catalog_index_job(
+        repo, lease, registry=capture_fixture.registry, object_store=capture_fixture.objects
+    )
+    with repo.connect() as conn:
+        failed = conn.execute(
+            "SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s", (job_id,)
+        ).fetchone()
+        assert failed["status"] == "failed"
+        assert failed["error_code"] == "UPSTREAM_UNAVAILABLE"
+        assert failed["retryable"] is True
+        assert failed["next_attempt_at"] is not None
+        assert failed["retry_count"] == 1
+        assert failed["checkpoint"] == {"retry_marker": "preserve"}
+    assert claim_source_job(repo, worker_id=uuid.uuid4(), job_id=job_id) is None
+    # Move only the disposable fixture's scheduled time; use ordinary due admission.
+    with repo.connect() as conn:
+        conn.execute(
+            "UPDATE source_fetch_jobs SET next_attempt_at=clock_timestamp()-interval '1 second' WHERE source_fetch_job_id=%s",
+            (job_id,),
+        )
+    capture_fixture.servers["banktwo"].error = None
+    if completion == "no_match":
+        capture_fixture.servers["banktwo"].candidates = []
+    else:
+        capture_fixture.servers["banktwo"].pages = (
+            [page("retry-success")]
+            if completion == "populated"
+            else [{"complete": True, "articles": []}]
+        )
+    lease = claim_source_job(repo, worker_id=uuid.uuid4(), job_id=job_id)
+    assert lease.job_id == job_id
+    assert lease.token == failed["lease_token"] + 1
+    run_catalog_index_job(
+        repo, lease, registry=capture_fixture.registry, object_store=capture_fixture.objects
+    )
+    with repo.connect() as conn:
+        completed = conn.execute(
+            "SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s", (job_id,)
+        ).fetchone()
+        assert completed["status"] == completed["phase"] == "completed"
+        assert completed["error_code"] is None
+        assert completed["next_attempt_at"] is None
+        assert completed["retryable"] is False
+        assert completed["lease_owner"] is None
+        assert completed["lease_expires_at"] is None
+        assert completed["heartbeat_at"] is None
+        assert completed["retry_count"] == 2
+        assert completed["max_attempts"] == failed["max_attempts"] == 3
+        assert completed["checkpoint"]["retry_marker"] == "preserve"
+        assert completed["request_generation"] == job["request_generation"] == 0
+        scope = conn.execute(
+            "SELECT * FROM catalog_article_provider_scopes WHERE current_job_id=%s",
+            (job_id,),
+        ).fetchone()
+        assert scope["status"] == "complete"
+        assert scope["completed_generation"] == scope["generation"] == 0
+        assert scope["row_count"] == (1 if completion == "populated" else 0)
+        assert scope["error_code"] == (
+            "NO_MATCHING_SOURCE_VEHICLE" if completion == "no_match" else None
+        )
+        assert conn.execute(
+            "SELECT count(*) AS n FROM catalog_article_index_pages p JOIN source_snapshots s USING(source_snapshot_id) WHERE p.catalog_provider_scope_id=%s AND p.generation=0 AND p.complete AND s.adapter_name='banktwo'",
+            (scope["catalog_provider_scope_id"],),
+        ).fetchone()["n"] == (0 if completion == "no_match" else 1)
+        assert conn.execute(
+            "SELECT count(*) AS n FROM canonical_articles a JOIN source_snapshots s ON s.source_snapshot_id=a.descriptor_source_snapshot_id WHERE a.provider_slug='banktwo' AND a.last_seen_catalog_generation=0 AND s.adapter_name='banktwo'"
+        ).fetchone()["n"] == (1 if completion == "populated" else 0)
+
+
 def test_bankone_success_cannot_hide_banktwo_failure(fresh_database, capture_fixture):
     from autodata_ingestion.catalog_coverage import read_catalog_coverage
 

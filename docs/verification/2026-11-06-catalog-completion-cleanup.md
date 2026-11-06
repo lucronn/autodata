@@ -22,3 +22,20 @@ Implementation allowlist ONLY workers/ingestion-python/src/autodata_ingestion/ca
 Validation: focused test_catalog_coverage.py and test_catalog_index_worker.py with existing PG fixtures; retain article-job non-interference coverage. No provider/model/live requests. No live SQL UPDATE, repair of historic completed row, reset/replay, container/systemd control or deployment. Gate author edits documentation/tracking only; builder starts only after committed synchronized gate exact-base preflight and coordinator dispatch.
 
  Independent review further distinguishes4160 Bankone/4110 Banktwo descriptors bound to the new scope page from3/2 exact preexisting IDs retaining valid same-provider hashed historical snapshots through the existing equal-generation/equal-descriptor skip. Total active generation0 membership is4163/4112; do not claim every descriptor was newly rebound.
+
+## Builder validation
+
+The exact planning checkpoint `c5bc3f398ed3a36f90000184426ba4984c0301de`
+passed preflight with `status: synchronized, errors: []` before implementation.
+The regression exercised a real retryable connector failure, rejected an early
+claim, made its schedule due only in the disposable fixture, and reclaimed the
+same job through the normal lifecycle. Populated-page, empty-page and no-match
+completion cases all failed on stale `UPSTREAM_UNAVAILABLE` before the fix.
+
+After adding only `error_code=NULL,next_attempt_at=NULL` to the successful job
+UPDATE, the focused `test_catalog_coverage.py` and `test_catalog_index_worker.py`
+suites passed: **48 passed**. These checks covered retry/checkpoint retention,
+lease cleanup, bound index-page/descriptor persistence, unchanged no-match scope
+semantics and existing article-job non-interference. The tests used an owned
+disposable PostgreSQL17 fixture on an internal test network and loopback connector
+fixtures. No live database, provider/model, worker or service was changed.
