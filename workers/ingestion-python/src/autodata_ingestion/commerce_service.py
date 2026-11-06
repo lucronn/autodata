@@ -18,6 +18,8 @@ from .purchase_config import PurchaseConfig, parse_purchase_config
 
 PRODUCT = "workshop-configuration-v1"
 TERMS = "workshop-v1"
+# Preserve the card-only Checkout contract across Stripe SDK default changes.
+STRIPE_API_VERSION = '2025-08-27.basil'
 LIVE = ('creating', 'open', 'processing', 'paid', 'reconciliation_required')
 
 
@@ -569,7 +571,7 @@ def configured_commerce(*, connection_factory=database_connection):
         raise CommerceError('COMMERCE_CONFIGURATION_INVALID', 503)
     import stripe
     from .stripe_adapter import StripePaymentProvider
-    client = stripe.StripeClient(key, max_network_retries=0, http_client=stripe.RequestsClient(timeout=8))
+    client = stripe.StripeClient(key, stripe_version=STRIPE_API_VERSION, max_network_retries=0, http_client=stripe.RequestsClient(timeout=8))
     provider = StripePaymentProvider(stripe_module=stripe, client=client, webhook_secret=webhook,
         success_url=origin + '/workshop/', cancel_url=origin + '/workshop/')
     service = CommerceService(connection_factory, CommerceConfig(mode, account, price), provider, purchase_config=purchase_config)

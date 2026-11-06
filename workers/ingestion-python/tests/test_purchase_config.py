@@ -112,7 +112,11 @@ class PurchaseConfigTests(unittest.TestCase):
                 raise AssertionError(self.sql)
         @contextmanager
         def transaction(_):yield None,Cursor()
-        stripe=SimpleNamespace(StripeClient=lambda *a,**k:object(),RequestsClient=lambda **k:object())
+        client_options=[]
+        def stripe_client(*args, **kwargs):
+            client_options.append(kwargs)
+            return object()
+        stripe=SimpleNamespace(StripeClient=stripe_client,RequestsClient=lambda **k:object())
         env=dict(AUTODATA_COMMERCE_MODE='stripe_test',AUTODATA_ENV='test',AUTODATA_PUBLIC_ORIGIN='http://127.0.0.1:3000',
             AUTODATA_STRIPE_SECRET_KEY='sk_test_fixture',AUTODATA_STRIPE_WEBHOOK_SECRET='whsec_fixture',
             AUTODATA_STRIPE_ACCOUNT_ID='acct_fixture',AUTODATA_STRIPE_PRICE_ID='price_fixture',AUTODATA_INGESTION_INTERNAL_TOKEN='fixture-token')
@@ -122,6 +126,8 @@ class PurchaseConfigTests(unittest.TestCase):
                 with (self.assertLogs('autodata_ingestion.commerce_service') if diagnostic else self.assertNoLogs('autodata_ingestion.commerce_service')) as logs:
                     service=configured_commerce(connection_factory=lambda:None)
                 self.assertEqual(service.purchase_configuration()['enabled'],enabled)
+                self.assertEqual(client_options[-1].get('stripe_version'), '2025-08-27.basil')
+                self.assertEqual(client_options[-1]['max_network_retries'], 0)
                 self.assertIn(('merchant','acct_fixture'),calls)
                 self.assertIn(('price','price_fixture',False),calls)
                 self.assertEqual(sum('schema_migrations' in str(call) for call in calls),1)
