@@ -1,0 +1,18 @@
+{
+  "goal": "Prove Mercury3 instant on one authentic existing list-only Banktwo descriptor using an explicit DB-derived pre-descriptor cutoff and exactly one new pristine article job, preserving stopped catalog results and retired rollout history, then always stop.",
+  "plan_ref": "docs/superpowers/plans/2026-11-06-mercury3-instant-runtime-proof.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/verification/2026-11-06-mercury3-instant-runtime-proof.md",
+    "docs/agents/pre-implementation-gate.md"
+  ],
+  "todo": [
+    "Pin stopped post-catalog descriptor/snapshot, two changed frozen anchors and four catalog jobs/scopes; synchronize this amended gate/Issue/Project and exact-base preflight before revised StageA/B script review.",
+    "After separate StageA review/dispatch, preserve old stopped disabled rollout/reservations2 byte-for-byte, take fresh identity-bound PG17 backup, install exact merged source, and initialize new disabled max10/providersboth rollout with cutoff2026-11-06T22:47:42.039483Z and expiry2026-11-07T22:47:42.039483Z.",
+    "After separate StageB review/dispatch, verify existing target descriptor immutable binding and zero article history, enqueue exactly one new job via ensure_article_job only in the fenced transaction, and require exact production _PRISTINE SQL eligible set equals ONLY target before one enable/start.",
+    "Allow bounded startup grace<=10s inside300s observation, record truthful one-job publication/source fallback, always disable15s/stop80s/verify15s, preserve all non-target history and stopped catalog state; no reset/replay/timestamp/descriptor mutation or paid release."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-06T22:53:14.939098+00:00"
+}

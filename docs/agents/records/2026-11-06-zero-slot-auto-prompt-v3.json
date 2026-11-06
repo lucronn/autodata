@@ -1,0 +1,18 @@
+{
+  "goal": "Make zero-editable-slot automatic rewrite prompts explicitly request only a source-bound introduction and no replacements, preserving strict validation, historical prompt reconstruction and unchanged nonzero-slot behavior.",
+  "plan_ref": "docs/superpowers/plans/2026-11-06-zero-slot-auto-prompt-v3.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/verification/2026-11-06-zero-slot-auto-prompt-v3.md",
+    "docs/agents/pre-implementation-gate.md"
+  ],
+  "todo": [
+    "Preserve the exact current automatic prompt builder as _build_auto_prompt_v2 and retain byte-identical v2 output for nonzero slots; introduce zero-slot-only full-prose-auto-prompt-v3 with explicit replacement_count=0/replacements=[].",
+    "For zero-slot v3 omit routing context, require concise source-only introduction without invented numeric/identifier/reference facts, and prohibit fabricated slots/protected-structure changes; keep renderer/validator/profile/publication rules unchanged.",
+    "Add focused63-block-shape zero-slot prompt/render/validation tests: valid source-bound intro+[] accepted, fabricated replacements/unsupported intro rejected, protected blocks/order unchanged, v1/v2/v3 hash/tamper reconstruction and nonzero v2 byte preservation.",
+    "Run focused prompt tests plus existing automatic worker/integration publication/source-fallback/saved-response checks; commit/push for independent review without live provider/model calls, deployment, DB cleanup or replay of any spent job."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-06T23:03:34.794963+00:00"
+}
