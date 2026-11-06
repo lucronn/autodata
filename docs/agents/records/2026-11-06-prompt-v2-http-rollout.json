@@ -1,5 +1,5 @@
 {
-  "goal": "Remove only the never-started diagnostic shadow and complete one corrected, configuration-verified prompt-v2 HTTP source rollout while preserving the healthy original3031 runtime for rollback.",
+  "goal": "Complete one second final-container prompt-v2 HTTP cutover using the unchanged approved payload and passed shadow proof, with bounded readiness polling and exact-original rollback.",
   "plan_ref": "docs/superpowers/plans/2026-11-06-prompt-v2-http-rollout.md",
   "issue_ref": "https://github.com/lucronn/autodata/issues/186",
   "project_ref": "https://github.com/users/lucronn/projects/8",
@@ -8,20 +8,20 @@
     "docs/verification/2026-11-06-prompt-v2-http-rollout.md"
   ],
   "todo": [
-    "Preserve the failed first-attempt inspect/diff privately; verify diagnostic shadow2775219a07cf is the exact stopped never-started rollout container, then remove only that container without volumes or changes to the healthy original3031 service.",
-    "Construct one corrected shadow create payload from exact private original Config/HostConfig using Docker Engine API or an exact equivalent; require exactly40 unique environment entries with one AUTODATA_INGESTION_HTTP_ADDR replacement to3032, preserved attach settings and only explicitly approved metadata normalization.",
-    "Before starting any corrected shadow or final container, independently compare complete inspected configuration against the frozen original and allow only the enumerated source/name/shadow-address/new-private-cidfile/default-OOM differences; prove shadow3032 health while original3031 remains untouched.",
-    "Only after shadow proof and final stopped-container diff approval, swap3031 once with exact original40-entry environment; verify health/readiness/purchase-disabled and unchanged protected state or restore original, retaining all rollback/source/evidence and authorizing no worker/model/provider/article call."
+    "Retain the first final-attempt failure and successful original-runtime recovery as immutable private evidence; verify original3031/public readiness are200, purchase disabled and prior shadow/source/image/configuration proof remains exact before retry.",
+    "Create exactly one fresh final container from the same reviewed payload, changing only its unique name and new private final-http-r2.cid path; require the complete stopped-container inspect diff and original40-entry environment match before stopping original.",
+    "Swap3031 once and poll only local health, public readiness and public disabled-purchase configuration in at most10 sequential rounds within30seconds; record transient failures without issuing article/provider/model/work requests.",
+    "On failed acceptance stop/remove only this new final and restart exact original, polling the same recovery endpoints for up to30seconds; retain all original/source/evidence, report recovery incomplete if needed, and synchronize the exact result with no further automatic retry."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-06T20:52:21.055315+00:00",
+  "updated_at": "2026-11-06T20:55:31.368297+00:00",
   "product_source_sha": "b3618fb6e68f1734ef029096748e30e655451a26",
   "product_source_tree": "b686966c9bb4c01c7d35262c661f8645f9fb9f04",
   "source_pr_ref": "https://github.com/lucronn/autodata/pull/350",
   "operation_scope": "HTTP runtime source/configuration substitution only; no implementation edits",
   "rollback_container_id": "3cefb07d948ae5bbee3d1cde52a8f41e5dcf837ccbdb8143f67284ff3f90dcfe",
   "image_id": "sha256:5c8e79b93db464da854ad33dc499e25c153bbcd52757569b1f2a4e5072acecb4",
-  "previous_checkpoint_sha": "823d741089a46df39b86ad0a86c364195459df72",
+  "previous_checkpoint_sha": "f3130ce299da9e4619a0c8af2e738402d741e12e",
   "prior_tracking_sync": {
     "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
     "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2Bzho42M0",
@@ -31,7 +31,10 @@
     "project_text_sha256": "7c7422c1545511fb1fb94646e2f6a6f0dfc61013d6c88329a019776fc461710e",
     "readback_verified": true
   },
-  "tracking_sync": {
+  "diagnostic_shadow_prefix": "2775219a07cf",
+  "diagnostic_shadow_status": "created_stopped_never_started_original3031_healthy",
+  "authorized_corrected_shadow_attempts": 1,
+  "prior_corrected_create_tracking_sync": {
     "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
     "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2Bzho42M0",
     "project_field_name": "Prompt-v2 HTTP rollout reference",
@@ -40,7 +43,19 @@
     "project_text_sha256": "e17ae6c316310a58a20f26ebb4e1dcf41b7d9a1958305a7a6a9489235fe5e98b",
     "readback_verified": true
   },
-  "diagnostic_shadow_prefix": "2775219a07cf",
-  "diagnostic_shadow_status": "created_stopped_never_started_original3031_healthy",
-  "authorized_corrected_shadow_attempts": 1
+  "tracking_sync": {
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2Bzho42M0",
+    "project_field_name": "Prompt-v2 HTTP rollout reference",
+    "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6695299434",
+    "issue_comment_sha256": "445be839940e3b3c295e226e63c266e5e4b753cd6ec80251574271ffb1ef014e",
+    "project_text_sha256": "7c3a52d15c3076b4e53b938ac6e84ef3b202789004a06f7ad2be2a7d6836a0be",
+    "readback_verified": true
+  },
+  "authorized_new_shadow_attempts": 0,
+  "authorized_second_final_attempts": 1,
+  "prior_attempt_status": "corrected_shadow_passed_final_local200_public_transient_error_rolled_back_original_healthy",
+  "cutover_poll_seconds": 30,
+  "rollback_poll_seconds": 30,
+  "max_poll_rounds_per_phase": 10
 }

@@ -174,3 +174,15 @@ Amended concrete todo:
 - [ ] Construct one corrected shadow create payload from exact private original Config/HostConfig using Docker Engine API or an exact equivalent; require exactly40 unique environment entries with one AUTODATA_INGESTION_HTTP_ADDR replacement to3032, preserved attach settings and only explicitly approved metadata normalization.
 - [ ] Before starting any corrected shadow or final container, independently compare complete inspected configuration against the frozen original and allow only the enumerated source/name/shadow-address/new-private-cidfile/default-OOM differences; prove shadow3032 health while original3031 remains untouched.
 - [ ] Only after shadow proof and final stopped-container diff approval, swap3031 once with exact original40-entry environment; verify health/readiness/purchase-disabled and unchanged protected state or restore original, retaining all rollback/source/evidence and authorizing no worker/model/provider/article call.
+
+
+### Prompt-v2 HTTP second-final convergence amendment
+
+Complete one second final-container prompt-v2 HTTP cutover using the unchanged approved payload and passed shadow proof, with bounded readiness polling and exact-original rollback. First final local health passed but immediate public probe failed transiently; rollback restored original3031/public readiness/purchase-disabled. Keep that blocked attempt historical. The [rollout plan](../superpowers/plans/2026-11-06-prompt-v2-http-rollout.md) permits one fresh-name/private-CID final with unchanged approved payload and prior passed-shadow proof, full prestart diff, <=30second/10round convergence polling and separate bounded original rollback health. New synchronized exact-checkpoint preflight/dispatch required. No new shadow if proof unchanged, no worker/model/provider/article/commerce action, and no HTTP-source-only paid-launch or automatic-processing claim.
+
+Second-final concrete todo:
+
+- [ ] Retain the first final-attempt failure and successful original-runtime recovery as immutable private evidence; verify original3031/public readiness are200, purchase disabled and prior shadow/source/image/configuration proof remains exact before retry.
+- [ ] Create exactly one fresh final container from the same reviewed payload, changing only its unique name and new private final-http-r2.cid path; require the complete stopped-container inspect diff and original40-entry environment match before stopping original.
+- [ ] Swap3031 once and poll only local health, public readiness and public disabled-purchase configuration in at most10 sequential rounds within30seconds; record transient failures without issuing article/provider/model/work requests.
+- [ ] On failed acceptance stop/remove only this new final and restart exact original, polling the same recovery endpoints for up to30seconds; retain all original/source/evidence, report recovery incomplete if needed, and synchronize the exact result with no further automatic retry.

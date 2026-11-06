@@ -34,3 +34,21 @@ Amended concrete todo:
 - [ ] Only after shadow proof and final stopped-container diff approval, swap3031 once with exact original40-entry environment; verify health/readiness/purchase-disabled and unchanged protected state or restore original, retaining all rollback/source/evidence and authorizing no worker/model/provider/article call.
 
 Amendment tracking exact readback verified: https://github.com/lucronn/autodata/issues/186#issuecomment-6695220078 and dedicated Project8 `Prompt-v2 HTTP rollout reference`; original Issue history/other fields unchanged. Fresh full-SHA checkpoint required.
+
+
+## First final cutover blocked and restored; second-final planning
+
+Coordinator-reported outcome: corrected3032 shadow passed with unchanged database. First final passed payload review and local3031 health200, but a single immediate public HTTPS check raised transient HTTPError and caused rollback. Final was removed. Original3031, public /readyz and purchase config are now200/enabled:false after brief restart convergence. No DB/model/article/provider calls. This remains a blocked/rolled-back attempt; exact private error status/timing is retained rather than inferred.
+
+Goal: Complete one second final-container prompt-v2 HTTP cutover using the unchanged approved payload and passed shadow proof, with bounded readiness polling and exact-original rollback.
+
+Fresh amendment allows one final creation using the same approved payload except new name/private CID path, with no new shadow only if complete prior shadow/source/image/config proof is unchanged. Full stopped diff before stopping original; <=10 rounds/30seconds phase for local health/public readiness/purchase-disabled, plus a separate <=10round/30second original rollback verification. No further retry or worker/model/commerce scope. No runtime action performed by planning agent.
+
+Second-final concrete todo:
+
+- [ ] Retain the first final-attempt failure and successful original-runtime recovery as immutable private evidence; verify original3031/public readiness are200, purchase disabled and prior shadow/source/image/configuration proof remains exact before retry.
+- [ ] Create exactly one fresh final container from the same reviewed payload, changing only its unique name and new private final-http-r2.cid path; require the complete stopped-container inspect diff and original40-entry environment match before stopping original.
+- [ ] Swap3031 once and poll only local health, public readiness and public disabled-purchase configuration in at most10 sequential rounds within30seconds; record transient failures without issuing article/provider/model/work requests.
+- [ ] On failed acceptance stop/remove only this new final and restart exact original, polling the same recovery endpoints for up to30seconds; retain all original/source/evidence, report recovery incomplete if needed, and synchronize the exact result with no further automatic retry.
+
+Second-final exact tracking readback verified: https://github.com/lucronn/autodata/issues/186#issuecomment-6695299434 and dedicated HTTP Project8 field; historical comments/other fields preserved. New full-SHA preflight and coordinator dispatch required.
