@@ -14,5 +14,5 @@
     "Observe only the exact proof job for at most300 seconds, record truthful publication or source-fallback failure, and always disable+stop while preserving new reservation and old history; no retry/reset/replay."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-06T22:35:23.592051+00:00"
+  "updated_at": "2026-11-06T22:36:52.893085+00:00"
 }
