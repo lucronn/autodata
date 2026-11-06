@@ -9,10 +9,10 @@
   ],
   "todo": [
     "Verify PR352 merge/review/CI, successful exact HTTP refresh, singleton and pristine baseline; record private backup and historical/frozen fingerprints without provider work.",
-    "Install only the pinned root-owned immutable source/service/private environment with two approved worker-only limits; initialize one disabled ten-job/24-hour rollout and verify exact scope/cap permissions.",
-    "After explicit coordinator enable/start dispatch, observe bounded natural new-only processing with durable cap1, unchanged history and UNREVIEWED publication; disable and stop on any failed safety check.",
+    "Install only the pinned root-owned immutable source/service and private environment of exactly18 allowlisted names including two approved worker-only limits; initialize one disabled ten-job/24-hour rollout and verify exact scope/cap permissions.",
+    "After explicit coordinator enable/start dispatch, observe natural new-only processing for120seconds with durable cap1, unchanged history and UNREVIEWED publication; disable and stop on a detected initial failure, otherwise leave the finite worker until cap/expiry accepting unseen failures may consume remaining slots.",
     "Preserve consumed state and HTTP/API/checkout during rollback or quota/expiry exit; synchronize exact runtime evidence without resetting jobs, increasing budget or starting another rollout."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-06T21:07:35.440667+00:00"
+  "updated_at": "2026-11-06T21:12:48.979950+00:00"
 }
