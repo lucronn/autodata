@@ -298,6 +298,8 @@ def scoped_runtime_article(runtime):
     for _ in range(2):
         assert run_article_worker_once(runtime.repo,worker_id=uuid4(),registry=runtime.registry,object_store=runtime.objects,model_client=None)
     with runtime.repo.connect() as conn:
+        # These existing applicability tests explicitly exercise the v1 lane.
+        conn.execute("UPDATE canonical_articles SET target_rewrite_profile_version='technical-prose-v1' WHERE vehicle_configuration_id=%s",(configuration,))
         runtime.article_id=conn.execute("SELECT canonical_article_id FROM canonical_articles WHERE vehicle_configuration_id=%s AND provider_slug='bankone'",(configuration,)).fetchone()["canonical_article_id"]
     return configuration
 
