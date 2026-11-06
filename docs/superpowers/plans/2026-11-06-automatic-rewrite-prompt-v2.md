@@ -88,3 +88,15 @@ Concrete todo for the runtime-only amendment:
 - [ ] After reviewed PR350 integration/CI and coordinator dispatch, source-only park the exact fresh candidate, pin actual persisted fences, and permit at most one persisted exact-job model dispatch with no retry.
 - [ ] On success prove strict all-prose/protected-content publication plus ten warm read/ensure pairs and fresh-process reuse with measured zero source/media/model/schedule calls; on failure retain source fallback and consumed budget.
 - [ ] Verify checkout disabled, frozen identities and unrelated business/queue fingerprints unchanged; synchronize sanitized outcome while private source, credentials and raw responses stay outside Git.
+
+## Runtime-only amendment: durable exact-job attempt cap
+
+After source-only park and before any model dispatch, the independently reviewed private script is explicitly authorized to execute one transactional exact-row SQL update setting only `source_fetch_jobs.max_attempts=1` for the actual parked job of Bankone candidate `8cc70d03-6794-577c-aba4-bd555996d0c9`. This is a reduction from the inspected default3, never a retry counter reset. Require exactly one returned row; assert the stored cap is1 before model dispatch.
+
+The UPDATE must predicate on the exact pinned job ID/article ID/source revision/request generation/profile/normalization version/lease token/normalized hash and current canonical-article fences; parked status `failed`, error `MODEL_NOT_CONFIGURED`, no live lease, retry_count1, max_attempts3, awaiting-model checkpoint and zero rewrite attempts/publications. Lock/read and recheck the same job/article in the transaction. Preserve retry_count, attempt history, source/checkpoint, lease, profile, generation, business/queue state and every other field; if any precondition or affected-row count differs, stop with no dispatch and no reset/alternate update. Persist and read back the cap before the exact worker call.
+
+Existing configuration-resume logic does not increment retry_count, so the parked count1 plus cap1 allows its sole model call and blocks ordinary lease-expiry reclaim afterward. Script review must verify this behavior at the exact deployed implementation SHA, including exhausted-lease dead-letter and unknown-delivery handling; no application/validator change is authorized. Retain the independent private script bytes/hash review before execution, single persisted provider attempt, no retry, backup/fingerprints and strict/warm0 proof from the previous amendment. Frozen jobs remain untouched. This planning amendment performs no runtime SQL/source/model call.
+
+Concrete todo:
+- [ ] Include and independently review the guarded exact-row max_attempts3-to1 reduction after source-only park and before dispatch; verify count1 remains unchanged, exact affected row and committed cap readback.
+- [ ] Verify existing claim/recovery semantics at the deployed SHA prevent a second provider attempt after process death/lease expiry; stop on any mismatch, preserving no-retry and all earlier runtime guards.
