@@ -1,6 +1,6 @@
 # Serving catalog writable runtime repair verification
 
-Status: planning only; runtime replacement has not been dispatched under this gate.
+Status: documentation successor for one supplemental Bankone-only GMC branch; earlier runtime/selector execution receipts remain separate coordinator evidence. No supplemental execution claimed.
 
 Goal: Restore bounded dual-bank vehicle catalog hydration by replacing the serving grant-ready ingestion container with an identical writable runtime while retaining the exact original container for rollback and keeping purchase disabled.
 
@@ -8,7 +8,7 @@ Contract: docs/superpowers/plans/2026-11-06-serving-catalog-writable-runtime.md.
 
 Read-only defect evidence: authenticated Bankone34 and Banktwo57 makes for2015, merged62; serving makes empty/hydrating; ingestion PGOPTIONS explicitly enables transaction read-only; a rollback-only scope INSERT raises ReadOnlySqlTransaction at catalog_service.py:1162. pg_settings source is client, pg_is_in_recovery false. This finding does not establish source/artifact tables are empty.
 
-Required execution evidence: full-SHA synchronized preflight and coordinator dispatch; private original container inspect/configuration and database backup hashes; exact source/image/database identity; stopped retained original; sanitized replacement diff limited to name and removed PGOPTIONS; health; writable transaction rollback probe; bounded authentic per-bank configuration rows and provider mappings; committed rows read separately; nonempty public selector reads; request/deadline bounds; unchanged protected business and article lifecycle data; purchase remains disabled. Retain rollback evidence on any failure; never restore/delete serving data automatically.
+Required execution evidence: full-SHA synchronized preflight and coordinator dispatch; private original container inspect/configuration and database backup hashes; exact source/image/database identity; stopped retained original; sanitized replacement diff limited to name and removed PGOPTIONS; health; writable transaction rollback probe; bounded authentic per-bank configuration rows with independently verified source-snapshot URI/content-hash provenance; provider mappings inspected separately with empty mappings explicitly unresolved; committed rows read separately; nonempty public selector reads; request/deadline bounds; unchanged protected business and article lifecycle data; purchase remains disabled. Retain rollback evidence on any failure; never restore/delete serving data automatically.
 
 Concrete todo:
 
@@ -18,3 +18,16 @@ Concrete todo:
 - [ ] Verify authentic Bankone and Banktwo selector results become durable and usable through the public catalog with purchase disabled, record exact counts/hashes and runtime differences, and roll back to the retained original container on failed verification without restoring or deleting serving database data.
 
 Tracking synchronized/read back by coordinator at2026-11-06T07:43:12Z: https://github.com/lucronn/autodata/issues/186#issuecomment-6679871493; Project8 itemPVTI_lAHOCSJ8cc4BiQ2BzhFocs4 Release hotfix reference retains prior history and exact gate link (field length975). No success, paid-browser readiness, article persistence or full catalog coverage is claimed.
+
+## Supplemental Bankone-only provenance check
+
+Coordinator amendment https://github.com/lucronn/autodata/issues/186#issuecomment-6679963427 authorizes one additional bounded Bankone-only year2015/makeGMC/regionUS branch because both earlier selected branches traced to Banktwo. This is a documentation successor to checkpoint72f5bf45d5fd7e10ec5faa64f49871e1bcdc323c, not permission to repeat the runtime replacement or earlier ingestion. Require successor full-SHA preflight and coordinator dispatch before the additional branch.
+
+- Read authentic GMC models and at most one matching configuration branch through the configured Bankone SourceConnectorClient only. Select an actual nonempty model/configuration returned by Bankone; do not infer a model, fall back to Banktwo or call the merged provider resolver for this supplemental branch. Reuse existing authentic captured responses when still applicable.
+- Persist only this selected branch through the existing vehicle selection persistence path with the Bankone response source_locator/source_revision and original provider-scoped references. Preserve the authentic snapshot bytes. Do not edit implementation, manually insert mappings, alter article scopes/jobs or start article preparation/model/rewrite work.
+- Verify a committed vehicle/configuration row joins its source snapshot through existing evidence, record source_snapshot source_uri and content_sha256, and independently read the stored snapshot bytes to verify the exact SHA256. Require the authentic source URI identifies Bankone and the snapshot contains the selected GMC configuration. A make label, in-memory provider name or Banktwo-backed row does not establish Bankone durability.
+- vehicle_provider_mappings was observed empty. Record its exact count and selected-row mapping result as an unresolved mapping gap; do not claim mapping acceptance or create synthetic mappings. This gap does not categorically block article preparation: the existing exact connector vehicle-resolution fallback may persist a provider-scoped reference. That fallback and article preparation are outside this catalog-only amendment and remain unverified here.
+- Original limits remain cumulative: maximum30 foreground source HTTP requests and54 observed total including existing bounded deepening, with no reset or expanded traversal. Preserve existing timeout/deadline bounds, one foreground request in flight and no manual retries. If the remaining budget cannot accommodate this branch, stop and report partial Bankone proof rather than expanding the run.
+- Keep purchase disabled, original container retained and exact original rollback unchanged. Do not rerun replacement or restore/delete serving data. Recheck protected business/article lifecycle data against the same baseline. Retain immutable earlier receipts and identify earlier two branches honestly as Banktwo-backed, separate from this Bankone snapshot proof.
+
+Supplemental tracking: coordinator confirmed Issue186 amendment comment6679963427 and Project8 exact readback (field length1006). No claim of mapping success, article preparation or paid acceptance follows from the catalog provenance check.

@@ -13,15 +13,31 @@
     "Verify authentic Bankone and Banktwo selector results become durable and usable through the public catalog with purchase disabled, record exact counts/hashes and runtime differences, and roll back to the retained original container on failed verification without restoring or deleting serving database data."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-06T07:43:12Z",
+  "updated_at": "2026-11-06T07:48:57Z",
   "tracking_sync": {
-    "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6679871493",
+    "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6679963427",
     "project_item": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
     "project_field": "Release hotfix reference",
-    "readback_utc": "2026-11-06T07:43:12Z",
+    "readback_utc": "2026-11-06T07:48:57Z",
     "readback_exact": true,
     "prior_prefix_preserved": true,
     "verified_by": "coordinator sole external writer",
-    "field_length": 975
+    "field_length": 1006,
+    "original_issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6679871493"
+  },
+  "supplemental_scope": {
+    "parent_checkpoint_sha": "72f5bf45d5fd7e10ec5faa64f49871e1bcdc323c",
+    "branch": {
+      "provider": "bankone",
+      "year": 2015,
+      "make": "GMC",
+      "region": "US",
+      "max_additional_model_configuration_branches": 1
+    },
+    "acceptance": "Verify committed Bankone configuration through authentic source_snapshot URI and independently verified stored content hash; report empty vehicle_provider_mappings as unresolved without claiming it categorically blocks article preparation.",
+    "cumulative_foreground_request_cap": 30,
+    "cumulative_total_request_cap": 54,
+    "original_rollback_and_disabled_commerce_preserved": true,
+    "runtime_mutation_before_successor_preflight": false
   }
 }
