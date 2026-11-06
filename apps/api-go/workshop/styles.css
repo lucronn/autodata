@@ -1216,3 +1216,20 @@ button {
     display: none !important;
   }
 }
+
+/* Keep sample provenance visible in both the index and reader. */
+.demo-banner {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: grid;
+  gap: 4px;
+  padding: 12px max(20px, calc((100vw - 1180px) / 2));
+  background: #e9eefc;
+  color: #172d6a;
+  border-bottom: 2px solid #234bd8;
+  font-size: 14px;
+  line-height: 1.4;
+}
+.demo-banner[hidden] { display: none; }
+.demo-banner a { color: inherit; width: fit-content; }
