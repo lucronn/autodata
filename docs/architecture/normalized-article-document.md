@@ -548,3 +548,16 @@ Concrete todo:
 - [ ] Publish valid automatic candidates through the existing durable fenced lifecycle without human review, preserving source fallback, saved-response integrity and once-per-transformation dedupe.
 - [ ] Select automatic rewriting for newly captured articles and provide an explicit bounded refresh for existing stored sources; preserve all old profiles and published revisions.
 - [ ] Prove both-bank automatic publication, integrity failures retaining source, concurrent/restart reuse, and zero provider/model/schedule calls on warm reads; start and verify the working local app.
+
+
+### Automatic lifecycle recovery scope amendment
+
+Issue186 amendment https://github.com/lucronn/autodata/issues/186#issuecomment-6679877079 and Project8 Release hotfix reference were synchronized/read back by the coordinator (field length990). This adds the following exact paths to the implementation allowlist:
+
+- `workers/ingestion-python/src/autodata_ingestion/source_job_persistence.py`
+- `workers/ingestion-python/tests/test_source_job_persistence.py`
+- `workers/ingestion-python/tests/lifecycle_support.py`
+
+Automatic-profile nonretryable mechanical failures enter `dead_letter` with source still readable, never a manual-review wait. A successfully saved automatic candidate may reclaim a fenced publication lease after its model-attempt budget is exhausted, without incrementing or resetting that budget, invoking the model, or reviving a failed/ambiguous result. Existing manual-review and legacy retry behavior remains intact. Tests must cover final-attempt restart/publication, failed candidate exclusion and stale leases.
+
+New production descriptor registration defaults explicitly to the automatic profile. The shared test insertion helper explicitly requests historical `technical-prose-v1` unless a test selects another profile, preserving historical test coverage. The production upsert accepts an explicit profile only at its existing internal registration interface; HTTP clients cannot select a profile. These extra files may change only after this amendment is committed/pushed and exact-head preflight passes.

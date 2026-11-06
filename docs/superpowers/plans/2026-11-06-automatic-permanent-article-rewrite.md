@@ -105,3 +105,16 @@ PYTHONPATH=workers/ingestion-python/src python3 -m pytest -q scripts/dev/test_au
 Use the existing `infra/compose/compose.article-lifecycle-test.yaml` isolated PostgreSQL runner for lifecycle/database evidence, never the serving application database. Run its unchanged `scripts/dev/article_lifecycle_smoke.py --mode fixture --candidate-sha <full-actual-sha> --output /artifacts/automatic-rewrite-smoke.json`; explicitly run new modules that its frozen list does not include. Record zero-call counters and review/status truthfulness in the verification document.
 
 The planning coordinator read back Issue186 comment6679826363 and the Project8 Release hotfix reference (length1009) before this checkpoint. The record carries those exact goal/todo/reference facts. Planning verification itself does not claim implementation or content success.
+
+
+### Automatic lifecycle recovery scope amendment
+
+Issue186 amendment https://github.com/lucronn/autodata/issues/186#issuecomment-6679877079 and Project8 Release hotfix reference were synchronized/read back by the coordinator (field length990). This adds the following exact paths to the implementation allowlist:
+
+- `workers/ingestion-python/src/autodata_ingestion/source_job_persistence.py`
+- `workers/ingestion-python/tests/test_source_job_persistence.py`
+- `workers/ingestion-python/tests/lifecycle_support.py`
+
+Automatic-profile nonretryable mechanical failures enter `dead_letter` with source still readable, never a manual-review wait. A successfully saved automatic candidate may reclaim a fenced publication lease after its model-attempt budget is exhausted, without incrementing or resetting that budget, invoking the model, or reviving a failed/ambiguous result. Existing manual-review and legacy retry behavior remains intact. Tests must cover final-attempt restart/publication, failed candidate exclusion and stale leases.
+
+New production descriptor registration defaults explicitly to the automatic profile. The shared test insertion helper explicitly requests historical `technical-prose-v1` unless a test selects another profile, preserving historical test coverage. The production upsert accepts an explicit profile only at its existing internal registration interface; HTTP clients cannot select a profile. These extra files may change only after this amendment is committed/pushed and exact-head preflight passes.

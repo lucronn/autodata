@@ -13,14 +13,16 @@
     "Prove both-bank automatic publication, integrity failures retaining source, concurrent/restart reuse, and zero provider/model/schedule calls on warm reads; start and verify the working local app."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-06T07:40:50.363494+00:00",
+  "updated_at": "2026-11-06T07:43:20.061430+00:00",
   "planning_parent_sha": "4513c387c900add7138330555ccfca92f74b9894",
   "branch": "codex/automatic-permanent-article-rewrite",
   "tracking_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6679826363",
   "tracking": {
     "issue_comment_readback_verified": true,
     "project_release_hotfix_reference_readback_verified_by_coordinator": true,
-    "project_field_length": 1009
+    "project_field_length": 1009,
+    "scope_amendment_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6679877079",
+    "amendment_project_field_length": 990
   },
   "implementation_allowlist": [
     "workers/ingestion-python/src/autodata_ingestion/procedure_rewrite_auto.py",
@@ -39,7 +41,10 @@
     "docs/verification/2026-11-06-automatic-permanent-article-rewrite.md",
     "docs/superpowers/plans/2026-11-06-automatic-permanent-article-rewrite.md",
     "docs/agents/records/2026-11-06-automatic-permanent-article-rewrite.json",
-    "docs/architecture/normalized-article-document.md"
+    "docs/architecture/normalized-article-document.md",
+    "workers/ingestion-python/src/autodata_ingestion/source_job_persistence.py",
+    "workers/ingestion-python/tests/test_source_job_persistence.py",
+    "workers/ingestion-python/tests/lifecycle_support.py"
   ],
   "historical_profiles_immutable": true,
   "human_content_acceptance_required": false,
