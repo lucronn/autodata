@@ -16,3 +16,21 @@ Concrete todo:
 - [ ] Retain original container/source and private evidence, remove only the temporary shadow, and synchronize the exact rollout outcome without claiming ongoing automatic processing, starting a generic worker or making model/provider calls.
 
 Tracking readback verified: https://github.com/lucronn/autodata/issues/186#issuecomment-6695151451 and dedicated Project8 field `Prompt-v2 HTTP rollout reference`; exact goal/four todos/source/rollback scope matched. No existing Project fields or historical Issue bodies/comments changed.
+
+
+## Corrected-create amendment planning
+
+Status: original first shadow was created but never started; stopped diagnostic2775219a07cf needs exact-identity cleanup. Original3031 remains healthy. No successful shadow health or source swap is claimed.
+
+Goal: Remove only the never-started diagnostic shadow and complete one corrected, configuration-verified prompt-v2 HTTP source rollout while preserving the healthy original3031 runtime for rollback.
+
+The plan amendment authorizes one corrected attempt after a new full-SHA preflight/dispatch. Require exactly40 unique env entries with one shadow-address replacement, preserved false AttachStdout/Stderr, a new private per-container CID path, only constrained null-to-false OomKillDisable default normalization, and complete stopped-container diff review before shadow or final startup. All worker/model/article/provider/commerce prohibitions and exact-original rollback remain unchanged. No cleanup/deployment by this documentation agent.
+
+Amended concrete todo:
+
+- [ ] Preserve the failed first-attempt inspect/diff privately; verify diagnostic shadow2775219a07cf is the exact stopped never-started rollout container, then remove only that container without volumes or changes to the healthy original3031 service.
+- [ ] Construct one corrected shadow create payload from exact private original Config/HostConfig using Docker Engine API or an exact equivalent; require exactly40 unique environment entries with one AUTODATA_INGESTION_HTTP_ADDR replacement to3032, preserved attach settings and only explicitly approved metadata normalization.
+- [ ] Before starting any corrected shadow or final container, independently compare complete inspected configuration against the frozen original and allow only the enumerated source/name/shadow-address/new-private-cidfile/default-OOM differences; prove shadow3032 health while original3031 remains untouched.
+- [ ] Only after shadow proof and final stopped-container diff approval, swap3031 once with exact original40-entry environment; verify health/readiness/purchase-disabled and unchanged protected state or restore original, retaining all rollback/source/evidence and authorizing no worker/model/provider/article call.
+
+Amendment tracking exact readback verified: https://github.com/lucronn/autodata/issues/186#issuecomment-6695220078 and dedicated Project8 `Prompt-v2 HTTP rollout reference`; original Issue history/other fields unchanged. Fresh full-SHA checkpoint required.

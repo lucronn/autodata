@@ -162,3 +162,15 @@ Concrete todo:
 - [ ] Materialize a new immutable exact merged source tree; create a same-image shadow HTTP-only container on 127.0.0.1:3032 with the preserved effective configuration and only source/name/listen-address differences; verify bounded local health and no model/job execution.
 - [ ] After shadow proof, retain the untouched original container, stop it and create/start the exact-config source replacement on 3031; verify private health, public readiness, disabled purchase, source hashes and unchanged protected state, or immediately restore the original container.
 - [ ] Retain original container/source and private evidence, remove only the temporary shadow, and synchronize the exact rollout outcome without claiming ongoing automatic processing, starting a generic worker or making model/provider calls.
+
+
+### Prompt-v2 HTTP corrected-create amendment
+
+Remove only the never-started diagnostic shadow and complete one corrected, configuration-verified prompt-v2 HTTP source rollout while preserving the healthy original3031 runtime for rollback. The same [rollout plan](../superpowers/plans/2026-11-06-prompt-v2-http-rollout.md) now records a narrowly enumerated second-create amendment: first shadow2775219a07cf was stopped/never started; original3031 remains healthy. Exact-identity diagnostic cleanup plus one corrected shadow is permitted only after fresh synchronized checkpoint/preflight and coordinator dispatch. Require40 unique environment entries with an in-place3032 override, original false attach flags, a new private CID file, constrained default null/false OOM equivalence, and full prestart inspected diff. Final3031 keeps the exact original environment; all source/image/security/rollback/work/model restrictions remain.
+
+Amended concrete todo:
+
+- [ ] Preserve the failed first-attempt inspect/diff privately; verify diagnostic shadow2775219a07cf is the exact stopped never-started rollout container, then remove only that container without volumes or changes to the healthy original3031 service.
+- [ ] Construct one corrected shadow create payload from exact private original Config/HostConfig using Docker Engine API or an exact equivalent; require exactly40 unique environment entries with one AUTODATA_INGESTION_HTTP_ADDR replacement to3032, preserved attach settings and only explicitly approved metadata normalization.
+- [ ] Before starting any corrected shadow or final container, independently compare complete inspected configuration against the frozen original and allow only the enumerated source/name/shadow-address/new-private-cidfile/default-OOM differences; prove shadow3032 health while original3031 remains untouched.
+- [ ] Only after shadow proof and final stopped-container diff approval, swap3031 once with exact original40-entry environment; verify health/readiness/purchase-disabled and unchanged protected state or restore original, retaining all rollback/source/evidence and authorizing no worker/model/provider/article call.
