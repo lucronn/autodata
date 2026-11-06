@@ -1,0 +1,18 @@
+{
+  "goal": "Prove the merged Mercury3 instant client on one fresh authentic Banktwo identity in a new finite rollout, preserving the retired rollout and spent jobs and always stopping after bounded observation.",
+  "plan_ref": "docs/superpowers/plans/2026-11-06-mercury3-instant-runtime-proof.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/verification/2026-11-06-mercury3-instant-runtime-proof.md",
+    "docs/agents/pre-implementation-gate.md"
+  ],
+  "todo": [
+    "Pin exact merged PR355 source/tree/archive and successful required CI/review; synchronize this draft before any runtime write.",
+    "Verify old worker stopped/disabled and archive its exact state, two reservations/configuration and historical baselines; take a fresh identity-bound PostgreSQL17 backup and install the immutable new source with a new disabled rollout.",
+    "After separate exact-script review and dispatch, atomically enroll only fresh Banktwo snapshot member2 through existing fenced persistence helpers, then enable/start the existing service once.",
+    "Observe only the exact proof job for at most300 seconds, record truthful publication or source-fallback failure, and always disable+stop while preserving new reservation and old history; no retry/reset/replay."
+  ],
+  "status": "unsynchronized",
+  "updated_at": "2026-11-06T22:00:45.183722+00:00"
+}
