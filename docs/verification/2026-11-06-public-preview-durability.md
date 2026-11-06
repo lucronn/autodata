@@ -1,6 +1,6 @@
 # Public preview durability verification
 
-Status: reboot-successor planning synchronized; observed reboot removed volatile API overrides and the named ingestion container. New exact-checkpoint preflight and dispatch precede recreation.
+Status: creation-failure correction planning synchronized; successor exact-checkpoint preflight and dispatch precede recreation.
 
 Goal: Restore the purchase-disabled public preview after the observed host reboot and prepare restart persistence using the exact e4af862 API/configuration and saved grant-ready ingestion runtime, without another reboot or enabling payments.
 
@@ -15,7 +15,7 @@ Required execution receipts: synchronized exact-checkpoint preflight errors=[]; 
 Concrete todo:
 
 - [ ] Verify surviving persistent API binary/configuration copies and the private saved ingestion argv, environment, source bind and exact image against retained pre-reboot evidence.
-- [ ] Securely recreate only autodata-ingestion-grant-ready-e4af862 from the verified saved argv with --restart unless-stopped, then install the persistent corrected99 API override using /usr/bin/env AUTODATA_API_ADDR=:18080; retain rollback evidence.
+- [ ] Securely recreate only autodata-ingestion-grant-ready-e4af862 from the verified saved argv with --restart unless-stopped and an exclusive private --cidfile, capture and verify the attempt-owned container ID even on nonzero exit, then install the persistent corrected99 API override using /usr/bin/env AUTODATA_API_ADDR=:18080; retain rollback evidence.
 - [ ] Start and verify ingestion/API runtime identities, security flags, readiness, disabled purchase configuration and USD2000 quote; restore pre-attempt API configuration and remove only this attempt's recreated container on failure.
 - [ ] Record reboot observations, recreation/probe/rollback evidence and remaining boot-verification limits; perform no further reboot or payment enablement.
 
@@ -37,6 +37,12 @@ Correction synchronized by coordinator at 2026-11-06T02:31:28Z: https://github.c
 
 Coordinator reports host reboot at2026-11-05 21:43 EST (2026-11-06T02:43:00Z) before merge. Volatile API overrides vanished and autodata-ingestion-grant-ready-e4af862 no longer exists. Persistent exact API binary/env copies survive. This event does not verify the uninstalled persistent99 configuration.
 
-Restore audit retained private ingestion.env0600 with every key/value matching saved inspect, launch-command.json with complete original argv and no secret literals, source:/app:ro and exact local image sha256:5c8e79b93db464da854ad33dc499e25c153bbcd52757569b1f2a4e5072acecb4. The plan now permits only same-name secure recreation by parsed subprocess argv with --restart unless-stopped inserted; host networking, read-only root/source, cap-drop ALL and no-new-privileges remain required. Existing container-ID preservation is impossible and superseded by recording the attempt-owned recreated ID. No recreation, successful recovery or boot durability is claimed by this docs update.
+Restore audit retained private ingestion.env0600 with every key/value matching saved inspect, launch-command.json with complete original argv and no secret literals, source:/app:ro and exact local image sha256:5c8e79b93db464da854ad33dc499e25c153bbcd52757569b1f2a4e5072acecb4. The plan now permits only same-name secure recreation by parsed subprocess argv with --restart unless-stopped and an exclusive private --cidfile inserted; host networking, read-only root/source, cap-drop ALL and no-new-privileges remain required. Existing container-ID preservation is impossible and superseded by recording the attempt-owned recreated ID. No recreation, successful recovery or boot durability is claimed by this docs update.
 
 Reboot-successor synchronized/read back at 2026-11-06T07:34:29Z: https://github.com/lucronn/autodata/issues/186#issuecomment-6679732670; Project8 latest reference/status verified by coordinator. Saved argv audit: starts docker run, argc21, no --rm or --restart, so adding restart unless-stopped is compatible. No runtime action by this docs lane.
+
+## Creation-failure rollback correction
+
+Independent exact-head review identified that Docker may create the named container and return nonzero before stdout supplies its ID. The successor plan adds a fresh exclusive private cidfile alongside restart unless-stopped, reads/verifies its ID even on nonzero and verifies the attempt's creation time/name/image/config/security/mounts. If cidfile is absent, exact-name inspection must establish pre-attempt absence and matching creation time/image/config before cleanup. Ambiguous ownership stops/escalates; only a verified attempt-owned ID may be removed. This is a planning correction, not an exercised runtime-failure or cleanup receipt.
+
+Creation-failure correction synchronized/read back by coordinator at 2026-11-06T07:37:07Z: https://github.com/lucronn/autodata/issues/186#issuecomment-6679758175; Project8 Release hotfix reference contains correction link, field length997. Successor exact-head preflight is required before runtime.

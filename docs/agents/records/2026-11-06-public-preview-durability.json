@@ -8,22 +8,23 @@
   ],
   "todo": [
     "Verify surviving persistent API binary/configuration copies and the private saved ingestion argv, environment, source bind and exact image against retained pre-reboot evidence.",
-    "Securely recreate only autodata-ingestion-grant-ready-e4af862 from the verified saved argv with --restart unless-stopped, then install the persistent corrected99 API override using /usr/bin/env AUTODATA_API_ADDR=:18080; retain rollback evidence.",
+    "Securely recreate only autodata-ingestion-grant-ready-e4af862 from the verified saved argv with --restart unless-stopped and an exclusive private --cidfile, capture and verify the attempt-owned container ID even on nonzero exit, then install the persistent corrected99 API override using /usr/bin/env AUTODATA_API_ADDR=:18080; retain rollback evidence.",
     "Start and verify ingestion/API runtime identities, security flags, readiness, disabled purchase configuration and USD2000 quote; restore pre-attempt API configuration and remove only this attempt's recreated container on failure.",
     "Record reboot observations, recreation/probe/rollback evidence and remaining boot-verification limits; perform no further reboot or payment enablement."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-06T07:34:29Z",
+  "updated_at": "2026-11-06T07:37:07Z",
   "tracking_sync": {
     "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6675203960",
     "project_item": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
     "project_field": "Release hotfix reference",
     "project_status": "In Progress",
-    "readback": "Coordinator read back revised goal, four literal todos, three paths and exact same-name recreation/security limits in Issue correction; Project Release hotfix reference points to latest comment, status In Progress; prior history retained in Issue and earlier Project links.",
+    "readback": "Coordinator verified Issue comment6679758175 and Project Release hotfix reference link synchronize the exclusive private cidfile/failed-run ownership correction; field length997.",
     "verified_by": "coordinator sole external writer",
-    "updated_at": "2026-11-06T07:34:29Z",
+    "updated_at": "2026-11-06T07:37:07Z",
     "correction_issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6675258622",
-    "reboot_successor_issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6679732670"
+    "reboot_successor_issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6679732670",
+    "cidfile_correction_issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6679758175"
   },
   "correction": {
     "reason": "EnvironmentFile address overrides systemd Environment assignment and caused bind collision; coordinator rolled back.",
@@ -38,5 +39,16 @@
     "tracking_status": "synchronized",
     "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6679732670",
     "argv_audit": "Coordinator boolean-only parse: starts docker run, argc21, no --rm or --restart."
+  },
+  "creation_failure_correction": {
+    "argv_insertion": [
+      "--restart",
+      "unless-stopped",
+      "--cidfile",
+      "cidfile"
+    ],
+    "cidfile_scope": "Fresh absent cidfile inside exclusive0700 private attempt directory under /home/corp/autodata-evidence/durable-preview-20261106",
+    "tracking_status": "synchronized",
+    "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6679758175"
   }
 }
