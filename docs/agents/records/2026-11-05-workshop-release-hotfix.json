@@ -1,0 +1,18 @@
+{
+  "goal": "Restore real Firebase login after startup cancellation and retain the existing card-only Stripe Checkout contract.",
+  "plan_ref": "docs/superpowers/plans/2026-11-05-workshop-release-hotfix.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/agents/specs/2026-11-05-workshop-release-hotfix.md"
+  ],
+  "todo": [
+    "Synchronize Issue #186, Project #8, combined plan, canonical spec and record; commit/push the documentation checkpoint and pass exact-SHA machine preflight before implementation.",
+    "Add red regressions for ADC refresh after initialization cancellation/expiration and bounded refresh with preserved injected HTTP transport; implement the narrow Firebase lifetime fix while preserving request deadlines and all identity checks.",
+    "Add a red composition regression requiring literal Stripe API 2025-08-27.basil and zero SDK retries; pin the configured StripeClient without changing the Checkout payload or financial validation.",
+    "Run focused and full Go authentication/API and Python purchase-config/Stripe-adapter/commerce checks, review the exact four-path implementation diff, and commit/push each coherent validated hotfix.",
+    "Independently review exact implementation SHA and CI, then let the coordinator restart the private TEST candidate and verify actual login plus no-charge card-only Checkout create/expire and signed webhook transport; keep real paid-settlement and release acceptance separately open."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-06T00:22:39Z"
+}

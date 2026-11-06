@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"time"
 
 	firebase "firebase.google.com/go/v4"
 	"firebase.google.com/go/v4/auth"
+	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/option"
 )
@@ -21,7 +23,17 @@ func newFirebaseCustomerVerifier(ctx context.Context, c customerAuthConfig) (Cus
 	if os.Getenv("FIREBASE_AUTH_EMULATOR_HOST") != "" {
 		return nil, ErrCustomerDependency
 	}
-	credentials, err := google.FindDefaultCredentials(ctx, "https://www.googleapis.com/auth/cloud-platform", "https://www.googleapis.com/auth/identitytoolkit")
+	// ADC token sources retain this context for the verifier's lifetime.
+	// Bound refresh HTTP independently of the short-lived startup context.
+	credentialCtx := context.WithoutCancel(ctx)
+	refreshClient := &http.Client{}
+	if injected, ok := ctx.Value(oauth2.HTTPClient).(*http.Client); ok && injected != nil {
+		copied := *injected
+		refreshClient = &copied
+	}
+	refreshClient.Timeout = 2 * time.Second
+	credentialCtx = context.WithValue(credentialCtx, oauth2.HTTPClient, refreshClient)
+	credentials, err := google.FindDefaultCredentials(credentialCtx, "https://www.googleapis.com/auth/cloud-platform", "https://www.googleapis.com/auth/identitytoolkit")
 	if err != nil || credentials.TokenSource == nil {
 		return nil, ErrCustomerDependency
 	}
