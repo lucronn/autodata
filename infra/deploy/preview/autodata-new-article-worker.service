@@ -1,0 +1,18 @@
+[Unit]
+Description=Finite new-only automatic article ingestion
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=simple
+# Root-only reviewed file defines immutable source path and its full approved SHA.
+EnvironmentFile=/etc/autodata/new-article-worker.conf
+StateDirectory=autodata/new-article-worker
+StateDirectoryMode=0700
+UMask=0077
+ExecStart=/usr/bin/docker run --rm --name autodata-new-article-worker --network host --read-only --cap-drop ALL --security-opt no-new-privileges --stop-timeout 70 --env-file /etc/autodata/new-article-runtime.env --env AUTODATA_NEW_ARTICLE_SOURCE_SHA=${AUTODATA_NEW_ARTICLE_SOURCE_SHA} --env PYTHONDONTWRITEBYTECODE=1 --env PYTHONPATH=/app/workers/ingestion-python/src:/app/packages/contracts/python --mount type=bind,src=${AUTODATA_NEW_ARTICLE_SOURCE},dst=/app,readonly --mount type=bind,src=/var/lib/autodata/new-article-worker,dst=/var/lib/autodata/new-article-worker --workdir /app/workers/ingestion-python sha256:5c8e79b93db464da854ad33dc499e25c153bbcd52757569b1f2a4e5072acecb4 python -m autodata_ingestion.new_article_worker
+ExecStop=/usr/bin/docker stop --time 70 autodata-new-article-worker
+TimeoutStopSec=80
+Restart=no
+
+# No Install section: installation and explicit start remain separately gated.
