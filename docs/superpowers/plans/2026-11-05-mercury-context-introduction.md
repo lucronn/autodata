@@ -39,8 +39,8 @@ def test_introduction_prompt_limits_facts_to_document_not_vehicle_context():
     context = {"vehicle": "2012 Audi A3", "engine": "CTX-99"}
     prompt = json.loads(build_full_prompt(source, context=context))
     assert prompt["prompt_version"] == "full-prose-prompt-v2"
-    # The existing document-string traversal includes the block ID p0.
-    assert prompt["introduction_allowed_technical_tokens"] == ["25 Nm", "T-42", "p0"]
+    # Existing document-string traversal includes normalization metadata and block ID p0.
+    assert prompt["introduction_allowed_technical_tokens"] == ["25 Nm", "T-42", "ordered-article-v1", "p0"]
     assert prompt["context"] == context
     assert prompt["document"] == source
     rules = " ".join(prompt["rules"])
@@ -68,8 +68,8 @@ def test_introduction_token_payload_matches_all_document_strings_deterministical
     before = deepcopy(source)
     first = build_full_prompt(source, context={"vehicle": "CTX-99"})
     assert first == build_full_prompt(source, context={"vehicle": "CTX-99"})
-    # Both p0 and p1 are document strings under the unchanged validator contract.
-    assert json.loads(first)["introduction_allowed_technical_tokens"] == ["25 Nm", "T-42", "p0", "p1"]
+    # Normalization metadata and both block IDs are document strings under the unchanged validator contract.
+    assert json.loads(first)["introduction_allowed_technical_tokens"] == ["25 Nm", "T-42", "ordered-article-v1", "p0", "p1"]
     assert source == before
 ```
 
