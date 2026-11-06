@@ -150,3 +150,108 @@ Frozen Bankone job a96ebe3a-16b9-4c3f-acb4-986efbb5ff2d and its canonical identi
 ### Automatic prompt-v2 implementation evidence
 
 The automatic prompt-v2 builder preserves prompt-v1 bytes and accepts only exact server-reconstructed v1/v2 prompt hashes for saved candidates. Strict validation remains unchanged. Verification: 212 focused rewrite tests and 13 real PostgreSQL automatic publication/restart/binding tests passed. Commands and honest fixture/dependency receipts are in `docs/verification/2026-11-06-automatic-rewrite-prompt-v2.md`. No licensed provider call or runtime deployment occurred in this builder lane; the fresh-identity canary remains pending coordinator dispatch.
+
+## Runtime-only amendment: reviewed private one-shot orchestration
+
+This amendment explicitly permits the coordinator to stage and independently review one private one-shot orchestration script for fresh Bankone canonical candidate `8cc70d03-6794-577c-aba4-bd555996d0c9`. This narrowly supersedes the prohibition on implicitly authorized operational scripts for this exact candidate only. A distinct source_article_ref on the same known reachable 2015 GMC Terrain configuration is permitted; re-keying frozen Bankone remains forbidden.
+
+The script may call only existing enrollment and lifecycle functions: enroll this exact fresh descriptor; perform an exact-job source-only run with model dispatch disabled and park; inspect and pin its actual job/source revision/profile/generation/descriptor fences; then invoke the existing worker for that exact job with at most one persisted model attempt. Capture private backup and before/after fingerprints, verify freshness (no prior model attempt/publication), and verify unchanged frozen Bankone/Banktwo counters and unrelated queue/business state. No generic worker/daemon/queue drain, additional candidate, model tuning/diagnostic call, retry/reset, response salvage, code/validator/schema change, checkout or grant change is authorized. Unknown delivery consumes the single-call budget. Existing Mercury3 limits32768tokens/60seconds stay unchanged.
+
+Before any script execution, independently review the exact private script bytes/hash against these guards, the reviewed integrated PR350 candidate and existing source-only park mechanism. Record the script hash and review result privately; coordinator verifies the amended full-SHA preflight and dispatches only the reviewed bytes. Stop on any unavailable or mismatched guard rather than improvise. This amendment itself performs no source/model/runtime call.
+
+Concrete todo for the runtime-only amendment:
+- [ ] Stage the private one-shot script using only the existing exact-candidate enrollment/source-only park/worker functions, backup and fingerprint guards; independently review its exact bytes/hash before execution.
+- [ ] After reviewed PR350 integration/CI and coordinator dispatch, source-only park the exact fresh candidate, pin actual persisted fences, and permit at most one persisted exact-job model dispatch with no retry.
+- [ ] On success prove strict all-prose/protected-content publication plus ten warm read/ensure pairs and fresh-process reuse with measured zero source/media/model/schedule calls; on failure retain source fallback and consumed budget.
+- [ ] Verify checkout disabled, frozen identities and unrelated business/queue fingerprints unchanged; synchronize sanitized outcome while private source, credentials and raw responses stay outside Git.
+
+## Runtime-only amendment: durable exact-job attempt cap
+
+Immediately after exact fresh enrollment/ensure and BEFORE the source-only run, the independently reviewed private script is explicitly authorized to execute one transactional exact-row SQL update setting only `source_fetch_jobs.max_attempts=1` for the actual fresh job of Bankone candidate `8cc70d03-6794-577c-aba4-bd555996d0c9`. This placement supersedes the earlier proposed after-park placement. Reduce inspected default3 to1; never reset a counter. Require exactly one returned row and committed cap1 readback before source-only work.
+
+Lock owning canonical article and exact job; predicate on exact pinned job/article IDs, provider/descriptor identity, current article/current job fences, request generation0, profile full-prose-auto-v1, normalization version, pending status, retry_count0, max_attempts3, source_revision null, no live lease, zero rewrite attempts and no publication. Preserve retry_count, attempt history, checkpoint, lease, profile, generation and every other field. If any precondition or affected-row count differs, stop without source/model dispatch, reset or alternate update.
+
+The first exact source-only claim increments retry_count to1; verify the job then parks under MODEL_NOT_CONFIGURED with zero model attempts and source/normalized/current-article fences pinned. Existing model-ready configuration resume retains count1 even at cap1, permitting its sole persisted model dispatch; ordinary lease-expiry reclaim afterward is blocked by retry_count>=max_attempts. Script review must verify these actual claim/resume/exhausted-lease semantics at the deployed SHA. Any mismatch blocks runtime; no application/validator change is authorized.
+
+Retain independent exact private script bytes/hash review before execution, one persisted provider attempt, no retry, backup/fingerprints and strict/warm0 proof from the previous amendment. Frozen jobs remain untouched. This planning amendment performs no runtime SQL/source/model call.
+
+Concrete todo:
+- [ ] Independently review and apply the guarded exact-row max_attempts3-to1 reduction immediately after fresh ensure and before source-only run; verify initial retry_count0 unchanged, exactly one row and committed cap1 readback.
+- [ ] Verify source-only claim/park produces count1 and zero model attempts; existing model-ready resume preserves count1 and lease-expiry semantics prevent a second provider attempt. Stop on any mismatch and retain all earlier runtime guards.
+
+## Verified fresh Bankone publication and permanent reuse, 2026-11-06
+
+[PR350](https://github.com/lucronn/autodata/pull/350) merged as `b3618fb6e68f1734ef029096748e30e655451a26` after required CI passed. Its tree equals reviewed/runtime candidate `530d4cce9934336a66bf11940212b895c6c01728`. Runtime amendments were synchronized and machine-checked at `60fdc962a758ffc2b74c8786c652d91a939d4d62` before execution; the exact private one-shot script was independently approved before execution.
+
+The fresh Bankone canary `8cc70d03-6794-577c-aba4-bd555996d0c9` published canonical revision `4b09c34b-46e4-4aee-a764-e7cba856583a` with one measured Mercury3 HTTP call. All9 eligible ordinary-prose leaves changed and none was retained. Existing strict mechanical validation passed, protected content remained bound to source, publication is automatic with `UNREVIEWED` metadata and no human review row. The exact fresh job completed with retry_count1/max_attempts1; the durable cap was reduced before source-only execution.
+
+Ten warm read/ensure pairs and a separate fresh-process pair reused the same revision and content hash with measured source/media/model/scheduling/HTTP calls all zero. Frozen Bankone/Banktwo and unrelated queue/business fingerprints remained unchanged. The exhausted original Bankone job remains frozen on source fallback; no historical budget was reset. Checkout remains disabled. This verifies the bounded fresh prose-bearing Bankone canary and permanent reuse; mechanical checks do not certify semantic equivalence or an originality percentage, broad catalog readiness or paid launch.
+
+Completed todo:
+- [x] Preserve prompt-v1 bytes and exact reconstructed v1/v2 hash bindings; implement explicit v2 shape/action rules without validator relaxation.
+- [x] Pass212 focused rewrite tests,13 real PostgreSQL publication/restart/binding cases, independent exact-candidate review and required CI.
+- [x] Independently review the exact private driver, enforce the exact fresh-job cap before source-only run, and complete one persisted provider attempt.
+- [x] Verify9/9 ordinary-prose changes, protected-content retention and warm10/fresh1 zero-call permanent reuse; preserve frozen/unrelated fingerprints.
+- [x] Retain private backup, review/preflight/dispatch/warm/fresh receipts and synchronize sanitized outcome documentation.
+
+Canonical evidence: `docs/verification/2026-11-06-automatic-rewrite-prompt-v2.md`. Private source references, licensed content, raw responses, credentials and backup bytes remain outside Git.
+
+
+## Persistent prompt-v2 HTTP source rollout successor
+
+Refresh only the persistent purchase-disabled Workshop ingestion HTTP service to the exact reviewed merged prompt-v2 source, proving a shadow on 3032 before a reversible 3031 swap. The [bounded rollout plan](../superpowers/plans/2026-11-06-prompt-v2-http-rollout.md), [record](../agents/records/2026-11-06-prompt-v2-http-rollout.json) and [verification](../verification/2026-11-06-prompt-v2-http-rollout.md) govern this operational successor, tracked in https://github.com/lucronn/autodata/issues/186 and https://github.com/users/lucronn/projects/8 dedicated Prompt-v2 HTTP rollout reference. Deploy only reviewed merged source `b3618fb6e68f1734ef029096748e30e655451a26` (tree `b686966c9bb4c01c7d35262c661f8645f9fb9f04`). Planning synchronization is not a deployment result. Shadow3032 health precedes a reversible3031 source-only replacement; preserve exact private environment/image/security and retain the original container/source for rollback. HTTP service refresh does not start article processing; no generic worker, model/provider call, article invocation, commerce change or paid-launch authority follows.
+
+Concrete todo:
+
+- [ ] Freeze the active container/image/source and private effective configuration; verify the exact reviewed merged b3618fb6 source tree, disabled purchase and absence of active generic article workers before deployment.
+- [ ] Materialize a new immutable exact merged source tree; create a same-image shadow HTTP-only container on 127.0.0.1:3032 with the preserved effective configuration and only source/name/listen-address differences; verify bounded local health and no model/job execution.
+- [ ] After shadow proof, retain the untouched original container, stop it and create/start the exact-config source replacement on 3031; verify private health, public readiness, disabled purchase, source hashes and unchanged protected state, or immediately restore the original container.
+- [ ] Retain original container/source and private evidence, remove only the temporary shadow, and synchronize the exact rollout outcome without claiming ongoing automatic processing, starting a generic worker or making model/provider calls.
+
+
+### Prompt-v2 HTTP corrected-create amendment
+
+Remove only the never-started diagnostic shadow and complete one corrected, configuration-verified prompt-v2 HTTP source rollout while preserving the healthy original3031 runtime for rollback. The same [rollout plan](../superpowers/plans/2026-11-06-prompt-v2-http-rollout.md) now records a narrowly enumerated second-create amendment: first shadow2775219a07cf was stopped/never started; original3031 remains healthy. Exact-identity diagnostic cleanup plus one corrected shadow is permitted only after fresh synchronized checkpoint/preflight and coordinator dispatch. Require40 unique environment entries with an in-place3032 override, original false attach flags, a new private CID file, constrained default null/false OOM equivalence, and full prestart inspected diff. Final3031 keeps the exact original environment; all source/image/security/rollback/work/model restrictions remain.
+
+Amended concrete todo:
+
+- [ ] Preserve the failed first-attempt inspect/diff privately; verify diagnostic shadow2775219a07cf is the exact stopped never-started rollout container, then remove only that container without volumes or changes to the healthy original3031 service.
+- [ ] Construct one corrected shadow create payload from exact private original Config/HostConfig using Docker Engine API or an exact equivalent; require exactly40 unique environment entries with one AUTODATA_INGESTION_HTTP_ADDR replacement to3032, preserved attach settings and only explicitly approved metadata normalization.
+- [ ] Before starting any corrected shadow or final container, independently compare complete inspected configuration against the frozen original and allow only the enumerated source/name/shadow-address/new-private-cidfile/default-OOM differences; prove shadow3032 health while original3031 remains untouched.
+- [ ] Only after shadow proof and final stopped-container diff approval, swap3031 once with exact original40-entry environment; verify health/readiness/purchase-disabled and unchanged protected state or restore original, retaining all rollback/source/evidence and authorizing no worker/model/provider/article call.
+
+
+### Prompt-v2 HTTP second-final convergence amendment
+
+Complete one second final-container prompt-v2 HTTP cutover using the unchanged approved payload and passed shadow proof, with bounded readiness polling and exact-original rollback. First final local health passed but immediate public probe failed transiently; rollback restored original3031/public readiness/purchase-disabled. Keep that blocked attempt historical. The [rollout plan](../superpowers/plans/2026-11-06-prompt-v2-http-rollout.md) permits one fresh-name/private-CID final with unchanged approved payload and prior passed-shadow proof, full prestart diff, <=30second/10round convergence polling and separate bounded original rollback health. New synchronized exact-checkpoint preflight/dispatch required. No new shadow if proof unchanged, no worker/model/provider/article/commerce action, and no HTTP-source-only paid-launch or automatic-processing claim.
+
+Second-final concrete todo:
+
+- [ ] Retain the first final-attempt failure and successful original-runtime recovery as immutable private evidence; verify original3031/public readiness are200, purchase disabled and prior shadow/source/image/configuration proof remains exact before retry.
+- [ ] Create exactly one fresh final container from the same reviewed payload, changing only its unique name and new private final-http-r2.cid path; require the complete stopped-container inspect diff and original40-entry environment match before stopping original.
+- [ ] Swap3031 once and poll only local health, public readiness and public disabled-purchase configuration in at most10 sequential rounds within30seconds; record transient failures without issuing article/provider/model/work requests.
+- [ ] On failed acceptance stop/remove only this new final and restart exact original, polling the same recovery endpoints for up to30seconds; retain all original/source/evidence, report recovery incomplete if needed, and synchronize the exact result with no further automatic retry.
+
+
+### Canonical public probe host correction
+
+Before the still-unused r2 final creation, coordinator verified canonical `https://autodata.cars.tk/readyz`=200 and `https://autodata.cars.tk/workshop/purchase-config.json`=200/enabled:false. Use those exact no-redirect URLs for cutover and rollback; apex cars.tk/readyz404 and apex Workshop308 are not acceptance endpoints. The [rollout plan](../superpowers/plans/2026-11-06-prompt-v2-http-rollout.md) is corrected; same r2 payload/name/CID, ONE unused final attempt, unchanged passed-shadow proof and30second/10round/30GET phase limits. No new runtime/worker/model/article/provider/commerce scope, and no runtime action by the planning agent. Fresh full-SHA corrected preflight/dispatch required.
+
+
+### Third-final fixed public-probe User-Agent amendment
+
+Complete one third final-container prompt-v2 HTTP cutover using the unchanged approved payload, exact public probe User-Agent curl/8.0.0, bounded acceptance and exact-original rollback. Coordinator reports r2 rolled back; exact original3031/local/public readiness/config now200/enabled:false. Read-only diagnosis: Python urllib default User-Agent403, same canonical requests with explicit `User-Agent: curl/8.0.0`200 with/without proxy; no app failure is inferred. Keep both rolled-back attempts historical.
+
+The [rollout plan](../superpowers/plans/2026-11-06-prompt-v2-http-rollout.md) now authorizes ONE r3 creation with the same approved r2 payload except name/private final-http-r3.cid. Require fresh synchronized checkpoint/preflight/dispatch, unchanged passed-shadow proof, exact stopped diff, same original40-entry environment/security, and exact fixed public header on baseline/cutover/rollback canonical GETs. Existing30second/10round/30GET phase limits and exact-original rollback remain. No additional shadow/fourth create, header fallback, worker/model/article/provider/API/commerce action or paid-launch claim. Planning agent touches no runtime.
+
+Third-final concrete todo:
+
+- [ ] Preserve the second rolled-back attempt and read-only User-Agent diagnosis; verify original3031/canonical readiness/purchase config200/enabledfalse and unchanged source/image/private configuration/passed-shadow proof before a third final creation.
+- [ ] Create exactly one third final container from the same approved r2 payload, changing only its unique r3 name and exclusive new final-http-r3.cid path; require full stopped-container diff and exact original40-entry environment before stopping original.
+- [ ] Swap3031 once and use exact User-Agent curl/8.0.0 for canonical public readiness/purchase GETs within the existing30second/10round/30GET acceptance limit; do not use default-UA probes, redirects, alternate identities or article/model/provider/work calls.
+- [ ] On failed acceptance restore the exact original and verify recovery using the same fixed-header bounded30second polling; retain all rollback/source/failed-attempt evidence and report the exact outcome without any further automatic create/retry or worker/commerce scope.
+
+
+## Successful persistent HTTP source refresh outcome
+
+Coordinator executed reviewed r3 script593f8088 under gate8dc02ef: new container38f3bc41eb24 runs exact prompt-v2 sourceb3618fb6/treeb686966c on3031; original3cefb07d remains intact/stopped. Canonical fixed-header health/readiness/purchase probes converged on round2 (nine events), purchase enabled:false. Inherited17a932 and complete-row e23250 DB fingerprints were unchanged; script recorded zero article/model/provider calls. Both earlier rolled-back attempts remain historical. The [canonical verification](../verification/2026-11-06-prompt-v2-http-rollout.md) records exact IDs/hashes/transients. The r3 allocation is consumed; no additional deploy, worker activation or paid-launch authority follows. No code/runtime change on this evidence turn.

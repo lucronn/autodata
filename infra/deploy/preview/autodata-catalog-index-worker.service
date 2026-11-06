@@ -1,0 +1,16 @@
+[Unit]
+Description=Catalog-only index job consumer (explicit runtime gate required)
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=simple
+# Root-only config defines AUTODATA_CATALOG_INDEX_SOURCE as an immutable reviewed checkout.
+EnvironmentFile=/etc/autodata/catalog-index-worker.conf
+UMask=0077
+ExecStart=/usr/bin/docker run --rm --name autodata-catalog-index-worker --network host --read-only --cap-drop ALL --security-opt no-new-privileges --stop-timeout 70 --env-file /etc/autodata/catalog-index-runtime.env --mount type=bind,src=${AUTODATA_CATALOG_INDEX_SOURCE},dst=/app,readonly --workdir /app/workers/ingestion-python sha256:5c8e79b93db464da854ad33dc499e25c153bbcd52757569b1f2a4e5072acecb4 python -m autodata_ingestion.catalog_index_worker
+ExecStop=/usr/bin/docker stop --time 70 autodata-catalog-index-worker
+TimeoutStopSec=80
+Restart=no
+
+# No Install section: installation/configuration/start require a separate runtime gate.
