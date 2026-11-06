@@ -249,6 +249,9 @@ _PROTECTED_SLOT = re.compile(
 
 
 def editable_slots(document, *, profile_version=_PROFILE):
+    if profile_version == "full-prose-auto-v1":
+        from .procedure_rewrite_full import prose_slots
+        return prose_slots(document)
     if profile_version == "full-prose-review-v1":
         from .procedure_rewrite_full import prose_slots
         return prose_slots(document)
@@ -306,6 +309,9 @@ def protected_projection(document):
 
 
 def validate_article_rewrite(source, candidate, *, profile_version):
+    if profile_version == "full-prose-auto-v1":
+        from .procedure_rewrite_auto import validate_auto
+        return validate_auto(source, candidate)
     if profile_version == "full-prose-review-v1":
         from .procedure_rewrite_full import validate_full
         return validate_full(source, candidate)
@@ -358,6 +364,9 @@ def validate_article_rewrite(source, candidate, *, profile_version):
 
 
 def build_rewrite_prompt(document, *, context, profile_version):
+    if profile_version == "full-prose-auto-v1":
+        from .procedure_rewrite_auto import build_auto_prompt
+        return build_auto_prompt(document, context=context)
     if profile_version == "full-prose-review-v1":
         from .procedure_rewrite_full import build_full_prompt
         return build_full_prompt(document, context=context)
@@ -385,8 +394,10 @@ def rewrite_ordered_document(document, *, client, context, profile_version=_PROF
             digest_json(candidate), prompt_hash, metadata, profile_version, error)
     if len(prompt.encode()) > 200*1024:
         return result(source, error="REWRITE_INPUT_LIMIT")
-    if profile_version == "full-prose-review-v1":
+    if profile_version in ("full-prose-review-v1", "full-prose-auto-v1"):
         from .procedure_rewrite_full import render_full, validate_full, _source_valid
+        if profile_version == "full-prose-auto-v1":
+            from .procedure_rewrite_auto import render_auto as render_full, validate_auto as validate_full
         if not _source_valid(source):
             return result(source, error="REWRITE_DOCUMENT_INVALID")
         if client is None:

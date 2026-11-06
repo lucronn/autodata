@@ -529,3 +529,53 @@ Concrete todo:
 - [ ] Persist review waits; add exact-hash human approve/reject/correct and zero-redraft resume.
 - [ ] Enforce approval at publication; test races, budgets, recovery and zero-call warm reads.
 - [ ] Verify isolated lifecycle and every authentic final article; separately authorize live Mercury acceptance.
+
+
+## Automatic permanent article rewriting
+
+User requirement recorded on2026-11-06 supersedes mandatory manual article review for newly selected automatic work: Automatically publish one materially unique, consistent-format canonical rewrite per bank-scoped source article, retain the accepted revision permanently, and serve stored source until the rewrite is ready; no manual article review.
+
+The additive immutable profile `full-prose-auto-v1` uses the existing source-first lifecycle and consistent ordered document. It rewrites ordinary paragraph, step and nested-list prose and adds one useful source-bound introduction, preserving original technical values, safety blocks, tables, headings, links, media, evidence and relative order. Invalid or incomplete candidates retain source availability. Mechanical validation and saved-response reconstruction gate automatic publication; they do not assert semantic proof or human approval. Metadata and publication review status remain truthful.
+
+The accepted canonical revision is permanent and reused for subsequent customer reads without another bank or model request, expiry, rescheduling or rewrite-on-read. Concurrency and restarts join the existing durable transformation. New descriptor registration selects the automatic target explicitly. Existing records, stored sources and published revisions are preserved; a bounded explicit selection/expected-source refresh may opt existing articles into the new target. No bulk or automatic refresh follows from registration or reading.
+
+Historical `full-prose-review-v1` continues to require its original exact-hash human approval when explicitly selected; its immutability does not impose review on the new automatic profile. The prior full-review plan and its open human acceptance work describe that historical lane. This automatic successor never fabricates approval records.
+
+Tracking: https://github.com/lucronn/autodata/issues/186#issuecomment-6679826363; https://github.com/users/lucronn/projects/8. Plan: `docs/superpowers/plans/2026-11-06-automatic-permanent-article-rewrite.md`. Synchronized record: `docs/agents/records/2026-11-06-automatic-permanent-article-rewrite.json`. Inspected base: `4513c387c900add7138330555ccfca92f74b9894`.
+
+Concrete todo:
+- [ ] Add immutable full-prose-auto-v1 prompt/render/validation using complete prose leaves, source-bound introduction and existing ordered format.
+- [ ] Publish valid automatic candidates through the existing durable fenced lifecycle without human review, preserving source fallback, saved-response integrity and once-per-transformation dedupe.
+- [ ] Select automatic rewriting for newly captured articles and provide an explicit bounded refresh for existing stored sources; preserve all old profiles and published revisions.
+- [ ] Prove both-bank automatic publication, integrity failures retaining source, concurrent/restart reuse, and zero provider/model/schedule calls on warm reads; start and verify the working local app.
+
+
+### Automatic lifecycle recovery scope amendment
+
+Issue186 amendment https://github.com/lucronn/autodata/issues/186#issuecomment-6679877079 and Project8 Release hotfix reference were synchronized/read back by the coordinator (field length990). This adds the following exact paths to the implementation allowlist:
+
+- `workers/ingestion-python/src/autodata_ingestion/source_job_persistence.py`
+- `workers/ingestion-python/tests/test_source_job_persistence.py`
+- `workers/ingestion-python/tests/lifecycle_support.py`
+
+Automatic-profile nonretryable mechanical failures enter `dead_letter` with source still readable, never a manual-review wait. A successfully saved automatic candidate may reclaim a fenced publication lease after its model-attempt budget is exhausted, without incrementing or resetting that budget, invoking the model, or reviving a failed/ambiguous result. Existing manual-review and legacy retry behavior remains intact. Tests must cover final-attempt restart/publication, failed candidate exclusion and stale leases.
+
+New production descriptor registration defaults explicitly to the automatic profile. The shared test insertion helper explicitly requests historical `technical-prose-v1` unless a test selects another profile, preserving historical test coverage. The production upsert accepts an explicit profile only at its existing internal registration interface; HTTP clients cannot select a profile. These extra files may change only after this amendment is committed/pushed and exact-head preflight passes.
+
+
+### Missing-model configuration and exact selected-job amendment
+
+Base: `83b0b727736b36223e1859364bfeb49f67c3d93a`. Issue186 amendments https://github.com/lucronn/autodata/issues/186#issuecomment-6680123658 and https://github.com/lucronn/autodata/issues/186#issuecomment-6680125162 are synchronized with Project8 (coordinator readback length920, both comment IDs present).
+
+Concrete todo:
+- Park automatic work only after source and normalized input are durable when no model client exists; retain readable source and create no rewrite attempt.
+- Exclude parked jobs from generic polling without configuration; when a client exists, resume only the same current article/job/source/generation/profile, without retry budget increment or reset.
+- Recover existing `MODEL_NOT_CONFIGURED` dead letters only with zero rewrite attempts and exact ownership. Never revive failed or ambiguous model output. Historical profiles retain their behavior.
+- Add optional exact `job_id` filtering to existing claim/worker functions, including recovery and exhausted-job sweep, so operators can capture/park/resume selected preview jobs without draining unrelated work. Verify repeated absent-key polling, configured restart, selection isolation and stale ownership using focused PostgreSQL tests.
+
+Only already-allowed `article_lifecycle.py`, `source_job_persistence.py` and focused worker/job tests change. No schema/API/UI/credential/payment/deployment changes. Existing successful saved candidates may still publish without a model client. The model client is constructed at process startup, so configure the secret and restart before resuming. Commit/push this docs checkpoint and pass exact-head preflight before implementation.
+
+
+### Historical commerce fixture scope amendment
+
+Issue186 https://github.com/lucronn/autodata/issues/186#issuecomment-6680197528 and Project8 are synchronized (coordinator exact readback length951, link present), base `2c9ecd6bbd178e0d0b4912a3cf20d3097cbffc31`. Add only `workers/ingestion-python/tests/test_commerce_postgres.py` to the existing allowlist. Todo: (1) commit/push this docs-only checkpoint and pass exact-head preflight; (2) explicitly select historical `technical-prose-v1` in `seed_readable_source` descriptor registration to match its unchanged ensure; (3) run affected library case and focused recovery regression, no full-suite rerun; (4) push code and honest final evidence. No production implementation or commerce/payment behavior changes.

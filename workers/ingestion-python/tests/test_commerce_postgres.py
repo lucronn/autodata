@@ -432,7 +432,7 @@ def seed_readable_source(c):
     body=seed_snapshot(c[0],b'commerce-readable-body')
     with c[0].connect() as conn:
         vehicle=conn.execute('SELECT vehicle_id FROM vehicle_configurations WHERE vehicle_configuration_id=%s',(c[4],)).fetchone()['vehicle_id']
-    aid=upsert_article_descriptor(c[0],ArticleKey('bankone',vehicle,uuid.UUID(c[4]),'fixture-vehicle','fixture-article'),{'title':'Fixture'},descriptor,0)
+    aid=upsert_article_descriptor(c[0],ArticleKey('bankone',vehicle,uuid.UUID(c[4]),'fixture-vehicle','fixture-article'),{'title':'Fixture'},descriptor,0,rewrite_profile_version='technical-prose-v1')
     prepared=ensure_article_job(c[0],aid,normalization_version='ordered-article-v1',rewrite_profile_version='technical-prose-v1')
     assert prepared.job_id is not None
     rid=uuid.uuid4()
