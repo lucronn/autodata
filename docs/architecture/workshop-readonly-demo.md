@@ -191,3 +191,17 @@ Second-final concrete todo:
 ### Canonical public probe host correction
 
 Before the still-unused r2 final creation, coordinator verified canonical `https://autodata.cars.tk/readyz`=200 and `https://autodata.cars.tk/workshop/purchase-config.json`=200/enabled:false. Use those exact no-redirect URLs for cutover and rollback; apex cars.tk/readyz404 and apex Workshop308 are not acceptance endpoints. The [rollout plan](../superpowers/plans/2026-11-06-prompt-v2-http-rollout.md) is corrected; same r2 payload/name/CID, ONE unused final attempt, unchanged passed-shadow proof and30second/10round/30GET phase limits. No new runtime/worker/model/article/provider/commerce scope, and no runtime action by the planning agent. Fresh full-SHA corrected preflight/dispatch required.
+
+
+### Third-final fixed public-probe User-Agent amendment
+
+Complete one third final-container prompt-v2 HTTP cutover using the unchanged approved payload, exact public probe User-Agent curl/8.0.0, bounded acceptance and exact-original rollback. Coordinator reports r2 rolled back; exact original3031/local/public readiness/config now200/enabled:false. Read-only diagnosis: Python urllib default User-Agent403, same canonical requests with explicit `User-Agent: curl/8.0.0`200 with/without proxy; no app failure is inferred. Keep both rolled-back attempts historical.
+
+The [rollout plan](../superpowers/plans/2026-11-06-prompt-v2-http-rollout.md) now authorizes ONE r3 creation with the same approved r2 payload except name/private final-http-r3.cid. Require fresh synchronized checkpoint/preflight/dispatch, unchanged passed-shadow proof, exact stopped diff, same original40-entry environment/security, and exact fixed public header on baseline/cutover/rollback canonical GETs. Existing30second/10round/30GET phase limits and exact-original rollback remain. No additional shadow/fourth create, header fallback, worker/model/article/provider/API/commerce action or paid-launch claim. Planning agent touches no runtime.
+
+Third-final concrete todo:
+
+- [ ] Preserve the second rolled-back attempt and read-only User-Agent diagnosis; verify original3031/canonical readiness/purchase config200/enabledfalse and unchanged source/image/private configuration/passed-shadow proof before a third final creation.
+- [ ] Create exactly one third final container from the same approved r2 payload, changing only its unique r3 name and exclusive new final-http-r3.cid path; require full stopped-container diff and exact original40-entry environment before stopping original.
+- [ ] Swap3031 once and use exact User-Agent curl/8.0.0 for canonical public readiness/purchase GETs within the existing30second/10round/30GET acceptance limit; do not use default-UA probes, redirects, alternate identities or article/model/provider/work calls.
+- [ ] On failed acceptance restore the exact original and verify recovery using the same fixed-header bounded30second polling; retain all rollback/source/failed-attempt evidence and report the exact outcome without any further automatic create/retry or worker/commerce scope.
