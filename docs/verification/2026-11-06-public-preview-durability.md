@@ -1,6 +1,6 @@
 # Public preview durability verification
 
-Status: planning synchronized; runtime unchanged by this gate. Exact-checkpoint preflight and coordinator dispatch precede execution.
+Status: correction planning synchronized; first runtime attempt failed and was rolled back by coordinator. Corrected exact-checkpoint preflight and coordinator dispatch precede retry.
 
 Goal: Make the existing purchase-disabled public preview restart-persistent using the exact e4af862 API binary and configuration, without rebooting or enabling payments.
 
@@ -22,3 +22,13 @@ Concrete todo:
 No reboot has been performed or authorized by this plan. Successful service restarts do not prove boot durability. Payment enablement and product changes remain outside scope.
 
 Tracking readback recorded at2026-11-06T02:27:23Z: https://github.com/lucronn/autodata/issues/186#issuecomment-6675203960; Project8 item Release hotfix reference links that comment, status In Progress. Coordinator verified exact goal/todos/paths/SHAs, retained previous links and shortened descriptive labels. Full checkpoint SHA and validator evidence are sealed externally after commit; no self-hash is asserted.
+
+## First attempt and rollback — coordinator evidence
+
+The first attempt used the original plan's bare API binary plus systemd `Environment=AUTODATA_API_ADDR=:18080`. The exact copied environment file contains `AUTODATA_API_ADDR=127.0.0.1:3025`; systemd EnvironmentFile precedence replaced the intended address, and the API failed with a bind collision. This was a plan error; successful durability is not claimed.
+
+Coordinator immediately removed the new99 drop-in, daemon-reloaded, restored the existing ingestion container restart policy to `no`, and restarted the prior API. Coordinator observed public readiness200, purchase configuration still disabled and unchanged financial fingerprints after rollback. These are coordinator-reported rollback observations; this docs lane did not execute or independently repeat runtime checks.
+
+The corrected exact command is `ExecStart=/usr/bin/env AUTODATA_API_ADDR=:18080 /opt/autodata/preview/e4af8621c12352e465ee28e87a67f78e67ab9091/autodata-api`; remove the systemd `Environment=` line. This preserves the working command's exec-time address override while leaving copied environment bytes unchanged. Retry and boot durability remain unverified.
+
+Correction synchronized by coordinator at 2026-11-06T02:31:28Z: https://github.com/lucronn/autodata/issues/186#issuecomment-6675258622; Project8 preserves prior gate/checkpoint links and appends this correction, status In Progress, descriptive labels shortened only. A successor committed checkpoint and its exact-head preflight are required before retry.

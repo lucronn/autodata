@@ -12,7 +12,7 @@
 
 **Planning parent:** `4513c387c900add7138330555ccfca92f74b9894` (docs-only master). Product remains `e4af8621c12352e465ee28e87a67f78e67ab9091`. The eventual committed planning checkpoint is the implementation preflight base; this parent cannot authorize new documents absent from it.
 
-**Tracking:** https://github.com/lucronn/autodata/issues/186; https://github.com/users/lucronn/projects/8 item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4`. Status: synchronized planning; runtime execution awaits exact-checkpoint preflight and coordinator dispatch.
+**Tracking:** https://github.com/lucronn/autodata/issues/186; https://github.com/users/lucronn/projects/8 item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4`. Status: correction planning synchronized; runtime retry awaits corrected exact-checkpoint preflight and coordinator dispatch.
 
 ## Global constraints
 
@@ -31,11 +31,12 @@ Runtime writes after dispatch only:
 ```ini
 [Service]
 ExecStart=
-ExecStart=/opt/autodata/preview/e4af8621c12352e465ee28e87a67f78e67ab9091/autodata-api
-Environment=AUTODATA_API_ADDR=:18080
+ExecStart=/usr/bin/env AUTODATA_API_ADDR=:18080 /opt/autodata/preview/e4af8621c12352e465ee28e87a67f78e67ab9091/autodata-api
 EnvironmentFile=
 EnvironmentFile=/etc/autodata/preview/api-public-preview.env
 ```
+
+The `/usr/bin/env` assignment preserves the current working command semantics: it overrides the copied environment file's `AUTODATA_API_ADDR=127.0.0.1:3025` at exec time. A systemd `Environment=` assignment loses to `EnvironmentFile=` and caused the failed first attempt; do not use that form. Configuration bytes remain unchanged.
 
 The existing `/etc/systemd/system/autodata-api.service` retains `User=corp`, `Restart=always`, `After=docker.service` and enabled boot selection. The 99 drop-in sorts after both observed `/run/systemd/system/autodata-api.service.d/90-e4af862-preview*.conf`; they remain intact for rollback. Both observed90 drop-ins reset EnvironmentFile before selecting the single grant-ready environment file; the99 reset preserves those effective inputs.
 
@@ -68,3 +69,5 @@ git diff --check
 ## Coordinator tracking readback
 
 Coordinator verified https://github.com/lucronn/autodata/issues/186#issuecomment-6675203960 contains the exact goal, four literal todos, three planning paths and parent/product SHAs. Project8 item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4` Release hotfix reference links that comment, status In Progress; previous links preserved and descriptive labels shortened. Recorded at2026-11-06T02:27:23Z. This lane performed no GitHub Issue/Project writes or runtime mutations.
+
+Correction tracking readback at 2026-11-06T02:31:28Z: https://github.com/lucronn/autodata/issues/186#issuecomment-6675258622 records the failed attempt/rollback, corrected exact ExecStart and successor checkpoint requirement. Coordinator verified Project8 retains prior gate/checkpoint links and appends the correction comment, status In Progress; only descriptive labels shortened. No runtime retry is claimed.
