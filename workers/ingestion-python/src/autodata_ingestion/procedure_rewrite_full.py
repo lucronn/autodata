@@ -155,9 +155,9 @@ def _evidence(document):
     return sorted(evidence)
 
 
-def _introduction(source, text):
+def _introduction(source, text, *, profile_version=PROFILE):
     return {"block_id": "full-prose:introduction:" + digest_json({
-                "source_hash": digest_json(source), "profile_version": PROFILE,
+                "source_hash": digest_json(source), "profile_version": profile_version,
                 "role": "introduction"}),
             "type": "paragraph", "source_order": 1, "text": text,
             "evidence_ids": _evidence(source)}
@@ -208,7 +208,7 @@ def _matches_full_prompt_hash(document, *, context, prompt_hash):
     return prompt_hash in {sha256(payload.encode()).hexdigest() for payload in (current, historical)}
 
 
-def render_full(source, response):
+def render_full(source, response, *, profile_version=PROFILE):
     """Render an exact source-bound response. This never grants publication."""
     from .article_document import validate_ordered_document
     if not _source_valid(source):
@@ -239,13 +239,13 @@ def render_full(source, response):
         _set(result, slot["path"], row["text"])
     for block in result["blocks"]:
         block["source_order"] += 1
-    result["blocks"].insert(0, _introduction(source, response["introduction"]))
+    result["blocks"].insert(0, _introduction(source, response["introduction"], profile_version=profile_version))
     if validate_ordered_document(result, strict=True):
         raise ValueError("REWRITE_DOCUMENT_INVALID")
     return result
 
 
-def validate_full(source, candidate, *, response=None):
+def validate_full(source, candidate, *, response=None, profile_version=PROFILE):
     """Independently verify mechanical integrity, optionally binding raw response.
 
     Without the raw response, unchanged leaves are reported as unapproved
@@ -266,7 +266,7 @@ def validate_full(source, candidate, *, response=None):
             restored = deepcopy(candidate)
             intro = restored["blocks"].pop(0)
             _check_introduction(source, intro["text"])
-            if digest_json(intro) != digest_json(_introduction(source, intro["text"])):
+            if digest_json(intro) != digest_json(_introduction(source, intro["text"], profile_version=profile_version)):
                 raise ValueError("REWRITE_PROTECTED_MUTATION")
             for block in restored["blocks"]:
                 if type(block["source_order"]) is not int:
@@ -280,7 +280,7 @@ def validate_full(source, candidate, *, response=None):
             if source_protected != target_protected:
                 errors.append("REWRITE_PROTECTED_MUTATION")
             if response is not None:
-                expected = render_full(source, response)
+                expected = render_full(source, response, profile_version=profile_version)
                 if digest_json(expected) != digest_json(candidate):
                     errors.append("REWRITE_RESPONSE_MISMATCH")
                 reasons = {row["path"]: row["reason"] for row in response["replacements"] if row["action"] == "retain"}
@@ -290,7 +290,7 @@ def validate_full(source, candidate, *, response=None):
             errors.append("REWRITE_PROTECTED_MUTATION")
     errors = sorted(set(errors))
     report = {"passed": not errors, "structural_integrity_passed": not errors,
-        "validator_version": VALIDATOR_VERSION, "profile_version": PROFILE,
+        "validator_version": VALIDATOR_VERSION, "profile_version": profile_version,
         "token_grammar_version": TOKEN_GRAMMAR_VERSION,
         "content_acceptance_required": True, "complete_rewrite": False,
         # /introduction is a logical response path, distinct from original
