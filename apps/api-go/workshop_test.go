@@ -37,6 +37,8 @@ func TestWorkshopAssetsAvailableWithoutCatalogCredentials(t *testing.T) {
 		{"/workshop/", "text/html"},
 		{"/workshop/styles.css", "text/css"},
 		{"/workshop/app.mjs", "javascript"},
+		{"/workshop/bootstrap.mjs", "javascript"},
+		{"/workshop/demo.mjs", "javascript"},
 		{"/workshop/auth.mjs", "javascript"},
 		{"/workshop/commerce.mjs", "javascript"},
 		{"/workshop/article-read.mjs", "javascript"},
