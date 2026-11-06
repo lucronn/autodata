@@ -2,16 +2,16 @@
 
 Status: synchronized runtime planning boundary. Runtime execution still requires independent exact-script review and separate coordinator dispatch; this checkpoint performs no runtime action.
 
-Goal: Prove real backend catalog index completion and persisted provider descriptors for both banks within one bounded catalog-only run, then stop; authenticated paid browse remains unverified and article rewriting stays untouched.
+Goal: Perform one bounded retry start of the existing stopped catalog-only installation and retained jobs under normal eligibility/lease/max-attempt rules, preserving completed work and article history; stop on every outcome and leave paid browse unverified.
 
 Issue https://github.com/lucronn/autodata/issues/186; Project https://github.com/users/lucronn/projects/8. Plan `docs/superpowers/plans/2026-11-06-catalog-index-runtime-activation.md`; canonical `docs/verification/2026-11-06-catalog-index-runtime-activation.md`; record `docs/agents/records/2026-11-06-catalog-index-runtime-activation.json`. Dedicated tracking field/comment is synchronized below.
 
 ## Concrete todo record
 
-- [ ] Pin merged combined PR355 source/tree/archive/unit and successful required CI/review; synchronize exact tracking and machine preflight before runtime dispatch.
-- [ ] Install the exact inert catalog unit and immutable merged source with a separate root-only14-name catalog environment; verify payload/import/configuration without live processing or secret output.
-- [ ] After reviewed-script and coordinator dispatch, start the catalog-only service once and observe at most120 seconds, proving current catalog_index job/scope/index-page/descriptor bindings for BOTH banks across the two pinned authentic configurations; authenticated paid browse remains UNVERIFIED.
-- [ ] Record exact source/container/job/provider/index/readiness evidence and article non-interference; mandatorily stop within the initial120-second observation boundary on every outcome, verify stopped/no container, and preserve checkpoints/history and separate article rollout.
+- [ ] Verify retained first-attempt failure/install/ensure/article receipts, exact merged source and unchanged14-name environment; audit the four retained current jobs and article anchors before retry.
+- [ ] After exact-script review and coordinator dispatch, start the existing catalog-only service once with at most10 seconds startup grace inside the120-second total observation; create no new ensures, jobs, source, configuration or environment.
+- [ ] Observe only existing catalog eligibility, recording both-bank current scope/index-page/descriptor evidence and partial/provider outcomes honestly; never reset/replay completed or needs_review jobs or extend max_attempts/leases.
+- [ ] Mandatorily initiate stop by120 seconds after the one retry start on every outcome, bound stop80s and verification15s independently; prove no container/boot enablement and unchanged article anchors, retaining all first and retry evidence.
 
 ## Blocking pins and fixed installation
 
@@ -71,3 +71,18 @@ Tracking scope synchronized: https://github.com/lucronn/autodata/issues/186#issu
 ## Backend-only acceptance amendment
 
 This amendment supersedes the browse-success and retain-running permissions at checkpoint352f66eada662a7c828e84bc01861c6848ae60d9; its append-only tracking remains historical evidence. Product source, immutable archive/unit/image,14-name environment, exact two normal ensures/up to4 returned catalog jobs, no-repeat controls and article non-interference fences are unchanged. No runtime action is performed by this amendment. Fresh reviewed script and coordinator dispatch must bind this new committed checkpoint.
+
+
+## One retained-install retry amendment
+
+This amendment supersedes the one-start allowance at f221e97c0f22215b2a0755b16a3ad487ce92411a with exactly ONE additional start of the SAME installed source/unit/config/environment. Original install, ensures and first-start authority are consumed; do not reinstall, recreate source/env/config, send any ensure, reset-failed, reset/replay jobs, alter leases/retry counts/max_attempts, restore DB or overwrite prior evidence. Product source remains6c1bd04fb419aad296f59a04f0eef256d37b2c73 and all pinned image/unit/archive/environment/security controls above remain required.
+
+First failure receipt SHA25646f9ee17305a9f0af81da1dc07bc3b5a6b6b2c092abafb02dc521ffb51c9a60b records CATALOG_SINGLETON and verified stop/no-container/no-boot. Retain ensure-results.json SHA256804b88c540f06287bec80a46674e28559697f58e3fdd38c982efc82dc003547b, install-disabled.json SHA256357a808a8fc66a5bf87221140b1655d8a99620f8ca25a00797d5a063359efc32 and article-before.json SHA25655cdde435999de1b6658395e9e6b87beb76984189a09fcefdccd6b9487606d3a under /var/lib/autodata/catalog-index-worker-evidence/first-rollout-6c1bd04. Fresh retry-review, retry-dispatch, retry-attempt, retry-baseline, retry-observation, retry-result/retry-failure receipts must be exclusive new files there. Prior receipts and operator script stay unchanged; a new statically reviewed retry-only script is required.
+
+Read-only post-stop baseline: job38eea1bc-92f0-499c-b7c8-7753f9ef90b0 Bankone/configc54c88f0 scope58dc3a89 completed retry1/max3, generation0 complete,4163 bound descriptors,1 bound index page; job204125f5-d6e3-4640-8696-68e70a7d88f0 Banktwo/configc54c88f0 scopebef4baac needs_review UNRESOLVED_CONFIGURATION retry1/max3; job3ce622fa-33ca-467d-8a8c-3063cecdd217 Bankone/configcf544dfd scoped63ef65a failed UPSTREAM_UNAVAILABLE retry2/max3, next_attempt_at2026-11-06T22:43:56.638679Z; jobe9ef7353-ed7a-410b-b0a5-ed5656df20ca Banktwo/configcf544dfd scope5d144da1 processing retry2/max3, lease_expires_at2026-11-06T22:45:12.691503Z, next_attempt_at22:43:31.384017Z, no bound page and2 retained descriptors. All four current generations remain0. Retry dispatch must re-read and bind exact current metadata, permitting only ordinary automatic due/expired-lease progression, no manual repair. Terminal completed/needs_review jobs are never replayed.
+
+Service audit found ActiveState=failed/SubState=failed, UnitFileState=static, Result=exit-code, ExecMainStatus137, no catalog/article containers. Original article lifecycle/table anchors equal article-before.json and state SHA256591e7f2af9606538bd0fe1421fb1ccb588bd3e0524481fd0f4ca2fe5811341d9; public/local readiness200 and purchase.enabledfalse. Require these fences again before the retry; failed is an acceptable stopped state without reset-failed.
+
+Type=simple systemctl start returning does not prove container readiness. Permit up to10 seconds hard startup grace, polling at most every250ms for exactly one running catalog container with the exact pinned payload, while checking systemd state and rejecting any extra/incorrect container. This grace is INSIDE the total119-second observation window beginning before systemctl start; zero containers during grace alone is not failure, but wrong/multiple containers or premature service failure fails closed. After grace, absence fails closed. No second start/create fallback. Stop initiated by120 seconds on EVERY outcome; stop<=80s and no-container/static verification<=15s use independent hard recovery budgets.
+
+Backend acceptance is limited to both KNOWN matching-bank scopes: retained Bankone completed page/descriptors plus real Banktwo completion with current generation/index-page/source/descriptor bindings. Opposite-provider unresolved/upstream outcomes are explicitly partial cross-provider coverage, not full configuration/browse success, and may consume only remaining normal retry budget. Record all four exact outcomes; do not require or fabricate completion for unresolved mappings. If known Banktwo remains incomplete/provider-failed by the observation bound, report partial failure and stop. Authenticated paid browse remains UNVERIFIED; no browse GET/authentication/grant fabrication. No article service/state/body/model action.
