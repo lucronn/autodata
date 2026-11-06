@@ -9,15 +9,23 @@ questions or requests, contact [support@cars.tk](mailto:support@cars.tk).
 ## Information used to provide Workshop
 
 When you sign in, Google/Firebase handles authentication. Workshop uses the
-verified sign-in identifier to associate you with an account and uses session
-information to keep you signed in securely.
+verified Firebase project and user identifiers to associate you with an internal
+account and organization. Account records include account status and creation
+time. Sign-in records include a hash of the session token, authentication,
+creation and expiry times, and revocation status. These Workshop account and
+session tables do not store your Google display name or email address;
+Google/Firebase processes sign-in information under its own privacy notice.
 
 When you select a vehicle or purchase a dataset, Workshop uses the selected
 vehicle configuration and region, account and order identifiers, purchase
 amount and currency, payment status, and access records to provide the right
 dataset and recover purchases. Stripe hosts the payment form and processes
-payment details; Workshop receives payment references and status information.
-Do not send full card details or sign-in credentials to support.
+payment details. Card details are entered on Stripe's hosted form. Workshop
+stores order and access records, Stripe checkout-session and payment-intent
+references, payment and refund status, timestamps, and selected signed payment
+event facts such as amounts, currency, and event identifiers. Workshop sends
+Stripe the configured price and an order identifier to connect payment to the
+purchase. Do not send full card details or sign-in credentials to support.
 
 If you contact support, we receive the information you include in your message
 and use it to respond and investigate your request.
@@ -28,20 +36,29 @@ We use this information to authenticate customers, provide purchased access,
 process and reconcile payments and refunds, support customers, and protect the
 service from misuse. Google/Firebase and Stripe process information to provide
 sign-in and payment services under their applicable terms and privacy notices.
-The final notice must also identify the hosting, delivery, logging, and support
-providers actually used for launch.
+Workshop stores account, session, purchase, and access records in a PostgreSQL
+database and serves catalog images and source artifacts from S3-compatible
+object storage. The API records operational errors and request identifiers.
+The final notice must identify the hosting, delivery, logging, and support
+providers and processing locations actually used for launch.
 
 ## Cookies and browser storage
 
-Workshop uses a session cookie for authenticated access. Its payment flow uses
-browser session storage to track a checkout attempt and help avoid duplicate
-requests. Blocking these mechanisms can prevent sign-in or checkout from
-working. The final notice must describe any additional cookies, analytics,
+Workshop uses the essential `__Host-autodata_session` cookie for authenticated
+access. It is Secure, HttpOnly, and SameSite=Lax, with a maximum lifetime of
+12 hours. Signing out revokes the session and clears the cookie. The Firebase
+browser sign-in client uses in-memory persistence. The payment flow uses browser
+session storage for the selected configuration and region, a checkout retry
+identifier, and an order identifier when available, to recover a checkout
+attempt and help avoid duplicate requests. Blocking these mechanisms can prevent
+sign-in or checkout from working. The final notice must describe any additional cookies, analytics,
 or advertising technologies used on the deployed site.
 
 ## Retention, requests, and location
 
 Account and purchase records support continuing access and payment recovery.
+Session expiry or sign-out ends authenticated access; it does not by itself
+delete the account, stored session record, or purchase history.
 Before publication, AutoData must specify how long account, session, payment,
 support, and operational records are retained, including backup handling and
 any legally required retention.

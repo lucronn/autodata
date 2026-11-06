@@ -54,17 +54,44 @@ The drafts do not claim an immutable download, all future content, uninterrupted
 availability, a retention period, a tax exemption, a blanket no-refunds rule,
 or a verified absence of tracking/data sharing.
 
-Source reviewed at `eb920f85459ddd075034dad5d2cb573a75a7f75b`:
+Source reviewed at `eb920f85459ddd075034dad5d2cb573a75a7f75b` and rechecked
+against the PR base `ddf7801151abf314f747a0b80eafcbb43ca3f108` for the factual
+privacy inventory:
 
 - `apps/api-go/workshop/auth.mjs` and `apps/api-go/postgres_auth_sessions.go`:
   Google/Firebase identity, account mapping and sessions. Email retention by
   the application is not inferred from Google sign-in.
-- `apps/api-go/auth_session.go`: secure HTTP-only session cookie.
+- `db/migrations/039_production_identity_sessions.sql` and
+  `apps/api-go/auth_session.go`: Firebase project/UID and internal account/
+  organization mapping, status/timestamps, hashed session tokens, revocation,
+  and the Secure, HttpOnly, SameSite=Lax session cookie lasting at most 12 hours.
+  Browser Firebase persistence is in-memory; session expiry is not row deletion.
 - `apps/api-go/workshop/commerce.mjs`: selected scope, USD 2000 minor units,
   Stripe hosted checkout, checkout-attempt browser session storage, four policy
   URLs and tax notice required for a valid enabled purchase configuration.
 - `workers/ingestion-python/src/autodata_ingestion/commerce_service.py`:
   durable account-bound orders and provider payment references/status.
+- `db/migrations/040_workshop_commerce.sql` and
+  `workers/ingestion-python/src/autodata_ingestion/stripe_adapter.py`: order,
+  scope, amount/currency and access records; hosted card Checkout receives
+  configured price and order metadata. Stored signed event facts are normalized
+  payment identifiers/status/amounts, rather than the complete raw webhook.
+  A verified full refund or lost chargeback revokes purchased access; this
+  mechanism does not define discretionary refund eligibility.
+- `apps/api-go/catalog_image_storage.go`: catalog images are served from
+  S3-compatible object storage. This does not establish the launch storage vendor
+  or region, or imply a customer-upload feature.
+- `apps/api-go/main.go` and `infra/deploy/gce/Caddyfile`: API operational-error
+  and request-ID logging exists; the checked-in Caddy definition disables access
+  logs and discards its logs. Deployed logging and retention need confirmation.
+
+No automated customer-account deletion endpoint or account/session purge was
+established by this bounded identity/commerce review. The owner must specify
+an executable request process and appropriate account, transaction, support,
+log and backup retention. Do not treat the 12-hour cookie limit as a deletion
+schedule or publish an immediate-erasure promise. No first-party analytics
+integration was found in the examined Workshop modules; that is not proof
+about the entire deployed site or third-party sign-in/payment surfaces.
 
 These observations establish source behavior, not the exact deployed provider
 inventory or a complete privacy/security audit. Customer-facing pages, policy
