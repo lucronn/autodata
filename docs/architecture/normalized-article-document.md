@@ -529,3 +529,22 @@ Concrete todo:
 - [ ] Persist review waits; add exact-hash human approve/reject/correct and zero-redraft resume.
 - [ ] Enforce approval at publication; test races, budgets, recovery and zero-call warm reads.
 - [ ] Verify isolated lifecycle and every authentic final article; separately authorize live Mercury acceptance.
+
+
+## Automatic permanent article rewriting
+
+User requirement recorded on2026-11-06 supersedes mandatory manual article review for newly selected automatic work: Automatically publish one materially unique, consistent-format canonical rewrite per bank-scoped source article, retain the accepted revision permanently, and serve stored source until the rewrite is ready; no manual article review.
+
+The additive immutable profile `full-prose-auto-v1` uses the existing source-first lifecycle and consistent ordered document. It rewrites ordinary paragraph, step and nested-list prose and adds one useful source-bound introduction, preserving original technical values, safety blocks, tables, headings, links, media, evidence and relative order. Invalid or incomplete candidates retain source availability. Mechanical validation and saved-response reconstruction gate automatic publication; they do not assert semantic proof or human approval. Metadata and publication review status remain truthful.
+
+The accepted canonical revision is permanent and reused for subsequent customer reads without another bank or model request, expiry, rescheduling or rewrite-on-read. Concurrency and restarts join the existing durable transformation. New descriptor registration selects the automatic target explicitly. Existing records, stored sources and published revisions are preserved; a bounded explicit selection/expected-source refresh may opt existing articles into the new target. No bulk or automatic refresh follows from registration or reading.
+
+Historical `full-prose-review-v1` continues to require its original exact-hash human approval when explicitly selected; its immutability does not impose review on the new automatic profile. The prior full-review plan and its open human acceptance work describe that historical lane. This automatic successor never fabricates approval records.
+
+Tracking: https://github.com/lucronn/autodata/issues/186#issuecomment-6679826363; https://github.com/users/lucronn/projects/8. Plan: `docs/superpowers/plans/2026-11-06-automatic-permanent-article-rewrite.md`. Synchronized record: `docs/agents/records/2026-11-06-automatic-permanent-article-rewrite.json`. Inspected base: `4513c387c900add7138330555ccfca92f74b9894`.
+
+Concrete todo:
+- [ ] Add immutable full-prose-auto-v1 prompt/render/validation using complete prose leaves, source-bound introduction and existing ordered format.
+- [ ] Publish valid automatic candidates through the existing durable fenced lifecycle without human review, preserving source fallback, saved-response integrity and once-per-transformation dedupe.
+- [ ] Select automatic rewriting for newly captured articles and provide an explicit bounded refresh for existing stored sources; preserve all old profiles and published revisions.
+- [ ] Prove both-bank automatic publication, integrity failures retaining source, concurrent/restart reuse, and zero provider/model/schedule calls on warm reads; start and verify the working local app.
