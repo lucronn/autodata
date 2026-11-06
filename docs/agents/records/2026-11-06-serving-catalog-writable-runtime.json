@@ -1,0 +1,43 @@
+{
+  "goal": "Restore bounded dual-bank vehicle catalog hydration by replacing the serving grant-ready ingestion container with an identical writable runtime while retaining the exact original container for rollback and keeping purchase disabled",
+  "plan_ref": "docs/superpowers/plans/2026-11-06-serving-catalog-writable-runtime.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/verification/2026-11-06-serving-catalog-writable-runtime.md"
+  ],
+  "todo": [
+    "Synchronize this goal, plan, canonical verification document and four todos with Issue186 and Project8, commit/push the documentation checkpoint and pass full-SHA machine preflight before runtime dispatch.",
+    "Freeze the original grant-ready container identity, source/image, private effective configuration and serving database identity; retain a private database backup and exact rollback procedure, and verify purchase remains disabled before replacement.",
+    "Stop and retain the original container, create its controlled replacement with identical image/source/credentials/security/restart/network settings and only PGOPTIONS removed, then verify private health and writable database transactions before bounded selector hydration.",
+    "Verify authentic Bankone and Banktwo selector results become durable and usable through the public catalog with purchase disabled, record exact counts/hashes and runtime differences, and roll back to the retained original container on failed verification without restoring or deleting serving database data."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-06T07:48:57Z",
+  "tracking_sync": {
+    "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6679963427",
+    "project_item": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "project_field": "Release hotfix reference",
+    "readback_utc": "2026-11-06T07:48:57Z",
+    "readback_exact": true,
+    "prior_prefix_preserved": true,
+    "verified_by": "coordinator sole external writer",
+    "field_length": 1006,
+    "original_issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6679871493"
+  },
+  "supplemental_scope": {
+    "parent_checkpoint_sha": "72f5bf45d5fd7e10ec5faa64f49871e1bcdc323c",
+    "branch": {
+      "provider": "bankone",
+      "year": 2015,
+      "make": "GMC",
+      "region": "US",
+      "max_additional_model_configuration_branches": 1
+    },
+    "acceptance": "Verify committed Bankone configuration through authentic source_snapshot URI and independently verified stored content hash; report empty vehicle_provider_mappings as unresolved without claiming it categorically blocks article preparation.",
+    "cumulative_foreground_request_cap": 30,
+    "cumulative_total_request_cap": 54,
+    "original_rollback_and_disabled_commerce_preserved": true,
+    "runtime_mutation_before_successor_preflight": false
+  }
+}

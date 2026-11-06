@@ -1,0 +1,70 @@
+{
+  "goal": "Deploy reviewed automatic article rewriting to the purchase-disabled preview worker, capture and park one authentic selected article per bank without a model key, and resume those same jobs for permanent canonical publication only after approved key delivery",
+  "plan_ref": "docs/superpowers/plans/2026-11-06-preview-automatic-rewrite-deployment.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/verification/2026-11-06-preview-automatic-rewrite-deployment.md"
+  ],
+  "todo": [
+    "Synchronize the exact source-pinned preview deployment plan, canonical verification and four todos with Issue186 and Project8; commit/push this documentation checkpoint and pass exact-head machine preflight before coordinator dispatch.",
+    "Verify exact reviewed source and focused passing tests, pin the existing image/container and two authentic bank-scoped enrollments, retain current private backup and rollback evidence, and confirm purchase remains disabled.",
+    "Replace only preview ingestion source using the pinned existing image and immutable reviewed source, retain the exact original container, and capture/normalize/park only the two selected jobs by explicit job UUID without model calls when the key is absent.",
+    "Verify committed readable source and retryable parking with zero model attempts/publications; after approved key delivery resume only those same jobs and verify permanent canonical content, UNREVIEWED metadata and zero warm remote calls, reporting blockers or exact runtime rollback without unrelated queue drain or serving-data deletion."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-06T08:04:13Z",
+  "source_pin": {
+    "reviewed_candidate_sha": "fc7a73ad9002bd04f821b767d0a70bdbbdfc1dca",
+    "implementation_sha": "7a1ae1689c8c65292dd409fa7bcab851e12289ca",
+    "review_finalized": true,
+    "review_basis": "Root reviewed product7a1ae16 no blocker per final handoff; gate agent checked final diff contains only docs/test fixture and independently verified focused XMLs/hashes",
+    "focused_test_counts": {
+      "final_regression": 10,
+      "exact_job": 1,
+      "failures": 0,
+      "errors": 0
+    },
+    "broad_ci_may_be_pending_for_preview": true,
+    "dispatch_requires_exact_reviewed_sha_focused_passing_tests_and_machine_preflight": true,
+    "final_focused_xml_sha256": "16bb22ea2008d70f190daded10780a7fb8a854cb91ac1cfd8e4b503198a77460"
+  },
+  "image_pin": "sha256:5c8e79b93db464da854ad33dc499e25c153bbcd52757569b1f2a4e5072acecb4",
+  "model_secret_precondition": {
+    "current_key_present": false,
+    "source_capture_normalize_park_without_key_allowed_only_at_final_reviewed_successor": true,
+    "zero_model_attempts_or_publications_without_key": true,
+    "canonical_probe_requires_approved_private_key_delivery": true
+  },
+  "tracking_sync": {
+    "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6680195252",
+    "project_item": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "project_field": "Release hotfix reference",
+    "readback_exact": true,
+    "prior_prefix_preserved": true,
+    "field_length": 1005,
+    "verified_by": "gate documentation agent authorized by coordinator",
+    "readback_utc": "2026-11-06T08:04:13Z"
+  },
+  "worker_precondition": {
+    "http_only_runtime": true,
+    "targeted_run_article_worker_once_job_id_required": true,
+    "generic_claim_or_daemon_forbidden": true,
+    "same_frozen_job_ids_resume_after_key": true
+  },
+  "fresh_enrollment_amendment": {
+    "observed_serving_counts": {
+      "canonical_articles": 0,
+      "source_revisions": 0,
+      "canonical_revisions": 0,
+      "source_fetch_jobs": 0
+    },
+    "before_key_scope": "Two bounded selected bank-specific source capture/normalize/park jobs permitted only after final reviewed park/resume code rollout",
+    "after_key_scope": "Resume same two explicit job UUIDs for canonical rewrite within existing bounds",
+    "max_index_pages_per_bank": 4,
+    "max_observed_descriptors_per_bank": 100,
+    "max_persisted_selected_descriptors_per_bank": 1,
+    "existing_request_byte_model_time_caps_unchanged": true,
+    "owner_rights_attestation": "Human owner states both bank agreements authorize AutoData, LLC to store, rewrite and sell article access; agreements not independently inspected."
+  }
+}
