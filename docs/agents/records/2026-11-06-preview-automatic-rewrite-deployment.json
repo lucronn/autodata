@@ -13,7 +13,7 @@
     "Verify source fallback followed by automatic permanent canonical content with UNREVIEWED metadata, no manual review dependency and zero warm provider/model calls; report concrete blockers or execute exact runtime rollback on failure, preserving stored data and disabled commerce."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-06T07:54:11Z",
+  "updated_at": "2026-11-06T07:55:01Z",
   "source_pin": {
     "reviewed_candidate_sha": "89b643336e47a9e2ecc9208a77552dd96d527e08",
     "implementation_sha": "034708e8587abaf3e97cefa90cc47178f6cdfeb3",
@@ -27,7 +27,10 @@
     "source_first_code_rollout_allowed": true,
     "live_canonical_probe_requires_approved_private_key_delivery": true,
     "missing_secret_blocker": "MODEL_KEY_MISSING",
-    "chat_secret_delivery_forbidden": true
+    "chat_secret_delivery_forbidden": true,
+    "no_auto_job_or_prepare_ensure_or_selected_article_http_probe_before_key": true,
+    "missing_key_terminal_job_code": "MODEL_NOT_CONFIGURED",
+    "transformation_key_dedupe_can_retain_source_after_failure": true
   },
   "tracking_sync": {
     "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6680054946",
@@ -37,6 +40,18 @@
     "prior_prefix_preserved": true,
     "field_length": 523,
     "verified_by": "gate documentation agent authorized by coordinator",
-    "readback_utc": "2026-11-06T07:54:11Z"
+    "readback_utc": "2026-11-06T07:55:01Z",
+    "amendment": "Same Issue comment amended and read back exactly for no-key job-creation prohibition and explicit short-lived worker prerequisite; Project reference re-read unchanged."
+  },
+  "worker_precondition": {
+    "existing_command": [
+      "python",
+      "-m",
+      "autodata_ingestion.http_service"
+    ],
+    "dedicated_worker_present": false,
+    "http_rollout_alone_does_not_publish": true,
+    "approved_execution": "supervised existing article_worker.py --once only after model key and sole-selected-eligible-job checks",
+    "persistent_daemon_allowed": false
   }
 }
