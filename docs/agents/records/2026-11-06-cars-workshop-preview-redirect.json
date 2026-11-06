@@ -13,13 +13,21 @@
     "Promote the verified cars-landing deployment, verify apex redirect and unchanged home/security headers plus disabled preview purchase configuration, record exact deployment evidence, and restore previous deployment dpl_FewQnGj6wVh7GodgrML8QbrSd7Uf if verification fails."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-06T07:58:08.920554Z",
+  "updated_at": "2026-11-06T08:00:40.297574Z",
   "tracking_sync": {
     "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6680119766",
     "project_item": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
     "project_field": "Release hotfix reference",
     "readback_exact": true,
     "prior_prefix_preserved": true,
-    "updated_at": "2026-11-06T07:58:25.381061Z"
+    "updated_at": "2026-11-06T08:00:40.297574Z",
+    "existing_project_index_readback": true
+  },
+  "preview_feedback_amendment": {
+    "parent_checkpoint_sha": "9fd3639b7dfaa34c330610d02f798016e66e5e2a",
+    "preview_deployment_id": "dpl_8oTwc6JNM38pMgyDAXnJ9jZwKqSX",
+    "exact_suffix_length": 163,
+    "exact_suffix_sha256": "b56e688a449710b744f885c2672b93d2e602d74ff47a5c7cf50e59728d3aa389",
+    "production_raw_equality_required": true
   }
 }

@@ -43,12 +43,26 @@ Files: private deployment artifact directory `/home/corp/autodata-evidence/cars-
 
 - [ ] Deploy a preview of that existing project with `vercel --cwd /home/corp/autodata-evidence/cars-workshop-preview-redirect/deployment-src --scope curtt --yes`. Save the exact Ready deployment ID and original/new config hashes.
 - [ ] Use GET without following redirects against preview `/workshop`, `/workshop/`, `/workshop/example`, and `/workshop?order=redirect-probe&region=US`. Require HTTP307 with correct destination path, allowing existing trailing-slash normalization as a bounded intermediate hop; require each query value survives the final redirect. Never create a payment or authenticated session. If Vercel preview protection prevents public probes, use its authenticated CLI request tooling without logging tokens, or do not promote.
-- [ ] Require preview `/` HTTP200, identical landing body SHA256 to baseline, and all three existing security headers. Require no new redirect for `/auth/config` or `/v1/catalog/years`; these remain owned by the landing project and their baseline status must match.
+- [ ] Require preview `/` HTTP200 and all three existing security headers. Compare its landing body byte-for-byte to baseline after removing only the exact Vercel-injected preview feedback suffix allowed by the acceptance amendment below; record raw and comparison hashes. Require no new redirect for `/auth/config` or `/v1/catalog/years`; these remain owned by the landing project and their baseline status must match.
 - [ ] Coordinator reviews exact deployment/config diff and promotes only after required verification. Use `vercel promote <verified-deployment-url> --scope curtt`; do not move domains or DNS.
-- [ ] Repeat apex route/query/home/header checks. Confirm preview `/workshop/purchase-config.json` remains enabled:false. Record exact status/Location, hashes, deployment ID and UTC timestamp in the canonical verification document and Issue186/Project8.
+- [ ] Repeat apex route/query/home/header checks, requiring the raw production home body to match baseline byte-for-byte without any normalization or script removal. Confirm preview `/workshop/purchase-config.json` remains enabled:false. Record exact status/Location, hashes, deployment ID and UTC timestamp in the canonical verification document and Issue186/Project8.
 
 ## Rollback
 
 Restore the exact previous production deployment with `vercel promote cars-landing-ksupv50cx-curtt.vercel.app --scope curtt` (deployment dpl_FewQnGj6wVh7GodgrML8QbrSd7Uf), then verify `/` and its three headers match baseline and `/workshop` returns its original404. This is a redeploy/re-promotion of the previous source, not a domain reassignment. If promotion cannot reuse the retained deployment, recover and redeploy its unchanged three files to the same cars-landing project. Never restore/delete application databases. No rollback action is executed by this planning agent.
 
 Tracking readback: https://github.com/lucronn/autodata/issues/186#issuecomment-6680119766; Project8 item PVTI_lAHOCSJ8cc4BiQ2BzhFocs4 Release hotfix reference preserves its complete prior prefix and indexes this exact plan/todos/docs comment. Readback verified before checkpoint commit.
+
+## Preview feedback script acceptance amendment
+
+The coordinator's Ready preview is `dpl_8oTwc6JNM38pMgyDAXnJ9jZwKqSX`. Read-only retained-body comparison independently confirms Vercel appends exactly one163-byte feedback script after the original closing `</html>` and newline. Baseline home SHA256 is `fb4b28780cabd9b72db5e063ac0dc49ceba2c93c4fe06ec954e7a2218b61cc3a`; raw preview home SHA256 is `9f91843b34673c371fa814eb9ed1b4c754d4400594b8b65726f6659cc42cfecb`. The exact appended suffix is:
+
+```html
+<script async data-explicit-opt-in="true" data-deployment-id="dpl_8oTwc6JNM38pMgyDAXnJ9jZwKqSX" src="https://vercel.live/_next-live/feedback/feedback.js"></script>
+```
+
+For this exact preview deployment only, require that exact suffix occurs once at the end, record its163-byte length and SHA256 `b56e688a449710b744f885c2672b93d2e602d74ff47a5c7cf50e59728d3aa389`, remove only those exact bytes in the comparison buffer, and require all remaining bytes equal the baseline body. Do not alter the served page or source, strip arbitrary scripts, normalize whitespace, parse/reserialize HTML, or ignore other differences. For another preview deployment, capture and explicitly review its exact platform-injected suffix before accepting an equivalent narrowly scoped comparison.
+
+Production apex `/` after promotion and after any rollback must match the unmodified baseline body byte-for-byte with raw SHA256 `fb4b28780cabd9b72db5e063ac0dc49ceba2c93c4fe06ec954e7a2218b61cc3a`; no script removal or normalization is permitted. If production differs, stop acceptance and restore the prior deployment. Existing security-header, redirect path/query, landing config and disabled-purchase requirements remain mandatory.
+
+Coordinator-reported preview observations: Workshop307, nested307, preserved query, trailing slash308 normalization hop, non-Workshop paths404 and unchanged security headers. These observations do not substitute for post-promotion production verification. This amendment is docs only; this planning agent did not deploy or promote.
