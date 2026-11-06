@@ -1,0 +1,17 @@
+{
+  "goal": "Provide a clearly labeled fixture-only read-only Workshop demo without purchases or grants, and update the configured Inception default to the verified current mercury-3 model.",
+  "plan_ref": "docs/superpowers/plans/2026-11-06-workshop-readonly-demo.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/workshop-readonly-demo.md"
+  ],
+  "todo": [
+    "Implement an explicit fixture-only Workshop demo entry with a fictional vehicle, article search/reader/back navigation, an illustrative $20 USD quote and persistent sample-content labeling; load no live application/auth/commerce modules in demo mode.",
+    "Keep demo purchase/sign-in/library mutations disabled and make zero catalog, auth, commerce, preparation, ingestion or model requests; preserve paid routes, grants and production authentication.",
+    "Update Inception model defaults to mercury-3 and make its request temperature/token fields compatible while retaining explicit INCEPTION_MODEL overrides and historical Mercury-2 metadata.",
+    "Run focused client/Go/Python regressions and browser verification proving demo navigation and no live API requests; record exact candidate evidence, commit/push coherent milestones and synchronize Issue186/Project8."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-06T19:15:56.212812+00:00"
+}
