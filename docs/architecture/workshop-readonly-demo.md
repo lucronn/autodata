@@ -55,3 +55,27 @@ The implemented and deployed source is `32373defb4237e4a9e3db59a109a4d2ccf092236
 Both frozen job/source/profile/generation fences were checked before execution. Banktwo job `64888ce4-429e-4e22-9892-48d1fb4b82eb` used one Mercury-3 call and published canonical revision `563bd31d-8e07-4ccb-8549-2189fe52bd1a`, with automatic validation, `UNREVIEWED` metadata and no manual review row. Ten warm read/ensure pairs and a separate fresh-process read reused that revision; measured source, media, model, scheduling and HTTP calls were all zero, and full database fingerprints stayed unchanged. Its source has zero eligible ordinary-prose slots, so this proves automatic introduction generation, protected-structure retention and permanent reuse, not full ordinary-prose rewriting.
 
 Bankone job `a96ebe3a-16b9-4c3f-acb4-986efbb5ff2d` used one Mercury-3 call and ended `REWRITE_RESPONSE_INVALID` before any candidate revision or response was stored. It remains on source fallback. The retained metadata does not identify the exact parse or output-budget cause. No retry, queue drain, new enrollment, checkout enablement or customer-grant change was made. A diagnosed response handling/output-budget fix and a prose-bearing Bankone acceptance remain necessary before the dual-bank canonical rewrite goal can be claimed. Sanitized tracking: [Issue #186 comment](https://github.com/lucronn/autodata/issues/186#issuecomment-6693522651) and Project #8's dedicated demo preview field. Detailed runtime/model evidence and rollback inputs remain private outside Git.
+
+## Bankone exact-job diagnostic recovery checkpoint
+
+Goal: Classify Mercury-3 response failures without retaining content and permit at most one guarded recovery dispatch for the existing Bankone prose canary.
+
+Issue: https://github.com/lucronn/autodata/issues/186
+Project: https://github.com/users/lucronn/projects/8
+Plan: `docs/superpowers/plans/2026-11-06-bankone-diagnostic-recovery.md`
+Record: `docs/agents/records/2026-11-06-bankone-diagnostic-recovery.json`
+Canonical document: `docs/architecture/workshop-readonly-demo.md`
+Branch: `codex/bankone-diagnostic-recovery`, starting source `0d2db0d8abdb9531627252c2f6c12ef04ceeb29d` (PR346).
+
+Frozen scope: Bankone job `a96ebe3a-16b9-4c3f-acb4-986efbb5ff2d`, article `aad66f67-355c-5d92-ab21-b4894bca9069`, source revision `acd11534-199a-40f7-bf94-717b34895752`, profile `full-prose-auto-v1`, 34 eligible prose slots. Existing outcome is `dead_letter` / `REWRITE_RESPONSE_INVALID`, one consumed dispatch, no candidate. Banktwo already published with one dispatch and zero ordinary-prose slots; it receives no further call. Original parse/output-budget cause remains unproven.
+
+Maximum one additional Bankone provider dispatch, including diagnostic calls; cumulative Bankone <=2 and two-bank global <=4. Unknown delivery counts as consumed. Preserve every attempt/counter: no reset, new article/enrollment, broad worker/queue drain, fallback model, automatic second call, schema/profile/validator relaxation, checkout or grant change. Keep existing configured output budget (8192) and timeout; this checkpoint authorizes no tuning experiment. Never log or persist raw model body/content, prompt, licensed source, headers or exception text as diagnostics. Retain source fallback on failure.
+
+Concrete todo:
+- [ ] Add content-free Mercury-3 response diagnostics and focused parser/privacy regressions.
+- [ ] Add an atomic one-use recovery claim for the frozen Bankone job with unchanged source/generation/profile fences and historical attempt budgets.
+- [ ] Validate and push coherent implementation milestones; obtain exact-SHA review and required CI before coordinator deployment.
+- [ ] Dispatch the frozen Bankone job at most once after fresh guards, or record its exact blocker; retain source fallback on failure.
+- [ ] Verify all 34 prose slots, protected structure and permanent warm reuse on success; synchronize sanitized outcome evidence.
+
+This is a docs-only checkpoint. The committed checkpoint must pass machine preflight at its full SHA before implementation. Runtime work follows coordinator integration/review/CI and fresh exact-job guards; this planning turn performs no provider or job call.
