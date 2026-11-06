@@ -74,3 +74,17 @@ python3 scripts/autonomy/pre_implementation.py --record docs/agents/records/2026
 ```
 
 Expected: `{"status":"synchronized","errors":[]}`. Implementation starts only after coordinator assigns the passing exact checkpoint. Preserve all PR349 outcome text and existing Issue body/Project fields.
+
+## Runtime-only amendment: reviewed private one-shot orchestration
+
+This amendment explicitly permits the coordinator to stage and independently review one private one-shot orchestration script for fresh Bankone canonical candidate `8cc70d03-6794-577c-aba4-bd555996d0c9`. This narrowly supersedes the prohibition on implicitly authorized operational scripts for this exact candidate only. A distinct source_article_ref on the same known reachable 2015 GMC Terrain configuration is permitted; re-keying frozen Bankone remains forbidden.
+
+The script may call only existing enrollment and lifecycle functions: enroll this exact fresh descriptor; perform an exact-job source-only run with model dispatch disabled and park; inspect and pin its actual job/source revision/profile/generation/descriptor fences; then invoke the existing worker for that exact job with at most one persisted model attempt. Capture private backup and before/after fingerprints, verify freshness (no prior model attempt/publication), and verify unchanged frozen Bankone/Banktwo counters and unrelated queue/business state. No generic worker/daemon/queue drain, additional candidate, model tuning/diagnostic call, retry/reset, response salvage, code/validator/schema change, checkout or grant change is authorized. Unknown delivery consumes the single-call budget. Existing Mercury3 limits32768tokens/60seconds stay unchanged.
+
+Before any script execution, independently review the exact private script bytes/hash against these guards, the reviewed integrated PR350 candidate and existing source-only park mechanism. Record the script hash and review result privately; coordinator verifies the amended full-SHA preflight and dispatches only the reviewed bytes. Stop on any unavailable or mismatched guard rather than improvise. This amendment itself performs no source/model/runtime call.
+
+Concrete todo for the runtime-only amendment:
+- [ ] Stage the private one-shot script using only the existing exact-candidate enrollment/source-only park/worker functions, backup and fingerprint guards; independently review its exact bytes/hash before execution.
+- [ ] After reviewed PR350 integration/CI and coordinator dispatch, source-only park the exact fresh candidate, pin actual persisted fences, and permit at most one persisted exact-job model dispatch with no retry.
+- [ ] On success prove strict all-prose/protected-content publication plus ten warm read/ensure pairs and fresh-process reuse with measured zero source/media/model/schedule calls; on failure retain source fallback and consumed budget.
+- [ ] Verify checkout disabled, frozen identities and unrelated business/queue fingerprints unchanged; synchronize sanitized outcome while private source, credentials and raw responses stay outside Git.
