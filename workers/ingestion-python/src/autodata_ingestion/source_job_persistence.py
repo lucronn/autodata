@@ -394,8 +394,34 @@ def claim_exact_bankone_recovery(
         return _lease_from_row(row, worker_id)
 
 
+def _finalize_expired_bankone_recovery(cur, job_id):
+    """End only the frozen one-shot lease; never reacquire or return it."""
+    job = cur.execute("""SELECT * FROM source_fetch_jobs
+        WHERE source_fetch_job_id=%s AND canonical_article_id=%s AND source_revision_id=%s
+          AND (%s::uuid IS NULL OR source_fetch_job_id=%s)
+          AND checkpoint ? 'bankone_exact_recovery' AND status='processing'
+          AND lease_expires_at<clock_timestamp()
+        FOR UPDATE SKIP LOCKED""", (BANKONE_RECOVERY_JOB, BANKONE_RECOVERY_ARTICLE,
+            BANKONE_RECOVERY_SOURCE, job_id, job_id)).fetchone()
+    if job is None:
+        return
+    # Unknown delivery remains consumed. Change only this lease's unresolved
+    # dispatched attempt; the original terminal attempt is immutable evidence.
+    _mark_delivery_ambiguous(cur, job)
+    ambiguous = cur.execute("""SELECT 1 FROM canonical_article_rewrite_attempts
+        WHERE source_fetch_job_id=%s AND lease_token=%s AND status='ambiguous'
+        LIMIT 1""", (job["source_fetch_job_id"], job["lease_token"])).fetchone()
+    consumed = job["checkpoint"]["bankone_exact_recovery"].get("dispatches_consumed") == 1
+    code = "MODEL_DELIVERY_AMBIGUOUS" if ambiguous or consumed else "RECOVERY_LEASE_EXPIRED"
+    cur.execute("""UPDATE source_fetch_jobs SET status='dead_letter',error_code=%s,retryable=false,
+        lease_owner=NULL,lease_expires_at=NULL,heartbeat_at=NULL,next_attempt_at=NULL,
+        updated_at=clock_timestamp() WHERE source_fetch_job_id=%s""",
+        (code, job["source_fetch_job_id"]))
+
+
 def claim_source_job(repo, *, worker_id, model_ready=True, job_id=None):
     with repo.connect() as conn, _cursor(conn) as cur:
+        _finalize_expired_bankone_recovery(cur, job_id)
         resumed = _claim_automatic_resume(cur, worker_id, job_id)
         if resumed is not None:
             return resumed

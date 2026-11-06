@@ -548,8 +548,47 @@ def test_generic_claim_cannot_reclaim_recovery_or_consume_more_budget(fresh_data
     repo=fresh_database(); args=recovery_fixture(repo)
     lease=jobs.claim_exact_bankone_recovery(repo,**args)
     with repo.connect() as conn:
-        conn.execute("UPDATE source_fetch_jobs SET lease_expires_at=clock_timestamp()-interval '1 second',checkpoint=jsonb_set(checkpoint,'{bankone_exact_recovery,state}',%s::jsonb) WHERE source_fetch_job_id=%s",('"'+state+'"',BANKONE_JOB))
+        conn.execute("UPDATE source_fetch_jobs SET checkpoint=jsonb_set(checkpoint,'{bankone_exact_recovery,state}',%s::jsonb) WHERE source_fetch_job_id=%s",('"'+state+'"',BANKONE_JOB))
     before=recovery_snapshot(repo)
     assert jobs.claim_source_job(repo,worker_id=uuid.uuid4()) is None
     assert jobs.claim_source_job(repo,worker_id=uuid.uuid4(),job_id=BANKONE_JOB) is None
     assert recovery_snapshot(repo)==before
+
+
+@pytest.mark.parametrize('dispatched',[False,True])
+def test_expired_recovery_is_terminal_without_another_claim(fresh_database,dispatched):
+    from psycopg.types.json import Jsonb
+    from autodata_ingestion import source_job_persistence as jobs
+    repo=fresh_database(); args=recovery_fixture(repo)
+    lease=jobs.claim_exact_bankone_recovery(repo,**args)
+    attempt_id=uuid.uuid4()
+    with repo.connect() as conn:
+        if dispatched:
+            conn.execute("""INSERT INTO canonical_article_rewrite_attempts(rewrite_attempt_id,source_fetch_job_id,lease_token,attempt_number,provider,model,profile_version,prompt_hash,input_hash,status,dispatched_at)
+                VALUES (%s,%s,%s,2,'inception','mercury-3','full-prose-auto-v1',%s,%s,'dispatched',now())""",(attempt_id,BANKONE_JOB,lease.token,'a'*64,args['expected_normalized_hash']))
+            marker=dict(lease.checkpoint['bankone_exact_recovery'],state='dispatched',dispatches_consumed=1)
+            conn.execute("UPDATE source_fetch_jobs SET checkpoint=checkpoint||%s WHERE source_fetch_job_id=%s",(Jsonb({'bankone_exact_recovery':marker}),BANKONE_JOB))
+    expire(repo,lease)
+    before=recovery_snapshot(repo)
+    # An unrelated exact poll must not finalize the selected recovery.
+    assert jobs.claim_source_job(repo,worker_id=uuid.uuid4(),job_id=uuid.uuid4()) is None
+    assert recovery_snapshot(repo)==before
+    assert jobs.claim_source_job(repo,worker_id=uuid.uuid4(),job_id=BANKONE_JOB) is None
+    after=recovery_snapshot(repo)
+    row=next(row for row in after[1] if str(row['source_fetch_job_id'])==BANKONE_JOB)
+    assert row['status']=='dead_letter' and row['retryable'] is False
+    assert row['error_code']==('MODEL_DELIVERY_AMBIGUOUS' if dispatched else 'RECOVERY_LEASE_EXPIRED')
+    assert row['retry_count']==2 and row['lease_token']==2
+    assert row['lease_owner'] is None and row['lease_expires_at'] is None
+    assert after[0]==before[0] and after[3:]==before[3:]
+    old_attempts=[row for row in after[2] if row['lease_token']==1]
+    assert old_attempts==[row for row in before[2] if row['lease_token']==1]
+    if dispatched:
+        attempt=next(row for row in after[2] if row['rewrite_attempt_id']==attempt_id)
+        assert attempt['status']=='ambiguous' and attempt['error_code']=='MODEL_DELIVERY_AMBIGUOUS'
+        assert attempt['completed_at'] is not None
+        assert row['checkpoint']['bankone_exact_recovery']['dispatches_consumed']==1
+    terminal=recovery_snapshot(repo)
+    assert jobs.claim_source_job(repo,worker_id=uuid.uuid4()) is None
+    assert recovery_snapshot(repo)==terminal
+    with pytest.raises(jobs.BankoneRecoveryBlocked): jobs.claim_exact_bankone_recovery(repo,**args)
