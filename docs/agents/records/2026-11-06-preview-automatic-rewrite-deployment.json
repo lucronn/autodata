@@ -13,7 +13,7 @@
     "Verify source fallback followed by automatic permanent canonical content with UNREVIEWED metadata, no manual review dependency and zero warm provider/model calls; report concrete blockers or execute exact runtime rollback on failure, preserving stored data and disabled commerce."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-06T07:55:01Z",
+  "updated_at": "2026-11-06T07:56:37Z",
   "source_pin": {
     "reviewed_candidate_sha": "89b643336e47a9e2ecc9208a77552dd96d527e08",
     "implementation_sha": "034708e8587abaf3e97cefa90cc47178f6cdfeb3",
@@ -38,10 +38,10 @@
     "project_field": "Release hotfix reference",
     "readback_exact": true,
     "prior_prefix_preserved": true,
-    "field_length": 523,
+    "field_length": 564,
     "verified_by": "gate documentation agent authorized by coordinator",
-    "readback_utc": "2026-11-06T07:55:01Z",
-    "amendment": "Same Issue comment amended and read back exactly for no-key job-creation prohibition and explicit short-lived worker prerequisite; Project reference re-read unchanged."
+    "readback_utc": "2026-11-06T07:56:37Z",
+    "amendment": "Same Issue comment amended/read back exactly for empty serving article tables, bounded fresh enrollment only after key, and owner rights attestation; Project suffix appended with exact readback and prior prefix preserved."
   },
   "worker_precondition": {
     "existing_command": [
@@ -53,5 +53,20 @@
     "http_rollout_alone_does_not_publish": true,
     "approved_execution": "supervised existing article_worker.py --once only after model key and sole-selected-eligible-job checks",
     "persistent_daemon_allowed": false
+  },
+  "fresh_enrollment_amendment": {
+    "observed_serving_counts": {
+      "canonical_articles": 0,
+      "source_revisions": 0,
+      "canonical_revisions": 0,
+      "source_fetch_jobs": 0
+    },
+    "before_key_scope": "HTTP code rollout and health only; no article requests or availability claim",
+    "after_key_scope": "one authentic vehicle resolution/index traversal and one selected descriptor/source capture/automatic rewrite per bank",
+    "max_index_pages_per_bank": 4,
+    "max_observed_descriptors_per_bank": 100,
+    "max_persisted_selected_descriptors_per_bank": 1,
+    "existing_request_byte_model_time_caps_unchanged": true,
+    "owner_rights_attestation": "Human owner states both bank agreements authorize AutoData, LLC to store, rewrite and sell article access; agreements not independently inspected."
   }
 }
