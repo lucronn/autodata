@@ -369,3 +369,22 @@ def test_failed_or_ambiguous_automatic_result_cannot_bypass_budget(fresh_databas
     expire(repo, lease)
     assert claim_source_job(repo, worker_id=uuid.uuid4()) is None
     assert store.load_article_state(repo, lease.canonical_article_id)["content_origin"] == "source"
+
+
+def test_exact_job_claim_does_not_claim_or_sweep_unselected_jobs(fresh_database):
+    from autodata_ingestion.source_job_persistence import claim_source_job
+    repo = fresh_database()
+    first = ensure(repo, seed_article(repo))
+    second = ensure(repo, seed_article(repo))
+    old = claim_source_job(repo, worker_id=uuid.uuid4(), job_id=first.job_id)
+    with repo.connect() as conn:
+        conn.execute("UPDATE source_fetch_jobs SET retry_count=max_attempts,lease_expires_at=clock_timestamp()-interval '1 second' WHERE source_fetch_job_id=%s", (first.job_id,))
+    selected = claim_source_job(repo, worker_id=uuid.uuid4(), job_id=second.job_id)
+    assert selected.job_id == second.job_id
+    assert claim_source_job(repo, worker_id=uuid.uuid4(), job_id=uuid.uuid4()) is None
+    with repo.connect() as conn:
+        row = conn.execute("SELECT status,lease_token FROM source_fetch_jobs WHERE source_fetch_job_id=%s", (first.job_id,)).fetchone()
+        assert row == {"status":"processing", "lease_token":old.token}
+    assert claim_source_job(repo, worker_id=uuid.uuid4(), job_id=first.job_id) is None
+    with repo.connect() as conn:
+        assert conn.execute("SELECT status FROM source_fetch_jobs WHERE source_fetch_job_id=%s", (first.job_id,)).fetchone()["status"] == "dead_letter"

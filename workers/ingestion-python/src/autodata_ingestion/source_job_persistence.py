@@ -159,15 +159,15 @@ def _mark_delivery_ambiguous(cur, job):
         (job["source_fetch_job_id"], job["lease_token"]))
 
 
-def _claim_review_resume(cur, worker_id):
+def _claim_review_resume(cur, worker_id, job_id=None):
     """Saved full drafts have a publication lease, never another model attempt."""
     from .article_lifecycle_store import _require_full_approval
     jobs = cur.execute("""SELECT * FROM source_fetch_jobs WHERE job_kind='article'
-        AND rewrite_profile_version='full-prose-review-v1'
+        AND rewrite_profile_version='full-prose-review-v1' AND (%s::uuid IS NULL OR source_fetch_job_id=%s)
         AND checkpoint->'content_review'->>'state'='approved'
         AND ((status='pending' AND COALESCE(next_attempt_at,'-infinity'::timestamptz)<=clock_timestamp())
           OR (status='processing' AND lease_expires_at<clock_timestamp()))
-        ORDER BY created_at,source_fetch_job_id FOR UPDATE SKIP LOCKED LIMIT 1""").fetchall()
+        ORDER BY created_at,source_fetch_job_id FOR UPDATE SKIP LOCKED LIMIT 1""", (job_id,job_id)).fetchall()
     for job in jobs:
         article = cur.execute("SELECT * FROM canonical_articles WHERE canonical_article_id=%s FOR UPDATE", (job["canonical_article_id"],)).fetchone()
         candidate = cur.execute("SELECT * FROM canonical_article_revisions WHERE transformation_key=%s FOR UPDATE", (job["transformation_key"],)).fetchone()
@@ -185,18 +185,18 @@ def _claim_review_resume(cur, worker_id):
     return None
 
 
-def _claim_automatic_resume(cur, worker_id):
+def _claim_automatic_resume(cur, worker_id, job_id=None):
     """Saved successful auto output consumes publication leases, not model attempts."""
     from .article_lifecycle_store import automatic_candidate_validation
     job = cur.execute("""SELECT j.* FROM source_fetch_jobs j
         JOIN canonical_article_revisions r ON r.transformation_key=j.transformation_key
         JOIN canonical_article_rewrite_attempts a ON a.canonical_article_revision_id=r.canonical_article_revision_id AND a.status='succeeded'
-        WHERE j.job_kind='article' AND j.rewrite_profile_version='full-prose-auto-v1'
+        WHERE j.job_kind='article' AND j.rewrite_profile_version='full-prose-auto-v1' AND (%s::uuid IS NULL OR j.source_fetch_job_id=%s)
           AND r.status IN ('building','validated') AND j.checkpoint->>'rewrite_error_code' IS NULL
           AND j.checkpoint->>'candidate_revision_id'=r.canonical_article_revision_id::text
           AND ((j.status='pending' AND COALESCE(j.next_attempt_at,'-infinity'::timestamptz)<=clock_timestamp())
             OR (j.status='processing' AND j.lease_expires_at<clock_timestamp()))
-        ORDER BY j.created_at,j.source_fetch_job_id FOR UPDATE OF j SKIP LOCKED LIMIT 1""").fetchone()
+        ORDER BY j.created_at,j.source_fetch_job_id FOR UPDATE OF j SKIP LOCKED LIMIT 1""", (job_id,job_id)).fetchone()
     if job is None:
         return None
     article = cur.execute("SELECT * FROM canonical_articles WHERE canonical_article_id=%s FOR UPDATE", (job["canonical_article_id"],)).fetchone()
@@ -221,27 +221,74 @@ def _claim_automatic_resume(cur, worker_id):
     return _lease_from_row(row,worker_id)
 
 
-def claim_source_job(repo, *, worker_id):
+def park_automatic_for_model(repo, lease):
+    """Release only an undispatched auto job after source/normalization commit."""
+    from .article_lifecycle_store import _lock_transform
     with repo.connect() as conn, _cursor(conn) as cur:
-        resumed = _claim_automatic_resume(cur, worker_id)
+        job, _ = _lock_transform(cur, lease)
+        if (job["rewrite_profile_version"] != "full-prose-auto-v1"
+            or not job["source_revision_id"] or not job["checkpoint"].get("normalized_hash")
+            or cur.execute("SELECT 1 FROM canonical_article_rewrite_attempts WHERE source_fetch_job_id=%s", (lease.job_id,)).fetchone()):
+            raise ValueError("MODEL_CONFIGURATION_PARK_INVALID")
+        cur.execute("""UPDATE source_fetch_jobs SET status='failed',error_code='MODEL_NOT_CONFIGURED',retryable=true,
+            checkpoint=checkpoint||'{"awaiting_model_configuration":true}'::jsonb,next_attempt_at=NULL,
+            lease_owner=NULL,lease_expires_at=NULL,heartbeat_at=NULL,updated_at=clock_timestamp()
+            WHERE source_fetch_job_id=%s""", (lease.job_id,))
+
+
+def _claim_model_configuration_resume(cur, worker_id, job_id):
+    """Configuration waits dispatched nothing and consume no additional attempt."""
+    job = cur.execute("""SELECT j.* FROM source_fetch_jobs j JOIN canonical_articles a
+        ON a.canonical_article_id=j.canonical_article_id
+        WHERE j.job_kind='article' AND j.rewrite_profile_version='full-prose-auto-v1'
+          AND (%s::uuid IS NULL OR j.source_fetch_job_id=%s)
+          AND j.status IN ('failed','dead_letter') AND j.error_code='MODEL_NOT_CONFIGURED'
+          AND j.source_revision_id IS NOT NULL AND j.checkpoint ? 'normalized_document' AND j.checkpoint ? 'normalized_hash'
+          AND a.current_job_id=j.source_fetch_job_id AND a.request_generation=j.request_generation
+          AND a.current_source_revision_id=j.source_revision_id
+          AND a.target_rewrite_profile_version=j.rewrite_profile_version AND a.target_normalization_version=j.normalization_version
+          AND NOT EXISTS (SELECT 1 FROM canonical_article_rewrite_attempts r WHERE r.source_fetch_job_id=j.source_fetch_job_id)
+        ORDER BY j.created_at,j.source_fetch_job_id FOR UPDATE OF j SKIP LOCKED LIMIT 1""", (job_id,job_id)).fetchone()
+    if job is None:
+        return None
+    article = cur.execute("SELECT * FROM canonical_articles WHERE canonical_article_id=%s FOR UPDATE", (job["canonical_article_id"],)).fetchone()
+    if (article["current_job_id"] != job["source_fetch_job_id"] or article["request_generation"] != job["request_generation"]
+        or article["current_source_revision_id"] != job["source_revision_id"]
+        or article["target_rewrite_profile_version"] != job["rewrite_profile_version"]
+        or article["target_normalization_version"] != job["normalization_version"]):
+        return None
+    row = cur.execute("""UPDATE source_fetch_jobs SET status='processing',phase='rewriting',lease_token=lease_token+1,
+        lease_owner=%s,lease_expires_at=clock_timestamp()+interval '90 seconds',heartbeat_at=clock_timestamp(),
+        checkpoint=checkpoint-'awaiting_model_configuration',error_code=NULL,retryable=false,next_attempt_at=NULL,updated_at=clock_timestamp()
+        WHERE source_fetch_job_id=%s RETURNING *""", (worker_id,job["source_fetch_job_id"])).fetchone()
+    return _lease_from_row(row,worker_id)
+
+
+def claim_source_job(repo, *, worker_id, model_ready=True, job_id=None):
+    with repo.connect() as conn, _cursor(conn) as cur:
+        resumed = _claim_automatic_resume(cur, worker_id, job_id)
         if resumed is not None:
             return resumed
-        resumed = _claim_review_resume(cur, worker_id)
+        resumed = _claim_review_resume(cur, worker_id, job_id)
         if resumed is not None:
             return resumed
+        if model_ready:
+            resumed = _claim_model_configuration_resume(cur, worker_id, job_id)
+            if resumed is not None:
+                return resumed
         cur.execute(
             """WITH exhausted AS (SELECT source_fetch_job_id FROM source_fetch_jobs
-        WHERE job_kind IN ('article','catalog_index') AND NOT (checkpoint @> '{"source_only_reprojection":true}'::jsonb) AND NOT (rewrite_profile_version='full-prose-review-v1' AND checkpoint ? 'content_review') AND status='processing' AND retry_count>=max_attempts AND lease_expires_at<clock_timestamp() FOR UPDATE SKIP LOCKED)
+        WHERE job_kind IN ('article','catalog_index') AND (%s::uuid IS NULL OR source_fetch_job_id=%s) AND NOT (rewrite_profile_version='full-prose-auto-v1' AND COALESCE(error_code,'')='MODEL_NOT_CONFIGURED') AND NOT (checkpoint @> '{"source_only_reprojection":true}'::jsonb) AND NOT (rewrite_profile_version='full-prose-review-v1' AND checkpoint ? 'content_review') AND status='processing' AND retry_count>=max_attempts AND lease_expires_at<clock_timestamp() FOR UPDATE SKIP LOCKED)
         UPDATE source_fetch_jobs j SET status='dead_letter',error_code='LEASE_ATTEMPTS_EXHAUSTED',retryable=false,lease_owner=NULL,lease_expires_at=NULL,heartbeat_at=NULL,updated_at=clock_timestamp()
         FROM exhausted e WHERE j.source_fetch_job_id=e.source_fetch_job_id
-        RETURNING j.source_fetch_job_id,j.lease_token"""
+        RETURNING j.source_fetch_job_id,j.lease_token""", (job_id,job_id)
         )
         for exhausted in cur.fetchall():
             _mark_delivery_ambiguous(cur, exhausted)
         job = cur.execute(
-            """SELECT * FROM source_fetch_jobs WHERE job_kind IN ('article','catalog_index') AND NOT (checkpoint @> '{"source_only_reprojection":true}'::jsonb) AND NOT (rewrite_profile_version='full-prose-review-v1' AND checkpoint ? 'content_review') AND retry_count<max_attempts AND
+            """SELECT * FROM source_fetch_jobs WHERE job_kind IN ('article','catalog_index') AND (%s::uuid IS NULL OR source_fetch_job_id=%s) AND NOT (rewrite_profile_version='full-prose-auto-v1' AND COALESCE(error_code,'')='MODEL_NOT_CONFIGURED') AND NOT (checkpoint @> '{"source_only_reprojection":true}'::jsonb) AND NOT (rewrite_profile_version='full-prose-review-v1' AND checkpoint ? 'content_review') AND retry_count<max_attempts AND
         ((status IN ('pending','failed') AND COALESCE(next_attempt_at,'-infinity'::timestamptz)<=clock_timestamp()) OR (status='processing' AND lease_expires_at<clock_timestamp()))
-        ORDER BY created_at,source_fetch_job_id FOR UPDATE SKIP LOCKED LIMIT 1"""
+        ORDER BY created_at,source_fetch_job_id FOR UPDATE SKIP LOCKED LIMIT 1""", (job_id,job_id)
         ).fetchone()
         if job is None:
             return None

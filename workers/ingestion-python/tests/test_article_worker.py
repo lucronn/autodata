@@ -280,3 +280,53 @@ def test_automatic_invalid_prose_keeps_source_without_manual_review(fresh_databa
     assert state["processing_state"] == "failed"
     with repo.connect() as conn:
         assert conn.execute("SELECT status FROM source_fetch_jobs WHERE source_fetch_job_id=%s", (lease.job_id,)).fetchone()["status"] == "dead_letter"
+
+
+@pytest.mark.parametrize("provider", ["bankone", "banktwo"])
+def test_automatic_missing_model_parks_without_attempt_and_resumes_exact_job(fresh_database, capture_fixture, provider):
+    from autodata_ingestion.article_lifecycle import run_article_job, run_article_worker_once
+    from autodata_ingestion.source_job_persistence import claim_source_job
+    repo = fresh_database(); lease, source = prepare_automatic(repo, capture_fixture, provider)
+    run_article_job(repo, lease, registry={}, object_store=None, model_client=None)
+    state = store.load_article_state(repo, lease.canonical_article_id)
+    assert state["content_origin"] == "source" and state["canonical_revision_id"] is None
+    with repo.connect() as conn:
+        parked = conn.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s", (lease.job_id,)).fetchone()
+        assert parked["status"] == "failed" and parked["checkpoint"]["awaiting_model_configuration"] is True
+        assert conn.execute("SELECT count(*) AS n FROM canonical_article_rewrite_attempts").fetchone()["n"] == 0
+    for _ in range(3):
+        assert not run_article_worker_once(repo, worker_id=uuid4(), registry={}, object_store=None, model_client=None, job_id=lease.job_id)
+    assert claim_source_job(repo, worker_id=uuid4(), model_ready=True, job_id=uuid4()) is None
+    model = AutomaticModel()
+    assert run_article_worker_once(repo, worker_id=uuid4(), registry={}, object_store=None, model_client=model, job_id=lease.job_id)
+    assert model.calls == 1 and store.load_article_state(repo, lease.canonical_article_id)["content_origin"] == "canonical"
+    with repo.connect() as conn:
+        completed = conn.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s", (lease.job_id,)).fetchone()
+        assert completed["retry_count"] == parked["retry_count"] and completed["lease_token"] > parked["lease_token"]
+        assert conn.execute("SELECT count(*) AS n FROM canonical_article_rewrite_attempts").fetchone()["n"] == 1
+        assert conn.execute("SELECT count(*) AS n FROM canonical_article_reviews").fetchone()["n"] == 0
+
+
+@pytest.mark.parametrize("blocked", [None, "source", "generation", "failed", "ambiguous"])
+def test_automatic_preexisting_missing_model_terminal_resume_requires_no_attempt_and_current_owner(fresh_database, capture_fixture, blocked):
+    from autodata_ingestion.article_lifecycle import run_article_job
+    from autodata_ingestion.source_job_persistence import claim_source_job
+    repo = fresh_database(); lease, source = prepare_automatic(repo, capture_fixture)
+    store.save_normalized_input(repo, lease, source.as_article())
+    if blocked in ("failed", "ambiguous"):
+        attempt = store.prepare_rewrite_attempt(repo, lease, source.source_document, context=source.vehicle, model="fixture-auto")
+        store.record_rewrite_failure(repo, lease, code="MODEL_DELIVERY_AMBIGUOUS", ambiguous=blocked == "ambiguous")
+    with repo.connect() as conn:
+        conn.execute("UPDATE source_fetch_jobs SET status='dead_letter',error_code='MODEL_NOT_CONFIGURED',retryable=false,retry_count=max_attempts,lease_owner=NULL,lease_expires_at=NULL,heartbeat_at=NULL WHERE source_fetch_job_id=%s", (lease.job_id,))
+        if blocked == "source": conn.execute("UPDATE source_fetch_jobs SET source_revision_id=NULL WHERE source_fetch_job_id=%s", (lease.job_id,))
+        if blocked == "generation": conn.execute("UPDATE canonical_articles SET request_generation=request_generation+1 WHERE canonical_article_id=%s", (lease.canonical_article_id,))
+    assert claim_source_job(repo, worker_id=uuid4(), model_ready=False, job_id=lease.job_id) is None
+    resumed = claim_source_job(repo, worker_id=uuid4(), model_ready=True, job_id=lease.job_id)
+    if blocked:
+        assert resumed is None
+    else:
+        assert resumed.job_id == lease.job_id
+        run_article_job(repo, resumed, registry={}, object_store=None, model_client=AutomaticModel())
+        assert store.load_article_state(repo, lease.canonical_article_id)["content_origin"] == "canonical"
+        with repo.connect() as conn:
+            assert conn.execute("SELECT retry_count FROM source_fetch_jobs WHERE source_fetch_job_id=%s", (lease.job_id,)).fetchone()["retry_count"] == 3
