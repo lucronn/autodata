@@ -2,7 +2,7 @@
 
 > **For agentic workers:** Execute this bounded plan task by task using `superpowers:executing-plans`. The coordinator already authorized execution; no extra approval pause is required.
 
-**Goal:** Provide a clearly labeled fixture-only read-only Workshop demo without purchases or grants, and update the configured Inception default to the verified current mercury-3 model.
+**Goal:** Provide a fixture-only read-only Workshop demo, update Inception defaults to mercury-3, securely restore the purchase-disabled preview and resume only the two frozen parked article jobs.
 
 **Architecture:** Branch at the browser entry before loading the normal Workshop module. Serve a repository-authored fixture from a separate module using existing markup, with all interaction in browser memory. Separately update the existing Inception client defaults/request shape and Compose defaults without changing provider identity or historical metadata.
 
@@ -17,7 +17,7 @@
 - No new credentials, secret values, production data or database migrations.
 - `mercury-3` is the verified current model; older listed models are not described as deprecated. Preserve explicit model overrides.
 - Preserve current normal Workshop behavior outside demo mode.
-- No deployment, merge or paid acceptance claim follows from this checkpoint.
+- Bounded existing purchase-disabled preview recovery and two frozen-job resume are included below; paid launch and merge remain outside this checkpoint.
 
 Issue: https://github.com/lucronn/autodata/issues/186
 Project: https://github.com/users/lucronn/projects/8
@@ -29,6 +29,8 @@ Start source: `fa6ed0f219e6c3f558079247d5ac4e930c275127`.
 - [ ] Keep demo purchase/sign-in/library mutations disabled and make zero catalog, auth, commerce, preparation, ingestion or model requests; preserve paid routes, grants and production authentication.
 - [ ] Update Inception model defaults to mercury-3 and make its request temperature/token fields compatible while retaining explicit INCEPTION_MODEL overrides and historical Mercury-2 metadata.
 - [ ] Run focused client/Go/Python regressions and browser verification proving demo navigation and no live API requests; record exact candidate evidence, commit/push coherent milestones and synchronize Issue186/Project8.
+
+- [ ] Securely deliver the validated current model key outside the repository, recover the verified purchase-disabled preview runtime after its restart loss, resume only the two frozen parked jobs with existing fences/budgets, and record canonical/warm-read acceptance or the exact blocker without claiming paid launch.
 
 ## Task 1: Static, isolated demonstration
 
@@ -65,3 +67,24 @@ python3 scripts/autonomy/pre_implementation.py --record docs/agents/records/2026
 ```
 
 Only exit 0 with `{"status":"synchronized","errors":[]}` authorizes the implementation boundary. Preserve existing Issue body and Project indices; add a bounded comment and dedicated demo reference field instead of truncating historical tracking.
+
+## Operational completion: existing preview and exactly two jobs
+
+The coordinator verified the current local key by a tiny official Mercury-3 JSON completion (HTTP200, model mercury-3, one choice), fingerprint `07f40f8fd62b`. This is authentication/API compatibility evidence, not canonical acceptance. Deliver that validated key by private file/secure environment update only: no value in Git, chat, logs, CLI argv or GitHub. Use private0700 evidence/config directories and0600 files. Preserve all unrelated environment keys; inject `INCEPTION_MODEL=mercury-3`. Verify only fingerprint/presence, never dump environment. The demo remains static and completely independent of commerce readiness.
+
+Freshly inspect database `autodata` at `127.0.0.1:5432`, S3 at `127.0.0.1:19000`, existing systemd API and retained private launch/inspect/source evidence. Prior preview `autodata-ingestion-preview-auto-park` no longer exists after host restart; never assume it survives. Prior source is `fc7a73ad9002bd04f821b767d0a70bdbbdfc1dca`, image `sha256:5c8e79b93db464da854ad33dc499e25c153bbcd52757569b1f2a4e5072acecb4`. Recover only the same preview role using inspected immutable source at the coordinator-reviewed new implementation SHA and existing image; preserve command, network, read-only/capability/security/user/resource configuration from the retained launch evidence. Preserve rollback inputs and current data; persist the existing service/restart configuration rather than another reboot. Inspect before writes; any mismatched/missing baseline input blocks recovery, and is reported without guessing runtime settings. Reuse existing exact API build/launch process for the new embedded demo assets. Do not modify source connectors, schema, payment configuration or customer grants.
+
+Resume only:
+
+| Bank | Canonical article | Job |
+| --- | --- | --- |
+| Bankone | `aad66f67-355c-5d92-ab21-b4894bca9069` | `a96ebe3a-16b9-4c3f-acb4-986efbb5ff2d` |
+| Banktwo | `8ae431dd-69b2-5f27-a696-6d64b0ff0a81` | `64888ce4-429e-4e22-9892-48d1fb4b82eb` |
+
+Use existing `run_article_worker_once(..., job_id=exact_uuid)` with existing claim/source-generation/profile fences, as in `docs/superpowers/plans/2026-11-06-preview-automatic-rewrite-deployment.md`. Verify each current job belongs to its frozen article/source scope before invocation. Retain retry counts and model-attempt history; maximum2 model attempts/article and4 total, with no budget reset, generic worker/daemon/queue drain, new enrollment or manual retry after model/auth/integrity failure. Keep a private database backup and unchanged unrelated business/queue/source fingerprints. If either exact job is stale/missing or required services are unavailable, stop that operational step and report the exact blocker; static demo verification can still complete independently.
+
+Require persisted automatic canonical revision with `full-prose-auto-v1`, truthful `UNREVIEWED` metadata, protected technical/table/safety/media/evidence/order retention and no manual approval row. For each published article perform ten warm reads/ensures with actual measured zero source/media/model/schedule calls and unchanged revision/content hashes; fresh-process persistence read is mandatory. A generation failure remains explicit and cannot be represented as publication. Mechanical integrity does not certify semantic equivalence. The licensed two-job canary is private operational verification and is never exposed in fixture demo content.
+
+Verify local/public readiness200, the normal Workshop, `/workshop/?demo=1` and `purchase-config` `enabled:false` after recovery;503 is a failure, not disabled-purchase success. Keep all checkout disabled and grant/customer data unchanged. Record source/image/container/service IDs, full candidate SHA, fingerprint only, per-job attempt/model counters/revisions, measured warm-call counts and rollback evidence privately; synchronize sanitized results to the canonical doc/Issue/Project. Production paid launch, unrestricted source access, new grants and broad catalog acceptance remain outside this scope.
+
+Fresh coordinator observation before checkpoint: `autodata-postgres-1` maps `127.0.0.1:5432`; both frozen jobs survive with `status=failed`, `phase=rewriting`, `error_code=MODEL_NOT_CONFIGURED`. No resume performed. S3 endpoint identity still requires fresh runtime verification.
