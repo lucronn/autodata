@@ -88,3 +88,62 @@ def test_prompt_asks_for_automatic_full_prose_without_human_review_obligations()
     assert "human" not in " ".join(prompt["rules"]).lower()
     assert "automatically" in " ".join(prompt["rules"]).lower()
     assert prompt["slots"][0]["text"] == "Remove the cover."
+
+
+def test_prompt_v2_declares_complete_response_rows_and_server_required_actions():
+    source = document("Remove the cover.", "25 Nm")
+    before = deepcopy(source)
+    prompt = json.loads(rewrite.build_rewrite_prompt(source, context={}, profile_version=PROFILE))
+    assert prompt["prompt_version"] == "full-prose-auto-prompt-v2"
+    assert prompt["response_shape"] == {"introduction": "string", "replacements": [
+        {"block_id": "string", "path": "string", "action": "rewrite|retain", "text": "string", "reason": "string"}]}
+    assert [slot["required_action"] for slot in prompt["slots"]] == ["rewrite", "rewrite_or_retain"]
+    rules = " ".join(prompt["rules"])
+    assert 'reason:""' in rules
+    assert "exactly five keys" in rules
+    assert "punctuation changes alone" in rules
+    assert source == before
+
+
+def test_historical_auto_prompt_digest_remains_exact():
+    from hashlib import sha256
+    from autodata_ingestion.procedure_rewrite_auto import _build_auto_prompt_v1
+    prompt = _build_auto_prompt_v1(document("Remove the cover."), context={})
+    assert sha256(prompt.encode()).hexdigest() == "cc5ef47228dc07abee81956adabf0de870247950fc3f5867ce6ed8b110f62e51"
+    assert json.loads(prompt)["prompt_version"] == "full-prose-auto-prompt-v1"
+
+
+def test_auto_prompt_hash_accepts_only_exact_server_reconstructions():
+    from hashlib import sha256
+    from autodata_ingestion.procedure_rewrite_auto import _build_auto_prompt_v1, build_auto_prompt, _matches_auto_prompt_hash
+    source = document("Remove the cover.")
+    context = {"vehicle": "routing-only"}
+    prompts = [_build_auto_prompt_v1(source, context=context), build_auto_prompt(source, context=context)]
+    for prompt in prompts:
+        digest = sha256(prompt.encode()).hexdigest()
+        assert _matches_auto_prompt_hash(source, context=context, prompt_hash=digest)
+        assert not _matches_auto_prompt_hash(document("Remove the panel."), context=context, prompt_hash=digest)
+        assert not _matches_auto_prompt_hash(source, context={}, prompt_hash=digest)
+    for mutation in ("rule", "required_action", "version"):
+        changed = json.loads(prompts[1])
+        if mutation == "rule": changed["rules"].pop()
+        if mutation == "required_action": del changed["slots"][0]["required_action"]
+        if mutation == "version": changed["prompt_version"] = "full-prose-auto-prompt-v3"
+        encoded = json.dumps(changed, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        assert not _matches_auto_prompt_hash(source, context=context, prompt_hash=sha256(encoded.encode()).hexdigest())
+    assert not _matches_auto_prompt_hash(source, context=context, prompt_hash="0" * 64)
+
+
+def test_prompt_v2_response_example_satisfies_strict_existing_renderer():
+    source = document("Remove the cover.", "25 Nm")
+    prompt = json.loads(rewrite.build_rewrite_prompt(source, context={}, profile_version=PROFILE))
+    payload = {"introduction": "The procedure covers removal of the cover.", "replacements": []}
+    for slot, text in zip(prompt["slots"], ["Take the cover off.", "25 Nm"]):
+        row = {key: "" for key in prompt["response_shape"]["replacements"][0]}
+        row.update(block_id=slot["block_id"], path=slot["path"], text=text,
+                   action="rewrite" if slot["required_action"] == "rewrite" else "retain")
+        if row["action"] == "retain": row["reason"] = "Exact technical specification"
+        payload["replacements"].append(row)
+    assert run(source, payload).error_code is None
+    del payload["replacements"][0]["reason"]
+    assert run(source, payload).error_code == "REWRITE_SLOT_MISMATCH"

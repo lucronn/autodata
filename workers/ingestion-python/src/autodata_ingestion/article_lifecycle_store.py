@@ -555,9 +555,8 @@ def _require_full_approval(cur, job, article, candidate):
 
 def automatic_candidate_validation(cur, job, candidate):
     """Rebuild automatic source, prompt and output from immutable saved evidence."""
-    from hashlib import sha256
     from .article_lifecycle_types import digest_json
-    from .procedure_rewrite_auto import PROFILE, build_auto_prompt, validate_auto
+    from .procedure_rewrite_auto import PROFILE, _matches_auto_prompt_hash, validate_auto
     from .procedure_normalize import normalize_procedure_article
     if candidate is None:
         raise ValueError("automatic candidate binding missing")
@@ -589,7 +588,7 @@ def automatic_candidate_validation(cur, job, candidate):
         or attempt["profile_version"] != PROFILE or not isinstance(attempt["response"],dict)
         or attempt["response_hash"] != digest_json(attempt["response"])
         or attempt["input_hash"] != digest_json(source)
-        or attempt["prompt_hash"] != sha256(build_auto_prompt(source,context=context["vehicle"]).encode()).hexdigest()
+        or not _matches_auto_prompt_hash(source,context=context["vehicle"],prompt_hash=attempt["prompt_hash"])
         or attempt["prompt_hash"] != candidate["model_metadata"].get("prompt_hash")
         or attempt["model"] != candidate["model_metadata"].get("model")
         or candidate["model_metadata"].get("profile_version") != PROFILE):

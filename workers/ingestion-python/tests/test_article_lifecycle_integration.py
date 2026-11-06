@@ -1,5 +1,6 @@
 """Required acceptance uses real worker processes and isolated fixture services."""
 from concurrent.futures import ProcessPoolExecutor
+from copy import deepcopy
 from uuid import uuid4
 import asyncio
 import pytest
@@ -772,10 +773,21 @@ def test_automatic_real_runtime_source_first_publication_and_zero_call_restart(r
 
 
 @pytest.mark.parametrize("point", ["after_model_result_commit", "inside_publication"])
-def test_automatic_real_process_death_reuses_saved_response(runtime, point):
+@pytest.mark.parametrize("prompt_version", ["v1", "v2"])
+def test_automatic_real_process_death_reuses_saved_response(runtime, point, prompt_version):
     ensure = automatic_runtime(runtime,"bankone")
     ensure();runtime.pause(point);runtime.start_workers(1);runtime.await_barrier()
     job = runtime.current_job_id();runtime.kill_worker();runtime.expire_lease(job)
+    if prompt_version == "v1":
+        from hashlib import sha256
+        from psycopg.types.json import Jsonb
+        from autodata_ingestion.procedure_rewrite_auto import _build_auto_prompt_v1
+        with runtime.repo.connect() as conn:
+            candidate = conn.execute("SELECT r.* FROM canonical_article_revisions r JOIN source_fetch_jobs j USING(transformation_key) WHERE j.source_fetch_job_id=%s", (job,)).fetchone()
+            context = conn.execute("SELECT captured_context FROM canonical_article_source_observations WHERE source_revision_id=%s ORDER BY captured_at LIMIT 1", (candidate["source_revision_id"],)).fetchone()["captured_context"]
+            legacy_hash = sha256(_build_auto_prompt_v1(candidate["normalized_source_document"], context=context["vehicle"]).encode()).hexdigest()
+            conn.execute("UPDATE canonical_article_rewrite_attempts SET prompt_hash=%s WHERE canonical_article_revision_id=%s", (legacy_hash, candidate["canonical_article_revision_id"]))
+            conn.execute("UPDATE canonical_article_revisions SET model_metadata=%s WHERE canonical_article_revision_id=%s", (Jsonb({**candidate["model_metadata"], "prompt_hash": legacy_hash}), candidate["canonical_article_revision_id"]))
     runtime.barrier = None;runtime.start_workers(2);runtime.await_publication();runtime.stop_workers()
     assert runtime.counters() == {"source":1,"asset":0,"model":1,"schedule":1}
     with runtime.repo.connect() as conn:
@@ -878,3 +890,47 @@ def test_exact_recovery_dispatch_consumes_marker_atomically_once(runtime, change
         status=conn.execute("SELECT status FROM canonical_article_rewrite_attempts WHERE rewrite_attempt_id=%s",(attempt,)).fetchone()["status"]
     assert status == ("prepared" if change else "dispatched")
     assert saved == (marker if change else {**marker,"state":"dispatched","dispatches_consumed":1})
+
+
+@pytest.mark.parametrize("mutation", ["prompt_hash", "source", "context", "response", "model"])
+def test_automatic_saved_candidate_rejects_tampered_bound_evidence(runtime, mutation):
+    from psycopg.types.json import Jsonb
+    from autodata_ingestion import article_lifecycle_store as store
+    from autodata_ingestion.article_lifecycle_types import digest_json
+    from autodata_ingestion.source_job_persistence import claim_source_job
+    ensure = automatic_runtime(runtime, "bankone")
+    ensure(); runtime.pause("after_model_result_commit"); runtime.start_workers(1); runtime.await_barrier()
+    job = runtime.current_job_id(); runtime.kill_worker(); runtime.expire_lease(job)
+    lease = claim_source_job(runtime.repo, worker_id=uuid4(), job_id=job)
+    candidate = store.load_candidate(runtime.repo, lease)
+    validation = store.validate_saved_candidate(runtime.repo, lease, candidate)
+    assert validation.passed
+    store.store_validation(runtime.repo, lease, validation)
+    with runtime.repo.connect() as conn:
+        if mutation == "prompt_hash":
+            conn.execute("UPDATE canonical_article_rewrite_attempts SET prompt_hash=%s WHERE canonical_article_revision_id=%s", ("0" * 64, candidate["canonical_article_revision_id"]))
+            conn.execute("UPDATE canonical_article_revisions SET model_metadata=%s WHERE canonical_article_revision_id=%s", (Jsonb({**candidate["model_metadata"], "prompt_hash": "0" * 64}), candidate["canonical_article_revision_id"]))
+        elif mutation == "source":
+            changed = deepcopy(candidate["normalized_source_document"])
+            changed["blocks"][0]["source_order"] += 1
+            conn.execute("UPDATE canonical_article_revisions SET normalized_source_document=%s,normalized_source_hash=%s WHERE canonical_article_revision_id=%s", (Jsonb(changed), digest_json(changed), candidate["canonical_article_revision_id"]))
+        elif mutation == "context":
+            from psycopg.errors import RaiseException
+            with pytest.raises(RaiseException, match="immutable article lifecycle record"):
+                conn.execute("UPDATE canonical_article_source_observations SET captured_context=jsonb_set(captured_context,'{vehicle}',%s) WHERE source_revision_id=%s", (Jsonb({"vehicle": "changed routing context"}), candidate["source_revision_id"]))
+            conn.rollback()
+        elif mutation == "response":
+            row = conn.execute("SELECT response FROM canonical_article_rewrite_attempts WHERE canonical_article_revision_id=%s", (candidate["canonical_article_revision_id"],)).fetchone()
+            changed = row["response"]; changed["introduction"] = "This article covers taking off the pump."
+            conn.execute("UPDATE canonical_article_rewrite_attempts SET response=%s,response_hash=%s WHERE canonical_article_revision_id=%s", (Jsonb(changed), digest_json(changed), candidate["canonical_article_revision_id"]))
+        else:
+            conn.execute("UPDATE canonical_article_revisions SET model_metadata=%s WHERE canonical_article_revision_id=%s", (Jsonb({**candidate["model_metadata"], "model": "unbound-model"}), candidate["canonical_article_revision_id"]))
+    if mutation == "context":
+        assert store.validate_saved_candidate(runtime.repo, lease, store.load_candidate(runtime.repo, lease)).passed
+    else:
+        with pytest.raises(ValueError, match="binding"):
+            store.validate_saved_candidate(runtime.repo, lease, store.load_candidate(runtime.repo, lease))
+        with pytest.raises(ValueError, match="binding"):
+            store.publish_article_revision(runtime.repo, lease, candidate["canonical_article_revision_id"])
+    assert runtime.read_current()["content_origin"] == "source"
+    assert runtime.model.calls == 1
