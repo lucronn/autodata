@@ -14,5 +14,21 @@
     "Allow startupgrace<=10s inside300s observation; verify actual zero-slot/v3 prompt binding and truthful canonical/sourcefallback outcome, then unconditionally disable15s/stop80s/verify15s with independent hard recovery budgets; preserve all previous rows/reservations and stopped catalog."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-06T23:36:43.410600+00:00"
+  "updated_at": "2026-11-06T23:44:28.420970+00:00",
+  "observed_outcome": {
+    "status": "source_fallback_failure",
+    "observed_at": "2026-11-06T23:43:27.917590+00:00",
+    "result_ref": "/var/lib/autodata/new-article-worker-evidence/prompt-v3-fd4d-proof/stage-b-result.json",
+    "result_sha256": "bd0b832b4711d834409be66b1d32e239c73ead1170f17b48fea1438cd223f83c",
+    "article_id": "fd4d1bd1-3b9c-585e-937c-12da554552a3",
+    "job_id": "38c4391c-a189-41d3-97cf-5621d9517233",
+    "zero_slot_v3_verified": true,
+    "error_code": "REWRITE_TECHNICAL_MUTATION",
+    "published_canonical": false,
+    "readable_source_fallback": true,
+    "disabled_stopped": true,
+    "spent_jobs_across_preserved_rollouts": 4,
+    "preserved_rollouts": 3,
+    "runtime_authority": "consumed; no further runtime, retry, reset or replay authorized"
+  }
 }
