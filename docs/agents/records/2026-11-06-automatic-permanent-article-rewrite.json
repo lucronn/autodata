@@ -13,7 +13,7 @@
     "Prove both-bank automatic publication, integrity failures retaining source, concurrent/restart reuse, and zero provider/model/schedule calls on warm reads; start and verify the working local app."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-06T07:43:20.061430+00:00",
+  "updated_at": "2026-11-06T07:58:57.181547+00:00",
   "planning_parent_sha": "4513c387c900add7138330555ccfca92f74b9894",
   "branch": "codex/automatic-permanent-article-rewrite",
   "tracking_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6679826363",
@@ -22,7 +22,12 @@
     "project_release_hotfix_reference_readback_verified_by_coordinator": true,
     "project_field_length": 1009,
     "scope_amendment_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6679877079",
-    "amendment_project_field_length": 990
+    "amendment_project_field_length": 990,
+    "missing_model_amendment_comment_refs": [
+      "https://github.com/lucronn/autodata/issues/186#issuecomment-6680123658",
+      "https://github.com/lucronn/autodata/issues/186#issuecomment-6680125162"
+    ],
+    "missing_model_project_field_length": 920
   },
   "implementation_allowlist": [
     "workers/ingestion-python/src/autodata_ingestion/procedure_rewrite_auto.py",
@@ -48,5 +53,6 @@
   ],
   "historical_profiles_immutable": true,
   "human_content_acceptance_required": false,
-  "production_activation_authorized": false
+  "production_activation_authorized": false,
+  "missing_model_amendment_base_sha": "83b0b727736b36223e1859364bfeb49f67c3d93a"
 }

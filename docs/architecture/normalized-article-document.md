@@ -561,3 +561,16 @@ Issue186 amendment https://github.com/lucronn/autodata/issues/186#issuecomment-6
 Automatic-profile nonretryable mechanical failures enter `dead_letter` with source still readable, never a manual-review wait. A successfully saved automatic candidate may reclaim a fenced publication lease after its model-attempt budget is exhausted, without incrementing or resetting that budget, invoking the model, or reviving a failed/ambiguous result. Existing manual-review and legacy retry behavior remains intact. Tests must cover final-attempt restart/publication, failed candidate exclusion and stale leases.
 
 New production descriptor registration defaults explicitly to the automatic profile. The shared test insertion helper explicitly requests historical `technical-prose-v1` unless a test selects another profile, preserving historical test coverage. The production upsert accepts an explicit profile only at its existing internal registration interface; HTTP clients cannot select a profile. These extra files may change only after this amendment is committed/pushed and exact-head preflight passes.
+
+
+### Missing-model configuration and exact selected-job amendment
+
+Base: `83b0b727736b36223e1859364bfeb49f67c3d93a`. Issue186 amendments https://github.com/lucronn/autodata/issues/186#issuecomment-6680123658 and https://github.com/lucronn/autodata/issues/186#issuecomment-6680125162 are synchronized with Project8 (coordinator readback length920, both comment IDs present).
+
+Concrete todo:
+- Park automatic work only after source and normalized input are durable when no model client exists; retain readable source and create no rewrite attempt.
+- Exclude parked jobs from generic polling without configuration; when a client exists, resume only the same current article/job/source/generation/profile, without retry budget increment or reset.
+- Recover existing `MODEL_NOT_CONFIGURED` dead letters only with zero rewrite attempts and exact ownership. Never revive failed or ambiguous model output. Historical profiles retain their behavior.
+- Add optional exact `job_id` filtering to existing claim/worker functions, including recovery and exhausted-job sweep, so operators can capture/park/resume selected preview jobs without draining unrelated work. Verify repeated absent-key polling, configured restart, selection isolation and stale ownership using focused PostgreSQL tests.
+
+Only already-allowed `article_lifecycle.py`, `source_job_persistence.py` and focused worker/job tests change. No schema/API/UI/credential/payment/deployment changes. Existing successful saved candidates may still publish without a model client. The model client is constructed at process startup, so configure the secret and restart before resuming. Commit/push this docs checkpoint and pass exact-head preflight before implementation.
