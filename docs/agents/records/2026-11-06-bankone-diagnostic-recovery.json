@@ -1,0 +1,39 @@
+{
+  "goal": "Classify Mercury-3 response failures without retaining content and permit at most one guarded recovery dispatch for the existing Bankone prose canary.",
+  "plan_ref": "docs/superpowers/plans/2026-11-06-bankone-diagnostic-recovery.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/workshop-readonly-demo.md",
+    "docs/agents/pre-implementation-gate.md"
+  ],
+  "todo": [
+    "Add content-free Mercury-3 response diagnostics and focused parser/privacy regressions.",
+    "Add an atomic one-use recovery claim for the frozen Bankone job with unchanged source/generation/profile fences and historical attempt budgets.",
+    "Validate and push coherent implementation milestones; obtain exact-SHA review and required CI before coordinator deployment.",
+    "Dispatch the frozen Bankone job at most once after fresh guards, or record its exact blocker; retain source fallback on failure.",
+    "Verify all 34 prose slots, protected structure and permanent warm reuse on success; synchronize sanitized outcome evidence."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-06T19:40:21.887738+00:00",
+  "tracking_sync": {
+    "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6693753888",
+    "project_item": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "project_field": "Bankone recovery reference",
+    "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2Bzho4a_U",
+    "readback_exact": true,
+    "previous_issue_body_unchanged": true,
+    "previous_issue_body_sha256": "927b46ef47b1dbf5b117273e3d3f5c0e6d9f23b722a5245869eb5323b96c4f25",
+    "previous_project_fields_unchanged": true,
+    "previous_scope_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6693734092"
+  },
+  "recovery_configuration": {
+    "INCEPTION_MAX_TOKENS": 32768,
+    "INCEPTION_API_TIMEOUT_SECONDS": 60,
+    "basis": "Coordinator-approved bounded hypothesis for 34 prose slots; original failure cause unproven. Existing client maximum32768; provider supports higher cap.",
+    "max_additional_dispatches": 1,
+    "max_cumulative_bankone_dispatches": 2,
+    "max_cumulative_two_bank_dispatches": 4,
+    "historical_attempt_counter_reset": false
+  }
+}
