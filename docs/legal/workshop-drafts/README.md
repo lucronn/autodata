@@ -13,9 +13,10 @@ page changes are included; checkout must remain disabled pending launch review.
 
 1. **License:** approve the proposed use for the purchaser's own work or own
    business's workshop work; decide whether multiple employees may use one
-   account, whether any copying/export is permitted, and confirm upstream
-   source licenses authorize the offered access. Do not promise rights that
-   source contracts do not grant.
+   account, and whether any customer copying/export is permitted. The owner has
+   confirmed that both Bankone and Banktwo agreements allow storing, rewriting,
+   and selling access to article content; this is an owner-reported fact, not
+   an independent review of those agreements.
 2. **Refund discretion:** decide eligibility, request window, handling after
    content is accessed, and treatment of incorrect selection/change of mind.
    Approve the support-led investigation process and choose any response target.
@@ -45,7 +46,9 @@ page changes are included; checkout must remain disabled pending launch review.
 ## Basis and boundaries
 
 The seller identity, support address, jurisdiction and price were supplied by
-the owner. Product scope and durable access follow
+the owner. The owner also confirmed that both Bankone and Banktwo agreements
+permit storing, rewriting, and selling access to article content. No independent
+contract review is claimed. Product scope and durable access follow
 [the canonical commerce contract](../../architecture/workshop-commerce.md).
 The drafts do not claim an immutable download, all future content, uninterrupted
 availability, a retention period, a tax exemption, a blanket no-refunds rule,
