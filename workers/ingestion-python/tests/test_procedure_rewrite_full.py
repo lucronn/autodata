@@ -45,6 +45,45 @@ def run(source, payload):
     return rewrite.rewrite_ordered_document(source, client=Draft(payload), context={}, profile_version=PROFILE)
 
 
+def test_introduction_prompt_limits_facts_to_document_not_vehicle_context():
+    from autodata_ingestion.procedure_rewrite_full import build_full_prompt
+    source = document("Tighten the bolts to 25 Nm using tool T-42.")
+    context = {"vehicle": "2012 Audi A3", "engine": "CTX-99"}
+    prompt = json.loads(build_full_prompt(source, context=context))
+    assert prompt["prompt_version"] == "full-prose-prompt-v2"
+    assert prompt["introduction_allowed_technical_tokens"] == ["25 Nm", "T-42", "ordered-article-v1", "p0"]
+    assert prompt["context"] == context
+    assert prompt["document"] == source
+    rules = " ".join(prompt["rules"])
+    assert "document is the only source of facts" in rules
+    assert "Context is routing metadata, not source evidence" in rules
+    assert "occur only in context" in rules
+    assert "introduction_allowed_technical_tokens" in rules
+
+
+def test_context_only_introduction_still_rejects_and_source_supported_intro_passes():
+    from autodata_ingestion.procedure_rewrite_full import render_full
+    source = document("Remove the cover.")
+    payload = response("Take the cover off.", introduction="Access to the cover on the 2012 Audi A3.")
+    with pytest.raises(ValueError, match="REWRITE_TECHNICAL_MUTATION"):
+        render_full(source, payload)
+    payload["introduction"] = "This article describes removing the cover."
+    candidate = render_full(source, payload)
+    assert rewrite.validate_article_rewrite(source, candidate, profile_version=PROFILE).passed
+
+
+def test_introduction_token_payload_matches_all_document_strings_deterministically():
+    from autodata_ingestion.procedure_rewrite_full import build_full_prompt
+    source = document("Tighten to 25 Nm.", "Use tool T-42.")
+    source["title"] = "Tool T-42"
+    before = deepcopy(source)
+    first = build_full_prompt(source, context={"vehicle": "CTX-99"})
+    assert first == build_full_prompt(source, context={"vehicle": "CTX-99"})
+    # Document metadata participates, duplicates collapse, and context stays excluded.
+    assert json.loads(first)["introduction_allowed_technical_tokens"] == ["25 Nm", "T-42", "ordered-article-v1", "p0", "p1"]
+    assert source == before
+
+
 def test_full_rewrites_declarative_multisentence_conditional_prose_without_semantic_credit():
     source = document("The cover provides access. If equipped, disconnect the cable before removal.",
                       "Tighten the bolts to 25 Nm using tool T-42.")
