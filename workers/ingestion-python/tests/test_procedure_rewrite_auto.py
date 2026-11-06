@@ -147,3 +147,115 @@ def test_prompt_v2_response_example_satisfies_strict_existing_renderer():
     assert run(source, payload).error_code is None
     del payload["replacements"][0]["reason"]
     assert run(source, payload).error_code == "REWRITE_SLOT_MISMATCH"
+
+
+def zero_slot_document():
+    """Synthetic shape of the failed proof; no production text or references."""
+    source = document()
+    source["title"] = "Cover service references"
+    kinds = ["callout"] * 35 + ["heading"] * 24 + ["link"] * 4
+    source["blocks"] = [
+        {"block_id": f"protected-{i}", "source_order": i + 1, "type": kind,
+         "text": "Cover service references", "evidence_ids": ["fixture-evidence"]}
+        for i, kind in enumerate(kinds)
+    ]
+    return source
+
+
+def test_zero_slot_prompt_v3_requests_only_source_introduction_without_routing():
+    from autodata_ingestion.procedure_rewrite_full import prose_slots
+    source = zero_slot_document()
+    before = deepcopy(source)
+    context = {"vehicle": "2099 RoutingModel CTX-99"}
+    prompt = json.loads(rewrite.build_rewrite_prompt(source, context=context, profile_version=PROFILE))
+    assert len(source["blocks"]) == 63 and prose_slots(source) == []
+    assert prompt["prompt_version"] == "full-prose-auto-prompt-v3"
+    assert prompt["replacement_count"] == 0 and prompt["slots"] == []
+    assert prompt["response_shape"] == {"introduction": "string", "replacements": []}
+    assert "context" not in prompt and "RoutingModel" not in json.dumps(prompt)
+    rules = " ".join(prompt["rules"])
+    assert '"replacements":[]' in rules
+    assert "Do not invent replacement rows" in rules
+    assert "document is the only source of facts" in rules
+    assert "numeric, identifier or reference facts" in rules
+    assert prompt["document"] == source == before
+
+
+def test_zero_slot_output_preserves_all_protected_content_and_saved_response_binding():
+    from autodata_ingestion.procedure_rewrite_auto import validate_auto
+    source = zero_slot_document()
+    before = deepcopy(source)
+    payload = response(introduction="The article provides cover service references.")
+    result = run(source, payload)
+    assert result.error_code is None
+    assert validate_auto(source, result.document, response=payload).passed
+    restored = deepcopy(result.document)
+    restored["blocks"].pop(0)
+    for block in restored["blocks"]:
+        block["source_order"] -= 1
+    assert digest_json(restored) == digest_json(source)
+    assert source == before
+    changed = deepcopy(payload)
+    changed["introduction"] = "Cover service references are provided here."
+    assert not validate_auto(source, result.document, response=changed).passed
+    report = validate_auto(source, result.document, response=payload).report
+    assert report["complete_rewrite"] is False
+
+
+@pytest.mark.parametrize("mutation", ["fabricated_slot", "numeric", "identifier", "third_key"])
+def test_zero_slot_output_still_rejects_fabricated_slots_and_unsupported_facts(mutation):
+    source = zero_slot_document()
+    payload = response(introduction="The article provides cover service references.")
+    if mutation == "fabricated_slot":
+        payload["replacements"] = response("Reword this protected heading.")["replacements"]
+    elif mutation == "numeric":
+        payload["introduction"] = "The cover requires 99 Nm."
+    elif mutation == "identifier":
+        payload["introduction"] = "Use tool UNSUPPORTED-99 for cover service."
+    else:
+        payload["replacement_count"] = 0
+    result = run(source, payload)
+    assert result.error_code == {
+        "fabricated_slot": "REWRITE_SLOT_MISMATCH", "numeric": "REWRITE_TECHNICAL_MUTATION",
+        "identifier": "REWRITE_TECHNICAL_MUTATION", "third_key": "REWRITE_RESPONSE_INVALID",
+    }[mutation]
+    assert result.document == source
+
+
+def test_zero_slot_historical_prompt_reconstruction_and_current_routing_omission():
+    from hashlib import sha256
+    from autodata_ingestion.procedure_rewrite_auto import (
+        _build_auto_prompt_v1, _build_auto_prompt_v2, build_auto_prompt, _matches_auto_prompt_hash,
+    )
+    source = zero_slot_document()
+    context = {"vehicle": "routing-only"}
+    historical = [(_build_auto_prompt_v1, "ce519878922481405f40028c3af5ebf2ff742af5bab96126ea21650311d67ea0"),
+                  (_build_auto_prompt_v2, "e1fb10033d5aec793c15dda664767656be5530d380972e76bf48a2bb5d2ee3f5")]
+    for builder, expected in historical:
+        digest = sha256(builder(source, context=context).encode()).hexdigest()
+        assert digest == expected
+        assert _matches_auto_prompt_hash(source, context=context, prompt_hash=digest)
+        assert not _matches_auto_prompt_hash(source, context={}, prompt_hash=digest)
+    current = build_auto_prompt(source, context=context)
+    digest = sha256(current.encode()).hexdigest()
+    assert current == build_auto_prompt(source, context={"vehicle": "other routing"})
+    assert _matches_auto_prompt_hash(source, context={}, prompt_hash=digest)
+    changed_source = deepcopy(source)
+    changed_source["blocks"][0]["text"] = "Other protected content"
+    assert not _matches_auto_prompt_hash(changed_source, context=context, prompt_hash=digest)
+    for key, value in [("replacement_count", 1), ("prompt_version", "unrecognized"),
+                       ("response_shape", {"introduction": "string", "replacements": [{}]})]:
+        changed = json.loads(current)
+        changed[key] = value
+        encoded = json.dumps(changed, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        assert not _matches_auto_prompt_hash(source, context=context, prompt_hash=sha256(encoded.encode()).hexdigest())
+
+
+def test_nonzero_slot_prompt_remains_exact_v2_bytes():
+    from hashlib import sha256
+    from autodata_ingestion.procedure_rewrite_auto import _build_auto_prompt_v2, build_auto_prompt
+    source = document("Remove the cover.")
+    context = {"vehicle": "routing-only"}
+    prompt = build_auto_prompt(source, context=context)
+    assert prompt == _build_auto_prompt_v2(source, context=context)
+    assert sha256(prompt.encode()).hexdigest() == "d972668e5934f6f66dee2ead79ee6bd45e4ca3c98e4f8fb94128fa330cdd22b6"
