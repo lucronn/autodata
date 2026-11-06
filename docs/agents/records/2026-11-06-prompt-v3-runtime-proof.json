@@ -1,0 +1,18 @@
+{
+  "goal": "Prove the exact merged zero-slot prompt-v3 client on one authentic unspent Banktwo list-only identity in a fresh disabled rollout, preserving all three prior spent jobs and catalog history, then always stop.",
+  "plan_ref": "docs/superpowers/plans/2026-11-06-prompt-v3-runtime-proof.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/verification/2026-11-06-prompt-v3-runtime-proof.md",
+    "docs/agents/pre-implementation-gate.md"
+  ],
+  "todo": [
+    "Verify merged PR358 source587dedc15993c9833d6d4baf0dc31586f879433c/tree/archive, reviewed head and successful required CI; synchronize stopped refreshed baseline/Issue186/Project8/docs/record, commit/push and pass exact-base preflight before revised script preparation.",
+    "After independent StageA script review and separate dispatch, capture fresh identity-bound PG17 backup, archive current disabled969c rollout1spent byte-for-byte, preserve retiredb4ac2spent, seal new merged source and switch source.conf only, then initialize new disabled rollout with SAME cutoff/expiry/max10/providersboth.",
+    "After independent StageA result review and separate StageB exact-script dispatch, verify current authentic existing fd4d descriptor and zero article history, ensure exactly one new article job without upsert, require exact production _PRISTINE eligible set ONLYtarget, then one enable/start.",
+    "Allow startupgrace<=10s inside300s observation; verify actual zero-slot/v3 prompt binding and truthful canonical/sourcefallback outcome, then unconditionally disable15s/stop80s/verify15s with independent hard recovery budgets; preserve all previous rows/reservations and stopped catalog."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-06T23:36:43.410600+00:00"
+}
