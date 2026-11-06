@@ -218,3 +218,65 @@ def test_full_failed_response_preserves_specific_error_and_original_response(fre
         assert conn.execute('SELECT count(*) AS n FROM canonical_article_rewrite_attempts').fetchone()['n'] == 1
     assert model.calls == 1
     assert not run_article_worker_once(repo,worker_id=uuid4(),registry={},object_store=None,model_client=model)
+
+
+class AutomaticModel:
+    _model = "fixture-auto"
+
+    def __init__(self, *, unchanged=False):
+        self.calls = 0
+        self.unchanged = unchanged
+
+    def complete_json(self, prompt):
+        import json
+        self.calls += 1
+        slots = json.loads(prompt)["slots"]
+        return {"introduction":"This procedure describes removing the pump.", "replacements":[
+            {"block_id":s["block_id"], "path":s["path"], "action":"retain" if self.unchanged else "rewrite",
+             "text":s["text"] if self.unchanged else s["text"].replace("Remove", "Take off"),
+             "reason":"Accurate original wording" if self.unchanged else ""} for s in slots]}
+
+
+def prepare_automatic(repo, fixture, provider="bankone"):
+    from dataclasses import replace
+    from test_article_source_persistence import prepare
+    context, lease, captured = prepare(repo, fixture, provider)
+    with repo.connect() as conn:
+        conn.execute("UPDATE canonical_articles SET target_rewrite_profile_version='full-prose-auto-v1' WHERE canonical_article_id=%s", (lease.canonical_article_id,))
+        conn.execute("UPDATE source_fetch_jobs SET rewrite_profile_version='full-prose-auto-v1' WHERE source_fetch_job_id=%s", (lease.job_id,))
+    lease = replace(lease, rewrite_profile_version="full-prose-auto-v1")
+    source_id = store.store_captured_source(repo, lease, captured)
+    return replace(lease, source_revision_id=source_id, phase="normalizing"), store.load_source_revision(repo, source_id)
+
+
+@pytest.mark.parametrize("provider", ["bankone", "banktwo"])
+def test_automatic_worker_publishes_without_review_and_warm_reads_reuse(fresh_database, capture_fixture, provider):
+    from autodata_ingestion.article_lifecycle import run_article_job, run_article_worker_once
+    from autodata_ingestion.source_job_persistence import ensure_article_job
+    repo = fresh_database(); lease, source = prepare_automatic(repo, capture_fixture, provider)
+    model = AutomaticModel()
+    run_article_job(repo, lease, registry={}, object_store=None, model_client=model)
+    state = store.load_article_state(repo, lease.canonical_article_id)
+    assert state["content_origin"] == "canonical" and state["processing_state"] == "completed"
+    assert state["review_status"] == "UNREVIEWED" and model.calls == 1
+    for _ in range(100):
+        assert store.load_article_state(repo, lease.canonical_article_id)["canonical_revision_id"] == state["canonical_revision_id"]
+        assert not ensure_article_job(repo, lease.canonical_article_id, normalization_version=lease.normalization_version, rewrite_profile_version=lease.rewrite_profile_version).created
+    assert not run_article_worker_once(repo, worker_id=uuid4(), registry={}, object_store=None, model_client=model)
+    with repo.connect() as conn:
+        assert conn.execute("SELECT count(*) AS n FROM canonical_article_reviews").fetchone()["n"] == 0
+        assert conn.execute("SELECT count(*) AS n FROM canonical_article_revisions WHERE status='published'").fetchone()["n"] == 1
+        assert conn.execute("SELECT count(*) AS n FROM publication_events").fetchone()["n"] == 1
+    assert model.calls == 1
+
+
+def test_automatic_invalid_prose_keeps_source_without_manual_review(fresh_database, capture_fixture):
+    from autodata_ingestion.article_lifecycle import run_article_job
+    repo = fresh_database(); lease, source = prepare_automatic(repo, capture_fixture)
+    run_article_job(repo, lease, registry={}, object_store=None, model_client=AutomaticModel(unchanged=True))
+    state = store.load_article_state(repo, lease.canonical_article_id)
+    assert state["content_origin"] == "source" and state["canonical_revision_id"] is None
+    assert state["processing_error_code"] == "REWRITE_UNCHANGED"
+    assert state["processing_state"] == "failed"
+    with repo.connect() as conn:
+        assert conn.execute("SELECT status FROM source_fetch_jobs WHERE source_fetch_job_id=%s", (lease.job_id,)).fetchone()["status"] == "dead_letter"

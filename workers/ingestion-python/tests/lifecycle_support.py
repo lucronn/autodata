@@ -117,6 +117,7 @@ def insert_descriptor(repo, key, **kwargs):
         kwargs.get("descriptor", {"title": "Pump", "body_resource_ref": "body"}),
         seed_snapshot(repo),
         kwargs.get("generation", 0),
+        rewrite_profile_version=kwargs.get("rewrite_profile_version", "technical-prose-v1"),
     )
 
 
@@ -206,6 +207,9 @@ class LifecycleRuntime:
         for _ in range(2):
             assert run_article_worker_once(repo,worker_id=uuid.uuid4(),registry=self.registry,object_store=self.objects,model_client=None)
         with repo.connect() as conn:
+            # This fixture exercises the historical v1 transport/runtime lane.
+            # New production registration is automatic; explicit auto tests opt in.
+            conn.execute("UPDATE canonical_articles SET target_rewrite_profile_version='technical-prose-v1'")
             self.articles={r["provider_slug"]:r["canonical_article_id"] for r in conn.execute("SELECT * FROM canonical_articles").fetchall()}
         self.article_id=self.articles["bankone"]
         self.env={"PATH":os.environ.get("PATH","/usr/local/bin:/usr/bin:/bin"),"PYTHONDONTWRITEBYTECODE":"1",

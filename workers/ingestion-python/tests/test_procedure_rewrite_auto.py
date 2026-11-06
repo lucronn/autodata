@@ -32,7 +32,7 @@ def test_automatic_rewrite_has_own_identity_and_no_manual_acceptance():
     assert rewrite.validate_article_rewrite(source, reviewed.document, profile_version="full-prose-review-v1").report["content_acceptance_required"]
 
 
-@pytest.mark.parametrize("replacement", ["Remove the cover.", " REMOVE  THE COVER. "])
+@pytest.mark.parametrize("replacement", ["Remove the cover.", " REMOVE  THE COVER. ", "Remove the cover!"])
 def test_automatic_profile_rejects_unchanged_ordinary_prose(replacement):
     source = document("Remove the cover.")
     payload = response(replacement)

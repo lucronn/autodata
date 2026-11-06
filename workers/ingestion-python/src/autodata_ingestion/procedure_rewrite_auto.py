@@ -5,6 +5,7 @@ semantic equivalence. Historical human-review behavior stays in its own profile.
 """
 from copy import deepcopy
 import json
+import re
 
 from . import procedure_rewrite_full as full
 from .article_lifecycle_types import ValidationResult
@@ -20,7 +21,9 @@ def _technical_only(text):
 def build_auto_prompt(document, *, context):
     payload = json.loads(full.build_full_prompt(document, context=context))
     payload.update(profile_version=PROFILE, prompt_version="full-prose-auto-prompt-v1")
-    payload["rules"] = [rule for rule in payload["rules"] if "human" not in rule.lower()]
+    payload["rules"] = [rule for rule in payload["rules"] if "human" not in rule.lower()
+        and not rule.startswith("Preserve ambiguous numeric notation")
+        and not rule.startswith("Rewrite every ordinary prose leaf completely")]
     payload["rules"].extend([
         "A valid result is published automatically. Rewrite every ordinary prose leaf; no ordinary prose retention is allowed.",
         "Use retain only for a leaf consisting solely of exact numeric/unit/identifier/reference tokens and punctuation. Include a concrete reason.",
@@ -34,7 +37,7 @@ def _require_changes(source, candidate):
     restored = deepcopy(candidate)
     restored["blocks"].pop(0)
     for slot in full.prose_slots(source):
-        if full._meaningful(full._get(restored, slot["path"])) == full._meaningful(slot["text"]):
+        if re.findall(r"\w+", full._get(restored, slot["path"]).casefold()) == re.findall(r"\w+", slot["text"].casefold()):
             if not _technical_only(slot["text"]):
                 raise ValueError("REWRITE_UNCHANGED")
 

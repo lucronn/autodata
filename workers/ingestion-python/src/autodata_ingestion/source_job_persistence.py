@@ -113,6 +113,7 @@ def refresh_article_job(
     reason,
     normalization_version=None,
     rewrite_profile_version=None,
+    expected_source_revision_id=None,
 ):
     if not actor.strip() or not reason.strip():
         raise ValueError("refresh actor and reason required")
@@ -123,6 +124,11 @@ def refresh_article_job(
         ).fetchone()
         if article is None:
             raise KeyError("canonical article not found")
+        if expected_source_revision_id is not None:
+            if str(article["current_source_revision_id"]) != str(expected_source_revision_id):
+                raise ValueError("AUTOMATIC_SOURCE_CHANGED")
+            if article["current_canonical_revision_id"] is not None:
+                raise ValueError("AUTOMATIC_ALREADY_PUBLISHED")
         if article["current_job_id"]:
             job = cur.execute(
                 "SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s",
@@ -179,8 +185,47 @@ def _claim_review_resume(cur, worker_id):
     return None
 
 
+def _claim_automatic_resume(cur, worker_id):
+    """Saved successful auto output consumes publication leases, not model attempts."""
+    from .article_lifecycle_store import automatic_candidate_validation
+    job = cur.execute("""SELECT j.* FROM source_fetch_jobs j
+        JOIN canonical_article_revisions r ON r.transformation_key=j.transformation_key
+        JOIN canonical_article_rewrite_attempts a ON a.canonical_article_revision_id=r.canonical_article_revision_id AND a.status='succeeded'
+        WHERE j.job_kind='article' AND j.rewrite_profile_version='full-prose-auto-v1'
+          AND r.status IN ('building','validated') AND j.checkpoint->>'rewrite_error_code' IS NULL
+          AND j.checkpoint->>'candidate_revision_id'=r.canonical_article_revision_id::text
+          AND ((j.status='pending' AND COALESCE(j.next_attempt_at,'-infinity'::timestamptz)<=clock_timestamp())
+            OR (j.status='processing' AND j.lease_expires_at<clock_timestamp()))
+        ORDER BY j.created_at,j.source_fetch_job_id FOR UPDATE OF j SKIP LOCKED LIMIT 1""").fetchone()
+    if job is None:
+        return None
+    article = cur.execute("SELECT * FROM canonical_articles WHERE canonical_article_id=%s FOR UPDATE", (job["canonical_article_id"],)).fetchone()
+    candidate = cur.execute("SELECT * FROM canonical_article_revisions WHERE transformation_key=%s FOR UPDATE", (job["transformation_key"],)).fetchone()
+    try:
+        if (article is None or article["current_job_id"] != job["source_fetch_job_id"]
+            or article["request_generation"] != job["request_generation"]
+            or article["current_source_revision_id"] != job["source_revision_id"]
+            or article["target_rewrite_profile_version"] != job["rewrite_profile_version"]
+            or article["target_normalization_version"] != job["normalization_version"]):
+            raise ValueError("automatic publication owner changed")
+        automatic_candidate_validation(cur,job,candidate)
+    except ValueError:
+        cur.execute("""UPDATE source_fetch_jobs SET status='dead_letter',error_code='AUTOMATIC_CANDIDATE_INVALID',retryable=false,
+            lease_owner=NULL,lease_expires_at=NULL,heartbeat_at=NULL,next_attempt_at=NULL,updated_at=clock_timestamp()
+            WHERE source_fetch_job_id=%s""", (job["source_fetch_job_id"],))
+        return None
+    row = cur.execute("""UPDATE source_fetch_jobs SET status='processing',phase='validating',lease_token=lease_token+1,
+        lease_owner=%s,lease_expires_at=clock_timestamp()+interval '90 seconds',heartbeat_at=clock_timestamp(),
+        error_code=NULL,next_attempt_at=NULL,updated_at=clock_timestamp() WHERE source_fetch_job_id=%s RETURNING *""",
+        (worker_id,job["source_fetch_job_id"])).fetchone()
+    return _lease_from_row(row,worker_id)
+
+
 def claim_source_job(repo, *, worker_id):
     with repo.connect() as conn, _cursor(conn) as cur:
+        resumed = _claim_automatic_resume(cur, worker_id)
+        if resumed is not None:
+            return resumed
         resumed = _claim_review_resume(cur, worker_id)
         if resumed is not None:
             return resumed
@@ -290,7 +335,7 @@ def fail_source_job(repo, lease, *, code, retryable, retry_after_seconds=None):
             if retry
             else None
         )
-        status = "failed" if retry else ("dead_letter" if retryable else "needs_review")
+        status = "failed" if retry else ("dead_letter" if retryable or row["rewrite_profile_version"] == "full-prose-auto-v1" else "needs_review")
         cur.execute(
             """UPDATE source_fetch_jobs SET status=%s,error_code=%s,retryable=%s,next_attempt_at=CASE WHEN %s::int IS NULL THEN NULL ELSE statement_timestamp()+make_interval(secs=>%s) END,
         lease_owner=NULL,lease_expires_at=NULL,heartbeat_at=NULL,updated_at=statement_timestamp() WHERE source_fetch_job_id=%s""",

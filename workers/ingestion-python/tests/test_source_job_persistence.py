@@ -3,6 +3,7 @@ from dataclasses import asdict
 import uuid
 import pytest
 from lifecycle_support import fresh_database, seed_vehicle, insert_descriptor
+from test_source_article_capture import capture_fixture
 from autodata_ingestion.article_lifecycle_types import (
     ArticleKey,
     NORMALIZATION_VERSION,
@@ -319,3 +320,52 @@ def test_review_marker_never_uses_normal_model_claim_or_exhaustion(fresh_databas
     with repo.connect() as conn:
         row = conn.execute("SELECT retry_count,status FROM source_fetch_jobs WHERE source_fetch_job_id=%s", (job.job_id,)).fetchone()
     assert row["retry_count"] == 0
+
+
+def test_saved_automatic_candidate_reclaims_final_budget_without_reset(fresh_database, capture_fixture):
+    from test_article_worker import prepare_automatic, AutomaticModel
+    from autodata_ingestion import article_lifecycle_store as store
+    from autodata_ingestion.article_lifecycle import run_article_job
+    from autodata_ingestion.procedure_rewrite import rewrite_ordered_document
+    from autodata_ingestion.source_job_persistence import claim_source_job, LeaseLost
+    repo = fresh_database(); lease, source = prepare_automatic(repo, capture_fixture)
+    store.save_normalized_input(repo, lease, source.as_article())
+    with repo.connect() as conn:
+        conn.execute("UPDATE source_fetch_jobs SET retry_count=max_attempts WHERE source_fetch_job_id=%s", (lease.job_id,))
+    attempt = store.prepare_rewrite_attempt(repo, lease, source.source_document, context=source.vehicle, model="fixture-auto")
+    store.mark_rewrite_dispatched(repo, lease, attempt)
+    result = rewrite_ordered_document(source.source_document, client=AutomaticModel(), context=source.vehicle, profile_version=lease.rewrite_profile_version)
+    store.store_rewrite_result(repo, lease, result)
+    expire(repo, lease)
+    resumed = claim_source_job(repo, worker_id=uuid.uuid4())
+    assert resumed is not None and resumed.job_id == lease.job_id and resumed.token > lease.token
+    with repo.connect() as conn:
+        assert conn.execute("SELECT retry_count FROM source_fetch_jobs").fetchone()["retry_count"] == 3
+    with pytest.raises(LeaseLost): store.load_candidate(repo, lease)
+    class Never:
+        def complete_json(self, prompt): pytest.fail("publication redrafted exhausted saved candidate")
+    run_article_job(repo, resumed, registry={}, object_store=None, model_client=Never())
+    assert store.load_article_state(repo, lease.canonical_article_id)["content_origin"] == "canonical"
+    with repo.connect() as conn:
+        assert conn.execute("SELECT count(*) AS n FROM canonical_article_rewrite_attempts").fetchone()["n"] == 1
+        assert conn.execute("SELECT count(*) AS n FROM publication_events").fetchone()["n"] == 1
+
+
+@pytest.mark.parametrize("mode", ["failed", "ambiguous"])
+def test_failed_or_ambiguous_automatic_result_cannot_bypass_budget(fresh_database, capture_fixture, mode):
+    from test_article_worker import prepare_automatic, AutomaticModel
+    from autodata_ingestion import article_lifecycle_store as store
+    from autodata_ingestion.procedure_rewrite import rewrite_ordered_document
+    from autodata_ingestion.source_job_persistence import claim_source_job
+    repo = fresh_database(); lease, source = prepare_automatic(repo, capture_fixture)
+    store.save_normalized_input(repo, lease, source.as_article())
+    with repo.connect() as conn:
+        conn.execute("UPDATE source_fetch_jobs SET retry_count=max_attempts WHERE source_fetch_job_id=%s", (lease.job_id,))
+    attempt = store.prepare_rewrite_attempt(repo, lease, source.source_document, context=source.vehicle, model="fixture-auto")
+    store.mark_rewrite_dispatched(repo, lease, attempt)
+    if mode == "failed":
+        result = rewrite_ordered_document(source.source_document, client=AutomaticModel(unchanged=True), context=source.vehicle, profile_version=lease.rewrite_profile_version)
+        store.store_rewrite_result(repo, lease, result)
+    expire(repo, lease)
+    assert claim_source_job(repo, worker_id=uuid.uuid4()) is None
+    assert store.load_article_state(repo, lease.canonical_article_id)["content_origin"] == "source"

@@ -708,3 +708,74 @@ def test_uncorrected_failed_intro_still_stops_at_active_worker_error(failed_draf
     assert after['canonical_article_revisions']==before['canonical_article_revisions']
     assert after['canonical_article_reviews']==after['publication_events']==[]
     assert after['canonical_articles'][0]['current_canonical_revision_id'] is None
+
+
+def automatic_runtime(runtime, provider):
+    """Exercise actual CLI/HTTP transport using an automatic-profile fixture model."""
+    import json
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from threading import Thread
+    from types import SimpleNamespace
+    from autodata_ingestion.source_job_persistence import ensure_article_job
+    model = SimpleNamespace(calls=0, mode="valid")
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *args): pass
+        def do_POST(self):
+            if self.headers.get("Authorization") != "Bearer fixture-model":
+                self.send_error(401); return
+            payload = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            prompt = json.loads(payload["messages"][-1]["content"])
+            model.calls += 1
+            replacements = [{"block_id":slot["block_id"],"path":slot["path"],"action":"rewrite",
+                "text":slot["text"].replace("Remove", "Take off"),"reason":""} for slot in prompt["slots"]]
+            result = {"introduction":"This procedure describes removing the pump.","replacements":replacements}
+            raw = json.dumps({"choices":[{"message":{"content":json.dumps(result)}}]}).encode()
+            self.send_response(200);self.send_header("Content-Type","application/json")
+            self.send_header("Content-Length",str(len(raw)));self.end_headers();self.wfile.write(raw)
+    server = ThreadingHTTPServer(("127.0.0.1",0),Handler)
+    thread = Thread(target=server.serve_forever,daemon=True);thread.start()
+    def close():
+        server.shutdown();server.server_close();thread.join()
+    runtime.stack.callback(close)
+    model.url = f"http://127.0.0.1:{server.server_port}/v1"
+    runtime.model = model
+    runtime.env["INCEPTION_API_BASE_URL"] = model.url
+    runtime.article_id = runtime.articles[provider]
+    with runtime.repo.connect() as conn:
+        conn.execute("UPDATE canonical_articles SET target_rewrite_profile_version='full-prose-auto-v1' WHERE canonical_article_id=%s", (runtime.article_id,))
+    def ensure():
+        return ensure_article_job(runtime.repo,runtime.article_id,normalization_version="ordered-article-v1",rewrite_profile_version="full-prose-auto-v1")
+    return ensure
+
+
+@pytest.mark.parametrize("provider", ["bankone", "banktwo"])
+def test_automatic_real_runtime_source_first_publication_and_zero_call_restart(runtime, provider):
+    ensure = automatic_runtime(runtime,provider)
+    jobs = [ensure().job_id for _ in range(20)]
+    assert len(set(jobs)) == 1
+    runtime.pause("after_source_commit");runtime.start_workers(2);runtime.await_barrier()
+    assert runtime.read_current()["content_origin"] == "source" and runtime.model.calls == 0
+    runtime.release("after_source_commit");revision = runtime.await_publication();runtime.stop_workers()
+    assert runtime.read_current()["review_status"] == "UNREVIEWED"
+    assert runtime.counters() == {"source":1,"asset":0,"model":1,"schedule":1}
+    assert runtime.servers["banktwo" if provider == "bankone" else "bankone"].calls == []
+    runtime.restart_workers();runtime.reset_counters()
+    for _ in range(100):
+        assert runtime.read_current()["canonical_revision_id"] == revision
+        assert ensure().job_id == jobs[0]
+    assert runtime.counters() == {"source":0,"asset":0,"model":0,"schedule":0}
+    with runtime.repo.connect() as conn:
+        assert conn.execute("SELECT count(*) AS n FROM canonical_article_reviews").fetchone()["n"] == 0
+        assert conn.execute("SELECT count(*) AS n FROM publication_events").fetchone()["n"] == 1
+
+
+@pytest.mark.parametrize("point", ["after_model_result_commit", "inside_publication"])
+def test_automatic_real_process_death_reuses_saved_response(runtime, point):
+    ensure = automatic_runtime(runtime,"bankone")
+    ensure();runtime.pause(point);runtime.start_workers(1);runtime.await_barrier()
+    job = runtime.current_job_id();runtime.kill_worker();runtime.expire_lease(job)
+    runtime.barrier = None;runtime.start_workers(2);runtime.await_publication();runtime.stop_workers()
+    assert runtime.counters() == {"source":1,"asset":0,"model":1,"schedule":1}
+    with runtime.repo.connect() as conn:
+        assert conn.execute("SELECT count(*) AS n FROM publication_events").fetchone()["n"] == 1
+        assert conn.execute("SELECT count(*) AS n FROM canonical_article_rewrite_attempts").fetchone()["n"] == 1
