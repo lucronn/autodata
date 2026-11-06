@@ -79,3 +79,49 @@ Concrete todo:
 - [ ] Verify all 34 prose slots, protected structure and permanent warm reuse on success; synchronize sanitized outcome evidence.
 
 This is a docs-only checkpoint. The committed checkpoint must pass machine preflight at its full SHA before implementation. Runtime work follows coordinator integration/review/CI and fresh exact-job guards; this planning turn performs no provider or job call.
+
+
+## Bankone recovery outcome, 2026-11-06
+
+[PR #347](https://github.com/lucronn/autodata/pull/347) merged at
+`887a8bc3a53da93b05bc8a0ab3ba84e4783779a2` after required
+[CI passed](https://github.com/lucronn/autodata/actions/runs/42283387442).
+The coordinator took a fresh private backup, rechecked the frozen job/source/
+generation/profile fences and dispatched the sole remaining Bankone attempt
+once with the approved 32768-token/60-second settings. The exact job
+`a96ebe3a-16b9-4c3f-acb4-986efbb5ff2d` ended `dead_letter`, retry count 2,
+with `REWRITE_SLOT_MISMATCH`. Bankone has consumed two Mercury-3 attempts;
+Banktwo retains its one successful attempt. The three cumulative two-bank
+attempts do not create another Bankone allowance: its per-article limit is
+exhausted. No further dispatch is authorized under this checkpoint.
+
+Sanitized structural inspection found all 34 ordered prose-slot paths present,
+but 29 rewrite rows omitted the required `reason` key. The prose comparison also
+found 16 ordinary-prose slots effectively unchanged: five retain rows, nine
+rewrite rows with exactly unchanged text and two rewrite rows with the same
+words and punctuation-only differences. The other 18 slots were substantially
+changed. Thus adding missing metadata would not make this response satisfy the
+automatic full-prose requirement. It cannot be published or salvaged under the
+existing `full-prose-auto-v1` validator. These counts disclose no source,
+prompt, response text or secret; detailed operational evidence remains private.
+
+Bankone remains on source fallback with no canonical publication. Banktwo's
+stored revision and zero-remote warm-read result remain the limited acceptance
+described above: its source has zero eligible ordinary-prose slots. Full
+ordinary-prose acceptance and the dual-bank canonical rewrite goal remain
+unmet. Checkout remains disabled. Any future Bankone work requires a separate
+reviewed plan and authorization; this result permits no counter reset, model
+retry, manual response repair, validator relaxation or publication.
+
+Recovery todo outcome:
+
+- [x] Add content-free response diagnostics and parser/privacy regressions.
+- [x] Add the atomic one-use exact-job claim with historical attempt fences.
+- [x] Obtain exact-SHA review and required CI before the guarded dispatch.
+- [x] Run the one permitted recovery after a fresh backup and guards; preserve
+  the failed result and source fallback.
+- [x] Synchronize sanitized failure diagnostics to the canonical document,
+  Issue #186 and Project #8's Bankone recovery reference.
+- [ ] Achieve all-34-slot automatic full-prose acceptance, protected-structure
+  retention and permanent warm reuse for Bankone; blocked by the failed
+  exhausted-budget attempt, with no retry authorized by this checkpoint.
