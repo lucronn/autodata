@@ -1,5 +1,5 @@
 {
-  "goal": "Make the existing purchase-disabled public preview restart-persistent using the exact e4af862 API binary and configuration, without rebooting or enabling payments.",
+  "goal": "Restore the purchase-disabled public preview after the observed host reboot and prepare restart persistence using the exact e4af862 API/configuration and saved grant-ready ingestion runtime, without another reboot or enabling payments.",
   "plan_ref": "docs/superpowers/plans/2026-11-06-public-preview-durability.md",
   "issue_ref": "https://github.com/lucronn/autodata/issues/186",
   "project_ref": "https://github.com/users/lucronn/projects/8",
@@ -7,27 +7,36 @@
     "docs/verification/2026-11-06-public-preview-durability.md"
   ],
   "todo": [
-    "Copy and hash-verify the exact serving API binary and configuration into persistent protected preview paths; preserve current values and secret-file access.",
-    "Install a persistent 99-public-preview.conf API override and set only the existing grant-ready ingestion container restart policy to unless-stopped; retain rollback copies.",
-    "Restart the existing ingestion container and API, verify exact runtime identity, readiness, disabled purchase configuration and USD2000 quote, and restore the prior state on failure.",
-    "Record hashes, permissions, effective unit, restart policy, restart checks and rollback evidence; leave boot durability unverified until a separately authorized reboot."
+    "Verify surviving persistent API binary/configuration copies and the private saved ingestion argv, environment, source bind and exact image against retained pre-reboot evidence.",
+    "Securely recreate only autodata-ingestion-grant-ready-e4af862 from the verified saved argv with --restart unless-stopped, then install the persistent corrected99 API override using /usr/bin/env AUTODATA_API_ADDR=:18080; retain rollback evidence.",
+    "Start and verify ingestion/API runtime identities, security flags, readiness, disabled purchase configuration and USD2000 quote; restore pre-attempt API configuration and remove only this attempt's recreated container on failure.",
+    "Record reboot observations, recreation/probe/rollback evidence and remaining boot-verification limits; perform no further reboot or payment enablement."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-06T02:31:28Z",
+  "updated_at": "2026-11-06T07:34:29Z",
   "tracking_sync": {
     "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6675203960",
     "project_item": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
     "project_field": "Release hotfix reference",
     "project_status": "In Progress",
-    "readback": "Coordinator verified correction comment records failed attempt, rollback, corrected exact ExecStart and successor checkpoint requirement; Project Release hotfix reference retains prior gate/checkpoint links and appends correction, status In Progress; only descriptive labels shortened.",
+    "readback": "Coordinator read back revised goal, four literal todos, three paths and exact same-name recreation/security limits in Issue correction; Project Release hotfix reference points to latest comment, status In Progress; prior history retained in Issue and earlier Project links.",
     "verified_by": "coordinator sole external writer",
-    "updated_at": "2026-11-06T02:31:28Z",
-    "correction_issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6675258622"
+    "updated_at": "2026-11-06T07:34:29Z",
+    "correction_issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6675258622",
+    "reboot_successor_issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6679732670"
   },
   "correction": {
     "reason": "EnvironmentFile address overrides systemd Environment assignment and caused bind collision; coordinator rolled back.",
     "exec_start": "/usr/bin/env AUTODATA_API_ADDR=:18080 /opt/autodata/preview/e4af8621c12352e465ee28e87a67f78e67ab9091/autodata-api",
     "tracking_status": "synchronized",
     "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6675258622"
+  },
+  "reboot_successor": {
+    "observed_reboot": "2026-11-05T21:43:00-05:00",
+    "state": "Volatile API overrides vanished; named grant-ready ingestion container absent; persistent binary/env and private recreation inputs remain.",
+    "image": "sha256:5c8e79b93db464da854ad33dc499e25c153bbcd52757569b1f2a4e5072acecb4",
+    "tracking_status": "synchronized",
+    "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6679732670",
+    "argv_audit": "Coordinator boolean-only parse: starts docker run, argc21, no --rm or --restart."
   }
 }
