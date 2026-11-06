@@ -13,6 +13,6 @@
     "After reviewed-script and coordinator dispatch, start the catalog-only service once and observe at most120 seconds, proving real current catalog_index job completion and two-bank browse results from the two pinned authentic configurations.",
     "Record exact source/container/job/provider/index/readiness evidence and article non-interference; stop/disable on failure or uncertain proof, preserving checkpoints/history and leaving the separate article rollout untouched."
   ],
-  "status": "unsynchronized",
-  "updated_at": "2026-11-06T22:12:57.388863+00:00"
+  "status": "synchronized",
+  "updated_at": "2026-11-06T22:35:05.484798+00:00"
 }
