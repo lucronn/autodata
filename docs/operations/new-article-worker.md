@@ -1,0 +1,22 @@
+# New article automatic worker
+
+Status: planning successor only. The implementation gate is `docs/superpowers/plans/2026-11-06-new-article-worker.md`, record `docs/agents/records/2026-11-06-new-article-worker.json`; Issue https://github.com/lucronn/autodata/issues/186 and Project https://github.com/users/lucronn/projects/8 track the same work. Source base is merged PR350 `b3618fb6e68f1734ef029096748e30e655451a26` / tree `b686966c9bb4c01c7d35262c661f8645f9fb9f04`.
+
+The Workshop's persistent ingestion HTTP schedules jobs but does not process article jobs. Its separately gated prompt-v2 source refresh does not authorize a generic worker. The existing generic worker can resume historical rows, so this successor instead wraps existing exact-job dispatch with a persisted new-only eligibility boundary. No API/schema/validator change is proposed.
+
+The first rollout admits at most10 genuinely new article identities, created with their jobs after one persisted database-clock cutoff, within24hours and only from configured bankone/banktwo. One worker selects only pristine pending generation0 automatic jobs with retry0, no prior job/source/attempt/candidate/publication, and exact current owner pointers. Existing historical, failed, parked, review, recovered and refreshed jobs are excluded. Frozen Bankone and completed canaries retain all counters and evidence. Existing descriptors created before activation are also excluded even if later scheduled.
+
+A protected fixed state directory holds cutoff/source/provider/quota/expiry/enable state and consumed reservations. Short state locking allows an operator to disable subsequent admission while a job runs; a separate lifetime lock prevents a second worker. Reserve and fsync quota before SQL, commit max_attempts1 before `run_article_worker_once(job_id=exact_uuid)`, and never automatically revisit a reserved UUID. A crash may conservatively spend unused quota or leave a job pending; it must not replay a provider call. The existing claim and immutable attempt evidence cap actual model dispatch to one per selected job. No generic worker, global sweep, historical retry or cap increase is authorized.
+
+Implementation scope is only the new Python wrapper, its unit tests, existing PostgreSQL lifecycle integration tests and one new preview worker service file. The service stays disabled until reviewed exact-source code and focused real PostgreSQL evidence pass and the coordinator authorizes installation/enablement. Reuse the pinned existing image, approved private configuration and immutable source; Mercury3 remains32768 output tokens/60second request with no automatic retry. Preserve checkout disabled, API/HTTP routing and all prior source/canonical/business data. Installing a new dependency, changing model/provider scope or resetting a rollout requires another explicit decision.
+
+Rollback is disable admission and stop only this worker. An already reserved/in-flight job can finish; uncertain delivery remains consumed. Never reset a lease/attempt or restore/delete database rows to make a retry possible. A successful source refresh or one-shot canary does not establish this service's readiness or grant continuing dispatch authority.
+
+Concrete todo:
+
+- [ ] Implement one small new-only worker around exact-job dispatch with persisted database-clock cutoff, provider allowlist,10-job/24hour quota, disable control and no historical resume or generic queue drain.
+- [ ] Commit each pristine selected job's durable max_attempts1 before dispatch; preserve reservations across crashes/restarts and leave frozen/history-bearing jobs and all existing source/canonical records unchanged.
+- [ ] Prove eligibility, cap/claim ordering, crash/disable/quota/concurrency behavior and actual automatic publication with focused unit and isolated PostgreSQL tests; add only the minimal worker service configuration.
+- [ ] Push validated exact-source milestones for independent review/CI, record evidence in the operator document and tracking, and require separate coordinator service-install/enable dispatch with checkout disabled.
+
+Tracking synchronized through [Issue186 comment6695221432](https://github.com/lucronn/autodata/issues/186#issuecomment-6695221432) and dedicated Project8 text field `New article worker reference` (`PVTF_lAHOCSJ8cc4BiQ2Bzho439s`). Issue body, prior comments and unrelated Project fields remain intact. This docs-only checkpoint awaits exact-SHA machine preflight and coordinator implementation dispatch.
