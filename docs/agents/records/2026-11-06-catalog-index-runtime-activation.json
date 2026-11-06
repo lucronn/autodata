@@ -1,0 +1,18 @@
+{
+  "goal": "Activate the merged catalog-only consumer through a bounded initial proof of real index completion and two-bank browsing, without activating or modifying article rewriting.",
+  "plan_ref": "docs/superpowers/plans/2026-11-06-catalog-index-runtime-activation.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/verification/2026-11-06-catalog-index-runtime-activation.md",
+    "docs/agents/pre-implementation-gate.md"
+  ],
+  "todo": [
+    "Pin merged combined PR355 source/tree/archive/unit and successful required CI/review; synchronize exact tracking and machine preflight before runtime dispatch.",
+    "Install the exact inert catalog unit and immutable merged source with a separate root-only14-name catalog environment; verify payload/import/configuration without live processing or secret output.",
+    "After reviewed-script and coordinator dispatch, start the catalog-only service once and observe at most120 seconds, proving real current catalog_index job completion and two-bank browse results from a pinned authentic configuration.",
+    "Record exact source/container/job/provider/index/readiness evidence and article non-interference; stop/disable on failure or uncertain proof, preserving checkpoints/history and leaving the separate article rollout untouched."
+  ],
+  "status": "unsynchronized",
+  "updated_at": "2026-11-06T22:12:57.388863+00:00"
+}
