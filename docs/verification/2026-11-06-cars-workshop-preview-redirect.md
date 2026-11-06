@@ -33,3 +33,21 @@ For this exact preview deployment only, require that exact suffix occurs once at
 Production apex `/` after promotion and after any rollback must match the unmodified baseline body byte-for-byte with raw SHA256 `fb4b28780cabd9b72db5e063ac0dc49ceba2c93c4fe06ec954e7a2218b61cc3a`; no script removal or normalization is permitted. If production differs, stop acceptance and restore the prior deployment. Existing security-header, redirect path/query, landing config and disabled-purchase requirements remain mandatory.
 
 Coordinator-reported preview observations: Workshop307, nested307, preserved query, trailing slash308 normalization hop, non-Workshop paths404 and unchanged security headers. These observations do not substitute for post-promotion production verification. This amendment is docs only; this planning agent did not deploy or promote.
+
+## Exact-source production rebuild fallback
+
+Vercel CLI63.1.0 refused direct noninteractive promotion of preview cars-landing-ea40ttfgb-curtt.vercel.app because a production build is required. Its `promote --yes` help promises only to skip project-link confirmation; do not infer that it safely bypasses the preview-to-production rebuild requirement. The coordinator may instead build production from the already verified exact private source with:
+
+```sh
+vercel deploy --prod --yes --cwd /home/corp/autodata-evidence/cars-workshop-preview-redirect/deployment-src --scope curtt
+```
+
+This fallback is limited to existing cars-landing project `prj_1PcItrLSRbQXJL4lOYIUKeUmo8I2`, team `team_XlZCzZhR4wXeCFW8XdgisOuz`. Verify its private `.vercel/project.json` linkage before dispatch; never relink to/create another project. Freeze and require these exact three source SHA256 values immediately before and after the rebuild:
+
+- index.html: `fb4b28780cabd9b72db5e063ac0dc49ceba2c93c4fe06ec954e7a2218b61cc3a`
+- package.json: `866293bdde2425fc4dfcf8ea544f8d9ab095f89134c1df839876883160b52e79`
+- vercel.json: `9890691d9fab0b7c187c699ad35da320f0dde404c21ff848ec25e0c4ae92d2f2`
+
+Require parsed vercel.json to equal the recovered original config after removing only the one permitted redirects entry. Keep all original security headers, cleanUrls and trailingSlash settings. No additional application source, environment setting, domain assignment, DNS record, Firebase setting, payment setting, dependency or build command change is allowed. Capture the exact new production deployment ID and source hashes; retrieve its three source files through the read-only Vercel Files API and require identical hashes to the frozen local artifacts.
+
+A production deploy may immediately assign cars.tk to the new deployment; it is a release action, so only the coordinator executes it after the successor full-SHA preflight. After Ready, verify apex `/workshop` temporary307, nested path307, bounded existing slash308 normalization, exact destination/query preservation, unchanged non-Workshop path statuses, all three security headers, and raw production `/` SHA256 `fb4b28780cabd9b72db5e063ac0dc49ceba2c93c4fe06ec954e7a2218b61cc3a`. No preview feedback stripping or other normalization is allowed on production. Verify preview purchase-config remains enabled:false. Any source, config, route, query, body or security check failure blocks acceptance and requires restoration of prior production deployment `dpl_FewQnGj6wVh7GodgrML8QbrSd7Uf` (`cars-landing-ksupv50cx-curtt.vercel.app`) using the rollback procedure above. Record exact new/previous IDs, hashes, statuses, Locations and UTC timestamps in the canonical verification and Issue186. This planning agent performs no deployment/promotion.
