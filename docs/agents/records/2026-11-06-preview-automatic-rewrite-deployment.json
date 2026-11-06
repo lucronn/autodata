@@ -1,0 +1,42 @@
+{
+  "goal": "Deploy the reviewed automatic permanent article rewrite to the existing purchase-disabled preview ingestion worker and verify one authentic selected article from each bank with exact rollback and no schema or API changes",
+  "plan_ref": "docs/superpowers/plans/2026-11-06-preview-automatic-rewrite-deployment.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/verification/2026-11-06-preview-automatic-rewrite-deployment.md"
+  ],
+  "todo": [
+    "Synchronize this exact preview-only plan, verification document and concrete todos with Issue186 and Project8, commit/push the documentation checkpoint and pass full-SHA preflight before coordinator dispatch.",
+    "Finalize review and checks for the exact pinned source, freeze the existing image/container/configuration and two authentic bank-scoped article selections, retain private backup and rollback evidence, and confirm purchase remains disabled.",
+    "Replace only the preview ingestion source mount using the exact pinned existing image and reviewed source while preserving credentials/security/network/runtime settings, retain the original container, and run only the two selected article jobs sequentially within the probe bounds.",
+    "Verify source fallback followed by automatic permanent canonical content with UNREVIEWED metadata, no manual review dependency and zero warm provider/model calls; report concrete blockers or execute exact runtime rollback on failure, preserving stored data and disabled commerce."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-06T07:54:11Z",
+  "source_pin": {
+    "reviewed_candidate_sha": "89b643336e47a9e2ecc9208a77552dd96d527e08",
+    "implementation_sha": "034708e8587abaf3e97cefa90cc47178f6cdfeb3",
+    "review_finalized": false,
+    "dispatch_requires_same_sha_finalized_review_and_checks": true
+  },
+  "image_pin": "sha256:5c8e79b93db464da854ad33dc499e25c153bbcd52757569b1f2a4e5072acecb4",
+  "model_secret_precondition": {
+    "current_key_present": false,
+    "approved_env_file_present": false,
+    "source_first_code_rollout_allowed": true,
+    "live_canonical_probe_requires_approved_private_key_delivery": true,
+    "missing_secret_blocker": "MODEL_KEY_MISSING",
+    "chat_secret_delivery_forbidden": true
+  },
+  "tracking_sync": {
+    "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6680054946",
+    "project_item": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "project_field": "Release hotfix reference",
+    "readback_exact": true,
+    "prior_prefix_preserved": true,
+    "field_length": 523,
+    "verified_by": "gate documentation agent authorized by coordinator",
+    "readback_utc": "2026-11-06T07:54:11Z"
+  }
+}
