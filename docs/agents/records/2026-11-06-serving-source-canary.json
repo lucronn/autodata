@@ -1,0 +1,26 @@
+{
+  "goal": "Capture one frozen source article from each bank into the actual serving database and verify source fallback with zero model requests or canonical publication",
+  "plan_ref": "docs/superpowers/plans/2026-11-06-serving-source-canary.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/verification/2026-11-06-serving-source-canary.md"
+  ],
+  "todo": [
+    "Synchronize this exact source-only serving-database plan, canonical verification document and concrete todo with Issue186 and Project8; commit/push the documentation checkpoint and pass full-SHA machine preflight before coordinator execution dispatch.",
+    "Freeze private exact provider/vehicle/configuration/article enrollment from the retained recovery receipt and authentic source observations; verify serving runtime SHA, serving database identity, unchanged unrelated data, bounded driver and private backup before network or writes.",
+    "Read authentic bounded resolution and selected article-index evidence for each enrolled bank, persist only the frozen selected descriptor and provider scope, capture its source through existing provider-bound functions, and stop each fenced job with SOURCE_CANARY_ONLY before normalization or model dispatch.",
+    "Verify two source revisions, resource hashes, nonempty source bodies, source fallback views, zero rewrite attempts/publications and unchanged commerce/customer/unrelated rows; retain private originals and sanitized counts/hashes, then synchronize the exact result without claiming paid-browser or production acceptance."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-06T01:59:41Z",
+  "tracking_sync": {
+    "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6674810284",
+    "project_item": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "project_field": "Release hotfix reference",
+    "readback_utc": "2026-11-06T01:59:41Z",
+    "prior_prefix_preserved": true,
+    "readback_exact": true,
+    "verified_by": "coordinator sole external writer"
+  }
+}
