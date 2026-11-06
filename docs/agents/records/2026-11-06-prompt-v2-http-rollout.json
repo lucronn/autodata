@@ -14,14 +14,14 @@
     "On failed acceptance stop/remove only this new final and restart exact original, polling the same recovery endpoints for up to30seconds; retain all original/source/evidence, report recovery incomplete if needed, and synchronize the exact result with no further automatic retry."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-06T20:55:31.368297+00:00",
+  "updated_at": "2026-11-06T20:56:32.136001+00:00",
   "product_source_sha": "b3618fb6e68f1734ef029096748e30e655451a26",
   "product_source_tree": "b686966c9bb4c01c7d35262c661f8645f9fb9f04",
   "source_pr_ref": "https://github.com/lucronn/autodata/pull/350",
   "operation_scope": "HTTP runtime source/configuration substitution only; no implementation edits",
   "rollback_container_id": "3cefb07d948ae5bbee3d1cde52a8f41e5dcf837ccbdb8143f67284ff3f90dcfe",
   "image_id": "sha256:5c8e79b93db464da854ad33dc499e25c153bbcd52757569b1f2a4e5072acecb4",
-  "previous_checkpoint_sha": "f3130ce299da9e4619a0c8af2e738402d741e12e",
+  "previous_checkpoint_sha": "dbdec7e9e2a826b2bcb7181a076a65176f238d16",
   "prior_tracking_sync": {
     "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
     "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2Bzho42M0",
@@ -43,7 +43,13 @@
     "project_text_sha256": "e17ae6c316310a58a20f26ebb4e1dcf41b7d9a1958305a7a6a9489235fe5e98b",
     "readback_verified": true
   },
-  "tracking_sync": {
+  "authorized_new_shadow_attempts": 0,
+  "authorized_second_final_attempts": 1,
+  "prior_attempt_status": "corrected_shadow_passed_final_local200_public_transient_error_rolled_back_original_healthy",
+  "cutover_poll_seconds": 30,
+  "rollback_poll_seconds": 30,
+  "max_poll_rounds_per_phase": 10,
+  "prior_second_final_tracking_sync": {
     "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
     "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2Bzho42M0",
     "project_field_name": "Prompt-v2 HTTP rollout reference",
@@ -52,10 +58,20 @@
     "project_text_sha256": "7c3a52d15c3076b4e53b938ac6e84ef3b202789004a06f7ad2be2a7d6836a0be",
     "readback_verified": true
   },
-  "authorized_new_shadow_attempts": 0,
-  "authorized_second_final_attempts": 1,
-  "prior_attempt_status": "corrected_shadow_passed_final_local200_public_transient_error_rolled_back_original_healthy",
-  "cutover_poll_seconds": 30,
-  "rollback_poll_seconds": 30,
-  "max_poll_rounds_per_phase": 10
+  "tracking_sync": {
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2Bzho42M0",
+    "project_field_name": "Prompt-v2 HTTP rollout reference",
+    "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6695326964",
+    "issue_comment_sha256": "8d16dac9b49fb7124ed368dacc5361a6f89371316d10c3b66c8688658c24940c",
+    "project_text_sha256": "d8f2d73cbb8ce2e243d32a053fee5a11e2f2c37a123de72934d952b51a77d54d",
+    "readback_verified": true
+  },
+  "read_only_probe_endpoints": [
+    "http://127.0.0.1:3031/healthz",
+    "https://autodata.cars.tk/readyz",
+    "https://autodata.cars.tk/workshop/purchase-config.json"
+  ],
+  "public_probe_redirect_policy": "no_redirects_canonical_autodata_host",
+  "second_final_creation_status": "not_created_endpoint_correction_only"
 }

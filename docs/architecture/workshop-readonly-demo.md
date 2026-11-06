@@ -186,3 +186,8 @@ Second-final concrete todo:
 - [ ] Create exactly one fresh final container from the same reviewed payload, changing only its unique name and new private final-http-r2.cid path; require the complete stopped-container inspect diff and original40-entry environment match before stopping original.
 - [ ] Swap3031 once and poll only local health, public readiness and public disabled-purchase configuration in at most10 sequential rounds within30seconds; record transient failures without issuing article/provider/model/work requests.
 - [ ] On failed acceptance stop/remove only this new final and restart exact original, polling the same recovery endpoints for up to30seconds; retain all original/source/evidence, report recovery incomplete if needed, and synchronize the exact result with no further automatic retry.
+
+
+### Canonical public probe host correction
+
+Before the still-unused r2 final creation, coordinator verified canonical `https://autodata.cars.tk/readyz`=200 and `https://autodata.cars.tk/workshop/purchase-config.json`=200/enabled:false. Use those exact no-redirect URLs for cutover and rollback; apex cars.tk/readyz404 and apex Workshop308 are not acceptance endpoints. The [rollout plan](../superpowers/plans/2026-11-06-prompt-v2-http-rollout.md) is corrected; same r2 payload/name/CID, ONE unused final attempt, unchanged passed-shadow proof and30second/10round/30GET phase limits. No new runtime/worker/model/article/provider/commerce scope, and no runtime action by the planning agent. Fresh full-SHA corrected preflight/dispatch required.

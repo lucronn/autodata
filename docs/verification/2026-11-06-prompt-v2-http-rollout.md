@@ -52,3 +52,10 @@ Second-final concrete todo:
 - [ ] On failed acceptance stop/remove only this new final and restart exact original, polling the same recovery endpoints for up to30seconds; retain all original/source/evidence, report recovery incomplete if needed, and synchronize the exact result with no further automatic retry.
 
 Second-final exact tracking readback verified: https://github.com/lucronn/autodata/issues/186#issuecomment-6695299434 and dedicated HTTP Project8 field; historical comments/other fields preserved. New full-SHA preflight and coordinator dispatch required.
+
+
+### Canonical public probe host correction
+
+Before the still-unused r2 final creation, coordinator verified canonical `https://autodata.cars.tk/readyz`=200 and `https://autodata.cars.tk/workshop/purchase-config.json`=200/enabled:false. Use those exact no-redirect URLs for cutover and rollback; apex cars.tk/readyz404 and apex Workshop308 are not acceptance endpoints. The [rollout plan](../superpowers/plans/2026-11-06-prompt-v2-http-rollout.md) is corrected; same r2 payload/name/CID, ONE unused final attempt, unchanged passed-shadow proof and30second/10round/30GET phase limits. No new runtime/worker/model/article/provider/commerce scope, and no runtime action by the planning agent. Fresh full-SHA corrected preflight/dispatch required.
+
+Canonical-host correction exact Issue/Project readback verified: https://github.com/lucronn/autodata/issues/186#issuecomment-6695326964; other fields/history preserved.
