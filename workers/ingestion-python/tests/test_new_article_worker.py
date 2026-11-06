@@ -124,3 +124,24 @@ def test_missing_model_cannot_reserve_or_touch_database(state):
     with pytest.raises(worker.WorkerBlocked):
         worker.dispatch_next(ForbiddenDatabase(),state,worker_id=uuid4(),registry={},object_store=None,model_client=None)
     assert state.read()['reservations']==[]
+
+
+def test_stop_during_database_clock_read_cannot_dispatch(state,monkeypatch):
+    from threading import Event
+    state.initialize(NOW);state.set_enabled(True)
+    stop=Event()
+    def clock(repo):
+        stop.set()
+        return NOW
+    monkeypatch.setattr(worker,'database_now',clock)
+    monkeypatch.setattr(worker,'dispatch_next',lambda *a,**k: pytest.fail('dispatch after stop'))
+    assert worker.run_new_article_worker(None,state,registry={},object_store=None,model_client=object(),stop=stop)==0
+    assert state.read()['reservations']==[]
+
+
+def test_stop_while_state_lock_waited_prevents_reservation(state):
+    from threading import Event
+    state.initialize(NOW);state.set_enabled(True)
+    stop=Event();stop.set()
+    assert state.reserve(uuid4(),NOW,stop=stop) is False
+    assert state.read()['reservations']==[]

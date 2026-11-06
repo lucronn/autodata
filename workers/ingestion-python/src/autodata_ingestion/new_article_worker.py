@@ -211,10 +211,11 @@ class RolloutState:
         return (value['enabled'] and _timestamp(value['cutoff']) <= now < _timestamp(value['expires_at'])
                 and len(value['reservations']) < value['max_jobs'])
 
-    def reserve(self, job_id, now):
+    def reserve(self, job_id, now, *, stop=None):
         with self._lock('state.lock'):
             value = self._read()
-            if not self.active(value, now) or str(job_id) in {r['job_id'] for r in value['reservations']}:
+            if ((stop is not None and stop.is_set()) or not self.active(value, now)
+                    or str(job_id) in {r['job_id'] for r in value['reservations']}):
                 return False
             value['reservations'].append({'job_id': str(job_id), 'reserved_at': now.isoformat()})
             self._write(value)
@@ -249,10 +250,12 @@ def database_now(repo):
         return conn.execute('SELECT clock_timestamp() AS now').fetchone()['now']
 
 
-def reserve_next_job(repo, state):
+def reserve_next_job(repo, state, *, stop=None):
     """Persist quota first, then commit cap1; any exception prevents dispatch."""
     from psycopg.types.json import Jsonb
     snapshot = state.read()
+    if stop is not None and stop.is_set():
+        return None
     with repo.connect() as conn:
         now = conn.execute('SELECT clock_timestamp() AS now').fetchone()['now']
         if not state.active(snapshot, now):
@@ -275,7 +278,9 @@ def reserve_next_job(repo, state):
         if eligible is None:
             return None
         now = conn.execute('SELECT clock_timestamp() AS now').fetchone()['now']
-        if not state.reserve(job_id, now):
+        if stop is not None and stop.is_set():
+            return None
+        if not state.reserve(job_id, now, stop=stop):
             return None
         marker = {'new_article_rollout': {'rollout_id': snapshot['rollout_id'],
             'source_sha': snapshot['source_sha'], 'cutoff': snapshot['cutoff'], 'max_model_attempts': 1}}
@@ -285,10 +290,12 @@ def reserve_next_job(repo, state):
     return job_id
 
 
-def dispatch_next(repo, state, *, worker_id, registry, object_store, model_client, hooks=None):
+def dispatch_next(repo, state, *, worker_id, registry, object_store, model_client, hooks=None, stop=None):
+    if stop is not None and stop.is_set():
+        return False
     if model_client is None:
         raise WorkerBlocked('MODEL_NOT_CONFIGURED')
-    job_id = reserve_next_job(repo, state)
+    job_id = reserve_next_job(repo, state, stop=stop)
     if job_id is None:
         return False
     snapshot = state.read()
@@ -303,6 +310,8 @@ def dispatch_next(repo, state, *, worker_id, registry, object_store, model_clien
     if permitted is None:
         return False
     from .article_lifecycle import run_article_worker_once
+    if stop is not None and stop.is_set():
+        return False
     return run_article_worker_once(repo, worker_id=worker_id, registry=registry,
         object_store=object_store, model_client=model_client, hooks=hooks, job_id=job_id)
 
@@ -323,8 +332,10 @@ def run_new_article_worker(repo, state, *, registry, object_store, model_client,
     worker_id = uuid4()
     with state.worker_lock():
         while not stop.is_set() and state.active(state.read(), database_now(repo)):
+            if stop.is_set():
+                break
             dispatch_next(repo, state, worker_id=worker_id, registry=registry,
-                          object_store=object_store, model_client=model_client)
+                          object_store=object_store, model_client=model_client, stop=stop)
             stop.wait(2)
     return 0
 

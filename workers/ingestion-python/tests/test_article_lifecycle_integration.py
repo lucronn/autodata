@@ -1058,8 +1058,8 @@ def test_new_article_worker_crash_reservation_never_dispatches_again(runtime,tmp
     kwargs=dict(worker_id=uuid4(),registry=runtime.registry,object_store=runtime.objects,model_client=model)
     if point=='reserved_before_sql':
         original=state.reserve
-        def reserve_then_crash(*args):
-            result=original(*args)
+        def reserve_then_crash(*args,**kwargs):
+            result=original(*args,**kwargs)
             assert result
             raise RuntimeError('crash')
         with monkeypatch.context() as patch:
@@ -1170,3 +1170,22 @@ def test_new_article_worker_actual_process_death_after_http_never_replays(runtim
     with runtime.repo.connect() as conn:
         assert conn.execute('SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s',(job,)).fetchone()==before
         assert conn.execute('SELECT * FROM canonical_article_rewrite_attempts WHERE source_fetch_job_id=%s',(job,)).fetchall()==attempts
+
+
+def test_new_article_worker_stop_after_reservation_prevents_exact_dispatch(runtime,tmp_path,monkeypatch):
+    from threading import Event
+    from autodata_ingestion.new_article_worker import dispatch_next
+    state,job,model=prepare_new_article_runtime(runtime,tmp_path,monkeypatch)
+    stop=Event();original=state.reserve
+    def stop_after_reserve(*args,**kwargs):
+        result=original(*args,**kwargs)
+        stop.set()
+        return result
+    monkeypatch.setattr(state,'reserve',stop_after_reserve)
+    assert not dispatch_next(runtime.repo,state,worker_id=uuid4(),registry=runtime.registry,
+        object_store=runtime.objects,model_client=model,stop=stop)
+    assert state.read()['reservations'][0]['job_id']==str(job)
+    assert runtime.model.calls==0
+    with runtime.repo.connect() as conn:
+        row=conn.execute('SELECT status,retry_count,max_attempts FROM source_fetch_jobs WHERE source_fetch_job_id=%s',(job,)).fetchone()
+    assert row=={'status':'pending','retry_count':0,'max_attempts':1}
