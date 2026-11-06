@@ -1,0 +1,25 @@
+{
+  "goal": "Prevent context-only facts in full-prose introductions while preserving one durable canonical rewrite, independent exact-hash review and source fallback.",
+  "plan_ref": "docs/superpowers/plans/2026-11-05-mercury-context-introduction.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/agents/specs/2026-11-05-mercury-context-introduction.md"
+  ],
+  "todo": [
+    "Preserve current Issue186 body/comments and all Project8 fields; synchronize this exact goal, plan, canonical spec, two-file allowlist and concrete todo under a coordinator-owned serialized tracking update, then commit/push the checkpoint and pass exact-SHA preflight.",
+    "Add red prompt-contract regressions for normalized-document-only introduction support, context-only vehicle tokens, deterministic token enumeration and explicit prompt version; preserve the existing rejecting validator.",
+    "Change only full-prose prompt construction: version its prompt bytes, disclose document-derived allowable introduction tokens and explicitly exclude context-only facts; retain all profile, grammar, validator, limits, response and lifecycle contracts.",
+    "Run no-network synthetic full-prose and ordered-rewrite suites, verify no validator or unrelated code change, commit/push the coherent correction and obtain independent exact-SHA review.",
+    "Only after separately authorized coordinator runtime work: retain failed canary receipts and attempt budget, run a bounded authentic canary on the reviewed candidate, independently review its complete content and publish at most one exact-bound canonical revision; otherwise retain source fallback."
+  ],
+  "status": "draft_unsynchronized",
+  "updated_at": "2026-11-06T00:26:00.025104Z",
+  "source_base_sha": "5106c97c42fd62837be67cbd49f02c940c811137",
+  "implementation_allowlist": [
+    "workers/ingestion-python/src/autodata_ingestion/procedure_rewrite_full.py",
+    "workers/ingestion-python/tests/test_procedure_rewrite_full.py"
+  ],
+  "implementation_authorized": false,
+  "tracking_blocker": "Project Source retains Task67/68/69 and Release hotfix reference is concurrently owned by the coordinator; preserve both without an unsynchronized overwrite. This proposal makes no GitHub writes or synchronized/preflight claim."
+}
