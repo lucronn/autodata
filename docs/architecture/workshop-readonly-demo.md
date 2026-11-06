@@ -125,3 +125,24 @@ Recovery todo outcome:
 - [ ] Achieve all-34-slot automatic full-prose acceptance, protected-structure
   retention and permanent warm reuse for Bankone; blocked by the failed
   exhausted-budget attempt, with no retry authorized by this checkpoint.
+
+## Automatic rewrite prompt-v2 checkpoint
+
+Goal: Make automatic ordinary-prose rewriting satisfy the existing strict response contract while preserving permanent historical canonical revisions and exact evidence binding.
+
+Issue: https://github.com/lucronn/autodata/issues/186
+Project: https://github.com/users/lucronn/projects/8
+Plan: `docs/superpowers/plans/2026-11-06-automatic-rewrite-prompt-v2.md`
+Record: `docs/agents/records/2026-11-06-automatic-rewrite-prompt-v2.json`
+Branch: `codex/automatic-rewrite-prompt-v2`; starting source `887a8bc`, with preserved PR349 outcome documentation.
+
+The failed Bankone response revealed independent shape and uniqueness failures: all34 paths present,29 missing reason fields,16 effectively unchanged leaves. Prompt-v2 explicitly requires exactly five keys per replacement (`block_id,path,action,text,reason`), empty rewrite reason, ordinary-slot `required_action=rewrite`, and substantive rewording beyond punctuation/case/spacing. Technical-only slots may use explicit retention with a concrete reason. Preserve exact historical prompt-v1 bytes; saved-candidate validation accepts only server-reconstructed v1/v2 hashes for the same source/context, with every other binding and strict validator unchanged. Profile remains full-prose-auto-v1; this is a prompt clarification, not validator/profile relaxation or semantic certification.
+
+Concrete todo:
+- [ ] Freeze byte-identical automatic prompt-v1 and introduce prompt-v2 with exact five-key response rows, explicit empty rewrite reason and per-slot action requirements.
+- [ ] Accept only exact server-reconstructed v1/v2 prompt hashes at saved automatic-candidate validation; preserve all other source/attempt/model/response bindings.
+- [ ] Run focused prompt/hash/integrity regressions and actual PostgreSQL lifecycle/restart coverage; push validated milestones for independent review and required CI.
+- [ ] After coordinator dispatch, use one fresh prose-bearing Bankone identity and at most one persisted provider attempt; preserve frozen-job counters and source fallback on failure.
+- [ ] On publication prove all eligible prose changed, protected content retained and ten warm read/ensure pairs plus fresh-process reuse with measured zero source/media/model/schedule calls; synchronize sanitized evidence.
+
+Frozen Bankone job a96ebe3a-16b9-4c3f-acb4-986efbb5ff2d and its canonical identity remain exhausted and untouched; no reset/re-key/re-enrollment/salvage. Banktwo receives no further call. The future fresh identity must be an existing reachable licensed descriptor with no prior attempt/publication, distinctly fenced before one exact-job dispatch. Unknown delivery consumes the single-call allowance. Source fallback persists on failure; checkout stays disabled and grants unchanged. Planning is docs-only. Exact pinned machine preflight and coordinator assignment precede implementation; independent candidate review/CI and coordinator dispatch precede runtime canary/deployment.
