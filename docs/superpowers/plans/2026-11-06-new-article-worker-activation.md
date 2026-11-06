@@ -1,0 +1,83 @@
+# First New Article Worker Runtime Activation Plan
+
+> **For agentic workers:** Use superpowers:executing-plans for this fixed runtime handoff. This checkpoint is planning only; no deployment, initialization, enablement or worker start occurs without a later coordinator dispatch at its exact passing pin.
+
+**Goal:** Activate one reviewed new-only automatic article worker for at most ten Bankone/Banktwo article jobs within one persisted 24-hour rollout, preserving historical jobs and supporting disable-and-stop rollback.
+
+**Architecture:** Install the unchanged PR352 service and immutable reviewed source with the existing pinned runtime image. Clone the successful HTTP runtime's private environment with exactly two worker-only model-limit additions; initialize protected state disabled, then explicitly enable/start once prerequisites pass. Existing exact-job dispatch commits cap1 before claim and never revisits a reserved UUID.
+
+**Tech Stack:** Existing Docker image, systemd, Python worker controls, PostgreSQL17 read-only preflight/backup and bounded observation. No new implementation or deployment framework.
+
+**Spec:** `docs/operations/new-article-worker.md`; canonical gate `docs/agents/pre-implementation-gate.md`.
+Issue: https://github.com/lucronn/autodata/issues/186
+Project: https://github.com/users/lucronn/projects/8
+Record: `docs/agents/records/2026-11-06-new-article-worker-activation.json`.
+
+## Exact identities and prerequisites
+
+- Worker code is **only** `39a90ef58225aabeef242c63f231c220a47ccee7` (PR352), full tree `ff59de0d1372725bd79180f61001b48520c3d53e`. Deterministic `git archive --format=tar` SHA256 is `fd9dd41408a252c556607f4086bbd7422b56404da94e74fc6b2fe2b750e8dced`; worker module SHA256 `f9c057351be15b8c15b4de69e9e7c474755e50f33f6672cc5f216b0d0f2dad26`; service SHA256 `c1d1882dbfd2b7a18759762a1212a17e1031db04b6ccb11006a00af74dc0e257`. No source substitution, source repair or new dependency.
+- Before any runtime write, require PR352 merged to master, independent review approved at that head, all required CI successful, and no changes to runtime source/contracts/service between the reviewed head and merge. Record the actual merge SHA and CI URLs; a changed runtime diff requires another reviewed gate. The implementation preflight was at `2a8525b36c990babffe4c83e9e4288a9f0c0137c`; this separate runtime record must also pass at its own committed/pushed pin.
+- HTTP refresh succeeded by coordinator report and read-only inspect: `autodata-ingestion-prompt-v2-http-b3618fb6-r3`, ID `38f3bc41eb2433096fe469c6b4dd4d368d52a28b43ba678c395b48ba7c478e22`, source `/home/corp/autodata-candidate/prompt-v2-http/b3618fb6e68f1734ef029096748e30e655451a26/source` read-only at `/app`; port3031; source SHA `b3618fb6e68f1734ef029096748e30e655451a26`. Original `3cefb07d948ae5bbee3d1cde52a8f41e5dcf837ccbdb8143f67284ff3f90dcfe` is retained stopped for its own rollback. HTTP outcome is independently receipt-verified at [Issue186 comment6695577548](https://github.com/lucronn/autodata/issues/186#issuecomment-6695577548), docs PR353 head `3da82f415c91958211277485f72fafd80f2a142c`. Validate the private `third-final-result.json` SHA256 `a623cf5bbc778057e243021cfeca7404d8e50bfe22c320806b280202875dc84e`, local3031 and canonical public readiness/purchase proof (200, enabledfalse), and unchanged DB receipt `17a932` before worker installation. Any HTTP identity drift blocks; do not recreate API/HTTP as part of this task.
+- Runtime image is `sha256:5c8e79b93db464da854ad33dc499e25c153bbcd52757569b1f2a4e5072acecb4`, default UID0. Local tests: focused28, unit200, existing automatic/new runtime20, plus final shutdown regression1 passed. No production job/model call is needed to establish installation readiness.
+
+## Fixed runtime write allowlist
+
+Only create the immutable source `/opt/autodata/new-article-worker/39a90ef58225aabeef242c63f231c220a47ccee7/source`, exact unit `/etc/systemd/system/autodata-new-article-worker.service`, configuration `/etc/autodata/new-article-worker.conf`, private environment `/etc/autodata/new-article-runtime.env`, state directory `/var/lib/autodata/new-article-worker`, and private evidence/backup directory `/var/lib/autodata/new-article-worker-evidence/first-rollout-39a90ef`. Fail rather than overwrite any existing rollout/state/container/service/configuration; an existing matching source may be read-verified and reused, never patched. Parent directories/config/state are root-owned; source directories0555/files0444 (retaining execute bits only where the archive has them), private directories0700/files0600. No caller-owned0700 mount: UID0 with all capabilities dropped requires root ownership.
+
+Source comes from the exact verified archive with no `.git`/untracked files, extracted once and sealed root-owned/read-only. Service is byte-identical to the pinned file. Config is exactly:
+
+```ini
+AUTODATA_NEW_ARTICLE_SOURCE=/opt/autodata/new-article-worker/39a90ef58225aabeef242c63f231c220a47ccee7/source
+AUTODATA_NEW_ARTICLE_SOURCE_SHA=39a90ef58225aabeef242c63f231c220a47ccee7
+```
+
+Build private runtime.env inside a root-only process from the successful fixed HTTP container's exact40 unique `Config.Env` entries, never stdout/logs. Preserve every value and add **only** `INCEPTION_MAX_TOKENS=32768` and `INCEPTION_API_TIMEOUT_SECONDS=60` (both absent at planning readback), yielding42 unique entries. Require existing `INCEPTION_MODEL=mercury-3`, `PYTHONDONTWRITEBYTECODE=1` and `PYTHONPATH=/app/workers/ingestion-python/src:/app/packages/contracts/python`. Reject duplicate names, newline/NUL values, donor mismatch or unexpected tuning. Docker adds only the approved `AUTODATA_NEW_ARTICLE_SOURCE_SHA` to the42-entry runtime environment; source/PYTHONPATH/PYTHONDONTWRITEBYTECODE match the unit. Do not alter HTTP credentials/settings or print secret values; record only names/counts, permissions, equality verdicts and private file digests.
+
+The unchanged unit uses fixed container name `autodata-new-article-worker`, host network, read-only root/source, cap-drop ALL, no-new-privileges, whole state-directory read-write bind, no extra ports/mounts, `Restart=no`, stop timeout70seconds and systemd stop timeout80seconds. There is no Install target: do not enable it at boot. Root-only command payload inspection must confirm the source/env/state/image/command before execution; no Compose up, generic worker entrypoint, provider install, host bootstrap, migration or grant change is in scope.
+
+## Task 1: Freeze, backup and install disabled
+
+- [ ] Recheck exact gate/preflight, merge/CI/review and successful HTTP receipt. Record root-only absence/ownership checks for the fixed paths, unit and worker container; verify no generic article worker/other exact dispatch runs and no pending/processing article jobs exist. If that baseline changed, stop for a narrow coordinator decision; never drain it.
+- [ ] With existing approved private DB credentials and bounded connections, capture database clock and historical job/attempt/source/publication fingerprints, frozen Bankone job `a96ebe3a-16b9-4c3f-acb4-986efbb5ff2d`, frozen Banktwo `64888ce4-429e-4e22-9892-48d1fb4b82eb`, and completed canary `2967d7f9-09ad-4a24-9e96-9f2e20479ff5`. Verify required table SELECT/INSERT/UPDATE and `has_column_privilege(current_user,'source_fetch_jobs','max_attempts','UPDATE')`/checkpoint permissions with read-only catalog queries; no grant repairs.
+- [ ] Capture a consistent private PostgreSQL17 custom-format `pg_dump` using the existing approved backup path/runtime, bounded to120seconds. Require exit0, root0600 nonempty artifact, SHA256, and successful PostgreSQL17 `pg_restore --list` within15seconds; preserve the existing verified restore-drill reference. Backup is evidence, never permission to restore or remove rows during rollback. Do not put connection strings/passwords in argv or output.
+- [ ] Seal archive/source, exact unit and two config files; record private environment equality and public source/unit/image hashes. Verify root permissions, read-only mount/UID0 compatibility and `systemd-analyze verify` without starting anything. Run only `python -m autodata_ingestion.new_article_worker --help` in the fixed pinned image with networknone for import proof. `systemctl daemon-reload` is allowed only after the exact unit is installed; no enable/start yet.
+- [ ] Using the same fixed image/source/env/state payload below, invoke only `--initialize` once. It queries database clock and writes disabled state; no enrollment or model/source request. Require schema1, exact source SHA, fresh UUID, cutoff from DB time, expiry exactly+24h, providers bankone/banktwo, max_jobs10, enabledfalse and empty reservations. State and lock files root0600, directory root0700; initialization cannot overwrite an existing rollout. Snapshot scope privately and verify DB fingerprints unchanged. Hand the disabled installation evidence to the coordinator before enable/start.
+
+The approved root-only Docker control argv is the service payload without a worker daemon/name and with exactly one control argument. For `--initialize`, `--enable` and rollback `--disable`, use:
+
+```sh
+docker run --rm --network host --read-only --cap-drop ALL --security-opt no-new-privileges \
+  --env-file /etc/autodata/new-article-runtime.env \
+  --env AUTODATA_NEW_ARTICLE_SOURCE_SHA=39a90ef58225aabeef242c63f231c220a47ccee7 \
+  --env PYTHONDONTWRITEBYTECODE=1 \
+  --env PYTHONPATH=/app/workers/ingestion-python/src:/app/packages/contracts/python \
+  --mount type=bind,src=/opt/autodata/new-article-worker/39a90ef58225aabeef242c63f231c220a47ccee7/source,dst=/app,readonly \
+  --mount type=bind,src=/var/lib/autodata/new-article-worker,dst=/var/lib/autodata/new-article-worker \
+  --workdir /app/workers/ingestion-python \
+  sha256:5c8e79b93db464da854ad33dc499e25c153bbcd52757569b1f2a4e5072acecb4 \
+  python -m autodata_ingestion.new_article_worker --initialize
+```
+
+Replace only the final `--initialize` with `--enable` or `--disable` at their explicitly authorized stage; no empty/default control invocation. Bound each control process to15seconds; on uncertain initialization, inspect existing state and stop rather than retry/reinitialize.
+
+## Task 2: Explicit first rollout, bounded observation and rollback
+
+- [ ] After disabled evidence is accepted and coordinator explicitly dispatches enable/start at the pinned runtime gate, recheck the unchanged HTTP health/purchase state, worker absence, private permissions, remaining24h window and zero reservations. Run `--enable` once, verify enabledtrue with unchanged scope, then `systemctl start autodata-new-article-worker.service` once. Inspect fixed container's exact source/image/args,43-entry effective environment, UID0/security and mounts. Any mismatch means disable+stop, not repair/recreate/retry.
+- [ ] Observe at most120seconds initially (eight samples15seconds apart, each read bounded5seconds), without manufacturing articles, calling ensure, warming provider routes or doing model tuning. Confirm service/process singleton, HTTP health and checkout disabled, state cutoff/expiry/quota unchanged, reservations monotonic<=10; each newly admitted job is automatic generation0, post-cutoff, `max_attempts=1`, retry_count<=1 and has at most one model-attempt row/dispatch evidence. Match every admitted UUID to state and rollout checkpoint. Historical/frozen job counters/checkpoints and immutable source/publication fingerprints must remain unchanged. Record only identifiers/status/counters/hashes; never credentials or source/model content.
+- [ ] Successful natural new work must publish through unchanged validators as `UNREVIEWED`; failure must retain truthful readable source/failure state. Disable+stop immediately on any first terminal job failure, ambiguous delivery, historical mutation, second attempt, scope/quota drift, unexpected process/health failure or purchase-enabled state. No retry/reset/rearm, cap increase or generic sweep. An idle120second observation is valid idle evidence, not a publication success claim.
+- [ ] On healthy completion of the initial observation, leave only this same process authorized until first10 reservations or persisted24h expiry, with a recorded coordinator handoff of cutoff/expiry/count. No additional rollout, automatic restart or continuing budget is implied. Later read-only checks may inspect actual natural work; they do not enqueue it. At quota/expiry the worker exits; record final counters and retain state even if fewer than10 complete.
+- [ ] Rollback invokes the fixed `--disable` control (15second bound), then `systemctl stop autodata-new-article-worker.service` (80second bound), and verifies enabledfalse, no running named worker/container, preserved reservations and unchanged HTTP/API/checkout. If disable fails, stop immediately anyway; keep failed state/attempt evidence and diagnose read-only. Never restart, reset leases/attempts, delete state, change canonical/source rows or restore the backup. One already running claim may finish or be killed by the existing stop timeout; a spent reservation cannot be replayed.
+- [ ] Synchronize exact source/service/environment hashes, actual merge/CI references, rollout UUID/cutoff/expiry, backup/observation/rollback receipts and truthful outcome in the canonical operator doc and append-only Issue186/dedicated activation field. No new implementation file is authorized by this runtime plan; a required code/payload change needs an amended synchronized checkpoint.
+
+## Concrete todo record
+
+- [ ] Verify PR352 merge/review/CI, successful exact HTTP refresh, singleton and pristine baseline; record private backup and historical/frozen fingerprints without provider work.
+- [ ] Install only the pinned root-owned immutable source/service/private environment with two approved worker-only limits; initialize one disabled ten-job/24-hour rollout and verify exact scope/cap permissions.
+- [ ] After explicit coordinator enable/start dispatch, observe bounded natural new-only processing with durable cap1, unchanged history and UNREVIEWED publication; disable and stop on any failed safety check.
+- [ ] Preserve consumed state and HTTP/API/checkout during rollback or quota/expiry exit; synchronize exact runtime evidence without resetting jobs, increasing budget or starting another rollout.
+
+## Synchronization
+
+Use a new dedicated Project8 `New article worker activation reference` text field and append-only Issue186 comments. Preserve the body, prior comments, implementation-worker field, HTTP field and historical source/dependency reference. Commit/push only this plan, its record and the canonical operator document on `codex/new-article-runtime-gate`, then run `python3 scripts/autonomy/pre_implementation.py --record docs/agents/records/2026-11-06-new-article-worker-activation.json --base-sha FULL_COMMITTED_CHECKPOINT_SHA`. This machine success verifies the planning boundary; merge/CI and explicit runtime dispatch are additional blocking prerequisites.
+
+Tracking is synchronized through [Issue186 comment6695599756](https://github.com/lucronn/autodata/issues/186#issuecomment-6695599756) and Project8 dedicated `New article worker activation reference` field `PVTF_lAHOCSJ8cc4BiQ2Bzho49NY`; all prior Issue/body/Project fields were preserved. Exact committed/pushed pin and machine preflight precede any later runtime dispatch. HTTP successful outcome is [comment6695577548](https://github.com/lucronn/autodata/issues/186#issuecomment-6695577548).
