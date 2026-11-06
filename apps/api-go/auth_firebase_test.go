@@ -18,6 +18,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -26,22 +28,26 @@ import (
 	"time"
 
 	firebase "firebase.google.com/go/v4"
+	"golang.org/x/oauth2"
 	"google.golang.org/api/option"
 )
 
 type firebaseSDKFixture struct {
-	verifier   *firebaseCustomerVerifier
-	key        *rsa.PrivateKey
-	now        time.Time
-	mu         sync.Mutex
-	disabled   bool
-	deleted    bool
-	validSince int64
-	status     int
-	delay      time.Duration
-	certCalls  atomic.Int64
-	userCalls  atomic.Int64
-	unexpected atomic.Int64
+	verifier    *firebaseCustomerVerifier
+	key         *rsa.PrivateKey
+	now         time.Time
+	mu          sync.Mutex
+	disabled    bool
+	deleted     bool
+	validSince  int64
+	status      int
+	delay       time.Duration
+	tokenDelay  time.Duration
+	tokenCalls  atomic.Int64
+	tokenClient *http.Client
+	certCalls   atomic.Int64
+	userCalls   atomic.Int64
+	unexpected  atomic.Int64
 }
 
 func newFirebaseSDKFixture(t *testing.T) *firebaseSDKFixture {
@@ -62,6 +68,21 @@ func newFirebaseSDKFixture(t *testing.T) *firebaseSDKFixture {
 	}
 	certPEM := string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}))
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" && r.URL.Path == "/token" {
+			f.tokenCalls.Add(1)
+			f.mu.Lock()
+			delay := f.tokenDelay
+			f.mu.Unlock()
+			select {
+			case <-r.Context().Done():
+				return
+			case <-time.After(delay):
+			}
+			w.Header().Set("Content-Type", "application/json")
+			// Always expired under OAuth2's refresh margin, forcing each lookup to refresh.
+			json.NewEncoder(w).Encode(map[string]any{"access_token": "fixture-access-token", "token_type": "Bearer", "expires_in": 1})
+			return
+		}
 		if r.Method == "GET" && r.URL.Path == "/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com" {
 			f.certCalls.Add(1)
 			w.Header().Set("Cache-Control", "max-age=3600")
@@ -96,17 +117,30 @@ func newFirebaseSDKFixture(t *testing.T) *firebaseSDKFixture {
 	}))
 	t.Cleanup(server.Close)
 	dial := &tls.Dialer{NetDialer: &net.Dialer{}, Config: server.Client().Transport.(*http.Transport).TLSClientConfig.Clone()}
-	transport := func(allowed string) *http.Transport {
+	transport := func(allowed ...string) *http.Transport {
 		return &http.Transport{Proxy: nil, DialTLSContext: func(ctx context.Context, network, address string) (net.Conn, error) {
-			if address != allowed {
+			permitted := false
+			for _, host := range allowed {
+				permitted = permitted || address == host
+			}
+			if !permitted {
 				f.unexpected.Add(1)
 				return nil, errors.New("unexpected SDK destination")
 			}
 			return dial.DialContext(ctx, network, server.Listener.Addr().String())
 		}}
 	}
+	tokenTransport := transport("oauth2.googleapis.com:443")
+	t.Cleanup(tokenTransport.CloseIdleConnections)
+	f.tokenClient = &http.Client{Timeout: 10 * time.Second, Transport: firebaseFixtureTransport(func(r *http.Request) (*http.Response, error) {
+		if r.Context().Value(firebaseFixtureContextKey{}) != "fixture-context" {
+			f.unexpected.Add(1)
+			return nil, errors.New("credential context value lost")
+		}
+		return tokenTransport.RoundTrip(r)
+	})}
 	previous := http.DefaultTransport
-	certTransport := transport("www.googleapis.com:443")
+	certTransport := transport("www.googleapis.com:443", "identitytoolkit.googleapis.com:443")
 	http.DefaultTransport = certTransport
 	t.Cleanup(func() { http.DefaultTransport = previous; certTransport.CloseIdleConnections() })
 	userTransport := transport("identitytoolkit.googleapis.com:443")
@@ -241,5 +275,100 @@ func TestOfficialFirebaseSDKLookupDeadline(t *testing.T) {
 	}
 	if time.Since(started) > 300*time.Millisecond {
 		t.Fatal("SDK ignored caller deadline")
+	}
+}
+
+// The ADC regression uses the real token source and SDK with only network endpoints replaced.
+type firebaseFixtureContextKey struct{}
+type firebaseFixtureTransport func(*http.Request) (*http.Response, error)
+
+func (f firebaseFixtureTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func (f *firebaseSDKFixture) adcContext(t *testing.T, ctx context.Context) context.Context {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "adc.json")
+	if err := os.WriteFile(path, []byte(`{"type":"authorized_user","client_id":"fixture-client","client_secret":"fixture-secret","refresh_token":"fixture-refresh"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", path)
+	ctx = context.WithValue(ctx, firebaseFixtureContextKey{}, "fixture-context")
+	return context.WithValue(ctx, oauth2.HTTPClient, f.tokenClient)
+}
+
+func TestFirebaseADCSurvivesStartupContext(t *testing.T) {
+	for _, expired := range []bool{false, true} {
+		t.Run(fmt.Sprintf("expired=%t", expired), func(t *testing.T) {
+			f := newFirebaseSDKFixture(t)
+			var startup context.Context
+			var cancel context.CancelFunc
+			if expired {
+				startup, cancel = context.WithTimeout(context.Background(), 20*time.Millisecond)
+			} else {
+				startup, cancel = context.WithCancel(context.Background())
+			}
+			defer cancel()
+			verifier, err := newFirebaseCustomerVerifier(f.adcContext(t, startup), customerAuthConfig{ProjectID: "fixture-project"})
+			if err != nil {
+				t.Fatal("ADC initialization failed", err)
+			}
+			if expired {
+				<-startup.Done()
+			} else {
+				cancel()
+			}
+			token := f.token(t, nil)
+			for attempt := 0; attempt < 2; attempt++ {
+				before := f.tokenCalls.Load()
+				identity, err := verifier.VerifyLogin(context.Background(), token)
+				if err != nil || identity.UID != "fixture-user" {
+					t.Fatal("startup cancellation broke ADC refresh", err)
+				}
+				if f.tokenCalls.Load() < before+2 {
+					t.Fatal("both live user checks must refresh expired credentials")
+				}
+			}
+			for _, expired := range []bool{false, true} {
+				var request context.Context
+				var stop context.CancelFunc
+				if expired {
+					request, stop = context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+				} else {
+					request, stop = context.WithCancel(context.Background())
+					stop()
+				}
+				started := time.Now()
+				_, err := verifier.VerifyLogin(request, token)
+				stop()
+				if !errors.Is(err, ErrCustomerDependency) || time.Since(started) > 300*time.Millisecond {
+					t.Fatal("caller cancellation/deadline did not deny promptly", err)
+				}
+			}
+			if f.tokenClient.Timeout != 10*time.Second {
+				t.Fatal("injected HTTP client mutated")
+			}
+		})
+	}
+}
+
+func TestFirebaseADCCredentialRefreshHasIndependentTimeout(t *testing.T) {
+	f := newFirebaseSDKFixture(t)
+	startup, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	verifier, err := newFirebaseCustomerVerifier(f.adcContext(t, startup), customerAuthConfig{ProjectID: "fixture-project"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	f.mu.Lock()
+	f.tokenDelay = 5 * time.Second
+	f.mu.Unlock()
+	started := time.Now()
+	err = verifier.CheckUser(context.Background(), "fixture-project", "fixture-user", f.now.Unix())
+	elapsed := time.Since(started)
+	if !errors.Is(err, ErrCustomerDependency) || f.tokenCalls.Load() == 0 || elapsed < 1500*time.Millisecond || elapsed > 3*time.Second {
+		t.Fatalf("refresh was not independently bounded: elapsed=%s requests=%d err=%v", elapsed, f.tokenCalls.Load(), err)
+	}
+	if f.tokenClient.Timeout != 10*time.Second {
+		t.Fatal("injected HTTP client mutated")
 	}
 }
