@@ -1,5 +1,5 @@
 {
-  "goal": "Permit one corrected enable/start retry of the same disabled ten-job/24-hour new-article rollout after verified zero-reservation rollback, preserving its original state, budget and historical jobs.",
+  "goal": "Permit one worker-only S3 URL normalization and one third enable/start attempt of the same disabled ten-job/24-hour rollout after two verified zero-reservation rollbacks, without resetting or replaying work.",
   "plan_ref": "docs/superpowers/plans/2026-11-06-new-article-worker-activation.md",
   "issue_ref": "https://github.com/lucronn/autodata/issues/186",
   "project_ref": "https://github.com/users/lucronn/projects/8",
@@ -8,11 +8,11 @@
     "docs/agents/pre-implementation-gate.md"
   ],
   "todo": [
-    "Retain verified stage1 installation, backup and failure receipts; verify the same rollout UUID/cutoff/expiry, disabled state, zero reservations, stopped worker, unchanged installed payload and healthy public readiness with purchase disabled.",
-    "Independently review the exact revised retry script and its digest; accept only the two equal-value Python duplicates in Docker effective environment while retaining exactly18 unique env-file names and all other pinned checks.",
-    "After exact checkpoint preflight and explicit coordinator dispatch, run one enable and one service start for the same rollout; observe120seconds and disable+stop on any detected failure without another retry.",
-    "After healthy initial observation retain only the original finite ten-job/24-hour authorization; preserve consumed state and evidence with no reinitialization, reset, source/model change, cap increase or expiry extension."
+    "Retain both failed-start receipts and original installation/backup; verify the same UUID/cutoff/expiry, disabled state, zero reservations, stopped worker, historical fingerprints and healthy HTTP/checkout.",
+    "Privately derive only AUTODATA_S3_ENDPOINT=http:// plus the exact bare donor host:port; validate the18-name candidate and unchanged values, then atomically replace only that worker environment entry after exact-gate static review.",
+    "After synchronized preflight and explicit coordinator dispatch, permit one enable and one service start using the retained rollout; observe at most120seconds and disable+stop on any detected failure without another retry.",
+    "Preserve original state, receipts, backup and finite ten-job/24-hour authorization; no initialize, reset, replay, source/unit/model change, cap increase or expiry extension."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-06T21:31:10.774173+00:00"
+  "updated_at": "2026-11-06T21:35:35.683618+00:00"
 }
