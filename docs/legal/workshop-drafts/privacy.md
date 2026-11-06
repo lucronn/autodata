@@ -74,4 +74,6 @@ handles children's information, and whether any data sale, sharing, advertising,
 or tracking disclosures or choices are required. This draft makes no claim
 that those practices have been audited or ruled out.
 
-We will date the final notice and describe material changes when required.
+Use [Contact](contact.md) for help reaching us. Read the [Terms](terms.md) and
+[Refund Policy](refunds.md) before purchasing. We will date the final notice and
+describe material changes when required.

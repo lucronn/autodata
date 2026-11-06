@@ -25,8 +25,13 @@ page alone does not establish that access is ready.
 Use an account you are authorized to control and keep your sign-in secure.
 Contact support if you believe someone has used your account without permission.
 
-**Proposed license:** You may consult the purchased content for your own vehicle
-work or your business's workshop work. This does not transfer ownership of the
+**Proposed license — requires owner approval:** You receive a non-exclusive,
+non-transferable right to consult the purchased content for your own vehicle
+work or the internal workshop work of your business. This permission applies
+to the individual using the purchasing account; each person must use their own
+account. It does not authorize shared credentials, public display, bulk copying,
+scraping, downloads, or exports. Any printing or copying beyond rights provided
+by law requires our written permission. This does not transfer ownership of the
 underlying content. You may not resell or redistribute the dataset, publish its
 contents, share account access, or bypass access controls. Any third-party
 content remains subject to applicable third-party rights. No rights beyond
@@ -41,8 +46,10 @@ where needed. Workshop information does not replace professional judgment.
 
 Content availability may change when source rights change, and the service may
 experience interruptions. No uninterrupted availability or error-free content
-is promised. Contact support about missing, inaccessible, or incorrect content;
-our Refund Policy explains how to request help or a refund.
+is promised. If we permanently discontinue purchased access or lose the rights
+needed to provide it, we will notify affected customers where we can and offer
+an appropriate remedy under the Refund Policy and applicable law. Contact
+support about missing, inaccessible, or incorrect content.
 
 To the extent permitted by law, the service is provided as available without
 additional warranties. Nothing in these terms limits rights or remedies that
@@ -50,7 +57,8 @@ applicable law does not allow us to exclude.
 
 ## Refunds, changes, and questions
 
-Read the Privacy Notice and Refund Policy with these terms before purchasing.
+Read the [Privacy Notice](privacy.md) and [Refund Policy](refunds.md) with these
+terms before purchasing. You can reach us through [Contact](contact.md).
 A full refund or reversed payment can remove access to that purchase. Signing
 out does not cancel a purchase or request a refund.
 

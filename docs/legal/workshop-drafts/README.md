@@ -8,40 +8,39 @@ page changes are included; checkout must remain disabled pending launch review.
 - [Terms](terms.md)
 - [Privacy Notice](privacy.md)
 - [Refund Policy](refunds.md)
+- [Contact](contact.md)
 
-## Owner decisions before publication
+## Concrete proposal and necessary owner decisions
 
-1. **License:** approve the proposed use for the purchaser's own work or own
-   business's workshop work; decide whether multiple employees may use one
-   account, and whether any customer copying/export is permitted. The owner has
-   confirmed that both Bankone and Banktwo agreements allow storing, rewriting,
-   and selling access to article content; this is an owner-reported fact, not
-   an independent review of those agreements.
-2. **Refund discretion:** decide eligibility, request window, handling after
-   content is accessed, and treatment of incorrect selection/change of mind.
-   Approve the support-led investigation process and choose any response target.
-   Mandatory consumer remedies remain available regardless of that decision.
-3. **Tax and selling territory:** confirm where sales will be offered and the
-   tax treatment of the USD $20 total, registration/collection obligations, and
-   exact customer-facing tax notice. Do not add tax on top of the current total.
-4. **Privacy operations:** verify all launch providers and data flows, including
-   hosting/CDN, operational logs, email/support, cookies, analytics, and payment
-   data received; determine any sale/sharing/advertising disclosures, processing
-   locations, legal bases and transfer mechanisms required for target markets.
-   Set retention/deletion periods for account, session, purchase, support, log,
-   and backup records; assign a workable rights-request process and explain how
-   deletion affects continuing access. Decide age eligibility and handling of
-   children's information. Do not publish the incomplete privacy draft.
-5. **Seller and terms:** confirm the legal entity details and any business/postal
-   address disclosure required for target markets; approve warranty language,
-   any desired liability cap or governing-law/dispute terms, and the treatment
-   of lost source rights or service closure for existing purchasers. This draft
-   includes no arbitration mandate, exclusive venue, or liability cap.
-6. **Publication:** approve final wording and effective date; choose public HTTPS
-   Terms, Privacy, Refund, and Contact URLs with a functioning support path.
-   The purchase configuration requires all four URLs plus an approved tax
-   notice. Publish and verify them through the normal implementation gate;
-   policy approval alone does not enable payments or authorize deployment.
+The Terms now propose individual account use for personal vehicle work or the
+purchaser's internal business workshop work, without shared credentials,
+redistribution, scraping or an export/printing license. The Refund Policy now
+proposes a **14-calendar-day full refund for any reason, even after viewing**,
+correction of duplicate charges, and a full refund if a reported delivery or
+material-description problem cannot be resolved within seven calendar days
+unless the customer agrees to more time. Contact is supplied as a fourth draft.
+These are proposed defaults for review, not assertions of approved practices.
+
+Only the owner can settle the remaining launch decisions:
+
+| Decision | Concrete review action |
+| --- | --- |
+| Customer use and remedies | Approve or edit the Terms' individual/internal-use license and the refund commitments above; confirm they can be honored operationally. Upstream permission to sell access does not by itself establish every customer license right. |
+| Tax and markets | Name the countries/states where sales will be accepted and approve a truthful tax notice within the existing **USD $20 total**. Do not claim tax exemption, tax inclusion, tax collection or a registration status without confirmation. Adding tax on top changes the product contract. |
+| Privacy facts and operations | Confirm deployed hosting/CDN, database/storage, logging, email/support and any analytics/advertising providers, processing countries, and sale/sharing practices. Supply the actual retention/deletion schedule for account, session, order/payment, support, log and backup records; identify who handles privacy requests and how account deletion affects purchased access. Confirm required legal bases, transfer disclosures, age eligibility and children's-data handling for the chosen markets. The Privacy Notice remains incomplete until these facts are supplied. |
+| Seller/contact details | Confirm AutoData, LLC's legal identity, required postal/business address, and that support@cars.tk is monitored and works externally. Approve the proposed service-closure/remedy wording. The proposal adds no arbitration mandate, exclusive venue or liability cap. |
+| Publication | Approve final wording, effective date and the four public HTTPS policy/contact URLs. Complete the normal implementation gate before public pages/configuration or payment activation. |
+
+The owner has confirmed that both Bankone and Banktwo agreements allow storing,
+rewriting and selling access to article content. This is owner-reported and is
+not an independent review of the agreements or approval of the customer license.
+
+Do not replace missing privacy facts with invented retention periods. A
+purpose-based sentence such as "We retain purchase records while needed to
+provide purchased access and meet applicable legal obligations" can explain the
+reason for retention, but does not replace a verified schedule or other
+required disclosure. No statement that data is never sold/shared should be
+published until deployed practices have been checked.
 
 ## Basis and boundaries
 
