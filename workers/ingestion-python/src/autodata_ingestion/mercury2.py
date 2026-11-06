@@ -113,7 +113,7 @@ class Mercury2Client:
         *,
         api_key: str,
         base_url: str,
-        model: str = "mercury-2",
+        model: str = "mercury-3",
         timeout_seconds: float = 20.0,
         max_tokens: int = 8192,
         transport: JsonTransport = urlopen,
@@ -128,7 +128,7 @@ class Mercury2Client:
             raise ValueError("Mercury-2 max_tokens must be between 1 and 32768")
         self._api_key = api_key
         self._base_url = base_url.rstrip("/")
-        self._model = model.strip() or "mercury-2"
+        self._model = model.strip() or "mercury-3"
         self._timeout_seconds = timeout_seconds
         self._max_tokens = max_tokens
         self._transport = transport
@@ -142,7 +142,7 @@ class Mercury2Client:
         return cls(
             api_key=api_key,
             base_url=base_url,
-            model=os.getenv("INCEPTION_MODEL", "mercury-2"),
+            model=os.getenv("INCEPTION_MODEL", "mercury-3"),
             timeout_seconds=float(os.getenv("INCEPTION_API_TIMEOUT_SECONDS", "20")),
             max_tokens=int(os.getenv("INCEPTION_MAX_TOKENS", "8192")),
             transport=transport,
@@ -153,13 +153,18 @@ class Mercury2Client:
             raise ValueError("Mercury-2 prompt must not be empty")
         if len(prompt.encode("utf-8")) > 200 * 1024:
             raise ValueError("Mercury-2 prompt exceeds 200 KiB")
+        mercury3 = self._model == "mercury-3" or self._model.startswith("mercury-3-")
+        generation_options = (
+            {"temperature": 0.5, "max_completion_tokens": self._max_tokens}
+            if mercury3
+            else {"temperature": 0, "max_tokens": self._max_tokens}
+        )
         request = Request(
             f"{self._base_url}/chat/completions",
             data=json.dumps(
                 {
                     "model": self._model,
-                    "temperature": 0,
-                    "max_tokens": self._max_tokens,
+                    **generation_options,
                     "response_format": {"type": "json_object"},
                     "messages": [
                         {"role": "system", "content": "Return only valid JSON."},
