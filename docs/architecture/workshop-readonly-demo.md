@@ -150,3 +150,15 @@ Frozen Bankone job a96ebe3a-16b9-4c3f-acb4-986efbb5ff2d and its canonical identi
 ### Automatic prompt-v2 implementation evidence
 
 The automatic prompt-v2 builder preserves prompt-v1 bytes and accepts only exact server-reconstructed v1/v2 prompt hashes for saved candidates. Strict validation remains unchanged. Verification: 212 focused rewrite tests and 13 real PostgreSQL automatic publication/restart/binding tests passed. Commands and honest fixture/dependency receipts are in `docs/verification/2026-11-06-automatic-rewrite-prompt-v2.md`. No licensed provider call or runtime deployment occurred in this builder lane; the fresh-identity canary remains pending coordinator dispatch.
+
+
+## Persistent prompt-v2 HTTP source rollout successor
+
+Refresh only the persistent purchase-disabled Workshop ingestion HTTP service to the exact reviewed merged prompt-v2 source, proving a shadow on 3032 before a reversible 3031 swap. The [bounded rollout plan](../superpowers/plans/2026-11-06-prompt-v2-http-rollout.md), [record](../agents/records/2026-11-06-prompt-v2-http-rollout.json) and [verification](../verification/2026-11-06-prompt-v2-http-rollout.md) govern this operational successor, tracked in https://github.com/lucronn/autodata/issues/186 and https://github.com/users/lucronn/projects/8 dedicated Prompt-v2 HTTP rollout reference. Deploy only reviewed merged source `b3618fb6e68f1734ef029096748e30e655451a26` (tree `b686966c9bb4c01c7d35262c661f8645f9fb9f04`). Planning synchronization is not a deployment result. Shadow3032 health precedes a reversible3031 source-only replacement; preserve exact private environment/image/security and retain the original container/source for rollback. HTTP service refresh does not start article processing; no generic worker, model/provider call, article invocation, commerce change or paid-launch authority follows.
+
+Concrete todo:
+
+- [ ] Freeze the active container/image/source and private effective configuration; verify the exact reviewed merged b3618fb6 source tree, disabled purchase and absence of active generic article workers before deployment.
+- [ ] Materialize a new immutable exact merged source tree; create a same-image shadow HTTP-only container on 127.0.0.1:3032 with the preserved effective configuration and only source/name/listen-address differences; verify bounded local health and no model/job execution.
+- [ ] After shadow proof, retain the untouched original container, stop it and create/start the exact-config source replacement on 3031; verify private health, public readiness, disabled purchase, source hashes and unchanged protected state, or immediately restore the original container.
+- [ ] Retain original container/source and private evidence, remove only the temporary shadow, and synchronize the exact rollout outcome without claiming ongoing automatic processing, starting a generic worker or making model/provider calls.

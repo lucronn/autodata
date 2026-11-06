@@ -1,0 +1,33 @@
+{
+  "goal": "Refresh only the persistent purchase-disabled Workshop ingestion HTTP service to the exact reviewed merged prompt-v2 source, proving a shadow on 3032 before a reversible 3031 swap.",
+  "plan_ref": "docs/superpowers/plans/2026-11-06-prompt-v2-http-rollout.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/workshop-readonly-demo.md",
+    "docs/verification/2026-11-06-prompt-v2-http-rollout.md"
+  ],
+  "todo": [
+    "Freeze the active container/image/source and private effective configuration; verify the exact reviewed merged b3618fb6 source tree, disabled purchase and absence of active generic article workers before deployment.",
+    "Materialize a new immutable exact merged source tree; create a same-image shadow HTTP-only container on 127.0.0.1:3032 with the preserved effective configuration and only source/name/listen-address differences; verify bounded local health and no model/job execution.",
+    "After shadow proof, retain the untouched original container, stop it and create/start the exact-config source replacement on 3031; verify private health, public readiness, disabled purchase, source hashes and unchanged protected state, or immediately restore the original container.",
+    "Retain original container/source and private evidence, remove only the temporary shadow, and synchronize the exact rollout outcome without claiming ongoing automatic processing, starting a generic worker or making model/provider calls."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-06T20:48:38.665037+00:00",
+  "product_source_sha": "b3618fb6e68f1734ef029096748e30e655451a26",
+  "product_source_tree": "b686966c9bb4c01c7d35262c661f8645f9fb9f04",
+  "source_pr_ref": "https://github.com/lucronn/autodata/pull/350",
+  "operation_scope": "HTTP runtime source/configuration substitution only; no implementation edits",
+  "rollback_container_id": "3cefb07d948ae5bbee3d1cde52a8f41e5dcf837ccbdb8143f67284ff3f90dcfe",
+  "image_id": "sha256:5c8e79b93db464da854ad33dc499e25c153bbcd52757569b1f2a4e5072acecb4",
+  "tracking_sync": {
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2Bzho42M0",
+    "project_field_name": "Prompt-v2 HTTP rollout reference",
+    "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6695151451",
+    "issue_comment_sha256": "7555d442efe64bff65a6e7b08b7c6730eba3c056da3e072f60501f0dfa079626",
+    "project_text_sha256": "7c7422c1545511fb1fb94646e2f6a6f0dfc61013d6c88329a019776fc461710e",
+    "readback_verified": true
+  }
+}
