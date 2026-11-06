@@ -152,3 +152,8 @@ This is a new tightly bounded allocation of **one third final creation**, supers
 The added public request header belongs only to the read-only deployment probe; it does not change application traffic or the container payload. No live-container mutation is performed by this documentation agent.
 
 Third-final exact tracking readback verified: https://github.com/lucronn/autodata/issues/186#issuecomment-6695399260 and dedicated HTTP Project8 field; other fields/history preserved. Fresh exact committed-base preflight/dispatch required.
+
+
+## Successful persistent HTTP source refresh outcome
+
+Coordinator executed reviewed r3 script593f8088 under gate8dc02ef: new container38f3bc41eb24 runs exact prompt-v2 sourceb3618fb6/treeb686966c on3031; original3cefb07d remains intact/stopped. Canonical fixed-header health/readiness/purchase probes converged on round2 (nine events), purchase enabled:false. Inherited17a932 and complete-row e23250 DB fingerprints were unchanged; script recorded zero article/model/provider calls. Both earlier rolled-back attempts remain historical. The [canonical verification](../verification/2026-11-06-prompt-v2-http-rollout.md) records exact IDs/hashes/transients. The r3 allocation is consumed; no additional deploy, worker activation or paid-launch authority follows. No code/runtime change on this evidence turn.

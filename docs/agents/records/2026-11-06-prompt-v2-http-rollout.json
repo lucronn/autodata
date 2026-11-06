@@ -14,7 +14,7 @@
     "On failed acceptance restore the exact original and verify recovery using the same fixed-header bounded30second polling; retain all rollback/source/failed-attempt evidence and report the exact outcome without any further automatic create/retry or worker/commerce scope."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-06T20:59:21.819261+00:00",
+  "updated_at": "2026-11-06T21:05:53.991718+00:00",
   "product_source_sha": "b3618fb6e68f1734ef029096748e30e655451a26",
   "product_source_tree": "b686966c9bb4c01c7d35262c661f8645f9fb9f04",
   "source_pr_ref": "https://github.com/lucronn/autodata/pull/350",
@@ -74,7 +74,48 @@
     "project_text_sha256": "d8f2d73cbb8ce2e243d32a053fee5a11e2f2c37a123de72934d952b51a77d54d",
     "readback_verified": true
   },
-  "tracking_sync": {
+  "authorized_third_final_attempts": 0,
+  "third_final_creation_status": "consumed_successfully_http_source_refreshed_original_retained_stopped",
+  "public_probe_headers": {
+    "User-Agent": "curl/8.0.0"
+  },
+  "deployment_result": {
+    "status": "passed",
+    "gate_sha": "8dc02ef17615bded824bda45b5a2d7cda0ae8a62",
+    "script_sha256": "593f808887c71731be9145d50a60d92e598aece9dd96f322bdb1e915f2bfdb8a",
+    "private_receipt_sha256": "a623cf5bbc778057e243021cfeca7404d8e50bfe22c320806b280202875dc84e",
+    "private_receipt_path": "/home/corp/autodata-evidence/prompt-v2-http-rollout-20261106/third-final-result.json",
+    "product_source_sha": "b3618fb6e68f1734ef029096748e30e655451a26",
+    "product_source_tree": "b686966c9bb4c01c7d35262c661f8645f9fb9f04",
+    "final_container_id": "38f3bc41eb2433096fe469c6b4dd4d368d52a28b43ba678c395b48ba7c478e22",
+    "original_container_id": "3cefb07d948ae5bbee3d1cde52a8f41e5dcf837ccbdb8143f67284ff3f90dcfe",
+    "original_retained_stopped": true,
+    "database_before": {
+      "all_row_guard": "e23250e004e11a09552c86c2169dcc3a2bc0401b733667452b364f76412c7a8e",
+      "inherited": "17a93216483b82cfb313a2125731e7c978d3cd6ce25addbf5f9c0a917df946b4"
+    },
+    "database_after": {
+      "all_row_guard": "e23250e004e11a09552c86c2169dcc3a2bc0401b733667452b364f76412c7a8e",
+      "inherited": "17a93216483b82cfb313a2125731e7c978d3cd6ce25addbf5f9c0a917df946b4"
+    },
+    "source_entries_verified": 1217,
+    "probe_event_count": 9,
+    "final_health_statuses": [
+      200,
+      200,
+      200
+    ],
+    "purchase_enabled": false,
+    "probe_user_agent": "curl/8.0.0",
+    "probe_redirects": false,
+    "verified_tls": true,
+    "article_calls": 0,
+    "model_calls": 0,
+    "provider_calls": 0,
+    "ongoing_article_processing_authorized": false,
+    "paid_launch": false
+  },
+  "third_attempt_planning_tracking_sync": {
     "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
     "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2Bzho42M0",
     "project_field_name": "Prompt-v2 HTTP rollout reference",
@@ -83,9 +124,13 @@
     "project_text_sha256": "4bbcce07f9b7cb89eaf2b5d49486041c939f92a784f9ba8dbff19ebbc721c1eb",
     "readback_verified": true
   },
-  "authorized_third_final_attempts": 1,
-  "third_final_creation_status": "not_created_requires_new_checkpoint_and_dispatch",
-  "public_probe_headers": {
-    "User-Agent": "curl/8.0.0"
+  "tracking_sync": {
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2Bzho42M0",
+    "project_field_name": "Prompt-v2 HTTP rollout reference",
+    "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6695577548",
+    "issue_comment_sha256": "d98e4c0f64e98b38e90b0ad906acdfe80ba841706212044a95fd1729c0fd3aac",
+    "project_text_sha256": "4281894fb8ef04f368b451c6d75e5904cac29e2867e2954845e8b1a222ae8039",
+    "readback_verified": true
   }
 }

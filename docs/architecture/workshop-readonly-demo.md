@@ -205,3 +205,8 @@ Third-final concrete todo:
 - [ ] Create exactly one third final container from the same approved r2 payload, changing only its unique r3 name and exclusive new final-http-r3.cid path; require full stopped-container diff and exact original40-entry environment before stopping original.
 - [ ] Swap3031 once and use exact User-Agent curl/8.0.0 for canonical public readiness/purchase GETs within the existing30second/10round/30GET acceptance limit; do not use default-UA probes, redirects, alternate identities or article/model/provider/work calls.
 - [ ] On failed acceptance restore the exact original and verify recovery using the same fixed-header bounded30second polling; retain all rollback/source/failed-attempt evidence and report the exact outcome without any further automatic create/retry or worker/commerce scope.
+
+
+## Successful persistent HTTP source refresh outcome
+
+Coordinator executed reviewed r3 script593f8088 under gate8dc02ef: new container38f3bc41eb24 runs exact prompt-v2 sourceb3618fb6/treeb686966c on3031; original3cefb07d remains intact/stopped. Canonical fixed-header health/readiness/purchase probes converged on round2 (nine events), purchase enabled:false. Inherited17a932 and complete-row e23250 DB fingerprints were unchanged; script recorded zero article/model/provider calls. Both earlier rolled-back attempts remain historical. The [canonical verification](../verification/2026-11-06-prompt-v2-http-rollout.md) records exact IDs/hashes/transients. The r3 allocation is consumed; no additional deploy, worker activation or paid-launch authority follows. No code/runtime change on this evidence turn.

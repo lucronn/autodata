@@ -75,3 +75,23 @@ Third-final concrete todo:
 - [ ] On failed acceptance restore the exact original and verify recovery using the same fixed-header bounded30second polling; retain all rollback/source/failed-attempt evidence and report the exact outcome without any further automatic create/retry or worker/commerce scope.
 
 Third-final exact tracking readback verified: https://github.com/lucronn/autodata/issues/186#issuecomment-6695399260 and dedicated HTTP Project8 field; other fields/history preserved. Fresh exact committed-base preflight/dispatch required.
+
+
+## Successful persistent HTTP source refresh outcome
+
+The coordinator executed the independently reviewed r3 script under exact gate `8dc02ef17615bded824bda45b5a2d7cda0ae8a62`. This documentation agent inspected the private result and exact script bytes; it performed no runtime operation. The r3 receipt is passed. New container `38f3bc41eb2433096fe469c6b4dd4d368d52a28b43ba678c395b48ba7c478e22` runs the persistent loopback3031 HTTP service from reviewed merged prompt-v2 source `b3618fb6e68f1734ef029096748e30e655451a26`, tree `b686966c9bb4c01c7d35262c661f8645f9fb9f04`. All1217 tracked source entries passed exact blob/mode verification and the source-extras guard. Original `3cefb07d948ae5bbee3d1cde52a8f41e5dcf837ccbdb8143f67284ff3f90dcfe` remains intact and stopped for rollback. Image, original40-entry environment, effective security/network/resource settings and reviewed configuration contract remain preserved; only approved source/name/new-private-CID/default-OOM representation differences were accepted.
+
+Read-only probes used explicit `User-Agent: curl/8.0.0`, verified public TLS and no redirects. Baseline local3031 health, canonical `https://autodata.cars.tk/readyz` and `https://autodata.cars.tk/workshop/purchase-config.json` each returned200. Cutover round1 recorded local ConnectionRefusedError, public readiness200 and purchase-config503; round2 returned200 for all three endpoints and the script required strict purchase `enabled:false`. Nine total probe events preserve those transients. The first two final attempts remain historical blocked/rolled-back attempts; this successful outcome does not erase them.
+
+The before/after inherited DB fingerprint was identical: `17a93216483b82cfb313a2125731e7c978d3cd6ce25addbf5f9c0a917df946b4`. The additional complete-row guard was also identical: `e23250e004e11a09552c86c2169dcc3a2bc0401b733667452b364f76412c7a8e`. The script recorded zero article/model/provider calls and no DB mutation. It did not start a generic or selected article worker, drain jobs, change commerce or restart the API. The still-disabled purchase configuration and refreshed HTTP code do not establish ongoing automatic article processing or paid-launch acceptance; worker activation requires its separate gate.
+
+Evidence: reviewed private script SHA256 `593f808887c71731be9145d50a60d92e598aece9dd96f322bdb1e915f2bfdb8a`; private `third-final-result.json` SHA256 `a623cf5bbc778057e243021cfeca7404d8e50bfe22c320806b280202875dc84e`; final canonical-payload SHA256 `65ee1a593026f2425fadbbf153dc18f34b4cfa58b54eefad0a104b33845641bd`. Raw inspect/environment/CID files and source content stay private. The one r3 creation allocation is consumed; this evidence update authorizes no additional deployment or retry.
+
+Outcome checklist:
+
+- [x] Preserved both failed attempts and read-only User-Agent diagnosis; exact original/proof prerequisites verified.
+- [x] Created one r3 from the approved payload with fresh private CID/name and accepted the full stopped-container diff before cutover.
+- [x] Completed bounded fixed-header canonical acceptance on round2; purchase remains disabled and both DB guards are unchanged.
+- [x] Retained original/source/private evidence and synchronized this narrow HTTP-only result; no worker/model/provider/article/commerce expansion.
+
+Outcome tracking exact readback verified: https://github.com/lucronn/autodata/issues/186#issuecomment-6695577548 and dedicated HTTP Project8 field. Other Issue history/worker fields preserved.
