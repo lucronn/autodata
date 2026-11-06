@@ -10,6 +10,8 @@ from __future__ import annotations
 import json
 import hashlib
 import os
+import re
+from time import monotonic
 from typing import Any, Callable, Mapping, Protocol
 from urllib.request import Request, urlopen
 
@@ -105,6 +107,60 @@ class JsonTransport(Protocol):
         ...
 
 
+_RESPONSE_STAGES = frozenset({"wire", "envelope_json", "envelope", "finish", "content_json", "content"})
+_FINISH_REASONS = frozenset({"stop", "length", "tool_calls", "function_call", "content_filter"})
+_RESPONSE_CODES = frozenset({
+    "MERCURY_WIRE_LIMIT", "MERCURY_ENVELOPE_JSON_INVALID", "MERCURY_ENVELOPE_INVALID",
+    "MERCURY_OUTPUT_TRUNCATED", "MERCURY_CONTENT_INVALID", "MERCURY_CONTENT_JSON_INVALID",
+    "MERCURY_CONTENT_NOT_OBJECT",
+})
+
+
+class MercuryResponseError(ValueError):
+    """Content-free response failure; never carries the decoder or provider body."""
+
+    def __init__(self, code: str, diagnostics: Mapping[str, Any]):
+        if code not in _RESPONSE_CODES:
+            raise ValueError("unsupported Mercury response failure code")
+        self.code = code
+        self.diagnostics = _safe_response_diagnostics(diagnostics)
+        message = "Mercury response exceeds 1 MiB" if code == "MERCURY_WIRE_LIMIT" else code
+        super().__init__(message)
+
+
+def _safe_response_diagnostics(values: Mapping[str, Any]) -> dict[str, str | int]:
+    """Only enum strings and bounded counters may cross the failure boundary."""
+    result: dict[str, str | int] = {}
+    for key in ("max_output_tokens", "raw_bytes", "content_bytes", "json_position", "json_line",
+                "json_column", "prompt_tokens", "completion_tokens", "total_tokens", "elapsed_ms"):
+        value = values.get(key)
+        if type(value) is int and 0 <= value <= 1_000_000_000:
+            result[key] = value
+    if values.get("stage") in _RESPONSE_STAGES:
+        result["stage"] = values["stage"]
+    model = values.get("model")
+    result["model"] = model if isinstance(model, str) and re.fullmatch(r"mercury-[23](?:-[a-zA-Z0-9-]{1,48})?", model) else "other"
+    finish = values.get("finish_reason")
+    if finish is not None:
+        result["finish_reason"] = finish if isinstance(finish, str) and finish in _FINISH_REASONS else "other"
+    status = values.get("http_status")
+    if type(status) is int and 100 <= status <= 599:
+        result["http_status"] = status
+    return result
+
+
+def _decode_response_json(raw: Any) -> tuple[Any, dict[str, int] | None]:
+    # Return positions only. Raising outside the decoder's except block avoids
+    # retaining JSONDecodeError.doc through an exception context.
+    try:
+        return json.loads(raw), None
+    except json.JSONDecodeError as error:
+        positions = {"json_position": error.pos, "json_line": error.lineno, "json_column": error.colno}
+    except UnicodeDecodeError:
+        positions = {}
+    return None, positions
+
+
 class Mercury2Client:
     """Small OpenAI-compatible JSON client with environment-only secrets."""
 
@@ -179,15 +235,56 @@ class Mercury2Client:
             },
             method="POST",
         )
+        started = monotonic()
+        diagnostics: dict[str, Any] = {"model": self._model, "max_output_tokens": self._max_tokens}
+
+        def reject(code: str, stage: str) -> None:
+            diagnostics["stage"] = stage
+            diagnostics["elapsed_ms"] = min(86400000, max(0, int((monotonic() - started) * 1000)))
+            raise MercuryResponseError(code, diagnostics)
+
         with self._transport(request, timeout=self._timeout_seconds) as response:
+            diagnostics["http_status"] = getattr(response, "status", None)
             raw = response.read(1024 * 1024 + 1)
+            diagnostics["raw_bytes"] = len(raw)
             if len(raw) > 1024 * 1024:
-                raise ValueError("Mercury-2 response exceeds 1 MiB")
-            payload = json.loads(raw)
-        content = _response_content(payload)
-        result = json.loads(content) if isinstance(content, str) else content
+                reject("MERCURY_WIRE_LIMIT", "wire")
+            payload, positions = _decode_response_json(raw)
+            if positions is not None:
+                diagnostics.update(positions)
+                reject("MERCURY_ENVELOPE_JSON_INVALID", "envelope_json")
+        if isinstance(payload, dict) and ("choices" in payload or payload.get("object") in ("chat.completion", "chat.completion.chunk")):
+            choices = payload.get("choices")
+            if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+                reject("MERCURY_ENVELOPE_INVALID", "envelope")
+            choice = choices[0]
+            diagnostics["finish_reason"] = choice.get("finish_reason")
+            usage = payload.get("usage")
+            if isinstance(usage, dict):
+                for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+                    diagnostics[key] = usage.get(key)
+            message = choice.get("message")
+            if not isinstance(message, dict) or "content" not in message:
+                reject("MERCURY_ENVELOPE_INVALID", "envelope")
+            content = message["content"]
+            if isinstance(content, str):
+                diagnostics["content_bytes"] = len(content.encode("utf-8"))
+            if choice.get("finish_reason") == "length":
+                reject("MERCURY_OUTPUT_TRUNCATED", "finish")
+            if not isinstance(content, (str, dict)):
+                reject("MERCURY_CONTENT_INVALID", "content")
+        else:
+            # Historical transports can return the JSON object directly.
+            content = payload
+        if isinstance(content, str):
+            result, positions = _decode_response_json(content)
+            if positions is not None:
+                diagnostics.update(positions)
+                reject("MERCURY_CONTENT_JSON_INVALID", "content_json")
+        else:
+            result = content
         if not isinstance(result, dict):
-            raise ValueError("Mercury-2 response must be a JSON object")
+            reject("MERCURY_CONTENT_NOT_OBJECT", "content")
         return result
 
 
@@ -469,6 +566,7 @@ def _response_content(payload: Any) -> Any:
 
 __all__ = [
     "Mercury2Client",
+    "MercuryResponseError",
     "Mercury2SourceExtractor",
     "Mercury2VehicleAdjudicator",
     "PROCEDURE_COMPOSITION_SCHEMA",

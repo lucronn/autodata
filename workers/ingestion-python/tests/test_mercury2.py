@@ -338,3 +338,72 @@ def test_mercury_rejects_oversized_prompt_before_transport():
     client=Mercury2Client(api_key="fixture",base_url="http://127.0.0.1",transport=never)
     with pytest.raises(ValueError,match="prompt exceeds"):
         client.complete_json("x"*(200*1024+1))
+
+
+# Dropping a parser boundary or retaining provider text must fail these cases.
+def test_mercury_classifies_response_failures_without_content():
+    import io
+    import pytest
+    from autodata_ingestion.mercury2 import MercuryResponseError
+    secret = "SECRET_PROMPT_LICENSED_SOURCE_BODY"
+    cases = [
+        (b"x" * (1024 * 1024 + 1), "MERCURY_WIRE_LIMIT", "wire"),
+        (("{\"" + secret).encode(), "MERCURY_ENVELOPE_JSON_INVALID", "envelope_json"),
+        (b'{"choices":[]}', "MERCURY_ENVELOPE_INVALID", "envelope"),
+        (b'{"object":"chat.completion"}', "MERCURY_ENVELOPE_INVALID", "envelope"),
+        (b'{"choices":[null]}', "MERCURY_ENVELOPE_INVALID", "envelope"),
+        (b'{"choices":[{"message":null}]}', "MERCURY_ENVELOPE_INVALID", "envelope"),
+        (b'{"choices":[{"message":{}}]}', "MERCURY_ENVELOPE_INVALID", "envelope"),
+        (b'{"choices":[{"message":{"content":null}}]}', "MERCURY_CONTENT_INVALID", "content"),
+        (json.dumps({"choices":[{"message":{"content":secret}}]}).encode(), "MERCURY_CONTENT_JSON_INVALID", "content_json"),
+        (b'{"choices":[{"message":{"content":"[]"}}]}', "MERCURY_CONTENT_NOT_OBJECT", "content"),
+        (b'{"choices":[{"finish_reason":"length","message":{"content":"{}"}}]}', "MERCURY_OUTPUT_TRUNCATED", "finish"),
+    ]
+    for raw, code, stage in cases:
+        with pytest.raises(MercuryResponseError) as caught:
+            Mercury2Client(api_key=secret, base_url="http://fixture", max_tokens=32768,
+                transport=lambda *a, **k: io.BytesIO(raw)).complete_json(secret)
+        error = caught.value
+        assert error.code == code
+        assert error.diagnostics["stage"] == stage
+        assert error.diagnostics["model"] == "mercury-3"
+        assert error.diagnostics["max_output_tokens"] == 32768
+        assert error.diagnostics["raw_bytes"] == len(raw)
+        assert 0 <= error.diagnostics["elapsed_ms"] <= 86400000
+        assert secret not in json.dumps(error.diagnostics)
+        assert secret not in str(error)
+        if stage in ("envelope_json", "content_json"):
+            assert error.diagnostics["json_position"] >= 0
+            assert error.diagnostics["json_line"] >= 1
+            assert error.diagnostics["json_column"] >= 1
+
+
+def test_mercury_failure_metadata_is_allowlisted_and_primitive():
+    import io
+    import pytest
+    from autodata_ingestion.mercury2 import MercuryResponseError
+    secret="SECRET_PROMPT_LICENSED_SOURCE_BODY"
+    response=io.BytesIO(json.dumps({"choices":[{"finish_reason":secret,"message":{"content":secret}}],
+        "usage":{"prompt_tokens":12,"completion_tokens":34,"total_tokens":46,"secret":secret},
+        "model":secret,"headers":secret}).encode())
+    response.status=200
+    with pytest.raises(MercuryResponseError) as caught:
+        Mercury2Client(api_key=secret,base_url="http://fixture",transport=lambda *a,**k:response).complete_json(secret)
+    diagnostics=caught.value.diagnostics
+    assert diagnostics["finish_reason"] == "other"
+    assert diagnostics["http_status"] == 200
+    assert diagnostics["prompt_tokens"] == 12
+    assert diagnostics["completion_tokens"] == 34
+    assert diagnostics["total_tokens"] == 46
+    assert diagnostics["content_bytes"] == len(secret)
+    assert secret not in json.dumps(diagnostics)
+    assert all(type(value) in (str,int) for value in diagnostics.values())
+
+
+def test_mercury_legacy_object_and_malformed_optional_usage_still_succeed():
+    import io
+    for payload in ({"ok":True}, {"choices":[{"finish_reason":"stop","message":{"content":"{\"ok\":true}"}}],
+        "usage":{"prompt_tokens":True,"completion_tokens":"secret","total_tokens":-1}}):
+        client=Mercury2Client(api_key="fixture",base_url="http://fixture",
+            transport=lambda *a,**k:io.BytesIO(json.dumps(payload).encode()))
+        assert client.complete_json("fixture") == {"ok":True}

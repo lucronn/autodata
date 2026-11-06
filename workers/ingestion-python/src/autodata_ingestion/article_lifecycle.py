@@ -11,6 +11,7 @@ from .article_lifecycle_types import ArticleKey, SourceArticleContext
 from .procedure_rewrite import (rewrite_ordered_document, validate_article_rewrite,
                                 build_rewrite_prompt, editable_slots)
 from .source_connector_client import SourceConnectorError
+from .mercury2 import MercuryResponseError
 
 
 @contextmanager
@@ -155,6 +156,10 @@ def run_article_job(repo,lease,*,registry,object_store,model_client,hooks=None):
             retryable=status not in (400,401,403,404)
             store.record_rewrite_failure(repo,lease,code="MODEL_DELIVERY_AMBIGUOUS",ambiguous=True)
             fail_source_job(repo,lease,code="MODEL_TRANSPORT_FAILED" if retryable else "MODEL_CONFIGURATION_INVALID",retryable=retryable)
+        except (MercuryResponseError,store.RewriteStorageError) as error:
+            code="REWRITE_RESPONSE_INVALID" if isinstance(error,MercuryResponseError) else error.code
+            store.record_rewrite_failure(repo,lease,code=code,failure=error)
+            fail_source_job(repo,lease,code=code,retryable=False)
         except ValueError as error:
             code=str(error)
             if not code.isupper() or len(code)>96 or any(not(c.isalnum() or c=="_") for c in code):code="REWRITE_RESPONSE_INVALID"

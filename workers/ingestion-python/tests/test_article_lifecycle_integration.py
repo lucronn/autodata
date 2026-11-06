@@ -781,3 +781,100 @@ def test_automatic_real_process_death_reuses_saved_response(runtime, point):
     with runtime.repo.connect() as conn:
         assert conn.execute("SELECT count(*) AS n FROM publication_events").fetchone()["n"] == 1
         assert conn.execute("SELECT count(*) AS n FROM canonical_article_rewrite_attempts").fetchone()["n"] == 1
+
+
+@pytest.mark.parametrize("failure,expected_code,expected_stage", [
+    ("parse", "REWRITE_RESPONSE_INVALID", "content_json"),
+    ("binding", "REWRITE_STORAGE_BINDING_INVALID", "storage_binding"),
+    ("projection", "REWRITE_STORAGE_PROJECTION_INVALID", "storage_projection"),
+])
+def test_rewrite_failure_checkpoint_distinguishes_parser_and_storage(runtime, monkeypatch, failure, expected_code, expected_stage):
+    import io
+    import json
+    from dataclasses import replace
+    from autodata_ingestion import article_lifecycle_store as store
+    from autodata_ingestion.article_lifecycle import run_article_worker_once
+    from autodata_ingestion.mercury2 import Mercury2Client
+    secret = "SECRET_PROMPT_LICENSED_SOURCE_BODY"
+    client = Mercury2Client(api_key="fixture-model", base_url=runtime.model.url, model="fixture-mercury")
+    if failure == "parse":
+        client = Mercury2Client(api_key=secret, base_url="http://fixture", transport=lambda *a, **k:
+            io.BytesIO(json.dumps({"choices":[{"message":{"content":secret}}]}).encode()))
+    else:
+        original = store.store_rewrite_result
+        def broken_store(repo, lease, result):
+            if failure == "binding":
+                return original(repo, lease, replace(result, input_hash="0" * 64))
+            from autodata_ingestion import article_document
+            with monkeypatch.context() as patcher:
+                def broken_projection(*args, **kwargs):
+                    raise ValueError(secret)
+                patcher.setattr(article_document, "project_ordered_document", broken_projection)
+                return original(repo, lease, result)
+        monkeypatch.setattr(store, "store_rewrite_result", broken_store)
+    runtime.ensure()
+    assert run_article_worker_once(runtime.repo, worker_id=uuid4(), registry=runtime.registry,
+        object_store=runtime.objects, model_client=client, job_id=runtime.current_job_id())
+    with runtime.repo.connect() as conn:
+        job=conn.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s",(runtime.current_job_id(),)).fetchone()
+        attempt=conn.execute("SELECT * FROM canonical_article_rewrite_attempts WHERE source_fetch_job_id=%s",(runtime.current_job_id(),)).fetchone()
+        assert conn.execute("SELECT count(*) AS n FROM canonical_article_revisions").fetchone()["n"] == 0
+    assert job["error_code"] == expected_code
+    assert attempt["status"] == "failed" and attempt["response"] is None
+    diagnostic=job["checkpoint"]["rewrite_failure"]
+    assert diagnostic["diagnostics"]["stage"] == expected_stage
+    assert diagnostic["attempt_id"] == str(attempt["rewrite_attempt_id"])
+    if failure == "parse":
+        assert diagnostic["code"] == "MERCURY_CONTENT_JSON_INVALID"
+    assert secret not in json.dumps(diagnostic)
+    assert runtime.read_current()["content_origin"] == "source"
+
+
+def test_timeout_after_dispatch_keeps_unknown_delivery_consumed(runtime):
+    from autodata_ingestion.article_lifecycle import run_article_worker_once
+    from autodata_ingestion.mercury2 import Mercury2Client
+    def timeout(*args, **kwargs):
+        raise TimeoutError("SECRET_PROMPT_LICENSED_SOURCE_BODY")
+    runtime.ensure()
+    client=Mercury2Client(api_key="fixture",base_url="http://fixture",transport=timeout)
+    run_article_worker_once(runtime.repo,worker_id=uuid4(),registry=runtime.registry,
+        object_store=runtime.objects,model_client=client,job_id=runtime.current_job_id())
+    with runtime.repo.connect() as conn:
+        attempt=conn.execute("SELECT * FROM canonical_article_rewrite_attempts").fetchone()
+        job=conn.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s",(runtime.current_job_id(),)).fetchone()
+    assert attempt["status"] == "ambiguous" and attempt["dispatched_at"] is not None
+    assert attempt["response"] is None and attempt["error_code"] == "MODEL_DELIVERY_AMBIGUOUS"
+    assert job["retry_count"] == 1 and job["error_code"] == "MODEL_TRANSPORT_FAILED"
+
+
+@pytest.mark.parametrize("change", [None, {"state":"dispatched"}, {"dispatches_consumed":1}, {"lease_token":-1}, {"max_additional_dispatches":2}])
+def test_exact_recovery_dispatch_consumes_marker_atomically_once(runtime, change):
+    from autodata_ingestion import article_lifecycle_store as store
+    from autodata_ingestion.article_lifecycle import _live
+    from autodata_ingestion.source_job_persistence import claim_source_job
+    from autodata_ingestion.procedure_normalize import normalize_procedure_article
+    from psycopg.types.json import Jsonb
+    runtime.ensure()
+    lease=claim_source_job(runtime.repo,worker_id=uuid4(),job_id=runtime.current_job_id())
+    store.store_captured_source(runtime.repo,lease,projection_capture(runtime,lease))
+    lease=_live(runtime.repo,lease)
+    source=store.load_source_revision(runtime.repo,lease.source_revision_id)
+    document=normalize_procedure_article(source.as_article())["normalized_document"]
+    store.save_normalized_input(runtime.repo,lease,{"normalized_document":document})
+    attempt=store.prepare_rewrite_attempt(runtime.repo,lease,document,context=source.vehicle,model="mercury-3")
+    marker={"version":1,"state":"prepared","lease_token":lease.token,"max_additional_dispatches":1,"dispatches_consumed":0}
+    marker.update(change or {})
+    with runtime.repo.connect() as conn:
+        conn.execute("UPDATE source_fetch_jobs SET checkpoint=checkpoint||%s WHERE source_fetch_job_id=%s",(Jsonb({"bankone_exact_recovery":marker}),lease.job_id))
+    if change:
+        with pytest.raises(ValueError, match="RECOVERY_DISPATCH_BLOCKED"):
+            store.mark_rewrite_dispatched(runtime.repo,lease,attempt)
+    else:
+        store.mark_rewrite_dispatched(runtime.repo,lease,attempt)
+        with pytest.raises(ValueError):
+            store.mark_rewrite_dispatched(runtime.repo,lease,attempt)
+    with runtime.repo.connect() as conn:
+        saved=conn.execute("SELECT checkpoint FROM source_fetch_jobs WHERE source_fetch_job_id=%s",(lease.job_id,)).fetchone()["checkpoint"]["bankone_exact_recovery"]
+        status=conn.execute("SELECT status FROM canonical_article_rewrite_attempts WHERE rewrite_attempt_id=%s",(attempt,)).fetchone()["status"]
+    assert status == ("prepared" if change else "dispatched")
+    assert saved == (marker if change else {**marker,"state":"dispatched","dispatches_consumed":1})
