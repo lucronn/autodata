@@ -107,3 +107,43 @@ def validate_auto(source, candidate, *, response=None):
         publication_mode="automatic", content_acceptance_required=False,
         complete_rewrite=False, passed=not errors, error_codes=errors)
     return ValidationResult(not errors, tuple(errors), report)
+
+
+SOURCE_PRESERVING_METHOD = "source-preserving-zero-slot-v1"
+
+
+def build_source_preserving_candidate(source):
+    """Use one exact source heading; no model output or routing facts enter this path."""
+    from .article_lifecycle_types import digest_json
+    if not full._source_valid(source) or full.prose_slots(source):
+        raise ValueError("REWRITE_DOCUMENT_INVALID")
+    for block in source["blocks"]:
+        if block.get("type") != "heading" or not block.get("text", "").strip():
+            continue
+        response = {"introduction": block["text"], "replacements": []}
+        if len(json.dumps(response, ensure_ascii=False).encode()) > 1024 * 1024:
+            continue
+        try:
+            candidate = render_auto(source, response)
+            validation = validate_auto(source, candidate, response=response)
+        except ValueError:
+            continue
+        if validation.passed:
+            return candidate, {"transformation_method": SOURCE_PRESERVING_METHOD,
+                "drafting_actor": "server", "model": "server-zero-slot-v1", "profile_version": PROFILE,
+                "model_calls": 0, "model_dispatch_count": 0, "complete_rewrite": False,
+                "source_hash": digest_json(source), "output_hash": digest_json(candidate)}
+    raise ValueError("REWRITE_SOURCE_HEADING_REQUIRED")
+
+
+def validate_source_preserving_candidate(source, candidate, metadata):
+    """Reconstruct provenance and output, then apply the unchanged mechanical guards."""
+    from .article_lifecycle_types import digest_json
+    expected, provenance = build_source_preserving_candidate(source)
+    if digest_json(candidate) != digest_json(expected) or digest_json(metadata) != digest_json(provenance):
+        raise ValueError("SOURCE_PRESERVING_BINDING_INVALID")
+    response = {"introduction": expected["blocks"][0]["text"], "replacements": []}
+    validation = validate_auto(source, candidate, response=response)
+    report = dict(validation.report, transformation_method=SOURCE_PRESERVING_METHOD,
+        introduction_origin="source_heading", drafting_actor="server", model_calls=0, model_dispatch_count=0)
+    return ValidationResult(validation.passed, validation.error_codes, report)
