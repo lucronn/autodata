@@ -1,7 +1,7 @@
 # Automatic rewrite prompt v2 builder verification
 
-Issue: https://github.com/lucronn/autodata/issues/186  
-Project: https://github.com/users/lucronn/projects/8  
+Issue: https://github.com/lucronn/autodata/issues/186
+Project: https://github.com/users/lucronn/projects/8
 Plan: `docs/superpowers/plans/2026-11-06-automatic-rewrite-prompt-v2.md`
 
 Planning base `0e41da96acd58107ee8d035cd706777391e3c5ce` was pushed before implementation. The builder reran the machine preflight at that exact SHA: exit 0, `status: synchronized`, no errors. Implementation milestone `28f625b` adds only prompt construction and exact historical/current prompt-hash compatibility; validators, profile identity, renderer and technical grammar are unchanged.
