@@ -13,12 +13,12 @@
 Issue: https://github.com/lucronn/autodata/issues/186
 Project: https://github.com/users/lucronn/projects/8
 Record: `docs/agents/records/2026-11-05-mercury-context-introduction.json`
-Source base: `5106c97c42fd62837be67cbd49f02c940c811137`.
-Status: draft_unsynchronized; machine gate deliberately not claimed.
+Source base: `41ae41671d3f2864c3d9fe9b74de89e7cc11da15`.
+Status: tracking synchronized; commit/push this documentation checkpoint and run exact-SHA preflight before implementation. Independent coordinator review/dispatch remains required.
 
 ## Global constraints
 
-Only the two implementation files listed in the spec may change after a passing checkpoint. All validator/profile/grammar/response/limits/lifecycle behavior remains fixed. No provider requests, DB mutations, automatic retry or publication. This docs branch carries the hotfix planning checkpoint in ancestry; do not open a master-targeted prompt PR including its unrelated documentation. Coordinator must select the reviewed integration base and preserve/rebase this docs-only proposal before synchronization; any changed checkpoint requires fresh preflight. Never reset the shared hotfix branch or cherry-pick its implementation implicitly.
+Only the two implementation files listed in the spec may change after a passing checkpoint. All validator/profile/grammar/response/limits/lifecycle behavior remains fixed. No provider requests, DB mutations, automatic retry or publication. This is a stacked planning branch on reviewed hotfix `41ae41671d3f2864c3d9fe9b74de89e7cc11da15` while PR #336 is pending. After PR #336 squash merge, root will rebase before a prompt code PR; the rebased exact checkpoint requires fresh preflight. Never reset the shared hotfix branch or include its commits as unrelated prompt changes.
 
 ## Concrete todo
 
@@ -88,3 +88,7 @@ The existing venv is local convenience, not a new dependency; use the assigned P
 - [ ] Independent review checks exactly two changed code files and unchanged token grammar, renderer, validators, lifecycle/profile constants and publication requirement. Verify existing source-fallback failure tests remain green.
 - [ ] Coordinator separately decides whether to correct/review the retained draft or authorize a bounded fresh authentic attempt against the reviewed prompt; preserve original failed attempt/raw response and remaining retry budget. Neither this plan nor passing pure tests authorizes such an operation.
 - [ ] Any authentic result receives complete independent technical review, including all nine body leaves and introduction; machine acceptance alone cannot publish or prove uniqueness. Preserve one canonical identity, source fallback while unapproved, and zero new model/source calls on warm reads under the existing verified lifecycle.
+
+## Synchronized tracking evidence
+
+Issue186 comment https://github.com/lucronn/autodata/issues/186#issuecomment-6673242919 records the exact goal, concrete todo, spec/plan/record and two-path prospective allowlist. Project8 item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4`, Release hotfix reference field `PVTF_lAHOCSJ8cc4BiQ2BzhoxGVY`, appends that pointer after the entire prior auth/Stripe value. Literal readback preserved the Issue body, all298 predecessor comments and every other returned Project field. Evidence: `/home/corp/autodata-evidence/mercury-context-prompt-gate/preservation.json`. This is planning synchronization, with implementation_authorized=false and no provider/runtime operation. Exact checkpoint SHA is sealed externally after commit; no self-referential future SHA is embedded here.

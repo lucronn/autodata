@@ -1,6 +1,6 @@
 # Mercury document-only introduction prompt contract proposal
 
-Status: **draft, tracking unsynchronized; implementation blocked**.
+Status: **tracking synchronized; implementation awaits committed exact-SHA preflight and coordinator dispatch**.
 
 Issue: https://github.com/lucronn/autodata/issues/186
 Project: https://github.com/users/lucronn/projects/8
@@ -32,9 +32,11 @@ The allowable introduction token list is explanatory model input; validation rem
 
 Changes to `_check_introduction`, `_check_text`, token regex/constants, render/validate functions or any other implementation file are outside this proposal. Preserve all failed attempts and receipts. Correcting a saved failed draft with human review, rearming the existing job or making another provider call requires a separate coordinator dispatch that preserves budget and provenance.
 
-## Tracking handoff
+## Tracking synchronization and stacked ancestry
 
-Project8 item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4` currently has Task67/68/69 in Source or dependency reference and the concurrent release hotfix link in Release hotfix reference. No field was changed. Coordinator must serialize a preservation-safe amendment, read back current Issue body/comments and Project fields, retain predecessor values, then synchronize this exact goal/todo/allowlist/documents. Set record `status: synchronized` only after actual verification, commit/push docs and run machine preflight at that exact checkpoint SHA. This draft does not pass the gate or authorize implementation.
+Issue186 comment https://github.com/lucronn/autodata/issues/186#issuecomment-6673242919 records this exact goal/todo/two-file prospective allowlist and all three canonical documents. Project8 item `PVTI_lAHOCSJ8cc4BiQ2BzhFocs4` appends its pointer to Release hotfix reference `PVTF_lAHOCSJ8cc4BiQ2BzhoxGVY` after the entire previous auth/Stripe hotfix value. Fresh literal readback preserved the complete Issue body, all298 predecessor comments and all other returned Project fields. Before/after snapshots and SHA256 hashes are retained in `/home/corp/autodata-evidence/mercury-context-prompt-gate/preservation.json`; prior Project values remain there verbatim. Source or dependency reference retains Task67/68/69 unchanged.
+
+This stacked documentation branch now starts from reviewed hotfix `41ae41671d3f2864c3d9fe9b74de89e7cc11da15` while PR #336 is pending. After its squash merge, root will rebase before the code PR and recheck the exact gate at the new checkpoint. No hotfix implementation belongs in the final prompt diff. Commit/push the synchronized docs checkpoint, pin its actual full SHA externally and pass machine preflight before independent coordinator review/dispatch. Tracking synchronization alone grants no implementation, runtime/model, approval or publication authority.
 
 Concrete todo:
 - [ ] Preserve current Issue186 body/comments and all Project8 fields; synchronize this exact goal, plan, canonical spec, two-file allowlist and concrete todo under a coordinator-owned serialized tracking update, then commit/push the checkpoint and pass exact-SHA preflight.

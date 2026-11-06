@@ -13,13 +13,20 @@
     "Run no-network synthetic full-prose and ordered-rewrite suites, verify no validator or unrelated code change, commit/push the coherent correction and obtain independent exact-SHA review.",
     "Only after separately authorized coordinator runtime work: retain failed canary receipts and attempt budget, run a bounded authentic canary on the reviewed candidate, independently review its complete content and publish at most one exact-bound canonical revision; otherwise retain source fallback."
   ],
-  "status": "draft_unsynchronized",
-  "updated_at": "2026-11-06T00:26:00.025104Z",
-  "source_base_sha": "5106c97c42fd62837be67cbd49f02c940c811137",
+  "status": "synchronized",
+  "updated_at": "2026-11-06T00:29:40.834283Z",
+  "source_base_sha": "41ae41671d3f2864c3d9fe9b74de89e7cc11da15",
   "implementation_allowlist": [
     "workers/ingestion-python/src/autodata_ingestion/procedure_rewrite_full.py",
     "workers/ingestion-python/tests/test_procedure_rewrite_full.py"
   ],
   "implementation_authorized": false,
-  "tracking_blocker": "Project Source retains Task67/68/69 and Release hotfix reference is concurrently owned by the coordinator; preserve both without an unsynchronized overwrite. This proposal makes no GitHub writes or synchronized/preflight claim."
+  "tracking": {
+    "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6673242919",
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhoxGVY",
+    "preservation_evidence": "/home/corp/autodata-evidence/mercury-context-prompt-gate/preservation.json",
+    "prior_comments_preserved": 298
+  },
+  "stacked_prerequisite": "PR336 pending; this documentation branch stacks on reviewed hotfix41ae416. Root will rebase after PR336 squash merge and recheck the exact planning gate before the code PR."
 }
