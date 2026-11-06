@@ -154,3 +154,24 @@ def test_successful_jobs_are_serial_and_stop_before_next_selection(monkeypatch):
     monkeypatch.setattr(worker, 'dispatch_next', dispatch)
     worker.run_catalog_worker(None, registry={}, object_store=None, stop=stop)
     assert calls == 2
+
+
+def test_dedicated_runtime_requires_canonical_provider_keys(monkeypatch, capsys):
+    configured_environment(monkeypatch)
+    monkeypatch.delenv('AUTODATA_BANKONE_API_KEY')
+    monkeypatch.setenv('BANKONE_API_TOKEN', 'legacy-fixture')
+    assert worker.main(['--once']) == 1
+    assert capsys.readouterr().out == 'CATALOG_INDEX_WORKER_BLOCKED\n'
+
+
+def test_preview_service_has_no_automatic_start_or_article_state():
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[3]
+    unit = (root / 'infra/deploy/preview/autodata-catalog-index-worker.service').read_text()
+    assert '[Install]' not in unit and 'Restart=no' in unit
+    assert '--read-only --cap-drop ALL --security-opt no-new-privileges' in unit
+    assert '--stop-timeout 70' in unit and 'TimeoutStopSec=80' in unit
+    assert 'new-article' not in unit and 'INCEPTION' not in unit
+    assert 'python -m autodata_ingestion.catalog_index_worker' in unit
+    assert '--env-file /etc/autodata/catalog-index-runtime.env' in unit
+    assert 'sha256:5c8e79b93db464da854ad33dc499e25c153bbcd52757569b1f2a4e5072acecb4' in unit

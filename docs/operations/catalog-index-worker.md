@@ -28,3 +28,62 @@ Focused tests must prove exact serialized/parameterized eligibility, no UUID-les
 This checkpoint permits implementation only after committed/pushed synchronized tracking and exact-base preflight plus coordinator dispatch. It does not install a service, touch secrets/runtime state, call live sources/model, create/refresh/drain catalog jobs, retry spent article work or alter finite article reservations. Live catalog browsing acceptance needs a separate synchronized runtime gate pinned to merged reviewed source/CI, explicit install/start/stop and honest provider/index results.
 
 Tracking scope synchronized: https://github.com/lucronn/autodata/issues/186#issuecomment-6697016638; dedicated Project8 `Catalog index consumer reference` (`PVTF_lAHOCSJ8cc4BiQ2Bzho5QE4`). Exact committed pin/preflight precedes implementation dispatch.
+
+## Preview runtime contract
+
+`infra/deploy/preview/autodata-catalog-index-worker.service` is an inert template.
+Do not install or start it under this implementation checkpoint. A separately
+synchronized runtime gate must pin the merged reviewed source, passing CI, and
+explicit operator install/start/stop scope before any live catalog work.
+
+At that boundary, `/etc/autodata/catalog-index-worker.conf` must be root-owned
+mode 0600 and contain only `AUTODATA_CATALOG_INDEX_SOURCE`, an absolute immutable
+checkout path at the approved full commit. Verify the checkout's commit and
+cleanliness before starting; the worker does not attest that path itself.
+The unit bind-mounts that source read-only using the existing pinned runtime
+image. It has no writable article rollout/quota mount, boot target or restart.
+
+The separate root-owned mode 0600 `/etc/autodata/catalog-index-runtime.env` has
+exactly these 14 variable names, populated from managed runtime configuration:
+
+```
+AUTODATA_DB_ADDRESS
+AUTODATA_POSTGRES_DB
+AUTODATA_POSTGRES_USER
+AUTODATA_POSTGRES_PASSWORD
+AUTODATA_S3_ENDPOINT
+AUTODATA_S3_ACCESS_KEY
+AUTODATA_S3_SECRET_KEY
+AUTODATA_SOURCE_BUCKET
+BANKONE_BASE_URL
+AUTODATA_BANKONE_API_KEY
+BANKTWO_BASE_URL
+AUTODATA_BANKTWO_API_KEY
+PYTHONDONTWRITEBYTECODE
+PYTHONPATH
+```
+
+Set `PYTHONDONTWRITEBYTECODE=1` and
+`PYTHONPATH=/app/workers/ingestion-python/src:/app/packages/contracts/python`.
+Use an explicit HTTP(S) origin for `AUTODATA_S3_ENDPOINT` (an optional trailing
+slash is accepted; userinfo, query, fragment and other paths are rejected).
+Both provider URL/canonical key pairs are required by this dedicated runtime.
+This intentionally stricter admission does not accept legacy `BANKONE_API_TOKEN`
+or `BANKTWO_API_TOKEN` aliases; operators map existing managed credentials to the
+canonical names above. Do not add model, payment, admin, internal HTTP or finite
+article-worker state credentials to this file. Diagnostics contain only
+`CATALOG_INDEX_WORKER_BLOCKED` and exit 1 when configuration or execution fails.
+
+For a separately gated bounded dispatch, append `--once` to the Python command;
+it attempts at most one selected UUID and exits 0 for an empty queue or lost
+claim. Continuous operation polls serially and waits 2s after an empty selection
+or lost claim. It never creates catalog jobs or dispatches without an exact UUID.
+
+SIGTERM/SIGINT requests stop before the next selection/dispatch. An already
+running catalog job continues its existing heartbeat and may enumerate 1000
+pages with 25s connector calls, so there is no per-job wall deadline. The unit's
+`docker stop --time 70` terminates a still-running container after its grace
+period; systemd allows 80s for stop. Existing 90s leases recover abandoned jobs;
+expired jobs with exhausted attempts are cleaned up through the existing exact
+claim path. Operators must inspect provider coverage and errors after recovery;
+a successful process exit does not prove complete live catalog browsing.

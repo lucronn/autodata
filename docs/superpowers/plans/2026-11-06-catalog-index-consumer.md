@@ -6,9 +6,9 @@ Issue https://github.com/lucronn/autodata/issues/186; Project https://github.com
 
 ## Concrete todo record
 
-- [ ] Implement catalog-only eligible UUID selection and serial exact-job dispatch to the existing lifecycle worker with model_client=None, two-second idle polling, --once and SIGTERM stop between jobs; never dispatch an unfiltered job.
-- [ ] Prove selection, due/expired/exhausted handling, exact fencing and article/model non-interference with focused unit and real PostgreSQL17 catalog tests; run relevant existing checks and required CI.
-- [ ] Add an initially inert preview service template and minimal operator documentation using the existing pinned image, immutable source, least-privilege DB/S3/source environment and existing catalog persistence/lease behavior.
+- [x] Implement catalog-only eligible UUID selection and serial exact-job dispatch to the existing lifecycle worker with model_client=None, two-second idle polling, --once and SIGTERM stop between jobs; never dispatch an unfiltered job.
+- [x] Prove selection, due/expired/exhausted handling, exact fencing and article/model non-interference with focused unit and real PostgreSQL17 catalog tests; run relevant existing checks and required CI.
+- [x] Add an initially inert preview service template and minimal operator documentation using the existing pinned image, immutable source, least-privilege DB/S3/source environment and existing catalog persistence/lease behavior.
 - [ ] Commit and independently review exact code/test/unit evidence, synchronize Issue186/Project8 and operator outcome; require a separate exact-source runtime gate before install/start or live catalog enumeration.
 
 ## Fixed implementation
