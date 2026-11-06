@@ -468,3 +468,50 @@ def test_full_changed_source_refresh_keeps_saved_draft_generation_fenced(fresh_d
     with pytest.raises(ValueError,match='STALE_BINDING'):
         export_review(repo,expected=expected,destination=tmp_path / 'stale-source-export')
     assert store.load_article_state(repo,old.canonical_article_id)['content_origin'] == 'source'
+
+
+def automatic_validated(repo, fixture):
+    from test_article_worker import prepare_automatic, AutomaticModel
+    lease, source = prepare_automatic(repo, fixture)
+    store.save_normalized_input(repo, lease, source.as_article())
+    attempt = store.prepare_rewrite_attempt(repo, lease, source.source_document, context=source.vehicle, model="fixture-auto")
+    store.mark_rewrite_dispatched(repo, lease, attempt)
+    result = rewrite_ordered_document(source.source_document, client=AutomaticModel(), context=source.vehicle, profile_version=lease.rewrite_profile_version)
+    revision = store.store_rewrite_result(repo, lease, result)
+    validation = store.validate_saved_candidate(repo, lease, store.load_candidate(repo, lease))
+    store.store_validation(repo, lease, validation)
+    return lease, source, revision
+
+
+def test_automatic_publication_rejects_tampered_saved_response(fresh_database, capture_fixture):
+    from psycopg.types.json import Jsonb
+    from autodata_ingestion.article_lifecycle_types import digest_json
+    repo = fresh_database(); lease, source, revision = automatic_validated(repo, capture_fixture)
+    with repo.connect() as conn:
+        response = conn.execute("SELECT response FROM canonical_article_rewrite_attempts").fetchone()["response"]
+        response["introduction"] = "The following instructions cover pump removal."
+        conn.execute("UPDATE canonical_article_rewrite_attempts SET response=%s,response_hash=%s", (Jsonb(response), digest_json(response)))
+    with pytest.raises(ValueError, match="binding"):
+        store.publish_article_revision(repo, lease, revision)
+    assert store.load_article_state(repo, lease.canonical_article_id)["content_origin"] == "source"
+
+
+def test_automatic_saved_candidate_resumes_without_model_or_review(fresh_database, capture_fixture):
+    from autodata_ingestion.article_lifecycle import run_article_job
+    from test_article_worker import prepare_automatic, AutomaticModel
+    repo = fresh_database(); lease, source = prepare_automatic(repo, capture_fixture)
+    store.save_normalized_input(repo, lease, source.as_article())
+    attempt = store.prepare_rewrite_attempt(repo, lease, source.source_document, context=source.vehicle, model="fixture-auto")
+    store.mark_rewrite_dispatched(repo, lease, attempt)
+    result = rewrite_ordered_document(source.source_document, client=AutomaticModel(), context=source.vehicle, profile_version=lease.rewrite_profile_version)
+    revision = store.store_rewrite_result(repo, lease, result)
+    with repo.connect() as conn:
+        conn.execute("UPDATE source_fetch_jobs SET lease_expires_at=clock_timestamp()-interval '1 second' WHERE source_fetch_job_id=%s", (lease.job_id,))
+    current = claim_source_job(repo, worker_id=uuid4())
+    class Never:
+        def complete_json(self, prompt): pytest.fail("saved automatic candidate redrafted")
+    run_article_job(repo, current, registry={}, object_store=None, model_client=Never())
+    assert store.load_article_state(repo, lease.canonical_article_id)["canonical_revision_id"] == revision
+    with repo.connect() as conn:
+        assert conn.execute("SELECT count(*) AS n FROM canonical_article_reviews").fetchone()["n"] == 0
+        assert conn.execute("SELECT count(*) AS n FROM publication_events").fetchone()["n"] == 1

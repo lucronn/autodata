@@ -100,3 +100,33 @@ class ArticleIdentityTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+from lifecycle_support import fresh_database
+
+
+def test_new_descriptor_automatically_selects_permanent_auto_profile(fresh_database):
+    from lifecycle_support import seed_vehicle, seed_snapshot
+    from autodata_ingestion.article_lifecycle_types import ArticleKey
+    from autodata_ingestion.article_lifecycle_store import upsert_article_descriptor
+    repo = fresh_database()
+    key = ArticleKey("bankone", seed_vehicle(repo), None, "auto-vehicle", "auto-article")
+    article = upsert_article_descriptor(repo, key, {"title":"Pump"}, seed_snapshot(repo), 0)
+    with repo.connect() as conn:
+        row = conn.execute("SELECT target_rewrite_profile_version,current_job_id FROM canonical_articles WHERE canonical_article_id=%s", (article,)).fetchone()
+    assert row["target_rewrite_profile_version"] == "full-prose-auto-v1"
+    assert row["current_job_id"] is None
+
+
+def test_registration_preserves_existing_profile_and_never_schedules(fresh_database):
+    from lifecycle_support import seed_vehicle, seed_snapshot, insert_descriptor
+    from autodata_ingestion.article_lifecycle_types import ArticleKey
+    from autodata_ingestion.article_lifecycle_store import upsert_article_descriptor
+    repo = fresh_database()
+    key = ArticleKey("banktwo", seed_vehicle(repo), None, "old-vehicle", "old-article")
+    article = insert_descriptor(repo, key)
+    assert upsert_article_descriptor(repo, key, {"title":"Updated descriptor"}, seed_snapshot(repo), 1) == article
+    with repo.connect() as conn:
+        row = conn.execute("SELECT target_rewrite_profile_version,current_job_id FROM canonical_articles WHERE canonical_article_id=%s", (article,)).fetchone()
+        assert conn.execute("SELECT count(*) AS n FROM source_fetch_jobs").fetchone()["n"] == 0
+    assert row["target_rewrite_profile_version"] == "technical-prose-v1" and row["current_job_id"] is None
