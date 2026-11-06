@@ -1,0 +1,30 @@
+{
+  "goal": "Make automatic ordinary-prose rewriting satisfy the existing strict response contract while preserving permanent historical canonical revisions and exact evidence binding.",
+  "plan_ref": "docs/superpowers/plans/2026-11-06-automatic-rewrite-prompt-v2.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/workshop-readonly-demo.md",
+    "docs/agents/pre-implementation-gate.md"
+  ],
+  "todo": [
+    "Freeze byte-identical automatic prompt-v1 and introduce prompt-v2 with exact five-key response rows, explicit empty rewrite reason and per-slot action requirements.",
+    "Accept only exact server-reconstructed v1/v2 prompt hashes at saved automatic-candidate validation; preserve all other source/attempt/model/response bindings.",
+    "Run focused prompt/hash/integrity regressions and actual PostgreSQL lifecycle/restart coverage; push validated milestones for independent review and required CI.",
+    "After coordinator dispatch, use one fresh prose-bearing Bankone identity and at most one persisted provider attempt; preserve frozen-job counters and source fallback on failure.",
+    "On publication prove all eligible prose changed, protected content retained and ten warm read/ensure pairs plus fresh-process reuse with measured zero source/media/model/schedule calls; synchronize sanitized evidence."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-06T20:14:07.383578+00:00",
+  "tracking_sync": {
+    "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6694453449",
+    "project_item": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "project_field": "Automatic rewrite prompt reference",
+    "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2Bzho4qOI",
+    "readback_exact": true,
+    "previous_issue_body_unchanged": true,
+    "previous_issue_body_sha256": "927b46ef47b1dbf5b117273e3d3f5c0e6d9f23b722a5245869eb5323b96c4f25",
+    "previous_project_fields_unchanged": true,
+    "preserved_outcome_commit": "5efb5001cf89b3565ab41916f9cb85efeb831017"
+  }
+}

@@ -55,3 +55,98 @@ The implemented and deployed source is `32373defb4237e4a9e3db59a109a4d2ccf092236
 Both frozen job/source/profile/generation fences were checked before execution. Banktwo job `64888ce4-429e-4e22-9892-48d1fb4b82eb` used one Mercury-3 call and published canonical revision `563bd31d-8e07-4ccb-8549-2189fe52bd1a`, with automatic validation, `UNREVIEWED` metadata and no manual review row. Ten warm read/ensure pairs and a separate fresh-process read reused that revision; measured source, media, model, scheduling and HTTP calls were all zero, and full database fingerprints stayed unchanged. Its source has zero eligible ordinary-prose slots, so this proves automatic introduction generation, protected-structure retention and permanent reuse, not full ordinary-prose rewriting.
 
 Bankone job `a96ebe3a-16b9-4c3f-acb4-986efbb5ff2d` used one Mercury-3 call and ended `REWRITE_RESPONSE_INVALID` before any candidate revision or response was stored. It remains on source fallback. The retained metadata does not identify the exact parse or output-budget cause. No retry, queue drain, new enrollment, checkout enablement or customer-grant change was made. A diagnosed response handling/output-budget fix and a prose-bearing Bankone acceptance remain necessary before the dual-bank canonical rewrite goal can be claimed. Sanitized tracking: [Issue #186 comment](https://github.com/lucronn/autodata/issues/186#issuecomment-6693522651) and Project #8's dedicated demo preview field. Detailed runtime/model evidence and rollback inputs remain private outside Git.
+
+## Bankone exact-job diagnostic recovery checkpoint
+
+Goal: Classify Mercury-3 response failures without retaining content and permit at most one guarded recovery dispatch for the existing Bankone prose canary.
+
+Issue: https://github.com/lucronn/autodata/issues/186
+Project: https://github.com/users/lucronn/projects/8
+Plan: `docs/superpowers/plans/2026-11-06-bankone-diagnostic-recovery.md`
+Record: `docs/agents/records/2026-11-06-bankone-diagnostic-recovery.json`
+Canonical document: `docs/architecture/workshop-readonly-demo.md`
+Branch: `codex/bankone-diagnostic-recovery`, starting source `0d2db0d8abdb9531627252c2f6c12ef04ceeb29d` (PR346).
+
+Frozen scope: Bankone job `a96ebe3a-16b9-4c3f-acb4-986efbb5ff2d`, article `aad66f67-355c-5d92-ab21-b4894bca9069`, source revision `acd11534-199a-40f7-bf94-717b34895752`, profile `full-prose-auto-v1`, 34 eligible prose slots. Existing outcome is `dead_letter` / `REWRITE_RESPONSE_INVALID`, one consumed dispatch, no candidate. Banktwo already published with one dispatch and zero ordinary-prose slots; it receives no further call. Original parse/output-budget cause remains unproven.
+
+Maximum one additional Bankone provider dispatch, including diagnostic calls; cumulative Bankone <=2 and two-bank global <=4. Unknown delivery counts as consumed. Preserve every attempt/counter: no reset, new article/enrollment, broad worker/queue drain, fallback model, automatic second call, schema/profile/validator relaxation, checkout or grant change. For this sole recovery, pin `INCEPTION_MAX_TOKENS=32768` and `INCEPTION_API_TIMEOUT_SECONDS=60`. These bounded settings are a coordinator-approved hypothesis to accommodate 34 prose slots, not a proven diagnosis of the earlier 8192-token/20-second failure. The provider supports a higher token cap; 32768 is the existing client maximum. No separate tuning/diagnostic call and no further settings change or dispatch after failure is permitted. Never log or persist raw model body/content, prompt, licensed source, headers or exception text as diagnostics. Retain source fallback on failure.
+
+Concrete todo:
+- [ ] Add content-free Mercury-3 response diagnostics and focused parser/privacy regressions.
+- [ ] Add an atomic one-use recovery claim for the frozen Bankone job with unchanged source/generation/profile fences and historical attempt budgets.
+- [ ] Validate and push coherent implementation milestones; obtain exact-SHA review and required CI before coordinator deployment.
+- [ ] Dispatch the frozen Bankone job at most once after fresh guards, or record its exact blocker; retain source fallback on failure.
+- [ ] Verify all 34 prose slots, protected structure and permanent warm reuse on success; synchronize sanitized outcome evidence.
+
+This is a docs-only checkpoint. The committed checkpoint must pass machine preflight at its full SHA before implementation. Runtime work follows coordinator integration/review/CI and fresh exact-job guards; this planning turn performs no provider or job call.
+
+
+## Bankone recovery outcome, 2026-11-06
+
+[PR #347](https://github.com/lucronn/autodata/pull/347) merged at
+`887a8bc3a53da93b05bc8a0ab3ba84e4783779a2` after required
+[CI passed](https://github.com/lucronn/autodata/actions/runs/42283387442).
+The coordinator took a fresh private backup, rechecked the frozen job/source/
+generation/profile fences and dispatched the sole remaining Bankone attempt
+once with the approved 32768-token/60-second settings. The exact job
+`a96ebe3a-16b9-4c3f-acb4-986efbb5ff2d` ended `dead_letter`, retry count 2,
+with `REWRITE_SLOT_MISMATCH`. Bankone has consumed two Mercury-3 attempts;
+Banktwo retains its one successful attempt. The three cumulative two-bank
+attempts do not create another Bankone allowance: its per-article limit is
+exhausted. No further dispatch is authorized under this checkpoint.
+
+Sanitized structural inspection found all 34 ordered prose-slot paths present,
+but 29 rewrite rows omitted the required `reason` key. The prose comparison also
+found 16 ordinary-prose slots effectively unchanged: five retain rows, nine
+rewrite rows with exactly unchanged text and two rewrite rows with the same
+words and punctuation-only differences. The other 18 slots were substantially
+changed. Thus adding missing metadata would not make this response satisfy the
+automatic full-prose requirement. It cannot be published or salvaged under the
+existing `full-prose-auto-v1` validator. These counts disclose no source,
+prompt, response text or secret; detailed operational evidence remains private.
+
+Bankone remains on source fallback with no canonical publication. Banktwo's
+stored revision and zero-remote warm-read result remain the limited acceptance
+described above: its source has zero eligible ordinary-prose slots. Full
+ordinary-prose acceptance and the dual-bank canonical rewrite goal remain
+unmet. Checkout remains disabled. Any future Bankone work requires a separate
+reviewed plan and authorization; this result permits no counter reset, model
+retry, manual response repair, validator relaxation or publication.
+
+Recovery todo outcome:
+
+- [x] Add content-free response diagnostics and parser/privacy regressions.
+- [x] Add the atomic one-use exact-job claim with historical attempt fences.
+- [x] Obtain exact-SHA review and required CI before the guarded dispatch.
+- [x] Run the one permitted recovery after a fresh backup and guards; preserve
+  the failed result and source fallback.
+- [x] Synchronize sanitized failure diagnostics to the canonical document,
+  Issue #186 and Project #8's Bankone recovery reference.
+- [ ] Achieve all-34-slot automatic full-prose acceptance, protected-structure
+  retention and permanent warm reuse for Bankone; blocked by the failed
+  exhausted-budget attempt, with no retry authorized by this checkpoint.
+
+## Automatic rewrite prompt-v2 checkpoint
+
+Goal: Make automatic ordinary-prose rewriting satisfy the existing strict response contract while preserving permanent historical canonical revisions and exact evidence binding.
+
+Issue: https://github.com/lucronn/autodata/issues/186
+Project: https://github.com/users/lucronn/projects/8
+Plan: `docs/superpowers/plans/2026-11-06-automatic-rewrite-prompt-v2.md`
+Record: `docs/agents/records/2026-11-06-automatic-rewrite-prompt-v2.json`
+Branch: `codex/automatic-rewrite-prompt-v2`; starting source `887a8bc`, with preserved PR349 outcome documentation.
+
+The failed Bankone response revealed independent shape and uniqueness failures: all34 paths present,29 missing reason fields,16 effectively unchanged leaves. Prompt-v2 explicitly requires exactly five keys per replacement (`block_id,path,action,text,reason`), empty rewrite reason, ordinary-slot `required_action=rewrite`, and substantive rewording beyond punctuation/case/spacing. Technical-only slots may use explicit retention with a concrete reason. Preserve exact historical prompt-v1 bytes; saved-candidate validation accepts only server-reconstructed v1/v2 hashes for the same source/context, with every other binding and strict validator unchanged. Profile remains full-prose-auto-v1; this is a prompt clarification, not validator/profile relaxation or semantic certification.
+
+Concrete todo:
+- [ ] Freeze byte-identical automatic prompt-v1 and introduce prompt-v2 with exact five-key response rows, explicit empty rewrite reason and per-slot action requirements.
+- [ ] Accept only exact server-reconstructed v1/v2 prompt hashes at saved automatic-candidate validation; preserve all other source/attempt/model/response bindings.
+- [ ] Run focused prompt/hash/integrity regressions and actual PostgreSQL lifecycle/restart coverage; push validated milestones for independent review and required CI.
+- [ ] After coordinator dispatch, use one fresh prose-bearing Bankone identity and at most one persisted provider attempt; preserve frozen-job counters and source fallback on failure.
+- [ ] On publication prove all eligible prose changed, protected content retained and ten warm read/ensure pairs plus fresh-process reuse with measured zero source/media/model/schedule calls; synchronize sanitized evidence.
+
+Frozen Bankone job a96ebe3a-16b9-4c3f-acb4-986efbb5ff2d and its canonical identity remain exhausted and untouched; no reset/re-key/re-enrollment/salvage. Banktwo receives no further call. The future fresh identity must be an existing reachable licensed descriptor with no prior attempt/publication, distinctly fenced before one exact-job dispatch. Unknown delivery consumes the single-call allowance. Source fallback persists on failure; checkout stays disabled and grants unchanged. Planning is docs-only. Exact pinned machine preflight and coordinator assignment precede implementation; independent candidate review/CI and coordinator dispatch precede runtime canary/deployment.
+
+### Automatic prompt-v2 implementation evidence
+
+The automatic prompt-v2 builder preserves prompt-v1 bytes and accepts only exact server-reconstructed v1/v2 prompt hashes for saved candidates. Strict validation remains unchanged. Verification: 212 focused rewrite tests and 13 real PostgreSQL automatic publication/restart/binding tests passed. Commands and honest fixture/dependency receipts are in `docs/verification/2026-11-06-automatic-rewrite-prompt-v2.md`. No licensed provider call or runtime deployment occurred in this builder lane; the fresh-identity canary remains pending coordinator dispatch.

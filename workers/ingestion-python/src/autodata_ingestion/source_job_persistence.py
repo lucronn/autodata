@@ -162,7 +162,7 @@ def _mark_delivery_ambiguous(cur, job):
 def _claim_review_resume(cur, worker_id, job_id=None):
     """Saved full drafts have a publication lease, never another model attempt."""
     from .article_lifecycle_store import _require_full_approval
-    jobs = cur.execute("""SELECT * FROM source_fetch_jobs WHERE job_kind='article'
+    jobs = cur.execute("""SELECT * FROM source_fetch_jobs WHERE job_kind='article' AND NOT (checkpoint ? 'bankone_exact_recovery')
         AND rewrite_profile_version='full-prose-review-v1' AND (%s::uuid IS NULL OR source_fetch_job_id=%s)
         AND checkpoint->'content_review'->>'state'='approved'
         AND ((status='pending' AND COALESCE(next_attempt_at,'-infinity'::timestamptz)<=clock_timestamp())
@@ -191,7 +191,7 @@ def _claim_automatic_resume(cur, worker_id, job_id=None):
     job = cur.execute("""SELECT j.* FROM source_fetch_jobs j
         JOIN canonical_article_revisions r ON r.transformation_key=j.transformation_key
         JOIN canonical_article_rewrite_attempts a ON a.canonical_article_revision_id=r.canonical_article_revision_id AND a.status='succeeded'
-        WHERE j.job_kind='article' AND j.rewrite_profile_version='full-prose-auto-v1' AND (%s::uuid IS NULL OR j.source_fetch_job_id=%s)
+        WHERE j.job_kind='article' AND NOT (j.checkpoint ? 'bankone_exact_recovery') AND j.rewrite_profile_version='full-prose-auto-v1' AND (%s::uuid IS NULL OR j.source_fetch_job_id=%s)
           AND r.status IN ('building','validated') AND j.checkpoint->>'rewrite_error_code' IS NULL
           AND j.checkpoint->>'candidate_revision_id'=r.canonical_article_revision_id::text
           AND ((j.status='pending' AND COALESCE(j.next_attempt_at,'-infinity'::timestamptz)<=clock_timestamp())
@@ -240,7 +240,7 @@ def _claim_model_configuration_resume(cur, worker_id, job_id):
     """Configuration waits dispatched nothing and consume no additional attempt."""
     job = cur.execute("""SELECT j.* FROM source_fetch_jobs j JOIN canonical_articles a
         ON a.canonical_article_id=j.canonical_article_id
-        WHERE j.job_kind='article' AND j.rewrite_profile_version='full-prose-auto-v1'
+        WHERE j.job_kind='article' AND NOT (j.checkpoint ? 'bankone_exact_recovery') AND j.rewrite_profile_version='full-prose-auto-v1'
           AND (%s::uuid IS NULL OR j.source_fetch_job_id=%s)
           AND j.status IN ('failed','dead_letter') AND j.error_code='MODEL_NOT_CONFIGURED'
           AND j.source_revision_id IS NOT NULL AND j.checkpoint ? 'normalized_document' AND j.checkpoint ? 'normalized_hash'
@@ -264,8 +264,166 @@ def _claim_model_configuration_resume(cur, worker_id, job_id):
     return _lease_from_row(row,worker_id)
 
 
+class BankoneRecoveryBlocked(ValueError):
+    """A stable, content-free reason the exceptional recovery was rejected."""
+
+    def __init__(self, code):
+        self.code = code
+        super().__init__(code)
+
+
+BANKONE_RECOVERY_JOB = "a96ebe3a-16b9-4c3f-acb4-986efbb5ff2d"
+BANKONE_RECOVERY_ARTICLE = "aad66f67-355c-5d92-ab21-b4894bca9069"
+BANKONE_RECOVERY_SOURCE = "acd11534-199a-40f7-bf94-717b34895752"
+BANKTWO_FROZEN_JOB = "64888ce4-429e-4e22-9892-48d1fb4b82eb"
+
+
+def claim_exact_bankone_recovery(
+    repo, *, worker_id, job_id, canonical_article_id, source_revision_id,
+    rewrite_profile_version, expected_generation, normalization_version,
+    expected_normalized_hash, expected_lease_token, expected_retry_count,
+    recovery_id, actor, reason, implementation_sha,
+):
+    """Consume the sole frozen recovery authorization and return its live lease.
+
+    No polling/ensure path calls this function. Repeating even an identical
+    request blocks: a prepared recovery resumes only using the returned lease.
+    The dispatch boundary must atomically consume its checkpoint allowance.
+    """
+    from .article_lifecycle_types import digest_json, transformation_key
+
+    def require(condition, code):
+        if not condition:
+            raise BankoneRecoveryBlocked(code)
+
+    require((str(job_id), str(canonical_article_id), str(source_revision_id),
+             rewrite_profile_version, normalization_version) ==
+            (BANKONE_RECOVERY_JOB, BANKONE_RECOVERY_ARTICLE, BANKONE_RECOVERY_SOURCE,
+             "full-prose-auto-v1", "ordered-article-v1"), "RECOVERY_SCOPE_MISMATCH")
+    require(all(isinstance(value, str) and value.strip() and len(value) <= limit
+                and not any(ord(c) < 32 or ord(c) == 127 for c in value)
+                for value, limit in ((recovery_id, 128), (actor, 128), (reason, 512))),
+            "RECOVERY_AUDIT_INVALID")
+    require(isinstance(implementation_sha, str) and
+            re.fullmatch(r"[a-f0-9]{40}", implementation_sha) is not None,
+            "RECOVERY_IMPLEMENTATION_INVALID")
+    require(isinstance(expected_normalized_hash, str) and
+            re.fullmatch(r"[a-f0-9]{64}", expected_normalized_hash) is not None and
+            all(type(value) is int and value >= 0 for value in
+                (expected_generation, expected_lease_token, expected_retry_count)),
+            "RECOVERY_FENCE_INVALID")
+    with repo.connect() as conn, _cursor(conn) as cur:
+        # Lock both exact budgets before examining attempts. This also serializes
+        # competing recovery requests and ordinary claims for either frozen job.
+        banks = cur.execute("""SELECT * FROM source_fetch_jobs
+            WHERE source_fetch_job_id IN (%s,%s)
+            ORDER BY source_fetch_job_id FOR UPDATE""", (job_id, BANKTWO_FROZEN_JOB)).fetchall()
+        require(len(banks) == 2, "RECOVERY_HISTORY_UNKNOWN")
+        jobs = {str(row["source_fetch_job_id"]): row for row in banks}
+        job = jobs[BANKONE_RECOVERY_JOB]
+        banktwo = jobs[BANKTWO_FROZEN_JOB]
+        article = cur.execute("SELECT * FROM canonical_articles WHERE canonical_article_id=%s FOR UPDATE",
+                              (canonical_article_id,)).fetchone()
+        require("bankone_exact_recovery" not in job["checkpoint"], "RECOVERY_ALREADY_CONSUMED")
+        require(job["status"] == "dead_letter" and job["error_code"] == "REWRITE_RESPONSE_INVALID"
+                and job["job_kind"] == "article" and job["provider_slug"] == "bankone"
+                and job["phase"] == "rewriting" and not job["retryable"]
+                and job["lease_owner"] is None and job["lease_expires_at"] is None
+                and job["heartbeat_at"] is None, "RECOVERY_JOB_STATE_CHANGED")
+        require(article is not None and str(job["canonical_article_id"]) == str(canonical_article_id)
+                and article["current_job_id"] == job["source_fetch_job_id"]
+                and article["provider_slug"] == "bankone" and article["membership_status"] == "active"
+                and article["takedown_status"] == "active"
+                and article["current_source_revision_id"] == job["source_revision_id"]
+                and str(job["source_revision_id"]) == str(source_revision_id)
+                and article["request_generation"] == job["request_generation"] == expected_generation
+                and article["target_normalization_version"] == job["normalization_version"] == normalization_version
+                and article["target_rewrite_profile_version"] == job["rewrite_profile_version"] == rewrite_profile_version,
+                "RECOVERY_OWNER_CHANGED")
+        require(job["lease_token"] == expected_lease_token and job["retry_count"] == expected_retry_count,
+                "RECOVERY_LEASE_CHANGED")
+        require(job["retry_count"] < job["max_attempts"], "RECOVERY_RETRY_BUDGET_EXHAUSTED")
+        source = cur.execute("SELECT * FROM canonical_article_source_revisions WHERE source_revision_id=%s FOR SHARE",
+                             (source_revision_id,)).fetchone()
+        document = job["checkpoint"].get("normalized_document")
+        require(source is not None and source["canonical_article_id"] == article["canonical_article_id"]
+                and isinstance(document, dict) and isinstance(document.get("blocks"), list)
+                and bool(document["blocks"])
+                and digest_json(document) == job["checkpoint"].get("normalized_hash") == expected_normalized_hash
+                and job["transformation_key"] == transformation_key(canonical_article_id,
+                    source["source_fingerprint"], normalization_version, rewrite_profile_version,
+                    projection_version=source["projection_version"]), "RECOVERY_INPUT_CHANGED")
+        require(article["current_canonical_revision_id"] is None
+                and not job["checkpoint"].get("candidate_revision_id")
+                and cur.execute("SELECT 1 FROM canonical_article_revisions WHERE canonical_article_id=%s LIMIT 1",
+                                (canonical_article_id,)).fetchone() is None
+                and cur.execute("SELECT 1 FROM publication_events WHERE canonical_article_id=%s LIMIT 1",
+                                (canonical_article_id,)).fetchone() is None, "RECOVERY_CANDIDATE_EXISTS")
+        attempts = cur.execute("""SELECT * FROM canonical_article_rewrite_attempts
+            WHERE source_fetch_job_id IN (%s,%s) ORDER BY source_fetch_job_id,attempt_number FOR UPDATE""",
+            (job_id, BANKTWO_FROZEN_JOB)).fetchall()
+        prior = [row for row in attempts if str(row["source_fetch_job_id"]) == BANKONE_RECOVERY_JOB]
+        other = [row for row in attempts if str(row["source_fetch_job_id"]) == BANKTWO_FROZEN_JOB]
+        require(banktwo["provider_slug"] == "banktwo" and banktwo["job_kind"] == "article"
+                and banktwo["status"] == "completed" and banktwo["lease_owner"] is None
+                and len(prior) == 1 and bool(other) and len(prior) < 2 and len(attempts) < 4,
+                "RECOVERY_DISPATCH_BUDGET_BLOCKED")
+        require(all(row["status"] in ("failed", "succeeded", "ambiguous")
+                    and row["dispatched_at"] is not None and row["completed_at"] is not None
+                    and row["provider"] == "inception" and row["model"] == "mercury-3"
+                    and row["profile_version"] == "full-prose-auto-v1"
+                    and row["lease_token"] <= jobs[str(row["source_fetch_job_id"])]["lease_token"]
+                    and row["attempt_number"] <= jobs[str(row["source_fetch_job_id"])]["retry_count"]
+                    for row in attempts)
+                and prior[0]["status"] == "failed" and prior[0]["error_code"] == "REWRITE_RESPONSE_INVALID"
+                and prior[0]["input_hash"] == expected_normalized_hash
+                and prior[0]["canonical_article_revision_id"] is None,
+                "RECOVERY_HISTORY_UNKNOWN")
+        marker = dict(version=1, recovery_id=recovery_id, actor=actor, reason=reason,
+                      implementation_sha=implementation_sha, state="prepared",
+                      max_additional_dispatches=1, dispatches_consumed=0,
+                      lease_token=job["lease_token"]+1, prior_lease_token=job["lease_token"],
+                      prior_retry_count=job["retry_count"], original_error_code=job["error_code"])
+        row = cur.execute("""UPDATE source_fetch_jobs SET status='processing',phase='rewriting',
+            retry_count=retry_count+1,lease_token=lease_token+1,lease_owner=%s,
+            lease_expires_at=clock_timestamp()+interval '90 seconds',heartbeat_at=clock_timestamp(),
+            next_attempt_at=NULL,retryable=false,error_code=NULL,
+            checkpoint=checkpoint||%s,updated_at=clock_timestamp()
+            WHERE source_fetch_job_id=%s RETURNING *""",
+            (worker_id, Jsonb({"bankone_exact_recovery": marker}), job_id)).fetchone()
+        return _lease_from_row(row, worker_id)
+
+
+def _finalize_expired_bankone_recovery(cur, job_id):
+    """End only the frozen one-shot lease; never reacquire or return it."""
+    job = cur.execute("""SELECT * FROM source_fetch_jobs
+        WHERE source_fetch_job_id=%s AND canonical_article_id=%s AND source_revision_id=%s
+          AND (%s::uuid IS NULL OR source_fetch_job_id=%s)
+          AND checkpoint ? 'bankone_exact_recovery' AND status='processing'
+          AND lease_expires_at<clock_timestamp()
+        FOR UPDATE SKIP LOCKED""", (BANKONE_RECOVERY_JOB, BANKONE_RECOVERY_ARTICLE,
+            BANKONE_RECOVERY_SOURCE, job_id, job_id)).fetchone()
+    if job is None:
+        return
+    # Unknown delivery remains consumed. Change only this lease's unresolved
+    # dispatched attempt; the original terminal attempt is immutable evidence.
+    _mark_delivery_ambiguous(cur, job)
+    ambiguous = cur.execute("""SELECT 1 FROM canonical_article_rewrite_attempts
+        WHERE source_fetch_job_id=%s AND lease_token=%s AND status='ambiguous'
+          AND response IS NULL AND dispatched_at IS NOT NULL
+        LIMIT 1""", (job["source_fetch_job_id"], job["lease_token"])).fetchone()
+    # A consumed allowance proves dispatch, not unknown delivery: a saved
+    # response remains known evidence even when the publication lease expires.
+    code = "MODEL_DELIVERY_AMBIGUOUS" if ambiguous else "RECOVERY_LEASE_EXPIRED"
+    cur.execute("""UPDATE source_fetch_jobs SET status='dead_letter',error_code=%s,retryable=false,
+        lease_owner=NULL,lease_expires_at=NULL,heartbeat_at=NULL,next_attempt_at=NULL,
+        updated_at=clock_timestamp() WHERE source_fetch_job_id=%s""",
+        (code, job["source_fetch_job_id"]))
+
+
 def claim_source_job(repo, *, worker_id, model_ready=True, job_id=None):
     with repo.connect() as conn, _cursor(conn) as cur:
+        _finalize_expired_bankone_recovery(cur, job_id)
         resumed = _claim_automatic_resume(cur, worker_id, job_id)
         if resumed is not None:
             return resumed
@@ -278,7 +436,7 @@ def claim_source_job(repo, *, worker_id, model_ready=True, job_id=None):
                 return resumed
         cur.execute(
             """WITH exhausted AS (SELECT source_fetch_job_id FROM source_fetch_jobs
-        WHERE job_kind IN ('article','catalog_index') AND (%s::uuid IS NULL OR source_fetch_job_id=%s) AND NOT (rewrite_profile_version='full-prose-auto-v1' AND COALESCE(error_code,'')='MODEL_NOT_CONFIGURED') AND NOT (checkpoint @> '{"source_only_reprojection":true}'::jsonb) AND NOT (rewrite_profile_version='full-prose-review-v1' AND checkpoint ? 'content_review') AND status='processing' AND retry_count>=max_attempts AND lease_expires_at<clock_timestamp() FOR UPDATE SKIP LOCKED)
+        WHERE job_kind IN ('article','catalog_index') AND NOT (checkpoint ? 'bankone_exact_recovery') AND (%s::uuid IS NULL OR source_fetch_job_id=%s) AND NOT (rewrite_profile_version='full-prose-auto-v1' AND COALESCE(error_code,'')='MODEL_NOT_CONFIGURED') AND NOT (checkpoint @> '{"source_only_reprojection":true}'::jsonb) AND NOT (rewrite_profile_version='full-prose-review-v1' AND checkpoint ? 'content_review') AND status='processing' AND retry_count>=max_attempts AND lease_expires_at<clock_timestamp() FOR UPDATE SKIP LOCKED)
         UPDATE source_fetch_jobs j SET status='dead_letter',error_code='LEASE_ATTEMPTS_EXHAUSTED',retryable=false,lease_owner=NULL,lease_expires_at=NULL,heartbeat_at=NULL,updated_at=clock_timestamp()
         FROM exhausted e WHERE j.source_fetch_job_id=e.source_fetch_job_id
         RETURNING j.source_fetch_job_id,j.lease_token""", (job_id,job_id)
@@ -286,7 +444,7 @@ def claim_source_job(repo, *, worker_id, model_ready=True, job_id=None):
         for exhausted in cur.fetchall():
             _mark_delivery_ambiguous(cur, exhausted)
         job = cur.execute(
-            """SELECT * FROM source_fetch_jobs WHERE job_kind IN ('article','catalog_index') AND (%s::uuid IS NULL OR source_fetch_job_id=%s) AND NOT (rewrite_profile_version='full-prose-auto-v1' AND COALESCE(error_code,'')='MODEL_NOT_CONFIGURED') AND NOT (checkpoint @> '{"source_only_reprojection":true}'::jsonb) AND NOT (rewrite_profile_version='full-prose-review-v1' AND checkpoint ? 'content_review') AND retry_count<max_attempts AND
+            """SELECT * FROM source_fetch_jobs WHERE job_kind IN ('article','catalog_index') AND NOT (checkpoint ? 'bankone_exact_recovery') AND (%s::uuid IS NULL OR source_fetch_job_id=%s) AND NOT (rewrite_profile_version='full-prose-auto-v1' AND COALESCE(error_code,'')='MODEL_NOT_CONFIGURED') AND NOT (checkpoint @> '{"source_only_reprojection":true}'::jsonb) AND NOT (rewrite_profile_version='full-prose-review-v1' AND checkpoint ? 'content_review') AND retry_count<max_attempts AND
         ((status IN ('pending','failed') AND COALESCE(next_attempt_at,'-infinity'::timestamptz)<=clock_timestamp()) OR (status='processing' AND lease_expires_at<clock_timestamp()))
         ORDER BY created_at,source_fetch_job_id FOR UPDATE SKIP LOCKED LIMIT 1""", (job_id,job_id)
         ).fetchone()
@@ -373,7 +531,7 @@ def fail_source_job(repo, lease, *, code, retryable, retry_after_seconds=None):
         raise ValueError("redacted stable error code required")
     with repo.connect() as conn, _cursor(conn) as cur:
         row = lock_live_lease(cur, lease)
-        retry = retryable and row["retry_count"] < row["max_attempts"]
+        retry = retryable and "bankone_exact_recovery" not in row["checkpoint"] and row["retry_count"] < row["max_attempts"]
         delay = (
             max(
                 5 if row["retry_count"] == 1 else 30,

@@ -453,10 +453,22 @@ def prepare_rewrite_attempt(repo, lease, document, *, context, model):
 
 def mark_rewrite_dispatched(repo,lease,attempt):
     with repo.connect() as conn,conn.cursor(row_factory=dict_row) as cur:
-        _lock_transform(cur,lease)
+        job,_=_lock_transform(cur,lease)
+        recovery=job["checkpoint"].get("bankone_exact_recovery")
+        if "bankone_exact_recovery" in job["checkpoint"]:
+            if (not isinstance(recovery,dict) or recovery.get("version")!=1
+                or type(recovery.get("lease_token")) is not int or recovery["lease_token"]!=lease.token
+                or recovery.get("state")!="prepared"
+                or type(recovery.get("max_additional_dispatches")) is not int or recovery["max_additional_dispatches"]!=1
+                or type(recovery.get("dispatches_consumed")) is not int or recovery["dispatches_consumed"]!=0):
+                raise ValueError("RECOVERY_DISPATCH_BLOCKED")
         changed=cur.execute("""UPDATE canonical_article_rewrite_attempts SET status='dispatched',dispatched_at=clock_timestamp()
             WHERE rewrite_attempt_id=%s AND source_fetch_job_id=%s AND lease_token=%s AND status='prepared' RETURNING rewrite_attempt_id""",(attempt,lease.job_id,lease.token)).fetchone()
         if changed is None: raise ValueError("attempt cannot dispatch again")
+        if recovery is not None:
+            consumed={**recovery,"state":"dispatched","dispatches_consumed":1}
+            cur.execute("UPDATE source_fetch_jobs SET checkpoint=checkpoint||%s WHERE source_fetch_job_id=%s",
+                (Jsonb({"bankone_exact_recovery":consumed}),lease.job_id))
 
 
 def _bind_v2_operations(source, candidate, response):
@@ -543,9 +555,8 @@ def _require_full_approval(cur, job, article, candidate):
 
 def automatic_candidate_validation(cur, job, candidate):
     """Rebuild automatic source, prompt and output from immutable saved evidence."""
-    from hashlib import sha256
     from .article_lifecycle_types import digest_json
-    from .procedure_rewrite_auto import PROFILE, build_auto_prompt, validate_auto
+    from .procedure_rewrite_auto import PROFILE, _matches_auto_prompt_hash, validate_auto
     from .procedure_normalize import normalize_procedure_article
     if candidate is None:
         raise ValueError("automatic candidate binding missing")
@@ -577,7 +588,7 @@ def automatic_candidate_validation(cur, job, candidate):
         or attempt["profile_version"] != PROFILE or not isinstance(attempt["response"],dict)
         or attempt["response_hash"] != digest_json(attempt["response"])
         or attempt["input_hash"] != digest_json(source)
-        or attempt["prompt_hash"] != sha256(build_auto_prompt(source,context=context["vehicle"]).encode()).hexdigest()
+        or not _matches_auto_prompt_hash(source,context=context["vehicle"],prompt_hash=attempt["prompt_hash"])
         or attempt["prompt_hash"] != candidate["model_metadata"].get("prompt_hash")
         or attempt["model"] != candidate["model_metadata"].get("model")
         or candidate["model_metadata"].get("profile_version") != PROFILE):
@@ -597,16 +608,45 @@ def validate_saved_candidate(repo,lease,candidate):
         return automatic_candidate_validation(cur,job,candidate) if lease.rewrite_profile_version == "full-prose-auto-v1" else full_candidate_validation(cur,job,candidate)
 
 
+class RewriteStorageError(ValueError):
+    """A fixed storage stage, never a projection or renderer exception message."""
+
+    def __init__(self, stage):
+        self.code = {
+            "storage_projection": "REWRITE_STORAGE_PROJECTION_INVALID",
+            "storage_binding": "REWRITE_STORAGE_BINDING_INVALID",
+            "storage_limit": "REWRITE_RESPONSE_LIMIT",
+        }[stage]
+        self.diagnostics = {"stage": stage}
+        super().__init__(self.code)
+
+
 def store_rewrite_result(repo,lease,result):
+    try:
+        return _store_rewrite_result(repo,lease,result)
+    except RewriteStorageError:
+        raise
+    except ValueError:
+        pass
+    raise RewriteStorageError("storage_binding") from None
+
+
+def _store_rewrite_result(repo,lease,result):
     from .article_lifecycle_types import digest_json
     from .article_document import project_ordered_document
     from hashlib import sha256
     import json
-    projection=project_ordered_document(result.document)
+    projection = None
+    try:
+        projection=project_ordered_document(result.document)
+    except ValueError:
+        pass
+    if projection is None:
+        raise RewriteStorageError("storage_projection")
     # PostgreSQL jsonb includes separator whitespace. Enforce that storage bound
     # before attempting a transaction as well as the external wire bound.
     raw=json.dumps(result.raw_response,ensure_ascii=False)
-    if len(raw.encode())>1048576: raise ValueError("REWRITE_RESPONSE_LIMIT")
+    if len(raw.encode())>1048576: raise RewriteStorageError("storage_limit")
     with repo.connect() as conn,conn.cursor(row_factory=dict_row) as cur:
         job,_=_lock_transform(cur,lease)
         attempt=cur.execute("SELECT * FROM canonical_article_rewrite_attempts WHERE source_fetch_job_id=%s AND lease_token=%s AND status='dispatched' FOR UPDATE",(lease.job_id,lease.token)).fetchone()
@@ -744,9 +784,21 @@ def publish_article_revision(repo,lease,revision_id,*,hooks=None):
         return revision_id
 
 
-def record_rewrite_failure(repo,lease,*,code,ambiguous=False):
+def record_rewrite_failure(repo,lease,*,code,ambiguous=False,failure=None):
     with repo.connect() as conn,conn.cursor(row_factory=dict_row) as cur:
         _lock_transform(cur,lease)
         cur.execute("""UPDATE canonical_article_rewrite_attempts SET status=%s,error_code=%s,completed_at=clock_timestamp()
-            WHERE source_fetch_job_id=%s AND lease_token=%s AND status IN ('prepared','dispatched')""",
+            WHERE source_fetch_job_id=%s AND lease_token=%s AND status IN ('prepared','dispatched') RETURNING rewrite_attempt_id""",
             ("ambiguous" if ambiguous else "failed",code,lease.job_id,lease.token))
+        attempt=cur.fetchone()
+        if failure is not None and attempt is not None:
+            from .mercury2 import MercuryResponseError, _safe_response_diagnostics
+            if isinstance(failure,MercuryResponseError):
+                diagnostics=_safe_response_diagnostics(failure.diagnostics)
+            elif isinstance(failure,RewriteStorageError):
+                diagnostics={"stage":failure.diagnostics["stage"]}
+            else:
+                raise TypeError("typed rewrite failure required")
+            cur.execute("UPDATE source_fetch_jobs SET checkpoint=checkpoint||%s WHERE source_fetch_job_id=%s",
+                (Jsonb({"rewrite_failure":{"code":failure.code,"diagnostics":diagnostics,
+                    "attempt_id":str(attempt["rewrite_attempt_id"])}}),lease.job_id))

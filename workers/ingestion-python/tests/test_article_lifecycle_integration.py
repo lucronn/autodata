@@ -1,5 +1,6 @@
 """Required acceptance uses real worker processes and isolated fixture services."""
 from concurrent.futures import ProcessPoolExecutor
+from copy import deepcopy
 from uuid import uuid4
 import asyncio
 import pytest
@@ -772,12 +773,419 @@ def test_automatic_real_runtime_source_first_publication_and_zero_call_restart(r
 
 
 @pytest.mark.parametrize("point", ["after_model_result_commit", "inside_publication"])
-def test_automatic_real_process_death_reuses_saved_response(runtime, point):
+@pytest.mark.parametrize("prompt_version", ["v1", "v2"])
+def test_automatic_real_process_death_reuses_saved_response(runtime, point, prompt_version):
     ensure = automatic_runtime(runtime,"bankone")
     ensure();runtime.pause(point);runtime.start_workers(1);runtime.await_barrier()
     job = runtime.current_job_id();runtime.kill_worker();runtime.expire_lease(job)
+    if prompt_version == "v1":
+        from hashlib import sha256
+        from psycopg.types.json import Jsonb
+        from autodata_ingestion.procedure_rewrite_auto import _build_auto_prompt_v1
+        with runtime.repo.connect() as conn:
+            candidate = conn.execute("SELECT r.* FROM canonical_article_revisions r JOIN source_fetch_jobs j USING(transformation_key) WHERE j.source_fetch_job_id=%s", (job,)).fetchone()
+            context = conn.execute("SELECT captured_context FROM canonical_article_source_observations WHERE source_revision_id=%s ORDER BY captured_at LIMIT 1", (candidate["source_revision_id"],)).fetchone()["captured_context"]
+            legacy_hash = sha256(_build_auto_prompt_v1(candidate["normalized_source_document"], context=context["vehicle"]).encode()).hexdigest()
+            conn.execute("UPDATE canonical_article_rewrite_attempts SET prompt_hash=%s WHERE canonical_article_revision_id=%s", (legacy_hash, candidate["canonical_article_revision_id"]))
+            conn.execute("UPDATE canonical_article_revisions SET model_metadata=%s WHERE canonical_article_revision_id=%s", (Jsonb({**candidate["model_metadata"], "prompt_hash": legacy_hash}), candidate["canonical_article_revision_id"]))
     runtime.barrier = None;runtime.start_workers(2);runtime.await_publication();runtime.stop_workers()
     assert runtime.counters() == {"source":1,"asset":0,"model":1,"schedule":1}
     with runtime.repo.connect() as conn:
         assert conn.execute("SELECT count(*) AS n FROM publication_events").fetchone()["n"] == 1
         assert conn.execute("SELECT count(*) AS n FROM canonical_article_rewrite_attempts").fetchone()["n"] == 1
+
+
+@pytest.mark.parametrize("failure,expected_code,expected_stage", [
+    ("parse", "REWRITE_RESPONSE_INVALID", "content_json"),
+    ("binding", "REWRITE_STORAGE_BINDING_INVALID", "storage_binding"),
+    ("projection", "REWRITE_STORAGE_PROJECTION_INVALID", "storage_projection"),
+])
+def test_rewrite_failure_checkpoint_distinguishes_parser_and_storage(runtime, monkeypatch, failure, expected_code, expected_stage):
+    import io
+    import json
+    from dataclasses import replace
+    from autodata_ingestion import article_lifecycle_store as store
+    from autodata_ingestion.article_lifecycle import run_article_worker_once
+    from autodata_ingestion.mercury2 import Mercury2Client
+    secret = "SECRET_PROMPT_LICENSED_SOURCE_BODY"
+    client = Mercury2Client(api_key="fixture-model", base_url=runtime.model.url, model="fixture-mercury")
+    if failure == "parse":
+        client = Mercury2Client(api_key=secret, base_url="http://fixture", transport=lambda *a, **k:
+            io.BytesIO(json.dumps({"choices":[{"message":{"content":secret}}]}).encode()))
+    else:
+        original = store.store_rewrite_result
+        def broken_store(repo, lease, result):
+            if failure == "binding":
+                return original(repo, lease, replace(result, input_hash="0" * 64))
+            from autodata_ingestion import article_document
+            with monkeypatch.context() as patcher:
+                def broken_projection(*args, **kwargs):
+                    raise ValueError(secret)
+                patcher.setattr(article_document, "project_ordered_document", broken_projection)
+                return original(repo, lease, result)
+        monkeypatch.setattr(store, "store_rewrite_result", broken_store)
+    runtime.ensure()
+    assert run_article_worker_once(runtime.repo, worker_id=uuid4(), registry=runtime.registry,
+        object_store=runtime.objects, model_client=client, job_id=runtime.current_job_id())
+    with runtime.repo.connect() as conn:
+        job=conn.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s",(runtime.current_job_id(),)).fetchone()
+        attempt=conn.execute("SELECT * FROM canonical_article_rewrite_attempts WHERE source_fetch_job_id=%s",(runtime.current_job_id(),)).fetchone()
+        assert conn.execute("SELECT count(*) AS n FROM canonical_article_revisions").fetchone()["n"] == 0
+    assert job["error_code"] == expected_code
+    assert attempt["status"] == "failed" and attempt["response"] is None
+    diagnostic=job["checkpoint"]["rewrite_failure"]
+    assert diagnostic["diagnostics"]["stage"] == expected_stage
+    assert diagnostic["attempt_id"] == str(attempt["rewrite_attempt_id"])
+    if failure == "parse":
+        assert diagnostic["code"] == "MERCURY_CONTENT_JSON_INVALID"
+    assert secret not in json.dumps(diagnostic)
+    assert runtime.read_current()["content_origin"] == "source"
+
+
+def test_timeout_after_dispatch_keeps_unknown_delivery_consumed(runtime):
+    from autodata_ingestion.article_lifecycle import run_article_worker_once
+    from autodata_ingestion.mercury2 import Mercury2Client
+    def timeout(*args, **kwargs):
+        raise TimeoutError("SECRET_PROMPT_LICENSED_SOURCE_BODY")
+    runtime.ensure()
+    client=Mercury2Client(api_key="fixture",base_url="http://fixture",transport=timeout)
+    run_article_worker_once(runtime.repo,worker_id=uuid4(),registry=runtime.registry,
+        object_store=runtime.objects,model_client=client,job_id=runtime.current_job_id())
+    with runtime.repo.connect() as conn:
+        attempt=conn.execute("SELECT * FROM canonical_article_rewrite_attempts").fetchone()
+        job=conn.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s",(runtime.current_job_id(),)).fetchone()
+    assert attempt["status"] == "ambiguous" and attempt["dispatched_at"] is not None
+    assert attempt["response"] is None and attempt["error_code"] == "MODEL_DELIVERY_AMBIGUOUS"
+    assert job["retry_count"] == 1 and job["error_code"] == "MODEL_TRANSPORT_FAILED"
+
+
+@pytest.mark.parametrize("change", [None, {"state":"dispatched"}, {"dispatches_consumed":1}, {"lease_token":-1}, {"max_additional_dispatches":2}])
+def test_exact_recovery_dispatch_consumes_marker_atomically_once(runtime, change):
+    from autodata_ingestion import article_lifecycle_store as store
+    from autodata_ingestion.article_lifecycle import _live
+    from autodata_ingestion.source_job_persistence import claim_source_job
+    from autodata_ingestion.procedure_normalize import normalize_procedure_article
+    from psycopg.types.json import Jsonb
+    runtime.ensure()
+    lease=claim_source_job(runtime.repo,worker_id=uuid4(),job_id=runtime.current_job_id())
+    store.store_captured_source(runtime.repo,lease,projection_capture(runtime,lease))
+    lease=_live(runtime.repo,lease)
+    source=store.load_source_revision(runtime.repo,lease.source_revision_id)
+    document=normalize_procedure_article(source.as_article())["normalized_document"]
+    store.save_normalized_input(runtime.repo,lease,{"normalized_document":document})
+    attempt=store.prepare_rewrite_attempt(runtime.repo,lease,document,context=source.vehicle,model="mercury-3")
+    marker={"version":1,"state":"prepared","lease_token":lease.token,"max_additional_dispatches":1,"dispatches_consumed":0}
+    marker.update(change or {})
+    with runtime.repo.connect() as conn:
+        conn.execute("UPDATE source_fetch_jobs SET checkpoint=checkpoint||%s WHERE source_fetch_job_id=%s",(Jsonb({"bankone_exact_recovery":marker}),lease.job_id))
+    if change:
+        with pytest.raises(ValueError, match="RECOVERY_DISPATCH_BLOCKED"):
+            store.mark_rewrite_dispatched(runtime.repo,lease,attempt)
+    else:
+        store.mark_rewrite_dispatched(runtime.repo,lease,attempt)
+        with pytest.raises(ValueError):
+            store.mark_rewrite_dispatched(runtime.repo,lease,attempt)
+    with runtime.repo.connect() as conn:
+        saved=conn.execute("SELECT checkpoint FROM source_fetch_jobs WHERE source_fetch_job_id=%s",(lease.job_id,)).fetchone()["checkpoint"]["bankone_exact_recovery"]
+        status=conn.execute("SELECT status FROM canonical_article_rewrite_attempts WHERE rewrite_attempt_id=%s",(attempt,)).fetchone()["status"]
+    assert status == ("prepared" if change else "dispatched")
+    assert saved == (marker if change else {**marker,"state":"dispatched","dispatches_consumed":1})
+
+
+@pytest.mark.parametrize("mutation", ["prompt_hash", "source", "context", "response", "model"])
+def test_automatic_saved_candidate_rejects_tampered_bound_evidence(runtime, mutation):
+    from psycopg.types.json import Jsonb
+    from autodata_ingestion import article_lifecycle_store as store
+    from autodata_ingestion.article_lifecycle_types import digest_json
+    from autodata_ingestion.source_job_persistence import claim_source_job
+    ensure = automatic_runtime(runtime, "bankone")
+    ensure(); runtime.pause("after_model_result_commit"); runtime.start_workers(1); runtime.await_barrier()
+    job = runtime.current_job_id(); runtime.kill_worker(); runtime.expire_lease(job)
+    lease = claim_source_job(runtime.repo, worker_id=uuid4(), job_id=job)
+    candidate = store.load_candidate(runtime.repo, lease)
+    validation = store.validate_saved_candidate(runtime.repo, lease, candidate)
+    assert validation.passed
+    store.store_validation(runtime.repo, lease, validation)
+    with runtime.repo.connect() as conn:
+        if mutation == "prompt_hash":
+            conn.execute("UPDATE canonical_article_rewrite_attempts SET prompt_hash=%s WHERE canonical_article_revision_id=%s", ("0" * 64, candidate["canonical_article_revision_id"]))
+            conn.execute("UPDATE canonical_article_revisions SET model_metadata=%s WHERE canonical_article_revision_id=%s", (Jsonb({**candidate["model_metadata"], "prompt_hash": "0" * 64}), candidate["canonical_article_revision_id"]))
+        elif mutation == "source":
+            changed = deepcopy(candidate["normalized_source_document"])
+            changed["blocks"][0]["source_order"] += 1
+            conn.execute("UPDATE canonical_article_revisions SET normalized_source_document=%s,normalized_source_hash=%s WHERE canonical_article_revision_id=%s", (Jsonb(changed), digest_json(changed), candidate["canonical_article_revision_id"]))
+        elif mutation == "context":
+            from psycopg.errors import RaiseException
+            with pytest.raises(RaiseException, match="immutable article lifecycle record"):
+                conn.execute("UPDATE canonical_article_source_observations SET captured_context=jsonb_set(captured_context,'{vehicle}',%s) WHERE source_revision_id=%s", (Jsonb({"vehicle": "changed routing context"}), candidate["source_revision_id"]))
+            conn.rollback()
+        elif mutation == "response":
+            row = conn.execute("SELECT response FROM canonical_article_rewrite_attempts WHERE canonical_article_revision_id=%s", (candidate["canonical_article_revision_id"],)).fetchone()
+            changed = row["response"]; changed["introduction"] = "This article covers taking off the pump."
+            conn.execute("UPDATE canonical_article_rewrite_attempts SET response=%s,response_hash=%s WHERE canonical_article_revision_id=%s", (Jsonb(changed), digest_json(changed), candidate["canonical_article_revision_id"]))
+        else:
+            conn.execute("UPDATE canonical_article_revisions SET model_metadata=%s WHERE canonical_article_revision_id=%s", (Jsonb({**candidate["model_metadata"], "model": "unbound-model"}), candidate["canonical_article_revision_id"]))
+    if mutation == "context":
+        assert store.validate_saved_candidate(runtime.repo, lease, store.load_candidate(runtime.repo, lease)).passed
+    else:
+        with pytest.raises(ValueError, match="binding"):
+            store.validate_saved_candidate(runtime.repo, lease, store.load_candidate(runtime.repo, lease))
+        with pytest.raises(ValueError, match="binding"):
+            store.publish_article_revision(runtime.repo, lease, candidate["canonical_article_revision_id"])
+    assert runtime.read_current()["content_origin"] == "source"
+    assert runtime.model.calls == 1
+
+
+# The rollout worker never invokes the generic queue poller. These tests run
+# against isolated PostgreSQL and real fixture HTTP/S3, never application data.
+def new_article_rollout(repo, tmp_path):
+    import os
+    from autodata_ingestion.new_article_worker import RolloutState, database_now
+    directory = tmp_path / 'rollout'
+    directory.mkdir(mode=0o700)
+    state = RolloutState(directory, source_sha='a' * 40, owner_uid=os.getuid())
+    state.initialize(database_now(repo)); state.set_enabled(True)
+    return state
+
+
+def new_pristine_article(repo, vehicle, *, provider='bankone', source_vehicle_ref='fixture-vehicle', descriptor=None, snapshot=None):
+    from lifecycle_support import seed_snapshot
+    from autodata_ingestion.article_lifecycle_types import ArticleKey
+    from autodata_ingestion.article_lifecycle_store import upsert_article_descriptor
+    from autodata_ingestion.source_job_persistence import ensure_article_job
+    key = ArticleKey(provider, vehicle, None, source_vehicle_ref, 'new-' + uuid4().hex)
+    article = upsert_article_descriptor(repo, key, descriptor or {'title':'Pump','body_resource_ref':'body'},
+        snapshot or seed_snapshot(repo), 0, rewrite_profile_version='full-prose-auto-v1')
+    job = ensure_article_job(repo, article, normalization_version='ordered-article-v1', rewrite_profile_version='full-prose-auto-v1').job_id
+    return article, job
+
+
+def test_new_article_worker_pristine_only_and_historical_rows_unchanged(fresh_database, tmp_path):
+    from lifecycle_support import seed_vehicle
+    from autodata_ingestion.new_article_worker import reserve_next_job
+    repo = fresh_database(); vehicle = seed_vehicle(repo)
+    old_article, old_job = new_pristine_article(repo, vehicle)
+    with new_article_rollout(repo, tmp_path) as state:
+        cases = [
+            ('old_article', "UPDATE canonical_articles SET created_at='2000-01-01' WHERE canonical_article_id=%s", 'article'),
+            ('old_job', "UPDATE source_fetch_jobs SET created_at='2000-01-01' WHERE source_fetch_job_id=%s", 'job'),
+            ('generation', 'UPDATE canonical_articles SET request_generation=1 WHERE canonical_article_id=%s', 'article'),
+            ('job_generation', 'UPDATE source_fetch_jobs SET request_generation=1 WHERE source_fetch_job_id=%s', 'job'),
+            ('profile', "UPDATE source_fetch_jobs SET rewrite_profile_version='full-prose-review-v1' WHERE source_fetch_job_id=%s", 'job'),
+            ('retired', "UPDATE canonical_articles SET membership_status='retired' WHERE canonical_article_id=%s", 'article'),
+            ('takedown', "UPDATE canonical_articles SET takedown_status='takedown' WHERE canonical_article_id=%s", 'article'),
+            ('owner', 'UPDATE canonical_articles SET current_job_id=NULL WHERE canonical_article_id=%s', 'article'),
+            ('retry', 'UPDATE source_fetch_jobs SET retry_count=1 WHERE source_fetch_job_id=%s', 'job'),
+            ('token', 'UPDATE source_fetch_jobs SET lease_token=1 WHERE source_fetch_job_id=%s', 'job'),
+            ('error', "UPDATE source_fetch_jobs SET error_code='FROZEN_ERROR' WHERE source_fetch_job_id=%s", 'job'),
+            ('last_error', "UPDATE source_fetch_jobs SET last_error='{}' WHERE source_fetch_job_id=%s", 'job'),
+            ('checkpoint', "UPDATE source_fetch_jobs SET checkpoint='{\"bankone_exact_recovery\":{}}' WHERE source_fetch_job_id=%s", 'job'),
+            ('scheduled', "UPDATE source_fetch_jobs SET next_attempt_at=clock_timestamp()+interval '1 second' WHERE source_fetch_job_id=%s", 'job'),
+            ('failed', "UPDATE source_fetch_jobs SET status='failed',retry_count=2,max_attempts=2 WHERE source_fetch_job_id=%s", 'job'),
+            ('dead_letter', "UPDATE source_fetch_jobs SET status='dead_letter',retry_count=2,max_attempts=2 WHERE source_fetch_job_id=%s", 'job'),
+            ('parked', "UPDATE source_fetch_jobs SET status='failed',error_code='MODEL_NOT_CONFIGURED' WHERE source_fetch_job_id=%s", 'job'),
+            ('processing', "UPDATE source_fetch_jobs SET status='processing',lease_owner=gen_random_uuid(),lease_token=1,heartbeat_at=clock_timestamp(),lease_expires_at=clock_timestamp()-interval '1 second' WHERE source_fetch_job_id=%s", 'job'),
+        ]
+        for _, sql, owner in cases:
+            article, job = new_pristine_article(repo, vehicle)
+            with repo.connect() as conn: conn.execute(sql, (article if owner == 'article' else job,))
+        # Attempt evidence alone is disqualifying, even if someone reset job counters.
+        article, job = new_pristine_article(repo, vehicle)
+        with repo.connect() as conn:
+            conn.execute("""INSERT INTO canonical_article_rewrite_attempts(rewrite_attempt_id,source_fetch_job_id,lease_token,attempt_number,provider,model,profile_version,prompt_hash,input_hash,status)
+                VALUES (%s,%s,1,1,'fixture','mercury-3','full-prose-auto-v1',%s,%s,'ambiguous')""", (uuid4(),job,'0'*64,'0'*64))
+            before_jobs = conn.execute('SELECT * FROM source_fetch_jobs ORDER BY source_fetch_job_id').fetchall()
+            before_articles = conn.execute('SELECT * FROM canonical_articles ORDER BY canonical_article_id').fetchall()
+            before_attempts = conn.execute('SELECT * FROM canonical_article_rewrite_attempts').fetchall()
+        admitted = [new_pristine_article(repo, vehicle, provider=p)[1] for p in ('bankone','banktwo')]
+        assert [reserve_next_job(repo,state),reserve_next_job(repo,state)] == admitted
+        assert reserve_next_job(repo,state) is None
+        with repo.connect() as conn:
+            assert conn.execute('SELECT * FROM source_fetch_jobs WHERE NOT(source_fetch_job_id=ANY(%s)) ORDER BY source_fetch_job_id',(admitted,)).fetchall() == before_jobs
+            assert conn.execute('SELECT * FROM canonical_articles WHERE NOT(current_job_id=ANY(%s)) OR current_job_id IS NULL ORDER BY canonical_article_id',(admitted,)).fetchall() == before_articles
+            assert conn.execute('SELECT * FROM canonical_article_rewrite_attempts').fetchall() == before_attempts
+            assert all(row['max_attempts']==1 and row['retry_count']==0 for row in conn.execute('SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=ANY(%s)',(admitted,)).fetchall())
+
+
+def prepare_new_article_runtime(runtime, tmp_path, monkeypatch):
+    from autodata_ingestion.new_article_worker import configured_model
+    automatic_runtime(runtime,'bankone')
+    state = new_article_rollout(runtime.repo,tmp_path)
+    runtime.stack.callback(state.__exit__,None,None,None)
+    with runtime.repo.connect() as conn:
+        original = conn.execute('SELECT * FROM canonical_articles WHERE canonical_article_id=%s',(runtime.article_id,)).fetchone()
+    article, job = new_pristine_article(runtime.repo,runtime.vehicle,
+        source_vehicle_ref=original['source_vehicle_ref'],descriptor=original['descriptor'],snapshot=original['descriptor_source_snapshot_id'])
+    runtime.article_id = article; runtime.articles['bankone'] = article
+    for name,value in {**runtime.env,'INCEPTION_MODEL':'mercury-3','INCEPTION_MAX_TOKENS':'32768','INCEPTION_API_TIMEOUT_SECONDS':'60'}.items():
+        monkeypatch.setenv(name,value)
+    return state, job, configured_model()
+
+
+def test_new_article_worker_commits_cap_before_exact_claim_and_publishes_unreviewed(runtime,tmp_path,monkeypatch):
+    from autodata_ingestion import article_lifecycle
+    from autodata_ingestion.new_article_worker import dispatch_next
+    state, job, model = prepare_new_article_runtime(runtime,tmp_path,monkeypatch)
+    original = article_lifecycle.run_article_worker_once
+    calls = []
+    def checked(repo, **kwargs):
+        assert kwargs['job_id']==job
+        # Separate real connection proves cap and state are durable before claim.
+        with repo.connect() as conn:
+            row=conn.execute('SELECT max_attempts,retry_count FROM source_fetch_jobs WHERE source_fetch_job_id=%s',(job,)).fetchone()
+        assert row=={'max_attempts':1,'retry_count':0}
+        assert state.read()['reservations'][0]['job_id']==str(job)
+        calls.append(job)
+        return original(repo,**kwargs)
+    monkeypatch.setattr(article_lifecycle,'run_article_worker_once',checked)
+    kwargs=dict(worker_id=uuid4(),registry=runtime.registry,object_store=runtime.objects,model_client=model)
+    assert dispatch_next(runtime.repo,state,**kwargs)
+    assert calls==[job] and runtime.model.calls==1
+    current=runtime.read_current()
+    assert current['content_origin']=='canonical' and current['review_status']=='UNREVIEWED'
+    revision=current['canonical_revision_id']; assert revision
+    assert not dispatch_next(runtime.repo,state,**kwargs)
+    assert runtime.model.calls==1
+    runtime.reset_counters()
+    for _ in range(10): assert runtime.read_current()['canonical_revision_id']==revision
+    assert runtime.counters()=={'source':0,'asset':0,'model':0,'schedule':0}
+
+
+@pytest.mark.parametrize('point',['reserved_before_sql','sql_commit_failure','committed_before_claim','after_model_dispatch','after_model_result_commit'])
+def test_new_article_worker_crash_reservation_never_dispatches_again(runtime,tmp_path,monkeypatch,point):
+    from autodata_ingestion import new_article_worker as worker
+    state, job, model = prepare_new_article_runtime(runtime,tmp_path,monkeypatch)
+    kwargs=dict(worker_id=uuid4(),registry=runtime.registry,object_store=runtime.objects,model_client=model)
+    if point=='reserved_before_sql':
+        original=state.reserve
+        def reserve_then_crash(*args,**kwargs):
+            result=original(*args,**kwargs)
+            assert result
+            raise RuntimeError('crash')
+        with monkeypatch.context() as patch:
+            patch.setattr(state,'reserve',reserve_then_crash)
+            with pytest.raises(RuntimeError,match='crash'): worker.dispatch_next(runtime.repo,state,**kwargs)
+    elif point=='sql_commit_failure':
+        from contextlib import contextmanager
+        class CommitFailure:
+            @contextmanager
+            def connect(self):
+                with runtime.repo.connect() as conn:
+                    yield conn
+                    raise RuntimeError('commit failed')
+        with pytest.raises(RuntimeError,match='commit failed'):
+            worker.dispatch_next(CommitFailure(),state,**kwargs)
+    elif point=='committed_before_claim':
+        assert worker.reserve_next_job(runtime.repo,state)==job
+    else:
+        def crash(name):
+            if name==point: raise RuntimeError('crash')
+        with pytest.raises(RuntimeError,match='crash'):
+            worker.dispatch_next(runtime.repo,state,**kwargs,hooks=crash)
+        runtime.expire_lease(job)
+    calls=runtime.model.calls
+    assert calls==(1 if point=='after_model_result_commit' else 0)
+    # Reopen actual persisted state as a restarted worker, not an in-memory flag.
+    import os
+    with worker.RolloutState(state.directory,source_sha='a'*40,owner_uid=os.getuid()) as restarted:
+        assert not worker.dispatch_next(runtime.repo,restarted,**kwargs)
+    assert runtime.model.calls==calls
+    with runtime.repo.connect() as conn:
+        row=conn.execute('SELECT max_attempts,retry_count FROM source_fetch_jobs WHERE source_fetch_job_id=%s',(job,)).fetchone()
+    assert row['retry_count'] <= 1
+    if point not in ('reserved_before_sql','sql_commit_failure'): assert row['max_attempts']==1
+
+
+def test_new_article_worker_disable_during_inflight_and_failed_source_fallback(runtime,tmp_path,monkeypatch):
+    from autodata_ingestion.new_article_worker import dispatch_next
+    state,job,model=prepare_new_article_runtime(runtime,tmp_path,monkeypatch)
+    # Invalid automatic output must remain readable source, without replay.
+    from autodata_ingestion.mercury2 import Mercury2Client
+    def fail(*args,**kwargs): raise TimeoutError('uncertain delivery')
+    bad=Mercury2Client(api_key='fixture',base_url=runtime.model.url,model='mercury-3',transport=fail)
+    def disable(name):
+        if name=='after_source_commit': state.set_enabled(False)
+    kwargs=dict(worker_id=uuid4(),registry=runtime.registry,object_store=runtime.objects,model_client=bad)
+    assert dispatch_next(runtime.repo,state,**kwargs,hooks=disable)
+    current=runtime.read_current()
+    assert current['content_origin']=='source' and current['canonical_revision_id'] is None
+    assert 'Remove the pump' in current['body']
+    with runtime.repo.connect() as conn:
+        before=conn.execute('SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s',(job,)).fetchone()
+    assert before['retry_count']==before['max_attempts']==1 and before['status']=='dead_letter'
+    state.set_enabled(True)
+    assert not dispatch_next(runtime.repo,state,**kwargs)
+    with runtime.repo.connect() as conn:
+        assert conn.execute('SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s',(job,)).fetchone()==before
+
+
+def new_article_uncertain_delivery_child(repo, directory, env, arrived):
+    """Hold a real HTTP response after delivery, before saving it, until SIGKILL."""
+    import os
+    import time
+    from urllib.request import urlopen
+    from urllib.parse import urlsplit
+    from autodata_ingestion.new_article_worker import RolloutState, dispatch_next
+    from autodata_ingestion.mercury2 import Mercury2Client
+    from autodata_ingestion.worker import ArticleObjectStore
+    from autodata_ingestion.source_connector_client import source_connector_registry
+    os.environ.clear();os.environ.update(env)
+    def transport(request, timeout):
+        response = urlopen(request,timeout=timeout)
+        arrived.set()
+        time.sleep(30)
+        return response
+    parsed=urlsplit(env['AUTODATA_S3_ENDPOINT'])
+    objects=ArticleObjectStore(endpoint=parsed.netloc,access_key=env['AUTODATA_S3_ACCESS_KEY'],
+        secret_key=env['AUTODATA_S3_SECRET_KEY'],bucket=env['AUTODATA_SOURCE_BUCKET'])
+    model=Mercury2Client(api_key=env['INCEPTION_API_KEY'],base_url=env['INCEPTION_API_BASE_URL'],
+        model='mercury-3',timeout_seconds=60,max_tokens=32768,transport=transport)
+    with RolloutState(directory,source_sha='a'*40,owner_uid=os.getuid()) as state, state.worker_lock():
+        dispatch_next(repo,state,worker_id=uuid4(),registry=source_connector_registry(include_defaults=False),
+            object_store=objects,model_client=model)
+
+
+def test_new_article_worker_actual_process_death_after_http_never_replays(runtime,tmp_path,monkeypatch):
+    import multiprocessing
+    from autodata_ingestion.new_article_worker import dispatch_next
+    state,job,model=prepare_new_article_runtime(runtime,tmp_path,monkeypatch)
+    ctx=multiprocessing.get_context('spawn'); arrived=ctx.Event()
+    child=ctx.Process(target=new_article_uncertain_delivery_child,args=(runtime.repo,state.directory,runtime.env,arrived))
+    child.start()
+    try:
+        assert arrived.wait(15),runtime.diagnostics()
+        assert runtime.model.calls==1
+    finally:
+        child.kill();child.join(timeout=5)
+    assert not child.is_alive()
+    runtime.expire_lease(job)
+    with runtime.repo.connect() as conn:
+        before=conn.execute('SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s',(job,)).fetchone()
+        attempts=conn.execute('SELECT * FROM canonical_article_rewrite_attempts WHERE source_fetch_job_id=%s',(job,)).fetchall()
+    assert before['retry_count']==before['max_attempts']==1
+    assert attempts[0]['status']=='dispatched' and attempts[0]['response'] is None
+    with state.worker_lock():
+        assert not dispatch_next(runtime.repo,state,worker_id=uuid4(),registry=runtime.registry,object_store=runtime.objects,model_client=model)
+    assert runtime.model.calls==1
+    with runtime.repo.connect() as conn:
+        assert conn.execute('SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s',(job,)).fetchone()==before
+        assert conn.execute('SELECT * FROM canonical_article_rewrite_attempts WHERE source_fetch_job_id=%s',(job,)).fetchall()==attempts
+
+
+def test_new_article_worker_stop_after_reservation_prevents_exact_dispatch(runtime,tmp_path,monkeypatch):
+    from threading import Event
+    from autodata_ingestion.new_article_worker import dispatch_next
+    state,job,model=prepare_new_article_runtime(runtime,tmp_path,monkeypatch)
+    stop=Event();original=state.reserve
+    def stop_after_reserve(*args,**kwargs):
+        result=original(*args,**kwargs)
+        stop.set()
+        return result
+    monkeypatch.setattr(state,'reserve',stop_after_reserve)
+    assert not dispatch_next(runtime.repo,state,worker_id=uuid4(),registry=runtime.registry,
+        object_store=runtime.objects,model_client=model,stop=stop)
+    assert state.read()['reservations'][0]['job_id']==str(job)
+    assert runtime.model.calls==0
+    with runtime.repo.connect() as conn:
+        row=conn.execute('SELECT status,retry_count,max_attempts FROM source_fetch_jobs WHERE source_fetch_job_id=%s',(job,)).fetchone()
+    assert row=={'status':'pending','retry_count':0,'max_attempts':1}
