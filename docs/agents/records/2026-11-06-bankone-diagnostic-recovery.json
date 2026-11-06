@@ -15,15 +15,25 @@
     "Verify all 34 prose slots, protected structure and permanent warm reuse on success; synchronize sanitized outcome evidence."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-06T19:39:22.866959+00:00",
+  "updated_at": "2026-11-06T19:40:21.887738+00:00",
   "tracking_sync": {
-    "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6693734092",
+    "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6693753888",
     "project_item": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
     "project_field": "Bankone recovery reference",
     "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2Bzho4a_U",
     "readback_exact": true,
     "previous_issue_body_unchanged": true,
     "previous_issue_body_sha256": "927b46ef47b1dbf5b117273e3d3f5c0e6d9f23b722a5245869eb5323b96c4f25",
-    "previous_project_fields_unchanged": true
+    "previous_project_fields_unchanged": true,
+    "previous_scope_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6693734092"
+  },
+  "recovery_configuration": {
+    "INCEPTION_MAX_TOKENS": 32768,
+    "INCEPTION_API_TIMEOUT_SECONDS": 60,
+    "basis": "Coordinator-approved bounded hypothesis for 34 prose slots; original failure cause unproven. Existing client maximum32768; provider supports higher cap.",
+    "max_additional_dispatches": 1,
+    "max_cumulative_bankone_dispatches": 2,
+    "max_cumulative_two_bank_dispatches": 4,
+    "historical_attempt_counter_reset": false
   }
 }
