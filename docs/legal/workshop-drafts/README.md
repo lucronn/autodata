@@ -96,3 +96,46 @@ These observations establish source behavior, not the exact deployed provider
 inventory or a complete privacy/security audit. Customer-facing pages, policy
 links, runtime configuration and payment activation remain outside this PR.
 The repository pre-implementation gate remains required for those changes.
+
+## Read-only preview fact check — November 6, 2026
+
+The canonical application is `https://autodata.cars.tk/workshop/`; the
+`cars.tk` apex is a separate marketing site. Requests using a browser
+User-Agent returned HTTP 200 for Workshop, `/readyz`, `/auth/config` and
+`/workshop/purchase-config.json`, with Vercel response headers. The canonical
+commerce document also identifies this Vercel proxy. This establishes the
+current delivery provider, not the underlying host vendor, processing country
+or every provider's retention practices. The proposed GCE architecture and its
+backup schedule must not be presented as deployed facts.
+
+The public authentication configuration declares Firebase with Google sign-in.
+The deployed `auth.mjs`, `commerce.mjs` and `bootstrap.mjs` exactly matched the
+reviewed repository files by SHA-256. Their session-cookie, in-memory Firebase
+and checkout session-storage behavior supports the inventory above. No
+first-party analytics integration was identified in those modules; third-party
+sign-in/payment behavior and other surfaces need separate confirmation. The
+marketing landing page loads Google Fonts, which is outside these Workshop
+modules and must be included if the final notice also covers that site.
+
+The deployed purchase configuration still reports `enabled:false`, with all
+four policy URLs and the tax notice null. Both root and Workshop-prefixed
+`privacy`, `terms`, `refunds` and `contact` routes returned HTTP 404. These are
+checked candidate paths, not approved publication URLs. Source draft Markdown
+paths do not publish public pages.
+
+The active local API service writes to the system journal. A local SeaweedFS
+service uses Docker log rotation by size; neither observation establishes a
+customer-data retention period. No automatic account/session purge, customer
+account-deletion endpoint or minimum-age enforcement was established by this
+review. A support email address alone does not establish that privacy requests
+can be authenticated, executed and answered. No email was sent; external
+receipt and monitoring of `support@cars.tk` remain unverified.
+
+Owner decisions still needed for an effective Privacy Notice: identify the
+underlying application host and processing countries, support/mail provider
+and responsible privacy operator; approve and implement retention/deletion
+criteria for account/session/payment/support/log/backup records, including
+purchased-access consequences; specify intended markets and minimum age;
+confirm additional tracking, advertising and data-sharing practices. These
+facts cannot be inferred from software defaults or invented to finish a
+policy draft.

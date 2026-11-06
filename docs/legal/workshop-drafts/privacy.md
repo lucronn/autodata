@@ -39,8 +39,10 @@ sign-in and payment services under their applicable terms and privacy notices.
 Workshop stores account, session, purchase, and access records in a PostgreSQL
 database and serves catalog images and source artifacts from S3-compatible
 object storage. The API records operational errors and request identifiers.
-The final notice must identify the hosting, delivery, logging, and support
-providers and processing locations actually used for launch.
+The current Workshop preview is delivered through Vercel at
+`https://autodata.cars.tk/workshop/`. The final notice must identify the
+application-hosting, logging, and support providers and processing locations
+actually used for launch, including any changes from this preview.
 
 ## Cookies and browser storage
 
