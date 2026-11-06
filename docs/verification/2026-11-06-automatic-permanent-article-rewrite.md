@@ -1,6 +1,6 @@
 # Automatic permanent article rewrite verification
 
-Implementation candidate: `034708e8587abaf3e97cefa90cc47178f6cdfeb3`.
+Implementation candidate: `7a1ae1689c8c65292dd409fa7bcab851e12289ca` (includes scoped historical fixture fix and missing-model configuration recovery).
 PR: https://github.com/lucronn/autodata/pull/342
 Tracking: https://github.com/lucronn/autodata/issues/186#issuecomment-6679826363
 Recovery amendment: https://github.com/lucronn/autodata/issues/186#issuecomment-6679877079
@@ -40,8 +40,27 @@ Evidence is private under `/home/corp/autodata-evidence/automatic-permanent-arti
 | automatic-real-runtime.xml | 070cc908252e4c098a743b194f86fa5bc1368966ee6d99e57661f6885d738eb3 |
 | automatic-lifecycle-milestone.xml (initial broad run) | bb96910f8ecbc482eb7b619ba358db0e3065afebef3c02b7a5c3877983e0db8b |
 
+## Missing-model recovery verification
+
+Docs-only amendment checkpoint `9b67744` was committed/pushed and its exact-head preflight passed before implementation. Issue186 comments6680123658 and6680125162 and Project8 were synchronized/read back (length920). The code milestone `7a1ae1689c8c65292dd409fa7bcab851e12289ca` also passed exact-head preflight.
+
+Without a configured model client, automatic work captures source and saves its normalized checkpoint, then parks with `MODEL_NOT_CONFIGURED`, status `failed`, no next-attempt time and zero rewrite attempts. Both bank tests prove that the existing reader continues returning `content_origin=source` and no canonical pointer. Repeated worker polls without a model do not claim the parked job. When a real model client is supplied after restart, the same current job/source/generation/profile resumes with a new fenced lease, preserving the original source-claim retry count without increment or reset. The accepted output publishes through the existing validation path. Existing missing-model dead letters recover only when no rewrite attempt exists; stale source/generation and failed or ambiguous attempts cannot recover. Historical profiles retain their original missing-model behavior.
+
+Focused PostgreSQL verification: **9 passed, 38 deselected** in12.42s, covering both-bank park/resume, historical missing-key behavior, terminal no-attempt recovery, source/generation fences, failed/ambiguous exclusion and exact-job claim/sweep isolation. The first new test run exposed old terminal behavior as expected. One new stale-source fixture initially tried a forbidden source-projection downgrade; it was corrected to remove the job's source binding, and all nine focused cases passed. A separate exact-job test run passed1 case. The broader worker/job/publication run began before this fixture correction; its pending result must retain that fixture failure honestly.
+
+The scoped historical configuration fixture fix at `83b0b727736b36223e1859364bfeb49f67c3d93a` passed all **8 affected tests**. Root independently reviewed core code at `89b643336e47a9e2ecc9208a77552dd96d527e08` and the missing-key delta `9b67744..7a1ae16`; both reviews found no blocking issue.
+
+| Additional evidence | SHA-256 |
+| --- | --- |
+| automatic-model-wait-focused.xml | 17f6d32dcada6d5babe381da419aeb280ee7cd6022f08de4961c8116fbff05c0 |
+| automatic-exact-job.xml | a9f1d15a29fc57fa1c217b829a33aa4c6b6469fa37a9277c9e90a369fe772256 |
+| legacy-scoped-fixture.xml | 329221dc93ea8efc1cd3db4df99490e099bea6b7f690e7ffab1a5f3a87724e3d |
+
 ## Remaining verification and preview handoff
 
-The unchanged required lifecycle smoke and full ingestion suite remain to be recorded. The smoke is running against the exact implementation candidate after correcting isolated storage. Independent exact-code review and GitHub checks remain integration boundaries. Authentic provider/model article acceptance has not been performed by this implementation agent, so synthetic lifecycle results do not certify real article prose quality or dataset coverage.
+The first unchanged fixture lifecycle smoke at `034708e8587abaf3e97cefa90cc47178f6cdfeb3` completed344 tests with6 historical applicability/configuration fixture failures, zero errors and zero skips. Those six cases are among the eight passing affected tests after the explicit v1 fixture correction. A second unchanged smoke started at `83b0b727736b36223e1859364bfeb49f67c3d93a`; the worktree advanced during this long-running process, so its eventual receipt is not represented as immutable final-head verification. The original full ingestion suite is also still running with the original six known fixture failures loaded before correction. Neither broad run has been restarted solely for repeat coverage; CI continues repository-wide checks. These pending/known-failure runs are not claimed fully passing. Authentic provider/model article acceptance has not been performed by this implementation agent, so synthetic lifecycle results do not certify real article prose quality or dataset coverage.
 
 For an authorized preview, build/restart the ingestion worker from the reviewed candidate, retain existing API/reader/schema, and trigger the ordinary catalog/article prepare flow. New descriptors use auto. Existing source-only articles require explicit JSON selection and `scripts/dev/automatic_article_refresh.py --selection <file> --actor <operator> --reason <reason>`; inspect preview before adding `--apply`. Existing completed canonical publications stay permanent. The coordinator owns preview configuration and deployment; this agent has not enabled payment or changed production.
+
+
+For strictly bounded preview capture/resume, call existing `autodata_ingestion.article_lifecycle.run_article_worker_once(repo, worker_id=uuid4(), registry=registry, object_store=objects, model_client=model, job_id=UUID(selected_job_id))` once per selected UUID. Construct repository, source registry, object store and actual optional model client exactly as `worker.article_worker_main` does. The optional UUID restricts successful-candidate resume, configuration resume, review resume, exhausted-job sweep and normal claim. The existing CLI `--once` remains global and is not the bounded preview entrypoint. Pass `model_client=None` while configuration is absent; provide the actual environment-built client after the secret is delivered and process restarted. Initial source acquisition consumes its normal lease claim; configuration polling/resume does not consume another model attempt. No preview deployment or real model acceptance is claimed by this evidence.
