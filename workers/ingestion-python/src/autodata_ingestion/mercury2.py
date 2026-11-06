@@ -211,7 +211,7 @@ class Mercury2Client:
             raise ValueError("Mercury-2 prompt exceeds 200 KiB")
         mercury3 = self._model == "mercury-3" or self._model.startswith("mercury-3-")
         generation_options = (
-            {"temperature": 0.5, "max_completion_tokens": self._max_tokens}
+            {"temperature": 0.5, "max_completion_tokens": self._max_tokens, "reasoning_effort": "instant"}
             if mercury3
             else {"temperature": 0, "max_tokens": self._max_tokens}
         )
