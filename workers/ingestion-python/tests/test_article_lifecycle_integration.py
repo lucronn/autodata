@@ -626,3 +626,85 @@ def test_unknown_projection_rejected_before_any_persistence(runtime):
         store_captured_source(runtime.repo, lease, replace(captured, projection_version="future"))
     with runtime.repo.connect() as conn:
         assert {t: conn.execute("SELECT count(*) AS n FROM " + t).fetchone()["n"] for t in before} == before
+
+
+# Reuse the synthetic nine-leaf captured-source failed-attempt fixture.
+# Worker subprocesses prepend scripts/dev, which contains another module with
+# this basename. Bind these fixture functions to their exact file instead.
+import importlib.util
+from pathlib import Path
+_recovery_spec = importlib.util.spec_from_file_location(
+    'article_recovery_fixtures', Path(__file__).with_name('test_article_content_review.py'))
+_recovery_fixtures = importlib.util.module_from_spec(_recovery_spec)
+_recovery_spec.loader.exec_module(_recovery_fixtures)
+failed_draft = _recovery_fixtures.failed_draft
+recovery_snapshot = _recovery_fixtures.recovery_snapshot
+from test_source_article_capture import capture_fixture
+
+
+@pytest.mark.parametrize('failed_draft',['current','legacy'],indirect=True)
+def test_failed_intro_correction_publishes_same_revision_without_model_calls(failed_draft):
+    from autodata_ingestion import article_content_review as review
+    from autodata_ingestion import article_lifecycle_store as store
+    from autodata_ingestion.article_lifecycle import run_article_job
+    from autodata_ingestion.source_job_persistence import claim_source_job
+    args = failed_draft
+    repo = args['repo']
+    before = recovery_snapshot(repo)
+    revision = before['canonical_article_revisions'][0]['canonical_article_revision_id']
+    receipt = review.record_failed_correction(**args)
+    # Before independent full review the worker cannot claim the saved draft.
+    assert claim_source_job(repo,worker_id=uuid4()) is None
+    assert store.load_article_state(repo,before['canonical_articles'][0]['canonical_article_id'])['content_origin'] == 'source'
+    normal = {key:args[key] for key in ('repo','allowlist','rationale')}
+    review.record_review(**normal,expected=receipt['bindings'],reviewer_id='bob',decision='APPROVED',full_content_reviewed=True)
+    class ForbiddenModel:
+        def complete_json(self,prompt):
+            raise AssertionError('saved-candidate resume called model')
+    class ForbiddenRegistry(dict):
+        def __getitem__(self,key):
+            raise AssertionError('saved-candidate resume fetched source')
+    lease = claim_source_job(repo,worker_id=uuid4())
+    assert lease is not None
+    def fail_publication(point):
+        if point == 'inside_publication': raise RuntimeError('fixture publication rollback')
+    with pytest.raises(RuntimeError,match='fixture publication rollback'):
+        store.publish_article_revision(repo,lease,revision,hooks=fail_publication)
+    assert store.load_article_state(repo,before['canonical_articles'][0]['canonical_article_id'])['content_origin'] == 'source'
+    with repo.connect() as conn:
+        assert conn.execute('SELECT count(*) AS n FROM publication_events').fetchone()['n']==0
+    run_article_job(repo,lease,registry=ForbiddenRegistry(),object_store=None,model_client=ForbiddenModel())
+    after = recovery_snapshot(repo)
+    assert after['source_fetch_jobs'][0]['status'] == 'completed'
+    assert after['canonical_article_rewrite_attempts'] == before['canonical_article_rewrite_attempts']
+    assert after['source_fetch_jobs'][0]['retry_count'] == 2
+    assert after['source_fetch_jobs'][0]['max_attempts'] == before['source_fetch_jobs'][0]['max_attempts']
+    assert 'rewrite_error_code' not in after['source_fetch_jobs'][0]['checkpoint']
+    assert len(after['canonical_article_revisions']) == len(after['publication_events']) == 1
+    assert after['canonical_article_revisions'][0]['canonical_article_revision_id'] == revision
+    assert after['canonical_articles'][0]['current_canonical_revision_id'] == revision
+    for _ in range(5):
+        assert store.load_article_state(repo,before['canonical_articles'][0]['canonical_article_id'])['canonical_revision_id'] == revision
+        assert claim_source_job(repo,worker_id=uuid4()) is None
+    assert recovery_snapshot(repo) == after
+
+
+def test_uncorrected_failed_intro_still_stops_at_active_worker_error(failed_draft):
+    from autodata_ingestion.article_lifecycle import run_article_job
+    from autodata_ingestion.source_job_persistence import claim_source_job
+    args=failed_draft;repo=args['repo']
+    before=recovery_snapshot(repo)
+    # A fenced fixture resume proves the existing worker guard still rejects it.
+    with repo.connect() as conn:
+        conn.execute("UPDATE source_fetch_jobs SET status='pending'")
+    lease=claim_source_job(repo,worker_id=uuid4())
+    class ForbiddenModel:
+        def complete_json(self,prompt): raise AssertionError('unexpected model call')
+    run_article_job(repo,lease,registry={},object_store=None,model_client=ForbiddenModel())
+    after=recovery_snapshot(repo)
+    assert after['source_fetch_jobs'][0]['checkpoint']['rewrite_error_code']=='REWRITE_TECHNICAL_MUTATION'
+    assert after['source_fetch_jobs'][0]['status']=='needs_review'
+    assert after['canonical_article_rewrite_attempts']==before['canonical_article_rewrite_attempts']
+    assert after['canonical_article_revisions']==before['canonical_article_revisions']
+    assert after['canonical_article_reviews']==after['publication_events']==[]
+    assert after['canonical_articles'][0]['current_canonical_revision_id'] is None

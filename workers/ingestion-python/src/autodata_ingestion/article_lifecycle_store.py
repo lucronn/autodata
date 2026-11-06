@@ -476,71 +476,20 @@ def _latest_content_review(cur, candidate):
 
 
 def full_candidate_validation(cur, job, candidate):
-    """Rebuild original model evidence and explicit human corrections under locks."""
+    """Independently rebuild prompt, source, response and correction evidence."""
+    from .article_content_review import resolve_full_evidence
+    from .procedure_rewrite_full import validate_full
+    from .article_document import project_ordered_document
     from .article_lifecycle_types import digest_json
-    from .procedure_rewrite_full import render_full, validate_full
     if candidate is None:
         raise ValueError("CONTENT_REVIEW_REQUIRED")
-    attempt = cur.execute("SELECT * FROM canonical_article_rewrite_attempts WHERE canonical_article_revision_id=%s AND status='succeeded'",
-        (candidate["canonical_article_revision_id"],)).fetchone()
-    if (attempt is None or attempt["response_hash"] != digest_json(attempt["response"])
-        or attempt["source_fetch_job_id"] != job["source_fetch_job_id"]
-        or attempt["input_hash"] != candidate["normalized_source_hash"]
-        or attempt["profile_version"] != job["rewrite_profile_version"]):
-        raise ValueError("rewrite operation binding mismatch")
+    attempt, original, response, correction = resolve_full_evidence(cur, job, candidate)
     source = candidate["normalized_source_document"]
-    if (job["checkpoint"].get("normalized_hash") != digest_json(source)
-        or job["checkpoint"].get("normalized_document") != source):
-        raise ValueError("rewrite input binding mismatch")
-    # Rebuild normalization and prompt from immutable captured context, rather
-    # than allowing a self-consistent edited checkpoint to become the source.
-    captured = cur.execute("""SELECT s.*,o.captured_context FROM canonical_article_source_revisions s
-        JOIN LATERAL (SELECT captured_context FROM canonical_article_source_observations
-          WHERE source_revision_id=s.source_revision_id ORDER BY captured_at LIMIT 1) o ON true
-        WHERE s.source_revision_id=%s AND s.canonical_article_id=%s""",
-        (job["source_revision_id"],job["canonical_article_id"])).fetchone()
-    if captured is None:
-        raise ValueError("rewrite source context missing")
-    from .procedure_normalize import normalize_procedure_article
-    normalized = normalize_procedure_article({"article_id":str(job["canonical_article_id"]),
-        "title":captured["captured_context"]["descriptor"].get("title"),
-        "normalized_document":captured["source_document"],"blocks":captured["source_document"]["blocks"],
-        "images":captured["source_images"],"body":captured["source_body"],"steps":captured["source_steps"],
-        "evidence_ids":captured["captured_context"]["evidence_ids"]})["normalized_document"]
-    from .procedure_rewrite import build_rewrite_prompt
-    from hashlib import sha256
-    prompt = build_rewrite_prompt(normalized,context=captured["captured_context"]["vehicle"],profile_version=job["rewrite_profile_version"])
-    if (digest_json(normalized) != digest_json(source)
-        or sha256(prompt.encode()).hexdigest() != attempt["prompt_hash"]
-        or candidate["model_metadata"].get("prompt_hash") != attempt["prompt_hash"]
-        or candidate["model_metadata"].get("model") != attempt["model"]
-        or candidate["model_metadata"].get("profile_version") != attempt["profile_version"]):
-        raise ValueError("rewrite source/prompt binding mismatch")
-    response = attempt["response"]
-    original = render_full(source,response)
-    latest = _latest_content_review(cur,candidate)
-    if latest is not None:
-        import json
-        try:
-            reason = json.loads(latest["reason"])
-        except (ValueError,TypeError):
-            reason = {}
-        correction = reason.get("correction") if isinstance(reason,dict) else None
-        if correction is not None:
-            from .article_content_review import correction_response
-            response = correction_response(reason)
-            if (correction.get("original_candidate_hash") != digest_json(original)
-                or correction.get("final_candidate_hash") != digest_json(candidate["canonical_document"])
-                or not isinstance(correction.get("actor"),str) or not correction["actor"].strip()):
-                raise ValueError("rewrite correction binding mismatch")
-    if digest_json(render_full(source,response)) != digest_json(candidate["canonical_document"]):
-        raise ValueError("rewrite operation binding mismatch")
     validation = validate_full(source,candidate["canonical_document"],response=response)
     if candidate["status"] == "validated":
-        from .article_document import project_ordered_document
         if (candidate["normalized_source_hash"] != digest_json(source)
             or candidate["rewrite_result_hash"] != digest_json(candidate["canonical_document"])
-            or digest_json(candidate["validation_report"]) != digest_json(validation.report)
+            or candidate["validation_report"] != validation.report
             or candidate["validation_hash"] != digest_json(validation.report)
             or project_ordered_document(candidate["canonical_document"]) != {"body":candidate["canonical_body"],"steps":candidate["canonical_steps"],"images":candidate["canonical_images"]}):
             raise ValueError("rewrite saved validation/projection binding mismatch")
@@ -575,15 +524,17 @@ def _require_full_approval(cur, job, article, candidate):
     import os
     fixture = (os.environ.get("AUTODATA_LIFECYCLE_TEST") == "1"
         and cur.execute("SELECT current_database() AS name").fetchone()["name"].startswith("lifecycle_test_"))
-    from .article_content_review import validate_review_reason
+    from .article_content_review import validate_review_reason, correction_authors
     reason = validate_review_reason(latest["reason"],job=job,article=article,candidate=candidate,review=latest,
         source_fingerprint=source["source_fingerprint"],allow_synthetic=fixture)
     validation = full_candidate_validation(cur,job,candidate)
-    attempt = cur.execute("SELECT provider,model FROM canonical_article_rewrite_attempts WHERE canonical_article_revision_id=%s AND status='succeeded'",(candidate["canonical_article_revision_id"],)).fetchone()
+    from .article_content_review import resolve_full_evidence
+    attempt, _, _, _ = resolve_full_evidence(cur,job,candidate)
     correction = reason.get("correction")
     if (not validation.passed or set(reason["retention_reviews"]) != set(validation.report.get("retained_paths",[]))
         or latest["authorized_reviewer_id"] in {attempt["provider"],attempt["model"],candidate["model_metadata"].get("drafting_actor")}
-        or (correction is not None and correction["actor"] == latest["authorized_reviewer_id"])):
+        or (correction is not None and (correction["actor"] == latest["authorized_reviewer_id"]
+            or ("failed_origin" in correction and latest["authorized_reviewer_id"] in correction_authors(cur,candidate))))):
         raise ValueError("CONTENT_REVIEW_BINDING_INVALID")
     return latest
 
@@ -714,7 +665,11 @@ def publish_article_revision(repo,lease,revision_id,*,hooks=None):
             or row["validation_hash"]!=digest_json(validation.report)
             or projection!={"body":row["canonical_body"],"steps":row["canonical_steps"],"images":row["canonical_images"]}):
             raise ValueError("publication binding validation failed")
-        attempt=cur.execute("SELECT * FROM canonical_article_rewrite_attempts WHERE canonical_article_revision_id=%s AND status='succeeded'",(revision_id,)).fetchone()
+        if job["rewrite_profile_version"] == "full-prose-review-v1":
+            from .article_content_review import resolve_full_evidence
+            attempt, _, _, _ = resolve_full_evidence(cur,job,row)
+        else:
+            attempt=cur.execute("SELECT * FROM canonical_article_rewrite_attempts WHERE canonical_article_revision_id=%s AND status='succeeded'",(revision_id,)).fetchone()
         if (attempt is None or attempt["input_hash"]!=row["normalized_source_hash"]
             or attempt["response_hash"]!=digest_json(attempt["response"])
             or attempt["prompt_hash"]!=row["model_metadata"].get("prompt_hash")

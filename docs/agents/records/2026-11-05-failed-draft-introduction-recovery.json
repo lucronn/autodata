@@ -1,0 +1,45 @@
+{
+  "goal": "Recover a retained full-prose draft with an introduction-only human correction in its existing unpublished revision, consuming zero further model attempts and preserving independent full-content approval and source fallback.",
+  "plan_ref": "docs/superpowers/plans/2026-11-05-failed-draft-introduction-recovery.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/agents/specs/2026-11-05-failed-draft-introduction-recovery.md"
+  ],
+  "todo": [
+    "Preserve Issue186 and all Project8 fields; synchronize this recovery goal, plan, canonical spec and concrete todo, commit/push a documentation checkpoint and pass exact-SHA preflight before coordinator implementation dispatch.",
+    "Add synthetic failed-introduction and legacy-prompt provenance regressions; implement the narrowly bound private failed-draft export/correction path without changing renderers, validators, attempt history, retry budget or canonical uniqueness.",
+    "Revalidate corrected responses and failed-attempt provenance at export, independent approval, saved-candidate resume and atomic publication; atomically remove only the active checkpoint.rewrite_error_code after successful rejected provenance review, prove rollback retains it, and verify true run_article_job resume with a model-raises client publishes only after independent full approval.",
+    "Run pure review/prompt/CLI regressions and isolated lifecycle database acceptance tests; commit/push coherent code milestones and obtain independent exact-SHA review before any private runtime operation.",
+    "After separate coordinator authorization only, export the retained failed draft privately, correct only its introduction, obtain independent complete human technical review and publish the same revision at most once; retain source fallback if any requirement fails."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-06T00:40:57.800900+00:00",
+  "source_base_sha": "02f863cd589aa19d27fcb06b1d2a62635957504c",
+  "implementation_allowlist": [
+    "workers/ingestion-python/src/autodata_ingestion/article_content_review.py",
+    "workers/ingestion-python/src/autodata_ingestion/article_lifecycle_store.py",
+    "workers/ingestion-python/src/autodata_ingestion/procedure_rewrite_full.py",
+    "workers/ingestion-python/tests/test_article_content_review.py",
+    "workers/ingestion-python/tests/test_procedure_rewrite_full.py",
+    "workers/ingestion-python/tests/test_article_lifecycle_integration.py",
+    "scripts/dev/article_content_review.py",
+    "scripts/dev/test_article_content_review.py"
+  ],
+  "implementation_authorized": false,
+  "tracking": {
+    "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6673413206",
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhoxGVY",
+    "preservation_evidence": "/home/corp/autodata-evidence/failed-draft-recovery-gate/preservation.json",
+    "prior_comments_preserved": 302
+  },
+  "amendment": {
+    "reason": "Independent checkpoint review identified active rewrite_error_code blocking real worker resume at article_lifecycle.py:127-139.",
+    "supersedes_checkpoint": "a2f4efc28c98f04ddb290e5c5af554d3ec98a1ea",
+    "active_error_transition": "Remove checkpoint.rewrite_error_code only within the successful locked correction transaction after eligibility, unchanged-body render/validation and append-only REJECTED review insertion; keep all failed attempt fields/hash/budget and failed_origin unchanged.",
+    "implementation_scope_unchanged": true,
+    "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6673446586",
+    "preservation_evidence": "/home/corp/autodata-evidence/failed-draft-recovery-gate/amendment/preservation.json"
+  }
+}
