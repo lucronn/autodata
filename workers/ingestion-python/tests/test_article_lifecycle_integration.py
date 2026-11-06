@@ -629,7 +629,16 @@ def test_unknown_projection_rejected_before_any_persistence(runtime):
 
 
 # Reuse the synthetic nine-leaf captured-source failed-attempt fixture.
-from test_article_content_review import failed_draft, recovery_snapshot
+# Worker subprocesses prepend scripts/dev, which contains another module with
+# this basename. Bind these fixture functions to their exact file instead.
+import importlib.util
+from pathlib import Path
+_recovery_spec = importlib.util.spec_from_file_location(
+    'article_recovery_fixtures', Path(__file__).with_name('test_article_content_review.py'))
+_recovery_fixtures = importlib.util.module_from_spec(_recovery_spec)
+_recovery_spec.loader.exec_module(_recovery_fixtures)
+failed_draft = _recovery_fixtures.failed_draft
+recovery_snapshot = _recovery_fixtures.recovery_snapshot
 from test_source_article_capture import capture_fixture
 
 
