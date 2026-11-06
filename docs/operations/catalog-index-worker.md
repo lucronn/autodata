@@ -87,3 +87,31 @@ period; systemd allows 80s for stop. Existing 90s leases recover abandoned jobs;
 expired jobs with exhausted attempts are cleaned up through the existing exact
 claim path. Operators must inspect provider coverage and errors after recovery;
 a successful process exit does not prove complete live catalog browsing.
+
+## Development verification
+
+Planning checkpoint `2fb3ae9eaab0ffb65a2ff26ab64f0e1cb03ac665` passed the exact-base
+machine preflight (`status: synchronized`, no errors) before implementation.
+Issue186's exact pin is
+https://github.com/lucronn/autodata/issues/186#issuecomment-6697022920;
+the dedicated Project8 field was read back with that SHA and scope.
+
+Implementation/test/unit candidate `36cfb972f4ac74aa46672d5a6cc981cc47abf302`
+contains source milestone `f09733b191489c1a727c23e0aa1f271ab307a658`.
+Local verification at the candidate:
+
+- Isolated PostgreSQL17, existing offline fixture runtime: 85 passed, zero skips,
+  55.59s across `test_catalog_index_worker.py`, `test_catalog_coverage.py`,
+  `test_article_worker.py` and `test_new_article_worker.py`.
+- Host wrapper suite: 18 passed in 0.10s.
+- `systemd-analyze --recursive-errors=no verify` for the preview unit: exit 0,
+  no diagnostics; `git diff --check`: passed.
+
+The tests cover current scope/generation selection, retries and expired leases,
+terminal exclusions, exact claim races/exhausted cleanup, serial stop/once/idle
+behavior, article rows/checkpoints/leases/attempts unchanged, and both banks'
+normal descriptor/index-page persistence with no body/resource or model calls.
+The owned disposable PostgreSQL container and network were removed after the
+run. No live provider/model calls, rollout-state mutation, service installation,
+start, merge or deployment were performed. Independent review and final-head
+required GitHub CI are release gates recorded separately when available.

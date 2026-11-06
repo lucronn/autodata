@@ -28,3 +28,20 @@ Focused tests must prove exact serialized/parameterized eligibility, no UUID-les
 This checkpoint permits implementation only after committed/pushed synchronized tracking and exact-base preflight plus coordinator dispatch. It does not install a service, touch secrets/runtime state, call live sources/model, create/refresh/drain catalog jobs, retry spent article work or alter finite article reservations. Live catalog browsing acceptance needs a separate synchronized runtime gate pinned to merged reviewed source/CI, explicit install/start/stop and honest provider/index results.
 
 Tracking scope synchronized: https://github.com/lucronn/autodata/issues/186#issuecomment-6697016638; dedicated Project8 `Catalog index consumer reference` (`PVTF_lAHOCSJ8cc4BiQ2Bzho5QE4`). Exact committed pin/preflight precedes implementation dispatch.
+
+## Implementation evidence
+
+Exact-base preflight at `2fb3ae9eaab0ffb65a2ff26ab64f0e1cb03ac665` returned
+`{"status":"synchronized","errors":[]}` before implementation. Exact Issue186
+pin https://github.com/lucronn/autodata/issues/186#issuecomment-6697022920 and the
+Project8 dedicated reference field were read back at dispatch.
+
+Pushed milestones: wrapper/tests `f09733b191489c1a727c23e0aa1f271ab307a658`,
+PG17 isolation tests/inert unit/operator contract
+`36cfb972f4ac74aa46672d5a6cc981cc47abf302`. Candidate verification: 85 passed,
+zero skips in 55.59s across wrapper/catalog/article/finite-worker suites on owned
+disposable PostgreSQL17; host wrapper 18 passed; preview systemd verify exit 0/no
+diagnostics; diff/scope checks passed. Resources were removed after testing.
+Independent review and final-head required CI remain pending; the fourth todo
+includes those release gates. Runtime install/start/live enumeration remains
+separately gated.
