@@ -1,0 +1,14 @@
+{
+  "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6673141381",
+  "project_item": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+  "project_field": "Release hotfix reference",
+  "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhoxGVY",
+  "issue_body_preserved": true,
+  "project_prior_source_text_preserved": true,
+  "project_status_preserved": true,
+  "comment_readback_exact": true,
+  "project_readback_exact": true,
+  "issue_body_sha256": "927b46ef47b1dbf5b117273e3d3f5c0e6d9f23b722a5245869eb5323b96c4f25",
+  "project_prior_source_text_sha256": "34763c660fe3212b3a2de34d15267f181394dff4872ee99b06eaf890f0b734a2",
+  "project_hotfix_text": "https://github.com/lucronn/autodata/issues/186#issuecomment-6673141381 | docs/superpowers/plans/2026-11-05-workshop-release-hotfix.md"
+}
