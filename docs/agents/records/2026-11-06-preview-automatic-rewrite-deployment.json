@@ -1,5 +1,5 @@
 {
-  "goal": "Deploy the reviewed automatic permanent article rewrite to the existing purchase-disabled preview ingestion worker and verify one authentic selected article from each bank with exact rollback and no schema or API changes",
+  "goal": "Deploy reviewed automatic article rewriting to the purchase-disabled preview worker, capture and park one authentic selected article per bank without a model key, and resume those same jobs for permanent canonical publication only after approved key delivery",
   "plan_ref": "docs/superpowers/plans/2026-11-06-preview-automatic-rewrite-deployment.md",
   "issue_ref": "https://github.com/lucronn/autodata/issues/186",
   "project_ref": "https://github.com/users/lucronn/projects/8",
@@ -7,52 +7,50 @@
     "docs/verification/2026-11-06-preview-automatic-rewrite-deployment.md"
   ],
   "todo": [
-    "Synchronize this exact preview-only plan, verification document and concrete todos with Issue186 and Project8, commit/push the documentation checkpoint and pass full-SHA preflight before coordinator dispatch.",
-    "Finalize review and checks for the exact pinned source, freeze the existing image/container/configuration and two authentic bank-scoped article selections, retain private backup and rollback evidence, and confirm purchase remains disabled.",
-    "Replace only the preview ingestion source mount using the exact pinned existing image and reviewed source while preserving credentials/security/network/runtime settings, retain the original container, and run only the two selected article jobs sequentially within the probe bounds.",
-    "Verify source fallback followed by automatic permanent canonical content with UNREVIEWED metadata, no manual review dependency and zero warm provider/model calls; report concrete blockers or execute exact runtime rollback on failure, preserving stored data and disabled commerce."
+    "Synchronize the exact source-pinned preview deployment plan, canonical verification and four todos with Issue186 and Project8; commit/push this documentation checkpoint and pass exact-head machine preflight before coordinator dispatch.",
+    "Verify exact reviewed source and focused passing tests, pin the existing image/container and two authentic bank-scoped enrollments, retain current private backup and rollback evidence, and confirm purchase remains disabled.",
+    "Replace only preview ingestion source using the pinned existing image and immutable reviewed source, retain the exact original container, and capture/normalize/park only the two selected jobs by explicit job UUID without model calls when the key is absent.",
+    "Verify committed readable source and retryable parking with zero model attempts/publications; after approved key delivery resume only those same jobs and verify permanent canonical content, UNREVIEWED metadata and zero warm remote calls, reporting blockers or exact runtime rollback without unrelated queue drain or serving-data deletion."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-06T07:56:37Z",
+  "updated_at": "2026-11-06T08:04:13Z",
   "source_pin": {
-    "reviewed_candidate_sha": "89b643336e47a9e2ecc9208a77552dd96d527e08",
-    "implementation_sha": "034708e8587abaf3e97cefa90cc47178f6cdfeb3",
-    "review_finalized": false,
-    "dispatch_requires_same_sha_finalized_review_and_checks": true
+    "reviewed_candidate_sha": "fc7a73ad9002bd04f821b767d0a70bdbbdfc1dca",
+    "implementation_sha": "7a1ae1689c8c65292dd409fa7bcab851e12289ca",
+    "review_finalized": true,
+    "review_basis": "Root reviewed product7a1ae16 no blocker per final handoff; gate agent checked final diff contains only docs/test fixture and independently verified focused XMLs/hashes",
+    "focused_test_counts": {
+      "final_regression": 10,
+      "exact_job": 1,
+      "failures": 0,
+      "errors": 0
+    },
+    "broad_ci_may_be_pending_for_preview": true,
+    "dispatch_requires_exact_reviewed_sha_focused_passing_tests_and_machine_preflight": true,
+    "final_focused_xml_sha256": "16bb22ea2008d70f190daded10780a7fb8a854cb91ac1cfd8e4b503198a77460"
   },
   "image_pin": "sha256:5c8e79b93db464da854ad33dc499e25c153bbcd52757569b1f2a4e5072acecb4",
   "model_secret_precondition": {
     "current_key_present": false,
-    "approved_env_file_present": false,
-    "source_first_code_rollout_allowed": true,
-    "live_canonical_probe_requires_approved_private_key_delivery": true,
-    "missing_secret_blocker": "MODEL_KEY_MISSING",
-    "chat_secret_delivery_forbidden": true,
-    "no_auto_job_or_prepare_ensure_or_selected_article_http_probe_before_key": true,
-    "missing_key_terminal_job_code": "MODEL_NOT_CONFIGURED",
-    "transformation_key_dedupe_can_retain_source_after_failure": true
+    "source_capture_normalize_park_without_key_allowed_only_at_final_reviewed_successor": true,
+    "zero_model_attempts_or_publications_without_key": true,
+    "canonical_probe_requires_approved_private_key_delivery": true
   },
   "tracking_sync": {
-    "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6680054946",
+    "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6680195252",
     "project_item": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
     "project_field": "Release hotfix reference",
     "readback_exact": true,
     "prior_prefix_preserved": true,
-    "field_length": 564,
+    "field_length": 1005,
     "verified_by": "gate documentation agent authorized by coordinator",
-    "readback_utc": "2026-11-06T07:56:37Z",
-    "amendment": "Same Issue comment amended/read back exactly for empty serving article tables, bounded fresh enrollment only after key, and owner rights attestation; Project suffix appended with exact readback and prior prefix preserved."
+    "readback_utc": "2026-11-06T08:04:13Z"
   },
   "worker_precondition": {
-    "existing_command": [
-      "python",
-      "-m",
-      "autodata_ingestion.http_service"
-    ],
-    "dedicated_worker_present": false,
-    "http_rollout_alone_does_not_publish": true,
-    "approved_execution": "supervised existing article_worker.py --once only after model key and sole-selected-eligible-job checks",
-    "persistent_daemon_allowed": false
+    "http_only_runtime": true,
+    "targeted_run_article_worker_once_job_id_required": true,
+    "generic_claim_or_daemon_forbidden": true,
+    "same_frozen_job_ids_resume_after_key": true
   },
   "fresh_enrollment_amendment": {
     "observed_serving_counts": {
@@ -61,8 +59,8 @@
       "canonical_revisions": 0,
       "source_fetch_jobs": 0
     },
-    "before_key_scope": "HTTP code rollout and health only; no article requests or availability claim",
-    "after_key_scope": "one authentic vehicle resolution/index traversal and one selected descriptor/source capture/automatic rewrite per bank",
+    "before_key_scope": "Two bounded selected bank-specific source capture/normalize/park jobs permitted only after final reviewed park/resume code rollout",
+    "after_key_scope": "Resume same two explicit job UUIDs for canonical rewrite within existing bounds",
     "max_index_pages_per_bank": 4,
     "max_observed_descriptors_per_bank": 100,
     "max_persisted_selected_descriptors_per_bank": 1,
