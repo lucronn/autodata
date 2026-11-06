@@ -6,7 +6,7 @@ from uuid import uuid4
 from psycopg.rows import dict_row
 from . import article_lifecycle_store as store
 from .source_job_persistence import (claim_source_job, heartbeat_source_job, lock_live_lease,
-                                     fail_source_job, LeaseLost)
+                                     fail_source_job, park_automatic_for_model, LeaseLost)
 from .article_lifecycle_types import ArticleKey, SourceArticleContext
 from .procedure_rewrite import (rewrite_ordered_document, validate_article_rewrite,
                                 build_rewrite_prompt, editable_slots)
@@ -104,14 +104,18 @@ def run_article_job(repo,lease,*,registry,object_store,model_client,hooks=None):
                 normalized=normalize_procedure_article(source.as_article())
                 store.save_normalized_input(repo,lease,normalized)
                 document=normalized["normalized_document"]
-                if model_client is None:raise ValueError("MODEL_NOT_CONFIGURED")
+                if model_client is None:
+                    if lease.rewrite_profile_version == "full-prose-auto-v1":
+                        park_automatic_for_model(repo,lease)
+                        return
+                    raise ValueError("MODEL_NOT_CONFIGURED")
                 if lease.rewrite_profile_version == "technical-prose-v2":
                     from .procedure_rewrite_v2 import plan_v2
                     plan = plan_v2(document)
                     if not plan["eligible"]:raise ValueError(plan["error_code"])
-                elif lease.rewrite_profile_version not in ("technical-prose-v1", "full-prose-review-v1"):
+                elif lease.rewrite_profile_version not in ("technical-prose-v1", "full-prose-review-v1", "full-prose-auto-v1"):
                     raise ValueError("REWRITE_PROFILE_UNSUPPORTED")
-                if lease.rewrite_profile_version != "full-prose-review-v1" and not editable_slots(document, profile_version=lease.rewrite_profile_version):raise ValueError("REWRITE_NOT_APPLICABLE")
+                if lease.rewrite_profile_version not in ("full-prose-review-v1", "full-prose-auto-v1") and not editable_slots(document, profile_version=lease.rewrite_profile_version):raise ValueError("REWRITE_NOT_APPLICABLE")
                 prompt=build_rewrite_prompt(document,context=source.vehicle,profile_version=lease.rewrite_profile_version)
                 if len(prompt.encode())>200*1024:raise ValueError("REWRITE_INPUT_LIMIT")
                 attempt=store.prepare_rewrite_attempt(repo,lease,document,context=source.vehicle,model=getattr(model_client,"_model","mercury-2"))
@@ -124,7 +128,7 @@ def run_article_job(repo,lease,*,registry,object_store,model_client,hooks=None):
                 if lease.rewrite_profile_version == "full-prose-review-v1" and not result.error_code:
                     return
                 candidate=store.load_candidate(repo,lease)
-            if lease.rewrite_profile_version == "full-prose-review-v1":
+            if lease.rewrite_profile_version in ("full-prose-review-v1", "full-prose-auto-v1"):
                 # A saved failed response is original evidence, not a successful
                 # draft to reconstruct; retain its specific mechanical failure.
                 lease=_live(repo,lease)
@@ -158,8 +162,8 @@ def run_article_job(repo,lease,*,registry,object_store,model_client,hooks=None):
             fail_source_job(repo,lease,code=code,retryable=False)
 
 
-def run_article_worker_once(repo,*,worker_id,registry,object_store,model_client,hooks=None):
-    lease=claim_source_job(repo,worker_id=worker_id)
+def run_article_worker_once(repo,*,worker_id,registry,object_store,model_client,hooks=None,job_id=None):
+    lease=claim_source_job(repo,worker_id=worker_id,model_ready=model_client is not None,job_id=job_id)
     if lease is None:return False
     try:
         if lease.kind=="catalog_index":
