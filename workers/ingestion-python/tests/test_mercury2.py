@@ -173,8 +173,10 @@ class Mercury2Tests(unittest.TestCase):
             "https://api.inceptionlabs.ai/v1/chat/completions",
         )
 
-        self.assertEqual(seen["payload"]["max_tokens"], 8192)
-        self.assertEqual(seen["payload"]["model"], "mercury-2")
+        self.assertEqual(seen["payload"]["max_completion_tokens"], 8192)
+        self.assertEqual(seen["payload"]["model"], "mercury-3")
+        self.assertEqual(seen["payload"]["temperature"], 0.5)
+        self.assertNotIn("max_tokens", seen["payload"])
 
     def test_client_sends_environment_output_token_budget(self):
         seen = {}
@@ -189,7 +191,45 @@ class Mercury2Tests(unittest.TestCase):
         }, clear=True):
             Mercury2Client.from_environment(transport=transport).complete_json("select")
 
+        self.assertEqual(seen["payload"]["max_completion_tokens"], 2048)
+        self.assertNotIn("max_tokens", seen["payload"])
+
+    def test_client_preserves_explicit_legacy_model_environment_override(self):
+        seen = {}
+
+        def transport(request, timeout):
+            seen["payload"] = json.loads(request.data)
+            return FakeResponse({"choices": [{"message": {"content": '{"ok": true}'}}]})
+
+        with patch.dict(os.environ, {
+            "INCEPTION_API_KEY": "test-key",
+            "INCEPTION_MODEL": "mercury-2",
+            "INCEPTION_MAX_TOKENS": "2048",
+        }, clear=True):
+            Mercury2Client.from_environment(transport=transport).complete_json("select")
+
+        self.assertEqual(seen["payload"]["model"], "mercury-2")
+        self.assertEqual(seen["payload"]["temperature"], 0)
         self.assertEqual(seen["payload"]["max_tokens"], 2048)
+        self.assertNotIn("max_completion_tokens", seen["payload"])
+
+    def test_constructor_default_empty_and_versioned_mercury3_use_current_request_fields(self):
+        seen = {}
+
+        def transport(request, timeout):
+            seen["payload"] = json.loads(request.data)
+            return FakeResponse({"choices": [{"message": {"content": '{"ok": true}'}}]})
+
+        for options in ({}, {"model": "  "}, {"model": "mercury-3-2026-11-05"}):
+            with self.subTest(options=options):
+                Mercury2Client(
+                    api_key="test-key", base_url="https://example.test", transport=transport,
+                    **options,
+                ).complete_json("select")
+                self.assertEqual(seen["payload"]["model"], options.get("model", "").strip() or "mercury-3")
+                self.assertEqual(seen["payload"]["temperature"], 0.5)
+                self.assertEqual(seen["payload"]["max_completion_tokens"], 8192)
+                self.assertNotIn("max_tokens", seen["payload"])
 
     def test_client_rejects_invalid_environment_output_token_budget_before_transport(self):
         def transport(request, timeout):
