@@ -194,6 +194,20 @@ def build_full_prompt(document, *, context):
         sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
+
+def _matches_full_prompt_hash(document, *, context, prompt_hash):
+    """Accept only the two server-reconstructed historical prompt payloads."""
+    from hashlib import sha256
+    current = build_full_prompt(document, context=context)
+    legacy = json.loads(current)
+    del legacy["prompt_version"]
+    del legacy["introduction_allowed_technical_tokens"]
+    legacy["rules"].remove(next(rule for rule in legacy["rules"]
+        if rule.startswith("For the introduction, document is the only source of facts.")))
+    historical = json.dumps(legacy, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+    return prompt_hash in {sha256(payload.encode()).hexdigest() for payload in (current, historical)}
+
+
 def render_full(source, response):
     """Render an exact source-bound response. This never grants publication."""
     from .article_document import validate_ordered_document

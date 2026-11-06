@@ -396,3 +396,18 @@ def test_generated_introduction_is_a_stable_changed_content_slot_with_source_acc
     invalid = validate_full(source,corrupted,response=payload)
     assert not invalid.passed
     assert "/introduction" not in invalid.report["changed_slots"]
+
+
+def test_known_legacy_and_current_prompt_hashes_only():
+    from autodata_ingestion import procedure_rewrite_full as full
+    source = document('Remove the cover.')
+    context = {'vehicle': 'CTX-99'}
+    # Golden bytes independently reconstructed from d123bbf and 02f863c.
+    legacy = 'f6a6b43a53e6aea26b38a940fd2bad4a191ad3a1b8b92e358384c61613adf236'
+    current = 'f58543a4405e730bcb68c1462a4aa435869a0a29325035c37d8f45fbb5cced93'
+    assert full._matches_full_prompt_hash(source, context=context, prompt_hash=legacy)
+    assert full._matches_full_prompt_hash(source, context=context, prompt_hash=current)
+    assert not full._matches_full_prompt_hash(source, context=context, prompt_hash='0' * 64)
+    assert not full._matches_full_prompt_hash(source, context={}, prompt_hash=legacy)
+    from hashlib import sha256
+    assert sha256(full.build_full_prompt(source, context=context).encode()).hexdigest() == current
