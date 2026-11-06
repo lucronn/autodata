@@ -131,3 +131,8 @@ Concrete todo:
 - Add optional exact `job_id` filtering to existing claim/worker functions, including recovery and exhausted-job sweep, so operators can capture/park/resume selected preview jobs without draining unrelated work. Verify repeated absent-key polling, configured restart, selection isolation and stale ownership using focused PostgreSQL tests.
 
 Only already-allowed `article_lifecycle.py`, `source_job_persistence.py` and focused worker/job tests change. No schema/API/UI/credential/payment/deployment changes. Existing successful saved candidates may still publish without a model client. The model client is constructed at process startup, so configure the secret and restart before resuming. Commit/push this docs checkpoint and pass exact-head preflight before implementation.
+
+
+### Historical commerce fixture scope amendment
+
+Issue186 https://github.com/lucronn/autodata/issues/186#issuecomment-6680197528 and Project8 are synchronized (coordinator exact readback length951, link present), base `2c9ecd6bbd178e0d0b4912a3cf20d3097cbffc31`. Add only `workers/ingestion-python/tests/test_commerce_postgres.py` to the existing allowlist. Todo: (1) commit/push this docs-only checkpoint and pass exact-head preflight; (2) explicitly select historical `technical-prose-v1` in `seed_readable_source` descriptor registration to match its unchanged ensure; (3) run affected library case and focused recovery regression, no full-suite rerun; (4) push code and honest final evidence. No production implementation or commerce/payment behavior changes.

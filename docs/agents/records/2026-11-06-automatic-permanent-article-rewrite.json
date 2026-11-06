@@ -13,7 +13,7 @@
     "Prove both-bank automatic publication, integrity failures retaining source, concurrent/restart reuse, and zero provider/model/schedule calls on warm reads; start and verify the working local app."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-06T07:58:57.181547+00:00",
+  "updated_at": "2026-11-06T08:03:17.175370+00:00",
   "planning_parent_sha": "4513c387c900add7138330555ccfca92f74b9894",
   "branch": "codex/automatic-permanent-article-rewrite",
   "tracking_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6679826363",
@@ -27,7 +27,9 @@
       "https://github.com/lucronn/autodata/issues/186#issuecomment-6680123658",
       "https://github.com/lucronn/autodata/issues/186#issuecomment-6680125162"
     ],
-    "missing_model_project_field_length": 920
+    "missing_model_project_field_length": 920,
+    "commerce_fixture_amendment_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6680197528",
+    "commerce_fixture_project_field_length": 951
   },
   "implementation_allowlist": [
     "workers/ingestion-python/src/autodata_ingestion/procedure_rewrite_auto.py",
@@ -49,7 +51,8 @@
     "docs/architecture/normalized-article-document.md",
     "workers/ingestion-python/src/autodata_ingestion/source_job_persistence.py",
     "workers/ingestion-python/tests/test_source_job_persistence.py",
-    "workers/ingestion-python/tests/lifecycle_support.py"
+    "workers/ingestion-python/tests/lifecycle_support.py",
+    "workers/ingestion-python/tests/test_commerce_postgres.py"
   ],
   "historical_profiles_immutable": true,
   "human_content_acceptance_required": false,
