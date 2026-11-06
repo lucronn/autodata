@@ -1,0 +1,26 @@
+{
+  "goal": "Make the existing purchase-disabled public preview restart-persistent using the exact e4af862 API binary and configuration, without rebooting or enabling payments.",
+  "plan_ref": "docs/superpowers/plans/2026-11-06-public-preview-durability.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/verification/2026-11-06-public-preview-durability.md"
+  ],
+  "todo": [
+    "Copy and hash-verify the exact serving API binary and configuration into persistent protected preview paths; preserve current values and secret-file access.",
+    "Install a persistent 99-public-preview.conf API override and set only the existing grant-ready ingestion container restart policy to unless-stopped; retain rollback copies.",
+    "Restart the existing ingestion container and API, verify exact runtime identity, readiness, disabled purchase configuration and USD2000 quote, and restore the prior state on failure.",
+    "Record hashes, permissions, effective unit, restart policy, restart checks and rollback evidence; leave boot durability unverified until a separately authorized reboot."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-06T02:27:23Z",
+  "tracking_sync": {
+    "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6675203960",
+    "project_item": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "project_field": "Release hotfix reference",
+    "project_status": "In Progress",
+    "readback": "Coordinator verified exact goal, four literal todos, three planning paths, parent/product SHAs and Project comment link; previous links preserved and descriptive labels shortened.",
+    "verified_by": "coordinator sole external writer",
+    "updated_at": "2026-11-06T02:27:23Z"
+  }
+}
