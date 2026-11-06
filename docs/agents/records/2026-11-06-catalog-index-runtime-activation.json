@@ -1,5 +1,5 @@
 {
-  "goal": "Activate the merged catalog-only consumer through a bounded initial proof of real index completion and two-bank browsing, without activating or modifying article rewriting.",
+  "goal": "Prove real backend catalog index completion and persisted provider descriptors for both banks within one bounded catalog-only run, then stop; authenticated paid browse remains unverified and article rewriting stays untouched.",
   "plan_ref": "docs/superpowers/plans/2026-11-06-catalog-index-runtime-activation.md",
   "issue_ref": "https://github.com/lucronn/autodata/issues/186",
   "project_ref": "https://github.com/users/lucronn/projects/8",
@@ -10,9 +10,9 @@
   "todo": [
     "Pin merged combined PR355 source/tree/archive/unit and successful required CI/review; synchronize exact tracking and machine preflight before runtime dispatch.",
     "Install the exact inert catalog unit and immutable merged source with a separate root-only14-name catalog environment; verify payload/import/configuration without live processing or secret output.",
-    "After reviewed-script and coordinator dispatch, start the catalog-only service once and observe at most120 seconds, proving real current catalog_index job completion and two-bank browse results from the two pinned authentic configurations.",
-    "Record exact source/container/job/provider/index/readiness evidence and article non-interference; stop/disable on failure or uncertain proof, preserving checkpoints/history and leaving the separate article rollout untouched."
+    "After reviewed-script and coordinator dispatch, start the catalog-only service once and observe at most120 seconds, proving current catalog_index job/scope/index-page/descriptor bindings for BOTH banks across the two pinned authentic configurations; authenticated paid browse remains UNVERIFIED.",
+    "Record exact source/container/job/provider/index/readiness evidence and article non-interference; mandatorily stop within the initial120-second observation boundary on every outcome, verify stopped/no container, and preserve checkpoints/history and separate article rollout."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-06T22:35:05.484798+00:00"
+  "updated_at": "2026-11-06T22:39:40.235499+00:00"
 }
