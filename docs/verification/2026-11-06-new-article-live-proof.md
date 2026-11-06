@@ -71,3 +71,7 @@ Independent terminal DB receipt `monitor-02.json` at `2026-11-06T21:51:01.273022
 - Both reservations remain consumed within the original ten-job cap, and all seven historical prestate counts/digests are unchanged. The observer alerted the coordinator to the failure/stop boundary; this documentation task performs no runtime control.
 
 This is one verified automatic UNREVIEWED publication and one bounded failed rewrite with readable source fallback. It is not a two-bank publication success, a quality acceptance, or permission for another identity/attempt.
+
+The coordinator then performed the gate-required single disable+stop. Private `failure-stop.json` SHA256 `cb595dfc9f53373fa6d803fc5e1b3efed93e4c5ddfe2601cf4b907b0da0022e9` reports verified=true, original reservations2 retained and no worker container. No rerun followed.
+
+Metadata-only `banktwo-failure-diagnostics.json` SHA256 `8480327ac277fd701b13e493bec28fabd47eda82d8f72d5b2591b57f1ecdcc08` narrows the failure to `MERCURY_OUTPUT_TRUNCATED`, stage `finish`, `finish_reason=length`, max_output_tokens32768, retryable=false and no next attempt. No source/model content is recorded here. The worker is stopped with the two consumed reservations; further work requires separate authorization.
