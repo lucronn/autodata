@@ -146,3 +146,7 @@ Concrete todo:
 - [ ] On publication prove all eligible prose changed, protected content retained and ten warm read/ensure pairs plus fresh-process reuse with measured zero source/media/model/schedule calls; synchronize sanitized evidence.
 
 Frozen Bankone job a96ebe3a-16b9-4c3f-acb4-986efbb5ff2d and its canonical identity remain exhausted and untouched; no reset/re-key/re-enrollment/salvage. Banktwo receives no further call. The future fresh identity must be an existing reachable licensed descriptor with no prior attempt/publication, distinctly fenced before one exact-job dispatch. Unknown delivery consumes the single-call allowance. Source fallback persists on failure; checkout stays disabled and grants unchanged. Planning is docs-only. Exact pinned machine preflight and coordinator assignment precede implementation; independent candidate review/CI and coordinator dispatch precede runtime canary/deployment.
+
+### Automatic prompt-v2 implementation evidence
+
+The automatic prompt-v2 builder preserves prompt-v1 bytes and accepts only exact server-reconstructed v1/v2 prompt hashes for saved candidates. Strict validation remains unchanged. Verification: 212 focused rewrite tests and 13 real PostgreSQL automatic publication/restart/binding tests passed. Commands and honest fixture/dependency receipts are in `docs/verification/2026-11-06-automatic-rewrite-prompt-v2.md`. No licensed provider call or runtime deployment occurred in this builder lane; the fresh-identity canary remains pending coordinator dispatch.

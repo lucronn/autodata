@@ -74,3 +74,7 @@ python3 scripts/autonomy/pre_implementation.py --record docs/agents/records/2026
 ```
 
 Expected: `{"status":"synchronized","errors":[]}`. Implementation starts only after coordinator assigns the passing exact checkpoint. Preserve all PR349 outcome text and existing Issue body/Project fields.
+
+## Builder implementation verification
+
+Prompt/compatibility milestone `28f625b` was committed and pushed after the pinned gate passed. The builder completed the prompt/hash unit work and persisted PostgreSQL v1/v2 publication/restart tests: focused suite 212 passed; isolated automatic lifecycle/publication suite 13 passed without skips. Full commands, broad-suite dependency failure and targeted recovery, fixture failures/recovery, and the remaining runtime boundary are recorded in `docs/verification/2026-11-06-automatic-rewrite-prompt-v2.md`. Licensed canary and deployment tasks remain pending coordinator dispatch.
