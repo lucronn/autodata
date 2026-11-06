@@ -1,0 +1,26 @@
+{
+  "goal": "Capture one frozen source article per bank from its complete authentic index page, including a nonterminal page, while retaining selected-only partial scope and zero model requests or canonical publication",
+  "plan_ref": "docs/superpowers/plans/2026-11-06-selected-source-canary.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/verification/2026-11-06-selected-source-canary.md"
+  ],
+  "todo": [
+    "Synchronize the successor plan, canonical verification and record with Issue186/Project8; commit/push the docs-only checkpoint and pass exact full-SHA preflight.",
+    "Revise only the private driver selection predicate, preserve the entire authentic selected page and next_cursor, add offline terminal/nonterminal/missing/duplicate tests, and obtain independent exact-hash review before fresh execution dispatch.",
+    "Revalidate unchanged frozen enrollment, e4af product/runtime, serving DB, exclusive source slot, bounded driver and backup; stop on drift before requests or writes.",
+    "After fresh dispatch, capture at most one frozen article per bank, retain partial selected-only scopes, verify source fallback/resource hashes and all preservation checks, and report sanitized result without catalog/paid/canonical acceptance."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-06T07:37:06Z",
+  "tracking_sync": {
+    "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6679765071",
+    "project_item": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "project_field": "Release hotfix reference",
+    "readback_utc": "2026-11-06T07:37:06Z",
+    "readback_exact": true,
+    "field_length": 997,
+    "verified_by": "coordinator sole external writer; synchronization confirmation received before commit"
+  }
+}
