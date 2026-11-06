@@ -1,0 +1,32 @@
+{
+  "goal": "Prevent context-only facts in full-prose introductions while preserving one durable canonical rewrite, independent exact-hash review and source fallback.",
+  "plan_ref": "docs/superpowers/plans/2026-11-05-mercury-context-introduction.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/agents/specs/2026-11-05-mercury-context-introduction.md"
+  ],
+  "todo": [
+    "Preserve current Issue186 body/comments and all Project8 fields; synchronize this exact goal, plan, canonical spec, two-file allowlist and concrete todo under a coordinator-owned serialized tracking update, then commit/push the checkpoint and pass exact-SHA preflight.",
+    "Add red prompt-contract regressions for normalized-document-only introduction support, context-only vehicle tokens, deterministic token enumeration and explicit prompt version; preserve the existing rejecting validator.",
+    "Change only full-prose prompt construction: version its prompt bytes, disclose document-derived allowable introduction tokens and explicitly exclude context-only facts; retain all profile, grammar, validator, limits, response and lifecycle contracts.",
+    "Run no-network synthetic full-prose and ordered-rewrite suites, verify no validator or unrelated code change, commit/push the coherent correction and obtain independent exact-SHA review.",
+    "Only after separately authorized coordinator runtime work: retain failed canary receipts and attempt budget, run a bounded authentic canary on the reviewed candidate, independently review its complete content and publish at most one exact-bound canonical revision; otherwise retain source fallback."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-06T00:29:40.834283Z",
+  "source_base_sha": "41ae41671d3f2864c3d9fe9b74de89e7cc11da15",
+  "implementation_allowlist": [
+    "workers/ingestion-python/src/autodata_ingestion/procedure_rewrite_full.py",
+    "workers/ingestion-python/tests/test_procedure_rewrite_full.py"
+  ],
+  "implementation_authorized": false,
+  "tracking": {
+    "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6673242919",
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2BzhoxGVY",
+    "preservation_evidence": "/home/corp/autodata-evidence/mercury-context-prompt-gate/preservation.json",
+    "prior_comments_preserved": 298
+  },
+  "stacked_prerequisite": "PR336 pending; this documentation branch stacks on reviewed hotfix41ae416. Root will rebase after PR336 squash merge and recheck the exact planning gate before the code PR."
+}
