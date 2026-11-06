@@ -195,3 +195,63 @@ Completed todo:
 - [x] Retain private backup, review/preflight/dispatch/warm/fresh receipts and synchronize sanitized outcome documentation.
 
 Canonical evidence: `docs/verification/2026-11-06-automatic-rewrite-prompt-v2.md`. Private source references, licensed content, raw responses, credentials and backup bytes remain outside Git.
+
+
+## Persistent prompt-v2 HTTP source rollout successor
+
+Refresh only the persistent purchase-disabled Workshop ingestion HTTP service to the exact reviewed merged prompt-v2 source, proving a shadow on 3032 before a reversible 3031 swap. The [bounded rollout plan](../superpowers/plans/2026-11-06-prompt-v2-http-rollout.md), [record](../agents/records/2026-11-06-prompt-v2-http-rollout.json) and [verification](../verification/2026-11-06-prompt-v2-http-rollout.md) govern this operational successor, tracked in https://github.com/lucronn/autodata/issues/186 and https://github.com/users/lucronn/projects/8 dedicated Prompt-v2 HTTP rollout reference. Deploy only reviewed merged source `b3618fb6e68f1734ef029096748e30e655451a26` (tree `b686966c9bb4c01c7d35262c661f8645f9fb9f04`). Planning synchronization is not a deployment result. Shadow3032 health precedes a reversible3031 source-only replacement; preserve exact private environment/image/security and retain the original container/source for rollback. HTTP service refresh does not start article processing; no generic worker, model/provider call, article invocation, commerce change or paid-launch authority follows.
+
+Concrete todo:
+
+- [ ] Freeze the active container/image/source and private effective configuration; verify the exact reviewed merged b3618fb6 source tree, disabled purchase and absence of active generic article workers before deployment.
+- [ ] Materialize a new immutable exact merged source tree; create a same-image shadow HTTP-only container on 127.0.0.1:3032 with the preserved effective configuration and only source/name/listen-address differences; verify bounded local health and no model/job execution.
+- [ ] After shadow proof, retain the untouched original container, stop it and create/start the exact-config source replacement on 3031; verify private health, public readiness, disabled purchase, source hashes and unchanged protected state, or immediately restore the original container.
+- [ ] Retain original container/source and private evidence, remove only the temporary shadow, and synchronize the exact rollout outcome without claiming ongoing automatic processing, starting a generic worker or making model/provider calls.
+
+
+### Prompt-v2 HTTP corrected-create amendment
+
+Remove only the never-started diagnostic shadow and complete one corrected, configuration-verified prompt-v2 HTTP source rollout while preserving the healthy original3031 runtime for rollback. The same [rollout plan](../superpowers/plans/2026-11-06-prompt-v2-http-rollout.md) now records a narrowly enumerated second-create amendment: first shadow2775219a07cf was stopped/never started; original3031 remains healthy. Exact-identity diagnostic cleanup plus one corrected shadow is permitted only after fresh synchronized checkpoint/preflight and coordinator dispatch. Require40 unique environment entries with an in-place3032 override, original false attach flags, a new private CID file, constrained default null/false OOM equivalence, and full prestart inspected diff. Final3031 keeps the exact original environment; all source/image/security/rollback/work/model restrictions remain.
+
+Amended concrete todo:
+
+- [ ] Preserve the failed first-attempt inspect/diff privately; verify diagnostic shadow2775219a07cf is the exact stopped never-started rollout container, then remove only that container without volumes or changes to the healthy original3031 service.
+- [ ] Construct one corrected shadow create payload from exact private original Config/HostConfig using Docker Engine API or an exact equivalent; require exactly40 unique environment entries with one AUTODATA_INGESTION_HTTP_ADDR replacement to3032, preserved attach settings and only explicitly approved metadata normalization.
+- [ ] Before starting any corrected shadow or final container, independently compare complete inspected configuration against the frozen original and allow only the enumerated source/name/shadow-address/new-private-cidfile/default-OOM differences; prove shadow3032 health while original3031 remains untouched.
+- [ ] Only after shadow proof and final stopped-container diff approval, swap3031 once with exact original40-entry environment; verify health/readiness/purchase-disabled and unchanged protected state or restore original, retaining all rollback/source/evidence and authorizing no worker/model/provider/article call.
+
+
+### Prompt-v2 HTTP second-final convergence amendment
+
+Complete one second final-container prompt-v2 HTTP cutover using the unchanged approved payload and passed shadow proof, with bounded readiness polling and exact-original rollback. First final local health passed but immediate public probe failed transiently; rollback restored original3031/public readiness/purchase-disabled. Keep that blocked attempt historical. The [rollout plan](../superpowers/plans/2026-11-06-prompt-v2-http-rollout.md) permits one fresh-name/private-CID final with unchanged approved payload and prior passed-shadow proof, full prestart diff, <=30second/10round convergence polling and separate bounded original rollback health. New synchronized exact-checkpoint preflight/dispatch required. No new shadow if proof unchanged, no worker/model/provider/article/commerce action, and no HTTP-source-only paid-launch or automatic-processing claim.
+
+Second-final concrete todo:
+
+- [ ] Retain the first final-attempt failure and successful original-runtime recovery as immutable private evidence; verify original3031/public readiness are200, purchase disabled and prior shadow/source/image/configuration proof remains exact before retry.
+- [ ] Create exactly one fresh final container from the same reviewed payload, changing only its unique name and new private final-http-r2.cid path; require the complete stopped-container inspect diff and original40-entry environment match before stopping original.
+- [ ] Swap3031 once and poll only local health, public readiness and public disabled-purchase configuration in at most10 sequential rounds within30seconds; record transient failures without issuing article/provider/model/work requests.
+- [ ] On failed acceptance stop/remove only this new final and restart exact original, polling the same recovery endpoints for up to30seconds; retain all original/source/evidence, report recovery incomplete if needed, and synchronize the exact result with no further automatic retry.
+
+
+### Canonical public probe host correction
+
+Before the still-unused r2 final creation, coordinator verified canonical `https://autodata.cars.tk/readyz`=200 and `https://autodata.cars.tk/workshop/purchase-config.json`=200/enabled:false. Use those exact no-redirect URLs for cutover and rollback; apex cars.tk/readyz404 and apex Workshop308 are not acceptance endpoints. The [rollout plan](../superpowers/plans/2026-11-06-prompt-v2-http-rollout.md) is corrected; same r2 payload/name/CID, ONE unused final attempt, unchanged passed-shadow proof and30second/10round/30GET phase limits. No new runtime/worker/model/article/provider/commerce scope, and no runtime action by the planning agent. Fresh full-SHA corrected preflight/dispatch required.
+
+
+### Third-final fixed public-probe User-Agent amendment
+
+Complete one third final-container prompt-v2 HTTP cutover using the unchanged approved payload, exact public probe User-Agent curl/8.0.0, bounded acceptance and exact-original rollback. Coordinator reports r2 rolled back; exact original3031/local/public readiness/config now200/enabled:false. Read-only diagnosis: Python urllib default User-Agent403, same canonical requests with explicit `User-Agent: curl/8.0.0`200 with/without proxy; no app failure is inferred. Keep both rolled-back attempts historical.
+
+The [rollout plan](../superpowers/plans/2026-11-06-prompt-v2-http-rollout.md) now authorizes ONE r3 creation with the same approved r2 payload except name/private final-http-r3.cid. Require fresh synchronized checkpoint/preflight/dispatch, unchanged passed-shadow proof, exact stopped diff, same original40-entry environment/security, and exact fixed public header on baseline/cutover/rollback canonical GETs. Existing30second/10round/30GET phase limits and exact-original rollback remain. No additional shadow/fourth create, header fallback, worker/model/article/provider/API/commerce action or paid-launch claim. Planning agent touches no runtime.
+
+Third-final concrete todo:
+
+- [ ] Preserve the second rolled-back attempt and read-only User-Agent diagnosis; verify original3031/canonical readiness/purchase config200/enabledfalse and unchanged source/image/private configuration/passed-shadow proof before a third final creation.
+- [ ] Create exactly one third final container from the same approved r2 payload, changing only its unique r3 name and exclusive new final-http-r3.cid path; require full stopped-container diff and exact original40-entry environment before stopping original.
+- [ ] Swap3031 once and use exact User-Agent curl/8.0.0 for canonical public readiness/purchase GETs within the existing30second/10round/30GET acceptance limit; do not use default-UA probes, redirects, alternate identities or article/model/provider/work calls.
+- [ ] On failed acceptance restore the exact original and verify recovery using the same fixed-header bounded30second polling; retain all rollback/source/failed-attempt evidence and report the exact outcome without any further automatic create/retry or worker/commerce scope.
+
+
+## Successful persistent HTTP source refresh outcome
+
+Coordinator executed reviewed r3 script593f8088 under gate8dc02ef: new container38f3bc41eb24 runs exact prompt-v2 sourceb3618fb6/treeb686966c on3031; original3cefb07d remains intact/stopped. Canonical fixed-header health/readiness/purchase probes converged on round2 (nine events), purchase enabled:false. Inherited17a932 and complete-row e23250 DB fingerprints were unchanged; script recorded zero article/model/provider calls. Both earlier rolled-back attempts remain historical. The [canonical verification](../verification/2026-11-06-prompt-v2-http-rollout.md) records exact IDs/hashes/transients. The r3 allocation is consumed; no additional deploy, worker activation or paid-launch authority follows. No code/runtime change on this evidence turn.
