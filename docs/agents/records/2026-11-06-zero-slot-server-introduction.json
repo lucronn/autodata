@@ -1,0 +1,17 @@
+{
+  "goal": "Publish zero-editable-prose automatic articles through a source-bound deterministic introduction before any model attempt, preserving technical validation and the nonzero-slot model path.",
+  "plan_ref": "docs/superpowers/plans/2026-11-06-zero-slot-server-introduction.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/verification/2026-11-06-zero-slot-server-introduction.md",
+    "docs/agents/pre-implementation-gate.md"
+  ],
+  "todo": [
+    "Add failing helper and real lifecycle regressions for a zero-slot source-bound deterministic candidate, zero model dispatch/attempt rows, tamper rejection and crash-safe exactly-once publication.",
+    "Implement the narrow deterministic helper, pre-model lifecycle branch, locked server candidate storage/reconstruction/publication binding and bounded existing resume selector branch; keep nonzero model behavior and leases unchanged.",
+    "Run focused helper/lifecycle tests and required repository checks; independently review, commit/push small coherent milestones and synchronize exact PR/CI evidence. Runtime/deploy/fresh-identity proof require a separate future synchronized gate."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-06T23:47:48.093201+00:00"
+}
