@@ -238,17 +238,23 @@ async function loadOptions(name, g, desired = "") {
     },
   );
   if (!g.current()) return;
-  if (
-    desired &&
-    !result.items.some((item) => String(item.id ?? item.year) === desired)
-  )
+  const selected = desired && result.items.some(
+    (item) => String(item.id ?? item.year) === desired,
+  );
+  if (!selected && (result.timedOut || result.complete === false))
+    throw new Error(
+      result.items.length
+        ? "Some choices loaded, but the source catalog could not finish loading. Choose an available option or try again."
+        : "The source catalog could not finish loading these choices. Try again.",
+    );
+  if (desired && !selected)
     throw new Error(
       "This saved vehicle choice is unavailable. Choose another vehicle.",
     );
   status(
     result.items.length
       ? "Choose your vehicle to continue."
-      : "No choices are available. Try again.",
+      : "No choices are available for this selection. Choose another vehicle.",
     { retry: () => restoreRoute() },
   );
 }
