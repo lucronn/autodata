@@ -6,7 +6,7 @@ Issue: https://github.com/lucronn/autodata/issues/186
 Project: https://github.com/users/lucronn/projects/8
 Canonical evidence: docs/verification/2026-11-07-catalog-closed-socket.md
 Record: docs/agents/records/2026-11-07-catalog-closed-socket.json
-Planning parent: d18c9fedcf26f98957fc5948c21d2def60682ac2. The committed documentation checkpoint is the pinned implementation base; run machine preflight against its full SHA before any implementation/test edits.
+Planning parent: 0ebbd72c6c3ee29ec65255c207e129e539befa57. The committed documentation checkpoint is the pinned implementation base; run machine preflight against its full SHA before any implementation/test edits.
 
 ## Evidence and design
 
@@ -18,10 +18,10 @@ Allowlist: workers/ingestion-python/src/autodata_ingestion/source_connector_clie
 
 ## Concrete todo
 
-- [ ] Reproduce closed-socket deadline failure with real loopback urllib responses for plain and chunked bodies, retaining foreground behavior and slow-body deadline tests.
-- [ ] Fix only deadline body reads so buffered bytes remain readable after transport close while live socket and elapsed deadline controls remain enforced.
+- [x] Reproduce closed-socket deadline failure with real loopback urllib responses for plain and chunked bodies, retaining foreground behavior and slow-body deadline tests.
+- [x] Fix only deadline body reads so buffered bytes remain readable after transport close while live socket and elapsed deadline controls remain enforced.
 - [ ] Run focused connector/selector/catalog tests and full ingestion checks as appropriate, obtain independent review and required CI, and push small coherent commits.
-- [ ] Record exact evidence and outstanding selector completeness limitations; do not deploy, hydrate the fleet, or modify serving data under this code-only gate.
+- [x] Record exact evidence and outstanding selector completeness limitations; do not deploy, hydrate the fleet, or modify serving data under this code-only gate.
 
 ## Validation
 
