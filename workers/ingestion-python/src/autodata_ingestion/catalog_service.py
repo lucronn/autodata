@@ -1234,6 +1234,8 @@ class _SourceCatalogProvider:
         self.deepening_control = deepening_control
 
     def resolve_catalog(self, request: CatalogRequest) -> Mapping[str, Any]:
+        from .source_connector_client import SourceCatalogAbsence
+
         scope = request.scope if request.scope in {"years", "makes", "models", "configurations"} else "configurations"
         # `year` is a required CatalogRequest field, but years are an
         # unfiltered index and must not receive that synthetic placeholder.
@@ -1265,6 +1267,27 @@ class _SourceCatalogProvider:
                         raise _SelectorDeepeningStopped() from error
                     raise
                 self.deepening_control.remaining()
+            if isinstance(page, SourceCatalogAbsence):
+                if cursor is not None or rows:
+                    raise ValueError("source parent absence contradicted prior child pages")
+                return {
+                    "rows": [], "complete": True, "missing_scopes": [],
+                    "provenance": [{
+                        "provider": parent.persisted_provider,
+                        "source_uri": parent.source_locator or f"{self.client.base_url}/v1/catalog/{page.parent_scope}",
+                        "source_version": parent.source_revision,
+                        "retrieved_at": parent.fetched_at,
+                        "metadata": {
+                            "request_id": parent.request_id, "wire_provider": parent.provider,
+                            "coverage_basis": "complete_parent_absence",
+                            "requested_scope": page.requested_scope,
+                            "requested_selector": dict(page.requested_selector),
+                            "parent_scope": page.parent_scope,
+                            "parent_selector": dict(page.parent_selector),
+                            "missing_field": page.missing_field, "missing_value": page.missing_value,
+                        },
+                    } for parent in page.pages],
+                }
             provenance.append({
                 "provider": page.persisted_provider,
                 "source_uri": page.source_locator or f"{self.client.base_url}/v1/catalog/{scope}",

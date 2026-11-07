@@ -119,6 +119,23 @@ class SourceEnvelopeV1:
         )
 
 
+@dataclass(frozen=True)
+class SourceCatalogAbsence:
+    """Complete parent enumeration proving a requested catalog label absent.
+
+    Pages are the original validated envelopes, never a fabricated child page.
+    Only the catalog provider converts this proof to completed empty coverage.
+    """
+
+    requested_scope: str
+    requested_selector: Mapping[str, str | int]
+    parent_scope: str
+    parent_selector: Mapping[str, str | int]
+    missing_field: str
+    missing_value: str
+    pages: tuple[SourceEnvelopeV1, ...]
+
+
 class SourceConnectorClient:
     """Read a single bank origin using the shared `/v1` operations only."""
 
@@ -161,7 +178,7 @@ class SourceConnectorClient:
         self, scope: str, selector: Mapping[str, Any] | None = None, cursor: str | None = None,
         *, timeout: float | None = None,
         before_additional_request: Callable[[], float] | None = None,
-    ) -> SourceEnvelopeV1:
+    ) -> SourceEnvelopeV1 | SourceCatalogAbsence:
         if not isinstance(scope, str) or scope not in _SCOPES:
             raise ValueError("unsupported catalog scope")
         selector = selector or {}
@@ -207,14 +224,23 @@ class SourceConnectorClient:
         # Public IDs discard case and punctuation. Recover only labels proved
         # unique by complete provider enumeration; never guess capitalization.
         repaired = dict(query)
-        repaired["make"] = self._catalog_label(
+        requested_selector = {key: value for key, value in query.items() if key != "cursor"}
+        make = self._catalog_label(
             "makes", "make", {"year": query["year"]}, str(query["make"]), read_page,
+            requested_scope=scope, requested_selector=requested_selector,
         )
+        if isinstance(make, SourceCatalogAbsence):
+            return make
+        repaired["make"] = make
         if scope == "configurations":
-            repaired["model"] = self._catalog_label(
+            model = self._catalog_label(
                 "models", "model", {"year": query["year"], "make": repaired["make"]},
                 str(query["model"]), read_page,
+                requested_scope=scope, requested_selector=requested_selector,
             )
+            if isinstance(model, SourceCatalogAbsence):
+                return model
+            repaired["model"] = model
         if repaired == query:
             raise SourceConnectorError("NOT_FOUND", status=404)
         return read_page(scope, repaired)
@@ -223,7 +249,8 @@ class SourceConnectorClient:
     def _catalog_label(
         scope: str, field: str, query: Mapping[str, str | int], value: str,
         read_page: Callable[[str, Mapping[str, str | int]], SourceEnvelopeV1],
-    ) -> str:
+        *, requested_scope: str, requested_selector: Mapping[str, str | int],
+    ) -> str | SourceCatalogAbsence:
         def slug(label: str) -> str:
             return re.sub(r"[^a-z0-9]+", "-", label.lower()).strip("-")
 
@@ -231,17 +258,25 @@ class SourceConnectorClient:
         if not target:
             raise SourceConnectorError("NOT_FOUND", status=404)
         matches: set[str] = set()
+        pages: list[SourceEnvelopeV1] = []
         page_query = dict(query)
         seen: set[str] = set()
         for _ in range(1000):
             page = read_page(scope, page_query)
+            pages.append(page)
             for item in page.body["items"]:
                 label = item.get(field)
                 if isinstance(label, str) and slug(label) == target:
                     matches.add(label)
             if page.complete:
+                if not matches:
+                    return SourceCatalogAbsence(
+                        requested_scope=requested_scope, requested_selector=dict(requested_selector),
+                        parent_scope=scope, parent_selector=dict(query),
+                        missing_field=field, missing_value=value, pages=tuple(pages),
+                    )
                 if len(matches) != 1:
-                    raise SourceConnectorError("AMBIGUOUS" if matches else "NOT_FOUND")
+                    raise SourceConnectorError("AMBIGUOUS")
                 return next(iter(matches))
             cursor = page.next_cursor
             if not cursor or cursor in seen:
