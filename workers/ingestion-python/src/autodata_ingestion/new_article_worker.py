@@ -18,6 +18,9 @@ from uuid import UUID, uuid4
 
 STATE_DIRECTORY = Path('/var/lib/autodata/new-article-worker')
 MAX_STATE_BYTES = 16384
+CONTINUOUS_MAX_STATE_BYTES = 2 * 1024 * 1024
+CONTINUOUS_MAX_RESERVATIONS = 10000
+WINDOW = timedelta(hours=24)
 
 
 class WorkerBlocked(RuntimeError):
@@ -54,11 +57,13 @@ def _object(pairs):
 class RolloutState:
     """Fixed production directory; constructor injection is for isolated tests."""
 
-    def __init__(self, directory=STATE_DIRECTORY, *, source_sha, owner_uid=0):
+    def __init__(self, directory=STATE_DIRECTORY, *, source_sha, owner_uid=0, continuous=False):
         if not re.fullmatch('[a-f0-9]{40}', source_sha):
             raise WorkerBlocked('ROLLOUT_SOURCE_INVALID')
         self.directory = Path(directory)
         self.source_sha = source_sha
+        self.schema = 2 if continuous else 1
+        self.max_bytes = CONTINUOUS_MAX_STATE_BYTES if continuous else MAX_STATE_BYTES
         self.owner_uid = owner_uid
         self.fd = os.open(self.directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
         try:
@@ -121,9 +126,11 @@ class RolloutState:
     def _validate(self, value):
         keys = {'schema', 'rollout_id', 'source_sha', 'cutoff', 'expires_at', 'providers',
                 'max_jobs', 'enabled', 'reservations'}
+        if self.schema == 2:
+            keys.remove('expires_at')
         if not isinstance(value, dict) or set(value) != keys:
             raise WorkerBlocked('ROLLOUT_SHAPE_INVALID')
-        if (type(value['schema']) is not int or value['schema'] != 1
+        if (type(value['schema']) is not int or value['schema'] != self.schema
                 or value['source_sha'] != self.source_sha
                 or value['providers'] != ['bankone', 'banktwo']
                 or type(value['max_jobs']) is not int or value['max_jobs'] != 10
@@ -131,27 +138,34 @@ class RolloutState:
             raise WorkerBlocked('ROLLOUT_SCOPE_INVALID')
         _uuid(value['rollout_id'])
         cutoff = _timestamp(value['cutoff'])
-        expiry = _timestamp(value['expires_at'])
-        if expiry != cutoff + timedelta(hours=24):
+        expiry = _timestamp(value['expires_at']) if self.schema == 1 else None
+        if self.schema == 1 and expiry != cutoff + WINDOW:
             raise WorkerBlocked('ROLLOUT_EXPIRY_INVALID')
         reservations = value['reservations']
-        if not isinstance(reservations, list) or len(reservations) > 10:
+        if not isinstance(reservations, list) or len(reservations) > (10 if self.schema == 1 else CONTINUOUS_MAX_RESERVATIONS):
             raise WorkerBlocked('ROLLOUT_QUOTA_INVALID')
         seen = set()
+        timestamps = []
         for item in reservations:
             if not isinstance(item, dict) or set(item) != {'job_id', 'reserved_at'}:
                 raise WorkerBlocked('ROLLOUT_RESERVATION_INVALID')
             _uuid(item['job_id'])
-            if item['job_id'] in seen or not cutoff <= _timestamp(item['reserved_at']) < expiry:
+            reserved_at = _timestamp(item['reserved_at'])
+            if item['job_id'] in seen or reserved_at < cutoff or (expiry is not None and reserved_at >= expiry):
                 raise WorkerBlocked('ROLLOUT_RESERVATION_INVALID')
-            seen.add(item['job_id'])
+            seen.add(item['job_id']); timestamps.append(reserved_at)
+        if self.schema == 2:
+            # Sort a copy: stored order and every spent UUID remain permanent.
+            timestamps.sort()
+            if any(timestamps[i] - timestamps[i-10] < WINDOW for i in range(10, len(timestamps))):
+                raise WorkerBlocked('ROLLOUT_HISTORICAL_QUOTA_INVALID')
         return value
 
     def _read(self):
         fd = self._open('rollout.json')
         try:
-            raw = os.read(fd, MAX_STATE_BYTES + 1)
-            if len(raw) > MAX_STATE_BYTES:
+            raw = os.read(fd, self.max_bytes + 1)
+            if len(raw) > self.max_bytes:
                 raise WorkerBlocked('ROLLOUT_TOO_LARGE')
             value = json.loads(raw, object_pairs_hook=_object)
             current = os.stat('rollout.json', dir_fd=self.fd, follow_symlinks=False)
@@ -166,6 +180,9 @@ class RolloutState:
     def _write(self, value):
         self._validate(value)
         self._directory()
+        payload = json.dumps(value, sort_keys=True).encode() + b'\n'
+        if len(payload) > self.max_bytes:
+            raise WorkerBlocked('ROLLOUT_TOO_LARGE')
         temporary = '.rollout-' + uuid4().hex
         fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
                      0o600, dir_fd=self.fd)
@@ -189,10 +206,12 @@ class RolloutState:
             try:
                 os.stat('rollout.json', dir_fd=self.fd, follow_symlinks=False)
             except FileNotFoundError:
-                self._write({'schema': 1, 'rollout_id': str(uuid4()), 'source_sha': self.source_sha,
-                    'cutoff': now.isoformat(), 'expires_at': (now + timedelta(hours=24)).isoformat(),
-                    'providers': ['bankone', 'banktwo'], 'max_jobs': 10,
-                    'enabled': False, 'reservations': []})
+                value = {'schema': self.schema, 'rollout_id': str(uuid4()), 'source_sha': self.source_sha,
+                    'cutoff': now.isoformat(), 'providers': ['bankone', 'banktwo'], 'max_jobs': 10,
+                    'enabled': False, 'reservations': []}
+                if self.schema == 1:
+                    value['expires_at'] = (now + WINDOW).isoformat()
+                self._write(value)
                 return
             raise WorkerBlocked('ROLLOUT_ALREADY_INITIALIZED')
 
@@ -207,7 +226,22 @@ class RolloutState:
             self._write(value)
 
     @staticmethod
+    def running(value, now):
+        if value['schema'] == 1:
+            return RolloutState.active(value, now)
+        timestamps = [_timestamp(r['reserved_at']) for r in value['reservations']]
+        if now < _timestamp(value['cutoff']) or (timestamps and now < max(timestamps)):
+            raise WorkerBlocked('ROLLOUT_CLOCK_REGRESSION')
+        if len(timestamps) >= CONTINUOUS_MAX_RESERVATIONS:
+            raise WorkerBlocked('ROLLOUT_CAPACITY_EXHAUSTED')
+        return value['enabled']
+
+    @staticmethod
     def active(value, now):
+        if value['schema'] == 2:
+            return (RolloutState.running(value, now) and sum(
+                now - WINDOW < _timestamp(r['reserved_at']) <= now for r in value['reservations']
+            ) < value['max_jobs'])
         return (value['enabled'] and _timestamp(value['cutoff']) <= now < _timestamp(value['expires_at'])
                 and len(value['reservations']) < value['max_jobs'])
 
@@ -331,7 +365,7 @@ def run_new_article_worker(repo, state, *, registry, object_store, model_client,
     stop = stop or Event()
     worker_id = uuid4()
     with state.worker_lock():
-        while not stop.is_set() and state.active(state.read(), database_now(repo)):
+        while not stop.is_set() and state.running(state.read(), database_now(repo)):
             if stop.is_set():
                 break
             dispatch_next(repo, state, worker_id=worker_id, registry=registry,
@@ -346,10 +380,11 @@ def main(argv=None):
     control.add_argument('--initialize', action='store_true')
     control.add_argument('--enable', action='store_true')
     control.add_argument('--disable', action='store_true')
+    parser.add_argument('--continuous', action='store_true', help='Require opt-in rolling-quota schema2 state')
     args = parser.parse_args(argv)
     try:
         source_sha = os.environ.get('AUTODATA_NEW_ARTICLE_SOURCE_SHA', '')
-        with RolloutState(source_sha=source_sha) as state:
+        with RolloutState(source_sha=source_sha, continuous=args.continuous) as state:
             from .worker import ArticleRepository, ArticleObjectStore
             repo = ArticleRepository()
             if args.initialize:

@@ -145,3 +145,136 @@ def test_stop_while_state_lock_waited_prevents_reservation(state):
     stop=Event();stop.set()
     assert state.reserve(uuid4(),NOW,stop=stop) is False
     assert state.read()['reservations']==[]
+
+
+@pytest.fixture
+def continuous_state(tmp_path):
+    directory=tmp_path/'continuous';directory.mkdir(mode=0o700)
+    with worker.RolloutState(directory,source_sha=SHA,owner_uid=os.getuid(),continuous=True) as state:
+        state.initialize(NOW);yield state
+
+
+def test_continuous_initialization_and_mode_are_explicit(continuous_state,state):
+    value=continuous_state.read()
+    assert value['schema']==2 and value['enabled'] is False and 'expires_at' not in value
+    assert value['cutoff']==NOW.isoformat() and value['reservations']==[]
+    with pytest.raises(worker.WorkerBlocked):continuous_state.initialize(NOW)
+    with worker.RolloutState(continuous_state.directory,source_sha=SHA,owner_uid=os.getuid()) as finite:
+        with pytest.raises(worker.WorkerBlocked):finite.read()
+    state.initialize(NOW)
+    with worker.RolloutState(state.directory,source_sha=SHA,owner_uid=os.getuid(),continuous=True) as sustained:
+        with pytest.raises(worker.WorkerBlocked):sustained.read()
+
+
+def test_continuous_rolling_boundary_keeps_all_spent_ids(continuous_state):
+    state=continuous_state;state.set_enabled(True);jobs=[uuid4() for _ in range(10)]
+    for job in jobs:assert state.reserve(job,NOW)
+    assert not state.reserve(uuid4(),NOW+timedelta(hours=24,microseconds=-1))
+    assert state.reserve(uuid4(),NOW+timedelta(hours=24))
+    state.set_enabled(False);assert not state.reserve(uuid4(),NOW+timedelta(days=3));state.set_enabled(True)
+    with worker.RolloutState(state.directory,source_sha=SHA,owner_uid=os.getuid(),continuous=True) as reopened:
+        assert len(reopened.read()['reservations'])==11
+        assert not reopened.reserve(jobs[0],NOW+timedelta(days=3))
+        assert reopened.reserve(uuid4(),NOW+timedelta(days=3))
+
+
+def test_continuous_concurrent_reservations_cannot_overspend(continuous_state):
+    from concurrent.futures import ThreadPoolExecutor
+    continuous_state.set_enabled(True)
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        results=list(pool.map(lambda _:continuous_state.reserve(uuid4(),NOW),range(16)))
+    assert sum(results)==10 and len(continuous_state.read()['reservations'])==10
+
+
+@pytest.mark.parametrize('mutation',['historical_burst','hidden_future','clockback','duplicate','providers','extra'])
+def test_continuous_rejects_bad_ledger(continuous_state,mutation):
+    state=continuous_state;state.set_enabled(True);state.reserve(uuid4(),NOW);raw=state.read()
+    if mutation=='historical_burst':raw['reservations']=[{'job_id':str(uuid4()),'reserved_at':NOW.isoformat()} for _ in range(11)]
+    elif mutation=='hidden_future':raw['reservations']=[{'job_id':str(uuid4()),'reserved_at':(NOW+timedelta(hours=1)).isoformat()},raw['reservations'][0]]
+    elif mutation=='clockback':pass
+    elif mutation=='duplicate':raw['reservations']*=2
+    elif mutation=='providers':raw['providers']=['bankone']
+    else:raw['unexpected']=True
+    (state.directory/'rollout.json').write_text(json.dumps(raw))
+    with pytest.raises(worker.WorkerBlocked):state.reserve(uuid4(),NOW-timedelta(microseconds=1) if mutation=='clockback' else NOW+timedelta(days=3) if mutation=='historical_burst' else NOW+timedelta(seconds=1))
+
+
+def test_continuous_unsorted_history_does_not_change_stored_order(continuous_state):
+    state=continuous_state;state.set_enabled(True);raw=state.read()
+    raw['reservations']=[{'job_id':str(uuid4()),'reserved_at':(NOW+timedelta(hours=h)).isoformat()} for h in [48,0,24]]
+    (state.directory/'rollout.json').write_text(json.dumps(raw))
+    assert state.reserve(uuid4(),NOW+timedelta(hours=49))
+    assert state.read()['reservations'][:3]==raw['reservations']
+
+
+@pytest.mark.parametrize('continuous,limit',[(False,16384),(True,2*1024*1024)])
+def test_schema_specific_state_byte_ceiling(tmp_path,continuous,limit):
+    directory=tmp_path/'bytes';directory.mkdir(mode=0o700)
+    with worker.RolloutState(directory,source_sha=SHA,owner_uid=os.getuid(),continuous=continuous) as state:
+        state.initialize(NOW);path=directory/'rollout.json';raw=path.read_bytes()
+        path.write_bytes(raw+b' '*(limit-len(raw)+1))
+        with pytest.raises(worker.WorkerBlocked):state.read()
+
+
+def test_continuous_permanent_ledger_ceiling(continuous_state):
+    state=continuous_state;state.set_enabled(True);raw=state.read()
+    raw['reservations']=[{'job_id':str(uuid4()),'reserved_at':(NOW+timedelta(hours=3*i)).isoformat()} for i in range(10000)]
+    (state.directory/'rollout.json').write_text(json.dumps(raw))
+    assert len(state.read()['reservations'])==10000
+    with pytest.raises(worker.WorkerBlocked):state.reserve(uuid4(),NOW+timedelta(hours=30001))
+    raw['reservations'].append({'job_id':str(uuid4()),'reserved_at':(NOW+timedelta(hours=30002)).isoformat()})
+    (state.directory/'rollout.json').write_text(json.dumps(raw))
+    with pytest.raises(worker.WorkerBlocked):state.read()
+
+
+def test_continuous_quota_waits_and_resumes(continuous_state,monkeypatch):
+    state=continuous_state;state.set_enabled(True)
+    for _ in range(10):assert state.reserve(uuid4(),NOW)
+    from threading import Event
+    stop=Event();clock=[NOW];observed=[]
+    class Stop:
+        def is_set(self):return stop.is_set()
+        def wait(self,seconds):
+            assert seconds==2
+            if clock[0]==NOW:clock[0]=NOW+timedelta(hours=24)
+            else:stop.set()
+    monkeypatch.setattr(worker,'database_now',lambda repo:clock[0])
+    monkeypatch.setattr(worker,'dispatch_next',lambda *a,**k:observed.append(state.reserve(uuid4(),clock[0])))
+    worker.run_new_article_worker(None,state,registry={},object_store=None,model_client=object(),stop=Stop())
+    assert observed==[False,True] and len(state.read()['reservations'])==11
+
+
+def test_continuous_preview_unit_is_inert_and_throttled():
+    unit=(Path(__file__).parents[3]/'infra/deploy/preview/autodata-new-article-worker.service').read_text()
+    for text in ['--continuous','Restart=on-failure','RestartSec=5','StartLimitIntervalSec=60','StartLimitBurst=3','WantedBy=multi-user.target','TimeoutStopSec=80','--read-only','--cap-drop ALL','--security-opt no-new-privileges','StateDirectoryMode=0700']:
+        assert text in unit
+    assert 'ExecStartPre=' not in unit and '--initialize' not in unit and '--enable' not in unit
+
+
+def test_continuous_clock_before_activation_fails_closed(continuous_state):
+    continuous_state.set_enabled(True)
+    with pytest.raises(worker.WorkerBlocked):continuous_state.reserve(uuid4(),NOW-timedelta(microseconds=1))
+    assert continuous_state.read()['reservations']==[]
+
+
+def test_continuous_fsync_uncertainty_keeps_permanent_reservation(continuous_state,monkeypatch):
+    state=continuous_state;state.set_enabled(True);job=uuid4();original=os.fsync;count=0
+    def fail_directory(fd):
+        nonlocal count
+        count+=1
+        if count==2:raise OSError('fixture directory fsync')
+        return original(fd)
+    with monkeypatch.context() as patch:
+        patch.setattr(os,'fsync',fail_directory)
+        with pytest.raises(OSError):state.reserve(job,NOW)
+    assert not state.reserve(job,NOW+timedelta(days=2))
+    assert state.read()['reservations'][0]['job_id']==str(job)
+
+
+def test_continuous_disabled_at_quota_stops_without_dispatch(continuous_state,monkeypatch):
+    state=continuous_state;state.set_enabled(True)
+    for _ in range(10):assert state.reserve(uuid4(),NOW)
+    state.set_enabled(False)
+    monkeypatch.setattr(worker,'database_now',lambda repo:NOW)
+    monkeypatch.setattr(worker,'dispatch_next',lambda *a,**k:pytest.fail('disabled dispatched'))
+    assert worker.run_new_article_worker(None,state,registry={},object_store=None,model_client=object())==0
