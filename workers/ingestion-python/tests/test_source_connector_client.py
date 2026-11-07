@@ -626,7 +626,7 @@ class SourceConnectorClientTests(unittest.TestCase):
                 self.assertEqual(result.provenance, ())
 
     def test_parent_absence_requires_complete_successful_enumeration(self):
-        cases = ("missing_cursor", "repeated_cursor", "malformed_cursor", "malformed_body",
+        cases = ("missing_field", "missing_cursor", "repeated_cursor", "malformed_cursor", "malformed_body",
                  "401", "403", "404", "429", "503", "timeout")
         for case in cases:
             with self.subTest(case=case):
@@ -639,6 +639,10 @@ class SourceConnectorClientTests(unittest.TestCase):
                         raise URLError(TimeoutError())
                     if case == "malformed_body":
                         return _Response(b"{", url=request.full_url)
+                    if case == "missing_field":
+                        return _Response(_envelope("banktwo", scope="makes", complete=True, items=[{
+                            "opaque_ref": "make:ford", "label": "Ford", "year": 2027,
+                        }]), url=request.full_url)
                     cursor = {"missing_cursor": None, "repeated_cursor": "same", "malformed_cursor": 123}[case]
                     return _Response(_envelope(
                         "banktwo", scope="makes", complete=False, next_cursor=cursor, items=[],
@@ -653,7 +657,7 @@ class SourceConnectorClientTests(unittest.TestCase):
                 self.assertIn("provider", result.missing_scopes)
                 self.assertEqual(result.provenance, ())
 
-    def test_parent_absence_after_child_page_does_not_erase_rows_or_complete_scope(self):
+    def test_parent_absence_after_child_page_is_rejected_as_contradictory(self):
         def open_request(request, timeout):
             parsed = urlsplit(request.full_url)
             if parsed.path.endswith("/models"):

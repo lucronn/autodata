@@ -266,7 +266,9 @@ class SourceConnectorClient:
             pages.append(page)
             for item in page.body["items"]:
                 label = item.get(field)
-                if isinstance(label, str) and slug(label) == target:
+                if not isinstance(label, str) or not slug(label):
+                    raise SourceConnectorError("INVALID_UPSTREAM_RESPONSE")
+                if slug(label) == target:
                     matches.add(label)
             if page.complete:
                 if not matches:
