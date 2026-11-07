@@ -7,13 +7,13 @@
     "docs/verification/2026-11-07-catalog-consumer-reactivation.md"
   ],
   "todo": [
-    "Bind the exact merged PR366 source/tree/archive and successful HTTP rollout receipt, passing CI and unchanged installed catalog unit/environment in a release checkpoint.",
-    "Review and mock-test a private one-start operator with exact 14-name env validation, allowing only empty inherited sensitive names and rejecting any sensitive value.",
-    "After exact synchronized gate/preflight and coordinator dispatch, atomically advance only the stopped catalog source config, start once, and retain running after bounded singleton/security/health acceptance.",
-    "On failure or interruption stop within independent recovery budget, restore original stopped source config, preserve job history, and append truthful outcome evidence."
+    "Bind merged PR366 source/HTTP receipt and preserve exact root0600 14-name env file plus original unit/image/security/boot configuration.",
+    "Review and mock-test one exact root-owned systemd drop-in overriding ExecStart only to add --env AUTODATA_MINIO_ROOT_PASSWORD=; preflight image-sensitive names before any mutation.",
+    "After synchronized pinned preflight and independent exact script/binding review plus coordinator dispatch, install exclusive drop-in, daemon-reload, atomically advance stopped source config, start once and retain only after bounded acceptance.",
+    "On failure or interruption stop within independent recovery budget, remove only this exact newly-created drop-in, daemon-reload, restore original stopped source config and append truthful outcome evidence."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-07T04:03:00Z",
+  "updated_at": "2026-11-07T04:03:47.301408Z",
   "release_binding": {
     "product_source_sha": "c9c58fcd74e67c07d7014497a6f7433f79cf2ae3",
     "product_tree_sha": "8e8221aac6577429da8877434679bcd573f8c3e8",
@@ -31,5 +31,12 @@
     "old_conf_sha256": "e7425e4553e01dc3106223e46b22b19c7894459922cc7bdcda6ad80bea9ad6a3",
     "env_sha256": "3e1f9aa46ac20bcf1cf3c16099307a7fde193c935fd7353c847aa826e17b63b7",
     "operator_sha256": "3e81a72224a2deb8a9bb7ea1e79898e28a9500a858bba3433f91ebd9efbcbe56"
+  },
+  "credential_clearance": {
+    "name": "AUTODATA_MINIO_ROOT_PASSWORD",
+    "value": "",
+    "dropin": "/etc/systemd/system/autodata-catalog-index-worker.service.d/90-catalog-credential-clear.conf",
+    "original_unit_sha256": "91ddccea1aac8d5ad0957ab868f42b0c39c65ce6f0b3c0a5539bd72879b6951d",
+    "preparation_only": true
   }
 }
