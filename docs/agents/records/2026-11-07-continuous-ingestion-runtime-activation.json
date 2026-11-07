@@ -1,0 +1,25 @@
+{
+  "goal": "Activate the exact merged opt-in schema2 on-demand worker with durable rolling10jobs/24h admission and boot/restart policy, preserve five spent jobs/all finite archives, and verify bounded initial safety without fabricated work.",
+  "plan_ref": "docs/superpowers/plans/2026-11-07-continuous-ingestion-runtime-activation.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/verification/2026-11-07-continuous-ingestion-runtime-activation.md",
+    "docs/agents/pre-implementation-gate.md"
+  ],
+  "todo": [
+    "After actual PR360 merge and successful current-head required CI, independently pin merged source/tree/archive/unit SHA, refresh stopped/database/archive anchors, synchronize Issue186/Project8/plan/canonical/record, commit/push and pass exact-base preflight before operator scripts.",
+    "Separately review/dispatch StageA: fresh identity-bound PG17 backup; exclusive archive of current disabled06a state/source.conf/installed finite unit; seal merged source, switch source.conf, initialize first schema2 disabled at DBclock activation with zero reservations, install exact reviewed unit/daemonreload only; review disabled result.",
+    "Separately review/dispatch StageB: exact disabled preparation/state/source/unit/env/history checks; enable schema2 admission+systemd boot and one start with bounded initial observation; leave enabled/running only on safety acceptance, else disable boot/admission and stop/verify with independent cleanup budgets. No operator jobs/grants/provider/model requests."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-07T00:59:34.875652+00:00",
+  "release_pins": {
+    "merged_source": "d18c9fedcf26f98957fc5948c21d2def60682ac2",
+    "tree": "9db04b19b123577e4286e07b4a02fb85638facb0",
+    "archive_sha256": "cdab8bd4c4e792712641228d65001cf97356521ac5457a00e5f29ae7d8a4f4c2",
+    "unit_sha256": "d8b59aad1e0638733a8e3d0cfc09353c912dbcd8f416bc712273b014303c4aca",
+    "required_ci": "reviewedfef8def232be3fae215986d486be535fd5026feb; merged2026-11-07T00:58:25Z; CIrun42318992474/requiredjob128238647215SUCCESS",
+    "gate": "this committed planning checkpoint; exactSHA/recordhash posted append-only to Issue186 and dedicated Project8 field after commit"
+  }
+}
