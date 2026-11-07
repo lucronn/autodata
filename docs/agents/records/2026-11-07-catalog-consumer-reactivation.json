@@ -13,7 +13,7 @@
     "On failure or interruption stop within independent recovery budget, remove only this exact newly-created drop-in, daemon-reload, restore original stopped source config and append truthful outcome evidence."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-07T04:06:58.189002Z",
+  "updated_at": "2026-11-07T04:07:26.491171Z",
   "release_binding": {
     "product_source_sha": "c9c58fcd74e67c07d7014497a6f7433f79cf2ae3",
     "product_tree_sha": "8e8221aac6577429da8877434679bcd573f8c3e8",
@@ -30,7 +30,7 @@
     "article_payload_sha256": "28112836b32789534c7043cccbccbdcc60d4aabe558f638e89318c1cfb280fa0",
     "old_conf_sha256": "e7425e4553e01dc3106223e46b22b19c7894459922cc7bdcda6ad80bea9ad6a3",
     "env_sha256": "3e1f9aa46ac20bcf1cf3c16099307a7fde193c935fd7353c847aa826e17b63b7",
-    "operator_sha256": "dde19a0b70f6bf4dc6bc01d78059305cd9dcf28975d46e8c75701a5491aad43a"
+    "operator_sha256": "d7445f2e0aa365f8f3f0e66e37f1548b462f6727d928c55fc3868ec89bb0a963"
   },
   "credential_clearance": {
     "name": "AUTODATA_MINIO_ROOT_PASSWORD",
