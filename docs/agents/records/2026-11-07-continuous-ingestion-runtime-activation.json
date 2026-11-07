@@ -13,7 +13,7 @@
     "Separately review/dispatch StageB: exact disabled preparation/state/source/unit/env/history checks; enable schema2 admission+systemd boot and one start with bounded initial observation; leave enabled/running only on safety acceptance, else disable boot/admission and stop/verify with independent cleanup budgets. No operator jobs/grants/provider/model requests."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-07T00:59:34.875652+00:00",
+  "updated_at": "2026-11-07T01:09:26.577921+00:00",
   "release_pins": {
     "merged_source": "d18c9fedcf26f98957fc5948c21d2def60682ac2",
     "tree": "9db04b19b123577e4286e07b4a02fb85638facb0",
@@ -21,5 +21,24 @@
     "unit_sha256": "d8b59aad1e0638733a8e3d0cfc09353c912dbcd8f416bc712273b014303c4aca",
     "required_ci": "reviewedfef8def232be3fae215986d486be535fd5026feb; merged2026-11-07T00:58:25Z; CIrun42318992474/requiredjob128238647215SUCCESS",
     "gate": "this committed planning checkpoint; exactSHA/recordhash posted append-only to Issue186 and dedicated Project8 field after commit"
+  },
+  "observed_outcome": {
+    "status": "sustained_idle_activation",
+    "independent_postflight": "PASS",
+    "observed_at": "2026-11-07T01:08:37.650164+00:00",
+    "result_ref": "/var/lib/autodata/new-article-worker-evidence/continuous-schema2-first-activation/stage-b-success.json",
+    "result_sha256": "0eea74af18b2631c88e513d2997f13c16bfe3d1f44056dc0da9892020f15a5dc",
+    "rollout_id": "5fe18cfb-8092-4dd8-9291-d9e1519c89dc",
+    "activation_cutoff": "2026-11-07T01:03:50.073535+00:00",
+    "initial_observation_seconds": 99.641,
+    "worker_running": true,
+    "admission_enabled": true,
+    "boot_enabled": true,
+    "reservations": 0,
+    "fresh_user_jobs": 0,
+    "new_model_attempts": 0,
+    "paid_browse_verified": false,
+    "runtime_authority": "initial operator sequence consumed; continuous on-demand operation remains enabled under reviewed schema2 policy; no extra controls/reset/replay authorized",
+    "independent_review_sha256": "17bcc000fe7414bbb24eac729809fcffab2f7c061dc984ed0322a12740c9b192"
   }
 }
