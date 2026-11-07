@@ -13,7 +13,7 @@
     "On failure or interruption stop within independent recovery budget, remove only this exact newly-created drop-in, daemon-reload, restore original stopped source config and append truthful outcome evidence."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-07T04:05:08.434481Z",
+  "updated_at": "2026-11-07T04:05:37.970153Z",
   "release_binding": {
     "product_source_sha": "c9c58fcd74e67c07d7014497a6f7433f79cf2ae3",
     "product_tree_sha": "8e8221aac6577429da8877434679bcd573f8c3e8",
@@ -30,7 +30,7 @@
     "article_payload_sha256": "28112836b32789534c7043cccbccbdcc60d4aabe558f638e89318c1cfb280fa0",
     "old_conf_sha256": "e7425e4553e01dc3106223e46b22b19c7894459922cc7bdcda6ad80bea9ad6a3",
     "env_sha256": "3e1f9aa46ac20bcf1cf3c16099307a7fde193c935fd7353c847aa826e17b63b7",
-    "operator_sha256": "3e81a72224a2deb8a9bb7ea1e79898e28a9500a858bba3433f91ebd9efbcbe56"
+    "operator_sha256": "dde19a0b70f6bf4dc6bc01d78059305cd9dcf28975d46e8c75701a5491aad43a"
   },
   "credential_clearance": {
     "name": "AUTODATA_MINIO_ROOT_PASSWORD",
@@ -38,6 +38,7 @@
     "dropin": "/etc/systemd/system/autodata-catalog-index-worker.service.d/90-catalog-credential-clear.conf",
     "original_unit_sha256": "91ddccea1aac8d5ad0957ab868f42b0c39c65ce6f0b3c0a5539bd72879b6951d",
     "preparation_only": true,
-    "interruption_safe_installation": "atomic ignored temporary, signal mask, exact owned device/inode rollback; protected source-config temporary cleanup"
+    "interruption_safe_installation": "atomic ignored temporary, signal mask, exact owned device/inode rollback; protected source-config temporary cleanup",
+    "dropin_sha256": "1c5c0edb3b502bcc309ee3d05655ad9ce56126febffb89ec0e7472c97fb17f77"
   }
 }
