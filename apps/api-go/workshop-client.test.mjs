@@ -783,10 +783,11 @@ function articleIndexHarness(responses) {
   const navigation = new NavigationGeneration();
   const nodes = new Map();
   function element(tag, text = '', className = '') {
-    return { tag, textContent: text, className, hidden: false, value: '', dataset: {}, children: [], events: {},
-      append(child) { this.children.push(child); },
+    return { tag, textContent: text, className, hidden: false, value: '', dataset: {}, attributes: {}, children: [], events: {},
+      append(...children) { this.children.push(...children); },
       replaceChildren(...children) { this.children = children; },
       addEventListener(name, callback) { this.events[name] = callback; },
+      setAttribute(name, value) { this.attributes[name] = String(value); },
       removeAttribute() {},
     };
   }
@@ -798,7 +799,7 @@ function articleIndexHarness(responses) {
   const context = {
     $, element, URL, location: { href: 'https://cars.example/workshop?vehicle=B' },
     document: { body: { dataset: {} } },
-    quote: null, articles: [], access: '', retryAction: null, filterArticles,
+    quote: null, articles: [], indexComplete: false, indexFailed: false, access: '', retryAction: null, filterArticles,
     stage() {}, renderPurchase() {}, show() {},
     articlePath: () => '/v1/catalog/vehicles/B/articles',
     requestJSON(path, options) {
@@ -893,6 +894,52 @@ test('nonempty explicit completed article index is ready after one read', async 
   await h.load();
   assert.equal(h.requests.length, 1);
   assert.equal(h.$('completion-status').textContent, 'Article index ready.');
+});
+
+test('article index type labels show readable kinds beside titles without changing links', async () => {
+  const h = articleIndexHarness([indexResponse('completed', { complete: true, items: [
+    { id: 'source/procedure', title: 'Replace oil pump', kind: 'procedure' },
+    { id: 'source/bulletin', title: 'Oil pressure notice', kind: 'technical_service_bulletin' },
+    { id: 'source/other', title: 'Legacy entry', kind: 'legacy-content' },
+  ] })]);
+  await h.load();
+  const list = h.$('articles').children[0];
+  assert.equal(list.tag, 'ul');
+  assert.equal(list.attributes.role, 'list');
+  assert.deepEqual(list.children.map(row => row.children[0].children.map(span => span.textContent)), [
+    ['Replace oil pump', 'Procedure'],
+    ['Oil pressure notice', 'Technical service bulletin'],
+    ['Legacy entry', 'Legacy content'],
+  ]);
+  assert.equal(new URL(list.children[0].children[0].href, 'https://cars.example').searchParams.get('article'), 'source/procedure');
+});
+
+test('article index empty states distinguish pending, completed empty and no search matches', async () => {
+  const pending = articleIndexHarness([indexResponse('pending', { items: [] })]);
+  await pending.load();
+  assert.equal(pending.$('no-results').hidden, false);
+  assert.match(pending.$('no-results').textContent, /still being prepared/i);
+
+  const empty = articleIndexHarness([indexResponse('completed', { complete: true, items: [] })]);
+  await empty.load();
+  assert.equal(empty.$('no-results').hidden, false);
+  assert.match(empty.$('no-results').textContent, /no articles are currently available/i);
+
+  const search = articleIndexHarness([indexResponse('completed', { complete: true, items: [
+    { id: 'source/pump', title: 'Oil pump', kind: 'procedure' },
+  ] })]);
+  await search.load();
+  search.$('search').value = 'alternator';
+  search.context.renderArticles();
+  assert.equal(search.$('no-results').hidden, false);
+  assert.match(search.$('no-results').textContent, /no articles match this search/i);
+});
+
+test('article index terminal failure does not claim it is still being prepared', async () => {
+  const h = articleIndexHarness([indexResponse('failed', { items: [] })]);
+  await h.load();
+  assert.equal(h.$('no-results').hidden, false);
+  assert.match(h.$('no-results').textContent, /could not be prepared/i);
 });
 
 test('actual status DOM clears vehicle A completion immediately before vehicle B pending or terminal read resolves', async () => {
