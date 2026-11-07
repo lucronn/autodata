@@ -1,0 +1,17 @@
+{
+  "goal": "Activate and retain the existing catalog-only consumer on the merged PR366 source after its HTTP rollout, so ordinary new configuration index jobs progress without article/model or paid-grant bypass.",
+  "plan_ref": "docs/superpowers/plans/2026-11-07-catalog-consumer-reactivation.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/verification/2026-11-07-catalog-consumer-reactivation.md"
+  ],
+  "todo": [
+    "Bind the exact merged PR366 source/tree/archive and successful HTTP rollout receipt, passing CI and unchanged installed catalog unit/environment in a release checkpoint.",
+    "Review and mock-test a private one-start operator with exact 14-name env validation, allowing only empty inherited sensitive names and rejecting any sensitive value.",
+    "After exact synchronized gate/preflight and coordinator dispatch, atomically advance only the stopped catalog source config, start once, and retain running after bounded singleton/security/health acceptance.",
+    "On failure or interruption stop within independent recovery budget, restore original stopped source config, preserve job history, and append truthful outcome evidence."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-07T03:40:00Z"
+}
