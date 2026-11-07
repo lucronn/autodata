@@ -312,7 +312,7 @@ func (s *memoryCatalogStore) Models(_ context.Context, _ Principal, year int, ma
 	defer s.mu.RUnlock()
 	seen := map[string]CatalogModel{}
 	for _, record := range s.configurations {
-		if record.Year == year && strings.EqualFold(record.Make, makeName) && (region == "" || strings.EqualFold(record.Region, region)) {
+		if record.Year == year && catalogSelectorMatches(record.Make, makeName) && (region == "" || strings.EqualFold(record.Region, region)) {
 			name := catalogLabel(record.Model)
 			seen[catalogSlug(name)] = CatalogModel{ID: catalogSlug(name), Name: name}
 		}
@@ -330,7 +330,7 @@ func (s *memoryCatalogStore) Configurations(_ context.Context, _ Principal, year
 	defer s.mu.RUnlock()
 	result := []CatalogConfiguration{}
 	for _, record := range s.configurations {
-		if record.Year == year && strings.EqualFold(record.Make, makeName) && strings.EqualFold(record.Model, model) && (region == "" || strings.EqualFold(record.Region, region)) {
+		if record.Year == year && catalogSelectorMatches(record.Make, makeName) && catalogSelectorMatches(record.Model, model) && (region == "" || strings.EqualFold(record.Region, region)) {
 			result = append(result, record)
 		}
 	}
@@ -345,10 +345,10 @@ func (s *memoryCatalogStore) CatalogScopeComplete(_ context.Context, _ Principal
 		if record.Year != year || (region != "" && !strings.EqualFold(record.Region, region)) {
 			continue
 		}
-		if scope != "makes" && !strings.EqualFold(record.Make, makeName) {
+		if scope != "makes" && !catalogSelectorMatches(record.Make, makeName) {
 			continue
 		}
-		if scope == "configurations" && !strings.EqualFold(record.Model, model) {
+		if scope == "configurations" && !catalogSelectorMatches(record.Model, model) {
 			continue
 		}
 		return true, nil
@@ -442,6 +442,12 @@ func catalogSlug(value string) string {
 	return slugVehicle(value)
 }
 
+// Public selector IDs discard punctuation as well as letter case. Match the same
+// normalized value used to emit IDs, while preserving literal-label lookup.
+func catalogSelectorMatches(label, selector string) bool {
+	return strings.EqualFold(label, selector) || (catalogSlug(selector) != "" && catalogSlug(label) == catalogSlug(selector))
+}
+
 func catalogMakeLabel(value string) string {
 	value = strings.TrimSpace(value)
 	key := strings.ToLower(strings.Join(strings.Fields(strings.ReplaceAll(value, "-", " ")), " "))
@@ -529,16 +535,16 @@ func (s *postgresCatalogStore) Makes(ctx context.Context, _ Principal, year int,
 func (s *postgresCatalogStore) Models(ctx context.Context, _ Principal, year int, makeName, region string) ([]CatalogModel, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT DISTINCT model FROM vehicle_identity_bases
-		WHERE model_year = $1 AND LOWER(make) = LOWER($2) AND ($3 = '' OR region = $3) AND reviewer_state <> 'rejected'
+		WHERE model_year = $1 AND (LOWER(make) = LOWER($2) OR ($4 <> '' AND TRIM(BOTH '-' FROM REGEXP_REPLACE(LOWER(make), '[^a-z0-9]+', '-', 'g')) = $4)) AND ($3 = '' OR region = $3) AND reviewer_state <> 'rejected'
 		  AND model NOT LIKE '\_%'
 		UNION
 		SELECT item->>'model' AS model
 		FROM vehicle_catalog_hydration_scopes hydration,
 		     jsonb_array_elements(hydration.selector_rows) AS item
 		WHERE hydration.scope = 'models' AND hydration.model_year = $1
-		  AND LOWER(hydration.make) = LOWER($2) AND ($3 = '' OR hydration.region = $3)
+		  AND (LOWER(hydration.make) = LOWER($2) OR ($4 <> '' AND TRIM(BOTH '-' FROM REGEXP_REPLACE(LOWER(hydration.make), '[^a-z0-9]+', '-', 'g')) = $4)) AND ($3 = '' OR hydration.region = $3)
 		  AND COALESCE(item->>'model', '') <> '' AND item->>'model' NOT LIKE '\_%'
-		ORDER BY model`, year, makeName, region)
+		ORDER BY model`, year, makeName, region, catalogSlug(makeName))
 	if err != nil {
 		return nil, err
 	}
@@ -569,10 +575,11 @@ func (s *postgresCatalogStore) Configurations(ctx context.Context, _ Principal, 
 		       vib.reviewer_state <> 'rejected' AND vc.reviewer_state <> 'rejected'
 		FROM vehicle_configurations vc
 		JOIN vehicle_identity_bases vib ON vib.vehicle_identity_base_id = vc.vehicle_identity_base_id
-		WHERE vib.model_year = $1 AND LOWER(vib.make) = LOWER($2) AND LOWER(vib.model) = LOWER($3)
+		WHERE vib.model_year = $1 AND (LOWER(vib.make) = LOWER($2) OR ($5 <> '' AND TRIM(BOTH '-' FROM REGEXP_REPLACE(LOWER(vib.make), '[^a-z0-9]+', '-', 'g')) = $5))
+		  AND (LOWER(vib.model) = LOWER($3) OR ($6 <> '' AND TRIM(BOTH '-' FROM REGEXP_REPLACE(LOWER(vib.model), '[^a-z0-9]+', '-', 'g')) = $6))
 		  AND ($4 = '' OR vib.region = $4)
 		  AND vib.reviewer_state <> 'rejected' AND vc.reviewer_state <> 'rejected'
-		ORDER BY vc.vehicle_configuration_id`, year, makeName, model, region)
+		ORDER BY vc.vehicle_configuration_id`, year, makeName, model, region, catalogSlug(makeName), catalogSlug(model))
 	if err != nil {
 		return nil, err
 	}
@@ -605,8 +612,8 @@ func (s *postgresCatalogStore) CatalogScopeComplete(ctx context.Context, _ Princ
 			SELECT 1
 			FROM vehicle_catalog_hydration_scopes
 			WHERE scope = $1 AND model_year = $2
-			  AND ($3 = '' OR LOWER(make) = LOWER($3))
-			  AND ($4 = '' OR LOWER(model) = LOWER($4))
+			  AND ($3 = '' OR LOWER(make) = LOWER($3) OR ($7 <> '' AND TRIM(BOTH '-' FROM REGEXP_REPLACE(LOWER(make), '[^a-z0-9]+', '-', 'g')) = $7))
+			  AND ($4 = '' OR LOWER(model) = LOWER($4) OR ($8 <> '' AND TRIM(BOTH '-' FROM REGEXP_REPLACE(LOWER(model), '[^a-z0-9]+', '-', 'g')) = $8))
 			  AND ($5 = '' OR region = $5)
 			  AND ($1 = 'configurations' OR completion_version = 1)
 		)
@@ -618,7 +625,7 @@ func (s *postgresCatalogStore) CatalogScopeComplete(ctx context.Context, _ Princ
 			  AND sync.status = 'completed'
 			  AND scope_row.status = 'completed'
 			  AND scope_row.scope_key LIKE $6 || '%'
-		)`, scope, year, makeName, model, region, prefix).Scan(&complete)
+		)`, scope, year, makeName, model, region, prefix, catalogSlug(makeName), catalogSlug(model)).Scan(&complete)
 	return complete, err
 }
 
