@@ -13,7 +13,7 @@
     "On failure or interruption stop within independent recovery budget, remove only this exact newly-created drop-in, daemon-reload, restore original stopped source config and append truthful outcome evidence."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-07T04:03:47.301408Z",
+  "updated_at": "2026-11-07T04:05:08.434481Z",
   "release_binding": {
     "product_source_sha": "c9c58fcd74e67c07d7014497a6f7433f79cf2ae3",
     "product_tree_sha": "8e8221aac6577429da8877434679bcd573f8c3e8",
@@ -37,6 +37,7 @@
     "value": "",
     "dropin": "/etc/systemd/system/autodata-catalog-index-worker.service.d/90-catalog-credential-clear.conf",
     "original_unit_sha256": "91ddccea1aac8d5ad0957ab868f42b0c39c65ce6f0b3c0a5539bd72879b6951d",
-    "preparation_only": true
+    "preparation_only": true,
+    "interruption_safe_installation": "atomic ignored temporary, signal mask, exact owned device/inode rollback; protected source-config temporary cleanup"
   }
 }
