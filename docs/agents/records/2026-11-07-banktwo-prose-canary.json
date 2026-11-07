@@ -1,0 +1,18 @@
+{
+  "goal": "Verify one fresh prose-bearing Banktwo article through bounded source-only capture, then separately reviewed at-most-one Mercury3 rewrite with lexical copy rejection before publication.",
+  "plan_ref": "docs/superpowers/plans/2026-11-07-banktwo-prose-canary.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/verification/2026-11-07-banktwo-prose-canary.md",
+    "docs/agents/pre-implementation-gate.md"
+  ],
+  "todo": [
+    "Commit and push this docs-only checkpoint; synchronize Issue186 and dedicated Project8 index; pass exact-base machine preflight and independent exact script review before runtime mutation.",
+    "Capture only untouched Banktwo article677ddc90-028a-5e48-aa54-fc363dfe0834 under the current schema2 ledger reservation and cap1, persist source and normalized input, park without model or publication, then restore the unchanged continuous service.",
+    "Inspect metadata-only source/slot evidence; only after independent stageA receipt and exact stageB script review permit at most one Mercury3 call on that same new unspent job, rejecting copied prose before publication and preserving source fallback.",
+    "Verify exact persisted source/protected/response/publication bindings, lexical and slot coverage, no historical changes, unchanged quota and immutable archives; preserve all failed evidence and synchronize truthful outcome."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-07T01:16:26.652056+00:00"
+}
