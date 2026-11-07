@@ -496,6 +496,13 @@ func (s *postgresCatalogStore) Makes(ctx context.Context, _ Principal, year int,
 	rows, err := s.pool.Query(ctx, `
 		SELECT DISTINCT make FROM vehicle_identity_bases
 		WHERE model_year = $1 AND ($2 = '' OR region = $2) AND reviewer_state <> 'rejected'
+		UNION
+		SELECT item->>'make' AS make
+		FROM vehicle_catalog_hydration_scopes hydration,
+		     jsonb_array_elements(hydration.selector_rows) AS item
+		WHERE hydration.scope = 'makes' AND hydration.model_year = $1
+		  AND ($2 = '' OR hydration.region = $2)
+		  AND COALESCE(item->>'make', '') <> ''
 		ORDER BY make`, year, region)
 	if err != nil {
 		return nil, err
@@ -524,6 +531,13 @@ func (s *postgresCatalogStore) Models(ctx context.Context, _ Principal, year int
 		SELECT DISTINCT model FROM vehicle_identity_bases
 		WHERE model_year = $1 AND LOWER(make) = LOWER($2) AND ($3 = '' OR region = $3) AND reviewer_state <> 'rejected'
 		  AND model NOT LIKE '\_%'
+		UNION
+		SELECT item->>'model' AS model
+		FROM vehicle_catalog_hydration_scopes hydration,
+		     jsonb_array_elements(hydration.selector_rows) AS item
+		WHERE hydration.scope = 'models' AND hydration.model_year = $1
+		  AND LOWER(hydration.make) = LOWER($2) AND ($3 = '' OR hydration.region = $3)
+		  AND COALESCE(item->>'model', '') <> '' AND item->>'model' NOT LIKE '\_%'
 		ORDER BY model`, year, makeName, region)
 	if err != nil {
 		return nil, err
@@ -594,12 +608,13 @@ func (s *postgresCatalogStore) CatalogScopeComplete(ctx context.Context, _ Princ
 			  AND ($3 = '' OR LOWER(make) = LOWER($3))
 			  AND ($4 = '' OR LOWER(model) = LOWER($4))
 			  AND ($5 = '' OR region = $5)
+			  AND ($1 = 'configurations' OR completion_version = 1)
 		)
 		OR EXISTS (
 			SELECT 1
 			FROM vehicle_catalog_sync_scopes scope_row
 			JOIN vehicle_catalog_syncs sync ON sync.vehicle_catalog_sync_id = scope_row.vehicle_catalog_sync_id
-			WHERE sync.provider = 'autoapitwo'
+			WHERE $1 = 'configurations' AND sync.provider = 'autoapitwo'
 			  AND sync.status = 'completed'
 			  AND scope_row.status = 'completed'
 			  AND scope_row.scope_key LIKE $6 || '%'
