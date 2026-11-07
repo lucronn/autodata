@@ -13,5 +13,19 @@
     "Run Go and browser checks, obtain independent review, push coherent commits and open a PR; coordinate release separately."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-07T03:33:24.772567+00:00"
+  "updated_at": "2026-11-07T04:21:31.900004+00:00",
+  "tracking_sync": {
+    "release_issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6702178675",
+    "project_field": "Selector failure UI reference",
+    "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2Bzho6itE",
+    "project_item": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "readback_exact": true
+  },
+  "product_source_sha": "cad924e88a77781af594fa7dbdc26dc43d4f27d8",
+  "product_tree_sha": "ce346ed13f70ed2b118afd13861bee8da820e6fd",
+  "reviewed_pr_head_sha": "35cac9f65a8604f3ac3962417fa2d5b2757b772c",
+  "independently_reviewed_code_head_sha": "2cf62b76be5a0115e5dc72072fb5d3cde1445ea8",
+  "pull_request_ref": "https://github.com/lucronn/autodata/pull/367",
+  "required_ci_ref": "https://github.com/lucronn/autodata/actions/runs/42336760347",
+  "release_status": "prepared-not-deployed"
 }

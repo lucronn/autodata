@@ -39,3 +39,9 @@ Fresh verification after the master merge:
 - Issue #186 and Project #8 dedicated Selector failure UI reference were read back.
 
 Required CI is running on the updated PR. Merge is authorized after required checks pass; deployment remains separately coordinated. No runtime operation was performed.
+
+## Merged product and release gate
+
+PR #367 merged as `cad924e88a77781af594fa7dbdc26dc43d4f27d8` (tree `ce346ed13f70ed2b118afd13861bee8da820e6fd`), equal to verified head `35cac9f65a8604f3ac3962417fa2d5b2757b772c`; `apps/api-go` is unchanged from independently reviewed `2cf62b76be5a0115e5dc72072fb5d3cde1445ea8`. [Required CI](https://github.com/lucronn/autodata/actions/runs/42336760347) passed all three required checks. The [Issue release checkpoint](https://github.com/lucronn/autodata/issues/186#issuecomment-6702178675) and dedicated Project field record the same product and todo.
+
+The production switch remains pending. It must use the immutable merged source, preserve the active catalog, ingestion and article workers, run merged-source Go/Node tests and served-byte/public selector canaries, and retain checkout disabled. A real paid article path and live timeout/completed-empty scopes are not asserted by this release gate.
