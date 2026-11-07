@@ -11,7 +11,7 @@ Canonical evidence: docs/verification/2026-11-07-banktwo-prose-canary.md
 Source base: d18c9fedcf26f98957fc5948c21d2def60682ac2
 
 ## Concrete todo
-- [ ] Commit and push this docs-only checkpoint; synchronize Issue186 and dedicated Project8 index; pass exact-base machine preflight and independent exact script review before runtime mutation.
+- [x] Commit and push this docs-only checkpoint; synchronize Issue186 and dedicated Project8 index; pass exact-base machine preflight and independent exact script review before runtime mutation.
 - [ ] Capture only untouched Banktwo article677ddc90-028a-5e48-aa54-fc363dfe0834 under the current schema2 ledger reservation and cap1, persist source and normalized input, park without model or publication, then restore the unchanged continuous service.
 - [ ] Inspect metadata-only source/slot evidence; only after independent stageA receipt and exact stageB script review permit at most one Mercury3 call on that same new unspent job, rejecting copied prose before publication and preserving source fallback.
 - [ ] Verify exact persisted source/protected/response/publication bindings, lexical and slot coverage, no historical changes, unchanged quota and immutable archives; preserve all failed evidence and synchronize truthful outcome.
@@ -31,3 +31,7 @@ Docs-only branch owns only this plan, canonical verification document and gate r
 ## Independent review correction before dispatch
 
 The first private operator draft was rejected before execution. Correct unsupported registry keyword to include_defaults=False and JSON-serialize UUID/date target metadata with default=str. Before any worker restart, query the exact target pointer even if ensure response was ambiguous; if its newly created job is pending, claim only that UUID and fail it without source/model dispatch; for an owned processing lease fail it; then verify zero attempts/candidates/publications and either parkedMODEL_NOT_CONFIGURED without schedule or terminaldead_letter. If safe non-dispatchability cannot be proved, leave the service stopped with an explicit failure receipt and alert coordinator. Never restart an enabled worker over an unreserved fresh pending canary. Existing ledger/reservations/archives remain unchanged except the one normal admitted reservation. No runtime attempt has occurred.
+
+## Recorded outcome; no further dispatch
+
+Exactly one fresh cap1 jobc4b323e2-36fd-4c68-9f3e-6d4bc9cb24a9 was allocated under reviewed scriptSHA a1899af4c00e64c7f8b7cb2f3da18a813c07d933dab0328089e3b1c744c30413 and pinned amended gate00fcfe5f53b60877edc1d5b4d66bb89d6e423b62. Source capture failed OSError; job is terminaldead_letter/nonretryable, no source/model/candidate/publication. Existing history/archives preserved, ledger0→1 selected reservation retained, unchanged continuous service restoredactive/running/enabled. Independent postflight verified containment. Provider calls unknown0..12; zero model attempts. Original exception type alone does not establish root cause; constructor-only read-only diagnosis passes. No retry/new candidate/StageB is permitted from this failed result. Canonical outcome/evidence: docs/verification/2026-11-07-banktwo-prose-canary.md. Full unique-rewrite goal remains unmet.
