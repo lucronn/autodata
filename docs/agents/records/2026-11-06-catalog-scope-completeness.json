@@ -17,5 +17,10 @@
   "updated_at": "2026-11-06T00:00:00Z",
   "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
   "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2Bzho6NU8",
-  "planning_source_sha": "0ebbd72c6c3ee29ec65255c207e129e539befa57"
+  "planning_source_sha": "0ebbd72c6c3ee29ec65255c207e129e539befa57",
+  "implementation_base_sha": "5511b18f2082103243011598c840bfbad532a5e9",
+  "implementation_sha": "eb09122109fd1933cee8afea71be8495a77d69ac",
+  "pull_request_ref": "https://github.com/lucronn/autodata/pull/363",
+  "verification_ref": "docs/verification/2026-11-06-catalog-scope-completeness.md",
+  "independent_review": "PASS: zero actionable findings at exact implementation SHA"
 }

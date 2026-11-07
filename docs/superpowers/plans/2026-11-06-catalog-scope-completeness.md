@@ -12,11 +12,11 @@
 `_persist_resolved_catalog_rows` drops makes/models without a full vehicle identity, while `_persist_hydration_scope` marks their scopes complete. Background deepening is deliberately bounded, so only a fraction becomes visible. `CacheFirstCatalogService.resolve` additionally treats any successful provider as complete and clears other failures. No connector-client edits, production mutation, deployment or fleet crawl is authorized in this implementation. Preserve generic non-selector service behavior and article lifecycle semantics. Limit new all-provider completeness semantics to makes/models.
 
 ## Concrete todo
-- [ ] Add failing regressions for sparse selector persistence, mixed provider outcomes, and legacy marker recovery.
-- [ ] Add migration 042 with selector_rows JSONB and completion_version; persist scoped selector rows and all-provider completion atomically.
-- [ ] Union durable sparse selectors into scoped API reads and ignore legacy completeness markers for makes/models.
-- [ ] Preserve existing single-flight and incomplete replay TTL; run focused Python/Go and isolated PostgreSQL checks.
-- [ ] Commit/push validated milestones, open PR, and record deployment order: connector fix, migration, worker/API restart, bounded GET healing.
+- [x] Add failing regressions for sparse selector persistence, mixed provider outcomes, and legacy marker recovery.
+- [x] Add migration 042 with selector_rows JSONB and completion_version; persist scoped selector rows and all-provider completion atomically.
+- [x] Union durable sparse selectors into scoped API reads and ignore legacy completeness markers for makes/models.
+- [x] Preserve existing single-flight and incomplete replay TTL; run focused Python/Go and isolated PostgreSQL checks.
+- [x] Commit/push validated milestones, open PR, and record deployment order: connector fix, migration, worker/API restart, bounded GET healing.
 
 ## Task 1: durable sparse selectors and completeness
 
@@ -33,3 +33,7 @@ Files: new db/migrations/042_catalog_selector_rows.sql; scripts/dev/migrate_sql.
 ## Task 2: verification and delivery
 
 Record exact checks, migration compatibility and operational limits in canonical doc and this plan. Existing API single-flight and worker 20-second incomplete replay TTL remain the request bounds; no broad backfill is introduced. Open a PR and synchronize exact SHA/evidence in the dedicated Project field and Issue comment. Deployment order is connector OSError fix first, migration 042, then worker/API with new queries; restart both to clear legacy process caches. A single ordinary GET for each affected scope heals that scope and subsequent reads use stored results. Root coordinator owns deployment and live verification.
+
+## Delivery evidence
+
+Implementation `eb09122109fd1933cee8afea71be8495a77d69ac`, independently reviewed PASS with zero actionable findings, is in PR https://github.com/lucronn/autodata/pull/363. The machine gate passed at planning base `5511b18f2082103243011598c840bfbad532a5e9`. Exact checks and fixture limits are recorded in `docs/verification/2026-11-06-catalog-scope-completeness.md`. Focused real PostgreSQL selectors and full Go API checks passed. The broader migration/service run passed 57 cases and encountered two S3 fixture setup errors; it is not claimed as a full passing run. Required CI and root-owned release verification remain delivery gates.
