@@ -1,0 +1,21 @@
+{
+  "goal": "Persist sparse make/model selectors and require all-provider completeness, healing legacy partial scopes on bounded catalog GETs.",
+  "plan_ref": "docs/superpowers/plans/2026-11-06-catalog-scope-completeness.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/provider-neutral-catalog-api.md"
+  ],
+  "todo": [
+    "Add failing regressions for sparse selector persistence, mixed provider outcomes, and legacy marker recovery.",
+    "Add migration 042 with selector_rows JSONB and completion_version; persist scoped selector rows and all-provider completion atomically.",
+    "Union durable sparse selectors into scoped API reads and ignore legacy completeness markers for makes/models.",
+    "Preserve existing single-flight and incomplete replay TTL; run focused Python/Go and isolated PostgreSQL checks.",
+    "Commit/push validated milestones, open PR, and record deployment order: connector fix, migration, worker/API restart, bounded GET healing."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-06T00:00:00Z",
+  "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+  "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2Bzho6NU8",
+  "planning_source_sha": "0ebbd72c6c3ee29ec65255c207e129e539befa57"
+}

@@ -117,3 +117,10 @@ Todo:
 - [x] Add minimal bounded/cancelable controls to the existing selector-deepening path, preserving rows and completeness semantics.
 - [ ] Run final full ingestion tests and record exact-SHA evidence.
 - [ ] Synchronize final evidence in GitHub; merge after required checks/review, without deploying.
+
+
+## Sparse selector completeness repair (2026-11-06)
+
+Planning: `docs/superpowers/plans/2026-11-06-catalog-scope-completeness.md`; synchronized record: `docs/agents/records/2026-11-06-catalog-scope-completeness.json`. Issue https://github.com/lucronn/autodata/issues/186 and Project https://github.com/users/lucronn/projects/8 track the same goal: persist sparse make/model selectors and require all-provider completeness, healing legacy partial scopes through bounded catalog GETs.
+
+Concrete todo: add failing sparse/provider/legacy regressions; migrate selector_rows and completion_version; persist selector rows atomically with completeness; union scoped API reads; retain existing single-flight/replay bounds; verify and push a reviewable PR. Deployment order: connector fix, migration, worker/API restart, then affected-scope GET healing. No fleet crawl or production action is part of this implementation.
