@@ -1189,3 +1189,110 @@ def test_new_article_worker_stop_after_reservation_prevents_exact_dispatch(runti
     with runtime.repo.connect() as conn:
         row=conn.execute('SELECT status,retry_count,max_attempts FROM source_fetch_jobs WHERE source_fetch_job_id=%s',(job,)).fetchone()
     assert row=={'status':'pending','retry_count':0,'max_attempts':1}
+
+
+class NoModelCalls:
+    def complete_json(self, prompt):
+        raise AssertionError('zero-slot server method must not call a model')
+
+
+def server_zero_slot_runtime(runtime, provider='bankone'):
+    ensure = automatic_runtime(runtime, provider)
+    runtime.servers[provider].body(b'<maintenance_schedule title="Cover references"><operation id="OP-1" name="Inspection"><component id="CP-1" name="Cover"><notes>Source inspection reference.</notes></component></operation></maintenance_schedule>', media_type='application/xml')
+    job = ensure().job_id
+    with runtime.repo.connect() as conn:
+        conn.execute('UPDATE source_fetch_jobs SET max_attempts=1 WHERE source_fetch_job_id=%s', (job,))
+    return job
+
+
+@pytest.mark.parametrize('provider', ['bankone', 'banktwo'])
+@pytest.mark.parametrize('missing_model', [False, True])
+def test_server_zero_slot_publishes_without_model_or_attempt(runtime, provider, missing_model):
+    from autodata_ingestion.article_lifecycle import run_article_worker_once
+    from autodata_ingestion import procedure_rewrite_auto as auto
+    job = server_zero_slot_runtime(runtime, provider)
+    assert run_article_worker_once(runtime.repo, worker_id=uuid4(), registry=runtime.registry,
+        object_store=runtime.objects, model_client=None if missing_model else NoModelCalls(), job_id=job)
+    state = runtime.read_current()
+    assert state['processing_state']=='completed' and state['review_status']=='UNREVIEWED'
+    with runtime.repo.connect() as conn:
+        row = conn.execute('SELECT * FROM canonical_article_revisions WHERE canonical_article_revision_id=%s', (state['canonical_revision_id'],)).fetchone()
+        assert conn.execute('SELECT count(*) AS n FROM canonical_article_rewrite_attempts').fetchone()['n']==0
+        assert conn.execute('SELECT count(*) AS n FROM canonical_article_reviews').fetchone()['n']==0
+        assert conn.execute('SELECT count(*) AS n FROM publication_events').fetchone()['n']==1
+    expected, metadata = auto.build_source_preserving_candidate(row['normalized_source_document'])
+    assert row['canonical_document']==expected and row['model_metadata']==metadata
+    assert row['validation_report']['transformation_method']==auto.SOURCE_PRESERVING_METHOD
+    assert row['validation_report']['model_calls']==0 and row['validation_report']['complete_rewrite'] is False
+    assert runtime.counters()=={'source':1,'asset':0,'model':0,'schedule':1}
+    assert not run_article_worker_once(runtime.repo, worker_id=uuid4(), registry=runtime.registry,
+        object_store=runtime.objects, model_client=NoModelCalls(), job_id=job)
+
+
+@pytest.mark.parametrize('point', ['after_source_preserving_candidate_commit', 'inside_publication'])
+def test_server_zero_slot_cap_one_crash_resume_exactly_once(runtime, point):
+    job = server_zero_slot_runtime(runtime)
+    runtime.pause(point);runtime.start_workers(1);runtime.await_barrier()
+    runtime.kill_worker();runtime.expire_lease(job);runtime.barrier=None
+    runtime.start_workers(2);revision=runtime.await_publication();runtime.stop_workers()
+    with runtime.repo.connect() as conn:
+        saved=conn.execute('SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s',(job,)).fetchone()
+        assert saved['status']=='completed' and saved['max_attempts']==saved['retry_count']==1
+        assert saved['lease_token']==2
+        assert conn.execute('SELECT count(*) AS n FROM canonical_article_rewrite_attempts').fetchone()['n']==0
+        assert conn.execute('SELECT count(*) AS n FROM canonical_article_revisions').fetchone()['n']==1
+        assert conn.execute('SELECT count(*) AS n FROM publication_events').fetchone()['n']==1
+    assert runtime.read_current()['canonical_revision_id']==revision
+    assert runtime.counters()=={'source':1,'asset':0,'model':0,'schedule':1}
+
+
+@pytest.mark.parametrize('mutation', ['metadata', 'extra_metadata', 'candidate', 'source_hash', 'source', 'attempt'])
+def test_server_zero_slot_publication_rejects_tampering(runtime, mutation):
+    from psycopg.types.json import Jsonb
+    from autodata_ingestion.article_lifecycle import run_article_job, _live
+    from autodata_ingestion.source_job_persistence import claim_source_job
+    from autodata_ingestion import article_lifecycle_store as store
+    from autodata_ingestion.article_lifecycle_types import digest_json
+    job=server_zero_slot_runtime(runtime)
+    lease=claim_source_job(runtime.repo, worker_id=uuid4(), job_id=job)
+    class Saved(Exception):pass
+    def hook(point):
+        if point=='after_source_preserving_candidate_commit':raise Saved()
+    with pytest.raises(Saved):run_article_job(runtime.repo,lease,registry=runtime.registry,
+        object_store=runtime.objects,model_client=NoModelCalls(),hooks=hook)
+    lease=_live(runtime.repo,lease);candidate=store.load_candidate(runtime.repo,lease)
+    validation=store.validate_saved_candidate(runtime.repo,lease,candidate);assert validation.passed
+    store.store_validation(runtime.repo,lease,validation)
+    with runtime.repo.connect() as conn:
+        if mutation in ('metadata','extra_metadata'):
+            metadata=dict(candidate['model_metadata']);metadata['model_calls' if mutation=='metadata' else 'prompt_hash']=1 if mutation=='metadata' else '0'*64
+            conn.execute('UPDATE canonical_article_revisions SET model_metadata=%s WHERE canonical_article_revision_id=%s',(Jsonb(metadata),candidate['canonical_article_revision_id']))
+        elif mutation=='candidate':
+            changed=deepcopy(candidate['canonical_document']);changed['blocks'][0]['text']='Unsupported-99'
+            conn.execute('UPDATE canonical_article_revisions SET canonical_document=%s,rewrite_result_hash=%s WHERE canonical_article_revision_id=%s',(Jsonb(changed),digest_json(changed),candidate['canonical_article_revision_id']))
+        elif mutation=='source_hash':
+            conn.execute('UPDATE canonical_article_revisions SET normalized_source_hash=%s WHERE canonical_article_revision_id=%s',('0'*64,candidate['canonical_article_revision_id']))
+        elif mutation=='source':
+            changed=deepcopy(candidate['normalized_source_document']);changed['blocks'][0]['text']='Changed heading'
+            conn.execute('UPDATE canonical_article_revisions SET normalized_source_document=%s,normalized_source_hash=%s WHERE canonical_article_revision_id=%s',(Jsonb(changed),digest_json(changed),candidate['canonical_article_revision_id']))
+        else:
+            conn.execute("INSERT INTO canonical_article_rewrite_attempts(rewrite_attempt_id,source_fetch_job_id,lease_token,attempt_number,provider,model,profile_version,prompt_hash,input_hash,status) VALUES (%s,%s,%s,1,'fixture','fixture',%s,%s,%s,'prepared')",(uuid4(),job,lease.token,'full-prose-auto-v1','0'*64,candidate['normalized_source_hash']))
+    with pytest.raises(ValueError):store.publish_article_revision(runtime.repo,lease,candidate['canonical_article_revision_id'])
+    assert runtime.read_current()['content_origin']=='source'
+    with runtime.repo.connect() as conn:assert conn.execute('SELECT count(*) AS n FROM publication_events').fetchone()['n']==0
+    assert runtime.model.calls==0
+
+
+def test_server_zero_slot_without_eligible_heading_keeps_source_and_never_calls_model(runtime):
+    from autodata_ingestion.article_lifecycle import run_article_worker_once
+    job=server_zero_slot_runtime(runtime)
+    runtime.servers['bankone'].body('<maintenance_schedule title="½"><operation id="OP-1" name="½"><component id="CP-1" name="½"><notes>Source note.</notes></component></operation></maintenance_schedule>'.encode(),media_type='application/xml')
+    assert run_article_worker_once(runtime.repo,worker_id=uuid4(),registry=runtime.registry,
+        object_store=runtime.objects,model_client=NoModelCalls(),job_id=job)
+    state=runtime.read_current()
+    assert state['content_origin']=='source' and state['processing_error_code']=='REWRITE_SOURCE_HEADING_REQUIRED'
+    with runtime.repo.connect() as conn:
+        assert conn.execute('SELECT count(*) AS n FROM canonical_article_rewrite_attempts').fetchone()['n']==0
+        assert conn.execute('SELECT count(*) AS n FROM canonical_article_revisions').fetchone()['n']==0
+        assert conn.execute('SELECT count(*) AS n FROM publication_events').fetchone()['n']==0
+    assert runtime.model.calls==0

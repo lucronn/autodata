@@ -259,3 +259,59 @@ def test_nonzero_slot_prompt_remains_exact_v2_bytes():
     prompt = build_auto_prompt(source, context=context)
     assert prompt == _build_auto_prompt_v2(source, context=context)
     assert sha256(prompt.encode()).hexdigest() == "d972668e5934f6f66dee2ead79ee6bd45e4ca3c98e4f8fb94128fa330cdd22b6"
+
+
+def test_server_zero_slot_candidate_is_exact_heading_and_preserves_source():
+    from autodata_ingestion import procedure_rewrite_auto as auto
+    source = zero_slot_document(); before = deepcopy(source)
+    candidate, metadata = auto.build_source_preserving_candidate(source)
+    heading = next(b['text'] for b in source['blocks'] if b['type'] == 'heading')
+    assert candidate['blocks'][0]['text'] == heading
+    restored = deepcopy(candidate); restored['blocks'].pop(0)
+    for block in restored['blocks']: block['source_order'] -= 1
+    assert restored == source == before
+    assert metadata == {"transformation_method":"source-preserving-zero-slot-v1",
+        "drafting_actor":"server", "model":"server-zero-slot-v1", "profile_version":PROFILE,
+        "model_calls":0, "model_dispatch_count":0, "complete_rewrite":False,
+        "source_hash":digest_json(source), "output_hash":digest_json(candidate)}
+    validation = auto.validate_source_preserving_candidate(source, candidate, metadata)
+    assert validation.passed and validation.report['complete_rewrite'] is False
+    assert validation.report['introduction_origin'] == 'source_heading'
+    assert validation.report['model_dispatch_count'] == 0
+    assert auto.build_source_preserving_candidate(source) == (candidate, metadata)
+
+
+def test_server_zero_slot_skips_ambiguous_heading_without_editing_it():
+    from autodata_ingestion import procedure_rewrite_auto as auto
+    source = zero_slot_document()
+    first = next(i for i,b in enumerate(source['blocks']) if b['type']=='heading')
+    source['blocks'][first]['text'] = 'Specification ½'
+    candidate, metadata = auto.build_source_preserving_candidate(source)
+    assert candidate['blocks'][0]['text'] == next(b['text'] for b in source['blocks'][first+1:] if b['type']=='heading')
+    assert candidate['blocks'][first+1]['text'] == 'Specification ½'
+    assert auto.validate_source_preserving_candidate(source, candidate, metadata).passed
+
+
+@pytest.mark.parametrize('kind', ['no_heading', 'ambiguous', 'oversize', 'nonzero'])
+def test_server_zero_slot_fails_closed_without_an_eligible_heading(kind):
+    from autodata_ingestion import procedure_rewrite_auto as auto
+    source = zero_slot_document()
+    if kind == 'nonzero': source = document('Remove the cover.')
+    else:
+        for b in source['blocks']:
+            if b['type'] == 'heading':
+                if kind == 'no_heading': b.update(type='callout', label='note'); b.pop('level', None)
+                else: b['text'] = 'Specification ½' if kind=='ambiguous' else 'A'*(1024*1024)
+    with pytest.raises(ValueError): auto.build_source_preserving_candidate(source)
+
+
+@pytest.mark.parametrize('mutation', ['candidate', 'source', 'method', 'extra', 'zero_boolean'])
+def test_server_zero_slot_revalidation_rejects_tampered_candidate_or_provenance(mutation):
+    from autodata_ingestion import procedure_rewrite_auto as auto
+    source = zero_slot_document(); candidate, metadata = auto.build_source_preserving_candidate(source)
+    if mutation == 'candidate': candidate['blocks'][0]['text'] += ' Unsupported-99'
+    elif mutation == 'source': source['blocks'][0]['text'] += ' changed'
+    elif mutation == 'method': metadata['transformation_method'] = 'forged'
+    elif mutation == 'extra': metadata['prompt_hash'] = '0'*64
+    else: metadata['model_calls'] = False
+    with pytest.raises(ValueError): auto.validate_source_preserving_candidate(source, candidate, metadata)
