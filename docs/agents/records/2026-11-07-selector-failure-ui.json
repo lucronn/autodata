@@ -13,7 +13,7 @@
     "Run Go and browser checks, obtain independent review, push coherent commits and open a PR; coordinate release separately."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-07T04:21:31.900004+00:00",
+  "updated_at": "2026-11-07T04:27:05.922888Z",
   "tracking_sync": {
     "release_issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6702178675",
     "project_field": "Selector failure UI reference",
@@ -27,5 +27,43 @@
   "independently_reviewed_code_head_sha": "2cf62b76be5a0115e5dc72072fb5d3cde1445ea8",
   "pull_request_ref": "https://github.com/lucronn/autodata/pull/367",
   "required_ci_ref": "https://github.com/lucronn/autodata/actions/runs/42336760347",
-  "release_status": "prepared-not-deployed"
+  "release_status": "live-api-ui-passed",
+  "live_release": {
+    "status": "passed",
+    "product_sha": "cad924e88a77781af594fa7dbdc26dc43d4f27d8",
+    "checkpoint_sha": "7dfeac4868f21ec5b1fdc7c25973744bc296eb75",
+    "receipt": "/var/lib/autodata/selector-ui-release-run-cad924e-r3/receipt.json",
+    "receipt_sha256": "3e0c1fb88698ada74bde7e6ecede56f43f2ce46a68986f8850149c9f8efcf62b",
+    "selector_test_receipt_sha256": "87c50bf1a0a828113234187338754278c23a0f3ef97578ccc009d1a0bf58ca79",
+    "canary_counts": {
+      "2027_ford_models": 13,
+      "2020_ford_models": 29,
+      "2020_figo_configurations": 1,
+      "2014_toyota_models": 32,
+      "2014_camry_configurations": 3
+    },
+    "all_canaries_complete": true,
+    "catalog_id": "60ff30e0b258062b5bce59d782f9c496280761c4e60befe476c36d14bee9d5e1",
+    "article_id": "f5f91096e8943a5340074f2838cab6a05c9e24a323375de4d3d0d57a3169270c",
+    "ingestion_id": "341116a440ee68a605f1d3d8660476a94ff65adfe90d7d887f20acb71d411355",
+    "migration_applied": false,
+    "worker_stop_requested": false,
+    "public_readiness": 200,
+    "checkout_enabled": false,
+    "paid_authenticated_browse": "UNVERIFIED",
+    "live_completed_empty": "unavailable",
+    "live_timeout": "unavailable",
+    "prior_attempts": {
+      "r1": {
+        "status": "failed",
+        "reason": "permission",
+        "recovery": "verified"
+      },
+      "r2": {
+        "status": "failed",
+        "reason": "strict canary",
+        "recovery": "verified"
+      }
+    }
+  }
 }

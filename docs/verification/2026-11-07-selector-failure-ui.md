@@ -6,7 +6,7 @@ Plan: docs/superpowers/plans/2026-11-07-selector-failure-ui.md
 Issue: https://github.com/lucronn/autodata/issues/186
 Project: https://github.com/users/lucronn/projects/8
 
-Planning synchronized before implementation. No runtime change.
+Current status: API/UI release passed; five complete public selector canaries, public readiness HTTP200 and checkout disabled. Paid authenticated browse unverified; live empty/timeout unavailable. Earlier implementation and release-checkpoint entries below retain their historical context.
 
 - [x] Add failing Go regressions for completed-empty, incomplete-empty and malformed/incomplete configuration scopes.
 - [x] Add actual loadOptions browser-logic tests for timeout, partial, saved-choice and completed-empty outcomes.
@@ -45,3 +45,28 @@ Required CI is running on the updated PR. Merge is authorized after required che
 PR #367 merged as `cad924e88a77781af594fa7dbdc26dc43d4f27d8` (tree `ce346ed13f70ed2b118afd13861bee8da820e6fd`), equal to verified head `35cac9f65a8604f3ac3962417fa2d5b2757b772c`; `apps/api-go` is unchanged from independently reviewed `2cf62b76be5a0115e5dc72072fb5d3cde1445ea8`. [Required CI](https://github.com/lucronn/autodata/actions/runs/42336760347) passed all three required checks. The [Issue release checkpoint](https://github.com/lucronn/autodata/issues/186#issuecomment-6702178675) and dedicated Project field record the same product and todo.
 
 The production switch remains pending. It must use the immutable merged source, preserve the active catalog, ingestion and article workers, run merged-source Go/Node tests and served-byte/public selector canaries, and retain checkout disabled. A real paid article path and live timeout/completed-empty scopes are not asserted by this release gate.
+
+## Live API/UI release outcome
+
+The coordinator completed the API-only selector UI release from merged PR #367 product `cad924e88a77781af594fa7dbdc26dc43d4f27d8` under synchronized checkpoint `7dfeac4868f21ec5b1fdc7c25973744bc296eb75`. Protected receipt `/var/lib/autodata/selector-ui-release-run-cad924e-r3/receipt.json` was read back with status `passed` and SHA256 `3e0c1fb88698ada74bde7e6ecede56f43f2ce46a68986f8850149c9f8efcf62b`. Exact merged-source Node selector test receipt SHA256 is `87c50bf1a0a828113234187338754278c23a0f3ef97578ccc009d1a0bf58ca79`; post-switch served assets matched the tested source bytes.
+
+All five public selector canaries returned complete collections:
+
+| Public scope | Items |
+| --- | ---: |
+| 2027 Ford models | 13 |
+| 2020 Ford models | 29 |
+| 2020 Figo configurations | 1 |
+| 2014 Toyota models | 32 |
+| 2014 Camry configurations | 3 |
+
+API, article worker and catalog worker are active; public readiness returned HTTP200 and checkout remains disabled. Receipt pins the unchanged ingestion, article and catalog container IDs in the canonical record; no migration or worker stop was requested. Prior attempts r1 (permission) and r2 (strict canary) failed and rolled back with recovery verified; their evidence is preserved. The successful r3 receipt supersedes earlier pending deployment status, without relabeling either failed attempt.
+
+Paid authenticated browse remains unverified. Live completed-empty and live timeout canaries were unavailable; merged-source tests plus exact served-byte identity support the bounded UI behavior claim. No new article/job completion or paid-access acceptance is claimed. This documentation update performs no deployment, runtime change or additional authorization.
+
+Current release todo:
+
+- [x] Bind merged product, reviewed code, required CI and synchronized exact checkpoint.
+- [x] Verify protected test/build/source evidence and preserve exact active ingestion/article/catalog workers.
+- [x] Complete API-only r3 rollout, served-byte checks and five complete public selector canaries; retain readiness and disabled checkout.
+- [x] Record the successful receipt, both verified failed-attempt recoveries, and unavailable/unverified acceptance limits in canonical docs, Issue186 and Project8.
