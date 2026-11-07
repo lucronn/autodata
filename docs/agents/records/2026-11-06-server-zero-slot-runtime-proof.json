@@ -1,0 +1,24 @@
+{
+  "goal": "Observe one authentic pristine Banktwo identity publish through the merged source-bound zero-slot server method with zero new model attempts, preserve all four spent jobs and stopped catalog history, then always stop.",
+  "plan_ref": "docs/superpowers/plans/2026-11-06-server-zero-slot-runtime-proof.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/verification/2026-11-06-server-zero-slot-runtime-proof.md",
+    "docs/agents/pre-implementation-gate.md"
+  ],
+  "todo": [
+    "After PR359 exact merge and required CI success, independently pin source/tree/deterministic archive; refresh stopped state/history/target/catalog/public fences, synchronize Issue186/dedicated Project8 field/plan/canonical/record, commit/push and machine-check exact planning base.",
+    "Separately review and dispatch StageA disabled preparation: fresh identity-bound PG17 backup, archive current5f76 state and source.conf intact, seal new merged source, switch only source.conf and initialize fresh disabled rollout with unchanged cutoff/expiry/max10/providersboth; review exact result before StageB.",
+    "Separately review and dispatch StageB: authenticate exact dedcfe33 snapshot member4, ensure one pristine job without descriptor mutation, require production _PRISTINE sole target, one enable/start, observe exact server provenance/source binding and zero new attempts; always disable/stop/verify within independent cleanup budgets and record truthful success/failure."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-07T00:20:08.334728+00:00",
+  "release_pins": {
+    "source_sha": "b3a5c83bfd5238b72b2eca534c61d9d9637b116e",
+    "tree": "9dd0736a9488dc757e391830127aab9aad088a5f",
+    "archive_sha256": "ecce883c2a012991f49e1502faf787f15987c7cc1fc981d1368de8277c792f1b",
+    "reviewed_head_required_ci": "reviewed52b63f1795832d3e9d2701ccbe40099ea18989af; merged2026-11-07T00:18:44Z; all3CIjobsSUCCESS/run42314902278/requiredjob128225009401",
+    "gate_sha": "this committed planning checkpoint; exact SHA/record hash posted to Issue186 and dedicated Project8 field after commit"
+  }
+}
