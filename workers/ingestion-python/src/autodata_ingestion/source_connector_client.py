@@ -20,7 +20,7 @@ import re
 import socket
 import time
 from threading import Timer
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qsl, quote, urlencode, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
@@ -160,6 +160,7 @@ class SourceConnectorClient:
     def catalog(
         self, scope: str, selector: Mapping[str, Any] | None = None, cursor: str | None = None,
         *, timeout: float | None = None,
+        before_additional_request: Callable[[], float] | None = None,
     ) -> SourceEnvelopeV1:
         if not isinstance(scope, str) or scope not in _SCOPES:
             raise ValueError("unsupported catalog scope")
@@ -172,15 +173,82 @@ class SourceConnectorClient:
                 query[key] = _selector_field(key, selector[key])
         if cursor is not None:
             query["cursor"] = _bounded_text(cursor, "cursor", 512)
-        suffix = f"?{urlencode(query)}" if query else ""
-        # The elapsed deadline covers dispatch and body reads. urllib's
-        # pre-response header parsing retains its socket idle timeout, so
-        # trickled headers can still exceed the total wall-clock budget.
+        # Keep label discovery and retry inside the caller's elapsed budget.
+        # Exact source labels remain a single-request fast path.
         deadline = time.monotonic() + min(self.timeout, timeout) if timeout is not None else None
-        return self._read(
-            "GET", f"/v1/catalog/{scope}{suffix}", operation="catalog", scope=scope,
-            timeout=timeout, deadline=deadline,
+
+        dispatched = False
+
+        def read_page(page_scope: str, page_query: Mapping[str, str | int]) -> SourceEnvelopeV1:
+            nonlocal dispatched
+            allowance = before_additional_request() if dispatched and before_additional_request else None
+            remaining = deadline - time.monotonic() if deadline is not None else timeout
+            if allowance is not None:
+                remaining = min(remaining, allowance) if remaining is not None else allowance
+            dispatched = True
+            if remaining is not None and remaining <= 0:
+                raise SourceConnectorError("UPSTREAM_UNAVAILABLE", retryable=True)
+            suffix = f"?{urlencode(page_query)}" if page_query else ""
+            return self._read(
+                "GET", f"/v1/catalog/{page_scope}{suffix}", operation="catalog", scope=page_scope,
+                timeout=remaining, deadline=deadline,
+            )
+
+        try:
+            return read_page(scope, query)
+        except SourceConnectorError as error:
+            if (self.provider != "banktwo" or error.code != "NOT_FOUND"
+                    or scope not in {"models", "configurations"}
+                    or not {"year", "make"}.issubset(query)
+                    or scope == "configurations" and "model" not in query):
+                raise
+        if deadline is None:
+            deadline = time.monotonic() + self.timeout
+        # Public IDs discard case and punctuation. Recover only labels proved
+        # unique by complete provider enumeration; never guess capitalization.
+        repaired = dict(query)
+        repaired["make"] = self._catalog_label(
+            "makes", "make", {"year": query["year"]}, str(query["make"]), read_page,
         )
+        if scope == "configurations":
+            repaired["model"] = self._catalog_label(
+                "models", "model", {"year": query["year"], "make": repaired["make"]},
+                str(query["model"]), read_page,
+            )
+        if repaired == query:
+            raise SourceConnectorError("NOT_FOUND", status=404)
+        return read_page(scope, repaired)
+
+    @staticmethod
+    def _catalog_label(
+        scope: str, field: str, query: Mapping[str, str | int], value: str,
+        read_page: Callable[[str, Mapping[str, str | int]], SourceEnvelopeV1],
+    ) -> str:
+        def slug(label: str) -> str:
+            return re.sub(r"[^a-z0-9]+", "-", label.lower()).strip("-")
+
+        target = slug(value)
+        if not target:
+            raise SourceConnectorError("NOT_FOUND", status=404)
+        matches: set[str] = set()
+        page_query = dict(query)
+        seen: set[str] = set()
+        for _ in range(1000):
+            page = read_page(scope, page_query)
+            for item in page.body["items"]:
+                label = item.get(field)
+                if isinstance(label, str) and slug(label) == target:
+                    matches.add(label)
+            if page.complete:
+                if len(matches) != 1:
+                    raise SourceConnectorError("AMBIGUOUS" if matches else "NOT_FOUND")
+                return next(iter(matches))
+            cursor = page.next_cursor
+            if not cursor or cursor in seen:
+                raise SourceConnectorError("INVALID_UPSTREAM_RESPONSE")
+            seen.add(cursor)
+            page_query["cursor"] = cursor
+        raise SourceConnectorError("INVALID_UPSTREAM_RESPONSE")
 
     def resolve_vehicle(self, selector: Mapping[str, Any]) -> SourceEnvelopeV1:
         if not isinstance(selector, Mapping):
