@@ -1,0 +1,17 @@
+{
+  "goal": "Add opt-in schema2 continuous on-demand article admission with a durable rolling10jobs/24h cap, one attempt per fresh job and permanent no-replay ledger, while preserving finite schema1 unchanged.",
+  "plan_ref": "docs/superpowers/plans/2026-11-07-continuous-on-demand-ingestion.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/operations/2026-11-07-continuous-on-demand-ingestion.md",
+    "docs/agents/pre-implementation-gate.md"
+  ],
+  "todo": [
+    "Add failing state/admission/loop regressions for opt-in schema2 rolling quota, permanent reservation retention/crash no-replay, untouched older descriptors with freshly created jobs, negative historical lanes and unchanged finite schema1.",
+    "Implement minimal schema2 state and admission/dispatch predicates in new_article_worker.py plus the inert continuous preview service unit; retain shared exact-job lifecycle, cap1/sourcefallback behavior and root-owned atomic locking protections.",
+    "Run focused unit and realPG worker/lifecycle tests, existing autonomy checks and independent review; commit/push coherent milestones and exact PR/CI evidence. A separate merged-source runtime gate must authorize archival/newdisabledstate/install/enable/start/restart; this code gate deploys nothing."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-07T00:29:09.023705+00:00"
+}
