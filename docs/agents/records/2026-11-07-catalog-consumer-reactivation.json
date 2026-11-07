@@ -13,7 +13,7 @@
     "On failure or interruption stop within independent recovery budget, remove only this exact newly-created drop-in, daemon-reload, restore original stopped source config and append truthful outcome evidence."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-07T04:07:26.491171Z",
+  "updated_at": "2026-11-07T04:08:45.769178Z",
   "release_binding": {
     "product_source_sha": "c9c58fcd74e67c07d7014497a6f7433f79cf2ae3",
     "product_tree_sha": "8e8221aac6577429da8877434679bcd573f8c3e8",
@@ -41,5 +41,6 @@
     "interruption_safe_installation": "atomic ignored temporary, signal mask, exact owned device/inode rollback; protected source-config temporary cleanup",
     "dropin_sha256": "1c5c0edb3b502bcc309ee3d05655ad9ce56126febffb89ec0e7472c97fb17f77"
   },
-  "validator_correction": "exact repository safe.directory via scoped GIT_CONFIG_COUNT/KEY_0/VALUE_0 only around pinned validator, finally restoration; fresh evidence root; no activation"
+  "validator_correction": "exact repository safe.directory via scoped GIT_CONFIG_COUNT/KEY_0/VALUE_0 only around pinned validator, finally restoration; fresh evidence root; no activation",
+  "mount_order_correction": "canonical-sort complete Mounts entries identically at binding and runtime, preserve all fields and reject changed entries; clear-r3; no activation"
 }
