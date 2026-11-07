@@ -1256,7 +1256,10 @@ class _SourceCatalogProvider:
 
                 timeout = self.deepening_control.before_request()
                 try:
-                    page = self.client.catalog(scope, selector, cursor, timeout=timeout)
+                    page = self.client.catalog(
+                        scope, selector, cursor, timeout=timeout,
+                        before_additional_request=self.deepening_control.before_request,
+                    )
                 except SourceConnectorError as error:
                     if error.status == 429:
                         raise _SelectorDeepeningStopped() from error
