@@ -450,3 +450,63 @@ func TestCatalogSourceOmitsInlineDataImagesFromJSONAndHTML(t *testing.T) {
 		}
 	}
 }
+
+// A complete scope marker, not row count, proves an authoritative empty result.
+type fixedCompletionCatalogStore struct {
+	*memoryCatalogStore
+	complete bool
+}
+
+func (s fixedCompletionCatalogStore) CatalogScopeComplete(context.Context, Principal, string, int, string, string, string) (bool, error) {
+	return s.complete, nil
+}
+
+func TestCatalogConfigurationsCompletedEmptyIsTerminal(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		complete      bool
+		incompleteRow bool
+		wantComplete  bool
+		wantHydrating bool
+	}{
+		{"completed empty", true, false, true, false},
+		{"incomplete empty", false, false, false, true},
+		{"marker cannot complete an incomplete row", true, true, false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			memory := newMemoryCatalogStore()
+			if tc.incompleteRow {
+				memory.PutConfiguration(CatalogConfiguration{ID: "cfg-incomplete", Year: 2024, Make: "Acme", Model: "Roadster", Region: "US", Complete: false})
+			}
+			store := fixedCompletionCatalogStore{memoryCatalogStore: memory, complete: tc.complete}
+			capture := &blockingCatalogHydrationClient{started: make(chan struct{}), release: make(chan struct{}), finished: make(chan struct{})}
+			close(capture.release)
+			server := NewServerWithCatalogStore(staticReadiness{}, &fakeAuthenticator{principal: Principal{OrganizationID: "org-1", Roles: []string{"dataset_viewer"}}}, newMemoryRequestStore(), store)
+			server.ingestionClient = capture
+			response := catalogRequest(server, "/v1/catalog/years/2024/makes/acme/models/roadster/configurations")
+			if response.Code != http.StatusOK {
+				t.Fatalf("status %d: %s", response.Code, response.Body.String())
+			}
+			var body CatalogConfigurationsResponse
+			if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+				t.Fatal(err)
+			}
+			if body.Complete != tc.wantComplete || body.Hydrating != tc.wantHydrating {
+				t.Fatalf("complete=%v hydrating=%v, want %v/%v", body.Complete, body.Hydrating, tc.wantComplete, tc.wantHydrating)
+			}
+			if tc.wantHydrating {
+				select {
+				case <-capture.finished:
+				case <-time.After(time.Second):
+					t.Fatal("hydration not scheduled")
+				}
+			} else {
+				select {
+				case <-capture.started:
+					t.Fatal("completed empty scope rehydrated")
+				case <-time.After(20 * time.Millisecond):
+				}
+			}
+		})
+	}
+}
