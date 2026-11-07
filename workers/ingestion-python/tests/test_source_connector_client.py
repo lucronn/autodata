@@ -66,6 +66,67 @@ def _envelope(provider="bankone", **extra):
 
 
 class SourceConnectorClientTests(unittest.TestCase):
+    def test_closed_connection_catalog_body_remains_readable_with_deadline(self):
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        from threading import Thread
+
+        class Handler(BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+
+            def do_GET(self):
+                body = json.dumps(_envelope(
+                    scope="years", items=[{"year": 2027, "opaque_ref": "year-2027", "label": "2027"}],
+                    complete=True, next_cursor=None,
+                )).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Connection", "close")
+                if self.framing == "chunked":
+                    self.send_header("Transfer-Encoding", "chunked")
+                    wire_body = f"{len(body):x}\r\n".encode() + body + b"\r\n0\r\n\r\n"
+                else:
+                    self.send_header("Content-Length", str(len(body)))
+                    wire_body = body
+                self.end_headers()
+                self.wfile.write(wire_body)
+                self.wfile.flush()
+
+            def log_message(self, *args):
+                pass
+
+        class BackgroundBudget:
+            def before_request(self):
+                return 1.0
+
+            def remaining(self):
+                return 1.0
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        client = SourceConnectorClient(f"http://127.0.0.1:{server.server_port}", provider="bankone")
+        try:
+            for framing in ("fixed", "chunked"):
+                Handler.framing = framing
+                with self.subTest(framing=framing, path="foreground"):
+                    page = client.catalog("years", cursor=framing)
+                    self.assertTrue(page.complete)
+                    self.assertEqual([row["year"] for row in page.body["items"]], [2027])
+                with self.subTest(framing=framing, path="bounded"):
+                    page = client.catalog("years", cursor=framing, timeout=1.0)
+                    self.assertTrue(page.complete)
+                    self.assertEqual([row["year"] for row in page.body["items"]], [2027])
+                with self.subTest(framing=framing, path="background"):
+                    # Use the real background adapter, including deadline propagation.
+                    provider = _SourceCatalogProvider(client, deepening_control=BackgroundBudget())
+                    result = provider.resolve_catalog(CatalogRequest(2027, "unknown", "unknown", "US", scope="years"))
+                    self.assertTrue(result["complete"])
+                    self.assertEqual([row["year"] for row in result["rows"]], [2027])
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(2)
+
     def test_catalog_deadline_interrupts_trickled_chunk_framing(self):
         from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
         from threading import Event, Thread
