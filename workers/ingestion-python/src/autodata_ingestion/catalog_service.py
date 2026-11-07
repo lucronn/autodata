@@ -78,6 +78,7 @@ class CacheFirstCatalogService:
         missing = set(_missing_scopes(cached))
         provenance: list[dict[str, Any]] = []
         complete = False
+        completed_providers = 0
         if isinstance(cached, Mapping):
             rows.extend(_canonical_rows(cached.get("rows", cached.get("records", [])), scope=request.scope))
             provenance.extend(_provenance(cached.get("provenance", ())))
@@ -96,6 +97,11 @@ class CacheFirstCatalogService:
             missing.update(_missing_scopes(payload))
             if bool(payload.get("complete")) and not _missing_scopes(payload):
                 complete = True
+                completed_providers += 1
+        if request.scope in {"makes", "models"}:
+            complete = bool(self._providers) and completed_providers == len(self._providers)
+            if not complete:
+                missing.add(request.scope)
         if complete:
             missing.clear()
 
@@ -1144,7 +1150,8 @@ def _persist_hydration_scope(request: Mapping[str, Any], result: CatalogResult) 
 
     # Empty rows are allowed: a complete provider enumeration with no matching
     # cars still proves the scope was walked and must clear API hydrating.
-    if not result.complete or os.getenv("AUTODATA_SOURCE_PERSIST", "1") != "1":
+    selector_scope = str(request.get("scope", "")).strip() in {"makes", "models"}
+    if (not result.complete and not selector_scope) or os.getenv("AUTODATA_SOURCE_PERSIST", "1") != "1":
         return {"status": "not_complete"}
     from .catalog_sync import _conninfo
 
@@ -1159,16 +1166,55 @@ def _persist_hydration_scope(request: Mapping[str, Any], result: CatalogResult) 
 
     with psycopg.connect(**_conninfo()) as connection:
         with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                INSERT INTO vehicle_catalog_hydration_scopes
-                    (scope_key, scope, model_year, make, model, region, provenance)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (scope_key) DO UPDATE
-                SET provenance = EXCLUDED.provenance, updated_at = now()
-                """,
-                (scope_key, scope, year, make, model, region, Jsonb(list(result.provenance))),
-            )
+            if selector_scope:
+                selector_rows = []
+                for row in result.rows:
+                    row_make = str(row.get("make") or "").strip()
+                    row_model = str(row.get("model") or "").strip()
+                    row_region = str(row.get("region") or region).strip().upper()
+                    if (
+                        row.get("year") != year or not row_make or row_region != region
+                        or (scope == "models" and (row_make.casefold() != make.casefold() or not row_model))
+                    ):
+                        raise ValueError("source selector row does not match requested catalog scope")
+                    item = {"year": year, "make": row_make, "region": region}
+                    if scope == "models":
+                        item["model"] = row_model
+                    selector_rows.append(item)
+                cursor.execute(
+                    """
+                    INSERT INTO vehicle_catalog_hydration_scopes
+                        (scope_key, scope, model_year, make, model, region, provenance,
+                         selector_rows, completion_version)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (scope_key) DO UPDATE
+                    SET provenance = CASE WHEN EXCLUDED.completion_version = 1
+                            THEN EXCLUDED.provenance
+                            ELSE (SELECT COALESCE(jsonb_agg(DISTINCT item), '[]'::jsonb)
+                                  FROM jsonb_array_elements(vehicle_catalog_hydration_scopes.provenance
+                                       || EXCLUDED.provenance) AS merged(item)) END,
+                        selector_rows = CASE WHEN EXCLUDED.completion_version = 1
+                            THEN EXCLUDED.selector_rows
+                            ELSE (SELECT COALESCE(jsonb_agg(DISTINCT item), '[]'::jsonb)
+                                  FROM jsonb_array_elements(vehicle_catalog_hydration_scopes.selector_rows
+                                       || EXCLUDED.selector_rows) AS merged(item)) END,
+                        completion_version = EXCLUDED.completion_version,
+                        updated_at = now()
+                    """,
+                    (scope_key, scope, year, make, model, region, Jsonb(list(result.provenance)),
+                     Jsonb(selector_rows), 1 if result.complete else 0),
+                )
+            else:
+                cursor.execute(
+                    """
+                    INSERT INTO vehicle_catalog_hydration_scopes
+                        (scope_key, scope, model_year, make, model, region, provenance)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (scope_key) DO UPDATE
+                    SET provenance = EXCLUDED.provenance, updated_at = now()
+                    """,
+                    (scope_key, scope, year, make, model, region, Jsonb(list(result.provenance))),
+                )
         connection.commit()
     return {"status": "persisted", "scope_key": scope_key}
 

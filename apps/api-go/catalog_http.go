@@ -87,7 +87,7 @@ func (s *Server) listCatalogMakes(response http.ResponseWriter, request *http.Re
 		s.writeCatalogError(response, request, err)
 		return
 	}
-	hydrating := (!complete || len(items) == 0) && s.ingestionClient != nil
+	hydrating := !complete && s.ingestionClient != nil
 	if hydrating {
 		s.scheduleCatalogHydration(request, map[string]any{
 			"scope": "makes", "year": year, "region": catalogRegion(request),
@@ -95,7 +95,7 @@ func (s *Server) listCatalogMakes(response http.ResponseWriter, request *http.Re
 	}
 	writeJSON(response, http.StatusOK, CatalogMakesResponse{
 		Version: "v1", Items: items,
-		CatalogHydrationResponse: CatalogHydrationResponse{Complete: complete && len(items) > 0, Hydrating: hydrating},
+		CatalogHydrationResponse: CatalogHydrationResponse{Complete: complete, Hydrating: hydrating},
 	})
 }
 
@@ -116,7 +116,7 @@ func (s *Server) listCatalogModels(response http.ResponseWriter, request *http.R
 		s.writeCatalogError(response, request, err)
 		return
 	}
-	hydrating := (!complete || len(items) == 0) && s.ingestionClient != nil
+	hydrating := !complete && s.ingestionClient != nil
 	if hydrating {
 		s.scheduleCatalogHydration(request, map[string]any{
 			"scope": "models", "year": year, "make": makeName, "region": catalogRegion(request),
@@ -124,7 +124,7 @@ func (s *Server) listCatalogModels(response http.ResponseWriter, request *http.R
 	}
 	writeJSON(response, http.StatusOK, CatalogModelsResponse{
 		Version: "v1", Items: items,
-		CatalogHydrationResponse: CatalogHydrationResponse{Complete: complete && len(items) > 0, Hydrating: hydrating},
+		CatalogHydrationResponse: CatalogHydrationResponse{Complete: complete, Hydrating: hydrating},
 	})
 }
 
