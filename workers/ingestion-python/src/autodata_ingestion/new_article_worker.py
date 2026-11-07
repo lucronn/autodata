@@ -1,4 +1,4 @@
-"""Finite, new-only admission around the existing exact-job article worker.
+"""Finite or opt-in continuous pristine admission around the exact-job worker.
 
 Reservations are deliberately never replayed: a crash may spend quota without
 work, but cannot authorize another HTTP/model delivery for the same job.
@@ -279,6 +279,15 @@ _PRISTINE = """
 """
 
 
+# A fresh on-demand job may target an older untouched descriptor in schema2.
+# All history, ownership, rights and job-created-after-activation guards stay exact.
+_PRISTINE_CONTINUOUS = _PRISTINE.replace('a.created_at>%(cutoff)s AND ', '')
+
+
+def admission_predicate(value):
+    return _PRISTINE_CONTINUOUS if value['schema'] == 2 else _PRISTINE
+
+
 def database_now(repo):
     with repo.connect() as conn:
         return conn.execute('SELECT clock_timestamp() AS now').fetchone()['now']
@@ -297,7 +306,7 @@ def reserve_next_job(repo, state, *, stop=None):
         params = {'providers': snapshot['providers'], 'cutoff': _timestamp(snapshot['cutoff']),
                   'reserved': [UUID(r['job_id']) for r in snapshot['reservations']]}
         row = conn.execute('''SELECT j.source_fetch_job_id FROM source_fetch_jobs j
-            JOIN canonical_articles a ON a.canonical_article_id=j.canonical_article_id WHERE ''' + _PRISTINE + '''
+            JOIN canonical_articles a ON a.canonical_article_id=j.canonical_article_id WHERE ''' + admission_predicate(snapshot) + '''
             AND j.checkpoint='{}'::jsonb AND NOT (j.source_fetch_job_id=ANY(%(reserved)s::uuid[]))
             ORDER BY j.created_at,j.source_fetch_job_id LIMIT 1 FOR UPDATE OF j,a SKIP LOCKED''', params).fetchone()
         if row is None:
@@ -307,7 +316,7 @@ def reserve_next_job(repo, state, *, stop=None):
         # an owning row while PostgreSQL was acquiring the joined locks.
         params['job_id'] = job_id
         eligible = conn.execute('''SELECT 1 FROM source_fetch_jobs j JOIN canonical_articles a
-            ON a.canonical_article_id=j.canonical_article_id WHERE ''' + _PRISTINE + '''
+            ON a.canonical_article_id=j.canonical_article_id WHERE ''' + admission_predicate(snapshot) + '''
             AND j.checkpoint='{}'::jsonb AND j.source_fetch_job_id=%(job_id)s''', params).fetchone()
         if eligible is None:
             return None
@@ -339,7 +348,7 @@ def dispatch_next(repo, state, *, worker_id, registry, object_store, model_clien
         'source_sha': snapshot['source_sha'], 'cutoff': snapshot['cutoff'], 'max_model_attempts': 1}})
     with repo.connect() as conn:
         permitted = conn.execute('''SELECT 1 FROM source_fetch_jobs j JOIN canonical_articles a
-            ON a.canonical_article_id=j.canonical_article_id WHERE ''' + _PRISTINE + '''
+            ON a.canonical_article_id=j.canonical_article_id WHERE ''' + admission_predicate(snapshot) + '''
             AND j.source_fetch_job_id=%(job_id)s AND j.max_attempts=1 AND j.checkpoint=%(marker)s''', params).fetchone()
     if permitted is None:
         return False

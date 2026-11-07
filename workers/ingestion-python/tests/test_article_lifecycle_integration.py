@@ -938,12 +938,12 @@ def test_automatic_saved_candidate_rejects_tampered_bound_evidence(runtime, muta
 
 # The rollout worker never invokes the generic queue poller. These tests run
 # against isolated PostgreSQL and real fixture HTTP/S3, never application data.
-def new_article_rollout(repo, tmp_path):
+def new_article_rollout(repo, tmp_path, *, continuous=False):
     import os
     from autodata_ingestion.new_article_worker import RolloutState, database_now
     directory = tmp_path / 'rollout'
     directory.mkdir(mode=0o700)
-    state = RolloutState(directory, source_sha='a' * 40, owner_uid=os.getuid())
+    state = RolloutState(directory, source_sha='a' * 40, owner_uid=os.getuid(), continuous=continuous)
     state.initialize(database_now(repo)); state.set_enabled(True)
     return state
 
@@ -960,12 +960,13 @@ def new_pristine_article(repo, vehicle, *, provider='bankone', source_vehicle_re
     return article, job
 
 
-def test_new_article_worker_pristine_only_and_historical_rows_unchanged(fresh_database, tmp_path):
+@pytest.mark.parametrize('continuous',[False,True])
+def test_new_article_worker_pristine_only_and_historical_rows_unchanged(fresh_database, tmp_path, continuous):
     from lifecycle_support import seed_vehicle
     from autodata_ingestion.new_article_worker import reserve_next_job
     repo = fresh_database(); vehicle = seed_vehicle(repo)
     old_article, old_job = new_pristine_article(repo, vehicle)
-    with new_article_rollout(repo, tmp_path) as state:
+    with new_article_rollout(repo, tmp_path, continuous=continuous) as state:
         cases = [
             ('old_article', "UPDATE canonical_articles SET created_at='2000-01-01' WHERE canonical_article_id=%s", 'article'),
             ('old_job', "UPDATE source_fetch_jobs SET created_at='2000-01-01' WHERE source_fetch_job_id=%s", 'job'),
@@ -986,7 +987,8 @@ def test_new_article_worker_pristine_only_and_historical_rows_unchanged(fresh_da
             ('parked', "UPDATE source_fetch_jobs SET status='failed',error_code='MODEL_NOT_CONFIGURED' WHERE source_fetch_job_id=%s", 'job'),
             ('processing', "UPDATE source_fetch_jobs SET status='processing',lease_owner=gen_random_uuid(),lease_token=1,heartbeat_at=clock_timestamp(),lease_expires_at=clock_timestamp()-interval '1 second' WHERE source_fetch_job_id=%s", 'job'),
         ]
-        for _, sql, owner in cases:
+        for name, sql, owner in cases:
+            if continuous and name == 'old_article':continue
             article, job = new_pristine_article(repo, vehicle)
             with repo.connect() as conn: conn.execute(sql, (article if owner == 'article' else job,))
         # Attempt evidence alone is disqualifying, even if someone reset job counters.
@@ -998,6 +1000,9 @@ def test_new_article_worker_pristine_only_and_historical_rows_unchanged(fresh_da
             before_articles = conn.execute('SELECT * FROM canonical_articles ORDER BY canonical_article_id').fetchall()
             before_attempts = conn.execute('SELECT * FROM canonical_article_rewrite_attempts').fetchall()
         admitted = [new_pristine_article(repo, vehicle, provider=p)[1] for p in ('bankone','banktwo')]
+        if continuous:
+            with repo.connect() as conn:
+                conn.execute("UPDATE canonical_articles SET created_at='2000-01-01' WHERE current_job_id=ANY(%s)",(admitted,))
         assert [reserve_next_job(repo,state),reserve_next_job(repo,state)] == admitted
         assert reserve_next_job(repo,state) is None
         with repo.connect() as conn:
@@ -1007,25 +1012,28 @@ def test_new_article_worker_pristine_only_and_historical_rows_unchanged(fresh_da
             assert all(row['max_attempts']==1 and row['retry_count']==0 for row in conn.execute('SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=ANY(%s)',(admitted,)).fetchall())
 
 
-def prepare_new_article_runtime(runtime, tmp_path, monkeypatch):
+def prepare_new_article_runtime(runtime, tmp_path, monkeypatch, *, continuous=False):
     from autodata_ingestion.new_article_worker import configured_model
     automatic_runtime(runtime,'bankone')
-    state = new_article_rollout(runtime.repo,tmp_path)
+    state = new_article_rollout(runtime.repo,tmp_path,continuous=continuous)
     runtime.stack.callback(state.__exit__,None,None,None)
     with runtime.repo.connect() as conn:
         original = conn.execute('SELECT * FROM canonical_articles WHERE canonical_article_id=%s',(runtime.article_id,)).fetchone()
     article, job = new_pristine_article(runtime.repo,runtime.vehicle,
         source_vehicle_ref=original['source_vehicle_ref'],descriptor=original['descriptor'],snapshot=original['descriptor_source_snapshot_id'])
     runtime.article_id = article; runtime.articles['bankone'] = article
+    if continuous:
+        with runtime.repo.connect() as conn:conn.execute("UPDATE canonical_articles SET created_at='2000-01-01' WHERE canonical_article_id=%s",(article,))
     for name,value in {**runtime.env,'INCEPTION_MODEL':'mercury-3','INCEPTION_MAX_TOKENS':'32768','INCEPTION_API_TIMEOUT_SECONDS':'60'}.items():
         monkeypatch.setenv(name,value)
     return state, job, configured_model()
 
 
-def test_new_article_worker_commits_cap_before_exact_claim_and_publishes_unreviewed(runtime,tmp_path,monkeypatch):
+@pytest.mark.parametrize('continuous',[False,True])
+def test_new_article_worker_commits_cap_before_exact_claim_and_publishes_unreviewed(runtime,tmp_path,monkeypatch,continuous):
     from autodata_ingestion import article_lifecycle
     from autodata_ingestion.new_article_worker import dispatch_next
-    state, job, model = prepare_new_article_runtime(runtime,tmp_path,monkeypatch)
+    state, job, model = prepare_new_article_runtime(runtime,tmp_path,monkeypatch,continuous=continuous)
     original = article_lifecycle.run_article_worker_once
     calls = []
     def checked(repo, **kwargs):
@@ -1296,3 +1304,90 @@ def test_server_zero_slot_without_eligible_heading_keeps_source_and_never_calls_
         assert conn.execute('SELECT count(*) AS n FROM canonical_article_revisions').fetchone()['n']==0
         assert conn.execute('SELECT count(*) AS n FROM publication_events').fetchone()['n']==0
     assert runtime.model.calls==0
+
+
+
+def test_new_article_worker_continuous_spent_before_sql_never_replays_after_window(fresh_database,tmp_path,monkeypatch):
+    from contextlib import contextmanager
+    from datetime import timedelta
+    from lifecycle_support import seed_vehicle
+    from autodata_ingestion import new_article_worker as worker
+    repo=fresh_database();vehicle=seed_vehicle(repo)
+    with new_article_rollout(repo,tmp_path,continuous=True) as state:
+        article,job=new_pristine_article(repo,vehicle)
+        original=state.reserve
+        def spent_then_crash(*args,**kwargs):
+            assert original(*args,**kwargs)
+            raise RuntimeError('fixture crash before SQL marker')
+        with monkeypatch.context() as patch:
+            patch.setattr(state,'reserve',spent_then_crash)
+            with pytest.raises(RuntimeError,match='before SQL marker'):worker.reserve_next_job(repo,state)
+        with repo.connect() as conn:
+            before=conn.execute('SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s',(job,)).fetchone()
+            assert before['checkpoint']=={} and before['max_attempts']==3
+        later=worker.database_now(repo)+timedelta(hours=25)
+        class LaterClock:
+            @contextmanager
+            def connect(self):
+                with repo.connect() as conn:
+                    class Connection:
+                        def execute(self,query,*args):
+                            if query=='SELECT clock_timestamp() AS now':
+                                class Clock:
+                                    def fetchone(self):return {'now':later}
+                                return Clock()
+                            return conn.execute(query,*args)
+                    yield Connection()
+        import os
+        with worker.RolloutState(state.directory,source_sha='a'*40,owner_uid=os.getuid(),continuous=True) as reopened:
+            assert worker.reserve_next_job(LaterClock(),reopened) is None
+            _,newjob=new_pristine_article(repo,vehicle)
+            assert worker.reserve_next_job(LaterClock(),reopened)==newjob
+            assert [r['job_id'] for r in reopened.read()['reservations']]==[str(job),str(newjob)]
+        with repo.connect() as conn:
+            assert conn.execute('SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s',(job,)).fetchone()==before
+            assert conn.execute('SELECT count(*) AS n FROM canonical_article_rewrite_attempts').fetchone()['n']==0
+
+
+def test_new_article_worker_continuous_full_quota_never_changes_pending_job(fresh_database,tmp_path):
+    from lifecycle_support import seed_vehicle
+    from autodata_ingestion import new_article_worker as worker
+    repo=fresh_database();vehicle=seed_vehicle(repo)
+    with new_article_rollout(repo,tmp_path,continuous=True) as state:
+        _,job=new_pristine_article(repo,vehicle)
+        now=worker.database_now(repo)
+        for _ in range(10):assert state.reserve(uuid4(),now)
+        with repo.connect() as conn:before=conn.execute('SELECT * FROM source_fetch_jobs ORDER BY source_fetch_job_id').fetchall()
+        assert worker.reserve_next_job(repo,state) is None
+        with repo.connect() as conn:assert conn.execute('SELECT * FROM source_fetch_jobs ORDER BY source_fetch_job_id').fetchall()==before
+        assert str(job) not in {r['job_id'] for r in state.read()['reservations']}
+
+
+def test_new_article_worker_continuous_locked_recheck_rejects_changed_generation(fresh_database,tmp_path):
+    from contextlib import contextmanager
+    from lifecycle_support import seed_vehicle
+    from autodata_ingestion import new_article_worker as worker
+    repo=fresh_database();vehicle=seed_vehicle(repo)
+    with new_article_rollout(repo,tmp_path,continuous=True) as state:
+        article,job=new_pristine_article(repo,vehicle)
+        class ChangedAfterSelection:
+            @contextmanager
+            def connect(self):
+                with repo.connect() as conn:
+                    class Connection:
+                        def execute(self,query,*args):
+                            result=conn.execute(query,*args)
+                            if 'FOR UPDATE OF j,a SKIP LOCKED' in query:
+                                # Change after initial selection under the same real row locks.
+                                row=result.fetchone()
+                                conn.execute('UPDATE canonical_articles SET request_generation=1 WHERE canonical_article_id=%s',(article,))
+                                class Selected:
+                                    def fetchone(self):return row
+                                return Selected()
+                            return result
+                    yield Connection()
+        assert worker.reserve_next_job(ChangedAfterSelection(),state) is None
+        assert state.read()['reservations']==[]
+        with repo.connect() as conn:
+            row=conn.execute('SELECT max_attempts,checkpoint,retry_count FROM source_fetch_jobs WHERE source_fetch_job_id=%s',(job,)).fetchone()
+            assert row=={'max_attempts':3,'checkpoint':{},'retry_count':0}
