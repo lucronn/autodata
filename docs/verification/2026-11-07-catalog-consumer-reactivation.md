@@ -41,3 +41,34 @@ Tracking readback verified: https://github.com/lucronn/autodata/issues/186#issue
 ## Private preparation evidence
 
 Planning checkpoint `53b1ddef0df26d498691e1d05b67645c456f73d2` was committed/pushed before private operator creation; exact machine preflight returned synchronized/errors[]. Private operator draft `/home/corp/autodata-evidence/catalog-consumer-reactivation-draft/reactivate.py` SHA256 `3e81a72224a2deb8a9bb7ea1e79898e28a9500a858bba3433f91ebd9efbcbe56` is unbound and has not been executed. Twenty-four mocked tests pass: exact/duplicate/missing/extra environment; empty inherited sensitive names accepted and nonempty forbidden values rejected; wrong command/source/security; stopped container collision; startup-only absence; bounded stop followed by config restore and no restore without stopped proof. Independent initial review required exact rollout receipt fields and main-path interruption/startup/success mocks; both were added. Receipt product_sha/product_tree/replacement_id must exactly equal bound source_sha/source_tree/http_id. Main-path mocks prove KeyboardInterrupt after config mutation and startup failure route through recovery; success retains only after 30s stable and exactly one start. Independent re-review and post-merge release checkpoint remain required. No runtime action or approval/dispatch receipt was created.
+
+## Post-merge release checkpoint (no runtime action)
+
+This branch descends from merged PR366 product `c9c58fcd74e67c07d7014497a6f7433f79cf2ae3`, whose tree `8e8221aac6577429da8877434679bcd573f8c3e8` exactly equals reviewed/CI-passing head `c94a27047ba5af8bcd45751aa1e63ccdb552c899`. Required verification passed at https://github.com/lucronn/autodata/actions/runs/42335140107. Source/receipt identities and private configuration hashes are pinned below. This checkpoint permits preparation/review only; runtime still requires independent exact-script+binding review and separate coordinator dispatch.
+
+The merged product deterministic git archive digest differs from candidate archive because tar embeds commit metadata. Validate the immutable equal-tree export by merged archive file manifest and exact root-owned read-only files; do not claim the archive bytes are identical. The operator binds merged archive digest and merged product SHA while reusing the equal-tree candidate source path.
+
+```json
+{
+  "product_source_sha": "c9c58fcd74e67c07d7014497a6f7433f79cf2ae3",
+  "product_tree_sha": "8e8221aac6577429da8877434679bcd573f8c3e8",
+  "merged_archive_sha256": "bac2e3c74dbe316a5f41553a6fe6c515b12c0e2d5b6f477307d367c8c70755a6",
+  "candidate_export_sha": "c94a27047ba5af8bcd45751aa1e63ccdb552c899",
+  "candidate_archive_sha256": "7a6e415ad6375922b0cec8765cdae8a61985430b81f69136a8a54598a169356f",
+  "immutable_source": "/home/corp/autodata-evidence/catalog-absence-artifacts/c94a27047ba5af8bcd45751aa1e63ccdb552c899/source",
+  "required_ci": "https://github.com/lucronn/autodata/actions/runs/42335140107",
+  "rollout_receipt": "/home/corp/autodata-evidence/catalog-absence-release-run-c9c58fc-r1-20261107T035938Z/receipt.json",
+  "rollout_receipt_sha256": "7cd555ef55d169fa5bd10c56521b540afe85f7f98673b6c57073a56783b23a4c",
+  "http_id": "341116a440ee68a605f1d3d8660476a94ff65adfe90d7d887f20acb71d411355",
+  "http_payload_sha256": "b86afb85e16709204b1fa5e2893f77f632949823d6f133c0451479bba0e676e2",
+  "article_id": "f5f91096e8943a5340074f2838cab6a05c9e24a323375de4d3d0d57a3169270c",
+  "article_payload_sha256": "28112836b32789534c7043cccbccbdcc60d4aabe558f638e89318c1cfb280fa0",
+  "old_conf_sha256": "e7425e4553e01dc3106223e46b22b19c7894459922cc7bdcda6ad80bea9ad6a3",
+  "env_sha256": "3e1f9aa46ac20bcf1cf3c16099307a7fde193c935fd7353c847aa826e17b63b7",
+  "operator_sha256": "3e81a72224a2deb8a9bb7ea1e79898e28a9500a858bba3433f91ebd9efbcbe56"
+}
+```
+
+The HTTP rollout receipt was read back with status passed and exact product_sha/product_tree/replacement_id above. Existing HTTP and article containers were independently inspected running; payload fingerprints cover Id/Image/Config/HostConfig/Mounts without exposing env values. No config/env/service/container/DB was changed. Independent final operator review remains pending. Twenty-four mocked tests passed; no operator execution or approval/dispatch created.
+
+Release tracking readback verified: https://github.com/lucronn/autodata/issues/186#issuecomment-6701984970 and Project8 dedicated field `Catalog consumer reactivation reference` (`PVTF_lAHOCSJ8cc4BiQ2Bzho6jS8`). Todo: exact committed/pushed preflight; independent binding review; later coordinator dispatch one start/retain or stop+restore; truthful outcome sync.
