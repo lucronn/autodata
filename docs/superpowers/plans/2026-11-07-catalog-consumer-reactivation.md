@@ -2,6 +2,8 @@
 
 > **For agentic workers:** Use the executing-plans workflow for this single bounded runtime task.
 
+**Current outcome:** catalog-only acceptance passed; consumer retained active/static, paid authenticated browse unverified and no new completion asserted. See the live-outcome section for exact receipt binding. Earlier preparation restrictions retain their historical context.
+
 **Goal:** Activate and retain the existing catalog-only consumer on the merged PR366 source after its HTTP rollout, so ordinary new configuration index jobs progress without article/model or paid-grant bypass.
 
 **Architecture:** Reuse the installed static catalog-only service, pinned image and unchanged root-protected 14-name environment. Advance its source pointer to the same immutable merged source as the repaired HTTP process; start once and retain running only after bounded acceptance.
@@ -112,3 +114,18 @@ The second sealed dispatch blocked EXISTING_PAYLOAD_CHANGED before mutation beca
 ### Canonical mount fingerprint correction verification
 
 Corrected operator SHA256 `89d6014c230fdbe203cad115860727b106a2f0fa034c6f68c02798bc4ec3dab1` supersedes prior `d7445f2...`. Thirty-nine isolated-root tests pass, including identical reordered mounts accepted and changed mount entry rejected. Full complete-entry canonical fingerprints were recomputed read-only for the same running HTTP/article IDs, with no value output; canonical hashes equal their original baseline pins. Fresh later evidence root clear-r3; failed r1/r2 evidence unchanged. Gate detail https://github.com/lucronn/autodata/issues/186#issuecomment-6702060005. Exact final source_and_gate plus guards and independent script/binding review/fresh coordinator dispatch remain required; no activation during preparation.
+
+## Live outcome: catalog-only consumer active
+
+The coordinator dispatched the exact reviewed r3 operator under gate `457d66e653a22fee506c05f26bdd6dc723abaa2e`. Private result receipt `/home/corp/autodata-evidence/catalog-consumer-reactivation-run-c9c58fc-clear-r3/result.json` has SHA256 `672f9f3e4dc47d03818800423e167905c4b691eacc589808f29a9fc5f5ce7e2c` and status `active-catalog-only`. It binds source `c9c58fcd74e67c07d7014497a6f7433f79cf2ae3`, catalog container `60ff30e0b258062b5bce59d782f9c496280761c4e60befe476c36d14bee9d5e1`, and 32.25 seconds of stable acceptance. The catalog consumer remains running with boot enablement false. The exact credential-clearance drop-in remains installed, clearing only inherited `AUTODATA_MINIO_ROOT_PASSWORD`; original merged unit and exact14 runtime env file are preserved.
+
+The coordinator separately confirmed catalog service active, existing article worker active, public readiness HTTP200 and checkout disabled. Receipt assertions remain `authenticated_paid_browse: UNVERIFIED` and `new_job_completion: NOT_ASSERTED`; the recorded job-status counts do not establish a new completion. The prior r1 MACHINE_PREFLIGHT and r2 EXISTING_PAYLOAD_CHANGED attempts stopped before runtime mutation and remain preserved as failed evidence. No preparation or documentation agent performed an additional start or runtime mutation.
+
+Current completion checklist supersedes the earlier preparation-only statuses while retaining their gate history:
+
+- [x] Exact merged source/HTTP rollout/CI provenance and release gate bound; pinned machine preflight passed.
+- [x] Final operator independently reviewed, 39 isolated-root tests passed, and read-only exact binding/source/guards verified before dispatch.
+- [x] Coordinator dispatched r3 once; stable catalog-only acceptance passed and service retained active/static with no boot enablement.
+- [x] Private receipt read back and truthful live outcome synchronized in canonical plan, verification, record, Issue186 and dedicated Project field.
+
+Paid authenticated browse, new article completion, and a newly processed catalog job remain outside this acceptance result. This outcome does not authorize another start, rollback, merge or deployment.

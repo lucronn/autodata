@@ -13,7 +13,7 @@
     "On failure or interruption stop within independent recovery budget, remove only this exact newly-created drop-in, daemon-reload, restore original stopped source config and append truthful outcome evidence."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-07T04:09:06.014435Z",
+  "updated_at": "2026-11-07T04:10:45.793456Z",
   "release_binding": {
     "product_source_sha": "c9c58fcd74e67c07d7014497a6f7433f79cf2ae3",
     "product_tree_sha": "8e8221aac6577429da8877434679bcd573f8c3e8",
@@ -42,5 +42,20 @@
     "dropin_sha256": "1c5c0edb3b502bcc309ee3d05655ad9ce56126febffb89ec0e7472c97fb17f77"
   },
   "validator_correction": "exact repository safe.directory via scoped GIT_CONFIG_COUNT/KEY_0/VALUE_0 only around pinned validator, finally restoration; fresh evidence root; no activation",
-  "mount_order_correction": "canonical-sort complete Mounts entries identically at binding and runtime, preserve all fields and reject changed entries; clear-r3; no activation"
+  "mount_order_correction": "canonical-sort complete Mounts entries identically at binding and runtime, preserve all fields and reject changed entries; clear-r3; no activation",
+  "live_outcome": {
+    "status": "active-catalog-only",
+    "gate_sha": "457d66e653a22fee506c05f26bdd6dc723abaa2e",
+    "source_sha": "c9c58fcd74e67c07d7014497a6f7433f79cf2ae3",
+    "container_id": "60ff30e0b258062b5bce59d782f9c496280761c4e60befe476c36d14bee9d5e1",
+    "stable_seconds": 32.25,
+    "ongoing_operation": true,
+    "boot_enabled": false,
+    "authenticated_paid_browse": "UNVERIFIED",
+    "new_job_completion": "NOT_ASSERTED",
+    "receipt": "/home/corp/autodata-evidence/catalog-consumer-reactivation-run-c9c58fc-clear-r3/result.json",
+    "receipt_sha256": "672f9f3e4dc47d03818800423e167905c4b691eacc589808f29a9fc5f5ce7e2c",
+    "operator_sha256": "89d6014c230fdbe203cad115860727b106a2f0fa034c6f68c02798bc4ec3dab1",
+    "dropin_sha256": "1c5c0edb3b502bcc309ee3d05655ad9ce56126febffb89ec0e7472c97fb17f77"
+  }
 }
