@@ -310,6 +310,30 @@ class CatalogServiceTests(unittest.TestCase):
         self.assertEqual(written[0], result)
         self.assertTrue(all("provider" not in row.get("raw", {}) for row in result.rows))
 
+    def test_configurations_require_all_providers_and_preserve_partial_rows(self):
+        from autodata_ingestion.source_connector_client import SourceConnectorError
+
+        row = {"year": 2020, "make": "Honda", "model": "Accord", "region": "US", "engine": "2.0L"}
+        for failed in (False, True):
+            with self.subTest(failed=failed):
+                def unfinished(_request):
+                    if failed:
+                        raise SourceConnectorError("UPSTREAM_UNAVAILABLE", retryable=True, status=502)
+                    return {"rows": [row], "complete": False, "missing_scopes": ["configurations"]}
+                written = []
+                result = CacheFirstCatalogService(
+                    cache_reader=lambda _: {"rows": [row], "complete": False},
+                    providers=[unfinished, lambda _: {"rows": [], "complete": True, "missing_scopes": []}],
+                    cache_writer=written.append,
+                ).resolve(CatalogRequest(2020, "Honda", "Accord", scope="configurations"))
+                self.assertFalse(result.complete)
+                self.assertEqual(len(result.rows), 1)
+                self.assertEqual(result.rows[0]["model"], "Accord")
+                self.assertIn("configurations", result.missing_scopes)
+                if failed:
+                    self.assertIn("provider", result.missing_scopes)
+                self.assertEqual(written, [result])
+
     def test_http_hydration_replays_the_same_idempotent_result(self):
         request = json.dumps({
             "scope": "models",
