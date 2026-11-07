@@ -7,6 +7,7 @@ module only accepts the public, versioned envelope and preserves source bytes.
 from __future__ import annotations
 
 import base64
+import errno
 import binascii
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
@@ -267,7 +268,15 @@ class SourceConnectorClient:
                             if remaining <= 0:
                                 raise TimeoutError("catalog deadline exceeded")
                             if transport_socket is not None:
-                                transport_socket.settimeout(min(self.timeout, remaining))
+                                try:
+                                    transport_socket.settimeout(min(self.timeout, remaining))
+                                except OSError as error:
+                                    # HTTPResponse can close the transport after the
+                                    # final fixed-length read, before our EOF check.
+                                    # Buffered bytes/EOF remain readable without a
+                                    # socket; preserve every other transport error.
+                                    if error.errno != errno.EBADF:
+                                        raise
                             chunk = response.read1(min(65536, self.max_bytes + 1 - size))
                             if time.monotonic() >= deadline:
                                 raise TimeoutError("catalog deadline exceeded")
