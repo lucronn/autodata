@@ -1,0 +1,18 @@
+{
+  "goal": "Prepare and review a bounded API-only selector UI rollout operator that preserves the now-active catalog consumer; no runtime mutation or deployment.",
+  "plan_ref": "docs/superpowers/plans/2026-11-07-selector-ui-rollout-preparation.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/verification/2026-11-07-selector-ui-rollout-preparation.md"
+  ],
+  "todo": [
+    "Prepare a separate private API-only operator/test copy preserving exact active ingestion, article and catalog container identities/payloads and worker services through success and rollback.",
+    "Scope exact-repository Git safe.directory only for Git and pinned validator subprocesses; require isolated root interpreter and vetted command PATH without global Git configuration.",
+    "Bind root-sealed source/binary/manifest/script under root-owned ancestry, plus exact merged-source Node selector test receipt and post-switch served-byte equality; preserve honest live-canary limits.",
+    "Run meaningful mocked root Git/environment, catalog identity/service and interrupt rollback regressions; independently review final script/test hashes before a separate merged-product release checkpoint and fresh coordinator dispatch."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-07T04:20:55.555330Z",
+  "reviewed_ui_head": "35cac9f65a8604f3ac3962417fa2d5b2757b772c"
+}
