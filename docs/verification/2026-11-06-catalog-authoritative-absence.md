@@ -8,7 +8,7 @@
 
 **Plan:** `docs/superpowers/plans/2026-11-06-catalog-authoritative-absence.md`
 
-**Status:** implementation verified; required CI and live release pending.
+**Status:** implementation and exact-head CI verified; live release pending.
 
 ## Concrete todo
 
@@ -61,3 +61,9 @@ and version 0 permits natural rehydration. After deployment, use a bounded
 public GET/recheck to confirm the scope retries and remains incomplete until all
 providers finish. No manual database deletion or invalidation is recommended or
 authorized by this change. Existing cache records were not modified.
+
+## Exact merged-source release checkpoint
+
+[PR #366](https://github.com/lucronn/autodata/pull/366) merged as product `c9c58fcd74e67c07d7014497a6f7433f79cf2ae3`. Its tree `8e8221aac6577429da8877434679bcd573f8c3e8` exactly matches reviewed head `c94a27047ba5af8bcd45751aa1e63ccdb552c899`. The [required exact-head CI run](https://github.com/lucronn/autodata/actions/runs/42335140107) passed all three named jobs. The source-only export is root-owned and read-only; a file-by-file Git blob check passed, and its deterministic tar SHA256 is `7a6e415ad6375922b0cec8765cdae8a61985430b81f69136a8a54598a169356f`. The production rollout has not run at this checkpoint.
+
+[Issue #186 release comment](https://github.com/lucronn/autodata/issues/186#issuecomment-6701957163) and the dedicated Project #8 field were updated and read back before this commit. Next verification is the bounded live 2027 Ford completion plus 2020 Figo regression canary, with the existing API, article worker, schema and disabled checkout unchanged.
