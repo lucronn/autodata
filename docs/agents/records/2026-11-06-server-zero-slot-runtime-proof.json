@@ -13,12 +13,32 @@
     "Separately review and dispatch StageB: authenticate exact dedcfe33 snapshot member4, ensure one pristine job without descriptor mutation, require production _PRISTINE sole target, one enable/start, observe exact server provenance/source binding and zero new attempts; always disable/stop/verify within independent cleanup budgets and record truthful success/failure."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-07T00:20:08.334728+00:00",
+  "updated_at": "2026-11-07T00:25:53.979569+00:00",
   "release_pins": {
     "source_sha": "b3a5c83bfd5238b72b2eca534c61d9d9637b116e",
     "tree": "9dd0736a9488dc757e391830127aab9aad088a5f",
     "archive_sha256": "ecce883c2a012991f49e1502faf787f15987c7cc1fc981d1368de8277c792f1b",
     "reviewed_head_required_ci": "reviewed52b63f1795832d3e9d2701ccbe40099ea18989af; merged2026-11-07T00:18:44Z; all3CIjobsSUCCESS/run42314902278/requiredjob128225009401",
     "gate_sha": "this committed planning checkpoint; exact SHA/record hash posted to Issue186 and dedicated Project8 field after commit"
+  },
+  "observed_outcome": {
+    "status": "published_unreviewed_server_zero_slot",
+    "independent_postflight": "PASS",
+    "observed_at": "2026-11-07T00:24:44.285883+00:00",
+    "result_ref": "/var/lib/autodata/new-article-worker-evidence/server-zero-slot-dedc-proof/stage-b-result.json",
+    "result_sha256": "3be56aa89ee680b4e8e0fc079d64a51704b88d2442edf799ffc06a3d7f92cf92",
+    "article_id": "dedcfe33-0b1a-5efa-894a-63cefc428bd7",
+    "job_id": "97572160-ec91-4b2d-9439-8a7e4c67a074",
+    "canonical_revision_id": "43360338-3d90-4c4a-acd2-f8ff31ddb746",
+    "zero_slots": true,
+    "rewrite_attempt_rows": 0,
+    "model_calls": 0,
+    "complete_rewrite": false,
+    "review_status": "UNREVIEWED",
+    "disabled_stopped": true,
+    "spent_jobs_across_preserved_rollouts": 5,
+    "preserved_rollouts": 4,
+    "runtime_authority": "consumed; no further runtime/retry/reset/replay authorized",
+    "independent_review_sha256": "05ed013eadc524b3ab9edc293f687b4ad68fa27fd7c0cd0fa7c8c31f248c4015"
   }
 }
