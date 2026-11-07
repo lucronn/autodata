@@ -13,7 +13,7 @@
     "Run focused and full ingestion tests, required PR CI and bounded public 2027 Ford canary without changing article access or checkout."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-07T03:59:14.147780Z",
+  "updated_at": "2026-11-07T04:01:21.606583Z",
   "tracking_sync": {
     "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6701558285",
     "project_field": "Catalog absence completion reference",
@@ -21,11 +21,21 @@
     "project_item": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
     "readback_exact": true,
     "release_issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6701957163",
-    "project_release_readback_exact": true
+    "project_release_readback_exact": true,
+    "live_issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6701981879",
+    "project_live_readback_exact": true
   },
   "product_source_sha": "c9c58fcd74e67c07d7014497a6f7433f79cf2ae3",
   "product_tree_sha": "8e8221aac6577429da8877434679bcd573f8c3e8",
   "reviewed_pr_head_sha": "c94a27047ba5af8bcd45751aa1e63ccdb552c899",
   "pull_request_ref": "https://github.com/lucronn/autodata/pull/366",
-  "required_ci_ref": "https://github.com/lucronn/autodata/actions/runs/42335140107"
+  "required_ci_ref": "https://github.com/lucronn/autodata/actions/runs/42335140107",
+  "live_release": {
+    "status": "passed",
+    "receipt_sha256": "7cd555ef55d169fa5bd10c56521b540afe85f7f98673b6c57073a56783b23a4c",
+    "replacement_container_id": "341116a440ee68a605f1d3d8660476a94ff65adfe90d7d887f20acb71d411355",
+    "ford_2027_models": 13,
+    "figo_2020_configurations": 1,
+    "checkout_enabled": false
+  }
 }
