@@ -525,6 +525,18 @@ class SourceConnectorClientTests(unittest.TestCase):
         self.assertEqual([page.raw_envelope for page in absence.pages], payloads)
         self.assertEqual([page.source_revision for page in absence.pages], ["makes-page-1", "makes-page-2"])
         self.assertEqual(len(calls), 3)
+        result = _SourceCatalogProvider(client).resolve_catalog(
+            CatalogRequest(2027, "ford", "placeholder", scope="models"),
+        )
+        self.assertEqual(result["rows"], [])
+        self.assertTrue(result["complete"])
+        self.assertEqual([item["source_uri"] for item in result["provenance"]],
+                         ["source:makes:page-1", "source:makes:page-2"])
+        self.assertEqual([item["source_version"] for item in result["provenance"]],
+                         ["makes-page-1", "makes-page-2"])
+        self.assertEqual([item["metadata"]["request_id"] for item in result["provenance"]], [
+            "00000000-0000-4000-8000-000000000002", "00000000-0000-4000-8000-000000000003",
+        ])
 
     def test_merged_models_complete_with_real_parent_absence_provenance(self):
         def open_request(request, timeout):
@@ -612,6 +624,52 @@ class SourceConnectorClientTests(unittest.TestCase):
                 self.assertFalse(result.complete)
                 self.assertIn("provider", result.missing_scopes)
                 self.assertEqual(result.provenance, ())
+
+    def test_parent_absence_requires_complete_successful_enumeration(self):
+        cases = ("missing_cursor", "repeated_cursor", "malformed_cursor", "malformed_body",
+                 "401", "403", "404", "429", "503", "timeout")
+        for case in cases:
+            with self.subTest(case=case):
+                def open_request(request, timeout):
+                    if urlsplit(request.full_url).path.endswith("/models"):
+                        return _Response({}, status=404, url=request.full_url)
+                    if case.isdigit():
+                        return _Response({}, status=int(case), url=request.full_url)
+                    if case == "timeout":
+                        raise URLError(TimeoutError())
+                    if case == "malformed_body":
+                        return _Response(b"{", url=request.full_url)
+                    cursor = {"missing_cursor": None, "repeated_cursor": "same", "malformed_cursor": 123}[case]
+                    return _Response(_envelope(
+                        "banktwo", scope="makes", complete=False, next_cursor=cursor, items=[],
+                    ), url=request.full_url)
+                provider = _SourceCatalogProvider(SourceConnectorClient(
+                    "https://banktwo.test", provider="banktwo", opener=open_request,
+                ))
+                result = CacheFirstCatalogService(cache_reader=lambda _: None, providers=[provider]).resolve(
+                    CatalogRequest(2027, "ford", "placeholder", scope="models"),
+                )
+                self.assertFalse(result.complete)
+                self.assertIn("provider", result.missing_scopes)
+                self.assertEqual(result.provenance, ())
+
+    def test_parent_absence_after_child_page_does_not_erase_rows_or_complete_scope(self):
+        def open_request(request, timeout):
+            parsed = urlsplit(request.full_url)
+            if parsed.path.endswith("/models"):
+                if "cursor" in parse_qs(parsed.query):
+                    return _Response({}, status=404, url=request.full_url)
+                return _Response(_envelope("banktwo", scope="models", complete=False,
+                    next_cursor="page-2", items=[{
+                        "opaque_ref": "model:focus", "label": "Focus", "year": 2027,
+                        "make": "Ford", "model": "Focus",
+                    }]), url=request.full_url)
+            return _Response(_envelope("banktwo", scope="makes", complete=True, items=[]), url=request.full_url)
+        provider = _SourceCatalogProvider(SourceConnectorClient(
+            "https://banktwo.test", provider="banktwo", opener=open_request,
+        ))
+        with self.assertRaisesRegex(ValueError, "contradicted prior child pages"):
+            provider.resolve_catalog(CatalogRequest(2027, "ford", "placeholder", scope="models"))
 
     def test_banktwo_label_lookup_requires_complete_advancing_pages(self):
         calls = []
