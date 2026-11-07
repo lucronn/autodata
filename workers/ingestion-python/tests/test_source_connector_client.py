@@ -576,6 +576,30 @@ class SourceConnectorClientTests(unittest.TestCase):
             "missing_field": "make", "missing_value": "ford",
         })
 
+    def test_configuration_absence_cannot_hide_other_provider_failure(self):
+        def open_request(request, timeout):
+            parsed = urlsplit(request.full_url)
+            scope = parsed.path.rsplit("/", 1)[1]
+            if parsed.hostname == "bankone.test":
+                return _Response({}, status=502, url=request.full_url)
+            if scope == "configurations":
+                return _Response({}, status=404, url=request.full_url)
+            items = [{"opaque_ref": "make:honda", "label": "Honda", "year": 2020, "make": "Honda"}] if scope == "makes" else []
+            return _Response(_envelope("banktwo", scope=scope, complete=True, items=items,
+                source_locator=f"source:banktwo:{scope}:2020:honda"), url=request.full_url)
+
+        providers = [_SourceCatalogProvider(SourceConnectorClient(
+            f"https://{provider}.test", provider=provider, opener=open_request,
+        )) for provider in ("bankone", "banktwo")]
+        written = []
+        result = CacheFirstCatalogService(cache_reader=lambda _: None, providers=providers,
+            cache_writer=written.append).resolve(CatalogRequest(2020, "Honda", "Accord", scope="configurations"))
+        self.assertFalse(result.complete)
+        self.assertEqual(result.rows, ())
+        self.assertEqual(result.missing_scopes, ("configurations", "provider"))
+        self.assertEqual(result.provenance[0]["metadata"]["coverage_basis"], "complete_parent_absence")
+        self.assertEqual(written, [result])
+
     def test_configuration_absence_is_proved_at_make_or_model_parent(self):
         for absent_field in ("make", "model"):
             with self.subTest(absent_field=absent_field):

@@ -98,7 +98,7 @@ class CacheFirstCatalogService:
             if bool(payload.get("complete")) and not _missing_scopes(payload):
                 complete = True
                 completed_providers += 1
-        if request.scope in {"makes", "models"}:
+        if request.scope in {"makes", "models", "configurations"}:
             complete = bool(self._providers) and completed_providers == len(self._providers)
             if not complete:
                 missing.add(request.scope)
