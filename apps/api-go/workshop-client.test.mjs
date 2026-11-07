@@ -1433,3 +1433,62 @@ for (const outcome of ['resolve', 'reject']) {
     assert.equal(sourceCalls, 0); assert.deepEqual(h.shows, []); assert.deepEqual(h.statuses, []);
   });
 }
+
+function selectorOptionsHarness(response) {
+ const nodes = new Map();
+ const $ = id => { if (!nodes.has(id)) nodes.set(id, {value:'',disabled:false}); return nodes.get(id); };
+ const statuses=[], displayed=[];
+ const context={ $, navigation:new NavigationGeneration(), document:{body:{dataset:{}}}, stage(){}, selectorPath:()=>'/choices', requestJSON:async()=>{if(response instanceof Error)throw response;return response;},
+  readCollection:(read,options)=>readCollection(read,{...options,attempts:2,wait:async()=>{}}),
+  populate(name,items,desired){displayed.push(items);$(name).disabled=!items.length;$(name).value=desired;},
+  status:(text,options={})=>statuses.push({text,...options}), restoreRoute(){},
+ };
+ runInNewContext(appSection('async function operation(', 'function updateURL(')+appSection('async function loadOptions(', 'function renderPurchase('),context);
+ return {context,$,statuses,displayed,load:(desired='',current)=>context.operation(g=>context.loadOptions('configuration',current?{...g,current}:g,desired),()=>context.restoreRoute())};
+}
+
+test('actual selector timeout remains a retryable loading failure with partial rows preserved', async()=>{
+ for(const items of [[],[{id:'cfg-1',engine:'2.0L',complete:true}]]) {
+  const h=selectorOptionsHarness({items,complete:false,hydrating:true});
+  await h.load();
+  const last=h.statuses.at(-1);
+  assert.equal(last.error,true);
+  assert.match(last.text,/loading|load/i);
+  assert.doesNotMatch(last.text,/No choices|Choose your vehicle/);
+  assert.equal(typeof last.retry,'function');
+  assert.deepEqual(h.displayed.at(-1),items);
+  assert.equal(h.$('configuration').disabled,!items.length);
+ }
+});
+test('actual selector incomplete nonhydrating scope does not claim empty completion',async()=>{
+ const h=selectorOptionsHarness({items:[],complete:false,hydrating:false});await h.load();
+ assert.equal(h.statuses.at(-1).error,true);assert.equal(typeof h.statuses.at(-1).retry,'function');
+});
+test('actual selector completed empty scope reports no choices without a loading failure',async()=>{
+ const h=selectorOptionsHarness({items:[],complete:true,hydrating:false});await h.load();
+ assert.match(h.statuses.at(-1).text,/No .*choices/i);assert.notEqual(h.statuses.at(-1).error,true);
+});
+test('missing saved selector is not declared unavailable until the scope completes',async()=>{
+ const h=selectorOptionsHarness({items:[],complete:false,hydrating:true});await h.load('missing');
+ assert.equal(h.statuses.at(-1).error,true);assert.doesNotMatch(h.statuses.at(-1).text,/saved.*unavailable/i);
+ const complete=selectorOptionsHarness({items:[],complete:true,hydrating:false});
+ await complete.load('missing');assert.match(complete.statuses.at(-1).text,/saved vehicle choice is unavailable/);
+});
+test('actual selector still resumes a saved row before background hydration completes',async()=>{
+ const h=selectorOptionsHarness({items:[{id:'cfg-1',complete:true}],complete:false,hydrating:true});await h.load('cfg-1');
+ assert.notEqual(h.statuses.at(-1).error,true);assert.equal(h.$('configuration').value,'cfg-1');
+});
+test('actual selector ignores results after generation changes',async()=>{
+ const h=selectorOptionsHarness({items:[],complete:true,hydrating:false});await h.load('',()=>false);
+ assert.equal(h.displayed.length,0);assert.equal(h.statuses.length,1);
+});
+
+test('actual selector source request failure retains its retry action',async()=>{
+ const h=selectorOptionsHarness(new Error('Cannot reach AutoData. Try again.'));await h.load();
+ assert.equal(h.statuses.at(-1).error,true);assert.match(h.statuses.at(-1).text,/Cannot reach/);
+ assert.equal(typeof h.statuses.at(-1).retry,'function');
+});
+test('legacy selector responses without completion metadata remain usable',async()=>{
+ const h=selectorOptionsHarness({items:[{year:2024}]});await h.load();
+ assert.notEqual(h.statuses.at(-1).error,true);assert.match(h.statuses.at(-1).text,/Choose your vehicle/);
+});

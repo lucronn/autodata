@@ -146,9 +146,10 @@ func (s *Server) listCatalogConfigurations(response http.ResponseWriter, request
 		s.writeCatalogError(response, request, err)
 		return
 	}
-	usable := !catalogConfigurationsIncomplete(items)
-	// Usable complete rows must stay selectable even when the durable scope
-	// marker is still missing. Keep background ensure running until the marker
+	usable := !catalogConfigurationsIncomplete(items) || (complete && len(items) == 0)
+	// A completed empty scope is terminal. Usable complete rows must stay
+	// selectable even when the durable scope marker is still missing.
+	// Keep background ensure running until the marker
 	// lands, but do not hide the list behind hydrating:true.
 	hydrating := !usable && s.ingestionClient != nil
 	if (!complete || !usable) && s.ingestionClient != nil {
