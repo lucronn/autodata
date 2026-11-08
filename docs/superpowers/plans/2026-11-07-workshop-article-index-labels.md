@@ -26,7 +26,7 @@
 
 - [x] Add failing browser tests for article type rows and the three empty states.
 - [x] Render type and truthful empty copy without changing protected reads or article links.
-- [ ] Run focused and full checks, then push the scoped change for review.
+- [x] Run focused and full checks, then push the scoped change for review.
 
 ### Task 1: Article row type and empty-state presentation
 
@@ -43,6 +43,8 @@
 - [x] **Step 2: Run the focused red tests.** Run `node --test --test-name-pattern='article index type|article index empty' apps/api-go/workshop-client.test.mjs`; each new assertion must fail because the current renderer omits type or uses the search-only empty copy.
 - [x] **Step 3: Implement the minimal browser change.** In `renderArticles`, append a title `<span>` and type `<span class="article-type">` to the existing link, preserving its handler and URL. Format the kind as plain text by replacing separators with spaces and capitalizing the first letter, with `Article` for a missing kind. Track `result.complete === true` in `loadArticles`, reset the flag in `clearProtected`, and choose the three empty messages from query text and the completion flag. Keep the existing `<ul>` list and add `role="list"` because its CSS removes list markers outside navigation.
 - [x] **Step 4: Run green and regression checks.** Run the focused Node command, then `node --test apps/api-go/workshop-client.test.mjs apps/api-go/workshop-demo.test.mjs`, `go -C apps/api-go test ./...`, and `git diff --check`. Review the final diff for unchanged auth, commerce, and API boundaries.
-- [ ] **Step 5: Commit and push the validated app change.** Commit only the scoped app, test, and tracking paths with a clear message; push the feature branch and open a PR linked to the dedicated issue and Project #8 item.
+- [x] **Step 5: Commit and push the validated app change.** Commit only the scoped app, test, and tracking paths with a clear message; push the feature branch and open a PR linked to the dedicated issue and Project #8 item.
 
 Review adjustment: a terminal nonretryable index failure also needs distinct empty copy. The focused regression first observed the incorrect pending copy and then passed after the renderer used the existing progress status. This stays within the same presentation boundary.
+
+Pre-merge review adjustment: a completed empty index with a retained search query must still say that no articles are available. The focused regression first observed the incorrect search-only copy and then passed after the renderer checked whether the unfiltered index contains articles. This also stays within the presentation boundary.

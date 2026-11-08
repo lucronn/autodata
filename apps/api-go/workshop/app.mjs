@@ -435,7 +435,7 @@ function renderArticles() {
     ? "This article index could not be prepared. Check the status above."
     : !indexComplete
       ? "This article index is still being prepared. Check again shortly."
-      : query
+      : query && articles.length > 0
         ? "No articles match this search. Try a component name or a shorter phrase."
         : "No articles are currently available for this vehicle.";
   $("no-results").hidden = items.length > 0;

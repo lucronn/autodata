@@ -935,6 +935,14 @@ test('article index empty states distinguish pending, completed empty and no sea
   assert.match(search.$('no-results').textContent, /no articles match this search/i);
 });
 
+test('completed empty article index stays empty when a saved search query is present', async () => {
+  const h = articleIndexHarness([indexResponse('completed', { complete: true, items: [] })]);
+  h.$('search').value = 'alternator';
+  await h.load();
+  assert.equal(h.$('no-results').hidden, false);
+  assert.match(h.$('no-results').textContent, /no articles are currently available/i);
+});
+
 test('article index terminal failure does not claim it is still being prepared', async () => {
   const h = articleIndexHarness([indexResponse('failed', { items: [] })]);
   await h.load();
