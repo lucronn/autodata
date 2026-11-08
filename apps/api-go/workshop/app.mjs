@@ -98,10 +98,12 @@ function stage(key) {
   $("loading-progress-bar").removeAttribute("value");
 }
 function show(id) {
+  document.title = "AutoData — The workshop reference";
   for (const section of ["welcome", "catalog", "reader", "library"])
     $(section).hidden = section !== id;
 }
 function clearProtected() {
+  document.title = "AutoData — The workshop reference";
   articles = [];
   indexComplete = false;
   indexFailed = false;

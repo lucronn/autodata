@@ -1298,6 +1298,30 @@ function articleMediaHarness(overrides = {}) {
   };
 }
 
+test('article tab title clears when protected content is invalidated', () => {
+  const h = articleMediaHarness();
+  h.render(mediaArticle([{ type: 'paragraph', text: 'Check pump.' }]));
+  assert.equal(h.context.document.title, 'Pump service | AutoData');
+  h.context.clearProtected();
+  assert.equal(h.context.document.title, 'AutoData — The workshop reference');
+});
+
+test('article tab title clears on catalog and library navigation', () => {
+  const nodes = Object.fromEntries(['welcome', 'catalog', 'reader', 'library']
+    .map(id => [id, { hidden: true }]));
+  const context = { document: { title: 'Pump service | AutoData' }, $: id => nodes[id] };
+  runInNewContext(appSection('function show(', 'function clearProtected('), context);
+  context.show('catalog');
+  assert.equal(context.document.title, 'AutoData — The workshop reference');
+  assert.equal(nodes.catalog.hidden, false);
+  assert.equal(nodes.library.hidden, true);
+  context.document.title = 'Other private article | AutoData';
+  context.show('library');
+  assert.equal(context.document.title, 'AutoData — The workshop reference');
+  assert.equal(nodes.library.hidden, false);
+  assert.equal(nodes.catalog.hidden, true);
+});
+
 for (const [type, tag] of [['ordered_list', 'ol'], ['unordered_list', 'ul']]) {
   test(`article block media ${type} keeps normalized items and retained sibling figure order`, () => {
     const h = articleMediaHarness();
