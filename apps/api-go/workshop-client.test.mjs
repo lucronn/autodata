@@ -1491,14 +1491,15 @@ for (const outcome of ['resolve', 'reject']) {
 
 function selectorOptionsHarness(response) {
  const nodes = new Map();
- const $ = id => { if (!nodes.has(id)) nodes.set(id, {value:'',disabled:false}); return nodes.get(id); };
+ const $ = id => { if (!nodes.has(id)) nodes.set(id, {value:'',disabled:false,hidden:true,textContent:'',dataset:{}}); return nodes.get(id); };
  const statuses=[], displayed=[];
- const context={ $, navigation:new NavigationGeneration(), document:{body:{dataset:{}}}, stage(){}, selectorPath:()=>'/choices', requestJSON:async()=>{if(response instanceof Error)throw response;return response;},
+ const context={ $, navigation:new NavigationGeneration(), document:{body:{dataset:{}}}, retryAction:null, stage(){}, selectorPath:()=>'/choices', requestJSON:async()=>{if(response instanceof Error)throw response;return response;},
   readCollection:(read,options)=>readCollection(read,{...options,attempts:2,wait:async()=>{}}),
   populate(name,items,desired){displayed.push(items);$(name).disabled=!items.length;$(name).value=desired;},
-  status:(text,options={})=>statuses.push({text,...options}), restoreRoute(){},
+  recordStatus:(text,options={})=>statuses.push({text,...options}), restoreRoute(){},
  };
- runInNewContext(appSection('async function operation(', 'function updateURL(')+appSection('async function loadOptions(', 'function renderPurchase('),context);
+ runInNewContext(appSection('function status(', 'function stage(')+appSection('async function operation(', 'function updateURL(')+appSection('async function loadOptions(', 'function renderPurchase(')+
+  'const actualStatus = status; status = (text, options = {}) => { recordStatus(text, options); actualStatus(text, options); };',context);
  return {context,$,statuses,displayed,load:(desired='',current)=>context.operation(g=>context.loadOptions('configuration',current?{...g,current}:g,desired),()=>context.restoreRoute())};
 }
 
@@ -1511,6 +1512,8 @@ test('actual selector timeout remains a retryable loading failure with partial r
   assert.match(last.text,/loading|load/i);
   assert.doesNotMatch(last.text,/No choices|Choose your vehicle/);
   assert.equal(typeof last.retry,'function');
+  assert.equal(h.$('retry').hidden,false);
+  assert.equal(typeof h.context.retryAction,'function');
   assert.deepEqual(h.displayed.at(-1),items);
   assert.equal(h.$('configuration').disabled,!items.length);
  }
@@ -1518,6 +1521,19 @@ test('actual selector timeout remains a retryable loading failure with partial r
 test('actual selector incomplete nonhydrating scope does not claim empty completion',async()=>{
  const h=selectorOptionsHarness({items:[],complete:false,hydrating:false});await h.load();
  assert.equal(h.statuses.at(-1).error,true);assert.equal(typeof h.statuses.at(-1).retry,'function');
+ assert.equal(h.$('retry').hidden,false);assert.equal(typeof h.context.retryAction,'function');
+});
+test('selector success hides retry for completed and saved partial choices',async()=>{
+ for(const [response,desired] of [
+  [{items:[{id:'cfg-1',complete:true}],complete:true,hydrating:false},''],
+  [{items:[],complete:true,hydrating:false},''],
+  [{items:[{id:'cfg-1',complete:true}],complete:false,hydrating:true},'cfg-1'],
+ ]) {
+  const h=selectorOptionsHarness(response);await h.load(desired);
+  assert.notEqual(h.statuses.at(-1).error,true);
+  assert.equal(h.$('retry').hidden,true);
+  assert.equal(h.context.retryAction,null);
+ }
 });
 test('actual selector completed empty scope reports no choices without a loading failure',async()=>{
  const h=selectorOptionsHarness({items:[],complete:true,hydrating:false});await h.load();
@@ -1542,6 +1558,7 @@ test('actual selector source request failure retains its retry action',async()=>
  const h=selectorOptionsHarness(new Error('Cannot reach AutoData. Try again.'));await h.load();
  assert.equal(h.statuses.at(-1).error,true);assert.match(h.statuses.at(-1).text,/Cannot reach/);
  assert.equal(typeof h.statuses.at(-1).retry,'function');
+ assert.equal(h.$('retry').hidden,false);assert.equal(typeof h.context.retryAction,'function');
 });
 test('legacy selector responses without completion metadata remain usable',async()=>{
  const h=selectorOptionsHarness({items:[{year:2024}]});await h.load();
