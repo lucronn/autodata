@@ -1265,7 +1265,7 @@ function articleMediaHarness(overrides = {}) {
   const body = new ArticleMediaNode('body'), nodes = new Map();
   const ids = ['articles', 'article-content', 'source-review-frame', 'reference-data', 'library-items',
     'article-title', 'catalog-count', 'article-note', 'source-review-meta', 'source-review', 'print',
-    'reader', 'catalog', 'source-review-link', 'reader-vehicle', 'reader-engine', 'purchase-selection',
+    'welcome', 'reader', 'catalog', 'library', 'source-review-link', 'reader-vehicle', 'reader-engine', 'purchase-selection',
     'article-kind', 'article-reference', 'source-review-load', 'check-order'];
   for (const id of ids) { const node = new ArticleMediaNode('div'); nodes.set(id, node); body.append(node); }
   const navigation = new NavigationGeneration(), g = navigation.next();
@@ -1320,6 +1320,26 @@ test('article tab title clears on catalog and library navigation', () => {
   assert.equal(context.document.title, 'AutoData — The workshop reference');
   assert.equal(nodes.library.hidden, false);
   assert.equal(nodes.catalog.hidden, true);
+});
+
+test('retrying a visible article keeps its tab title while preparation fails', async () => {
+  let rejectPrepare;
+  const h = articleMediaHarness({
+    session: { state: { authenticated: true, csrf: 'csrf' } },
+    stage: () => {},
+    requestArticleJSON: () => new Promise((_, reject) => { rejectPrepare = reject; }),
+  });
+  h.render(mediaArticle([{ type: 'paragraph', text: 'Check pump.' }]));
+  runInNewContext([
+    appSection('function show(', 'function clearProtected('),
+    appSection('async function loadArticle(', 'function openArticle('),
+  ].join('\n'), h.context);
+  const retry = h.context.loadArticle('a', h.g);
+  assert.equal(h.nodes.get('article-title').textContent, 'Pump service');
+  assert.equal(h.context.document.title, 'Pump service | AutoData');
+  rejectPrepare(new Error('temporarily unavailable'));
+  await assert.rejects(retry, /temporarily unavailable/);
+  assert.equal(h.context.document.title, 'Pump service | AutoData');
 });
 
 for (const [type, tag] of [['ordered_list', 'ol'], ['unordered_list', 'ul']]) {
