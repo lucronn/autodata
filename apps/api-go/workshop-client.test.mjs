@@ -779,6 +779,20 @@ test('login route awaits restoration completion before signIn resolves', async (
   assert.equal(h.calls.checkouts, 0);
 });
 
+test('navigation invalidation clears prior order status', () => {
+  const button = { hidden: false };
+  const context = {
+    currentOrder: '11111111-1111-4111-8111-111111111111',
+    navigation: { clear() {} },
+    clearProtected() {},
+    $: id => { assert.equal(id, 'check-order'); return button; },
+  };
+  runInNewContext(appSection('function invalidate(', 'async function operation('), context);
+  context.invalidate();
+  assert.equal(button.hidden, true);
+  assert.equal(context.currentOrder, '');
+});
+
 function articleIndexHarness(responses) {
   const navigation = new NavigationGeneration();
   const nodes = new Map();
@@ -1119,7 +1133,7 @@ function articleMediaHarness(overrides = {}) {
   const ids = ['articles', 'article-content', 'source-review-frame', 'reference-data', 'library-items',
     'article-title', 'catalog-count', 'article-note', 'source-review-meta', 'source-review', 'print',
     'reader', 'catalog', 'source-review-link', 'reader-vehicle', 'reader-engine', 'purchase-selection',
-    'article-kind', 'article-reference', 'source-review-load'];
+    'article-kind', 'article-reference', 'source-review-load', 'check-order'];
   for (const id of ids) { const node = new ArticleMediaNode('div'); nodes.set(id, node); body.append(node); }
   const navigation = new NavigationGeneration(), g = navigation.next();
   const shows = [], statuses = [];
@@ -1131,6 +1145,7 @@ function articleMediaHarness(overrides = {}) {
     $: id => { assert.ok(nodes.has(id), `known DOM node ${id}`); return nodes.get(id); },
     navigation, currentArticle: null, renderedRevision: '', sourceData: null, sourceURL: '', sourceRevision: 0,
     renewalUsed: false, renewal: null, renewalFailures: new Set(), articles: [], libraryItems: [], libraryCursor: null,
+    currentOrder: '',
     access: 'granted', quote: { configuration_label: '2005 Toyota' }, vehicle: { region: 'US' },
     articlePath: id => `/v1/catalog/vehicles/v/articles/${id}`,
     requestArticleJSON: () => assert.fail('unexpected article request'),

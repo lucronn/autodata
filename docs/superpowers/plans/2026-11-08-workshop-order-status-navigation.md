@@ -24,8 +24,8 @@
 
 ## Concrete todo
 
-- [ ] Add a failing regression that runs the real `invalidate()` function with a visible prior-order action.
-- [ ] Clear the prior order ID and hide its status button at that navigation boundary.
+- [x] Add a failing regression that runs the real `invalidate()` function with a visible prior-order action.
+- [x] Clear the prior order ID and hide its status button at that navigation boundary.
 - [ ] Run focused/full Workshop Node and Go API tests, syntax and diff checks, obtain independent review, and integrate only after CI/policy gates pass.
 
 ### Task 1: Clear obsolete payment-status action on navigation
@@ -39,8 +39,8 @@
 - Consumes: current `currentOrder`, `#check-order`, and existing navigation invalidation calls.
 - Produces: cleared order ID and hidden native status button on navigation; no API or data-contract change.
 
-- [ ] **Step 1: Write the failing test.** Evaluate `appSection('function invalidate(', 'async function operation(')` in `runInNewContext` with an actual visible `#check-order` node, a prior order ID, and only navigation/`clearProtected` dependencies stubbed. Call `invalidate()` and assert the button is hidden and the order ID is empty. The production omission of both resets must make this test fail.
-- [ ] **Step 2: Confirm red.** Run `node --test --test-name-pattern='navigation invalidation clears prior order status' apps/api-go/workshop-client.test.mjs`; expect `#check-order.hidden` to remain `false` before the implementation change.
-- [ ] **Step 3: Implement the minimal fix.** Add `currentOrder = "";` and `$("check-order").hidden = true;` inside `invalidate()` after `navigation.clear()`. Do not change `checkOrder()`, `pollOrder()`, or its manual button listener; these continue to set a visible action for the active pending order.
-- [ ] **Step 4: Confirm green and broader checks.** Run the focused test, `node --test --test-reporter=dot apps/api-go/workshop-client.test.mjs apps/api-go/workshop-demo.test.mjs`, `/home/corp/.local/go1.23.4/go/bin/go -C apps/api-go test -count=1 ./...`, `node --check apps/api-go/workshop/app.mjs`, and `git diff --check`.
+- [x] **Step 1: Write the failing test.** Evaluate `appSection('function invalidate(', 'async function operation(')` in `runInNewContext` with an actual visible `#check-order` node, a prior order ID, and only navigation/`clearProtected` dependencies stubbed. Call `invalidate()` and assert the button is hidden and the order ID is empty. The production omission of both resets must make this test fail.
+- [x] **Step 2: Confirm red.** Run `node --test --test-name-pattern='navigation invalidation clears prior order status' apps/api-go/workshop-client.test.mjs`; expect `#check-order.hidden` to remain `false` before the implementation change.
+- [x] **Step 3: Implement the minimal fix.** Add `currentOrder = "";` and `$("check-order").hidden = true;` inside `invalidate()` after `navigation.clear()`. Do not change `checkOrder()`, `pollOrder()`, or its manual button listener; these continue to set a visible action for the active pending order.
+- [x] **Step 4: Confirm green and broader checks.** Run the focused test, `node --test --test-reporter=dot apps/api-go/workshop-client.test.mjs apps/api-go/workshop-demo.test.mjs`, `/home/corp/.local/go1.23.4/go/bin/go -C apps/api-go test -count=1 ./...`, `node --check apps/api-go/workshop/app.mjs`, and `git diff --check`.
 - [ ] **Step 5: Review and integrate.** Inspect the scoped diff, update verification evidence and Issue #375, commit and push the feature branch, request independent review, and merge only after required CI and repository policy gates pass.

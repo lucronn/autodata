@@ -137,6 +137,8 @@ function clearProtected() {
 }
 function invalidate() {
   navigation.clear();
+  currentOrder = "";
+  $("check-order").hidden = true;
   clearProtected();
 }
 async function operation(work, retry = null) {
