@@ -259,7 +259,6 @@ async function loadOptions(name, g, desired = "") {
     result.items.length
       ? "Choose your vehicle to continue."
       : "No choices are available for this selection. Choose another vehicle.",
-    { retry: () => restoreRoute() },
   );
 }
 function renderPurchase() {

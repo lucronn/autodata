@@ -24,9 +24,9 @@
 
 ## Concrete todo
 
-- [ ] Exercise the real status renderer in the selector test harness and write a failing success-state button regression.
-- [ ] Remove the retry callback from the successful selector status call without changing failure behavior.
-- [ ] Run focused and full Workshop Node tests, Go API tests, syntax and diff checks; review and push the scoped change.
+- [x] Exercise the real status renderer in the selector test harness and write a failing success-state button regression.
+- [x] Remove the retry callback from the successful selector status call without changing failure behavior.
+- [x] Run focused and full Workshop Node tests, Go API tests, syntax and diff checks; review and push the scoped change.
 
 ### Task 1: Selector status and retry visibility
 
@@ -39,8 +39,8 @@
 - Consumes: `readCollection` result (`items`, `complete`, `timedOut`) and the current generation.
 - Produces: existing `#activity` text and `#retry` button state through `status()`; no API or data-contract change.
 
-- [ ] **Step 1: Make the test harness exercise the real status renderer.** Give its test nodes `hidden`, `textContent`, and `dataset` fields. Evaluate the existing `function status(` section of `app.mjs` alongside `operation` and `loadOptions`, wrapping it only to capture the message/options already asserted by tests. Keep the real `status()` call responsible for setting `#retry.hidden` and `retryAction`.
-- [ ] **Step 2: Write the failing behavior test.** For completed nonempty, completed empty, and partial-with-saved-choice responses, call the actual `loadOptions` path and assert `#retry.hidden === true` and `retryAction === null` after success. Extend existing timeout and request-failure cases to assert `#retry.hidden === false` and a callable retry action. The success test must fail on the current branch because `loadOptions` passes `retry: () => restoreRoute()` even after success.
-- [ ] **Step 3: Run the focused red test.** Run `node --test --test-name-pattern='selector success hides retry' apps/api-go/workshop-client.test.mjs`; expect the success button assertion to fail because `#retry.hidden` is false. Ensure the harness itself passes its existing selector tests before treating this as a product failure.
-- [ ] **Step 4: Implement the minimal fix.** In the successful `loadOptions` `status()` call, omit the `{ retry: () => restoreRoute() }` option. Leave `operation()`'s catch retry callback and the incomplete/timeout branches unchanged.
-- [ ] **Step 5: Verify and commit.** Run the focused test, `node --test apps/api-go/workshop-client.test.mjs apps/api-go/workshop-demo.test.mjs`, `/home/corp/.local/go1.23.4/go/bin/go -C apps/api-go test -count=1 ./...`, `node --check apps/api-go/workshop/app.mjs`, and `git diff --check`. Review the diff for unchanged request/auth/commerce boundaries, commit the scoped paths, and push the feature branch for review.
+- [x] **Step 1: Make the test harness exercise the real status renderer.** Give its test nodes `hidden`, `textContent`, and `dataset` fields. Evaluate the existing `function status(` section of `app.mjs` alongside `operation` and `loadOptions`, wrapping it only to capture the message/options already asserted by tests. Keep the real `status()` call responsible for setting `#retry.hidden` and `retryAction`.
+- [x] **Step 2: Write the failing behavior test.** For completed nonempty, completed empty, and partial-with-saved-choice responses, call the actual `loadOptions` path and assert `#retry.hidden === true` and `retryAction === null` after success. Extend existing timeout and request-failure cases to assert `#retry.hidden === false` and a callable retry action. The success test must fail on the current branch because `loadOptions` passes `retry: () => restoreRoute()` even after success.
+- [x] **Step 3: Run the focused red test.** Run `node --test --test-name-pattern='selector success hides retry' apps/api-go/workshop-client.test.mjs`; expect the success button assertion to fail because `#retry.hidden` is false. Ensure the harness itself passes its existing selector tests before treating this as a product failure.
+- [x] **Step 4: Implement the minimal fix.** In the successful `loadOptions` `status()` call, omit the `{ retry: () => restoreRoute() }` option. Leave `operation()`'s catch retry callback and the incomplete/timeout branches unchanged.
+- [x] **Step 5: Verify and commit.** Run the focused test, `node --test apps/api-go/workshop-client.test.mjs apps/api-go/workshop-demo.test.mjs`, `/home/corp/.local/go1.23.4/go/bin/go -C apps/api-go test -count=1 ./...`, `node --check apps/api-go/workshop/app.mjs`, and `git diff --check`. Review the diff for unchanged request/auth/commerce boundaries, commit the scoped paths, and push the feature branch for review.
