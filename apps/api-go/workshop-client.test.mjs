@@ -793,7 +793,7 @@ test('navigation invalidation clears prior order status', () => {
   assert.equal(context.currentOrder, '');
 });
 
-function orderStatusHarness(response) {
+function orderStatusHarness(response, { selectionError = null } = {}) {
   const nodes = {
     'check-order': { hidden: true },
     'purchase-message': { textContent: '' },
@@ -803,7 +803,9 @@ function orderStatusHarness(response) {
     currentOrder: '', vehicle: null, access: 'missing',
     $: id => nodes[id],
     navigation: { clear() {} }, clearProtected() {},
-    status() {}, renderPurchase() {}, async selectVehicle() {},
+    status() {}, renderPurchase() {}, async selectVehicle() {
+      if (selectionError) throw selectionError;
+    },
     checkout: { clear() { checkoutClears++; } },
     async pollOrder(id, { onUpdate }) {
       assert.equal(id, orderID);
@@ -846,6 +848,18 @@ test('order status clears missing action on current 404', async () => {
   assert.equal(h.context.currentOrder, '');
   assert.equal(h.button.hidden, true);
   assert.equal(h.checkoutClears(), 1);
+});
+
+test('paid article 404 does not clear the settled order checkout attempt', async () => {
+  const error = Object.assign(new Error('Article index not found'), { status: 404 });
+  const h = orderStatusHarness({
+    version: 'v1', order_id: orderID, ...scope, state: 'paid',
+    retry_disposition: 'do_not_repay', timedOut: false,
+  }, { selectionError: error });
+  await assert.rejects(h.check(), received => received === error);
+  assert.equal(h.context.currentOrder, '');
+  assert.equal(h.button.hidden, true);
+  assert.equal(h.checkoutClears(), 0);
 });
 
 test('order status retains pending action when confirmation times out', async () => {

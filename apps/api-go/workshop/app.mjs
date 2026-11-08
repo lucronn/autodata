@@ -936,49 +936,47 @@ async function checkOrder(g, id) {
   currentOrder = id;
   $("check-order").hidden = false;
   status("Checking payment status…", { busy: true });
-  try {
-    const result = await pollOrder(id, {
-      signal: g.signal,
-      onUpdate(order) {
-        if (g.current())
-          $("purchase-message").textContent =
-            order.state === "paid"
-              ? "Payment received. Checking article access."
-              : "Payment is being confirmed. Do not pay again.";
-      },
-    });
-    if (!g.current()) return;
-    if (["paid", "expired", "canceled", "revoked"].includes(result.state)) {
-      currentOrder = "";
-      $("check-order").hidden = true;
-    }
-    if (result.state === "paid") {
-      vehicle = { id: result.configuration_id, region: result.region };
-      await selectVehicle(g);
-    } else if (["expired", "canceled"].includes(result.state)) {
-      checkout.clear();
-      status(
-        "The previous payment attempt ended. Choose Buy again only when you are ready.",
-      );
-      renderPurchase();
-    } else if (result.state === "revoked") {
-      invalidate();
-      access = "revoked";
-      renderPurchase();
-      status("Access revoked. Contact support.", { error: true });
-    } else
-      status(
-        "Payment confirmation is still pending. Check payment status manually.",
-        { retry: () => operation((g) => checkOrder(g, id)) },
-      );
-  } catch (error) {
+  const result = await pollOrder(id, {
+    signal: g.signal,
+    onUpdate(order) {
+      if (g.current())
+        $("purchase-message").textContent =
+          order.state === "paid"
+            ? "Payment received. Checking article access."
+            : "Payment is being confirmed. Do not pay again.";
+    },
+  }).catch((error) => {
     if (g.current() && error.status === 404) {
       checkout.clear();
       currentOrder = "";
       $("check-order").hidden = true;
     }
     throw error;
+  });
+  if (!g.current()) return;
+  if (["paid", "expired", "canceled", "revoked"].includes(result.state)) {
+    currentOrder = "";
+    $("check-order").hidden = true;
   }
+  if (result.state === "paid") {
+    vehicle = { id: result.configuration_id, region: result.region };
+    await selectVehicle(g);
+  } else if (["expired", "canceled"].includes(result.state)) {
+    checkout.clear();
+    status(
+      "The previous payment attempt ended. Choose Buy again only when you are ready.",
+    );
+    renderPurchase();
+  } else if (result.state === "revoked") {
+    invalidate();
+    access = "revoked";
+    renderPurchase();
+    status("Access revoked. Contact support.", { error: true });
+  } else
+    status(
+      "Payment confirmation is still pending. Check payment status manually.",
+      { retry: () => operation((g) => checkOrder(g, id)) },
+    );
 }
 async function purchase() {
   if (!session.state.authenticated) {
