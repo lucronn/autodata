@@ -948,6 +948,10 @@ async function checkOrder(g, id) {
       },
     });
     if (!g.current()) return;
+    if (["paid", "expired", "canceled", "revoked"].includes(result.state)) {
+      currentOrder = "";
+      $("check-order").hidden = true;
+    }
     if (result.state === "paid") {
       vehicle = { id: result.configuration_id, region: result.region };
       await selectVehicle(g);
@@ -968,7 +972,11 @@ async function checkOrder(g, id) {
         { retry: () => operation((g) => checkOrder(g, id)) },
       );
   } catch (error) {
-    if (error.status === 404) checkout.clear();
+    if (g.current() && error.status === 404) {
+      checkout.clear();
+      currentOrder = "";
+      $("check-order").hidden = true;
+    }
     throw error;
   }
 }
