@@ -372,10 +372,10 @@ async function loadArticles(g, articleID = "") {
     },
   );
   if (!g.current()) return;
-  if (articleID) {
-    if (!articles.some((item) => item.id === articleID))
-      throw new Error("This article is unavailable for the selected vehicle.");
+  if (articleID && articles.some((item) => item.id === articleID)) {
     await loadArticle(articleID, g);
+  } else if (articleID && data.complete === true) {
+    throw new Error("This article is unavailable for the selected vehicle.");
   } else if (data.complete === true) {
     status(data.items.length ? "Article index ready." :
       "Article index ready. No articles are currently available.", { complete: true });
@@ -386,7 +386,7 @@ async function loadArticles(g, articleID = "") {
   } else {
     status("Your article index is still being prepared. Check again.", {
       complete: false,
-      retry: () => operation((next) => loadArticles(next)),
+      retry: () => operation((next) => loadArticles(next, articleID)),
     });
   }
 }

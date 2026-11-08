@@ -1,0 +1,16 @@
+{
+  "goal": "Preserve a saved Workshop article link while its account's article index is incomplete.",
+  "plan_ref": "docs/superpowers/plans/2026-11-08-workshop-saved-article-pending.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/379",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/verification/2026-11-08-workshop-saved-article-pending.md"
+  ],
+  "todo": [
+    "Reproduce the absent saved-article error against the real client function when the account index is incomplete, with complete and failed controls.",
+    "Preserve the saved article ID through an incomplete-index retry while reserving definitive absence for a completed index.",
+    "Run focused/full Workshop and Go checks, independent review and required CI before integrating the bounded fix."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-08T23:21:43Z"
+}

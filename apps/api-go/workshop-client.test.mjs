@@ -1006,6 +1006,36 @@ test('partial index rows remain clickable during preparation and saved articles 
   assert.equal(saved.statuses.some(s => s.complete === true), false);
 });
 
+test('saved article link survives an incomplete index and retries the same article', async () => {
+  const pending = indexResponse('pending', { hydrating: true, items: [] });
+  const ready = indexResponse('completed', { complete: true, items: [
+    { id: 'saved/article', title: 'Oil pump', kind: 'procedure' },
+  ] });
+  const h = articleIndexHarness([pending, pending, pending, ready]);
+  await h.load('saved/article');
+  assert.equal(h.requests.length, 3);
+  assert.equal(h.opened.length, 0);
+  assert.match(h.$('activity-text').textContent, /still being prepared/i);
+  assert.equal(h.$('retry').hidden, false);
+  await h.context.retryAction();
+  assert.equal(h.requests.length, 4);
+  assert.equal(h.opened[0]?.id, 'saved/article');
+});
+
+test('saved article link missing from a complete index is unavailable', async () => {
+  const h = articleIndexHarness([indexResponse('completed', { complete: true, items: [] })]);
+  await assert.rejects(h.load('saved/article'), /unavailable for the selected vehicle/i);
+  assert.equal(h.opened.length, 0);
+});
+
+test('saved article link missing from a failed index reports index failure', async () => {
+  const h = articleIndexHarness([indexResponse('failed', { items: [] })]);
+  await h.load('saved/article');
+  assert.match(h.$('activity-text').textContent, /could not be prepared/i);
+  assert.equal(h.$('retry').hidden, true);
+  assert.equal(h.opened.length, 0);
+});
+
 test('nonempty explicit completed article index is ready after one read', async () => {
   const h = articleIndexHarness([indexResponse('completed', { complete: true, items: [{ id: 'saved', title: 'Pump' }] })]);
   await h.load();
