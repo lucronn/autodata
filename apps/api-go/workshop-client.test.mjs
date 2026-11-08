@@ -793,6 +793,109 @@ test('navigation invalidation clears prior order status', () => {
   assert.equal(context.currentOrder, '');
 });
 
+function orderStatusHarness(response, { selectionError = null } = {}) {
+  const nodes = {
+    'check-order': { hidden: true },
+    'purchase-message': { textContent: '' },
+  };
+  let checkoutClears = 0;
+  const context = {
+    currentOrder: '', vehicle: null, access: 'missing',
+    $: id => nodes[id],
+    navigation: { clear() {} }, clearProtected() {},
+    status() {}, renderPurchase() {}, async selectVehicle() {
+      if (selectionError) throw selectionError;
+    },
+    checkout: { clear() { checkoutClears++; } },
+    async pollOrder(id, { onUpdate }) {
+      assert.equal(id, orderID);
+      if (response instanceof Error) throw response;
+      onUpdate(response);
+      return response;
+    },
+  };
+  runInNewContext(
+    appSection('function invalidate(', 'async function operation(') +
+    appSection('async function checkOrder(', 'async function purchase()'),
+    context,
+  );
+  return {
+    context, button: nodes['check-order'],
+    checkoutClears: () => checkoutClears,
+    check: () => context.checkOrder({ current: () => true, signal: {} }, orderID),
+  };
+}
+
+for (const state of ['paid', 'expired', 'canceled', 'revoked']) {
+  test(`order status clears terminal action after ${state}`, async () => {
+    const response = {
+      version: 'v1', order_id: orderID, ...scope, state,
+      retry_disposition: ['expired', 'canceled'].includes(state) ? 'new_key' : 'do_not_repay',
+      timedOut: false,
+    };
+    const h = orderStatusHarness(response);
+    await h.check();
+    assert.equal(h.context.currentOrder, '');
+    assert.equal(h.button.hidden, true);
+    assert.equal(h.checkoutClears(), ['expired', 'canceled'].includes(state) ? 1 : 0);
+  });
+}
+
+test('order status clears missing action on current 404', async () => {
+  const error = Object.assign(new Error('Order not found'), { status: 404 });
+  const h = orderStatusHarness(error);
+  await assert.rejects(h.check(), received => received === error);
+  assert.equal(h.context.currentOrder, '');
+  assert.equal(h.button.hidden, true);
+  assert.equal(h.checkoutClears(), 1);
+});
+
+test('paid article 404 does not clear the settled order checkout attempt', async () => {
+  const error = Object.assign(new Error('Article index not found'), { status: 404 });
+  const h = orderStatusHarness({
+    version: 'v1', order_id: orderID, ...scope, state: 'paid',
+    retry_disposition: 'do_not_repay', timedOut: false,
+  }, { selectionError: error });
+  await assert.rejects(h.check(), received => received === error);
+  assert.equal(h.context.currentOrder, '');
+  assert.equal(h.button.hidden, true);
+  assert.equal(h.checkoutClears(), 0);
+});
+
+test('order status retains pending action when confirmation times out', async () => {
+  const h = orderStatusHarness({
+    version: 'v1', order_id: orderID, ...scope, state: 'processing',
+    retry_disposition: 'do_not_repay', timedOut: true,
+  });
+  await h.check();
+  assert.equal(h.context.currentOrder, orderID);
+  assert.equal(h.button.hidden, false);
+  assert.equal(h.checkoutClears(), 0);
+});
+
+test('stale order status 404 does not clear newer checkout or action', async () => {
+  let rejectOrder;
+  let current = true;
+  let checkoutClears = 0;
+  const button = { hidden: true };
+  const context = {
+    currentOrder: '', $: () => button, status() {},
+    pollOrder: () => new Promise((_, reject) => { rejectOrder = reject; }),
+    checkout: { clear() { checkoutClears++; } },
+  };
+  runInNewContext(appSection('async function checkOrder(', 'async function purchase()'), context);
+  const pending = context.checkOrder({ current: () => current, signal: {} }, orderID);
+  const newerOrder = '55555555-5555-4555-8555-555555555555';
+  context.currentOrder = newerOrder;
+  current = false;
+  const error = Object.assign(new Error('Old order not found'), { status: 404 });
+  rejectOrder(error);
+  await assert.rejects(pending, received => received === error);
+  assert.equal(context.currentOrder, newerOrder);
+  assert.equal(button.hidden, false);
+  assert.equal(checkoutClears, 0);
+});
+
 function articleIndexHarness(responses) {
   const navigation = new NavigationGeneration();
   const nodes = new Map();
