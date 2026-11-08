@@ -33,6 +33,8 @@ const navigation = new NavigationGeneration();
 const checkout = createCheckout();
 let vehicle = null,
   articles = [],
+  indexComplete = false,
+  indexFailed = false,
   currentArticle = null,
   renderedRevision = "",
   sourceURL = "",
@@ -101,6 +103,8 @@ function show(id) {
 }
 function clearProtected() {
   articles = [];
+  indexComplete = false;
+  indexFailed = false;
   currentArticle = null;
   renderedRevision = "";
   sourceData = null;
@@ -355,6 +359,10 @@ async function loadArticles(g, articleID = "") {
       onUpdate(result) {
         if (!g.current()) return;
         articles = result.items;
+        indexComplete = result.complete === true;
+        indexFailed =
+          result.progress?.status === "failed" &&
+          result.progress?.retryable !== true;
         access = "owned";
         renderPurchase();
         show("catalog");
@@ -385,11 +393,24 @@ async function loadArticles(g, articleID = "") {
 function renderArticles() {
   $("vehicle-caption").textContent =
     quote?.configuration_label || $("purchase-selection").textContent;
-  const items = filterArticles(articles, $("search").value);
+  const query = $("search").value.trim();
+  const items = filterArticles(articles, query);
   const list = element("ul", undefined, "article-list");
+  list.setAttribute("role", "list");
   for (const item of items) {
     const li = element("li"),
-      link = element("a", item.title || "Untitled article");
+      link = element("a");
+    const kind = typeof item.kind === "string"
+      ? item.kind.trim().replace(/[_-]+/g, " ").replace(/\s+/g, " ")
+      : "";
+    link.append(
+      element("span", item.title || "Untitled article"),
+      element(
+        "span",
+        kind ? kind[0].toUpperCase() + kind.slice(1) : "Article",
+        "article-type",
+      ),
+    );
     const url = new URL(location.href);
     url.searchParams.set("article", item.id);
     link.href = url.pathname + url.search;
@@ -410,6 +431,13 @@ function renderArticles() {
   }
   $("articles").replaceChildren(list);
   $("catalog-count").textContent = `${items.length} articles`;
+  $("no-results").textContent = indexFailed
+    ? "This article index could not be prepared. Check the status above."
+    : !indexComplete
+      ? "This article index is still being prepared. Check again shortly."
+      : query && articles.length > 0
+        ? "No articles match this search. Try a component name or a shorter phrase."
+        : "No articles are currently available for this vehicle.";
   $("no-results").hidden = items.length > 0;
 }
 const assetID = (image) =>
