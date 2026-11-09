@@ -11,6 +11,7 @@ Acceptance and verification:
 - [x] A validated processing checkout order that becomes paid remains recoverable through focus/bootstrap without a second Buy invitation.
 - [x] A partial paid index followed by withdrawal clears private article rows, and search during partial hydration keeps the order route recoverable through focus.
 - [x] Opening a partially loaded article during a validated paid check cannot turn a later entitlement error into an enabled Buy action.
+- [ ] All non-auth/non-revoked newer-operation errors after confirmed paid access clear partial content and retain disabled no-repay UI; revoked errors clear the order check and route.
 - [ ] Focused red/green tests, full Workshop client/demo Node tests, Go API tests, syntax/diff checks, independent review, and required CI pass before integration.
 
 These are local app safety tests, not live Stripe settlement, grant reconciliation, paid article access, or production-release acceptance. No production deployment or live payment is authorized.
@@ -26,3 +27,5 @@ Follow-up review of `8cc11e8` found two partial-index regressions. A real `readC
 Independent review of `df2421d` found a further race: a visible partial paid index can start a newer article operation, making the original order-check generation stale. If that article read returns `ENTITLEMENT_REQUIRED`, generic `operation()` treats it as an unpaid vehicle and enables Buy despite the validated paid order and retained route. Task 3 adds a red/green actual-function regression and a client-only confirmed-paid guard; no merge until exact-head rereview and CI pass.
 
 The Task 3 checkpoint `3ba6fd45f9890cae26412b485139273b7c6bf350` passed exact-SHA preflight with `status: synchronized`, `errors: []` before app edits. The actual-function partial-index/open-article race test failed on `df2421d` with `access: missing` instead of pending; after the scope-bound confirmed-paid marker and generic entitlement guard, it passed. Controls verify that a processing order and a paid marker for another vehicle do not claim pending paid access. All 227 Workshop client/demo Node tests and the full Go API suite passed (`ok github.com/lucronn/autodata/apps/api-go 8.629s`); JavaScript syntax and diff checks passed. Exact-head independent review and CI remain pending.
+
+Independent review of `25b1a35` found sibling failures in the same newer-operation path: 404/410/503 leave stale owned or unknown UI rather than disabled no-repay pending state; `ENTITLEMENT_REVOKED` leaves the order action and resume marker visible. Task 4 adds explicit red/green actual-function controls and terminal cleanup before integration.

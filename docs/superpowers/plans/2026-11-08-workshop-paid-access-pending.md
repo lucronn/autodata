@@ -28,6 +28,7 @@
 - [x] Keep a no-repay, retryable paid-access state until article-index access succeeds.
 - [x] Cover paid post-order 410/other article failures and focus/bootstrap restoration without a second Buy invitation.
 - [x] Preserve confirmed-paid no-repay handling when a newer article/open-index operation supersedes a hydrating paid check.
+- [ ] Cover all newer-operation errors for confirmed paid access, including 404/410/503 no-repay and revoked terminal cleanup.
 - [ ] Run focused/full Workshop client and Go tests, syntax/diff checks, independent review, and required CI before integration.
 
 ### Task 1: Keep the paid-order action until access is confirmed
@@ -116,3 +117,16 @@
 - [x] **Step 10: Write red race regression.** Use the real partial `loadArticles()`/`readCollection()` path. After its first hydrating response, open a visible article in a newer operation and reject it with `ENTITLEMENT_REQUIRED`; assert a validated paid order remains checkable and the CTA is disabled/non-Buy. Add processing-order and different-vehicle controls so an unconfirmed or unrelated order never masquerades as paid.
 - [x] **Step 11: Confirm red and repair.** The race test on `df2421d` failed with `access: missing` instead of pending. A client-only confirmed-paid marker is now set only from a validated paid result and bound to the exact configuration/region. Generic entitlement handling preserves pending/no-repay only for that order and scope, while clearing protected content. The marker clears on invalidation, terminal or missing order, revoked access, and successful article-index access. Focused controls and 227 Workshop Node tests pass locally.
 - [ ] **Step 12: Verify and integrate.** Run focused/full Workshop and Go suites, syntax/diff, exact-head independent rereview, and required CI. Update Issue/Project/verification evidence. Merge only after all gates permit; no production deployment or live payment.
+
+### Task 4: Complete confirmed-paid error and terminal handling
+
+**Files:**
+- Modify: `apps/api-go/workshop-client.test.mjs` with partial-paid-index/newer-operation 404/410/503 and revoked controls.
+- Modify: `apps/api-go/workshop/app.mjs` in `operation()` only.
+- Update: `docs/verification/2026-11-08-workshop-paid-access-pending.md` with red/green and final evidence.
+
+**Interfaces:** The Task 3 scope-bound marker already distinguishes owner-validated paid status from a processing order. Any current newer-operation failure other than authentication or revocation must keep the order check visible, clear potentially protected partial content, and render a disabled no-repay pending state. A current `ENTITLEMENT_REVOKED` failure must clear the marker, order action, and resume route while showing revoked state. A 401 still requires sign-in and leaves the route for owner-only recovery.
+
+- [ ] **Step 13: Write red sibling/terminal tests.** Reuse the actual partial-index/open-article path; reject the newer article operation with 404, 410, and 503 in turn, requiring cleared protected rows, retained paid order/action/route, and disabled non-Buy copy. Reject it with `ENTITLEMENT_REVOKED` and require cleared order marker/action/route and revoked messaging.
+- [ ] **Step 14: Confirm red and repair.** Verify the current candidate leaves stale owned copy/action or revoked order action. Extend the exact-scope confirmed-paid branch in `operation()` across non-401/non-revoked errors; apply terminal cleanup for current revocation. Keep unmatched errors and unconfirmed processing orders on their prior paths.
+- [ ] **Step 15: Verify and integrate.** Rerun focused/full Workshop and Go tests, syntax/diff, independent exact-head review, and required CI. Update Issue/Project/verification evidence; merge only if gates permit. No production deployment or live payment.
