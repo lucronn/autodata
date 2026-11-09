@@ -26,7 +26,7 @@
 
 - [x] Reproduce a paid order followed by an entitlement-required article read that currently exposes Buy again.
 - [x] Keep a no-repay, retryable paid-access state until article-index access succeeds.
-- [ ] Cover paid post-order 410/other article failures and focus/bootstrap restoration without a second Buy invitation.
+- [x] Cover paid post-order 410/other article failures and focus/bootstrap restoration without a second Buy invitation.
 - [ ] Run focused/full Workshop client and Go tests, syntax/diff checks, independent review, and required CI before integration.
 
 ### Task 1: Keep the paid-order action until access is confirmed
@@ -98,7 +98,7 @@
 
 **Interfaces:** Existing validated `checkout.start()` processing response, owner-only `pollOrder()`, `?order=` route in `restoreRoute()`, `operation()`, `selectVehicle()`, and `renderPurchase()`. The order query parameter is a resume pointer, not an entitlement or purchase authority; `pollOrder()` still validates it for the signed-in owner.
 
-- [ ] **Step 6: Write red integration tests.** Exercise the real `purchase()` → `operation()` → `checkOrder()` path with a paid order whose article read returns `CATALOG_WITHDRAWN` (410); assert no Buy invitation, no checkout retry, retained Check payment status, and no new checkout. Exercise a validated processing response followed by paid/`ENTITLEMENT_REQUIRED`, then the actual `bootstrap()`/`restoreRoute()` path; assert the pending order is rechecked instead of switching to Buy. Keep direct route and terminal-order controls.
-- [ ] **Step 7: Confirm red.** Run focused tests on the current candidate and identify the lost pending state/route, not fixture failures.
-- [ ] **Step 8: Minimal repair.** On current paid order plus non-revoked post-payment article failure, show a no-repay message and return without outer `operation()` resetting the state or exposing an ineffective purchase retry. Record a validated processing order ID in the existing `?order=` route before checking it, allowing owner-only revalidation on focus; remove the route marker after confirmed article access or terminal non-paid order. Preserve sign-in recovery on unauthenticated order reads and never treat the URL as an entitlement.
+- [x] **Step 6: Write red integration tests.** Exercise the real `purchase()` → `operation()` → `checkOrder()` path with a paid order whose article read returns `CATALOG_WITHDRAWN` (410); assert no Buy invitation, no checkout retry, retained Check payment status, and no new checkout. Exercise a validated processing response followed by paid/`ENTITLEMENT_REQUIRED`, then the actual `bootstrap()`/`restoreRoute()` path; assert the pending order is rechecked instead of switching to Buy. Add successful access and 401 sign-in recovery controls.
+- [x] **Step 7: Confirm red.** The two new integration tests failed on `dda39d9` with `access: unknown` instead of pending after the 410 and one rather than two owner-only order reads across focus; no fixture failures.
+- [x] **Step 8: Minimal repair.** On current paid order plus non-revoked/non-401 post-payment article failure, show a no-repay message and return without outer `operation()` resetting the state or exposing an ineffective purchase retry. Record a validated processing order ID in the existing `?order=` route before checking it, allowing owner-only revalidation on focus; remove the route marker after confirmed article access or terminal non-paid order. Preserve sign-in recovery on unauthenticated order reads and never treat the URL as an entitlement. All nine focused paid/terminal controls and 222 full Workshop Node tests pass locally.
 - [ ] **Step 9: Verify and integrate.** Run focused and full Workshop Node/Go suites, syntax/diff checks; commit/push, obtain independent review of exact repair SHA, await required CI, merge only if policy permits, then close/check the Issue and Project item. No production deployment or live payment.

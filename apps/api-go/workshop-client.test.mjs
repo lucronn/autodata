@@ -804,7 +804,7 @@ function orderStatusHarness(response, { selectionError = null } = {}) {
   const context = {
     currentOrder: '', vehicle: null, access: 'missing',
     $: id => nodes[id],
-    navigation: { clear() {} }, clearProtected() {},
+    navigation: { clear() {} }, clearProtected() {}, clearOrderRoute() {},
     status(message) { statuses.push(message); }, renderPurchase() {}, show() {}, async selectVehicle() {
       const error = Array.isArray(selectionError) ? selectionError[selectionCalls] : selectionError;
       selectionCalls++;
@@ -854,16 +854,18 @@ test('order status clears missing action on current 404', async () => {
   assert.equal(h.checkoutClears(), 1);
 });
 
-test('paid article 404 does not clear the settled order checkout attempt', async () => {
+test('paid article 404 keeps the settled order and offers status recheck, not purchase retry', async () => {
   const error = Object.assign(new Error('Article index not found'), { status: 404 });
   const h = orderStatusHarness({
     version: 'v1', order_id: orderID, ...scope, state: 'paid',
     retry_disposition: 'do_not_repay', timedOut: false,
   }, { selectionError: error });
-  await assert.rejects(h.check(), received => received === error);
+  await h.check();
   assert.equal(h.context.currentOrder, orderID);
   assert.equal(h.button.hidden, false);
   assert.equal(h.checkoutClears(), 0);
+  assert.equal(h.context.access, 'pending');
+  assert.match(h.statuses.at(-1), /do not pay again/);
 });
 
 test('paid access missing keeps status action without inviting repayment', async () => {
@@ -883,6 +885,136 @@ test('paid access missing keeps status action without inviting repayment', async
   await h.check();
   assert.equal(h.context.currentOrder, '');
   assert.equal(h.button.hidden, true);
+});
+
+function paidPurchaseLifecycleHarness(selectionErrors) {
+  const navigation = new NavigationGeneration();
+  const nodes = new Map();
+  const $ = id => {
+    if (!nodes.has(id)) nodes.set(id, {
+      hidden: false, disabled: false, checked: id === 'agreement', value: '',
+      textContent: '', dataset: {},
+      replaceChildren() {}, append() {}, removeAttribute() {},
+    });
+    return nodes.get(id);
+  };
+  const location = {
+    pathname: '/workshop/',
+    search: `?configuration=${scope.configuration_id}&region=${scope.region}`,
+    assign() { throw new Error('Unexpected hosted checkout'); },
+  };
+  const history = {
+    replaceState(_state, _unused, url) { location.search = new URL(url, 'https://workshop.example').search; },
+    pushState(_state, _unused, url) { location.search = new URL(url, 'https://workshop.example').search; },
+  };
+  const statuses = [];
+  let checkoutStarts = 0, orderReads = 0, selections = 0;
+  const context = {
+    $, location, history, URLSearchParams, URL, uuid, validScope, validQuote,
+    purchaseConfiguration, configurationLabel, navigation,
+    document: { body: { dataset: {} }, visibilityState: 'visible', createTextNode: text => ({ textContent: text }) },
+    element: (tag, text) => ({ tag, textContent: text }),
+    names: ['year', 'make', 'model', 'configuration'],
+    vehicle: { id: scope.configuration_id, region: scope.region }, quote,
+    merchant: merchantFixture(), access: 'missing', currentOrder: '',
+    sessionEstablished: true, signingIn: false,
+    session: { state: { authenticated: true, ready: true, csrf: 'test-csrf' },
+      async bootstrap() {}, clear() { context.session.state.authenticated = false; } },
+    scope: () => ({ configuration_id: context.vehicle?.id, region: context.vehicle?.region }),
+    checkout: { async start() {
+      checkoutStarts++;
+      return { version: 'v1', ...scope, order_id: orderID, state: 'processing' };
+    }, clear() {} },
+    async pollOrder(id, { onUpdate }) {
+      assert.equal(id, orderID);
+      orderReads++;
+      const paid = { version: 'v1', ...scope, order_id: orderID, state: 'paid', retry_disposition: 'do_not_repay' };
+      onUpdate(paid);
+      return paid;
+    },
+    async selectVehicle() {
+      const error = selectionErrors[selections++];
+      if (error) throw error;
+      context.access = 'owned';
+    },
+    clearProtected() { context.access = 'unknown'; },
+    show() {},
+    status(message, options = {}) { statuses.push({ message, options }); },
+    async requestJSON() { return merchantFixture(); },
+  };
+  runInNewContext(
+    appSection('function invalidate(', 'function updateURL(') +
+    appSection('function updateURL(', 'function populate(') +
+    appSection('function renderPurchase(', 'async function selectVehicle(') +
+    appSection('async function checkOrder(', 'async function signIn()') +
+    appSection('async function bootstrap()', 'for (const [index, name] of names.entries())') +
+    appSection('let lifecycleCheck = null;', 'window.addEventListener("pageshow"'),
+    context,
+  );
+  return { context, $, location, statuses,
+    checkoutStarts: () => checkoutStarts, orderReads: () => orderReads };
+}
+
+test('paid catalog withdrawal through purchase never invites repayment or a no-op purchase retry', async () => {
+  const withdrawn = Object.assign(new Error('Catalog withdrawn'), { status: 410, code: 'CATALOG_WITHDRAWN' });
+  const h = paidPurchaseLifecycleHarness([withdrawn]);
+  await h.context.purchase();
+  assert.equal(h.checkoutStarts(), 1);
+  assert.equal(h.context.currentOrder, orderID);
+  assert.equal(h.$('check-order').hidden, false);
+  assert.equal(h.context.access, 'pending');
+  assert.match(h.$('purchase-message').textContent, /Payment received.*do not pay again/);
+  assert.doesNotMatch(h.$('purchase-action').textContent, /Buy/);
+  assert.equal(h.$('purchase-action').disabled, true);
+  assert.match(h.statuses.at(-1).message, /do not pay again/);
+  assert.equal(h.statuses.at(-1).options.retry, undefined);
+});
+
+test('paid processing checkout survives focus recheck without a second Buy invitation', async () => {
+  const required = Object.assign(new Error('Access not ready'), { status: 403, code: 'ENTITLEMENT_REQUIRED' });
+  const h = paidPurchaseLifecycleHarness([required, required]);
+  await h.context.purchase();
+  assert.equal(h.orderReads(), 1);
+  assert.equal(h.context.access, 'pending');
+  await h.context.recheck();
+  assert.equal(h.checkoutStarts(), 1);
+  assert.equal(h.orderReads(), 2);
+  assert.equal(h.context.currentOrder, orderID);
+  assert.equal(h.context.access, 'pending');
+  assert.equal(h.$('check-order').hidden, false);
+  assert.doesNotMatch(h.$('purchase-action').textContent, /Buy/);
+  assert.match(h.$('purchase-message').textContent, /do not pay again/);
+});
+
+test('confirmed article access replaces the resumed order route with its vehicle route', async () => {
+  const required = Object.assign(new Error('Access not ready'), { status: 403, code: 'ENTITLEMENT_REQUIRED' });
+  const h = paidPurchaseLifecycleHarness([required, null]);
+  await h.context.purchase();
+  assert.equal(new URLSearchParams(h.location.search).get('order'), orderID);
+  await h.context.recheck();
+  const route = new URLSearchParams(h.location.search);
+  assert.equal(route.has('order'), false);
+  assert.equal(route.get('configuration'), scope.configuration_id);
+  assert.equal(route.get('region'), scope.region);
+  assert.equal(h.context.currentOrder, '');
+  assert.equal(h.$('check-order').hidden, true);
+  assert.equal(h.context.access, 'owned');
+});
+
+test('paid article authentication failure retains order route for sign-in recovery', async () => {
+  const unauthorized = Object.assign(new Error('Sign in again'), { status: 401 });
+  const h = paidPurchaseLifecycleHarness([unauthorized, null]);
+  await h.context.purchase();
+  assert.equal(h.checkoutStarts(), 1);
+  assert.equal(h.orderReads(), 1);
+  assert.equal(h.context.session.state.authenticated, false);
+  assert.equal(new URLSearchParams(h.location.search).get('order'), orderID);
+  assert.doesNotMatch(h.$('purchase-action').textContent, /Buy/);
+  h.context.session.state.authenticated = true;
+  await h.context.restoreRoute();
+  assert.equal(h.orderReads(), 2);
+  assert.equal(h.context.access, 'owned');
+  assert.equal(new URLSearchParams(h.location.search).has('order'), false);
 });
 
 test('order status retains pending action when confirmation times out', async () => {

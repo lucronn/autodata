@@ -197,6 +197,21 @@ function updateURL({ article = "", replace = false, library = false } = {}) {
   if (url !== location.pathname + location.search)
     history[replace ? "replaceState" : "pushState"](null, "", url);
 }
+function rememberOrderRoute(id) {
+  const params = new URLSearchParams(location.search);
+  params.set("order", id);
+  history.replaceState(null, "", `${location.pathname}?${params}`);
+}
+function clearOrderRoute(id, keepVehicle = false) {
+  const params = new URLSearchParams(location.search);
+  if (params.get("order") !== id) return;
+  params.delete("order");
+  if (keepVehicle && validScope(scope())) {
+    params.set("configuration", vehicle.id);
+    params.set("region", vehicle.region);
+  }
+  history.replaceState(null, "", `${location.pathname}${params.size ? `?${params}` : ""}`);
+}
 function populate(name, items, desired = "") {
   rows[name] =
     name === "year" ? [...items].sort((a, b) => b.year - a.year) : items;
@@ -956,6 +971,7 @@ async function checkOrder(g, id) {
       checkout.clear();
       currentOrder = "";
       $("check-order").hidden = true;
+      clearOrderRoute(id);
     }
     throw error;
   });
@@ -963,6 +979,7 @@ async function checkOrder(g, id) {
   if (["expired", "canceled", "revoked"].includes(result.state)) {
     currentOrder = "";
     $("check-order").hidden = true;
+    clearOrderRoute(id);
   }
   if (result.state === "paid") {
     vehicle = { id: result.configuration_id, region: result.region };
@@ -973,13 +990,16 @@ async function checkOrder(g, id) {
       if (error.code === "ENTITLEMENT_REVOKED") {
         currentOrder = "";
         $("check-order").hidden = true;
+        clearOrderRoute(id);
         throw error;
       }
       access = "pending";
       renderPurchase();
-      if (error.code !== "ENTITLEMENT_REQUIRED") throw error;
+      if (error.status === 401) throw error;
       show("welcome");
-      status("Payment received. Access is not ready. Check payment status again; do not pay again.", {
+      status(error.code === "ENTITLEMENT_REQUIRED"
+        ? "Payment received. Access is not ready. Check payment status again; do not pay again."
+        : "Payment received, but articles are unavailable. Check payment status again or contact support; do not pay again.", {
         error: true,
       });
       return;
@@ -987,6 +1007,7 @@ async function checkOrder(g, id) {
     if (!g.current()) return;
     currentOrder = "";
     $("check-order").hidden = true;
+    clearOrderRoute(id, true);
   } else if (["expired", "canceled"].includes(result.state)) {
     checkout.clear();
     status(
@@ -1037,7 +1058,10 @@ async function purchase() {
       if (!g.current()) return;
       if (result.state === "checkout") location.assign(result.checkout_url);
       else if (result.state === "owned") await loadArticles(g);
-      else await checkOrder(g, result.order_id);
+      else {
+        rememberOrderRoute(result.order_id);
+        await checkOrder(g, result.order_id);
+      }
     },
     () => purchase(),
   );
