@@ -1,0 +1,16 @@
+{
+  "goal": "Keep a confirmed paid Workshop order non-repayable while its article access is unresolved.",
+  "plan_ref": "docs/superpowers/plans/2026-11-08-workshop-paid-access-pending.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/383",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/verification/2026-11-08-workshop-paid-access-pending.md"
+  ],
+  "todo": [
+    "Reproduce the repurchase prompt after a paid order and failed article-access read.",
+    "Retain a no-repay pending-access state and status action until article-index access succeeds.",
+    "Verify focused and full Workshop and Go suites, independent review, and required CI before integrating."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-09T00:22:25Z"
+}
