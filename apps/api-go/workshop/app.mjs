@@ -193,7 +193,10 @@ async function operation(work, retry = null) {
       access = "missing";
       show("welcome");
       renderPurchase();
-      status("This vehicle is available to purchase.");
+      status(!$("purchase-action").disabled &&
+        $("purchase-action").textContent === "Buy for $20 USD"
+          ? "This vehicle is available to purchase."
+          : $("purchase-message").textContent);
     } else
       status(error.message || "AutoData is unavailable. Try again.", {
         error: true,
