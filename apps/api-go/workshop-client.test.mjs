@@ -1265,7 +1265,7 @@ function articleMediaHarness(overrides = {}) {
   const body = new ArticleMediaNode('body'), nodes = new Map();
   const ids = ['articles', 'article-content', 'source-review-frame', 'reference-data', 'library-items',
     'article-title', 'catalog-count', 'article-note', 'source-review-meta', 'source-review', 'print',
-    'reader', 'catalog', 'source-review-link', 'reader-vehicle', 'reader-engine', 'purchase-selection',
+    'welcome', 'reader', 'catalog', 'library', 'source-review-link', 'reader-vehicle', 'reader-engine', 'purchase-selection',
     'article-kind', 'article-reference', 'source-review-load', 'check-order'];
   for (const id of ids) { const node = new ArticleMediaNode('div'); nodes.set(id, node); body.append(node); }
   const navigation = new NavigationGeneration(), g = navigation.next();
@@ -1297,6 +1297,50 @@ function articleMediaHarness(overrides = {}) {
     content(article) { const parent = new ArticleMediaNode('div'); body.append(parent); context.renderContent(parent, article, g); return parent; },
   };
 }
+
+test('article tab title clears when protected content is invalidated', () => {
+  const h = articleMediaHarness();
+  h.render(mediaArticle([{ type: 'paragraph', text: 'Check pump.' }]));
+  assert.equal(h.context.document.title, 'Pump service | AutoData');
+  h.context.clearProtected();
+  assert.equal(h.context.document.title, 'AutoData — The workshop reference');
+});
+
+test('article tab title clears on catalog and library navigation', () => {
+  const nodes = Object.fromEntries(['welcome', 'catalog', 'reader', 'library']
+    .map(id => [id, { hidden: true }]));
+  const context = { document: { title: 'Pump service | AutoData' }, $: id => nodes[id] };
+  runInNewContext(appSection('function show(', 'function clearProtected('), context);
+  context.show('catalog');
+  assert.equal(context.document.title, 'AutoData — The workshop reference');
+  assert.equal(nodes.catalog.hidden, false);
+  assert.equal(nodes.library.hidden, true);
+  context.document.title = 'Other private article | AutoData';
+  context.show('library');
+  assert.equal(context.document.title, 'AutoData — The workshop reference');
+  assert.equal(nodes.library.hidden, false);
+  assert.equal(nodes.catalog.hidden, true);
+});
+
+test('retrying a visible article keeps its tab title while preparation fails', async () => {
+  let rejectPrepare;
+  const h = articleMediaHarness({
+    session: { state: { authenticated: true, csrf: 'csrf' } },
+    stage: () => {},
+    requestArticleJSON: () => new Promise((_, reject) => { rejectPrepare = reject; }),
+  });
+  h.render(mediaArticle([{ type: 'paragraph', text: 'Check pump.' }]));
+  runInNewContext([
+    appSection('function show(', 'function clearProtected('),
+    appSection('async function loadArticle(', 'function openArticle('),
+  ].join('\n'), h.context);
+  const retry = h.context.loadArticle('a', h.g);
+  assert.equal(h.nodes.get('article-title').textContent, 'Pump service');
+  assert.equal(h.context.document.title, 'Pump service | AutoData');
+  rejectPrepare(new Error('temporarily unavailable'));
+  await assert.rejects(retry, /temporarily unavailable/);
+  assert.equal(h.context.document.title, 'Pump service | AutoData');
+});
 
 for (const [type, tag] of [['ordered_list', 'ol'], ['unordered_list', 'ul']]) {
   test(`article block media ${type} keeps normalized items and retained sibling figure order`, () => {
