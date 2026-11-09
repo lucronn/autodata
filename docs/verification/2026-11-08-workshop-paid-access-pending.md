@@ -12,6 +12,7 @@ Acceptance and verification:
 - [x] A partial paid index followed by withdrawal clears private article rows, and search during partial hydration keeps the order route recoverable through focus.
 - [x] Opening a partially loaded article during a validated paid check cannot turn a later entitlement error into an enabled Buy action.
 - [x] All non-auth/non-revoked newer-operation errors after confirmed paid access clear partial content and retain disabled no-repay UI; revoked errors clear the order check and route.
+- [ ] A fresh owner-only order-status 404/revoked result during partial paid hydration clears private rows and shows appropriate no-repay or terminal guidance.
 - [ ] Focused red/green tests, full Workshop client/demo Node tests, Go API tests, syntax/diff checks, independent review, and required CI pass before integration.
 
 These are local app safety tests, not live Stripe settlement, grant reconciliation, paid article access, or production-release acceptance. No production deployment or live payment is authorized.
@@ -31,3 +32,5 @@ The Task 3 checkpoint `3ba6fd45f9890cae26412b485139273b7c6bf350` passed exact-SH
 Independent review of `25b1a35` found sibling failures in the same newer-operation path: 404/410/503 leave stale owned or unknown UI rather than disabled no-repay pending state; `ENTITLEMENT_REVOKED` leaves the order action and resume marker visible. Task 4 adds explicit red/green actual-function controls and terminal cleanup before integration.
 
 The Task 4 checkpoint `5d51928466e6a2f8d08616ba461411f17fe5e3b7` passed exact-SHA preflight with `status: synchronized`, `errors: []` before app edits. On `25b1a35`, the 404/503 actual-function partial-article tests failed with `access: owned`, the 410 test with `access: unknown`, and the revoked test with a retained order action. All now pass: current exact-scope paid failures other than 401/revoked clear protected content and show disabled no-repay pending UI; current revoked clears the marker, order action, and route; 401 requires sign-in and recovers through owner-only revalidation. All 232 Workshop client/demo Node tests and the full Go API suite passed (`ok github.com/lucronn/autodata/apps/api-go 8.547s`); JavaScript syntax and diff checks passed. Exact-head independent review and required CI remain pending.
+
+Independent review of `2fbe0f1` identified two recheck paths during visible partial paid hydration. A newer order-status 404 currently clears the order pointer but leaves private rows and owned UI visible; a newer revoked result clears content but leaves the welcome section hidden, so terminal guidance is invisible. Task 5 adds actual-function red/green recheck tests and scoped cleanup before integration.

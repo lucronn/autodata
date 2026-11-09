@@ -12,8 +12,9 @@
     "Protect paid orders through outer article-error handling and focus/bootstrap recovery.",
     "Preserve no-repay handling when a newer article operation supersedes a confirmed paid partial-index check.",
     "Handle sibling article errors and revoked terminal cleanup for confirmed paid partial-index navigation.",
+    "Clear partial protected content and show guidance when an order-status recheck returns 404 or revoked.",
     "Verify focused and full Workshop and Go suites, independent review, and required CI before integrating."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-09T00:37:00Z"
+  "updated_at": "2026-11-09T00:39:00Z"
 }

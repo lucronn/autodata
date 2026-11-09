@@ -29,6 +29,7 @@
 - [x] Cover paid post-order 410/other article failures and focus/bootstrap restoration without a second Buy invitation.
 - [x] Preserve confirmed-paid no-repay handling when a newer article/open-index operation supersedes a hydrating paid check.
 - [x] Cover all newer-operation errors for confirmed paid access, including 404/410/503 no-repay and revoked terminal cleanup.
+- [ ] Make a fresh owner-only order-status 404 or revoked result safe after a prior paid partial index is visible.
 - [ ] Run focused/full Workshop client and Go tests, syntax/diff checks, independent review, and required CI before integration.
 
 ### Task 1: Keep the paid-order action until access is confirmed
@@ -130,3 +131,16 @@
 - [x] **Step 13: Write red sibling/terminal tests.** Reuse the actual partial-index/open-article path; reject the newer article operation with 404, 410, and 503 in turn, requiring cleared protected rows, retained paid order/action/route, and disabled non-Buy copy. Reject it with `ENTITLEMENT_REVOKED` and require cleared order marker/action/route and revoked messaging. Add a 401 sign-in/recovery control.
 - [x] **Step 14: Confirm red and repair.** On `25b1a35`, the 404/503 tests failed with owned access, 410 with unknown access, and revoked with a retained order action. The exact-scope confirmed-paid branch in `operation()` now handles all non-401/non-revoked errors; a current revocation clears the terminal marker/order/route/action. The 401 control requires sign-in and recovers the order through owner-only revalidation. All 232 Workshop Node tests pass locally.
 - [ ] **Step 15: Verify and integrate.** Rerun focused/full Workshop and Go tests, syntax/diff, independent exact-head review, and required CI. Update Issue/Project/verification evidence; merge only if gates permit. No production deployment or live payment.
+
+### Task 5: Rechecking order status during partial paid hydration
+
+**Files:**
+- Modify: `apps/api-go/workshop-client.test.mjs` with actual partial-index/rechecked-order 404 and revoked controls.
+- Modify: `apps/api-go/workshop/app.mjs` in `checkOrder()` only.
+- Update: `docs/verification/2026-11-08-workshop-paid-access-pending.md` with red/green and final evidence.
+
+**Interfaces:** The visible Check payment status action can start a newer `checkOrder()` while a prior paid index is partially hydrated. A fresh 404 must remove protected rows and avoid inviting repayment based on a prior owner-validated paid result; it may keep the order pointer for owner-only retry and direct support guidance. A fresh `revoked` must clear protected content and show the welcome section so terminal guidance is visible. Preserve existing no-prior-paid 404, expired, canceled, and processing behavior.
+
+- [ ] **Step 16: Write red recheck tests.** After a real partial index response, start a newer `checkOrder()` via the visible action. Feed 404 and assert private rows are cleared, a no-repay status is visible, and no new checkout starts. Feed revoked and assert all protected rows and order controls are cleared while the welcome section displays revocation guidance. Keep no-prior-paid 404 and terminal controls.
+- [ ] **Step 17: Confirm red and repair.** Verify the current candidate retains private rows for 404 and hides all main sections for revoked. Add bounded 404 handling for an already validated paid order, and explicitly show welcome on revoked. Do not treat an unvalidated order or URL alone as proof of paid access.
+- [ ] **Step 18: Verify and integrate.** Rerun focused/full Workshop and Go tests, syntax/diff, independent exact-head review, and required CI. Update Issue/Project/verification evidence; merge only if gates permit. No production deployment or live payment.
