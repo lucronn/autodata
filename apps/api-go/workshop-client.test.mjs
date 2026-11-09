@@ -802,7 +802,7 @@ function orderStatusHarness(response, { selectionError = null } = {}) {
   let selectionCalls = 0;
   const statuses = [];
   const context = {
-    currentOrder: '', vehicle: null, access: 'missing',
+    currentOrder: '', paidOrder: '', vehicle: null, access: 'missing',
     $: id => nodes[id],
     navigation: { clear() {} }, clearProtected() {}, clearOrderRoute() {},
     status(message) { statuses.push(message); }, renderPurchase() {}, show() {}, async selectVehicle() {
@@ -887,7 +887,7 @@ test('paid access missing keeps status action without inviting repayment', async
   assert.equal(h.button.hidden, true);
 });
 
-function paidPurchaseLifecycleHarness(selectionErrors, { realArticleIndex = false, afterPartial = null, articleReadResponses = null } = {}) {
+function paidPurchaseLifecycleHarness(selectionErrors, { realArticleIndex = false, afterPartial = null, articleReadResponses = null, articleOpenError = null } = {}) {
   const navigation = new NavigationGeneration();
   const nodes = new Map();
   const $ = id => {
@@ -917,7 +917,7 @@ function paidPurchaseLifecycleHarness(selectionErrors, { realArticleIndex = fals
     element: (tag, text) => ({ tag, textContent: text }),
     names: ['year', 'make', 'model', 'configuration'],
     vehicle: { id: scope.configuration_id, region: scope.region }, quote,
-    merchant: merchantFixture(), access: 'missing', currentOrder: '',
+    merchant: merchantFixture(), access: 'missing', currentOrder: '', paidOrder: '',
     articles: [],
     sessionEstablished: true, signingIn: false,
     session: { state: { authenticated: true, ready: true, csrf: 'test-csrf' },
@@ -944,6 +944,7 @@ function paidPurchaseLifecycleHarness(selectionErrors, { realArticleIndex = fals
     status(message, options = {}) { statuses.push({ message, options }); },
     stage() {}, articlePath: () => `/v1/catalog/vehicles/${scope.configuration_id}/articles`,
     renderArticles() { $('articles').replaceChildren(...context.articles.map(item => ({ id: item.id }))); },
+    async loadArticle() { if (articleOpenError) throw articleOpenError; },
     readCollection: (read, options) => readCollection(read, {
       ...options, wait: async () => { if (afterPartial) await afterPartial(context); },
     }),
@@ -968,6 +969,7 @@ function paidPurchaseLifecycleHarness(selectionErrors, { realArticleIndex = fals
     appSection('function updateURL(', 'function populate(') +
     appSection('function renderPurchase(', 'async function selectVehicle(') +
     (realArticleIndex ? appSection('async function selectVehicle(', 'function renderArticles(') : '') +
+    (articleOpenError ? appSection('function openArticle(', 'function validSourceURL(') : '') +
     appSection('async function checkOrder(', 'async function signIn()') +
     appSection('async function bootstrap()', 'for (const [index, name] of names.entries())') +
     appSection('let lifecycleCheck = null;', 'window.addEventListener("pageshow"'),
@@ -1028,6 +1030,49 @@ test('search during a partial paid index keeps its order resume route after with
   assert.equal(h.context.access, 'pending');
   assert.equal(h.context.currentOrder, orderID);
   assert.doesNotMatch(h.$('purchase-action').textContent, /Buy/);
+});
+
+test('opening a partial paid article cannot turn its entitlement error into Buy', async () => {
+  const required = Object.assign(new Error('Access not ready'), { status: 403, code: 'ENTITLEMENT_REQUIRED' });
+  const h = paidPurchaseLifecycleHarness([], {
+    realArticleIndex: true,
+    articleReadResponses: [
+      { items: [{ id: routeArticle, title: 'Private article' }], hydrating: true, complete: false },
+    ],
+    articleOpenError: required,
+    async afterPartial(context) {
+      assert.equal(context.$('articles').children.length, 1);
+      context.openArticle(routeArticle);
+      await new Promise(setImmediate);
+    },
+  });
+  await h.context.purchase();
+  assert.equal(h.orderReads(), 1);
+  assert.equal(h.context.currentOrder, orderID);
+  assert.equal(new URLSearchParams(h.location.search).get('order'), orderID);
+  assert.equal(h.context.access, 'pending');
+  assert.equal(h.$('check-order').hidden, false);
+  assert.equal(h.$('articles').children.length, 0);
+  assert.doesNotMatch(h.$('purchase-action').textContent, /Buy/);
+  assert.equal(h.$('purchase-action').disabled, true);
+});
+
+test('processing order alone does not claim confirmed paid access on an entitlement error', async () => {
+  const required = Object.assign(new Error('Access not ready'), { status: 403, code: 'ENTITLEMENT_REQUIRED' });
+  const h = paidPurchaseLifecycleHarness([]);
+  h.context.currentOrder = orderID;
+  await h.context.operation(async () => { throw required; });
+  assert.equal(h.context.access, 'missing');
+});
+
+test('confirmed paid marker for another vehicle does not mask missing access', async () => {
+  const required = Object.assign(new Error('Access not ready'), { status: 403, code: 'ENTITLEMENT_REQUIRED' });
+  const h = paidPurchaseLifecycleHarness([]);
+  h.context.currentOrder = orderID;
+  h.context.paidOrder = { id: orderID, ...scope };
+  h.context.vehicle = { id: previousConfiguration, region: scope.region };
+  await h.context.operation(async () => { throw required; });
+  assert.equal(h.context.access, 'missing');
 });
 
 test('paid processing checkout survives focus recheck without a second Buy invitation', async () => {
@@ -1094,7 +1139,7 @@ test('stale order status 404 does not clear newer checkout or action', async () 
   let checkoutClears = 0;
   const button = { hidden: true };
   const context = {
-    currentOrder: '', $: () => button, status() {},
+    currentOrder: '', paidOrder: '', $: () => button, status() {},
     pollOrder: () => new Promise((_, reject) => { rejectOrder = reject; }),
     checkout: { clear() { checkoutClears++; } },
   };
@@ -1926,7 +1971,7 @@ function selectorOptionsHarness(response) {
  const nodes = new Map();
  const $ = id => { if (!nodes.has(id)) nodes.set(id, {value:'',disabled:false,hidden:true,textContent:'',dataset:{}}); return nodes.get(id); };
  const statuses=[], displayed=[];
- const context={ $, navigation:new NavigationGeneration(), document:{body:{dataset:{}}}, retryAction:null, stage(){}, selectorPath:()=>'/choices', requestJSON:async()=>{if(response instanceof Error)throw response;return response;},
+ const context={ $, navigation:new NavigationGeneration(), document:{body:{dataset:{}}}, retryAction:null, currentOrder:'', paidOrder:'', stage(){}, selectorPath:()=>'/choices', requestJSON:async()=>{if(response instanceof Error)throw response;return response;},
   readCollection:(read,options)=>readCollection(read,{...options,attempts:2,wait:async()=>{}}),
   populate(name,items,desired){displayed.push(items);$(name).disabled=!items.length;$(name).value=desired;},
   recordStatus:(text,options={})=>statuses.push({text,...options}), restoreRoute(){},

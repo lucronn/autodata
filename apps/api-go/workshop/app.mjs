@@ -46,6 +46,7 @@ let quote = null,
   libraryCursor = null,
   libraryItems = [],
   currentOrder = "",
+  paidOrder = null,
   retryAction = null,
   renewalUsed = false,
   renewal = null,
@@ -140,6 +141,7 @@ function clearProtected() {
 function invalidate() {
   navigation.clear();
   currentOrder = "";
+  paidOrder = null;
   $("check-order").hidden = true;
   clearProtected();
 }
@@ -159,10 +161,19 @@ async function operation(work, retry = null) {
       }
     }
     if (error.code === "ENTITLEMENT_REQUIRED") {
-      access = "missing";
+      const confirmedPaid = paidOrder?.id === currentOrder &&
+        vehicle?.id === paidOrder.configuration_id &&
+        vehicle?.region === paidOrder.region;
+      if (confirmedPaid) clearProtected();
+      access = confirmedPaid ? "pending" : "missing";
       show("welcome");
       renderPurchase();
-      status("This vehicle is available to purchase.");
+      status(
+        confirmedPaid
+          ? "Payment received. Access is not ready. Check payment status again; do not pay again."
+          : "This vehicle is available to purchase.",
+        confirmedPaid ? { error: true } : {},
+      );
     } else if (error.code === "ENTITLEMENT_REVOKED") {
       access = "revoked";
       show("welcome");
@@ -955,6 +966,7 @@ function clearReader() {
   document.body.dataset.printable = "false";
 }
 async function checkOrder(g, id) {
+  if (paidOrder?.id !== id) paidOrder = null;
   currentOrder = id;
   $("check-order").hidden = false;
   status("Checking payment status…", { busy: true });
@@ -971,6 +983,7 @@ async function checkOrder(g, id) {
     if (g.current() && error.status === 404) {
       checkout.clear();
       currentOrder = "";
+      paidOrder = null;
       $("check-order").hidden = true;
       clearOrderRoute(id);
     }
@@ -979,10 +992,12 @@ async function checkOrder(g, id) {
   if (!g.current()) return;
   if (["expired", "canceled", "revoked"].includes(result.state)) {
     currentOrder = "";
+    paidOrder = null;
     $("check-order").hidden = true;
     clearOrderRoute(id);
   }
   if (result.state === "paid") {
+    paidOrder = { id, configuration_id: result.configuration_id, region: result.region };
     vehicle = { id: result.configuration_id, region: result.region };
     try {
       await selectVehicle(g);
@@ -990,6 +1005,7 @@ async function checkOrder(g, id) {
       if (!g.current()) return;
       if (error.code === "ENTITLEMENT_REVOKED") {
         currentOrder = "";
+        paidOrder = null;
         $("check-order").hidden = true;
         clearOrderRoute(id);
         throw error;
@@ -1008,6 +1024,7 @@ async function checkOrder(g, id) {
     }
     if (!g.current()) return;
     currentOrder = "";
+    paidOrder = null;
     $("check-order").hidden = true;
     clearOrderRoute(id, true);
   } else if (["expired", "canceled"].includes(result.state)) {

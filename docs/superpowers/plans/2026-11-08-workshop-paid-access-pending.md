@@ -27,7 +27,7 @@
 - [x] Reproduce a paid order followed by an entitlement-required article read that currently exposes Buy again.
 - [x] Keep a no-repay, retryable paid-access state until article-index access succeeds.
 - [x] Cover paid post-order 410/other article failures and focus/bootstrap restoration without a second Buy invitation.
-- [ ] Preserve confirmed-paid no-repay handling when a newer article/open-index operation supersedes a hydrating paid check.
+- [x] Preserve confirmed-paid no-repay handling when a newer article/open-index operation supersedes a hydrating paid check.
 - [ ] Run focused/full Workshop client and Go tests, syntax/diff checks, independent review, and required CI before integration.
 
 ### Task 1: Keep the paid-order action until access is confirmed
@@ -113,6 +113,6 @@
 
 **Interfaces:** A confirmed `paid` result from owner-only `pollOrder()` is distinct from `currentOrder`, which also tracks a still-processing order. A newer `operation()` can invalidate the original paid check while a partial index is visible; an `ENTITLEMENT_REQUIRED` error from that newer read must still be no-repay. The marker is client-only, never grants access, and is cleared on navigation invalidation, terminal order, missing order, or successful article-index access.
 
-- [ ] **Step 10: Write red race regression.** Use the real partial `loadArticles()`/`readCollection()` path. After its first hydrating response, start a newer article/open-index operation and reject it with `ENTITLEMENT_REQUIRED`; assert a validated paid order remains checkable and the CTA is disabled/non-Buy. Add a processing-order control to ensure an unconfirmed order never masquerades as paid.
-- [ ] **Step 11: Confirm red and repair.** Verify the current head enables Buy in the paid race. Add a minimal local confirmed-paid marker set only from a validated paid result; let generic entitlement handling preserve pending/no-repay for that marker. Do not infer paid from the route or processing order. Clear protected content and the marker at the correct terminal boundaries.
+- [x] **Step 10: Write red race regression.** Use the real partial `loadArticles()`/`readCollection()` path. After its first hydrating response, open a visible article in a newer operation and reject it with `ENTITLEMENT_REQUIRED`; assert a validated paid order remains checkable and the CTA is disabled/non-Buy. Add processing-order and different-vehicle controls so an unconfirmed or unrelated order never masquerades as paid.
+- [x] **Step 11: Confirm red and repair.** The race test on `df2421d` failed with `access: missing` instead of pending. A client-only confirmed-paid marker is now set only from a validated paid result and bound to the exact configuration/region. Generic entitlement handling preserves pending/no-repay only for that order and scope, while clearing protected content. The marker clears on invalidation, terminal or missing order, revoked access, and successful article-index access. Focused controls and 227 Workshop Node tests pass locally.
 - [ ] **Step 12: Verify and integrate.** Run focused/full Workshop and Go suites, syntax/diff, exact-head independent rereview, and required CI. Update Issue/Project/verification evidence. Merge only after all gates permit; no production deployment or live payment.
