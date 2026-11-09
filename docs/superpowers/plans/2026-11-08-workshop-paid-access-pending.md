@@ -28,7 +28,7 @@
 - [x] Keep a no-repay, retryable paid-access state until article-index access succeeds.
 - [x] Cover paid post-order 410/other article failures and focus/bootstrap restoration without a second Buy invitation.
 - [x] Preserve confirmed-paid no-repay handling when a newer article/open-index operation supersedes a hydrating paid check.
-- [ ] Cover all newer-operation errors for confirmed paid access, including 404/410/503 no-repay and revoked terminal cleanup.
+- [x] Cover all newer-operation errors for confirmed paid access, including 404/410/503 no-repay and revoked terminal cleanup.
 - [ ] Run focused/full Workshop client and Go tests, syntax/diff checks, independent review, and required CI before integration.
 
 ### Task 1: Keep the paid-order action until access is confirmed
@@ -127,6 +127,6 @@
 
 **Interfaces:** The Task 3 scope-bound marker already distinguishes owner-validated paid status from a processing order. Any current newer-operation failure other than authentication or revocation must keep the order check visible, clear potentially protected partial content, and render a disabled no-repay pending state. A current `ENTITLEMENT_REVOKED` failure must clear the marker, order action, and resume route while showing revoked state. A 401 still requires sign-in and leaves the route for owner-only recovery.
 
-- [ ] **Step 13: Write red sibling/terminal tests.** Reuse the actual partial-index/open-article path; reject the newer article operation with 404, 410, and 503 in turn, requiring cleared protected rows, retained paid order/action/route, and disabled non-Buy copy. Reject it with `ENTITLEMENT_REVOKED` and require cleared order marker/action/route and revoked messaging.
-- [ ] **Step 14: Confirm red and repair.** Verify the current candidate leaves stale owned copy/action or revoked order action. Extend the exact-scope confirmed-paid branch in `operation()` across non-401/non-revoked errors; apply terminal cleanup for current revocation. Keep unmatched errors and unconfirmed processing orders on their prior paths.
+- [x] **Step 13: Write red sibling/terminal tests.** Reuse the actual partial-index/open-article path; reject the newer article operation with 404, 410, and 503 in turn, requiring cleared protected rows, retained paid order/action/route, and disabled non-Buy copy. Reject it with `ENTITLEMENT_REVOKED` and require cleared order marker/action/route and revoked messaging. Add a 401 sign-in/recovery control.
+- [x] **Step 14: Confirm red and repair.** On `25b1a35`, the 404/503 tests failed with owned access, 410 with unknown access, and revoked with a retained order action. The exact-scope confirmed-paid branch in `operation()` now handles all non-401/non-revoked errors; a current revocation clears the terminal marker/order/route/action. The 401 control requires sign-in and recovers the order through owner-only revalidation. All 232 Workshop Node tests pass locally.
 - [ ] **Step 15: Verify and integrate.** Rerun focused/full Workshop and Go tests, syntax/diff, independent exact-head review, and required CI. Update Issue/Project/verification evidence; merge only if gates permit. No production deployment or live payment.

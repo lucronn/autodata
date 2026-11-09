@@ -921,7 +921,11 @@ function paidPurchaseLifecycleHarness(selectionErrors, { realArticleIndex = fals
     articles: [],
     sessionEstablished: true, signingIn: false,
     session: { state: { authenticated: true, ready: true, csrf: 'test-csrf' },
-      async bootstrap() {}, clear() { context.session.state.authenticated = false; } },
+      async bootstrap() {}, clear() {
+        context.session.state.authenticated = false;
+        context.session.state.ready = false;
+        context.renderPurchase();
+      } },
     scope: () => ({ configuration_id: context.vehicle?.id, region: context.vehicle?.region }),
     checkout: { async start() {
       checkoutStarts++;
@@ -1055,6 +1059,84 @@ test('opening a partial paid article cannot turn its entitlement error into Buy'
   assert.equal(h.$('articles').children.length, 0);
   assert.doesNotMatch(h.$('purchase-action').textContent, /Buy/);
   assert.equal(h.$('purchase-action').disabled, true);
+});
+
+for (const [label, statusCode] of [['not found', 404], ['withdrawn', 410], ['unavailable', 503]]) {
+  test(`opening a partial paid article that is ${label} keeps no-repay pending UI`, async () => {
+    const error = Object.assign(new Error(`Article ${label}`), { status: statusCode, code: 'HTTP_ERROR' });
+    const h = paidPurchaseLifecycleHarness([], {
+      realArticleIndex: true,
+      articleReadResponses: [
+        { items: [{ id: routeArticle, title: 'Private article' }], hydrating: true, complete: false },
+      ],
+      articleOpenError: error,
+      async afterPartial(context) {
+        context.openArticle(routeArticle);
+        await new Promise(setImmediate);
+      },
+    });
+    await h.context.purchase();
+    assert.equal(h.context.access, 'pending');
+    assert.equal(h.context.currentOrder, orderID);
+    assert.equal(h.context.paidOrder?.id, orderID);
+    assert.equal(new URLSearchParams(h.location.search).get('order'), orderID);
+    assert.equal(h.$('check-order').hidden, false);
+    assert.equal(h.$('articles').children.length, 0);
+    assert.match(h.$('purchase-message').textContent, /do not pay again/);
+    assert.doesNotMatch(h.$('purchase-action').textContent, /Buy|Open articles/);
+    assert.equal(h.$('purchase-action').disabled, true);
+  });
+}
+
+test('revoked partial paid article clears terminal order action and resume route', async () => {
+  const revoked = Object.assign(new Error('Access revoked'), { status: 403, code: 'ENTITLEMENT_REVOKED' });
+  const h = paidPurchaseLifecycleHarness([], {
+    realArticleIndex: true,
+    articleReadResponses: [
+      { items: [{ id: routeArticle, title: 'Private article' }], hydrating: true, complete: false },
+    ],
+    articleOpenError: revoked,
+    async afterPartial(context) {
+      context.openArticle(routeArticle);
+      await new Promise(setImmediate);
+    },
+  });
+  await h.context.purchase();
+  assert.equal(h.context.access, 'revoked');
+  assert.equal(h.context.currentOrder, '');
+  assert.equal(h.context.paidOrder, null);
+  assert.equal(new URLSearchParams(h.location.search).has('order'), false);
+  assert.equal(h.$('check-order').hidden, true);
+  assert.equal(h.$('articles').children.length, 0);
+  assert.match(h.$('purchase-message').textContent, /Access revoked/);
+});
+
+test('unauthorized partial paid article requires sign-in and retains owner-only order recovery', async () => {
+  const unauthorized = Object.assign(new Error('Sign in again'), { status: 401 });
+  const h = paidPurchaseLifecycleHarness([], {
+    realArticleIndex: true,
+    articleReadResponses: [
+      { items: [{ id: routeArticle, title: 'Private article' }], hydrating: true, complete: false },
+      { items: [{ id: routeArticle, title: 'Private article' }], hydrating: false, complete: true },
+    ],
+    articleOpenError: unauthorized,
+    async afterPartial(context) {
+      context.openArticle(routeArticle);
+      await new Promise(setImmediate);
+    },
+  });
+  await h.context.purchase();
+  assert.equal(h.context.session.state.authenticated, false);
+  assert.equal(h.context.currentOrder, orderID);
+  assert.equal(new URLSearchParams(h.location.search).get('order'), orderID);
+  assert.equal(h.$('articles').children.length, 0);
+  assert.match(h.$('purchase-action').textContent, /Sign in/);
+  h.context.session.state.authenticated = true;
+  h.context.session.state.ready = true;
+  await h.context.restoreRoute();
+  assert.equal(h.orderReads(), 2);
+  assert.equal(h.context.access, 'owned');
+  assert.equal(new URLSearchParams(h.location.search).has('order'), false);
 });
 
 test('processing order alone does not claim confirmed paid access on an entitlement error', async () => {

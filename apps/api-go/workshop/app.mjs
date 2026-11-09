@@ -152,6 +152,9 @@ async function operation(work, retry = null) {
     await work(g);
   } catch (error) {
     if (!g.current()) return;
+    const confirmedPaid = paidOrder?.id === currentOrder &&
+      vehicle?.id === paidOrder.configuration_id &&
+      vehicle?.region === paidOrder.region;
     if ([401, 403, 410].includes(error.status)) {
       clearProtected();
       show("welcome");
@@ -160,27 +163,35 @@ async function operation(work, retry = null) {
         void session.bootstrap();
       }
     }
-    if (error.code === "ENTITLEMENT_REQUIRED") {
-      const confirmedPaid = paidOrder?.id === currentOrder &&
-        vehicle?.id === paidOrder.configuration_id &&
-        vehicle?.region === paidOrder.region;
-      if (confirmedPaid) clearProtected();
-      access = confirmedPaid ? "pending" : "missing";
-      show("welcome");
-      renderPurchase();
-      status(
-        confirmedPaid
-          ? "Payment received. Access is not ready. Check payment status again; do not pay again."
-          : "This vehicle is available to purchase.",
-        confirmedPaid ? { error: true } : {},
-      );
-    } else if (error.code === "ENTITLEMENT_REVOKED") {
+    if (error.code === "ENTITLEMENT_REVOKED") {
+      if (confirmedPaid) {
+        const id = currentOrder;
+        currentOrder = "";
+        paidOrder = null;
+        $("check-order").hidden = true;
+        clearOrderRoute(id);
+      }
       access = "revoked";
       show("welcome");
       renderPurchase();
       status("Access to this vehicle has been revoked. Contact support.", {
         error: true,
       });
+    } else if (confirmedPaid && error.status !== 401) {
+      clearProtected();
+      access = "pending";
+      show("welcome");
+      renderPurchase();
+      status(error.code === "ENTITLEMENT_REQUIRED"
+        ? "Payment received. Access is not ready. Check payment status again; do not pay again."
+        : "Payment received, but articles are unavailable. Check payment status again or contact support; do not pay again.", {
+        error: true,
+      });
+    } else if (error.code === "ENTITLEMENT_REQUIRED") {
+      access = "missing";
+      show("welcome");
+      renderPurchase();
+      status("This vehicle is available to purchase.");
     } else
       status(error.message || "AutoData is unavailable. Try again.", {
         error: true,
