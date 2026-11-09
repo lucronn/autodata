@@ -1081,8 +1081,14 @@ async function checkOrder(g, id) {
     clearOrderRoute(id, true);
   } else if (["expired", "canceled"].includes(result.state)) {
     checkout.clear();
+    const readyToBuy =
+      access === "missing" &&
+      validQuote(quote, scope()) &&
+      purchaseConfiguration(merchant, quote);
     status(
-      "The previous payment attempt ended. Choose Buy again only when you are ready.",
+      readyToBuy
+        ? "The previous payment attempt ended. Choose Buy again only when you are ready."
+        : "The previous payment attempt ended. Select your vehicle to check access before buying again.",
     );
     renderPurchase();
   } else if (result.state === "revoked") {

@@ -802,9 +802,10 @@ function orderStatusHarness(response, { selectionError = null } = {}) {
   let selectionCalls = 0;
   const statuses = [];
   const context = {
-    currentOrder: '', paidOrder: '', unconfirmedOrder: null, vehicle: null, access: 'missing',
+    currentOrder: '', paidOrder: '', unconfirmedOrder: null, vehicle: null, quote: null, merchant: null, access: 'missing',
     $: id => nodes[id],
     validScope, scope: () => ({ configuration_id: context.vehicle?.id, region: context.vehicle?.region }),
+    validQuote: () => false, purchaseConfiguration: () => false,
     navigation: { clear() {} }, clearProtected() {}, clearOrderRoute() {},
     status(message) { statuses.push(message); }, renderPurchase() {}, show() {}, async selectVehicle() {
       const error = Array.isArray(selectionError) ? selectionError[selectionCalls] : selectionError;
@@ -1334,6 +1335,7 @@ for (const state of ['expired', 'canceled', 'revoked', 'paid']) {
     if (['expired', 'canceled'].includes(state)) {
       assert.equal(h.$('purchase-action').disabled, false);
       assert.match(h.$('purchase-action').textContent, /Buy for \$20 USD/);
+      assert.match(h.statuses.at(-1).message, /Choose Buy again/);
     } else if (state === 'revoked') {
       assert.equal(h.context.access, 'revoked');
       assert.equal(h.$('purchase-action').disabled, true);
@@ -1343,6 +1345,27 @@ for (const state of ['expired', 'canceled', 'revoked', 'paid']) {
       h.context.renderPurchase(); // The harness selectVehicle stub does not render its success path.
       assert.match(h.$('purchase-action').textContent, /Open articles/);
     }
+  });
+}
+
+for (const state of ['expired', 'canceled']) {
+  test(`fresh order-only ${state} result gives a usable next step`, async () => {
+    const processing = {
+      version: 'v1', order_id: orderID, ...scope, state: 'processing',
+      retry_disposition: 'do_not_repay', timedOut: true,
+    };
+    const terminal = { ...processing, state, retry_disposition: 'new_key' };
+    const h = paidPurchaseLifecycleHarness([], { orderResponses: [processing, terminal] });
+    h.context.vehicle = null;
+    h.context.quote = null;
+    h.location.search = `?order=${orderID}`;
+    await h.context.restoreRoute();
+    await h.context.operation(g => h.context.checkOrder(g, orderID));
+    assert.equal(h.context.currentOrder, '');
+    assert.equal(h.context.unconfirmedOrder, null);
+    assert.equal(h.$('purchase-action').disabled, true);
+    assert.match(h.statuses.at(-1).message, /select.*vehicle.*check access/i);
+    assert.doesNotMatch(h.statuses.at(-1).message, /Choose Buy again/);
   });
 }
 
