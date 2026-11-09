@@ -27,6 +27,7 @@
 - [x] Reproduce a paid order followed by an entitlement-required article read that currently exposes Buy again.
 - [x] Keep a no-repay, retryable paid-access state until article-index access succeeds.
 - [x] Cover paid post-order 410/other article failures and focus/bootstrap restoration without a second Buy invitation.
+- [ ] Preserve confirmed-paid no-repay handling when a newer article/open-index operation supersedes a hydrating paid check.
 - [ ] Run focused/full Workshop client and Go tests, syntax/diff checks, independent review, and required CI before integration.
 
 ### Task 1: Keep the paid-order action until access is confirmed
@@ -102,3 +103,16 @@
 - [x] **Step 7: Confirm red.** The two new integration tests failed on `dda39d9` with `access: unknown` instead of pending after the 410 and one rather than two owner-only order reads across focus; no fixture failures.
 - [x] **Step 8: Minimal repair.** On current paid order plus non-revoked/non-401 post-payment article failure, clear protected partial-index content, then show a no-repay state without outer `operation()` resetting it or exposing an ineffective purchase retry. Record a validated processing order ID in the existing `?order=` route before checking it, preserve it through search/URL updates during a partial index, allow owner-only revalidation on focus, and remove the marker after confirmed article access or terminal non-paid order. Preserve sign-in recovery on unauthenticated order reads and never treat the URL as an entitlement. Additional red/green partial-200-then-410 and search/focus tests pass; all 224 Workshop Node tests pass locally.
 - [ ] **Step 9: Verify and integrate.** Run focused and full Workshop Node/Go suites, syntax/diff checks; commit/push, obtain independent review of exact repair SHA, await required CI, merge only if policy permits, then close/check the Issue and Project item. No production deployment or live payment.
+
+### Task 3: Guard newer operations during confirmed paid hydration
+
+**Files:**
+- Modify: `apps/api-go/workshop-client.test.mjs` with actual-function partial-index, newer-operation, and entitlement failure coverage.
+- Modify: `apps/api-go/workshop/app.mjs` in `operation()`, `invalidate()`, `checkOrder()`, and the local confirmed-paid state only.
+- Update: `docs/verification/2026-11-08-workshop-paid-access-pending.md` with red/green, review, and CI evidence.
+
+**Interfaces:** A confirmed `paid` result from owner-only `pollOrder()` is distinct from `currentOrder`, which also tracks a still-processing order. A newer `operation()` can invalidate the original paid check while a partial index is visible; an `ENTITLEMENT_REQUIRED` error from that newer read must still be no-repay. The marker is client-only, never grants access, and is cleared on navigation invalidation, terminal order, missing order, or successful article-index access.
+
+- [ ] **Step 10: Write red race regression.** Use the real partial `loadArticles()`/`readCollection()` path. After its first hydrating response, start a newer article/open-index operation and reject it with `ENTITLEMENT_REQUIRED`; assert a validated paid order remains checkable and the CTA is disabled/non-Buy. Add a processing-order control to ensure an unconfirmed order never masquerades as paid.
+- [ ] **Step 11: Confirm red and repair.** Verify the current head enables Buy in the paid race. Add a minimal local confirmed-paid marker set only from a validated paid result; let generic entitlement handling preserve pending/no-repay for that marker. Do not infer paid from the route or processing order. Clear protected content and the marker at the correct terminal boundaries.
+- [ ] **Step 12: Verify and integrate.** Run focused/full Workshop and Go suites, syntax/diff, exact-head independent rereview, and required CI. Update Issue/Project/verification evidence. Merge only after all gates permit; no production deployment or live payment.
