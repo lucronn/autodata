@@ -4,7 +4,7 @@
 
 **Goal:** A validated processing Workshop order must not show an enabled Buy action for the same configuration and region while payment confirmation remains unresolved.
 
-**Approach:** Keep a client-only marker for the order ID and exact scope after the existing checkout response or owner-only order poll validates a `processing` result. Render a disabled, explicitly confirmation-pending purchase action and retain Check payment status. This does not assert that payment was received or grant access. Clear the marker on a paid or terminal result, a validated missing-order result, or navigation invalidation. A different vehicle is not blocked by an older order marker.
+**Approach:** Keep a client-only marker for the order ID and exact scope after the existing checkout response or owner-only order poll validates an unresolved `do_not_repay` result (`creating`, `open`, `processing`, or `reconciliation_required`). Render a disabled, explicitly confirmation-pending purchase action and retain Check payment status. On a fresh order-only return, reveal the purchase section using only the validated owner-only order scope; the URL ID itself establishes nothing. This does not assert that payment was received or grant access. Clear the marker on a paid or terminal result, a validated missing-order result, or navigation invalidation. A different vehicle is not blocked by an older order marker.
 
 **Tech stack:** Existing native Workshop browser JavaScript, actual-function Node VM tests, and the Go API regression suite. No server, payment, grant, authentication, schema, or architecture change.
 
@@ -22,7 +22,7 @@
 
 - [x] Add actual-function tests that reproduce the enabled Buy action after a processing checkout and timed-out order poll, then confirm they fail on the pinned baseline.
 - [x] Implement exact-scope validated processing-order state for the existing purchase render and handler; retain a status check without claiming paid access.
-- [x] Cover owner-only route recovery, different-scope selection, 404, paid, expired, canceled, and revoked transitions with controls.
+- [x] Cover owner-only route recovery, all unresolved `do_not_repay` states, different-scope selection, 404, paid, expired, canceled, and revoked transitions with controls.
 - [ ] Run focused/full Workshop Node, Go API, syntax, and diff checks; obtain independent exact-head review and required CI before merge.
 
 ### Task 1: Reproduce and fix the processing-order action
@@ -39,6 +39,7 @@
 **Files:** the same app/test/verification files.
 
 - [x] Add controls for an owner-only processing route recheck and a different vehicle; a URL-only order must not imply paid or processing status. Confirm a current processing order blocks Buy only for its validated exact scope.
+- [x] After independent review of `0015d11`, add red controls for `creating`, `open`, and `reconciliation_required` status transitions and a fresh order-only return with null vehicle/quote. Keep the validated marker across all unresolved states and reveal the status action only after owner-only scope validation.
 - [x] Add controls for 404, paid, expired, canceled, and revoked: resolve/clear the processing marker at the right boundary, preserve PR #384 paid pending-access handling, and allow a new purchase only when the existing terminal behavior permits it.
 - [x] Implement only the behavior demanded by those red controls, then rerun focused and full Workshop tests.
 
