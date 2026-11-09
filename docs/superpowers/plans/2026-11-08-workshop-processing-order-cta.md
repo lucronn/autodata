@@ -20,31 +20,31 @@
 
 ## Concrete todo
 
-- [ ] Add actual-function tests that reproduce the enabled Buy action after a processing checkout and timed-out order poll, then confirm they fail on the pinned baseline.
-- [ ] Implement exact-scope validated processing-order state for the existing purchase render and handler; retain a status check without claiming paid access.
-- [ ] Cover owner-only route recovery, different-scope selection, 404, paid, expired, canceled, and revoked transitions with controls.
+- [x] Add actual-function tests that reproduce the enabled Buy action after a processing checkout and timed-out order poll, then confirm they fail on the pinned baseline.
+- [x] Implement exact-scope validated processing-order state for the existing purchase render and handler; retain a status check without claiming paid access.
+- [x] Cover owner-only route recovery, different-scope selection, 404, paid, expired, canceled, and revoked transitions with controls.
 - [ ] Run focused/full Workshop Node, Go API, syntax, and diff checks; obtain independent exact-head review and required CI before merge.
 
 ### Task 1: Reproduce and fix the processing-order action
 
 **Files:** `apps/api-go/workshop-client.test.mjs`, `apps/api-go/workshop/app.mjs`, and `docs/verification/2026-11-08-workshop-processing-order-cta.md`.
 
-- [ ] Write a test through actual `purchase()`, `checkOrder()`, and `renderPurchase()` functions using a validated `processing` checkout response and a timed-out processing poll. Assert that Check payment status stays visible, the purchase action is disabled and does not say Buy or Payment received, the message says confirmation is pending and not to pay again, and no second checkout starts on direct handler invocation.
-- [ ] Run the focused test on the pinned implementation baseline and record the expected failure.
-- [ ] Add the smallest client-only exact-scope processing marker; set it from validated checkout/poll responses, render the pending-confirmation state, and guard `purchase()` against direct repeat submission while it is active.
-- [ ] Rerun the focused test green. Check that the existing status text remains accurate and the native button and status region follow the retrieved forms/accessibility guidance.
+- [x] Write a test through actual `purchase()`, `checkOrder()`, and `renderPurchase()` functions using a validated `processing` checkout response and a timed-out processing poll. Assert that Check payment status stays visible, the purchase action is disabled and does not say Buy or Payment received, the message says confirmation is pending and not to pay again, and no second checkout starts on direct handler invocation.
+- [x] Run the focused test on the pinned implementation baseline and record the expected failure.
+- [x] Add the smallest client-only exact-scope processing marker; set it from validated checkout/poll responses, render the pending-confirmation state, and guard `purchase()` against direct repeat submission while it is active.
+- [x] Rerun the focused test green. Check that the existing status text remains accurate and the native button and status region follow the retrieved forms/accessibility guidance.
 
 ### Task 2: Terminal and scope controls
 
 **Files:** the same app/test/verification files.
 
-- [ ] Add failing controls for an owner-only processing route recheck and a different vehicle; a URL-only order must not imply paid or processing status. Confirm a current processing order blocks Buy only for its validated exact scope.
-- [ ] Add controls for 404, paid, expired, canceled, and revoked: resolve/clear the processing marker at the right boundary, preserve PR #384 paid pending-access handling, and allow a new purchase only when the existing terminal behavior permits it.
-- [ ] Implement only the behavior demanded by those red controls, then rerun focused and full Workshop tests.
+- [x] Add controls for an owner-only processing route recheck and a different vehicle; a URL-only order must not imply paid or processing status. Confirm a current processing order blocks Buy only for its validated exact scope.
+- [x] Add controls for 404, paid, expired, canceled, and revoked: resolve/clear the processing marker at the right boundary, preserve PR #384 paid pending-access handling, and allow a new purchase only when the existing terminal behavior permits it.
+- [x] Implement only the behavior demanded by those red controls, then rerun focused and full Workshop tests.
 
 ### Task 3: Verification and integration
 
-- [ ] Run `node --test apps/api-go/workshop-client.test.mjs apps/api-go/workshop-demo.test.mjs`, `/home/corp/.local/go1.23.4/go/bin/go -C apps/api-go test -count=1 ./...`, `node --check apps/api-go/workshop/app.mjs`, and `git diff --check` on the exact candidate.
+- [x] Run `node --test apps/api-go/workshop-client.test.mjs apps/api-go/workshop-demo.test.mjs`, `/home/corp/.local/go1.23.4/go/bin/go -C apps/api-go test -count=1 ./...`, `node --check apps/api-go/workshop/app.mjs`, and `git diff --check` on the exact candidate.
 - [ ] Update the verification record and Issue/Project evidence, commit and push the reviewable candidate, obtain independent exact-head review, and wait for the required GitHub check. Merge only if branch protection and autonomy policy permit; then close/check Issue #385 and mark its Project item Done.
 
 The tests above are client-safety evidence, not proof of live settlement, grant delivery, paid article access, or production readiness.
