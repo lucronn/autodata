@@ -4,7 +4,7 @@
 
 **Goal:** Never invite a second purchase after an owner-only Workshop order reports paid when the subsequent article-access read fails.
 
-**Architecture:** No architecture change. Keep the paid order ID and its existing Check payment status action until `selectVehicle()` confirms article-index access. If that read fails with `ENTITLEMENT_REQUIRED`, retain a distinct client-only pending-access state, a clear no-repay message, and a disabled purchase button; other failures keep the paid-order action without changing server authority.
+**Architecture:** No architecture change. Keep the paid order ID and its existing Check payment status action until `selectVehicle()` confirms article-index access. If that read fails, retain a distinct client-only pending-access state, a clear no-repay message, and a disabled purchase button. A validated processing checkout order must survive a focus/bootstrap recheck through the existing owner-only `?order=` route; no URL value grants access or changes server authority.
 
 **Tech Stack:** Native Workshop browser JavaScript and existing Node VM client tests; Go API regression suite.
 
@@ -26,13 +26,14 @@
 
 - [x] Reproduce a paid order followed by an entitlement-required article read that currently exposes Buy again.
 - [x] Keep a no-repay, retryable paid-access state until article-index access succeeds.
+- [ ] Cover paid post-order 410/other article failures and focus/bootstrap restoration without a second Buy invitation.
 - [ ] Run focused/full Workshop client and Go tests, syntax/diff checks, independent review, and required CI before integration.
 
 ### Task 1: Keep the paid-order action until access is confirmed
 
 **Files:**
 - Modify: `apps/api-go/workshop-client.test.mjs` near `orderStatusHarness` and purchase-readiness tests.
-- Modify: `apps/api-go/workshop/app.mjs` in `checkOrder()` and `renderPurchase()` only.
+- Modify: `apps/api-go/workshop/app.mjs` in `checkOrder()` and `renderPurchase()` for the initial correction.
 - Update: `docs/verification/2026-11-08-workshop-paid-access-pending.md` with exact red/green evidence.
 
 **Interfaces:**
@@ -86,4 +87,18 @@
   }
   ```
 - [x] **Step 4: Confirm green and broader checks.** Rerun the focused test; then run `node --test --test-reporter=dot apps/api-go/workshop-client.test.mjs apps/api-go/workshop-demo.test.mjs`, `/home/corp/.local/go1.23.4/go/bin/go -C apps/api-go test -count=1 ./...`, `node --check apps/api-go/workshop/app.mjs`, and `git diff --check` sequentially. Focused 7/7, full Workshop 218, Go API 8.699s, syntax and diff checks passed locally.
-- [ ] **Step 5: Review and integrate.** Inspect the scoped diff, update verification and the child Issue, commit/push, obtain independent read-only review of the exact candidate, and merge only after required GitHub checks and policy permit. Close/check the issue and set its Project item Done only after verified merge.
+- [x] **Step 5: Review the first candidate.** Independent read-only review of `dda39d9` found two blocking paid-order paths: a 410 article read is reset by outer `operation()`, and a focus/bootstrap recheck loses a paid order reached through `checkout.start()` processing. A generic retry action also points to a no-op purchase. Keep PR #384 unmerged.
+
+### Task 2: Preserve validated paid status across error and focus boundaries
+
+**Files:**
+- Modify: `apps/api-go/workshop-client.test.mjs` with actual-function purchase/operation/bootstrap/restoreRoute coverage.
+- Modify: `apps/api-go/workshop/app.mjs` in `checkOrder()`, `purchase()`, and the existing URL-order lifecycle only.
+- Update: `docs/verification/2026-11-08-workshop-paid-access-pending.md` with red/green and exact-head review/CI evidence.
+
+**Interfaces:** Existing validated `checkout.start()` processing response, owner-only `pollOrder()`, `?order=` route in `restoreRoute()`, `operation()`, `selectVehicle()`, and `renderPurchase()`. The order query parameter is a resume pointer, not an entitlement or purchase authority; `pollOrder()` still validates it for the signed-in owner.
+
+- [ ] **Step 6: Write red integration tests.** Exercise the real `purchase()` → `operation()` → `checkOrder()` path with a paid order whose article read returns `CATALOG_WITHDRAWN` (410); assert no Buy invitation, no checkout retry, retained Check payment status, and no new checkout. Exercise a validated processing response followed by paid/`ENTITLEMENT_REQUIRED`, then the actual `bootstrap()`/`restoreRoute()` path; assert the pending order is rechecked instead of switching to Buy. Keep direct route and terminal-order controls.
+- [ ] **Step 7: Confirm red.** Run focused tests on the current candidate and identify the lost pending state/route, not fixture failures.
+- [ ] **Step 8: Minimal repair.** On current paid order plus non-revoked post-payment article failure, show a no-repay message and return without outer `operation()` resetting the state or exposing an ineffective purchase retry. Record a validated processing order ID in the existing `?order=` route before checking it, allowing owner-only revalidation on focus; remove the route marker after confirmed article access or terminal non-paid order. Preserve sign-in recovery on unauthenticated order reads and never treat the URL as an entitlement.
+- [ ] **Step 9: Verify and integrate.** Run focused and full Workshop Node/Go suites, syntax/diff checks; commit/push, obtain independent review of exact repair SHA, await required CI, merge only if policy permits, then close/check the Issue and Project item. No production deployment or live payment.

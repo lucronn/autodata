@@ -9,8 +9,9 @@
   "todo": [
     "Reproduce the repurchase prompt after a paid order and failed article-access read.",
     "Retain a no-repay pending-access state and status action until article-index access succeeds.",
+    "Protect paid orders through outer article-error handling and focus/bootstrap recovery.",
     "Verify focused and full Workshop and Go suites, independent review, and required CI before integrating."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-09T00:22:25Z"
+  "updated_at": "2026-11-09T00:28:00Z"
 }
