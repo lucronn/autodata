@@ -29,7 +29,7 @@
 - [x] Cover paid post-order 410/other article failures and focus/bootstrap restoration without a second Buy invitation.
 - [x] Preserve confirmed-paid no-repay handling when a newer article/open-index operation supersedes a hydrating paid check.
 - [x] Cover all newer-operation errors for confirmed paid access, including 404/410/503 no-repay and revoked terminal cleanup.
-- [ ] Make a fresh owner-only order-status 404 or revoked result safe after a prior paid partial index is visible.
+- [x] Make a fresh owner-only order-status 404 or revoked result safe after a prior paid partial index is visible.
 - [ ] Run focused/full Workshop client and Go tests, syntax/diff checks, independent review, and required CI before integration.
 
 ### Task 1: Keep the paid-order action until access is confirmed
@@ -141,6 +141,6 @@
 
 **Interfaces:** The visible Check payment status action can start a newer `checkOrder()` while a prior paid index is partially hydrated. A fresh 404 must remove protected rows and avoid inviting repayment based on a prior owner-validated paid result; it may keep the order pointer for owner-only retry and direct support guidance. A fresh `revoked` must clear protected content and show the welcome section so terminal guidance is visible. Preserve existing no-prior-paid 404, expired, canceled, and processing behavior.
 
-- [ ] **Step 16: Write red recheck tests.** After a real partial index response, start a newer `checkOrder()` via the visible action. Feed 404 and assert private rows are cleared, a no-repay status is visible, and no new checkout starts. Feed revoked and assert all protected rows and order controls are cleared while the welcome section displays revocation guidance. Keep no-prior-paid 404 and terminal controls.
-- [ ] **Step 17: Confirm red and repair.** Verify the current candidate retains private rows for 404 and hides all main sections for revoked. Add bounded 404 handling for an already validated paid order, and explicitly show welcome on revoked. Do not treat an unvalidated order or URL alone as proof of paid access.
+- [x] **Step 16: Write red recheck tests.** After a real partial index response, start a newer `checkOrder()` via the visible action. Feed 404 and assert private rows are cleared, a no-repay status is visible, and no new checkout starts. Feed revoked and assert all protected rows and order controls are cleared while the welcome section displays revocation guidance. Keep no-prior-paid 404 and terminal controls.
+- [x] **Step 17: Confirm red and repair.** On `2fbe0f1`, the 404 recheck test failed with `access: owned`, and revoked left welcome hidden. A 404 after already validated paid status now clears protected rows but retains the order pointer and no-repay status for owner-only retry/support; an unvalidated 404 still clears the attempt as before. Revoked now explicitly shows welcome after invalidation. All 234 Workshop Node tests pass locally.
 - [ ] **Step 18: Verify and integrate.** Rerun focused/full Workshop and Go tests, syntax/diff, independent exact-head review, and required CI. Update Issue/Project/verification evidence; merge only if gates permit. No production deployment or live payment.

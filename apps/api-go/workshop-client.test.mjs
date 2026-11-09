@@ -887,7 +887,7 @@ test('paid access missing keeps status action without inviting repayment', async
   assert.equal(h.button.hidden, true);
 });
 
-function paidPurchaseLifecycleHarness(selectionErrors, { realArticleIndex = false, afterPartial = null, articleReadResponses = null, articleOpenError = null } = {}) {
+function paidPurchaseLifecycleHarness(selectionErrors, { realArticleIndex = false, afterPartial = null, articleReadResponses = null, articleOpenError = null, orderResponses = null } = {}) {
   const navigation = new NavigationGeneration();
   const nodes = new Map();
   const $ = id => {
@@ -935,8 +935,10 @@ function paidPurchaseLifecycleHarness(selectionErrors, { realArticleIndex = fals
       assert.equal(id, orderID);
       orderReads++;
       const paid = { version: 'v1', ...scope, order_id: orderID, state: 'paid', retry_disposition: 'do_not_repay' };
-      onUpdate(paid);
-      return paid;
+      const response = orderResponses ? orderResponses.shift() : paid;
+      if (response instanceof Error) throw response;
+      onUpdate(response);
+      return response;
     },
     async selectVehicle() {
       const error = selectionErrors[selections++];
@@ -968,6 +970,7 @@ function paidPurchaseLifecycleHarness(selectionErrors, { realArticleIndex = fals
     },
   };
   runInNewContext(
+    (realArticleIndex ? appSection('function show(', 'function clearProtected()') : '') +
     (realArticleIndex ? appSection('function clearProtected()', 'function invalidate()') : '') +
     appSection('function invalidate(', 'function updateURL(') +
     appSection('function updateURL(', 'function populate(') +
@@ -1137,6 +1140,61 @@ test('unauthorized partial paid article requires sign-in and retains owner-only 
   assert.equal(h.orderReads(), 2);
   assert.equal(h.context.access, 'owned');
   assert.equal(new URLSearchParams(h.location.search).has('order'), false);
+});
+
+test('order 404 on status recheck after partial paid index clears private rows without inviting repayment', async () => {
+  const missingOrder = Object.assign(new Error('Order not found'), { status: 404 });
+  const paid = { version: 'v1', ...scope, order_id: orderID, state: 'paid', retry_disposition: 'do_not_repay' };
+  const h = paidPurchaseLifecycleHarness([], {
+    realArticleIndex: true,
+    orderResponses: [paid, missingOrder],
+    articleReadResponses: [
+      { items: [{ id: routeArticle, title: 'Private article' }], hydrating: true, complete: false },
+    ],
+    async afterPartial(context) {
+      assert.equal(context.$('articles').children.length, 1);
+      await context.operation(g => context.checkOrder(g, orderID));
+    },
+  });
+  await h.context.purchase();
+  assert.equal(h.checkoutStarts(), 1);
+  assert.equal(h.orderReads(), 2);
+  assert.equal(h.context.access, 'pending');
+  assert.equal(h.context.currentOrder, orderID);
+  assert.equal(h.$('check-order').hidden, false);
+  assert.equal(new URLSearchParams(h.location.search).get('order'), orderID);
+  assert.equal(h.$('articles').children.length, 0);
+  assert.equal(h.$('welcome').hidden, false);
+  assert.match(h.$('purchase-message').textContent, /do not pay again/);
+  assert.doesNotMatch(h.$('purchase-action').textContent, /Buy/);
+  assert.equal(h.$('purchase-action').disabled, true);
+});
+
+test('revoked order on status recheck after partial paid index shows terminal guidance', async () => {
+  const paid = { version: 'v1', ...scope, order_id: orderID, state: 'paid', retry_disposition: 'do_not_repay' };
+  const revoked = { version: 'v1', ...scope, order_id: orderID, state: 'revoked', retry_disposition: 'do_not_repay' };
+  const h = paidPurchaseLifecycleHarness([], {
+    realArticleIndex: true,
+    orderResponses: [paid, revoked],
+    articleReadResponses: [
+      { items: [{ id: routeArticle, title: 'Private article' }], hydrating: true, complete: false },
+    ],
+    async afterPartial(context) {
+      assert.equal(context.$('articles').children.length, 1);
+      await context.operation(g => context.checkOrder(g, orderID));
+    },
+  });
+  await h.context.purchase();
+  assert.equal(h.orderReads(), 2);
+  assert.equal(h.context.access, 'revoked');
+  assert.equal(h.context.currentOrder, '');
+  assert.equal(h.context.paidOrder, null);
+  assert.equal(h.$('check-order').hidden, true);
+  assert.equal(new URLSearchParams(h.location.search).has('order'), false);
+  assert.equal(h.$('articles').children.length, 0);
+  assert.equal(h.$('welcome').hidden, false);
+  assert.equal(h.$('catalog').hidden, true);
+  assert.match(h.$('purchase-message').textContent, /Access revoked/);
 });
 
 test('processing order alone does not claim confirmed paid access on an entitlement error', async () => {

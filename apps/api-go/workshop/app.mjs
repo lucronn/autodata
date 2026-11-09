@@ -992,6 +992,16 @@ async function checkOrder(g, id) {
     },
   }).catch((error) => {
     if (g.current() && error.status === 404) {
+      if (paidOrder?.id === id) {
+        clearProtected();
+        access = "pending";
+        renderPurchase();
+        show("welcome");
+        status("Payment was received, but order status is unavailable. Check payment status again or contact support; do not pay again.", {
+          error: true,
+        });
+        return null;
+      }
       checkout.clear();
       currentOrder = "";
       paidOrder = null;
@@ -1000,7 +1010,7 @@ async function checkOrder(g, id) {
     }
     throw error;
   });
-  if (!g.current()) return;
+  if (!g.current() || !result) return;
   if (["expired", "canceled", "revoked"].includes(result.state)) {
     currentOrder = "";
     paidOrder = null;
@@ -1048,6 +1058,7 @@ async function checkOrder(g, id) {
     invalidate();
     access = "revoked";
     renderPurchase();
+    show("welcome");
     status("Access revoked. Contact support.", { error: true });
   } else
     status(
