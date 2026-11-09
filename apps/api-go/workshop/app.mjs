@@ -193,6 +193,7 @@ function updateURL({ article = "", replace = false, library = false } = {}) {
   if (article) p.set("article", article);
   if ($("search").value) p.set("q", $("search").value);
   if (library) p.set("view", "library");
+  if (currentOrder) p.set("order", currentOrder);
   const url = `${location.pathname}${p.size ? `?${p}` : ""}`;
   if (url !== location.pathname + location.search)
     history[replace ? "replaceState" : "pushState"](null, "", url);
@@ -993,9 +994,10 @@ async function checkOrder(g, id) {
         clearOrderRoute(id);
         throw error;
       }
+      if (error.status === 401) throw error;
+      clearProtected();
       access = "pending";
       renderPurchase();
-      if (error.status === 401) throw error;
       show("welcome");
       status(error.code === "ENTITLEMENT_REQUIRED"
         ? "Payment received. Access is not ready. Check payment status again; do not pay again."

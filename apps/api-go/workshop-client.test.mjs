@@ -887,14 +887,15 @@ test('paid access missing keeps status action without inviting repayment', async
   assert.equal(h.button.hidden, true);
 });
 
-function paidPurchaseLifecycleHarness(selectionErrors) {
+function paidPurchaseLifecycleHarness(selectionErrors, { realArticleIndex = false, afterPartial = null, articleReadResponses = null } = {}) {
   const navigation = new NavigationGeneration();
   const nodes = new Map();
   const $ = id => {
     if (!nodes.has(id)) nodes.set(id, {
       hidden: false, disabled: false, checked: id === 'agreement', value: '',
-      textContent: '', dataset: {},
-      replaceChildren() {}, append() {}, removeAttribute() {},
+      textContent: '', dataset: {}, children: [],
+      replaceChildren(...children) { this.children = children; },
+      append(...children) { this.children.push(...children); }, removeAttribute() {},
     });
     return nodes.get(id);
   };
@@ -912,11 +913,12 @@ function paidPurchaseLifecycleHarness(selectionErrors) {
   const context = {
     $, location, history, URLSearchParams, URL, uuid, validScope, validQuote,
     purchaseConfiguration, configurationLabel, navigation,
-    document: { body: { dataset: {} }, visibilityState: 'visible', createTextNode: text => ({ textContent: text }) },
+    document: { title: '', body: { dataset: {} }, visibilityState: 'visible', createTextNode: text => ({ textContent: text }) },
     element: (tag, text) => ({ tag, textContent: text }),
     names: ['year', 'make', 'model', 'configuration'],
     vehicle: { id: scope.configuration_id, region: scope.region }, quote,
     merchant: merchantFixture(), access: 'missing', currentOrder: '',
+    articles: [],
     sessionEstablished: true, signingIn: false,
     session: { state: { authenticated: true, ready: true, csrf: 'test-csrf' },
       async bootstrap() {}, clear() { context.session.state.authenticated = false; } },
@@ -940,12 +942,32 @@ function paidPurchaseLifecycleHarness(selectionErrors) {
     clearProtected() { context.access = 'unknown'; },
     show() {},
     status(message, options = {}) { statuses.push({ message, options }); },
-    async requestJSON() { return merchantFixture(); },
+    stage() {}, articlePath: () => `/v1/catalog/vehicles/${scope.configuration_id}/articles`,
+    renderArticles() { $('articles').replaceChildren(...context.articles.map(item => ({ id: item.id }))); },
+    readCollection: (read, options) => readCollection(read, {
+      ...options, wait: async () => { if (afterPartial) await afterPartial(context); },
+    }),
+    async requestJSON(path) {
+      if (!realArticleIndex) return merchantFixture();
+      if (path.startsWith('/v1/workshop/quote')) return quote;
+      if (path.includes('/articles')) {
+        if (articleReadResponses) {
+          const response = articleReadResponses.shift();
+          if (response instanceof Error) throw response;
+          return response;
+        }
+        if (!context.articles.length) return { items: [{ id: routeArticle, title: 'Private article' }], hydrating: true, complete: false };
+        throw selectionErrors[0];
+      }
+      return merchantFixture();
+    },
   };
   runInNewContext(
+    (realArticleIndex ? appSection('function clearProtected()', 'function invalidate()') : '') +
     appSection('function invalidate(', 'function updateURL(') +
     appSection('function updateURL(', 'function populate(') +
     appSection('function renderPurchase(', 'async function selectVehicle(') +
+    (realArticleIndex ? appSection('async function selectVehicle(', 'function renderArticles(') : '') +
     appSection('async function checkOrder(', 'async function signIn()') +
     appSection('async function bootstrap()', 'for (const [index, name] of names.entries())') +
     appSection('let lifecycleCheck = null;', 'window.addEventListener("pageshow"'),
@@ -968,6 +990,44 @@ test('paid catalog withdrawal through purchase never invites repayment or a no-o
   assert.equal(h.$('purchase-action').disabled, true);
   assert.match(h.statuses.at(-1).message, /do not pay again/);
   assert.equal(h.statuses.at(-1).options.retry, undefined);
+});
+
+test('paid partial article index is cleared when a later poll withdraws the catalog', async () => {
+  const withdrawn = Object.assign(new Error('Catalog withdrawn'), { status: 410, code: 'CATALOG_WITHDRAWN' });
+  const h = paidPurchaseLifecycleHarness([withdrawn], { realArticleIndex: true });
+  await h.context.purchase();
+  assert.equal(h.context.currentOrder, orderID);
+  assert.equal(h.context.access, 'pending');
+  assert.equal(h.$('check-order').hidden, false);
+  assert.equal(h.context.articles.length, 0);
+  assert.equal(h.$('articles').children.length, 0);
+  assert.doesNotMatch(h.$('purchase-action').textContent, /Buy/);
+});
+
+test('search during a partial paid index keeps its order resume route after withdrawal', async () => {
+  const withdrawn = Object.assign(new Error('Catalog withdrawn'), { status: 410, code: 'CATALOG_WITHDRAWN' });
+  const required = Object.assign(new Error('Access not ready'), { status: 403, code: 'ENTITLEMENT_REQUIRED' });
+  const h = paidPurchaseLifecycleHarness([withdrawn], {
+    realArticleIndex: true,
+    articleReadResponses: [
+      { items: [{ id: routeArticle, title: 'Private article' }], hydrating: true, complete: false },
+      withdrawn, required,
+    ],
+    afterPartial(context) {
+      context.$('search').value = 'pump';
+      context.updateURL({ replace: true });
+    },
+  });
+  await h.context.purchase();
+  assert.equal(h.context.access, 'pending');
+  assert.equal(new URLSearchParams(h.location.search).get('order'), orderID);
+  assert.equal(h.$('articles').children.length, 0);
+  assert.doesNotMatch(h.$('purchase-action').textContent, /Buy/);
+  await h.context.recheck();
+  assert.equal(h.orderReads(), 2);
+  assert.equal(h.context.access, 'pending');
+  assert.equal(h.context.currentOrder, orderID);
+  assert.doesNotMatch(h.$('purchase-action').textContent, /Buy/);
 });
 
 test('paid processing checkout survives focus recheck without a second Buy invitation', async () => {
