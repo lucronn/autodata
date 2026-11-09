@@ -802,8 +802,10 @@ function orderStatusHarness(response, { selectionError = null } = {}) {
   let selectionCalls = 0;
   const statuses = [];
   const context = {
-    currentOrder: '', paidOrder: '', vehicle: null, access: 'missing',
+    currentOrder: '', paidOrder: '', unconfirmedOrder: null, vehicle: null, quote: null, merchant: null, access: 'missing',
     $: id => nodes[id],
+    validScope, scope: () => ({ configuration_id: context.vehicle?.id, region: context.vehicle?.region }),
+    validQuote: () => false, purchaseConfiguration: () => false,
     navigation: { clear() {} }, clearProtected() {}, clearOrderRoute() {},
     status(message) { statuses.push(message); }, renderPurchase() {}, show() {}, async selectVehicle() {
       const error = Array.isArray(selectionError) ? selectionError[selectionCalls] : selectionError;
@@ -917,7 +919,7 @@ function paidPurchaseLifecycleHarness(selectionErrors, { realArticleIndex = fals
     element: (tag, text) => ({ tag, textContent: text }),
     names: ['year', 'make', 'model', 'configuration'],
     vehicle: { id: scope.configuration_id, region: scope.region }, quote,
-    merchant: merchantFixture(), access: 'missing', currentOrder: '', paidOrder: '',
+    merchant: merchantFixture(), access: 'missing', currentOrder: '', paidOrder: null, unconfirmedOrder: null,
     articles: [],
     sessionEstablished: true, signingIn: false,
     session: { state: { authenticated: true, ready: true, csrf: 'test-csrf' },
@@ -1205,6 +1207,168 @@ test('processing order alone does not claim confirmed paid access on an entitlem
   assert.equal(h.context.access, 'missing');
 });
 
+test('processing checkout timeout keeps status check without an enabled Buy action', async () => {
+  const processing = {
+    version: 'v1', order_id: orderID, ...scope, state: 'processing',
+    retry_disposition: 'do_not_repay', timedOut: true,
+  };
+  const h = paidPurchaseLifecycleHarness([], { orderResponses: [processing, processing] });
+  await h.context.purchase();
+  assert.equal(h.checkoutStarts(), 1);
+  assert.equal(h.context.currentOrder, orderID);
+  assert.equal(h.$('check-order').hidden, false);
+  assert.equal(h.context.access, 'missing');
+  assert.match(h.$('purchase-message').textContent, /confirmation.*do not pay again/i);
+  assert.doesNotMatch(h.$('purchase-action').textContent, /Buy|Payment received/);
+  assert.equal(h.$('purchase-action').disabled, true);
+  await h.context.purchase(); // Direct activation must not start a second checkout.
+  assert.equal(h.checkoutStarts(), 1);
+});
+
+test('owner-only processing route recovery keeps a scoped confirmation-pending action', async () => {
+  const processing = {
+    version: 'v1', order_id: orderID, ...scope, state: 'processing',
+    retry_disposition: 'do_not_repay', timedOut: true,
+  };
+  const h = paidPurchaseLifecycleHarness([], { orderResponses: [processing] });
+  h.location.search = `?order=${orderID}`;
+  await h.context.restoreRoute();
+  assert.equal(h.checkoutStarts(), 0);
+  assert.equal(h.orderReads(), 1);
+  assert.equal(h.context.unconfirmedOrder?.id, orderID);
+  assert.equal(h.context.access, 'unknown'); // Route restoration invalidates prior access.
+  assert.equal(h.$('check-order').hidden, false);
+  assert.equal(h.$('purchase-action').disabled, true);
+  assert.doesNotMatch(h.$('purchase-action').textContent, /Buy|Payment received/);
+  h.context.vehicle = { id: previousConfiguration, region: scope.region };
+  h.context.quote = { ...quote, configuration_id: previousConfiguration };
+  h.context.access = 'missing'; // A separate access check found the other scope purchasable.
+  h.context.renderPurchase();
+  assert.equal(h.$('purchase-action').disabled, false);
+  assert.match(h.$('purchase-action').textContent, /Buy for \$20 USD/);
+});
+
+test('fresh order-only return reveals Check payment status after owner validation', async () => {
+  const processing = {
+    version: 'v1', order_id: orderID, ...scope, state: 'processing',
+    retry_disposition: 'do_not_repay', timedOut: true,
+  };
+  const h = paidPurchaseLifecycleHarness([], { orderResponses: [processing] });
+  h.context.vehicle = null;
+  h.context.quote = null;
+  h.location.search = `?order=${orderID}`;
+  await h.context.restoreRoute();
+  assert.equal(h.context.vehicle?.id, scope.configuration_id);
+  assert.equal(h.context.vehicle?.region, scope.region);
+  assert.equal(h.$('purchase').hidden, false);
+  assert.equal(h.$('check-order').hidden, false);
+  assert.equal(h.$('purchase-action').disabled, true);
+  assert.match(h.$('purchase-message').textContent, /confirmation.*do not pay again/i);
+  assert.equal(h.checkoutStarts(), 0);
+});
+
+for (const state of ['creating', 'open', 'reconciliation_required']) {
+  test(`unresolved ${state} order keeps a validated no-repay action`, async () => {
+    const processing = {
+      version: 'v1', order_id: orderID, ...scope, state: 'processing',
+      retry_disposition: 'do_not_repay', timedOut: true,
+    };
+    const unresolved = { ...processing, state };
+    const h = paidPurchaseLifecycleHarness([], { orderResponses: [processing, unresolved] });
+    await h.context.purchase();
+    await h.context.operation(g => h.context.checkOrder(g, orderID));
+    assert.equal(h.context.currentOrder, orderID);
+    assert.equal(h.context.unconfirmedOrder?.id, orderID);
+    assert.equal(h.$('check-order').hidden, false);
+    assert.equal(h.$('purchase-action').disabled, true);
+    assert.doesNotMatch(h.$('purchase-action').textContent, /Buy|Payment received/);
+    await h.context.purchase();
+    assert.equal(h.checkoutStarts(), 1);
+  });
+}
+
+test('a URL-only missing order never claims pending confirmation', async () => {
+  const missing = Object.assign(new Error('Order not found'), { status: 404 });
+  const h = paidPurchaseLifecycleHarness([], { orderResponses: [missing] });
+  h.location.search = `?order=${orderID}`;
+  await h.context.restoreRoute();
+  assert.equal(h.checkoutStarts(), 0);
+  assert.equal(h.context.unconfirmedOrder, null);
+  assert.equal(h.context.currentOrder, '');
+  assert.equal(h.$('check-order').hidden, true);
+  assert.doesNotMatch(h.$('purchase-message').textContent, /Payment confirmation is pending|Payment received/);
+});
+
+test('a missing processing order clears the pending action and allows a fresh purchase', async () => {
+  const processing = {
+    version: 'v1', order_id: orderID, ...scope, state: 'processing',
+    retry_disposition: 'do_not_repay', timedOut: true,
+  };
+  const missing = Object.assign(new Error('Order not found'), { status: 404 });
+  const h = paidPurchaseLifecycleHarness([], { orderResponses: [processing, missing] });
+  await h.context.purchase();
+  assert.equal(h.$('purchase-action').disabled, true);
+  await h.context.operation(g => h.context.checkOrder(g, orderID));
+  assert.equal(h.context.currentOrder, '');
+  assert.equal(h.context.unconfirmedOrder, null);
+  assert.equal(h.$('check-order').hidden, true);
+  assert.equal(h.$('purchase-action').disabled, false);
+  assert.match(h.$('purchase-action').textContent, /Buy for \$20 USD/);
+});
+
+for (const state of ['expired', 'canceled', 'revoked', 'paid']) {
+  test(`processing order resolving as ${state} does not retain a stale pending action`, async () => {
+    const processing = {
+      version: 'v1', order_id: orderID, ...scope, state: 'processing',
+      retry_disposition: 'do_not_repay', timedOut: true,
+    };
+    const resolved = {
+      version: 'v1', order_id: orderID, ...scope, state,
+      retry_disposition: ['expired', 'canceled'].includes(state) ? 'new_key' : 'do_not_repay',
+    };
+    const h = paidPurchaseLifecycleHarness([], { orderResponses: [processing, resolved] });
+    await h.context.purchase();
+    await h.context.operation(g => h.context.checkOrder(g, orderID));
+    assert.equal(h.context.unconfirmedOrder, null);
+    assert.equal(h.context.currentOrder, '');
+    assert.equal(h.$('check-order').hidden, true);
+    if (['expired', 'canceled'].includes(state)) {
+      assert.equal(h.$('purchase-action').disabled, false);
+      assert.match(h.$('purchase-action').textContent, /Buy for \$20 USD/);
+      assert.match(h.statuses.at(-1).message, /Choose Buy again/);
+    } else if (state === 'revoked') {
+      assert.equal(h.context.access, 'revoked');
+      assert.equal(h.$('purchase-action').disabled, true);
+      assert.match(h.$('purchase-message').textContent, /Access revoked/);
+    } else {
+      assert.equal(h.context.access, 'owned');
+      h.context.renderPurchase(); // The harness selectVehicle stub does not render its success path.
+      assert.match(h.$('purchase-action').textContent, /Open articles/);
+    }
+  });
+}
+
+for (const state of ['expired', 'canceled']) {
+  test(`fresh order-only ${state} result gives a usable next step`, async () => {
+    const processing = {
+      version: 'v1', order_id: orderID, ...scope, state: 'processing',
+      retry_disposition: 'do_not_repay', timedOut: true,
+    };
+    const terminal = { ...processing, state, retry_disposition: 'new_key' };
+    const h = paidPurchaseLifecycleHarness([], { orderResponses: [processing, terminal] });
+    h.context.vehicle = null;
+    h.context.quote = null;
+    h.location.search = `?order=${orderID}`;
+    await h.context.restoreRoute();
+    await h.context.operation(g => h.context.checkOrder(g, orderID));
+    assert.equal(h.context.currentOrder, '');
+    assert.equal(h.context.unconfirmedOrder, null);
+    assert.equal(h.$('purchase-action').disabled, true);
+    assert.match(h.statuses.at(-1).message, /select.*vehicle.*check access/i);
+    assert.doesNotMatch(h.statuses.at(-1).message, /Choose Buy again/);
+  });
+}
+
 test('confirmed paid marker for another vehicle does not mask missing access', async () => {
   const required = Object.assign(new Error('Access not ready'), { status: 403, code: 'ENTITLEMENT_REQUIRED' });
   const h = paidPurchaseLifecycleHarness([]);
@@ -1279,7 +1443,7 @@ test('stale order status 404 does not clear newer checkout or action', async () 
   let checkoutClears = 0;
   const button = { hidden: true };
   const context = {
-    currentOrder: '', paidOrder: '', $: () => button, status() {},
+    currentOrder: '', paidOrder: '', unconfirmedOrder: null, $: () => button, status() {},
     pollOrder: () => new Promise((_, reject) => { rejectOrder = reject; }),
     checkout: { clear() { checkoutClears++; } },
   };
@@ -1567,7 +1731,7 @@ test('paid access pending renders a non-Buy action even without merchant configu
     };
     const context = {
       $, validScope, validQuote, purchaseConfiguration, configurationLabel,
-      scope: () => scope, quote, merchant, access: 'pending',
+      scope: () => scope, quote, merchant, access: 'pending', currentOrder: '', unconfirmedOrder: null,
       vehicle: { id: scope.configuration_id, region: scope.region },
       session: { state: { authenticated: true, ready: true } },
       document: { createTextNode: text => ({ textContent: text }) },

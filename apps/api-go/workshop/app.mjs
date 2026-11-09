@@ -47,6 +47,7 @@ let quote = null,
   libraryItems = [],
   currentOrder = "",
   paidOrder = null,
+  unconfirmedOrder = null,
   retryAction = null,
   renewalUsed = false,
   renewal = null,
@@ -142,6 +143,7 @@ function invalidate() {
   navigation.clear();
   currentOrder = "";
   paidOrder = null;
+  unconfirmedOrder = null;
   $("check-order").hidden = true;
   clearProtected();
 }
@@ -305,6 +307,9 @@ async function loadOptions(name, g, desired = "") {
 }
 function renderPurchase() {
   if (!$("purchase")) return;
+  const confirming = unconfirmedOrder?.id === currentOrder &&
+    vehicle?.id === unconfirmedOrder.configuration_id &&
+    vehicle?.region === unconfirmedOrder.region;
   $("purchase").hidden = !validScope(scope());
   $("purchase-selection").textContent =
     quote?.configuration_label ||
@@ -330,25 +335,29 @@ function renderPurchase() {
         ? "Owned. Open your articles without another purchase."
         : access === "pending" && session.state.authenticated
           ? "Payment received. Article access is still being checked. Use Check payment status; do not pay again."
-          : !configured
-            ? "Purchasing is currently unavailable. You can keep browsing."
-            : !session.state.authenticated
-              ? "Sign in to check access and purchase for your account."
-              : access === "missing"
-                ? "One purchase for this exact configuration and region. No renewal is required, subject to published terms and source availability."
-                : "Checking access. Try again if the service is unavailable.";
+          : confirming && session.state.authenticated
+            ? "Payment confirmation is pending. Use Check payment status; do not pay again."
+            : !configured
+              ? "Purchasing is currently unavailable. You can keep browsing."
+              : !session.state.authenticated
+                ? "Sign in to check access and purchase for your account."
+                : access === "missing"
+                  ? "One purchase for this exact configuration and region. No renewal is required, subject to published terms and source availability."
+                  : "Checking access. Try again if the service is unavailable.";
   $("purchase-action").textContent = !session.state.authenticated
     ? "Sign in with Google"
     : access === "owned"
       ? "Open articles"
       : access === "pending"
         ? "Payment received"
-        : "Buy for $20 USD";
+        : confirming
+          ? "Payment pending"
+          : "Buy for $20 USD";
   $("purchase-action").disabled = !session.state.authenticated
     ? !session.state.ready
     : access === "owned"
       ? false
-      : !(access === "missing" && priced && configured);
+      : !(access === "missing" && !confirming && priced && configured);
   $("policy-links").replaceChildren();
   if (configured)
     for (const [field, label] of [
@@ -978,17 +987,36 @@ function clearReader() {
 }
 async function checkOrder(g, id) {
   if (paidOrder?.id !== id) paidOrder = null;
+  if (unconfirmedOrder?.id !== id) unconfirmedOrder = null;
   currentOrder = id;
   $("check-order").hidden = false;
   status("Checking payment status…", { busy: true });
+  const rememberUnconfirmed = (order) => {
+    const unresolved = ["creating", "open", "processing", "reconciliation_required"];
+    if (unresolved.includes(order.state)) {
+      unconfirmedOrder = {
+        id, configuration_id: order.configuration_id, region: order.region,
+      };
+      if (!validScope(scope())) {
+        vehicle = { id: order.configuration_id, region: order.region };
+        quote = null;
+      }
+      renderPurchase();
+    } else if (["paid", "expired", "canceled", "revoked"].includes(order.state) &&
+      unconfirmedOrder?.id === id) {
+      unconfirmedOrder = null;
+    }
+  };
   const result = await pollOrder(id, {
     signal: g.signal,
     onUpdate(order) {
-      if (g.current())
+      if (g.current()) {
+        rememberUnconfirmed(order);
         $("purchase-message").textContent =
           order.state === "paid"
             ? "Payment received. Checking article access."
             : "Payment is being confirmed. Do not pay again.";
+      }
     },
   }).catch((error) => {
     if (g.current() && error.status === 404) {
@@ -1005,12 +1033,15 @@ async function checkOrder(g, id) {
       checkout.clear();
       currentOrder = "";
       paidOrder = null;
+      unconfirmedOrder = null;
       $("check-order").hidden = true;
       clearOrderRoute(id);
+      renderPurchase();
     }
     throw error;
   });
   if (!g.current() || !result) return;
+  if (result.state) rememberUnconfirmed(result);
   if (["expired", "canceled", "revoked"].includes(result.state)) {
     currentOrder = "";
     paidOrder = null;
@@ -1050,8 +1081,14 @@ async function checkOrder(g, id) {
     clearOrderRoute(id, true);
   } else if (["expired", "canceled"].includes(result.state)) {
     checkout.clear();
+    const readyToBuy =
+      access === "missing" &&
+      validQuote(quote, scope()) &&
+      purchaseConfiguration(merchant, quote);
     status(
-      "The previous payment attempt ended. Choose Buy again only when you are ready.",
+      readyToBuy
+        ? "The previous payment attempt ended. Choose Buy again only when you are ready."
+        : "The previous payment attempt ended. Select your vehicle to check access before buying again.",
     );
     renderPurchase();
   } else if (result.state === "revoked") {
@@ -1078,7 +1115,10 @@ async function purchase() {
   if (
     !validQuote(quote, scope()) ||
     !purchaseConfiguration(merchant, quote) ||
-    access !== "missing"
+    access !== "missing" ||
+    (unconfirmedOrder?.id === currentOrder &&
+      vehicle?.id === unconfirmedOrder.configuration_id &&
+      vehicle?.region === unconfirmedOrder.region)
   )
     return;
   if (!$("agreement").checked) {
@@ -1100,6 +1140,11 @@ async function purchase() {
       if (result.state === "checkout") location.assign(result.checkout_url);
       else if (result.state === "owned") await loadArticles(g);
       else {
+        unconfirmedOrder = {
+          id: result.order_id,
+          configuration_id: result.configuration_id,
+          region: result.region,
+        };
         rememberOrderRoute(result.order_id);
         await checkOrder(g, result.order_id);
       }
