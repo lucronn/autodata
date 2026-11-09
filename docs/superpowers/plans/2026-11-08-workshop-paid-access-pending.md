@@ -24,8 +24,8 @@
 
 ## Concrete todo
 
-- [ ] Reproduce a paid order followed by an entitlement-required article read that currently exposes Buy again.
-- [ ] Keep a no-repay, retryable paid-access state until article-index access succeeds.
+- [x] Reproduce a paid order followed by an entitlement-required article read that currently exposes Buy again.
+- [x] Keep a no-repay, retryable paid-access state until article-index access succeeds.
 - [ ] Run focused/full Workshop client and Go tests, syntax/diff checks, independent review, and required CI before integration.
 
 ### Task 1: Keep the paid-order action until access is confirmed
@@ -39,7 +39,7 @@
 - Consumes: `checkOrder(g, id)`, validated `pollOrder` response, `selectVehicle(g)`, `renderPurchase()`, `status()`, `currentOrder`, and `access`.
 - Produces: a visible existing Check payment status action and disabled purchase CTA while a confirmed paid order lacks a successful article-index read; unchanged terminal order behavior otherwise.
 
-- [ ] **Step 1: Write red tests.** Extend the actual-function `orderStatusHarness` to simulate a paid order followed by `ENTITLEMENT_REQUIRED`, assert that `checkOrder()` does not throw, leaves the order action visible, keeps the settled checkout attempt, and reports a no-repay pending-access state. Assert that a later successful `selectVehicle()` clears the action; update the existing paid terminal-action expectation accordingly. Adjust the existing paid article 404 control to require the action to stay available without a new checkout. Extract actual `renderPurchase()` into a VM fixture with valid quote/merchant and authenticated session; assert pending access shows explanatory text and a disabled non-Buy action even when merchant configuration is unavailable.
+- [x] **Step 1: Write red tests.** Extend the actual-function `orderStatusHarness` to simulate a paid order followed by `ENTITLEMENT_REQUIRED`, assert that `checkOrder()` does not throw, leaves the order action visible, keeps the settled checkout attempt, and reports a no-repay pending-access state. Assert that a later successful `selectVehicle()` clears the action; update the existing paid terminal-action expectation accordingly. Adjust the existing paid article 404 control to require the action to stay available without a new checkout. Extract actual `renderPurchase()` into a VM fixture with valid quote/merchant and authenticated session; assert pending access shows explanatory text and a disabled non-Buy action even when merchant configuration is unavailable.
 
   ```js
   const required = Object.assign(new Error('Access not ready'), {
@@ -58,8 +58,8 @@
   // Separately run actual renderPurchase() with access='pending':
   // purchase-action.disabled=true and its text is not Buy.
   ```
-- [ ] **Step 2: Confirm red.** Run `node --test --test-name-pattern='paid access|paid article 404' apps/api-go/workshop-client.test.mjs`; verify failures are the premature order-action clear and Buy CTA, not fixture errors.
-- [ ] **Step 3: Minimal app change.** In `checkOrder()`, defer clearing `currentOrder` and hiding `check-order` for `paid` until current `selectVehicle(g)` returns successfully. On its `ENTITLEMENT_REQUIRED` failure, set client `access = "pending"`, call `renderPurchase()`, show the welcome section and a no-repay/check-status message, and return; on other non-revoked post-payment errors retain pending state and rethrow for existing error handling. Preserve revoked behavior by clearing the order action before rethrowing `ENTITLEMENT_REVOKED`. Add a pending-access message before the merchant-unavailable message and a disabled `Payment received` CTA in `renderPurchase()` while leaving valid quote/terms checks and `purchase()` unchanged.
+- [x] **Step 2: Confirm red.** Run `node --test --test-name-pattern='paid access|paid article 404' apps/api-go/workshop-client.test.mjs`; verify failures are the premature order-action clear and Buy CTA, not fixture errors. The first run exposed a missing test import; after correcting it, all three tests failed for the expected production behavior.
+- [x] **Step 3: Minimal app change.** In `checkOrder()`, defer clearing `currentOrder` and hiding `check-order` for `paid` until current `selectVehicle(g)` returns successfully. On its `ENTITLEMENT_REQUIRED` failure, set client `access = "pending"`, call `renderPurchase()`, show the welcome section and a no-repay/check-status message, and return; on other non-revoked post-payment errors retain pending state and rethrow for existing error handling. Preserve revoked behavior by clearing the order action before rethrowing `ENTITLEMENT_REVOKED`. Add a pending-access message before the merchant-unavailable message and a disabled `Payment received` CTA in `renderPurchase()` while leaving valid quote/terms checks and `purchase()` unchanged.
 
   ```js
   if (result.state === 'paid') {
@@ -85,5 +85,5 @@
     $("check-order").hidden = true;
   }
   ```
-- [ ] **Step 4: Confirm green and broader checks.** Rerun the focused test; then run `node --test --test-reporter=dot apps/api-go/workshop-client.test.mjs apps/api-go/workshop-demo.test.mjs`, `/home/corp/.local/go1.23.4/go/bin/go -C apps/api-go test -count=1 ./...`, `node --check apps/api-go/workshop/app.mjs`, and `git diff --check` sequentially. Record any failure honestly.
+- [x] **Step 4: Confirm green and broader checks.** Rerun the focused test; then run `node --test --test-reporter=dot apps/api-go/workshop-client.test.mjs apps/api-go/workshop-demo.test.mjs`, `/home/corp/.local/go1.23.4/go/bin/go -C apps/api-go test -count=1 ./...`, `node --check apps/api-go/workshop/app.mjs`, and `git diff --check` sequentially. Focused 7/7, full Workshop 218, Go API 8.699s, syntax and diff checks passed locally.
 - [ ] **Step 5: Review and integrate.** Inspect the scoped diff, update verification and the child Issue, commit/push, obtain independent read-only review of the exact candidate, and merge only after required GitHub checks and policy permit. Close/check the issue and set its Project item Done only after verified merge.

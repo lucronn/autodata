@@ -290,18 +290,22 @@ function renderPurchase() {
       ? "Access revoked. Contact the published support address."
       : access === "owned"
         ? "Owned. Open your articles without another purchase."
-        : !configured
-          ? "Purchasing is currently unavailable. You can keep browsing."
-          : !session.state.authenticated
-            ? "Sign in to check access and purchase for your account."
-            : access === "missing"
-              ? "One purchase for this exact configuration and region. No renewal is required, subject to published terms and source availability."
-              : "Checking access. Try again if the service is unavailable.";
+        : access === "pending" && session.state.authenticated
+          ? "Payment received. Article access is still being checked. Use Check payment status; do not pay again."
+          : !configured
+            ? "Purchasing is currently unavailable. You can keep browsing."
+            : !session.state.authenticated
+              ? "Sign in to check access and purchase for your account."
+              : access === "missing"
+                ? "One purchase for this exact configuration and region. No renewal is required, subject to published terms and source availability."
+                : "Checking access. Try again if the service is unavailable.";
   $("purchase-action").textContent = !session.state.authenticated
     ? "Sign in with Google"
     : access === "owned"
       ? "Open articles"
-      : "Buy for $20 USD";
+      : access === "pending"
+        ? "Payment received"
+        : "Buy for $20 USD";
   $("purchase-action").disabled = !session.state.authenticated
     ? !session.state.ready
     : access === "owned"
@@ -956,13 +960,33 @@ async function checkOrder(g, id) {
     throw error;
   });
   if (!g.current()) return;
-  if (["paid", "expired", "canceled", "revoked"].includes(result.state)) {
+  if (["expired", "canceled", "revoked"].includes(result.state)) {
     currentOrder = "";
     $("check-order").hidden = true;
   }
   if (result.state === "paid") {
     vehicle = { id: result.configuration_id, region: result.region };
-    await selectVehicle(g);
+    try {
+      await selectVehicle(g);
+    } catch (error) {
+      if (!g.current()) return;
+      if (error.code === "ENTITLEMENT_REVOKED") {
+        currentOrder = "";
+        $("check-order").hidden = true;
+        throw error;
+      }
+      access = "pending";
+      renderPurchase();
+      if (error.code !== "ENTITLEMENT_REQUIRED") throw error;
+      show("welcome");
+      status("Payment received. Access is not ready. Check payment status again; do not pay again.", {
+        error: true,
+      });
+      return;
+    }
+    if (!g.current()) return;
+    currentOrder = "";
+    $("check-order").hidden = true;
   } else if (["expired", "canceled"].includes(result.state)) {
     checkout.clear();
     status(

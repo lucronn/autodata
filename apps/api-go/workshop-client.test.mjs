@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { NavigationGeneration, processingArticle, readableArticle } from './workshop/article-read.mjs';
-import { purchaseConfiguration, uuid, validScope } from './workshop/commerce.mjs';
+import { purchaseConfiguration, uuid, validQuote, validScope } from './workshop/commerce.mjs';
 import { articlePresentation, configurationLabel, filterArticles, hasSourceReference, legacyArticleBlocks, localImageURL, readCollection, requestJSON, sourceReferenceURL } from './workshop/catalog.mjs';
 import { LOAD_STAGES, loadingProgress } from './workshop/progress.mjs';
 
@@ -799,12 +799,16 @@ function orderStatusHarness(response, { selectionError = null } = {}) {
     'purchase-message': { textContent: '' },
   };
   let checkoutClears = 0;
+  let selectionCalls = 0;
+  const statuses = [];
   const context = {
     currentOrder: '', vehicle: null, access: 'missing',
     $: id => nodes[id],
     navigation: { clear() {} }, clearProtected() {},
-    status() {}, renderPurchase() {}, async selectVehicle() {
-      if (selectionError) throw selectionError;
+    status(message) { statuses.push(message); }, renderPurchase() {}, show() {}, async selectVehicle() {
+      const error = Array.isArray(selectionError) ? selectionError[selectionCalls] : selectionError;
+      selectionCalls++;
+      if (error) throw error;
     },
     checkout: { clear() { checkoutClears++; } },
     async pollOrder(id, { onUpdate }) {
@@ -820,7 +824,7 @@ function orderStatusHarness(response, { selectionError = null } = {}) {
     context,
   );
   return {
-    context, button: nodes['check-order'],
+    context, button: nodes['check-order'], statuses,
     checkoutClears: () => checkoutClears,
     check: () => context.checkOrder({ current: () => true, signal: {} }, orderID),
   };
@@ -857,9 +861,28 @@ test('paid article 404 does not clear the settled order checkout attempt', async
     retry_disposition: 'do_not_repay', timedOut: false,
   }, { selectionError: error });
   await assert.rejects(h.check(), received => received === error);
+  assert.equal(h.context.currentOrder, orderID);
+  assert.equal(h.button.hidden, false);
+  assert.equal(h.checkoutClears(), 0);
+});
+
+test('paid access missing keeps status action without inviting repayment', async () => {
+  const error = Object.assign(new Error('Access not ready'), {
+    status: 403, code: 'ENTITLEMENT_REQUIRED',
+  });
+  const h = orderStatusHarness({
+    version: 'v1', order_id: orderID, ...scope, state: 'paid',
+    retry_disposition: 'do_not_repay', timedOut: false,
+  }, { selectionError: [error, null] });
+  await h.check();
+  assert.equal(h.context.currentOrder, orderID);
+  assert.equal(h.button.hidden, false);
+  assert.equal(h.context.access, 'pending');
+  assert.equal(h.checkoutClears(), 0);
+  assert.match(h.statuses.at(-1), /Payment received.*do not pay again/);
+  await h.check();
   assert.equal(h.context.currentOrder, '');
   assert.equal(h.button.hidden, true);
-  assert.equal(h.checkoutClears(), 0);
 });
 
 test('order status retains pending action when confirmation times out', async () => {
@@ -1154,6 +1177,32 @@ const merchantFixture = () => ({
   tax_notice: 'Synthetic fixture notice.',
 });
 const quoteTermsFixture = () => ({ purchase_terms_version: 'workshop-v1' });
+
+test('paid access pending renders a non-Buy action even without merchant configuration', () => {
+  for (const merchant of [merchantFixture(), null]) {
+    const nodes = new Map();
+    const $ = id => {
+      if (!nodes.has(id)) nodes.set(id, {
+        hidden: false, disabled: false, textContent: '',
+        replaceChildren() {}, append() {},
+      });
+      return nodes.get(id);
+    };
+    const context = {
+      $, validScope, validQuote, purchaseConfiguration, configurationLabel,
+      scope: () => scope, quote, merchant, access: 'pending',
+      vehicle: { id: scope.configuration_id, region: scope.region },
+      session: { state: { authenticated: true, ready: true } },
+      document: { createTextNode: text => ({ textContent: text }) },
+      element: (tag, text) => ({ tag, textContent: text }),
+    };
+    runInNewContext(appSection('function renderPurchase(', 'async function selectVehicle('), context);
+    context.renderPurchase();
+    assert.match($('purchase-message').textContent, /Payment received.*do not pay again/);
+    assert.equal($('purchase-action').disabled, true);
+    assert.doesNotMatch($('purchase-action').textContent, /Buy/);
+  }
+});
 
 test('purchase readiness requires the supported terms contract', async t => {
   assert.equal(purchaseConfiguration(merchantFixture(), quoteTermsFixture()), true);
