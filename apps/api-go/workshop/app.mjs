@@ -46,6 +46,7 @@ let quote = null,
   libraryCursor = null,
   libraryItems = [],
   currentOrder = "",
+  paidOrder = null,
   retryAction = null,
   renewalUsed = false,
   renewal = null,
@@ -140,6 +141,7 @@ function clearProtected() {
 function invalidate() {
   navigation.clear();
   currentOrder = "";
+  paidOrder = null;
   $("check-order").hidden = true;
   clearProtected();
 }
@@ -150,6 +152,9 @@ async function operation(work, retry = null) {
     await work(g);
   } catch (error) {
     if (!g.current()) return;
+    const confirmedPaid = paidOrder?.id === currentOrder &&
+      vehicle?.id === paidOrder.configuration_id &&
+      vehicle?.region === paidOrder.region;
     if ([401, 403, 410].includes(error.status)) {
       clearProtected();
       show("welcome");
@@ -158,18 +163,35 @@ async function operation(work, retry = null) {
         void session.bootstrap();
       }
     }
-    if (error.code === "ENTITLEMENT_REQUIRED") {
-      access = "missing";
-      show("welcome");
-      renderPurchase();
-      status("This vehicle is available to purchase.");
-    } else if (error.code === "ENTITLEMENT_REVOKED") {
+    if (error.code === "ENTITLEMENT_REVOKED") {
+      if (confirmedPaid) {
+        const id = currentOrder;
+        currentOrder = "";
+        paidOrder = null;
+        $("check-order").hidden = true;
+        clearOrderRoute(id);
+      }
       access = "revoked";
       show("welcome");
       renderPurchase();
       status("Access to this vehicle has been revoked. Contact support.", {
         error: true,
       });
+    } else if (confirmedPaid && error.status !== 401) {
+      clearProtected();
+      access = "pending";
+      show("welcome");
+      renderPurchase();
+      status(error.code === "ENTITLEMENT_REQUIRED"
+        ? "Payment received. Access is not ready. Check payment status again; do not pay again."
+        : "Payment received, but articles are unavailable. Check payment status again or contact support; do not pay again.", {
+        error: true,
+      });
+    } else if (error.code === "ENTITLEMENT_REQUIRED") {
+      access = "missing";
+      show("welcome");
+      renderPurchase();
+      status("This vehicle is available to purchase.");
     } else
       status(error.message || "AutoData is unavailable. Try again.", {
         error: true,
@@ -193,9 +215,25 @@ function updateURL({ article = "", replace = false, library = false } = {}) {
   if (article) p.set("article", article);
   if ($("search").value) p.set("q", $("search").value);
   if (library) p.set("view", "library");
+  if (currentOrder) p.set("order", currentOrder);
   const url = `${location.pathname}${p.size ? `?${p}` : ""}`;
   if (url !== location.pathname + location.search)
     history[replace ? "replaceState" : "pushState"](null, "", url);
+}
+function rememberOrderRoute(id) {
+  const params = new URLSearchParams(location.search);
+  params.set("order", id);
+  history.replaceState(null, "", `${location.pathname}?${params}`);
+}
+function clearOrderRoute(id, keepVehicle = false) {
+  const params = new URLSearchParams(location.search);
+  if (params.get("order") !== id) return;
+  params.delete("order");
+  if (keepVehicle && validScope(scope())) {
+    params.set("configuration", vehicle.id);
+    params.set("region", vehicle.region);
+  }
+  history.replaceState(null, "", `${location.pathname}${params.size ? `?${params}` : ""}`);
 }
 function populate(name, items, desired = "") {
   rows[name] =
@@ -290,18 +328,22 @@ function renderPurchase() {
       ? "Access revoked. Contact the published support address."
       : access === "owned"
         ? "Owned. Open your articles without another purchase."
-        : !configured
-          ? "Purchasing is currently unavailable. You can keep browsing."
-          : !session.state.authenticated
-            ? "Sign in to check access and purchase for your account."
-            : access === "missing"
-              ? "One purchase for this exact configuration and region. No renewal is required, subject to published terms and source availability."
-              : "Checking access. Try again if the service is unavailable.";
+        : access === "pending" && session.state.authenticated
+          ? "Payment received. Article access is still being checked. Use Check payment status; do not pay again."
+          : !configured
+            ? "Purchasing is currently unavailable. You can keep browsing."
+            : !session.state.authenticated
+              ? "Sign in to check access and purchase for your account."
+              : access === "missing"
+                ? "One purchase for this exact configuration and region. No renewal is required, subject to published terms and source availability."
+                : "Checking access. Try again if the service is unavailable.";
   $("purchase-action").textContent = !session.state.authenticated
     ? "Sign in with Google"
     : access === "owned"
       ? "Open articles"
-      : "Buy for $20 USD";
+      : access === "pending"
+        ? "Payment received"
+        : "Buy for $20 USD";
   $("purchase-action").disabled = !session.state.authenticated
     ? !session.state.ready
     : access === "owned"
@@ -935,6 +977,7 @@ function clearReader() {
   document.body.dataset.printable = "false";
 }
 async function checkOrder(g, id) {
+  if (paidOrder?.id !== id) paidOrder = null;
   currentOrder = id;
   $("check-order").hidden = false;
   status("Checking payment status…", { busy: true });
@@ -949,20 +992,62 @@ async function checkOrder(g, id) {
     },
   }).catch((error) => {
     if (g.current() && error.status === 404) {
+      if (paidOrder?.id === id) {
+        clearProtected();
+        access = "pending";
+        renderPurchase();
+        show("welcome");
+        status("Payment was received, but order status is unavailable. Check payment status again or contact support; do not pay again.", {
+          error: true,
+        });
+        return null;
+      }
       checkout.clear();
       currentOrder = "";
+      paidOrder = null;
       $("check-order").hidden = true;
+      clearOrderRoute(id);
     }
     throw error;
   });
-  if (!g.current()) return;
-  if (["paid", "expired", "canceled", "revoked"].includes(result.state)) {
+  if (!g.current() || !result) return;
+  if (["expired", "canceled", "revoked"].includes(result.state)) {
     currentOrder = "";
+    paidOrder = null;
     $("check-order").hidden = true;
+    clearOrderRoute(id);
   }
   if (result.state === "paid") {
+    paidOrder = { id, configuration_id: result.configuration_id, region: result.region };
     vehicle = { id: result.configuration_id, region: result.region };
-    await selectVehicle(g);
+    try {
+      await selectVehicle(g);
+    } catch (error) {
+      if (!g.current()) return;
+      if (error.code === "ENTITLEMENT_REVOKED") {
+        currentOrder = "";
+        paidOrder = null;
+        $("check-order").hidden = true;
+        clearOrderRoute(id);
+        throw error;
+      }
+      if (error.status === 401) throw error;
+      clearProtected();
+      access = "pending";
+      renderPurchase();
+      show("welcome");
+      status(error.code === "ENTITLEMENT_REQUIRED"
+        ? "Payment received. Access is not ready. Check payment status again; do not pay again."
+        : "Payment received, but articles are unavailable. Check payment status again or contact support; do not pay again.", {
+        error: true,
+      });
+      return;
+    }
+    if (!g.current()) return;
+    currentOrder = "";
+    paidOrder = null;
+    $("check-order").hidden = true;
+    clearOrderRoute(id, true);
   } else if (["expired", "canceled"].includes(result.state)) {
     checkout.clear();
     status(
@@ -973,6 +1058,7 @@ async function checkOrder(g, id) {
     invalidate();
     access = "revoked";
     renderPurchase();
+    show("welcome");
     status("Access revoked. Contact support.", { error: true });
   } else
     status(
@@ -1013,7 +1099,10 @@ async function purchase() {
       if (!g.current()) return;
       if (result.state === "checkout") location.assign(result.checkout_url);
       else if (result.state === "owned") await loadArticles(g);
-      else await checkOrder(g, result.order_id);
+      else {
+        rememberOrderRoute(result.order_id);
+        await checkOrder(g, result.order_id);
+      }
     },
     () => purchase(),
   );
