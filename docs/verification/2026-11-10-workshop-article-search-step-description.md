@@ -25,10 +25,10 @@ Acceptance:
 - [x] A step with both a description and nested instructions retains both
   pieces of consumer-visible text, and a whitespace-only instruction `text`
   does not hide its nonempty `description`.
-- [ ] The JSON bound-article source adapter forwards description and nested
+- [x] The JSON bound-article source adapter forwards description and nested
   instruction fields to document normalization, so an actual fetched article
   does not collapse to a numbered placeholder.
-- [ ] A normalized step or list label that the Workshop renderer hides does
+- [x] A normalized step or list label that the Workshop renderer hides does
   not create a local article-search match by itself; displayed callout and
   table labels remain searchable.
 - [ ] Focused and full ingestion tests, exact-head independent review, required
@@ -89,5 +89,16 @@ action, instructions, and images. These source-to-UI boundaries must have
 red-first regression coverage and a fresh exact-head re-review before merge.
 The same renderer omits normalized list labels, so the visibility correction
 will use rendered block types rather than a step-only exception.
+
+The adapter-path test failed first with `Step 1` and passed after forwarding
+the source step's description and instructions. Hidden normalized step and
+list labels each failed their negative search tests before the rendered-field
+correction, while displayed callout and table labels were positive controls.
+After the correction, the focused query/document/adapter suites passed 87
+tests and 62 subtests. The full ingestion suite passed 1,186 tests, 475 skips,
+and 180 subtests at code head `cdd424e7fab2267d4d73bc787f31beba37eaa785`;
+Python compilation and `git diff --check` passed. This evidence is local and
+does not establish live origin, purchase, or grant readiness. Final exact-head
+review and CI are still pending.
 
 Plan: [2026-11-10-workshop-article-search-step-description](../superpowers/plans/2026-11-10-workshop-article-search-step-description.md).

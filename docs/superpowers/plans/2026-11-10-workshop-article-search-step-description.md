@@ -23,7 +23,7 @@
 - [x] Add regression tests for step-level and instruction-item description text; watch the expected placeholder-text failures.
 - [x] Add only the missing search and text-fallback fields, then rerun focused/full ingestion tests.
 - [x] Correct reviewer-found normalized-block, metadata, nested-instruction, and whitespace-fallback gaps with red-first regressions.
-- [ ] Preserve description/instruction content through the JSON bound-article adapter and match normalized-block search to rendered text by block type.
+- [x] Preserve description/instruction content through the JSON bound-article adapter and match normalized-block search to rendered text by block type.
 - [ ] Record exact-SHA verification and independent review, require green CI and live branch protection before merge.
 
 ### Task 1: Index existing article content fields
@@ -71,14 +71,14 @@
 
 **Interfaces:** `adapt_bound_article(resource, context)` keeps its return shape; `query_vehicle_articles` keeps its signature and result schema.
 
-- [ ] **Step 1: Write failing source-path test.** Create a JSON `SourceResource` containing `{"article": {"steps": [{"description": "Inspect mounting bolt.", "instructions": [{"description": "Torque bolt to 12 Nm."}]}]}}`, call `adapt_bound_article` under a matching synthetic context, then `build_ordered_document` on the returned blocks. Assert the sole step text is `Inspect mounting bolt. Torque bolt to 12 Nm.` rather than `Step 1`.
-- [ ] **Step 2: Verify red source path.** Run the named test in `workers/ingestion-python/tests/test_source_adapters.py`; the adapted block lacks both fields and normalizes to `Step 1`.
-- [ ] **Step 3: Preserve source step fields.** When synthesizing blocks from JSON `article.steps`, copy `description` and `instructions` from mapping steps alongside the existing `kind`, `text`, and `number`. Leave string-step behavior and connector applicability validation unchanged.
-- [ ] **Step 4: Verify green source path.** Rerun the named source-adapter test and existing source-adapter suite.
-- [ ] **Step 5: Write failing search tests.** Build normalized `step` and `ordered_list` blocks with visible content and a distinct hidden `label`; each hidden-label query must return `not_found`. Also verify displayed `callout`/`table` labels remain local matches.
-- [ ] **Step 6: Verify red search cases.** Run the named hidden-label query tests; the old generic visible-field walk falsely returns `found` for step and list labels.
-- [ ] **Step 7: Match rendered block fields.** For normalized blocks with a `type`, collect only fields the Workshop renderer emits: heading/paragraph/link `text`; callout `label`, `text`, image alternatives; image `alt` or fallback `caption`; step `text`, `action`, `instructions`, image alternatives; lists `items` and image alternatives; table `label` or fallback `caption`, `columns`, `rows`; break nothing; unknown `text` or fallback `unavailable_reason`. Keep generic visible-field traversal for raw provider blocks without a normalized `type`; do not index structural keys, IDs, URLs, or evidence metadata.
-- [ ] **Step 8: Verify and commit.** Rerun focused query, document, and source-adapter tests, then the full ingestion suite with the declared Stripe dependency and external private temp directory; run compilation and diff checks, commit and push.
+- [x] **Step 1: Write failing source-path test.** JSON `steps` with description and nested instruction must survive `adapt_bound_article` and `build_ordered_document` as complete step text.
+- [x] **Step 2: Verify red source path.** The new source-path test failed with `Step 1` before the adapter change.
+- [x] **Step 3: Preserve source step fields.** JSON mapping steps now retain `description` and `instructions` during adaptation; string steps are unchanged.
+- [x] **Step 4: Verify green source path.** The named test and all 31 source-adapter tests passed (60 subtests).
+- [x] **Step 5: Write failing search tests.** Hidden normalized step/list labels have negative tests; displayed callout/table labels have positive controls.
+- [x] **Step 6: Verify red search cases.** Hidden step and list label cases falsely matched before the visibility corrections.
+- [x] **Step 7: Match rendered block fields.** Normalized blocks now contribute only the fields their Workshop rendering branches display; raw provider blocks retain generic visible-text traversal.
+- [x] **Step 8: Verify and commit.** Focused suites passed 87 tests and 62 subtests; full ingestion passed 1,186 tests, 475 skips, and 180 subtests; compilation/diff checks passed. Code was committed as `cdd424e`.
 
 ### Task 5: Verify and integrate
 
@@ -86,7 +86,7 @@
 
 **Interfaces:** No additional code interface changes.
 
-- [x] **Step 1:** The final full ingestion suite passed with the pinned Stripe dependency and a private temp directory outside this runner's `/tmp/.git` marker: 1,182 passed, 475 skipped, 178 subtests passed. `python -m compileall -q workers/ingestion-python/src/autodata_ingestion` and `git diff --check` passed.
+- [x] **Step 1:** The final full ingestion suite passed with the pinned Stripe dependency and a private temp directory outside this runner's `/tmp/.git` marker: 1,186 passed, 475 skipped, 180 subtests passed. `python -m compileall -q workers/ingestion-python/src/autodata_ingestion` and `git diff --check` passed.
 - [ ] **Step 2:** Update the verification document with red/green counts and exact commit SHA, then obtain an independent read-only review of that exact head.
 - [ ] **Step 3:** Open a PR; require current CI, no blocking review findings/threads, and live branch-protection satisfaction before merging. Update Issue #184's remaining checklist and Project item without closing the broad issue for this slice alone.
 
