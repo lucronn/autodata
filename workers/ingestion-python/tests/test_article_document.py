@@ -1220,6 +1220,59 @@ def test_step_block_aggregates_instruction_images_and_deduplicates():
     assert step["images"][1]["image_id"] == "bracket-clip"
 
 
+def test_description_only_step_preserves_step_description():
+    document = build_ordered_document(
+        {"article_id": "step-description"},
+        [{"kind": "step", "number": 1, "description": "Inspect the ground strap."}],
+    )
+
+    assert validate_ordered_document(document) == []
+    assert len(document["blocks"]) == 1
+    assert document["blocks"][0]["type"] == "step"
+    assert document["blocks"][0]["text"] == "Inspect the ground strap."
+
+
+def test_description_only_step_preserves_instruction_item_description():
+    document = build_ordered_document(
+        {"article_id": "instruction-description"},
+        [{"kind": "step", "number": 2, "instructions": [{"description": "Tighten the ground strap nut."}]}],
+    )
+
+    assert validate_ordered_document(document) == []
+    assert len(document["blocks"]) == 1
+    assert document["blocks"][0]["type"] == "step"
+    assert document["blocks"][0]["text"] == "Tighten the ground strap nut."
+
+
+def test_step_description_and_instructions_are_both_visible():
+    document = build_ordered_document(
+        {"article_id": "description-and-instructions"},
+        [{
+            "kind": "step",
+            "number": 1,
+            "description": "Inspect mounting bolt.",
+            "instructions": [{"text": "Torque bolt to 12 Nm."}],
+        }],
+    )
+
+    assert validate_ordered_document(document) == []
+    assert document["blocks"][0]["text"] == "Inspect mounting bolt. Torque bolt to 12 Nm."
+
+
+def test_step_instruction_whitespace_text_uses_description():
+    document = build_ordered_document(
+        {"article_id": "whitespace-instruction"},
+        [{
+            "kind": "step",
+            "number": 2,
+            "instructions": [{"text": "   ", "description": "Check ground strap."}],
+        }],
+    )
+
+    assert validate_ordered_document(document) == []
+    assert document["blocks"][0]["text"] == "Check ground strap."
+
+
 def test_table_block_aggregates_row_images_and_deduplicates():
     article = {"article_id": "test-table-row-images"}
     document = build_ordered_document(

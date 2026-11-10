@@ -14,6 +14,7 @@ from autodata_ingestion.source_adapters import (  # noqa: E402
     NormalizationCandidate,
     SourceArtifact,
     SourceResource,
+    adapt_bound_article,
     adapt_source_resource,
     classify_json_candidates,
     detect_media_type,
@@ -23,6 +24,70 @@ from autodata_ingestion.ocr import OCRTextBlock  # noqa: E402
 
 
 class SourceAdapterTests(unittest.TestCase):
+    def test_bound_json_steps_preserve_descriptions_and_nested_instructions(self):
+        from autodata_ingestion.article_document import build_ordered_document
+
+        context = types.SimpleNamespace(
+            vehicle={},
+            key=types.SimpleNamespace(
+                vehicle_id="vehicle",
+                vehicle_configuration_id=None,
+                source_vehicle_ref="ref",
+            ),
+        )
+        resource = SourceResource.from_bytes(
+            "connector:synthetic",
+            "fixture",
+            json.dumps({"article": {"steps": [{
+                "description": "Inspect mounting bolt.",
+                "instructions": [{"description": "Torque bolt to 12 Nm."}],
+            }]}}).encode(),
+            "application/json",
+        )
+
+        adapted = adapt_bound_article(resource, context)
+        document = build_ordered_document({"article_id": "bound-step"}, adapted["blocks"])
+
+        self.assertEqual(len(document["blocks"]), 1)
+        self.assertEqual(document["blocks"][0]["type"], "step")
+        self.assertEqual(document["blocks"][0]["text"], "Inspect mounting bolt. Torque bolt to 12 Nm.")
+
+    def test_bound_json_empty_blocks_fall_back_to_description_only_steps(self):
+        from autodata_ingestion.article_document import build_ordered_document
+
+        context = types.SimpleNamespace(
+            vehicle={},
+            key=types.SimpleNamespace(vehicle_id="vehicle", vehicle_configuration_id=None, source_vehicle_ref="ref"),
+        )
+        resource = SourceResource.from_bytes(
+            "connector:synthetic", "fixture",
+            json.dumps({"article": {"blocks": [], "steps": [{"description": "Inspect the ground strap."}]}}).encode(),
+            "application/json",
+        )
+
+        adapted = adapt_bound_article(resource, context)
+        document = build_ordered_document({"article_id": "bound-empty-blocks"}, adapted["blocks"])
+
+        self.assertEqual(document["blocks"][0]["text"], "Inspect the ground strap.")
+
+    def test_bound_json_whitespace_text_does_not_shadow_instruction(self):
+        from autodata_ingestion.article_document import build_ordered_document
+
+        context = types.SimpleNamespace(
+            vehicle={},
+            key=types.SimpleNamespace(vehicle_id="vehicle", vehicle_configuration_id=None, source_vehicle_ref="ref"),
+        )
+        resource = SourceResource.from_bytes(
+            "connector:synthetic", "fixture",
+            json.dumps({"article": {"steps": [{"text": "   ", "instruction": "Check coolant level."}]}}).encode(),
+            "application/json",
+        )
+
+        adapted = adapt_bound_article(resource, context)
+        document = build_ordered_document({"article_id": "bound-whitespace-text"}, adapted["blocks"])
+
+        self.assertEqual(document["blocks"][0]["text"], "Check coolant level.")
+
     def test_registered_media_type_adapter_handles_new_source_types(self):
         def adapt_custom_type(resource, metadata):
             return SourceArtifact(

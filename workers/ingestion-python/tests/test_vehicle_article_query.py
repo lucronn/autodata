@@ -1,5 +1,7 @@
 import unittest
 
+from autodata_ingestion.article_document import build_ordered_document
+from autodata_ingestion.procedure_normalize import normalize_procedure_article
 from autodata_ingestion.vehicle_article_query import query_vehicle_articles
 
 
@@ -21,6 +23,166 @@ class VehicleArticleQueryTests(unittest.TestCase):
         self.assertEqual(result["status"], "found")
         self.assertEqual(result["results"][0]["article_id"], "TSB-42")
         self.assertEqual(result["results"][0]["match_score"], 1.0)
+
+    def test_article_summary_is_searchable_without_source_fallback(self):
+        def fail_fetch(_vehicle, _query):
+            raise AssertionError("fetcher must not run for a local summary hit")
+
+        result = query_vehicle_articles(
+            VEHICLE,
+            "bleeder screw",
+            {KEY: [{"article_id": "article-summary", "title": "Service notes", "summary": "Locate the bleeder screw."}]},
+            fetcher=fail_fetch,
+        )
+        self.assertEqual(result["status"], "found")
+        self.assertEqual([article["article_id"] for article in result["results"]], ["article-summary"])
+
+    def test_article_description_is_searchable_without_source_fallback(self):
+        def fail_fetch(_vehicle, _query):
+            raise AssertionError("fetcher must not run for a local description hit")
+
+        result = query_vehicle_articles(
+            VEHICLE,
+            "coolant bleed valve",
+            {KEY: [{"article_id": "article-description", "title": "Service notes", "description": "Check the coolant bleed valve."}]},
+            fetcher=fail_fetch,
+        )
+        self.assertEqual(result["status"], "found")
+        self.assertEqual([article["article_id"] for article in result["results"]], ["article-description"])
+
+    def test_article_blocks_are_searchable_without_source_fallback(self):
+        def fail_fetch(_vehicle, _query):
+            raise AssertionError("fetcher must not run for a local block hit")
+
+        result = query_vehicle_articles(
+            VEHICLE,
+            "ground strap location",
+            {KEY: [{"article_id": "article-blocks", "title": "Service notes", "blocks": [{"type": "paragraph", "text": "Ground strap location is behind the intake."}]}]},
+            fetcher=fail_fetch,
+        )
+        self.assertEqual(result["status"], "found")
+        self.assertEqual([article["article_id"] for article in result["results"]], ["article-blocks"])
+
+    def test_normalized_blocks_are_searchable_without_source_fallback(self):
+        article = normalize_procedure_article({
+            "article_id": "article-normalized",
+            "title": "Service notes",
+            "blocks": [{"kind": "table", "rows": [{"cells": ["Ground strap bolt", "12 Nm"]}]}],
+        })
+
+        def fail_fetch(_vehicle, _query):
+            raise AssertionError("fetcher must not run for a normalized block hit")
+
+        result = query_vehicle_articles(
+            VEHICLE,
+            "ground strap bolt",
+            {KEY: [article]},
+            fetcher=fail_fetch,
+        )
+        self.assertEqual(result["status"], "found")
+        self.assertEqual([match["article_id"] for match in result["results"]], ["article-normalized"])
+
+    def test_block_metadata_alone_does_not_match_article_query(self):
+        result = query_vehicle_articles(
+            VEHICLE,
+            "paragraph",
+            {KEY: [{
+                "article_id": "article-metadata",
+                "title": "Service notes",
+                "blocks": [{"type": "paragraph", "text": "Replace timing belt."}],
+            }]},
+        )
+        self.assertEqual(result["status"], "not_found")
+        self.assertEqual(result["results"], [])
+
+    def test_hidden_normalized_step_label_does_not_match_article_query(self):
+        article = {"article_id": "article-step-label", "title": "Service notes"}
+        article["normalized_document"] = build_ordered_document(
+            article,
+            [{"kind": "step", "text": "Inspect ground strap.", "label": "HiddenCalibrationMarker"}],
+        )
+
+        result = query_vehicle_articles(
+            VEHICLE,
+            "HiddenCalibrationMarker",
+            {KEY: [article]},
+        )
+        self.assertEqual(result["status"], "not_found")
+        self.assertEqual(result["results"], [])
+
+    def test_hidden_normalized_list_label_does_not_match_article_query(self):
+        article = {"article_id": "article-list-label", "title": "Service notes"}
+        article["normalized_document"] = build_ordered_document(
+            article,
+            [{"kind": "ordered_list", "label": "HiddenListMarker", "items": ["Inspect ground strap."]}],
+        )
+
+        result = query_vehicle_articles(
+            VEHICLE,
+            "HiddenListMarker",
+            {KEY: [article]},
+        )
+        self.assertEqual(result["status"], "not_found")
+        self.assertEqual(result["results"], [])
+
+    def test_compatibility_projection_does_not_make_hidden_labels_searchable(self):
+        article = {"article_id": "article-projection", "title": "Service notes"}
+        article["normalized_document"] = build_ordered_document(article, [
+            {"kind": "step", "text": "Inspect ground strap.", "label": "HiddenStepProjectionMarker"},
+            {"kind": "ordered_list", "label": "HiddenListProjectionMarker", "items": ["Tighten fastener."]},
+        ])
+        normalized = normalize_procedure_article(article)
+        self.assertIn("HiddenStepProjectionMarker", normalized["body"])
+        self.assertIn("HiddenListProjectionMarker", normalized["body"])
+
+        for query in ("HiddenStepProjectionMarker", "HiddenListProjectionMarker"):
+            with self.subTest(hidden=query):
+                result = query_vehicle_articles(VEHICLE, query, {KEY: [normalized]})
+                self.assertEqual(result["status"], "not_found")
+        for query in ("Inspect ground strap", "Tighten fastener"):
+            with self.subTest(visible=query):
+                result = query_vehicle_articles(VEHICLE, query, {KEY: [normalized]})
+                self.assertEqual(result["status"], "found")
+
+    def test_nested_hidden_fields_do_not_match_normalized_article(self):
+        article = {
+            "article_id": "article-nested-fields",
+            "title": "Service notes",
+            "normalized_document": {"blocks": [
+                {"type": "callout", "label": "Warning", "text": "Disconnect battery.",
+                 "images": [{"alt": "VisibleImageAltMarker", "caption": "HiddenImageCaptionMarker"}]},
+                {"type": "ordered_list", "items": [
+                    {"text": "VisibleListItemMarker", "label": "HiddenListItemMarker"},
+                ]},
+                {"type": "table", "label": "Torque values", "columns": [
+                    {"text": "VisibleColumnMarker", "label": "HiddenColumnMarker"},
+                ], "rows": [[{"text": "VisibleCellMarker", "label": "HiddenCellMarker"}]]},
+            ]},
+        }
+        for query in ("HiddenImageCaptionMarker", "HiddenListItemMarker", "HiddenColumnMarker", "HiddenCellMarker"):
+            with self.subTest(hidden=query):
+                result = query_vehicle_articles(VEHICLE, query, {KEY: [article]})
+                self.assertEqual(result["status"], "not_found")
+        for query in ("VisibleImageAltMarker", "VisibleListItemMarker", "VisibleColumnMarker", "VisibleCellMarker"):
+            with self.subTest(visible=query):
+                result = query_vehicle_articles(VEHICLE, query, {KEY: [article]})
+                self.assertEqual(result["status"], "found")
+
+    def test_displayed_callout_and_table_labels_are_searchable(self):
+        article = {"article_id": "article-visible-labels", "title": "Service notes"}
+        article["normalized_document"] = build_ordered_document(
+            article,
+            [
+                {"kind": "warning", "label": "High voltage isolation", "text": "Disconnect the battery."},
+                {"kind": "table", "label": "Brake torque values", "rows": [["Caliper", "28 Nm"]]},
+            ],
+        )
+
+        for query in ("High voltage isolation", "Brake torque values"):
+            with self.subTest(query=query):
+                result = query_vehicle_articles(VEHICLE, query, {KEY: [article]})
+                self.assertEqual(result["status"], "found")
+                self.assertEqual(result["results"][0]["article_id"], "article-visible-labels")
 
     def test_miss_invokes_source_fallback_and_indexes_fetched_article(self):
         calls = []
