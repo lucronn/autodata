@@ -8,7 +8,8 @@ Acceptance:
 - [x] GitHub-required checks, any configured approving-review count, blocking threads, and the autonomous eight-gate release controller remain enforced in the documented rule.
 - [x] The Project settings checklist and autonomous-development documentation agree with the operating model; CODEOWNERS remains unchanged.
 - [x] The saved hourly automation prompt instructs the next safe Workshop app task when a PR is waiting and stays quiet on unchanged state; the next scheduled execution has not yet been observed.
-- [ ] PR #387 and PR #389 are rechecked and integrated only after current exact-head review and CI; Issue #385/#388 and Project #8 reflect confirmed outcomes.
+- [x] PR #389 was rechecked and integrated only after current exact-head review and CI; Issue #388 and Project #8 reflect its confirmed merge pending this documentation closure.
+- [ ] PR #387 documentation closure is rechecked and integrated only after current exact-head review and CI; then Issue #385/#388 and Project #8 reach Done.
 
 Evidence and limits: Live branch-protection inspection on 2026-11-10 showed `required_approving_review_count: 0`, `require_code_owner_reviews: false`, and strict required status check `Validate autonomy policy and evidence contract`. PR #389 at `832d9558370d85ef9f5f154cfe98e26954614cf1` has all three required jobs successful and no GitHub review; its prior separate AI review found no findings. These are development-only observations. They do not establish real checkout, entitlement grant, article access, or production readiness. No production deployment is authorized.
 
