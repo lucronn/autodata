@@ -23,7 +23,7 @@
 - [x] Add regression tests for step-level and instruction-item description text; watch the expected placeholder-text failures.
 - [x] Add only the missing search and text-fallback fields, then rerun focused/full ingestion tests.
 - [x] Correct reviewer-found normalized-block, metadata, nested-instruction, and whitespace-fallback gaps with red-first regressions.
-- [ ] Preserve description/instruction content through the JSON bound-article adapter and exclude hidden normalized step labels from search.
+- [ ] Preserve description/instruction content through the JSON bound-article adapter and match normalized-block search to rendered text by block type.
 - [ ] Record exact-SHA verification and independent review, require green CI and live branch protection before merge.
 
 ### Task 1: Index existing article content fields
@@ -75,9 +75,9 @@
 - [ ] **Step 2: Verify red source path.** Run the named test in `workers/ingestion-python/tests/test_source_adapters.py`; the adapted block lacks both fields and normalizes to `Step 1`.
 - [ ] **Step 3: Preserve source step fields.** When synthesizing blocks from JSON `article.steps`, copy `description` and `instructions` from mapping steps alongside the existing `kind`, `text`, and `number`. Leave string-step behavior and connector applicability validation unchanged.
 - [ ] **Step 4: Verify green source path.** Rerun the named source-adapter test and existing source-adapter suite.
-- [ ] **Step 5: Write failing search test.** Build a normalized step block with visible text `Inspect ground strap.` and hidden `label: HiddenCalibrationMarker`; query for `HiddenCalibrationMarker` and assert `not_found` with no local result.
-- [ ] **Step 6: Verify red search case.** Run the named query test; the old generic visible-field walk falsely returns `found`.
-- [ ] **Step 7: Match rendered step fields.** For normalized blocks with `type: step`, collect only fields the Workshop renderer emits (`text`, `action`, `instructions`, and image alternative text); exclude `label`. Keep the existing generic walk for raw provider blocks and other normalized types.
+- [ ] **Step 5: Write failing search tests.** Build normalized `step` and `ordered_list` blocks with visible content and a distinct hidden `label`; each hidden-label query must return `not_found`. Also verify displayed `callout`/`table` labels remain local matches.
+- [ ] **Step 6: Verify red search cases.** Run the named hidden-label query tests; the old generic visible-field walk falsely returns `found` for step and list labels.
+- [ ] **Step 7: Match rendered block fields.** For normalized blocks with a `type`, collect only fields the Workshop renderer emits: heading/paragraph/link `text`; callout `label`, `text`, image alternatives; image `alt` or fallback `caption`; step `text`, `action`, `instructions`, image alternatives; lists `items` and image alternatives; table `label` or fallback `caption`, `columns`, `rows`; break nothing; unknown `text` or fallback `unavailable_reason`. Keep generic visible-field traversal for raw provider blocks without a normalized `type`; do not index structural keys, IDs, URLs, or evidence metadata.
 - [ ] **Step 8: Verify and commit.** Rerun focused query, document, and source-adapter tests, then the full ingestion suite with the declared Stripe dependency and external private temp directory; run compilation and diff checks, commit and push.
 
 ### Task 5: Verify and integrate

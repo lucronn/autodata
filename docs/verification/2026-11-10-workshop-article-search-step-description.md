@@ -28,8 +28,9 @@ Acceptance:
 - [ ] The JSON bound-article source adapter forwards description and nested
   instruction fields to document normalization, so an actual fetched article
   does not collapse to a numbered placeholder.
-- [ ] A normalized step label that the Workshop renderer hides does not create
-  a local article-search match by itself.
+- [ ] A normalized step or list label that the Workshop renderer hides does
+  not create a local article-search match by itself; displayed callout and
+  table labels remain searchable.
 - [ ] Focused and full ingestion tests, exact-head independent review, required
   GitHub CI, and branch protection pass before integration.
 
@@ -86,5 +87,7 @@ instruction fields from JSON `steps` before normalization, and search indexes
 the label of a normalized step even though the Workshop renders only its text,
 action, instructions, and images. These source-to-UI boundaries must have
 red-first regression coverage and a fresh exact-head re-review before merge.
+The same renderer omits normalized list labels, so the visibility correction
+will use rendered block types rather than a step-only exception.
 
 Plan: [2026-11-10-workshop-article-search-step-description](../superpowers/plans/2026-11-10-workshop-article-search-step-description.md).
