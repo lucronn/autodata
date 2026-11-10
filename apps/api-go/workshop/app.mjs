@@ -438,7 +438,7 @@ async function loadArticles(g, articleID = "") {
           result.items.some((item, index) => descriptorFields.some(
             (field) => item[field] !== articles[index]?.[field],
           ));
-        const becameComplete = !indexComplete && result.complete === true;
+        const completenessChanged = indexComplete !== (result.complete === true);
         articles = result.items;
         indexComplete = result.complete === true;
         indexFailed =
@@ -451,7 +451,7 @@ async function loadArticles(g, articleID = "") {
         if (query && (searchQuery !== query ||
           (!searchPending && searchItems === null && !searchError) ||
           indexChanged ||
-          (becameComplete && !searchComplete))) scheduleArticleSearch();
+          completenessChanged)) scheduleArticleSearch();
         else renderArticles();
       },
     },
@@ -556,14 +556,25 @@ function renderArticles() {
     list.append(li);
   }
   $("articles").replaceChildren(list);
-  $("catalog-count").textContent = searching && searchPending ? "Searching articles…" : `${items.length} articles`;
+  const resultsComplete = searching ? searchComplete && indexComplete : indexComplete;
+  const countText = searching && searchPending
+    ? "Searching articles…"
+    : searching && searchError
+      ? "Article search is unavailable. Try again."
+      : indexFailed
+        ? "Article index could not be prepared."
+        : !resultsComplete
+          ? `${items.length} articles so far. Article index is still being prepared.`
+          : `${items.length} articles`;
+  // Avoid mutating the polite live region with the same pending text on every keystroke.
+  if ($("catalog-count").textContent !== countText) $("catalog-count").textContent = countText;
   $("no-results").textContent = searching && searchError
     ? "Article search is unavailable. Try again."
     : searching && searchPending
       ? "Searching articles…"
       : indexFailed
     ? "This article index could not be prepared. Check the status above."
-    : !(searching ? searchComplete : indexComplete)
+    : !resultsComplete
       ? "This article index is still being prepared. Check again shortly."
       : query && articles.length > 0
         ? "No articles match this search. Try a component name or a shorter phrase."

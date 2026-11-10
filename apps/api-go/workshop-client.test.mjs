@@ -1812,6 +1812,26 @@ test('reopening an owned index refreshes content search after article revision c
   assert.equal(h.$('articles').children[0].children.length, 0);
 });
 
+test('a complete index becoming incomplete retracts a definitive search no-match', async () => {
+  const descriptor = { id: 'article', title: 'Service notes', source_revision_id: 'source-1' };
+  const h = articleIndexHarness([
+    indexResponse('completed', { complete: true, items: [descriptor] }),
+    indexResponse('completed', { complete: true, items: [] }),
+    indexResponse('running', { items: [descriptor] }),
+    indexResponse('running', { items: [] }),
+  ]);
+  await h.load();
+  h.$('search').value = 'alternator';
+  h.$('search').events.input();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.match(h.$('no-results').textContent, /no articles match/i);
+  await h.load();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.requests.filter(request => request.path.includes('?q=')).length, 2);
+  assert.match(h.$('no-results').textContent, /still being prepared/i);
+  assert.doesNotMatch(h.$('no-results').textContent, /no articles match/i);
+});
+
 test('Workshop content search ignores a stale response after a newer query', async () => {
   let resolveOld;
   const h = articleIndexHarness([
@@ -1898,6 +1918,20 @@ test('Workshop content search partial response never claims no matches', async (
   await new Promise(resolve => setImmediate(resolve));
   assert.match(h.$('no-results').textContent, /still being prepared/i);
   assert.doesNotMatch(h.$('no-results').textContent, /no articles match/i);
+  assert.match(h.$('catalog-count').textContent, /still being prepared/i);
+});
+
+test('Workshop search failure is announced in the polite result status', async () => {
+  const h = articleIndexHarness([
+    indexResponse('completed', { complete: true, items: [{ id: 'index', title: 'Service notes' }] }),
+    () => Promise.reject(Object.assign(new Error('temporary outage'), { status: 503 })),
+  ]);
+  await h.load();
+  h.$('search').value = 'ground strap';
+  h.$('search').events.input();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.match(h.$('catalog-count').textContent, /search is unavailable/i);
+  assert.match(h.$('no-results').textContent, /search is unavailable/i);
 });
 
 test('completed empty article index stays empty when a saved search query is present', async () => {
