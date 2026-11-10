@@ -1,0 +1,16 @@
+{
+  "goal": "Prevent a Workshop table-row image from appearing again as a trailing figure while preserving genuinely unattached article media.",
+  "plan_ref": "docs/superpowers/plans/2026-11-10-workshop-table-row-image-dedup.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/184",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/verification/2026-11-10-workshop-table-row-image-dedup.md"
+  ],
+  "todo": [
+    "Write a red-first table-row image regression with a matching article-level image and a distinct unattached image.",
+    "Collect table row mapping image identities in the ordered-document pre-scan without changing table rendering or image identity rules.",
+    "Run focused and full ingestion checks, obtain independent exact-head review, and require green CI and branch protection before merge."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-10T12:51:09Z"
+}
