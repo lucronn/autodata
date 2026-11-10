@@ -1,8 +1,8 @@
 # Workshop article search and step descriptions
 
-**Goal:** A consumer searching a selected vehicle's article content can find
-terms in an article summary, description, or structured blocks, and a procedure
-step whose source supplies only a description still displays its instruction.
+**Goal:** The ingestion article-query utility can find terms in a selected
+vehicle's article summary, description, or structured blocks, and a procedure
+step whose source supplies only a description retains its displayed instruction.
 
 This is a bounded content-correctness slice of [Issue #184](https://github.com/lucronn/autodata/issues/184)
 in [Project #8](https://github.com/users/lucronn/projects/8). The article query
@@ -31,6 +31,12 @@ Acceptance:
 - [x] A normalized step or list label that the Workshop renderer hides does
   not create a local article-search match by itself; displayed callout and
   table labels remain searchable.
+- [ ] The same hidden-label behavior holds after the full document normalization
+  path projects compatibility `body` and `steps` fields.
+- [ ] JSON bound-article adaptation uses populated `steps` when `blocks` is
+  empty and does not let whitespace-only step text shadow a valid instruction.
+- [ ] Nested callout image captions and list/table object labels that Workshop
+  does not render cannot create local article-query matches.
 - [ ] Focused and full ingestion tests, exact-head independent review, required
   GitHub CI, and branch protection pass before integration.
 
@@ -38,7 +44,10 @@ The implementation changes only article lookup and ordered-document text
 fallbacks. It does not change article schemas, source fetch, checkout, grants,
 prices, production service state, or live content availability. The public
 Workshop origin currently returns 502; these tests do not prove live article
-delivery or paid-access acceptance.
+delivery or paid-access acceptance. The Workshop UI search box uses a separate
+`filterArticles` path that currently searches only title, component, and kind;
+this Python utility is not wired to it. This slice does not fix UI content
+search, which needs a separate tracked task.
 
 Planning checkpoint `f31e19e4467bc17bac7201ecbf8774d44c2f79b5` passed
 `scripts/autonomy/pre_implementation.py` with `status: synchronized` and no
@@ -100,5 +109,14 @@ and 180 subtests at code head `cdd424e7fab2267d4d73bc787f31beba37eaa785`;
 Python compilation and `git diff --check` passed. This evidence is local and
 does not establish live origin, purchase, or grant readiness. Final exact-head
 review and CI are still pending.
+
+Independent review of `eed84300596a7547dc95b4cf984c74e013b0c514`
+reproduced three additional gaps. Compatibility `body` generated from a
+normalized document reintroduces hidden step/list labels into lookup. The
+JSON adapter treats empty `blocks` as authoritative over populated `steps` and
+lets whitespace-only `text` shadow valid `instruction`. Nested image/list/table
+objects can contribute caption/label text that the Workshop renderer hides.
+These are merge blockers for this bounded slice; add red-first source-path
+regressions and correct them before claiming exact-head review or CI complete.
 
 Plan: [2026-11-10-workshop-article-search-step-description](../superpowers/plans/2026-11-10-workshop-article-search-step-description.md).

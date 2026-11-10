@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Search normalized vehicle articles by summary, description, and structured blocks, and preserve description-only procedure instructions in the Workshop document.
+**Goal:** Search normalized vehicle articles in the ingestion query utility by summary, description, and structured blocks, and preserve description-only procedure instructions in the Workshop document. The Workshop UI search box is separate and out of scope.
 
 **Architecture:** Extend article lookup to search consumer-visible text in top-level and normalized blocks without indexing structural metadata. Extend the existing step text fallback to preserve descriptions and nested instructions. Keep query scoring, source fallback, block schema, and rendering unchanged.
 
@@ -24,6 +24,7 @@
 - [x] Add only the missing search and text-fallback fields, then rerun focused/full ingestion tests.
 - [x] Correct reviewer-found normalized-block, metadata, nested-instruction, and whitespace-fallback gaps with red-first regressions.
 - [x] Preserve description/instruction content through the JSON bound-article adapter and match normalized-block search to rendered text by block type.
+- [ ] Close reviewer-found full-normalization projection, empty-block adapter, whitespace-shadow, and nested rendered-field gaps with red-first regressions.
 - [ ] Record exact-SHA verification and independent review, require green CI and live branch protection before merge.
 
 ### Task 1: Index existing article content fields
@@ -80,7 +81,18 @@
 - [x] **Step 7: Match rendered block fields.** Normalized blocks now contribute only the fields their Workshop rendering branches display; raw provider blocks retain generic visible-text traversal.
 - [x] **Step 8: Verify and commit.** Focused suites passed 87 tests and 62 subtests; full ingestion passed 1,186 tests, 475 skips, and 180 subtests; compilation/diff checks passed. Code was committed as `cdd424e`.
 
-### Task 5: Verify and integrate
+### Task 5: Close full-path content gaps
+
+**Files:** `workers/ingestion-python/tests/test_vehicle_article_query.py`, `workers/ingestion-python/src/autodata_ingestion/vehicle_article_query.py`, `workers/ingestion-python/tests/test_source_adapters.py`, `workers/ingestion-python/src/autodata_ingestion/source_adapters.py`.
+
+**Interfaces:** Keep `query_vehicle_articles`, `adapt_bound_article`, and rendered document schemas unchanged.
+
+- [ ] **Step 1: Red-first full normalization test.** Build an ordered step/list document with unique hidden labels, pass it through `normalize_procedure_article`, and assert that each hidden-label query is `not_found` while visible step/list text is found. A normalized document is authoritative over compatibility `body`, `steps`, and raw blocks in local lookup.
+- [ ] **Step 2: Red-first adapter tests.** Adapt JSON with `blocks: []` and populated description-only `steps`; also adapt a step whose `text` is whitespace and `instruction` is nonblank. Assert non-placeholder normalized step text. Use `steps` when `blocks` is empty, and forward candidate fields independently so the normalizer cleans them.
+- [ ] **Step 3: Red-first nested rendered-field tests.** Under normalized callout, list, and table blocks, assert hidden image `caption` and item/cell `label` values do not match, but rendered `alt`/`text` values do. Extract fields by nested rendered shape rather than generic recursion.
+- [ ] **Step 4: Verify.** Run focused and full ingestion suites, compilation, diff check, independent exact-head review, current GitHub CI, and branch protection. Update verification evidence and PR description to avoid claiming Workshop UI content search.
+
+### Task 6: Verify and integrate
 
 **Files:** This plan, the verification document, Issue #184, and Project #8 item.
 
