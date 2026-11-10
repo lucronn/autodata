@@ -58,7 +58,10 @@ def _rank_articles(articles: Iterable[Mapping[str, Any]], query: str, limit: int
 def _article_text(article: Mapping[str, Any]) -> str:
     return " ".join(
         str(article.get(field, ""))
-        for field in ("article_id", "title", "bucket", "bulletin_number", "body", "content", "steps")
+        for field in (
+            "article_id", "title", "bucket", "bulletin_number", "body", "content", "steps",
+            "summary", "description", "blocks",
+        )
     )
 
 

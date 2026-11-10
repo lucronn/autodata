@@ -22,6 +22,45 @@ class VehicleArticleQueryTests(unittest.TestCase):
         self.assertEqual(result["results"][0]["article_id"], "TSB-42")
         self.assertEqual(result["results"][0]["match_score"], 1.0)
 
+    def test_article_summary_is_searchable_without_source_fallback(self):
+        def fail_fetch(_vehicle, _query):
+            raise AssertionError("fetcher must not run for a local summary hit")
+
+        result = query_vehicle_articles(
+            VEHICLE,
+            "bleeder screw",
+            {KEY: [{"article_id": "article-summary", "title": "Service notes", "summary": "Locate the bleeder screw."}]},
+            fetcher=fail_fetch,
+        )
+        self.assertEqual(result["status"], "found")
+        self.assertEqual([article["article_id"] for article in result["results"]], ["article-summary"])
+
+    def test_article_description_is_searchable_without_source_fallback(self):
+        def fail_fetch(_vehicle, _query):
+            raise AssertionError("fetcher must not run for a local description hit")
+
+        result = query_vehicle_articles(
+            VEHICLE,
+            "coolant bleed valve",
+            {KEY: [{"article_id": "article-description", "title": "Service notes", "description": "Check the coolant bleed valve."}]},
+            fetcher=fail_fetch,
+        )
+        self.assertEqual(result["status"], "found")
+        self.assertEqual([article["article_id"] for article in result["results"]], ["article-description"])
+
+    def test_article_blocks_are_searchable_without_source_fallback(self):
+        def fail_fetch(_vehicle, _query):
+            raise AssertionError("fetcher must not run for a local block hit")
+
+        result = query_vehicle_articles(
+            VEHICLE,
+            "ground strap location",
+            {KEY: [{"article_id": "article-blocks", "title": "Service notes", "blocks": [{"type": "paragraph", "text": "Ground strap location is behind the intake."}]}]},
+            fetcher=fail_fetch,
+        )
+        self.assertEqual(result["status"], "found")
+        self.assertEqual([article["article_id"] for article in result["results"]], ["article-blocks"])
+
     def test_miss_invokes_source_fallback_and_indexes_fetched_article(self):
         calls = []
 
