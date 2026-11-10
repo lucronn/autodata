@@ -199,6 +199,31 @@ def test_document_figure_queue_does_not_duplicate_table_images():
     assert validate_ordered_document(document) == []
 
 
+def test_table_row_image_is_not_appended_again():
+    article = {
+        "article_id": "table-row-image-article",
+        "images": [
+            {"image_id": "row-image", "storage_key": "media/row-image"},
+            {"image_id": "unattached-image", "storage_key": "media/unattached-image"},
+        ],
+    }
+    document = build_ordered_document(
+        article,
+        [{
+            "kind": "table",
+            "rows": [{
+                "cells": ["Bolt", "30 Nm"],
+                "images": [{"image_id": "row-image", "storage_key": "media/row-image"}],
+            }],
+        }],
+    )
+
+    assert validate_ordered_document(document) == []
+    assert [block["type"] for block in document["blocks"]] == ["table", "image"]
+    assert [image["image_id"] for image in document["blocks"][0]["images"]] == ["row-image"]
+    assert document["blocks"][1]["image_id"] == "unattached-image"
+
+
 def test_table_cell_preserves_direct_images():
     article = {"article_id": "test-table-direct-img"}
     document = build_ordered_document(

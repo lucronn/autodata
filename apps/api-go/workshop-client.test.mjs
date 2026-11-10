@@ -2038,6 +2038,68 @@ test('article block media mixed document preserves each contextual placement and
   assert.deepEqual(mediaIDs(mediaDescendants(parent, 'td')[0]), ['cell']);
 });
 
+for (const origin of ['source', 'canonical']) {
+  test(`article table block image stays beside the semantic table in the ${origin} reader`, () => {
+    const h = articleMediaHarness();
+    const parent = h.render(mediaArticle([
+      { type: 'table', caption: 'Torque values', columns: ['Part', 'Torque'], rows: [['Bolt', '30 Nm']],
+        images: [{ asset_id: 'row-image', alt: 'Bolt orientation', url: 'https://provider.example/untrusted.png' }] },
+      { type: 'paragraph', text: 'Continue after the table.' },
+    ], [{ id: 'row-image', url: mediaURL('row'), alt: 'Pool description' }],
+    { content_origin: origin, complete: origin === 'canonical' }));
+    assert.deepEqual(mediaTags(parent), ['div', 'figure', 'p']);
+    assert.deepEqual(mediaTags(parent.children[0]), ['table']);
+    assert.equal(mediaDescendants(parent, 'caption')[0].textContent, 'Torque values');
+    assert.deepEqual(mediaDescendants(parent, 'th').map(n => n.scope), ['col', 'col']);
+    assert.deepEqual(mediaDescendants(parent, 'td').map(n => n.textContent), ['Bolt', '30 Nm']);
+    assert.deepEqual(mediaIDs(parent), ['row-image']);
+    const image = mediaDescendants(parent, 'img')[0];
+    assert.equal(image.src, 'https://cars.example/v1/catalog/images/v2.row');
+    assert.equal(image.alt, 'Bolt orientation');
+    assert.equal(image.referrerPolicy, 'no-referrer');
+    assert.equal(mediaDescendants(parent, 'figcaption')[0].textContent, 'Bolt orientation');
+    assert.equal(parent.children[2].textContent, 'Continue after the table.');
+  });
+}
+
+for (const [name, ref, pool] of [
+  ['missing ID', { unavailable_reason: 'missing source image reference' }, { id: 'unrelated', url: mediaURL('unrelated') }],
+  ['missing pool mapping', { asset_id: 'missing', url: mediaURL('untrusted') }, { id: 'unrelated', url: mediaURL('unrelated') }],
+]) {
+  test(`article table block image ${name} never borrows unrelated pool media`, () => {
+    const h = articleMediaHarness();
+    const parent = h.content(mediaArticle([
+      { type: 'table', rows: [['Bolt']], images: [ref] },
+    ], [pool]));
+    assert.deepEqual(mediaIDs(parent), []);
+    assert.deepEqual(mediaTags(parent), ['div', 'figure']);
+    assert.deepEqual(mediaTags(parent.children[1]), ['p']);
+    assert.equal(parent.children[1].textContent, 'Illustration unavailable.');
+  });
+}
+
+test('article table cell image missing an ID never borrows unrelated pool media', () => {
+  const h = articleMediaHarness();
+  const parent = h.content(mediaArticle([
+    { type: 'table', rows: [[{ text: 'Bolt', images: [{ status: 'unavailable' }] }]] },
+  ], [{ id: 'unrelated', url: mediaURL('unrelated') }]));
+  assert.deepEqual(mediaIDs(parent), []);
+  const cell = mediaDescendants(parent, 'td')[0];
+  assert.deepEqual(mediaTags(cell), ['span', 'figure']);
+  assert.equal(cell.children[1].textContent, 'Illustration unavailable.');
+});
+
+test('article table block image already shown in a cell is not repeated', () => {
+  const h = articleMediaHarness();
+  const parent = h.content(mediaArticle([
+    { type: 'table', rows: [[{ text: 'Bolt', images: [{ asset_id: 'shared' }] }]],
+      images: [{ image_id: 'shared' }, { asset_id: 'row-only' }] },
+  ], [{ id: 'shared', url: mediaURL('shared') }, { id: 'row-only', url: mediaURL('row-only') }]));
+  assert.deepEqual(mediaIDs(parent), ['shared', 'row-only']);
+  assert.deepEqual(mediaIDs(mediaDescendants(parent, 'td')[0]), ['shared']);
+  assert.deepEqual(mediaTags(parent), ['div', 'figure']);
+});
+
 for (const type of ['ordered_list', 'unordered_list', 'callout']) {
   for (const [name, ref] of [
     ['missing IDs', { status: 'unavailable', unavailable_reason: 'source image reference is missing' }],
