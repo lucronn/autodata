@@ -1,5 +1,6 @@
 import unittest
 
+from autodata_ingestion.article_document import build_ordered_document
 from autodata_ingestion.procedure_normalize import normalize_procedure_article
 from autodata_ingestion.vehicle_article_query import query_vehicle_articles
 
@@ -93,6 +94,52 @@ class VehicleArticleQueryTests(unittest.TestCase):
         )
         self.assertEqual(result["status"], "not_found")
         self.assertEqual(result["results"], [])
+
+    def test_hidden_normalized_step_label_does_not_match_article_query(self):
+        article = {"article_id": "article-step-label", "title": "Service notes"}
+        article["normalized_document"] = build_ordered_document(
+            article,
+            [{"kind": "step", "text": "Inspect ground strap.", "label": "HiddenCalibrationMarker"}],
+        )
+
+        result = query_vehicle_articles(
+            VEHICLE,
+            "HiddenCalibrationMarker",
+            {KEY: [article]},
+        )
+        self.assertEqual(result["status"], "not_found")
+        self.assertEqual(result["results"], [])
+
+    def test_hidden_normalized_list_label_does_not_match_article_query(self):
+        article = {"article_id": "article-list-label", "title": "Service notes"}
+        article["normalized_document"] = build_ordered_document(
+            article,
+            [{"kind": "ordered_list", "label": "HiddenListMarker", "items": ["Inspect ground strap."]}],
+        )
+
+        result = query_vehicle_articles(
+            VEHICLE,
+            "HiddenListMarker",
+            {KEY: [article]},
+        )
+        self.assertEqual(result["status"], "not_found")
+        self.assertEqual(result["results"], [])
+
+    def test_displayed_callout_and_table_labels_are_searchable(self):
+        article = {"article_id": "article-visible-labels", "title": "Service notes"}
+        article["normalized_document"] = build_ordered_document(
+            article,
+            [
+                {"kind": "warning", "label": "High voltage isolation", "text": "Disconnect the battery."},
+                {"kind": "table", "label": "Brake torque values", "rows": [["Caliper", "28 Nm"]]},
+            ],
+        )
+
+        for query in ("High voltage isolation", "Brake torque values"):
+            with self.subTest(query=query):
+                result = query_vehicle_articles(VEHICLE, query, {KEY: [article]})
+                self.assertEqual(result["status"], "found")
+                self.assertEqual(result["results"][0]["article_id"], "article-visible-labels")
 
     def test_miss_invokes_source_fallback_and_indexes_fetched_article(self):
         calls = []

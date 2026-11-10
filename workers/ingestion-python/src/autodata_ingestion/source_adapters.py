@@ -1772,6 +1772,11 @@ def adapt_bound_article(resource: SourceResource, context) -> dict[str, Any]:
                             else s.get("text") or s.get("instruction")
                         ),
                         "number": i,
+                        **({
+                            field: s[field]
+                            for field in ("description", "instructions")
+                            if field in s
+                        } if isinstance(s, dict) else {}),
                     }
                     for i, s in enumerate(article["steps"], 1)
                 ]

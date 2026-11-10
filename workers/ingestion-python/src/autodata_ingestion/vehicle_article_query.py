@@ -74,11 +74,34 @@ def _visible_block_text(value: Any) -> str:
     if isinstance(value, (str, int, float)) and not isinstance(value, bool):
         return str(value)
     if isinstance(value, Mapping):
-        visible_fields = (
-            "text", "label", "title", "caption", "alt", "description", "value",
-            "content", "body", "action", "instruction", "items", "rows", "cells",
-            "columns", "blocks", "instructions", "images",
-        )
+        block_type = value.get("type")
+        if block_type in ("heading", "paragraph", "link"):
+            visible_fields = ("text",)
+        elif block_type == "callout":
+            visible_fields = ("label", "text", "images")
+        elif block_type == "image":
+            return _visible_block_text(value.get("alt") or value.get("caption"))
+        elif block_type == "step":
+            visible_fields = ("text", "action", "instructions", "images")
+        elif block_type in ("ordered_list", "unordered_list"):
+            visible_fields = ("items", "images")
+        elif block_type == "table":
+            return " ".join(_visible_block_text(part) for part in (
+                value.get("label") or value.get("caption"),
+                value.get("columns"),
+                value.get("rows"),
+            ))
+        elif block_type == "break":
+            return ""
+        elif block_type is not None:
+            text = value.get("text")
+            return _visible_block_text(text if text is not None else value.get("unavailable_reason"))
+        else:
+            visible_fields = (
+                "text", "label", "title", "caption", "alt", "description", "value",
+                "content", "body", "action", "instruction", "items", "rows", "cells",
+                "columns", "blocks", "instructions", "images",
+            )
         return " ".join(_visible_block_text(value[field]) for field in visible_fields if field in value)
     if isinstance(value, (list, tuple)):
         return " ".join(_visible_block_text(item) for item in value)
