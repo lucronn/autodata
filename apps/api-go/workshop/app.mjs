@@ -430,6 +430,7 @@ async function loadArticles(g, articleID = "") {
       desired: articleID,
       onUpdate(result) {
         if (!g.current()) return;
+        const becameComplete = !indexComplete && result.complete === true;
         articles = result.items;
         indexComplete = result.complete === true;
         indexFailed =
@@ -438,7 +439,10 @@ async function loadArticles(g, articleID = "") {
         access = "owned";
         renderPurchase();
         show("catalog");
-        if ($("search").value.trim()) scheduleArticleSearch();
+        const query = $("search").value.trim();
+        if (query && (searchQuery !== query ||
+          (!searchPending && searchItems === null && !searchError) ||
+          (becameComplete && !searchComplete))) scheduleArticleSearch();
         else renderArticles();
       },
     },

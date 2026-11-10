@@ -46,9 +46,9 @@ Local verification on 2026-11-10:
   locally because their guarded runtime and DSN are absent; the new fixture
   assertions must run in the required integration gate.
 - `node --test --test-reporter=tap workshop-client.test.mjs workshop-demo.test.mjs`
-  in `apps/api-go`: 259 passed, 0 failed, 0 skipped. Actual search input,
-  stale-query/vehicle responses, revoked-access, paid no-repay handling, and
-  incomplete-result paths are covered.
+  in `apps/api-go`: 261 passed, 0 failed, 0 skipped. Actual search input,
+  stale-query/vehicle responses, revoked-access, paid no-repay handling,
+  repeated hydrating polls, and the partial-to-complete refresh are covered.
 - `python -m unittest scripts.contracts.test_catalog_lifecycle_contract`:
   3 passed. OpenAPI now records the optional bounded `q` parameter and the
   paid grant/metadata-only behavior.

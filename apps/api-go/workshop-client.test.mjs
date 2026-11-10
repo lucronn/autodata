@@ -1513,7 +1513,7 @@ test('stale order status 404 does not clear newer checkout or action', async () 
   assert.equal(checkoutClears, 0);
 });
 
-function articleIndexHarness(responses) {
+function articleIndexHarness(responses, { wait = async () => {} } = {}) {
   const navigation = new NavigationGeneration();
   const searchNavigation = new NavigationGeneration();
   const nodes = new Map();
@@ -1551,7 +1551,7 @@ function articleIndexHarness(responses) {
     },
     async readCollection(read, options) {
       const result = await readCollection(read, {
-        ...options, attempts: 3, wait: async () => {},
+        ...options, attempts: 3, wait,
         onUpdate(data, meta) {
           options.onUpdate(data, meta);
           updates.push({ complete: data.complete, count: $('articles').children[0]?.children.length ?? 0,
@@ -1723,6 +1723,56 @@ test('Workshop input searches owned article content through protected index quer
   assert.deepEqual(list.children.map(row => row.children[0].children[0].textContent), ['Service notes']);
   assert.equal(new URL(list.children[0].children[0].href, 'https://cars.example').searchParams.get('article'), 'content-hit');
   assert.equal(h.$('catalog-count').textContent, '1 articles');
+});
+
+test('hydrating index polls do not restart a settled owned-content search', async () => {
+  let releasePoll;
+  const gate = new Promise(resolve => { releasePoll = resolve; });
+  const pending = indexResponse('running', { hydrating: true, items: [{ id: 'index', title: 'Service notes' }] });
+  const h = articleIndexHarness([
+    pending,
+    indexResponse('running', { items: [{ id: 'content-hit', title: 'Ground strap service' }] }),
+    pending,
+    pending,
+  ], { wait: () => gate });
+  const loading = h.load();
+  await new Promise(resolve => setImmediate(resolve));
+  h.$('search').value = 'ground strap';
+  h.$('search').events.input();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.$('articles').children[0].children[0].children[0].children[0].textContent, 'Ground strap service');
+  releasePoll();
+  await loading;
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.requests.filter(request => request.path.includes('?q=')).length, 1);
+  assert.equal(h.$('articles').children[0].children[0].children[0].children[0].textContent, 'Ground strap service');
+});
+
+test('a completed index refreshes a formerly partial content search once', async () => {
+  let releasePoll;
+  const gate = new Promise(resolve => { releasePoll = resolve; });
+  const h = articleIndexHarness([
+    indexResponse('running', { hydrating: true, items: [{ id: 'index', title: 'Service notes' }] }),
+    indexResponse('running', { items: [{ id: 'first', title: 'Ground strap service' }] }),
+    indexResponse('completed', { complete: true, items: [{ id: 'index', title: 'Service notes' }, { id: 'new', title: 'More service notes' }] }),
+    indexResponse('completed', { complete: true, items: [
+      { id: 'first', title: 'Ground strap service' }, { id: 'new', title: 'New ground strap notes' },
+    ] }),
+  ], { wait: () => gate });
+  const loading = h.load();
+  await new Promise(resolve => setImmediate(resolve));
+  h.$('search').value = 'ground strap';
+  h.$('search').events.input();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.context.searchComplete, false);
+  releasePoll();
+  await loading;
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.requests.filter(request => request.path.includes('?q=')).length, 2);
+  assert.equal(h.context.searchComplete, true);
+  assert.deepEqual(h.$('articles').children[0].children.map(row => row.children[0].children[0].textContent), [
+    'Ground strap service', 'New ground strap notes',
+  ]);
 });
 
 test('Workshop content search ignores a stale response after a newer query', async () => {
