@@ -125,6 +125,49 @@ class VehicleArticleQueryTests(unittest.TestCase):
         self.assertEqual(result["status"], "not_found")
         self.assertEqual(result["results"], [])
 
+    def test_compatibility_projection_does_not_make_hidden_labels_searchable(self):
+        article = {"article_id": "article-projection", "title": "Service notes"}
+        article["normalized_document"] = build_ordered_document(article, [
+            {"kind": "step", "text": "Inspect ground strap.", "label": "HiddenStepProjectionMarker"},
+            {"kind": "ordered_list", "label": "HiddenListProjectionMarker", "items": ["Tighten fastener."]},
+        ])
+        normalized = normalize_procedure_article(article)
+        self.assertIn("HiddenStepProjectionMarker", normalized["body"])
+        self.assertIn("HiddenListProjectionMarker", normalized["body"])
+
+        for query in ("HiddenStepProjectionMarker", "HiddenListProjectionMarker"):
+            with self.subTest(hidden=query):
+                result = query_vehicle_articles(VEHICLE, query, {KEY: [normalized]})
+                self.assertEqual(result["status"], "not_found")
+        for query in ("Inspect ground strap", "Tighten fastener"):
+            with self.subTest(visible=query):
+                result = query_vehicle_articles(VEHICLE, query, {KEY: [normalized]})
+                self.assertEqual(result["status"], "found")
+
+    def test_nested_hidden_fields_do_not_match_normalized_article(self):
+        article = {
+            "article_id": "article-nested-fields",
+            "title": "Service notes",
+            "normalized_document": {"blocks": [
+                {"type": "callout", "label": "Warning", "text": "Disconnect battery.",
+                 "images": [{"alt": "VisibleImageAltMarker", "caption": "HiddenImageCaptionMarker"}]},
+                {"type": "ordered_list", "items": [
+                    {"text": "VisibleListItemMarker", "label": "HiddenListItemMarker"},
+                ]},
+                {"type": "table", "label": "Torque values", "columns": [
+                    {"text": "VisibleColumnMarker", "label": "HiddenColumnMarker"},
+                ], "rows": [[{"text": "VisibleCellMarker", "label": "HiddenCellMarker"}]]},
+            ]},
+        }
+        for query in ("HiddenImageCaptionMarker", "HiddenListItemMarker", "HiddenColumnMarker", "HiddenCellMarker"):
+            with self.subTest(hidden=query):
+                result = query_vehicle_articles(VEHICLE, query, {KEY: [article]})
+                self.assertEqual(result["status"], "not_found")
+        for query in ("VisibleImageAltMarker", "VisibleListItemMarker", "VisibleColumnMarker", "VisibleCellMarker"):
+            with self.subTest(visible=query):
+                result = query_vehicle_articles(VEHICLE, query, {KEY: [article]})
+                self.assertEqual(result["status"], "found")
+
     def test_displayed_callout_and_table_labels_are_searchable(self):
         article = {"article_id": "article-visible-labels", "title": "Service notes"}
         article["normalized_document"] = build_ordered_document(

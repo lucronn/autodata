@@ -1761,22 +1761,17 @@ def adapt_bound_article(resource: SourceResource, context) -> dict[str, Any]:
                 if field in layer and str(layer[field]) != str(expected[field]):
                     raise ValueError("wrong applicability")
         blocks = article.get("blocks")
-        if not isinstance(blocks, list):
+        if not isinstance(blocks, list) or not blocks:
             if article.get("steps"):
                 blocks = [
                     {
                         "kind": "step",
-                        "text": (
-                            s
-                            if isinstance(s, str)
-                            else s.get("text") or s.get("instruction")
-                        ),
                         "number": i,
-                        **({
+                        **({"text": s} if isinstance(s, str) else {
                             field: s[field]
-                            for field in ("description", "instructions")
+                            for field in ("text", "instruction", "description", "instructions")
                             if field in s
-                        } if isinstance(s, dict) else {}),
+                        }),
                     }
                     for i, s in enumerate(article["steps"], 1)
                 ]
