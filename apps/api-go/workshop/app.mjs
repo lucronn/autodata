@@ -430,6 +430,14 @@ async function loadArticles(g, articleID = "") {
       desired: articleID,
       onUpdate(result) {
         if (!g.current()) return;
+        const descriptorFields = [
+          "id", "title", "kind", "component", "availability", "content_status",
+          "source_revision_id", "canonical_revision_id", "view_revision", "review_status",
+        ];
+        const indexChanged = result.items.length !== articles.length ||
+          result.items.some((item, index) => descriptorFields.some(
+            (field) => item[field] !== articles[index]?.[field],
+          ));
         const becameComplete = !indexComplete && result.complete === true;
         articles = result.items;
         indexComplete = result.complete === true;
@@ -442,6 +450,7 @@ async function loadArticles(g, articleID = "") {
         const query = $("search").value.trim();
         if (query && (searchQuery !== query ||
           (!searchPending && searchItems === null && !searchError) ||
+          indexChanged ||
           (becameComplete && !searchComplete))) scheduleArticleSearch();
         else renderArticles();
       },

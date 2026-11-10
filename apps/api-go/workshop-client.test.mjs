@@ -1775,6 +1775,43 @@ test('a completed index refreshes a formerly partial content search once', async
   ]);
 });
 
+test('reopening an owned index removes a withdrawn content-search result', async () => {
+  const privateItem = { id: 'private', title: 'Service notes', source_revision_id: 'source-1' };
+  const h = articleIndexHarness([
+    indexResponse('completed', { complete: true, items: [privateItem] }),
+    indexResponse('completed', { complete: true, items: [privateItem] }),
+    indexResponse('completed', { complete: true, items: [] }),
+    indexResponse('completed', { complete: true, items: [] }),
+  ]);
+  await h.load();
+  h.$('search').value = 'ground strap';
+  h.$('search').events.input();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.$('articles').children[0].children.length, 1);
+  await h.load();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.requests.filter(request => request.path.includes('?q=')).length, 2);
+  assert.equal(h.$('articles').children[0].children.length, 0);
+});
+
+test('reopening an owned index refreshes content search after article revision changes', async () => {
+  const h = articleIndexHarness([
+    indexResponse('completed', { complete: true, items: [{ id: 'article', title: 'Service notes', source_revision_id: 'source-1' }] }),
+    indexResponse('completed', { complete: true, items: [{ id: 'article', title: 'Service notes', source_revision_id: 'source-1' }] }),
+    indexResponse('completed', { complete: true, items: [{ id: 'article', title: 'Service notes', source_revision_id: 'source-2' }] }),
+    indexResponse('completed', { complete: true, items: [] }),
+  ]);
+  await h.load();
+  h.$('search').value = 'old procedure';
+  h.$('search').events.input();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.$('articles').children[0].children.length, 1);
+  await h.load();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.requests.filter(request => request.path.includes('?q=')).length, 2);
+  assert.equal(h.$('articles').children[0].children.length, 0);
+});
+
 test('Workshop content search ignores a stale response after a newer query', async () => {
   let resolveOld;
   const h = articleIndexHarness([
