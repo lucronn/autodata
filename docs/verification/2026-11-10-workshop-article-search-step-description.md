@@ -25,6 +25,11 @@ Acceptance:
 - [x] A step with both a description and nested instructions retains both
   pieces of consumer-visible text, and a whitespace-only instruction `text`
   does not hide its nonempty `description`.
+- [ ] The JSON bound-article source adapter forwards description and nested
+  instruction fields to document normalization, so an actual fetched article
+  does not collapse to a numbered placeholder.
+- [ ] A normalized step label that the Workshop renderer hides does not create
+  a local article-search match by itself.
 - [ ] Focused and full ingestion tests, exact-head independent review, required
   GitHub CI, and branch protection pass before integration.
 
@@ -74,5 +79,12 @@ The focused article suite passed 53 tests; the full ingestion suite passed
 1,182 tests, 475 skips, and 178 subtests on code head
 `2ccd549c5e9b0658a9ab3cf6b41d3099a826d988`. Python compilation and
 `git diff --check` passed. Fresh exact-head review and PR CI remain gates.
+
+Independent re-review of head `a84fee2f9f021275b6767680b4ce36e42d22501d`
+found two further end-to-end gaps: `adapt_bound_article` drops description and
+instruction fields from JSON `steps` before normalization, and search indexes
+the label of a normalized step even though the Workshop renders only its text,
+action, instructions, and images. These source-to-UI boundaries must have
+red-first regression coverage and a fresh exact-head re-review before merge.
 
 Plan: [2026-11-10-workshop-article-search-step-description](../superpowers/plans/2026-11-10-workshop-article-search-step-description.md).

@@ -23,6 +23,7 @@
 - [x] Add regression tests for step-level and instruction-item description text; watch the expected placeholder-text failures.
 - [x] Add only the missing search and text-fallback fields, then rerun focused/full ingestion tests.
 - [x] Correct reviewer-found normalized-block, metadata, nested-instruction, and whitespace-fallback gaps with red-first regressions.
+- [ ] Preserve description/instruction content through the JSON bound-article adapter and exclude hidden normalized step labels from search.
 - [ ] Record exact-SHA verification and independent review, require green CI and live branch protection before merge.
 
 ### Task 1: Index existing article content fields
@@ -64,7 +65,22 @@
 - [x] **Step 7: Implement step preservation.** Each instruction candidate is cleaned before selection; step description and nested instructions are combined only when no higher-priority step text exists.
 - [x] **Step 8: Verify and commit.** Focused article tests passed (53), full ingestion passed (1,182 with 475 skips and 178 subtests), compilation and diff checks passed; corrections committed as `2ccd549`.
 
-### Task 4: Verify and integrate
+### Task 4: Close source-adapter and rendered-step-label gaps
+
+**Files:** `workers/ingestion-python/tests/test_source_adapters.py`, `workers/ingestion-python/src/autodata_ingestion/source_adapters.py`, `workers/ingestion-python/tests/test_vehicle_article_query.py`, `workers/ingestion-python/src/autodata_ingestion/vehicle_article_query.py`.
+
+**Interfaces:** `adapt_bound_article(resource, context)` keeps its return shape; `query_vehicle_articles` keeps its signature and result schema.
+
+- [ ] **Step 1: Write failing source-path test.** Create a JSON `SourceResource` containing `{"article": {"steps": [{"description": "Inspect mounting bolt.", "instructions": [{"description": "Torque bolt to 12 Nm."}]}]}}`, call `adapt_bound_article` under a matching synthetic context, then `build_ordered_document` on the returned blocks. Assert the sole step text is `Inspect mounting bolt. Torque bolt to 12 Nm.` rather than `Step 1`.
+- [ ] **Step 2: Verify red source path.** Run the named test in `workers/ingestion-python/tests/test_source_adapters.py`; the adapted block lacks both fields and normalizes to `Step 1`.
+- [ ] **Step 3: Preserve source step fields.** When synthesizing blocks from JSON `article.steps`, copy `description` and `instructions` from mapping steps alongside the existing `kind`, `text`, and `number`. Leave string-step behavior and connector applicability validation unchanged.
+- [ ] **Step 4: Verify green source path.** Rerun the named source-adapter test and existing source-adapter suite.
+- [ ] **Step 5: Write failing search test.** Build a normalized step block with visible text `Inspect ground strap.` and hidden `label: HiddenCalibrationMarker`; query for `HiddenCalibrationMarker` and assert `not_found` with no local result.
+- [ ] **Step 6: Verify red search case.** Run the named query test; the old generic visible-field walk falsely returns `found`.
+- [ ] **Step 7: Match rendered step fields.** For normalized blocks with `type: step`, collect only fields the Workshop renderer emits (`text`, `action`, `instructions`, and image alternative text); exclude `label`. Keep the existing generic walk for raw provider blocks and other normalized types.
+- [ ] **Step 8: Verify and commit.** Rerun focused query, document, and source-adapter tests, then the full ingestion suite with the declared Stripe dependency and external private temp directory; run compilation and diff checks, commit and push.
+
+### Task 5: Verify and integrate
 
 **Files:** This plan, the verification document, Issue #184, and Project #8 item.
 
