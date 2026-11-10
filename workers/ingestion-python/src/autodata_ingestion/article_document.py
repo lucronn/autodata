@@ -819,6 +819,7 @@ def _step_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str,
         raw.get("value"),
         raw.get("content"),
         raw.get("body"),
+        raw.get("description"),
     ]
     instruction_images: list[dict[str, Any]] = []
     instructions = raw.get("instructions")
@@ -833,6 +834,7 @@ def _step_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str,
                     or item.get("value")
                     or item.get("content")
                     or item.get("body")
+                    or item.get("description")
                 )
                 for img in item.get("images") or []:
                     if isinstance(img, Mapping):

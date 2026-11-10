@@ -1220,6 +1220,30 @@ def test_step_block_aggregates_instruction_images_and_deduplicates():
     assert step["images"][1]["image_id"] == "bracket-clip"
 
 
+def test_description_only_step_preserves_step_description():
+    document = build_ordered_document(
+        {"article_id": "step-description"},
+        [{"kind": "step", "number": 1, "description": "Inspect the ground strap."}],
+    )
+
+    assert validate_ordered_document(document) == []
+    assert len(document["blocks"]) == 1
+    assert document["blocks"][0]["type"] == "step"
+    assert document["blocks"][0]["text"] == "Inspect the ground strap."
+
+
+def test_description_only_step_preserves_instruction_item_description():
+    document = build_ordered_document(
+        {"article_id": "instruction-description"},
+        [{"kind": "step", "number": 2, "instructions": [{"description": "Tighten the ground strap nut."}]}],
+    )
+
+    assert validate_ordered_document(document) == []
+    assert len(document["blocks"]) == 1
+    assert document["blocks"][0]["type"] == "step"
+    assert document["blocks"][0]["text"] == "Tighten the ground strap nut."
+
+
 def test_table_block_aggregates_row_images_and_deduplicates():
     article = {"article_id": "test-table-row-images"}
     document = build_ordered_document(
