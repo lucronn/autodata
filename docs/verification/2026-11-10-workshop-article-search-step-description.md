@@ -19,10 +19,10 @@ Acceptance:
   valid ordered `step` block with that text.
 - [x] A source step whose only instruction text is an instruction item's
   `description` produces a valid ordered `step` block with that text.
-- [ ] A normalized article with visible text only in
+- [x] A normalized article with visible text only in
   `normalized_document.blocks` is found locally; block type/key metadata alone
   is not treated as visible searchable text.
-- [ ] A step with both a description and nested instructions retains both
+- [x] A step with both a description and nested instructions retains both
   pieces of consumer-visible text, and a whitespace-only instruction `text`
   does not hide its nonempty `description`.
 - [ ] Focused and full ingestion tests, exact-head independent review, required
@@ -63,5 +63,16 @@ indexes metadata such as `type: paragraph`; a step `description` wins over and
 hides nested instructions; and whitespace-only item `text` hides a nonempty
 item `description`. The PR is not merge-ready until red-first regressions for
 these cases pass, the code is corrected, and the final head is re-reviewed.
+
+Review correction: the four new regressions failed for the expected missing
+behavior before code changes and passed afterward. Search now traverses only
+consumer-visible text fields in top-level `steps`/`blocks` and
+`normalized_document.blocks`; structural keys, block types, IDs, image URLs,
+and evidence metadata are excluded. Step descriptions and cleaned nested
+instructions are both retained when no higher-priority step text exists.
+The focused article suite passed 53 tests; the full ingestion suite passed
+1,182 tests, 475 skips, and 178 subtests on code head
+`2ccd549c5e9b0658a9ab3cf6b41d3099a826d988`. Python compilation and
+`git diff --check` passed. Fresh exact-head review and PR CI remain gates.
 
 Plan: [2026-11-10-workshop-article-search-step-description](../superpowers/plans/2026-11-10-workshop-article-search-step-description.md).
