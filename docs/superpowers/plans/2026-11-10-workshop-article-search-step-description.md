@@ -24,7 +24,7 @@
 - [x] Add only the missing search and text-fallback fields, then rerun focused/full ingestion tests.
 - [x] Correct reviewer-found normalized-block, metadata, nested-instruction, and whitespace-fallback gaps with red-first regressions.
 - [x] Preserve description/instruction content through the JSON bound-article adapter and match normalized-block search to rendered text by block type.
-- [ ] Close reviewer-found full-normalization projection, empty-block adapter, whitespace-shadow, and nested rendered-field gaps with red-first regressions.
+- [x] Close reviewer-found full-normalization projection, empty-block adapter, whitespace-shadow, and nested rendered-field gaps with red-first regressions.
 - [ ] Record exact-SHA verification and independent review, require green CI and live branch protection before merge.
 
 ### Task 1: Index existing article content fields
@@ -87,10 +87,10 @@
 
 **Interfaces:** Keep `query_vehicle_articles`, `adapt_bound_article`, and rendered document schemas unchanged.
 
-- [ ] **Step 1: Red-first full normalization test.** Build an ordered step/list document with unique hidden labels, pass it through `normalize_procedure_article`, and assert that each hidden-label query is `not_found` while visible step/list text is found. A normalized document is authoritative over compatibility `body`, `steps`, and raw blocks in local lookup.
-- [ ] **Step 2: Red-first adapter tests.** Adapt JSON with `blocks: []` and populated description-only `steps`; also adapt a step whose `text` is whitespace and `instruction` is nonblank. Assert non-placeholder normalized step text. Use `steps` when `blocks` is empty, and forward candidate fields independently so the normalizer cleans them.
-- [ ] **Step 3: Red-first nested rendered-field tests.** Under normalized callout, list, and table blocks, assert hidden image `caption` and item/cell `label` values do not match, but rendered `alt`/`text` values do. Extract fields by nested rendered shape rather than generic recursion.
-- [ ] **Step 4: Verify.** Run focused and full ingestion suites, compilation, diff check, independent exact-head review, current GitHub CI, and branch protection. Update verification evidence and PR description to avoid claiming Workshop UI content search.
+- [x] **Step 1: Red-first full normalization test.** Build an ordered step/list document with unique hidden labels, pass it through `normalize_procedure_article`, and assert that each hidden-label query is `not_found` while visible step/list text is found. A normalized document is authoritative over compatibility `body`, `steps`, and raw blocks in local lookup.
+- [x] **Step 2: Red-first adapter tests.** Adapt JSON with `blocks: []` and populated description-only `steps`; also adapt a step whose `text` is whitespace and `instruction` is nonblank. Assert non-placeholder normalized step text. Use `steps` when `blocks` is empty, and forward candidate fields independently so the normalizer cleans them.
+- [x] **Step 3: Red-first nested rendered-field tests.** Under normalized callout, list, and table blocks, assert hidden image `caption` and item/cell `label` values do not match, but rendered `alt`/`text` values do. Extract fields by nested rendered shape rather than generic recursion.
+- [ ] **Step 4: Verify.** Focused and full ingestion suites, compilation, and diff check passed at code head `5aba33b` (1,190 passed, 475 skipped, 192 subtests). Exact-head review, current GitHub CI, and branch protection remain. The verification document distinguishes the Python utility from Workshop UI search, now tracked in Issue #393.
 
 ### Task 6: Verify and integrate
 
@@ -98,7 +98,7 @@
 
 **Interfaces:** No additional code interface changes.
 
-- [x] **Step 1:** The final full ingestion suite passed with the pinned Stripe dependency and a private temp directory outside this runner's `/tmp/.git` marker: 1,186 passed, 475 skipped, 180 subtests passed. `python -m compileall -q workers/ingestion-python/src/autodata_ingestion` and `git diff --check` passed.
+- [x] **Step 1:** The latest full ingestion suite passed with the pinned Stripe dependency and a private temp directory outside this runner's `/tmp/.git` marker: 1,190 passed, 475 skipped, 192 subtests passed at code head `5aba33b`. `python -m compileall -q workers/ingestion-python/src/autodata_ingestion` and `git diff --check` passed.
 - [ ] **Step 2:** Update the verification document with red/green counts and exact commit SHA, then obtain an independent read-only review of that exact head.
 - [ ] **Step 3:** Open a PR; require current CI, no blocking review findings/threads, and live branch-protection satisfaction before merging. Update Issue #184's remaining checklist and Project item without closing the broad issue for this slice alone.
 

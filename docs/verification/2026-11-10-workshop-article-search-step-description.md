@@ -31,11 +31,11 @@ Acceptance:
 - [x] A normalized step or list label that the Workshop renderer hides does
   not create a local article-search match by itself; displayed callout and
   table labels remain searchable.
-- [ ] The same hidden-label behavior holds after the full document normalization
+- [x] The same hidden-label behavior holds after the full document normalization
   path projects compatibility `body` and `steps` fields.
-- [ ] JSON bound-article adaptation uses populated `steps` when `blocks` is
+- [x] JSON bound-article adaptation uses populated `steps` when `blocks` is
   empty and does not let whitespace-only step text shadow a valid instruction.
-- [ ] Nested callout image captions and list/table object labels that Workshop
+- [x] Nested callout image captions and list/table object labels that Workshop
   does not render cannot create local article-query matches.
 - [ ] Focused and full ingestion tests, exact-head independent review, required
   GitHub CI, and branch protection pass before integration.
@@ -118,5 +118,20 @@ lets whitespace-only `text` shadow valid `instruction`. Nested image/list/table
 objects can contribute caption/label text that the Workshop renderer hides.
 These are merge blockers for this bounded slice; add red-first source-path
 regressions and correct them before claiming exact-head review or CI complete.
+
+Planning checkpoint `18b2638` passed exact-SHA preflight (`status:
+synchronized`, no errors) before the final correction phase. The new full
+normalization, nested rendered-field, empty-block, and whitespace-shadow
+regressions failed for the expected behavior before implementation (eight
+failures, including six subtest failures), then passed. Focused
+query/document/adapter suites passed 91 tests and 74 subtests. The full
+ingestion suite passed 1,190 tests, 475 skips, and 192 subtests at code head
+`5aba33bc7d211288cc1b0ff92f02ac5a98ba0705`; Python compilation and
+`git diff --check` passed. The source adapter now falls back to populated
+steps when `blocks` is empty and preserves candidate fields independently.
+Lookup treats a nonempty normalized document as authoritative over projected
+compatibility fields and searches nested objects by what Workshop renders.
+This does not wire Python lookup to the Workshop UI; that feature is tracked
+as [Issue #393](https://github.com/lucronn/autodata/issues/393).
 
 Plan: [2026-11-10-workshop-article-search-step-description](../superpowers/plans/2026-11-10-workshop-article-search-step-description.md).
