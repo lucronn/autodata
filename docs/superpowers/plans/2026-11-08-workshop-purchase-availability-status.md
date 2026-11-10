@@ -74,7 +74,7 @@ The written single-maintainer review rule is now present on `master` at
 policy candidate `a442cfbcce08399d7d046d94182497d5cf686e3d`. The
 policy PR #390 record was closed after a 502 response left it unmarked as
 merged despite that protected-master squash commit. This resolves the written
-review-rule mismatch; it does not waive PR #389's current checks or review.
+review-rule mismatch; at that stage, it did not waive PR #389's checks or review.
 
 Final app integration: exact head `a053558cf95dd87d4e485811d4697e216f117221`
 passed separate read-only review with zero Critical, Important, or Minor findings,
