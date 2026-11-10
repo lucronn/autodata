@@ -21,7 +21,7 @@
 
 - [x] Add a failing regression with a row-attached image duplicated in the article-level image list and a distinct unattached image.
 - [x] Include table row mapping `images` in the existing image-identity pre-scan; leave table block and figure queue semantics otherwise unchanged.
-- [ ] Red-first test and implement table-block image rendering in the Workshop reader, keeping the semantic table, authorized pool lookup, missing-image fallback, and cell-image de-duplication.
+- [x] Red-first test and implement table-block image rendering in the Workshop reader, keeping the semantic table, authorized pool lookup, missing-image fallback, and cell-image de-duplication.
 - [ ] Run focused and full relevant suites, syntax/diff checks, exact-head independent review, required CI, and live branch-protection check before merge.
 
 ### Task 1: Keep row-attached images at their source position
@@ -42,10 +42,10 @@
 
 **Interfaces:** The existing `renderBlocks` table branch and `addImage` helper; no API or document schema change.
 
-- [ ] **Step 1: Write failing reader regressions.** Cover one table-block image appearing immediately after the semantic table and before the next paragraph; confirm source and canonical render paths, `alt`/authorized local URL, no unrelated-pool substitution for a missing ID, and no duplicate when the same image is already in a cell.
-- [ ] **Step 2: Verify red.** Run only the named Node tests and record the missing figure (or duplicate) failure.
-- [ ] **Step 3: Implement minimally.** In the table branch, render `block.images` after the table wrapper through `addImage`, guarded by a real asset/image ID and resolved via `find(ref)`. Skip a block-level image already resolved/rendered in a cell. Keep the `<table>` markup and caption unchanged.
-- [ ] **Step 4: Verify green.** Run the named tests and the full Workshop client test file. Confirm no provider inline URL or ID-less reference can supply an unrelated image.
+- [x] **Step 1: Write failing reader regressions.** Covered one table-block image immediately after the semantic table and before the next paragraph; source and canonical render paths; `alt`/authorized local URL; missing-ID/missing-pool fallback; and no duplicate when the same image is already in a cell.
+- [x] **Step 2: Verify red.** All five initial named Node tests failed on the uncorrected table branch because the figure was absent.
+- [x] **Step 3: Implement minimally.** The table branch renders `block.images` after the table wrapper through `addImage`, guarded by a real asset/image ID and resolved via `find(ref)`. It skips a block-level image already resolved/rendered in a cell; cell references also reject an absent ID. The `<table>` markup and caption remain unchanged.
+- [x] **Step 4: Verify green.** Six named regressions passed; the full Workshop client file passed 255 tests, and all 46 Python document tests passed. JavaScript syntax and `git diff --check` passed; no provider inline URL or ID-less reference supplies unrelated media.
 - [ ] **Step 5: Verify and integrate.** Run relevant Python/Node tests, syntax and diff checks, obtain a new independent exact-head review and current required CI, then merge only if live protection permits.
 
 The plan does not claim that the live Workshop origin, paid access, or image retrieval works.
