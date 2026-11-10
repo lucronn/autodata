@@ -202,7 +202,7 @@ Configure through repository administration after the repository exists:
 - Default branch: `master` for the current `lucronn/autodata` repository.
 - Require pull request before merging.
 - Require the CI checks listed in [operating-model.md](operating-model.md).
-- Require CODEOWNERS review for owned paths.
+- Retain CODEOWNERS path ownership and review routing. Configure GitHub-required code-owner approval only when a distinct eligible owner can give it and the repository intentionally adopts that gate; for the current single-maintainer Workshop flow, use the exact-head independent AI-review rule in [operating-model.md](operating-model.md) without claiming a GitHub approval. Never weaken an existing live protection requirement to merge a PR.
 - Require branch to be up to date before merge or use a merge queue.
 - Allow squash merge; disable unnecessary merge strategies.
 - Restrict force pushes and branch deletion on `master`.

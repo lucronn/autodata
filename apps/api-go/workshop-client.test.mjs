@@ -1207,6 +1207,56 @@ test('processing order alone does not claim confirmed paid access on an entitlem
   assert.equal(h.context.access, 'missing');
 });
 
+test('purchase availability status reports unavailable without a quote', async () => {
+  const required = Object.assign(new Error('Access not ready'), { status: 403, code: 'ENTITLEMENT_REQUIRED' });
+  const h = paidPurchaseLifecycleHarness([]);
+  h.context.quote = null;
+  await h.context.operation(async () => { throw required; });
+  assert.equal(h.context.access, 'missing');
+  assert.equal(h.$('purchase-action').disabled, true);
+  assert.match(h.$('purchase-message').textContent, /Purchasing is currently unavailable/);
+  assert.match(h.statuses.at(-1).message, /Purchasing is currently unavailable/);
+});
+
+test('purchase availability status reports unavailable without merchant configuration', async () => {
+  const required = Object.assign(new Error('Access not ready'), { status: 403, code: 'ENTITLEMENT_REQUIRED' });
+  const h = paidPurchaseLifecycleHarness([]);
+  h.context.merchant = null;
+  await h.context.operation(async () => { throw required; });
+  assert.equal(h.$('purchase-action').disabled, true);
+  assert.match(h.statuses.at(-1).message, /Purchasing is currently unavailable/);
+});
+
+test('purchase availability status keeps valid quote invitation', async () => {
+  const required = Object.assign(new Error('Access not ready'), { status: 403, code: 'ENTITLEMENT_REQUIRED' });
+  const h = paidPurchaseLifecycleHarness([]);
+  await h.context.operation(async () => { throw required; });
+  assert.equal(h.$('purchase-action').disabled, false);
+  assert.equal(h.statuses.at(-1).message, 'This vehicle is available to purchase.');
+});
+
+test('purchase availability status requests sign-in instead of inviting purchase', async () => {
+  const required = Object.assign(new Error('Access not ready'), { status: 403, code: 'ENTITLEMENT_REQUIRED' });
+  const h = paidPurchaseLifecycleHarness([]);
+  h.context.session.state.authenticated = false;
+  await h.context.operation(async () => { throw required; });
+  assert.equal(h.$('purchase-action').textContent, 'Sign in with Google');
+  assert.equal(h.$('purchase-action').disabled, false);
+  assert.match(h.statuses.at(-1).message, /Sign in to check access and purchase/);
+});
+
+test('purchase availability status keeps validated processing order no-repay guidance', async () => {
+  const required = Object.assign(new Error('Access not ready'), { status: 403, code: 'ENTITLEMENT_REQUIRED' });
+  const processing = { version: 'v1', order_id: orderID, ...scope, state: 'processing', retry_disposition: 'do_not_repay', timedOut: true };
+  const h = paidPurchaseLifecycleHarness([], { orderResponses: [processing] });
+  await h.context.operation(g => h.context.checkOrder(g, orderID));
+  assert.equal(h.context.unconfirmedOrder?.id, orderID);
+  await h.context.operation(async () => { throw required; });
+  assert.equal(h.$('purchase-action').disabled, true);
+  assert.equal(h.$('purchase-action').textContent, 'Payment pending');
+  assert.match(h.statuses.at(-1).message, /confirmation is pending.*do not pay again/i);
+});
+
 test('processing checkout timeout keeps status check without an enabled Buy action', async () => {
   const processing = {
     version: 'v1', order_id: orderID, ...scope, state: 'processing',
