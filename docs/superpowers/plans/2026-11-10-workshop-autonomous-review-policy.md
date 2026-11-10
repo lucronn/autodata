@@ -21,9 +21,10 @@
 
 - [x] Synchronize this plan, verification document, Issue #385, Project #8, and exact-base pre-implementation record; run the machine preflight.
 - [x] Clarify the single-maintainer review decision in the operating model, Project settings checklist, and autonomous-development documentation without altering the eight-gate policy or CODEOWNERS mapping.
-- [ ] Verify policy consistency, review the exact policy candidate independently, and merge only after required CI passes.
+- [x] Verify policy consistency, review the exact policy candidate independently, and integrate its exact tree on protected `master` only after required CI passes. The squash request advanced `master` but returned 502 before GitHub marked PR #390 merged; its duplicate PR record was closed with exact-tree evidence.
 - [x] Update the hourly Codex prompt to prioritize the next safe Workshop app task instead of repeating unchanged PR polls, while retaining exact-head AI review, CI, and no-production limits.
-- [ ] Recheck the current Workshop app and closure PRs at their exact heads, refresh strict branch checks after the policy merge, integrate when gates pass, and reconcile Issue #385/#388 and Project #8 without claiming production readiness.
+- [x] Recheck and integrate Workshop app PR #389 at its exact head after refreshing strict branch checks; it merged as `2a1ef1cda802c7fbcddbfd6bcec0dccf302e272c` without claiming production readiness.
+- [ ] Recheck and integrate documentation closure PR #387 at its exact head; reconcile Issue #385/#388 and Project #8 with confirmed outcomes.
 
 ## Task 1: Synchronized checkpoint
 
@@ -45,6 +46,7 @@
 
 **Files:** The same verification document and the existing Codex heartbeat automation; no Workshop app source file is in scope for the policy change.
 
-- [ ] Commit and push the policy candidate, obtain a separate read-only exact-head review, create a PR, and verify its required CI and live protection state before merge. User authorization supplies the one-time policy-transition decision; no GitHub approval is fabricated.
+- [x] Commit and push policy head `a442cfb`, obtain a separate read-only exact-head review (no findings), create PR #390, and verify required CI run 42796020557 and live protection. Its protected-master squash commit `fd1a877` is tree-identical to that reviewed head; GitHub returned 502 before marking the PR merged, so the duplicate PR record was closed. No GitHub approval was fabricated.
 - [x] Update the existing hourly automation prompt through the app tool, preserving its hourly schedule and quiet-notification preference; read back the saved automation configuration.
-- [ ] Refresh PR #387 and PR #389 against the new `master`, rerun exact-head checks and review as needed, then merge only if the current policy and branch protection permit. Update Issue/Project/documentation with exact outcomes.
+- [x] Refresh PR #389 against the policy base, rerun exact-head local tests and independent review, and merge only after all three jobs in CI run 42798577653 passed and live protection allowed it.
+- [ ] Refresh PR #387 against the app-integrated `master`, rerun current review and CI, then reconcile Issue/Project/documentation with exact outcomes.
