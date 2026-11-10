@@ -94,6 +94,7 @@ func TestPaidCatalogGrantErrorsAreSafe(t *testing.T) {
 type paidHTTPStore struct {
 	*memoryCatalogStore
 	protected int
+	searches  int
 	identity  PaidArticleIdentity
 	view      *CatalogArticleView
 	progress  *CatalogArticleProgress
@@ -111,6 +112,15 @@ func (c *paidHTTPStore) ConfigurationByVehicle(_ context.Context, _ Principal, i
 }
 func (c *paidHTTPStore) PaidArticleDescriptors(ctx context.Context, p Principal, id string) ([]CatalogArticle, error) {
 	return c.Articles(ctx, p, id)
+}
+func (c *paidHTTPStore) PaidArticleSearchDescriptors(ctx context.Context, p Principal, id, query string) ([]CatalogArticle, error) {
+	c.protected++
+	c.searches++
+	items, err := c.memoryCatalogStore.Articles(ctx, p, id)
+	if err != nil {
+		return nil, err
+	}
+	return filterCatalogArticleSearch(items, query), nil
 }
 func (c *paidHTTPStore) Articles(ctx context.Context, p Principal, id string) ([]CatalogArticle, error) {
 	c.protected++
@@ -201,6 +211,61 @@ func TestPaidCatalogColdReadsDoNotScheduleAndDescriptorsHaveNoBodies(t *testing.
 	}
 	if ensure.path != "" {
 		t.Fatal("observational GET scheduled work")
+	}
+}
+func TestPaidCatalogContentSearchUsesGrantAndReturnsOnlyMatchingDescriptors(t *testing.T) {
+	s, c, g := paidHTTPServer()
+	g.err = nil
+	matchID := "55555555-5555-4555-8555-555555555555"
+	otherID := "66666666-6666-4666-8666-666666666666"
+	c.PutArticle(CatalogArticle{ID: matchID, VehicleID: paidTestConfiguration, CanonicalArticleID: &matchID,
+		Title: "Service notes", Body: "Hidden compatibility body.", Document: &CatalogDocument{Blocks: []CatalogDocumentBlock{{Type: "paragraph", Text: "Inspect the ground strap."}}}})
+	c.PutArticle(CatalogArticle{ID: otherID, VehicleID: paidTestConfiguration, CanonicalArticleID: &otherID,
+		Title: "Service notes", Body: "Check the coolant level."})
+
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, httptest.NewRequest("GET", "/v1/catalog/vehicles/"+paidTestConfiguration+"/articles?q=ground", nil))
+	if w.Code != http.StatusOK {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	var result CatalogArticlesResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if g.calls != 1 || c.searches != 1 || len(result.Items) != 1 || result.Items[0].ID != matchID {
+		t.Fatalf("grant calls=%d searches=%d items=%+v", g.calls, c.searches, result.Items)
+	}
+	if result.Items[0].Body != "" || result.Items[0].Document != nil || len(result.Items[0].Steps) != 0 || len(result.Items[0].Images) != 0 || strings.Contains(w.Body.String(), "ground strap") {
+		t.Fatal("paid content leaked in search descriptors", w.Body.String())
+	}
+	w = httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, httptest.NewRequest("GET", "/v1/catalog/vehicles/"+paidTestConfiguration+"/articles?q=service", nil))
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), matchID) || !strings.Contains(w.Body.String(), otherID) {
+		t.Fatal("title search did not preserve paid descriptor matches", w.Code, w.Body.String())
+	}
+
+	g.err = ErrVehicleGrantRevoked
+	c.protected, c.searches = 0, 0
+	w = httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, httptest.NewRequest("GET", "/v1/catalog/vehicles/"+paidTestConfiguration+"/articles?q=ground", nil))
+	if w.Code != http.StatusForbidden || c.protected != 0 || c.searches != 0 {
+		t.Fatalf("revoked search read protected content: status=%d protected=%d searches=%d", w.Code, c.protected, c.searches)
+	}
+}
+func TestPaidCatalogContentSearchRejectsUnboundedQueriesBeforeCatalogRead(t *testing.T) {
+	s, c, g := paidHTTPServer()
+	g.err = nil
+	for _, suffix := range []string{
+		"?q=one&q=two",
+		"?q=" + strings.Repeat("a", 121),
+		"?q=one+two+three+four+five+six+seven+eight+nine",
+	} {
+		c.protected, c.searches = 0, 0
+		w := httptest.NewRecorder()
+		s.Handler().ServeHTTP(w, httptest.NewRequest("GET", "/v1/catalog/vehicles/"+paidTestConfiguration+"/articles"+suffix, nil))
+		if w.Code != http.StatusUnprocessableEntity || c.protected != 0 || c.searches != 0 {
+			t.Fatalf("query %q: status=%d protected=%d searches=%d", suffix, w.Code, c.protected, c.searches)
+		}
 	}
 }
 func TestPaidCatalogIndexReadinessHydration(t *testing.T) {

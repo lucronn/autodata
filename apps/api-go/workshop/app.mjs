@@ -30,11 +30,18 @@ const $ = (id) => document.getElementById(id);
 const names = ["year", "make", "model", "configuration"];
 const rows = Object.fromEntries(names.map((name) => [name, []]));
 const navigation = new NavigationGeneration();
+const searchNavigation = new NavigationGeneration();
 const checkout = createCheckout();
 let vehicle = null,
   articles = [],
   indexComplete = false,
   indexFailed = false,
+  searchItems = null,
+  searchQuery = "",
+  searchPending = false,
+  searchComplete = false,
+  searchError = false,
+  searchTimer = null,
   currentArticle = null,
   renderedRevision = "",
   sourceURL = "",
@@ -106,6 +113,14 @@ function show(id) {
 }
 function clearProtected() {
   document.title = "AutoData — The workshop reference";
+  searchNavigation.clear();
+  clearTimeout(searchTimer);
+  searchItems = null;
+  searchQuery = "";
+  searchPending = false;
+  searchComplete = false;
+  searchError = false;
+  searchTimer = null;
   articles = [];
   indexComplete = false;
   indexFailed = false;
@@ -423,7 +438,8 @@ async function loadArticles(g, articleID = "") {
         access = "owned";
         renderPurchase();
         show("catalog");
-        renderArticles();
+        if ($("search").value.trim()) scheduleArticleSearch();
+        else renderArticles();
       },
     },
   );
@@ -447,11 +463,51 @@ async function loadArticles(g, articleID = "") {
   }
 }
 
+function scheduleArticleSearch() {
+  const query = $("search").value.trim();
+  searchNavigation.clear();
+  clearTimeout(searchTimer);
+  searchTimer = null;
+  searchQuery = query;
+  searchItems = null;
+  searchPending = Boolean(query && vehicle?.id && access === "owned");
+  searchComplete = false;
+  searchError = false;
+  renderArticles();
+  if (!searchPending) return;
+  const generation = searchNavigation.next();
+  const vehicleID = vehicle.id;
+  searchTimer = setTimeout(() => {
+    searchTimer = null;
+    void requestJSON(`${articlePath()}?q=${encodeURIComponent(query)}`, {
+      signal: generation.signal,
+    }).then((result) => {
+      if (!generation.current() || vehicle?.id !== vehicleID || $("search").value.trim() !== query) return;
+      searchItems = Array.isArray(result.items) ? result.items : [];
+      searchComplete = result.complete === true;
+      searchPending = false;
+      renderArticles();
+    }).catch((error) => {
+      if (!generation.current() || vehicle?.id !== vehicleID) return;
+      if ([401, 403, 410].includes(error.status)) {
+        // Reuse the paid purchase boundary: a changed grant must not expose
+        // cached rows or turn an already-paid order into another Buy action.
+        void operation(async () => { throw error; });
+        return;
+      }
+      searchPending = false;
+      searchError = true;
+      renderArticles();
+    });
+  }, 300);
+}
+
 function renderArticles() {
   $("vehicle-caption").textContent =
     quote?.configuration_label || $("purchase-selection").textContent;
   const query = $("search").value.trim();
-  const items = filterArticles(articles, query);
+  const searching = Boolean(query && searchQuery === query);
+  const items = searching ? (searchItems || []) : filterArticles(articles, query);
   const list = element("ul", undefined, "article-list");
   list.setAttribute("role", "list");
   for (const item of items) {
@@ -487,10 +543,14 @@ function renderArticles() {
     list.append(li);
   }
   $("articles").replaceChildren(list);
-  $("catalog-count").textContent = `${items.length} articles`;
-  $("no-results").textContent = indexFailed
+  $("catalog-count").textContent = searching && searchPending ? "Searching articles…" : `${items.length} articles`;
+  $("no-results").textContent = searching && searchError
+    ? "Article search is unavailable. Try again."
+    : searching && searchPending
+      ? "Searching articles…"
+      : indexFailed
     ? "This article index could not be prepared. Check the status above."
-    : !indexComplete
+    : !(searching ? searchComplete : indexComplete)
       ? "This article index is still being prepared. Check again shortly."
       : query && articles.length > 0
         ? "No articles match this search. Try a component name or a shorter phrase."
@@ -1284,7 +1344,7 @@ $("check-order").addEventListener("click", () => {
 });
 $("search").addEventListener("input", () => {
   updateURL({ replace: true });
-  renderArticles();
+  scheduleArticleSearch();
 });
 $("retry").addEventListener("click", () => retryAction?.());
 $("cancel").addEventListener("click", () => {

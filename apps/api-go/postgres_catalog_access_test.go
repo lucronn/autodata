@@ -254,6 +254,41 @@ func (f *paidFixture) path(suffix string) string {
 	return "/v1/catalog/vehicles/" + f.configuration + "/articles" + suffix
 }
 
+func (f *paidFixture) contentSearch(owner int, query string) CatalogArticlesResponse {
+	f.t.Helper()
+	var response CatalogArticlesResponse
+	if err := json.Unmarshal(f.expect(owner, "GET", f.path("?q="+url.QueryEscape(query)), "", 200), &response); err != nil {
+		f.t.Fatal("content search JSON invalid:", err)
+	}
+	for _, item := range response.Items {
+		if item.Body != "" || item.Document != nil || len(item.Steps) != 0 || len(item.Images) != 0 || item.SourceReview != nil || item.CanonicalArticleID == nil || *item.CanonicalArticleID != item.ID {
+			f.t.Fatal("content search returned a content-bearing or unmanaged descriptor")
+		}
+	}
+	return response
+}
+
+func paidFixtureContentTerm(t *testing.T, article CatalogArticle) string {
+	t.Helper()
+	metadata := strings.ToLower(article.Title + " " + article.Kind + " " + article.Component)
+	for _, word := range regexp.MustCompile(`[A-Za-z0-9]{4,}`).FindAllString(catalogArticleSearchText(article), -1) {
+		if !strings.Contains(metadata, strings.ToLower(word)) {
+			return word
+		}
+	}
+	t.Fatal("fixture article has no content-only search term")
+	return ""
+}
+
+func paidSearchHas(response CatalogArticlesResponse, id, origin string) bool {
+	for _, item := range response.Items {
+		if item.ID == id && item.ContentOrigin != nil && *item.ContentOrigin == origin {
+			return true
+		}
+	}
+	return false
+}
+
 // Redact only capability strings. Unexpected keys/private source strings remain
 // visible in the permitted JSON/HTML projection for independent leak detection.
 var paidObservationMediaURL = regexp.MustCompile(`/v1/catalog/images/[A-Za-z0-9_.-]+`)
@@ -480,6 +515,7 @@ func TestPostgresPaidCatalogGrantBeforeWork(t *testing.T) {
 	for _, suffix := range []string{"", "/" + f.article, "/" + f.article + "/source"} {
 		f.expect(0, "GET", f.path(suffix), "", 403)
 	}
+	f.expect(0, "GET", f.path("?q=repair"), "", 403)
 	f.expect(0, "POST", f.path("/"+f.article+"/prepare"), "{}", 403)
 	f.image(0, "/v1/catalog/images/invalid-v2-token", 404)
 	f.check("unpaid_denied_before_work", paidWorkUnchanged(selectors, f.snapshot("unpaid")))
@@ -522,6 +558,7 @@ func TestPostgresPaidCatalogExactScopeAndOwnerIsolation(t *testing.T) {
 		}
 	}
 	f.expect(1, "GET", f.path(""), "", 403)
+	f.expect(1, "GET", f.path("?q=repair"), "", 403)
 	f.check("exact_scope_grants", len(ids) == 2 && ids[f.article] && ids[f.other])
 	for _, id := range []string{f.vehicle, f.adjacent, f.regionConfiguration} {
 		want := 403
@@ -531,6 +568,7 @@ func TestPostgresPaidCatalogExactScopeAndOwnerIsolation(t *testing.T) {
 		f.expect(0, "GET", "/v1/catalog/vehicles/"+id+"/articles", "", want)
 	}
 	f.expect(0, "GET", f.path("?region=CA"), "", 404)
+	f.expect(0, "GET", f.path("?region=CA&q=repair"), "", 404)
 	var adjacentArticle string
 	if err := f.pool.QueryRow(context.Background(), `SELECT canonical_article_id::text FROM canonical_articles WHERE vehicle_configuration_id::text=$1 AND provider_slug=$2`, f.adjacent, f.provider).Scan(&adjacentArticle); err != nil {
 		t.Fatal(err)
@@ -542,6 +580,7 @@ func TestPostgresPaidCatalogExactScopeAndOwnerIsolation(t *testing.T) {
 	f.check("canonical_only", true)
 	f.exec(`UPDATE entitlements SET status='revoked',revoked_at=now(),revoke_reason='fixture' WHERE commerce_order_id=$1::uuid`, order)
 	f.expect(0, "GET", f.path(""), "", 403)
+	f.expect(0, "GET", f.path("?q=repair"), "", 403)
 	f.exec(`UPDATE entitlements SET customer_account_id=NULL,configuration_id=NULL,region=NULL,commerce_order_id=NULL,status='active',revoked_at=NULL WHERE commerce_order_id=$1::uuid`, order)
 	f.expect(0, "GET", f.path(""), "", 403)
 	f.check("revoked_and_legacy_denied", true)
@@ -586,10 +625,16 @@ func TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse(t *testing.T) {
 	f.check("actual_model_response_held", held["response_captured"] == true)
 	source := f.detail(0)
 	f.check("source_readable_during_hold", r3Origin(source, "source") && source.Processing != nil)
+	sourceTerm := paidFixtureContentTerm(t, source)
+	sourceSearch := f.contentSearch(0, sourceTerm)
+	f.check("source_content_search_current_projection", paidSearchHas(sourceSearch, f.article, "source"))
 	f.snapshot("source_held")
 	f.control.controlCall("POST", "release-model")
 	f.control.wait("snapshot", func(m map[string]any) bool { return r3Int(r3Map(m, "counts"), "published_revisions") == 1 })
 	first := f.detail(0)
+	canonicalTerm := paidFixtureContentTerm(t, first)
+	canonicalSearch := f.contentSearch(0, canonicalTerm)
+	f.check("canonical_content_search_current_projection", paidSearchHas(canonicalSearch, f.article, "canonical"))
 	before := f.snapshot("published")
 	second := f.detail(1)
 	f.expect(1, "POST", f.path("/"+f.article+"/prepare"), "{}", 200)
@@ -729,6 +774,9 @@ func TestPostgresPaidCatalogHistoricalSourceAndRights(t *testing.T) {
 	f.controlPaid("refresh-source")
 	f.control.wait("snapshot", func(s map[string]any) bool { return r3Int(r3Map(s, "counts"), "published_revisions") == 2 })
 	fresh := f.detail(0)
+	contentTerm := paidFixtureContentTerm(t, fresh)
+	searchBefore := f.contentSearch(0, contentTerm)
+	f.check("content_search_before_rights_change", fresh.ContentOrigin != nil && paidSearchHas(searchBefore, f.article, *fresh.ContentOrigin))
 	raw = f.expect(0, "GET", sourcePath, "", 200)
 	if json.Unmarshal(raw, &source) != nil {
 		t.Fatal("historical JSON invalid")
@@ -756,6 +804,11 @@ func TestPostgresPaidCatalogHistoricalSourceAndRights(t *testing.T) {
 	for _, descriptor := range index.Items {
 		if descriptor.ID == f.article {
 			t.Fatal("withdrawn descriptor exposed by paid index")
+		}
+	}
+	for _, descriptor := range f.contentSearch(0, contentTerm).Items {
+		if descriptor.ID == f.article {
+			t.Fatal("withdrawn descriptor exposed by paid content search")
 		}
 	}
 	f.expect(0, "GET", f.path("/"+f.article), "", 410)

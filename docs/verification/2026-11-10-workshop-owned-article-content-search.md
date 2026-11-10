@@ -14,27 +14,44 @@ call site and does not satisfy this feature.
 
 Acceptance:
 
-- [ ] The existing protected article-index route accepts an optional bounded
+- [x] The existing protected article-index route accepts an optional bounded
   `q` search. An empty query retains the current metadata-only index behavior.
-- [ ] After the existing exact-configuration grant check, a nonempty query can
+- [x] After the existing exact-configuration grant check, a nonempty query can
   match words in the current readable document, or legacy body/steps when no
   document is rendered, and returns metadata descriptors only—no text snippets,
   document, steps, images, source review, or provider identifiers.
 - [ ] Current lifecycle rights, quarantine, takedown, and revision selection
   remain in force; wrong-configuration, unpurchased, and revoked requests
-  return the existing protected-route error behavior.
-- [ ] The Workshop search box requests protected content search for nonempty
+  return the existing protected-route error behavior. The same SQL predicates
+  are used and fixture assertions were added, but isolated Postgres execution
+  is still pending.
+- [x] The Workshop search box requests protected content search for nonempty
   queries, ignores stale responses after typing or vehicle changes, and never
   fetches every article detail to emulate search in the browser.
-- [ ] Pending/incomplete index results are not presented as definitive no-match;
+- [x] Pending/incomplete index results are not presented as definitive no-match;
   result counts and status remain understandable to keyboard and screen-reader
   users.
 - [ ] Red-first API and actual Workshop-flow tests cover a content-only match,
   title match, wrong vehicle, denied/revoked grant, lifecycle exclusion, stale
-  response, and incomplete index.
+  response, and incomplete index. Local tests pass; lifecycle fixture assertions
+  still need the required guarded runtime.
 - [ ] Full relevant suites, exact-head independent review, current CI, and live
   branch protection pass before merge. Live owned-vehicle purchase/search
   acceptance is separately required once the origin is healthy.
+
+Local verification on 2026-11-10:
+
+- `GOCACHE=/tmp/autodata-workshop-go-cache /home/corp/.local/go/bin/go test ./...`
+  in `apps/api-go`: passed. The isolated paid Postgres fixture cases are skipped
+  locally because their guarded runtime and DSN are absent; the new fixture
+  assertions must run in the required integration gate.
+- `node --test --test-reporter=tap workshop-client.test.mjs workshop-demo.test.mjs`
+  in `apps/api-go`: 259 passed, 0 failed, 0 skipped. Actual search input,
+  stale-query/vehicle responses, revoked-access, paid no-repay handling, and
+  incomplete-result paths are covered.
+- No live browser acceptance: `https://autodata.cars.tk/workshop/` still returns
+  502, tracked separately in Issue #391. No production service or payment
+  setting was changed for this feature.
 
 This is Workshop app work, not an architecture or database-schema redesign.
 It does not change checkout, price, grant issuance, production service state,

@@ -166,17 +166,42 @@ func (s *Server) listCatalogConfigurations(response http.ResponseWriter, request
 
 func (s *Server) listCatalogArticles(response http.ResponseWriter, request *http.Request, principal Principal) {
 	vehicleID := request.PathValue("vehicle_id")
+	queryValues := request.URL.Query()["q"]
+	if len(queryValues) > 1 {
+		writeAPIError(response, request, http.StatusUnprocessableEntity, "INVALID_REQUEST", "article search query is invalid", false)
+		return
+	}
+	query := ""
+	if len(queryValues) == 1 {
+		query = strings.TrimSpace(queryValues[0])
+		if len([]rune(query)) > 120 || len(strings.Fields(query)) > 8 {
+			writeAPIError(response, request, http.StatusUnprocessableEntity, "INVALID_REQUEST", "article search query is invalid", false)
+			return
+		}
+	}
 	var items []CatalogArticle
 	var err error
 	if s.paidCatalogEnabled() {
-		repository, ok := s.catalog.(paidArticleDescriptorStore)
-		if !ok {
-			s.writePaidCatalogError(response, request, ErrVehicleGrantUnavailable)
-			return
+		if query == "" {
+			repository, ok := s.catalog.(paidArticleDescriptorStore)
+			if !ok {
+				s.writePaidCatalogError(response, request, ErrVehicleGrantUnavailable)
+				return
+			}
+			items, err = repository.PaidArticleDescriptors(request.Context(), principal, vehicleID)
+		} else {
+			repository, ok := s.catalog.(paidArticleSearchStore)
+			if !ok {
+				s.writePaidCatalogError(response, request, ErrVehicleGrantUnavailable)
+				return
+			}
+			items, err = repository.PaidArticleSearchDescriptors(request.Context(), principal, vehicleID, query)
 		}
-		items, err = repository.PaidArticleDescriptors(request.Context(), principal, vehicleID)
 	} else {
 		items, err = s.catalog.Articles(request.Context(), principal, vehicleID)
+		if err == nil && query != "" {
+			items = filterCatalogArticleSearch(items, query)
+		}
 	}
 	if err != nil {
 		s.writeCatalogError(response, request, err)

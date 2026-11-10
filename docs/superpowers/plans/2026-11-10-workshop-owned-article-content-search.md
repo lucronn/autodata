@@ -14,8 +14,8 @@
 
 ## Concrete todo
 
-- [ ] Prove the paid API access/content boundary with red-first tests and implement bounded server-side search.
-- [ ] Wire the real Workshop search interaction with abortable, debounced requests and test stale/incomplete states.
+- [x] Prove the paid API access/content boundary with red-first tests and implement bounded server-side search (isolated Postgres fixture execution remains a CI gate).
+- [x] Wire the real Workshop search interaction with abortable, debounced requests and test stale/incomplete states.
 - [ ] Run exact-head verification, independent review, current CI, and branch protection before integration.
 
 ## Constraints
@@ -35,19 +35,19 @@
 
 **Files:** `apps/api-go/catalog_access_test.go`, `apps/api-go/postgres_catalog_access_test.go`, `apps/api-go/catalog_http.go`, `apps/api-go/catalog_access.go`, `apps/api-go/catalog_lifecycle.go` (only if a helper belongs there), and `apps/api-go/main.go` only if route wiring requires it.
 
-- [ ] Add failing tests to the existing protected article-index handler for `q` matching content-only text after a valid grant, preserving metadata-only output, and denying wrong-configuration/unpurchased/revoked access.
-- [ ] Add failing store/fixture tests for current source/canonical revision selection and lifecycle exclusion; ensure a hidden document label alone cannot match.
-- [ ] Implement bounded `q` parsing and a paid-store search method that streams current eligible projection rows for the selected configuration, searches only visible fields, and emits existing descriptor shape.
-- [ ] Run focused Go tests. Do not expand the grant or checkout contract.
+- [x] Add failing tests to the existing protected article-index handler for `q` matching content-only text after a valid grant, preserving metadata-only output, and denying wrong-configuration/unpurchased/revoked access.
+- [x] Add store/fixture tests for current source/canonical revision selection and lifecycle exclusion; ensure a hidden document label alone cannot match. The isolated Postgres fixture cannot run in this local checkout and remains required CI evidence.
+- [x] Implement bounded `q` parsing and a paid-store search method that streams current eligible projection rows for the selected configuration, searches only visible fields, and emits existing descriptor shape.
+- [x] Run focused and full local Go tests. Do not expand the grant or checkout contract.
 
 ### Task 2: Wire actual Workshop search interaction
 
 **Files:** `apps/api-go/workshop/app.mjs`, `apps/api-go/workshop-client.test.mjs`, and `apps/api-go/workshop/catalog.mjs` only if a pure helper is needed.
 
-- [ ] Add red-first actual-flow tests: content-only term makes one protected search request and displays the server match; a later query or vehicle change suppresses stale results; incomplete index does not claim a definitive no-match.
-- [ ] On nonempty search, debounce a request to the existing index route with `q`; abort superseded requests without aborting the article-index polling generation. Keep metadata-only local filtering only for the empty-query case and preserve article links.
-- [ ] Announce the settled result count/status politely without per-keystroke live-region noise. Retain the visible label, keyboard operation, and existing error boundary.
-- [ ] Run Workshop Node tests and inspect the keyboard/search states in a local browser where feasible.
+- [x] Add red-first actual-flow tests: content-only term makes one protected search request and displays the server match; a later query suppresses stale results; incomplete index does not claim a definitive no-match. The request also guards selected-vehicle changes.
+- [x] On nonempty search, debounce a request to the existing index route with `q`; abort superseded requests without aborting the article-index polling generation. Keep metadata-only local filtering only for the empty-query case and preserve article links.
+- [x] Announce the settled result count/status politely without per-keystroke live-region noise. Retain the visible label, keyboard operation, and existing error boundary.
+- [x] Run Workshop Node tests. The live Workshop origin is 502 (Issue #391), so browser acceptance waits for a healthy origin.
 
 ### Task 3: Verify and integrate
 

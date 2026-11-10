@@ -26,6 +26,9 @@ type PaidArticleIdentity struct {
 type paidArticleDescriptorStore interface {
 	PaidArticleDescriptors(context.Context, Principal, string) ([]CatalogArticle, error)
 }
+type paidArticleSearchStore interface {
+	PaidArticleSearchDescriptors(context.Context, Principal, string, string) ([]CatalogArticle, error)
+}
 type paidArticleIdentityStore interface {
 	PaidArticleIdentity(context.Context, string, string) (PaidArticleIdentity, error)
 }
@@ -106,6 +109,54 @@ func (s *postgresCatalogStore) PaidArticleDescriptors(ctx context.Context, _ Pri
 		var article CatalogArticle
 		if err = rows.Scan(&article.ID, &article.Title, &article.Kind, &article.Component, &article.SourceRevisionID, &article.CanonicalRevisionID, &article.ContentOrigin, &article.Availability, &article.ReviewStatus); err != nil {
 			return nil, err
+		}
+		article.CanonicalArticleID = stringPointer(article.ID)
+		article.VehicleID = configurationID
+		article.Images = []CatalogImage{}
+		article.Complete = article.CanonicalRevisionID != nil
+		article.ContentStatus = "list_only"
+		if article.Complete {
+			article.ContentStatus = "content_complete"
+		}
+		result = append(result, article)
+	}
+	return result, rows.Err()
+}
+
+// Paid search keeps the descriptor response metadata-only while comparing the
+// current selected projection inside the protected server boundary.
+func (s *postgresCatalogStore) PaidArticleSearchDescriptors(ctx context.Context, _ Principal, configurationID, query string) ([]CatalogArticle, error) {
+	if !commerceUUID(configurationID) {
+		return nil, ErrCatalogNotFound
+	}
+	rows, err := s.pool.Query(ctx, `SELECT a.canonical_article_id::text,COALESCE(a.title,''),COALESCE(a.kind,''),COALESCE(a.component,''),c.source_revision_id::text,c.canonical_revision_id::text,c.content_origin,c.availability,c.review_status,c.document,COALESCE(c.body,''),c.steps FROM canonical_articles a JOIN catalog_article_current c USING(canonical_article_id) JOIN source_snapshots descriptor ON descriptor.source_snapshot_id=a.descriptor_source_snapshot_id WHERE a.vehicle_configuration_id::text=$1 AND `+lifecycleEligibleSQL+` AND c.takedown_status='active' AND descriptor.takedown_status='active' ORDER BY CASE a.provider_slug WHEN 'bankone' THEN 0 ELSE 1 END,a.source_sort_order NULLS LAST,a.canonical_article_id`, configurationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := []CatalogArticle{}
+	for rows.Next() {
+		var article CatalogArticle
+		var document, steps []byte
+		var body string
+		if err = rows.Scan(&article.ID, &article.Title, &article.Kind, &article.Component, &article.SourceRevisionID, &article.CanonicalRevisionID, &article.ContentOrigin, &article.Availability, &article.ReviewStatus, &document, &body, &steps); err != nil {
+			return nil, err
+		}
+		searchable := CatalogArticle{Title: article.Title, Kind: article.Kind, Component: article.Component, Body: body}
+		if len(document) > 0 {
+			var parsed CatalogDocument
+			if err = json.Unmarshal(document, &parsed); err != nil {
+				return nil, err
+			}
+			searchable.Document = &parsed
+		}
+		if len(steps) > 0 {
+			if err = json.Unmarshal(steps, &searchable.Steps); err != nil {
+				return nil, err
+			}
+		}
+		if len(filterCatalogArticleSearch([]CatalogArticle{searchable}, query)) == 0 {
+			continue
 		}
 		article.CanonicalArticleID = stringPointer(article.ID)
 		article.VehicleID = configurationID

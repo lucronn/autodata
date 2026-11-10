@@ -891,6 +891,7 @@ test('paid access missing keeps status action without inviting repayment', async
 
 function paidPurchaseLifecycleHarness(selectionErrors, { realArticleIndex = false, afterPartial = null, articleReadResponses = null, articleOpenError = null, orderResponses = null } = {}) {
   const navigation = new NavigationGeneration();
+  const searchNavigation = new NavigationGeneration();
   const nodes = new Map();
   const $ = id => {
     if (!nodes.has(id)) nodes.set(id, {
@@ -914,13 +915,15 @@ function paidPurchaseLifecycleHarness(selectionErrors, { realArticleIndex = fals
   let checkoutStarts = 0, orderReads = 0, selections = 0;
   const context = {
     $, location, history, URLSearchParams, URL, uuid, validScope, validQuote,
-    purchaseConfiguration, configurationLabel, navigation,
+    purchaseConfiguration, configurationLabel, navigation, searchNavigation,
     document: { title: '', body: { dataset: {} }, visibilityState: 'visible', createTextNode: text => ({ textContent: text }) },
     element: (tag, text) => ({ tag, textContent: text }),
     names: ['year', 'make', 'model', 'configuration'],
     vehicle: { id: scope.configuration_id, region: scope.region }, quote,
     merchant: merchantFixture(), access: 'missing', currentOrder: '', paidOrder: null, unconfirmedOrder: null,
-    articles: [],
+    articles: [], searchItems: null, searchQuery: '', searchPending: false,
+    searchComplete: false, searchError: false, searchTimer: null,
+    clearTimeout() {},
     sessionEstablished: true, signingIn: false,
     session: { state: { authenticated: true, ready: true, csrf: 'test-csrf' },
       async bootstrap() {}, clear() {
@@ -1512,6 +1515,7 @@ test('stale order status 404 does not clear newer checkout or action', async () 
 
 function articleIndexHarness(responses) {
   const navigation = new NavigationGeneration();
+  const searchNavigation = new NavigationGeneration();
   const nodes = new Map();
   function element(tag, text = '', className = '') {
     return { tag, textContent: text, className, hidden: false, value: '', dataset: {}, attributes: {}, children: [], events: {},
@@ -1526,12 +1530,19 @@ function articleIndexHarness(responses) {
     if (!nodes.has(id)) nodes.set(id, element('div'));
     return nodes.get(id);
   };
-  const statuses = [], updates = [], opened = [], requests = [], results = [];
+  const statuses = [], updates = [], opened = [], requests = [], results = [], shown = [], clearedOrders = [];
   const context = {
     $, element, URL, location: { href: 'https://cars.example/workshop?vehicle=B' },
-    document: { body: { dataset: {} } },
-    quote: null, articles: [], indexComplete: false, indexFailed: false, access: '', retryAction: null, filterArticles,
-    stage() {}, renderPurchase() {}, show() {},
+    document: { title: '', body: { dataset: {} } },
+    navigation, quote: null, vehicle: { id: 'B', region: 'US' }, articles: [], indexComplete: false, indexFailed: false, access: '', retryAction: null, filterArticles,
+    searchNavigation, searchItems: null, searchQuery: '', searchPending: false, searchComplete: false, searchError: false, searchTimer: null,
+    currentArticle: null, renderedRevision: '', sourceData: null, sourceURL: '', sourceRevision: '',
+    renewalUsed: false, renewal: null, libraryItems: [], libraryCursor: null,
+    currentOrder: '', paidOrder: null, unconfirmedOrder: null, viewGeneration: null,
+    clearOrderRoute(id) { clearedOrders.push(id); },
+    session: { clear() {}, async bootstrap() {} },
+    setTimeout(callback) { callback(); return 1; }, clearTimeout() {}, updateURL() {},
+    stage() {}, renderPurchase() {}, show(id) { shown.push(id); },
     articlePath: () => '/v1/catalog/vehicles/B/articles',
     requestJSON(path, options) {
       requests.push({ path, signal: options.signal });
@@ -1553,16 +1564,17 @@ function articleIndexHarness(responses) {
     },
     loadArticle: async (id, generation) => opened.push({ id, generation }),
     openArticle: id => opened.push({ id }),
-    operation: callback => callback(navigation.next()),
     recordStatus: (text, options) => statuses.push({ text, ...options }),
   };
   runInNewContext(
     appSection('function status(', 'function stage(') +
+    appSection('function clearProtected()', 'function updateURL(') +
     appSection('async function loadArticles(', 'const assetID =') +
+    appSection('$("search").addEventListener("input"', '$("retry").addEventListener') +
     '\nconst actualStatus = status; status = (text, options = {}) => { recordStatus(text, options); actualStatus(text, options); };',
     context,
   );
-  return { context, $, navigation, statuses, updates, opened, requests, results,
+  return { context, $, navigation, statuses, updates, opened, requests, results, shown, clearedOrders,
     load: (article = '', generation = navigation.next()) => context.loadArticles(generation, article) };
 }
 
@@ -1694,6 +1706,111 @@ test('article index empty states distinguish pending, completed empty and no sea
   search.context.renderArticles();
   assert.equal(search.$('no-results').hidden, false);
   assert.match(search.$('no-results').textContent, /no articles match this search/i);
+});
+
+test('Workshop input searches owned article content through protected index query', async () => {
+  const h = articleIndexHarness([
+    indexResponse('completed', { complete: true, items: [{ id: 'title-only', title: 'Service notes' }] }),
+    indexResponse('completed', { complete: true, items: [{ id: 'content-hit', title: 'Service notes', kind: 'procedure' }] }),
+  ]);
+  await h.load();
+  h.$('search').value = 'ground strap';
+  h.$('search').events.input();
+  await new Promise(resolve => setImmediate(resolve));
+
+  assert.equal(h.requests[1].path, '/v1/catalog/vehicles/B/articles?q=ground%20strap');
+  const list = h.$('articles').children[0];
+  assert.deepEqual(list.children.map(row => row.children[0].children[0].textContent), ['Service notes']);
+  assert.equal(new URL(list.children[0].children[0].href, 'https://cars.example').searchParams.get('article'), 'content-hit');
+  assert.equal(h.$('catalog-count').textContent, '1 articles');
+});
+
+test('Workshop content search ignores a stale response after a newer query', async () => {
+  let resolveOld;
+  const h = articleIndexHarness([
+    indexResponse('completed', { complete: true, items: [{ id: 'index', title: 'Service notes' }] }),
+    () => new Promise(resolve => { resolveOld = resolve; }),
+    indexResponse('completed', { complete: true, items: [{ id: 'new', title: 'Battery service' }] }),
+  ]);
+  await h.load();
+  h.$('search').value = 'old';
+  h.$('search').events.input();
+  h.$('search').value = 'battery';
+  h.$('search').events.input();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.requests[1].signal.aborted, true);
+  assert.equal(h.$('articles').children[0].children[0].children[0].children[0].textContent, 'Battery service');
+  resolveOld(indexResponse('completed', { complete: true, items: [{ id: 'old', title: 'Old result' }] }));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.$('articles').children[0].children[0].children[0].children[0].textContent, 'Battery service');
+});
+
+test('Workshop content search cannot publish after selected vehicle changes', async () => {
+  let resolveOld;
+  const h = articleIndexHarness([
+    indexResponse('completed', { complete: true, items: [{ id: 'private-b', title: 'Vehicle B repair' }] }),
+    () => new Promise(resolve => { resolveOld = resolve; }),
+  ]);
+  await h.load();
+  h.$('search').value = 'repair';
+  h.$('search').events.input();
+  h.context.vehicle = { id: 'C', region: 'US' };
+  h.context.clearProtected();
+  resolveOld(indexResponse('completed', { complete: true, items: [{ id: 'private-b', title: 'Vehicle B repair' }] }));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.requests[1].signal.aborted, true);
+  assert.equal(h.$('articles').children.length, 0);
+  assert.equal(h.context.searchItems, null);
+});
+
+test('Workshop content search revocation clears private rows and returns to welcome', async () => {
+  const denied = Object.assign(new Error('Grant revoked'), { status: 403 });
+  const h = articleIndexHarness([
+    indexResponse('completed', { complete: true, items: [{ id: 'private', title: 'Private repair' }] }),
+    () => Promise.reject(denied),
+  ]);
+  await h.load();
+  h.$('search').value = 'repair';
+  h.$('search').events.input();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.context.articles.length, 0);
+  assert.equal(h.$('articles').children.length, 0);
+  assert.equal(h.$('catalog-count').textContent, '');
+  assert.equal(h.shown.at(-1), 'welcome');
+  assert.match(h.statuses.at(-1).text, /Grant revoked/i);
+});
+
+test('Workshop search grant revocation keeps a paid buyer out of a second checkout', async () => {
+  const revoked = Object.assign(new Error('Grant revoked'), { status: 403, code: 'ENTITLEMENT_REVOKED' });
+  const h = articleIndexHarness([
+    indexResponse('completed', { complete: true, items: [{ id: 'private', title: 'Private repair' }] }),
+    () => Promise.reject(revoked),
+  ]);
+  await h.load();
+  h.context.currentOrder = 'paid-order';
+  h.context.paidOrder = { id: 'paid-order', configuration_id: 'B', region: 'US' };
+  h.$('search').value = 'repair';
+  h.$('search').events.input();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.context.access, 'revoked');
+  assert.equal(h.context.currentOrder, '');
+  assert.equal(h.context.paidOrder, null);
+  assert.deepEqual(h.clearedOrders, ['paid-order']);
+  assert.equal(h.$('articles').children.length, 0);
+  assert.match(h.statuses.at(-1).text, /revoked.*support/i);
+});
+
+test('Workshop content search partial response never claims no matches', async () => {
+  const h = articleIndexHarness([
+    indexResponse('pending', { items: [{ id: 'index', title: 'Service notes' }] }),
+    indexResponse('pending', { items: [] }),
+  ]);
+  await h.load();
+  h.$('search').value = 'ground strap';
+  h.$('search').events.input();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.match(h.$('no-results').textContent, /still being prepared/i);
+  assert.doesNotMatch(h.$('no-results').textContent, /no articles match/i);
 });
 
 test('completed empty article index stays empty when a saved search query is present', async () => {
@@ -1908,7 +2025,7 @@ function articleMediaHarness(overrides = {}) {
     'welcome', 'reader', 'catalog', 'library', 'source-review-link', 'reader-vehicle', 'reader-engine', 'purchase-selection',
     'article-kind', 'article-reference', 'source-review-load', 'check-order'];
   for (const id of ids) { const node = new ArticleMediaNode('div'); nodes.set(id, node); body.append(node); }
-  const navigation = new NavigationGeneration(), g = navigation.next();
+  const navigation = new NavigationGeneration(), searchNavigation = new NavigationGeneration(), g = navigation.next();
   const shows = [], statuses = [];
   const context = {
     URL, uuid, articlePresentation, localImageURL, sourceReferenceURL, processingArticle, readableArticle,
@@ -1916,7 +2033,9 @@ function articleMediaHarness(overrides = {}) {
       createDocumentFragment: () => new ArticleMediaNode('#fragment') },
     location: { origin: 'https://cars.example' },
     $: id => { assert.ok(nodes.has(id), `known DOM node ${id}`); return nodes.get(id); },
-    navigation, currentArticle: null, renderedRevision: '', sourceData: null, sourceURL: '', sourceRevision: 0,
+    navigation, searchNavigation, searchItems: null, searchQuery: '', searchPending: false,
+    searchComplete: false, searchError: false, searchTimer: null, clearTimeout() {},
+    currentArticle: null, renderedRevision: '', sourceData: null, sourceURL: '', sourceRevision: 0,
     renewalUsed: false, renewal: null, renewalFailures: new Set(), articles: [], libraryItems: [], libraryCursor: null,
     currentOrder: '',
     access: 'granted', quote: { configuration_label: '2005 Toyota' }, vehicle: { region: 'US' },
