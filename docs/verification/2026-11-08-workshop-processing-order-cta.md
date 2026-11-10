@@ -10,7 +10,7 @@ Acceptance and verification:
 - [x] Validated `creating`, `open`, and `reconciliation_required` results remain no-repay and prevent direct repeat checkout while unresolved.
 - [x] Paid, 404, expired, canceled, and revoked transitions preserve the existing paid-access and terminal behaviors.
 - [x] Focused/full Workshop Node tests, Go API tests, syntax/diff checks, independent exact-head review, and required CI pass before integration.
-- [ ] Reconcile the written CODEOWNERS review requirement with the missing GitHub review on the merged PR before marking Project #8 Done or merging the documentation closure.
+- [x] Reconcile the written CODEOWNERS review requirement with the missing GitHub review on the merged PR before marking Project #8 Done or merging the documentation closure. The single-maintainer rule reached protected `master` at `fd1a877e68c23c8441be674cacfba43a8f4189e3`.
 
 Tracking: [Issue #385](https://github.com/lucronn/autodata/issues/385), [Project #8](https://github.com/users/lucronn/projects/8), and [implementation plan](../superpowers/plans/2026-11-08-workshop-processing-order-cta.md). Parent [#186](https://github.com/lucronn/autodata/issues/186). No production deployment or live payment is authorized.
 
@@ -21,3 +21,13 @@ Independent read-only review of `0015d11` found two important gaps and blocked m
 Exact-head rereview of `d9e7598` confirmed the important findings were fixed but noted a minor copy mismatch: after a fresh order-only return, an expired or canceled order could tell the user to choose Buy when no verified quote or access check made Buy available. Two actual-function regressions for these owner-validated terminal states failed on that copy. The repair now offers a vehicle-selection/access-check next step unless a valid exact-scope quote and missing-access state actually make Buy available. Both regressions pass; all 248 Workshop client/demo Node tests pass; isolated Go API tests pass (`ok github.com/lucronn/autodata/apps/api-go 8.665s`); JavaScript syntax and diff checks pass. Exact-head review and required CI for this final copy repair remain pending. No release or deployment is claimed.
 
 Final integration evidence: independent read-only rereview of exact head `46a1991c78f75e7827f70c7f9d3833323b10e009` found no Critical, Important, or Minor issue. Fresh local rerun passed all 248 Workshop client/demo Node tests, isolated Go API (`ok github.com/lucronn/autodata/apps/api-go 8.567s`), JavaScript syntax, and diff checks. [Required CI run 42544247097](https://github.com/lucronn/autodata/actions/runs/42544247097) passed all three jobs, including `Validate autonomy policy and evidence contract`, at that exact head. `master` still matched the strict required-check base before [PR #386](https://github.com/lucronn/autodata/pull/386) squash-merged as `a647ebb556a783bc2a53c05f6adad412e54f1a73`. Issue #385 closed automatically, then was reopened and its Project #8 item marked Blocked when the review-policy mismatch was discovered. Live branch protection required zero approving reviews, while the [written operating model](../github/operating-model.md) calls for owning CODEOWNERS review; GitHub records no review on PR #386. The discrepancy remains unresolved. This is client-safety integration evidence, not a policy-complete or live commerce/production release acceptance claim; no production deployment occurred.
+
+Subsequent policy resolution: the unresolved discrepancy in that historical
+paragraph is closed by the [single-maintainer Workshop review rule](../github/operating-model.md#single-maintainer-workshop-review)
+now on protected `master` at `fd1a877e68c23c8441be674cacfba43a8f4189e3`.
+Its tree exactly matches independently reviewed policy head `a442cfb`, and
+[CI run 42796020557](https://github.com/lucronn/autodata/actions/runs/42796020557)
+passed. A 502 response after the squash commit left policy PR #390 unmarked as
+merged, so its duplicate PR record was closed with the exact-tree evidence.
+No GitHub approval was claimed. This final documentation PR still requires its
+own current review and CI before Issue #385 and Project #8 can be marked Done.
