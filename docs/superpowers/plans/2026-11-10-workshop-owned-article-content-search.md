@@ -10,6 +10,14 @@
 
 **Spec:** `docs/verification/2026-11-10-workshop-owned-article-content-search.md`.
 
+**Project:** https://github.com/users/lucronn/projects/8
+
+## Concrete todo
+
+- [ ] Prove the paid API access/content boundary with red-first tests and implement bounded server-side search.
+- [ ] Wire the real Workshop search interaction with abortable, debounced requests and test stale/incomplete states.
+- [ ] Run exact-head verification, independent review, current CI, and branch protection before integration.
+
 ## Constraints
 
 - Issue [#393](https://github.com/lucronn/autodata/issues/393) and Project #8 are the canonical tracking scope; the public origin 502 is separate Issue #391.
