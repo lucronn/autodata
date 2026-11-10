@@ -23,7 +23,7 @@
 - [x] Use the rendered purchase explanation when Buy is unavailable; retain the available-to-purchase status when Buy is enabled.
 - [x] Cover invalid merchant configuration, sign-in, and exact-scope processing order without a false purchase invitation.
 - [x] Run focused/full Workshop Node tests, Go API tests, syntax, diff checks, independent review, and required CI on the original app candidate `832d955`.
-- [ ] Recheck the final branch after the single-maintainer review rule is integrated; merge only with current exact-head review, CI, and live branch protection.
+- [ ] Recheck the final branch after the single-maintainer review rule is integrated on `master` as `fd1a877e68c23c8441be674cacfba43a8f4189e3`; merge only with current exact-head review, CI, and live branch protection.
 
 ### Task 1: Match activity to purchase availability
 
@@ -68,3 +68,10 @@ status(!$('purchase-action').disabled &&
 - [ ] **Step 3:** Update [PR #389](https://github.com/lucronn/autodata/pull/389) to the reconciled policy base, rerun checks and exact-head review, and integrate only if the live gates pass. Update Issue #388 and Project #8 after the confirmed merge.
 
 The task is app-safety work, not proof of live checkout, grants, article access, or production readiness.
+
+The written single-maintainer review rule is now present on `master` at
+`fd1a877e68c23c8441be674cacfba43a8f4189e3`, with the same tree as reviewed
+policy candidate `a442cfbcce08399d7d046d94182497d5cf686e3d`. The
+policy PR #390 record was closed after a 502 response left it unmarked as
+merged despite that protected-master squash commit. This resolves the written
+review-rule mismatch; it does not waive PR #389's current checks or review.
