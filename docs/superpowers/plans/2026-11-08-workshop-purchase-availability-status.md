@@ -22,7 +22,8 @@
 - [x] Reproduce the contradiction through actual `operation()` and `renderPurchase()` with a missing quote; verify the focused test fails on the planning base.
 - [x] Use the rendered purchase explanation when Buy is unavailable; retain the available-to-purchase status when Buy is enabled.
 - [x] Cover invalid merchant configuration, sign-in, and exact-scope processing order without a false purchase invitation.
-- [ ] Run focused/full Workshop Node tests, Go API tests, syntax, diff checks, independent review, and required CI; leave the PR unmerged until the written CODEOWNERS gate is reconciled.
+- [x] Run focused/full Workshop Node tests, Go API tests, syntax, diff checks, independent review, and required CI on the original app candidate `832d955`.
+- [ ] Recheck the final branch after the single-maintainer review rule is integrated; merge only with current exact-head review, CI, and live branch protection.
 
 ### Task 1: Match activity to purchase availability
 
@@ -54,7 +55,7 @@ status(!$('purchase-action').disabled &&
     : $('purchase-message').textContent);
 ```
 - [x] **Step 4:** Rerun focused and full Workshop tests; record red/green evidence in the spec/verification document.
-- [ ] **Step 5:** Commit the app/test milestone and push the branch.
+- [x] **Step 5:** Commit the app/test milestone and push the branch.
 
 ### Task 2: Verify and prepare integration
 
@@ -63,7 +64,7 @@ status(!$('purchase-action').disabled &&
 **Interfaces:** No code interface changes.
 
 - [x] **Step 1:** Run `node --test apps/api-go/workshop-client.test.mjs apps/api-go/workshop-demo.test.mjs`, `/home/corp/.local/go1.23.4/go/bin/go -C apps/api-go test -count=1 ./...`, `node --check apps/api-go/workshop/app.mjs`, and `git diff --check`.
-- [ ] **Step 2:** Record exact-head evidence and request independent read-only review; repair any important finding and rerun affected tests.
-- [ ] **Step 3:** Push the final candidate, create a PR against `master`, wait for exact-head required CI, and update Issue/Project evidence. Do not merge while the written CODEOWNERS-review requirement remains unmet.
+- [x] **Step 2:** Record original exact-head evidence and obtain independent read-only review; `832d955` had no Critical, Important, or Minor findings.
+- [ ] **Step 3:** Update [PR #389](https://github.com/lucronn/autodata/pull/389) to the reconciled policy base, rerun checks and exact-head review, and integrate only if the live gates pass. Update Issue #388 and Project #8 after the confirmed merge.
 
 The task is app-safety work, not proof of live checkout, grants, article access, or production readiness.
