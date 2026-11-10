@@ -33,7 +33,7 @@
 
 ### Task 1: Prove the API access and content boundary
 
-**Files:** `apps/api-go/catalog_access_test.go`, `apps/api-go/postgres_catalog_access_test.go`, `apps/api-go/catalog_http.go`, `apps/api-go/catalog_access.go`, `apps/api-go/catalog_lifecycle.go` (only if a helper belongs there), and `apps/api-go/main.go` only if route wiring requires it.
+**Files:** `apps/api-go/catalog_access_test.go`, `apps/api-go/postgres_catalog_access_test.go`, `apps/api-go/catalog_http.go`, `apps/api-go/catalog_access.go`, `apps/api-go/catalog_search.go`, `apps/api-go/catalog_search_test.go`, `apps/api-go/openapi.json`, and `scripts/contracts/test_catalog_lifecycle_contract.py`. No route rewiring or schema change is needed.
 
 - [x] Add failing tests to the existing protected article-index handler for `q` matching content-only text after a valid grant, preserving metadata-only output, and denying wrong-configuration/unpurchased/revoked access.
 - [x] Add store/fixture tests for current source/canonical revision selection and lifecycle exclusion; ensure a hidden document label alone cannot match. The isolated Postgres fixture cannot run in this local checkout and remains required CI evidence.

@@ -49,6 +49,9 @@ Local verification on 2026-11-10:
   in `apps/api-go`: 259 passed, 0 failed, 0 skipped. Actual search input,
   stale-query/vehicle responses, revoked-access, paid no-repay handling, and
   incomplete-result paths are covered.
+- `python -m unittest scripts.contracts.test_catalog_lifecycle_contract`:
+  3 passed. OpenAPI now records the optional bounded `q` parameter and the
+  paid grant/metadata-only behavior.
 - No live browser acceptance: `https://autodata.cars.tk/workshop/` still returns
   502, tracked separately in Issue #391. No production service or payment
   setting was changed for this feature.
