@@ -592,6 +592,7 @@ function renderBlocks(parent, blocks, images, review, g) {
         addImage(parent, (ref?.asset_id || ref?.image_id) ? find(ref) : undefined, ref.alt, g);
     } else if (type === "table") {
       const table = element("table", undefined, "article-table");
+      const cellImageIDs = new Set();
       if (block.label || block.caption)
         table.append(element("caption", block.label || block.caption));
       if (block.columns?.length) {
@@ -612,8 +613,11 @@ function renderBlocks(parent, blocks, images, review, g) {
           const cell = element("td");
           if (v !== null && typeof v === "object") {
             cell.append(element("span", v.text ?? ""));
-            for (const ref of v.images || [])
-              addImage(cell, find(ref), ref.alt, g);
+            for (const ref of v.images || []) {
+              const image = (ref?.asset_id || ref?.image_id) ? find(ref) : undefined;
+              if (image) cellImageIDs.add(assetID(image));
+              addImage(cell, image, ref.alt, g);
+            }
           } else cell.textContent = String(v ?? "");
           row.append(cell);
         }
@@ -623,6 +627,11 @@ function renderBlocks(parent, blocks, images, review, g) {
       const wrap = element("div", undefined, "table-scroll");
       wrap.append(table);
       parent.append(wrap);
+      for (const ref of block.images || []) {
+        const image = (ref?.asset_id || ref?.image_id) ? find(ref) : undefined;
+        if (image && cellImageIDs.has(assetID(image))) continue;
+        addImage(parent, image, ref.alt, g);
+      }
     } else if (type === "break") parent.append(element("hr"));
     else
       parent.append(
