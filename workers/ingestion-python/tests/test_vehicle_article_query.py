@@ -1,5 +1,6 @@
 import unittest
 
+from autodata_ingestion.procedure_normalize import normalize_procedure_article
 from autodata_ingestion.vehicle_article_query import query_vehicle_articles
 
 
@@ -60,6 +61,38 @@ class VehicleArticleQueryTests(unittest.TestCase):
         )
         self.assertEqual(result["status"], "found")
         self.assertEqual([article["article_id"] for article in result["results"]], ["article-blocks"])
+
+    def test_normalized_blocks_are_searchable_without_source_fallback(self):
+        article = normalize_procedure_article({
+            "article_id": "article-normalized",
+            "title": "Service notes",
+            "blocks": [{"kind": "table", "rows": [{"cells": ["Ground strap bolt", "12 Nm"]}]}],
+        })
+
+        def fail_fetch(_vehicle, _query):
+            raise AssertionError("fetcher must not run for a normalized block hit")
+
+        result = query_vehicle_articles(
+            VEHICLE,
+            "ground strap bolt",
+            {KEY: [article]},
+            fetcher=fail_fetch,
+        )
+        self.assertEqual(result["status"], "found")
+        self.assertEqual([match["article_id"] for match in result["results"]], ["article-normalized"])
+
+    def test_block_metadata_alone_does_not_match_article_query(self):
+        result = query_vehicle_articles(
+            VEHICLE,
+            "paragraph",
+            {KEY: [{
+                "article_id": "article-metadata",
+                "title": "Service notes",
+                "blocks": [{"type": "paragraph", "text": "Replace timing belt."}],
+            }]},
+        )
+        self.assertEqual(result["status"], "not_found")
+        self.assertEqual(result["results"], [])
 
     def test_miss_invokes_source_fallback_and_indexes_fetched_article(self):
         calls = []

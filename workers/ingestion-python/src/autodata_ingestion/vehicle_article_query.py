@@ -56,13 +56,33 @@ def _rank_articles(articles: Iterable[Mapping[str, Any]], query: str, limit: int
 
 
 def _article_text(article: Mapping[str, Any]) -> str:
-    return " ".join(
+    parts = [
         str(article.get(field, ""))
         for field in (
-            "article_id", "title", "bucket", "bulletin_number", "body", "content", "steps",
-            "summary", "description", "blocks",
+            "article_id", "title", "bucket", "bulletin_number", "body", "content",
+            "summary", "description",
         )
-    )
+    ]
+    parts.extend(_visible_block_text(article.get(field)) for field in ("steps", "blocks"))
+    normalized_document = article.get("normalized_document")
+    if isinstance(normalized_document, Mapping):
+        parts.append(_visible_block_text(normalized_document.get("blocks")))
+    return " ".join(parts)
+
+
+def _visible_block_text(value: Any) -> str:
+    if isinstance(value, (str, int, float)) and not isinstance(value, bool):
+        return str(value)
+    if isinstance(value, Mapping):
+        visible_fields = (
+            "text", "label", "title", "caption", "alt", "description", "value",
+            "content", "body", "action", "instruction", "items", "rows", "cells",
+            "columns", "blocks", "instructions", "images",
+        )
+        return " ".join(_visible_block_text(value[field]) for field in visible_fields if field in value)
+    if isinstance(value, (list, tuple)):
+        return " ".join(_visible_block_text(item) for item in value)
+    return ""
 
 
 def _tokens(value: Any) -> set[str]:
