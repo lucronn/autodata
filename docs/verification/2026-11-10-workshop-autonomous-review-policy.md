@@ -1,6 +1,6 @@
 # Workshop autonomous review policy verification
 
-The single-maintainer repository currently maps all owned paths to `@lucronn` in `.github/CODEOWNERS`. PR #389 is authored by that same GitHub account. GitHub branch protection currently requires zero approving reviews and does not require CODEOWNERS approval, while `docs/github/operating-model.md` unconditionally requires owning CODEOWNERS review. That mismatch blocked a reviewed, CI-green Workshop app fix even though a self-authored GitHub approval cannot be recorded.
+The single-maintainer repository maps all owned paths to `@lucronn` in `.github/CODEOWNERS`. PR #389 is authored by that same GitHub account. At the `a647ebb` planning base, GitHub branch protection required zero approving reviews and did not require CODEOWNERS approval, while `docs/github/operating-model.md` unconditionally required owning CODEOWNERS review. That mismatch blocked a reviewed, CI-green Workshop app fix even though a self-authored GitHub approval cannot be recorded.
 
 Acceptance:
 
