@@ -1,0 +1,16 @@
+{
+  "goal": "Search vehicle article summary, description, and structured blocks, and preserve description-only procedure steps for Workshop readers.",
+  "plan_ref": "docs/superpowers/plans/2026-11-10-workshop-article-search-step-description.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/184",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/verification/2026-11-10-workshop-article-search-step-description.md"
+  ],
+  "todo": [
+    "Test local lookup of article summary, description, and structured blocks before implementation.",
+    "Test step-level and instruction-item description-only normalization before implementation.",
+    "Add only the missing content fields, verify ingestion tests, and obtain exact-head independent review and CI before integration."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-10T11:52:29Z"
+}
