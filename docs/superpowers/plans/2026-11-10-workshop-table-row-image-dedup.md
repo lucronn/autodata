@@ -19,8 +19,8 @@
 
 ## Concrete todo
 
-- [ ] Add a failing regression with a row-attached image duplicated in the article-level image list and a distinct unattached image.
-- [ ] Include table row mapping `images` in the existing image-identity pre-scan; leave table block and figure queue semantics otherwise unchanged.
+- [x] Add a failing regression with a row-attached image duplicated in the article-level image list and a distinct unattached image.
+- [x] Include table row mapping `images` in the existing image-identity pre-scan; leave table block and figure queue semantics otherwise unchanged.
 - [ ] Run the focused and full ingestion suites, compile/diff checks, exact-head independent review, required CI, and live branch-protection check before merge.
 
 ### Task 1: Keep row-attached images at their source position
@@ -29,10 +29,10 @@
 
 **Interfaces:** `build_ordered_document(article, blocks)` keeps its signature and ordered-document schema. Table row mappings keep their existing `images` field.
 
-- [ ] **Step 1: Write the failing test.** Build an article whose top-level `images` contain `row-image` with storage key `media/row-image` and `unattached-image` with storage key `media/unattached-image`. Supply one table block with a row mapping whose `images` contain the matching `row-image`. Assert the normalized block types are exactly `["table", "image"]`, the table retains `row-image`, and the only trailing image is `unattached-image`.
-- [ ] **Step 2: Verify red.** Run `python -m pytest workers/ingestion-python/tests/test_article_document.py -q -k table_row_image_is_not_appended_again`. The test must fail because the normalized document contains a second `row-image` block, not because of fixture or import errors.
-- [ ] **Step 3: Implement minimally.** In `build_ordered_document`'s `table`/`grid` pre-scan, collect `_image_identities` from each row mapping's `images` before visiting its cells. Do not change `_table_block` or image identity rules.
-- [ ] **Step 4: Verify green.** Rerun the named test and all of `test_article_document.py`; confirm both the row-attached and genuinely unattached images have their expected positions.
-- [ ] **Step 5: Verify and integrate.** Run the full ingestion suite, Python compilation and `git diff --check`; record exact SHA and independent review in the verification document. Push a PR and merge only after current required CI and branch protection pass.
+- [x] **Step 1: Write the failing test.** Build an article whose top-level `images` contain `row-image` with storage key `media/row-image` and `unattached-image` with storage key `media/unattached-image`. Supply one table block with a row mapping whose `images` contain the matching `row-image`. Assert the normalized block types are exactly `["table", "image"]`, the table retains `row-image`, and the only trailing image is `unattached-image`.
+- [x] **Step 2: Verify red.** The named test failed with actual block types `["table", "image", "image"]` before implementation.
+- [x] **Step 3: Implement minimally.** In `build_ordered_document`'s `table`/`grid` pre-scan, collect `_image_identities` from each row mapping's `images` before visiting its cells. Do not change `_table_block` or image identity rules.
+- [x] **Step 4: Verify green.** The named test and all 46 `test_article_document.py` tests passed; the row-attached image remains in the table and the distinct image remains trailing.
+- [ ] **Step 5: Verify and integrate.** The full ingestion suite passed 1,191 tests with 475 skips and 192 subtests at code commit `e7716076d96f71f9762de179619a84b5219243bb`; Python compilation and `git diff --check` passed. Record independent exact-head review, then push a PR and merge only after current required CI and branch protection pass.
 
 The plan does not claim that the live Workshop origin, paid access, or image retrieval works.

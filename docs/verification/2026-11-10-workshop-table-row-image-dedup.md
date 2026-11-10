@@ -6,8 +6,12 @@ This is a bounded slice of [Issue #184](https://github.com/lucronn/autodata/issu
 
 ## Acceptance and evidence
 
-- [ ] A red-first test reproduces the duplicate `row-image` trailing block on the planning base.
-- [ ] The ordered document has one table block containing `row-image`, followed only by the distinct `unattached-image` block.
+- [x] A red-first test reproduces the duplicate `row-image` trailing block on the planning base.
+- [x] The ordered document has one table block containing `row-image`, followed only by the distinct `unattached-image` block.
 - [ ] Focused and full ingestion tests, syntax/diff checks, independent exact-head AI review, required CI, and branch protection pass before merge.
+
+Planning checkpoint `070c31f2d804a2e8a941782d8b74fad078626e7c` passed the exact-SHA machine preflight with `status: synchronized` and no errors before implementation. The regression failed first because the ordered document had three blocks (`table`, duplicate `image`, unattached `image`), then passed after the pre-scan included row mapping images. All 46 focused document tests passed. Full ingestion verification passed 1,191 tests, 475 skips, and 192 subtests at code commit `e7716076d96f71f9762de179619a84b5219243bb`; Python compilation and `git diff --check` passed.
+
+The first full-suite attempts could not establish a code result because this sandbox denied local fixture sockets and then reused `/tmp` instead of a private temp directory outside its `.git` marker. A final run created a private `/dev/shm` temp directory and ran the suite in the same permitted process, without changing repository code or live services. Exact-head independent review and GitHub CI remain gates.
 
 Plan: [Workshop table-row image deduplication](../superpowers/plans/2026-11-10-workshop-table-row-image-dedup.md). The live Workshop origin 502 remains separately tracked in [Issue #391](https://github.com/lucronn/autodata/issues/391); local tests do not prove live paid-access acceptance.
