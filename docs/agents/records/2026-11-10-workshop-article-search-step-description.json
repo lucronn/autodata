@@ -9,8 +9,9 @@
   "todo": [
     "Test local lookup of article summary, description, and structured blocks before implementation.",
     "Test step-level and instruction-item description-only normalization before implementation.",
+    "Correct normalized-block search, metadata-only false matches, nested-instruction loss, and whitespace-only instruction fallback with red-first regressions.",
     "Add only the missing content fields, verify ingestion tests, and obtain exact-head independent review and CI before integration."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-10T11:52:29Z"
+  "updated_at": "2026-11-10T12:04:07Z"
 }

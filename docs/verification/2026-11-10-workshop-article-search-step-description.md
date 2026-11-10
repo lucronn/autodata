@@ -19,6 +19,12 @@ Acceptance:
   valid ordered `step` block with that text.
 - [x] A source step whose only instruction text is an instruction item's
   `description` produces a valid ordered `step` block with that text.
+- [ ] A normalized article with visible text only in
+  `normalized_document.blocks` is found locally; block type/key metadata alone
+  is not treated as visible searchable text.
+- [ ] A step with both a description and nested instructions retains both
+  pieces of consumer-visible text, and a whitespace-only instruction `text`
+  does not hide its nonempty `description`.
 - [ ] Focused and full ingestion tests, exact-head independent review, required
   GitHub CI, and branch protection pass before integration.
 
@@ -49,5 +55,13 @@ isolated temporary installation. Neither workaround changed repository code.
 
 Exact-head independent review, GitHub CI, and branch-protection checks remain
 required before merge. Issue #184 remains open for its other hardening work.
+
+Independent review of initial PR #392 head `9940bfedfb0df5cc53948627799f38d619febe74`
+found four reproducible content gaps: normalization removes top-level `blocks`
+after placing them in `normalized_document.blocks`; block stringification
+indexes metadata such as `type: paragraph`; a step `description` wins over and
+hides nested instructions; and whitespace-only item `text` hides a nonempty
+item `description`. The PR is not merge-ready until red-first regressions for
+these cases pass, the code is corrected, and the final head is re-reviewed.
 
 Plan: [2026-11-10-workshop-article-search-step-description](../superpowers/plans/2026-11-10-workshop-article-search-step-description.md).
