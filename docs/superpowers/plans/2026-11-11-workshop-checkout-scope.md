@@ -23,8 +23,8 @@
 
 ## Concrete todo
 
-- [ ] Commit this plan, the verification spec, and a synchronized record; read back Issue #396 and Project #8; pass exact-SHA machine preflight.
-- [ ] Add red-first overlapping-scope and aborted-queue client tests, then implement the one-at-a-time scope-aware Checkout behavior.
+- [x] Commit this plan, the verification spec, and a synchronized record; read back Issue #396 and Project #8; pass exact-SHA machine preflight.
+- [x] Add red-first overlapping-scope and aborted-queue client tests, then implement the one-at-a-time scope-aware Checkout behavior.
 - [ ] Run the focused and full Workshop client tests and diff checks; obtain independent exact-head review and current CI before merge.
 
 ### Task 1: Scope in-flight Checkout starts
@@ -35,8 +35,8 @@
 
 **Interfaces:** `createCheckout({request,storage,uuid}).start(scope,csrf,{signal})` retains the same Promise result and request headers/body; no caller changes.
 
-- [ ] **Step 1: Write failing behavior tests.** With two valid literal configuration IDs and deferred request responses, assert the second scope does not get the first promise, the first network request completes before the second starts, and the second response/body/idempotency key belong to the second scope. With an aborted queued signal, assert no second network request is sent. Retain the existing same-scope shared-request test.
-- [ ] **Step 2: Verify red.** Run `node --test --test-name-pattern='checkout attempt' workshop-client.test.mjs` in `apps/api-go`; the new cross-scope test must fail because the current code returns the global in-flight promise.
-- [ ] **Step 3: Implement the minimal fix.** Replace the unqualified `if (inflight) return inflight` in `createCheckout` with a scope/signal check. For a different scope or aborted first signal, wait for the previous promise to settle, check the queued signal, then call `start` again. Keep the request one-at-a-time and clear in-flight metadata in `finally` only for that request. Leave `read`, `save`, response validation, and headers unchanged.
-- [ ] **Step 4: Verify green.** Run the focused test, then `node --test --test-reporter=tap workshop-client.test.mjs workshop-demo.test.mjs`. Check `git diff --check`; inspect that the only implementation path is `commerce.mjs`.
+- [x] **Step 1: Write failing behavior tests.** With two valid literal configuration IDs and deferred request responses, assert the second scope does not get the first promise, the first network request completes before the second starts, and the second response/body/idempotency key belong to the second scope. With an aborted queued signal, assert no second network request is sent. Retain the existing same-scope shared-request test.
+- [x] **Step 2: Verify red.** Run `node --test --test-name-pattern='checkout attempt' workshop-client.test.mjs` in `apps/api-go`; the new cross-scope test must fail because the current code returns the global in-flight promise.
+- [x] **Step 3: Implement the minimal fix.** Replace the unqualified `if (inflight) return inflight` in `createCheckout` with a scope/signal check. For a different scope or aborted first signal, wait for the previous promise to settle, check the queued signal, then call `start` again. Keep the request one-at-a-time and clear in-flight metadata in `finally` only for that request. Leave `read`, `save`, response validation, and headers unchanged.
+- [x] **Step 4: Verify green.** Run the focused test, then `node --test --test-reporter=tap workshop-client.test.mjs workshop-demo.test.mjs`. Check `git diff --check`; inspect that the only implementation path is `commerce.mjs`.
 - [ ] **Step 5: Review and integrate.** Commit/push a coherent candidate, obtain independent exact-head AI review, check current required CI and branch protection, and only then merge/close Issue #396/update Project #8. Do not call this live Stripe acceptance.
