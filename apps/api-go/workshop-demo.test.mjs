@@ -55,6 +55,11 @@ test('demo purchase review can cancel, confirm once, and resets on a new page vi
   assert.equal($('catalog').hidden, true);
   assert.equal($('purchase-action').focused, true);
   $('purchase-action').fire('click');
+  $('browse').fire('click');
+  assert.equal($('demo-checkout').hidden, true, 'Browse closes an unfinished review');
+  assert.equal($('purchase-action').disabled, false, 'Browse restores an enabled demo action');
+  assert.equal($('catalog').hidden, true);
+  $('purchase-action').fire('click');
   $('demo-checkout-confirm').fire('click');
   assert.equal($('demo-checkout').hidden, true);
   assert.equal($('catalog').hidden, false);

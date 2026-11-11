@@ -200,6 +200,10 @@ $('my-vehicles').addEventListener('click', () => {
 $('search').addEventListener('input', renderArticles);
 $('back').addEventListener('click', () => { showCatalog(); $('catalog-title').focus(); });
 $('browse').addEventListener('click', () => {
+  if (checkoutReviewOpen) {
+    checkoutReviewOpen = false;
+    renderDemoPurchase();
+  }
   showCatalog();
   ($('catalog').hidden ? $('configuration').value ? $('purchase-action') : $('vehicle-picker') : $('catalog-title')).focus();
 });
