@@ -25,8 +25,8 @@ No production mode, traffic, DNS, payment enablement, secret, deployment, source
 
 ## Concrete todo
 
-- [ ] Synchronize this plan, Issue #398, Project #8, canonical verification document and pinned-base machine preflight.
-- [ ] Add failing Go and browser tests for disabled/live/production/invalid-config/test-ready modes, explicit demo refusal, real app import, sample isolation and return-page banner.
-- [ ] Implement the bounded endpoint and bootstrap behavior without changing auth, commerce, grants or article APIs.
+- [x] Synchronize this plan, Issue #398, Project #8, canonical verification document and pinned-base machine preflight (`0675a17` returned `status:synchronized`, `errors:[]`).
+- [x] Add failing Go, Python and browser tests for disabled/live/production/mismatched-mode/invalid-response/test-ready modes, explicit demo refusal, real app import, sample isolation and return-page banner.
+- [x] Implement the bounded endpoint and bootstrap behavior without changing auth, commerce, grants or article APIs.
 - [ ] Run focused/full Node and Go tests, syntax/diff checks and local browser smoke; obtain independent exact-head review and current CI.
 - [ ] Merge only if live branch protection permits; keep real licensed-data/test-payment browser acceptance and deployment separately blocked until evidenced.

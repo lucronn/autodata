@@ -160,6 +160,10 @@ class CommerceService:
     def purchase_configuration(self):
         return CommerceResult(self._purchase_config.public())
 
+    def demo_mode_status(self):
+        """Private, read-only mode handshake; never an entitlement decision."""
+        return CommerceResult({'mode': self.config.mode, 'purchase_enabled': self._purchase_config.enabled})
+
     @contextmanager
     def transaction(self):
         from psycopg.rows import dict_row

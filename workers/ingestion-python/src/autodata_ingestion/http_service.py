@@ -95,6 +95,9 @@ def dispatch_commerce(service, path, payload):
     if path == '/internal/commerce/purchase-config':
         exact_fields(payload, set())
         return service.purchase_configuration()
+    if path == '/internal/commerce/demo-mode':
+        exact_fields(payload, set())
+        return service.demo_mode_status()
     if path == '/internal/commerce/quote':
         exact_fields(payload,{'configuration_id','region'})
         return service.quote(payload['configuration_id'],payload['region'])

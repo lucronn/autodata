@@ -12,8 +12,9 @@ The fictional layout sample remains separate at `?sample=1`, marked as non-servi
 
 ## Concrete todo and evidence
 
-- [ ] Commit plan/record/doc and synchronize Issue/Project before exact-SHA preflight.
-- [ ] Red-first Go and browser tests covering test-only readiness, invalid/unavailable commerce, production/live refusal, explicit demo refusal, normal app import, sample isolation and Stripe-return banner.
-- [ ] Implement and verify the bounded Workshop entry; report exact tests and review/CI.
+- [x] Commit plan/record/doc and synchronize Issue/Project before exact-SHA preflight. Planning checkpoint `0675a17` returned `status:synchronized`, `errors:[]`.
+- [x] Red-first Go, Python and browser tests covered test-only readiness, invalid/unavailable commerce, production/live/mismatched private mode refusal, explicit demo refusal, normal app import, sample isolation and Stripe-return banner.
+- [ ] Implement and verify the bounded Workshop entry; independent exact-head review and CI are pending.
 - [ ] Obtain real licensed-data/test-settlement browser evidence on an authorized, isolated runtime; keep this unchecked until actual receipts exist.
 
+Local code-only evidence before review: `node workshop-demo.test.mjs` passed 5/5; `node workshop-client.test.mjs` passed 258/258; full Go API `go test ./... -count=1` passed with loopback allowed; focused private Go HTTP tests passed. Python commerce/HTTP/purchase-config/Stripe adapter suite passed 36 tests and 63 subtests with 2 integration skips using the pinned Stripe 16.1.0 package. The first Python attempt lacked that package and failed two SDK imports; the rerun used the already-present pinned package and passed. `node --check` for both changed modules and `git diff --check` passed. These are local code/fixture checks only; no real test card, signed webhook, licensed article, public deployment or staging browser acceptance occurred.

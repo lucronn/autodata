@@ -21,10 +21,14 @@
   </head>
   <body>
     <a class="skip-link" href="#vehicle-picker">Skip to vehicle selection</a>
-    <aside id="demo-banner" class="demo-banner" aria-label="Demonstration mode" hidden>
-      <strong>Demo — sample content. No purchase or vehicle access is granted.</strong>
-      <span>Illustrative content authored for this demo; not supplied by Bankone or Banktwo. Not vehicle service information.</span>
-      <a href="/workshop/">Exit demo to regular Workshop ↗</a>
+    <aside id="demo-banner" class="demo-banner" aria-label="Fictional sample" hidden>
+      <strong>Sample — fictional content. No purchase or vehicle access is granted.</strong>
+      <span>Illustrative content authored for this sample; not supplied by Bankone or Banktwo. Not vehicle service information.</span>
+      <a href="/workshop/">Exit sample to regular Workshop ↗</a>
+    </aside>
+    <aside id="test-banner" class="demo-banner" aria-label="Test checkout" hidden>
+      <strong>Test checkout — no real charge.</strong>
+      <span>The vehicle catalog and eligible service articles are real. Sign in and use a Stripe test card; access is granted only after verified test settlement.</span>
     </aside>
     <div class="page">
       <header class="site-header">
@@ -40,6 +44,12 @@
           ><button id="signout" type="button" hidden>Sign out</button>
         </nav>
       </header>
+
+      <section id="test-unavailable" role="alert" hidden>
+        <h1>Real-data demo unavailable</h1>
+        <p>The test checkout and licensed-data environment are not ready. No payment or vehicle access has been granted.</p>
+        <a href="/workshop/">Open the regular Workshop</a>
+      </section>
 
       <main>
         <section class="masthead" aria-labelledby="page-title">

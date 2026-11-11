@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -95,6 +96,101 @@ func TestWorkshopPurchaseConfigDisabledByDefault(t *testing.T) {
 		if !present || value != nil {
 			t.Fatalf("default %s must be present and null", field)
 		}
+	}
+}
+
+func TestWorkshopRealDemoRequiresEnabledNonProductionStripeTest(t *testing.T) {
+	cases := []struct {
+		name, mode, environment, config string
+		client, enabled                 bool
+	}{
+		{"test ready", "stripe_test", "staging", `{"mode":"stripe_test","purchase_enabled":true}`, true, true},
+		{"test disabled purchase", "stripe_test", "staging", `{"mode":"stripe_test","purchase_enabled":false}`, true, false},
+		{"mismatched private live mode", "stripe_test", "staging", `{"mode":"stripe_live","purchase_enabled":true}`, true, false},
+		{"test invalid response", "stripe_test", "staging", `{"mode":"stripe_test","purchase_enabled":true,"extra":1}`, true, false},
+		{"test no client", "stripe_test", "staging", `{"mode":"stripe_test","purchase_enabled":true}`, false, false},
+		{"live mode", "stripe_live", "staging", `{"mode":"stripe_test","purchase_enabled":true}`, true, false},
+		{"production", "stripe_test", "production", `{"mode":"stripe_test","purchase_enabled":true}`, true, false},
+		{"unknown environment", "stripe_test", "unknown", `{"mode":"stripe_test","purchase_enabled":true}`, true, false},
+		{"disabled mode", "disabled", "staging", `{"mode":"stripe_test","purchase_enabled":true}`, true, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			calls := 0
+			s := NewServer(staticReadiness{})
+			s.workshopTestCheckout = workshopTestCheckoutMode(tc.mode, tc.environment)
+			if tc.client {
+				s.commerceClient = commerceFixture(func(_ context.Context, op string, body []byte, signature string) (int, []byte, error) {
+					calls++
+					if op != "demo-mode" || string(body) != "{}" || signature != "" {
+						t.Fatal("unexpected private commerce request", op, string(body), signature)
+					}
+					return 200, []byte(tc.config), nil
+				})
+			}
+			response := httptest.NewRecorder()
+			s.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/workshop/demo-mode.json", nil))
+			if response.Code != 200 || response.Header().Get("Cache-Control") != "no-store" || !strings.Contains(response.Header().Get("Content-Type"), "application/json") {
+				t.Fatalf("demo mode response = %d %q", response.Code, response.Body.String())
+			}
+			var payload map[string]any
+			if json.Unmarshal(response.Body.Bytes(), &payload) != nil || !reflect.DeepEqual(payload, map[string]any{"enabled": tc.enabled}) {
+				t.Fatalf("demo readiness = %#v, want %v", payload, tc.enabled)
+			}
+			if want := 0; tc.client && tc.mode == "stripe_test" && tc.environment == "staging" {
+				want = 1
+				if calls != want {
+					t.Fatalf("private calls=%d, want %d", calls, want)
+				}
+			} else if calls != 0 {
+				t.Fatalf("non-test mode contacted private commerce: %d", calls)
+			}
+		})
+	}
+}
+
+func TestWorkshopRealDemoReadinessMethodAndQuery(t *testing.T) {
+	s := NewServer(staticReadiness{})
+	for _, tc := range []struct {
+		method, path string
+		status       int
+	}{
+		{http.MethodHead, "/workshop/demo-mode.json", 200},
+		{http.MethodGet, "/workshop/demo-mode.json?x=1", 400},
+		{http.MethodPost, "/workshop/demo-mode.json", 405},
+	} {
+		response := httptest.NewRecorder()
+		s.Handler().ServeHTTP(response, httptest.NewRequest(tc.method, tc.path, nil))
+		if response.Code != tc.status || (tc.method == http.MethodHead && response.Body.Len() != 0) {
+			t.Fatalf("%s %s = %d %q", tc.method, tc.path, response.Code, response.Body.String())
+		}
+	}
+}
+
+func TestWorkshopRealDemoPrivateModeHandshakeHTTP(t *testing.T) {
+	calls := 0
+	private := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		var body map[string]any
+		if r.Method != http.MethodPost || r.URL.Path != "/internal/commerce/demo-mode" ||
+			r.Header.Get("X-Autodata-Internal-Token") != "fixture-token" ||
+			r.Header.Get("Cookie") != "" || json.NewDecoder(r.Body).Decode(&body) != nil || len(body) != 0 {
+			t.Error("demo mode did not use the bounded private authority")
+		}
+		_, _ = w.Write([]byte(`{"mode":"stripe_test","purchase_enabled":true}`))
+	}))
+	defer private.Close()
+	client, err := NewHTTPCommerceClient(private.URL, "fixture-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := NewServer(staticReadiness{})
+	s.commerceClient = client
+	s.workshopTestCheckout = true
+	response := httptest.NewRecorder()
+	s.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/workshop/demo-mode.json", nil))
+	if response.Code != 200 || response.Body.String() != "{\"enabled\":true}\n" || calls != 1 {
+		t.Fatalf("public signal = %d %q; private calls=%d", response.Code, response.Body.String(), calls)
 	}
 }
 

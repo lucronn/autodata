@@ -6,14 +6,65 @@ const source = name => readFileSync(new URL(`./workshop/${name}`, import.meta.ur
 test('HTML starts only the isolated bootstrap', () => {
   assert.match(source('index.html'), /src="\/workshop\/bootstrap.mjs"/);
   assert.doesNotMatch(source('index.html'), /src="\/workshop\/(app|demo)\.mjs"/);
+  assert.match(source('index.html'), /Test checkout — no real charge/);
+  assert.match(source('index.html'), /Sample — fictional content/);
 });
-test('only explicit demo=1 loads the demo module', async () => {
+test('real demo uses the ordinary app only in test mode; sample stays separate', async () => {
   assert.ok(existsSync(new URL('./workshop/bootstrap.mjs', import.meta.url)), 'bootstrap must exist');
   const code = source('bootstrap.mjs').replaceAll('import(', 'loadModule(');
-  for (const [search, expected] of [['?demo=1', './demo.mjs'], ['', './app.mjs'], ['?demo=0', './app.mjs'], ['?demo=true', './app.mjs']]) {
+  const scenarios = [
+    ['?sample=1', true, ['./demo.mjs'], false, 0],
+    ['?demo=1', true, ['./app.mjs'], true, 1],
+    ['?demo=1', false, [], false, 1],
+    ['?demo=1&sample=1', false, [], false, 1],
+    ['?order=22222222-2222-4222-8222-222222222222', true, ['./app.mjs'], true, 1],
+    ['', false, ['./app.mjs'], false, 1],
+  ];
+  for (const [search, ready, expected, banner, fetchCount] of scenarios) {
     const loaded = [];
-    await runInNewContext(`(async () => { ${code} })()`, { URLSearchParams, location: { search }, loadModule: async path => loaded.push(path) });
-    assert.deepEqual(loaded, [expected]);
+    const calls = [];
+    const nodes = new Map(['test-banner', 'test-unavailable'].map(id => [id, { hidden: true }]));
+    const main = { hidden: false };
+    const nav = { hidden: false };
+    await runInNewContext(`(async () => { ${code} })()`, {
+      URLSearchParams, location: { search }, document: {
+        getElementById: id => nodes.get(id),
+        querySelector: selector => selector === 'main' ? main : nav,
+      },
+      fetch: async (path, options) => { calls.push([path, options]); return { ok: true, json: async () => ({ enabled: ready }) }; },
+      loadModule: async path => loaded.push(path),
+    });
+    assert.deepEqual(loaded, expected);
+    assert.equal(nodes.get('test-banner').hidden, !banner);
+    assert.equal(nodes.get('test-unavailable').hidden, !(search.includes('demo=1') && !ready));
+    assert.equal(calls.length, fetchCount);
+    if (fetchCount) assert.equal(calls[0][0], '/workshop/demo-mode.json');
+    if (search.includes('demo=1') && !ready) {
+      assert.equal(main.hidden, true);
+      assert.equal(nav.hidden, true);
+    }
+  }
+});
+test('real demo request fails closed on unavailable or malformed mode signal', async () => {
+  const code = source('bootstrap.mjs').replaceAll('import(', 'loadModule(');
+  for (const response of [
+    async () => { throw new Error('network unavailable'); },
+    async () => ({ ok: false, json: async () => ({ enabled: true }) }),
+    async () => ({ ok: true, json: async () => ({ enabled: true, extra: 'unexpected' }) }),
+    async () => ({ ok: true, json: async () => ({ enabled: 'true' }) }),
+  ]) {
+    const loaded = [];
+    const nodes = new Map(['test-banner', 'test-unavailable'].map(id => [id, { hidden: true }]));
+    const main = { hidden: false };
+    await runInNewContext(`(async () => { ${code} })()`, {
+      URLSearchParams, location: { search: '?demo=1' },
+      document: { getElementById: id => nodes.get(id), querySelector: () => main },
+      fetch: response, loadModule: async path => loaded.push(path),
+    });
+    assert.deepEqual(loaded, []);
+    assert.equal(nodes.get('test-banner').hidden, true);
+    assert.equal(nodes.get('test-unavailable').hidden, false);
+    assert.equal(main.hidden, true);
   }
 });
 // Minimal DOM surface for exercising actual event handlers without a runtime dependency.
