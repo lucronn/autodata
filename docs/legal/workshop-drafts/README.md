@@ -36,20 +36,13 @@ Remaining launch decisions and checks:
 
 The owner has confirmed that both Bankone and Banktwo agreements allow storing,
 rewriting and selling access to article content. This is owner-reported and is
-not an independent review of the agreements. The selected customer-use wording
-does not expand rights beyond the applicable upstream agreements.
+not an independent review of the agreements. Before publication, confirm the
+selected personal and internal-business uses against the actual agreements;
+permission to sell access alone does not establish every customer use right.
 
-## Stripe TEST configuration check — November 11, 2026
-
-The existing isolated TEST merchant has an active one-time USD 20 Price, but
-that Price reports `tax_behavior=unspecified` and its Product has no tax code.
-The TEST merchant profile has no support email or support address configured.
-These are read-only TEST-account observations, not findings about the live
-Stripe account or a determination of tax treatment. Do not enable public
-checkout, promise tax collection, or use the TEST profile as published seller
-contact evidence. The isolated TEST API cannot currently start because its
-Firebase credential bind source is missing; authenticated paid-settlement and
-grant acceptance remain unverified.
+The dated [Stripe TEST readiness check](../../verification/2026-11-11-workshop-stripe-test-readiness.md)
+records unresolved tax, merchant-support, and authenticated payment acceptance
+checks. It is not a basis for enabling public checkout.
 
 Do not replace missing privacy facts with invented retention periods. A
 purpose-based sentence such as "We retain purchase records while needed to
