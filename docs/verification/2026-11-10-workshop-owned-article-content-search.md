@@ -101,6 +101,14 @@ Repair verification on 2026-11-11, based on planning checkpoint
   for table-level images; the focused test and full Go API suite passed (8.493
   seconds). The current head still needs independent review and guarded paid
   runtime evidence before merge.
+- Exact-head review of `f01a058d5d9cdf2feb073a6437e79100573d8266`
+  found an integration gap: the paid Postgres search query omitted the
+  current article's image list, so a visible table-level image alt could not
+  resolve at the actual endpoint. A red-first store-projection test failed
+  before the repair. The query now selects `c.images` into a private search
+  projection while returning a metadata-only descriptor; the focused test and
+  full Go API suite passed (8.581 seconds). This tests row assembly with a
+  fixture row, not the guarded isolated Postgres/HTTP case.
 - A red-first contract test caught served JSON/YAML OpenAPI drift. Both formats
   now parse to the same contract; four lifecycle contract tests passed.
 - Workshop Node test runner reported two file-level subtests passed, zero
