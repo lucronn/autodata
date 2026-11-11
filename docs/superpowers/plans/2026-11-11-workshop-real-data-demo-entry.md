@@ -10,7 +10,7 @@ Make `/workshop/?demo=1` use the ordinary, authenticated Workshop application an
 
 ## Bounded implementation
 
-The Go API exposes an uncached public demo-readiness signal only when the process is explicitly configured as `stripe_test` in a non-production environment and its private commerce dependency responds with an enabled, valid purchase configuration. The signal is presentation-only, not an authorization input. Missing, malformed or unavailable responses fail closed. The browser loads ordinary `app.mjs` for a ready real-data demo and keeps a visible no-real-charge/test-mode banner across the Stripe return URL. If `?demo=1` is requested when readiness is false, do not load the Workshop app under a misleading demo label; show an actionable unavailable message. The old fictional sample moves to explicit `?sample=1` and remains clearly labeled as non-service information.
+The Go API exposes an uncached public demo-readiness signal only when the process is explicitly configured as `stripe_test` in a non-production environment and its private commerce dependency independently confirms `stripe_test` with an enabled, valid purchase configuration. This private mode handshake prevents a Go/Python configuration mismatch from labeling a live charge as a test purchase. The signal is presentation-only, not an authorization input. Missing, malformed or unavailable responses fail closed. The browser loads ordinary `app.mjs` for a ready real-data demo and keeps a visible no-real-charge/test-mode banner across the Stripe return URL. If `?demo=1` is requested when readiness is false, do not load the Workshop app under a misleading demo label; show an actionable unavailable message. The old fictional sample moves to explicit `?sample=1` and remains clearly labeled as non-service information.
 
 Existing Stripe test settlement, account identity, grant check, current source rights, exact scope, refund/revocation and protected article/media paths stay unchanged. Do not add a free public content route, fake grant or client-side entitlement. Real eligible content is not guaranteed for every vehicle/category; show only actual returned content and existing honest missing/preparing states.
 
@@ -18,9 +18,10 @@ No production mode, traffic, DNS, payment enablement, secret, deployment, source
 
 ## Implementation files
 
-- `apps/api-go/main.go`, `workshop_demo_mode.go`: immutable non-production test-mode signal and route wiring.
+- `apps/api-go/main.go`, `workshop_demo_mode.go`, `commerce_client.go`: immutable non-production test-mode signal, private mode handshake and route wiring.
 - `apps/api-go/workshop/index.html`, `bootstrap.mjs`, `demo.mjs`: separate real test-mode and fictional sample labels; route selection.
-- `apps/api-go/workshop_test.go`, `workshop-demo.test.mjs`: red-first Go/browser regressions.
+- `workers/ingestion-python/src/autodata_ingestion/commerce_service.py`, `http_service.py`: token-authenticated private mode/readiness response, without payment or grant mutation.
+- `apps/api-go/workshop_test.go`, `workshop-demo.test.mjs`, `workers/ingestion-python/tests/test_http_service.py`: red-first Go/browser/private-service regressions.
 
 ## Concrete todo
 
