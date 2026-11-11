@@ -10,7 +10,8 @@
   "todo": [
     "Synchronize plan, Issue, Project, canonical documentation and pinned-base preflight",
     "Add red-first Go and browser tests for test-only readiness and honest route selection",
-    "Implement the bounded Workshop entry without changing auth, payment, grant or article contracts",
+    "Implement the Workshop entry and checkout-time expected-test-mode safety fence without changing settlement, grant or article semantics",
+    "Close independent-review findings on auth readiness, public origin and strict private-response parsing",
     "Run checks, independent exact-head review and CI before integration; keep real-data browser acceptance separately gated"
   ],
   "status": "synchronized",

@@ -10,23 +10,24 @@ Make `/workshop/?demo=1` use the ordinary, authenticated Workshop application an
 
 ## Bounded implementation
 
-The Go API exposes an uncached public demo-readiness signal only when the process is explicitly configured as `stripe_test` in a non-production environment and its private commerce dependency independently confirms `stripe_test` with an enabled, valid purchase configuration. This private mode handshake prevents a Go/Python configuration mismatch from labeling a live charge as a test purchase. The signal is presentation-only, not an authorization input. Missing, malformed or unavailable responses fail closed. The browser loads ordinary `app.mjs` for a ready real-data demo and keeps a visible no-real-charge/test-mode banner across the Stripe return URL. If `?demo=1` is requested when readiness is false, do not load the Workshop app under a misleading demo label; show an actionable unavailable message. The old fictional sample moves to explicit `?sample=1` and remains clearly labeled as non-service information.
+The Go API exposes an uncached public demo-readiness signal only when the process is explicitly configured as `stripe_test` with Firebase sign-in, a non-production environment, and a separate non-production public origin. Its private commerce dependency must independently confirm `stripe_test` with an enabled, valid purchase configuration. Missing, malformed (including duplicate-field) or unavailable responses fail closed. The signal is presentation-only, not an authorization input. At checkout time, Go adds a private expected-test-mode constraint that the Python commerce authority checks against its immutable configured mode **before** any payment operation. This closes the stale-browser-tab/configuration-drift path to a live charge under a no-charge banner. The browser loads ordinary `app.mjs` for a ready real-data demo and keeps a visible no-real-charge/test-mode banner across the Stripe return URL. If `?demo=1` is requested when readiness is false, do not load the Workshop app under a misleading demo label; show an actionable unavailable message. The old fictional sample moves to explicit `?sample=1` and remains clearly labeled as non-service information.
 
 Existing Stripe test settlement, account identity, grant check, current source rights, exact scope, refund/revocation and protected article/media paths stay unchanged. Do not add a free public content route, fake grant or client-side entitlement. Real eligible content is not guaranteed for every vehicle/category; show only actual returned content and existing honest missing/preparing states.
 
-No production mode, traffic, DNS, payment enablement, secret, deployment, source connector or database change is included. A restricted, separately provisioned test audience and licensed real-data environment are required before claiming end-to-end acceptance.
+No production mode, traffic, DNS, payment enablement, secret, deployment, source connector or database change is included. Test-mode checkout must not start with the public production origin, even if the environment label is wrong. A restricted, separately provisioned test audience and licensed real-data environment are still required before claiming end-to-end acceptance: a different hostname alone is not audience isolation.
 
 ## Implementation files
 
-- `apps/api-go/main.go`, `workshop_demo_mode.go`, `commerce_client.go`: immutable non-production test-mode signal, private mode handshake and route wiring.
+- `apps/api-go/main.go`, `workshop_demo_mode.go`, `commerce_client.go`, `commerce_http.go`: immutable non-production/Firebase/origin test-mode signal, strict private mode handshake, checkout-time expected-mode constraint and route wiring.
 - `apps/api-go/workshop/index.html`, `bootstrap.mjs`, `demo.mjs`: separate real test-mode and fictional sample labels; route selection.
-- `workers/ingestion-python/src/autodata_ingestion/commerce_service.py`, `http_service.py`: token-authenticated private mode/readiness response, without payment or grant mutation.
-- `apps/api-go/workshop_test.go`, `workshop-demo.test.mjs`, `workers/ingestion-python/tests/test_http_service.py`: red-first Go/browser/private-service regressions.
+- `workers/ingestion-python/src/autodata_ingestion/commerce_service.py`, `http_service.py`: token-authenticated private mode/readiness response, checkout-time expected-mode enforcement and test-origin validation, without changing settlement or grant semantics.
+- `apps/api-go/workshop_test.go`, `commerce_http_test.go`, `workshop-demo.test.mjs`, `workers/ingestion-python/tests/test_http_service.py`, `test_commerce_service.py`: red-first Go/browser/private-service regressions.
 
 ## Concrete todo
 
 - [x] Synchronize this plan, Issue #398, Project #8, canonical verification document and pinned-base machine preflight (`0675a17` returned `status:synchronized`, `errors:[]`).
 - [x] Add failing Go, Python and browser tests for disabled/live/production/mismatched-mode/invalid-response/test-ready modes, explicit demo refusal, real app import, sample isolation and return-page banner.
-- [x] Implement the bounded endpoint and bootstrap behavior without changing auth, commerce, grants or article APIs.
-- [ ] Run focused/full Node and Go tests, syntax/diff checks and local browser smoke; obtain independent exact-head review and current CI.
+- [x] Implement the initial bounded endpoint and bootstrap behavior without changing grants or article APIs (`4ecc2d7`).
+- [ ] Add red-first regressions and close independent-review gaps: stale-tab live-charge fence, Firebase readiness, public-origin exclusion and duplicate-key private-response rejection.
+- [ ] Run focused/full Node, Go and Python tests, syntax/diff checks and local browser smoke; obtain independent exact-head re-review and current CI.
 - [ ] Merge only if live branch protection permits; keep real licensed-data/test-payment browser acceptance and deployment separately blocked until evidenced.
