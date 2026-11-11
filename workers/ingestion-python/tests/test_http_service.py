@@ -236,6 +236,37 @@ def test_commerce_dispatch_rejects_browser_authority_fields():
             'configuration_id':'z','region':'US','terms_version':'workshop-v1','idempotency_key':'k','amount_minor':1})
 
 
+def test_test_checkout_expected_mode_is_checked_before_payment_or_database():
+    from types import SimpleNamespace
+    from autodata_ingestion.http_service import dispatch_commerce
+    from autodata_ingestion.commerce_service import CommerceError
+    import pytest
+    class Commerce:
+        config = SimpleNamespace(mode='stripe_live')
+        def checkout(self,*args):
+            raise AssertionError('mismatched test checkout reached payment authority')
+    payload = {'customer_account_id':'owner','organization_id':'org','configuration_id':'vehicle',
+        'region':'US','terms_version':'workshop-v1','idempotency_key':'key','expected_mode':'stripe_test'}
+    with pytest.raises(CommerceError) as error:
+        dispatch_commerce(Commerce(), '/internal/commerce/checkouts', payload)
+    assert error.value.http_status == 503
+    assert error.value.code == 'COMMERCE_UNAVAILABLE'
+
+
+def test_matching_test_checkout_reaches_ordinary_authority_without_expected_mode_in_payload():
+    from types import SimpleNamespace
+    from autodata_ingestion.http_service import dispatch_commerce
+    class Commerce:
+        config = SimpleNamespace(mode='stripe_test')
+        def checkout(self, account, organization, key, payload):
+            assert (account, organization, key) == ('owner', 'org', 'key')
+            assert payload == {'configuration_id':'vehicle','region':'US','terms_version':'workshop-v1'}
+            return {'state':'checkout'}
+    payload = {'customer_account_id':'owner','organization_id':'org','configuration_id':'vehicle',
+        'region':'US','terms_version':'workshop-v1','idempotency_key':'key','expected_mode':'stripe_test'}
+    assert dispatch_commerce(Commerce(), '/internal/commerce/checkouts', payload) == {'state':'checkout'}
+
+
 def test_demo_mode_private_response_uses_actual_mode_and_validated_purchase_config():
     from autodata_ingestion.http_service import dispatch_commerce
     from autodata_ingestion.commerce_service import CommerceService, CommerceConfig, CommerceError

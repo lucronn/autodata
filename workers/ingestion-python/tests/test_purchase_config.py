@@ -94,6 +94,18 @@ class PurchaseConfigTests(unittest.TestCase):
                 with self.assertNoLogs('autodata_ingestion.commerce_service'):
                     with self.assertRaises(CommerceError):configured_commerce()
 
+    def test_test_checkout_cannot_use_public_production_return_origin(self):
+        from autodata_ingestion.commerce_service import configured_commerce
+        for origin in ('https://cars.tk', 'https://autodata.cars.tk'):
+            env = {'AUTODATA_COMMERCE_MODE':'stripe_test','AUTODATA_ENV':'staging',
+                'AUTODATA_PUBLIC_ORIGIN':origin,'AUTODATA_STRIPE_SECRET_KEY':'sk_test_fixture',
+                'AUTODATA_STRIPE_WEBHOOK_SECRET':'whsec_fixture','AUTODATA_STRIPE_ACCOUNT_ID':'acct_fixture',
+                'AUTODATA_STRIPE_PRICE_ID':'price_fixture','AUTODATA_INGESTION_INTERNAL_TOKEN':'fixture-token'}
+            with self.subTest(origin=origin), patch.dict('os.environ',env,clear=True), patch.dict('sys.modules',{'stripe':object()}):
+                with self.assertRaises(CommerceError) as error:
+                    configured_commerce()
+                self.assertEqual(error.exception.code,'COMMERCE_CONFIGURATION_INVALID')
+
     def test_valid_financial_startup_survives_malformed_notices_and_preserves_checks(self):
         from contextlib import contextmanager
         from types import SimpleNamespace

@@ -99,6 +99,9 @@ func configuredCommerceClient(getenv func(string) string) (CommerceClient, error
 	case "", "disabled":
 		return nil, nil
 	case "stripe_test", "stripe_live":
+		if mode == "stripe_test" && workshopProductionOrigin(getenv("AUTODATA_PUBLIC_ORIGIN")) {
+			return nil, fmt.Errorf("invalid commerce configuration")
+		}
 		client, err := NewHTTPCommerceClient(getenv("AUTODATA_INGESTION_URL"), getenv("AUTODATA_INGESTION_INTERNAL_TOKEN"))
 		if err != nil {
 			return nil, err

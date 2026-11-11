@@ -101,24 +101,29 @@ func TestWorkshopPurchaseConfigDisabledByDefault(t *testing.T) {
 
 func TestWorkshopRealDemoRequiresEnabledNonProductionStripeTest(t *testing.T) {
 	cases := []struct {
-		name, mode, environment, config string
-		client, enabled                 bool
+		name, mode, environment, authMode, origin, config string
+		client, enabled                                   bool
 	}{
-		{"test ready", "stripe_test", "staging", `{"mode":"stripe_test","purchase_enabled":true}`, true, true},
-		{"test disabled purchase", "stripe_test", "staging", `{"mode":"stripe_test","purchase_enabled":false}`, true, false},
-		{"mismatched private live mode", "stripe_test", "staging", `{"mode":"stripe_live","purchase_enabled":true}`, true, false},
-		{"test invalid response", "stripe_test", "staging", `{"mode":"stripe_test","purchase_enabled":true,"extra":1}`, true, false},
-		{"test no client", "stripe_test", "staging", `{"mode":"stripe_test","purchase_enabled":true}`, false, false},
-		{"live mode", "stripe_live", "staging", `{"mode":"stripe_test","purchase_enabled":true}`, true, false},
-		{"production", "stripe_test", "production", `{"mode":"stripe_test","purchase_enabled":true}`, true, false},
-		{"unknown environment", "stripe_test", "unknown", `{"mode":"stripe_test","purchase_enabled":true}`, true, false},
-		{"disabled mode", "disabled", "staging", `{"mode":"stripe_test","purchase_enabled":true}`, true, false},
+		{"test ready", "stripe_test", "staging", "firebase", "https://demo.example", `{"mode":"stripe_test","purchase_enabled":true}`, true, true},
+		{"test disabled purchase", "stripe_test", "staging", "firebase", "https://demo.example", `{"mode":"stripe_test","purchase_enabled":false}`, true, false},
+		{"mismatched private live mode", "stripe_test", "staging", "firebase", "https://demo.example", `{"mode":"stripe_live","purchase_enabled":true}`, true, false},
+		{"test invalid response", "stripe_test", "staging", "firebase", "https://demo.example", `{"mode":"stripe_test","purchase_enabled":true,"extra":1}`, true, false},
+		{"test duplicate private mode", "stripe_test", "staging", "firebase", "https://demo.example", `{"mode":"stripe_live","mode":"stripe_test","purchase_enabled":true}`, true, false},
+		{"test trailing private JSON", "stripe_test", "staging", "firebase", "https://demo.example", `{"mode":"stripe_test","purchase_enabled":true}{}`, true, false},
+		{"test no client", "stripe_test", "staging", "firebase", "https://demo.example", `{"mode":"stripe_test","purchase_enabled":true}`, false, false},
+		{"local auth unavailable", "stripe_test", "test", "local", "https://demo.example", `{"mode":"stripe_test","purchase_enabled":true}`, true, false},
+		{"public production origin", "stripe_test", "staging", "firebase", "https://autodata.cars.tk", `{"mode":"stripe_test","purchase_enabled":true}`, true, false},
+		{"public apex origin", "stripe_test", "staging", "firebase", "https://cars.tk", `{"mode":"stripe_test","purchase_enabled":true}`, true, false},
+		{"live mode", "stripe_live", "staging", "firebase", "https://demo.example", `{"mode":"stripe_test","purchase_enabled":true}`, true, false},
+		{"production", "stripe_test", "production", "firebase", "https://demo.example", `{"mode":"stripe_test","purchase_enabled":true}`, true, false},
+		{"unknown environment", "stripe_test", "unknown", "firebase", "https://demo.example", `{"mode":"stripe_test","purchase_enabled":true}`, true, false},
+		{"disabled mode", "disabled", "staging", "firebase", "https://demo.example", `{"mode":"stripe_test","purchase_enabled":true}`, true, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			calls := 0
 			s := NewServer(staticReadiness{})
-			s.workshopTestCheckout = workshopTestCheckoutMode(tc.mode, tc.environment)
+			s.workshopTestCheckout = workshopTestCheckoutMode(tc.mode, tc.environment, tc.authMode, tc.origin)
 			if tc.client {
 				s.commerceClient = commerceFixture(func(_ context.Context, op string, body []byte, signature string) (int, []byte, error) {
 					calls++
@@ -137,7 +142,7 @@ func TestWorkshopRealDemoRequiresEnabledNonProductionStripeTest(t *testing.T) {
 			if json.Unmarshal(response.Body.Bytes(), &payload) != nil || !reflect.DeepEqual(payload, map[string]any{"enabled": tc.enabled}) {
 				t.Fatalf("demo readiness = %#v, want %v", payload, tc.enabled)
 			}
-			if want := 0; tc.client && tc.mode == "stripe_test" && tc.environment == "staging" {
+			if want := 0; tc.client && workshopTestCheckoutMode(tc.mode, tc.environment, tc.authMode, tc.origin) {
 				want = 1
 				if calls != want {
 					t.Fatalf("private calls=%d, want %d", calls, want)

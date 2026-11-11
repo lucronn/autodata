@@ -64,6 +64,24 @@ func TestCommercePublicTrustedOwnerAndStrictShape(t *testing.T) {
 	}
 }
 
+func TestWorkshopTestCheckoutPinsPrivateExpectedMode(t *testing.T) {
+	calls := 0
+	s, cookie, csrf := commerceTestAPI(t, commerceFixture(func(_ context.Context, operation string, body []byte, _ string) (int, []byte, error) {
+		calls++
+		var input map[string]any
+		if operation != "checkouts" || json.Unmarshal(body, &input) != nil || input["expected_mode"] != "stripe_test" {
+			t.Fatalf("test checkout did not pin the private payment mode: %s %s", operation, body)
+		}
+		return 503, []byte(`{"error":{"code":"COMMERCE_UNAVAILABLE"}}`), nil
+	}))
+	s.workshopTestCheckout = true
+	headers := map[string]string{"Content-Type": "application/json", "Origin": "https://cars.example", "X-CSRF-Token": csrf, "Idempotency-Key": commerceOrderID}
+	w := customerHTTP(t, s.Handler(), "POST", "/v1/workshop/checkout-sessions", commerceCheckoutBody, headers, cookie)
+	if w.Code != 503 || calls != 1 {
+		t.Fatalf("checkout status=%d calls=%d", w.Code, calls)
+	}
+}
+
 type commerceFixture func(context.Context, string, []byte, string) (int, []byte, error)
 
 func (f commerceFixture) Do(ctx context.Context, op string, b []byte, s string) (int, []byte, error) {

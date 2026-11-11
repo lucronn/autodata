@@ -697,7 +697,7 @@ func main() {
 	if err != nil {
 		log.Fatal("configure commerce: invalid configuration")
 	}
-	application.workshopTestCheckout = workshopTestCheckoutMode(os.Getenv("AUTODATA_COMMERCE_MODE"), os.Getenv("AUTODATA_ENV"))
+	application.workshopTestCheckout = workshopTestCheckoutMode(os.Getenv("AUTODATA_COMMERCE_MODE"), os.Getenv("AUTODATA_ENV"), authConfig.Mode, authConfig.Origin)
 	if application.validatePaidCatalogDependencies() != nil {
 		log.Fatal("configure paid catalog: required dependency unavailable")
 	}

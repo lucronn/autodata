@@ -104,6 +104,9 @@ func (s *Server) commerceCheckoutHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	input["customer_account_id"], input["organization_id"], input["idempotency_key"] = p.CustomerAccountID, p.OrganizationID, r.Header.Get("Idempotency-Key")
+	if s.workshopTestCheckout {
+		input["expected_mode"] = "stripe_test"
+	}
 	s.commerceCall(w, r, "checkouts", input, nil, "")
 }
 
