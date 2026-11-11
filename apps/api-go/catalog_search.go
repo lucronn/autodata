@@ -36,10 +36,28 @@ func catalogArticleSearchText(article CatalogArticle) string {
 			parts = append(parts, catalogBlockSearchText(block))
 		}
 	} else {
-		parts = append(parts, article.Body)
+		// Workshop renders usable legacy steps instead of the compatibility body.
+		// A partly empty sequence falls back to the body, matching articlePresentation.
+		usable := len(article.Steps) > 0
 		for _, step := range article.Steps {
-			parts = append(parts, step.Text, step.Action, step.Heading)
-			parts = append(parts, step.Instructions...)
+			visible := strings.TrimSpace(step.Action) != "" || strings.TrimSpace(step.Heading) != ""
+			for _, instruction := range step.Instructions {
+				visible = visible || strings.TrimSpace(instruction) != ""
+			}
+			usable = usable && visible
+		}
+		if usable {
+			for _, step := range article.Steps {
+				parts = append(parts, step.Action, step.Heading)
+				parts = append(parts, step.Instructions...)
+				if step.Images != nil {
+					for _, image := range *step.Images {
+						parts = append(parts, image.Alt)
+					}
+				}
+			}
+		} else {
+			parts = append(parts, article.Body)
 		}
 	}
 	return strings.Join(parts, " ")

@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import unittest
 import jsonschema
+import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 CATALOG = ROOT / 'packages/contracts/catalog/v1'
@@ -61,6 +62,11 @@ class CatalogLifecycleContract(unittest.TestCase):
         for field in ('canonical_article_id','source_revision_id','canonical_revision_id',
                       'content_origin','availability','view_revision','review_status','processing'):
             self.assertIn(field, article['properties'])
+
+    def test_served_openapi_json_and_yaml_are_equivalent(self):
+        json_spec = json.loads((ROOT / 'apps/api-go/openapi.json').read_text())
+        yaml_spec = yaml.safe_load((ROOT / 'apps/api-go/openapi.yaml').read_text())
+        self.assertEqual(json_spec, yaml_spec)
 
 if __name__ == '__main__':
     unittest.main()

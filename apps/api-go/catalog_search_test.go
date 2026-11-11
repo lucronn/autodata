@@ -24,17 +24,23 @@ func TestCatalogArticleSearchUsesRenderedDocumentNotHiddenCompatibilityFields(t 
 	}
 }
 
-func TestCatalogArticleSearchFallsBackToLegacyBodyAndSteps(t *testing.T) {
+func TestCatalogArticleSearchMatchesRenderedLegacyStepsBeforeHiddenBody(t *testing.T) {
 	article := CatalogArticle{
 		Title: "Maintenance guide", Kind: "procedure", Body: "Check coolant level.",
 		Steps: []CatalogStep{{Action: "Inspect reservoir", Instructions: []string{"Top up approved fluid."}}},
 	}
-	for _, query := range []string{"coolant", "reservoir", "approved fluid", "maintenance procedure"} {
+	for _, query := range []string{"reservoir", "approved fluid", "maintenance procedure"} {
 		if len(filterCatalogArticleSearch([]CatalogArticle{article}, query)) != 1 {
 			t.Fatalf("legacy query %q did not match", query)
 		}
 	}
-	if len(filterCatalogArticleSearch([]CatalogArticle{article}, "brake")) != 0 {
-		t.Fatal("unrelated article matched")
+	for _, query := range []string{"coolant", "brake"} {
+		if len(filterCatalogArticleSearch([]CatalogArticle{article}, query)) != 0 {
+			t.Fatalf("hidden or unrelated query %q matched", query)
+		}
+	}
+	article.Steps = []CatalogStep{{Text: "No visible instructions"}}
+	if len(filterCatalogArticleSearch([]CatalogArticle{article}, "coolant")) != 1 {
+		t.Fatal("body fallback did not match when steps are unusable")
 	}
 }

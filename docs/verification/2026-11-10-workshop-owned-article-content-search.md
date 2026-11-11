@@ -69,8 +69,34 @@ Local verification on 2026-11-10:
 
 This is Workshop app work, not an architecture or database-schema redesign.
 It does not change checkout, price, grant issuance, production service state,
-DNS, or live traffic. The public Workshop origin still returns 502, tracked in
-[Issue #391](https://github.com/lucronn/autodata/issues/391); unit tests alone
-cannot establish paid release readiness.
+DNS, or live traffic. The public Workshop origin returned 502 on 2026-11-10,
+tracked in [Issue #391](https://github.com/lucronn/autodata/issues/391);
+unit tests alone cannot establish paid release readiness.
+
+Repair verification on 2026-11-11, based on planning checkpoint
+`417912427b3597a7bb2cb5f303e835f3db9b7860` (preflight synchronized):
+
+- Red-first paid inventory tests failed at the old three missing assertion keys
+  and old 18/11 HTTP observation counts. The smoke collector and independent
+  release parser now recognize the three new keys and 19/14 observations per
+  affected provider case. The Python bridge imports the smoke collector map.
+- The offline paid HTTP/scope parser mutation suites passed: 29 tests in
+  435.629 seconds. The paid collector tests passed: 4 tests. These validate
+  strict local receipt interpretation, not actual isolated Postgres execution.
+- A red-first Go test proved that search previously matched a hidden legacy
+  body when usable steps were rendered. The search fallback now mirrors the
+  Workshop renderer. Full Go API tests passed in 8.586 seconds.
+- A red-first contract test caught served JSON/YAML OpenAPI drift. Both formats
+  now parse to the same contract; four lifecycle contract tests passed.
+- Workshop Node test runner reported two file-level subtests passed, zero
+  failures, for `workshop-client.test.mjs` and `workshop-demo.test.mjs`.
+- The guarded twelve-case paid fixture has not been run for this candidate.
+  It requires an immutable candidate and the coordinator-reviewed isolated
+  runtime; offline tests and ordinary CI are not substitutes. PR #394 must
+  receive a new exact-head independent review and current CI and satisfy live
+  branch protection before merge. Live owned-vehicle purchase/search acceptance
+  remains separate. One bounded public `/readyz` probe returned 200 on this
+  date, but it does not prove reboot durability or paid access; Issue #391 stays
+  open.
 
 Plan: [2026-11-10-workshop-owned-article-content-search](../superpowers/plans/2026-11-10-workshop-owned-article-content-search.md).
