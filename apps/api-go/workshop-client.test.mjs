@@ -167,6 +167,20 @@ test('checkout attempt shares one in-flight request and retries the same key/bod
   assert.deepEqual(calls[0].body, calls[1].body);
   assert.ok(![...values.values()].join('').includes('csrf'));
 });
+test('banner-bearing test tab asserts test mode on each checkout request', async () => {
+  const { createCheckout } = await import('./workshop/commerce.mjs');
+  const calls = [];
+  const storage = { getItem: () => null, setItem: () => {}, removeItem: () => {} };
+  const checkout = createCheckout({ expectedMode: 'stripe_test', storage, uuid: () => orderID,
+    request: async (path, options) => { calls.push([path, options]); return { version: 'v1', ...scope, order_id: orderID, state: 'processing' }; } });
+  await checkout.start(scope, 'csrf');
+  await checkout.start(scope, 'csrf');
+  assert.equal(calls.length, 2);
+  for (const [path, options] of calls) {
+    assert.equal(path, '/v1/workshop/checkout-sessions');
+    assert.equal(options.body.expected_mode, 'stripe_test');
+  }
+});
 test('checkout attempt for a new configuration or region waits and uses its own response and key', async () => {
   const { createCheckout } = await import('./workshop/commerce.mjs');
   for (const nextScope of [

@@ -29,6 +29,6 @@ No production mode, traffic, DNS, payment enablement, secret, deployment, source
 - [x] Add failing Go, Python and browser tests for disabled/live/production/mismatched-mode/invalid-response/test-ready modes, explicit demo refusal, real app import, sample isolation and return-page banner.
 - [x] Implement the initial bounded endpoint and bootstrap behavior without changing grants or article APIs (`4ecc2d7`).
 - [x] Add red-first regressions and close initial independent-review gaps: Python-only mode drift, Firebase readiness, public-origin exclusion and duplicate-key private-response rejection (`02cce3e`).
-- [ ] Close re-review's Go-restart stale-tab gap with a browser-carried test-only assertion, Go rejection when its current mode is live, and private test-mode pinning; red-first tests must cover the live-Go/no-private-call case.
+- [x] Close re-review's Go-restart stale-tab gap with a browser-carried test-only assertion, Go rejection when its current mode is live, and private test-mode pinning; red-first tests cover the live-Go/no-private-call case.
 - [ ] Run focused/full Node, Go and Python tests, syntax/diff checks and local browser smoke; obtain independent exact-head re-review and current CI.
 - [ ] Merge only if live branch protection permits; keep real licensed-data/test-payment browser acceptance and deployment separately blocked until evidenced.

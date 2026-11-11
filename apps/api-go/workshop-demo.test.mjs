@@ -8,6 +8,7 @@ test('HTML starts only the isolated bootstrap', () => {
   assert.doesNotMatch(source('index.html'), /src="\/workshop\/(app|demo)\.mjs"/);
   assert.match(source('index.html'), /Test checkout — no real charge/);
   assert.match(source('index.html'), /Sample — fictional content/);
+  assert.match(source('app.mjs'), /createCheckout\(\{\s*expectedMode:\s*\$\('test-banner'\)\.hidden\s*\?\s*undefined\s*:\s*'stripe_test'/);
 });
 test('real demo uses the ordinary app only in test mode; sample stays separate', async () => {
   assert.ok(existsSync(new URL('./workshop/bootstrap.mjs', import.meta.url)), 'bootstrap must exist');

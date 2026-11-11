@@ -76,9 +76,25 @@ func TestWorkshopTestCheckoutPinsPrivateExpectedMode(t *testing.T) {
 	}))
 	s.workshopTestCheckout = true
 	headers := map[string]string{"Content-Type": "application/json", "Origin": "https://cars.example", "X-CSRF-Token": csrf, "Idempotency-Key": commerceOrderID}
-	w := customerHTTP(t, s.Handler(), "POST", "/v1/workshop/checkout-sessions", commerceCheckoutBody, headers, cookie)
+	body := strings.TrimSuffix(commerceCheckoutBody, "}") + `,"expected_mode":"stripe_test"}`
+	w := customerHTTP(t, s.Handler(), "POST", "/v1/workshop/checkout-sessions", body, headers, cookie)
 	if w.Code != 503 || calls != 1 {
 		t.Fatalf("checkout status=%d calls=%d", w.Code, calls)
+	}
+}
+
+func TestWorkshopStaleTestTabCannotCheckoutAfterGoRestartsLive(t *testing.T) {
+	calls := 0
+	s, cookie, csrf := commerceTestAPI(t, commerceFixture(func(_ context.Context, _ string, _ []byte, _ string) (int, []byte, error) {
+		calls++
+		return 201, []byte(`{}`), nil
+	}))
+	s.workshopTestCheckout = false // a replacement Go process is now configured live
+	headers := map[string]string{"Content-Type": "application/json", "Origin": "https://cars.example", "X-CSRF-Token": csrf, "Idempotency-Key": commerceOrderID}
+	body := strings.TrimSuffix(commerceCheckoutBody, "}") + `,"expected_mode":"stripe_test"}`
+	w := customerHTTP(t, s.Handler(), "POST", "/v1/workshop/checkout-sessions", body, headers, cookie)
+	if w.Code != 503 || calls != 0 {
+		t.Fatalf("stale no-charge tab reached live checkout: status=%d calls=%d body=%s", w.Code, calls, w.Body.String())
 	}
 }
 
