@@ -180,6 +180,10 @@ def build_ordered_document(
                 seen_image_keys.update(_image_identities(block))
             elif bkind in {"table", "grid"}:
                 for row in block.get("rows") or []:
+                    if isinstance(row, Mapping):
+                        for row_img in row.get("images") or []:
+                            if isinstance(row_img, Mapping):
+                                seen_image_keys.update(_image_identities(row_img))
                     cells = row if isinstance(row, list) else row.get("cells", []) if isinstance(row, Mapping) else []
                     for cell in cells:
                         if isinstance(cell, Mapping):
