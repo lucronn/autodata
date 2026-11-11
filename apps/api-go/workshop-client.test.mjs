@@ -167,30 +167,41 @@ test('checkout attempt shares one in-flight request and retries the same key/bod
   assert.deepEqual(calls[0].body, calls[1].body);
   assert.ok(![...values.values()].join('').includes('csrf'));
 });
-test('checkout attempt for a new vehicle waits and uses its own response and key', async () => {
+test('checkout attempt for a new configuration or region waits and uses its own response and key', async () => {
   const { createCheckout } = await import('./workshop/commerce.mjs');
-  const nextScope = { configuration_id: '55555555-5555-4555-8555-555555555555', region: 'US' };
-  const nextOrder = '88888888-8888-4888-8888-888888888888';
-  const keys = ['66666666-6666-4666-8666-666666666666', '77777777-7777-4777-8777-777777777777'];
-  const values = new Map(), calls = [], releases = [];
-  const storage = { getItem: k => values.get(k) ?? null, setItem: (k,v) => values.set(k,v), removeItem: k => values.delete(k) };
-  const checkout = createCheckout({ storage, uuid: () => keys.shift(), request: (_path, options) => {
-    calls.push(options);
-    return new Promise(resolve => releases.push(resolve));
-  } });
-  const first = checkout.start(scope, 'csrf');
-  const second = checkout.start(nextScope, 'csrf');
-  assert.notStrictEqual(second, first);
-  assert.equal(calls.length, 1);
-  releases[0]({ version: 'v1', ...scope, order_id: orderID, state: 'processing' });
-  assert.equal((await first).configuration_id, scope.configuration_id);
-  await new Promise(setImmediate);
-  assert.equal(calls.length, 2);
-  assert.equal(calls[1].body.configuration_id, nextScope.configuration_id);
-  assert.notEqual(calls[0].headers['Idempotency-Key'], calls[1].headers['Idempotency-Key']);
-  releases[1]({ version: 'v1', ...nextScope, order_id: nextOrder, state: 'processing' });
-  assert.equal((await second).configuration_id, nextScope.configuration_id);
-  assert.equal(JSON.parse([...values.values()][0]).configuration_id, nextScope.configuration_id);
+  for (const nextScope of [
+    { configuration_id: '55555555-5555-4555-8555-555555555555', region: 'US' },
+    { ...scope, region: 'CA' },
+  ]) {
+    const nextOrder = '88888888-8888-4888-8888-888888888888';
+    const keys = ['66666666-6666-4666-8666-666666666666', '77777777-7777-4777-8777-777777777777'];
+    const values = new Map(), calls = [], releases = [];
+    const storage = { getItem: k => values.get(k) ?? null, setItem: (k,v) => values.set(k,v), removeItem: k => values.delete(k) };
+    const checkout = createCheckout({ storage, uuid: () => keys.shift(), request: (_path, options) => {
+      calls.push(options);
+      return new Promise(resolve => releases.push(resolve));
+    } });
+    const first = checkout.start(scope, 'csrf');
+    const second = checkout.start(nextScope, 'csrf');
+    assert.notStrictEqual(second, first);
+    assert.equal(calls.length, 1);
+    releases[0]({ version: 'v1', ...scope, order_id: orderID, state: 'processing' });
+    const firstResult = await first;
+    assert.equal(firstResult.configuration_id, scope.configuration_id);
+    assert.equal(firstResult.region, scope.region);
+    await new Promise(setImmediate);
+    assert.equal(calls.length, 2);
+    assert.equal(calls[1].body.configuration_id, nextScope.configuration_id);
+    assert.equal(calls[1].body.region, nextScope.region);
+    assert.notEqual(calls[0].headers['Idempotency-Key'], calls[1].headers['Idempotency-Key']);
+    releases[1]({ version: 'v1', ...nextScope, order_id: nextOrder, state: 'processing' });
+    const result = await second;
+    assert.equal(result.configuration_id, nextScope.configuration_id);
+    assert.equal(result.region, nextScope.region);
+    const savedAttempt = JSON.parse([...values.values()][0]);
+    assert.equal(savedAttempt.configuration_id, nextScope.configuration_id);
+    assert.equal(savedAttempt.region, nextScope.region);
+  }
 });
 test('aborted queued checkout attempt does not send another vehicle request', async () => {
   const { createCheckout } = await import('./workshop/commerce.mjs');
