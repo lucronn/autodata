@@ -167,6 +167,88 @@ test('checkout attempt shares one in-flight request and retries the same key/bod
   assert.deepEqual(calls[0].body, calls[1].body);
   assert.ok(![...values.values()].join('').includes('csrf'));
 });
+test('checkout attempt for a new configuration or region waits and uses its own response and key', async () => {
+  const { createCheckout } = await import('./workshop/commerce.mjs');
+  for (const nextScope of [
+    { configuration_id: '55555555-5555-4555-8555-555555555555', region: 'US' },
+    { ...scope, region: 'CA' },
+  ]) {
+    const nextOrder = '88888888-8888-4888-8888-888888888888';
+    const keys = ['66666666-6666-4666-8666-666666666666', '77777777-7777-4777-8777-777777777777'];
+    const values = new Map(), calls = [], releases = [];
+    const storage = { getItem: k => values.get(k) ?? null, setItem: (k,v) => values.set(k,v), removeItem: k => values.delete(k) };
+    const checkout = createCheckout({ storage, uuid: () => keys.shift(), request: (_path, options) => {
+      calls.push(options);
+      return new Promise(resolve => releases.push(resolve));
+    } });
+    const first = checkout.start(scope, 'csrf');
+    const second = checkout.start(nextScope, 'csrf');
+    assert.notStrictEqual(second, first);
+    assert.equal(calls.length, 1);
+    releases[0]({ version: 'v1', ...scope, order_id: orderID, state: 'processing' });
+    const firstResult = await first;
+    assert.equal(firstResult.configuration_id, scope.configuration_id);
+    assert.equal(firstResult.region, scope.region);
+    await new Promise(setImmediate);
+    assert.equal(calls.length, 2);
+    assert.equal(calls[1].body.configuration_id, nextScope.configuration_id);
+    assert.equal(calls[1].body.region, nextScope.region);
+    assert.notEqual(calls[0].headers['Idempotency-Key'], calls[1].headers['Idempotency-Key']);
+    releases[1]({ version: 'v1', ...nextScope, order_id: nextOrder, state: 'processing' });
+    const result = await second;
+    assert.equal(result.configuration_id, nextScope.configuration_id);
+    assert.equal(result.region, nextScope.region);
+    const savedAttempt = JSON.parse([...values.values()][0]);
+    assert.equal(savedAttempt.configuration_id, nextScope.configuration_id);
+    assert.equal(savedAttempt.region, nextScope.region);
+  }
+});
+test('aborted queued checkout attempt does not send another vehicle request', async () => {
+  const { createCheckout } = await import('./workshop/commerce.mjs');
+  const nextScope = { configuration_id: '55555555-5555-4555-8555-555555555555', region: 'US' };
+  const calls = []; let release;
+  const storage = new Map();
+  const checkout = createCheckout({ storage: {
+    getItem: k => storage.get(k) ?? null,
+    setItem: (k,v) => storage.set(k,v),
+    removeItem: k => storage.delete(k),
+  }, uuid: () => '66666666-6666-4666-8666-666666666666', request: (_path, options) => {
+    calls.push(options);
+    return new Promise(resolve => { release = resolve; });
+  } });
+  const first = checkout.start(scope, 'csrf');
+  const controller = new AbortController();
+  const queued = checkout.start(nextScope, 'csrf', { signal: controller.signal });
+  controller.abort();
+  release({ version: 'v1', ...scope, order_id: orderID, state: 'processing' });
+  await first;
+  await assert.rejects(queued, { name: 'AbortError' });
+  assert.equal(calls.length, 1);
+});
+test('checkout attempt restarts same vehicle after the old navigation aborts', async () => {
+  const { createCheckout } = await import('./workshop/commerce.mjs');
+  const values = new Map(), calls = [], releases = [];
+  const checkout = createCheckout({ storage: {
+    getItem: k => values.get(k) ?? null,
+    setItem: (k,v) => values.set(k,v),
+    removeItem: k => values.delete(k),
+  }, uuid: () => '66666666-6666-4666-8666-666666666666', request: (_path, options) => {
+    calls.push(options);
+    return new Promise(resolve => releases.push(resolve));
+  } });
+  const old = new AbortController();
+  const first = checkout.start(scope, 'csrf', { signal: old.signal });
+  const firstRejected = assert.rejects(first, { name: 'AbortError' });
+  old.abort();
+  const replacement = checkout.start(scope, 'fresh-csrf', { signal: new AbortController().signal });
+  releases[0]({ version: 'v1', ...scope, order_id: orderID, state: 'processing' });
+  await firstRejected;
+  await new Promise(setImmediate);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].headers['Idempotency-Key'], calls[1].headers['Idempotency-Key']);
+  releases[1]({ version: 'v1', ...scope, order_id: orderID, state: 'processing' });
+  assert.equal((await replacement).order_id, orderID);
+});
 test('reader is sequential, retains source during transient failure and stops at terminal canonical', async () => {
   const { readArticle } = await import('./workshop/article-read.mjs');
   const updates = [], waits = []; let now = 0, calls = 0;

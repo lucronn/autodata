@@ -121,7 +121,7 @@ export function createCheckout({
   storage = globalThis.sessionStorage,
   uuid: newUUID = () => crypto.randomUUID(),
 } = {}) {
-  let inflight = null;
+  let inflight = null, inflightScope = null, inflightSignal = null;
   const read = () => {
     try {
       const a = JSON.parse(storage?.getItem(ATTEMPT_KEY) || "null");
@@ -142,53 +142,66 @@ export function createCheckout({
       storage?.setItem(ATTEMPT_KEY, JSON.stringify(attempt));
     } catch {}
   };
-  return {
-    read,
-    clear,
-    start(scope, csrf, { signal } = {}) {
-      if (!validScope(scope) || !csrf)
-        return Promise.reject(new Error("Purchase is unavailable."));
-      if (inflight) return inflight;
-      const saved = read();
-      const attempt = sameScope(saved, scope)
-        ? saved
-        : { ...scope, key: newUUID() };
-      save(attempt);
-      const body = {
-        configuration_id: scope.configuration_id,
-        region: scope.region,
-        terms_version: "workshop-v1",
-      };
-      inflight = request("/v1/workshop/checkout-sessions", {
-        method: "POST",
-        signal,
-        timeout: 10000,
-        body,
-        headers: { "X-CSRF-Token": csrf, "Idempotency-Key": attempt.key },
+  const start = (scope, csrf, { signal } = {}) => {
+    if (!validScope(scope) || !csrf)
+      return Promise.reject(new Error("Purchase is unavailable."));
+    if (inflight) {
+      if (sameScope(inflightScope, scope) && !inflightSignal?.aborted)
+        return inflight;
+      // One stored attempt cannot safely represent two concurrent vehicles.
+      // Let the old request settle before starting the new scope.
+      return inflight.catch(() => {}).then(() => {
+        signal?.throwIfAborted();
+        return start(scope, csrf, { signal });
+      });
+    }
+    const saved = read();
+    const attempt = sameScope(saved, scope)
+      ? saved
+      : { ...scope, key: newUUID() };
+    save(attempt);
+    const body = {
+      configuration_id: scope.configuration_id,
+      region: scope.region,
+      terms_version: "workshop-v1",
+    };
+    const pending = request("/v1/workshop/checkout-sessions", {
+      method: "POST",
+      signal,
+      timeout: 10000,
+      body,
+      headers: { "X-CSRF-Token": csrf, "Idempotency-Key": attempt.key },
+    })
+      .then((data) => {
+        signal?.throwIfAborted();
+        if (
+          data?.version !== "v1" ||
+          !sameScope(data, scope) ||
+          !uuid(data.order_id) ||
+          !["checkout", "processing", "owned"].includes(data.state) ||
+          (data.state === "checkout" &&
+            (!hostedCheckoutURL(data.checkout_url) ||
+              !validTime(data.provider_expires_at))) ||
+          (data.state !== "checkout" && data.checkout_url) ||
+          (data.state === "owned" && data.library_item_id !== data.order_id)
+        )
+          throw new Error("Purchase status is unavailable.");
+        save({ ...attempt, order_id: data.order_id });
+        return data;
       })
-        .then((data) => {
-          signal?.throwIfAborted();
-          if (
-            data?.version !== "v1" ||
-            !sameScope(data, scope) ||
-            !uuid(data.order_id) ||
-            !["checkout", "processing", "owned"].includes(data.state) ||
-            (data.state === "checkout" &&
-              (!hostedCheckoutURL(data.checkout_url) ||
-                !validTime(data.provider_expires_at))) ||
-            (data.state !== "checkout" && data.checkout_url) ||
-            (data.state === "owned" && data.library_item_id !== data.order_id)
-          )
-            throw new Error("Purchase status is unavailable.");
-          save({ ...attempt, order_id: data.order_id });
-          return data;
-        })
-        .finally(() => {
+      .finally(() => {
+        if (inflight === pending) {
           inflight = null;
-        });
-      return inflight;
-    },
+          inflightScope = null;
+          inflightSignal = null;
+        }
+      });
+    inflight = pending;
+    inflightScope = { ...scope };
+    inflightSignal = signal;
+    return pending;
   };
+  return { read, clear, start };
 }
 export async function pollOrder(
   orderID,

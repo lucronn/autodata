@@ -1,0 +1,17 @@
+{
+  "goal": "Prevent a selected-vehicle change from reusing another vehicle's in-flight Workshop Checkout result without changing payment or grant contracts.",
+  "plan_ref": "docs/superpowers/plans/2026-11-11-workshop-checkout-scope.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/396",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/verification/2026-11-11-workshop-checkout-scope.md"
+  ],
+  "todo": [
+    "Commit synchronized Issue and Project tracking, this plan and record, then pass exact-SHA preflight.",
+    "Add red-first cross-scope and aborted-queue Workshop client tests.",
+    "Make the Checkout in-flight promise scope-aware while retaining one-at-a-time requests and idempotency.",
+    "Run client tests and diff checks, obtain independent exact-head review and required CI, then integrate only when gates permit."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-11T19:33:52Z"
+}
