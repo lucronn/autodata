@@ -1,7 +1,7 @@
 # Real-data Workshop demo entry
 
-Issue: https://github.com/lucronn/autodata/issues/398  
-Project: https://github.com/users/lucronn/projects/8  
+Issue: https://github.com/lucronn/autodata/issues/398
+Project: https://github.com/users/lucronn/projects/8
 Verification: `docs/verification/2026-11-11-workshop-real-data-demo-entry.md`
 
 ## Goal
