@@ -12,6 +12,7 @@
     "Add red-first Go and browser tests for test-only readiness and honest route selection",
     "Implement the Workshop entry and checkout-time expected-test-mode safety fence without changing settlement, grant or article semantics",
     "Close independent-review findings on auth readiness, public origin and strict private-response parsing",
+    "Close re-review finding: browser-carried test-mode checkout assertion must survive Go restart into live mode",
     "Run checks, independent exact-head review and CI before integration; keep real-data browser acceptance separately gated"
   ],
   "status": "synchronized",
