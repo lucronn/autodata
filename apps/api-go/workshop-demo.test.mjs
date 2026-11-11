@@ -59,6 +59,7 @@ test('demo purchase review can cancel, confirm once, and resets on a new page vi
   assert.equal($('demo-checkout').hidden, true);
   assert.equal($('catalog').hidden, false);
   assert.equal($('my-vehicles').disabled, false);
+  assert.equal($('my-vehicles').hidden, false, 'the sample library must be reachable after demo purchase');
   assert.match($('purchase-message').textContent, /no (?:payment|charge)/i);
   $('demo-checkout-confirm').fire('click');
   assert.equal($('library-items').children.length, 1, 'a duplicate confirmation must not add a second sample vehicle');
@@ -89,4 +90,40 @@ test('selectors, search, reader, back and reset work after demo purchase', () =>
   $('year').value = ''; $('year').fire('change');
   for (const id of ['make', 'model', 'configuration']) { assert.equal($(id).value, ''); assert.equal($(id).disabled, true); }
   assert.equal($('catalog').hidden, true); assert.equal($('demo-banner').hidden, false);
+});
+test('demo purchase opens fictional Workshop categories and an in-page sample library', () => {
+  const $ = demoDOM();
+  for (const [id, value] of [['year', '2026'], ['make', 'Example Motors'], ['model', 'Sample'], ['configuration', 'Demonstration trim']]) {
+    $(id).value = value; $(id).fire('change');
+  }
+  $('purchase-action').fire('click'); $('demo-checkout-confirm').fire('click');
+  const links = $('articles').children[0].children.map(item => item.children[0]);
+  assert.equal(links.length, 10, 'overview plus all nine requested data categories');
+  const titles = links.map(link => link.children[0].textContent);
+  for (const category of ['Diagnostics', 'Repair procedures', 'Maintenance intervals', 'Specifications', 'Fluids', 'Wiring diagrams', 'Component locations', 'Technical service bulletins', 'Diagnostic trouble codes']) {
+    assert.ok(titles.includes(`${category} sample`), `${category} fixture is reachable`);
+  }
+  $('search').value = 'diagnostic trouble codes'; $('search').fire('input');
+  assert.equal($('articles').children[0].children.length, 1);
+  $('articles').children[0].children[0].children[0].fire('click');
+  assert.equal($('reader').hidden, false);
+  assert.equal($('article-title').textContent, 'Diagnostic trouble codes sample');
+  assert.match($('article-kind').textContent, /Not service information/);
+  assert.match($('article-note').textContent, /not supplied by Bankone or Banktwo/);
+  $('back').fire('click');
+  assert.equal($('catalog').hidden, false);
+  $('my-vehicles').fire('click');
+  assert.equal($('library').hidden, false);
+  assert.match($('library-intro').textContent, /No account purchase or real vehicle access/);
+  assert.equal($('library-items').children.length, 1);
+  $('library-items').children[0].children[0].fire('click');
+  assert.equal($('library').hidden, true);
+  assert.equal($('catalog').hidden, false);
+  $('year').value = ''; $('year').fire('change');
+  assert.equal($('catalog').hidden, true);
+  $('my-vehicles').fire('click');
+  assert.equal($('library').hidden, false);
+  $('library-items').children[0].children[0].fire('click');
+  assert.equal($('configuration').value, 'Demonstration trim', 'opening the saved sample restores its picker selection');
+  assert.equal($('catalog').hidden, false, 'the saved sample reopens its article index after picker reset');
 });

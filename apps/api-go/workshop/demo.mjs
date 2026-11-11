@@ -10,6 +10,18 @@ const sample = Object.freeze({
   navigation: 'Choose the sample vehicle, search the article title, and open the reader. Back to article index and Browse return you to the list. Changing a vehicle choice clears the choices that follow it.',
   scope: 'This sample contains no vehicle service procedures or specifications. It does not describe an actual vehicle. No real purchase or vehicle access is granted.',
 });
+const sampleArticles = Object.freeze([
+  { title: sample.title, kind: 'Sample overview', description: sample.introduction },
+  { title: 'Diagnostics sample', kind: 'Diagnostics', description: 'This fictional page shows where diagnostic guidance would be presented. It contains no tests, values, or fault-finding instructions.' },
+  { title: 'Repair procedures sample', kind: 'Repair procedures', description: 'This fictional page demonstrates a procedure layout. It contains no steps, tools, torque values, or safety instructions for a real vehicle.' },
+  { title: 'Maintenance intervals sample', kind: 'Maintenance intervals', description: 'This fictional page shows an interval category without any actual mileage, time, or service recommendation.' },
+  { title: 'Specifications sample', kind: 'Specifications', description: 'This fictional page shows a specification category without real measurements, limits, or settings.' },
+  { title: 'Fluids sample', kind: 'Fluids', description: 'This fictional page shows a fluids category without any real fluid type, quantity, or replacement guidance.' },
+  { title: 'Wiring diagrams sample', kind: 'Wiring diagrams', description: 'This fictional page shows where an electrical diagram would appear. It contains no circuit, wire color, pin number, or actual diagram.' },
+  { title: 'Component locations sample', kind: 'Component locations', description: 'This fictional page shows a component-location category without a real part position or removal instruction.' },
+  { title: 'Technical service bulletins sample', kind: 'Technical service bulletins', description: 'This fictional page shows a bulletin category without a real bulletin, manufacturer claim, or applicability statement.' },
+  { title: 'Diagnostic trouble codes sample', kind: 'Diagnostic trouble codes', description: 'This fictional page shows a trouble-code category without a real code, definition, cause, or repair advice.' },
+]);
 const $ = id => document.getElementById(id);
 const node = (tag, text, className) => {
   const element = document.createElement(tag);
@@ -67,20 +79,20 @@ function showCatalog() {
   $('catalog').hidden = !demoPurchased || $('configuration').value !== sample.configuration;
   $('welcome').hidden = !$('catalog').hidden;
 }
-function openArticle(event) {
+function openArticle(event, article) {
   event.preventDefault();
   if (!demoPurchased || $('configuration').value !== sample.configuration) return;
   $('catalog').hidden = true;
   $('reader').hidden = false;
   $('reader-vehicle').textContent = caption;
   $('reader-engine').textContent = sample.configuration;
-  $('article-kind').textContent = 'Sample overview · Not service information';
-  $('article-title').textContent = sample.title;
+  $('article-kind').textContent = `${article.kind} · Not service information`;
+  $('article-title').textContent = article.title;
   $('article-note').textContent = sample.provenance;
   $('article-note').hidden = false;
   $('article-content').replaceChildren(
-    node('p', sample.introduction),
-    node('h3', 'Explore the layout'), node('p', sample.navigation),
+    node('p', article.description),
+    ...(article === sampleArticles[0] ? [node('h3', 'Explore the layout'), node('p', sample.navigation)] : []),
     node('h3', 'About this sample'), node('p', sample.scope),
   );
   $('reference-data').replaceChildren(node('dt', 'Illustrative reference'), node('dd', sample.provenance));
@@ -94,19 +106,23 @@ function renderArticles() {
     $('catalog-count').textContent = '';
     return;
   }
-  const matches = sample.title.toLowerCase().includes($('search').value.trim().toLowerCase());
+  const query = $('search').value.trim().toLowerCase();
+  const matches = sampleArticles.filter(article => `${article.title} ${article.kind}`.toLowerCase().includes(query));
   $('articles').replaceChildren();
-  if (matches) {
+  if (matches.length) {
     const list = node('ul', undefined, 'article-list');
-    const item = node('li');
-    const link = node('a');
-    link.href = '#reader';
-    link.append(node('span', sample.title), node('span', 'Sample overview', 'article-type'));
-    link.addEventListener('click', openArticle);
-    item.append(link); list.append(item); $('articles').append(list);
+    for (const article of matches) {
+      const item = node('li');
+      const link = node('a');
+      link.href = '#reader';
+      link.append(node('span', article.title), node('span', article.kind, 'article-type'));
+      link.addEventListener('click', event => openArticle(event, article));
+      item.append(link); list.append(item);
+    }
+    $('articles').append(list);
   }
-  $('no-results').hidden = matches;
-  $('catalog-count').textContent = matches ? '1 sample article · Repository-authored demonstration' : '0 matching sample articles';
+  $('no-results').hidden = Boolean(matches.length);
+  $('catalog-count').textContent = `${matches.length} ${matches.length === 1 ? 'sample article' : 'sample articles'} · Repository-authored demonstration`;
 }
 function configure(index, enabled) {
   const id = selection[index];
@@ -118,6 +134,15 @@ function configure(index, enabled) {
     const option = node('option', sample[id]);
     option.value = sample[id]; $(id).append(option);
   }
+}
+function restoreSampleSelection() {
+  selection.forEach((id, index) => {
+    configure(index, true);
+    $(id).value = sample[id];
+  });
+  $('search').value = '';
+  renderDemoPurchase(); renderArticles(); showCatalog();
+  $('completion-status').textContent = 'Fictional sample articles are ready. No real vehicle access is granted.';
 }
 selection.forEach((id, index) => {
   configure(index, index === 0);
@@ -156,10 +181,11 @@ $('demo-checkout-confirm').addEventListener('click', () => {
   const item = node('li');
   const open = node('button', `${caption} · ${sample.configuration} · Fictional demo`);
   open.type = 'button';
-  open.addEventListener('click', () => { showCatalog(); $('catalog-title').focus(); });
+  open.addEventListener('click', () => { restoreSampleSelection(); $('catalog-title').focus(); });
   item.append(open);
   $('library-items').replaceChildren(item);
   $('my-vehicles').disabled = false;
+  $('my-vehicles').hidden = false;
   $('library-message').textContent = 'One fictional sample vehicle. No account purchase or real access.';
   renderDemoPurchase(); renderArticles(); showCatalog();
   $('completion-status').textContent = 'Demo purchase complete. No charge was made. Fictional sample articles are ready.';

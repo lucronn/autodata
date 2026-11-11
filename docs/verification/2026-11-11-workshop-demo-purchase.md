@@ -69,9 +69,34 @@ quote, checkout, library, and paid-catalog contract.
 
 ## Concrete todo
 
-- [ ] Commit synchronized planning documents/Issue/Project and pass exact-SHA
+- [x] Commit synchronized planning documents/Issue/Project and pass exact-SHA
   pre-implementation machine preflight.
-- [ ] Add red-first demo tests for the full no-charge rehearsal and isolation.
-- [ ] Implement the bounded demo UI and fictional fixture categories.
+- [x] Add red-first demo tests for the full no-charge rehearsal and isolation.
+- [x] Implement the bounded demo UI and fictional fixture categories.
 - [ ] Verify local and browser behavior, obtain exact-head review and CI, then
   integrate only if current branch protection permits.
+
+## Local candidate evidence, 2026-11-11
+
+- Machine preflight returned `status: synchronized`, `errors: []` against
+  planning checkpoint `3eb0988e412908b9094aa5994799d1baf5484bac` before
+  the implementation edits.
+- Red-first demo tests failed on the pre-purchase index gate, the initial
+  single-article fixture, and then the hidden sample-library/reopen path;
+  corresponding focused reruns passed after each bounded change.
+- `node workshop-demo.test.mjs`: 6 passed. `node workshop-client.test.mjs`:
+  258 passed. `node --check workshop/demo.mjs` and `git diff --check`: passed.
+  `GOCACHE=/tmp/autodata-workshop-go-cache /home/corp/.local/go/bin/go test ./...`:
+  passed after permitting local loopback listeners required by `httptest`.
+  The restricted sandbox run could not bind an IPv6 loopback port, so it is
+  not counted as a product failure or a passing test.
+- A local browser served the static files and showed a disabled purchase before
+  selection, explicit no-charge review, working Cancel, confirmation, ten
+  fictional articles, search, reader/back, and the single sample library item
+  reopening after picker reset. Reload cleared the simulated purchase; the
+  regular `/workshop/` path loaded its normal UI without a demo banner. The
+  local server logged only static demo page/style/font/bootstrap/module GETs
+  during the demo journey and no API/auth/checkout request. This is static
+  browser evidence, not hosted checkout or paid-access acceptance.
+- Independent exact-head review, hosted CI, live protection and merge remain
+  pending at this checkpoint. No production deploy or payment switch occurred.

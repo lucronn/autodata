@@ -1,13 +1,13 @@
 # Workshop read-only demonstration
 
-## Planned no-charge purchase rehearsal (Issue #398)
+## No-charge purchase rehearsal candidate (Issue #398)
 
-The next bounded Workshop demo change is tracked by [Issue #398](https://github.com/lucronn/autodata/issues/398), [Project #8](https://github.com/users/lucronn/projects/8), the [plan](../superpowers/plans/2026-11-11-workshop-demo-purchase.md), and the [verification spec](../verification/2026-11-11-workshop-demo-purchase.md). Only explicit `?demo=1` may show a simulated $20 checkout review and no-charge confirmation. Its confirmation will unlock page-memory-only, repository-authored fictional sample articles and a sample library item; reload clears the state. The demo stays read-only with respect to all server/customer/payment/source systems: no Stripe session, charge, order, grant, entitlement, API request, or licensed service data is created. The normal Workshop path and its paid-access boundary stay unchanged. This planned extension supersedes only the original demo's checkout-unavailable UI after its own reviewed implementation merges; it is not current production or live paid-access acceptance.
+The bounded Workshop demo change is tracked by [Issue #398](https://github.com/lucronn/autodata/issues/398), [Project #8](https://github.com/users/lucronn/projects/8), the [plan](../superpowers/plans/2026-11-11-workshop-demo-purchase.md), and the [verification spec](../verification/2026-11-11-workshop-demo-purchase.md). The implementation candidate makes only explicit `?demo=1` show a simulated $20 checkout review and no-charge confirmation. Its confirmation unlocks page-memory-only, repository-authored fictional sample articles and a sample library item; reload clears the state. The demo stays read-only with respect to all server/customer/payment/source systems: no Stripe session, charge, order, grant, entitlement, API request, or licensed service data is created. The normal Workshop path and its paid-access boundary stay unchanged. This candidate supersedes only the original demo's checkout-unavailable UI after its own reviewed implementation merges; it is not current production or live paid-access acceptance.
 
 Concrete extension todo:
-- [ ] Commit synchronized plan/spec/record/Issue/Project and pass exact-SHA preflight.
-- [ ] Add red-first no-charge purchase and fixture-access tests.
-- [ ] Implement the isolated demo review/confirm/library/article journey.
+- [x] Commit synchronized plan/spec/record/Issue/Project and pass exact-SHA preflight.
+- [x] Add red-first no-charge purchase and fixture-access tests.
+- [x] Implement the isolated demo review/confirm/library/article journey.
 - [ ] Verify local/browser behavior, independent exact-head review, CI and branch protection before merge.
 
 ## Original 2026-11-06 baseline
