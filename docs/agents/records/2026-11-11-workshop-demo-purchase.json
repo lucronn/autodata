@@ -1,0 +1,18 @@
+{
+  "goal": "Add a no-charge, memory-only purchase rehearsal for the explicit Workshop demo that unlocks fictional sample articles without changing normal Stripe or paid-access contracts.",
+  "plan_ref": "docs/superpowers/plans/2026-11-11-workshop-demo-purchase.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/398",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/verification/2026-11-11-workshop-demo-purchase.md",
+    "docs/architecture/workshop-readonly-demo.md"
+  ],
+  "todo": [
+    "Commit synchronized planning documents and Issue/Project records, then pass exact-SHA preflight.",
+    "Write red-first demo tests for the no-charge checkout rehearsal and gated sample access.",
+    "Implement the isolated demo state machine and fictional article category fixtures.",
+    "Run local/browser verification, obtain independent exact-head review and CI, and merge only after live protection permits."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-11T20:05:57Z"
+}

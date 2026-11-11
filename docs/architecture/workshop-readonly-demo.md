@@ -1,5 +1,17 @@
 # Workshop read-only demonstration
 
+## Planned no-charge purchase rehearsal (Issue #398)
+
+The next bounded Workshop demo change is tracked by [Issue #398](https://github.com/lucronn/autodata/issues/398), [Project #8](https://github.com/users/lucronn/projects/8), the [plan](../superpowers/plans/2026-11-11-workshop-demo-purchase.md), and the [verification spec](../verification/2026-11-11-workshop-demo-purchase.md). Only explicit `?demo=1` may show a simulated $20 checkout review and no-charge confirmation. Its confirmation will unlock page-memory-only, repository-authored fictional sample articles and a sample library item; reload clears the state. The demo stays read-only with respect to all server/customer/payment/source systems: no Stripe session, charge, order, grant, entitlement, API request, or licensed service data is created. The normal Workshop path and its paid-access boundary stay unchanged. This planned extension supersedes only the original demo's checkout-unavailable UI after its own reviewed implementation merges; it is not current production or live paid-access acceptance.
+
+Concrete extension todo:
+- [ ] Commit synchronized plan/spec/record/Issue/Project and pass exact-SHA preflight.
+- [ ] Add red-first no-charge purchase and fixture-access tests.
+- [ ] Implement the isolated demo review/confirm/library/article journey.
+- [ ] Verify local/browser behavior, independent exact-head review, CI and branch protection before merge.
+
+## Original 2026-11-06 baseline
+
 The explicit `/workshop/?demo=1` entry is a separate browser bootstrap path for fictional, repository-authored sample content. A visible persistent banner says “Demo — sample content. No purchase or vehicle access is granted.” The fixture uses a fictional vehicle (“2026 Example Motors Sample”, “Demonstration trim”) and a non-procedural sample article (“Understanding this sample manual”). It contains no licensed provider article, provider identifier, service instruction, torque value or invented source citation. Its provenance says “Illustrative content authored for this demo; not supplied by Bankone or Banktwo. Not vehicle service information.”
 
 The demo reuses Workshop markup and styles, but its module is loaded before any normal application module. The normal `app.mjs` remains the default bootstrap. The demo enables selector progression, article search, reader and back navigation entirely in browser memory. A displayed $20 USD amount is labeled “Illustrative price — checkout unavailable in demo”. Purchase, sign-in, order checks and account/library mutations are disabled. No database writes, entitlement grants, live source/canonical reads, model calls or API requests occur. Reloading `?demo=1` returns to the sample. A link to the regular Workshop exits demo mode explicitly.
