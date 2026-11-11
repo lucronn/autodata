@@ -19,7 +19,7 @@ No production mode, traffic, DNS, payment enablement, secret, deployment, source
 ## Implementation files
 
 - `apps/api-go/main.go`, `workshop_demo_mode.go`: immutable non-production test-mode signal and route wiring.
-- `apps/api-go/workshop/index.html`, `bootstrap.mjs`: separate real test-mode and fictional sample labels; route selection.
+- `apps/api-go/workshop/index.html`, `bootstrap.mjs`, `demo.mjs`: separate real test-mode and fictional sample labels; route selection.
 - `apps/api-go/workshop_test.go`, `workshop-demo.test.mjs`: red-first Go/browser regressions.
 
 ## Concrete todo
@@ -29,4 +29,3 @@ No production mode, traffic, DNS, payment enablement, secret, deployment, source
 - [ ] Implement the bounded endpoint and bootstrap behavior without changing auth, commerce, grants or article APIs.
 - [ ] Run focused/full Node and Go tests, syntax/diff checks and local browser smoke; obtain independent exact-head review and current CI.
 - [ ] Merge only if live branch protection permits; keep real licensed-data/test-payment browser acceptance and deployment separately blocked until evidenced.
-
