@@ -13,8 +13,9 @@
     "Implement the Workshop entry and checkout-time expected-test-mode safety fence without changing settlement, grant or article semantics",
     "Close independent-review findings on auth readiness, public origin and strict private-response parsing",
     "Close re-review finding: browser-carried test-mode checkout assertion must survive Go restart into live mode",
+    "Close Chromium startup race: sign-in remains disabled until app and session handlers are ready",
     "Run checks, independent exact-head review and CI before integration; keep real-data browser acceptance separately gated"
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-11T20:23:06Z"
+  "updated_at": "2026-11-11T23:51:03Z"
 }
