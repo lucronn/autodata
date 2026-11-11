@@ -5,19 +5,23 @@ import "testing"
 func TestCatalogArticleSearchUsesRenderedDocumentNotHiddenCompatibilityFields(t *testing.T) {
 	article := CatalogArticle{
 		ID: "private-marker", Title: "Service notes", Body: "HiddenBodyMarker",
+		Images: []CatalogImage{
+			{ID: "table-distinct", URL: "/v1/catalog/images/v2.table-distinct"},
+			{ID: "cell-duplicate", URL: "/v1/catalog/images/v2.cell-duplicate"},
+		},
 		Document: &CatalogDocument{Blocks: []CatalogDocumentBlock{
 			{Type: "step", Text: "Inspect ground strap.", Label: "HiddenStepLabelMarker"},
 			{Type: "paragraph", Text: "Use approved fastener.", Images: []CatalogImage{{Alt: "HiddenParagraphImageMarker"}}},
 			{Type: "callout", Label: "Warning", Text: "Disconnect battery.", Images: []CatalogImage{{Alt: "VisibleAltMarker", Caption: "HiddenCaptionMarker"}}},
-			{Type: "table", Label: "Torque values", Columns: []string{"Fastener"}, Rows: [][]any{{map[string]any{"text": "VisibleCellMarker", "label": "HiddenCellLabelMarker"}, float64(12)}}, Images: []CatalogImage{{Alt: "TableFigureMarker"}}},
+			{Type: "table", Label: "Torque values", Columns: []string{"Fastener"}, Rows: [][]any{{map[string]any{"text": "VisibleCellMarker", "label": "HiddenCellLabelMarker", "images": []any{map[string]any{"asset_id": "cell-duplicate", "alt": "VisibleCellAltMarker"}}}, float64(12)}}, Images: []CatalogImage{{AssetID: "table-distinct", Alt: "TableFigureMarker"}, {AssetID: "cell-duplicate", Alt: "HiddenDuplicateAltMarker"}}},
 		}},
 	}
-	for _, query := range []string{"ground strap", "Warning", "VisibleAltMarker", "VisibleCellMarker", "TableFigureMarker", "12"} {
+	for _, query := range []string{"ground strap", "Warning", "VisibleAltMarker", "VisibleCellMarker", "VisibleCellAltMarker", "TableFigureMarker", "12"} {
 		if len(filterCatalogArticleSearch([]CatalogArticle{article}, query)) != 1 {
 			t.Fatalf("visible query %q did not match", query)
 		}
 	}
-	for _, query := range []string{"HiddenBodyMarker", "HiddenStepLabelMarker", "HiddenParagraphImageMarker", "HiddenCaptionMarker", "HiddenCellLabelMarker", "private-marker"} {
+	for _, query := range []string{"HiddenBodyMarker", "HiddenStepLabelMarker", "HiddenParagraphImageMarker", "HiddenCaptionMarker", "HiddenCellLabelMarker", "HiddenDuplicateAltMarker", "private-marker"} {
 		if len(filterCatalogArticleSearch([]CatalogArticle{article}, query)) != 0 {
 			t.Fatalf("hidden query %q matched", query)
 		}

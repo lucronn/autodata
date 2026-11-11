@@ -93,6 +93,14 @@ Repair verification on 2026-11-11, based on planning checkpoint
   the full Go API suite passed again in 8.545 seconds. The reviewer also noted
   a minor circular test oracle in the paid fixture's query-term selector; the
   guarded runtime and a fresh exact-head review remain open.
+- Review of `cd4b4fce543decb0590e283c91ab05e196be72f8` found that a
+  table-level image skipped by the Workshop because the same asset was already
+  rendered in a cell could still contribute a hidden alt to search. A new
+  red-first test uses resolvable distinct and duplicate assets with different
+  alt text. Search now follows the renderer's resolved asset-ID deduplication
+  for table-level images; the focused test and full Go API suite passed (8.493
+  seconds). The current head still needs independent review and guarded paid
+  runtime evidence before merge.
 - A red-first contract test caught served JSON/YAML OpenAPI drift. Both formats
   now parse to the same contract; four lifecycle contract tests passed.
 - Workshop Node test runner reported two file-level subtests passed, zero
