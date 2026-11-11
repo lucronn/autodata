@@ -40,9 +40,8 @@ not an independent review of the agreements. Before publication, confirm the
 selected personal and internal-business uses against the actual agreements;
 permission to sell access alone does not establish every customer use right.
 
-The dated [Stripe TEST readiness check](../../verification/2026-11-11-workshop-stripe-test-readiness.md)
-records unresolved tax, merchant-support, and authenticated payment acceptance
-checks. It is not a basis for enabling public checkout.
+Tax, merchant-support, and authenticated payment acceptance remain separate
+release checks. The draft policies are not a basis for enabling public checkout.
 
 Do not replace missing privacy facts with invented retention periods. A
 purpose-based sentence such as "We retain purchase records while needed to
