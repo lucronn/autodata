@@ -10,6 +10,11 @@ test('HTML starts only the isolated bootstrap', () => {
   assert.match(source('index.html'), /Sample — fictional content/);
   assert.match(source('app.mjs'), /createCheckout\(\{\s*expectedMode:\s*\$\('test-banner'\)\.hidden\s*\?\s*undefined\s*:\s*'stripe_test'/);
 });
+test('sign-in is inert in initial HTML until async app readiness', () => {
+  const button = source('index.html').match(/<button\b[^>]*\bid="signin"[^>]*>/)?.[0];
+  assert.ok(button, 'the sign-in button must be present');
+  assert.match(button, /\sdisabled(?:\s|>)/, 'the static button must not accept clicks before app.mjs attaches its handler');
+});
 test('real demo uses the ordinary app only in test mode; sample stays separate', async () => {
   assert.ok(existsSync(new URL('./workshop/bootstrap.mjs', import.meta.url)), 'bootstrap must exist');
   const code = source('bootstrap.mjs').replaceAll('import(', 'loadModule(');
