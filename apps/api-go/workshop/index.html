@@ -22,7 +22,7 @@
   <body>
     <a class="skip-link" href="#vehicle-picker">Skip to vehicle selection</a>
     <aside id="demo-banner" class="demo-banner" aria-label="Demonstration mode" hidden>
-      <strong>Demo — sample content. No purchase or vehicle access is granted.</strong>
+      <strong>Demo — simulated purchase only. No payment or real vehicle access is granted.</strong>
       <span>Illustrative content authored for this demo; not supplied by Bankone or Banktwo. Not vehicle service information.</span>
       <a href="/workshop/">Exit demo to regular Workshop ↗</a>
     </aside>
@@ -159,10 +159,18 @@
           ><button id="check-order" type="button" hidden>
             Check payment status
           </button>
+          <section id="demo-checkout" class="demo-checkout" aria-labelledby="demo-checkout-title" hidden>
+            <h3 id="demo-checkout-title" tabindex="-1">Review demo checkout</h3>
+            <p id="demo-checkout-selection"></p>
+            <p>$20 USD illustrative price · No charge will be made.</p>
+            <p>No Stripe session, account purchase, order, or vehicle entitlement will be created.</p>
+            <button id="demo-checkout-confirm" type="button">Complete demo purchase</button>
+            <button id="demo-checkout-cancel" type="button">Cancel</button>
+          </section>
         </section>
         <section id="library" hidden aria-labelledby="library-title">
           <h2 id="library-title" tabindex="-1">My vehicles</h2>
-          <p>
+          <p id="library-intro">
             Purchases belong to your account. No renewal is required, subject to
             the published terms and source availability.
           </p>

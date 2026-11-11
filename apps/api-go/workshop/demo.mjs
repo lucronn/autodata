@@ -8,7 +8,7 @@ const sample = Object.freeze({
   provenance: 'Illustrative content authored for this demo; not supplied by Bankone or Banktwo. Not vehicle service information.',
   introduction: 'This fictional manual shows how the Workshop article index and reader fit together. The vehicle and its demonstration trim are examples created for this page.',
   navigation: 'Choose the sample vehicle, search the article title, and open the reader. Back to article index and Browse return you to the list. Changing a vehicle choice clears the choices that follow it.',
-  scope: 'This sample contains no vehicle service procedures or specifications. It does not describe an actual vehicle. No purchase or vehicle access is granted.',
+  scope: 'This sample contains no vehicle service procedures or specifications. It does not describe an actual vehicle. No real purchase or vehicle access is granted.',
 });
 const $ = id => document.getElementById(id);
 const node = (tag, text, className) => {
@@ -20,6 +20,8 @@ const node = (tag, text, className) => {
 const selection = ['year', 'make', 'model', 'configuration'];
 const prompts = ['Choose sample year', 'Choose year first', 'Choose make first', 'Choose model first'];
 const caption = `${sample.year} ${sample.make} ${sample.model}`;
+let demoPurchased = false;
+let checkoutReviewOpen = false;
 
 $('demo-banner').hidden = false;
 document.querySelector('.wordmark').href = '/workshop/?demo=1';
@@ -37,25 +39,37 @@ for (const id of ['signin', 'signout', 'purchase-action', 'check-order', 'my-veh
   $(id).disabled = true;
 }
 $('signin').textContent = 'Sign-in unavailable in demo';
-$('purchase-action').textContent = 'Checkout unavailable in demo';
 $('print').textContent = 'Print unavailable in demo';
 for (const id of ['signout', 'check-order', 'my-vehicles', 'library', 'account-status', 'purchase-terms', 'activity', 'loading-progress', 'source-review']) {
   $(id).hidden = true;
 }
 $('source-review-link').removeAttribute('href');
-$('purchase-title').textContent = 'Illustrative vehicle price';
+$('purchase-title').textContent = 'Try a demo purchase';
 $('purchase-selection').textContent = `${caption} · ${sample.configuration}`;
-$('purchase-price').textContent = '$20 USD · Illustrative price — checkout unavailable in demo';
-$('purchase-message').textContent = 'No payment, purchase or vehicle access is granted.';
+$('purchase-price').textContent = '$20 USD · Illustrative price — no charge will be made';
+$('library-intro').textContent = 'This fictional vehicle exists only in this page. No account purchase or real vehicle access is granted.';
 $('purchase').hidden = false;
 
+function renderDemoPurchase() {
+  const selected = $('configuration').value === sample.configuration;
+  $('purchase-action').disabled = !selected || checkoutReviewOpen;
+  $('purchase-action').textContent = demoPurchased ? 'Open demo articles' : 'Try $20 demo checkout — no charge';
+  $('purchase-message').textContent = demoPurchased
+    ? 'Demo purchase complete. No payment, account purchase, or vehicle access was created.'
+    : selected
+      ? 'Review the illustrative checkout. Confirming makes no charge and unlocks only fictional sample articles.'
+      : 'Choose the fictional sample vehicle to try a no-charge checkout.';
+  $('demo-checkout').hidden = !checkoutReviewOpen;
+}
 function showCatalog() {
   $('reader').hidden = true;
-  $('catalog').hidden = !$('configuration').value;
+  $('library').hidden = true;
+  $('catalog').hidden = !demoPurchased || $('configuration').value !== sample.configuration;
   $('welcome').hidden = !$('catalog').hidden;
 }
 function openArticle(event) {
   event.preventDefault();
+  if (!demoPurchased || $('configuration').value !== sample.configuration) return;
   $('catalog').hidden = true;
   $('reader').hidden = false;
   $('reader-vehicle').textContent = caption;
@@ -74,6 +88,12 @@ function openArticle(event) {
   $('article-title').focus();
 }
 function renderArticles() {
+  if (!demoPurchased) {
+    $('articles').replaceChildren();
+    $('no-results').hidden = true;
+    $('catalog-count').textContent = '';
+    return;
+  }
   const matches = sample.title.toLowerCase().includes($('search').value.trim().toLowerCase());
   $('articles').replaceChildren();
   if (matches) {
@@ -102,19 +122,61 @@ function configure(index, enabled) {
 selection.forEach((id, index) => {
   configure(index, index === 0);
   $(id).addEventListener('change', () => {
+    checkoutReviewOpen = false;
     for (let child = index + 1; child < selection.length; child++) {
       configure(child, child === index + 1 && $(id).value === sample[id]);
     }
     $('search').value = '';
     $('vehicle-caption').textContent = `${caption} · ${sample.configuration} · Fictional sample`;
-    renderArticles(); showCatalog();
-    $('completion-status').textContent = $('configuration').value ? 'Sample article index ready. No vehicle access is granted.' : 'Choose the fictional sample vehicle to explore its article index.';
+    renderDemoPurchase(); renderArticles(); showCatalog();
+    $('completion-status').textContent = $('configuration').value
+      ? demoPurchased ? 'Fictional sample articles are ready. No real vehicle access is granted.' : 'Demo checkout ready. No charge will be made.'
+      : 'Choose the fictional sample vehicle to try a no-charge checkout.';
   });
+});
+$('purchase-action').addEventListener('click', () => {
+  if ($('configuration').value !== sample.configuration) return;
+  if (demoPurchased) { showCatalog(); $('catalog-title').focus(); return; }
+  if (checkoutReviewOpen) return;
+  checkoutReviewOpen = true;
+  $('demo-checkout-selection').textContent = `${caption} · ${sample.configuration}`;
+  renderDemoPurchase();
+  $('demo-checkout-title').focus();
+});
+$('demo-checkout-cancel').addEventListener('click', () => {
+  if (!checkoutReviewOpen) return;
+  checkoutReviewOpen = false;
+  renderDemoPurchase();
+  $('purchase-action').focus();
+});
+$('demo-checkout-confirm').addEventListener('click', () => {
+  if (!checkoutReviewOpen || demoPurchased || $('configuration').value !== sample.configuration) return;
+  checkoutReviewOpen = false;
+  demoPurchased = true;
+  const item = node('li');
+  const open = node('button', `${caption} · ${sample.configuration} · Fictional demo`);
+  open.type = 'button';
+  open.addEventListener('click', () => { showCatalog(); $('catalog-title').focus(); });
+  item.append(open);
+  $('library-items').replaceChildren(item);
+  $('my-vehicles').disabled = false;
+  $('library-message').textContent = 'One fictional sample vehicle. No account purchase or real access.';
+  renderDemoPurchase(); renderArticles(); showCatalog();
+  $('completion-status').textContent = 'Demo purchase complete. No charge was made. Fictional sample articles are ready.';
+  $('catalog-title').focus();
+});
+$('my-vehicles').addEventListener('click', () => {
+  if (!demoPurchased) return;
+  for (const id of ['welcome', 'catalog', 'reader']) $(id).hidden = true;
+  $('library').hidden = false;
+  $('library-title').focus();
 });
 $('search').addEventListener('input', renderArticles);
 $('back').addEventListener('click', () => { showCatalog(); $('catalog-title').focus(); });
 $('browse').addEventListener('click', () => {
   showCatalog();
-  ($('catalog').hidden ? $('vehicle-picker') : $('catalog-title')).focus();
+  ($('catalog').hidden ? $('configuration').value ? $('purchase-action') : $('vehicle-picker') : $('catalog-title')).focus();
 });
-$('completion-status').textContent = 'Choose the fictional sample vehicle to explore its article index.';
+renderDemoPurchase();
+showCatalog();
+$('completion-status').textContent = 'Choose the fictional sample vehicle to try a no-charge checkout.';

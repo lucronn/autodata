@@ -1123,6 +1123,15 @@ footer {
   max-width: 720px;
   margin: 18px 0;
 }
+.demo-checkout {
+  max-width: 720px;
+  margin-block: 18px;
+  padding: 18px;
+  border: 1px solid var(--rule);
+}
+.demo-checkout h3 {
+  margin: 0 0 12px;
+}
 #agreement {
   width: 20px;
   height: 20px;

@@ -37,15 +37,47 @@ test('demo contains no imports, transport, storage, endpoints or HTML interpolat
   assert.ok(existsSync(new URL('./workshop/demo.mjs', import.meta.url)), 'demo module must exist');
   assert.doesNotMatch(source('demo.mjs'), /\b(?:import|fetch|XMLHttpRequest|WebSocket|EventSource|sendBeacon|localStorage|sessionStorage)\b|\/v1\/|\/auth\/|innerHTML|app\.mjs|auth\.mjs|commerce\.mjs/);
 });
-test('selectors, search, reader, back and reset work with purchase and sign-in disabled', () => {
+test('demo purchase review can cancel, confirm once, and resets on a new page visit', () => {
+  const $ = demoDOM();
+  assert.equal($('purchase-action').disabled, true);
+  for (const [id, value] of [['year', '2026'], ['make', 'Example Motors'], ['model', 'Sample'], ['configuration', 'Demonstration trim']]) {
+    $(id).value = value; $(id).fire('change');
+  }
+  assert.equal($('catalog').hidden, true, 'selecting a sample must not grant demo access');
+  assert.equal($('purchase-action').disabled, false);
+  assert.match($('purchase-price').textContent, /no charge/i);
+  $('purchase-action').fire('click');
+  assert.equal($('demo-checkout').hidden, false);
+  assert.equal($('demo-checkout-title').focused, true);
+  assert.equal($('purchase-action').disabled, true);
+  $('demo-checkout-cancel').fire('click');
+  assert.equal($('demo-checkout').hidden, true);
+  assert.equal($('catalog').hidden, true);
+  assert.equal($('purchase-action').focused, true);
+  $('purchase-action').fire('click');
+  $('demo-checkout-confirm').fire('click');
+  assert.equal($('demo-checkout').hidden, true);
+  assert.equal($('catalog').hidden, false);
+  assert.equal($('my-vehicles').disabled, false);
+  assert.match($('purchase-message').textContent, /no (?:payment|charge)/i);
+  $('demo-checkout-confirm').fire('click');
+  assert.equal($('library-items').children.length, 1, 'a duplicate confirmation must not add a second sample vehicle');
+  const fresh = demoDOM();
+  assert.equal(fresh('purchase-action').disabled, true);
+  assert.equal(fresh('catalog').hidden, true);
+  assert.equal(fresh('library').hidden, true);
+});
+test('selectors, search, reader, back and reset work after demo purchase', () => {
   const $ = demoDOM();
   assert.equal($('demo-banner').hidden, false);
   assert.equal($('year').disabled, false); assert.equal($('make').disabled, true);
   for (const [id, value] of [['year', '2026'], ['make', 'Example Motors'], ['model', 'Sample'], ['configuration', 'Demonstration trim']]) {
     assert.equal($(id).disabled, false); $(id).value = value; $(id).fire('change');
   }
+  assert.equal($('catalog').hidden, true);
+  $('purchase-action').fire('click'); $('demo-checkout-confirm').fire('click');
   assert.equal($('catalog').hidden, false); assert.match($('purchase-price').textContent, /\$20 USD/);
-  for (const id of ['purchase-action', 'signin', 'check-order', 'my-vehicles']) assert.equal($(id).disabled, true);
+  for (const id of ['signin', 'check-order']) assert.equal($(id).disabled, true);
   assert.equal($('articles').children.length, 1);
   $('search').value = 'no match'; $('search').fire('input'); assert.equal($('no-results').hidden, false);
   $('search').value = 'understanding'; $('search').fire('input'); assert.equal($('no-results').hidden, true);
