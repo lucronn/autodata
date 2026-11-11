@@ -1,6 +1,7 @@
 # AutoData Workshop Terms
 
-**Draft for owner review — November 6, 2026. Not effective or published.**
+**Draft for release completion — November 11, 2026. Customer-use wording
+selected; full policy package not yet effective or published.**
 
 AutoData Workshop is provided by AutoData, LLC, based in Georgia, USA.
 Contact us at [support@cars.tk](mailto:support@cars.tk).
@@ -25,7 +26,7 @@ page alone does not establish that access is ready.
 Use an account you are authorized to control and keep your sign-in secure.
 Contact support if you believe someone has used your account without permission.
 
-**Proposed license — requires owner approval:** You receive a non-exclusive,
+**Permitted use:** You receive a non-exclusive,
 non-transferable right to consult the purchased content for your own vehicle
 work or the internal workshop work of your business. This permission applies
 to the individual using the purchasing account; each person must use their own

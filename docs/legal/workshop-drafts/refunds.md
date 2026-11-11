@@ -1,14 +1,14 @@
 # AutoData Workshop Refund Policy
 
-**Proposed policy for owner approval — November 6, 2026. Not effective or
-published. The 14-day guarantee and resolution period below are proposed
-customer commitments, not an existing approved refund practice.**
+**Draft for release completion — November 11, 2026. The 14-day guarantee and
+resolution period are selected customer commitments, but this policy is not yet
+effective or published.**
 
 AutoData, LLC, based in Georgia, USA, sells online access to one selected vehicle
 configuration and region for a one-time **USD $20 total**. There is no
 subscription to cancel.
 
-## Our proposed 14-day guarantee
+## Our 14-day guarantee
 
 Request a full refund within 14 calendar days after payment for any reason,
 including selecting the wrong configuration or changing your mind. Accessing

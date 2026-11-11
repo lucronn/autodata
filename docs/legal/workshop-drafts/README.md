@@ -1,7 +1,7 @@
 # Workshop policy review package
 
 Prepared November 6, 2026 for AutoData, LLC, Georgia, USA; support@cars.tk.
-These are review drafts, not approved legal advice or published policies.
+These are review drafts, not legal advice or published policies.
 No effective date is assigned. No application, payment configuration, or public
 page changes are included; checkout must remain disabled pending launch review.
 
@@ -10,30 +10,46 @@ page changes are included; checkout must remain disabled pending launch review.
 - [Refund Policy](refunds.md)
 - [Contact](contact.md)
 
-## Concrete proposal and necessary owner decisions
+## Selected customer-use and refund terms
 
-The Terms now propose individual account use for personal vehicle work or the
-purchaser's internal business workshop work, without shared credentials,
-redistribution, scraping or an export/printing license. The Refund Policy now
-proposes a **14-calendar-day full refund for any reason, even after viewing**,
+On November 11, 2026, the owner authorized the agent to select the customer-use
+and refund terms for the Workshop release. The selected Terms allow individual
+account use for personal vehicle work or the purchaser's internal business
+workshop work, without shared credentials,
+redistribution, scraping or an export/printing license. The selected Refund
+Policy provides a **14-calendar-day full refund for any reason, even after viewing**,
 correction of duplicate charges, and a full refund if a reported delivery or
 material-description problem cannot be resolved within seven calendar days
 unless the customer agrees to more time. Contact is supplied as a fourth draft.
-These are proposed defaults for review, not assertions of approved practices.
+These selections settle the wording direction, not the operational ability to
+honor it or the separate publication, tax, privacy, and payment gates.
 
-Only the owner can settle the remaining launch decisions:
+Remaining launch decisions and checks:
 
 | Decision | Concrete review action |
 | --- | --- |
-| Customer use and remedies | Approve or edit the Terms' individual/internal-use license and the refund commitments above; confirm they can be honored operationally. Upstream permission to sell access does not by itself establish every customer license right. |
+| Customer use and remedies | Wording selected as above; verify that support and refund operations can honor the commitments. Upstream permission to sell access does not by itself establish every customer license right. |
 | Tax and markets | Name the countries/states where sales will be accepted and approve a truthful tax notice within the existing **USD $20 total**. Do not claim tax exemption, tax inclusion, tax collection or a registration status without confirmation. Adding tax on top changes the product contract. |
 | Privacy facts and operations | Confirm deployed hosting/CDN, database/storage, logging, email/support and any analytics/advertising providers, processing countries, and sale/sharing practices. Supply the actual retention/deletion schedule for account, session, order/payment, support, log and backup records; identify who handles privacy requests and how account deletion affects purchased access. Confirm required legal bases, transfer disclosures, age eligibility and children's-data handling for the chosen markets. The Privacy Notice remains incomplete until these facts are supplied. |
 | Seller/contact details | Confirm AutoData, LLC's legal identity, required postal/business address, and that support@cars.tk is monitored and works externally. Approve the proposed service-closure/remedy wording. The proposal adds no arbitration mandate, exclusive venue or liability cap. |
-| Publication | Approve final wording, effective date and the four public HTTPS policy/contact URLs. Complete the normal implementation gate before public pages/configuration or payment activation. |
+| Publication | Finalize the complete policy package and effective date, then publish and verify the four public HTTPS policy/contact URLs. Complete the normal implementation gate before public pages/configuration or payment activation. |
 
 The owner has confirmed that both Bankone and Banktwo agreements allow storing,
 rewriting and selling access to article content. This is owner-reported and is
-not an independent review of the agreements or approval of the customer license.
+not an independent review of the agreements. The selected customer-use wording
+does not expand rights beyond the applicable upstream agreements.
+
+## Stripe TEST configuration check — November 11, 2026
+
+The existing isolated TEST merchant has an active one-time USD 20 Price, but
+that Price reports `tax_behavior=unspecified` and its Product has no tax code.
+The TEST merchant profile has no support email or support address configured.
+These are read-only TEST-account observations, not findings about the live
+Stripe account or a determination of tax treatment. Do not enable public
+checkout, promise tax collection, or use the TEST profile as published seller
+contact evidence. The isolated TEST API cannot currently start because its
+Firebase credential bind source is missing; authenticated paid-settlement and
+grant acceptance remain unverified.
 
 Do not replace missing privacy facts with invented retention periods. A
 purpose-based sentence such as "We retain purchase records while needed to
