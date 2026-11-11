@@ -17,6 +17,8 @@
 - [x] Prove the paid API access/content boundary with red-first tests and implement bounded server-side search (isolated Postgres fixture execution remains a CI gate).
 - [x] Wire the real Workshop search interaction with abortable, debounced requests and test stale/incomplete states.
 - [ ] Run exact-head verification, independent review, current CI, and branch protection before integration.
+- [ ] Align the guarded paid-access fixture's exact assertion and HTTP-observation inventories with the new search probes, and keep JSON/YAML OpenAPI variants in sync.
+- [ ] Resolve the content-search visible-text fallback discrepancy found in exact-head review; rerun relevant tests and review.
 
 ## Constraints
 
@@ -51,6 +53,10 @@
 
 ### Task 3: Verify and integrate
 
+- [ ] First repair the exact paid fixture evidence contract. The search probes add three named assertions and four HTTP observations to the six-root/two-provider fixture. Write failing inventory tests before updating `scripts/dev/workshop_paid_access_smoke.py`, `scripts/dev/release_acceptance.py`, and their focused tests. `workers/ingestion-python/tests/test_paid_catalog_api_integration.py` consumes the smoke collector's literal map; verify that bridge without duplicating the map. Preserve the release parser's independent literal inventory and update its expected paths, status/counter sequences, positional body checks, and totals rather than weakening strict validation. Inspect all downstream assumptions before patching.
+- [ ] Keep both embedded API descriptions equivalent by adding the bounded `q` query and grant/metadata-only description to `apps/api-go/openapi.yaml`; extend the existing contract test to catch JSON/YAML drift.
+- [ ] Resolve the renderer/search fallback mismatch: when there is no rendered document but usable steps exist, match the rendered steps rather than hidden compatibility body. Add a red-first case and retain body fallback only where it is actually displayed.
+- [ ] Run the guarded twelve-case isolated Postgres fixture on the exact candidate if the authorized runtime is available; otherwise explicitly retain this as a merge blocker. Ordinary CI and Go unit tests do not substitute for it.
 - [ ] Run focused and full relevant Go/Node suites, `git diff --check`, and any repository policy checks; record exact head, skips, and limitations in the spec.
 - [ ] Obtain a separate read-only AI review of the exact head; resolve Critical/Important findings. This is a repository review decision, never a GitHub approval.
 - [ ] Push a PR linked to #393, wait for current required CI and live protection, then squash merge if all gates permit. Update Project #8 and close #393 only after the actual Workshop interaction is delivered; do not claim live paid-access acceptance while #391 remains blocked.

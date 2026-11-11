@@ -14,6 +14,15 @@ call site and does not satisfy this feature.
 
 Acceptance:
 
+The exact-head review of PR #394 at `7d49e86ea1e090d88f8ca83b98a399013cf12e10`
+found integration work that must be completed before this feature can merge:
+the guarded twelve-case paid fixture's strict assertion names and HTTP receipt
+counts still describe the pre-search probes; the embedded YAML API description
+lacks `q`; and no-document search can match a compatibility body hidden when
+the Workshop renders usable steps. The linked plan now includes red-first
+collector/contract/renderer tests and the corresponding bounded repairs.
+These are open findings, not waived gates.
+
 - [x] The existing protected article-index route accepts an optional bounded
   `q` search. An empty query retains the current metadata-only index behavior.
 - [x] After the existing exact-configuration grant check, a nonempty query can

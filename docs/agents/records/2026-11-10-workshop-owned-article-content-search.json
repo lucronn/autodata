@@ -10,8 +10,11 @@
     "Add red-first protected API and current-projection tests for content-only search and access isolation.",
     "Implement bounded server-side search behind the existing exact configuration grant check while keeping response descriptors metadata-only.",
     "Add red-first Workshop browser-flow tests for content-only matches, stale requests, and incomplete states, then wire debounced abortable search.",
-    "Run relevant suites, obtain exact-head independent review and required CI, then update Project #8 and Issue #393 after integration."
+    "Align the guarded paid-access fixture assertion and HTTP observation inventories with the search probes using red-first collector tests; preserve strict literal release evidence validation.",
+    "Synchronize the embedded JSON and YAML API descriptions and test their equivalence.",
+    "Resolve the review-found visible-text fallback mismatch with red-first tests.",
+    "Run relevant suites, guarded twelve-case paid fixture if available, exact-head independent review and required CI; then update Project #8 and Issue #393 after integration."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-10T12:30:27Z"
+  "updated_at": "2026-11-11T18:30:00Z"
 }
