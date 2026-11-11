@@ -9,10 +9,10 @@ func TestCatalogArticleSearchUsesRenderedDocumentNotHiddenCompatibilityFields(t 
 			{Type: "step", Text: "Inspect ground strap.", Label: "HiddenStepLabelMarker"},
 			{Type: "paragraph", Text: "Use approved fastener.", Images: []CatalogImage{{Alt: "HiddenParagraphImageMarker"}}},
 			{Type: "callout", Label: "Warning", Text: "Disconnect battery.", Images: []CatalogImage{{Alt: "VisibleAltMarker", Caption: "HiddenCaptionMarker"}}},
-			{Type: "table", Label: "Torque values", Columns: []string{"Fastener"}, Rows: [][]any{{map[string]any{"text": "VisibleCellMarker", "label": "HiddenCellLabelMarker"}, float64(12)}}},
+			{Type: "table", Label: "Torque values", Columns: []string{"Fastener"}, Rows: [][]any{{map[string]any{"text": "VisibleCellMarker", "label": "HiddenCellLabelMarker"}, float64(12)}}, Images: []CatalogImage{{Alt: "TableFigureMarker"}}},
 		}},
 	}
-	for _, query := range []string{"ground strap", "Warning", "VisibleAltMarker", "VisibleCellMarker", "12"} {
+	for _, query := range []string{"ground strap", "Warning", "VisibleAltMarker", "VisibleCellMarker", "TableFigureMarker", "12"} {
 		if len(filterCatalogArticleSearch([]CatalogArticle{article}, query)) != 1 {
 			t.Fatalf("visible query %q did not match", query)
 		}
@@ -27,14 +27,14 @@ func TestCatalogArticleSearchUsesRenderedDocumentNotHiddenCompatibilityFields(t 
 func TestCatalogArticleSearchMatchesRenderedLegacyStepsBeforeHiddenBody(t *testing.T) {
 	article := CatalogArticle{
 		Title: "Maintenance guide", Kind: "procedure", Body: "Check coolant level.",
-		Steps: []CatalogStep{{Action: "Inspect reservoir", Instructions: []string{"Top up approved fluid."}}},
+		Steps: []CatalogStep{{Action: "Inspect reservoir", Heading: "HiddenHeadingMarker", Instructions: []string{"Top up approved fluid."}}},
 	}
 	for _, query := range []string{"reservoir", "approved fluid", "maintenance procedure"} {
 		if len(filterCatalogArticleSearch([]CatalogArticle{article}, query)) != 1 {
 			t.Fatalf("legacy query %q did not match", query)
 		}
 	}
-	for _, query := range []string{"coolant", "brake"} {
+	for _, query := range []string{"coolant", "HiddenHeadingMarker", "brake"} {
 		if len(filterCatalogArticleSearch([]CatalogArticle{article}, query)) != 0 {
 			t.Fatalf("hidden or unrelated query %q matched", query)
 		}

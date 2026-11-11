@@ -86,6 +86,13 @@ Repair verification on 2026-11-11, based on planning checkpoint
 - A red-first Go test proved that search previously matched a hidden legacy
   body when usable steps were rendered. The search fallback now mirrors the
   Workshop renderer. Full Go API tests passed in 8.586 seconds.
+- Exact-head review of `6af3f5fb6f369cc51feb3984f241d15f16e89b71` found
+  two further visible-text cases: a table-level image alt omitted from search
+  and a legacy heading indexed despite a rendered action taking precedence.
+  Both regression cases failed before the bounded Go fix and passed after it;
+  the full Go API suite passed again in 8.545 seconds. The reviewer also noted
+  a minor circular test oracle in the paid fixture's query-term selector; the
+  guarded runtime and a fresh exact-head review remain open.
 - A red-first contract test caught served JSON/YAML OpenAPI drift. Both formats
   now parse to the same contract; four lifecycle contract tests passed.
 - Workshop Node test runner reported two file-level subtests passed, zero

@@ -48,7 +48,11 @@ func catalogArticleSearchText(article CatalogArticle) string {
 		}
 		if usable {
 			for _, step := range article.Steps {
-				parts = append(parts, step.Action, step.Heading)
+				if step.Action != "" {
+					parts = append(parts, step.Action)
+				} else {
+					parts = append(parts, step.Heading)
+				}
 				parts = append(parts, step.Instructions...)
 				if step.Images != nil {
 					for _, image := range *step.Images {
@@ -101,7 +105,7 @@ func catalogBlockSearchText(block CatalogDocumentBlock) string {
 			parts = append(parts, block.UnavailableReason)
 		}
 	}
-	if block.Type == "callout" || block.Type == "step" || block.Type == "ordered_list" || block.Type == "unordered_list" {
+	if block.Type == "callout" || block.Type == "step" || block.Type == "ordered_list" || block.Type == "unordered_list" || block.Type == "table" {
 		for _, image := range block.Images {
 			parts = append(parts, image.Alt)
 		}
