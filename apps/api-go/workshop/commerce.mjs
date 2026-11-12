@@ -120,6 +120,7 @@ export function createCheckout({
   request = requestJSON,
   storage = globalThis.sessionStorage,
   uuid: newUUID = () => crypto.randomUUID(),
+  expectedMode,
 } = {}) {
   let inflight = null, inflightScope = null, inflightSignal = null;
   const read = () => {
@@ -143,7 +144,7 @@ export function createCheckout({
     } catch {}
   };
   const start = (scope, csrf, { signal } = {}) => {
-    if (!validScope(scope) || !csrf)
+    if (!validScope(scope) || !csrf || (expectedMode !== undefined && expectedMode !== 'stripe_test'))
       return Promise.reject(new Error("Purchase is unavailable."));
     if (inflight) {
       if (sameScope(inflightScope, scope) && !inflightSignal?.aborted)
@@ -165,6 +166,7 @@ export function createCheckout({
       region: scope.region,
       terms_version: "workshop-v1",
     };
+    if (expectedMode === 'stripe_test') body.expected_mode = 'stripe_test';
     const pending = request("/v1/workshop/checkout-sessions", {
       method: "POST",
       signal,

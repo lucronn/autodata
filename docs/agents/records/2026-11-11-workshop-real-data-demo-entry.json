@@ -1,0 +1,21 @@
+{
+  "goal": "Expose an honest real-data Workshop demo entry only for isolated Stripe test-mode purchasing, retaining server grants and licensed-content checks",
+  "plan_ref": "docs/superpowers/plans/2026-11-11-workshop-real-data-demo-entry.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/398",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/verification/2026-11-11-workshop-real-data-demo-entry.md",
+    "docs/architecture/workshop-readonly-demo.md"
+  ],
+  "todo": [
+    "Synchronize plan, Issue, Project, canonical documentation and pinned-base preflight",
+    "Add red-first Go and browser tests for test-only readiness and honest route selection",
+    "Implement the Workshop entry and checkout-time expected-test-mode safety fence without changing settlement, grant or article semantics",
+    "Close independent-review findings on auth readiness, public origin and strict private-response parsing",
+    "Close re-review finding: browser-carried test-mode checkout assertion must survive Go restart into live mode",
+    "Close Chromium startup race: sign-in remains disabled until app and session handlers are ready",
+    "Run checks, independent exact-head review and CI before integration; keep real-data browser acceptance separately gated"
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-11T23:51:03Z"
+}

@@ -135,6 +135,16 @@ func TestCommerceConfigurationFailsClosed(t *testing.T) {
 	}
 }
 
+func TestCommerceConfigurationRejectsTestModeOnPublicProductionOrigin(t *testing.T) {
+	for _, origin := range []string{"https://cars.tk", "https://autodata.cars.tk"} {
+		values := map[string]string{"AUTODATA_COMMERCE_MODE": "stripe_test", "AUTODATA_INGESTION_URL": "http://localhost:8081", "AUTODATA_INGESTION_INTERNAL_TOKEN": "token", "AUTODATA_PUBLIC_ORIGIN": origin}
+		client, err := configuredCommerceClient(func(key string) string { return values[key] })
+		if err == nil || client != nil {
+			t.Fatalf("test checkout accepted public production origin %q", origin)
+		}
+	}
+}
+
 type commerceRoundTrip func(*http.Request) (*http.Response, error)
 
 func (f commerceRoundTrip) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }

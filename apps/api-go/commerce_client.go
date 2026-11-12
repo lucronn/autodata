@@ -26,7 +26,7 @@ func NewHTTPCommerceClient(baseURL, token string) (*HTTPCommerceClient, error) {
 }
 func commerceTimeout(op string) time.Duration {
 	switch op {
-	case "quote", "library", "grants/check", "purchase-config":
+	case "quote", "library", "grants/check", "purchase-config", "demo-mode":
 		return 2 * time.Second
 	default:
 		return 20 * time.Second
@@ -34,7 +34,7 @@ func commerceTimeout(op string) time.Duration {
 }
 func (c *HTTPCommerceClient) Do(ctx context.Context, operation string, body []byte, signature string) (int, []byte, error) {
 	switch operation {
-	case "quote", "checkouts", "orders/status", "library", "grants/check", "stripe/webhook", "purchase-config":
+	case "quote", "checkouts", "orders/status", "library", "grants/check", "stripe/webhook", "purchase-config", "demo-mode":
 	default:
 		return 0, nil, fmt.Errorf("invalid commerce operation")
 	}
@@ -99,6 +99,9 @@ func configuredCommerceClient(getenv func(string) string) (CommerceClient, error
 	case "", "disabled":
 		return nil, nil
 	case "stripe_test", "stripe_live":
+		if mode == "stripe_test" && workshopProductionOrigin(getenv("AUTODATA_PUBLIC_ORIGIN")) {
+			return nil, fmt.Errorf("invalid commerce configuration")
+		}
 		client, err := NewHTTPCommerceClient(getenv("AUTODATA_INGESTION_URL"), getenv("AUTODATA_INGESTION_INTERNAL_TOKEN"))
 		if err != nil {
 			return nil, err
