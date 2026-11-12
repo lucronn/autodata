@@ -6,8 +6,8 @@ import (
 	"strings"
 )
 
-// Match the local media route accepted by Workshop's localImageURL. A stored
-// provider URL or a missing token renders as "Illustration unavailable."
+// Match the local media route accepted by Workshop's localImageURL. Search
+// also reads stored images before a short-lived media URL has been minted.
 var catalogSearchImageURL = regexp.MustCompile(`^/v1/catalog/images/v2\.[a-zA-Z0-9_-]+$`)
 
 // Search only text the Workshop can display. IDs, locators, image URLs, and
@@ -172,8 +172,8 @@ func catalogResolvedImageID(ref string, images []CatalogImage) string {
 func catalogSearchableImage(image CatalogImage) bool {
 	return image.Status != "unavailable" &&
 		(image.ID != "" || catalogImageRefID(image) != "") &&
-		len(image.URL) <= len("/v1/catalog/images/v2.")+6000 &&
-		catalogSearchImageURL.MatchString(image.URL)
+		(localCatalogImageKeyPattern.MatchString(image.StorageKey) ||
+			len(image.URL) <= len("/v1/catalog/images/v2.")+6000 && catalogSearchImageURL.MatchString(image.URL))
 }
 
 func catalogTableCellImageIDs(cell any, images []CatalogImage) []string {

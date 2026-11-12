@@ -96,3 +96,14 @@ func TestCatalogArticleSearchLegacyStepImageRequiresRenderableURL(t *testing.T) 
 		t.Fatal("unrendered legacy step image alt matched")
 	}
 }
+
+func TestCatalogArticleSearchLegacyStepImageAcceptsStoredLocalAsset(t *testing.T) {
+	images := []CatalogImage{{
+		ID: "stored", StorageKey: "procedure-images/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		Alt: "StoredLegacyFigureMarker",
+	}}
+	article := CatalogArticle{Title: "Legacy guide", Steps: []CatalogStep{{Action: "Inspect harness", Images: &images}}}
+	if len(filterCatalogArticleSearch([]CatalogArticle{article}, "StoredLegacyFigureMarker")) != 1 {
+		t.Fatal("stored local image alt did not match before media URL signing")
+	}
+}

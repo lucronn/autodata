@@ -129,7 +129,7 @@ func (s *postgresCatalogStore) PaidArticleSearchDescriptors(ctx context.Context,
 	if !commerceUUID(configurationID) {
 		return nil, ErrCatalogNotFound
 	}
-	rows, err := s.pool.Query(ctx, `SELECT a.canonical_article_id::text,COALESCE(a.title,''),COALESCE(a.kind,''),COALESCE(a.component,''),c.source_revision_id::text,c.canonical_revision_id::text,c.content_origin,c.availability,c.review_status,c.document,COALESCE(c.body,''),c.steps,c.images FROM canonical_articles a JOIN catalog_article_current c USING(canonical_article_id) JOIN source_snapshots descriptor ON descriptor.source_snapshot_id=a.descriptor_source_snapshot_id WHERE a.vehicle_configuration_id::text=$1 AND `+lifecycleEligibleSQL+` AND c.takedown_status='active' AND descriptor.takedown_status='active' ORDER BY CASE a.provider_slug WHEN 'bankone' THEN 0 ELSE 1 END,a.source_sort_order NULLS LAST,a.canonical_article_id`, configurationID)
+	rows, err := s.pool.Query(ctx, `SELECT a.canonical_article_id::text,COALESCE(a.title,''),COALESCE(a.kind,''),COALESCE(a.component,''),c.source_revision_id::text,c.canonical_revision_id::text,c.content_origin,c.availability,c.review_status,c.document,COALESCE(c.body,''),c.steps,c.images,source.source_images FROM canonical_articles a JOIN catalog_article_current c USING(canonical_article_id) JOIN source_snapshots descriptor ON descriptor.source_snapshot_id=a.descriptor_source_snapshot_id LEFT JOIN canonical_article_source_revisions source ON source.source_revision_id=c.source_revision_id WHERE a.vehicle_configuration_id::text=$1 AND `+lifecycleEligibleSQL+` AND c.takedown_status='active' AND descriptor.takedown_status='active' ORDER BY CASE a.provider_slug WHEN 'bankone' THEN 0 ELSE 1 END,a.source_sort_order NULLS LAST,a.canonical_article_id`, configurationID)
 	if err != nil {
 		return nil, err
 	}
@@ -151,9 +151,9 @@ func (s *postgresCatalogStore) PaidArticleSearchDescriptors(ctx context.Context,
 // returned descriptor remains metadata-only even when an image alt matches.
 func scanPaidArticleSearchRow(row interface{ Scan(...any) error }, configurationID, query string) (CatalogArticle, bool, error) {
 	var article CatalogArticle
-	var document, steps, images []byte
+	var document, steps, images, sourceImagesRaw []byte
 	var body string
-	if err := row.Scan(&article.ID, &article.Title, &article.Kind, &article.Component, &article.SourceRevisionID, &article.CanonicalRevisionID, &article.ContentOrigin, &article.Availability, &article.ReviewStatus, &document, &body, &steps, &images); err != nil {
+	if err := row.Scan(&article.ID, &article.Title, &article.Kind, &article.Component, &article.SourceRevisionID, &article.CanonicalRevisionID, &article.ContentOrigin, &article.Availability, &article.ReviewStatus, &document, &body, &steps, &images, &sourceImagesRaw); err != nil {
 		return CatalogArticle{}, false, err
 	}
 	searchable := CatalogArticle{Title: article.Title, Kind: article.Kind, Component: article.Component, Body: body}
@@ -174,6 +174,29 @@ func scanPaidArticleSearchRow(row interface{ Scan(...any) error }, configuration
 			return CatalogArticle{}, false, err
 		}
 	}
+	var sourceImages []CatalogImage
+	if len(sourceImagesRaw) > 0 {
+		if err := json.Unmarshal(sourceImagesRaw, &sourceImages); err != nil {
+			return CatalogArticle{}, false, err
+		}
+	}
+	// A paid detail only mints media URLs for assets still present in the
+	// selected source. Preserve that boundary while comparing text privately.
+	for i := range searchable.Images {
+		if !paidSearchImageInSource(searchable.Images[i], sourceImages) {
+			searchable.Images[i].Status = "unavailable"
+		}
+	}
+	for i := range searchable.Steps {
+		if searchable.Steps[i].Images != nil {
+			for j := range *searchable.Steps[i].Images {
+				image := &(*searchable.Steps[i].Images)[j]
+				if !paidSearchImageInSource(*image, sourceImages) {
+					image.Status = "unavailable"
+				}
+			}
+		}
+	}
 	if len(filterCatalogArticleSearch([]CatalogArticle{searchable}, query)) == 0 {
 		return CatalogArticle{}, false, nil
 	}
@@ -186,6 +209,13 @@ func scanPaidArticleSearchRow(row interface{ Scan(...any) error }, configuration
 		article.ContentStatus = "content_complete"
 	}
 	return article, true, nil
+}
+
+func paidSearchImageInSource(image CatalogImage, sourceImages []CatalogImage) bool {
+	asset := paidCatalogImageAssetID(image)
+	return paidCatalogAssetPattern.MatchString(asset) &&
+		localCatalogImageKeyPattern.MatchString(image.StorageKey) &&
+		paidCatalogHasAsset(sourceImages, asset, image.StorageKey)
 }
 
 func (s *postgresCatalogStore) PaidArticleIdentity(ctx context.Context, configurationID, articleID string) (PaidArticleIdentity, error) {
