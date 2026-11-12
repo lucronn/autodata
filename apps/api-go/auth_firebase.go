@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	firebase "firebase.google.com/go/v4"
@@ -14,9 +15,52 @@ import (
 )
 
 type firebaseCustomerVerifier struct {
-	client    *auth.Client
-	projectID string
-	now       func() time.Time
+	client       *auth.Client
+	projectID    string
+	now          func() time.Time
+	sdkCallsOnce sync.Once
+	sdkCallSlots chan struct{}
+}
+
+const maxInflightFirebaseSDKCalls = 16
+
+// The OAuth2 transport fetches a token without the SDK request context. A
+// credential retry can therefore outlive the SDK's caller deadline. Return
+// promptly on that deadline while limiting SDK calls still finishing in the
+// background; never use a late result to authenticate a customer.
+func firebaseCallWithinContext[T any](v *firebaseCustomerVerifier, ctx context.Context, call func() (T, error)) (T, error) {
+	var zero T
+	v.sdkCallsOnce.Do(func() {
+		v.sdkCallSlots = make(chan struct{}, maxInflightFirebaseSDKCalls)
+	})
+	select {
+	case v.sdkCallSlots <- struct{}{}:
+	case <-ctx.Done():
+		return zero, ctx.Err()
+	}
+	if err := ctx.Err(); err != nil {
+		<-v.sdkCallSlots
+		return zero, err
+	}
+	type result struct {
+		value T
+		err   error
+	}
+	done := make(chan result, 1)
+	go func() {
+		defer func() { <-v.sdkCallSlots }()
+		value, err := call()
+		done <- result{value: value, err: err}
+	}()
+	select {
+	case completed := <-done:
+		if err := ctx.Err(); err != nil {
+			return zero, err
+		}
+		return completed.value, completed.err
+	case <-ctx.Done():
+		return zero, ctx.Err()
+	}
 }
 
 func newFirebaseCustomerVerifier(ctx context.Context, c customerAuthConfig) (CustomerIdentityVerifier, error) {
@@ -59,7 +103,9 @@ func (v *firebaseCustomerVerifier) VerifyLogin(ctx context.Context, raw string) 
 	}
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
-	token, err := v.client.VerifyIDTokenAndCheckRevoked(ctx, raw)
+	token, err := firebaseCallWithinContext(v, ctx, func() (*auth.Token, error) {
+		return v.client.VerifyIDTokenAndCheckRevoked(ctx, raw)
+	})
 	if err != nil {
 		return VerifiedCustomerIdentity{}, firebaseIdentityError(err)
 	}
@@ -86,7 +132,9 @@ func (v *firebaseCustomerVerifier) CheckUser(ctx context.Context, projectID, uid
 	}
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
-	user, err := v.client.GetUser(ctx, uid)
+	user, err := firebaseCallWithinContext(v, ctx, func() (*auth.UserRecord, error) {
+		return v.client.GetUser(ctx, uid)
+	})
 	if err != nil {
 		return firebaseIdentityError(err)
 	}
