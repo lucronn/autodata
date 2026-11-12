@@ -1,0 +1,17 @@
+{
+  "goal": "Bound Workshop Firebase ADC retry latency without weakening identity checks",
+  "plan_ref": "docs/superpowers/plans/2026-11-12-workshop-firebase-adc-refresh-timeout.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/402",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/verification/2026-11-12-workshop-firebase-adc-refresh-timeout.md"
+  ],
+  "todo": [
+    "Add failing two-refresh and caller-cancellation Firebase SDK regressions",
+    "Bound verifier return latency and concurrent in-flight SDK work without bypassing checks",
+    "Repeat Go tests, obtain independent exact-head review and current CI",
+    "Merge only after policy and branch protection; update Issue and Project"
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-12T02:45:00Z"
+}
