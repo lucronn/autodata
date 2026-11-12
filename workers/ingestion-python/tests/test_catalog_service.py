@@ -350,6 +350,51 @@ class CatalogServiceTests(unittest.TestCase):
         self.assertEqual(first["status"], "accepted")
         self.assertEqual(first["missing_scopes"], ["models"])
 
+    def test_selector_ensure_logs_redacted_failure_stage(self):
+        from autodata_ingestion import catalog_service
+
+        scenarios = (
+            ("resolve", "resolve", RuntimeError("provider-secret-url"), "RuntimeError"),
+            ("coverage_persistence", "_persist_hydration_scope", OSError("database-secret-dsn"), "OSError"),
+        )
+        for stage, failing_operation, failure, error_type in scenarios:
+            with self.subTest(stage=stage):
+                request = json.dumps({
+                    "scope": "makes",
+                    "year": 2024,
+                    "region": "US",
+                    "idempotency_key": f"caller-secret-{stage}",
+                })
+                with patch.object(catalog_service, "_configured_catalog_providers", return_value=(object(),)), \
+                        patch.object(catalog_service.CacheFirstCatalogService, "resolve", return_value=CatalogResult(rows=(), complete=False, missing_scopes=("makes",))) as resolve, \
+                        patch.object(catalog_service, "_persist_resolved_catalog_rows", return_value={"status": "no_persistable_rows", "row_count": 0}), \
+                        patch.object(catalog_service, "_persist_hydration_scope", return_value={"status": "persisted"}) as persist:
+                    operation = resolve if failing_operation == "resolve" else persist
+                    operation.side_effect = failure
+                    with self.assertLogs("autodata_ingestion.catalog_service", level="ERROR") as captured:
+                        with self.assertRaises(type(failure)):
+                            ensure_catalog_hydration(request)
+                self.assertEqual(len(captured.output), 1)
+                self.assertIn("scope=makes", captured.output[0])
+                self.assertIn(f"stage={stage}", captured.output[0])
+                self.assertIn(f"error_type={error_type}", captured.output[0])
+                self.assertNotIn(str(failure), captured.output[0])
+                self.assertNotIn("caller-secret-", captured.output[0])
+
+    def test_selector_ensure_does_not_log_invalid_request_as_dependency_failure(self):
+        from autodata_ingestion import catalog_service
+
+        request = json.dumps({
+            "scope": "makes",
+            "year": 1750,
+            "region": "US",
+            "idempotency_key": "invalid-year-request",
+        })
+        with patch.object(catalog_service, "_configured_catalog_providers", return_value=(object(),)):
+            with self.assertNoLogs("autodata_ingestion.catalog_service", level="ERROR"):
+                with self.assertRaises(ValueError):
+                    ensure_catalog_hydration(request)
+
     def test_http_hydration_complete_cache_is_provider_free(self):
         result = ensure_catalog_hydration(json.dumps({
             "scope": "configurations",

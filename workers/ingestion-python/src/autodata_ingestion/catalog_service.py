@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 import inspect
 import json
+import logging
 import os
 import re
 import time
@@ -13,6 +14,9 @@ from copy import deepcopy
 from threading import Event, RLock, Thread
 from typing import Any, Callable, Iterable, Mapping
 from urllib.parse import quote
+
+
+_LOG = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -258,50 +262,65 @@ def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
             _HYDRATION_RESULTS[key] = (time.monotonic(), deepcopy(result))
         return result
 
-    providers = _configured_catalog_providers()
-    if not providers:
-        result = {
-            "status": "accepted",
-            "hydration_key": key,
-            "scope": scope,
-            "complete": False,
-            "missing_scopes": [scope],
-            "rows": [],
-        }
-    else:
-        request_model = CatalogRequest(
-            int(request.get("year", 2000)),
-            str(request.get("make", "unknown")),
-            str(request.get("model", "unknown")),
-            str(request.get("region", "US")),
-            request.get("engine"),
-            request.get("trim"),
-            scope,
-        )
-        service = CacheFirstCatalogService(
-            cache_reader=lambda _request: cached,
-            providers=providers,
-        )
-        resolved = service.resolve(request_model)
-        persistence = _persist_resolved_catalog_rows(
-            resolved.rows,
-            scope=scope,
-            provenance=resolved.provenance,
-        )
-        coverage = _persist_hydration_scope(request, resolved)
-        result = {
-            "status": "cache_hit" if resolved.cache_hit else "hydrated",
-            "hydration_key": key,
-            "scope": scope,
-            "complete": resolved.complete,
-            "missing_scopes": list(resolved.missing_scopes),
-            "rows": list(resolved.rows),
-            "provenance": list(resolved.provenance),
-            "persistence": persistence,
-            "coverage": coverage,
-        }
-        if scope in {"makes", "models"} and resolved.rows:
-            result["deepening"] = _schedule_selector_deepening(request, scope, resolved.rows)
+    stage = "provider_configuration"
+    try:
+        providers = _configured_catalog_providers()
+        if not providers:
+            result = {
+                "status": "accepted",
+                "hydration_key": key,
+                "scope": scope,
+                "complete": False,
+                "missing_scopes": [scope],
+                "rows": [],
+            }
+        else:
+            request_model = CatalogRequest(
+                int(request.get("year", 2000)),
+                str(request.get("make", "unknown")),
+                str(request.get("model", "unknown")),
+                str(request.get("region", "US")),
+                request.get("engine"),
+                request.get("trim"),
+                scope,
+            )
+            service = CacheFirstCatalogService(
+                cache_reader=lambda _request: cached,
+                providers=providers,
+            )
+            stage = "resolve"
+            resolved = service.resolve(request_model)
+            stage = "row_persistence"
+            persistence = _persist_resolved_catalog_rows(
+                resolved.rows,
+                scope=scope,
+                provenance=resolved.provenance,
+            )
+            stage = "coverage_persistence"
+            coverage = _persist_hydration_scope(request, resolved)
+            result = {
+                "status": "cache_hit" if resolved.cache_hit else "hydrated",
+                "hydration_key": key,
+                "scope": scope,
+                "complete": resolved.complete,
+                "missing_scopes": list(resolved.missing_scopes),
+                "rows": list(resolved.rows),
+                "provenance": list(resolved.provenance),
+                "persistence": persistence,
+                "coverage": coverage,
+            }
+            if scope in {"makes", "models"} and resolved.rows:
+                stage = "deepening"
+                result["deepening"] = _schedule_selector_deepening(request, scope, resolved.rows)
+    except Exception as error:
+        # ValueError is a request/row validation response, not the HTTP 502
+        # dependency failure this diagnostic is intended to distinguish.
+        if scope in {"makes", "models", "configurations"} and not isinstance(error, ValueError):
+            _LOG.error(
+                "catalog selector ensure failed scope=%s stage=%s error_type=%s",
+                scope, stage, type(error).__name__,
+            )
+        raise
     with _HYDRATION_LOCK:
         _HYDRATION_RESULTS[key] = (time.monotonic(), deepcopy(result))
     return result
