@@ -2274,6 +2274,15 @@ function articleMediaHarness(overrides = {}) {
   };
 }
 
+test('empty source block text displays the unavailable reason used by article search', () => {
+  const h = articleMediaHarness();
+  const content = h.content(mediaArticle([{ type: 'unavailable', text: '', unavailable_reason: 'Wiring diagram pending source review' }]));
+  assert.match(content.textContent, /Wiring diagram pending source review/);
+  const sourced = h.content(mediaArticle([{ type: 'unavailable', text: 'Visible source note', unavailable_reason: 'Hidden source reason' }]));
+  assert.match(sourced.textContent, /Visible source note/);
+  assert.doesNotMatch(sourced.textContent, /Hidden source reason/);
+});
+
 test('article tab title clears when protected content is invalidated', () => {
   const h = articleMediaHarness();
   h.render(mediaArticle([{ type: 'paragraph', text: 'Check pump.' }]));

@@ -36,13 +36,13 @@ func filterCatalogArticleSearch(items []CatalogArticle, query string) []CatalogA
 
 func catalogArticleSearchText(article CatalogArticle) string {
 	parts := []string{article.Title, article.Component, article.Kind}
-	if article.Document != nil && len(article.Document.Blocks) > 0 {
-		images := append([]CatalogImage(nil), article.Images...)
-		for _, step := range article.Steps {
-			if step.Images != nil {
-				images = append(images, (*step.Images)...)
-			}
+	images := append([]CatalogImage(nil), article.Images...)
+	for _, step := range article.Steps {
+		if step.Images != nil {
+			images = append(images, (*step.Images)...)
 		}
+	}
+	if article.Document != nil && len(article.Document.Blocks) > 0 {
 		for _, block := range article.Document.Blocks {
 			parts = append(parts, catalogBlockSearchText(block, images))
 		}
@@ -69,6 +69,23 @@ func catalogArticleSearchText(article CatalogArticle) string {
 					for _, image := range *step.Images {
 						if catalogSearchableImage(image) {
 							parts = append(parts, image.Alt)
+						}
+					}
+				}
+				for _, id := range step.ImageIDs {
+					for _, image := range images {
+						imageID := image.ID
+						if imageID == "" {
+							imageID = image.ImageID
+						}
+						if imageID == "" {
+							imageID = image.AssetID
+						}
+						if imageID == id {
+							if catalogSearchableImage(image) {
+								parts = append(parts, image.Alt)
+							}
+							break
 						}
 					}
 				}

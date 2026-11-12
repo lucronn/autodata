@@ -107,3 +107,20 @@ func TestCatalogArticleSearchLegacyStepImageAcceptsStoredLocalAsset(t *testing.T
 		t.Fatal("stored local image alt did not match before media URL signing")
 	}
 }
+
+func TestCatalogArticleSearchMatchesRenderableLegacyStepImageIDs(t *testing.T) {
+	article := CatalogArticle{
+		Title: "Legacy wiring guide",
+		Images: []CatalogImage{
+			{ID: "ready", URL: "/v1/catalog/images/v2.ready", Alt: "VisibleConnectorMarker"},
+			{ID: "missing-url", Alt: "HiddenConnectorMarker"},
+		},
+		Steps: []CatalogStep{{Action: "Inspect connector", ImageIDs: []string{"ready", "missing-url"}}},
+	}
+	if len(filterCatalogArticleSearch([]CatalogArticle{article}, "VisibleConnectorMarker")) != 1 {
+		t.Fatal("rendered legacy step image_id alt did not match")
+	}
+	if len(filterCatalogArticleSearch([]CatalogArticle{article}, "HiddenConnectorMarker")) != 0 {
+		t.Fatal("unrenderable legacy step image_id alt matched")
+	}
+}

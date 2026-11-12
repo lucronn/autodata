@@ -723,8 +723,8 @@ function renderBlocks(parent, blocks, images, review, g) {
       parent.append(
         element(
           "aside",
-          block.text ??
-            block.unavailable_reason ??
+          block.text ||
+            block.unavailable_reason ||
             "This source block needs review.",
           "article-callout",
         ),
