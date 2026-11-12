@@ -433,6 +433,7 @@ func TestFirebaseTimedOutSDKCallsHaveBoundedAdmission(t *testing.T) {
 	finish := func() { releaseOnce.Do(func() { close(release) }) }
 	defer finish()
 	entered := make(chan struct{}, maxInflightFirebaseSDKCalls+1)
+	finishedSDK := make(chan struct{}, maxInflightFirebaseSDKCalls)
 	results := make(chan error, maxInflightFirebaseSDKCalls)
 	var callers []context.CancelFunc
 	for range maxInflightFirebaseSDKCalls {
@@ -442,6 +443,7 @@ func TestFirebaseTimedOutSDKCallsHaveBoundedAdmission(t *testing.T) {
 			_, err := firebaseCallWithinContext(verifier, caller, func() (int, error) {
 				entered <- struct{}{}
 				<-release
+				finishedSDK <- struct{}{}
 				return 1, nil
 			})
 			results <- err
@@ -471,5 +473,16 @@ func TestFirebaseTimedOutSDKCallsHaveBoundedAdmission(t *testing.T) {
 		if err := <-results; !errors.Is(err, context.Canceled) {
 			t.Fatalf("timed-out SDK call returned an unexpected result: %v", err)
 		}
+	}
+	for range maxInflightFirebaseSDKCalls {
+		<-finishedSDK
+	}
+	recoveryCtx, recoveryCancel := context.WithTimeout(context.Background(), time.Second)
+	defer recoveryCancel()
+	recovered, err := firebaseCallWithinContext(verifier, recoveryCtx, func() (int, error) {
+		return 7, nil
+	})
+	if err != nil || recovered != 7 {
+		t.Fatalf("SDK admission did not recover after canceled calls finished: value=%d err=%v", recovered, err)
 	}
 }
