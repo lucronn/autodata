@@ -2,8 +2,13 @@ package main
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 )
+
+// Match the local media route accepted by Workshop's localImageURL. A stored
+// provider URL or a missing token renders as "Illustration unavailable."
+var catalogSearchImageURL = regexp.MustCompile(`^/v1/catalog/images/v2\.[a-zA-Z0-9_-]+$`)
 
 // Search only text the Workshop can display. IDs, locators, image URLs, and
 // source metadata are deliberately excluded from content search.
@@ -62,7 +67,9 @@ func catalogArticleSearchText(article CatalogArticle) string {
 				parts = append(parts, step.Instructions...)
 				if step.Images != nil {
 					for _, image := range *step.Images {
-						parts = append(parts, image.Alt)
+						if catalogSearchableImage(image) {
+							parts = append(parts, image.Alt)
+						}
 					}
 				}
 			}
@@ -81,10 +88,12 @@ func catalogBlockSearchText(block CatalogDocumentBlock, images []CatalogImage) s
 	case "callout":
 		parts = append(parts, block.Label, block.Text)
 	case "image":
-		if block.Alt != "" {
-			parts = append(parts, block.Alt)
-		} else {
-			parts = append(parts, block.Caption)
+		if catalogResolvedImageID(catalogImageRefID(CatalogImage{AssetID: block.AssetID, ImageID: block.ImageID}), images) != "" {
+			if block.Alt != "" {
+				parts = append(parts, block.Alt)
+			} else {
+				parts = append(parts, block.Caption)
+			}
 		}
 	case "step":
 		parts = append(parts, block.Text)
@@ -100,7 +109,7 @@ func catalogBlockSearchText(block CatalogDocumentBlock, images []CatalogImage) s
 		cellImageIDs := map[string]bool{}
 		for _, row := range block.Rows {
 			for _, cell := range row {
-				parts = append(parts, catalogTableCellSearchText(cell))
+				parts = append(parts, catalogTableCellSearchText(cell, images))
 				for _, id := range catalogTableCellImageIDs(cell, images) {
 					cellImageIDs[id] = true
 				}
@@ -123,7 +132,9 @@ func catalogBlockSearchText(block CatalogDocumentBlock, images []CatalogImage) s
 	}
 	if block.Type == "callout" || block.Type == "step" || block.Type == "ordered_list" || block.Type == "unordered_list" {
 		for _, image := range block.Images {
-			parts = append(parts, image.Alt)
+			if catalogResolvedImageID(catalogImageRefID(image), images) != "" {
+				parts = append(parts, image.Alt)
+			}
 		}
 	}
 	return strings.Join(parts, " ")
@@ -144,6 +155,9 @@ func catalogResolvedImageID(ref string, images []CatalogImage) string {
 		if ref != image.ID && ref != image.ImageID && ref != image.AssetID {
 			continue
 		}
+		if !catalogSearchableImage(image) {
+			return ""
+		}
 		if image.ID != "" {
 			return image.ID
 		}
@@ -153,6 +167,13 @@ func catalogResolvedImageID(ref string, images []CatalogImage) string {
 		return image.AssetID
 	}
 	return ""
+}
+
+func catalogSearchableImage(image CatalogImage) bool {
+	return image.Status != "unavailable" &&
+		(image.ID != "" || catalogImageRefID(image) != "") &&
+		len(image.URL) <= len("/v1/catalog/images/v2.")+6000 &&
+		catalogSearchImageURL.MatchString(image.URL)
 }
 
 func catalogTableCellImageIDs(cell any, images []CatalogImage) []string {
@@ -181,7 +202,7 @@ func catalogTableCellImageIDs(cell any, images []CatalogImage) []string {
 	return ids
 }
 
-func catalogTableCellSearchText(cell any) string {
+func catalogTableCellSearchText(cell any, images []CatalogImage) string {
 	switch value := cell.(type) {
 	case string:
 		return value
@@ -192,10 +213,14 @@ func catalogTableCellSearchText(cell any) string {
 		if text, ok := value["text"].(string); ok {
 			parts = append(parts, text)
 		}
-		if images, ok := value["images"].([]any); ok {
-			for _, image := range images {
+		if cellImages, ok := value["images"].([]any); ok {
+			for _, image := range cellImages {
 				if fields, ok := image.(map[string]any); ok {
-					if alt, ok := fields["alt"].(string); ok {
+					key, _ := fields["asset_id"].(string)
+					if key == "" {
+						key, _ = fields["image_id"].(string)
+					}
+					if alt, ok := fields["alt"].(string); ok && catalogResolvedImageID(key, images) != "" {
 						parts = append(parts, alt)
 					}
 				}

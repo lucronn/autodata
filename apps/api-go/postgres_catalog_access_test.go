@@ -268,16 +268,24 @@ func (f *paidFixture) contentSearch(owner int, query string) CatalogArticlesResp
 	return response
 }
 
-func paidFixtureContentTerm(t *testing.T, article CatalogArticle) string {
-	t.Helper()
-	metadata := strings.ToLower(article.Title + " " + article.Kind + " " + article.Component)
-	for _, word := range regexp.MustCompile(`[A-Za-z0-9]{4,}`).FindAllString(catalogArticleSearchText(article), -1) {
-		if !strings.Contains(metadata, strings.ToLower(word)) {
-			return word
+// Superseded-term checks exercise the current Postgres projection directly so
+// the guarded HTTP observation inventory remains an exact, independent oracle.
+func (f *paidFixture) supersededTermAbsent(query string) bool {
+	f.t.Helper()
+	store, ok := f.applications[0].catalog.(*postgresCatalogStore)
+	if !ok {
+		f.t.Fatal("paid fixture catalog store missing")
+	}
+	items, err := store.PaidArticleSearchDescriptors(context.Background(), Principal{}, f.configuration, query)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	for _, item := range items {
+		if item.ID == f.article {
+			return false
 		}
 	}
-	t.Fatal("fixture article has no content-only search term")
-	return ""
+	return true
 }
 
 func paidSearchHas(response CatalogArticlesResponse, id, origin string) bool {
@@ -625,16 +633,19 @@ func TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse(t *testing.T) {
 	f.check("actual_model_response_held", held["response_captured"] == true)
 	source := f.detail(0)
 	f.check("source_readable_during_hold", r3Origin(source, "source") && source.Processing != nil)
-	sourceTerm := paidFixtureContentTerm(t, source)
-	sourceSearch := f.contentSearch(0, sourceTerm)
+	// The fixture source says "Remove the pump."; the held model rewrites it to
+	// "Take off the pump." Neither phrase appears in the "Pump" descriptor.
+	sourceSearch := f.contentSearch(0, "Remove the pump")
 	f.check("source_content_search_current_projection", paidSearchHas(sourceSearch, f.article, "source"))
 	f.snapshot("source_held")
 	f.control.controlCall("POST", "release-model")
 	f.control.wait("snapshot", func(m map[string]any) bool { return r3Int(r3Map(m, "counts"), "published_revisions") == 1 })
 	first := f.detail(0)
-	canonicalTerm := paidFixtureContentTerm(t, first)
-	canonicalSearch := f.contentSearch(0, canonicalTerm)
+	canonicalSearch := f.contentSearch(0, "Take off the pump")
 	f.check("canonical_content_search_current_projection", paidSearchHas(canonicalSearch, f.article, "canonical"))
+	if !f.supersededTermAbsent("Remove the pump") {
+		t.Fatal("superseded source phrase still matched the canonical projection")
+	}
 	before := f.snapshot("published")
 	second := f.detail(1)
 	f.expect(1, "POST", f.path("/"+f.article+"/prepare"), "{}", 200)
@@ -774,9 +785,13 @@ func TestPostgresPaidCatalogHistoricalSourceAndRights(t *testing.T) {
 	f.controlPaid("refresh-source")
 	f.control.wait("snapshot", func(s map[string]any) bool { return r3Int(r3Map(s, "counts"), "published_revisions") == 2 })
 	fresh := f.detail(0)
-	contentTerm := paidFixtureContentTerm(t, fresh)
-	searchBefore := f.contentSearch(0, contentTerm)
+	// refresh-source independently seeds "Remove the refreshed pump.". The
+	// older canonical phrase must not match the newly selected source view.
+	searchBefore := f.contentSearch(0, "refreshed pump")
 	f.check("content_search_before_rights_change", fresh.ContentOrigin != nil && paidSearchHas(searchBefore, f.article, *fresh.ContentOrigin))
+	if !f.supersededTermAbsent("Take off the pump") {
+		t.Fatal("superseded canonical phrase still matched after source refresh")
+	}
 	raw = f.expect(0, "GET", sourcePath, "", 200)
 	if json.Unmarshal(raw, &source) != nil {
 		t.Fatal("historical JSON invalid")
@@ -806,7 +821,7 @@ func TestPostgresPaidCatalogHistoricalSourceAndRights(t *testing.T) {
 			t.Fatal("withdrawn descriptor exposed by paid index")
 		}
 	}
-	for _, descriptor := range f.contentSearch(0, contentTerm).Items {
+	for _, descriptor := range f.contentSearch(0, "refreshed pump").Items {
 		if descriptor.ID == f.article {
 			t.Fatal("withdrawn descriptor exposed by paid content search")
 		}
