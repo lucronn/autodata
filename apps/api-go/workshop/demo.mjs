@@ -22,7 +22,7 @@ const prompts = ['Choose sample year', 'Choose year first', 'Choose make first',
 const caption = `${sample.year} ${sample.make} ${sample.model}`;
 
 $('demo-banner').hidden = false;
-document.querySelector('.wordmark').href = '/workshop/?demo=1';
+document.querySelector('.wordmark').href = '/workshop/?sample=1';
 document.querySelector('.masthead p').textContent = 'Explore a fictional vehicle and sample article.';
 document.querySelector('.region-note').textContent = 'Fictional sample catalog';
 $('picker-title').textContent = 'Try the sample vehicle';

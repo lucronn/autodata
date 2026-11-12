@@ -31,7 +31,9 @@ const names = ["year", "make", "model", "configuration"];
 const rows = Object.fromEntries(names.map((name) => [name, []]));
 const navigation = new NavigationGeneration();
 const searchNavigation = new NavigationGeneration();
-const checkout = createCheckout();
+const checkout = createCheckout({
+  expectedMode: $('test-banner').hidden ? undefined : 'stripe_test',
+});
 let vehicle = null,
   articles = [],
   indexComplete = false,

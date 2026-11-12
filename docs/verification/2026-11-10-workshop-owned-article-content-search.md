@@ -123,3 +123,11 @@ Repair verification on 2026-11-11, based on planning checkpoint
   open.
 
 Plan: [2026-11-10-workshop-owned-article-content-search](../superpowers/plans/2026-11-10-workshop-owned-article-content-search.md).
+
+## 2026-11-12 integration checkpoint
+
+After PR #400 advanced `master` to `74cc9e1e7f9cf460645c5976262fee07733066df`, the search branch required a merge. The only textual conflict was in `workshop/app.mjs`: retain the search request generation and the test-banner checkout assertion together. The automatically merged HTML retains the visible search label, initial disabled sign-in, and separate sample/test banners. This checkpoint changes neither the grant check nor the metadata-only search response.
+
+Before the merge, the existing search branch passed the full Go API suite and Workshop Node tests. On the combined uncommitted tree, `node --test workshop-client.test.mjs workshop-demo.test.mjs` passed 277 tests with no failures or skips; full Go API tests passed; four lifecycle contract tests passed; `node --check` and `git diff --check` passed. These are code/fixture checks, not real paid-access acceptance.
+
+The guarded twelve-case paid Postgres fixture is still unrun. Its runbook requires a coordinator-reviewed isolated R3 test image and owned Compose project; `AUTODATA_R3_TEST_IMAGE` is unset in this checkout, and the host has unrelated live and staging containers. Do not substitute the ordinary CI `go test ./...` (which skips guarded cases), reuse those containers, or claim paid fixture credit. PR #394 must remain unmerged until the isolated required-mode receipts pass, followed by current exact-head review, CI and branch protection. A bounded public check returned HTTP 530 for Workshop and `/readyz`; Issue #391 separately tracks origin durability and live acceptance.
