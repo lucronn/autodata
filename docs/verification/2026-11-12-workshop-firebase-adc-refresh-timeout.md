@@ -10,9 +10,11 @@ This task addresses the Workshop customer sign-in/revalidation latency regressio
 
 Concrete todo:
 
-- [ ] Commit the synchronized planning checkpoint and pass exact-base pre-implementation validation.
-- [ ] Preserve a failing two-refresh SDK fixture result before the Go fix; verify cancellation and no accepted identity after the fix.
+- [x] Planning checkpoint `9d73b762bc3b4c75cbf16991de089e8904defdb2` committed; exact-base pre-implementation validation returned `{"status":"synchronized","errors":[]}` before Go edits.
+- [x] Red-first SDK fixture: two 1.6-second token refresh attempts after a retryable 503 user lookup returned only after 3.206 seconds; caller cancellation remained blocked beyond 500 ms. After the fix, the retry, cancellation and bounded-admission tests passed three consecutive runs with the official SDK and real ADC token source, replacing only network endpoints.
 - [ ] Record repeated focused/full Go, race/vet, independent exact-head review and current CI results.
 - [ ] Record the merged SHA and Project/Issue disposition, or the exact remaining blocker.
 
-The prior five-second token fixture passed 20/20 on local `origin/master` `74cc9e1` during this run; this does not erase the earlier intermittent failure recorded in Issue #402 and does not prove the race absent. The new deterministic regression must cover the two-attempt path. Real Firebase staging acceptance remains separately required.
+The prior five-second token fixture passed 20/20 on local `origin/master` `74cc9e1` during this run; this does not erase the earlier intermittent failure recorded in Issue #402 and does not prove the race absent. The new deterministic regression covers the two-attempt path. Real Firebase staging acceptance remains separately required.
+
+Local Go API `go test ./... -count=2` passed after the implementation and new regressions. Focused new regressions passed three consecutive runs; `go test -race . -run '^TestFirebase(ADC|TimedOutSDKCalls)' -count=1`, `go vet ./...`, and shared Go contracts `go test ./... -count=1` passed. Independent exact-head review, CI and merge remain pending at this checkpoint. These fixture results do not prove live Firebase or paid Workshop behavior.

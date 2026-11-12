@@ -372,3 +372,104 @@ func TestFirebaseADCCredentialRefreshHasIndependentTimeout(t *testing.T) {
 		t.Fatal("injected HTTP client mutated")
 	}
 }
+
+func TestFirebaseADCRetryRespectsTotalVerifierDeadline(t *testing.T) {
+	f := newFirebaseSDKFixture(t)
+	verifier, err := newFirebaseCustomerVerifier(f.adcContext(t, context.Background()), customerAuthConfig{ProjectID: "fixture-project"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.mu.Lock()
+	f.tokenDelay = 1600 * time.Millisecond
+	f.status = http.StatusServiceUnavailable
+	f.mu.Unlock()
+	started := time.Now()
+	err = verifier.CheckUser(context.Background(), "fixture-project", "fixture-user", f.now.Unix())
+	elapsed := time.Since(started)
+	if !errors.Is(err, ErrCustomerDependency) || f.tokenCalls.Load() < 2 || elapsed > 2600*time.Millisecond {
+		t.Fatalf("retried ADC refresh exceeded total verifier deadline: elapsed=%s token_requests=%d err=%v", elapsed, f.tokenCalls.Load(), err)
+	}
+}
+
+func TestFirebaseADCCallerCancellationInterruptsRefresh(t *testing.T) {
+	f := newFirebaseSDKFixture(t)
+	verifier, err := newFirebaseCustomerVerifier(f.adcContext(t, context.Background()), customerAuthConfig{ProjectID: "fixture-project"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.mu.Lock()
+	f.tokenDelay = 5 * time.Second
+	f.mu.Unlock()
+	caller, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	result := make(chan error, 1)
+	go func() {
+		result <- verifier.CheckUser(caller, "fixture-project", "fixture-user", f.now.Unix())
+	}()
+	waitUntil := time.After(2 * time.Second)
+	for f.tokenCalls.Load() == 0 {
+		select {
+		case <-waitUntil:
+			t.Fatal("ADC refresh did not begin")
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+	started := time.Now()
+	cancel()
+	select {
+	case err = <-result:
+		if !errors.Is(err, ErrCustomerDependency) || time.Since(started) > 500*time.Millisecond {
+			t.Fatalf("canceled caller waited for ADC refresh: elapsed=%s err=%v", time.Since(started), err)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("canceled caller remained blocked on ADC refresh")
+	}
+}
+
+func TestFirebaseTimedOutSDKCallsHaveBoundedAdmission(t *testing.T) {
+	verifier := &firebaseCustomerVerifier{}
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	finish := func() { releaseOnce.Do(func() { close(release) }) }
+	defer finish()
+	entered := make(chan struct{}, maxInflightFirebaseSDKCalls+1)
+	results := make(chan error, maxInflightFirebaseSDKCalls)
+	var callers []context.CancelFunc
+	for range maxInflightFirebaseSDKCalls {
+		caller, cancel := context.WithCancel(context.Background())
+		callers = append(callers, cancel)
+		go func() {
+			_, err := firebaseCallWithinContext(verifier, caller, func() (int, error) {
+				entered <- struct{}{}
+				<-release
+				return 1, nil
+			})
+			results <- err
+		}()
+	}
+	for range maxInflightFirebaseSDKCalls {
+		select {
+		case <-entered:
+		case <-time.After(2 * time.Second):
+			t.Fatal("SDK calls did not fill the bounded in-flight slots")
+		}
+	}
+	caller, cancel := context.WithTimeout(context.Background(), 25*time.Millisecond)
+	_, err := firebaseCallWithinContext(verifier, caller, func() (int, error) {
+		entered <- struct{}{}
+		return 1, nil
+	})
+	cancel()
+	if !errors.Is(err, context.DeadlineExceeded) || len(entered) != 0 {
+		t.Fatalf("saturated SDK call was admitted after caller deadline: err=%v extra_calls=%d", err, len(entered))
+	}
+	for _, cancel := range callers {
+		cancel()
+	}
+	finish()
+	for range maxInflightFirebaseSDKCalls {
+		if err := <-results; !errors.Is(err, context.Canceled) {
+			t.Fatalf("timed-out SDK call returned an unexpected result: %v", err)
+		}
+	}
+}
