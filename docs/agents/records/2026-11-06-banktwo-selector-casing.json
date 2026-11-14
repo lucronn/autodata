@@ -13,12 +13,15 @@
     "Verify CI and a bounded live Ford / Figo (MEXICO) vehicle cascade, then record the exact release result without changing article or payment access."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-07T02:42:04.323025Z",
+  "updated_at": "2026-11-07T03:10:12.044508Z",
   "tracking_sync": {
-    "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6701166694",
+    "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6701459940",
     "project_field": "Workshop selector casing reference",
     "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2Bzho6WoE",
     "project_item": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
     "readback_exact": true
-  }
+  },
+  "product_source_sha": "814a1c26e893fe181327516cfa4b48a800978c43",
+  "product_tree_sha": "60803944e30c87e98f5d85fd3e177d44e6a99696",
+  "required_ci_run": "https://github.com/lucronn/autodata/actions/runs/42330770348"
 }
