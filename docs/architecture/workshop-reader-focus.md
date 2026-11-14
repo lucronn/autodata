@@ -6,7 +6,7 @@ The planning source of truth is [the implementation plan](../superpowers/plans/2
 
 An article navigation moves focus into its visible reader heading once, immediately. New article navigation announces an opening title; a same-article retry retains the title. Background rendering preserves the user's focus. Returning to the index reveals the focused index heading.
 
-Implementation is pending the committed checkpoint and successful machine preflight.
+Implementation passed the synchronized planning checkpoint `0788d1f` and machine preflight. [Verification evidence](../verification/2026-11-14-workshop-reader-focus.md) records focused and browser checks; deployment remains with the coordinator.
 
 Concrete todo:
 

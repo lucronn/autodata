@@ -745,8 +745,11 @@ function renderArticle(article, g) {
   document.title = `${article.title || "Article"} | AutoData`;
 }
 async function loadArticle(id, g) {
-  if (!session.state.authenticated) return;
+  if (!session.state.authenticated || !g.current()) return;
   show("reader");
+  if (currentArticle?.id !== id)
+    $("article-title").textContent = "Opening article…";
+  $("article-title").focus();
   $("print").disabled = true;
   $("article-content").replaceChildren();
   renderedRevision = "";
@@ -1317,7 +1320,7 @@ $("back").addEventListener("click", () => {
   updateURL();
   show("catalog");
   renderArticles();
-  $("catalog-title").focus({ preventScroll: true });
+  $("catalog-title").focus();
 });
 $("print").addEventListener("click", () => {
   if (readableArticle(currentArticle) && session.state.authenticated)

@@ -47,3 +47,7 @@ Focused tests must hold preparation pending, inspect title/focus immediately, re
   "updated_at": "2026-11-14T23:14:05.499144+00:00"
 }
 ```
+
+## Implementation evidence
+
+Planning checkpoint `0788d1f` was pushed before implementation and its machine preflight returned synchronized with no errors. See [verification](../../verification/2026-11-14-workshop-reader-focus.md) for 267 passing client/demo tests and narrow/desktop Chromium focus checks.
