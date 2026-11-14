@@ -8,14 +8,14 @@
 
 **Plan:** `docs/superpowers/plans/2026-11-06-catalog-authoritative-absence.md`
 
-**Status:** implementation verified; required CI and live release pending.
+**Status:** implementation, exact-head CI and bounded live selector release passed.
 
 ## Concrete todo
 
 - [x] Failing client test for complete parent absence, retaining validated source pages.
 - [x] Failing merge test for Bankone rows plus Banktwo proven absence and real provenance.
 - [x] Minimal typed absence conversion at the source provider boundary, preserving all other failure semantics.
-- [ ] Focused/full tests, required CI, and bounded live 2027 Ford canary with no article/checkout changes.
+- [x] Focused/full tests, required CI, and bounded live 2027 Ford canary with no article/checkout changes.
 
 The live trigger before implementation is US 2027 Ford models: 13 Bankone rows, `complete:false`; Banktwo's complete 2027 makes page has 34 rows and no Ford. The current Banktwo client returns generic `NOT_FOUND` after proving absence, leaving the all-provider completion marker at version 0. Authenticated article access and payment remain separate acceptance boundaries.
 
@@ -61,3 +61,15 @@ and version 0 permits natural rehydration. After deployment, use a bounded
 public GET/recheck to confirm the scope retries and remains incomplete until all
 providers finish. No manual database deletion or invalidation is recommended or
 authorized by this change. Existing cache records were not modified.
+
+## Exact merged-source release checkpoint
+
+[PR #366](https://github.com/lucronn/autodata/pull/366) merged as product `c9c58fcd74e67c07d7014497a6f7433f79cf2ae3`. Its tree `8e8221aac6577429da8877434679bcd573f8c3e8` exactly matches reviewed head `c94a27047ba5af8bcd45751aa1e63ccdb552c899`. The [required exact-head CI run](https://github.com/lucronn/autodata/actions/runs/42335140107) passed all three named jobs. The source-only export is root-owned and read-only; a file-by-file Git blob check passed, and the candidate export tar SHA256 is `7a6e415ad6375922b0cec8765cdae8a61985430b81f69136a8a54598a169356f` (the merged commit produces a different tar header digest despite identical tree/files). The production rollout has not run at this checkpoint.
+
+[Issue #186 release comment](https://github.com/lucronn/autodata/issues/186#issuecomment-6701957163) and the dedicated Project #8 field were updated and read back before this commit. Next verification is the bounded live 2027 Ford completion plus 2020 Figo regression canary, with the existing API, article worker, schema and disabled checkout unchanged.
+
+## Live source-only release outcome
+
+The one-time source-only operator passed at checkpoint `8aa904f9d59c42cf0f992793f758a31fa34eec12`. Private receipt `/home/corp/autodata-evidence/catalog-absence-release-run-c9c58fc-r1-20261107T035938Z/receipt.json` has SHA256 `7cd555ef55d169fa5bd10c56521b540afe85f7f98673b6c57073a56783b23a4c` and records replacement container `341116a440ee68a605f1d3d8660476a94ff65adfe90d7d887f20acb71d411355`. The operator did not apply a migration, change the API or stop the article worker. Its persisted 2027 Ford scope had 13 rows, complete version 1, authentic Bankone rows and Banktwo complete-parent-absence provenance; the scope digest was stable across repeated public reads.
+
+Independent public checks returned readiness 200; US 2027 Ford models 13/`complete:true`/`hydrating:false`; US 2020 Ford Figo-Mexico configurations 1/`complete:true`/`hydrating:false`; and purchase `enabled:false`. [Issue #186 outcome comment](https://github.com/lucronn/autodata/issues/186#issuecomment-6701981879) and the dedicated Project field were read back. This proves the selector fix, not paid article browsing. A separate read-only sample found 2020 Honda Accord configurations still lack source data because Bankone returns retryable HTTP 502 and Banktwo has no matching model; the UI failure-state fix is tracked in PR #367. The existing catalog-index worker and checkout/legal/tax/grant boundaries remain separate release work.
