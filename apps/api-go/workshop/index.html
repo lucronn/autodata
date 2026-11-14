@@ -204,14 +204,18 @@
             <div>
               <p id="vehicle-caption" class="caption"></p>
               <h2 id="catalog-title" tabindex="-1">Article index</h2>
-              <p id="catalog-count" class="catalog-count"></p>
+              <p id="catalog-count" class="catalog-count" aria-live="polite"></p>
             </div>
             <label class="search-label" for="search"
               >Find an article<input
                 id="search"
                 type="search"
+                name="q"
                 placeholder="Try “oil pump”"
                 autocomplete="off"
+                autocorrect="off"
+                autocapitalize="none"
+                spellcheck="false"
             /></label>
           </div>
           <div class="list-heading" aria-hidden="true">

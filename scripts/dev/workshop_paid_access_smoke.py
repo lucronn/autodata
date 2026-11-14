@@ -22,9 +22,9 @@ CASE_IDS=tuple(name+'-'+provider for name in GO_NAMES for provider in ('bankone'
 CASE_ASSERTIONS=dict(zip(GO_NAMES,(
  ('public_selectors_metadata_only','unpaid_denied_before_work','expired_session_denied_before_work','paid_gets_observational','unavailable_grant_denied_before_work'),
  ('exact_scope_grants','owner_region_configuration_isolation','canonical_only','revoked_and_legacy_denied'),
- ('explicit_prepare_only','shared_article_job','actual_model_response_held','source_readable_during_hold','canonical_reused_two_owners','canonical_steps_preserved','payment_grants_persist'),
+ ('explicit_prepare_only','shared_article_job','actual_model_response_held','source_readable_during_hold','source_content_search_current_projection','canonical_content_search_current_projection','canonical_reused_two_owners','canonical_steps_preserved','payment_grants_persist'),
  ('actual_s3_reader','invalid_media_zero_reader','current_grant_identity_rechecked','stale_context_zero_reader','media_security_headers'),
- ('source_html_json_media','historical_source_selected','rights_denied_before_reader','source_sanitizer_no_private_leak'),
+ ('source_html_json_media','content_search_before_rights_change','historical_source_selected','rights_denied_before_reader','source_sanitizer_no_private_leak'),
  ('thirteen_routes_denied_before_work','unauthenticated_401','explicit_local_compatibility'))))
 MIGRATION_ASSERTIONS=('fresh_manifest_applied_001_040','empty_replay_noop_001_040','populated_replay_noop_001_040')
 RAW_FILES=('workshop-paid-access-tests.xml','workshop-paid-access-pytest.stdout.log','workshop-paid-access-pytest.stderr.log','runner-input-before.json','runner-input-after.json','runner-git-before.json','runner-git-after.json')

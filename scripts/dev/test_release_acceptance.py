@@ -1565,6 +1565,11 @@ class PaidHTTPReceiptTests(unittest.TestCase):
     invocation = PaidSelectorWorkTests.invocation
     real_store = PaidSelectorWorkTests.real_store
 
+    def test_search_denial_is_retained_in_http_inventory(self):
+        paths = [row['path'] for row in self.observations('bankone')]
+        self.assertEqual(len(paths), 19)
+        self.assertEqual(paths.count('/v1/catalog/vehicles/'+self.configuration+'/articles?q=repair'), 1)
+
     @classmethod
     def setUpClass(cls):
         PaidSelectorWorkTests.setUpClass()
@@ -1578,9 +1583,9 @@ class PaidHTTPReceiptTests(unittest.TestCase):
                 for snap in [*m['snapshots'].values(),m['final_snapshot']]:
                     snap['article'] = copy.deepcopy(articles[0 if bank=='bankone' else 1])
                     snap['immutable_rows']['canonical_articles'] = copy.deepcopy(articles)
-                for phase,count in zip(cls.phases,(0,0,5,5,7,9)):
+                for phase,count in zip(cls.phases,(0,0,6,6,8,10)):
                     m['snapshots'][phase]['identity_checks'] = count
-                m['identity_checks'] = 9
+                m['identity_checks'] = 10
                 m['http_observations'] = cls.observations(bank)
             cls.alter(cls.baseline, populate, bank=bank)
 
@@ -1592,7 +1597,7 @@ class PaidHTTPReceiptTests(unittest.TestCase):
         paths=['/v1/catalog/years','/v1/catalog/years/2024/makes',
             '/v1/catalog/years/2024/makes/example/models',
             '/v1/catalog/years/2024/makes/example/models/car/configurations',
-            listing,detail,detail+'/source',detail+'/prepare',cls.media,
+            listing,detail,detail+'/source',listing+'?q=repair',detail+'/prepare',cls.media,
             listing,detail,detail+'/source',detail+'/prepare',cls.media,listing,detail,detail,detail]
         bodies=[dict(items=[dict(year=2024)],version='v1'),
             dict(complete=False,hydrating=True,items=[dict(id='example',name='Example')],version='v1'),
@@ -1602,7 +1607,7 @@ class PaidHTTPReceiptTests(unittest.TestCase):
             [(cls.configuration,'Paid selected','US'),('00000000-0000-0000-0000-000000000031','Paid adjacent','US'),
              ('00000000-0000-0000-0000-000000000032','Paid other region','CA')]]
         bodies.append(dict(complete=False,hydrating=False,items=configs,version='v1'))
-        error_specs=[('ENTITLEMENT_REQUIRED','Purchase access to this vehicle configuration.',{},False)]*4
+        error_specs=[('ENTITLEMENT_REQUIRED','Purchase access to this vehicle configuration.',{},False)]*5
         error_specs += [('CATALOG_NOT_FOUND','Catalog resource was not found.',{},False)]
         error_specs += [('UNAUTHENTICATED','Authentication is required.',dict(login_available=True),False)]*5
         for index,(code,message,details,retryable) in enumerate(error_specs):
@@ -1620,15 +1625,15 @@ class PaidHTTPReceiptTests(unittest.TestCase):
             ('AUTHENTICATION_UNAVAILABLE','Authentication is temporarily unavailable.',dict(login_available=True))]):
             bodies.append(dict(error=dict(code=code,message=message,details=details,retryable=True,
                 request_id='00000000-0000-0000-0000-'+format(index+200,'012x'))))
-        counts=[(0,0)]*4+[(0,1),(1,2),(2,3),(3,4),(4,5)]+[(5,5)]*5+[(5,6),(6,7),(7,8),(8,9)]
+        counts=[(0,0)]*4+[(i,i+1) for i in range(6)]+[(6,6)]*5+[(6,7),(7,8),(8,9),(9,10)]
         rows=[]
         for i,(path,body,(before,after)) in enumerate(zip(paths,bodies,counts)):
             headers={'Content-Type':'application/json'}
             if i>=4:headers.update({'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'})
-            if i==15:headers['Retry-After']='2'
-            rows.append(dict(method='POST' if i in (7,12) else 'GET',path=path,
-                owner_index=-1 if i<4 else 1 if 9<=i<=13 else 0,
-                status=200 if i<4 or i==14 else 403 if i<8 else 404 if i==8 else 401 if i<14 else 503,
+            if i==16:headers['Retry-After']='2'
+            rows.append(dict(method='POST' if i in (8,13) else 'GET',path=path,
+                owner_index=-1 if i<4 else 1 if 10<=i<=14 else 0,
+                status=200 if i<4 or i==15 else 403 if i<9 else 404 if i==9 else 401 if i<15 else 503,
                 headers=headers,body=body,body_sha256='a'*64,body_size=1,body_truncated=False,
                 reader_before=0,reader_after=0,identity_before=before,identity_after=after))
         return rows
@@ -1673,7 +1678,7 @@ class PaidHTTPReceiptTests(unittest.TestCase):
             self.assertEqual(result[key],value if key!='missing_validation_families' else value+
                 ['paid_http_wire_body_provenance','paid_http_transport_authority'])
         self.assertEqual(result['observed_http_case_ids'],[self.root+'-bankone',self.root+'-banktwo'])
-        self.assertEqual(result['observed_http_observation_count'],36)
+        self.assertEqual(result['observed_http_observation_count'],38)
         self.assertEqual(result['status'],'unavailable');self.assertIs(result['complete'],False)
         self.assertEqual(result['verified_case_ids'],[])
         self.assertTrue(all(result[flag] is False for flag in assembler.FLAGS))
@@ -1720,7 +1725,7 @@ class PaidHTTPReceiptTests(unittest.TestCase):
 
     def test_every_route_owner_status_method_and_order_transition(self):
         mutations=[]
-        for i in range(18):
+        for i in range(19):
             for field,value in [('method','DELETE'),('owner_index',2),('status',201)]:
                 mutations.append((str(i)+field,lambda m,i=i,f=field,v=value:m['http_observations'][i].update({f:v})))
         route=self.observations('bankone')[5]['path']
@@ -1729,27 +1734,27 @@ class PaidHTTPReceiptTests(unittest.TestCase):
             route.replace('00000000','%300000000',1),route+'/',route+'?x=1',route+'#x',route.upper()):
             mutations.append((value,lambda m,v=value:m['http_observations'][5].update(path=v)))
         for value in (self.media.replace('e0b1','e0b2'),'/v1/catalog/images/invalid-token'):
-            mutations.append((value,lambda m,v=value:m['http_observations'][8].update(path=v)))
+            mutations.append((value,lambda m,v=value:m['http_observations'][9].update(path=v)))
         mutations += [('duplicate',lambda m:m['http_observations'].__setitem__(1,copy.deepcopy(m['http_observations'][0]))),
             ('reordered',lambda m:m['http_observations'].reverse())]
         self.check_mutations(mutations,'paid_http_route')
 
     def test_http_and_phase_counters_bind_without_implying_timing(self):
         mutations=[]
-        for i in range(18):
+        for i in range(19):
             for field in ('reader_before','reader_after','identity_before','identity_after'):
                 mutations.append((str(i)+field,lambda m,i=i,f=field:m['http_observations'][i].update({f:99})))
         for i in (0,):
             for field in ('reader_before','reader_after','identity_before','identity_after'):
                 mutations.append((str(i)+field+'negative',lambda m,i=i,f=field:m['http_observations'][i].update({f:-1})))
-        mutations += [('total',lambda m:m.update(identity_checks=10)),
+        mutations += [('total',lambda m:m.update(identity_checks=11)),
             ('reader-total',lambda m:m.update(reader_calls=1)),('held',lambda m:m.update(held_model_receipt={})),
-            ('phase',lambda m:m['snapshots']['expired'].update(identity_checks=6))]
+            ('phase',lambda m:m['snapshots']['expired'].update(identity_checks=7))]
         self.check_mutations(mutations,'paid_http_counter')
 
     def test_header_projection_is_closed_and_phase_specific(self):
         mutations=[]
-        for i in range(18):
+        for i in range(19):
             headers=self.observations('bankone')[i]['headers']
             for key in headers:
                 mutations.append((str(i)+key,lambda m,i=i,k=key:m['http_observations'][i]['headers'].pop(k)))
@@ -1758,14 +1763,14 @@ class PaidHTTPReceiptTests(unittest.TestCase):
             for key in headers:
                 for value in (None,1,'wrong'):
                     mutations.append((str(i)+key+str(value),lambda m,i=i,k=key,v=value:m['http_observations'][i]['headers'].update({k:v})))
-        for i in (16,17):mutations.append((str(i)+'retry',lambda m,i=i:m['http_observations'][i]['headers'].update({'Retry-After':'2'})))
+        for i in (17,18):mutations.append((str(i)+'retry',lambda m,i=i:m['http_observations'][i]['headers'].update({'Retry-After':'2'})))
         self.check_mutations(mutations,'paid_http_headers')
 
     def test_closed_nested_body_inventories(self):
         # Catch omission/extension at every distinct nested closed schema.
         locations=[(0,()),(0,('items',0)),(1,()),(1,('items',0)),(2,()),(2,('items',0)),
-            (3,()),(3,('items',0)),(4,()),(4,('error',)),(4,('error','details')),(9,('error','details')),
-            (14,()),(14,('progress',)),(14,('items',0)),(15,('error','details'))]
+            (3,()),(3,('items',0)),(4,()),(4,('error',)),(4,('error','details')),(10,('error','details')),
+            (15,()),(15,('progress',)),(15,('items',0)),(16,('error','details'))]
         mutations=[]
         def at(m,i,path):
             v=m['http_observations'][i]['body']
@@ -1782,7 +1787,7 @@ class PaidHTTPReceiptTests(unittest.TestCase):
                     def replace(m,i=i,p=path,v=replacement):
                         parent=at(m,i,p[:-1]);parent[p[-1]]=copy.deepcopy(v)
                     mutations.append((str((i,path,replacement)),replace))
-        for i in range(18):
+        for i in range(19):
             for value in (None,[],1):mutations.append((str(i)+str(value),lambda m,i=i,v=value:m['http_observations'][i].update(body=v)))
         self.check_mutations(mutations,'paid_http_body')
 
@@ -1790,29 +1795,29 @@ class PaidHTTPReceiptTests(unittest.TestCase):
         mutations=[('year',lambda m:m['http_observations'][0]['body']['items'][0].update(year=True)),
             ('version',lambda m:m['http_observations'][0]['body'].update(version='v2')),
             ('extra-year',lambda m:m['http_observations'][0]['body']['items'].append(dict(year=2025))),
-            ('progress',lambda m:m['http_observations'][14]['body']['progress'].update(percent=True)),
-            ('progress-total',lambda m:m['http_observations'][14]['body']['progress'].update(total=3)),
+            ('progress',lambda m:m['http_observations'][15]['body']['progress'].update(percent=True)),
+            ('progress-total',lambda m:m['http_observations'][15]['body']['progress'].update(total=3)),
             ('config-duplicate',lambda m:m['http_observations'][3]['body']['items'].__setitem__(1,copy.deepcopy(m['http_observations'][3]['body']['items'][0]))),
             ('config-extra',lambda m:m['http_observations'][3]['body']['items'].pop()),
-            ('descriptor-duplicate',lambda m:m['http_observations'][14]['body']['items'].__setitem__(1,copy.deepcopy(m['http_observations'][14]['body']['items'][0]))),
-            ('descriptor-extra',lambda m:m['http_observations'][14]['body']['items'].append(copy.deepcopy(m['http_observations'][14]['body']['items'][0])))]
+            ('descriptor-duplicate',lambda m:m['http_observations'][15]['body']['items'].__setitem__(1,copy.deepcopy(m['http_observations'][15]['body']['items'][0]))),
+            ('descriptor-extra',lambda m:m['http_observations'][15]['body']['items'].append(copy.deepcopy(m['http_observations'][15]['body']['items'][0])))]
         for i in (1,2):
             for field in ('id','name'):
                 mutations.append((str(i)+field,lambda m,i=i,f=field:m['http_observations'][i]['body']['items'][0].update({f:'wrong'})))
         for i in (0,1,2):
             mutations.append((str(i)+'empty-items',lambda m,i=i:m['http_observations'][i]['body'].update(items=[])))
         for field,value in [('complete',1),('hydrating',0),('version','v2')]:
-            mutations.append(('listing-'+field,lambda m,f=field,v=value:m['http_observations'][14]['body'].update({f:v})))
+            mutations.append(('listing-'+field,lambda m,f=field,v=value:m['http_observations'][15]['body'].update({f:v})))
         for i in (1,2,3):
             for field,value in [('complete',0),('hydrating',0),('version','v2')]:
                 mutations.append((str(i)+field,lambda m,i=i,f=field,v=value:m['http_observations'][i]['body'].update({f:v})))
-        for i in (*range(4,14),15,16,17):
+        for i in (*range(4,15),16,17,18):
             for field,value in [('code','OTHER'),('message','wrong'),('retryable',1),('request_id',''),
                                 ('request_id','A0000000-0000-0000-0000-000000000000'),('details',None)]:
                 mutations.append((str(i)+field+str(value),lambda m,i=i,f=field,v=value:m['http_observations'][i]['body']['error'].update({f:v})))
         mutations += [('duplicate-request',lambda m:m['http_observations'][5]['body']['error'].update(request_id=m['http_observations'][4]['body']['error']['request_id'])),
-            ('retry-type',lambda m:m['http_observations'][15]['body']['error']['details'].update(retry_after_seconds=True)),
-            ('retry-value',lambda m:m['http_observations'][15]['body']['error']['details'].update(retry_after_seconds=3))]
+            ('retry-type',lambda m:m['http_observations'][16]['body']['error']['details'].update(retry_after_seconds=True)),
+            ('retry-value',lambda m:m['http_observations'][16]['body']['error']['details'].update(retry_after_seconds=3))]
         self.check_mutations(mutations,'paid_http_body')
 
     def test_config_descriptor_and_pg_bindings(self):
@@ -1822,8 +1827,8 @@ class PaidHTTPReceiptTests(unittest.TestCase):
         for field,value in [('id',self.article_ids[1]),('canonical_article_id',self.article_ids[1]),('vehicle_id',self.vehicle),
             ('title','Other'),('availability','ready'),('complete',True),('images',[{}]),('source_revision_id','x'),
             ('content_origin','source'),('processing',{}),('canonical_revision_id','x'),('review_status','APPROVED'),('content_status','ready'),('view_revision',1)]:
-            mutations.append(('descriptor-'+field,lambda m,f=field,v=value:m['http_observations'][14]['body']['items'][0].update({f:v})))
-        mutations += [('source-article',lambda m:m['http_observations'][15]['body']['error']['details'].update(article_id=self.article_ids[1])),
+            mutations.append(('descriptor-'+field,lambda m,f=field,v=value:m['http_observations'][15]['body']['items'][0].update({f:v})))
+        mutations += [('source-article',lambda m:m['http_observations'][16]['body']['error']['details'].update(article_id=self.article_ids[1])),
             ('selected-physical',lambda m:m['snapshots']['selectors']['article'].update(vehicle_id=self.configuration)),
             ('pg-title',lambda m:m['snapshots']['selectors']['immutable_rows']['canonical_articles'][0].update(title='Other')),
             ('pg-current',lambda m:m['snapshots']['selectors']['immutable_rows']['canonical_articles'][0].update(current_source_revision_id=self.article_ids[0])),
@@ -1831,7 +1836,7 @@ class PaidHTTPReceiptTests(unittest.TestCase):
             ('pg-provider',lambda m:m['snapshots']['selectors']['immutable_rows']['canonical_articles'][1].update(provider_slug='bankone'))]
         self.check_mutations(mutations,'paid_http_binding')
         raw=dict(self.baseline)
-        self.alter(raw,lambda m:(m['http_observations'][3]['body']['items'].reverse(),m['http_observations'][14]['body']['items'].reverse()))
+        self.alter(raw,lambda m:(m['http_observations'][3]['body']['items'].reverse(),m['http_observations'][15]['body']['items'].reverse()))
         self.assert_unavailable(self.inspect(raw),raw)
 
     def test_parent_identity_copy_and_hash_guards(self):
@@ -1859,7 +1864,7 @@ class PaidHTTPReceiptTests(unittest.TestCase):
             (lambda m:m['http_observations'][0].update(reader_after=1),'paid_http_counter'),
             (lambda m:m['http_observations'][0]['headers'].update(Secret='x'),'paid_http_headers'),
             (lambda m:m['http_observations'][0]['body'].update(version='v2'),'paid_http_body'),
-            (lambda m:m['http_observations'][14]['body']['items'][0].update(title='Other'),'paid_http_binding')]
+            (lambda m:m['http_observations'][15]['body']['items'][0].update(title='Other'),'paid_http_binding')]
         for mutation,code in mutations:
             raw=dict(self.baseline)
             if mutation:self.alter(raw,mutation)
@@ -2267,6 +2272,13 @@ class PaidScopeReceiptTests(unittest.TestCase):
     real_store = PaidSelectorWorkTests.real_store
     alter = classmethod(PaidHTTPReceiptTests.alter.__func__)
 
+    def test_search_scope_denials_are_retained_in_http_inventory(self):
+        paths = [row['path'] for row in self.observations('bankone')]
+        listing = '/v1/catalog/vehicles/'+self.configuration+'/articles'
+        self.assertEqual(len(paths), 14)
+        self.assertEqual(paths.count(listing+'?q=repair'), 2)
+        self.assertIn(listing+'?region=CA&q=repair', paths)
+
     @staticmethod
     def uid(n): return '00000000-0000-0000-0000-'+format(n,'012x')
 
@@ -2312,28 +2324,29 @@ class PaidScopeReceiptTests(unittest.TestCase):
                 s['article']['producer_extra']='retained view field'
                 s['immutable_rows']['canonical_articles']=canonical
                 for table in ('customer_accounts','auth_sessions','workshop_orders'):s['immutable_rows'][table]=copy.deepcopy(paid[table])
-                s.update(reader_calls=0,identity_checks=11,grant_calls=9)
+                s.update(reader_calls=0,identity_checks=14,grant_calls=11)
                 m['final_snapshot']=copy.deepcopy(s)
                 del m['final_snapshot']['reader_calls'];del m['final_snapshot']['identity_checks']
-                m.update(reader_calls=0,identity_checks=11,http_observations=cls.observations(bank))
+                m.update(reader_calls=0,identity_checks=14,http_observations=cls.observations(bank))
             cls.alter(cls.baseline,populate,bank=bank)
 
     @classmethod
     def observations(cls,bank):
         c=cls.configuration;l='/v1/catalog/vehicles/'+c+'/articles';j=0 if bank=='bankone' else 1
-        paths=[l,l,'/v1/catalog/vehicles/'+cls.vehicle+'/articles','/v1/catalog/vehicles/'+cls.uid(49)+'/articles',
-            '/v1/catalog/vehicles/'+cls.uid(50)+'/articles',l+'?region=CA',l+'/'+cls.uid(302+j),l+'/'+cls.uid(306+j),l+'/legacy',l,l]
+        paths=[l,l,l+'?q=repair','/v1/catalog/vehicles/'+cls.vehicle+'/articles','/v1/catalog/vehicles/'+cls.uid(49)+'/articles',
+            '/v1/catalog/vehicles/'+cls.uid(50)+'/articles',l+'?region=CA',l+'?region=CA&q=repair',
+            l+'/'+cls.uid(302+j),l+'/'+cls.uid(306+j),l+'/legacy',l,l+'?q=repair',l]
         items=[dict(availability='unavailable',canonical_article_id=cls.uid(300+k),canonical_revision_id=None,
             complete=False,content_origin=None,content_status='list_only',id=cls.uid(300+k),images=[],processing=None,
             review_status='UNREVIEWED',source_revision_id=None,title='Pump '+str(k),vehicle_id=c,view_revision=None) for k in range(2)]
         bodies=[dict(complete=True,hydrating=False,items=items,progress=dict(complete=True,percent=100,phase='indexing',
             processed=2,retryable=False,status='completed',total=2),version='v1')]
-        for i in range(1,11):
-            code,message=('ENTITLEMENT_REQUIRED','Purchase access to this vehicle configuration.') if i in (1,3,4,10) else (
-                ('ENTITLEMENT_REVOKED','Access to this vehicle configuration was revoked.') if i==9 else
+        for i in range(1,14):
+            code,message=('ENTITLEMENT_REQUIRED','Purchase access to this vehicle configuration.') if i in (1,2,4,5,13) else (
+                ('ENTITLEMENT_REVOKED','Access to this vehicle configuration was revoked.') if i in (11,12) else
                 ('CATALOG_NOT_FOUND','Catalog resource was not found.'))
             bodies.append(dict(error=dict(code=code,details={},message=message,request_id=cls.uid(400+i),retryable=False)))
-        return [dict(method='GET',path=path,owner_index=1 if i==1 else 0,status=200 if i==0 else 403 if i in (1,3,4,9,10) else 404,
+        return [dict(method='GET',path=path,owner_index=1 if i in (1,2) else 0,status=200 if i==0 else 403 if i in (1,2,4,5,11,12,13) else 404,
             headers={'Content-Type':'application/json','Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'},
             body=bodies[i],body_sha256='a'*64,body_size=1,body_truncated=False,reader_before=0,reader_after=0,
             identity_before=i,identity_after=i+1) for i,path in enumerate(paths)]
@@ -2352,7 +2365,7 @@ class PaidScopeReceiptTests(unittest.TestCase):
         self.assertEqual(set(result)-set(previous),{'observed_scope_case_ids','observed_scope_http_observation_count','observed_scope_snapshot_count'})
         for key,value in previous.items():self.assertEqual(result[key],value if key!='missing_validation_families' else value+['paid_scope_temporal_entitlement_provenance'])
         self.assertEqual(result['observed_scope_case_ids'],[self.root+'-bankone',self.root+'-banktwo'])
-        self.assertEqual(result['observed_scope_http_observation_count'],22);self.assertEqual(result['observed_scope_snapshot_count'],4)
+        self.assertEqual(result['observed_scope_http_observation_count'],28);self.assertEqual(result['observed_scope_snapshot_count'],4)
         self.assertEqual(result['status'],'unavailable');self.assertIs(result['complete'],False);self.assertEqual(result['verified_case_ids'],[])
         self.assertTrue(all(result[flag] is False for flag in assembler.FLAGS))
 
@@ -2378,7 +2391,7 @@ class PaidScopeReceiptTests(unittest.TestCase):
 
     def test_every_route_owner_status_method_and_counter(self):
         mutations=[];counters=[]
-        for i in range(11):
+        for i in range(14):
             for field,value in [('method','POST'),('owner_index',2),('status',201)]:
                 mutations.append((str(i)+field,lambda m,i=i,f=field,v=value:m['http_observations'][i].update({f:v})))
             for field in ('reader_before','reader_after','identity_before','identity_after'):
@@ -2388,11 +2401,11 @@ class PaidScopeReceiptTests(unittest.TestCase):
                 row['path'].replace(self.configuration,self.vehicle)):
                 if path!=row['path']:mutations.append((str(i)+path,lambda m,i=i,p=path:m['http_observations'][i].update(path=p)))
         for path in ('?region=%43A','?region=CA&x=1','?region=ca'):
-            mutations.append((path,lambda m,p=path:m['http_observations'][5].update(path='/v1/catalog/vehicles/'+self.configuration+'/articles'+p)))
+            mutations.append((path,lambda m,p=path:m['http_observations'][6].update(path='/v1/catalog/vehicles/'+self.configuration+'/articles'+p)))
         mutations += [('reorder',lambda m:m['http_observations'].reverse()),('duplicate',lambda m:m['http_observations'].__setitem__(2,copy.deepcopy(m['http_observations'][1])))]
         self.check_mutations(mutations,'paid_scope_route');self.check_mutations(counters,'paid_scope_counter')
-        self.check_mutations([('total',lambda m:m.update(identity_checks=12)),('reader',lambda m:m.update(reader_calls=1)),
-            ('phase',lambda m:m['snapshots']['isolated'].update(identity_checks=12)),('held',lambda m:m.update(held_model_receipt={}))],'paid_scope_counter')
+        self.check_mutations([('total',lambda m:m.update(identity_checks=15)),('reader',lambda m:m.update(reader_calls=1)),
+            ('phase',lambda m:m['snapshots']['isolated'].update(identity_checks=15)),('held',lambda m:m.update(held_model_receipt={}))],'paid_scope_counter')
 
     def test_inventory_closed_row_and_strict_primitive_types(self):
         self.check_mutations([('missing',lambda m:m['http_observations'].pop()),('extra',lambda m:m['http_observations'].append(copy.deepcopy(m['http_observations'][0])))],'paid_scope_inventory')
@@ -2414,7 +2427,7 @@ class PaidScopeReceiptTests(unittest.TestCase):
             value=m['http_observations'][index]['body']
             for k in path:value=value[k]
             return value
-        for i in range(11):
+        for i in range(14):
             for key in self.observations('bankone')[i]['headers']:
                 headers.append((str(i)+key,lambda m,i=i,k=key:m['http_observations'][i]['headers'].pop(k)))
                 for v in (None,1,'wrong'):headers.append((str(i)+key+str(v),lambda m,i=i,k=key,v=v:m['http_observations'][i]['headers'].update({k:v})))
@@ -2429,7 +2442,7 @@ class PaidScopeReceiptTests(unittest.TestCase):
 
     def test_error_progress_and_descriptor_values(self):
         bodies=[];bindings=[]
-        for i in range(1,11):
+        for i in range(1,14):
             for key,value in [('code','WRONG'),('message','wrong'),('details',None),('retryable',1),('request_id','bad')]:
                 bodies.append((str(i)+key,lambda m,i=i,k=key,v=value:m['http_observations'][i]['body']['error'].update({k:v})))
         bodies.append(('duplicate request',lambda m:m['http_observations'][2]['body']['error'].update(request_id=self.uid(401))))
@@ -2495,8 +2508,8 @@ class PaidScopeReceiptTests(unittest.TestCase):
         for key in ('current_source_revision_id','current_canonical_revision_id','current_job_id'):
             mutations.append((key,lambda m,k=key:self.terminal(m,lambda s:s['immutable_rows']['canonical_articles'][0].update({k:self.uid(999)}))))
         self.check_mutations(mutations)
-        self.check_mutations([('other bank adjacent',lambda m:m['http_observations'][6].update(path='/v1/catalog/vehicles/'+self.configuration+'/articles/'+self.uid(303))),
-            ('selected adjacent',lambda m:m['http_observations'][6].update(path='/v1/catalog/vehicles/'+self.configuration+'/articles/'+self.uid(300)))],'paid_scope_route')
+        self.check_mutations([('other bank adjacent',lambda m:m['http_observations'][8].update(path='/v1/catalog/vehicles/'+self.configuration+'/articles/'+self.uid(303))),
+            ('selected adjacent',lambda m:m['http_observations'][8].update(path='/v1/catalog/vehicles/'+self.configuration+'/articles/'+self.uid(300)))],'paid_scope_route')
 
     def test_no_work_even_when_all_terminal_copies_agree(self):
         mutations=[]

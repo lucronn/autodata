@@ -4,6 +4,7 @@ import tempfile
 import unittest
 sys.path.insert(0,str(Path(__file__).resolve().parent))
 from workshop_paid_access_smoke import GO_NAMES, CASE_IDS, CASE_ASSERTIONS, junit_valid, go_valid, success
+import release_acceptance
 
 class PaidAccessCollectorTests(unittest.TestCase):
     def test_exact_twelve_junit_cases_without_skip_failure_or_duplicates(self):
@@ -25,3 +26,14 @@ class PaidAccessCollectorTests(unittest.TestCase):
         self.assertFalse(success(1,False,flags));self.assertFalse(success(0,True,flags))
         del flags[CASE_IDS[0]];self.assertFalse(success(0,False,flags))
         self.assertEqual(len(CASE_ASSERTIONS),6)
+
+    def test_content_search_checks_are_in_exact_paid_fixture_inventory(self):
+        self.assertIn('source_content_search_current_projection',
+            CASE_ASSERTIONS[GO_NAMES[2]])
+        self.assertIn('canonical_content_search_current_projection',
+            CASE_ASSERTIONS[GO_NAMES[2]])
+        self.assertIn('content_search_before_rights_change',
+            CASE_ASSERTIONS[GO_NAMES[4]])
+        self.assertEqual(GO_NAMES, release_acceptance.PAID_GO_ROOTS)
+        self.assertEqual(tuple(CASE_ASSERTIONS[name] for name in GO_NAMES),
+            release_acceptance.PAID_CASE_ASSERTIONS)

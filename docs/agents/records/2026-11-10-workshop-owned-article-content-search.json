@@ -1,0 +1,20 @@
+{
+  "goal": "Enable access-safe Workshop article content search for an owned selected vehicle without exposing paid content in the index.",
+  "plan_ref": "docs/superpowers/plans/2026-11-10-workshop-owned-article-content-search.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/393",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/verification/2026-11-10-workshop-owned-article-content-search.md"
+  ],
+  "todo": [
+    "Add red-first protected API and current-projection tests for content-only search and access isolation.",
+    "Implement bounded server-side search behind the existing exact configuration grant check while keeping response descriptors metadata-only.",
+    "Add red-first Workshop browser-flow tests for content-only matches, stale requests, and incomplete states, then wire debounced abortable search.",
+    "Align the guarded paid-access fixture assertion and HTTP observation inventories with the search probes using red-first collector tests; preserve strict literal release evidence validation.",
+    "Synchronize the embedded JSON and YAML API descriptions and test their equivalence.",
+    "Resolve the review-found visible-text fallback mismatch with red-first tests.",
+    "Run relevant suites, guarded twelve-case paid fixture if available, exact-head independent review and required CI; then update Project #8 and Issue #393 after integration."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-11T18:30:00Z"
+}

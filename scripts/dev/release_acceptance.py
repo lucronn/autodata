@@ -74,10 +74,11 @@ PAID_CASE_ASSERTIONS = (
      'paid_gets_observational', 'unavailable_grant_denied_before_work'),
     ('exact_scope_grants', 'owner_region_configuration_isolation', 'canonical_only', 'revoked_and_legacy_denied'),
     ('explicit_prepare_only', 'shared_article_job', 'actual_model_response_held', 'source_readable_during_hold',
+     'source_content_search_current_projection', 'canonical_content_search_current_projection',
      'canonical_reused_two_owners', 'canonical_steps_preserved', 'payment_grants_persist'),
     ('actual_s3_reader', 'invalid_media_zero_reader', 'current_grant_identity_rechecked',
      'stale_context_zero_reader', 'media_security_headers'),
-    ('source_html_json_media', 'historical_source_selected', 'rights_denied_before_reader',
+    ('source_html_json_media', 'content_search_before_rights_change', 'historical_source_selected', 'rights_denied_before_reader',
      'source_sanitizer_no_private_leak'),
     ('thirteen_routes_denied_before_work', 'unauthenticated_401', 'explicit_local_compatibility'))
 PAID_MIGRATION_ASSERTIONS = ('fresh_manifest_applied_001_040', 'empty_replay_noop_001_040',
@@ -1235,7 +1236,7 @@ def _paid_http_bodies(rows, selected, canonical_rows, configuration, vehicle, ar
     require(len(set(ids)) == 3 and set(scopes) == {('Paid selected', 'US'),
             ('Paid adjacent', 'US'), ('Paid other region', 'CA')}, 'paid_http_body')
 
-    listing = rows[14]['body']
+    listing = rows[15]['body']
     _paid_http_exact(listing, ('complete', 'hydrating', 'items', 'progress', 'version'))
     _paid_http_equal({key:listing[key] for key in ('complete', 'hydrating', 'version')},
                      dict(complete=True, hydrating=False, version='v1'))
@@ -1266,38 +1267,38 @@ def _paid_http_bodies(rows, selected, canonical_rows, configuration, vehicle, ar
     require(len(set(listed)) == 2 and set(listed) == set(by_id), 'paid_http_body')
 
     request_ids = []
-    for index in (*range(4, 14), 15, 16, 17):
+    for index in (*range(4, 15), 16, 17, 18):
         body = rows[index]['body']; _paid_http_exact(body, ('error',))
         error = body['error']; _paid_http_exact(error, ('code', 'details', 'message', 'request_id', 'retryable'))
         _paid_http_uuid(error['request_id'], 'paid_http_body'); request_ids.append(error['request_id'])
-        if index < 8:
+        if index < 9:
             code, message, details, retryable = ('ENTITLEMENT_REQUIRED',
                 'Purchase access to this vehicle configuration.', {}, False)
-        elif index == 8:
+        elif index == 9:
             code, message, details, retryable = ('CATALOG_NOT_FOUND', 'Catalog resource was not found.', {}, False)
-        elif index < 14:
+        elif index < 15:
             code, message, details, retryable = ('UNAUTHENTICATED', 'Authentication is required.',
                                                 dict(login_available=True), False)
-        elif index == 15:
+        elif index == 16:
             code, message, details, retryable = ('CATALOG_SOURCE_UNAVAILABLE',
                 'Article is temporarily unavailable.', dict(article_id=article, retry_after_seconds=2), True)
-        elif index == 16:
+        elif index == 17:
             code, message, details, retryable = ('CATALOG_UNAVAILABLE', 'Catalog is temporarily unavailable.', {}, True)
         else:
             code, message, details, retryable = ('AUTHENTICATION_UNAVAILABLE',
                 'Authentication is temporarily unavailable.', dict(login_available=True), True)
-        if index == 15:
+        if index == 16:
             _paid_http_exact(error['details'], ('article_id', 'retry_after_seconds'))
             require(error['details']['article_id'] == article, 'paid_http_binding')
         _paid_http_equal(error, dict(code=code, message=message, details=details,
             request_id=error['request_id'], retryable=retryable))
-    require(len(set(request_ids)) == 13, 'paid_http_body')
+    require(len(set(request_ids)) == 14, 'paid_http_body')
 
 
 def inspect_paid_http_receipts(store, *, candidate_sha, trusted_base_sha, profile_sha256,
         input_manifest_sha256, host_before_sha256, expected_driver_sha256,
         profile_version='paid-selector-v2'):
-    """Unselected 18×2 HTTP projection consistency, never wire or transport authority."""
+    """Unselected 19×2 HTTP projection consistency, never wire or transport authority."""
     result = inspect_paid_selector_work(store, candidate_sha=candidate_sha,
         trusted_base_sha=trusted_base_sha, profile_sha256=profile_sha256,
         input_manifest_sha256=input_manifest_sha256, host_before_sha256=host_before_sha256,
@@ -1312,18 +1313,18 @@ def inspect_paid_http_receipts(store, *, candidate_sha, trusted_base_sha, profil
     name = 'TestPostgresPaidCatalogGrantBeforeWork'; observed = []
     fields = ('method', 'path', 'owner_index', 'status', 'headers', 'body', 'body_sha256',
         'body_size', 'body_truncated', 'reader_before', 'reader_after', 'identity_before', 'identity_after')
-    counts = [(0, 0)]*4 + [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5)] + [(5, 5)]*5 + [
-        (5, 6), (6, 7), (7, 8), (8, 9)]
+    counts = [(0, 0)]*4 + [(i, i+1) for i in range(6)] + [(6, 6)]*5 + [
+        (6, 7), (7, 8), (8, 9), (9, 10)]
     for bank in ('bankone', 'banktwo'):
         prefix = 'paid-access/'+bank+'/'+name+'/'
         measured = document(prefix+'measured-runtime.json')
         measurement = document(prefix+'go-measurement.json')
         rows = measured['http_observations']
-        require(type(rows) is list and len(rows) == 18, 'paid_http_inventory')
+        require(type(rows) is list and len(rows) == 19, 'paid_http_inventory')
         require(rows == measurement['http_observations'] and measured['reader_calls'] ==
                 measurement['reader_calls'] and measured['identity_checks'] == measurement['identity_checks'],
                 'paid_measurement_mismatch')
-        require(measured['reader_calls'] == 0 and measured['identity_checks'] == 9 and
+        require(measured['reader_calls'] == 0 and measured['identity_checks'] == 10 and
                 measured['held_model_receipt'] is None, 'paid_http_counter')
         snapshot = measured['snapshots']['selectors']; article = snapshot['article']
         configuration, vehicle, aid = (article.get(key) for key in
@@ -1340,7 +1341,7 @@ def inspect_paid_http_receipts(store, *, candidate_sha, trusted_base_sha, profil
         paths = ['/v1/catalog/years', '/v1/catalog/years/2024/makes',
             '/v1/catalog/years/2024/makes/example/models',
             '/v1/catalog/years/2024/makes/example/models/car/configurations',
-            listing, detail, detail+'/source', detail+'/prepare', media,
+            listing, detail, detail+'/source', listing+'?q=repair', detail+'/prepare', media,
             listing, detail, detail+'/source', detail+'/prepare', media, listing, detail, detail, detail]
         for index, row in enumerate(rows):
             _paid_http_exact(row, fields, 'paid_http_row')
@@ -1350,26 +1351,26 @@ def inspect_paid_http_receipts(store, *, candidate_sha, trusted_base_sha, profil
                 type(row['body_sha256']) is str and re.fullmatch(r'[a-f0-9]{64}', row['body_sha256']) is not None and
                 1 <= row['body_size'] <= 262144 and row['body_truncated'] is False, 'paid_http_row')
             require((row['method'], row['path'], row['owner_index'], row['status']) == (
-                'POST' if index in (7, 12) else 'GET', paths[index],
-                -1 if index < 4 else 1 if 9 <= index <= 13 else 0,
-                200 if index < 4 or index == 14 else 403 if index < 8 else 404 if index == 8 else
-                401 if index < 14 else 503), 'paid_http_route')
+                'POST' if index in (8, 13) else 'GET', paths[index],
+                -1 if index < 4 else 1 if 10 <= index <= 14 else 0,
+                200 if index < 4 or index == 15 else 403 if index < 9 else 404 if index == 9 else
+                401 if index < 15 else 503), 'paid_http_route')
             require(row['reader_before'] == row['reader_after'] == 0 and
                 (row['identity_before'], row['identity_after']) == counts[index], 'paid_http_counter')
             headers = {'Content-Type':'application/json'}
             if index >= 4: headers.update({'Cache-Control':'private, no-store', 'X-Content-Type-Options':'nosniff'})
-            if index == 15: headers['Retry-After'] = '2'
+            if index == 16: headers['Retry-After'] = '2'
             _paid_http_equal(row['headers'], headers, 'paid_http_headers')
             require(type(row['body']) is dict, 'paid_http_body')
         for phase, identity in zip(('before', 'selectors', 'unpaid', 'expired', 'paid_cold', 'unavailable'),
-                                   (0, 0, 5, 5, 7, 9)):
+                                   (0, 0, 6, 6, 8, 10)):
             require(measured['snapshots'][phase]['reader_calls'] == 0 and
                     measured['snapshots'][phase]['identity_checks'] == identity, 'paid_http_counter')
         _paid_http_bodies(rows, selected[0], canonical_rows, configuration, vehicle, aid)
         observed.append(name+'-'+bank)
     store.recheck()
     result['observed_http_case_ids'] = observed
-    result['observed_http_observation_count'] = 36
+    result['observed_http_observation_count'] = 38
     result['missing_validation_families'].extend(('paid_http_wire_body_provenance',
                                                  'paid_http_transport_authority'))
     return result
@@ -1467,11 +1468,11 @@ def _paid_scope_work(snapshot, *, final=False):
     for key in ('ensure_requests','selector_ensure_requests','workers'):
         require(snapshot[key] == [], code)
     require(snapshot['provider_traces'] == dict(bankone=[],banktwo=[]) and
-        snapshot['model_calls'] == snapshot['payment_calls'] == 0 and snapshot['grant_calls'] == 9, code)
+        snapshot['model_calls'] == snapshot['payment_calls'] == 0 and snapshot['grant_calls'] == 11, code)
     _paid_http_equal(snapshot['proxy'], dict(request_received=0,upstream_completed=0,
         downstream_completed=0,downstream_waiting=0,response_captured=False,errors=[]), code)
     if not final:
-        require(snapshot['reader_calls'] == 0 and snapshot['identity_checks'] == 11, 'paid_scope_counter')
+        require(snapshot['reader_calls'] == 0 and snapshot['identity_checks'] == 14, 'paid_scope_counter')
 
 
 def _paid_scope_bodies(rows, selected, configuration):
@@ -1494,18 +1495,18 @@ def _paid_scope_bodies(rows, selected, configuration):
             vehicle_id=configuration,view_revision=None),binding)
     require(set(ids) == set(by_id) and len(set(ids)) == 2,code)
     request_ids = []
-    for index in range(1,11):
+    for index in range(1,14):
         body = rows[index]['body']; _paid_http_exact(body,('error',),code)
         error = body['error']; _paid_http_exact(error,('code','details','message','request_id','retryable'),code)
         _paid_http_uuid(error['request_id'],code); request_ids.append(error['request_id'])
-        if index in (1,3,4,10):
+        if index in (1,2,4,5,13):
             error_code,message = 'ENTITLEMENT_REQUIRED','Purchase access to this vehicle configuration.'
-        elif index == 9:
+        elif index in (11,12):
             error_code,message = 'ENTITLEMENT_REVOKED','Access to this vehicle configuration was revoked.'
         else:
             error_code,message = 'CATALOG_NOT_FOUND','Catalog resource was not found.'
         _paid_http_equal(error,dict(code=error_code,details={},message=message,request_id=error['request_id'],retryable=False),code)
-    require(len(set(request_ids)) == 10,code)
+    require(len(set(request_ids)) == 13,code)
 
 
 def inspect_paid_scope_receipts(store, *, candidate_sha, trusted_base_sha, profile_sha256,
@@ -1527,10 +1528,10 @@ def inspect_paid_scope_receipts(store, *, candidate_sha, trusted_base_sha, profi
         prefix = 'paid-access/'+bank+'/'+name+'/'
         measured = document(prefix+'measured-runtime.json'); measurement = document(prefix+'go-measurement.json')
         rows = measured['http_observations']
-        require(type(rows) is list and len(rows) == 11,'paid_scope_inventory')
+        require(type(rows) is list and len(rows) == 14,'paid_scope_inventory')
         require(rows == measurement['http_observations'] and measured['reader_calls'] == measurement['reader_calls'] and
             measured['identity_checks'] == measurement['identity_checks'],'paid_measurement_mismatch')
-        require(measured['reader_calls'] == 0 and measured['identity_checks'] == 11 and
+        require(measured['reader_calls'] == 0 and measured['identity_checks'] == 14 and
             measured['held_model_receipt'] is None,'paid_scope_counter')
         isolated = measured['snapshots']['isolated']; final = measured['final_snapshot']
         for snapshot, terminal in ((isolated,False),(final,True)):
@@ -1539,10 +1540,12 @@ def inspect_paid_scope_receipts(store, *, candidate_sha, trusted_base_sha, profi
             ('reader_calls','identity_checks')},'paid_scope_work')
         configuration, vehicle, adjacent, other, by_scope, selected = _paid_scope_binding(isolated,bank)
         listing = '/v1/catalog/vehicles/'+configuration+'/articles'
-        paths = [listing,listing,'/v1/catalog/vehicles/'+vehicle+'/articles',
+        paths = [listing,listing,listing+'?q=repair','/v1/catalog/vehicles/'+vehicle+'/articles',
             '/v1/catalog/vehicles/'+adjacent+'/articles','/v1/catalog/vehicles/'+other+'/articles',
-            listing+'?region=CA',listing+'/'+by_scope[bank,adjacent]['canonical_article_id'],
-            listing+'/'+by_scope[bank,None]['canonical_article_id'],listing+'/legacy',listing,listing]
+            listing+'?region=CA',listing+'?region=CA&q=repair',
+            listing+'/'+by_scope[bank,adjacent]['canonical_article_id'],
+            listing+'/'+by_scope[bank,None]['canonical_article_id'],listing+'/legacy',listing,
+            listing+'?q=repair',listing]
         for index,row in enumerate(rows):
             _paid_http_exact(row,fields,'paid_scope_row')
             require(type(row['method']) is str and type(row['path']) is str and all(type(row[key]) is int for key in
@@ -1550,7 +1553,7 @@ def inspect_paid_scope_receipts(store, *, candidate_sha, trusted_base_sha, profi
                 type(row['body_sha256']) is str and re.fullmatch(r'[a-f0-9]{64}',row['body_sha256']) is not None and
                 1 <= row['body_size'] <= 262144 and row['body_truncated'] is False,'paid_scope_row')
             require((row['method'],row['path'],row['owner_index'],row['status']) == ('GET',paths[index],
-                1 if index == 1 else 0,200 if index == 0 else 403 if index in (1,3,4,9,10) else 404),'paid_scope_route')
+                1 if index in (1,2) else 0,200 if index == 0 else 403 if index in (1,2,4,5,11,12,13) else 404),'paid_scope_route')
             require(row['reader_before'] == row['reader_after'] == 0 and
                 (row['identity_before'],row['identity_after']) == (index,index+1),'paid_scope_counter')
             _paid_http_equal(row['headers'],{'Content-Type':'application/json','Cache-Control':'private, no-store',
@@ -1559,7 +1562,7 @@ def inspect_paid_scope_receipts(store, *, candidate_sha, trusted_base_sha, profi
         _paid_scope_bodies(rows,selected,configuration); observed.append(name+'-'+bank)
     store.recheck()
     result['observed_scope_case_ids'] = observed
-    result['observed_scope_http_observation_count'] = 22
+    result['observed_scope_http_observation_count'] = 28
     result['observed_scope_snapshot_count'] = 4
     result['missing_validation_families'].append('paid_scope_temporal_entitlement_provenance')
     return result
