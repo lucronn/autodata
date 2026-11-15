@@ -2,20 +2,25 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net"
 	"net/url"
 	"os"
 	"regexp"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 type customerAuthConfig struct {
 	Environment, Mode, Origin, ProjectID, APIKey, AppID, AuthDomain string
+	commerceMode                                                    string
+	stagingTesterUIDs                                               map[string]struct{}
 }
 
 func loadCustomerAuthConfig(getenv func(string) string) (customerAuthConfig, error) {
-	c := customerAuthConfig{Environment: getenv("AUTODATA_ENV"), Mode: getenv("AUTODATA_AUTH_MODE"), Origin: getenv("AUTODATA_PUBLIC_ORIGIN"), ProjectID: getenv("AUTODATA_FIREBASE_PROJECT_ID"), APIKey: getenv("AUTODATA_FIREBASE_WEB_API_KEY"), AppID: getenv("AUTODATA_FIREBASE_WEB_APP_ID"), AuthDomain: getenv("AUTODATA_FIREBASE_AUTH_DOMAIN")}
+	c := customerAuthConfig{Environment: getenv("AUTODATA_ENV"), Mode: getenv("AUTODATA_AUTH_MODE"), Origin: getenv("AUTODATA_PUBLIC_ORIGIN"), ProjectID: getenv("AUTODATA_FIREBASE_PROJECT_ID"), APIKey: getenv("AUTODATA_FIREBASE_WEB_API_KEY"), AppID: getenv("AUTODATA_FIREBASE_WEB_APP_ID"), AuthDomain: getenv("AUTODATA_FIREBASE_AUTH_DOMAIN"), commerceMode: getenv("AUTODATA_COMMERCE_MODE")}
 	invalid := errors.New("customer authentication configuration is invalid")
 	switch c.Environment {
 	case "development", "test", "staging", "production":
@@ -54,12 +59,48 @@ func loadCustomerAuthConfig(getenv func(string) string) (customerAuthConfig, err
 	if c.AuthDomain != c.ProjectID+".firebaseapp.com" && c.AuthDomain != origin.Hostname() {
 		return c, invalid
 	}
+	if c.restrictedStagingTesters() {
+		raw := getenv("AUTODATA_WORKSHOP_TESTER_UIDS_JSON")
+		// Reuse strict Unicode validation: encoding/json replaces lone surrogates.
+		if workshopProductionOrigin(c.Origin) || len(raw) > 32768 || !purchaseUnicodeValid([]byte(raw)) {
+			return c, invalid
+		}
+		var uids []string
+		if json.Unmarshal([]byte(raw), &uids) != nil || len(uids) < 1 || len(uids) > 100 {
+			return c, invalid
+		}
+		c.stagingTesterUIDs = make(map[string]struct{}, len(uids))
+		for _, uid := range uids {
+			if uid == "" || utf8.RuneCountInString(uid) > 128 || strings.TrimSpace(uid) == "" || strings.ContainsFunc(uid, unicode.IsControl) {
+				return customerAuthConfig{}, invalid
+			}
+			if _, exists := c.stagingTesterUIDs[uid]; exists {
+				return customerAuthConfig{}, invalid
+			}
+			c.stagingTesterUIDs[uid] = struct{}{}
+		}
+	}
 	return c, nil
+}
+
+func (c customerAuthConfig) restrictedStagingTesters() bool {
+	return c.Environment == "staging" && c.commerceMode == "stripe_test"
+}
+
+func (c customerAuthConfig) allowsTester(projectID, uid string) bool {
+	if !c.restrictedStagingTesters() {
+		return true
+	}
+	_, allowed := c.stagingTesterUIDs[uid]
+	return projectID == c.ProjectID && uid != "" && allowed
 }
 
 // newConfiguredCustomerAuth validates persistence before any cloud adapter is
 // initialized. Tests inject the same official verifier with an isolated transport.
 func newConfiguredCustomerAuth(ctx context.Context, c customerAuthConfig, store customerSessionStore, verifier CustomerIdentityVerifier) (*customerAuthService, error) {
+	if c.restrictedStagingTesters() && len(c.stagingTesterUIDs) == 0 {
+		return nil, ErrCustomerDependency
+	}
 	service := &customerAuthService{config: c, store: store, verifier: verifier}
 	if c.Mode == "local" {
 		return service, nil

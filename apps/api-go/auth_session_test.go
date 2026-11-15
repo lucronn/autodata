@@ -12,9 +12,11 @@ type customerSessionFixture struct {
 	session   customerSession
 	lookupErr error
 	revoked   bool
+	rotations int
 }
 
 func (f *customerSessionFixture) Rotate(context.Context, VerifiedCustomerIdentity, []byte, []byte, time.Time, time.Time) (customerSession, error) {
+	f.rotations++
 	return f.session, nil
 }
 func (f *customerSessionFixture) Lookup(context.Context, []byte, time.Time) (customerSession, error) {
@@ -31,12 +33,13 @@ func (f *customerSessionFixture) CheckSchema(context.Context) error { return nil
 
 type customerVerifierFixture struct {
 	checkErr error
+	loginErr error
 	identity VerifiedCustomerIdentity
 	checks   int
 }
 
 func (f *customerVerifierFixture) VerifyLogin(context.Context, string) (VerifiedCustomerIdentity, error) {
-	return f.identity, nil
+	return f.identity, f.loginErr
 }
 func (f *customerVerifierFixture) CheckUser(context.Context, string, string, int64) error {
 	f.checks++
@@ -101,5 +104,47 @@ func TestCustomerSessionCookieAndTokenBoundary(t *testing.T) {
 	request.AddCookie(cookie)
 	if _, _, err := customerRequestToken(request); !errors.Is(err, ErrUnauthenticated) {
 		t.Fatal("ambiguous cookies accepted")
+	}
+}
+
+func TestStagingTesterEverySessionLookupChecksProjectAndUID(t *testing.T) {
+	now := time.Now().UTC()
+	token, _, _ := newCustomerSessionToken()
+	request := httptest.NewRequest("GET", "https://cars.example/auth/session", nil)
+	request.AddCookie(customerSessionCookie(token, now.Add(time.Hour), now))
+	for _, checkUser := range []bool{false, true} {
+		for _, tc := range []struct {
+			project, uid string
+			deny         bool
+		}{{"fixture-project", "fixture-user", false}, {"fixture-project", "removed-user", true}, {"other-project", "fixture-user", true}} {
+			verifier := &customerVerifierFixture{}
+			store := &customerSessionFixture{session: customerSession{ProjectID: tc.project, UID: tc.uid, ExpiresAt: now.Add(time.Hour)}}
+			service := &customerAuthService{config: stagingTesterTestConfig(t, `["fixture-user"]`), store: store, verifier: verifier, now: func() time.Time { return now }}
+			_, _, err := service.session(request, checkUser)
+			if tc.deny {
+				if !errors.Is(err, ErrCustomerBlocked) || verifier.checks != 0 {
+					t.Errorf("restricted existing cookie accepted, project=%s checkUser=%v", tc.project, checkUser)
+				}
+			} else if err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	// A reconstructed configuration removes membership without trusting an old cookie.
+	service := &customerAuthService{config: stagingTesterTestConfig(t, `["replacement-user"]`), store: &customerSessionFixture{session: customerSession{ProjectID: "fixture-project", UID: "fixture-user", ExpiresAt: now.Add(time.Hour)}}, verifier: &customerVerifierFixture{}, now: func() time.Time { return now }}
+	if _, err := service.Authenticate(request); !errors.Is(err, ErrCustomerBlocked) {
+		t.Fatal("stale cookie survived tester removal", err)
+	}
+}
+
+func TestStagingTesterApprovedSessionStillChecksFirebaseRevocation(t *testing.T) {
+	now := time.Now().UTC()
+	token, _, _ := newCustomerSessionToken()
+	r := httptest.NewRequest("GET", "https://cars.example/auth/session", nil)
+	r.AddCookie(customerSessionCookie(token, now.Add(time.Hour), now))
+	verifier := &customerVerifierFixture{checkErr: ErrUnauthenticated}
+	service := &customerAuthService{config: stagingTesterTestConfig(t, `["fixture-user"]`), store: &customerSessionFixture{session: customerSession{ProjectID: "fixture-project", UID: "fixture-user", ExpiresAt: now.Add(time.Hour)}}, verifier: verifier, now: func() time.Time { return now }}
+	if _, err := service.Authenticate(r); !errors.Is(err, ErrUnauthenticated) || verifier.checks != 1 {
+		t.Fatal("approved audience bypassed Firebase revocation", err)
 	}
 }

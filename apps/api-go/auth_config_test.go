@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+)
 
 func identityTestConfig() map[string]string {
 	return map[string]string{"AUTODATA_ENV": "test", "AUTODATA_AUTH_MODE": "firebase", "AUTODATA_PUBLIC_ORIGIN": "https://cars.example", "AUTODATA_FIREBASE_PROJECT_ID": "fixture-project", "AUTODATA_FIREBASE_WEB_API_KEY": "public-fixture-key", "AUTODATA_FIREBASE_WEB_APP_ID": "1:123:web:abc", "AUTODATA_FIREBASE_AUTH_DOMAIN": "fixture-project.firebaseapp.com"}
@@ -69,5 +73,85 @@ func TestCustomerAuthConfiguration(t *testing.T) {
 				t.Fatal("production non-canonical origin accepted")
 			}
 		})
+	}
+}
+
+func stagingTesterTestConfig(t *testing.T, raw string) customerAuthConfig {
+	t.Helper()
+	m := identityTestConfig()
+	m["AUTODATA_ENV"] = "staging"
+	m["AUTODATA_COMMERCE_MODE"] = "stripe_test"
+	m["AUTODATA_WORKSHOP_TESTER_UIDS_JSON"] = raw
+	c, err := loadCustomerAuthConfig(func(k string) string { return m[k] })
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c
+}
+func TestStagingTesterConfigurationFailsClosed(t *testing.T) {
+	many := make([]string, 101)
+	for i := range many {
+		many[i] = strings.Repeat("x", i+1)
+	}
+	manyJSON, _ := json.Marshal(many)
+	for _, raw := range []string{"", `null`, `[]`, `{}`, `"fixture-user"`, `[null]`, `[42]`, `["fixture-user","fixture-user"]`, `["x"] []`, `[""]`, `["   "]`, `["a\nb"]`, `["\ud800"]`, string([]byte{'[', '"', 255, '"', ']'}), `["` + strings.Repeat("x", 129) + `"]`, string(manyJSON), strings.Repeat(" ", 32769) + `["x"]`} {
+		m := identityTestConfig()
+		m["AUTODATA_ENV"] = "staging"
+		m["AUTODATA_COMMERCE_MODE"] = "stripe_test"
+		m["AUTODATA_WORKSHOP_TESTER_UIDS_JSON"] = raw
+		_, err := loadCustomerAuthConfig(func(k string) string { return m[k] })
+		if err == nil {
+			t.Errorf("malformed staging tester configuration accepted (length %d)", len(raw))
+		} else if err.Error() != "customer authentication configuration is invalid" {
+			t.Fatal("configuration error disclosed details")
+		}
+	}
+	stagingTesterTestConfig(t, `["fixture-user","second-user"]`)
+	stagingTesterTestConfig(t, `["`+strings.Repeat("é", 128)+`"]`)
+	for _, origin := range []string{"https://cars.tk", "https://autodata.cars.tk"} {
+		m := identityTestConfig()
+		m["AUTODATA_ENV"] = "staging"
+		m["AUTODATA_COMMERCE_MODE"] = "stripe_test"
+		m["AUTODATA_PUBLIC_ORIGIN"] = origin
+		m["AUTODATA_WORKSHOP_TESTER_UIDS_JSON"] = `["fixture-user"]`
+		if _, err := loadCustomerAuthConfig(func(k string) string { return m[k] }); err == nil {
+			t.Error("production origin accepted as restricted staging")
+		}
+	}
+}
+func TestStagingTesterConfigurationDoesNotAffectOtherModes(t *testing.T) {
+	for _, environment := range []string{"test", "development", "staging", "production"} {
+		for _, mode := range []string{"disabled", "stripe_live", "stripe_test"} {
+			if environment == "staging" && mode == "stripe_test" {
+				continue
+			}
+			m := identityTestConfig()
+			m["AUTODATA_ENV"] = environment
+			m["AUTODATA_COMMERCE_MODE"] = mode
+			m["AUTODATA_WORKSHOP_TESTER_UIDS_JSON"] = "malformed ignored outside restricted mode"
+			if environment == "production" {
+				m["AUTODATA_PUBLIC_ORIGIN"] = "https://cars.tk"
+			}
+			c, err := loadCustomerAuthConfig(func(k string) string { return m[k] })
+			if err != nil || !c.allowsTester("unlisted-project", "unlisted-user") {
+				t.Errorf("unrelated mode changed %s/%s: %v", environment, mode, err)
+			}
+		}
+	}
+}
+
+func TestStagingTesterConfigIsFrozenAfterEnvironmentChange(t *testing.T) {
+	m := identityTestConfig()
+	m["AUTODATA_ENV"] = "staging"
+	m["AUTODATA_COMMERCE_MODE"] = "stripe_test"
+	m["AUTODATA_WORKSHOP_TESTER_UIDS_JSON"] = `["original-user"]`
+	c, err := loadCustomerAuthConfig(func(k string) string { return m[k] })
+	if err != nil {
+		t.Fatal(err)
+	}
+	m["AUTODATA_WORKSHOP_TESTER_UIDS_JSON"] = `["replacement-user"]`
+	m["AUTODATA_COMMERCE_MODE"] = "disabled"
+	if !c.allowsTester("fixture-project", "original-user") || c.allowsTester("fixture-project", "replacement-user") {
+		t.Fatal("live environment change mutated audience")
 	}
 }
