@@ -1,0 +1,61 @@
+{
+  "goal": "Activate and retain the existing catalog-only consumer on the merged PR366 source after its HTTP rollout, so ordinary new configuration index jobs progress without article/model or paid-grant bypass.",
+  "plan_ref": "docs/superpowers/plans/2026-11-07-catalog-consumer-reactivation.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/verification/2026-11-07-catalog-consumer-reactivation.md"
+  ],
+  "todo": [
+    "Bind merged PR366 source/HTTP receipt and preserve exact root0600 14-name env file plus original unit/image/security/boot configuration.",
+    "Review and mock-test one exact root-owned systemd drop-in overriding ExecStart only to add --env AUTODATA_MINIO_ROOT_PASSWORD=; preflight image-sensitive names before any mutation.",
+    "After synchronized pinned preflight and independent exact script/binding review plus coordinator dispatch, install exclusive drop-in, daemon-reload, atomically advance stopped source config, start once and retain only after bounded acceptance.",
+    "On failure or interruption stop within independent recovery budget, remove only this exact newly-created drop-in, daemon-reload, restore original stopped source config and append truthful outcome evidence."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-07T04:10:45.793456Z",
+  "release_binding": {
+    "product_source_sha": "c9c58fcd74e67c07d7014497a6f7433f79cf2ae3",
+    "product_tree_sha": "8e8221aac6577429da8877434679bcd573f8c3e8",
+    "merged_archive_sha256": "bac2e3c74dbe316a5f41553a6fe6c515b12c0e2d5b6f477307d367c8c70755a6",
+    "candidate_export_sha": "c94a27047ba5af8bcd45751aa1e63ccdb552c899",
+    "candidate_archive_sha256": "7a6e415ad6375922b0cec8765cdae8a61985430b81f69136a8a54598a169356f",
+    "immutable_source": "/home/corp/autodata-evidence/catalog-absence-artifacts/c94a27047ba5af8bcd45751aa1e63ccdb552c899/source",
+    "required_ci": "https://github.com/lucronn/autodata/actions/runs/42335140107",
+    "rollout_receipt": "/home/corp/autodata-evidence/catalog-absence-release-run-c9c58fc-r1-20261107T035938Z/receipt.json",
+    "rollout_receipt_sha256": "7cd555ef55d169fa5bd10c56521b540afe85f7f98673b6c57073a56783b23a4c",
+    "http_id": "341116a440ee68a605f1d3d8660476a94ff65adfe90d7d887f20acb71d411355",
+    "http_payload_sha256": "b86afb85e16709204b1fa5e2893f77f632949823d6f133c0451479bba0e676e2",
+    "article_id": "f5f91096e8943a5340074f2838cab6a05c9e24a323375de4d3d0d57a3169270c",
+    "article_payload_sha256": "28112836b32789534c7043cccbccbdcc60d4aabe558f638e89318c1cfb280fa0",
+    "old_conf_sha256": "e7425e4553e01dc3106223e46b22b19c7894459922cc7bdcda6ad80bea9ad6a3",
+    "env_sha256": "3e1f9aa46ac20bcf1cf3c16099307a7fde193c935fd7353c847aa826e17b63b7",
+    "operator_sha256": "89d6014c230fdbe203cad115860727b106a2f0fa034c6f68c02798bc4ec3dab1"
+  },
+  "credential_clearance": {
+    "name": "AUTODATA_MINIO_ROOT_PASSWORD",
+    "value": "",
+    "dropin": "/etc/systemd/system/autodata-catalog-index-worker.service.d/90-catalog-credential-clear.conf",
+    "original_unit_sha256": "91ddccea1aac8d5ad0957ab868f42b0c39c65ce6f0b3c0a5539bd72879b6951d",
+    "preparation_only": true,
+    "interruption_safe_installation": "atomic ignored temporary, signal mask, exact owned device/inode rollback; protected source-config temporary cleanup",
+    "dropin_sha256": "1c5c0edb3b502bcc309ee3d05655ad9ce56126febffb89ec0e7472c97fb17f77"
+  },
+  "validator_correction": "exact repository safe.directory via scoped GIT_CONFIG_COUNT/KEY_0/VALUE_0 only around pinned validator, finally restoration; fresh evidence root; no activation",
+  "mount_order_correction": "canonical-sort complete Mounts entries identically at binding and runtime, preserve all fields and reject changed entries; clear-r3; no activation",
+  "live_outcome": {
+    "status": "active-catalog-only",
+    "gate_sha": "457d66e653a22fee506c05f26bdd6dc723abaa2e",
+    "source_sha": "c9c58fcd74e67c07d7014497a6f7433f79cf2ae3",
+    "container_id": "60ff30e0b258062b5bce59d782f9c496280761c4e60befe476c36d14bee9d5e1",
+    "stable_seconds": 32.25,
+    "ongoing_operation": true,
+    "boot_enabled": false,
+    "authenticated_paid_browse": "UNVERIFIED",
+    "new_job_completion": "NOT_ASSERTED",
+    "receipt": "/home/corp/autodata-evidence/catalog-consumer-reactivation-run-c9c58fc-clear-r3/result.json",
+    "receipt_sha256": "672f9f3e4dc47d03818800423e167905c4b691eacc589808f29a9fc5f5ce7e2c",
+    "operator_sha256": "89d6014c230fdbe203cad115860727b106a2f0fa034c6f68c02798bc4ec3dab1",
+    "dropin_sha256": "1c5c0edb3b502bcc309ee3d05655ad9ce56126febffb89ec0e7472c97fb17f77"
+  }
+}
