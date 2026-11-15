@@ -2,7 +2,7 @@
 
 Status: coordinator activated exact reviewed92d81a1 runtime; runtime and bounded makes/models acceptance passed. Configuration collection remains incomplete/unproved, with usable cachedrow retained. Issue401 staysopen. Worker has made no serving mutation or providerGET.
 
-Preserved historical record: source92d81a1/container6fcc910d activation is complete as recorded in the executed boundary below. Earlier prerequisite/pending/instruction sections and original synchronized records are retained chronology, not current blockers or permission to rerun the one-attempt helper. No protected-source snapshot includes later SVG code or establishes repaired deployed media; image5c still requires a separately reviewed renderer/image/runtime gate.
+Preserved historical record: source92d81a1/container6fcc910d activation is complete as recorded in the executed boundary below. Earlier prerequisite/pending/instruction sections and original synchronized records are retained chronology, not current blockers or permission to rerun the one-attempt helper. The preserved runtime source92d81a1 excludes later SVG code and does not establish repaired deployed media; image5c still requires a separately reviewed renderer/image/runtime gate.
 
 Goal: Deploy compatible reviewed ingestion source with explicit private read_only commerce, restore truthful real selector completion, and preserve entitled reads and disabled purchasing.
 Issue https://github.com/lucronn/autodata/issues/401

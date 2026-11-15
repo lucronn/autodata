@@ -42,7 +42,9 @@ This three-file423 plan/record/verification set plus exactly eight paths above i
 
 Concrete todo:
 
-- [ ] Pin protected base, verify all eight exact source blobs and path absence, and commit synchronized plan/Issue/Project/canonical documentation with passing exact-base preflight before snapshot edits.
-- [ ] Copy only the eight approved Markdown/JSON snapshots, label pre-execution text historical, link public release chronology to the later private acceptance, preserve all partial-response/rollback-defect/acceptance limits and the unsynchronized diagnostic proposal.
-- [ ] Validate exact path set, JSON, provenance, internal links, chronology, safe-content redaction and diff whitespace without runtime/provider calls.
+- [x] Pin protected base, verify all eight exact source blobs and path absence, and commit synchronized plan/Issue/Project/canonical documentation with passing exact-base preflight before snapshot edits.
+- [x] Copy only the eight approved Markdown/JSON snapshots, label pre-execution text historical, link public release chronology to the later private acceptance, preserve all partial-response/rollback-defect/acceptance limits and the unsynchronized diagnostic proposal.
+- [x] Validate exact path set, JSON, provenance, internal links, chronology, safe-content redaction and diff whitespace without runtime/provider calls.
 - [ ] Hold final PR/CI until root supplies PR422 protected merge SHA/tree; integrate that exact base, recheck no overlap and source scope, then open a normal protected-master documentation PR for independent exact-head review and required CI.
+
+Local receipt: checkpointd51a0f9 passed machine preflight before edits; snapshot1f87e24 preserves the exact eight-path selection with byte-identical rollout JSON records and bounded chronology edits. Governance10 tests and provenance/link/redaction/whitespace checks pass; final protected422 integration and PR/CI remain held. Canonical verification records qualifications and private evidence pointers.

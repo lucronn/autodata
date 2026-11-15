@@ -2,7 +2,7 @@
 
 Status: coordinator activated the exact reviewed92d81a1 ingestion runtime; runtime and bounded makes/models acceptance passed with protectedstate unchanged. Configuration collection coverage remains unproved, so Issue401 stays open. Worker performed read-only diagnosis/observation preparation only; all live dispatch was coordinator-owned.
 
-Preserved historical record: source92d81a1/container6fcc910d activation is complete as recorded in the executed boundary below. Earlier prerequisite/pending/instruction sections and original synchronized records are retained chronology, not current blockers or permission to rerun the one-attempt helper. No protected-source snapshot includes later SVG code or establishes repaired deployed media; image5c still requires a separately reviewed renderer/image/runtime gate.
+Preserved historical record: source92d81a1/container6fcc910d activation is complete as recorded in the executed boundary below. Earlier prerequisite/pending/instruction sections and original synchronized records are retained chronology, not current blockers or permission to rerun the one-attempt helper. The preserved runtime source92d81a1 excludes later SVG code and does not establish repaired deployed media; image5c still requires a separately reviewed renderer/image/runtime gate.
 
 Issue https://github.com/lucronn/autodata/issues/401; Project https://github.com/users/lucronn/projects/8; plan docs/superpowers/plans/2026-11-14-private-read-only-runtime-rollout.md. Historical prerequisites Python417 and Go412 protection/currentCI were subsequently satisfied as recorded below. Prior61f1939 passed115isolatedcatalogtests but cannot start unchanged publicStripeTest and is retained test evidence only.
 
