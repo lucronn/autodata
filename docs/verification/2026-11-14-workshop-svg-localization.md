@@ -77,7 +77,9 @@ external/file/CSS/active-content refusal, inert versus internal/unrecognized
 DOCTYPE handling, MIME/base64/pixel limits, runtime allowlist refusal, timeout,
 fixed failure codes, and a regression forbidding parent source parsing.
 The actual built image also passed a network-disabled, read-only synthetic
-40×20 PNG/red-pixel probe. Final full ingestion suite evidence is pending.
+40×20 PNG/red-pixel probe. At implementation commit `7a79f76`, the full ingestion suite passed 1,240 tests with 475 opt-in integration skips and 196 passing subtests. The separately enabled new PostgreSQL/S3 integration passed with zero skips. The implementation source did not change when adding that integration case.
+
+The added lifecycle integration uses a fresh synthetic PostgreSQL database and unique real fixture-S3 bucket. It captures an embedded-raster SVG, calls `store_captured_source`, reads the persisted resource manifest/observation/snapshots and `catalog_article_current`, verifies original/derivative lineage and the available PNG key/MIME, and reads back both exact original bytes and decoded red PNG pixels. The current image/document projection contains no original SVG key or SVG MIME/markup. Fixture cleanup removes only its database/bucket. This tests persistence and projection; it does not replace authenticated HTTP/browser media acceptance.
 
 Runtime activation remains **blocked**. The existing private ingestion image
 does not contain CairoSVG/libcairo; a read-only source mount or the separate
@@ -93,7 +95,8 @@ Concrete todo:
 - [x] Implement bounded rasterization, exact-original/PNG lineage and honest failures.
 - [x] Pass focused synthetic checks, build the actual image, and repeat the
   private memory-only retained-asset compatibility probe.
-- [ ] Complete final full ingestion checks and independent exact-head review.
+- [x] Complete final full ingestion checks and isolated PostgreSQL/S3 persistence/projection integration.
+- [ ] Obtain independent exact-head review.
 - [ ] Update once to the integrated base after the coordinator's preceding
   merges and pass strict required CI at that exact head.
 - [ ] Build/deploy a separately approved runtime image and perform authorized
