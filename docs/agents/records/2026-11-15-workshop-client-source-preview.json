@@ -1,5 +1,5 @@
 {
-  "goal": "Prepare a held, source-only public Workshop client canary gate preserving purchase-disabled Firebase/private/data authority and explicit real-data/Stripe limitations.",
+  "goal": "Prepare a held source-only public canary for combined quote suppression, explicit local article routing and synthetic-only legacy introduction rendering, preserving Firebase/private/data authority and real-data/Stripe limits.",
   "plan_ref": "docs/superpowers/plans/2026-11-15-workshop-client-source-preview.md",
   "issue_ref": "https://github.com/lucronn/autodata/issues/431",
   "project_ref": "https://github.com/users/lucronn/projects/8",
@@ -7,11 +7,11 @@
     "docs/architecture/workshop-client-source-preview.md"
   ],
   "todo": [
-    "Commit and machine-check this planning-only checkpoint; hold all build/helper/package/runtime work until root supplies protected UI source SHA/tree and independently reviewed exact-head CI.",
-    "After that dependency, synchronize a fresh exact-source/base checkpoint and measured baseline, build/test immutable source and prepare a fresh physical one-attempt release/rollback package for root review.",
-    "Validate exact source/client regressions, old-private compatibility, physical/local-Docker/protected-state/permissions/rollback identity-wait and deterministic browser route-policy fixtures without provider or Stripe calls.",
+    "Refresh planning for combined PR432 head124b0982/tree9022872 with feature-merged435 and timestamped API/private metadata; hold artifacts/runtime for protected combined source/tree and root-reviewed exact-head CI.",
+    "Allow separately authorized private272 budget rollout/probe to settle first; then synchronize a fresh protected-source/base checkpoint and remeasured API/private baseline before immutable build/package, with another identity recheck before activation.",
+    "At the future gate validate quote/local/Firebase/intro source regressions and authored synthetic mobile/desktop intro fixtures plus current-private/physical/rollback/browser contracts without provider or Stripe calls.",
     "Root alone authorizes and executes one reviewed source-only switch, desktop/mobile anonymous acceptance or one exact rollback; preserve honest source-only receipts without real-data, licensed-reader, Firebase settlement or durability claims."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-15T03:36:28.119837+00:00"
+  "updated_at": "2026-11-15T03:51:09.631977+00:00"
 }
