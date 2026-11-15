@@ -1,0 +1,9 @@
+# Configuration hydration diagnostics verification
+
+Status: planning checkpoint at protected421 base5b3e19d3b34208773a77b4b9cfccd3085726cabe/tree92da3c0238725728e43a2bbd4df7a0ec29d02de6; implementation/test edits await exact checkpoint preflight. Final PR strictCI/merge held for protected415/422 integration. No provider requests or serving mutation.
+
+Issue https://github.com/lucronn/autodata/issues/401; Project https://github.com/users/lucronn/projects/8. Plan docs/superpowers/plans/2026-11-15-configuration-hydration-diagnostics.md; architecture docs/architecture/workshop-configuration-diagnostics.md. Current live runtime remains protected92d81a1; diagnostic branch base is protected421 merge5b3e19d3b34208773a77b4b9cfccd3085726cabe.
+
+Source inspection establishes the actionable observability gaps: caught provider exceptions become partial results without per-bank class signal; provider partial outcomes carry no safe explanation; internal persistence ValueError is excluded from existing stage logging. No live failure class is inferred. The event contract and minimal call sites preserve every existing data/coverage/HTTP decision and redact exception text, arbitrary class names, payloads and identifiers. Exact test/acceptance todo is the plan matrix; no tests have yet been written or run for this proposal.
+
+Only the existing bounded makes/models/configuration observations in https://github.com/lucronn/autodata/blob/60c3df486455bef32dd36a9f420c145948575c55/docs/verification/2026-11-14-private-read-only-runtime-rollout.md are live evidence. A new code/release gate cannot retroactively classify the configuration gap or authorize another source request.

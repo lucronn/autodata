@@ -1,0 +1,19 @@
+{
+  "goal": "Expose safe per-bank/stage/error-class configuration hydration anomalies while preserving every existing coverage/HTTP/storage decision and serving state.",
+  "plan_ref": "docs/superpowers/plans/2026-11-15-configuration-hydration-diagnostics.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/401",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/workshop-configuration-diagnostics.md",
+    "docs/verification/2026-11-15-configuration-hydration-diagnostics.md"
+  ],
+  "todo": [
+    "Pin protected421 merge5b3e19d3b34208773a77b4b9cfccd3085726cabe/tree92da3c0238725728e43a2bbd4df7a0ec29d02de6, synchronize plan/Issue401/Project8/canonical docs/record, commit/push checkpoint and pass exact preflight before tests/application edits.",
+    "Write red-first per-bank/stage/class/hashed-scope/redaction and unchanged-result/exception/HTTP regressions, including unknown secret-bearing exception names and internal persistence ValueError.",
+    "Implement minimal configuration-only anomaly logging in catalog_service.py with fixed enums/hash/count/allowlisted error classes; no raw payloads/messages/URLs/IDs/credentials or coverage/flag/persistence/dispatch changes.",
+    "Run focused synthetic PostgreSQL/S3/HTTP and Go usability checks; retain no-provider-call/no-serving-mutation boundary.",
+    "Hold final PR strictCI/merge until coordinator supplies protected415/422 integration pins, update exact base then independent review/requiredCI/protectedmerge; separate runtimegate before any later deployment or one authorized live acceptance request."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-15T01:41:19.601690+00:00"
+}
