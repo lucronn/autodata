@@ -1,5 +1,5 @@
 {
-  "goal": "Preserve completed public API and private read_only ingestion release receipts on protected master with accurate historical chronology and unchanged acceptance limits.",
+  "goal": "Preserve completed public/private read_only receipts and accepted source-only canary on protected master with historical chronology and unchanged real-data, Stripe and licensed-content limits.",
   "plan_ref": "docs/superpowers/plans/2026-11-15-release-receipts-preservation.md",
   "issue_ref": "https://github.com/lucronn/autodata/issues/423",
   "project_ref": "https://github.com/users/lucronn/projects/8",
@@ -7,11 +7,10 @@
     "docs/verification/2026-11-15-release-receipts-preservation.md"
   ],
   "todo": [
-    "Pin protected base, verify all eight exact source blobs and path absence, and commit synchronized plan/Issue/Project/canonical documentation with passing exact-base preflight before snapshot edits.",
-    "Copy only the eight approved Markdown/JSON snapshots, label pre-execution text historical, link public release chronology to the later private acceptance, preserve all partial-response/rollback-defect/acceptance limits and the unsynchronized diagnostic proposal.",
-    "Validate exact path set, JSON, provenance, internal links, chronology, safe-content redaction and diff whitespace without runtime/provider calls.",
-    "Hold final PR/CI until root supplies PR422 protected merge SHA/tree; integrate that exact base, recheck no overlap and source scope, then open a normal protected-master documentation PR for independent exact-head review and required CI."
+    "Integrate protected083f1a5/tree2c6a681, retain its canonical diagnostics plan unchanged and pass this synchronized amendment checkpoint before importing four canary outcome snapshots.",
+    "Preserve seven original release snapshots plus four exacta026a0f canary snapshots; keep archival JSON byte-identical, label preparation text historical/non-replayable and link the accepted attempt2 source-only outcome with all real-data, licensed-reader, Stripe and durability limits.",
+    "Validate fourteen-document final scope, provenance, JSON, links, redaction and chronology; open a protected-master documentation PR, complete strict required CI and hand exact head to root without merging or runtime mutation."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-15T02:11:40.389397+00:00"
+  "updated_at": "2026-11-15T02:58:09.565340+00:00"
 }

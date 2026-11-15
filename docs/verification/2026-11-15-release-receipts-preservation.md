@@ -1,6 +1,6 @@
 # Release-receipt preservation verification
 
-Status: selected documentation snapshots preserved and locally verified; final protected-base integration, PR and CI held for root-supplied PR422 merge SHA/tree. No runtime or provider calls.
+Status: synchronized protected-base/canary preservation amendment below; earlier hold text is historical. No runtime or provider operations.
 
 Goal: Preserve completed public API and private read_only ingestion release receipts on protected master with accurate historical chronology and unchanged acceptance limits.
 
@@ -27,3 +27,27 @@ Both original rollout JSON records are byte-identical. Six Markdown snapshots re
 Selected path, JSON, source-provenance and safe-content checks passed;20 repository references and2 relative Markdown links resolve. Snapshot chronology retains public00:59Z/apex01:03Z acceptance followed by private92d81a1/6fcc activation, the initial partial makes/models responses, durable60/10-row coverage, unproved Integra enumeration, rollback Created-state defect and its regression, limited provider-entry browser result and unexercised live rollback. Existing source/test successes do not establish licensed reader/media, supplier rights, completed Firebase, settlement or cold-boot acceptance. Native-renderer activation remains separately gated; Issue401 remains open.
 
 Repository governance suite passed10 tests; whitespace/scope checks passed. Private evidence `/home/corp/autodata-evidence/release-receipts-preservation-20261115/` retains exact original snapshots, before/after Git blob IDs, minimal chronology diffs, validation report and test log. No executable helper, env/config/dump, credential, licensed content or implementation file was imported. PR/CI not opened/dispatched; hold remains until root supplies exact protected422 merge SHA/tree, followed by integration and revalidation.
+
+
+## Protected-base and accepted-canary preservation amendment
+
+Current synchronized scope supersedes earlier held-state/scope/todo paragraphs, which are historical preparation. Coordinator supplied protected `083f1a502a0f18d371793df59d3310408059d44e`, tree `2c6a681b31c0031743f5580825949ad192e87f04`, including protected422 `5981b97f187364e54737919fd8cdb49e7566d981`; the original hold is satisfied.
+
+One add/add overlap was resolved by retaining protected master's exact `docs/superpowers/plans/2026-11-15-configuration-hydration-diagnostics.md`. Omit the obsolete proposal copy from this PR. The seven unique original completed release snapshots remain absent on protected master; historical references now resolve to the canonical diagnostics plan without changing that work or claiming its runtime acceptance.
+
+Coordinator authorized four completed source-only canary documents from exact `a026a0fcd57cc0ca87e78559b18203834a6c0831`, supported by https://github.com/lucronn/autodata/issues/424#issuecomment-6888238620. All four paths are absent on the protected base. Copy only after this amendment/Issue423/Project8 synchronization and passing pinned checkpoint:
+- `docs/agents/records/2026-11-15-workshop-preview-canary-5981b97.json` — Git blob `ee15bf9ef6800009a30190cff49e99dffbc71baf`.
+- `docs/architecture/workshop-preview-canary-5981b97.md` — Git blob `0be925de7503dae7797835b0705bcb54816dd942`.
+- `docs/superpowers/plans/2026-11-15-workshop-preview-canary-5981b97.md` — Git blob `86371befd7f1e94f7e0130dcda17741b7afd43b6`.
+- `docs/verification/2026-11-15-workshop-preview-canary-5981b97.md` — Git blob `d981c5fa9ade61f17e98425a357e4b4c270e9527`.
+
+Final allowlist is fourteen added documentation paths: this task's three gate documents, seven unique original public/private documents, and four canary documents above. The old eight-snapshot/eleven-path allowance is superseded. Keep the three imported rollout/canary JSON records byte-identical. Add prominent historical/non-replayable status to three canary Markdown files; crosslink the initial public receipt to the later canary. Import no helpers, executable code, private config, raw tables, credentials or licensed bytes; do not merge stale branch histories.
+
+Canary acceptance covers source5981b97/binaryad5ad70c at r2 only, with private92d81a1/6fcc/image5c and purchase-disabled API read_only unchanged. Preserve closed attempt1, its reported rollback verification failure and independently settled baseline recovery. Revised rollback timing has synthetic coverage and no real attempt2 rollback. Controlled auth-config timing, synthetic years response and local telemetry suppression do not prove real catalog/provider recovery, full Integra enumeration, completed Firebase, licensed reader/media/supplier rights, real Stripe checkout/settlement/new grants, private SVG image activation or cold-boot durability. Issue401 and segregated Stripe work retain separate gates.
+
+No runtime mutation, provider request, historical helper execution or merge is authorized here. Normal protected PR CI is authorized after this gate. Root owns independent review/merge.
+
+Current concrete todo:
+- [ ] Integrate protected083f1a5/tree2c6a681, retain its canonical diagnostics plan unchanged and pass this synchronized amendment checkpoint before importing four canary outcome snapshots.
+- [ ] Preserve seven original release snapshots plus four exacta026a0f canary snapshots; keep archival JSON byte-identical, label preparation text historical/non-replayable and link the accepted attempt2 source-only outcome with all real-data, licensed-reader, Stripe and durability limits.
+- [ ] Validate fourteen-document final scope, provenance, JSON, links, redaction and chronology; open a protected-master documentation PR, complete strict required CI and hand exact head to root without merging or runtime mutation.
