@@ -343,3 +343,43 @@ def test_paginated_years_retains_exact_fallback_page_uri():
     provider=catalog._SourceCatalogProvider(SourceConnectorClient('http://127.0.0.1:1',provider='bankone',opener=pages),deepening_control=control)
     result=provider.resolve_catalog(catalog.CatalogRequest(2024,'unknown','unknown',scope='years'))
     assert [row['provider_mappings'][0]['source_uri'] for row in result['rows']]==calls
+
+
+@pytest.mark.parametrize('failure',['incomplete','error'])
+def test_two_source_partial_years_skip_all_persistence_and_retry_after_cooldown(monkeypatch,failure):
+    catalog._HYDRATION_RESULTS.clear()
+    clock=Clock(); healthy=[False]; calls=[]; durable=[]
+    monkeypatch.setattr(job,'ADMISSION',job.SelectorAdmission(clock=clock))
+    monkeypatch.setattr(catalog,'_HYDRATION_INCOMPLETE_TTL_SECONDS',0)
+    class Provider:
+        deepening_control=SimpleNamespace(initial_selector_budget=True)
+        def __init__(self,name): self.name=name
+        def resolve_catalog(self,request):
+            calls.append(self.name)
+            if self.name=='second' and not healthy[0] and failure=='error': raise TimeoutError('authored outage')
+            return {'rows':[{'year':2024 if self.name=='first' else 2023}],
+                    'complete':self.name=='first' or healthy[0]}
+    providers=(Provider('first'),Provider('second'))
+    monkeypatch.setattr(catalog,'_configured_catalog_providers',lambda **_:providers)
+    def owned(request,deadline):
+        resolved=catalog.CacheFirstCatalogService(cache_reader=lambda _:None,providers=providers).resolve(
+            catalog.CatalogRequest(2000,'unknown','unknown',scope='years'))
+        return {'rows':list(resolved.rows),'complete':resolved.complete,
+                'missing_scopes':list(resolved.missing_scopes),'provenance':[]}
+    monkeypatch.setattr(job,'run_owned',owned)
+    def persist(request,result,**kwargs):
+        assert result.complete, 'incomplete years reached persistence helper'
+        durable.extend(row['year'] for row in result.rows)
+        return {'status':'persisted'}
+    monkeypatch.setattr(catalog,'_persist_hydration_scope',persist)
+    request=json.dumps({'scope':'years','idempotency_key':'two-source-'+failure})
+    partial=catalog.ensure_catalog_hydration(request)
+    assert not partial['complete'] and partial['rows'] and not durable
+    assert partial['coverage']=={'status':'skipped_incomplete_years','row_count':0}
+    assert partial['persistence']=={'status':'skipped_incomplete_years','row_count':0}
+    clock.now=7
+    assert catalog.ensure_catalog_hydration(request)['stop_reason']=='admission'
+    assert len(calls)==2 and not durable
+    healthy[0]=True; clock.now=31
+    complete=catalog.ensure_catalog_hydration(request)
+    assert complete['complete'] and sorted(durable)==[2023,2024] and len(calls)==4
