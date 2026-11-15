@@ -15,4 +15,4 @@ Concrete todo:
 - Add red-first Node regressions and a Go-to-Node actual sealed-token contract test covering local rendering/renewal, default/Firebase rejection, v2 behavior, and malformed/cross-origin URLs; run client/demo and relevant Go media tests.
 - Push a coherent validated milestone and PR with exact gate/head/tests; coordinate with root before M2A service/browser work. Do not restart services, call providers/payments/Firebase, merge, or deploy.
 
-Implementation awaits the committed synchronized checkpoint/preflight.
+Implementation passed synchronized checkpoint `16e0c50d`. [Verification](../verification/2026-11-15-workshop-local-image-tokens.md) records red-first Node/Go evidence and passing focused suites. M2A runtime acceptance remains coordinator-owned.

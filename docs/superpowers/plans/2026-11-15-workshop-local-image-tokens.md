@@ -46,3 +46,7 @@ Fail meaningful Node cases and a Go-to-Node bridge on unmodified production firs
   "updated_at": "2026-11-15T04:35:05.796867+00:00"
 }
 ```
+
+## Verification evidence
+
+Checkpoint `16e0c50d` passed preflight before implementation. The two new Node regressions and actual Go-to-Node token contract first failed on unchanged code; after repair307 client/demo tests and15 top-level Go media tests passed with no skips. See [verification](../../verification/2026-11-15-workshop-local-image-tokens.md).

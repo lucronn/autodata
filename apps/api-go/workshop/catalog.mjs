@@ -206,12 +206,17 @@ export function articlePresentation(article) {
   };
 }
 
-export function localImageURL(value, origin, { compatibility = false } = {}) {
+export function localImageURL(value, origin, { compatibility = false, authMode = null } = {}) {
   if (typeof value !== 'string' || /[\s\u0000-\u001f]/.test(value)) return null;
   if (compatibility && /^data:image\/(png|jpeg|webp|gif);base64,[a-z\d+/=]+$/i.test(value)) return value;
   try {
     const url = new URL(value, origin);
-    return ['http:', 'https:'].includes(url.protocol) && url.origin === origin && !url.username && !url.password && !url.search && !url.hash && (compatibility || /^\/v1\/catalog\/images\/v2\.[a-zA-Z0-9_-]{1,6000}$/.test(url.pathname)) ? url.href : null;
+    const paidPath = /^\/v1\/catalog\/images\/v2\.[a-zA-Z0-9_-]{1,6000}$/.test(url.pathname);
+    const localToken = authMode === 'local'
+      ? /^\/v1\/catalog\/images\/([a-zA-Z0-9_-]{38,6000})$/.exec(url.pathname)?.[1]
+      : null;
+    const localPath = localToken && localToken.length % 4 !== 1;
+    return ['http:', 'https:'].includes(url.protocol) && url.origin === origin && !url.username && !url.password && !url.search && !url.hash && (compatibility || paidPath || localPath) ? url.href : null;
   } catch { return null; }
 }
 
