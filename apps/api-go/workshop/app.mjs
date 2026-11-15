@@ -30,9 +30,13 @@ const $ = (id) => document.getElementById(id);
 const names = ["year", "make", "model", "configuration"];
 const rows = Object.fromEntries(names.map((name) => [name, []]));
 const navigation = new NavigationGeneration();
-const checkout = createCheckout();
+const checkout = createCheckout({
+  expectedMode: $('test-banner').hidden ? undefined : 'stripe_test',
+});
 let vehicle = null,
   articles = [],
+  indexComplete = false,
+  indexFailed = false,
   currentArticle = null,
   renderedRevision = "",
   sourceURL = "",
@@ -44,6 +48,8 @@ let quote = null,
   libraryCursor = null,
   libraryItems = [],
   currentOrder = "",
+  paidOrder = null,
+  unconfirmedOrder = null,
   retryAction = null,
   renewalUsed = false,
   renewal = null,
@@ -96,11 +102,15 @@ function stage(key) {
   $("loading-progress-bar").removeAttribute("value");
 }
 function show(id) {
+  if (id !== "reader") document.title = "AutoData — The workshop reference";
   for (const section of ["welcome", "catalog", "reader", "library"])
     $(section).hidden = section !== id;
 }
 function clearProtected() {
+  document.title = "AutoData — The workshop reference";
   articles = [];
+  indexComplete = false;
+  indexFailed = false;
   currentArticle = null;
   renderedRevision = "";
   sourceData = null;
@@ -133,6 +143,10 @@ function clearProtected() {
 }
 function invalidate() {
   navigation.clear();
+  currentOrder = "";
+  paidOrder = null;
+  unconfirmedOrder = null;
+  $("check-order").hidden = true;
   clearProtected();
 }
 async function operation(work, retry = null) {
@@ -142,6 +156,9 @@ async function operation(work, retry = null) {
     await work(g);
   } catch (error) {
     if (!g.current()) return;
+    const confirmedPaid = paidOrder?.id === currentOrder &&
+      vehicle?.id === paidOrder.configuration_id &&
+      vehicle?.region === paidOrder.region;
     if ([401, 403, 410].includes(error.status)) {
       clearProtected();
       show("welcome");
@@ -150,18 +167,38 @@ async function operation(work, retry = null) {
         void session.bootstrap();
       }
     }
-    if (error.code === "ENTITLEMENT_REQUIRED") {
-      access = "missing";
-      show("welcome");
-      renderPurchase();
-      status("This vehicle is available to purchase.");
-    } else if (error.code === "ENTITLEMENT_REVOKED") {
+    if (error.code === "ENTITLEMENT_REVOKED") {
+      if (confirmedPaid) {
+        const id = currentOrder;
+        currentOrder = "";
+        paidOrder = null;
+        $("check-order").hidden = true;
+        clearOrderRoute(id);
+      }
       access = "revoked";
       show("welcome");
       renderPurchase();
       status("Access to this vehicle has been revoked. Contact support.", {
         error: true,
       });
+    } else if (confirmedPaid && error.status !== 401) {
+      clearProtected();
+      access = "pending";
+      show("welcome");
+      renderPurchase();
+      status(error.code === "ENTITLEMENT_REQUIRED"
+        ? "Payment received. Access is not ready. Check payment status again; do not pay again."
+        : "Payment received, but articles are unavailable. Check payment status again or contact support; do not pay again.", {
+        error: true,
+      });
+    } else if (error.code === "ENTITLEMENT_REQUIRED") {
+      access = "missing";
+      show("welcome");
+      renderPurchase();
+      status(!$("purchase-action").disabled &&
+        $("purchase-action").textContent === "Buy for $20 USD"
+          ? "This vehicle is available to purchase."
+          : $("purchase-message").textContent);
     } else
       status(error.message || "AutoData is unavailable. Try again.", {
         error: true,
@@ -185,9 +222,25 @@ function updateURL({ article = "", replace = false, library = false } = {}) {
   if (article) p.set("article", article);
   if ($("search").value) p.set("q", $("search").value);
   if (library) p.set("view", "library");
+  if (currentOrder) p.set("order", currentOrder);
   const url = `${location.pathname}${p.size ? `?${p}` : ""}`;
   if (url !== location.pathname + location.search)
     history[replace ? "replaceState" : "pushState"](null, "", url);
+}
+function rememberOrderRoute(id) {
+  const params = new URLSearchParams(location.search);
+  params.set("order", id);
+  history.replaceState(null, "", `${location.pathname}?${params}`);
+}
+function clearOrderRoute(id, keepVehicle = false) {
+  const params = new URLSearchParams(location.search);
+  if (params.get("order") !== id) return;
+  params.delete("order");
+  if (keepVehicle && validScope(scope())) {
+    params.set("configuration", vehicle.id);
+    params.set("region", vehicle.region);
+  }
+  history.replaceState(null, "", `${location.pathname}${params.size ? `?${params}` : ""}`);
 }
 function populate(name, items, desired = "") {
   rows[name] =
@@ -238,22 +291,30 @@ async function loadOptions(name, g, desired = "") {
     },
   );
   if (!g.current()) return;
-  if (
-    desired &&
-    !result.items.some((item) => String(item.id ?? item.year) === desired)
-  )
+  const selected = desired && result.items.some(
+    (item) => String(item.id ?? item.year) === desired,
+  );
+  if (!selected && (result.timedOut || result.complete === false))
+    throw new Error(
+      result.items.length
+        ? "Some choices loaded, but the source catalog could not finish loading. Choose an available option or try again."
+        : "The source catalog could not finish loading these choices. Try again.",
+    );
+  if (desired && !selected)
     throw new Error(
       "This saved vehicle choice is unavailable. Choose another vehicle.",
     );
   status(
     result.items.length
       ? "Choose your vehicle to continue."
-      : "No choices are available. Try again.",
-    { retry: () => restoreRoute() },
+      : "No choices are available for this selection. Choose another vehicle.",
   );
 }
 function renderPurchase() {
   if (!$("purchase")) return;
+  const confirming = unconfirmedOrder?.id === currentOrder &&
+    vehicle?.id === unconfirmedOrder.configuration_id &&
+    vehicle?.region === unconfirmedOrder.region;
   $("purchase").hidden = !validScope(scope());
   $("purchase-selection").textContent =
     quote?.configuration_label ||
@@ -277,23 +338,31 @@ function renderPurchase() {
       ? "Access revoked. Contact the published support address."
       : access === "owned"
         ? "Owned. Open your articles without another purchase."
-        : !configured
-          ? "Purchasing is currently unavailable. You can keep browsing."
-          : !session.state.authenticated
-            ? "Sign in to check access and purchase for your account."
-            : access === "missing"
-              ? "One purchase for this exact configuration and region. No renewal is required, subject to published terms and source availability."
-              : "Checking access. Try again if the service is unavailable.";
+        : access === "pending" && session.state.authenticated
+          ? "Payment received. Article access is still being checked. Use Check payment status; do not pay again."
+          : confirming && session.state.authenticated
+            ? "Payment confirmation is pending. Use Check payment status; do not pay again."
+            : !configured
+              ? "Purchasing is currently unavailable. You can keep browsing."
+              : !session.state.authenticated
+                ? "Sign in to check access and purchase for your account."
+                : access === "missing"
+                  ? "One purchase for this exact configuration and region. No renewal is required, subject to published terms and source availability."
+                  : "Checking access. Try again if the service is unavailable.";
   $("purchase-action").textContent = !session.state.authenticated
     ? "Sign in with Google"
     : access === "owned"
       ? "Open articles"
-      : "Buy for $20 USD";
+      : access === "pending"
+        ? "Payment received"
+        : confirming
+          ? "Payment pending"
+          : "Buy for $20 USD";
   $("purchase-action").disabled = !session.state.authenticated
     ? !session.state.ready
     : access === "owned"
       ? false
-      : !(access === "missing" && priced && configured);
+      : !(access === "missing" && !confirming && priced && configured);
   $("policy-links").replaceChildren();
   if (configured)
     for (const [field, label] of [
@@ -317,15 +386,17 @@ async function selectVehicle(g, articleID = "") {
   renderPurchase();
   if (!validScope(scope())) return;
   const selected = scope();
-  try {
-    const q = await requestJSON(
-      `/v1/workshop/quote?configuration_id=${selected.configuration_id}&region=${selected.region}`,
-      { signal: g.signal },
-    );
-    if (!g.current()) return;
-    quote = validQuote(q, selected) ? q : null;
-  } catch (error) {
-    if (g.signal.aborted) throw error;
+  if (merchant?.enabled === true) {
+    try {
+      const q = await requestJSON(
+        `/v1/workshop/quote?configuration_id=${selected.configuration_id}&region=${selected.region}`,
+        { signal: g.signal },
+      );
+      if (!g.current()) return;
+      quote = validQuote(q, selected) ? q : null;
+    } catch (error) {
+      if (g.signal.aborted) throw error;
+    }
   }
   if (!g.current()) return;
   renderPurchase();
@@ -349,6 +420,10 @@ async function loadArticles(g, articleID = "") {
       onUpdate(result) {
         if (!g.current()) return;
         articles = result.items;
+        indexComplete = result.complete === true;
+        indexFailed =
+          result.progress?.status === "failed" &&
+          result.progress?.retryable !== true;
         access = "owned";
         renderPurchase();
         show("catalog");
@@ -357,10 +432,10 @@ async function loadArticles(g, articleID = "") {
     },
   );
   if (!g.current()) return;
-  if (articleID) {
-    if (!articles.some((item) => item.id === articleID))
-      throw new Error("This article is unavailable for the selected vehicle.");
+  if (articleID && articles.some((item) => item.id === articleID)) {
     await loadArticle(articleID, g);
+  } else if (articleID && data.complete === true) {
+    throw new Error("This article is unavailable for the selected vehicle.");
   } else if (data.complete === true) {
     status(data.items.length ? "Article index ready." :
       "Article index ready. No articles are currently available.", { complete: true });
@@ -371,7 +446,7 @@ async function loadArticles(g, articleID = "") {
   } else {
     status("Your article index is still being prepared. Check again.", {
       complete: false,
-      retry: () => operation((next) => loadArticles(next)),
+      retry: () => operation((next) => loadArticles(next, articleID)),
     });
   }
 }
@@ -379,11 +454,24 @@ async function loadArticles(g, articleID = "") {
 function renderArticles() {
   $("vehicle-caption").textContent =
     quote?.configuration_label || $("purchase-selection").textContent;
-  const items = filterArticles(articles, $("search").value);
+  const query = $("search").value.trim();
+  const items = filterArticles(articles, query);
   const list = element("ul", undefined, "article-list");
+  list.setAttribute("role", "list");
   for (const item of items) {
     const li = element("li"),
-      link = element("a", item.title || "Untitled article");
+      link = element("a");
+    const kind = typeof item.kind === "string"
+      ? item.kind.trim().replace(/[_-]+/g, " ").replace(/\s+/g, " ")
+      : "";
+    link.append(
+      element("span", item.title || "Untitled article"),
+      element(
+        "span",
+        kind ? kind[0].toUpperCase() + kind.slice(1) : "Article",
+        "article-type",
+      ),
+    );
     const url = new URL(location.href);
     url.searchParams.set("article", item.id);
     link.href = url.pathname + url.search;
@@ -404,6 +492,13 @@ function renderArticles() {
   }
   $("articles").replaceChildren(list);
   $("catalog-count").textContent = `${items.length} articles`;
+  $("no-results").textContent = indexFailed
+    ? "This article index could not be prepared. Check the status above."
+    : !indexComplete
+      ? "This article index is still being prepared. Check again shortly."
+      : query && articles.length > 0
+        ? "No articles match this search. Try a component name or a shorter phrase."
+        : "No articles are currently available for this vehicle.";
   $("no-results").hidden = items.length > 0;
 }
 const assetID = (image) =>
@@ -501,6 +596,7 @@ function renderBlocks(parent, blocks, images, review, g) {
         addImage(parent, (ref?.asset_id || ref?.image_id) ? find(ref) : undefined, ref.alt, g);
     } else if (type === "table") {
       const table = element("table", undefined, "article-table");
+      const cellImageIDs = new Set();
       if (block.label || block.caption)
         table.append(element("caption", block.label || block.caption));
       if (block.columns?.length) {
@@ -521,8 +617,11 @@ function renderBlocks(parent, blocks, images, review, g) {
           const cell = element("td");
           if (v !== null && typeof v === "object") {
             cell.append(element("span", v.text ?? ""));
-            for (const ref of v.images || [])
-              addImage(cell, find(ref), ref.alt, g);
+            for (const ref of v.images || []) {
+              const image = (ref?.asset_id || ref?.image_id) ? find(ref) : undefined;
+              if (image) cellImageIDs.add(assetID(image));
+              addImage(cell, image, ref.alt, g);
+            }
           } else cell.textContent = String(v ?? "");
           row.append(cell);
         }
@@ -532,6 +631,11 @@ function renderBlocks(parent, blocks, images, review, g) {
       const wrap = element("div", undefined, "table-scroll");
       wrap.append(table);
       parent.append(wrap);
+      for (const ref of block.images || []) {
+        const image = (ref?.asset_id || ref?.image_id) ? find(ref) : undefined;
+        if (image && cellImageIDs.has(assetID(image))) continue;
+        addImage(parent, image, ref.alt, g);
+      }
     } else if (type === "break") parent.append(element("hr"));
     else
       parent.append(
@@ -558,6 +662,7 @@ function renderContent(parent, article, g) {
       g,
     );
   else if (presentation.steps.length) {
+    renderBlocks(parent, presentation.introBlocks, images, null, g);
     for (const step of presentation.steps) {
       const section = element("section", undefined, "procedure-step");
       if (Number.isInteger(step.number))
@@ -643,8 +748,11 @@ function renderArticle(article, g) {
   document.title = `${article.title || "Article"} | AutoData`;
 }
 async function loadArticle(id, g) {
-  if (!session.state.authenticated) return;
+  if (!session.state.authenticated || !g.current()) return;
   show("reader");
+  if (currentArticle?.id !== id)
+    $("article-title").textContent = "Opening article…";
+  $("article-title").focus();
   $("print").disabled = true;
   $("article-content").replaceChildren();
   renderedRevision = "";
@@ -652,12 +760,14 @@ async function loadArticle(id, g) {
   renewalUsed = false;
   stage("article");
   status("Opening article…", { busy: true });
-  const first = await requestArticleJSON(`${articlePath(id)}/prepare`, {
-    method: "POST",
-    body: {},
-    headers: { "X-CSRF-Token": session.state.csrf },
-    signal: g.signal,
-  });
+  const first = session.state.mode === "local"
+    ? await requestArticleJSON(articlePath(id), { signal: g.signal })
+    : await requestArticleJSON(`${articlePath(id)}/prepare`, {
+        method: "POST",
+        body: {},
+        headers: { "X-CSRF-Token": session.state.csrf },
+        signal: g.signal,
+      });
   if (!g.current()) return;
   if (first.data?.article) renderArticle(first.data.article, g);
   let initial = first;
@@ -898,44 +1008,122 @@ function clearReader() {
   document.body.dataset.printable = "false";
 }
 async function checkOrder(g, id) {
+  if (paidOrder?.id !== id) paidOrder = null;
+  if (unconfirmedOrder?.id !== id) unconfirmedOrder = null;
   currentOrder = id;
   $("check-order").hidden = false;
   status("Checking payment status…", { busy: true });
-  try {
-    const result = await pollOrder(id, {
-      signal: g.signal,
-      onUpdate(order) {
-        if (g.current())
-          $("purchase-message").textContent =
-            order.state === "paid"
-              ? "Payment received. Checking article access."
-              : "Payment is being confirmed. Do not pay again.";
-      },
-    });
-    if (!g.current()) return;
-    if (result.state === "paid") {
-      vehicle = { id: result.configuration_id, region: result.region };
-      await selectVehicle(g);
-    } else if (["expired", "canceled"].includes(result.state)) {
+  const rememberUnconfirmed = (order) => {
+    const unresolved = ["creating", "open", "processing", "reconciliation_required"];
+    if (unresolved.includes(order.state)) {
+      unconfirmedOrder = {
+        id, configuration_id: order.configuration_id, region: order.region,
+      };
+      if (!validScope(scope())) {
+        vehicle = { id: order.configuration_id, region: order.region };
+        quote = null;
+      }
+      renderPurchase();
+    } else if (["paid", "expired", "canceled", "revoked"].includes(order.state) &&
+      unconfirmedOrder?.id === id) {
+      unconfirmedOrder = null;
+    }
+  };
+  const result = await pollOrder(id, {
+    signal: g.signal,
+    onUpdate(order) {
+      if (g.current()) {
+        rememberUnconfirmed(order);
+        $("purchase-message").textContent =
+          order.state === "paid"
+            ? "Payment received. Checking article access."
+            : "Payment is being confirmed. Do not pay again.";
+      }
+    },
+  }).catch((error) => {
+    if (g.current() && error.status === 404) {
+      if (paidOrder?.id === id) {
+        clearProtected();
+        access = "pending";
+        renderPurchase();
+        show("welcome");
+        status("Payment was received, but order status is unavailable. Check payment status again or contact support; do not pay again.", {
+          error: true,
+        });
+        return null;
+      }
       checkout.clear();
-      status(
-        "The previous payment attempt ended. Choose Buy again only when you are ready.",
-      );
+      currentOrder = "";
+      paidOrder = null;
+      unconfirmedOrder = null;
+      $("check-order").hidden = true;
+      clearOrderRoute(id);
       renderPurchase();
-    } else if (result.state === "revoked") {
-      invalidate();
-      access = "revoked";
-      renderPurchase();
-      status("Access revoked. Contact support.", { error: true });
-    } else
-      status(
-        "Payment confirmation is still pending. Check payment status manually.",
-        { retry: () => operation((g) => checkOrder(g, id)) },
-      );
-  } catch (error) {
-    if (error.status === 404) checkout.clear();
+    }
     throw error;
+  });
+  if (!g.current() || !result) return;
+  if (result.state) rememberUnconfirmed(result);
+  if (["expired", "canceled", "revoked"].includes(result.state)) {
+    currentOrder = "";
+    paidOrder = null;
+    $("check-order").hidden = true;
+    clearOrderRoute(id);
   }
+  if (result.state === "paid") {
+    paidOrder = { id, configuration_id: result.configuration_id, region: result.region };
+    vehicle = { id: result.configuration_id, region: result.region };
+    try {
+      await selectVehicle(g);
+    } catch (error) {
+      if (!g.current()) return;
+      if (error.code === "ENTITLEMENT_REVOKED") {
+        currentOrder = "";
+        paidOrder = null;
+        $("check-order").hidden = true;
+        clearOrderRoute(id);
+        throw error;
+      }
+      if (error.status === 401) throw error;
+      clearProtected();
+      access = "pending";
+      renderPurchase();
+      show("welcome");
+      status(error.code === "ENTITLEMENT_REQUIRED"
+        ? "Payment received. Access is not ready. Check payment status again; do not pay again."
+        : "Payment received, but articles are unavailable. Check payment status again or contact support; do not pay again.", {
+        error: true,
+      });
+      return;
+    }
+    if (!g.current()) return;
+    currentOrder = "";
+    paidOrder = null;
+    $("check-order").hidden = true;
+    clearOrderRoute(id, true);
+  } else if (["expired", "canceled"].includes(result.state)) {
+    checkout.clear();
+    const readyToBuy =
+      access === "missing" &&
+      validQuote(quote, scope()) &&
+      purchaseConfiguration(merchant, quote);
+    status(
+      readyToBuy
+        ? "The previous payment attempt ended. Choose Buy again only when you are ready."
+        : "The previous payment attempt ended. Select your vehicle to check access before buying again.",
+    );
+    renderPurchase();
+  } else if (result.state === "revoked") {
+    invalidate();
+    access = "revoked";
+    renderPurchase();
+    show("welcome");
+    status("Access revoked. Contact support.", { error: true });
+  } else
+    status(
+      "Payment confirmation is still pending. Check payment status manually.",
+      { retry: () => operation((g) => checkOrder(g, id)) },
+    );
 }
 async function purchase() {
   if (!session.state.authenticated) {
@@ -949,7 +1137,10 @@ async function purchase() {
   if (
     !validQuote(quote, scope()) ||
     !purchaseConfiguration(merchant, quote) ||
-    access !== "missing"
+    access !== "missing" ||
+    (unconfirmedOrder?.id === currentOrder &&
+      vehicle?.id === unconfirmedOrder.configuration_id &&
+      vehicle?.region === unconfirmedOrder.region)
   )
     return;
   if (!$("agreement").checked) {
@@ -970,7 +1161,15 @@ async function purchase() {
       if (!g.current()) return;
       if (result.state === "checkout") location.assign(result.checkout_url);
       else if (result.state === "owned") await loadArticles(g);
-      else await checkOrder(g, result.order_id);
+      else {
+        unconfirmedOrder = {
+          id: result.order_id,
+          configuration_id: result.configuration_id,
+          region: result.region,
+        };
+        rememberOrderRoute(result.order_id);
+        await checkOrder(g, result.order_id);
+      }
     },
     () => purchase(),
   );
@@ -1126,7 +1325,7 @@ $("back").addEventListener("click", () => {
   updateURL();
   show("catalog");
   renderArticles();
-  $("catalog-title").focus({ preventScroll: true });
+  $("catalog-title").focus();
 });
 $("print").addEventListener("click", () => {
   if (readableArticle(currentArticle) && session.state.authenticated)

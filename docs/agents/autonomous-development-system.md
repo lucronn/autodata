@@ -39,7 +39,18 @@ Issue / Project item / scheduled maintenance
                    evidence bundle
 ```
 
-The orchestrator owns state and evidence, not code correctness. Builders own implementation changes in isolated worktrees. Verifiers are read-only against the implementation branch except for test fixtures or reports in their own branches. The release controller is the only agent allowed to merge, and it can do so only when the machine gate expression in [data-integrity-gates.md](data-integrity-gates.md) evaluates to pass. The provider-neutral boundary for invoking these prompts is documented in [runner-interface.md](runner-interface.md).
+The orchestrator owns state and evidence, not code correctness. Builders own implementation changes in isolated worktrees. Verifiers are read-only against the implementation branch except for test fixtures or reports in their own branches. For controller-managed runs, the release controller is the only agent allowed to merge, and it can do so only when the machine gate expression in [data-integrity-gates.md](data-integrity-gates.md) evaluates to pass. The provider-neutral boundary for invoking these prompts is documented in [runner-interface.md](runner-interface.md).
+
+That release-controller authority applies to controller-managed runs; it is not
+a claim that every Codex-managed Workshop PR has an eight-gate run manifest.
+For a bounded Codex-managed Workshop app or documentation PR, the repository
+[operating model](../github/operating-model.md#single-maintainer-workshop-review)
+accepts a separate read-only AI review at the exact head and the configured
+GitHub checks. The coordinating Codex task can make the routine integration
+decision after verifying those facts and any live branch-protection approvals;
+it must not forge a GitHub review, bypass a failed gate, or call a local review
+an autonomous release-controller decision. A waiting PR does not prevent work
+on the next safe, independently tracked Workshop app task.
 
 Normative documentation has one repository home: `docs/`. The GitHub Project is the synchronized roadmap and navigation index, not a second document store. Agents must link Project items and task contracts to the canonical document path and may not create parallel README, design, or infrastructure-document trees. The runner enforces this rule as a critical path-scope gate; see [autonomy-tooling.md](autonomy-tooling.md) and the [documentation source-of-truth policy](../github/operating-model.md#documentation-source-of-truth).
 

@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 from urllib.error import HTTPError, URLError
+from urllib.parse import parse_qs, urlsplit
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
 
@@ -66,6 +67,67 @@ def _envelope(provider="bankone", **extra):
 
 
 class SourceConnectorClientTests(unittest.TestCase):
+    def test_closed_connection_catalog_body_remains_readable_with_deadline(self):
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        from threading import Thread
+
+        class Handler(BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+
+            def do_GET(self):
+                body = json.dumps(_envelope(
+                    scope="years", items=[{"year": 2027, "opaque_ref": "year-2027", "label": "2027"}],
+                    complete=True, next_cursor=None,
+                )).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Connection", "close")
+                if self.framing == "chunked":
+                    self.send_header("Transfer-Encoding", "chunked")
+                    wire_body = f"{len(body):x}\r\n".encode() + body + b"\r\n0\r\n\r\n"
+                else:
+                    self.send_header("Content-Length", str(len(body)))
+                    wire_body = body
+                self.end_headers()
+                self.wfile.write(wire_body)
+                self.wfile.flush()
+
+            def log_message(self, *args):
+                pass
+
+        class BackgroundBudget:
+            def before_request(self):
+                return 1.0
+
+            def remaining(self):
+                return 1.0
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        client = SourceConnectorClient(f"http://127.0.0.1:{server.server_port}", provider="bankone")
+        try:
+            for framing in ("fixed", "chunked"):
+                Handler.framing = framing
+                with self.subTest(framing=framing, path="foreground"):
+                    page = client.catalog("years", cursor=framing)
+                    self.assertTrue(page.complete)
+                    self.assertEqual([row["year"] for row in page.body["items"]], [2027])
+                with self.subTest(framing=framing, path="bounded"):
+                    page = client.catalog("years", cursor=framing, timeout=1.0)
+                    self.assertTrue(page.complete)
+                    self.assertEqual([row["year"] for row in page.body["items"]], [2027])
+                with self.subTest(framing=framing, path="background"):
+                    # Use the real background adapter, including deadline propagation.
+                    provider = _SourceCatalogProvider(client, deepening_control=BackgroundBudget())
+                    result = provider.resolve_catalog(CatalogRequest(2027, "unknown", "unknown", "US", scope="years"))
+                    self.assertTrue(result["complete"])
+                    self.assertEqual([row["year"] for row in result["rows"]], [2027])
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(2)
+
     def test_catalog_deadline_interrupts_trickled_chunk_framing(self):
         from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
         from threading import Event, Thread
@@ -164,7 +226,8 @@ class SourceConnectorClientTests(unittest.TestCase):
         client.catalog("years", timeout=2)
         client.catalog("years", timeout=120)
         client.catalog("years")
-        self.assertEqual(timeouts, [2, 25, 25])
+        for actual, expected in zip(timeouts, (2, 25, 25), strict=True):
+            self.assertAlmostEqual(actual, expected, delta=0.01)
         self.assertEqual(client.timeout, 25)
 
     def test_managed_keys_reach_only_the_matching_bank_and_override_legacy_tokens(self):
@@ -376,6 +439,348 @@ class SourceConnectorClientTests(unittest.TestCase):
         self.assertEqual(result["rows"][0]["provider_mappings"][0]["entity_type"], "car")
         self.assertEqual(result["rows"][0]["provider_mappings"][0]["provider_id"], "car:1")
         self.assertIn("cursor=page-2", calls[1])
+
+    def test_banktwo_public_selector_ids_resolve_exact_source_labels(self):
+        cases = (
+            ("models", {"year": 2020, "make": "ford"}, "models", "Ford", None),
+            ("configurations", {"year": 2020, "make": "ford", "model": "figo mexico"}, "configurations", "Ford", "Figo (MEXICO)"),
+        )
+        for scope, selector, expected_scope, make, model in cases:
+            with self.subTest(scope=scope):
+                calls = []
+
+                def open_request(request, timeout):
+                    parsed = urlsplit(request.full_url)
+                    current = parsed.path.rsplit("/", 1)[1]
+                    query = parse_qs(parsed.query)
+                    calls.append((current, query))
+                    if current == "makes":
+                        items = [{"opaque_ref": "make:ford", "label": "Ford", "year": 2020, "make": "Ford"}]
+                    elif query.get("make") != ["Ford"]:
+                        return _Response({}, status=404, url=request.full_url)
+                    elif current == "models":
+                        items = [{"opaque_ref": "model:figo", "label": "Figo (MEXICO)", "year": 2020, "make": "Ford", "model": "Figo (MEXICO)"}]
+                    elif query.get("model") == ["Figo (MEXICO)"]:
+                        items = [{"opaque_ref": "car:figo", "label": "Figo 1.5L", "year": 2020, "make": "Ford", "model": "Figo (MEXICO)", "engine": "1.5L"}]
+                    else:
+                        return _Response({}, status=404, url=request.full_url)
+                    return _Response(_envelope("banktwo", scope=current, complete=True, items=items), url=request.full_url)
+
+                client = SourceConnectorClient("https://banktwo.test", provider="banktwo", opener=open_request)
+                page = client.catalog(scope, selector)
+                self.assertTrue(page.complete)
+                self.assertEqual(page.body["items"][0]["make"], make)
+                self.assertEqual(calls[-1][0], expected_scope)
+                if model:
+                    self.assertEqual(page.body["items"][0]["model"], model)
+                    self.assertEqual(calls[-1][1]["model"], [model])
+
+    def test_banktwo_label_lookup_rejects_ambiguous_matches(self):
+        for names, code in ((("F-150", "F 150"), "AMBIGUOUS"),):
+            with self.subTest(names=names):
+                def open_request(request, timeout):
+                    if "/makes?" not in request.full_url:
+                        return _Response({}, status=404, url=request.full_url)
+                    items = [{"opaque_ref": f"make:{index}", "label": name, "year": 2020, "make": name} for index, name in enumerate(names)]
+                    return _Response(_envelope("banktwo", scope="makes", complete=True, items=items), url=request.full_url)
+
+                client = SourceConnectorClient("https://banktwo.test", provider="banktwo", opener=open_request)
+                with self.assertRaises(SourceConnectorError) as caught:
+                    client.catalog("models", {"year": 2020, "make": "f 150"})
+                self.assertEqual(caught.exception.code, code)
+
+    def test_complete_parent_absence_retains_original_paginated_evidence(self):
+        calls = []
+        payloads = []
+
+        def open_request(request, timeout):
+            calls.append(request.full_url)
+            parsed = urlsplit(request.full_url)
+            if parsed.path.endswith("/models"):
+                return _Response({}, status=404, url=request.full_url)
+            second = parse_qs(parsed.query).get("cursor") == ["page-2"]
+            payload = _envelope(
+                "banktwo", scope="makes", complete=second,
+                next_cursor=None if second else "page-2",
+                request_id="00000000-0000-4000-8000-00000000000" + ("3" if second else "2"),
+                source_revision="makes-page-2" if second else "makes-page-1",
+                source_locator="source:makes:page-2" if second else "source:makes:page-1",
+                items=[{"opaque_ref": "make:toyota", "label": "Toyota", "year": 2027, "make": "Toyota"}],
+            )
+            payloads.append(json.dumps(payload).encode())
+            return _Response(payload, url=request.full_url)
+
+        client = SourceConnectorClient("https://banktwo.test", provider="banktwo", opener=open_request)
+        try:
+            absence = client.catalog("models", {"year": 2027, "make": "ford"})
+        except SourceConnectorError as error:
+            self.fail(f"complete parent absence was discarded as {error.code}")
+        from autodata_ingestion.source_connector_client import SourceCatalogAbsence
+        self.assertIsInstance(absence, SourceCatalogAbsence)
+        self.assertEqual(absence.requested_scope, "models")
+        self.assertEqual(absence.requested_selector, {"year": 2027, "make": "ford"})
+        self.assertEqual(absence.parent_scope, "makes")
+        self.assertEqual(absence.parent_selector, {"year": 2027})
+        self.assertEqual((absence.missing_field, absence.missing_value), ("make", "ford"))
+        self.assertEqual([page.raw_envelope for page in absence.pages], payloads)
+        self.assertEqual([page.source_revision for page in absence.pages], ["makes-page-1", "makes-page-2"])
+        self.assertEqual(len(calls), 3)
+        result = _SourceCatalogProvider(client).resolve_catalog(
+            CatalogRequest(2027, "ford", "placeholder", scope="models"),
+        )
+        self.assertEqual(result["rows"], [])
+        self.assertTrue(result["complete"])
+        self.assertEqual([item["source_uri"] for item in result["provenance"]],
+                         ["source:makes:page-1", "source:makes:page-2"])
+        self.assertEqual([item["source_version"] for item in result["provenance"]],
+                         ["makes-page-1", "makes-page-2"])
+        self.assertEqual([item["metadata"]["request_id"] for item in result["provenance"]], [
+            "00000000-0000-4000-8000-000000000002", "00000000-0000-4000-8000-000000000003",
+        ])
+
+    def test_merged_models_complete_with_real_parent_absence_provenance(self):
+        def open_request(request, timeout):
+            parsed = urlsplit(request.full_url)
+            if parsed.hostname == "bankone.test":
+                return _Response(_envelope(
+                    scope="models", complete=True, source_locator="source:bankone:models:2027:ford",
+                    items=[{"opaque_ref": "model:focus", "label": "Focus", "year": 2027, "make": "Ford", "model": "Focus"}],
+                ), url=request.full_url)
+            if parsed.path.endswith("/models"):
+                return _Response({}, status=404, url=request.full_url)
+            return _Response(_envelope(
+                "banktwo", scope="makes", complete=True, source_revision="banktwo-makes-2027",
+                request_id="00000000-0000-4000-8000-000000000002",
+                source_locator="source:banktwo:makes:2027", items=[],
+            ), url=request.full_url)
+
+        providers = [_SourceCatalogProvider(SourceConnectorClient(
+            f"https://{provider}.test", provider=provider, opener=open_request,
+        )) for provider in ("bankone", "banktwo")]
+        result = CacheFirstCatalogService(cache_reader=lambda _: None, providers=providers).resolve(
+            CatalogRequest(2027, "ford", "placeholder", scope="models"),
+        )
+        self.assertTrue(result.complete)
+        self.assertEqual(result.missing_scopes, ())
+        self.assertEqual([row["model"] for row in result.rows], ["Focus"])
+        self.assertEqual(len(result.provenance), 2)
+        proof = result.provenance[1]
+        self.assertEqual(proof["provider"], "autoapitwo")
+        self.assertEqual(proof["source_uri"], "source:banktwo:makes:2027")
+        self.assertEqual(proof["source_version"], "banktwo-makes-2027")
+        self.assertEqual(proof["metadata"], {
+            "request_id": "00000000-0000-4000-8000-000000000002", "wire_provider": "banktwo",
+            "coverage_basis": "complete_parent_absence", "requested_scope": "models",
+            "requested_selector": {"year": 2027, "make": "ford"},
+            "parent_scope": "makes", "parent_selector": {"year": 2027},
+            "missing_field": "make", "missing_value": "ford",
+        })
+
+    def test_configuration_absence_cannot_hide_other_provider_failure(self):
+        def open_request(request, timeout):
+            parsed = urlsplit(request.full_url)
+            scope = parsed.path.rsplit("/", 1)[1]
+            if parsed.hostname == "bankone.test":
+                return _Response({}, status=502, url=request.full_url)
+            if scope == "configurations":
+                return _Response({}, status=404, url=request.full_url)
+            items = [{"opaque_ref": "make:honda", "label": "Honda", "year": 2020, "make": "Honda"}] if scope == "makes" else []
+            return _Response(_envelope("banktwo", scope=scope, complete=True, items=items,
+                source_locator=f"source:banktwo:{scope}:2020:honda"), url=request.full_url)
+
+        providers = [_SourceCatalogProvider(SourceConnectorClient(
+            f"https://{provider}.test", provider=provider, opener=open_request,
+        )) for provider in ("bankone", "banktwo")]
+        written = []
+        result = CacheFirstCatalogService(cache_reader=lambda _: None, providers=providers,
+            cache_writer=written.append).resolve(CatalogRequest(2020, "Honda", "Accord", scope="configurations"))
+        self.assertFalse(result.complete)
+        self.assertEqual(result.rows, ())
+        self.assertEqual(result.missing_scopes, ("configurations", "provider"))
+        self.assertEqual(result.provenance[0]["metadata"]["coverage_basis"], "complete_parent_absence")
+        self.assertEqual(written, [result])
+
+    def test_configuration_absence_is_proved_at_make_or_model_parent(self):
+        for absent_field in ("make", "model"):
+            with self.subTest(absent_field=absent_field):
+                def open_request(request, timeout):
+                    scope = urlsplit(request.full_url).path.rsplit("/", 1)[1]
+                    if scope == "configurations":
+                        return _Response({}, status=404, url=request.full_url)
+                    items = []
+                    if scope == "makes" and absent_field == "model":
+                        items = [{"opaque_ref": "make:ford", "label": "Ford", "year": 2027, "make": "Ford"}]
+                    return _Response(_envelope(
+                        "banktwo", scope=scope, complete=True, items=items,
+                        source_locator=f"source:banktwo:{scope}:2027",
+                    ), url=request.full_url)
+                provider = _SourceCatalogProvider(SourceConnectorClient(
+                    "https://banktwo.test", provider="banktwo", opener=open_request,
+                ))
+                try:
+                    result = provider.resolve_catalog(CatalogRequest(2027, "ford", "focus", scope="configurations"))
+                except SourceConnectorError as error:
+                    self.fail(f"complete parent absence was discarded as {error.code}")
+                self.assertEqual(result["rows"], [])
+                self.assertTrue(result["complete"])
+                self.assertEqual(result["missing_scopes"], [])
+                proof = result["provenance"][0]
+                self.assertEqual(proof["metadata"]["missing_field"], absent_field)
+                self.assertEqual(proof["metadata"]["parent_scope"], "makes" if absent_field == "make" else "models")
+                if absent_field == "model":
+                    self.assertEqual(proof["metadata"]["parent_selector"], {"year": 2027, "make": "Ford"})
+
+    def test_child_failure_after_parent_match_remains_incomplete(self):
+        for make in ("Ford", "ford"):
+            with self.subTest(make=make):
+                def open_request(request, timeout):
+                    if urlsplit(request.full_url).path.endswith("/models"):
+                        return _Response({}, status=404, url=request.full_url)
+                    return _Response(_envelope("banktwo", scope="makes", complete=True, items=[{
+                        "opaque_ref": "make:ford", "label": "Ford", "year": 2027, "make": "Ford",
+                    }]), url=request.full_url)
+                provider = _SourceCatalogProvider(SourceConnectorClient(
+                    "https://banktwo.test", provider="banktwo", opener=open_request,
+                ))
+                result = CacheFirstCatalogService(cache_reader=lambda _: None, providers=[provider]).resolve(
+                    CatalogRequest(2027, make, "placeholder", scope="models"),
+                )
+                self.assertFalse(result.complete)
+                self.assertIn("provider", result.missing_scopes)
+                self.assertEqual(result.provenance, ())
+
+    def test_parent_absence_requires_complete_successful_enumeration(self):
+        cases = ("missing_field", "missing_cursor", "repeated_cursor", "malformed_cursor", "malformed_body",
+                 "401", "403", "404", "429", "503", "timeout")
+        for case in cases:
+            with self.subTest(case=case):
+                def open_request(request, timeout):
+                    if urlsplit(request.full_url).path.endswith("/models"):
+                        return _Response({}, status=404, url=request.full_url)
+                    if case.isdigit():
+                        return _Response({}, status=int(case), url=request.full_url)
+                    if case == "timeout":
+                        raise URLError(TimeoutError())
+                    if case == "malformed_body":
+                        return _Response(b"{", url=request.full_url)
+                    if case == "missing_field":
+                        return _Response(_envelope("banktwo", scope="makes", complete=True, items=[{
+                            "opaque_ref": "make:ford", "label": "Ford", "year": 2027,
+                        }]), url=request.full_url)
+                    cursor = {"missing_cursor": None, "repeated_cursor": "same", "malformed_cursor": 123}[case]
+                    return _Response(_envelope(
+                        "banktwo", scope="makes", complete=False, next_cursor=cursor, items=[],
+                    ), url=request.full_url)
+                provider = _SourceCatalogProvider(SourceConnectorClient(
+                    "https://banktwo.test", provider="banktwo", opener=open_request,
+                ))
+                result = CacheFirstCatalogService(cache_reader=lambda _: None, providers=[provider]).resolve(
+                    CatalogRequest(2027, "ford", "placeholder", scope="models"),
+                )
+                self.assertFalse(result.complete)
+                self.assertIn("provider", result.missing_scopes)
+                self.assertEqual(result.provenance, ())
+
+    def test_parent_absence_after_child_page_is_rejected_as_contradictory(self):
+        def open_request(request, timeout):
+            parsed = urlsplit(request.full_url)
+            if parsed.path.endswith("/models"):
+                if "cursor" in parse_qs(parsed.query):
+                    return _Response({}, status=404, url=request.full_url)
+                return _Response(_envelope("banktwo", scope="models", complete=False,
+                    next_cursor="page-2", items=[{
+                        "opaque_ref": "model:focus", "label": "Focus", "year": 2027,
+                        "make": "Ford", "model": "Focus",
+                    }]), url=request.full_url)
+            return _Response(_envelope("banktwo", scope="makes", complete=True, items=[]), url=request.full_url)
+        provider = _SourceCatalogProvider(SourceConnectorClient(
+            "https://banktwo.test", provider="banktwo", opener=open_request,
+        ))
+        with self.assertRaisesRegex(ValueError, "contradicted prior child pages"):
+            provider.resolve_catalog(CatalogRequest(2027, "ford", "placeholder", scope="models"))
+
+    def test_banktwo_label_lookup_requires_complete_advancing_pages(self):
+        calls = []
+        def open_request(request, timeout):
+            calls.append(request.full_url)
+            if "/makes?" not in request.full_url:
+                return _Response({}, status=404, url=request.full_url)
+            return _Response(_envelope("banktwo", scope="makes", complete=False, next_cursor="same", items=[{
+                "opaque_ref": "make:ford", "label": "Ford", "year": 2020, "make": "Ford",
+            }]), url=request.full_url)
+
+        client = SourceConnectorClient("https://banktwo.test", provider="banktwo", opener=open_request)
+        with self.assertRaises(SourceConnectorError) as caught:
+            client.catalog("models", {"year": 2020, "make": "ford"})
+        self.assertEqual(caught.exception.code, "INVALID_UPSTREAM_RESPONSE")
+        self.assertEqual(len(calls), 3)
+
+    def test_banktwo_label_lookup_walks_all_pages_before_accepting_match(self):
+        calls = []
+        def open_request(request, timeout):
+            parsed = urlsplit(request.full_url)
+            query = parse_qs(parsed.query)
+            calls.append(request.full_url)
+            if parsed.path.endswith("/models"):
+                if query.get("make") != ["Ford"]:
+                    return _Response({}, status=404, url=request.full_url)
+                return _Response(_envelope("banktwo", scope="models", complete=True, items=[]), url=request.full_url)
+            second = query.get("cursor") == ["page-2"]
+            items = [{"opaque_ref": "make:ford", "label": "Ford", "year": 2020, "make": "Ford"}] if second else []
+            return _Response(_envelope("banktwo", scope="makes", complete=second, next_cursor=None if second else "page-2", items=items), url=request.full_url)
+
+        client = SourceConnectorClient("https://banktwo.test", provider="banktwo", opener=open_request)
+        self.assertTrue(client.catalog("models", {"year": 2020, "make": "ford"}).complete)
+        self.assertEqual(len(calls), 4)
+        self.assertIn("cursor=page-2", calls[2])
+
+    def test_banktwo_label_lookup_does_not_reset_callers_deadline(self):
+        clock = [10.0]
+        calls = []
+        def open_request(request, timeout):
+            calls.append(request.full_url)
+            clock[0] += 2
+            return _Response({}, status=404, url=request.full_url)
+
+        client = SourceConnectorClient("https://banktwo.test", provider="banktwo", opener=open_request)
+        with patch("autodata_ingestion.source_connector_client.time.monotonic", side_effect=lambda: clock[0]):
+            with self.assertRaises(SourceConnectorError) as caught:
+                client.catalog("models", {"year": 2020, "make": "ford"}, timeout=1)
+        self.assertEqual(caught.exception.code, "UPSTREAM_UNAVAILABLE")
+        self.assertEqual(len(calls), 1)
+
+    def test_banktwo_label_lookup_accounts_for_every_background_source_read(self):
+        from types import SimpleNamespace
+        dispatched = []
+        controls = []
+        def before_request():
+            controls.append(len(dispatched))
+            return 5
+        def open_request(request, timeout):
+            dispatched.append(request.full_url)
+            scope = urlsplit(request.full_url).path.rsplit("/", 1)[1]
+            if scope == "models" and parse_qs(urlsplit(request.full_url).query).get("make") != ["Ford"]:
+                return _Response({}, status=404, url=request.full_url)
+            items = [{"opaque_ref": "make:ford", "label": "Ford", "year": 2020, "make": "Ford"}] if scope == "makes" else []
+            return _Response(_envelope("banktwo", scope=scope, complete=True, items=items), url=request.full_url)
+
+        client = SourceConnectorClient("https://banktwo.test", provider="banktwo", opener=open_request)
+        provider = _SourceCatalogProvider(client, deepening_control=SimpleNamespace(before_request=before_request, remaining=lambda: 5))
+        self.assertTrue(provider.resolve_catalog(CatalogRequest(2020, "ford", "placeholder", scope="models"))["complete"])
+        self.assertEqual(controls, [0, 1, 2])
+
+    def test_banktwo_label_lookup_preserves_unrelated_provider_errors(self):
+        for provider, status in (("banktwo", 429), ("banktwo", 503), ("bankone", 404)):
+            with self.subTest(provider=provider, status=status):
+                calls = []
+                def open_request(request, timeout):
+                    calls.append(request.full_url)
+                    return _Response({}, status=status, url=request.full_url)
+                client = SourceConnectorClient(f"https://{provider}.test", provider=provider, opener=open_request)
+                with self.assertRaises(SourceConnectorError) as caught:
+                    client.catalog("models", {"year": 2020, "make": "ford"})
+                self.assertEqual(caught.exception.status, status)
+                self.assertEqual(len(calls), 1)
 
     def test_year_warmup_rejects_repeated_cursor(self):
         page = _envelope("banktwo", scope="years", complete=False, next_cursor="same", items=[{

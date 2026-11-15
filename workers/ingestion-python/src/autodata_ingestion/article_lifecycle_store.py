@@ -574,6 +574,23 @@ def automatic_candidate_validation(cur, job, candidate):
         "body":captured["source_body"],"steps":captured["source_steps"],
         "evidence_ids":context["evidence_ids"],"title":context["descriptor"].get("title"),
         "article_id":str(job["canonical_article_id"])})["normalized_document"]
+    from .procedure_rewrite_auto import SOURCE_PRESERVING_METHOD, validate_source_preserving_candidate
+    if candidate["model_metadata"].get("transformation_method") == SOURCE_PRESERVING_METHOD:
+        if (normalized != source or candidate["normalized_source_hash"] != digest_json(source)
+            or job["checkpoint"].get("normalized_document") != source
+            or job["checkpoint"].get("normalized_hash") != digest_json(source)
+            or candidate["source_revision_id"] != job["source_revision_id"]
+            or candidate["canonical_article_id"] != job["canonical_article_id"]
+            or candidate["transformation_key"] != job["transformation_key"]
+            or candidate["normalization_version"] != job["normalization_version"]
+            or candidate["rewrite_profile_version"] != PROFILE or job["rewrite_profile_version"] != PROFILE
+            or cur.execute("""SELECT 1 FROM canonical_article_rewrite_attempts x
+                JOIN source_fetch_jobs t ON t.source_fetch_job_id=x.source_fetch_job_id
+                WHERE x.source_fetch_job_id=%s OR x.canonical_article_revision_id=%s
+                   OR t.transformation_key=%s LIMIT 1""",
+                (job["source_fetch_job_id"],candidate["canonical_article_revision_id"],job["transformation_key"])).fetchone()):
+            raise ValueError("source preserving saved evidence binding mismatch")
+        return validate_source_preserving_candidate(source,candidate["canonical_document"],candidate["model_metadata"])
     attempt = cur.execute("""SELECT * FROM canonical_article_rewrite_attempts
         WHERE canonical_article_revision_id=%s AND status='succeeded'""",
         (candidate["canonical_article_revision_id"],)).fetchone()
@@ -619,6 +636,36 @@ class RewriteStorageError(ValueError):
         }[stage]
         self.diagnostics = {"stage": stage}
         super().__init__(self.code)
+
+
+def store_source_preserving_candidate(repo,lease):
+    """Persist an independently reconstructed server candidate; never manufacture an attempt."""
+    from .article_lifecycle_types import digest_json
+    from .article_document import project_ordered_document
+    from .procedure_rewrite_auto import PROFILE, build_source_preserving_candidate
+    with repo.connect() as conn,conn.cursor(row_factory=dict_row) as cur:
+        job,_=_lock_transform(cur,lease)
+        if job["rewrite_profile_version"] != PROFILE or job["checkpoint"].get("rewrite_error_code"):
+            raise ValueError("SOURCE_PRESERVING_BINDING_INVALID")
+        source=job["checkpoint"]["normalized_document"]
+        document,metadata=build_source_preserving_candidate(source)
+        projection=project_ordered_document(document)
+        revision=uuid4()
+        candidate=cur.execute("""INSERT INTO canonical_article_revisions
+            (canonical_article_revision_id,canonical_article_id,source_revision_id,transformation_key,
+             normalization_version,rewrite_profile_version,status,normalized_source_document,normalized_source_hash,
+             canonical_document,canonical_body,canonical_steps,canonical_images,validation_report,validation_hash,
+             rewrite_result_hash,model_metadata)
+            VALUES (%s,%s,%s,%s,%s,%s,'building',%s,%s,%s,%s,%s,%s,'{}',%s,%s,%s) RETURNING *""",
+            (revision,job["canonical_article_id"],job["source_revision_id"],job["transformation_key"],
+             job["normalization_version"],job["rewrite_profile_version"],Jsonb(source),digest_json(source),
+             Jsonb(document),projection["body"],Jsonb(projection["steps"]),Jsonb(projection["images"]),digest_json({}),
+             digest_json(document),Jsonb(metadata))).fetchone()
+        # Locks, durable source normalization and zero-attempt checks precede commit.
+        validation=automatic_candidate_validation(cur,job,candidate)
+        if not validation.passed:raise ValueError("SOURCE_PRESERVING_BINDING_INVALID")
+        cur.execute("UPDATE source_fetch_jobs SET phase='validating',checkpoint=checkpoint||%s WHERE source_fetch_job_id=%s",
+            (Jsonb({"candidate_revision_id":str(revision),"rewrite_error_code":None}),lease.job_id))
 
 
 def store_rewrite_result(repo,lease,result):
@@ -759,17 +806,21 @@ def publish_article_revision(repo,lease,revision_id,*,hooks=None):
             or row["validation_hash"]!=digest_json(validation.report)
             or projection!={"body":row["canonical_body"],"steps":row["canonical_steps"],"images":row["canonical_images"]}):
             raise ValueError("publication binding validation failed")
-        if job["rewrite_profile_version"] == "full-prose-review-v1":
-            from .article_content_review import resolve_full_evidence
-            attempt, _, _, _ = resolve_full_evidence(cur,job,row)
-        else:
-            attempt=cur.execute("SELECT * FROM canonical_article_rewrite_attempts WHERE canonical_article_revision_id=%s AND status='succeeded'",(revision_id,)).fetchone()
-        if (attempt is None or attempt["input_hash"]!=row["normalized_source_hash"]
-            or attempt["response_hash"]!=digest_json(attempt["response"])
-            or attempt["prompt_hash"]!=row["model_metadata"].get("prompt_hash")
-            or attempt["model"]!=row["model_metadata"].get("model")
-            or attempt["profile_version"]!=row["model_metadata"].get("profile_version")):
-            raise ValueError("publication attempt binding failed")
+        from .procedure_rewrite_auto import SOURCE_PRESERVING_METHOD
+        server_candidate=(job["rewrite_profile_version"] == "full-prose-auto-v1"
+            and row["model_metadata"].get("transformation_method") == SOURCE_PRESERVING_METHOD)
+        if not server_candidate:
+            if job["rewrite_profile_version"] == "full-prose-review-v1":
+                from .article_content_review import resolve_full_evidence
+                attempt, _, _, _ = resolve_full_evidence(cur,job,row)
+            else:
+                attempt=cur.execute("SELECT * FROM canonical_article_rewrite_attempts WHERE canonical_article_revision_id=%s AND status='succeeded'",(revision_id,)).fetchone()
+            if (attempt is None or attempt["input_hash"]!=row["normalized_source_hash"]
+                or attempt["response_hash"]!=digest_json(attempt["response"])
+                or attempt["prompt_hash"]!=row["model_metadata"].get("prompt_hash")
+                or attempt["model"]!=row["model_metadata"].get("model")
+                or attempt["profile_version"]!=row["model_metadata"].get("profile_version")):
+                raise ValueError("publication attempt binding failed")
         if job["rewrite_profile_version"] == "technical-prose-v2":
             _bind_v2_operations(row["normalized_source_document"], row["canonical_document"], attempt["response"])
         if job["rewrite_profile_version"] == "full-prose-review-v1":

@@ -176,6 +176,7 @@ class Mercury2Tests(unittest.TestCase):
         self.assertEqual(seen["payload"]["max_completion_tokens"], 8192)
         self.assertEqual(seen["payload"]["model"], "mercury-3")
         self.assertEqual(seen["payload"]["temperature"], 0.5)
+        self.assertEqual(seen["payload"]["reasoning_effort"], "instant")
         self.assertNotIn("max_tokens", seen["payload"])
 
     def test_client_sends_environment_output_token_budget(self):
@@ -212,6 +213,7 @@ class Mercury2Tests(unittest.TestCase):
         self.assertEqual(seen["payload"]["temperature"], 0)
         self.assertEqual(seen["payload"]["max_tokens"], 2048)
         self.assertNotIn("max_completion_tokens", seen["payload"])
+        self.assertNotIn("reasoning_effort", seen["payload"])
 
     def test_constructor_default_empty_and_versioned_mercury3_use_current_request_fields(self):
         seen = {}
@@ -220,7 +222,7 @@ class Mercury2Tests(unittest.TestCase):
             seen["payload"] = json.loads(request.data)
             return FakeResponse({"choices": [{"message": {"content": '{"ok": true}'}}]})
 
-        for options in ({}, {"model": "  "}, {"model": "mercury-3-2026-11-05"}):
+        for options in ({}, {"model": "  "}, {"model": "mercury-3"}, {"model": "mercury-3-2026-11-05"}):
             with self.subTest(options=options):
                 Mercury2Client(
                     api_key="test-key", base_url="https://example.test", transport=transport,
@@ -229,6 +231,7 @@ class Mercury2Tests(unittest.TestCase):
                 self.assertEqual(seen["payload"]["model"], options.get("model", "").strip() or "mercury-3")
                 self.assertEqual(seen["payload"]["temperature"], 0.5)
                 self.assertEqual(seen["payload"]["max_completion_tokens"], 8192)
+                self.assertEqual(seen["payload"]["reasoning_effort"], "instant")
                 self.assertNotIn("max_tokens", seen["payload"])
 
     def test_client_rejects_invalid_environment_output_token_budget_before_transport(self):
@@ -341,6 +344,37 @@ def test_mercury_rejects_oversized_prompt_before_transport():
 
 
 # Dropping a parser boundary or retaining provider text must fail these cases.
+def test_mercury_truncated_instant_response_fails_without_retry_or_content():
+    import pytest
+    from autodata_ingestion.mercury2 import MercuryResponseError
+
+    requests = []
+    source = "LICENSED_SOURCE_BODY"
+
+    def transport(request, timeout):
+        requests.append(json.loads(request.data))
+        return FakeResponse({
+            "choices": [{"finish_reason": "length", "message": {"content": json.dumps({"text": source})}}],
+            "usage": {"prompt_tokens": 100, "completion_tokens": 32768, "total_tokens": 32868},
+        })
+
+    client = Mercury2Client(
+        api_key="test-key", base_url="https://example.test", max_tokens=32768,
+        transport=transport,
+    )
+    with pytest.raises(MercuryResponseError) as caught:
+        client.complete_json(source)
+
+    assert len(requests) == 1
+    assert requests[0]["reasoning_effort"] == "instant"
+    assert requests[0]["max_completion_tokens"] == 32768
+    assert caught.value.code == "MERCURY_OUTPUT_TRUNCATED"
+    assert caught.value.diagnostics["stage"] == "finish"
+    assert caught.value.diagnostics["finish_reason"] == "length"
+    assert source not in str(caught.value)
+    assert source not in json.dumps(caught.value.diagnostics)
+
+
 def test_mercury_classifies_response_failures_without_content():
     import io
     import pytest

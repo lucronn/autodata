@@ -70,6 +70,7 @@ type Server struct {
 	sourceReviews              SourceReviewStore
 	ingestionClient            IngestionClient
 	commerceClient             CommerceClient
+	workshopTestCheckout       bool
 	vehicleIdentity            VehicleIdentityStore
 	catalog                    CatalogStore
 	catalogImageKey            []byte
@@ -234,6 +235,7 @@ func (s *Server) Handler() http.Handler {
 		http.Error(response, "Method Not Allowed", http.StatusMethodNotAllowed)
 	})
 	mux.HandleFunc("/workshop/purchase-config.json", s.workshopPurchaseConfig)
+	mux.HandleFunc("/workshop/demo-mode.json", s.workshopDemoMode)
 	workshopAssets, err := fs.Sub(dashboardFiles, "workshop")
 	if err != nil {
 		panic("embedded workshop assets unavailable: " + err.Error())
@@ -695,6 +697,7 @@ func main() {
 	if err != nil {
 		log.Fatal("configure commerce: invalid configuration")
 	}
+	application.workshopTestCheckout = workshopTestCheckoutMode(os.Getenv("AUTODATA_COMMERCE_MODE"), os.Getenv("AUTODATA_ENV"), authConfig.Mode, authConfig.Origin)
 	if application.validatePaidCatalogDependencies() != nil {
 		log.Fatal("configure paid catalog: required dependency unavailable")
 	}

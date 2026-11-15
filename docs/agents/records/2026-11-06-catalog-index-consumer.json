@@ -1,0 +1,18 @@
+{
+  "goal": "Restore durable production catalog browsing with a catalog-only consumer that polls existing eligible index jobs and dispatches only their exact UUIDs without consuming article work or model quota.",
+  "plan_ref": "docs/superpowers/plans/2026-11-06-catalog-index-consumer.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/operations/catalog-index-worker.md",
+    "docs/agents/pre-implementation-gate.md"
+  ],
+  "todo": [
+    "Implement catalog-only eligible UUID selection and serial exact-job dispatch to the existing lifecycle worker with model_client=None, two-second idle polling, --once and SIGTERM stop between jobs; never dispatch an unfiltered job.",
+    "Prove selection, due/expired/exhausted handling, exact fencing and article/model non-interference with focused unit and real PostgreSQL17 catalog tests; run relevant existing checks and required CI.",
+    "Add an initially inert preview service template and minimal operator documentation using the existing pinned image, immutable source, least-privilege DB/S3/source environment and existing catalog persistence/lease behavior.",
+    "Commit and independently review exact code/test/unit evidence, synchronize Issue186/Project8 and operator outcome; require a separate exact-source runtime gate before install/start or live catalog enumeration."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-06T22:04:00.822987+00:00"
+}

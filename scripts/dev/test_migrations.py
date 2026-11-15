@@ -69,6 +69,7 @@ class MigrationPlanTests(unittest.TestCase):
                 "039_production_identity_sessions.sql",
                 "040_workshop_commerce.sql",
                 "041_article_source_projection_v2.sql",
+                "042_catalog_selector_rows.sql",
             ],
         )
 
@@ -80,7 +81,7 @@ class MigrationPlanTests(unittest.TestCase):
             self.assertIn(expected, text)
         self.assertNotIn("auth_login_transactions", text)
         driver = (ROOT / "scripts/dev/migrate_sql.sh").read_text()
-        self.assertEqual(driver.count("036_*|037_*|038_*|039_*|040_*|041_*"), 4)
+        self.assertEqual(driver.count("036_*|037_*|038_*|039_*|040_*|041_*|042_*"), 4)
         self.assertNotIn("036_*|037_*|038_*)", driver)
         for table in ("customer_accounts", "auth_sessions"):
             self.assertIn("'" + table + "'", driver)

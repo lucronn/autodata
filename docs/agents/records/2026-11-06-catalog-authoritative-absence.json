@@ -1,0 +1,24 @@
+{
+  "goal": "Finish a merged Workshop selector when a complete bank parent catalog proves the requested make or model is absent, retaining the other bank rows and authentic provenance",
+  "plan_ref": "docs/superpowers/plans/2026-11-06-catalog-authoritative-absence.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/verification/2026-11-06-catalog-authoritative-absence.md"
+  ],
+  "todo": [
+    "Write failing client tests for complete parent absence and retain validated proof pages while incomplete, ambiguous and error parents remain failures.",
+    "Write failing merge tests for Bankone rows plus Banktwo proven absence with source-derived provenance and no synthetic child envelope.",
+    "Implement a typed parent-proof absence outcome and convert it to an empty completed provider contribution only at the source catalog provider boundary.",
+    "Run focused and full ingestion tests, required PR CI and bounded public 2027 Ford canary without changing article access or checkout."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-07T03:19:38.444420Z",
+  "tracking_sync": {
+    "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6701558285",
+    "project_field": "Catalog absence completion reference",
+    "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2Bzho6fh8",
+    "project_item": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "readback_exact": true
+  }
+}

@@ -138,7 +138,7 @@ def _complete(cur, lease, scope, code=None):
         (scope["scope_key"], scope["provider_slug"], scope["generation"]),
     )
     cur.execute(
-        "UPDATE source_fetch_jobs SET status='completed',phase='completed',lease_owner=NULL,lease_expires_at=NULL,heartbeat_at=NULL,retryable=false,updated_at=clock_timestamp() WHERE source_fetch_job_id=%s",
+        "UPDATE source_fetch_jobs SET status='completed',phase='completed',lease_owner=NULL,lease_expires_at=NULL,heartbeat_at=NULL,retryable=false,error_code=NULL,next_attempt_at=NULL,updated_at=clock_timestamp() WHERE source_fetch_job_id=%s",
         (lease.job_id,),
     )
 

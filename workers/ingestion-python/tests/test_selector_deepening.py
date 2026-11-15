@@ -134,7 +134,8 @@ def test_deadline_and_remaining_transport_timeout(clock):
     client = Client(clock, lambda scope, n: page(scope, complete=False, cursor=str(n)))
     with pytest.raises(catalog._SelectorDeepeningStopped):
         catalog._SourceCatalogProvider(client, deepening_control=budget).resolve_catalog(REQUEST)
-    assert client.calls == [(118, {"timeout": 2})]
+    assert [(started, kwargs["timeout"]) for started, kwargs in client.calls] == [(118, 2)]
+    assert client.calls[0][1]["before_additional_request"] == budget.before_request
     assert clock.now == 120
 
 

@@ -26,7 +26,7 @@ class BundleTests(unittest.TestCase):
         self.assertIn('scripts/dev/migrate_sql.sh', names)
         self.assertIn('infra/deploy/gce/host-bootstrap-roles.sql', names)
         self.assertFalse(any('/test_' in name or name.endswith('host.json') for name in names))
-        self.assertEqual(len([name for name in names if name.startswith('db/migrations/')]), 41)
+        self.assertEqual(len([name for name in names if name.startswith('db/migrations/')]), 42)
 
     def test_wrong_source_and_dirty_tree_rejected_before_output(self):
         builder = load('build_host_bundle')

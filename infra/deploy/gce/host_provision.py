@@ -218,7 +218,7 @@ def validate_inventory(root,value,sha,pins=None):
             if relative != 'inventory.json': actual.append(relative)
     require(sorted(actual) == paths)
     required = {'opt/autodata/bin/'+name for name in ('runtime-check.py','host_activation.py','host_install.py','host_provision.py','host_prepare_release.py','host-bootstrap-roles.sql','release.schema.json')}
-    require(required <= set(paths) and len([name for name in paths if '/db/migrations/' in name]) == 41)
+    require(required <= set(paths) and len([name for name in paths if '/db/migrations/' in name]) == 42)
     return entries
 
 def load_module(path,name):

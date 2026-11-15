@@ -199,6 +199,31 @@ def test_document_figure_queue_does_not_duplicate_table_images():
     assert validate_ordered_document(document) == []
 
 
+def test_table_row_image_is_not_appended_again():
+    article = {
+        "article_id": "table-row-image-article",
+        "images": [
+            {"image_id": "row-image", "storage_key": "media/row-image"},
+            {"image_id": "unattached-image", "storage_key": "media/unattached-image"},
+        ],
+    }
+    document = build_ordered_document(
+        article,
+        [{
+            "kind": "table",
+            "rows": [{
+                "cells": ["Bolt", "30 Nm"],
+                "images": [{"image_id": "row-image", "storage_key": "media/row-image"}],
+            }],
+        }],
+    )
+
+    assert validate_ordered_document(document) == []
+    assert [block["type"] for block in document["blocks"]] == ["table", "image"]
+    assert [image["image_id"] for image in document["blocks"][0]["images"]] == ["row-image"]
+    assert document["blocks"][1]["image_id"] == "unattached-image"
+
+
 def test_table_cell_preserves_direct_images():
     article = {"article_id": "test-table-direct-img"}
     document = build_ordered_document(
@@ -1218,6 +1243,59 @@ def test_step_block_aggregates_instruction_images_and_deduplicates():
     assert len(step["images"]) == 2
     assert step["images"][0]["image_id"] == "timing-cover-bolts"
     assert step["images"][1]["image_id"] == "bracket-clip"
+
+
+def test_description_only_step_preserves_step_description():
+    document = build_ordered_document(
+        {"article_id": "step-description"},
+        [{"kind": "step", "number": 1, "description": "Inspect the ground strap."}],
+    )
+
+    assert validate_ordered_document(document) == []
+    assert len(document["blocks"]) == 1
+    assert document["blocks"][0]["type"] == "step"
+    assert document["blocks"][0]["text"] == "Inspect the ground strap."
+
+
+def test_description_only_step_preserves_instruction_item_description():
+    document = build_ordered_document(
+        {"article_id": "instruction-description"},
+        [{"kind": "step", "number": 2, "instructions": [{"description": "Tighten the ground strap nut."}]}],
+    )
+
+    assert validate_ordered_document(document) == []
+    assert len(document["blocks"]) == 1
+    assert document["blocks"][0]["type"] == "step"
+    assert document["blocks"][0]["text"] == "Tighten the ground strap nut."
+
+
+def test_step_description_and_instructions_are_both_visible():
+    document = build_ordered_document(
+        {"article_id": "description-and-instructions"},
+        [{
+            "kind": "step",
+            "number": 1,
+            "description": "Inspect mounting bolt.",
+            "instructions": [{"text": "Torque bolt to 12 Nm."}],
+        }],
+    )
+
+    assert validate_ordered_document(document) == []
+    assert document["blocks"][0]["text"] == "Inspect mounting bolt. Torque bolt to 12 Nm."
+
+
+def test_step_instruction_whitespace_text_uses_description():
+    document = build_ordered_document(
+        {"article_id": "whitespace-instruction"},
+        [{
+            "kind": "step",
+            "number": 2,
+            "instructions": [{"text": "   ", "description": "Check ground strap."}],
+        }],
+    )
+
+    assert validate_ordered_document(document) == []
+    assert document["blocks"][0]["text"] == "Check ground strap."
 
 
 def test_table_block_aggregates_row_images_and_deduplicates():

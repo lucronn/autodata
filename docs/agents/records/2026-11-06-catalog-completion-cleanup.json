@@ -1,0 +1,18 @@
+{
+  "goal": "Clear stale catalog job error_code and next_attempt_at on successful fenced completion, preserving retry history and article isolation; make no production database or runtime changes.",
+  "plan_ref": "docs/superpowers/plans/2026-11-06-catalog-completion-cleanup.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/verification/2026-11-06-catalog-completion-cleanup.md",
+    "docs/agents/pre-implementation-gate.md"
+  ],
+  "todo": [
+    "Add a PG-backed regression exercising a retryable catalog failure followed by ordinary due reclaim and successful completion; demonstrate stale error and retry scheduling fail the expected clean completion assertions.",
+    "Change only catalog_coverage._complete completed-job UPDATE to set error_code=NULL and next_attempt_at=NULL while preserving lease/generation fencing, retry count/checkpoints and existing successful scope semantics.",
+    "Verify completed job status/phase, null error/schedule/leases, retryable=false, persisted bound page/descriptors and retained retry history; run focused catalog coverage and catalog-only worker tests including article non-interference.",
+    "Commit/push the code and regression with validation evidence for review; preserve all live jobs, receipts and stopped services without deployment, database cleanup or new runtime authority."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-06T22:50:09.319168+00:00"
+}

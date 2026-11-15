@@ -1,0 +1,16 @@
+{
+  "goal": "Record the failing stage of real Workshop selector ingestion ensure HTTP 502 without exposing provider details or changing catalog behavior.",
+  "plan_ref": "docs/superpowers/plans/2026-11-12-workshop-selector-ensure-diagnostics.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/401",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/verification/2026-11-12-workshop-selector-ensure-diagnostics.md"
+  ],
+  "todo": [
+    "Add red-first tests for safe resolution and durable coverage failure stage logs without secret-bearing exception text.",
+    "Log only fixed selector scope, fixed stage, and exception class while preserving the original exception and HTTP/completeness behavior.",
+    "Run focused and full ingestion verification, independent exact-head review, current CI, and live protection before integration; do not deploy production."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-12T07:44:12Z"
+}

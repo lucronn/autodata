@@ -1,0 +1,33 @@
+{
+  "goal": "Integrate the empty local Workshop M1 milestone on protected #422 source with purchases and external access disabled",
+  "plan_ref": "docs/superpowers/plans/2026-11-15-workshop-local-m1-protected-integration.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/398",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/operations/workshop-local-empty-runtime.md"
+  ],
+  "todo": [
+    "Copy exact five reviewed Compose/admission/forwarder implementation and test blobs after checkpoint preflight",
+    "Run focused checks and strict CI at the exact integrated head; hold merge for root",
+    "Record source/tree/blob and CI evidence; keep Issue398 open for real-data/payment acceptance"
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-15T02:28:01.697993+00:00",
+  "source_base_sha": "5981b97f187364e54737919fd8cdb49e7566d981",
+  "source_base_tree": "b3f321d0263e12da2d5c54f136c9ffcee155e1d1",
+  "implementation_allowlist": [
+    "infra/compose/compose.workshop-local-empty.yaml",
+    "scripts/dev/workshop_local_admission.py",
+    "scripts/dev/test_workshop_local_admission.py",
+    "scripts/dev/workshop_local_forwarder.py",
+    "scripts/dev/test_workshop_local_forwarder.py",
+    "docs/operations/workshop-local-empty-runtime.md",
+    "docs/verification/2026-11-15-workshop-local-empty-runtime.md"
+  ],
+  "tracking_sync": {
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhH730A",
+    "project_status": "In Progress",
+    "readback_verified": true,
+    "issue_body_sha256": "691b5c17bfac7f6e5df16d977b20648af12cfe67110280f293562030214c52e9"
+  }
+}

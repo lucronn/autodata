@@ -1,0 +1,33 @@
+{
+  "goal": "Integrate the empty local Workshop M1 milestone on protected #425 source with all five reviewed implementation blobs unchanged",
+  "plan_ref": "docs/superpowers/plans/2026-11-15-workshop-local-m1-protected425-integration.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/398",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/operations/workshop-local-empty-runtime.md"
+  ],
+  "todo": [
+    "Merge exact protected #425 source after this docs checkpoint passes preflight, preserving all five M1 implementation blobs",
+    "Run focused tests and strict CI at the exact merged feature head; hold merge for root",
+    "Record integrated source/tree/blob and CI evidence; keep Issue398 open and historical94d3 runtime untouched"
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-15T02:53:50.300323+00:00",
+  "source_base_sha": "083f1a502a0f18d371793df59d3310408059d44e",
+  "source_base_tree": "2c6a681b31c0031743f5580825949ad192e87f04",
+  "implementation_allowlist": [
+    "infra/compose/compose.workshop-local-empty.yaml",
+    "scripts/dev/workshop_local_admission.py",
+    "scripts/dev/test_workshop_local_admission.py",
+    "scripts/dev/workshop_local_forwarder.py",
+    "scripts/dev/test_workshop_local_forwarder.py",
+    "docs/operations/workshop-local-empty-runtime.md",
+    "docs/verification/2026-11-15-workshop-local-empty-runtime.md"
+  ],
+  "tracking_sync": {
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhH730A",
+    "project_status": "In Progress",
+    "readback_verified": true,
+    "issue_body_sha256": "0a8222c917442856187f10ab6b0c3320b5c06b03f8698c4954a07ae5e915d531"
+  }
+}

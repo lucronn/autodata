@@ -1,0 +1,21 @@
+{
+  "goal": "Reconcile AutoData's single-maintainer Workshop PR review rule with exact-head independent AI review and keep the hourly Workshop task making safe progress.",
+  "plan_ref": "docs/superpowers/plans/2026-11-10-workshop-autonomous-review-policy.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/385",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/github/operating-model.md",
+    "docs/github/project-bootstrap.md",
+    "docs/agents/autonomous-development-system.md",
+    "docs/verification/2026-11-10-workshop-autonomous-review-policy.md"
+  ],
+  "todo": [
+    "Synchronize the plan, verification, Issue 385, Project 8, and exact-base preflight record.",
+    "Clarify single-maintainer independent AI review without changing CODEOWNERS or the eight-gate controller.",
+    "Verify and independently review the policy candidate; merge only with required CI and protection checks.",
+    "Update the hourly Codex automation to pursue the next safe Workshop app task instead of unchanged PR polling.",
+    "Recheck and integrate current Workshop PRs when gates pass, then reconcile Issue and Project records."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-10T09:59:45Z"
+}

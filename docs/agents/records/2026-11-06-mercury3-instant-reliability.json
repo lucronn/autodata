@@ -1,0 +1,18 @@
+{
+  "goal": "Make Mercury3 article rewriting use the documented instant reasoning mode within the existing one-attempt and 32768-token limits, without replaying spent jobs.",
+  "plan_ref": "docs/superpowers/plans/2026-11-06-mercury3-instant-reliability.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/verification/2026-11-06-mercury3-instant-reliability.md",
+    "docs/agents/pre-implementation-gate.md"
+  ],
+  "todo": [
+    "Add reasoning_effort=instant only to Mercury3/current-version request payloads; preserve legacy model payloads, JSON response format, temperature, output cap, timeout and existing failure guards.",
+    "Add transport-boundary tests proving explicit Mercury3 instant reasoning, unchanged legacy payloads and fail-closed length responses with no automatic retry; run focused and required repository checks.",
+    "Document exact failure evidence and provider contract, preserve complete_rewrite metadata semantics and all historical jobs/reports; commit and independently review the minimal change before merge.",
+    "Keep worker disabled and two spent jobs/reservations unchanged; require separate synchronized rollout and fresh authentic unseen Banktwo identity proof after reviewed CI/merge, with no retry/reset/replay or new budget."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-06T21:54:29.275545+00:00"
+}

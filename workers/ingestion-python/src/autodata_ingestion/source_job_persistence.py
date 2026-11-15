@@ -190,8 +190,9 @@ def _claim_automatic_resume(cur, worker_id, job_id=None):
     from .article_lifecycle_store import automatic_candidate_validation
     job = cur.execute("""SELECT j.* FROM source_fetch_jobs j
         JOIN canonical_article_revisions r ON r.transformation_key=j.transformation_key
-        JOIN canonical_article_rewrite_attempts a ON a.canonical_article_revision_id=r.canonical_article_revision_id AND a.status='succeeded'
         WHERE j.job_kind='article' AND NOT (j.checkpoint ? 'bankone_exact_recovery') AND j.rewrite_profile_version='full-prose-auto-v1' AND (%s::uuid IS NULL OR j.source_fetch_job_id=%s)
+          AND (EXISTS (SELECT 1 FROM canonical_article_rewrite_attempts a WHERE a.canonical_article_revision_id=r.canonical_article_revision_id AND a.status='succeeded')
+            OR r.model_metadata->>'transformation_method'='source-preserving-zero-slot-v1')
           AND r.status IN ('building','validated') AND j.checkpoint->>'rewrite_error_code' IS NULL
           AND j.checkpoint->>'candidate_revision_id'=r.canonical_article_revision_id::text
           AND ((j.status='pending' AND COALESCE(j.next_attempt_at,'-infinity'::timestamptz)<=clock_timestamp())

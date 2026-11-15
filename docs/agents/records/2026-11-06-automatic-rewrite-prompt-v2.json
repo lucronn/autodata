@@ -12,10 +12,12 @@
     "Accept only exact server-reconstructed v1/v2 prompt hashes at saved automatic-candidate validation; preserve all other source/attempt/model/response bindings.",
     "Run focused prompt/hash/integrity regressions and actual PostgreSQL lifecycle/restart coverage; push validated milestones for independent review and required CI.",
     "After coordinator dispatch, use one fresh prose-bearing Bankone identity and at most one persisted provider attempt; preserve frozen-job counters and source fallback on failure.",
-    "On publication prove all eligible prose changed, protected content retained and ten warm read/ensure pairs plus fresh-process reuse with measured zero source/media/model/schedule calls; synchronize sanitized evidence."
+    "On publication prove all eligible prose changed, protected content retained and ten warm read/ensure pairs plus fresh-process reuse with measured zero source/media/model/schedule calls; synchronize sanitized evidence.",
+    "Stage and independently review the exact private one-shot script for fresh Bankone candidate 8cc70d03-6794-577c-aba4-bd555996d0c9 before coordinator dispatch; preserve source-only park, exact fences, one persisted model attempt, backup/fingerprints and warm proof.",
+    "Independently review and apply one guarded exact-row max_attempts3-to1 reduction immediately after fresh ensure and before source-only run, preserving initial retry_count0; verify parked count1, zero model attempts and existing resume/lease-expiry semantics enforce one provider attempt."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-06T20:14:07.383578+00:00",
+  "updated_at": "2026-11-06T20:46:32.950816+00:00",
   "tracking_sync": {
     "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6694453449",
     "project_item": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
@@ -26,5 +28,67 @@
     "previous_issue_body_sha256": "927b46ef47b1dbf5b117273e3d3f5c0e6d9f23b722a5245869eb5323b96c4f25",
     "previous_project_fields_unchanged": true,
     "preserved_outcome_commit": "5efb5001cf89b3565ab41916f9cb85efeb831017"
+  },
+  "runtime_amendment": {
+    "candidate_article_id": "8cc70d03-6794-577c-aba4-bd555996d0c9",
+    "scope": "private reviewed one-shot orchestration using existing functions only",
+    "script_review_before_execution": true,
+    "max_model_attempts": 1,
+    "frozen_jobs_untouched": true,
+    "no_code_or_validator_changes": true,
+    "tracking_sync": {
+      "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6694563841",
+      "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2Bzho4qOI",
+      "readback_exact": true,
+      "previous_issue_body_sha256": "927b46ef47b1dbf5b117273e3d3f5c0e6d9f23b722a5245869eb5323b96c4f25",
+      "previous_issue_body_unchanged": true,
+      "other_project_fields_unchanged": true
+    },
+    "durable_attempt_cap": {
+      "candidate_article_id": "8cc70d03-6794-577c-aba4-bd555996d0c9",
+      "existing_max_attempts": 3,
+      "new_max_attempts": 1,
+      "unchanged_retry_count": 0,
+      "timing": "immediately after exact fresh ensure, before source-only run",
+      "exact_row_and_current_article_fences_required": true,
+      "runtime_executed": false,
+      "required_request_generation": 0,
+      "required_initial_status": "pending",
+      "required_source_revision": null,
+      "tracking_sync": {
+        "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6694696323",
+        "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2Bzho4qOI",
+        "readback_exact": true,
+        "previous_issue_body_sha256": "927b46ef47b1dbf5b117273e3d3f5c0e6d9f23b722a5245869eb5323b96c4f25",
+        "previous_issue_body_unchanged": true,
+        "other_project_fields_unchanged": true
+      }
+    }
+  },
+  "verified_outcome": {
+    "implementation_sha": "530d4cce9934336a66bf11940212b895c6c01728",
+    "merge_sha": "b3618fb6e68f1734ef029096748e30e655451a26",
+    "runtime_gate_sha": "60fdc962a758ffc2b74c8786c652d91a939d4d62",
+    "canonical_article_id": "8cc70d03-6794-577c-aba4-bd555996d0c9",
+    "canonical_revision_id": "4b09c34b-46e4-4aee-a764-e7cba856583a",
+    "provider_http_calls": 1,
+    "ordinary_changed": 9,
+    "ordinary_retained": 0,
+    "warm_pairs": 10,
+    "fresh_process_pairs": 1,
+    "reuse_calls": {
+      "source": 0,
+      "media": 0,
+      "model": 0,
+      "scheduling": 0,
+      "http": 0
+    },
+    "review_status": "UNREVIEWED",
+    "frozen_and_unrelated_fingerprints_unchanged": true,
+    "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6695112064",
+    "tracking_readback_exact": true,
+    "previous_issue_body_sha256": "927b46ef47b1dbf5b117273e3d3f5c0e6d9f23b722a5245869eb5323b96c4f25",
+    "previous_issue_body_unchanged": true,
+    "other_project_fields_unchanged": true
   }
 }

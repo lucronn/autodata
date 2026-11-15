@@ -45,6 +45,70 @@ def test_provider_bound_real_s3_capture_and_publication(runtime,provider):
     finally:response.close();response.release_conn()
 
 
+def test_svg_original_and_png_derivative_survive_pg_s3_current_projection(runtime):
+    """Real isolated PG/S3, normal capture/store, synthetic provider bytes only."""
+    from hashlib import sha256
+    from io import BytesIO
+    import base64
+    import json
+    from PIL import Image
+    from autodata_ingestion.article_lifecycle_store import store_captured_source
+    from autodata_ingestion.source_job_persistence import claim_source_job
+
+    raster = BytesIO()
+    Image.new("RGB", (40, 20), "red").save(raster, format="PNG")
+    uri = "data:image/png;base64," + base64.b64encode(raster.getvalue()).decode()
+    original = ('<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" '
+                '"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">'
+                '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20">'
+                '<image width="40" height="20" href="' + uri + '"/></svg>').encode()
+    runtime.servers["bankone"].body(
+        b'<p>Remove the pump.</p><img data-resource-ref="svg-figure">',
+        assets=["svg-figure"],
+    )
+    runtime.servers["bankone"].body(original, "image/svg+xml", ref="svg-figure", kind="asset")
+    runtime.ensure()
+    lease = claim_source_job(runtime.repo, worker_id=uuid4())
+    assert lease.canonical_article_id == runtime.article_id
+    captured = projection_capture(runtime, lease)
+    revision = store_captured_source(runtime.repo, lease, captured)
+    current = runtime.read_current()
+    assert current["source_revision_id"] == revision
+    assert current["availability"] == "available"
+    assert current["content_origin"] == "source"
+    with runtime.repo.connect() as conn:
+        stored = conn.execute("SELECT resource_manifest FROM canonical_article_source_revisions WHERE source_revision_id=%s", (revision,)).fetchone()
+        observation = conn.execute("SELECT resource_provenance FROM canonical_article_source_observations WHERE source_revision_id=%s", (revision,)).fetchone()
+        manifest = stored["resource_manifest"]
+        source = next(r for r in observation["resource_provenance"] if r["role"] == "asset_original")
+        derived = next(r for r in observation["resource_provenance"] if r["role"] == "asset")
+        snapshots = conn.execute("SELECT content_sha256,object_key FROM source_snapshots WHERE content_sha256 IN (%s,%s)", (source["sha256"], derived["sha256"])).fetchall()
+    assert source["sha256"] == sha256(original).hexdigest()
+    assert derived["derived_from_sha256"] == source["sha256"]
+    assert next(r for r in manifest if r["role"] == "asset")["derived_from_sha256"] == source["sha256"]
+    assert "2.9.1" in derived["derivation_version"]
+    assert {r["object_key"] for r in snapshots} == {source["object_key"], derived["object_key"]}
+    image = current["images"][0]
+    assert image["status"] == "available" and image["media_type"] == "image/png"
+    assert image["storage_key"] == derived["object_key"]
+    public_projection = json.dumps({"images": current["images"], "document": current["document"]})
+    assert source["object_key"] not in public_projection
+    assert "image/svg+xml" not in public_projection and "<svg" not in public_projection
+
+    def read_object(key):
+        response = runtime.objects.client.get_object(runtime.bucket, key)
+        try:
+            return response.read()
+        finally:
+            response.close(); response.release_conn()
+
+    assert read_object(source["object_key"]) == original
+    assert runtime.objects.client.stat_object(runtime.bucket, image["storage_key"]).content_type == "image/png"
+    with Image.open(BytesIO(read_object(image["storage_key"]))) as decoded:
+        assert decoded.format == "PNG" and decoded.size == (40, 20)
+        assert decoded.convert("RGB").getpixel((10, 10)) == (255, 0, 0)
+
+
 @pytest.mark.parametrize("point,expected_calls",[("before_source_commit",2),("after_source_commit",1),("after_model_dispatch",1),("after_model_result_commit",1),("before_publication",1),("inside_publication",1)])
 def test_process_death_resumes_durable_stage(runtime,point,expected_calls):
     runtime.ensure();runtime.pause(point);runtime.start_workers(1);runtime.await_barrier()
@@ -938,12 +1002,12 @@ def test_automatic_saved_candidate_rejects_tampered_bound_evidence(runtime, muta
 
 # The rollout worker never invokes the generic queue poller. These tests run
 # against isolated PostgreSQL and real fixture HTTP/S3, never application data.
-def new_article_rollout(repo, tmp_path):
+def new_article_rollout(repo, tmp_path, *, continuous=False):
     import os
     from autodata_ingestion.new_article_worker import RolloutState, database_now
     directory = tmp_path / 'rollout'
     directory.mkdir(mode=0o700)
-    state = RolloutState(directory, source_sha='a' * 40, owner_uid=os.getuid())
+    state = RolloutState(directory, source_sha='a' * 40, owner_uid=os.getuid(), continuous=continuous)
     state.initialize(database_now(repo)); state.set_enabled(True)
     return state
 
@@ -960,12 +1024,13 @@ def new_pristine_article(repo, vehicle, *, provider='bankone', source_vehicle_re
     return article, job
 
 
-def test_new_article_worker_pristine_only_and_historical_rows_unchanged(fresh_database, tmp_path):
+@pytest.mark.parametrize('continuous',[False,True])
+def test_new_article_worker_pristine_only_and_historical_rows_unchanged(fresh_database, tmp_path, continuous):
     from lifecycle_support import seed_vehicle
     from autodata_ingestion.new_article_worker import reserve_next_job
     repo = fresh_database(); vehicle = seed_vehicle(repo)
     old_article, old_job = new_pristine_article(repo, vehicle)
-    with new_article_rollout(repo, tmp_path) as state:
+    with new_article_rollout(repo, tmp_path, continuous=continuous) as state:
         cases = [
             ('old_article', "UPDATE canonical_articles SET created_at='2000-01-01' WHERE canonical_article_id=%s", 'article'),
             ('old_job', "UPDATE source_fetch_jobs SET created_at='2000-01-01' WHERE source_fetch_job_id=%s", 'job'),
@@ -986,7 +1051,8 @@ def test_new_article_worker_pristine_only_and_historical_rows_unchanged(fresh_da
             ('parked', "UPDATE source_fetch_jobs SET status='failed',error_code='MODEL_NOT_CONFIGURED' WHERE source_fetch_job_id=%s", 'job'),
             ('processing', "UPDATE source_fetch_jobs SET status='processing',lease_owner=gen_random_uuid(),lease_token=1,heartbeat_at=clock_timestamp(),lease_expires_at=clock_timestamp()-interval '1 second' WHERE source_fetch_job_id=%s", 'job'),
         ]
-        for _, sql, owner in cases:
+        for name, sql, owner in cases:
+            if continuous and name == 'old_article':continue
             article, job = new_pristine_article(repo, vehicle)
             with repo.connect() as conn: conn.execute(sql, (article if owner == 'article' else job,))
         # Attempt evidence alone is disqualifying, even if someone reset job counters.
@@ -998,6 +1064,9 @@ def test_new_article_worker_pristine_only_and_historical_rows_unchanged(fresh_da
             before_articles = conn.execute('SELECT * FROM canonical_articles ORDER BY canonical_article_id').fetchall()
             before_attempts = conn.execute('SELECT * FROM canonical_article_rewrite_attempts').fetchall()
         admitted = [new_pristine_article(repo, vehicle, provider=p)[1] for p in ('bankone','banktwo')]
+        if continuous:
+            with repo.connect() as conn:
+                conn.execute("UPDATE canonical_articles SET created_at='2000-01-01' WHERE current_job_id=ANY(%s)",(admitted,))
         assert [reserve_next_job(repo,state),reserve_next_job(repo,state)] == admitted
         assert reserve_next_job(repo,state) is None
         with repo.connect() as conn:
@@ -1007,25 +1076,28 @@ def test_new_article_worker_pristine_only_and_historical_rows_unchanged(fresh_da
             assert all(row['max_attempts']==1 and row['retry_count']==0 for row in conn.execute('SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=ANY(%s)',(admitted,)).fetchall())
 
 
-def prepare_new_article_runtime(runtime, tmp_path, monkeypatch):
+def prepare_new_article_runtime(runtime, tmp_path, monkeypatch, *, continuous=False):
     from autodata_ingestion.new_article_worker import configured_model
     automatic_runtime(runtime,'bankone')
-    state = new_article_rollout(runtime.repo,tmp_path)
+    state = new_article_rollout(runtime.repo,tmp_path,continuous=continuous)
     runtime.stack.callback(state.__exit__,None,None,None)
     with runtime.repo.connect() as conn:
         original = conn.execute('SELECT * FROM canonical_articles WHERE canonical_article_id=%s',(runtime.article_id,)).fetchone()
     article, job = new_pristine_article(runtime.repo,runtime.vehicle,
         source_vehicle_ref=original['source_vehicle_ref'],descriptor=original['descriptor'],snapshot=original['descriptor_source_snapshot_id'])
     runtime.article_id = article; runtime.articles['bankone'] = article
+    if continuous:
+        with runtime.repo.connect() as conn:conn.execute("UPDATE canonical_articles SET created_at='2000-01-01' WHERE canonical_article_id=%s",(article,))
     for name,value in {**runtime.env,'INCEPTION_MODEL':'mercury-3','INCEPTION_MAX_TOKENS':'32768','INCEPTION_API_TIMEOUT_SECONDS':'60'}.items():
         monkeypatch.setenv(name,value)
     return state, job, configured_model()
 
 
-def test_new_article_worker_commits_cap_before_exact_claim_and_publishes_unreviewed(runtime,tmp_path,monkeypatch):
+@pytest.mark.parametrize('continuous',[False,True])
+def test_new_article_worker_commits_cap_before_exact_claim_and_publishes_unreviewed(runtime,tmp_path,monkeypatch,continuous):
     from autodata_ingestion import article_lifecycle
     from autodata_ingestion.new_article_worker import dispatch_next
-    state, job, model = prepare_new_article_runtime(runtime,tmp_path,monkeypatch)
+    state, job, model = prepare_new_article_runtime(runtime,tmp_path,monkeypatch,continuous=continuous)
     original = article_lifecycle.run_article_worker_once
     calls = []
     def checked(repo, **kwargs):
@@ -1189,3 +1261,197 @@ def test_new_article_worker_stop_after_reservation_prevents_exact_dispatch(runti
     with runtime.repo.connect() as conn:
         row=conn.execute('SELECT status,retry_count,max_attempts FROM source_fetch_jobs WHERE source_fetch_job_id=%s',(job,)).fetchone()
     assert row=={'status':'pending','retry_count':0,'max_attempts':1}
+
+
+class NoModelCalls:
+    def complete_json(self, prompt):
+        raise AssertionError('zero-slot server method must not call a model')
+
+
+def server_zero_slot_runtime(runtime, provider='bankone'):
+    ensure = automatic_runtime(runtime, provider)
+    runtime.servers[provider].body(b'<maintenance_schedule title="Cover references"><operation id="OP-1" name="Inspection"><component id="CP-1" name="Cover"><notes>Source inspection reference.</notes></component></operation></maintenance_schedule>', media_type='application/xml')
+    job = ensure().job_id
+    with runtime.repo.connect() as conn:
+        conn.execute('UPDATE source_fetch_jobs SET max_attempts=1 WHERE source_fetch_job_id=%s', (job,))
+    return job
+
+
+@pytest.mark.parametrize('provider', ['bankone', 'banktwo'])
+@pytest.mark.parametrize('missing_model', [False, True])
+def test_server_zero_slot_publishes_without_model_or_attempt(runtime, provider, missing_model):
+    from autodata_ingestion.article_lifecycle import run_article_worker_once
+    from autodata_ingestion import procedure_rewrite_auto as auto
+    job = server_zero_slot_runtime(runtime, provider)
+    assert run_article_worker_once(runtime.repo, worker_id=uuid4(), registry=runtime.registry,
+        object_store=runtime.objects, model_client=None if missing_model else NoModelCalls(), job_id=job)
+    state = runtime.read_current()
+    assert state['processing_state']=='completed' and state['review_status']=='UNREVIEWED'
+    with runtime.repo.connect() as conn:
+        row = conn.execute('SELECT * FROM canonical_article_revisions WHERE canonical_article_revision_id=%s', (state['canonical_revision_id'],)).fetchone()
+        assert conn.execute('SELECT count(*) AS n FROM canonical_article_rewrite_attempts').fetchone()['n']==0
+        assert conn.execute('SELECT count(*) AS n FROM canonical_article_reviews').fetchone()['n']==0
+        assert conn.execute('SELECT count(*) AS n FROM publication_events').fetchone()['n']==1
+    expected, metadata = auto.build_source_preserving_candidate(row['normalized_source_document'])
+    assert row['canonical_document']==expected and row['model_metadata']==metadata
+    assert row['validation_report']['transformation_method']==auto.SOURCE_PRESERVING_METHOD
+    assert row['validation_report']['model_calls']==0 and row['validation_report']['complete_rewrite'] is False
+    assert runtime.counters()=={'source':1,'asset':0,'model':0,'schedule':1}
+    assert not run_article_worker_once(runtime.repo, worker_id=uuid4(), registry=runtime.registry,
+        object_store=runtime.objects, model_client=NoModelCalls(), job_id=job)
+
+
+@pytest.mark.parametrize('point', ['after_source_preserving_candidate_commit', 'inside_publication'])
+def test_server_zero_slot_cap_one_crash_resume_exactly_once(runtime, point):
+    job = server_zero_slot_runtime(runtime)
+    runtime.pause(point);runtime.start_workers(1);runtime.await_barrier()
+    runtime.kill_worker();runtime.expire_lease(job);runtime.barrier=None
+    runtime.start_workers(2);revision=runtime.await_publication();runtime.stop_workers()
+    with runtime.repo.connect() as conn:
+        saved=conn.execute('SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s',(job,)).fetchone()
+        assert saved['status']=='completed' and saved['max_attempts']==saved['retry_count']==1
+        assert saved['lease_token']==2
+        assert conn.execute('SELECT count(*) AS n FROM canonical_article_rewrite_attempts').fetchone()['n']==0
+        assert conn.execute('SELECT count(*) AS n FROM canonical_article_revisions').fetchone()['n']==1
+        assert conn.execute('SELECT count(*) AS n FROM publication_events').fetchone()['n']==1
+    assert runtime.read_current()['canonical_revision_id']==revision
+    assert runtime.counters()=={'source':1,'asset':0,'model':0,'schedule':1}
+
+
+@pytest.mark.parametrize('mutation', ['metadata', 'extra_metadata', 'candidate', 'source_hash', 'source', 'attempt'])
+def test_server_zero_slot_publication_rejects_tampering(runtime, mutation):
+    from psycopg.types.json import Jsonb
+    from autodata_ingestion.article_lifecycle import run_article_job, _live
+    from autodata_ingestion.source_job_persistence import claim_source_job
+    from autodata_ingestion import article_lifecycle_store as store
+    from autodata_ingestion.article_lifecycle_types import digest_json
+    job=server_zero_slot_runtime(runtime)
+    lease=claim_source_job(runtime.repo, worker_id=uuid4(), job_id=job)
+    class Saved(Exception):pass
+    def hook(point):
+        if point=='after_source_preserving_candidate_commit':raise Saved()
+    with pytest.raises(Saved):run_article_job(runtime.repo,lease,registry=runtime.registry,
+        object_store=runtime.objects,model_client=NoModelCalls(),hooks=hook)
+    lease=_live(runtime.repo,lease);candidate=store.load_candidate(runtime.repo,lease)
+    validation=store.validate_saved_candidate(runtime.repo,lease,candidate);assert validation.passed
+    store.store_validation(runtime.repo,lease,validation)
+    with runtime.repo.connect() as conn:
+        if mutation in ('metadata','extra_metadata'):
+            metadata=dict(candidate['model_metadata']);metadata['model_calls' if mutation=='metadata' else 'prompt_hash']=1 if mutation=='metadata' else '0'*64
+            conn.execute('UPDATE canonical_article_revisions SET model_metadata=%s WHERE canonical_article_revision_id=%s',(Jsonb(metadata),candidate['canonical_article_revision_id']))
+        elif mutation=='candidate':
+            changed=deepcopy(candidate['canonical_document']);changed['blocks'][0]['text']='Unsupported-99'
+            conn.execute('UPDATE canonical_article_revisions SET canonical_document=%s,rewrite_result_hash=%s WHERE canonical_article_revision_id=%s',(Jsonb(changed),digest_json(changed),candidate['canonical_article_revision_id']))
+        elif mutation=='source_hash':
+            conn.execute('UPDATE canonical_article_revisions SET normalized_source_hash=%s WHERE canonical_article_revision_id=%s',('0'*64,candidate['canonical_article_revision_id']))
+        elif mutation=='source':
+            changed=deepcopy(candidate['normalized_source_document']);changed['blocks'][0]['text']='Changed heading'
+            conn.execute('UPDATE canonical_article_revisions SET normalized_source_document=%s,normalized_source_hash=%s WHERE canonical_article_revision_id=%s',(Jsonb(changed),digest_json(changed),candidate['canonical_article_revision_id']))
+        else:
+            conn.execute("INSERT INTO canonical_article_rewrite_attempts(rewrite_attempt_id,source_fetch_job_id,lease_token,attempt_number,provider,model,profile_version,prompt_hash,input_hash,status) VALUES (%s,%s,%s,1,'fixture','fixture',%s,%s,%s,'prepared')",(uuid4(),job,lease.token,'full-prose-auto-v1','0'*64,candidate['normalized_source_hash']))
+    with pytest.raises(ValueError):store.publish_article_revision(runtime.repo,lease,candidate['canonical_article_revision_id'])
+    assert runtime.read_current()['content_origin']=='source'
+    with runtime.repo.connect() as conn:assert conn.execute('SELECT count(*) AS n FROM publication_events').fetchone()['n']==0
+    assert runtime.model.calls==0
+
+
+def test_server_zero_slot_without_eligible_heading_keeps_source_and_never_calls_model(runtime):
+    from autodata_ingestion.article_lifecycle import run_article_worker_once
+    job=server_zero_slot_runtime(runtime)
+    runtime.servers['bankone'].body('<maintenance_schedule title="½"><operation id="OP-1" name="½"><component id="CP-1" name="½"><notes>Source note.</notes></component></operation></maintenance_schedule>'.encode(),media_type='application/xml')
+    assert run_article_worker_once(runtime.repo,worker_id=uuid4(),registry=runtime.registry,
+        object_store=runtime.objects,model_client=NoModelCalls(),job_id=job)
+    state=runtime.read_current()
+    assert state['content_origin']=='source' and state['processing_error_code']=='REWRITE_SOURCE_HEADING_REQUIRED'
+    with runtime.repo.connect() as conn:
+        assert conn.execute('SELECT count(*) AS n FROM canonical_article_rewrite_attempts').fetchone()['n']==0
+        assert conn.execute('SELECT count(*) AS n FROM canonical_article_revisions').fetchone()['n']==0
+        assert conn.execute('SELECT count(*) AS n FROM publication_events').fetchone()['n']==0
+    assert runtime.model.calls==0
+
+
+
+def test_new_article_worker_continuous_spent_before_sql_never_replays_after_window(fresh_database,tmp_path,monkeypatch):
+    from contextlib import contextmanager
+    from datetime import timedelta
+    from lifecycle_support import seed_vehicle
+    from autodata_ingestion import new_article_worker as worker
+    repo=fresh_database();vehicle=seed_vehicle(repo)
+    with new_article_rollout(repo,tmp_path,continuous=True) as state:
+        article,job=new_pristine_article(repo,vehicle)
+        original=state.reserve
+        def spent_then_crash(*args,**kwargs):
+            assert original(*args,**kwargs)
+            raise RuntimeError('fixture crash before SQL marker')
+        with monkeypatch.context() as patch:
+            patch.setattr(state,'reserve',spent_then_crash)
+            with pytest.raises(RuntimeError,match='before SQL marker'):worker.reserve_next_job(repo,state)
+        with repo.connect() as conn:
+            before=conn.execute('SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s',(job,)).fetchone()
+            assert before['checkpoint']=={} and before['max_attempts']==3
+        later=worker.database_now(repo)+timedelta(hours=25)
+        class LaterClock:
+            @contextmanager
+            def connect(self):
+                with repo.connect() as conn:
+                    class Connection:
+                        def execute(self,query,*args):
+                            if query=='SELECT clock_timestamp() AS now':
+                                class Clock:
+                                    def fetchone(self):return {'now':later}
+                                return Clock()
+                            return conn.execute(query,*args)
+                    yield Connection()
+        import os
+        with worker.RolloutState(state.directory,source_sha='a'*40,owner_uid=os.getuid(),continuous=True) as reopened:
+            assert worker.reserve_next_job(LaterClock(),reopened) is None
+            _,newjob=new_pristine_article(repo,vehicle)
+            assert worker.reserve_next_job(LaterClock(),reopened)==newjob
+            assert [r['job_id'] for r in reopened.read()['reservations']]==[str(job),str(newjob)]
+        with repo.connect() as conn:
+            assert conn.execute('SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s',(job,)).fetchone()==before
+            assert conn.execute('SELECT count(*) AS n FROM canonical_article_rewrite_attempts').fetchone()['n']==0
+
+
+def test_new_article_worker_continuous_full_quota_never_changes_pending_job(fresh_database,tmp_path):
+    from lifecycle_support import seed_vehicle
+    from autodata_ingestion import new_article_worker as worker
+    repo=fresh_database();vehicle=seed_vehicle(repo)
+    with new_article_rollout(repo,tmp_path,continuous=True) as state:
+        _,job=new_pristine_article(repo,vehicle)
+        now=worker.database_now(repo)
+        for _ in range(10):assert state.reserve(uuid4(),now)
+        with repo.connect() as conn:before=conn.execute('SELECT * FROM source_fetch_jobs ORDER BY source_fetch_job_id').fetchall()
+        assert worker.reserve_next_job(repo,state) is None
+        with repo.connect() as conn:assert conn.execute('SELECT * FROM source_fetch_jobs ORDER BY source_fetch_job_id').fetchall()==before
+        assert str(job) not in {r['job_id'] for r in state.read()['reservations']}
+
+
+def test_new_article_worker_continuous_locked_recheck_rejects_changed_generation(fresh_database,tmp_path):
+    from contextlib import contextmanager
+    from lifecycle_support import seed_vehicle
+    from autodata_ingestion import new_article_worker as worker
+    repo=fresh_database();vehicle=seed_vehicle(repo)
+    with new_article_rollout(repo,tmp_path,continuous=True) as state:
+        article,job=new_pristine_article(repo,vehicle)
+        class ChangedAfterSelection:
+            @contextmanager
+            def connect(self):
+                with repo.connect() as conn:
+                    class Connection:
+                        def execute(self,query,*args):
+                            result=conn.execute(query,*args)
+                            if 'FOR UPDATE OF j,a SKIP LOCKED' in query:
+                                # Change after initial selection under the same real row locks.
+                                row=result.fetchone()
+                                conn.execute('UPDATE canonical_articles SET request_generation=1 WHERE canonical_article_id=%s',(article,))
+                                class Selected:
+                                    def fetchone(self):return row
+                                return Selected()
+                            return result
+                    yield Connection()
+        assert worker.reserve_next_job(ChangedAfterSelection(),state) is None
+        assert state.read()['reservations']==[]
+        with repo.connect() as conn:
+            row=conn.execute('SELECT max_attempts,checkpoint,retry_count FROM source_fetch_jobs WHERE source_fetch_job_id=%s',(job,)).fetchone()
+            assert row=={'max_attempts':3,'checkpoint':{},'retry_count':0}

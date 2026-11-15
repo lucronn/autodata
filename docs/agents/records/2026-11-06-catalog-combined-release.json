@@ -1,0 +1,29 @@
+{
+  "goal": "Deploy the combined connector and sparse-selector fixes with migration 042, restore real dual-bank Workshop makes/models, and preserve protected article and commerce state with purchase disabled",
+  "plan_ref": "docs/superpowers/plans/2026-11-06-catalog-combined-release.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/verification/2026-11-06-catalog-combined-release.md"
+  ],
+  "todo": [
+    "Pin merged PR363 source containing the reviewed PR362 fix; synchronize this goal, plan, canonical verification and four todos with Issue186 and the dedicated Project8 field; commit/push the checkpoint and pass exact-base machine preflight before operational dispatch.",
+    "Freeze the current ingestion/API/continuous-worker identities and private rollback artifacts; gracefully stop the continuous worker, verify quiescence, capture lightweight protected-table counts with purchase disabled.",
+    "Apply the exact shared 042 migration runner, replace ingestion from the combined immutable source while retaining its original container, and replace the Go API with the same-source binary using bounded health checks and exact rollback on failure.",
+    "Run only the bounded 2027/2014/2020 US makes canary, verify configured-bank completeness and durable public results with unchanged protected state, restore the same continuous-worker unit/configuration, and synchronize exact evidence or rollback outcome."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-07T02:36:44.150063Z",
+  "product_source_sha": "27ac83f4b97421db3ef067eee60a12d21b8874d2",
+  "product_tree_sha": "a8500ff151103fbc3b06259c3ea04ba544c129d2",
+  "tracking_sync": {
+    "project_field": "Catalog selector release reference",
+    "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2Bzho6T8c",
+    "project_item": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "issue_comment": "https://github.com/lucronn/autodata/issues/186#issuecomment-6701111042",
+    "readback_exact": true,
+    "readback_utc": "2026-11-07T02:36:44.150063Z",
+    "verified_by": "coordinator saved exact Issue and dedicated Project field readbacks"
+  },
+  "runtime_dispatch_authorized": false
+}

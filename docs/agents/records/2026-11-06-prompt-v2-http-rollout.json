@@ -1,0 +1,136 @@
+{
+  "goal": "Complete one third final-container prompt-v2 HTTP cutover using the unchanged approved payload, exact public probe User-Agent curl/8.0.0, bounded acceptance and exact-original rollback.",
+  "plan_ref": "docs/superpowers/plans/2026-11-06-prompt-v2-http-rollout.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/workshop-readonly-demo.md",
+    "docs/verification/2026-11-06-prompt-v2-http-rollout.md"
+  ],
+  "todo": [
+    "Preserve the second rolled-back attempt and read-only User-Agent diagnosis; verify original3031/canonical readiness/purchase config200/enabledfalse and unchanged source/image/private configuration/passed-shadow proof before a third final creation.",
+    "Create exactly one third final container from the same approved r2 payload, changing only its unique r3 name and exclusive new final-http-r3.cid path; require full stopped-container diff and exact original40-entry environment before stopping original.",
+    "Swap3031 once and use exact User-Agent curl/8.0.0 for canonical public readiness/purchase GETs within the existing30second/10round/30GET acceptance limit; do not use default-UA probes, redirects, alternate identities or article/model/provider/work calls.",
+    "On failed acceptance restore the exact original and verify recovery using the same fixed-header bounded30second polling; retain all rollback/source/failed-attempt evidence and report the exact outcome without any further automatic create/retry or worker/commerce scope."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-06T21:05:53.991718+00:00",
+  "product_source_sha": "b3618fb6e68f1734ef029096748e30e655451a26",
+  "product_source_tree": "b686966c9bb4c01c7d35262c661f8645f9fb9f04",
+  "source_pr_ref": "https://github.com/lucronn/autodata/pull/350",
+  "operation_scope": "HTTP runtime source/configuration substitution only; no implementation edits",
+  "rollback_container_id": "3cefb07d948ae5bbee3d1cde52a8f41e5dcf837ccbdb8143f67284ff3f90dcfe",
+  "image_id": "sha256:5c8e79b93db464da854ad33dc499e25c153bbcd52757569b1f2a4e5072acecb4",
+  "previous_checkpoint_sha": "ccdd6fb2c1cdeb7e4fcffe14d4041fdfa86b169f",
+  "prior_tracking_sync": {
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2Bzho42M0",
+    "project_field_name": "Prompt-v2 HTTP rollout reference",
+    "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6695151451",
+    "issue_comment_sha256": "7555d442efe64bff65a6e7b08b7c6730eba3c056da3e072f60501f0dfa079626",
+    "project_text_sha256": "7c7422c1545511fb1fb94646e2f6a6f0dfc61013d6c88329a019776fc461710e",
+    "readback_verified": true
+  },
+  "diagnostic_shadow_prefix": "2775219a07cf",
+  "diagnostic_shadow_status": "created_stopped_never_started_original3031_healthy",
+  "authorized_corrected_shadow_attempts": 1,
+  "prior_corrected_create_tracking_sync": {
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2Bzho42M0",
+    "project_field_name": "Prompt-v2 HTTP rollout reference",
+    "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6695220078",
+    "issue_comment_sha256": "e394a6f19abff55e020b2a418ae41a41be0b46ee84d8781c0e5db9315bab3fb1",
+    "project_text_sha256": "e17ae6c316310a58a20f26ebb4e1dcf41b7d9a1958305a7a6a9489235fe5e98b",
+    "readback_verified": true
+  },
+  "authorized_new_shadow_attempts": 0,
+  "authorized_second_final_attempts": 0,
+  "prior_attempt_status": "r2_rolled_back_original_and_canonical_probes200_with_fixed_user_agent_readonly_diagnosis",
+  "cutover_poll_seconds": 30,
+  "rollback_poll_seconds": 30,
+  "max_poll_rounds_per_phase": 10,
+  "prior_second_final_tracking_sync": {
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2Bzho42M0",
+    "project_field_name": "Prompt-v2 HTTP rollout reference",
+    "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6695299434",
+    "issue_comment_sha256": "445be839940e3b3c295e226e63c266e5e4b753cd6ec80251574271ffb1ef014e",
+    "project_text_sha256": "7c3a52d15c3076b4e53b938ac6e84ef3b202789004a06f7ad2be2a7d6836a0be",
+    "readback_verified": true
+  },
+  "read_only_probe_endpoints": [
+    "http://127.0.0.1:3031/healthz",
+    "https://autodata.cars.tk/readyz",
+    "https://autodata.cars.tk/workshop/purchase-config.json"
+  ],
+  "public_probe_redirect_policy": "no_redirects_canonical_autodata_host",
+  "second_final_creation_status": "consumed_rolled_back_original_healthy_probe_default_user_agent403",
+  "prior_canonical_host_tracking_sync": {
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2Bzho42M0",
+    "project_field_name": "Prompt-v2 HTTP rollout reference",
+    "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6695326964",
+    "issue_comment_sha256": "8d16dac9b49fb7124ed368dacc5361a6f89371316d10c3b66c8688658c24940c",
+    "project_text_sha256": "d8f2d73cbb8ce2e243d32a053fee5a11e2f2c37a123de72934d952b51a77d54d",
+    "readback_verified": true
+  },
+  "authorized_third_final_attempts": 0,
+  "third_final_creation_status": "consumed_successfully_http_source_refreshed_original_retained_stopped",
+  "public_probe_headers": {
+    "User-Agent": "curl/8.0.0"
+  },
+  "deployment_result": {
+    "status": "passed",
+    "gate_sha": "8dc02ef17615bded824bda45b5a2d7cda0ae8a62",
+    "script_sha256": "593f808887c71731be9145d50a60d92e598aece9dd96f322bdb1e915f2bfdb8a",
+    "private_receipt_sha256": "a623cf5bbc778057e243021cfeca7404d8e50bfe22c320806b280202875dc84e",
+    "private_receipt_path": "/home/corp/autodata-evidence/prompt-v2-http-rollout-20261106/third-final-result.json",
+    "product_source_sha": "b3618fb6e68f1734ef029096748e30e655451a26",
+    "product_source_tree": "b686966c9bb4c01c7d35262c661f8645f9fb9f04",
+    "final_container_id": "38f3bc41eb2433096fe469c6b4dd4d368d52a28b43ba678c395b48ba7c478e22",
+    "original_container_id": "3cefb07d948ae5bbee3d1cde52a8f41e5dcf837ccbdb8143f67284ff3f90dcfe",
+    "original_retained_stopped": true,
+    "database_before": {
+      "all_row_guard": "e23250e004e11a09552c86c2169dcc3a2bc0401b733667452b364f76412c7a8e",
+      "inherited": "17a93216483b82cfb313a2125731e7c978d3cd6ce25addbf5f9c0a917df946b4"
+    },
+    "database_after": {
+      "all_row_guard": "e23250e004e11a09552c86c2169dcc3a2bc0401b733667452b364f76412c7a8e",
+      "inherited": "17a93216483b82cfb313a2125731e7c978d3cd6ce25addbf5f9c0a917df946b4"
+    },
+    "source_entries_verified": 1217,
+    "probe_event_count": 9,
+    "final_health_statuses": [
+      200,
+      200,
+      200
+    ],
+    "purchase_enabled": false,
+    "probe_user_agent": "curl/8.0.0",
+    "probe_redirects": false,
+    "verified_tls": true,
+    "article_calls": 0,
+    "model_calls": 0,
+    "provider_calls": 0,
+    "ongoing_article_processing_authorized": false,
+    "paid_launch": false
+  },
+  "third_attempt_planning_tracking_sync": {
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2Bzho42M0",
+    "project_field_name": "Prompt-v2 HTTP rollout reference",
+    "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6695399260",
+    "issue_comment_sha256": "710316392135ff0b15348f1c87f7f20d4443f67dc5276353c841d8c2aa72fe0d",
+    "project_text_sha256": "4bbcce07f9b7cb89eaf2b5d49486041c939f92a784f9ba8dbff19ebbc721c1eb",
+    "readback_verified": true
+  },
+  "tracking_sync": {
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhFocs4",
+    "project_field_id": "PVTF_lAHOCSJ8cc4BiQ2Bzho42M0",
+    "project_field_name": "Prompt-v2 HTTP rollout reference",
+    "issue_comment_ref": "https://github.com/lucronn/autodata/issues/186#issuecomment-6695577548",
+    "issue_comment_sha256": "d98e4c0f64e98b38e90b0ad906acdfe80ba841706212044a95fd1729c0fd3aac",
+    "project_text_sha256": "4281894fb8ef04f368b451c6d75e5904cac29e2867e2954845e8b1a222ae8039",
+    "readback_verified": true
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "goal": "Clear a stale Workshop payment-status action on navigation while preserving active pending-order checks.",
+  "plan_ref": "docs/superpowers/plans/2026-11-08-workshop-order-status-navigation.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/375",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/verification/2026-11-08-workshop-order-status-navigation.md"
+  ],
+  "todo": [
+    "Add a failing regression using the real Workshop navigation invalidation function with a prior visible order action.",
+    "Clear the prior order ID and hide its status button on navigation without changing active polling or commerce contracts.",
+    "Run focused/full Workshop and Go checks, independent review and required CI before integrating the scoped fix."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-08T21:22:13Z"
+}

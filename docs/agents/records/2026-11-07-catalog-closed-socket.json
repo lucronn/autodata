@@ -1,0 +1,17 @@
+{
+  "goal": "Restore bounded catalog connector reads when urllib has closed the underlying socket while buffered response bytes remain",
+  "plan_ref": "docs/superpowers/plans/2026-11-07-catalog-closed-socket.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/186",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/verification/2026-11-07-catalog-closed-socket.md"
+  ],
+  "todo": [
+    "Reproduce closed-socket deadline failure with real loopback urllib responses for plain and chunked bodies, retaining foreground behavior and slow-body deadline tests.",
+    "Fix only deadline body reads so buffered bytes remain readable after transport close while live socket and elapsed deadline controls remain enforced.",
+    "Run focused connector/selector/catalog tests and full ingestion checks as appropriate, obtain independent review and required CI, and push small coherent commits.",
+    "Record exact evidence and outstanding selector completeness limitations; do not deploy, hydrate the fleet, or modify serving data under this code-only gate."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-07T01:58:23.599075+00:00"
+}

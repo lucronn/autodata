@@ -1,0 +1,19 @@
+{
+  "goal": "Bound direct configuration hydration to one shared12-attempt/20s provider budget with safe local stop semantics, preserving completeness authority and other scopes; separate watchdog required before real probe.",
+  "plan_ref": "docs/superpowers/plans/2026-11-15-configuration-hydration-budget.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/401",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/workshop-configuration-hydration-budget.md",
+    "docs/verification/2026-11-15-configuration-hydration-budget.md"
+  ],
+  "todo": [
+    "DONE gate985658a/Issue401 comment6888496088/Project readback/preflight before code.",
+    "DONE config-only12/20 control, local stop/429/expired error conversion, safe start/finish events; actual persistence stage retained.",
+    "DONE final20 new tests within102 passed47 skipped42 subtests; physical final patch e82eab90/verification211ccff4.",
+    "TODO open final code PR/start strict CI on protected4048 per coordinator priority; hold docs-only427 behind code and require independent exact-head review/merge.",
+    "TODO separate merged-source runtime/watchdog gate before one real internal GET; budget not deployed."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-15T03:27:12.247724+00:00"
+}
