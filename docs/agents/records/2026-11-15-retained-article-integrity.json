@@ -1,0 +1,20 @@
+{
+  "goal": "Prove one retained real article source and projection integrity internally with hash-only output and no external work or writes",
+  "plan_ref": "docs/superpowers/plans/2026-11-15-retained-article-integrity.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/428",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/retained-article-integrity.md",
+    "docs/verification/2026-11-15-retained-article-integrity.md"
+  ],
+  "todo": [
+    "Synchronize exact4048 source plan Issue428 Project8 canonical docs and preflight before implementation",
+    "Implement fixed-read-only SQL and one bounded local S3 GET with private in-memory transport only",
+    "Validate source hash identity and projection schema in no-network read-only resource-bounded child",
+    "Test negative hash schema identity input limits and write/egress guards with authored data",
+    "Send exact implementation limits SQL endpoint image and command allowlist to root before any real runtime access",
+    "Hold final PR CI until coordinated protected base; preserve paid reader rights and image limits"
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-15T03:27:01.511050+00:00"
+}
