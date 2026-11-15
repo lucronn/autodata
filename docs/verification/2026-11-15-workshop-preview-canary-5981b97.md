@@ -88,3 +88,26 @@ Routepolicy mustpermit exactsame-origin GET/auth/config and GET/auth/session (no
 Make signintransitiondeterministic byholding onlythebrowser's safe/auth/config completion behindaboundedclient-sidebarrier. Navigateatcommit, observeattachedsigninbuttondisabled whilebarrierclosed, thenrelease andrequirebuttonreadiness. Neverdependonpost-DOMContentLoadedtiming/sleepsforinitialstate. Includehandoffdisclosureofcontrolledrequest/suppressedcatalogscope.
 
 Meaningfulregression: locallyserveexactprotectedWorkshopHTML/bootstrap/app/authassets withsyntheticauthconfig/session andfixtureFirebaseSDK (noexternalnetwork/provider). Testexactrouteallow/deny/expected-suppressioncontract, fastconfig/smallpagehealthytransition andwronginitialenabled/missingreadyfailures; exerciseactualQAfunctions fromactualpage. Keepfixtureslocal/noaccount/sessionwrites, no publicnavigation. Rerunexactclean-envChromiumlaunch, physicalbaseline40checks/protected27, andmanifest/packageintegrity. ResealallphysicalQA/probe/helper/command/dependencyhashes andsendfreshconcretepackageforindependentrootreview; no servingmutation.
+
+## Browser QA final review seal
+
+Browser amendment checkpoint `c140fd4d9ab4a2ca439cd3bf35c4b27952af203e` passed synchronized preflight before QA edits. Product source `5981b97f187364e54737919fd8cdb49e7566d981`, binary, release manifest, rollback helper, HTTP probe and executable shell command blocks are unchanged. Only private QA tooling, its fixture evidence and command documentation changed.
+
+Current physical package: `/home/corp/.local/state/autodata-preview-canary-5981b97-20261115` (203 sealed files).
+
+- Helper manifest: `7de273c6df8dba83d39c38870e2ddadd5378076ecb5d1ebe80c6b27db31f98b7`.
+- Release manifest: `8047ee4ddc638626db7b43e5506987b03fa9c45cd7eb733f409fb67d4a0a3674` (unchanged).
+- Rollback helper: `7a2c8f1440e099dbc548b4af3a0d9ae697c03e412c421ab672a089222c766927` (unchanged).
+- Browser acceptance: `99b2f9eb578096c408d34f02ff86e7633a84ae8bda5f3412bcb753fc4a7f056c`.
+- Shared browser contract: `1c25a9461b724ac760de7fb3e9f1bd9603a9c668022208cc4cc8b2fa6970c9fa`.
+- ROOT-COMMANDS.md: `70edfa89fa2f158a1eef201fe425804a3412bed1eff8aca174bcd7770a45fcba`; executable command blocks are unchanged.
+
+The browser permits exact GET `/auth/config` and `/auth/session`, waits until config interception is observed while held, samples the disabled button, releases config, then requires sign-in readiness. Writes and other protected requests fail QA without dispatch. Only the known automatic GET `/v1/catalog/years` receives a browser-local synthetic empty complete response, separately recorded. This suppresses provider HTTP; it is **not real catalog acceptance**.
+
+The controlled local fixture serves actual protected HTML/bootstrap/app/auth assets and synthetic auth/session/SDK responses. It reproduced the prior post-DOMContentLoaded false failure causally, passed mobile and desktop transitions with config not dispatched before the initial sample, and rejected initially enabled, never-ready and missing-interception cases. Exact safe auth GETs reached the fixture; unexpected writes/protected GETs did not. Critical-error remained empty. Public requests, provider catalog requests and serving mutations were zero.
+
+Clean-env no-navigation Chromium launch passed again (Playwright 1.62.1, Chromium 145.0.7632.159). Fresh baseline output: phase baseline, passed true, 40 checks, receipt `baseline-probes-1794710587519019968.json`. Read-only check output: `{"baseline_identity":"verified","live_mutation":false}`. Protected check output: `{"protected_tables_equal":27,"live_mutation":false}`.
+
+Updated sealed files versus prior 8ee47 manifest: ROOT-COMMANDS.md (QA explanation only), browser_acceptance.cjs, new browser_contract.cjs, new verify_browser_contract.cjs, new browser-contract-fixture.log, new baseline probe receipt and new postqa-protected-check.log. Physical HANDOFF.md and physical-preparation.json contain the exact delta and current pins.
+
+No root rollback state, activation marker or installed candidate exists. Independent root re-review and execution remain pending. No public runtime mutation, provider recapture, licensed-content exposure or private image rollout occurred.
