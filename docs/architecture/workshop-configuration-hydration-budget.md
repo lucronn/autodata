@@ -1,0 +1,5 @@
+# Configuration hydration budget contract
+
+Status: planning on protected4048f3f/treea1aa861. Issue https://github.com/lucronn/autodata/issues/401; Project https://github.com/users/lucronn/projects/8. Plan docs/superpowers/plans/2026-11-15-configuration-hydration-budget.md; verification docs/verification/2026-11-15-configuration-hydration-budget.md.
+
+Configuration ensure gets one shared12-attempt/20s control across both banks and nested Banktwo repair, independent of selector global pacing. Stop/429/expired-connector-error conversion is local cancellation, never false complete marker or supplier-failure diagnostic; bounded502 acceptable. Existing other scopes and all-bank authority stay unchanged. Safe start/finish attempt events support later passive verification. DNS/header hard termination requires separately armed external exact-container watchdog; code budget alone does not provide it. No serving mutation/provider GET until protected source merge plus separate runtime/watchdog gate.

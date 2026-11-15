@@ -1,0 +1,5 @@
+# Configuration hydration budget verification
+
+Status: planning only; no implementation/test edits under this gate yet. Protected4048f3fae50161af5b5ab8300670e3beb817ce1a/treea1aa86183a2e015e74565fd939a70b3eb96010b1. Issue https://github.com/lucronn/autodata/issues/401; Project https://github.com/users/lucronn/projects/8. Plan docs/superpowers/plans/2026-11-15-configuration-hydration-budget.md; architecture docs/architecture/workshop-configuration-hydration-budget.md.
+
+Todo: synchronized checkpoint/preflight; red→green shared cap/nested repair/deadline/cancel/429/no-false-marker/error-classification/pacing/other-scopes tests; localhost trickled body cleanup; focused/synthetic checks; protected427 integration coordination before final strict CI/merge; separate source runtime/watchdog gate before exact-one internal GET. Serving remains343896/source083/image3132, no real GET or serving change by this source task. Previous runtime actual receipts are a separate docs branch and excluded from this PR.
