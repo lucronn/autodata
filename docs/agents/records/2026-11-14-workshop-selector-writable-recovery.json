@@ -10,8 +10,9 @@
     "Verify restored Docker/DB, exact serving ingestion/source/database identities, read-only transaction behavior, private backup and protected-table baseline before mutation.",
     "If the serving ingestion alone forces read-only transactions, retain the original and create an identical replacement with only PGOPTIONS removed; verify structural equality, health, and rollback-only writes.",
     "Observe one 2024 US makes scope through the existing bounded selector hydration path and read durable coverage/results; retain truthful partial state and safe error classes.",
-    "Record exact runtime identities, redacted evidence and remaining catalog/article/paid-access gaps; synchronize Issue401/Project8 and keep rollback available."
+    "Record exact runtime identities, redacted evidence and remaining catalog/article/paid-access gaps; synchronize Issue401/Project8 and keep rollback available.",
+    "After documenting the fail-closed attempt, allow only upstream-proven OomKillDisable null-to-false daemon normalization and resume the exact never-started staged container after complete comparison; retain all rollback and verification gates."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-14T23:14:06.729795Z"
+  "updated_at": "2026-11-15T00:22:46.636616Z"
 }
