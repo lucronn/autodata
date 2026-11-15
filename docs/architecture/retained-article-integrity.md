@@ -40,3 +40,17 @@ Synthetic tests verify redaction, mismatched body/hash/object key/article/source
 Proposed sole real execution after concrete approval: `/usr/bin/env -i PATH=/usr/bin:/bin LANG=C.UTF-8 LC_ALL=C.UTF-8 PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 /home/corp/.codex/worktrees/retained-article-integrity/autodata/scripts/dev/retained_article_integrity.py --run`, capturing ONLY final redacted receipt in private evidence. Never invoke --transport directly into a tool/log/terminal; it is exclusively an internal private pipe protocol. No paid GET, session/grant write, supplier/model/ingestion dispatch, or image recapture is included.
 
 Prepared harness SHA256 `46abb014c5cfb1cb0354b00033985d28cd8f0f56063a9a01888a8e1c8a060b7f`.
+
+
+## Pre-runtime hardening gate amendment
+
+Root holds real --run and all Docker run/exec/DB/S3 access. Narrow exact-candidate Docker inspect mounts/env and local source-file hashes are authorized read-only, never raw Env/secret output. Before implementation edits, synchronize this amendment/Issue428/Project8/record and preflight.
+
+Concrete todo:
+- Pin exact343896 candidate ID/image3132/running/read-only/host-network/mount and independently reviewed source hashes before/after transport; exact nonsecret DB/user autodata/bucket autodata-sources/endpoints127:5432/19000. Raw inspect remains private.
+- Require physical0700 root-owned package and regular nonsymlink read-only script; hash/file identity before/after. Pass captured reviewed bytes to transport and same sealed file to validator; fail closed on drift.
+- Strict exact redacted receipt key/type/range/hash schema before printing; reject swapped child/free text/unknown fields.
+- Bound concurrent stdout/stderr and input pipes with absolute deadlines and own-child cleanup; fixed redacted errors.
+- Test runtime/source/script/receipt drift, output overflow and timeout with authored local fixtures only. No Docker run/exec or real DB/S3/payload GET before root revised-package review. Hold final CI for coordinated base.
+
+Source mount/hash anchors must be independently pinned, not trusted from execution-time readback. Root-owned seal is preparation only, not runtime authority. Existing fixed SELECT/read-only transaction/local oneGET limits remain. No grant/paid reader/rights/display claims.

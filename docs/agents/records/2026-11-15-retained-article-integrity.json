@@ -8,13 +8,12 @@
     "docs/verification/2026-11-15-retained-article-integrity.md"
   ],
   "todo": [
-    "Synchronize exact4048 source plan Issue428 Project8 canonical docs and preflight before implementation",
-    "Implement fixed-read-only SQL and one bounded local S3 GET with private in-memory transport only",
-    "Validate source hash identity and projection schema in no-network read-only resource-bounded child",
-    "Test negative hash schema identity input limits and write/egress guards with authored data",
-    "Send exact implementation limits SQL endpoint image and command allowlist to root before any real runtime access",
-    "Hold final PR CI until coordinated protected base; preserve paid reader rights and image limits"
+    "Synchronize pre-runtime hardening gate and preflight",
+    "Pin exact candidate env/mount/source hashes before and after transport",
+    "Seal physical root-owned nonsymlink script and bind identical reviewed bytes",
+    "Strictly validate receipt keys/types/hash/ranges and bound concurrent subprocess pipes",
+    "Run authored-only drift overflow timeout fixtures and return concrete revised package; hold real access"
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-15T03:27:01.511050+00:00"
+  "updated_at": "2026-11-15T03:30:20.711076+00:00"
 }

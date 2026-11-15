@@ -21,3 +21,17 @@ Concrete todo:
 - Test negative hash schema identity input limits and write/egress guards with authored data
 - Send exact implementation limits SQL endpoint image and command allowlist to root before any real runtime access
 - Hold final PR CI until coordinated protected base; preserve paid reader rights and image limits
+
+
+## Pre-runtime hardening gate amendment
+
+Root holds real --run and all Docker run/exec/DB/S3 access. Narrow exact-candidate Docker inspect mounts/env and local source-file hashes are authorized read-only, never raw Env/secret output. Before implementation edits, synchronize this amendment/Issue428/Project8/record and preflight.
+
+Concrete todo:
+- Pin exact343896 candidate ID/image3132/running/read-only/host-network/mount and independently reviewed source hashes before/after transport; exact nonsecret DB/user autodata/bucket autodata-sources/endpoints127:5432/19000. Raw inspect remains private.
+- Require physical0700 root-owned package and regular nonsymlink read-only script; hash/file identity before/after. Pass captured reviewed bytes to transport and same sealed file to validator; fail closed on drift.
+- Strict exact redacted receipt key/type/range/hash schema before printing; reject swapped child/free text/unknown fields.
+- Bound concurrent stdout/stderr and input pipes with absolute deadlines and own-child cleanup; fixed redacted errors.
+- Test runtime/source/script/receipt drift, output overflow and timeout with authored local fixtures only. No Docker run/exec or real DB/S3/payload GET before root revised-package review. Hold final CI for coordinated base.
+
+Source mount/hash anchors must be independently pinned, not trusted from execution-time readback. Root-owned seal is preparation only, not runtime authority. Existing fixed SELECT/read-only transaction/local oneGET limits remain. No grant/paid reader/rights/display claims.
