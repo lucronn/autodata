@@ -14,9 +14,39 @@ from copy import deepcopy
 from threading import Event, RLock, Thread
 from typing import Any, Callable, Iterable, Mapping
 from urllib.parse import quote
+from uuid import uuid4
 
 
 _LOG = logging.getLogger(__name__)
+
+
+def _configuration_scope_hash(request):
+    field = request.get if isinstance(request, Mapping) else lambda name, default="": getattr(request, name, default)
+    identity = {
+        "scope": "configurations", "year": str(int(field("year"))),
+        "make": str(field("make")).strip().casefold(),
+        "model": str(field("model")).strip().casefold(),
+        "region": str(field("region", "US")).strip().upper(),
+    }
+    return sha256(json.dumps(identity, sort_keys=True, separators=(",", ":")).encode()).hexdigest()[:16]
+
+
+def _configuration_budget_event(request, control, state):
+    """Correlate worker termination without exposing source or selector data."""
+    try:
+        reason = control.stop_reason or "none"
+        if state not in {"started", "finished"} or reason not in {"none", "request_limit", "elapsed", "cancelled", "rate_limited"}:
+            return
+        attempted = 12 - control.remaining_attempts
+        if not 0 <= attempted <= 12:
+            return
+        _LOG.warning(
+            "catalog configuration budget scope_hash=%s attempt=%s state=%s stop_reason=%s attempted_requests=%d elapsed_ms=%d",
+            _configuration_scope_hash(request), control.attempt, state, reason,
+            attempted, max(0, int((time.monotonic() - control.started_at) * 1000)),
+        )
+    except Exception:  # noqa: BLE001 - logging cannot change hydration
+        return
 
 
 def _configuration_diagnostic(request, *, provider="aggregate", stage, outcome, error=None, row_count=-1):
@@ -29,13 +59,7 @@ def _configuration_diagnostic(request, *, provider="aggregate", stage, outcome, 
             return
         if outcome not in {"unconfigured", "failed", "incomplete", "not_persisted"}:
             return
-        identity = {
-            "scope": "configurations", "year": str(int(field("year"))),
-            "make": str(field("make")).strip().casefold(),
-            "model": str(field("model")).strip().casefold(),
-            "region": str(field("region", "US")).strip().upper(),
-        }
-        scope_hash = sha256(json.dumps(identity, sort_keys=True, separators=(",", ":")).encode()).hexdigest()[:16]
+        scope_hash = _configuration_scope_hash(request)
         if not isinstance(provider, str):
             provider = getattr(getattr(provider, "client", None), "provider", "unknown")
         if not isinstance(provider, str) or provider not in {"bankone", "banktwo", "aggregate"}:
@@ -47,6 +71,7 @@ def _configuration_diagnostic(request, *, provider="aggregate", stage, outcome, 
                 "TimeoutError", "ConnectionError", "OSError", "ValueError", "TypeError", "KeyError",
                 "SourceConnectorError", "S3Error", "OperationalError", "InterfaceError", "IntegrityError",
                 "ReadOnlySqlTransaction", "InsufficientPrivilege", "UndefinedTable", "UndefinedColumn",
+                "_ConfigurationHydrationStopped",
             }:
                 error_type = "OtherError"
         row_count = row_count if type(row_count) is int and row_count >= -1 else -1
@@ -311,8 +336,14 @@ def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
 
     stage = "provider_configuration"
     resolved = None
+    configuration_control = _ConfigurationHydrationControl() if scope == "configurations" else None
+    if configuration_control is not None:
+        _configuration_budget_event(request, configuration_control, "started")
     try:
-        providers = _configured_catalog_providers()
+        providers = (
+            _configured_catalog_providers(deepening_control=configuration_control)
+            if configuration_control is not None else _configured_catalog_providers()
+        )
         if not providers:
             _configuration_diagnostic(request, stage="provider_configuration", outcome="unconfigured", row_count=0)
             result = {
@@ -341,6 +372,8 @@ def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
             )
             stage = "resolve"
             resolved = service.resolve(request_model)
+            if configuration_control is not None:
+                configuration_control.remaining()
             stage = "row_persistence"
             persistence = _persist_resolved_catalog_rows(
                 resolved.rows,
@@ -348,6 +381,8 @@ def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
                 provenance=resolved.provenance,
             )
             stage = "coverage_persistence"
+            if configuration_control is not None:
+                configuration_control.remaining()
             coverage = _persist_hydration_scope(request, resolved)
             if scope == "configurations" and not (isinstance(coverage, Mapping) and coverage.get("status") == "persisted"):
                 _configuration_diagnostic(request, stage="coverage_persistence", outcome="not_persisted", row_count=len(resolved.rows))
@@ -365,6 +400,12 @@ def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
             if scope in {"makes", "models"} and resolved.rows:
                 stage = "deepening"
                 result["deepening"] = _schedule_selector_deepening(request, scope, resolved.rows)
+    except _ConfigurationHydrationStopped as error:
+        _configuration_diagnostic(
+            request, stage="provider_resolution", outcome="incomplete", error=error,
+            row_count=len(resolved.rows) if resolved is not None else -1,
+        )
+        raise
     except Exception as error:
         # ValueError is a request/row validation response, not the HTTP 502
         # dependency failure this diagnostic is intended to distinguish.
@@ -382,6 +423,9 @@ def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
                 scope, stage, type(error).__name__,
             )
         raise
+    finally:
+        if configuration_control is not None:
+            _configuration_budget_event(request, configuration_control, "finished")
     with _HYDRATION_LOCK:
         _HYDRATION_RESULTS[key] = (time.monotonic(), deepcopy(result))
     return result
@@ -396,6 +440,51 @@ _DEEPEN_NEXT_DISPATCH = 0.0
 
 class _SelectorDeepeningStopped(Exception):
     """End background traversal without treating its budget as source failure."""
+
+
+class _ConfigurationHydrationStopped(_SelectorDeepeningStopped):
+    """Local stop; never proof that a supplier failed or a scope is complete."""
+
+    def __init__(self, reason):
+        self.reason = reason
+        super().__init__("configuration hydration stopped: " + reason)
+
+
+class _ConfigurationHydrationControl:
+    """One per-ensure dispatch/body budget, independent of selector pacing.
+
+    The separately armed runtime watchdog covers DNS/header opener stalls.
+    """
+
+    configuration_budget = True
+
+    def __init__(self):
+        self.cancelled = Event()
+        self.started_at = time.monotonic()
+        self.deadline = self.started_at + 20.0
+        self.remaining_attempts = 12
+        self.attempt = uuid4().hex[:16]
+        self.stop_reason = None
+
+    def stop(self, reason):
+        self.stop_reason = self.stop_reason or reason
+        self.cancelled.set()
+        raise _ConfigurationHydrationStopped(self.stop_reason)
+
+    def remaining(self):
+        if self.cancelled.is_set():
+            self.stop("cancelled")
+        seconds = self.deadline - time.monotonic()
+        if seconds <= 0:
+            self.stop("elapsed")
+        return seconds
+
+    def before_request(self):
+        remaining = self.remaining()
+        if self.remaining_attempts <= 0:
+            self.stop("request_limit")
+        self.remaining_attempts -= 1
+        return remaining
 
 
 class _SelectorDeepeningControl:
@@ -1299,7 +1388,7 @@ def _persist_hydration_scope(request: Mapping[str, Any], result: CatalogResult) 
     return {"status": "persisted", "scope_key": scope_key}
 
 
-def _configured_catalog_providers(*, deepening_control: _SelectorDeepeningControl | None = None) -> tuple[Any, ...]:
+def _configured_catalog_providers(*, deepening_control: _SelectorDeepeningControl | _ConfigurationHydrationControl | None = None) -> tuple[Any, ...]:
     from .source_connector_client import source_connector_registry
 
     clients = source_connector_registry()
@@ -1309,7 +1398,7 @@ def _configured_catalog_providers(*, deepening_control: _SelectorDeepeningContro
 class _SourceCatalogProvider:
     """Project contract rows into the existing canonical catalog shape."""
 
-    def __init__(self, client: Any, *, deepening_control: _SelectorDeepeningControl | None = None):
+    def __init__(self, client: Any, *, deepening_control: _SelectorDeepeningControl | _ConfigurationHydrationControl | None = None):
         self.client = client
         self.deepening_control = deepening_control
 
@@ -1343,6 +1432,12 @@ class _SourceCatalogProvider:
                         before_additional_request=self.deepening_control.before_request,
                     )
                 except SourceConnectorError as error:
+                    if getattr(self.deepening_control, "configuration_budget", False):
+                        # Deadline body errors are wrapped by the connector;
+                        # classify expired/cancelled work before supplier errors.
+                        self.deepening_control.remaining()
+                        if error.status == 429:
+                            self.deepening_control.stop("rate_limited")
                     if error.status == 429:
                         raise _SelectorDeepeningStopped() from error
                     raise

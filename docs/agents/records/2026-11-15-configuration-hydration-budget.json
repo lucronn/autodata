@@ -8,12 +8,12 @@
     "docs/verification/2026-11-15-configuration-hydration-budget.md"
   ],
   "todo": [
-    "Synchronize protected4048 plan/Issue401/Project8/docs/record checkpoint and pass preflight before edits.",
-    "Implement configuration-only shared12/20 control, local stop/429/expired-source-error behavior and safe start/finish diagnostics; other scopes unchanged.",
-    "Red-first shared bank+nested repair cap/deadline/cancel/429/persistence/diagnostic/pacing/nonconfiguration tests and localhost body cleanup; focused synthetic checks.",
-    "Coordinate protected427 integration before final strict PR CI/merge and independent exact-head review.",
-    "Hold serving mutation/real GET for separately synchronized source runtime and armed watchdog gate; later one exact internal public GET then passive observation."
+    "DONE gate985658a/Issue401 comment6888496088/Project readback/preflight before code.",
+    "DONE config-only12/20 control/local stop/429/expired error conversion/start-finish events; transport and other scopes unchanged.",
+    "DONE20 new tests; focused102 passed47 skipped42 subtests; physical red/green receipts and code patch hashes sealed.",
+    "TODO coordinate protected427 integration checkpoint before final strict PR CI/merge/exact-head review.",
+    "TODO separately gated merged-source runtime/watchdog rollout before one real internal GET; no deployment claim."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-15T03:21:53.276219+00:00"
+  "updated_at": "2026-11-15T03:25:33.178205+00:00"
 }
