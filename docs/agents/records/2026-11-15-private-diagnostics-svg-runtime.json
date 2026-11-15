@@ -1,0 +1,19 @@
+{
+  "goal": "Prepare and verify protected083 diagnostics/SVG dependency runtime compatibility with explicit legacy direct-Python startup, preserving6fcc rollback, disabled purchasing and protected state; no serving mutation/provider GET.",
+  "plan_ref": "docs/superpowers/plans/2026-11-15-private-diagnostics-svg-runtime.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/401",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/workshop-private-diagnostics-svg-runtime.md",
+    "docs/verification/2026-11-15-private-diagnostics-svg-runtime.md"
+  ],
+  "todo": [
+    "Pin protected083/tree2c6a681, synchronize canonical docs/Issue401/Project8/record, commit/push checkpoint and pass preflight before private fixture/helper edits.",
+    "Seal immutable protected source and actual-image fixture startup contract: explicit Python entrypoint/argv, executable/User/workdir/mounts/RO/env names; preserve hosted file-secret wrapper unchanged.",
+    "Run isolated actual3132-image synthetic PostgreSQL/S3/read_only/grant/quote/payment-denial/PNG/safe-diagnostics compatibility, protect fixture invariants and block real endpoints.",
+    "Prepare exact coordinator-reviewable manifest/backup/storage/27-table baseline/Created-state rollback recipe; no serving candidate creation/start or stop without coordination.",
+    "Keep real provider GET unauthorized; later separate rights/egress/storage gate, source image/runtime approval and one bounded truthful scope observation."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-15T02:55:10.276352+00:00"
+}
