@@ -37,3 +37,5 @@ Concrete todo:
 Root review follow-up: keep the existing lower persistence guard, and explicitly skip the persistence helper in the initial-years caller when any source is incomplete/failed. Return an explicit zero-write outcome. Red-first caller test must use one successful source plus an incomplete/error source, preserve makes/models version0 partial behavior, and prove cold years can retry after30s cooldown. Add an enabled isolated Go/HTTP/owned-source/PG partial→healthy regression, with test-only admission clock/cache expiry control and authored local source data. No serving or real provider access.
 
 - Make incomplete years an explicit caller no-write outcome and prove two-source cold retry
+
+Root-review follow-up implemented and verified:147 focused passes;6 enabled synthetic PG/Go passes. Incomplete years explicitly skips the persistence helper; the existing lower guard remains. Actual cold Go reads stay empty through partial supplier failure and can reattempt after the normal cooldown. Current-head strict CI and root review remain required.

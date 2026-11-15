@@ -470,13 +470,21 @@ def _ensure_initial_selector(request, key):
         stage = "coverage_persistence"
         # Initial selectors are sparse: makes/models rows live in the scoped
         # marker, never the full vehicle/S3 evidence persistence pipeline.
-        coverage = _persist_hydration_scope(request, resolved, deadline=deadline)
+        if scope == "years" and not resolved.complete:
+            # Go hydrates years only while the durable years read is empty.
+            # A partial upsert would suppress its next cold retry indefinitely.
+            coverage = {"status": "skipped_incomplete_years", "row_count": 0}
+            persistence = dict(coverage)
+        else:
+            coverage = _persist_hydration_scope(request, resolved, deadline=deadline)
+            persistence = {"status": "selector_scope_only", "row_count": 0}
         selector_job.SelectorJobControl(deadline).remaining()
         complete = resolved.complete
         result.update(status="hydrated", complete=complete, missing_scopes=list(resolved.missing_scopes),
                       rows=list(resolved.rows), provenance=list(resolved.provenance), coverage=coverage,
-                      persistence={"status": "selector_scope_only", "row_count": 0})
-        result.pop("retry_after_seconds", None)
+                      persistence=persistence)
+        if complete or scope != "years":
+            result.pop("retry_after_seconds", None)
     except selector_job.SelectorJobStopped as error:
         result["stop_reason"] = error.reason
     except Exception as error:

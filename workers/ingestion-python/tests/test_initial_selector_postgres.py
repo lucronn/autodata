@@ -146,3 +146,52 @@ def test_partial_selector_marker_remains_partial_until_complete(isolated_selecto
     catalog._persist_hydration_scope(request,complete,deadline=time.monotonic()+3)
     with psycopg.connect(dsn) as connection:
         assert connection.execute('SELECT completion_version FROM vehicle_catalog_hydration_scopes').fetchone()[0]==1
+
+
+def test_two_source_partial_cold_go_read_stays_empty_then_retries_after_cooldown(isolated_selector,monkeypatch):
+    if os.getenv('AUTODATA_SELECTOR_GO_TEST')!='1': pytest.skip('explicit Go cross-language fixture opt-in')
+    dsn,state,request,worker,name=isolated_selector
+    clock=[0.0]; second={'healthy':False,'calls':0}
+    monkeypatch.setattr(selector_job,'ADMISSION',selector_job.SelectorAdmission(clock=lambda:clock[0]))
+    # Simulate the process-cache expiry that naturally occurs before30s;
+    # provider deadlines keep their real monotonic clock and6s dispatch floor.
+    monkeypatch.setattr(catalog,'_HYDRATION_INCOMPLETE_TTL_SECONDS',0)
+    class SecondConnector(BaseHTTPRequestHandler):
+        def do_GET(self):
+            second['calls']+=1
+            if not second['healthy']:
+                self.send_response(503); self.end_headers(); return
+            body=json.dumps(_envelope('banktwo',scope='years',items=[
+                {'year':2024,'opaque_ref':'authored-2024','label':'2024'},
+                {'year':2023,'opaque_ref':'authored-2023','label':'2023'}],complete=True,next_cursor=None)).encode()
+            self.send_response(200); self.send_header('Content-Type','application/json'); self.send_header('Content-Length',str(len(body))); self.end_headers(); self.wfile.write(body)
+        def log_message(self,*args): pass
+    source=ThreadingHTTPServer(('127.0.0.1',0),SecondConnector)
+    thread=threading.Thread(target=source.serve_forever,daemon=True); thread.start()
+    monkeypatch.setenv('BANKTWO_BASE_URL',f'http://127.0.0.1:{source.server_port}')
+    host=os.environ['AUTODATA_SELECTOR_TEST_HOST']
+    env={**os.environ,'AUTODATA_SELECTOR_GO_DSN':f'postgres://selector436:selector436_fixture_only@{host}:5432/{name}?sslmode=disable',
+         'AUTODATA_SELECTOR_WORKER_URL':worker}
+    def go_read(empty):
+        result=subprocess.run(['go','test','-count=1','-run','^TestSelectorOwnedColdYearsFixture$','.'],
+                              cwd=ROOT/'apps/api-go',env={**env,'AUTODATA_SELECTOR_EXPECT_EMPTY':'1' if empty else '0'},
+                              text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=90)
+        assert result.returncode==0,result.stdout[-6000:]
+    try:
+        go_read(True)
+        assert len(state['calls'])==1 and second['calls']==1
+        with psycopg.connect(dsn) as connection:
+            assert connection.execute('SELECT count(*) FROM vehicle_catalog_years').fetchone()[0]==0
+            assert connection.execute('SELECT count(*) FROM vehicle_catalog_hydration_scopes').fetchone()[0]==0
+        clock[0]=7
+        deferred=request('early-cold-retry')
+        assert deferred['complete'] is False and deferred['stop_reason']=='admission'
+        assert len(state['calls'])==1 and second['calls']==1
+        second['healthy']=True; clock[0]=31
+        go_read(False)
+        assert len(state['calls'])==2 and second['calls']==2
+        with psycopg.connect(dsn) as connection:
+            assert connection.execute('SELECT DISTINCT year FROM vehicle_catalog_years ORDER BY year').fetchall()==[(2023,),(2024,)]
+            assert connection.execute('SELECT count(*) FROM vehicle_catalog_hydration_scopes').fetchone()[0]==0
+    finally:
+        source.shutdown(); source.server_close(); thread.join(2)

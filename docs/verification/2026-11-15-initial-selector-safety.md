@@ -76,3 +76,22 @@ serving/checkout data were left untouched. Protected master still equals
 `f534d0aeb76973ca3b8c70b14c806973edb1b457` before final PR creation.
 
 Root review requested an explicit incomplete-years caller no-write result and two-source/cold-retry regression. The existing lower helper already rejects incomplete years before connecting; the follow-up strengthens the caller contract and proves the actual cold-read behavior without claiming a reproduced durable partial write.
+
+Root review follow-up passed at the explicit caller boundary: red-first
+`5074b5d1` fails when a complete source plus incomplete/error source reaches
+persistence. The caller now returns `skipped_incomplete_years`/row_count0
+for coverage and persistence, retains retry metadata, and does not call the
+lower helper. The pre-existing lower guard remains as defense in depth.
+No observed durable partial write is claimed. Makes/models still persist
+truthful version0 partial rows.
+
+Final focused follow-up: **147 passed,17 skipped,42 subtests**. Enabled fresh
+synthetic PG/Go integrations: **6 passed** in23.33s. The added actual Go
+cold-reader case uses a complete first supplier fixture and503 second fixture:
+Go returns empty, PG years/markers remain empty, and a retry before scope
+cooldown dispatches nothing. After a test-only admission clock advance beyond
+30s plus simulated process-cache expiry, both authored suppliers become healthy;
+the same cold Go GET reattempts and returns ordered2023/2024. The real owned
+provider process still uses real elapsed time and six-second spacing.
+All task PG/S3/test containers and internal network were removed again, with
+zero residual task-label matches. No real provider/service operation occurred.

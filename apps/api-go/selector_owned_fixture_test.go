@@ -56,7 +56,11 @@ func TestSelectorOwnedColdYearsFixture(t *testing.T) {
 		if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
 			t.Fatal(err)
 		}
-		if len(body.Items) != 2 || body.Items[0].Year != 2023 || body.Items[1].Year != 2024 {
+		if os.Getenv("AUTODATA_SELECTOR_EXPECT_EMPTY") == "1" {
+			if len(body.Items) != 0 {
+				t.Fatalf("partial years escaped into durable reader: %#v", body.Items)
+			}
+		} else if len(body.Items) != 2 || body.Items[0].Year != 2023 || body.Items[1].Year != 2024 {
 			t.Fatalf("unordered/unusable years: %#v", body.Items)
 		}
 	}
