@@ -1,31 +1,69 @@
 # Initial public selector safety
 
 Issue: https://github.com/lucronn/autodata/issues/436
-Project: https://github.com/users/lucronn/projects/8 itemPVTI_lAHOCSJ8cc4BiQ2BzhI01Rs.
-Protected source base272aeeaad8399c305468e5d486cc391d7340f6a4. Live-data lane confirms no worker-source overlap; preserve configuration429 class/log/watchdog contract and article behavior. No live provider/service/DB mutation or PR merge.
+Project: https://github.com/users/lucronn/projects/8
+Project item: `PVTI_lAHOCSJ8cc4BiQ2BzhI01Rs`.
 
-Goal: bound initial years/makes/models resolution, not only later deepening, and prevent anonymous cache misses from expanding into uncharged descendant work. Cached complete result remains zero-dispatch. Include cold-cache years even though live62years currently avoid ensure.
+The internal `/v1/catalog/ensure` route sends years, makes and models through
+one owned initial-selector resolver. It no longer routes public years to the
+legacy Banktwo manifest daemon, and successful makes/models never schedule
+background descendant deepening. The explicit non-public manifest and
+deepening helpers retain their separate behavior. Configuration #429 retains
+its existing class, dispatch/body controls and START/FIN diagnostic schema.
+No article, payment, entitlement, authentication or public response schema changes.
 
-Decision: one process-global active initial job; normalizedscope singleflight;6s global cooldown after release and30s per-scope cooldown after incomplete/failure. Shared child control across all providers/cursors/nested Banktwo404 label repair:12actual dispatch maximum,20smonotonic attempt including child startup,6sminimum interdispatch floor,1MiB/response,4MiBtotal response bytes,5000total response rows including repair enumeration. Counts are transport observations, never deduplicated away. With6sfloor20s atmost4dispatches normally fit;12 is independent upper guard. No automatic descendant deepening from public initial selector reads; existing explicit/background deepening helper/config/article controls retain their own contracts but are no longer scheduled here.
+One job is active per ingestion process across initial selector scopes.
+Normalized scope identity coalesces concurrent requests independently of the
+caller idempotency key. Release starts a global six-second cooldown; an
+incomplete or failed scope also receives a thirty-second cooldown. A denied
+request returns incomplete/deferred and cannot start a supplier request.
+Complete cache hits still perform no supplier work.
 
-Own subprocess resolves selector only, without persistence. Parent uses bounded nonblocking stdin/stdout/stderr and absolute deadline, terminate/kill/reap only owned process group on DNS/header/trickle/hang. Child receives normalized request/deadline, reconstructs configured source clients, applies resource/input/output bounds, returns bounded JSON result; never raw exception/provider content in errors/logs. Parent checks deadline before any persistence/coverage. On expired/budget/error retain existing durable partial rows, return incomplete/deferred with retry metadata, never persist false complete/empty proof. Successfully returned partial rows may persist only inside the live budget. No new DB schema; statement/lock/connect time bounds for selector persistence must avoid late blocking writes without changing config/article defaults. No provider or model/content/article dispatch in tests.
+The shared control covers all configured providers, pagination and hidden
+Banktwo 404 parent-label enumeration/retry:
 
-Red-first tests: cached scopes zero provider work including coldyears; dispatch/byte/row/deadline/429 shared across providers and hidden Banktwo enumeration+retry; global active same/different scopes and cooldown; local owned child stalls representing DNS/header/trickle plus concurrent callers, bounded termination/reap/no descendant leak/no late persistence; truthful partial/incomplete state and no automatic deepening. Existing connector/article/config/deepening tests verify default optional hooks preserve unrelated contracts. Use synthetic/local loopback only. First commit failing tests, then implementation/green evidence. Root reviews resulting PR/head; no serving activation.
+| Bound | Limit |
+| --- | --- |
+| Supplier dispatch attempts | 12 |
+| Absolute provider/IPC elapsed deadline, including child startup | 20 seconds |
+| Minimum spacing between dispatches | 6 seconds |
+| Decoded HTTP response body | 1 MiB per response; 4 MiB cumulative |
+| Response rows before deduplication, including repair pages | 5,000 |
+| IPC input/output | 16 KiB / 4 MiB |
+| Child address space / CPU / open files | 512 MiB / 22 CPU seconds / 64 |
 
-Implementation owned paths: new selector job/control module+tests, catalog_service.py integration, source_connector_client.py optional per-read limits/accounting. HTTP worker/Go changes only if necessary for honest budget metadata; no HTML/JS. PR434 untouched.
+Normally at most four dispatches fit the elapsed/spacing limits; the request
+counter is an independent guard. Byte limits cover response bodies, not HTTP
+headers; the HTTP parser also runs inside the child memory/deadline boundary.
+A 429 stops the shared job before the next provider. Source failures never
+become empty complete coverage. All configured sources must prove complete
+coverage for these initial scopes, including years.
 
-Concrete todo:
-- Synchronize Issue436 Project8 plan canonical docs record and pinned preflight
-- Write red-first shared budget admission cooldown nested repair and owned slow-network tests
-- Implement initial years makes models owned child shared12requests20s1MiBpage4MiBtotal5000rows and6sdispatchfloor
-- Admit one global active initial job with6sglobal and30sscope cooldown; no public descendant deepening
-- Prevent expired jobs from provider dispatch or persistence; preserve existing partial rows and truthful completion
-- Run focused plus existing selector connector catalog configuration regressions and open review PR without live calls or merge
+The child imports only selector resolution and performs no persistence.
+Parent IPC is nonblocking and bounded, stderr is discarded, and fixed stop
+codes replace child exception text. On deadline, the parent kills and reaps
+only the owned process group, covering DNS, headers and trickling bodies.
+Expired/failed children cannot persist rows or complete markers. Existing
+durable partial rows remain available.
 
+Parent persistence checks remaining time before connection, writes and
+commit, reserves connect/commit time, and uses one-second connect/statement
+and 250 ms lock timeouts. These driver/server limits are distinct from the hard
+owned-provider deadline; database cleanup is not claimed to have an owned
+process deadline. Makes/models store sparse rows and provenance in their
+normal scoped marker: version 0 remains partial, version 1 proves complete.
+They do not enter full vehicle/S3 evidence persistence.
 
-Owning-boundary refinement before HTTP implementation: `/v1/catalog/ensure` currently dispatches years to `catalog_years.ensure_catalog_years`, whose separate daemon manifest thread defaults Banktwo endpoints and bypasses initial admission. Public years must use the same owned selector path as makes/models; retain the explicit legacy helper for non-public callers, but remove its automatic HTTP dispatch. Persist successful bounded years as provider-backed selector projections in `vehicle_catalog_years` (existing nullable source_snapshot_id), with the exact provider/version/page URI and a documented normalized-projection SHA256; no S3/article evidence creation. Persist makes/models only in their scoped marker. Parent uses connect_timeout1s, statement_timeout<=1s, lock_timeout250ms and deadline checks/reservation before write/commit. Provider/IPC has an absolute20s hard deadline; DB cleanup is separately driver/server bounded, never claimed to be an owned-process hard deadline. Body-byte bounds exclude headers; subprocess memory/deadline also covers HTTP parser work. Add red-first actual HTTP boundary, successful owned local connector, fake-DB transaction/deadline/rollback checks.
+Years writes one bounded PostgreSQL upsert using exact row/page provider,
+source version and source URI carried in initial-only provider mappings.
+`response_hash` explicitly hashes the normalized selected-year projection,
+not supplier body bytes. `source_snapshot_id` stays null; no snapshot or S3
+write is fabricated. Missing row/page provenance fails closed. Years creates
+no scope marker because the scope is unfiltered and that table requires a
+real model year. The Go reader uses ordered durable year rows directly.
+Incomplete years responses create neither rows nor a false completion marker.
 
-
-Years schema refinement: Go reads durable years rows directly and does not use a years scope marker. The marker schema requires an actual model_year; public unfiltered years therefore writes only the provider-backed normalized years projection and creates no placeholder/false years marker. No S3 snapshot is invented. Successful makes/models keep normal scoped provenance/selector rows. Tests assert this exact marker distinction.
-
-Years provenance: initial-only provider mappings carry the exact page provider/source URI/version into bounded years upsert. Retain those real source fields; response_hash is explicitly the normalized selected-year projection SHA256, not a supplier-body hash. source_snapshot_id remains null; no fake snapshot or S3 write. Reject missing row/page binding instead of fabricating provenance.
+This is synthetic code acceptance. Supplier compatibility, runtime activation,
+external licensed display and real browsing acceptance require separate gates.
+See the [plan](../superpowers/plans/2026-11-15-initial-selector-safety.md) and
+[verification](../verification/2026-11-15-initial-selector-safety.md).

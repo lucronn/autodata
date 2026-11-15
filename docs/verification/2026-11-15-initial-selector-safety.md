@@ -1,31 +1,76 @@
-# Initial public selector safety
+# Initial selector safety verification
 
 Issue: https://github.com/lucronn/autodata/issues/436
-Project: https://github.com/users/lucronn/projects/8 itemPVTI_lAHOCSJ8cc4BiQ2BzhI01Rs.
-Protected source base272aeeaad8399c305468e5d486cc391d7340f6a4. Live-data lane confirms no worker-source overlap; preserve configuration429 class/log/watchdog contract and article behavior. No live provider/service/DB mutation or PR merge.
+Project: https://github.com/users/lucronn/projects/8
+Project item: `PVTI_lAHOCSJ8cc4BiQ2BzhI01Rs`.
 
-Goal: bound initial years/makes/models resolution, not only later deepening, and prevent anonymous cache misses from expanding into uncharged descendant work. Cached complete result remains zero-dispatch. Include cold-cache years even though live62years currently avoid ensure.
+Initial protected base `272aeeaa`; final protected integration base
+`f534d0aeb76973ca3b8c70b14c806973edb1b457`.
+Implementation gate `8bd9814`; actual HTTP/persistence refinement gates
+`1a9101d4`, `90f8872b`, `8b3b688f`; each machine preflight passed before
+its corresponding implementation. Ordinary integration `b2b3b34e` had no
+conflicts or changes to protected UI code.
 
-Decision: one process-global active initial job; normalizedscope singleflight;6s global cooldown after release and30s per-scope cooldown after incomplete/failure. Shared child control across all providers/cursors/nested Banktwo404 label repair:12actual dispatch maximum,20smonotonic attempt including child startup,6sminimum interdispatch floor,1MiB/response,4MiBtotal response bytes,5000total response rows including repair enumeration. Counts are transport observations, never deduplicated away. With6sfloor20s atmost4dispatches normally fit;12 is independent upper guard. No automatic descendant deepening from public initial selector reads; existing explicit/background deepening helper/config/article controls retain their own contracts but are no longer scheduled here.
+Red-first checkpoints:
 
-Own subprocess resolves selector only, without persistence. Parent uses bounded nonblocking stdin/stdout/stderr and absolute deadline, terminate/kill/reap only owned process group on DNS/header/trickle/hang. Child receives normalized request/deadline, reconstructs configured source clients, applies resource/input/output bounds, returns bounded JSON result; never raw exception/provider content in errors/logs. Parent checks deadline before any persistence/coverage. On expired/budget/error retain existing durable partial rows, return incomplete/deferred with retry metadata, never persist false complete/empty proof. Successfully returned partial rows may persist only inside the live budget. No new DB schema; statement/lock/connect time bounds for selector persistence must avoid late blocking writes without changing config/article defaults. No provider or model/content/article dispatch in tests.
+- `eaed00c4` fails against the existing public selector path because it starts
+  uncharged descendant deepening.
+- `78e168c7` fails against actual HTTP years dispatch because it invokes the
+  legacy unbounded manifest runner. The corrected route never invokes it.
 
-Red-first tests: cached scopes zero provider work including coldyears; dispatch/byte/row/deadline/429 shared across providers and hidden Banktwo enumeration+retry; global active same/different scopes and cooldown; local owned child stalls representing DNS/header/trickle plus concurrent callers, bounded termination/reap/no descendant leak/no late persistence; truthful partial/incomplete state and no automatic deepening. Existing connector/article/config/deepening tests verify default optional hooks preserve unrelated contracts. Use synthetic/local loopback only. First commit failing tests, then implementation/green evidence. Root reviews resulting PR/head; no serving activation.
+Final focused host suite: `145 passed, 17 skipped, 42 subtests passed`.
+This includes initial selectors, selector persistence, catalog service,
+source connector client, explicit selector deepening, configuration #429 budget
+and HTTP service. Local authored tests exercise socket resolver stalls,
+real header stalls/trickling responses, shared nested Banktwo repair counts,
+429, bytes/rows/requests, concurrency/cooldown, no late persistence and no
+public descendant work. Complete cached years performs zero dispatches.
+The old in-process selector retry fixture now patches the owned boundary
+and checks the new thirty-second cooldown.
 
-Implementation owned paths: new selector job/control module+tests, catalog_service.py integration, source_connector_client.py optional per-read limits/accounting. HTTP worker/Go changes only if necessary for honest budget metadata; no HTML/JS. PR434 untouched.
+Five enabled isolated PostgreSQL integrations passed on integrated code
+in 6.29s. A fresh task-only internal Docker network used cached PostgreSQL 17
+and S3 images, tmpfs data, read-only roots, dropped capabilities, no published
+ports, no host data mounts and no supplier credentials. Tests proved:
 
-Concrete todo:
-- Synchronize Issue436 Project8 plan canonical docs record and pinned preflight
-- Write red-first shared budget admission cooldown nested repair and owned slow-network tests
-- Implement initial years makes models owned child shared12requests20s1MiBpage4MiBtotal5000rows and6sdispatchfloor
-- Admit one global active initial job with6sglobal and30sscope cooldown; no public descendant deepening
-- Prevent expired jobs from provider dispatch or persistence; preserve existing partial rows and truthful completion
-- Run focused plus existing selector connector catalog configuration regressions and open review PR without live calls or merge
+- actual Go cold-years GET → real Python HTTP ensure → owned authored-local
+  connector → durable PostgreSQL years upsert → Go ordered 2023/2024 response;
+  a second Go GET dispatches no additional connector request;
+- exact provider/version/page URI retained, no fake source snapshot/S3 write
+  and no unfiltered years marker;
+- provider 503 leaves no year rows or false marker;
+- a held years-table lock times out and rolls back without a marker;
+- makes partial selector marker version 0 becomes version 1 only on completion.
 
+All task PG/S3 containers and their internal network were removed after the
+final integration; no serving/shared resources were touched. Docker capacity
+remained 960 MiB free (approximately); physical home 7.1 GiB free.
+A private aggregate cleanup receipt is retained outside Git.
 
-Owning-boundary refinement before HTTP implementation: `/v1/catalog/ensure` currently dispatches years to `catalog_years.ensure_catalog_years`, whose separate daemon manifest thread defaults Banktwo endpoints and bypasses initial admission. Public years must use the same owned selector path as makes/models; retain the explicit legacy helper for non-public callers, but remove its automatic HTTP dispatch. Persist successful bounded years as provider-backed selector projections in `vehicle_catalog_years` (existing nullable source_snapshot_id), with the exact provider/version/page URI and a documented normalized-projection SHA256; no S3/article evidence creation. Persist makes/models only in their scoped marker. Parent uses connect_timeout1s, statement_timeout<=1s, lock_timeout250ms and deadline checks/reservation before write/commit. Provider/IPC has an absolute20s hard deadline; DB cleanup is separately driver/server bounded, never claimed to be an owned-process hard deadline. Body-byte bounds exclude headers; subprocess memory/deadline also covers HTTP parser work. Add red-first actual HTTP boundary, successful owned local connector, fake-DB transaction/deadline/rollback checks.
+Full Go API suite passed after protected-base integration (`go test ./...`).
+A wider host worker run found missing Stripe and an unavailable SVG runtime and a pre-existing
+`/tmp/.git` ancestor; it also exposed the old selector retry fixture corrected
+above. A pinned cached-image, network-none worker run is recorded below.
+The runtime image lacks pytest, so read-only copies of installed pure Python
+pytest dependencies were staged privately; the image and serving dependencies
+were neither rebuilt nor changed.
 
+No real supplier/model calls, licensed bytes, grants, paid GET, serving
+mutation, merge or deployment occurred. Existing explicit manifest helpers,
+article/configuration contracts, supplier rights and external display limits
+remain separate from this code acceptance. Strict CI and root review remain
+required before merge; runtime needs a separate activation gate.
 
-Years schema refinement: Go reads durable years rows directly and does not use a years scope marker. The marker schema requires an actual model_year; public unfiltered years therefore writes only the provider-backed normalized years projection and creates no placeholder/false years marker. No S3 snapshot is invented. Successful makes/models keep normal scoped provenance/selector rows. Tests assert this exact marker distinction.
+The pinned image `sha256:3132da4cdfa56a36240132e7c83e2bf260f679c0294c7dc06669cb607c6390f7`
+passed the full worker suite at integrated `b2b3b34e`: **1303 passed,491 skipped,
+250 subtests passed** in141.47s. Two warnings were attempts to write pytest
+cache into the deliberately read-only checkout. No runtime image was built.
+Subsequent red-first checkpoint `8621670e` caught two narrow contract gaps:
+unfiltered years region must not bypass cooldown, and fallback years page
+provenance must retain its cursor. Their fixes pass the final145-test focused
+suite above. Required strict CI must validate the final review head.
 
-Years provenance: initial-only provider mappings carry the exact page provider/source URI/version into bounded years upsert. Retain those real source fields; response_hash is explicitly the normalized selected-year projection SHA256, not a supplier-body hash. source_snapshot_id remains null; no fake snapshot or S3 write. Reject missing row/page binding instead of fabricating provenance.
+Task fixture/container/network label readback is zero after cleanup, including
+the temporary full-worker test container. The shared compat stack and all
+serving/checkout data were left untouched. Protected master still equals
+`f534d0aeb76973ca3b8c70b14c806973edb1b457` before final PR creation.

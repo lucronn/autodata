@@ -68,10 +68,10 @@ class SelectorJobControl:
 
 
 def scope_key(request):
-    scope = request['scope']
+    scope = str(request['scope']).strip()
     return (scope, int(request.get('year', 2000)) if scope != 'years' else 0,
             str(request.get('make', '')).strip().casefold() if scope == 'models' else '',
-            str(request.get('region', 'US')).strip().upper())
+            str(request.get('region', 'US')).strip().upper() if scope != 'years' else '')
 
 
 class SelectorAdmission:

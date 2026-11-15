@@ -13,7 +13,7 @@ import time
 from copy import deepcopy
 from threading import Event, RLock, Thread
 from typing import Any, Callable, Iterable, Mapping
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 from uuid import uuid4
 
 
@@ -440,7 +440,8 @@ def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
 
 def _ensure_initial_selector(request, key):
     # Validate in the parent before acquiring admission or starting any process.
-    scope = request["scope"]
+    scope = str(request["scope"]).strip()
+    request = {**request, "scope": scope}
     model = CatalogRequest(int(request.get("year", 2000)), str(request.get("make", "unknown")),
                            "unknown", str(request.get("region", "US")), scope=scope)
     if len(model.make) > 256 or len(model.region) > 32:
@@ -1601,8 +1602,11 @@ class _SourceCatalogProvider:
                     "provider_label": item["label"],
                 }]
                 if getattr(self.deepening_control, "initial_selector_budget", False):
+                    page_uri = f"{self.client.base_url}/v1/catalog/{scope}"
+                    if scope == "years" and cursor is not None:
+                        page_uri += "?" + urlencode({"cursor": cursor})
                     row["provider_mappings"][0].update(
-                        source_uri=page.source_locator or f"{self.client.base_url}/v1/catalog/{scope}",
+                        source_uri=page.source_locator or page_uri,
                         source_version=page.source_revision,
                     )
                 rows.append(row)
