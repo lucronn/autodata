@@ -13,3 +13,5 @@ Concrete todo:
 - [x] Add red-first service/startup/HTTP and isolatedDB regressions for explicit merchant/livemode/price pins, allowed scoped reads, forced disabled purchase and zero-call blocked operations.
 - [x] Implement minimal read-only commerce composition with scoped read predicates and read-only DB transactions; deny checkout/webhook/order-status/reconciliation/demo at service and dispatch boundaries.
 - [ ] Run focused/full ingestion/runtime startup checks and independent exact-head review/requiredCI before integration; retain separate fresh rollout gate before live config or service changes.
+
+Read-only quotes retain product/scope/price data and explicitly set purchasable:false. Purchase config remains disabled. This capability boolean is preserved through the public Go transport. Review correction tracked on#414/#417 before integration.

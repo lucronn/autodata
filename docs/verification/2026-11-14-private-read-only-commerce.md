@@ -27,3 +27,5 @@ Implementation adds explicit read_only composition with independent COMMERCE_REA
 - No provider/model/payment network request or serving configuration/service/database mutation was performed. Test stack uses only task-created internal PostgreSQL/SeaweedFS/NATS fixtures and deterministic fake transports.
 
 Full unit suite, independent exact-head review, requiredCI and merge remain pending. Any live private read_only change requires a new merged-source rollout gate and retained writable rollback.
+
+Coordinator review of99b1c619 found inherited quote purchasable:true was inaccurate in read_only mode. Plan/architecture/record amended before corrective code: preserve quote fields but set purchasable:false only for read_only, with direct and real privateHTTP regressions. Real subprocess read_only startup without Stripe keys now passes in isolatedPG; new suite10passed/36subtests before quote correction.

@@ -11,8 +11,9 @@
     "Commit/synchronize the decision-complete plan, Issue414, Project8 and canonical docs; pass machine preflight at pinned planning SHA before implementation.",
     "Add red-first service/startup/HTTP and isolatedDB regressions for explicit merchant/livemode/price pins, allowed scoped reads, forced disabled purchase and zero-call blocked operations.",
     "Implement minimal read-only commerce composition with scoped read predicates and read-only DB transactions; deny checkout/webhook/order-status/reconciliation/demo at service and dispatch boundaries.",
-    "Run focused/full ingestion/runtime startup checks and independent exact-head review/requiredCI before integration; retain separate fresh rollout gate before live config or service changes."
+    "Run focused/full ingestion/runtime startup checks and independent exact-head review/requiredCI before integration; retain separate fresh rollout gate before live config or service changes.",
+    "Resolve reviewed quote capability mismatch: read-only quote preserves scope/price fields and reports purchasable:false; red-first direct/privateHTTP regressions, focused/runtime recheck and exact-head review."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-15T00:31:42.421105Z"
+  "updated_at": "2026-11-15T00:35:40.272120Z"
 }

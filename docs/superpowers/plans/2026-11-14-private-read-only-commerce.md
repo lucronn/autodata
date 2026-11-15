@@ -31,3 +31,7 @@ Only workers/ingestion-python/src/autodata_ingestion/commerce_service.py and htt
 - [x] Add red-first service/startup/HTTP and isolatedDB regressions for explicit merchant/livemode/price pins, allowed scoped reads, forced disabled purchase and zero-call blocked operations.
 - [x] Implement minimal read-only commerce composition with scoped read predicates and read-only DB transactions; deny checkout/webhook/order-status/reconciliation/demo at service and dispatch boundaries.
 - [ ] Run focused/full ingestion/runtime startup checks and independent exact-head review/requiredCI before integration; retain separate fresh rollout gate before live config or service changes.
+
+## Review amendment: truthful quote capability
+
+Review of99b1c619 found inherited quote reports purchasable:true despite read_only checkout refusal. Override only ReadOnlyCommerceService.quote to preserve validated scope/price/DTO fields while returning purchasable:false. Add red-first direct and actual privateHTTP quote assertions, preserving ordinary Stripe quote behavior. Go public transport should preserve that false boolean; its independent Go owner covers any needed public regression. Concrete todo: synchronize this correction/new pinned preflight before code; add failing direct/privateHTTP assertions; minimal subclass override; rerun focused/runtime/fullchecks and exact-head review.
