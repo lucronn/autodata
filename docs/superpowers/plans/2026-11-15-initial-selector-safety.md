@@ -33,3 +33,7 @@ Concrete todo:
 - Admit one global active initial job with6sglobal and30sscope cooldown; no public descendant deepening
 - Prevent expired jobs from provider dispatch or persistence; preserve existing partial rows and truthful completion
 - Run focused plus existing selector connector catalog configuration regressions and open review PR without live calls or merge
+
+Root review follow-up: keep the existing lower persistence guard, and explicitly skip the persistence helper in the initial-years caller when any source is incomplete/failed. Return an explicit zero-write outcome. Red-first caller test must use one successful source plus an incomplete/error source, preserve makes/models version0 partial behavior, and prove cold years can retry after30s cooldown. Add an enabled isolated Go/HTTP/owned-source/PG partial→healthy regression, with test-only admission clock/cache expiry control and authored local source data. No serving or real provider access.
+
+- Make incomplete years an explicit caller no-write outcome and prove two-source cold retry

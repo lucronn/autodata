@@ -67,3 +67,5 @@ This is synthetic code acceptance. Supplier compatibility, runtime activation,
 external licensed display and real browsing acceptance require separate gates.
 See the [plan](../superpowers/plans/2026-11-15-initial-selector-safety.md) and
 [verification](../verification/2026-11-15-initial-selector-safety.md).
+
+The initial-years caller explicitly skips persistence for incomplete coverage, in addition to the lower helper guard. Partial rows in an internal response do not populate durable years or suppress later cold-reader hydration. A successful later attempt remains eligible after the existing cooldown.

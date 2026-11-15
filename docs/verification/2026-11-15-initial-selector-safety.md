@@ -74,3 +74,5 @@ Task fixture/container/network label readback is zero after cleanup, including
 the temporary full-worker test container. The shared compat stack and all
 serving/checkout data were left untouched. Protected master still equals
 `f534d0aeb76973ca3b8c70b14c806973edb1b457` before final PR creation.
+
+Root review requested an explicit incomplete-years caller no-write result and two-source/cold-retry regression. The existing lower helper already rejects incomplete years before connecting; the follow-up strengthens the caller contract and proves the actual cold-read behavior without claiming a reproduced durable partial write.
