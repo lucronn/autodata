@@ -1,6 +1,6 @@
 # Compatible Workshop catalog runtime rollout
 
-Goal: Deploy a compatible, exact-source catalog ingestion runtime on loopback3031 so real Workshop selectors persist truthful dual-bank completion, preserving article/commerce behavior and disabled purchasing.
+Goal: Deploy a compatible, exact-source catalog ingestion runtime on loopback3031 so real Workshop selectors persist truthful dual-bank completion, preserving protected article/commerce state and disabled purchasing.
 Issue https://github.com/lucronn/autodata/issues/401
 Project https://github.com/users/lucronn/projects/8
 Canonical receipt docs/verification/2026-11-14-workshop-compatible-catalog-runtime.md
@@ -30,3 +30,17 @@ After coordinator dispatch, use one bounded public2024USmakes GET and independen
 - [ ] Run offline runtime-image catalog/connector/deepening tests and isolated PostgreSQL sparse-selector persistence/upgrade tests without serving credentials or provider access.
 - [ ] Prepare a private backup/protected baseline and exact retained-runtime rollout/rollback manifest; coordinator alone replaces source mount after complete Config/HostConfig/image comparison.
 - [ ] Verify runtime health/writes/protected state and one bounded real2024US selector observation through public API; record truthful partial state or completion and remaining article/paid-access gaps.
+
+## Superseding full exact-source amendment
+
+The initial two-module overlay is retained as failed acceptance evidence and MUST NOT deploy. Actual-runtime offline unittest passed65, but full selected isolated pytest produced106passed/6failed/3errors. Current article fixtures require rewrite_profile_version absent from old store, and current Stripe private HTTP expects expected_mode/demo-mode absent from old runtime. Other harness failures were missing isolatedMinIO and a read-only Go cache. These results make the full exact merged runtime the compatible deployment boundary.
+
+This amendment supersedes every earlier two-module-only/source-preservation statement above: build a fresh immutable complete git archive of exact61f1939c04b41cf6082c3361f34424e0cd9c599e, without code edits or generated files inside source. Seventeen ingestion source paths differ from e4af862, covering already merged article lifecycle/full-prose/worker, catalog and private-commerce contracts; include their exact committed dependencies and scripts as one source tree. pyproject and Python contracts are byte-identical; image remains pinned5c8e79b93db4. Only migration difference is042, already present in serving schema; no serving migration or schema mutation is authorized. Hash every source file against git archive and retain manifest; verify runtime imports use this full tree. Do not launch article/index/continuous/model workers. Existing env/disabled purchase controls remain exact. No live payment/provider/model call forms part of offline acceptance.
+
+Expand isolated fixture resources on the existing internal-only test network to exact pinned SeaweedFS image sha256:7b5ca1f11aa4c91593612d2d4a9e253ec9152a4bd13a19e551290a042a4c52f5 (repository digest4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d), mini mode, tmpfs data, aliasminio; and NATS image sha256:8b9f712ae2148dcbd9d7f3d16a942d515e290526e5d018500931eab62b18e045, JetStream, tmpfs data, aliasnats. No host ports, external network, serving credentials or backup mounts. Use fixture-only identity/config and artifacts directory. Explicitly blank inherited runtime-image AUTODATA/BANKONE/BANKTWO/INCEPTION env defaults for tests; the base image has application env entries. Read-only source with writable /tmp Go cache/GOTMPDIR and fixture artifacts is permitted. Run full relevant pytest and preferably full ingestion suite with isolated lifecycle support, actual runtime unit/import smoke, Go sparse selector contract and regression checks. Test-only pytest dependencies may be mounted from existing pinned runner; they do not enter candidate/image.
+
+Additional concrete todo:
+- [ ] Preserve failed overlay evidence and synchronize this full exact-source boundary before candidate generation.
+- [ ] Build immutable full61f1939 archive and verify manifest/dependencies/DB042 compatibility.
+- [ ] Run complete isolated fixture stack acceptance and actual-runtime tests; stop on application failures.
+- [ ] Prepare fresh private backup/protected baseline and exact source-mount-only coordinator rollout/rollback after green evidence.

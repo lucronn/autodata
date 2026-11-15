@@ -1,5 +1,5 @@
 {
-  "goal": "Deploy a compatible, exact-source catalog ingestion runtime on loopback3031 so real Workshop selectors persist truthful dual-bank completion, preserving article/commerce behavior and disabled purchasing.",
+  "goal": "Deploy a compatible, exact-source catalog ingestion runtime on loopback3031 so real Workshop selectors persist truthful dual-bank completion, preserving protected article/commerce state and disabled purchasing.",
   "plan_ref": "docs/superpowers/plans/2026-11-14-workshop-compatible-catalog-runtime.md",
   "issue_ref": "https://github.com/lucronn/autodata/issues/401",
   "project_ref": "https://github.com/users/lucronn/projects/8",
@@ -7,11 +7,11 @@
     "docs/verification/2026-11-14-workshop-compatible-catalog-runtime.md"
   ],
   "todo": [
-    "Freeze current writable serving runtime and DB schema42 evidence; stage an immutable original-source copy with only two exact merged catalog modules replaced and audit complete source hashes.",
-    "Run offline runtime-image catalog/connector/deepening tests and isolated PostgreSQL sparse-selector persistence/upgrade tests without serving credentials or provider access.",
-    "Prepare a private backup/protected baseline and exact retained-runtime rollout/rollback manifest; coordinator alone replaces source mount after complete Config/HostConfig/image comparison.",
-    "Verify runtime health/writes/protected state and one bounded real2024US selector observation through public API; record truthful partial state or completion and remaining article/paid-access gaps."
+    "Preserve failed two-module overlay results; build a fresh immutable complete exact61f1939 committed source archive and verify full manifest, unchanged dependencies, and existing serving DB042 compatibility.",
+    "Run actual-runtime tests with scrubbed inherited env and a complete isolated internal PostgreSQL/SeaweedFS/NATS fixture stack, writable test caches/artifacts, no serving credentials and no provider/payment/model calls.",
+    "Prepare new private backup/protected baseline and a same-image/env source-mount-only coordinator rollout with exact comparison, retained writable rollback and no serving migrations.",
+    "Verify health/writes/protected state/disabled purchase and bounded real selector truth after coordinator dispatch; report unresolved article/paid-access acceptance honestly."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-15T00:26:26.438824Z"
+  "updated_at": "2026-11-15T00:29:18.812695Z"
 }
