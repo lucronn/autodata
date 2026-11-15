@@ -2801,3 +2801,105 @@ for (const mode of ['local', 'firebase']) {
     }
   });
 }
+
+const legacyIntroSteps = [
+  { number: 1, heading: 'Set the marker', instructions: ['Turn the blue training dial to the square marker.'], image_ids: ['owned-diagram'] },
+  { number: 2, heading: 'Confirm the marker', instructions: ['Check that the orange marker sits beside the blue square.'] },
+];
+const legacyIntroText = 'Wholly authored synthetic training instructions for a fictional bench. This fixture describes no real vehicle.';
+function legacyIntroArticle(body, changes = {}) {
+  return mediaArticle([], [{ id: 'owned-diagram', url: mediaURL('owned'), alt: 'Authored training diagram' }], {
+    body, steps: structuredClone(legacyIntroSteps), ...changes,
+  });
+}
+const occurrences = (text, part) => text.split(part).length - 1;
+
+test('legacy introduction stays visible once before ordered usable steps and their image', () => {
+  const article = legacyIntroArticle(legacyIntroText), before = JSON.stringify(article);
+  const h = articleMediaHarness(), parent = h.content(article), text = parent.textContent;
+  assert.equal(occurrences(text, legacyIntroText), 1);
+  assert.ok(text.indexOf(legacyIntroText) < text.indexOf(legacyIntroSteps[0].heading));
+  assert.ok(text.indexOf(legacyIntroSteps[0].instructions[0]) < text.indexOf(legacyIntroSteps[1].heading));
+  for (const step of legacyIntroSteps) {
+    assert.equal(occurrences(text, step.heading), 1);
+    assert.equal(occurrences(text, step.instructions[0]), 1);
+  }
+  assert.deepEqual(mediaTags(parent), ['p', 'section', 'section']);
+  assert.deepEqual(mediaIDs(parent), ['owned-diagram']);
+  assert.equal(JSON.stringify(article), before, 'presentation cannot change retained source or projections');
+});
+
+test('legacy numbered replay retains leading headings and callouts without repeated steps', () => {
+  const body = 'TRAINING\n\nAuthored introductory note.\n\nNOTE: Keep the bench clear. 1.Set the marker Turn the blue training dial to the square marker. 2.Confirm the marker Check that the orange marker sits beside the blue square.';
+  const parent = articleMediaHarness().content(legacyIntroArticle(body));
+  assert.deepEqual(mediaTags(parent), ['h3', 'p', 'aside', 'section', 'section']);
+  assert.match(parent.textContent, /TRAININGAuthored introductory note\.NoteKeep the bench clear\./i);
+  for (const step of legacyIntroSteps) assert.equal(occurrences(parent.textContent, step.instructions[0]), 1);
+  assert.deepEqual(mediaIDs(parent), ['owned-diagram']);
+});
+
+for (const instructionsOnly of [false, true]) {
+  for (const intro of ['', legacyIntroText]) {
+    test(`legacy unnumbered complete replay ${instructionsOnly ? 'instructions' : 'headings'} keeps only ${intro ? 'distinct intro' : 'steps'}`, () => {
+      const replay = legacyIntroSteps.flatMap(step => [...(instructionsOnly ? [] : [step.heading]), ...step.instructions]).join('\n');
+      const article = legacyIntroArticle([intro, replay].filter(Boolean).join('\n\n'));
+      const presentation = articlePresentation(article), parent = articleMediaHarness().content(article);
+      assert.equal(presentation.introBlocks.length, intro ? 1 : 0);
+      if (intro) assert.equal(occurrences(parent.textContent, intro), 1);
+      for (const step of legacyIntroSteps) {
+        assert.equal(occurrences(parent.textContent, step.heading), 1);
+        assert.equal(occurrences(parent.textContent, step.instructions[0]), 1);
+      }
+    });
+  }
+}
+
+test('legacy whitespace-only replay differences normalize without changing retained introduction', () => {
+  const replay = legacyIntroSteps.flatMap(step => [step.heading, ...step.instructions]).join('\t\r\n');
+  const presentation = articlePresentation(legacyIntroArticle('Distinct intro.\n\n'+replay.replaceAll(' ', '\u00a0')));
+  assert.deepEqual(presentation.introBlocks, [{ type: 'paragraph', text: 'Distinct intro.' }]);
+});
+
+test('legacy numbered step projections from normalization do not create an introduction', () => {
+  const steps = [{ action: 'Set the marker', instructions: ['Turn the blue dial.'] }, { action: 'Confirm the marker', instructions: ['Observe the orange marker.'] }];
+  const body = steps.map((step, i) => `${i + 1}. ${step.action}\n${step.instructions.join('\n')}`).join('\n');
+  assert.deepEqual(articlePresentation({ body, steps }).introBlocks, []);
+});
+
+test('legacy partial or differently punctuated unnumbered overlap is preserved without fuzzy deletion', () => {
+  for (const body of ['Turn the blue training dial to the square marker.', 'turn the blue training dial to the square marker. Check that the orange marker sits beside the blue square.', 'Turn the blue training dial to the square marker! Check that the orange marker sits beside the blue square.']) {
+    const presentation = articlePresentation(legacyIntroArticle(body));
+    assert.equal(presentation.introBlocks.map(block => block.text).join(' '), body);
+  }
+});
+
+test('legacy intro decimals and unrelated numbers remain text; action wins over stale heading in replay', () => {
+  const steps = [{ action: 'Set marker', heading: 'Old heading', instructions: ['Use 1.5 turns.'] }];
+  assert.deepEqual(articlePresentation({ body: 'Model CTX1.5 reference. Set marker Use 1.5 turns.', steps }).introBlocks,
+    [{ type: 'paragraph', text: 'Model CTX1.5 reference.' }]);
+  assert.equal(articlePresentation({ body: 'Old heading Use 1.5 turns.', steps }).introBlocks[0].text, 'Old heading', 'distinct stale heading is retained while exact instruction replay is removed');
+});
+
+test('legacy introduction never overrides document authority or changes partial-step and empty-body fallbacks', () => {
+  const article = legacyIntroArticle(legacyIntroText, { document: { blocks: [{ type: 'paragraph', text: 'Authoritative ordered text.' }] } });
+  assert.deepEqual(articlePresentation(article).introBlocks, []);
+  const authoritative = articleMediaHarness().content(article);
+  assert.equal(authoritative.textContent, 'Authoritative ordered text.');
+  assert.deepEqual(mediaIDs(authoritative), []);
+  const incomplete = articlePresentation({ body: 'Retain entire fallback.', steps: [legacyIntroSteps[0], {}] });
+  assert.deepEqual(incomplete.introBlocks, []);
+  assert.deepEqual(incomplete.steps, []);
+  assert.deepEqual(incomplete.blocks, [{ type: 'paragraph', text: 'Retain entire fallback.' }]);
+  const empty = articleMediaHarness().content(legacyIntroArticle(''));
+  assert.deepEqual(mediaTags(empty), ['section', 'section']);
+});
+
+test('legacy introduction HTML-like text is inert through actual DOM construction', () => {
+  const attack = '<img src=x onerror="globalThis.introExecuted=true"> Authored note.';
+  const parent = articleMediaHarness().content(legacyIntroArticle(attack));
+  assert.equal(parent.children[0].tagName, 'p');
+  assert.equal(parent.children[0].textContent, attack);
+  assert.equal(parent.children[0].children.length, 0);
+  assert.deepEqual(mediaIDs(parent), ['owned-diagram'], 'only the real structured-step illustration is present');
+  assert.equal(globalThis.introExecuted, undefined);
+});

@@ -148,6 +148,29 @@ export function legacyArticleBlocks(body) {
   return blocks;
 }
 
+// Legacy bodies can contain an introduction followed by a second projection of
+// the same steps. Keep proven leading text; never guess at near-duplicate prose.
+function legacyIntroductionBlocks(body, steps) {
+  const blocks = legacyArticleBlocks(body);
+  const firstStep = blocks.findIndex(block => block.type === 'step');
+  if (firstStep !== -1) return blocks.slice(0, firstStep);
+
+  const words = [...body.matchAll(/\S+/gu)];
+  const sequences = [
+    steps.flatMap(step => [step.action || step.heading, ...(step.instructions || [])]),
+    steps.flatMap(step => step.instructions || []),
+  ].map(parts => parts.filter(part => typeof part === 'string').join(' ').match(/\S+/gu) || [])
+    .filter(sequence => sequence.length > 0)
+    .sort((a, b) => b.length - a.length);
+  for (const sequence of sequences) {
+    const start = words.length - sequence.length;
+    if (start >= 0 && sequence.every((word, index) => word === words[start + index][0])) {
+      return legacyArticleBlocks(body.slice(0, words[start].index));
+    }
+  }
+  return blocks;
+}
+
 export function articlePresentation(article) {
   const steps = Array.isArray(article.steps) ? article.steps : [];
   const documentBlocks = Array.isArray(article.document?.blocks) ? article.document.blocks : [];
@@ -159,6 +182,7 @@ export function articlePresentation(article) {
     steps: usable ? steps : [],
     documentBlocks,
     body,
+    introBlocks: !documentBlocks.length && usable ? legacyIntroductionBlocks(body, steps) : [],
     blocks: documentBlocks.length || usable ? [] : legacyArticleBlocks(body),
     legacy: steps.length > 0 && !usable,
   };
