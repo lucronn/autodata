@@ -37,9 +37,38 @@ Protected master: `5b3e19d3b34208773a77b4b9cfccd3085726cabe`, tree `92da3c023872
 
 Integration record: `docs/agents/records/2026-11-14-workshop-staging-tester-protected-base.json`
 
-- [ ] Synchronize Issue413, Project8, plan and canonical architecture at protected master5b3e19d and pass checkpoint preflight
-- [ ] Merge the synchronized checkpoint into PR415 preserving the reviewed six-file auth implementation and exact master ancestry
-- [ ] Run focused staging audience, full Go API, auth Firebase race and full Workshop client regressions on integrated source
+- [x] Synchronize Issue413, Project8, plan and canonical architecture at protected master5b3e19d and pass checkpoint preflight
+- [x] Merge the synchronized checkpoint into PR415 preserving the reviewed six-file auth implementation and exact master ancestry
+- [x] Run focused staging audience, full Go API, auth Firebase race and full Workshop client regressions on integrated source
 - [ ] Push the protected-base candidate, rerun strict required CI, hand off independent exact-head review and hold merge without runtime or provider actions
 
 This final checkpoint supersedes planning-only22b8433 on92d81a1. PR421 is protected-merged at5b3e19d with identical reviewed tree92da3c02; integrate only after this refreshed exact-base gate passes.
+
+## Current protected-base validation
+
+Protected master `5b3e19d3b34208773a77b4b9cfccd3085726cabe`, tree
+`92da3c0238725728e43a2bbd4df7a0ec29d02de6`, includes PR412, PR417 and PR421.
+Refreshed docs-only gate `8487ec03f57a3827b8a329b956a057919f490127`
+was committed/pushed and synchronized to Issue413/Project8; its exact-SHA
+preflight returned synchronized/errors[] before integration merge
+`673a1ce8fec18c79ca9b873268672b84e4aa6409`. Both published histories were
+preserved. Only two documentation add/add overlaps needed resolution; no
+application conflict occurred. All six auth-file implementation deltas are
+byte-identical to independently reviewed b7abe2f (normalized patch SHA256
+`ecebb58d57a9554cdc995a75ba76225bb6bd868eacd057097bec64eccba06e74`).
+
+Fresh integrated-source validation:
+
+- Full Go API `go test ./... -count=1`: passed17.037s.
+- Focused auth/Firebase/staging audience `go test . -race -count=1 -run
+  'Test(StagingTester|CustomerAuth|OfficialFirebase|FirebaseADC|FirebaseTimedOut)'`:
+  passed15.895s.
+- All Workshop client tests:262 passed, zero failures.
+- Exact gate preflight, ancestry, scope and diff checks passed.
+
+Final exact-head independent review and fresh strict required CI remain merge
+gates; terminal results are tracked in Issue413/Project8 to preserve the CI
+candidate. No real provider calls, runtime configuration, deployment, DNS,
+credentials, production database/grants or public TEST enablement occurred.
+The source restriction does not establish actual tester approval, isolated
+HTTPS/data/Firebase readiness or genuine TEST settlement/grant/refund.
