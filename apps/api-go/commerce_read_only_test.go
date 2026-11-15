@@ -186,3 +186,51 @@ func TestReadOnlyCommerceCannotEnablePurchasesOrReachPayments(t *testing.T) {
 		t.Fatal("private outage changed disabled config", w.Code, w.Body.String())
 	}
 }
+
+func TestReadOnlyCommerceQuoteAvailabilityUsesActualClientMode(t *testing.T) {
+	quote := `{"version":"v1","product_key":"workshop-configuration-v1","configuration_id":"` + commerceConfigID + `","region":"US","configuration_label":"Vehicle","amount_minor":2000,"currency":"USD","purchase_terms_version":"workshop-v1","purchasable":true}`
+	for _, tc := range []struct {
+		mode, name, body string
+		status           int
+		purchasable      bool
+	}{
+		{"read_only", "legacy true", quote, 200, true},
+		{"read_only", "private read only false", strings.Replace(quote, `"purchasable":true`, `"purchasable":false`, 1), 200, false},
+		{"stripe_test", "ordinary true", quote, 200, true},
+		{"stripe_live", "ordinary true", quote, 200, true},
+		{"stripe_test", "false denied", strings.Replace(quote, `"purchasable":true`, `"purchasable":false`, 1), 503, false},
+		{"stripe_live", "private mode cannot authorize false", strings.Replace(quote, `"purchasable":true`, `"purchasable":false,"read_only":true`, 1), 503, false},
+		{"read_only", "missing denied", strings.Replace(quote, `,"purchasable":true`, ``, 1), 503, false},
+		{"read_only", "null denied", strings.Replace(quote, `"purchasable":true`, `"purchasable":null`, 1), 503, false},
+		{"read_only", "nonboolean denied", strings.Replace(quote, `"purchasable":true`, `"purchasable":"false"`, 1), 503, false},
+		{"read_only", "wrong scope denied", strings.ReplaceAll(strings.Replace(quote, `"purchasable":true`, `"purchasable":false`, 1), commerceConfigID, commerceOrderID), 503, false},
+		{"read_only", "wrong amount denied", strings.Replace(strings.Replace(quote, `"purchasable":true`, `"purchasable":false`, 1), `"amount_minor":2000`, `"amount_minor":1`, 1), 503, false},
+	} {
+		t.Run(tc.mode+"/"+tc.name, func(t *testing.T) {
+			calls := 0
+			private := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls++; io.WriteString(w, tc.body) }))
+			defer private.Close()
+			values := map[string]string{"AUTODATA_COMMERCE_MODE": tc.mode, "AUTODATA_PUBLIC_ORIGIN": "https://demo.example", "AUTODATA_INGESTION_URL": private.URL, "AUTODATA_INGESTION_INTERNAL_TOKEN": "fixture-token"}
+			client, err := configuredCommerceClient(func(key string) string { return values[key] })
+			if err != nil {
+				t.Fatal(err)
+			}
+			s, _, _ := commerceTestAPI(t, client)
+			w := customerHTTP(t, s.Handler(), "GET", "/v1/workshop/quote?configuration_id="+commerceConfigID+"&region=US", "", nil, nil)
+			if w.Code != tc.status || calls != 1 {
+				t.Fatalf("status=%d want=%d calls=%d body=%s", w.Code, tc.status, calls, w.Body.String())
+			}
+			if w.Code == 200 {
+				var public struct {
+					Purchasable *bool `json:"purchasable"`
+				}
+				if json.Unmarshal(w.Body.Bytes(), &public) != nil || public.Purchasable == nil || *public.Purchasable != tc.purchasable {
+					t.Fatal("quote availability changed", w.Body.String())
+				}
+				if strings.Contains(w.Body.String(), `"read_only"`) {
+					t.Fatal("private mode field leaked")
+				}
+			}
+		})
+	}
+}
