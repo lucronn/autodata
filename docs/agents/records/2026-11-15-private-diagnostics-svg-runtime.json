@@ -8,12 +8,12 @@
     "docs/verification/2026-11-15-private-diagnostics-svg-runtime.md"
   ],
   "todo": [
-    "Synchronize final DockerRootDir identity/egress wording amendment and preflight before editing helper.",
-    "Assert fixed-context Docker info data-root equals /mnt/openfoam/docker before measuring storage; add drift test proving no measurement on mismatch.",
-    "Rerun existing23 tests plus new drift fixture and passive baseline check; reseal helper/manifest, preserve fresh physical backup.",
-    "Scope egress to helper dispatch; inspect safe aggregate counters if available, otherwise mark unavailable; no global live-zero claim.",
-    "Hold serving create/start/stop and real probe for independent coordinator review."
+    "DONE gate492c9df/Issue401 comment6888403691/Project/preflight synchronized before final storage edit.",
+    "DONE fixed-context DockerRootDir exact assertion before disk measurement; drift red\u2192green regression.",
+    "DONE24 tests and passive27 protected/12 catalog baseline check; resealed helper39606142/new manifest4773d774; physical dumpc69b preserved.",
+    "DONE helper-only egress claim; public-ingress background risk explicit, safe aggregate live counters unavailable in inspected source.",
+    "TODO independent coordinator artifact review, current-pin/storage recheck and separate check/stage/activate/verify; real config probe separately sealed."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-15T03:12:48.628924+00:00"
+  "updated_at": "2026-11-15T03:13:49.564524+00:00"
 }
