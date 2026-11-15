@@ -99,3 +99,16 @@ This proves one already retained source object's bytes matched the persisted sou
 Normal paid-reader acceptance remains blocked on an authorized exact configuration-scoped entitlement via genuine TEST settlement after owner UID/project/origin/terms, plus applicable content permissions. Legacy nonpaid list/detail may schedule writes and were not called. Paid GET remains grant-gated and requires Firebase GetUser/internal read-only grants-check dependencies; this lower-layer integrity proof does not bypass or replace them. Any real image recapture still requires supplier rights and an exact bounded provider-GET gate. External/public licensed exposure stays disabled.
 
 The internal integrity objective is complete; code PR/final CI/protected-base integration remain HELD for coordinator scheduling and review. No merge/deploy/second real read is authorized by this result. Prior gate/negative tests and first-preparation limitations are retained as history, superseded only as to the now-observed authored Docker launch and one real integrity run.
+
+
+## Protected-base PR refresh — 2026-11-15
+
+PR #434 is refreshed onto protected `a82b31dc8850aa3956972928b8c720969765a972` for integration review. The prior exact head `9bddc35a577f6f571e1805f78f32c1df99f6b001` passed all three required checks in [run 43673423719](https://github.com/lucronn/autodata/actions/runs/43673423719). Its earlier final-CI holds above are historical; fresh exact-head remote CI is now authorized and required after this refresh.
+
+The implementation and its historical candidate343/source083f runtime/source pins remain byte-identical. They describe the reviewed one-shot proof, not the current serving runtime or authorization for another run. The single redacted proof and all rights/paid-reader limitations remain unchanged. No new runtime, SQL, object-store, Docker, browser, provider or real-data access is part of this refresh. M2A retains exclusive local build capacity; no local test or build is run.
+
+Concrete todo for this refresh (Issue [#428](https://github.com/lucronn/autodata/issues/428), [Project #8](https://github.com/users/lucronn/projects/8), status Review):
+- Rebase the existing PR onto exact protected a82b31dc without changing implementation or historical proof.
+- Synchronize Issue/Project, this plan, canonical documentation and record; run machine preflight at the committed checkpoint.
+- Verify unchanged implementation blobs and the seven-path PR scope; push with the exact old-head lease and obtain strict remote CI.
+- Hold merge, deployment and all further real-data runs for the coordinator.
