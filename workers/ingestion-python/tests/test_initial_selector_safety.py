@@ -115,3 +115,135 @@ def test_existing_public_selector_must_not_start_detached_deepening(monkeypatch)
     monkeypatch.setattr(catalog,'_persist_hydration_scope',lambda *a,**k: {})
     monkeypatch.setattr(catalog,'_schedule_selector_deepening',lambda *a,**k: pytest.fail('public initial selector started uncharged descendants'))
     assert catalog.ensure_catalog_hydration(json.dumps({'scope':'makes','year':2024,'idempotency_key':'red-descendants'}))['complete']
+
+
+@pytest.mark.parametrize('stall', ['dns', 'headers', 'trickle'])
+def test_actual_connector_dns_headers_trickle_hard_deadline(tmp_path, stall):
+    """Exercise the connector's real opener/read1 path inside the owned child."""
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    seen = threading.Event()
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            seen.set()
+            if stall == 'headers':
+                time.sleep(1)
+                return
+            try:
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', '100000')
+                self.end_headers()
+                for _ in range(50):
+                    self.wfile.write(b' '); self.wfile.flush(); time.sleep(.03)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+        def log_message(self, *args): pass
+    server=ThreadingHTTPServer(('127.0.0.1',0),Handler)
+    thread=threading.Thread(target=server.serve_forever,daemon=True); thread.start()
+    pidfile=tmp_path/'actual-pid'
+    script = ('import os,socket,time; from autodata_ingestion.source_connector_client import SourceConnectorClient; '
+              f'open({str(pidfile)!r},"w").write(str(os.getpid())); '
+              + ('socket.getaddrinfo=lambda *a,**k: time.sleep(30); ' if stall=='dns' else '')
+              + f'SourceConnectorClient("http://127.0.0.1:{server.server_port}",provider="bankone").catalog("years",timeout=10)')
+    try:
+        started=time.monotonic()
+        with pytest.raises(job.SelectorJobStopped,match='elapsed'):
+            job.run_owned({},time.monotonic()+.4,command=[sys.executable,'-c',script])
+        assert time.monotonic()-started < 2
+        assert pidfile.exists()
+        with pytest.raises(ProcessLookupError): os.kill(int(pidfile.read_text()),0)
+        assert seen.is_set() == (stall != 'dns')
+    finally:
+        server.shutdown(); server.server_close(); thread.join(2)
+
+
+def test_parallel_different_scopes_start_only_one_job(monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    catalog._HYDRATION_RESULTS.clear()
+    monkeypatch.setattr(job,'ADMISSION',job.SelectorAdmission())
+    monkeypatch.setattr(catalog,'_configured_catalog_providers',lambda **_: (object(),))
+    entered=threading.Event(); release=threading.Event(); calls=[]
+    def owned(*a,**k):
+        calls.append(1); entered.set(); assert release.wait(2)
+        return {'rows':[], 'complete':True,'provenance':[],'missing_scopes':[]}
+    monkeypatch.setattr(job,'run_owned',owned)
+    monkeypatch.setattr(catalog,'_persist_hydration_scope',lambda *a,**k: {})
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first=executor.submit(catalog.ensure_catalog_hydration,json.dumps({'scope':'makes','year':2024,'idempotency_key':'parallel-first'}))
+        assert entered.wait(1)
+        other=catalog.ensure_catalog_hydration(json.dumps({'scope':'years','idempotency_key':'parallel-other'}))
+        assert other['complete'] is False and other['stop_reason']=='admission'
+        release.set(); assert first.result()['complete']
+    assert len(calls)==1
+
+
+def test_complete_cache_never_admits_child_even_cold_years(monkeypatch):
+    catalog._HYDRATION_RESULTS.clear()
+    monkeypatch.setattr(job,'run_owned',lambda *a,**k: pytest.fail('cached selector dispatched'))
+    result=catalog.ensure_catalog_hydration(json.dumps({'scope':'years','idempotency_key':'cached-years',
+        'cache':{'complete':True,'rows':[{'year':2024}]}}))
+    assert result['complete'] and result['status']=='cache_hit'
+
+
+def test_banktwo_hidden_repair_charged_to_same_request_bytes_rows_control():
+    from urllib.parse import urlsplit, parse_qs
+    from autodata_ingestion.source_connector_client import SourceConnectorClient
+    from test_source_connector_client import _Response, _envelope
+    dispatched=[]
+    def opener(request, **kwargs):
+        dispatched.append(request.full_url)
+        parsed=urlsplit(request.full_url); query=parse_qs(parsed.query)
+        if parsed.path.endswith('/models') and query['make']==['authored']:
+            return _Response({},url=request.full_url,status=404)
+        scope='makes' if parsed.path.endswith('/makes') else 'models'
+        item={'year':2024,'make':'Authored','opaque_ref':'authored-ref','label':'Authored'}
+        if scope=='models': item['model']='Fiction'
+        return _Response(_envelope('banktwo',scope=scope,items=[item],complete=True,next_cursor=None),url=request.full_url)
+    control=job.SelectorJobControl(time.monotonic()+3, dispatch_interval=0)
+    client=SourceConnectorClient('http://127.0.0.1:1',provider='banktwo',opener=opener)
+    result=catalog._SourceCatalogProvider(client,deepening_control=control).resolve_catalog(
+        catalog.CatalogRequest(2024,'authored','unknown',scope='models'))
+    assert result['complete'] and len(result['rows'])==1
+    assert len(dispatched)==control.requests==3
+    assert control.rows==2 and control.bytes>0  # includes hidden makes, not just final models
+
+
+def test_page_response_and_decoded_rows_are_bounded_in_connector():
+    from autodata_ingestion.source_connector_client import SourceConnectorClient
+    from test_source_connector_client import _Response, _envelope
+    control=job.SelectorJobControl(time.monotonic()+3,dispatch_interval=0)
+    def huge(request,**kwargs):
+        return _Response(b' '* (1024*1024+1),url=request.full_url)
+    client=SourceConnectorClient('http://127.0.0.1:1',provider='bankone',opener=huge)
+    with pytest.raises(job.SelectorJobStopped,match='response_limit'):
+        catalog._SourceCatalogProvider(client,deepening_control=control).resolve_catalog(catalog.CatalogRequest(2024,'unknown','unknown',scope='years'))
+    control=job.SelectorJobControl(time.monotonic()+3,dispatch_interval=0)
+    control.rows=5000
+    def one(request,**kwargs):
+        return _Response(_envelope(scope='years',items=[{'year':2024,'opaque_ref':'y','label':'2024'}],complete=True,next_cursor=None),url=request.full_url)
+    client=SourceConnectorClient('http://127.0.0.1:1',provider='bankone',opener=one)
+    with pytest.raises(job.SelectorJobStopped,match='row_limit'):
+        catalog._SourceCatalogProvider(client,deepening_control=control).resolve_catalog(catalog.CatalogRequest(2024,'unknown','unknown',scope='years'))
+
+
+def test_rate_limit_stops_remaining_providers_and_budget_is_not_swallowed():
+    from autodata_ingestion.source_connector_client import SourceConnectorClient
+    from test_source_connector_client import _Response
+    control=job.SelectorJobControl(time.monotonic()+3,dispatch_interval=0)
+    def limited(request,**kwargs): return _Response({},url=request.full_url,status=429)
+    first=catalog._SourceCatalogProvider(SourceConnectorClient('http://127.0.0.1:1',provider='bankone',opener=limited),deepening_control=control)
+    def forbidden(*args): pytest.fail('dispatch after 429')
+    service=catalog.CacheFirstCatalogService(cache_reader=lambda _:None, providers=(first,forbidden))
+    with pytest.raises(job.SelectorJobStopped,match='rate_limited'):
+        service.resolve(catalog.CatalogRequest(2024,'unknown','unknown',scope='years'))
+    assert control.requests==1
+
+
+def test_actual_http_years_boundary_uses_shared_job_not_legacy_manifest(monkeypatch):
+    from autodata_ingestion.http_service import dispatch_request
+    from autodata_ingestion import catalog_years
+    calls=[]
+    monkeypatch.setattr(catalog_years,'ensure_catalog_years',lambda *_: pytest.fail('legacy unbounded years thread route'))
+    monkeypatch.setattr(catalog,'_ensure_initial_selector',lambda request,key: calls.append(request['scope']) or {'complete':False,'stop_reason':'admission'})
+    result=dispatch_request('/v1/catalog/ensure',{'scope':'years','idempotency_key':'http-cold-years'})
+    assert result['complete'] is False and calls==['years']
