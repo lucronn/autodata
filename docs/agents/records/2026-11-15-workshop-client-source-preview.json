@@ -1,0 +1,17 @@
+{
+  "goal": "Prepare a held, source-only public Workshop client canary gate preserving purchase-disabled Firebase/private/data authority and explicit real-data/Stripe limitations.",
+  "plan_ref": "docs/superpowers/plans/2026-11-15-workshop-client-source-preview.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/431",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/workshop-client-source-preview.md"
+  ],
+  "todo": [
+    "Commit and machine-check this planning-only checkpoint; hold all build/helper/package/runtime work until root supplies protected UI source SHA/tree and independently reviewed exact-head CI.",
+    "After that dependency, synchronize a fresh exact-source/base checkpoint and measured baseline, build/test immutable source and prepare a fresh physical one-attempt release/rollback package for root review.",
+    "Validate exact source/client regressions, old-private compatibility, physical/local-Docker/protected-state/permissions/rollback identity-wait and deterministic browser route-policy fixtures without provider or Stripe calls.",
+    "Root alone authorizes and executes one reviewed source-only switch, desktop/mobile anonymous acceptance or one exact rollback; preserve honest source-only receipts without real-data, licensed-reader, Firebase settlement or durability claims."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-15T03:36:28.119837+00:00"
+}
