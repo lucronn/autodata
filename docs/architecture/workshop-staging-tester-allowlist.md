@@ -30,3 +30,16 @@ modes ignore this setting and preserve their existing behavior.
 Verification: `docs/verification/2026-11-14-workshop-staging-tester-allowlist.md`.
 This does not approve credentials, supplier rights, testers, staging startup,
 HTTPS routing or any payment/grant action.
+
+## Protected-base integration checkpoint
+
+Protected master: `5b3e19d3b34208773a77b4b9cfccd3085726cabe`, tree `92da3c0238725728e43a2bbd4df7a0ec29d02de6` (#412, #417, then #421). Published PR415 implementation: `b7abe2fb358e9d959adddc757d60598fdd7b490f`. This task preserves its six auth-file delta, existing mode boundaries and Firebase(project,UID) authority. Prepare this docs-only checkpoint directly on protected master, synchronize tracking and pass exact-SHA preflight before merging into the published branch. Preserve both published histories. Combine documentation evidence with this current checkpoint; stop for coordinator if any application conflict alters reviewed behavior. No provider calls, login/domain updates, staging deployment, runtime credentials or session/payment/order/grant changes. Re-run relevant full/focused/race suites and strict CI, request independent exact-head review and hold merge.
+
+Integration record: `docs/agents/records/2026-11-14-workshop-staging-tester-protected-base.json`
+
+- [ ] Synchronize Issue413, Project8, plan and canonical architecture at protected master5b3e19d and pass checkpoint preflight
+- [ ] Merge the synchronized checkpoint into PR415 preserving the reviewed six-file auth implementation and exact master ancestry
+- [ ] Run focused staging audience, full Go API, auth Firebase race and full Workshop client regressions on integrated source
+- [ ] Push the protected-base candidate, rerun strict required CI, hand off independent exact-head review and hold merge without runtime or provider actions
+
+This final checkpoint supersedes planning-only22b8433 on92d81a1. PR421 is protected-merged at5b3e19d with identical reviewed tree92da3c02; integrate only after this refreshed exact-base gate passes.

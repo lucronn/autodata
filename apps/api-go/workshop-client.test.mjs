@@ -2598,3 +2598,13 @@ test('legacy selector responses without completion metadata remain usable',async
  const h=selectorOptionsHarness({items:[{year:2024}]});await h.load();
  assert.notEqual(h.statuses.at(-1).error,true);assert.match(h.statuses.at(-1).text,/Choose your vehicle/);
 });
+
+test('both Stripe hosted path forms preserve opaque tokens with strict authority', async () => {
+ const { hostedCheckoutURL } = await import('./workshop/commerce.mjs');
+ for (const prefix of ['c','g']) {
+  const hosted = `https://checkout.stripe.com/${prefix}/pay/opaque_Checkout42#opaque%2Ffragment`;
+  assert.equal(hostedCheckoutURL(hosted), hosted);
+  for (const invalid of [hosted.replace('https:', 'http:'), hosted.replace('checkout.stripe.com', 'checkout.stripe.com.evil'), hosted.replace('checkout.stripe.com', 'user@checkout.stripe.com'), hosted.replace('checkout.stripe.com', 'checkout.stripe.com:443'), `https://checkout.stripe.com/${prefix}/pay/`, hosted+' ', hosted+'\u0000']) assert.equal(hostedCheckoutURL(invalid), null);
+ }
+ for (const invalid of ['https://checkout.stripe.com/pay/opaque','https://checkout.stripe.com/x/pay/opaque']) assert.equal(hostedCheckoutURL(invalid),null);
+});
