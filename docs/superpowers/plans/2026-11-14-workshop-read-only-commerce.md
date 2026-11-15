@@ -23,3 +23,15 @@ Concrete todo:
 - [ ] Push a coherent candidate PR and hand exact-source review/merge to coordinator; leave live release/configuration changes behind a later synchronized rollout gate.
 
 Implementation and local verification receipt: `docs/verification/2026-11-14-workshop-read-only-commerce.md` records checkpoint b326781a99147bd96f13e263ba1832db00d58a41 preflight PASS, source milestone10ab1d8673e9f066a853373fdadcd6b538ab6344, complete Go/Workshop suite PASS and artifact hash. Coordinator independent review, CI, merge and a later live rollout remain pending.
+
+## Quote availability successor gate
+
+Coordinator finding: private Python read_only PR417 must return explicit `purchasable:false`. The original Go validator required true and would turn that response into503. Prior fdf2d23 exact-head review is superseded by this source correction. Base for successor work is fdf2d23dba79a6485fbba10656211fba3fbdb0fc; this checkpoint must be synchronized/committed/preflighted before editing implementation.
+
+Expanded implementation allowlist for this correction: `apps/api-go/commerce.go`, `apps/api-go/commerce_http.go`, `apps/api-go/commerce_client_test.go` (existing helper call adaptation), `apps/api-go/commerce_read_only_test.go`. Pass the actual server CommerceClient to the public DTO validator. Only a nonnil concrete HTTPCommerceClient with its configured unexported readOnly flag may accept a quote whose explicit JSON boolean purchasable is false; nil/default/ordinary stripe_test/stripe_live clients retain true-only validation. Read_only accepts legacy private true while old ingestion remains in service and forwards either boolean without invention. All other quote validation (version/product/scope/label/amount/currency/terms) remains unchanged; missing/null/nonboolean availability remains rejected, including in read_only mode. No browser field, private response field or environment read inside DTO validation supplies mode authority. No changes to checkout, grants or purchase-config behavior.
+
+Successor todo:
+
+- [ ] Synchronize Issue411/Project8 and canonical spec with this quote correction, commit checkpoint and pass exact-base preflight before code edits.
+- [ ] Retain red-first public quote regressions; accept and forward explicit false only for actual read_only client while preserving legacy true and rejecting missing/null/malformed/scope-invalid results and false in ordinary Stripe modes.
+- [ ] Run complete API/shared-contract Go and Workshop Node suites, rebuild/hash the candidate and update exact source evidence/PR412 for renewed independent review. Do not deploy.

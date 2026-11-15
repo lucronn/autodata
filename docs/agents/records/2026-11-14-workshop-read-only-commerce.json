@@ -11,8 +11,11 @@
     "Add API-only read_only commerce configuration with a private-operation allowlist that preserves quote, library and exact grant checks.",
     "Disable purchase configuration locally and reject checkout/webhook/order-status/demo-mode transport before any private request; keep stripe_test public-origin rejection intact.",
     "Verify forwarding, authenticated ownership, missing/revoked grants, private-enabled drift and zero payment-network calls; run complete Go API/contracts and Workshop suites and build/hash the artifact.",
-    "Push a coherent candidate PR and hand exact-source review/merge to coordinator; leave live release/configuration changes behind a later synchronized rollout gate."
+    "Push a coherent candidate PR and hand exact-source review/merge to coordinator; leave live release/configuration changes behind a later synchronized rollout gate.",
+    "Synchronize and preflight the quote-availability successor checkpoint before validator edits.",
+    "Accept and forward explicit purchasable:false only for the actual read_only client; keep ordinary Stripe true-only and malformed/scope validation intact.",
+    "Retain red/green quote regressions, rerun complete Go/Node suites and rebuild/hash PR412 for renewed coordinator review without deployment."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-15T00:26:03.923896+00:00"
+  "updated_at": "2026-11-15T00:36:25.974575+00:00"
 }
