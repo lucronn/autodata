@@ -1,0 +1,18 @@
+{
+  "goal": "Prepare exact protected92d81a1 ingestion runtime with explicit private read_only, truthful selector completion, protected-state backup and retained rollback; coordinator alone executes live mutation.",
+  "plan_ref": "docs/superpowers/plans/2026-11-14-private-read-only-runtime-rollout.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/401",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/workshop-private-read-only-runtime.md",
+    "docs/verification/2026-11-14-private-read-only-runtime-rollout.md"
+  ],
+  "todo": [
+    "Pin protected merge92d81a1afbcf9e025d017b9b30f6dd4bb54f3e8a/tree0e4038a6bd506fd1349caa0bfa320813106ce5ad, synchronize Issue401/Project8/plan/canonical docs/record, commit and pass exact checkpoint preflight before artifact/helper generation.",
+    "Build and hash complete immutable protected-source archive/manifest; verify no SVG dependency/schema change; run actual-image internal-only startup/quote/payment-denial/schema and catalog persistence fixture tests.",
+    "Capture fresh private before.dump/restore-list/hash, protected baseline and raw serving configuration with space/identity checks; generate and test fail-closed exact source/mode replacement helper and one-attempt retained7ce6 rollback recipe, without serving mutation.",
+    "Hand coordinator exact artifact/config/hash/preflight/commands for independent review and execution; after coordinator activation verify protected state/disabledpurchase/health and only coordinator-authorized bounded real selector truth."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-15T01:15:36.602196+00:00"
+}

@@ -1,6 +1,6 @@
 # Private read-only runtime rollout verification
 
-DRAFT: publicAPI acceptance and current private identity observed; final protected Python417 mergedsource remains pending. No synchronized implementation record or rolloutauthority.
+Status: synchronized planning checkpoint for preparation only; exact protected merge92d81a1/tree0e4038a6 now available. Immutable candidate, fresh backup and checked helper remain pending checkpoint preflight. No worker serving mutation authority.
 
 Issue https://github.com/lucronn/autodata/issues/401; Project https://github.com/users/lucronn/projects/8; plan docs/superpowers/plans/2026-11-14-private-read-only-runtime-rollout.md. Python417 and Go412 require protection/currentCI first. Prior61f1939 passed115isolatedcatalogtests but cannot start unchanged publicStripeTest and is retained test evidence only.
 
@@ -23,3 +23,7 @@ PR417 d966f2a remains requiredCIpending/BLOCKED at this observation. Post-Go-bas
 Draft now distinguishes exact protectedfingerprints before selector invocation from controlled append-only sourcesnapshots/vehicle/selector changes due to reviewed automaticdeepening. Customer/commerce/article rows remain protected; baseline source snapshots may not be modified/deleted. Prior25-table SQL and oldbackups retained. Rollback reuses exact7ce6 predecessor, preservesDB and publicread_onlyAPI, keeps purchasingdisabled, and discloses legacyStripe startupreads.
 
 Read-only backup capacity precheck: persistent evidence free13,458,776,064bytes; candidate filesystem free13,528,236,032bytes; servingDB141,768,371bytes. Existing coordinator dump15,886,405bytes/hash e07d4a1ec018d9e889a8b7dbfaa21caaa0a006fb1531276a6269fdb5dc8f5fa1 passed pg_restore--list562lines, mode0600. No newdump or live mutation performed; freshbackup and capacity recheck remain gated. Public evidence must contain only safe metadata, no credentials/raw licensed material. Browser/R3 CI passed atd966f2a; mainrequiredCI remainsrunning/BLOCKED.
+
+## Protected merge preparation boundary
+
+Exact protectedsource92d81a1afbcf9e025d017b9b30f6dd4bb54f3e8a/tree0e4038a6bd506fd1349caa0bfa320813106ce5ad independently verified; Go3a18d9c ancestry and no pyproject/sharedcontracts diff from61f1939 verified. GitHub confirms417 merged2026-11-15T01:14:51Z; strict main/browser/R3 checks SUCCESS, BugbotNEUTRAL. Earlier pending/DRAFT statements are historical. Currentpreparation todo is the plan/record four-item list: synchronize/preflight; immutable actualimage fixtureacceptance; freshbackup/protectedbaseline/checkedhelper; exact coordinatorhandoff and bounded postactivationtruth. No archive/helper/live mutation before passing checkpoint.

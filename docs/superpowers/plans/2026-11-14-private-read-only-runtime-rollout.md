@@ -1,6 +1,6 @@
 # Private read-only ingestion runtime rollout
 
-Status: DRAFT. Public API release and current private identity independently observed; final protected Python417 merge source is pending. No synchronized implementation record or dispatch authority exists.
+Status: synchronized planning checkpoint for preparation only. Protected Python417 merge is pinned; artifact tests, backup and helper preparation follow successful checkpoint preflight. Coordinator alone owns live container create/start/stop/rollback; worker has no serving mutation authority.
 
 Goal: Deploy compatible reviewed ingestion source with explicit private read_only commerce, restore truthful real selector completion, and preserve entitled reads and disabled purchasing.
 Issue https://github.com/lucronn/autodata/issues/401
@@ -71,3 +71,15 @@ PR417 must first become green/CLEAN and be merged by coordinator under protectio
 Read-only capacity precheck found13,458,776,064bytes available on the persistent evidence filesystem (/dev/loop0) and13,528,236,032bytes on the candidate filesystem. Serving database size141,768,371bytes. Recheck immediately before freshbackup; require evidence available space at least max(1GiB,3times current database size) plus final archive size, and successful exclusive dump creation, nonzero bytecount/SHA256 and pg_restore--list before activation. No cleanup/deletion of old evidence is authorized by lowspace; stop and report.
 
 Existing coordinator backup selector-writable-20261114-r1/autodata-before.dump remains0600,15,886,405bytes, SHA256e07d4a1ec018d9e889a8b7dbfaa21caaa0a006fb1531276a6269fdb5dc8f5fa1 and read-only pg_restore--list passed562lines. This is only retainedbackup integrity evidence; freshpostmerge backup is stillrequired. Raw inspect/environment/createpayload/dumps/table rows/SQL result content/source HTML/media/license documents remain private0600 within0700 persistent evidence. GitHub receives only safe hashes/counts/errorclasses/pin references and redacted acceptance outcomes; never credentials or raw licensed content.
+
+## Final protected-source preparation checkpoint
+
+PR417 merged at2026-11-15T01:14:51Z as92d81a1afbcf9e025d017b9b30f6dd4bb54f3e8a, tree0e4038a6bd506fd1349caa0bfa320813106ce5ad, with protectedGo3a18d9c ancestry. Reviewedheadd966f2a and all strictCI checks passed (run43660717897). Ingestion pyproject and sharedcontracts are unchanged from tested61f1939; SVG419 is absent. Coordinator confirms public3a18d9c/read_only accepted, private7ce6 unchanged, Dockerfree2,490,327,040bytes. Earlier DRAFT/source-pending paragraphs are retained chronology and superseded by this checkpoint.
+
+Record docs/agents/records/2026-11-15-private-read-only-runtime.json; canonical architecture docs/architecture/workshop-private-read-only-runtime.md. No live provider calls or service mutation by worker. Fresh evidence path /home/corp/autodata-evidence/private-read-only-runtime-92d81a1-20261115; immutable candidate /home/corp/autodata-candidate/private-read-only-92d81a1-20261115/source. Do not overwrite existing artifacts.
+
+Concrete todo:
+- [ ] Pin protected merge92d81a1afbcf9e025d017b9b30f6dd4bb54f3e8a/tree0e4038a6bd506fd1349caa0bfa320813106ce5ad, synchronize Issue401/Project8/plan/canonical docs/record, commit and pass exact checkpoint preflight before artifact/helper generation.
+- [ ] Build and hash complete immutable protected-source archive/manifest; verify no SVG dependency/schema change; run actual-image internal-only startup/quote/payment-denial/schema and catalog persistence fixture tests.
+- [ ] Capture fresh private before.dump/restore-list/hash, protected baseline and raw serving configuration with space/identity checks; generate and test fail-closed exact source/mode replacement helper and one-attempt retained7ce6 rollback recipe, without serving mutation.
+- [ ] Hand coordinator exact artifact/config/hash/preflight/commands for independent review and execution; after coordinator activation verify protected state/disabledpurchase/health and only coordinator-authorized bounded real selector truth.

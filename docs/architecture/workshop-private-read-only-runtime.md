@@ -1,0 +1,11 @@
+# Private read-only ingestion runtime release boundary
+
+Goal: deploy exact protected ingestion source while preserving scoped entitled reads, disabled purchasing, protected state and truthful selector completion. Issue https://github.com/lucronn/autodata/issues/401; Project https://github.com/users/lucronn/projects/8. Canonical plan docs/superpowers/plans/2026-11-14-private-read-only-runtime-rollout.md; receipt docs/verification/2026-11-14-private-read-only-runtime-rollout.md; record docs/agents/records/2026-11-15-private-read-only-runtime.json.
+
+Source92d81a1afbcf9e025d017b9b30f6dd4bb54f3e8a/tree0e4038a6bd506fd1349caa0bfa320813106ce5ad is the protected Python417 merge with Go412 ancestry and no SVG419 dependency. Preserve exact serving image5c8e79b93db464da854ad33dc499e25c153bbcd52757569b1f2a4e5072acecb4 and all env/security except approved sourcebind and outerread_only/newretainedstripe_test mode. Current privatepredecessor7ce6c5a98bec69f57d2e1c53ac584f5c9a97e74eb3da0a474c8719b81e8c0d72 remains rollback; publicAPI3a18d9c/read_only stays independent.
+
+Worker prepares artifacts/fixtures/freshprivatebackup/protectedbaseline/one-attempt exacthelper after synchronized preflight. Coordinator independently reviews then alone dispatches livecreate/start/stop/rollback. No migration, payment/grant/customer creation, sourceprovider/model call or unreviewed dependency. Restore readiness by retainedcontainer restart only; never automatically restore/delete DB. Rollback oldservice may perform inherited Stripe merchant/price startupreads; newread_only does not initialize provider.
+
+Exact protectedtables before selector request; after reviewed bounded selector deepening allow only enumerated provenance-backed inserts and preserve every preexisting snapshot/vehicle/configuration row. Auth/payment/article/request/publication invariants remain exact. Realpaidaccess and article rights are not established by fixture tests. Public evidence contains only safe metadata; fullinspect/env/dumps/rawlicensedcontent remain private.
+
+Concrete todo: synchronize/pin/preflight; immutable-source actualimage fixture checks; freshbackup/protectedbaseline/checkedhelper; coordinator reviewed execution and bounded selector acceptance, as detailed in plan/record.
