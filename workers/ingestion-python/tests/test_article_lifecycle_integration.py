@@ -45,6 +45,70 @@ def test_provider_bound_real_s3_capture_and_publication(runtime,provider):
     finally:response.close();response.release_conn()
 
 
+def test_svg_original_and_png_derivative_survive_pg_s3_current_projection(runtime):
+    """Real isolated PG/S3, normal capture/store, synthetic provider bytes only."""
+    from hashlib import sha256
+    from io import BytesIO
+    import base64
+    import json
+    from PIL import Image
+    from autodata_ingestion.article_lifecycle_store import store_captured_source
+    from autodata_ingestion.source_job_persistence import claim_source_job
+
+    raster = BytesIO()
+    Image.new("RGB", (40, 20), "red").save(raster, format="PNG")
+    uri = "data:image/png;base64," + base64.b64encode(raster.getvalue()).decode()
+    original = ('<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" '
+                '"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">'
+                '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20">'
+                '<image width="40" height="20" href="' + uri + '"/></svg>').encode()
+    runtime.servers["bankone"].body(
+        b'<p>Remove the pump.</p><img data-resource-ref="svg-figure">',
+        assets=["svg-figure"],
+    )
+    runtime.servers["bankone"].body(original, "image/svg+xml", ref="svg-figure", kind="asset")
+    runtime.ensure()
+    lease = claim_source_job(runtime.repo, worker_id=uuid4())
+    assert lease.canonical_article_id == runtime.article_id
+    captured = projection_capture(runtime, lease)
+    revision = store_captured_source(runtime.repo, lease, captured)
+    current = runtime.read_current()
+    assert current["source_revision_id"] == revision
+    assert current["availability"] == "available"
+    assert current["content_origin"] == "source"
+    with runtime.repo.connect() as conn:
+        stored = conn.execute("SELECT resource_manifest FROM canonical_article_source_revisions WHERE source_revision_id=%s", (revision,)).fetchone()
+        observation = conn.execute("SELECT resource_provenance FROM canonical_article_source_observations WHERE source_revision_id=%s", (revision,)).fetchone()
+        manifest = stored["resource_manifest"]
+        source = next(r for r in observation["resource_provenance"] if r["role"] == "asset_original")
+        derived = next(r for r in observation["resource_provenance"] if r["role"] == "asset")
+        snapshots = conn.execute("SELECT content_sha256,object_key FROM source_snapshots WHERE content_sha256 IN (%s,%s)", (source["sha256"], derived["sha256"])).fetchall()
+    assert source["sha256"] == sha256(original).hexdigest()
+    assert derived["derived_from_sha256"] == source["sha256"]
+    assert next(r for r in manifest if r["role"] == "asset")["derived_from_sha256"] == source["sha256"]
+    assert "2.9.1" in derived["derivation_version"]
+    assert {r["object_key"] for r in snapshots} == {source["object_key"], derived["object_key"]}
+    image = current["images"][0]
+    assert image["status"] == "available" and image["media_type"] == "image/png"
+    assert image["storage_key"] == derived["object_key"]
+    public_projection = json.dumps({"images": current["images"], "document": current["document"]})
+    assert source["object_key"] not in public_projection
+    assert "image/svg+xml" not in public_projection and "<svg" not in public_projection
+
+    def read_object(key):
+        response = runtime.objects.client.get_object(runtime.bucket, key)
+        try:
+            return response.read()
+        finally:
+            response.close(); response.release_conn()
+
+    assert read_object(source["object_key"]) == original
+    assert runtime.objects.client.stat_object(runtime.bucket, image["storage_key"]).content_type == "image/png"
+    with Image.open(BytesIO(read_object(image["storage_key"]))) as decoded:
+        assert decoded.format == "PNG" and decoded.size == (40, 20)
+        assert decoded.convert("RGB").getpixel((10, 10)) == (255, 0, 0)
+
+
 @pytest.mark.parametrize("point,expected_calls",[("before_source_commit",2),("after_source_commit",1),("after_model_dispatch",1),("after_model_result_commit",1),("before_publication",1),("inside_publication",1)])
 def test_process_death_resumes_durable_stage(runtime,point,expected_calls):
     runtime.ensure();runtime.pause(point);runtime.start_workers(1);runtime.await_barrier()
