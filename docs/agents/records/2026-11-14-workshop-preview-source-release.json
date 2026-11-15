@@ -1,0 +1,18 @@
+{
+  "goal": "Publish exact current Workshop source as a purchase-disabled public preview while preserving runtime dependencies and a verified binary rollback.",
+  "plan_ref": "docs/superpowers/plans/2026-11-14-workshop-preview-source-release.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/410",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/verification/2026-11-14-workshop-preview-source-release.md"
+  ],
+  "todo": [
+    "Pin the current source, compatibility findings, unchanged runtime configuration, previous binary and rollback drop-in.",
+    "Synchronize and commit this plan, Issue, Project #8 and canonical receipt; pass exact-checkpoint machine preflight.",
+    "Build the pinned API source and run API/shared-contract and Workshop regression tests; retain hashes and logs.",
+    "Hand the verified artifact and bounded rollout/rollback to the coordinator; coordinator alone switches the API binary after gate readback.",
+    "Verify public/local readiness, exact embedded assets and disabled purchase configuration; record final runtime identity and any rollback."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-15T00:24:04.229075+00:00"
+}
