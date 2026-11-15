@@ -1,5 +1,5 @@
 {
-  "goal": "Prepare a held source-only public canary for combined quote suppression, explicit local article routing and synthetic-only legacy introduction rendering, preserving Firebase/private/data authority and real-data/Stripe limits.",
+  "goal": "Prepare a held source-only Workshop public release from protected a82b31dc/tree11503a73, preserving Firebase/private/data authority and anonymous/synthetic-only acceptance while M2A owns the exclusive build slot.",
   "plan_ref": "docs/superpowers/plans/2026-11-15-workshop-client-source-preview.md",
   "issue_ref": "https://github.com/lucronn/autodata/issues/431",
   "project_ref": "https://github.com/users/lucronn/projects/8",
@@ -7,11 +7,11 @@
     "docs/architecture/workshop-client-source-preview.md"
   ],
   "todo": [
-    "Revalidate909671f4 gate and current read-only public/private/storage baseline without serving/provider requests.",
-    "Strengthen exact anonymous GET-only route admission and synthetic no-dispatch fixtures within1MiB helper cap; keep all real entrypoints unsealed.",
-    "Await root-supplied final protected source/tree after local image fix and explicit disk confirmation; synchronize/pass new source-pinned checkpoint before build or sealing.",
-    "Prepare/test/hash bounded physical one-attempt package and send root for independent review; root alone activates or rolls back without supplier/quote/prepare/Stripe calls."
+    "Pin protected a82b31dc/tree11503a73 and green source CI; compare production Go/contracts/assets and current read-only runtime metadata.",
+    "Preserve exclusive M2A build-slot hold; await root capacity release and remeasure/amend exact source/runtime/protected/storage admission.",
+    "Only after release, build/test and seal all15 assets plus bounded physical one-attempt artifact/helpers/rollback package for root independent review.",
+    "Root alone approves/executes activation or rollback; preserve anonymous and synthetic intro/local-image limits without supplier/quote/prepare/provider/Stripe calls."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-15T04:35:04.897330+00:00"
+  "updated_at": "2026-11-15T06:56:40.738877+00:00"
 }
