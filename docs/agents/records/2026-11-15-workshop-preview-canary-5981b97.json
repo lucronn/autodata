@@ -1,0 +1,18 @@
+{
+  "goal": "Promote exact protected Workshop public API source as a purchase-disabled source-only canary while preserving private runtime, data and licensed-content gates",
+  "plan_ref": "docs/superpowers/plans/2026-11-15-workshop-preview-canary-5981b97.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/424",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/workshop-preview-canary-5981b97.md",
+    "docs/verification/2026-11-15-workshop-preview-canary-5981b97.md"
+  ],
+  "todo": [
+    "Synchronize exact protected5981b97 planning checkpoint and pass pinned preflight before private artifact/helper preparation",
+    "Build/hash exact merged source/binary/assets and capture fresh private baseline/compatibility/protected-state evidence without serving mutation",
+    "Prepare bounded probes/exact rollback helper and fixture tests; send concrete command/hash allowlist for independent root review before runtime mutation",
+    "Only after root review/decision execute one API-only canary and independent acceptance or one exact rollback; retain rights and private runtime holds"
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-15T02:26:59.668145+00:00"
+}
