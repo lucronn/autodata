@@ -83,3 +83,16 @@ Todo: Only after separate root authorization restart the exact six resources, re
 At synchronized gateb5555a88,78 owned-article tests pass. Red-first tests reproduced v2 namespace mismatch and absent temp/hash/helper/journal/capacity checks, then passed after host-only implementation. Actual owned temp context proved private /tmp location and low-entry rejection with0dispatches; owned operational receipt fixture proved changed runner rejection before Popen. Pure Node policy/validation tests exercised journal validator/prefix/bounds without Chromium. No application browser or service was launched.
 
 Only offloaded smoke harness/test changed. Serving source668d/archive041f834b/binarybb11d963/manifestda5353e9 and priorcfb rollback remain unchanged. New runtime/harness identities are separately sealed; no Go build/archive staging or physical service-source replacement. New capacity baseline7270658048,64MiB cap/32MiB guard; tmpfs128MiB cap/96MiB guard. Actual root review and a separately authorized v2 application attempt remain pending; no image-display acceptance claim.
+
+
+## V3 harness-only safe error origin (planning checkpoint)
+
+Distinguish safe page-exception and response-validator origins in one separately reviewed authored M2A browser attempt without changing the physical runtime
+
+Plan `docs/superpowers/plans/2026-11-15-workshop-owned-article-v3-origin-diagnostic.md`; record `docs/agents/records/2026-11-15-workshop-owned-article-v3-origin-diagnostic.json`; Issue398 https://github.com/lucronn/autodata/issues/398; Project8 https://github.com/users/lucronn/projects/8 In Progress. V2 completed desktop/mobile real PNG/body/order assertions but strict final validation failed: shared error bucket cannot distinguish page exception from response-validator failure. Do not claim full acceptance.
+
+- Preserve physical serving source/archive/binary/config/manifest, original authored stores and all consumed markers; independently seal only the offloaded V3 harness and tests
+- Add red-first no-dispatch tests and bounded durable closed-schema origin/stage/operation diagnostics without raw JavaScript messages, stacks, URLs, headers or protected responses
+- Use exclusive V3 namespaces and unchanged tmpfs/home capacity guards; synchronize exact hashes and proposed one-use operational seal for root review before any service, relay or browser action
+
+Root-reviewed cfb archival cleanup receipt b3c89ad3749606941f31337e5dcff840518c04a5529049d074771ba29adfce16: historical old binary alias removed; offloaded copy SHA cfb7828a592bb416942cb5f544addf195037f959958dc68f0809b1dfef45c78d preserved. E1 historical seal remains unchanged; append mapping resolves its prior_binary_mapping. No physical package edit is required.

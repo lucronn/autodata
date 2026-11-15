@@ -1,0 +1,36 @@
+{
+  "goal": "Distinguish safe page-exception and response-validator origins in one separately reviewed authored M2A browser attempt without changing the physical runtime",
+  "plan_ref": "docs/superpowers/plans/2026-11-15-workshop-owned-article-v3-origin-diagnostic.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/398",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/operations/workshop-owned-article-m2a.md",
+    "docs/verification/2026-11-15-workshop-owned-article-m2a.md"
+  ],
+  "todo": [
+    "Preserve physical serving source/archive/binary/config/manifest, original authored stores and all consumed markers; independently seal only the offloaded V3 harness and tests",
+    "Add red-first no-dispatch tests and bounded durable closed-schema origin/stage/operation diagnostics without raw JavaScript messages, stacks, URLs, headers or protected responses",
+    "Use exclusive V3 namespaces and unchanged tmpfs/home capacity guards; synchronize exact hashes and proposed one-use operational seal for root review before any service, relay or browser action"
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-15T07:22:56.136936+00:00",
+  "source_base_sha": "a9b5b6325de0ffaf3d53c0152bdd53141d31514f",
+  "runtime_source_sha": "668d4c86f4097b9d2c7880dedf2e0fccc8079da6",
+  "implementation_allowlist": [
+    "scripts/dev/workshop_owned_article_smoke.py",
+    "scripts/dev/test_workshop_owned_article_smoke.py"
+  ],
+  "runtime_package_changes": false,
+  "root_review_before_runtime": true,
+  "tracking_sync": {
+    "issue_body_sha256": "cb424c340395c7392deb61ee45f812cb61a3f7c362998395aff29f75111c81ee",
+    "issue_readback_verified": true,
+    "project_status": "In Progress",
+    "project_readback_verified": true
+  },
+  "home_cap_bytes": 67108864,
+  "home_guard_bytes": 33554432,
+  "tmp_cap_bytes": 134217728,
+  "tmp_guard_bytes": 100663296,
+  "cfb_cleanup_receipt_sha256": "b3c89ad3749606941f31337e5dcff840518c04a5529049d074771ba29adfce16"
+}
