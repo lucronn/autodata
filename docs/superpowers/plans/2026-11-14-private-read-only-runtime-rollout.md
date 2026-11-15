@@ -65,3 +65,9 @@ Exact private predecessor is7ce6c5a98bec69f57d2e1c53ac584f5c9a97e74eb3da0a474c87
 ## Remaining source and execution blockers
 
 PR417 must first become green/CLEAN and be merged by coordinator under protection. Full protected mergeSHA/tree/archive/filemanifest do not yet exist; branch d966f2a is not release authority. Final immutable-source fixture rerun, synchronizedgate and freshbackup/baseline/helper/createpayload follow that merge. Current public/private runtime pins are known and must be rechecked. All live create/start/stop/rollback actions remain coordinator-only.
+
+## Persistent backup capacity and disclosure boundary
+
+Read-only capacity precheck found13,458,776,064bytes available on the persistent evidence filesystem (/dev/loop0) and13,528,236,032bytes on the candidate filesystem. Serving database size141,768,371bytes. Recheck immediately before freshbackup; require evidence available space at least max(1GiB,3times current database size) plus final archive size, and successful exclusive dump creation, nonzero bytecount/SHA256 and pg_restore--list before activation. No cleanup/deletion of old evidence is authorized by lowspace; stop and report.
+
+Existing coordinator backup selector-writable-20261114-r1/autodata-before.dump remains0600,15,886,405bytes, SHA256e07d4a1ec018d9e889a8b7dbfaa21caaa0a006fb1531276a6269fdb5dc8f5fa1 and read-only pg_restore--list passed562lines. This is only retainedbackup integrity evidence; freshpostmerge backup is stillrequired. Raw inspect/environment/createpayload/dumps/table rows/SQL result content/source HTML/media/license documents remain private0600 within0700 persistent evidence. GitHub receives only safe hashes/counts/errorclasses/pin references and redacted acceptance outcomes; never credentials or raw licensed content.
