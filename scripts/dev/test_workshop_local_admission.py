@@ -165,6 +165,19 @@ class AdmissionTests(unittest.TestCase):
         self.assertEqual(a.image_volume_errors({"Config":{"Volumes":None}},{"volumes":[],"tmpfs":[]}),[])
         self.assertTrue(a.image_volume_errors({"Config":{"Volumes":{"/unexpected":{}}}},candidate()["services"]["api"]))
 
+    def test_effective_image_env_requires_explicit_review_and_blanks(self):
+        metadata={"Config":{"Env":["PATH=/usr/bin","AUTODATA_BANKONE_API_KEY=synthetic-secret-sentinel","AUTODATA_MINIO_ROOT_PASSWORD=synthetic-secret-sentinel"]}}
+        self.assertTrue(a.image_env_errors(metadata,{"environment":{}}))
+        safe={"environment":{"AUTODATA_BANKONE_API_KEY":"","AUTODATA_MINIO_ROOT_PASSWORD":""}}
+        self.assertEqual(a.image_env_errors(metadata,safe),[])
+        bad=copy.deepcopy(safe);bad["environment"]["AUTODATA_BANKONE_API_KEY"]="synthetic-secret-sentinel"
+        self.assertTrue(a.image_env_errors(metadata,bad))
+        for key in ["NEW_PROVIDER_SECRET","AUTODATA_INNOCENT_CONFIG","BANKONE_NEW_FLAG","GOOGLE_NEW_FLAG","AWS_NEW_FLAG"]:
+            extra=copy.deepcopy(metadata);extra["Config"]["Env"].append(key+"=synthetic-secret-sentinel")
+            errors=a.image_env_errors(extra,safe)
+            self.assertTrue(errors);self.assertNotIn("sentinel",json.dumps(errors))
+        self.assertTrue(a.image_env_errors({"Config":{"Env":["AUTODATA_IMAGE_URL_KEY="]}},{"environment":{}}))
+
     def test_helper_contains_no_docker_mutation_or_general_shell(self):
         self.assertEqual(a.DOCKER_READ_COMMANDS, {"image-inspect", "compose-config", "network-list-inspect", "container-list-inspect"})
         code = Path(a.__file__).read_text()

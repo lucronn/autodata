@@ -45,7 +45,7 @@ def policy_services():
     services["nats"]=service("nats",{},["-js","-sd","/data","-m","8222"],[mount("nats-data","/data")],["/tmp:rw,noexec,nosuid,size=16m"],128)
     services["minio"]=service("minio",{"AWS_ACCESS_KEY_ID":"${M1_S3_ACCESS:?required}","AWS_SECRET_ACCESS_KEY":"${M1_S3_SECRET:?required}","S3_BUCKET":"workshop-local-m1-sources"},["mini","-dir=/data","-s3.port=9000"],[mount("s3-data","/data"),mount("s3-work","/tmp")],[],256)
     services["migration-runner"]=service("migration-runner",{"PGHOST":"postgres","PGPORT":"5432","PGDATABASE":"workshop_local_m1","PGUSER":"workshop_local_m1","PGPASSWORD":"${M1_DB_PASSWORD:?required}"},["sh","/src/scripts/dev/migrate_sql.sh"],[mount("source","/src",True)],["/tmp:rw,noexec,nosuid,size=32m","/var/lib/postgresql/data:rw,noexec,nosuid,size=1m"],256)
-    private={**base,"AUTODATA_INGESTION_HTTP_ADDR":":8081","AUTODATA_INGESTION_INTERNAL_TOKEN":"${M1_INTERNAL_TOKEN:?required}","BANKONE_BASE_URL":"","BANKTWO_BASE_URL":"","INCEPTION_API_BASE_URL":"","AUTODATA_KNOWLEDGE_SOURCE_URI_TEMPLATE":"","AUTODATA_KNOWLEDGE_SOURCE_URL_TEMPLATE":"","AUTODATA_FAST_CONSUMER_ENABLED":"0","AUTODATA_KNOWLEDGE_CONSUMER_ENABLED":"0","AUTODATA_MERCURY2_EXTRACTION_ENABLED":"0","AUTODATA_MERCURY2_JOB_PLANS_ENABLED":"0","AUTODATA_MERCURY2_PROCEDURE_COMPOSITION_ENABLED":"0","AUTODATA_DERIVED_ARTICLE_CACHE_ENABLED":"0","PYTHONDONTWRITEBYTECODE":"1","PYTHONPATH":"/src/workers/ingestion-python/src:/src/packages/contracts/python:/src/workers/enrichment-python/src","HOME":"/tmp"}
+    private={**base,"AUTODATA_BANKONE_API_KEY":"","AUTODATA_BANKTWO_API_KEY":"","AUTODATA_MINIO_ROOT_USER":"","AUTODATA_MINIO_ROOT_PASSWORD":"","AUTODATA_IMAGE_URL_KEY":"","AUTODATA_SOURCE_PERSIST":"0","AUTODATA_SOURCE_REGION":"US","AUTODATA_INGESTION_HTTP_ADDR":":8081","AUTODATA_INGESTION_INTERNAL_TOKEN":"${M1_INTERNAL_TOKEN:?required}","BANKONE_BASE_URL":"","BANKTWO_BASE_URL":"","INCEPTION_API_BASE_URL":"","AUTODATA_KNOWLEDGE_SOURCE_URI_TEMPLATE":"","AUTODATA_KNOWLEDGE_SOURCE_URL_TEMPLATE":"","AUTODATA_FAST_CONSUMER_ENABLED":"0","AUTODATA_KNOWLEDGE_CONSUMER_ENABLED":"0","AUTODATA_MERCURY2_EXTRACTION_ENABLED":"0","AUTODATA_MERCURY2_JOB_PLANS_ENABLED":"0","AUTODATA_MERCURY2_PROCEDURE_COMPOSITION_ENABLED":"0","AUTODATA_DERIVED_ARTICLE_CACHE_ENABLED":"0","PYTHONDONTWRITEBYTECODE":"1","PYTHONPATH":"/src/workers/ingestion-python/src:/src/packages/contracts/python:/src/workers/enrichment-python/src","HOME":"/tmp"}
     services["ingestion-http"]=service("ingestion-http",private,["python","-m","autodata_ingestion.http_service"],[mount("source","/src",True)],["/tmp:rw,noexec,nosuid,size=64m"],768,entrypoint=[])
     services["ingestion-http"]["working_dir"]="/src"
     api={**base,"AUTODATA_API_ADDR":":8080","AUTODATA_AUTH_MODE":"local","AUTODATA_PROJECTION_STORE":"postgres","AUTODATA_INGESTION_URL":"","AUTODATA_IMAGE_URL_KEY":"${M1_IMAGE_KEY:?required}"}
@@ -106,6 +106,23 @@ def validate_config(config):
     envs=[s.get("environment",{}) for s in services.values()]
     for keys in [{"POSTGRES_PASSWORD","PGPASSWORD","AUTODATA_POSTGRES_PASSWORD"},{"AWS_ACCESS_KEY_ID","AUTODATA_S3_ACCESS_KEY"},{"AWS_SECRET_ACCESS_KEY","AUTODATA_S3_SECRET_KEY"}]:
         if len({v for e in envs for k,v in e.items() if k in keys})!=1:errors.append("local_material_mismatch")
+    return sorted(set(errors))
+
+
+IMAGE_CONFIG_PREFIXES=("AUTODATA_","BANKONE_","BANKTWO_","AWS_","STRIPE_","GOOGLE_","FIREBASE_","INCEPTION_")
+EXTERNAL_BLANK_KEYS={"AUTODATA_BANKONE_API_KEY","AUTODATA_BANKTWO_API_KEY","AUTODATA_MINIO_ROOT_USER","AUTODATA_MINIO_ROOT_PASSWORD","INCEPTION_API_KEY","AUTODATA_STRIPE_SECRET_KEY","AUTODATA_STRIPE_WEBHOOK_SECRET"}
+
+
+def image_env_errors(metadata, service):
+    inherited=dict(item.split("=",1) for item in metadata.get("Config",{}).get("Env",[]) if "=" in item)
+    explicit=service.get("environment",{})
+    errors=[]
+    for key in inherited:
+        sensitive=re.search(r"PASSWORD|SECRET|TOKEN|API_KEY|CREDENTIAL|BEARER|AUTHORIZATION|_KEY$",key) is not None
+        if (key.startswith(IMAGE_CONFIG_PREFIXES) or sensitive) and key not in explicit:errors.append("unreviewed_image_env")
+    effective={**inherited,**explicit}
+    if any(effective.get(k) for k in EXTERNAL_BLANK_KEYS):errors.append("external_effective_material")
+    # Other intended values are enforced by the exact fixed Compose policy above.
     return sorted(set(errors))
 
 
@@ -256,6 +273,7 @@ def main(argv=None):
             meta=json.loads(_capture(["docker","image","inspect",image]))[0]
             if meta["Id"]!=image or meta["Os"]!="linux" or meta["Architecture"]!="amd64":errors.append("cached_image")
             errors+=image_volume_errors(meta,config["services"][service])
+            errors+=image_env_errors(meta,config["services"][service])
         d=os.statvfs("/mnt/openfoam/docker");h=os.statvfs(ROOT)
         errors+=capacity_errors(docker_free=d.f_bavail*d.f_frsize,home_free=h.f_bavail*h.f_frsize,docker_inodes=d.f_favail,home_inodes=h.f_favail,growth_bytes=args.growth_bytes)
         print(json.dumps({"admitted":not errors,"errors":sorted(set(errors)),"service_count":len(config["services"]),"docker_free_bytes":d.f_bavail*d.f_frsize,"home_free_bytes":h.f_bavail*h.f_frsize},sort_keys=True))
