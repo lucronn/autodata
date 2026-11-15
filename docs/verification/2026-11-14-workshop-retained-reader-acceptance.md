@@ -61,7 +61,7 @@ their upstream cause.
 ## Authority and rights
 
 All eight current articles and their descriptor/body source snapshots have
-active takedown flags. Every relevant descriptor and body snapshot lacks a
+`takedown_status=active`. Every relevant descriptor and body snapshot lacks a
 `redistribution_status` value, and every relevant body snapshot lacks a `terms`
 key. Missing metadata does not establish either permission or prohibition;
 affirmative supplier authorization for the proposed staging test remains a
