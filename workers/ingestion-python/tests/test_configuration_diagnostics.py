@@ -110,6 +110,19 @@ class ConfigurationDiagnosticTests(unittest.TestCase):
                 self.service([Provider('bankone', catalog._SelectorDeepeningStopped())]).resolve(catalog.CatalogRequest(2024, 'Example', 'Car', scope='configurations'))
         warning.assert_not_called()
 
+    def test_logging_failure_cannot_change_partial_result(self):
+        provider = Provider('bankone', ValueError(SECRET))
+        with patch.object(catalog._LOG, 'warning', side_effect=RuntimeError(SECRET)):
+            result = self.service([provider]).resolve(catalog.CatalogRequest(2024, 'Example', 'Car', scope='configurations'))
+        self.assertFalse(result.complete)
+        self.assertEqual(provider.calls, 1)
+
+    def test_scope_hash_normalizes_equivalent_request_fields(self):
+        provider = Provider(['not-a-bank', SECRET], ValueError(SECRET))
+        with self.assertLogs(catalog._LOG, level='WARNING') as logs:
+            self.service([provider]).resolve(catalog.CatalogRequest('2024', ' EXAMPLE ', ' car ', region='us', scope='configurations'))
+        self.assertIn('provider=unknown', self.assert_safe(logs))
+
     def ensure(self):
         return catalog.ensure_catalog_hydration(json.dumps({**REQUEST, 'idempotency_key': uuid.uuid4().hex}))
 
