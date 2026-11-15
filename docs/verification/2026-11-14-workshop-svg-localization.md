@@ -102,3 +102,15 @@ Concrete todo:
 - [ ] Build/deploy a separately approved runtime image and perform authorized
   capture/reader/media acceptance; supplier test-use rights, the named Firebase
   tester, normal settled test order and exact scoped grant remain required.
+
+## Final protected-base integration
+
+Protected master `76fb21e8f7c080e93f6d38de93a2e1a22cd11f39`, tree `c4b63d3635e7cc5b084f0d9df6154334e6dc36a3`, contains merged #415, #421 and #417. Documentation-only checkpoint `5cacd10` was committed directly on that base after Issue #419/Project #8 synchronization; machine preflight returned `status:synchronized`, `errors:[]` before feature integration. Integrated source checkpoint `b5e12204ea58cf6c5ad49a884d9d928771326868`, tree `594cfdcb4b936d7a988ff33a68e46b0dae189476`, has only three expected planning-document add/add resolutions and no implementation conflicts. SVG renderer/capture/tests and all three image dependency definitions are unchanged from reviewed `a021fcc`.
+
+On the preceding #421 integrated head, full synthetic SVG/capture/read_only checks passed 189 tests with three opt-in PostgreSQL skips and 36 subtests. Earlier protected #417 integration full ingestion verification passed 1,247 tests with 479 opt-in integration skips and 232 subtests. #415 changes only Go authentication and its documentation; no ingestion/image source input changed.
+
+The production-shaped image `sha256:3132da4cdfa56a36240132e7c83e2bf260f679c0294c7dc06669cb607c6390f7` was built at #421 integration. At final #415 integration, all 101 production image-context input files were hash-recorded and confirmed unchanged; loaded renderer/capture/commerce/HTTP source hashes match the final checkout. Reusing that exact image, a fresh network-none, read-only, capability-free synthetic probe passed CairoSVG 2.9.1, PNG 40×20/red pixels and read_only checkout refusal before database I/O. No additional image build was needed.
+
+The enabled fresh synthetic PostgreSQL/S3 persistence/current-projection case and read_only commerce module were rerun on the final integrated source: **11 passed, zero skips, 36 subtests** in 4.62 seconds. This uses the existing isolated lifecycle image and current source mounted read-only, creates/removes only its unique fixture database/bucket, and retains shared services. Private aggregate receipts and JUnit remain under `/home/corp/autodata-evidence/svg-localization-20261114/`. Required strict CI and independent review must apply to the final pushed PR head; the PR remains draft pending coordinator review.
+
+No serving mutation, provider request or licensed recapture occurred during integration. Current serving private runtime remains source92d81a1/image5c8e79b without these renderer dependencies. Separate runtime image/deployment authorization and supplier-rights/authenticated-reader acceptance remain required.
