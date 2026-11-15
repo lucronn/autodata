@@ -7,11 +7,11 @@
     "docs/architecture/workshop-client-source-preview.md"
   ],
   "todo": [
-    "Refresh planning for combined PR432 head124b0982/tree9022872 with feature-merged435 and timestamped API/private metadata; hold artifacts/runtime for protected combined source/tree and root-reviewed exact-head CI.",
-    "Allow separately authorized private272 budget rollout/probe to settle first; then synchronize a fresh protected-source/base checkpoint and remeasured API/private baseline before immutable build/package, with another identity recheck before activation.",
-    "At the future gate validate quote/local/Firebase/intro source regressions and authored synthetic mobile/desktop intro fixtures plus current-private/physical/rollback/browser contracts without provider or Stripe calls.",
-    "Root alone authorizes and executes one reviewed source-only switch, desktop/mobile anonymous acceptance or one exact rollback; preserve honest source-only receipts without real-data, licensed-reader, Firebase settlement or durability claims."
+    "Synchronize protected f534d0a/tree902287 and reviewed source CI; commit/pass pinned preflight before small helper/fixture edits.",
+    "While M2A writes/capacity hold persists, implement only <=1MiB unsealed helper/fixture code with synthetic tests and no large artifact allocation.",
+    "After root confirms M2A quiescence and fresh capacity/private/source checks, build with measured off-home scratch and <=128MiB final physical-home growth, seal all15 assets and a fresh exact one-attempt rollback package.",
+    "Compare any newly protected437 public-runtime subtree/ABI and amend/reseal on delta; retain private-safety external-tester prerequisite; send completed package to root without public switch."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-15T03:51:09.631977+00:00"
+  "updated_at": "2026-11-15T04:26:21.772685+00:00"
 }
