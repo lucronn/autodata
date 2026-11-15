@@ -1,6 +1,6 @@
 # Configuration hydration diagnostics verification
 
-Status: integrated conflict-free onto protected415 base `76fb21e8f7c080e93f6d38de93a2e1a22cd11f39` / tree `c4b63d3635e7cc5b084f0d9df6154334e6dc36a3`. Reviewed diagnostics implementation byte delta from971ad64 is unchanged. Fresh integration checkpoint/preflight and focused checks are required; final PR/strict CI/merge remain held for protected422 SHA/tree. No provider GET or serving mutation.
+Status: integrated conflict-free onto protected415 base `76fb21e8f7c080e93f6d38de93a2e1a22cd11f39` / tree `c4b63d3635e7cc5b084f0d9df6154334e6dc36a3`. Reviewed diagnostics implementation byte delta from971ad64 is unchanged. Fresh checkpoint `7fb328d6c28438f9bab47a2ea11585263a092289` passed preflight after tracking readbacks; focused64 tests/8 subtests and offline Go checks passed; final PR/strict CI/merge remain held for protected422 SHA/tree. No provider GET or serving mutation.
 
 Issue https://github.com/lucronn/autodata/issues/401; Project https://github.com/users/lucronn/projects/8. Plan `docs/superpowers/plans/2026-11-15-configuration-hydration-diagnostics.md`; architecture `docs/architecture/workshop-configuration-diagnostics.md`; synchronized record `docs/agents/records/2026-11-15-configuration-hydration-diagnostics.json`.
 
@@ -32,3 +32,11 @@ Only the existing bounded makes/models/configuration observations in the [immuta
 Earlier private runtime plan/outcome files from that docs branch are **not included on this protected-base diagnostics branch**. The coordinator will preserve those release receipts in a separate documentation follow-up after code merges; this change only links their immutable versions.
 
 Await protected415/422 integration pins, update the branch to the exact protected base, obtain independent exact-head review and required strict CI, then coordinator-owned protected merge. Any image/source/runtime replacement and later bounded live configuration acceptance need a separate synchronized compatibility/backup/rollback gate. Current live source92d81a1 and disabled purchasing remain unchanged by this work. Issue401 stays open and Project8 stays In Progress.
+
+## Protected415 integration acceptance
+
+Protected base `76fb21e8f7c080e93f6d38de93a2e1a22cd11f39` / tree `c4b63d3635e7cc5b084f0d9df6154334e6dc36a3` merged conflict-free. The coordinator's preliminary review of971ad64 found no actionable code issue. All three diagnostics implementation/test blobs and the exact diff from the new protected base match reviewed971ad64; patch SHA256 `aa6eb5fa4c7ee527b0b4701c1a3a2651f9c646652b86f6cf119050b26476b340`. This integration makes no new implementation edit.
+
+Fresh synchronized checkpoint `7fb328d6c28438f9bab47a2ea11585263a092289`, Issue401 comment6887643844 and Project8 In Progress readbacks preceded machine preflight (`status:synchronized`, `errors:[]`) and refreshed local checks. Focused diagnostics/catalog/deepening fixture suite: **64 passed / 8 subtests**,27.39s; network-disabled Go `Catalog|ReadOnly|CommercePublic|Quote`: passed. `git diff --check` passed. Private receipts: `base415-preflight.json`, `base415-focused.log`, `base415-go.log` under the existing private evidence root. Earlier red/green receipts remain intact.
+
+Hold final PR push/strict CI and merge for coordinator-supplied protected422 SHA/tree and the subsequent exact-head review. No provider GET, serving mutation, runtime release or diagnostics claim about the live configuration failure class. Prior runtime receipt files remain a separate docs follow-up.
