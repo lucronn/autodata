@@ -58,3 +58,8 @@ The next package embeds PR439 local-only image token fix, retains all fixed topo
 Preparation and browser acceptance pending; no success claim.
 
 Capacity amendment before implementation: root released physical package/build preparation only with total incremental physical-home cap134217728bytes (128MiB), entry free at least7314866176bytes and live abort7180648448bytes; service/browser hold remains. This supersedes the earlier160MiB proposal and generic approximately150MB discussion. No old343 mutation.
+
+
+## Image-contract preparation local tests
+
+At protecteda82 integration gatec8d17c15, all71 owned-article tests pass. Red-first additions failed for absent exclusive dispatch reservation and missing exact151-byte PNG validation before correction. New browser output namespace image-contract-v1 preserves both exhausted attempts; existing result/output/symlink marker blocks another dispatch. Browser now requires real PNG200/MIME/hash/151bytes per layout and rechecks original body/order/decoded image after reload. No application browser or runtime launched. Eleven other copied implementation/fixture blobs match reviewed2f9 byte-for-byte; protected client assets and M1 remain unchanged. Package/build preparation remains bounded128MiB and held for root review before services/browser.
