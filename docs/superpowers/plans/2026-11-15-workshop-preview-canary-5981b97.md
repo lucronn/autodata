@@ -49,3 +49,15 @@ No licensed bytes, IDs, credentials or rawprivateconfig inGitHub. Existing priva
 ## Prepared review package
 
 Preparationgate fde78f74eafeb6101a969a16c2483fdc573d8edf passed beforeartifact/helperwork. Exactbinary/config/probe/helper/commandhashes, sourcearchive tests,40baselinechecks androllbackfixtureevidence are sealed in the canonicalverificationreceipt. Allthree preparationtodos completed; rootconcretereview/runtimeexecution/acceptance remains pending. Nohelperapply orservingmutation. PrivateHANDOFF.md andROOT-COMMANDS.md supply the exactreviewableallowlist.
+
+## Physical execution package and local Docker amendment
+
+Root review blocks the earlier execution package under autofs/loop-backed autodata-evidence: reboot/mount durability is unverified. Keep it historical; it is not an activation/rollback source. Before package/helper edits, synchronize this amendment/Issue424/Project8/canonicaldocs/record and pass a new pinned checkpoint. Move/reseal to fresh physical `/home/corp/.local/state/autodata-preview-canary-5981b97-20261115` on `/dev/nvme0n1p11` ext4, verified by findmnt and device/realpath checks. All execution/rollback helper, manifest, artifact, probe, protected baseline and original/target backups must resolve exclusively under physical package; no loop/autofs file dependency may remain. Existing installed previousbinary/config/systemd/private serving-source paths are inspected dependencies only, not copied execution/rollback payload references. Retain oldpackage unmodified as historical evidence.
+
+Pin Docker calls to `/usr/bin/docker --host unix:///var/run/docker.sock`, with an explicit fresh empty physical DockerCLI config and a minimal fixed child environment (no inherited DOCKER_HOST/DOCKER_CONTEXT/DOCKER_CONFIG/TLS/proxy/PATH overrides). Pin critical systemctl/Python child executables to absolute paths too. Verify read-only actual localdaemon baseline under hostile inherited Docker/PATH/config settings; fixture tests must prove generated inspect/exec argument/environment contracts and context override isolation. No remote daemon or inherited CLI context selection is permitted. Recheck physicalmount/device/path contract at helper load before operations.
+
+Amendment todo:
+- Synchronize/commit this exact amendment and pass pinned preflight before relocation/helper edits.
+- Copy/reseal execution package onto physicalhome; preserve oldpackage; regenerate all rootpath-sensitive manifest/helper/probe/browser/command/hash pins.
+- Pin localDocker/minimal childenv/physicalconfig and test hostilecontext/PATH overrides plus exact metadata/one-attempt rollback on isolated fixtures.
+- Rerun exact livebaseline/read-only40probes/protected27 checks and send fresh concrete package for independent rootreview; no serving mutation until that review.

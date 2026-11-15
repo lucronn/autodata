@@ -8,11 +8,11 @@
     "docs/verification/2026-11-15-workshop-preview-canary-5981b97.md"
   ],
   "todo": [
-    "Synchronize exact protected5981b97 planning checkpoint and pass pinned preflight before private artifact/helper preparation",
-    "Build/hash exact merged source/binary/assets and capture fresh private baseline/compatibility/protected-state evidence without serving mutation",
-    "Prepare bounded probes/exact rollback helper and fixture tests; send concrete command/hash allowlist for independent root review before runtime mutation",
-    "Only after root review/decision execute one API-only canary and independent acceptance or one exact rollback; retain rights and private runtime holds"
+    "Synchronize physical-home/local-Docker amendment and pass pinned preflight before package/helper edits",
+    "Move/reseal all execution and rollback payloads under physicalhome; retain old loopback package as historical",
+    "Pin absolute local Docker socket/config/minimal child env and test hostile context/PATH overrides plus isolated exact rollback",
+    "Recheck exact live baseline/protected state/probes and send resealed concrete package for root review before any serving mutation"
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-15T02:26:59.668145+00:00"
+  "updated_at": "2026-11-15T02:32:15.490803+00:00"
 }
