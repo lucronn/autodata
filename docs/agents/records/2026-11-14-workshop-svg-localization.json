@@ -7,10 +7,10 @@
     "docs/architecture/workshop-svg-localization.md"
   ],
   "todo": [
-    "Integrate exact protected master 92d81a1 through synchronized checkpoint preserving reviewed SVG implementation",
-    "Run focused synthetic actual-image and PostgreSQL/S3 lifecycle persistence checks after integration",
-    "Pass strict required CI at integrated exact head and keep PR422 draft for coordinator review and runtime image decision"
+    "Integrate exact protected #421 master 5b3e19d through synchronized checkpoint preserving reviewed SVG implementation",
+    "Run focused synthetic actual-image and isolated PostgreSQL/S3 lifecycle persistence checks after integration",
+    "Hold final review-head push and strict CI until #415 protected merge; keep PR422 draft and no runtime activation"
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-15T01:15:49.186115+00:00"
+  "updated_at": "2026-11-15T01:40:39.989353+00:00"
 }

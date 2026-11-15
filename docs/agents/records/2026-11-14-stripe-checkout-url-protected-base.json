@@ -1,0 +1,17 @@
+{
+  "goal": "Integrate reviewed Stripe hosted URL compatibility on protected master92d81a1 without changing runtime authority",
+  "plan_ref": "docs/superpowers/plans/2026-11-14-stripe-checkout-url-compat.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/420",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/stripe-checkout-url-compat.md"
+  ],
+  "todo": [
+    "Synchronize Issue420, Project8, plan and canonical architecture at protected master92d81a1 and pass checkpoint preflight",
+    "Merge the synchronized checkpoint into PR421 preserving reviewed implementation282954f and exact master ancestry",
+    "Run focused and full relevant Go, Node, worker, browser, release-evidence and contract checks on the integrated source",
+    "Push the protected-base candidate, rerun strict required CI, hand off independent exact-head review and hold merge; no provider sessions or deployment"
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-15T01:15:45.192358+00:00"
+}

@@ -39,3 +39,12 @@ Integration todo:
 - Push the integrated exact head and pass strict required CI; keep PR #422 draft for coordinator review and runtime image decision.
 
 Hold all merges, serving changes, licensed/provider recapture and additional cleanup without concrete space need. Prior private 14/14 conversion evidence remains historical compatibility evidence; do not repeat provider reads as part of current-base verification. Source merge remains separate from image deployment, rights, grants and real authenticated browser acceptance.
+
+## Protected #421 integration checkpoint
+
+Protected master `5b3e19d3b34208773a77b4b9cfccd3085726cabe`, tree `92da3c0238725728e43a2bbd4df7a0ec29d02de6`, contains merged #421 after #417. This docs-only checkpoint is created directly on that exact base; synchronize Issue #419/Project #8 and pass pinned preflight before feature integration. Preserve reviewed SVG implementation from `a021fcc50ed29b7ca61772f383f7c221ad2d08c5`.
+
+Current integration todo:
+- Integrate this exact protected #421 base through the synchronized checkpoint; report conflicts and branch checkpoint.
+- Run focused actual-image synthetic SVG and enabled isolated PostgreSQL/S3 lifecycle checks without provider calls or serving writes.
+- Hold final review-head push and strict CI until coordinator supplies #415 protected merge; then synchronize the final current-base gate and verify once. Keep #422 draft and hold all merges/runtime activation/licensed recapture.

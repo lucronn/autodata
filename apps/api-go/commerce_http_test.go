@@ -195,7 +195,7 @@ func TestCommerceRejectsUnsafeAuthorityResponses(t *testing.T) {
 	}
 }
 func TestCommerceCheckoutDiscriminantsAndProviderFragment(t *testing.T) {
-	url := "https://checkout.stripe.com/c/pay/cs_test_fixture#fidkdOpaque"
+	url := "https://checkout.stripe.com/g/pay/opaque_Checkout42#fidkdOpaque"
 	for _, tc := range []struct {
 		state, extra string
 		status       int
@@ -274,6 +274,25 @@ func TestCommerceLibraryRejectsMissingRequiredNullableFields(t *testing.T) {
 		w := customerHTTP(t, s.Handler(), "GET", "/v1/workshop/library", "", nil, cookie)
 		if w.Code != 503 {
 			t.Fatal("missing nullable field accepted", w.Code, w.Body.String())
+		}
+	}
+}
+
+func TestCommerceCurrentHostedCheckoutPaths(t *testing.T) {
+	for _, prefix := range []string{"c", "g"} {
+		hosted := "https://checkout.stripe.com/" + prefix + "/pay/opaque_Checkout42#opaque%2Ffragment"
+		if !commerceHostedURL(hosted) {
+			t.Errorf("rejected trusted %s path", prefix)
+		}
+		for _, bad := range []string{strings.Replace(hosted, "https:", "http:", 1), strings.Replace(hosted, "checkout.stripe.com", "checkout.stripe.com.evil", 1), strings.Replace(hosted, "checkout.stripe.com", "user@checkout.stripe.com", 1), strings.Replace(hosted, "checkout.stripe.com", "checkout.stripe.com:443", 1), "https://checkout.stripe.com/" + prefix + "/pay/", hosted + " ", hosted + "\x00"} {
+			if commerceHostedURL(bad) {
+				t.Errorf("accepted invalid hosted URL %q", bad)
+			}
+		}
+	}
+	for _, bad := range []string{"https://checkout.stripe.com/pay/opaque", "https://checkout.stripe.com/x/pay/opaque"} {
+		if commerceHostedURL(bad) {
+			t.Errorf("accepted unknown hosted path %q", bad)
 		}
 	}
 }
