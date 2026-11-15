@@ -53,3 +53,8 @@ Candidate probe passed36 checks: local/private/public readiness, public purchase
 Separate public HEAD readback at 2026-11-15T01:03Z confirmed `https://cars.tk/workshop`307 to `https://autodata.cars.tk/workshop/` and preserved `?x=1` in the redirect. The origin Workshop returned200. This is the apex routing check; the candidate asset probe used the canonical origin.
 
 Private root receipt `/home/corp/autodata-evidence/preview-release-3a18d9c7/root-runtime-receipt.json` pins identities, backup/live hashes and baseline/candidate/browser receipts. The old binary and exact rollback copies remain on persistent storage. Authentication, licensed article rendering, TEST settlement and cold-boot durability remain separate acceptance gates.
+
+
+## Later public source-only canary
+
+The initial source3a18d9c API release above is historical. A later source-only release published protected5981b97 at the r2 executable path while preserving the accepted private92d81a1 runtime and purchase-disabled read_only mode. Its [accepted canary receipt](2026-11-15-workshop-preview-canary-5981b97.md) retains the closed first attempt, independently settled recovery and accepted second attempt. Browser catalog responses were synthetic; this does not establish real-data recovery, licensed reader/media, supplier rights, completed Firebase, real Stripe settlement or cold-boot durability.
