@@ -13,6 +13,6 @@
     "Restart only the API once and verify process identity, dependency/readiness convergence, disabled purchase/demo, exact embedded assets and real browser sign-in readiness/navigation layout.",
     "On any failure restore both exact previous files and old executable once; retain bounded rollback probes and report final state without changing private ingestion or payments."
   ],
-  "status": "draft",
-  "updated_at": "2026-11-15T00:31:05.893556+00:00"
+  "status": "synchronized",
+  "updated_at": "2026-11-15T00:56:00Z"
 }
