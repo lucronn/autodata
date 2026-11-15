@@ -21,3 +21,5 @@ Concrete todo:
 - [ ] Disable purchase configuration locally and reject checkout/webhook/order-status/demo-mode transport before any private request; keep stripe_test public-origin rejection intact.
 - [ ] Verify forwarding, authenticated ownership, missing/revoked grants, private-enabled drift and zero payment-network calls; run complete Go API/contracts and Workshop suites and build/hash the artifact.
 - [ ] Push a coherent candidate PR and hand exact-source review/merge to coordinator; leave live release/configuration changes behind a later synchronized rollout gate.
+
+Implementation and local verification receipt: `docs/verification/2026-11-14-workshop-read-only-commerce.md` records checkpoint b326781a99147bd96f13e263ba1832db00d58a41 preflight PASS, source milestone10ab1d8673e9f066a853373fdadcd6b538ab6344, complete Go/Workshop suite PASS and artifact hash. Coordinator independent review, CI, merge and a later live rollout remain pending.
