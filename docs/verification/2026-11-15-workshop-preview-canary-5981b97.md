@@ -154,3 +154,32 @@ Concrete todo:
 - Suppress only exact Cloudflare telemetry locally and test negative route variants plus actual protected app bootstrap.
 - Fix bounded rollback identity/readiness verification; test race/timeout and single restart on isolated synthetic files only.
 - Run clean-env browser launch/baseline/protected checks, reseal new package/commands and send root review; perform no serving mutation/provider/account/payment writes.
+
+
+## New attempt2 review package seal
+
+First attempt remains CLOSED/recovered with both original attempt markers/reservations retained. New preparation checkpoint `39349ac6e4ef0a82ead2250e333291e122a6fa99` passed synchronized preflight before new package work. New physical package `/home/corp/.local/state/autodata-preview-canary-5981b97-attempt2-20261115`; 215 sealed files; no activation marker, rollback-state, candidate receipt or installed r2 target. Existing r1 and its state are untouched.
+
+Protected source `5981b97f187364e54737919fd8cdb49e7566d981`, tree `b3f321d0263e12da2d5c54f136c9ffcee155e1d1`; exact binary SHA256 `ad5ad70c777a19c2446275cf7640e8777429d3fc3bb334cc3522ff43e1d29750`; archive `699cf7ddbe72a91eab29156d5dacd71fd2f8c653d167909feb8d1459e5ac9a3f`. All1367 source files, archive and binary hashes reverified. Prior build/full Go+Node tests reused as exact payload provenance; no rebuild/Docker operation.
+
+New immutable install path `/usr/local/libexec/autodata/workshop-preview-5981b97-r2/autodata-api`; target override SHA256 `41a658a3c90114458ca260441a548259ab3ef7c32b1a27c9e69e88c18132c840`. Baseline still old3a PID1178108, old override1172a455 and unchanged env74a93e21; private6fcc/image5c/source92 unchanged. New release manifest binds the fresh physical package/install path; old marker cannot authorize it.
+
+Exact same-origin query-free POST `/cdn-cgi/rum` is locally fulfilled204 and separately recorded as synthetic telemetry suppression/no network dispatch. This is justified by read-only browser reproduction and Cloudflare primary FAQ (https://developers.cloudflare.com/web-analytics/faq/). All other writes/protected requests remain blocked and acceptance-failing. No telemetry/provider/account/payment write dispatched. No real catalog acceptance: known automatic years GET still receives local synthetic empty complete response.
+
+Corrected browser policy against recovered public old source passed mobile+desktop, with exactly1RUM suppression and1catalog suppression each, no unexpected blocked requests, initial disabled→ready transition, hidden purchase, no overflow/critical errors/page errors. Receipt/screenshots are baseline-prefixed, leaving candidate receipt paths absent. Actual protected-page local fixture passed6scenarios including negative transition cases; exact telemetry suppressed204 without server dispatch; query/trailing-slash/other-method/other-path variants denied. Clean-env physical-runtime Chromium launch PASS. Fresh baseline probe40 and helper baseline/protected27 PASS; root0700 permissions fixture PASS; shell syntax PASS.
+
+Rollback now waits at most30seconds after its one restart for active service, valid nonzero PID, exact old executable and pinned old file metadata/hash, then runs existing bounded readiness/assets probe. Missing PID/process and transient env are tolerated only inside the deadline. Permanent mismatch/PID0/disappearance timeout tests PASS; zero→gone→env→old sequence PASS. Existing full synthetic rollback fixture PASS for drift/preactivation/manifest refusal, metadata/bytes/fsync restoration, exactly1inert restart, repeat refusal. Timing race is plausible from Type=simple+env and immediate previous check; not asserted as proven forensic cause. No restart retry is added.
+
+New exact pins:
+
+- helper-manifest.json: `b228418c4e620b7ea466ac91d56cdb92ea15b9b527619b658a9bda32ff34329a`.
+- release-manifest.json: `061a69a1a37cfe79d5d7899d4f254c3c84b0812532bb5aa4dbea4889bb52ed43`.
+- rollback_helper.py: `22744be1daadd6ba73bd3df7d45a67cc95cadaf6a15c6d4c12dc4419a74c3fbf`.
+- release_probe.py: `537dee3fe0b7a0df34e5840e0f557b2c5f722f455acaef4de9a964d770e7744a`.
+- ROOT-COMMANDS.md: `645dc49f120d8e312f54bcf081c58518415260b7a16e1eb2d4510516ac9e1832`.
+- ROOT-COMMANDS.md.diff: `64566eee9c482c0665300e2d5870c27e804690ced53b0cfb083bcfd600fcbccb`.
+- browser_contract.cjs: `fa5330d12139029c6c37fb889e34cac1ff4f6eb64356b1e8522caa553006e229`.
+- browser_acceptance.cjs: `28938d85e84eed7d28b6df8b4244cb20e692944e04bce6bae685e916f122e888`.
+- attempt2-verification.json: `2232219dc8bf573787e3354506d127b66a577ba30ce1076f981eb2ae09eb91e8`.
+
+ROOT-COMMANDS.md.diff records only fresh package/install/manifest/target/temp-file pins and new-attempt status plus exact local telemetry policy and bounded rollback verification explanation. New temporary override suffix5981b97-attempt2 avoids prior attempt files. All post-prepare checks retain sudo clean env. Physical HANDOFF.md and helper/contract diffs give exact reviewable behavior. Unused copied historical receipts/tooling are explicitly isolated under historical-provenance and excluded from execution/seal; source payload and actual execution dependencies are sealed. Root review is pending; no serving mutation, marker/backup/install/restart, provider recapture, licensed display or private image rollout occurred during new preparation.
