@@ -1,6 +1,6 @@
 # Configuration hydration anomaly diagnostics
 
-Status: implemented and locally verified after checkpoints e66eab0 and dc709e9 on protected421 base5b3e19d3b34208773a77b4b9cfccd3085726cabe/tree92da3c0238725728e43a2bbd4df7a0ec29d02de6. Final integration/review/PR strict CI/merge held for protected415/422 pins. No deployment or live request.
+Status: integrated conflict-free onto protected415 base `76fb21e8f7c080e93f6d38de93a2e1a22cd11f39` / tree `c4b63d3635e7cc5b084f0d9df6154334e6dc36a3`. Reviewed diagnostics implementation byte delta from971ad64 is unchanged. Fresh integration checkpoint/preflight and focused checks are required; final PR/strict CI/merge remain held for protected422 SHA/tree. No provider GET or serving mutation.
 
 Issue https://github.com/lucronn/autodata/issues/401; Project https://github.com/users/lucronn/projects/8. Plan docs/superpowers/plans/2026-11-15-configuration-hydration-diagnostics.md; verification docs/verification/2026-11-15-configuration-hydration-diagnostics.md.
 
