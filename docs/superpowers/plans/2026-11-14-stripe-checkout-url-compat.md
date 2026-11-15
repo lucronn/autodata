@@ -21,7 +21,7 @@ Commit/push this synchronized planning checkpoint and run machine preflight at i
 
 ## Concrete todo
 
-- [ ] Synchronize plan, Issue420, Project8 and canonical documentation; pass pinned-base preflight
-- [ ] Observe red-first Python, Go, browser and acceptance-harness g/pay regressions while retaining strict negative cases
-- [ ] Implement the narrow two-form URL compatibility change, synchronized OpenAPI and real harness parsing without URL-derived session identity
+- [x] Synchronize plan, Issue420, Project8 and canonical documentation; pass pinned-base preflight
+- [x] Observe red-first Python, Go, browser and acceptance-harness g/pay regressions while retaining strict negative cases
+- [x] Implement the narrow two-form URL compatibility change, synchronized OpenAPI and real harness parsing without URL-derived session identity
 - [ ] Run relevant full tests, independent exact-head review and required CI; retain separate isolated TEST/runtime and licensed browser acceptance evidence

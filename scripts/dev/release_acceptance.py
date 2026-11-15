@@ -2764,7 +2764,7 @@ def _api21_v2_checkout(payload):
     require(identity['region']=='US','api21_v2_checkout_scope');hosted=identity['checkout_url'];require(type(hosted) is str,'api21_v2_checkout_url')
     try:url=urlsplit(hosted)
     except ValueError:raise ContractError('api21_v2_checkout_url') from None
-    require(url.scheme=='https' and url.netloc=='checkout.stripe.com' and re.fullmatch('/c/pay/cs_test_[a-f0-9]{32}',url.path) is not None and not url.query,'api21_v2_checkout_url')
+    require(hosted.startswith('https://checkout.stripe.com/') and not any(c.isspace() or ord(c)<32 or ord(c)==127 for c in hosted) and url.scheme=='https' and url.netloc=='checkout.stripe.com' and re.fullmatch('/[cg]/pay/[^/]+',url.path) is not None and not url.query,'api21_v2_checkout_url')
     posted=payload['request']['parsed'];checkout=payload['response']['parsed']
     require(type(posted) is dict and type(checkout) is dict and posted.get('configuration_id')==identity['configuration_id'] and posted.get('region')=='US' and checkout.get('version')=='v1' and checkout.get('state')=='checkout' and {key:checkout.get(key) for key in identity}==identity,'api21_v2_checkout_identity')
     return identity
@@ -2970,7 +2970,7 @@ def _api21_v2_pending_snapshot(snapshot,identity,owner):
     require(account['firebase_uid']=='fixture-user' and account['firebase_project_id']=='fixture-project' and account['status']=='active','api21_v2_pending_owner')
     for key in ('paid_at','dataset_request_id','entitlement_id'):require(order[key] is None,'api21_v2_pending_grants')
     require(type(order['amount_minor']) is int and order['amount_minor']==2000 and order['currency']=='USD' and order['livemode'] is False and order['stripe_account_id']=='acct_fixture' and order['expected_price_id']=='price_fixture','api21_v2_pending_payment')
-    require(order['checkout_url']==identity['checkout_url'] and order['checkout_session_id']==identity['checkout_url'].split('/c/pay/')[1].split('#')[0],'api21_v2_pending_payment')
+    require(order['checkout_url']==identity['checkout_url'] and type(order['checkout_session_id']) is str and re.fullmatch(r'cs_test_[a-f0-9]{32}',order['checkout_session_id']) is not None,'api21_v2_pending_payment')
     rows=snapshot['immutable_rows'];exact(rows,PAID_PG_TABLES)
     for values in rows.values():array(values);require(len(values)<=4096 and all(type(r) is dict and r for r in values),'api21_v2_pending_rows')
     digest(snapshot['immutable_sha256']);require(hashlib.sha256(json.dumps(rows,sort_keys=True,allow_nan=False).encode()).hexdigest()==snapshot['immutable_sha256'],'api21_v2_pending_row_hash')
@@ -3004,8 +3004,8 @@ def _api21_v2_wire_semantics(by_phase,case,row):
         for snapshot in snapshots:
             _api21_v2_pending_snapshot(snapshot,identity,row['measurement']['orders'][0]['owner'])
             rows=snapshot['paid_rows'];orders=rows['workshop_orders'];require(len(orders)==1 and rows['entitlements']==[] and snapshot['grant_calls']==0,'api21_v2_pending_snapshot')
-            order=orders[0];require(order['status']=='open' and all(order[k]==identity[k] for k in ('order_id','configuration_id','region')) and order['checkout_session_id']==identity['checkout_url'].split('/c/pay/')[1].split('#')[0],'api21_v2_pending_snapshot');integer(snapshot['payment_calls'],1)
-        require(snapshots[0]['payment_calls']==snapshots[1]['payment_calls'],'api21_v2_retry_payment')
+            order=orders[0];require(order['status']=='open' and all(order[k]==identity[k] for k in ('order_id','configuration_id','region')) and type(order['checkout_session_id']) is str and re.fullmatch(r'cs_test_[a-f0-9]{32}',order['checkout_session_id']) is not None,'api21_v2_pending_snapshot');integer(snapshot['payment_calls'],1)
+        require(snapshots[0]['payment_calls']==snapshots[1]['payment_calls'] and snapshots[0]['paid_rows']['workshop_orders'][0]['checkout_session_id']==snapshots[1]['paid_rows']['workshop_orders'][0]['checkout_session_id'],'api21_v2_retry_payment')
     initial=value('initial-measurement');signed=value('signed-in-measurement')
     require(signed['auth_sessions']==initial['auth_sessions']+1 and signed['hashed_sessions']==signed['auth_sessions'] and signed['sdk_cert_calls']>=1 and signed['sdk_user_calls']>=2 and signed['sdk_unexpected']==0,'api21_v2_signin')
     for phase in ('owner-library-initial-http','owner-library-reload-http','owner-library-restart-http'):
