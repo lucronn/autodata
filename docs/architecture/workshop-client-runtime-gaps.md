@@ -15,4 +15,4 @@ Concrete todo:
 - Add focused regressions for quote gating, enabled quotes, mode reset and races, local GET, paid prepare, article polling, missing authentication, and stale/aborted navigation; run the complete client/demo tests and syntax/diff checks.
 - Commit and push the validated milestone for coordinator review; hold PR/CI until coordinator resolves the #429 base boundary. Do not merge, deploy, mutate M2A, or call provider/payment/auth services.
 
-Implementation awaits a committed, synchronized preflight checkpoint.
+Implementation passed pushed checkpoint `c991311` with synchronized preflight. [Verification evidence](../verification/2026-11-14-workshop-client-runtime-gaps.md) records 287 passing client/demo tests and the coordinator-owned M2A/runtime boundary. PR creation remains held pending #429 base coordination.

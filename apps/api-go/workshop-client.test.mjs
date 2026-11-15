@@ -2608,3 +2608,196 @@ test('both Stripe hosted path forms preserve opaque tokens with strict authority
  }
  for (const invalid of ['https://checkout.stripe.com/pay/opaque','https://checkout.stripe.com/x/pay/opaque']) assert.equal(hostedCheckoutURL(invalid),null);
 });
+
+// These transports are local doubles; production session and route-selection code runs unchanged.
+test('session exposes only explicit known config modes and resets mode when authority is cleared', async () => {
+  const { createSession } = await import('./workshop/auth.mjs');
+  for (const mode of ['local', 'firebase', undefined, null, 'LOCAL', 'other', true]) {
+    let config = { mode };
+    const session = createSession({ request: async path => {
+      if (path === '/auth/config') return config;
+      return { authenticated: true, roles: ['dataset_viewer'], expires_at: '2099-01-01T00:00:00Z', csrf_token: 'csrf' };
+    }, loadSDK: () => assert.fail('an existing session needs no SDK') });
+    assert.equal(session.state.mode, null);
+    await session.bootstrap();
+    assert.equal(session.state.authenticated, true);
+    assert.equal(session.state.mode, ['local', 'firebase'].includes(mode) ? mode : null);
+    session.clear();
+    assert.equal(session.state.mode, null);
+    assert.equal(session.state.authenticated, false);
+    config = null;
+    await session.bootstrap();
+    assert.equal(session.state.mode, null);
+  }
+});
+
+test('an explicit local config mode cannot authenticate an invalid session or enable Google login', async () => {
+  const { createSession } = await import('./workshop/auth.mjs');
+  const session = createSession({ request: async path => path === '/auth/config'
+    ? { mode: 'local' }
+    : { authenticated: true, roles: [], expires_at: '2099-01-01T00:00:00Z', csrf_token: 'csrf' },
+    loadSDK: () => assert.fail('local configuration must not initialize Firebase') });
+  await session.bootstrap();
+  assert.equal(session.state.mode, 'local');
+  assert.equal(session.state.authenticated, false);
+  assert.equal(session.state.csrf, '');
+  assert.equal(session.state.available, false);
+  assert.equal(session.state.ready, false);
+});
+
+test('failed or obsolete configuration reads cannot preserve or restore local session mode', async () => {
+  const { createSession } = await import('./workshop/auth.mjs');
+  let readConfig = async () => ({ mode: 'local' });
+  const session = createSession({ request: async path => path === '/auth/config'
+    ? readConfig()
+    : { authenticated: true, roles: ['dataset_viewer'], expires_at: '2099-01-01T00:00:00Z', csrf_token: 'csrf' } });
+  await session.bootstrap();
+  assert.equal(session.state.mode, 'local');
+  let release;
+  readConfig = () => new Promise(resolve => { release = resolve; });
+  const obsolete = session.bootstrap();
+  assert.equal(session.state.mode, null, 'bootstrap must clear old mode before its first await');
+  readConfig = async () => ({ mode: 'firebase' });
+  await session.bootstrap();
+  release({ mode: 'local' });
+  await obsolete;
+  assert.equal(session.state.mode, 'firebase');
+  readConfig = async () => { throw new TypeError('offline'); };
+  await session.bootstrap();
+  assert.equal(session.state.mode, null);
+  const controller = new AbortController();
+  readConfig = async () => { controller.abort(); return { mode: 'local' }; };
+  await session.bootstrap({ signal: controller.signal });
+  assert.equal(session.state.mode, null);
+});
+
+function selectionQuoteHarness(merchant, { authenticated = true, request = async () => quoteTermsFixture() } = {}) {
+  const navigation = new NavigationGeneration(), generation = navigation.next(), calls = [], opened = [], nodes = new Map();
+  const context = {
+    merchant, quote: null, validScope, validQuote, scope: () => scope,
+    session: { state: { authenticated } }, clearProtected() {}, renderPurchase() {}, show() {}, status() {},
+    $: id => { if (!nodes.has(id)) nodes.set(id, {}); return nodes.get(id); },
+    requestJSON: async (path, options) => { calls.push({ path, options }); return request(path, options); },
+    loadArticles: async (g, id) => opened.push({ g, id }),
+  };
+  runInNewContext(appSection('async function selectVehicle(', 'async function loadArticles('), context);
+  return { context, navigation, generation, calls, opened };
+}
+
+for (const merchant of [{ enabled: false }, null, {}, { enabled: 'true' }]) {
+  test(`selection skips unusable quote for config ${JSON.stringify(merchant)} and still opens authorized articles`, async () => {
+    const h = selectionQuoteHarness(merchant, { request: () => assert.fail('disabled quote must never be requested') });
+    await h.context.selectVehicle(h.generation, 'article-a');
+    assert.equal(h.calls.length, 0);
+    assert.equal(h.context.quote, null);
+    assert.equal(h.opened.length, 1);
+    assert.equal(h.opened[0].id, 'article-a');
+  });
+}
+
+test('disabled quote selection retains signed-out and obsolete-navigation boundaries', async () => {
+  const signedOut = selectionQuoteHarness({ enabled: false }, { authenticated: false });
+  await signedOut.context.selectVehicle(signedOut.generation);
+  assert.equal(signedOut.calls.length, 0);
+  assert.equal(signedOut.opened.length, 0);
+  const stale = selectionQuoteHarness({ enabled: false });
+  stale.navigation.clear();
+  await stale.context.selectVehicle(stale.generation);
+  assert.equal(stale.calls.length, 0);
+  assert.equal(stale.opened.length, 0);
+});
+
+test('enabled purchasing keeps scoped quote validation, tolerated unavailable quote, and article reads', async () => {
+  for (const result of [quoteTermsFixture(), { ...quoteTermsFixture(), amount_minor: 1 }, new Error('503')]) {
+    const h = selectionQuoteHarness({ enabled: true }, { request: async () => {
+      if (result instanceof Error) throw result;
+      return result;
+    } });
+    await h.context.selectVehicle(h.generation, 'article-a');
+    assert.equal(h.calls.length, 1);
+    assert.equal(h.calls[0].path, `/v1/workshop/quote?configuration_id=${scope.configuration_id}&region=${scope.region}`);
+    assert.equal(h.calls[0].options.signal, h.generation.signal);
+    assert.equal(h.context.quote, validQuote(result, scope) ? result : null);
+    assert.equal(h.opened.length, 1);
+  }
+});
+
+test('enabled quote cannot publish or continue after its selection is canceled', async () => {
+  for (const reject of [false, true]) {
+    let resolveRequest, rejectRequest;
+    const h = selectionQuoteHarness({ enabled: true }, { request: () => new Promise((resolve, fail) => { resolveRequest = resolve; rejectRequest = fail; }) });
+    const pending = h.context.selectVehicle(h.generation);
+    h.navigation.clear();
+    if (reject) rejectRequest(new DOMException('canceled', 'AbortError'));
+    else resolveRequest(quoteTermsFixture());
+    if (reject) await assert.rejects(pending, { name: 'AbortError' });
+    else await pending;
+    assert.equal(h.context.quote, null);
+    assert.equal(h.opened.length, 0);
+  }
+});
+
+function articleRouteHarness(mode, request, authenticated = true) {
+  const h = articleMediaHarness({
+    session: { state: { mode, authenticated, csrf: 'csrf' } }, stage() {}, requestArticleJSON: request,
+    readArticle: async (read, options) => {
+      const { readArticle } = await import('./workshop/article-read.mjs');
+      return readArticle(read, { ...options, wait: async () => {} });
+    },
+  });
+  runInNewContext(appSection('async function loadArticle(', 'function openArticle('), h.context);
+  return h;
+}
+
+for (const mode of ['local', 'firebase', undefined, null, 'LOCAL', 'other']) {
+  test(`article opening mode ${String(mode)} uses only its authorized real route`, async () => {
+    const calls = [], article = mediaArticle([{ type: 'paragraph', text: 'Stored procedure.' }]);
+    const h = articleRouteHarness(mode, async (path, options) => { calls.push({ path, options }); return { data: { article } }; });
+    await h.context.loadArticle('a', h.g);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].path, mode === 'local' ? '/v1/catalog/vehicles/v/articles/a' : '/v1/catalog/vehicles/v/articles/a/prepare');
+    assert.equal(calls[0].options.method || 'GET', mode === 'local' ? 'GET' : 'POST');
+    assert.equal(calls[0].options.signal, h.g.signal);
+    if (mode === 'local') {
+      assert.equal(calls[0].options.body, undefined);
+      assert.equal(calls[0].options.headers, undefined);
+    } else {
+      assert.deepEqual(Object.keys(calls[0].options.body), []);
+      assert.equal(calls[0].options.headers['X-CSRF-Token'], 'csrf');
+    }
+    assert.match(h.nodes.get('article-content').textContent, /Stored procedure/);
+    assert.equal(h.context.currentArticle, article);
+  });
+}
+
+test('local mode preserves actual GET polling responses and session authorization', async () => {
+  const calls = [], ready = mediaArticle([{ type: 'paragraph', text: 'Stored result.' }]);
+  const h = articleRouteHarness('local', async (path, options) => {
+    calls.push({ path, options });
+    return { data: { article: calls.length === 1 ? { ...ready, processing: { job_id: 'job', state: 'running' } } : ready } };
+  });
+  await h.context.loadArticle('a', h.g);
+  assert.equal(calls.length, 2);
+  assert.ok(calls.every(c => c.path === '/v1/catalog/vehicles/v/articles/a' && !c.options.method));
+  assert.equal(h.context.currentArticle, ready);
+  const signedOut = articleRouteHarness('local', () => assert.fail('local mode does not grant a session'), false);
+  await signedOut.context.loadArticle('a', signedOut.g);
+  assert.equal(signedOut.context.currentArticle, null);
+});
+
+for (const mode of ['local', 'firebase']) {
+  test(`article ${mode} route rejects canceled reads and cannot publish obsolete responses`, async () => {
+    for (const reject of [false, true]) {
+      let resolveRead, rejectRead;
+      const h = articleRouteHarness(mode, () => new Promise((resolve, fail) => { resolveRead = resolve; rejectRead = fail; }));
+      const pending = h.context.loadArticle('a', h.g);
+      h.navigation.clear();
+      if (reject) rejectRead(new DOMException('canceled', 'AbortError'));
+      else resolveRead({ data: { article: mediaArticle([{ type: 'paragraph', text: 'Obsolete content.' }]) } });
+      if (reject) await assert.rejects(pending, { name: 'AbortError' });
+      else await pending;
+      assert.equal(h.context.currentArticle, null);
+      assert.doesNotMatch(h.nodes.get('article-content').textContent, /Obsolete/);
+    }
+  });
+}

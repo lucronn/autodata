@@ -50,3 +50,7 @@ Use only local mocked transport executing production functions. Test enabled=fal
   "updated_at": "2026-11-15T03:31:42.402593+00:00"
 }
 ```
+
+## Verification checkpoint
+
+Pushed planning checkpoint `c991311` passed synchronized machine preflight before implementation. The complete client/demo suites pass 287 tests with zero failures/skips. See [verification evidence](../../verification/2026-11-14-workshop-client-runtime-gaps.md). Coordinator retains PR/CI, M2A runtime, release, and deployment control.
