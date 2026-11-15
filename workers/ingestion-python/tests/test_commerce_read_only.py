@@ -4,6 +4,9 @@ import os
 from pathlib import Path
 import sys
 import threading
+import socket
+import subprocess
+import time
 import unittest
 from unittest.mock import MagicMock, Mock, patch
 import uuid
@@ -135,6 +138,51 @@ import pytest
 from lifecycle_support import fresh_database, seed_configuration, seed_vehicle
 
 
+def test_read_only_http_startup_uses_local_schema_without_stripe_keys(fresh_database):
+    repo = fresh_database()
+    configuration = str(seed_configuration(repo, seed_vehicle(repo)))
+    with socket.socket() as reservation:
+        reservation.bind(('127.0.0.1', 0))
+        port = reservation.getsockname()[1]
+    env = {**ENV, 'PATH': os.environ.get('PATH', '/usr/local/bin:/usr/bin:/bin'),
+           'PYTHONPATH': os.environ.get('PYTHONPATH', ''), 'PYTHONDONTWRITEBYTECODE': '1',
+           'AUTODATA_INGESTION_HTTP_ADDR': f'127.0.0.1:{port}',
+           'AUTODATA_DB_ADDRESS': 'postgres:5432', 'AUTODATA_POSTGRES_DB': repo.database_name,
+           'AUTODATA_POSTGRES_USER': 'lifecycle_test', 'AUTODATA_POSTGRES_PASSWORD': 'lifecycle_test_only'}
+    process = subprocess.Popen([sys.executable, '-m', 'autodata_ingestion.http_service'], env=env,
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        for attempt in range(60):
+            if process.poll() is not None:
+                raise AssertionError('read-only HTTP startup failed: ' + process.communicate()[1].decode())
+            try:
+                with urlopen(f'http://127.0.0.1:{port}/healthz', timeout=0.5) as response:
+                    assert response.status == 200
+                break
+            except OSError:
+                if attempt == 59:
+                    raise
+                time.sleep(0.05)
+        request = Request(f'http://127.0.0.1:{port}/internal/commerce/purchase-config', data=b'{}',
+                          headers={'X-Autodata-Internal-Token': 'fixture-internal'})
+        with urlopen(request, timeout=3) as response:
+            assert response.status == 200 and json.load(response)['enabled'] is False
+        request = Request(f'http://127.0.0.1:{port}/internal/commerce/quote',
+                          data=json.dumps({'configuration_id': configuration, 'region': 'US'}).encode(),
+                          headers={'X-Autodata-Internal-Token': 'fixture-internal'})
+        with urlopen(request, timeout=3) as response:
+            quote = json.load(response)
+            assert response.status == 200 and quote['amount_minor'] == 2000
+            assert quote['purchasable'] is False
+    finally:
+        process.terminate()
+        try:
+            process.communicate(timeout=3)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.communicate(timeout=3)
+
+
 @pytest.mark.parametrize('live', [False, True])
 def test_read_only_retains_exact_paid_scope_without_writes(fresh_database, live):
     repo = fresh_database()
@@ -169,7 +217,8 @@ def test_read_only_retains_exact_paid_scope_without_writes(fresh_database, live)
     from psycopg.errors import ReadOnlySqlTransaction
     with pytest.raises(ReadOnlySqlTransaction), service.transaction() as (_, cursor):
         cursor.execute('UPDATE dataset_products SET price_minor=price_minor')
-    assert service.quote(configuration, 'US')['amount_minor'] == 2000
+    quote = service.quote(configuration, 'US')
+    assert quote['amount_minor'] == 2000 and quote['purchasable'] is False
     assert service.grant_check(owner, organization, configuration, 'US')['entitlement_id'] == entitlement_id
     assert service.library(owner, organization)['items'][0]['configuration_id'] == configuration
     for config in (commerce.CommerceConfig(mode, 'acct_foreign', 'price_fixture'),

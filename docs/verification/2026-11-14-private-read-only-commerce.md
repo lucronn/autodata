@@ -29,3 +29,11 @@ Implementation adds explicit read_only composition with independent COMMERCE_REA
 Full unit suite, independent exact-head review, requiredCI and merge remain pending. Any live private read_only change requires a new merged-source rollout gate and retained writable rollback.
 
 Coordinator review of99b1c619 found inherited quote purchasable:true was inaccurate in read_only mode. Plan/architecture/record amended before corrective code: preserve quote fields but set purchasable:false only for read_only, with direct and real privateHTTP regressions. Real subprocess read_only startup without Stripe keys now passes in isolatedPG; new suite10passed/36subtests before quote correction.
+
+## Quote review correction and current validation
+
+Quote amendment0b2460f576b7ef8511f8435f574b60b062015468 passed preflight and Issue414comment6886693949/Project8 readbacks matched before code. Added direct and real privateHTTP assertions failed3 cases red on purchasable:true. Minimal subclass override now preserves quote DTO/price/scope and returns purchasable:false. Actual private HTTP subprocess startup with production/public origin, isolatedDB and explicit read_only pins, no Stripe secret/webhook variables, passes health/purchase-config/quote.
+
+After correction: focused new+existing commerce/PG/HTTP47passed,53subtests. Full ingestion unit suite before quote override:1205passed,477skipped,232subtests in132.46seconds. Prior actual-runtime-image unittest77passed and complete isolated catalog acceptance115passed/42subtests. No serving mutation or external provider/payment/model request.
+
+Cross-PR deployment dependency: public Go quote validation in c115dcd rejects purchasable:false; Go#412 owner is implementing a mode-bound read_only allowance/public regression. No compatible public/private rollout until both changes are reviewed/merged with currentCI/protection and a new gate explicitly approves private mode plus source mount. Parent will merge#412 first; #417 must update base and rerun strictCI afterward.

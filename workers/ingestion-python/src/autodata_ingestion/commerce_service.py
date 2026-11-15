@@ -575,6 +575,11 @@ class ReadOnlyCommerceService(CommerceService):
         super().__init__(connection_factory, config, None, clock=clock,
                          purchase_config=PurchaseConfig.disabled())
 
+    def quote(self, configuration_id, region):
+        result = super().quote(configuration_id, region)
+        result['purchasable'] = False
+        return result
+
     def _payment_unavailable(self, *args, **kwargs):
         raise CommerceError('COMMERCE_UNAVAILABLE', 503)
 
