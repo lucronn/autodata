@@ -41,3 +41,11 @@ Cross-PR deployment dependency: public Go quote validation in c115dcd rejects pu
 ## Protected-base integration checkpoint
 
 Go PR#412 merged as exact master3a18d9c7ca51606a1dfb6d7691d3039d6d27c9f3. Concrete todo: synchronize this plan/Issue414/Project8/record before integration; merge that exact base without rewriting published history; retain Python implementation scope and truthful purchasable:false; rerun focused isolated commerce/runtime and public Go compatibility checks, requiredCI and independent exact-head review. Hold merge for coordinator. No live runtime mutation or SVG/image dependency change. Final private runtime gate remains separate and must pin the protected source before SVG#419.
+
+## Updated protected Go base verification
+
+Gate d01463a1e67e1e3fb595b1b0eec7af453732468b passed synchronized/errors[]; Issue414 comment6886925832 and Project8 readbacks matched. Merged exact protected3a18d9c7ca51606a1dfb6d7691d3039d6d27c9f3 without conflict at2e53453ad547aef528655e40fb11252e974d997c. Python source/tests are byte-identical to reviewed9a39f0971e3db1f1c2551f9813027f6d9c2fc41b; the Go read_only quote validator is now in ancestry.
+
+After integration: isolated PostgreSQL/new+existing commerce/privateHTTP47passed,53subtests; network-disabled public Go tests matching ReadOnly|CommercePublic|Quote passed. Actual pinned image5c8e79b93db4 startup on production/public origin with internal fixtureDB, explicitread_only, noStripekeys/provider: health200, purchaseenabledfalse, providerNone, transaction_read_onlyon. Synthetic container9cfcb5486f9952a817cbc47b60e1a49bb5e2ab1f124a922071ae6b559db3c7a8 retained stopped; no serving changes. Initial rerun harness lacked/artifacts (46pass,1fail,2teardownerrors); initial manual startup probe usedGET on POST-only purchase endpoint404. Added fixture tmpfs and corrected request method, then both passed; no application code repair.
+
+Diff whitespace check passed. RequiredCI and coordinator final exact-head review remain pending; no merge/deployment authority implied. Private runtime source/image/mode rollout still requires its separate synchronized gate and exact protected merge source, excluding SVG419 dependency changes.
