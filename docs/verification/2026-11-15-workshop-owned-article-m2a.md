@@ -63,3 +63,17 @@ Capacity amendment before implementation: root released physical package/build p
 ## Image-contract preparation local tests
 
 At protecteda82 integration gatec8d17c15, all71 owned-article tests pass. Red-first additions failed for absent exclusive dispatch reservation and missing exact151-byte PNG validation before correction. New browser output namespace image-contract-v1 preserves both exhausted attempts; existing result/output/symlink marker blocks another dispatch. Browser now requires real PNG200/MIME/hash/151bytes per layout and rechecks original body/order/decoded image after reload. No application browser or runtime launched. Eleven other copied implementation/fixture blobs match reviewed2f9 byte-for-byte; protected client assets and M1 remain unchanged. Package/build preparation remains bounded128MiB and held for root review before services/browser.
+
+
+## Host-only tmpfs v2 gate
+
+Plan `docs/superpowers/plans/2026-11-15-workshop-owned-article-tmpfs-browser.md`; record `docs/agents/records/2026-11-15-workshop-owned-article-tmpfs-browser.json`. Physical runtime668d/041farchive/bb11binary/da5353manifest and oldcfb mapping remain unchanged. Only offloaded smoke harness+test may change; root reviews separate operational identity before any services/browser. New physical baseline7270658048,64MiB cap/32MiB early guard; independent tmpfs128MiB cap/96MiB guard, memory/floor checks. Preserve all consumed markers/failures/data.
+
+Todo: Keep immutable physical serving source/archive/binary/manifest and rollback binary mapping unchanged; separately pin the offloaded harness and immutable physical helper imports with no-dispatch boundary/hash-drift tests.
+
+Todo: Use verified tmpfs private HOME/TMPDIR/XDG_CACHE_HOME, fresh current-baseline64MiB physical cap with32MiB early guard and independent tmpfs128MiB cap/96MiB guard, memory/floor checks and observed10MB burst regression.
+
+Todo: Add exclusive v2 one-use marker and bounded durable safe stage/category/status journal, run focused offline tests and seal exact new host harness/operational receipt for root review before service or browser actions.
+
+Todo: Only after separate root authorization restart the exact six resources, re-attest data read-only, run one authored desktop/mobile PNG/body/order/history/auth acceptance, preserve diagnostics and stop all owned processes/resources.
+

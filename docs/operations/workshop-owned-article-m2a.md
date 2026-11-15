@@ -102,3 +102,17 @@ Todo: After separate root package and one-run approval, restart the same six ser
 The next package embeds PR439 local-only image token fix, retains all fixed topology/config/image policy and unchanged fixed isolation policy. Offload compiler temp/output; maximum incremental physical-home growth128MiB with live warm-floor abort. This replaces prior256MiB proposal for this run only. Root reviews exact source/tree/archive/new binary/asset hashes, capacity and stopped full admission before any service/browser action. Use fresh exclusive phase/browser paths; no historical receipt overwrites. Current physical fixture data is populated, so only read-only re-attestation is allowed. No provider/Stripe/Firebase/public exposure.
 
 Capacity amendment before implementation: root released physical package/build preparation only with total incremental physical-home cap134217728bytes (128MiB), entry free at least7314866176bytes and live abort7180648448bytes; service/browser hold remains. This supersedes the earlier160MiB proposal and generic approximately150MB discussion. No old343 mutation.
+
+
+## Host-only tmpfs v2 gate
+
+Plan `docs/superpowers/plans/2026-11-15-workshop-owned-article-tmpfs-browser.md`; record `docs/agents/records/2026-11-15-workshop-owned-article-tmpfs-browser.json`. Physical runtime668d/041farchive/bb11binary/da5353manifest and oldcfb mapping remain unchanged. Only offloaded smoke harness+test may change; root reviews separate operational identity before any services/browser. New physical baseline7270658048,64MiB cap/32MiB early guard; independent tmpfs128MiB cap/96MiB guard, memory/floor checks. Preserve all consumed markers/failures/data.
+
+Todo: Keep immutable physical serving source/archive/binary/manifest and rollback binary mapping unchanged; separately pin the offloaded harness and immutable physical helper imports with no-dispatch boundary/hash-drift tests.
+
+Todo: Use verified tmpfs private HOME/TMPDIR/XDG_CACHE_HOME, fresh current-baseline64MiB physical cap with32MiB early guard and independent tmpfs128MiB cap/96MiB guard, memory/floor checks and observed10MB burst regression.
+
+Todo: Add exclusive v2 one-use marker and bounded durable safe stage/category/status journal, run focused offline tests and seal exact new host harness/operational receipt for root review before service or browser actions.
+
+Todo: Only after separate root authorization restart the exact six resources, re-attest data read-only, run one authored desktop/mobile PNG/body/order/history/auth acceptance, preserve diagnostics and stop all owned processes/resources.
+

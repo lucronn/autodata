@@ -1,0 +1,42 @@
+# Private M2A offloaded browser harness with tmpfs profile
+
+Issue: https://github.com/lucronn/autodata/issues/398
+Project: https://github.com/users/lucronn/projects/8
+Amendment implementation base `668d4c86f4097b9d2c7880dedf2e0fccc8079da6` (protecteda82b31dc ancestor). This is a new host-only tool gate; physical runtime remains at that exact source.
+
+## Todo
+
+- Keep immutable physical serving source/archive/binary/manifest and rollback binary mapping unchanged; separately pin the offloaded harness and immutable physical helper imports with no-dispatch boundary/hash-drift tests
+- Use verified tmpfs private HOME/TMPDIR/XDG_CACHE_HOME, fresh current-baseline64MiB physical cap with32MiB early guard and independent tmpfs128MiB cap/96MiB guard, memory/floor checks and observed10MB burst regression
+- Add exclusive v2 one-use marker and bounded durable safe stage/category/status journal, run focused offline tests and seal exact new host harness/operational receipt for root review before service or browser actions
+- Only after separate root authorization restart the exact six resources, re-attest data read-only, run one authored desktop/mobile PNG/body/order/history/auth acceptance, preserve diagnostics and stop all owned processes/resources
+
+## Identity and allowed edits
+
+Only scripts/dev/workshop_owned_article_smoke.py and scripts/dev/test_workshop_owned_article_smoke.py may change implementation. Documentation allowlist: this plan, matching record, docs/operations/workshop-owned-article-m2a.md and docs/verification/2026-11-15-workshop-owned-article-m2a.md. The host worktree is offloaded /home/corp/autodata-evidence/m2a-image-contract-integration-20261115. No Go/product JS/Compose/schema/fixture/admission/forwarder changes and no physical source/archive/binary/manifest replacement or build. The existing cfb rollback binary and prior seal mapping remain unchanged. Keep all original data, seeds and failures.
+
+Physical runtime source668d4c86/tree29182073, archive041f834bf7c6ca6728e640d63589728feb6d86eeead017707f54bbc09876ad93, binarybb11d963666e4fc44f6b0879ebb55a14cf7b2ca221bad6ffa8d3282d5360203e, manifestda5353e9005b472c41f98d0ab7e2c259ca0016da89e7cf3dd5ed2c1215308185 and fixed config8ad3cd… stay pinned. New operational receipt separately records runtime source/tree/package hashes and harness source/tree/file/test hashes; never label the new harness commit as running service source. Private fixed-scope lifecycle launcher may be revised/sealed separately for root review, without service/data actions.
+
+All six actual service mounts exclude the offloaded worktree, no entry invokes the smoke harness and repository references are unit-test-only. Owned no-dispatch fake-harness mutation left actual physical source_guard unchanged086ce8c0… and admissiontrue/errors[], all6stopped. This is static entry/mount/import proof, not execution of stopped services. Runtime forwarder/admission/seed helpers must resolve explicitly from immutable physical m2a/source/scripts/dev and have exact __file__/hash checks. The relay runs from physical source; make_checker/source_guard keep guarding its source/archive/binary/manifest. Changed offloaded Python cannot enter service containers because that tree is not mounted.
+
+A fixed private launcher compares exact root-reviewed operational receipt SHA and harness SHA before Python invocation. The harness validates private receipt fields and its own/helper hashes before any process dispatch and again afterward. Include dependency hashes and exact v2 namespace. No user-configurable target/origin/profile/secret overrides. Commit/push this synchronized gate and pass exact preflight before edits.
+
+## Red-first owned tests and implementation
+
+Explicit application TemporaryDirectory(prefix='.m2a-browser-',dir='/tmp'),0700child; HOME/TMPDIR/XDG_CACHE_HOME scoped inside it. Verify /tmp is tmpfs and differs physical-home device; check entryfree>=512MiB, MemAvailable>=1GiB,1000inodes, short singleton socket path<108bytes before spawn. Existing owned prototype proved81bytes and0processes. Retain pinned installed Node/PW1.62.1/system Chromium and chromiumSandbox:true; no install/download/default-sandbox relaxation or preparatory browser probe. Owned fixtures and mocked dispatch must reject wrong filesystem/low budgets/changed harness or helper before a real process.
+
+Fresh physical-home baseline7270658048bytes pinned privately after containment, above entry7247757312 (=warm7180648448+64MiB). Root explicitly approves NEW incremental67108864byte physical cap from this baseline; abort at33554432bytes growth, reserving32MiB. This accounting is separate from historical v1 violation. Docker absolute floor813694976/1000inodes remains. Independent /tmp128MiB incremental cap with96MiB growth guard/32MiB margin; entry /tmpfree7034015744bytes snapshot only, remeasure before runtime. Monitor MemAvailable>=1GiB, home absolute warm floor and all guards during120s attempt. Include other-lane drift conservatively. Test the observed10047488byte jump would be caught at materially earlier threshold, and every inadequate entry budget fails before fake spawn. Sampled guards are not hard quotas; retain32MiB margin and record actual samples. No physical archive stage or binary allocation is needed.
+
+Use only new v2 paths: browser-image-contract-v2/, browser-attempt-image-contract-v2.started.json, browser-failure-image-contract-v2.json, browser-acceptance-image-contract-v2.json, browser-events-image-contract-v2.jsonl. Preserve consumedv1 marker and empty result dir. O_EXCL reservation before process dispatch; reject existing output/result/symlink/repeated marker. Durable journal contains only whitelisted stage/category/method/status/count fields,0600/exclusive,<=64KiB/220requests with bounded events. Flush bounded metadata before route continuation and on responses so an abrupt kill preserves evidence. Do not write raw URLs, headers, bodies or credentials. Test unsafe fields, bounds and abrupt termination fixture. Journal request alone does not prove200/display.
+
+Owned browser subprocess fence must account for Node separate session and verify UID/PID start identities when stopping descendants. No unrelated desktop Chrome action. Preserve forced-termination profile residue for separately reviewed cleanup; normal TemporaryDirectory cleanup may remove only its current owned fixture/profile. No cleanup of preserved .m2a-browser-uhb3p2a6.
+
+## Root boundaries and later acceptance
+
+Prepare new operational seal, tests, unchanged runtime source_guard/hash/admission evidence and fresh capacity; root reviews BEFORE any service/browser action. Startup and a single v2 browser dispatch require separate explicit authorization. No provider/model/Stripe/Firebase/public route/DNS changes or fake commerce/grants. Runtime six fixed IDs/topology stay identical, no seed/reset/INSERT/PUT. Re-attest exact original six rows/two objects read-only after startup, actual protected served app/catalog/auth bytes and fresh API StartedAt/PID/restart binding.
+
+Eventual one attempt: desktop1440x1000/mobile390x844 real selector/index/detail/image; title/original body once/step order, real PNG200/MIME151bytes/hash0b8b5af7… natural64x48 and visible, screenshots/no clipping/JS errors, back/reload; one exact-origin auth/session simulation, actual local auth/config and commercefalse, no quote/prepare/outbound, missing/wrong-auth controls. On outcome preserve safe receipts/screenshots/journal, stop relay, re-attest rows/objects read-only if feasible, stop all six and verify0attachments/3042absent/owned processes gone. No automatic retry; every dispatched attempt consumes marker. Issue398 stays open for external real-data/payment acceptance.
+
+## Historical evidence limitation
+
+V1 cap134217728, threshold133169152 (1MiBmargin)/50ms sampling; adjacent10047488byte jump reached136654848, excess2437120. Container/data/source protection passed after stop; strict postbrowser data re-attestation passed. Relay recorded6TCPconnections but no browser route/status report/screenshot survived, API had no access records. Browser auth/catalog/article/image GET/status areUNKNOWN, not observed zero. HOME/TMPDIR were physical;41MB released on containment and preserved6.16MBprofile plus PW --disable-dev-shm-usage support temporary/shared-memory inference, but exact deleted-open inode paths were not captured. Preserve all original evidence.
