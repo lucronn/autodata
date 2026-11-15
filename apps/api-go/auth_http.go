@@ -111,6 +111,12 @@ func (s *customerAuthService) exchangeSession(w http.ResponseWriter, r *http.Req
 		s.writeError(w, r, ErrUnauthenticated)
 		return
 	}
+	// Audience membership is server configuration, after normal token verification
+	// and before any account/session rotation or session token allocation.
+	if !s.config.allowsTester(identity.ProjectID, identity.UID) {
+		s.writeError(w, r, ErrCustomerBlocked)
+		return
+	}
 	token, hash, err := newCustomerSessionToken()
 	if err != nil {
 		s.writeError(w, r, ErrCustomerDependency)
