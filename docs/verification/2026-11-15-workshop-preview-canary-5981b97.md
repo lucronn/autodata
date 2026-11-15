@@ -52,3 +52,9 @@ Amendment todo:
 - Copy/reseal execution package onto physicalhome; preserve oldpackage; regenerate all rootpath-sensitive manifest/helper/probe/browser/command/hash pins.
 - Pin localDocker/minimal childenv/physicalconfig and test hostilecontext/PATH overrides plus exact metadata/one-attempt rollback on isolated fixtures.
 - Rerun exact livebaseline/read-only40probes/protected27 checks and send fresh concrete package for independent rootreview; no serving mutation until that review.
+
+## Activation marker and durable override amendment
+
+Before changing package/helper, synchronize this additional rootreview requirement and pass the amended checkpoint. restore() must refuse before reserving rollback or restarting unless the physicalpackage contains the exclusive activation-attempted marker bound to the exactmanifest, with validated owner/mode/nosymlink/content. Fixturetest no-marker refusal before writes/restart/rollbackreservation, then oneallowedactivationmarker/rollback and repeatedrollbackrefusal. Rootreserves thatmarker exclusively beforeinstall/switch.
+
+Make the promised durable atomicreplacement explicit: fsync stagedoverridefile and containingdirectory before rename; after same-directory rename fsync finaloverridefile and directory before daemonreload. Rollback's atomic_restore must fsync the restoredfile and containingdirectory too. Rootcommandallowlist must contain exactbounded fsync operations; no implieddurability frominstall/mv alone. Allmanifestartifact/probe/browser/helper/backup/command paths must be physical; retain loopbackpackage onlyas historicalevidence.

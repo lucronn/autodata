@@ -11,8 +11,9 @@
     "Synchronize physical-home/local-Docker amendment and pass pinned preflight before package/helper edits",
     "Move/reseal all execution and rollback payloads under physicalhome; retain old loopback package as historical",
     "Pin absolute local Docker socket/config/minimal child env and test hostile context/PATH overrides plus isolated exact rollback",
+    "Require exact manifest-bound activation marker before rollback and explicit staged/final file+directory fsync; test preactivation refusal",
     "Recheck exact live baseline/protected state/probes and send resealed concrete package for root review before any serving mutation"
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-15T02:32:15.490803+00:00"
+  "updated_at": "2026-11-15T02:32:49.496715+00:00"
 }
