@@ -7,10 +7,10 @@
     "docs/verification/2026-11-15-release-receipts-preservation.md"
   ],
   "todo": [
-    "Integrate protected083f1a5/tree2c6a681, retain its canonical diagnostics plan unchanged and pass this synchronized amendment checkpoint before importing four canary outcome snapshots.",
-    "Preserve seven original release snapshots plus four exacta026a0f canary snapshots; keep archival JSON byte-identical, label preparation text historical/non-replayable and link the accepted attempt2 source-only outcome with all real-data, licensed-reader, Stripe and durability limits.",
-    "Validate fourteen-document final scope, provenance, JSON, links, redaction and chronology; open a protected-master documentation PR, complete strict required CI and hand exact head to root without merging or runtime mutation."
+    "Synchronize protected4048f3fae50161af5b5ab8300670e3beb817ce1a/treea1aa86183a2e015e74565fd939a70b3eb96010b1 and this fresh plan/Issue423/Project8/canonical record, commit the checkpoint and pass pinned machine preflight before further work.",
+    "Retain the exact fourteen-document PR scope, with all eleven imported release documents unchanged from revieweda0df9b9, three byte-identical archival JSON records and protected diagnostics/M1 documents unchanged.",
+    "Revalidate documentation scope, provenance, links, safe claims and governance on the new protected base; complete fresh exact-head strict CI and return head/tree/base to root for independent review and merge without publishing or mutating runtime."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-15T02:58:09.565340+00:00"
+  "updated_at": "2026-11-15T03:19:53.033280+00:00"
 }

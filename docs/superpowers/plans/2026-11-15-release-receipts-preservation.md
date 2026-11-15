@@ -81,3 +81,17 @@ Amendment checkpoint `fb9e2be` passed canonical preflight with `status: synchron
 Final diff contains fourteen added documentation files, no implementation/helper/configuration/data/image files. All source snapshot paths/blobs and the protected base/tree are pinned above. Integrated validation parsed all JSON, resolved15 repository references and5 relative Markdown links, found no private-key/access-key/live-secret patterns, and passed whitespace/scope checks. Repository governance10 tests passed. No runtime helper, provider request, serving mutation or merge was performed. Private local evidence: `/home/corp/.local/state/release-receipts-preservation-20261115/integrated-validation.json`; original preservation evidence remains historical at its earlier recorded private path.
 
 The normal documentation PR and strict required CI are the remaining verification boundary; root owns independent exact-head review and merge. Real-data/Integra completeness, licensed reader/media/supplier rights, Firebase user acceptance, real Stripe checkout/settlement, private SVG runtime and cold-boot acceptance remain separate.
+
+
+## Final protected426 integration checkpoint
+
+Coordinator supplied protected master `4048f3fae50161af5b5ab8300670e3beb817ce1a`, tree `a1aa86183a2e015e74565fd939a70b3eb96010b1`, parent083f1a5, after protected426 review and CI. This exact commit was merged cleanly. Earlier base/hold/CI-pending paragraphs are retained chronological receipts, superseded by this checkpoint. The prior merge hold is satisfied; root still owns final independent review and merge.
+
+The PR remains exactly fourteen documentation additions relative to this base. All eleven imported release documents remain byte-identical to reviewed `a0df9b9bc63bfdd44b075f23108f8560a10d1d91`; only this task's three gate documents change for the fresh checkpoint. Protected diagnostics and M1 source/documents are retained unchanged; this documentation task changes no implementation, workflow, image or runtime payload. Original archival JSON stays exact. All source-only/synthetic-browser/first-attempt-recovery and real-data/Stripe/licensed-rights/Firebase/SVG/cold-boot limitations remain intact. No public version publication, runtime/helper/provider operation or merge is authorized by this task.
+
+Prior run43670237272 belongs solely to revieweda0df9b9 and remains separately retained; its pending result does not substitute for new-base strict CI. Fresh local governance/document checks and exact-head PR CI follow this committed synchronized checkpoint and passing machine preflight.
+
+Current concrete todo:
+- [ ] Synchronize protected4048f3fae50161af5b5ab8300670e3beb817ce1a/treea1aa86183a2e015e74565fd939a70b3eb96010b1 and this fresh plan/Issue423/Project8/canonical record, commit the checkpoint and pass pinned machine preflight before further work.
+- [ ] Retain the exact fourteen-document PR scope, with all eleven imported release documents unchanged from revieweda0df9b9, three byte-identical archival JSON records and protected diagnostics/M1 documents unchanged.
+- [ ] Revalidate documentation scope, provenance, links, safe claims and governance on the new protected base; complete fresh exact-head strict CI and return head/tree/base to root for independent review and merge without publishing or mutating runtime.
