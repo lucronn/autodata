@@ -1,0 +1,32 @@
+{
+  "goal": "Boot an isolated local-only empty Workshop runtime with purchases disabled and no provider calls",
+  "plan_ref": "docs/superpowers/plans/2026-11-15-workshop-local-empty-runtime.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/398",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/operations/workshop-local-empty-runtime.md"
+  ],
+  "todo": [
+    "Add red-first isolation/admission tests and standalone six-service cached-image Compose config",
+    "Build immutable exact-source Go binary on verified physical-home storage and verify cached Python dependencies",
+    "Measure fresh isolated startup/readiness, empty catalog and disabled commerce with no provider calls",
+    "Stop only new resources and record exact-SHA acceptance and remaining398 blockers"
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-15T01:59:58.808776+00:00",
+  "source_base_sha": "76fb21e8f7c080e93f6d38de93a2e1a22cd11f39",
+  "source_base_tree": "c4b63d3635e7cc5b084f0d9df6154334e6dc36a3",
+  "implementation_allowlist": [
+    "infra/compose/compose.workshop-local-empty.yaml",
+    "scripts/dev/workshop_local_admission.py",
+    "scripts/dev/test_workshop_local_admission.py",
+    "docs/operations/workshop-local-empty-runtime.md",
+    "docs/verification/2026-11-15-workshop-local-empty-runtime.md"
+  ],
+  "tracking_sync": {
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhH730A",
+    "project_status": "In Progress",
+    "readback_verified": true,
+    "issue_body_sha256": "2796f61161c0447b9ab578a5d668a1da5d3cfe49087cfacac446227105813d3a"
+  }
+}
