@@ -39,3 +39,7 @@ Root review follow-up: keep the existing lower persistence guard, and explicitly
 - Make incomplete years an explicit caller no-write outcome and prove two-source cold retry
 
 Root-review follow-up implemented and verified:147 focused passes;6 enabled synthetic PG/Go passes. Incomplete years explicitly skips the persistence helper; the existing lower guard remains. Actual cold Go reads stay empty through partial supplier failure and can reattempt after the normal cooldown. Current-head strict CI and root review remain required.
+
+Strict CI import follow-up: child source must bind to the package root that loaded the parent, instead of assuming pytest/runtime sys.path changes were exported in PYTHONPATH. Build the child environment with that absolute source root first, preserve explicitly configured source credentials, disable bytecode writes, and test owned successful/DNS/header/trickle paths with PYTHONPATH absent. Keep stderr redacted and provider/IPC/resource bounds unchanged. This is not supplier compatibility evidence.
+
+- Bind owned child imports to parent package root and test without PYTHONPATH

@@ -95,3 +95,5 @@ the same cold Go GET reattempts and returns ordered2023/2024. The real owned
 provider process still uses real elapsed time and six-second spacing.
 All task PG/S3/test containers and internal network were removed again, with
 zero residual task-label matches. No real provider/service operation occurred.
+
+Strict CI import follow-up: child source must bind to the package root that loaded the parent, instead of assuming pytest/runtime sys.path changes were exported in PYTHONPATH. Build the child environment with that absolute source root first, preserve explicitly configured source credentials, disable bytecode writes, and test owned successful/DNS/header/trickle paths with PYTHONPATH absent. Keep stderr redacted and provider/IPC/resource bounds unchanged. This is not supplier compatibility evidence.

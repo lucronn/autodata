@@ -69,3 +69,5 @@ See the [plan](../superpowers/plans/2026-11-15-initial-selector-safety.md) and
 [verification](../verification/2026-11-15-initial-selector-safety.md).
 
 The initial-years caller explicitly skips persistence for incomplete coverage, in addition to the lower helper guard. Partial rows in an internal response do not populate durable years or suppress later cold-reader hydration. A successful later attempt remains eligible after the existing cooldown.
+
+Strict CI import follow-up: child source must bind to the package root that loaded the parent, instead of assuming pytest/runtime sys.path changes were exported in PYTHONPATH. Build the child environment with that absolute source root first, preserve explicitly configured source credentials, disable bytecode writes, and test owned successful/DNS/header/trickle paths with PYTHONPATH absent. Keep stderr redacted and provider/IPC/resource bounds unchanged. This is not supplier compatibility evidence.
