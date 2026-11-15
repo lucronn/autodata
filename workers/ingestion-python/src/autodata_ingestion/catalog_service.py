@@ -19,6 +19,45 @@ from urllib.parse import quote
 _LOG = logging.getLogger(__name__)
 
 
+def _configuration_diagnostic(request, *, provider="aggregate", stage, outcome, error=None, row_count=-1):
+    """Log fixed-field anomalies without making telemetry a hydration dependency."""
+    try:
+        field = request.get if isinstance(request, Mapping) else lambda name, default="": getattr(request, name, default)
+        if field("scope") != "configurations":
+            return
+        if stage not in {"provider_configuration", "provider_resolution", "provider_projection", "row_persistence", "coverage_persistence"}:
+            return
+        if outcome not in {"unconfigured", "failed", "incomplete", "not_persisted"}:
+            return
+        identity = {
+            "scope": "configurations", "year": str(int(field("year"))),
+            "make": str(field("make")).strip().casefold(),
+            "model": str(field("model")).strip().casefold(),
+            "region": str(field("region", "US")).strip().upper(),
+        }
+        scope_hash = sha256(json.dumps(identity, sort_keys=True, separators=(",", ":")).encode()).hexdigest()[:16]
+        if not isinstance(provider, str):
+            provider = getattr(getattr(provider, "client", None), "provider", "unknown")
+        if not isinstance(provider, str) or provider not in {"bankone", "banktwo", "aggregate"}:
+            provider = "unknown"
+        error_type = "none"
+        if error is not None:
+            error_type = type(error).__name__
+            if error_type not in {
+                "TimeoutError", "ConnectionError", "OSError", "ValueError", "TypeError", "KeyError",
+                "SourceConnectorError", "S3Error", "OperationalError", "InterfaceError", "IntegrityError",
+                "ReadOnlySqlTransaction", "InsufficientPrivilege", "UndefinedTable", "UndefinedColumn",
+            }:
+                error_type = "OtherError"
+        row_count = row_count if type(row_count) is int and row_count >= -1 else -1
+        _LOG.warning(
+            "catalog configuration diagnostic scope_hash=%s provider=%s stage=%s outcome=%s error_type=%s row_count=%d",
+            scope_hash, provider, stage, outcome, error_type, row_count,
+        )
+    except Exception:  # noqa: BLE001 - diagnostics must not change source/persistence behavior
+        return
+
+
 @dataclass(frozen=True)
 class CatalogRequest:
     year: int
@@ -93,15 +132,23 @@ class CacheFirstCatalogService:
             except _SelectorDeepeningStopped:
                 raise
             except Exception as error:  # noqa: BLE001 - one source may be unavailable while another is usable
+                _configuration_diagnostic(request, provider=provider, stage="provider_resolution", outcome="failed", error=error)
                 missing.add("provider")
                 continue
-            normalized_rows = _canonical_rows(payload.get("rows", payload.get("records", ())), scope=request.scope)
-            rows = _merge_rows(rows, normalized_rows)
-            provenance.extend(_provenance(payload.get("provenance", ())))
-            missing.update(_missing_scopes(payload))
-            if bool(payload.get("complete")) and not _missing_scopes(payload):
+            try:
+                normalized_rows = _canonical_rows(payload.get("rows", payload.get("records", ())), scope=request.scope)
+                rows = _merge_rows(rows, normalized_rows)
+                provenance.extend(_provenance(payload.get("provenance", ())))
+                missing.update(_missing_scopes(payload))
+                provider_complete = bool(payload.get("complete")) and not _missing_scopes(payload)
+            except Exception as error:
+                _configuration_diagnostic(request, provider=provider, stage="provider_projection", outcome="failed", error=error)
+                raise
+            if provider_complete:
                 complete = True
                 completed_providers += 1
+            else:
+                _configuration_diagnostic(request, provider=provider, stage="provider_resolution", outcome="incomplete", row_count=len(normalized_rows))
         if request.scope in {"makes", "models", "configurations"}:
             complete = bool(self._providers) and completed_providers == len(self._providers)
             if not complete:
@@ -263,9 +310,11 @@ def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
         return result
 
     stage = "provider_configuration"
+    resolved = None
     try:
         providers = _configured_catalog_providers()
         if not providers:
+            _configuration_diagnostic(request, stage="provider_configuration", outcome="unconfigured", row_count=0)
             result = {
                 "status": "accepted",
                 "hydration_key": key,
@@ -275,6 +324,8 @@ def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
                 "rows": [],
             }
         else:
+            if scope == "configurations":
+                stage = "request_validation"
             request_model = CatalogRequest(
                 int(request.get("year", 2000)),
                 str(request.get("make", "unknown")),
@@ -298,6 +349,8 @@ def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
             )
             stage = "coverage_persistence"
             coverage = _persist_hydration_scope(request, resolved)
+            if scope == "configurations" and not (isinstance(coverage, Mapping) and coverage.get("status") == "persisted"):
+                _configuration_diagnostic(request, stage="coverage_persistence", outcome="not_persisted", row_count=len(resolved.rows))
             result = {
                 "status": "cache_hit" if resolved.cache_hit else "hydrated",
                 "hydration_key": key,
@@ -315,7 +368,15 @@ def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
     except Exception as error:
         # ValueError is a request/row validation response, not the HTTP 502
         # dependency failure this diagnostic is intended to distinguish.
-        if scope in {"makes", "models", "configurations"} and not isinstance(error, ValueError):
+        if scope == "configurations":
+            # Provider/projection failures already carry the bank-specific event.
+            # Internal persistence ValueError still needs a safe aggregate signal.
+            if stage != "resolve":
+                _configuration_diagnostic(
+                    request, stage=stage, outcome="failed", error=error,
+                    row_count=len(resolved.rows) if resolved is not None else -1,
+                )
+        elif scope in {"makes", "models"} and not isinstance(error, ValueError):
             _LOG.error(
                 "catalog selector ensure failed scope=%s stage=%s error_type=%s",
                 scope, stage, type(error).__name__,
@@ -468,10 +529,10 @@ def _deepen_selector_scope(
                             provenance=configurations.provenance,
                         )
                     except Exception as error:  # noqa: BLE001 - one model must not stop the walk
-                        print(
-                            f"catalog deepening persist failed for {year} {make} {model}: "
-                            f"{type(error).__name__}: {error}",
-                            flush=True,
+                        _configuration_diagnostic(
+                            {"scope": "configurations", "year": year, "make": make, "model": model, "region": region},
+                            stage="row_persistence", outcome="failed", error=error,
+                            row_count=len(configurations.rows),
                         )
     except _SelectorDeepeningStopped:
         pass

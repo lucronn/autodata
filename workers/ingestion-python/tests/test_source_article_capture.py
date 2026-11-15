@@ -203,6 +203,55 @@ def test_optional_asset_failure_preserves_position(capture_fixture):
     assert captured.resource_manifest[-1]["failure_code"] == "SOURCE_NOT_FOUND"
 
 
+@pytest.mark.parametrize("positioned", [False, True])
+@pytest.mark.parametrize("embedded", [False, True])
+def test_svg_asset_derives_png_and_retains_exact_original(capture_fixture, positioned, embedded):
+    from autodata_ingestion.source_article_capture import capture_source_article
+    from io import BytesIO
+    from PIL import Image
+
+    original = b'<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><rect width="40" height="20" fill="red"/></svg>'
+    if embedded:
+        import base64
+        image_bytes = BytesIO()
+        Image.new("RGB", (40, 20), "red").save(image_bytes, format="PNG")
+        uri = "data:image/png;base64," + base64.b64encode(image_bytes.getvalue()).decode()
+        original = ('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><image width="40" height="20" href="'+uri+'"/></svg>').encode()
+    body = b'<p>Remove pump.</p>' + (b'<img data-resource-ref="figure">' if positioned else b'')
+    capture_fixture.body("bankone", body, assets=["figure"])
+    capture_fixture.body("bankone", original, "image/svg+xml", ref="figure", kind="asset")
+    captured = capture_source_article(capture_fixture.context("bankone", asset_ref="figure"), registry=capture_fixture.registry, object_store=capture_fixture.objects)
+    source = next(r for r in captured.resources if r["role"] == "asset_original")
+    derived = next(r for r in captured.resources if r["role"] == "asset")
+    assert capture_fixture.objects.data[source["object_key"]] == (original, "image/svg+xml")
+    assert derived["derived_from_sha256"] == sha256(original).hexdigest()
+    assert "2.9.1" in derived["derivation_version"]
+    assert derived["sha256"] != source["sha256"]
+    with Image.open(BytesIO(capture_fixture.objects.data[derived["object_key"]][0])) as image:
+        assert image.format == "PNG" and image.size == (40, 20)
+    assert captured.source_images[0]["storage_key"] == derived["object_key"]
+    assert captured.source_images[0]["status"] == "available"
+    assert captured.source_images[0]["media_type"] == "image/png"
+    assert captured.projection_status == "readable"
+    assert [r["role"] for r in captured.resource_manifest] == ["body", "asset_original", "asset"]
+    assert captured.resource_manifest[-1]["derived_from_sha256"] == source["sha256"]
+
+
+def test_unpositioned_unsafe_svg_remains_unavailable_with_reason(capture_fixture):
+    from autodata_ingestion.source_article_capture import capture_source_article
+    capture_fixture.body("bankone", b'<p>Remove pump.</p>', assets=["figure"])
+    original = b'<svg width="40" height="20"><image href="file:///private"/></svg>'
+    capture_fixture.body("bankone", original, "image/svg+xml", ref="figure", kind="asset")
+    captured = capture_source_article(capture_fixture.context("bankone", asset_ref="figure"), registry=capture_fixture.registry, object_store=capture_fixture.objects)
+    assert captured.projection_status == "partial"
+    assert captured.source_images[0]["status"] == "unavailable"
+    assert captured.source_images[0]["unavailable_reason"] == "SVG_EXTERNAL_REFERENCE"
+    assert "storage_key" not in captured.source_images[0]
+    assert captured.resource_manifest[-1]["failure_code"] == "SVG_EXTERNAL_REFERENCE"
+    source = next(r for r in captured.resources if r["role"] == "asset_original")
+    assert capture_fixture.objects.data[source["object_key"]][0] == original
+
+
 def test_exact_declared_image_ref_preserves_source_position(capture_fixture):
     from autodata_ingestion.source_article_capture import capture_source_article
 

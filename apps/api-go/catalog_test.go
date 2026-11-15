@@ -107,8 +107,8 @@ func TestUsableConfigurationsAreNotBlockedByMissingHydrationScope(t *testing.T) 
 	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
 		t.Fatal(err)
 	}
-	if body.Hydrating || len(body.Items) != 1 || !body.Items[0].Complete {
-		t.Fatalf("body = %#v, want usable items with hydrating false", body)
+	if body.Complete || body.Hydrating || len(body.Items) != 1 || !body.Items[0].Complete {
+		t.Fatalf("body = %#v, want usable items with incomplete collection and hydrating false", body)
 	}
 	select {
 	case <-capture.finished:
