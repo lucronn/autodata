@@ -1,6 +1,6 @@
 # Private read-only ingestion runtime rollout
 
-Status: synchronized planning checkpoint for preparation only. Protected Python417 merge is pinned; artifact tests, backup and helper preparation follow successful checkpoint preflight. Coordinator alone owns live container create/start/stop/rollback; worker has no serving mutation authority.
+Status: preparation complete under synchronized checkpoint4d43eb71ab3526d93aaf78c42094a25f8efe6779. Immutable source tests, freshbackup/protectedbaseline and reviewed-correction helper are complete. Coordinator review/staging/activation and real selector acceptance remain pending. Worker has made no serving mutation.
 
 Goal: Deploy compatible reviewed ingestion source with explicit private read_only commerce, restore truthful real selector completion, and preserve entitled reads and disabled purchasing.
 Issue https://github.com/lucronn/autodata/issues/401
@@ -35,9 +35,10 @@ After coordinator dispatch one public2024USmakes GET, independent durable scope 
 
 ## Concrete todo
 
-- [ ] Obtain final merged source/publicAPI/privateconfig pins; sync Issue401/Project8/receipt/record at new committed checkpoint and pass fullSHApreflight before candidate/helper generation.
-- [ ] Build/hash/test immutable finalsource and actual-runtime fixture startup/quote/schema with no externalcalls.
-- [ ] Capture new private backup/protected baseline; prepare exactsource/mode replacement/rollback; coordinatorreviews+dispatches.
+- [x] Obtain final merged source/publicAPI/privateconfig pins; sync Issue401/Project8/receipt/record at new committed checkpoint and pass fullSHApreflight before candidate/helper generation.
+- [x] Build/hash/test immutable finalsource and actual-runtime fixture startup/quote/schema with no externalcalls.
+- [x] Capture new private backup/protected baseline and prepare exactsource/mode replacement/rollback.
+- [ ] Coordinator reviews and dispatches stage/activation after independent acceptance.
 - [ ] Provehealth/readonlycommerce/selectorwrites/disabledpurchase/protectedstate, then bounded realselectortruth and remaininggaps.
 
 ## Additional version and rollback boundaries
@@ -79,7 +80,17 @@ PR417 merged at2026-11-15T01:14:51Z as92d81a1afbcf9e025d017b9b30f6dd4bb54f3e8a, 
 Record docs/agents/records/2026-11-15-private-read-only-runtime.json; canonical architecture docs/architecture/workshop-private-read-only-runtime.md. No live provider calls or service mutation by worker. Fresh evidence path /home/corp/autodata-evidence/private-read-only-runtime-92d81a1-20261115; immutable candidate /home/corp/autodata-candidate/private-read-only-92d81a1-20261115/source. Do not overwrite existing artifacts.
 
 Concrete todo:
-- [ ] Pin protected merge92d81a1afbcf9e025d017b9b30f6dd4bb54f3e8a/tree0e4038a6bd506fd1349caa0bfa320813106ce5ad, synchronize Issue401/Project8/plan/canonical docs/record, commit and pass exact checkpoint preflight before artifact/helper generation.
-- [ ] Build and hash complete immutable protected-source archive/manifest; verify no SVG dependency/schema change; run actual-image internal-only startup/quote/payment-denial/schema and catalog persistence fixture tests.
-- [ ] Capture fresh private before.dump/restore-list/hash, protected baseline and raw serving configuration with space/identity checks; generate and test fail-closed exact source/mode replacement helper and one-attempt retained7ce6 rollback recipe, without serving mutation.
+- [x] Pin protected merge92d81a1afbcf9e025d017b9b30f6dd4bb54f3e8a/tree0e4038a6bd506fd1349caa0bfa320813106ce5ad, synchronize Issue401/Project8/plan/canonical docs/record, commit and pass exact checkpoint preflight before artifact/helper generation.
+- [x] Build and hash complete immutable protected-source archive/manifest; verify no SVG dependency/schema change; run actual-image internal-only startup/quote/payment-denial/schema and catalog persistence fixture tests.
+- [x] Capture fresh private before.dump/restore-list/hash, protected baseline and raw serving configuration with space/identity checks; generate and test fail-closed exact source/mode replacement helper and one-attempt retained7ce6 rollback recipe, without serving mutation.
 - [ ] Hand coordinator exact artifact/config/hash/preflight/commands for independent review and execution; after coordinator activation verify protected state/disabledpurchase/health and only coordinator-authorized bounded real selector truth.
+
+## Prepared handoff and corrected rollback verification
+
+Preparation checkpoint4d43eb71ab3526d93aaf78c42094a25f8efe6779 passed preflight synchronized/errors[] before any finalartifact/helper work; Issue401comment6887163023 and Project8 readbacks matched. Immutable source1351entries, archive33,392,640bytes/SHA256fcf878bb07c54ab3c779cd66ae3bf23d7fe0995b7e133de2c26b668ec74e3abd; manifest987be0bbb915ed404748a60dae6ac6179088f2a6c09660228adf890179c866b4. Complete selected fixture suite144passed93subtests. Actual pinnedimage internal-only realCLI startup/schema042/purchasefalse/quotefalse/checkout503/providerNone/commerceREADONLY passed. No dependency change or SVG419 code entered the source pin.
+
+Fresh privatebackup15,886,521bytes/SHA256963f34d8c4de79efaa0bc690c2ba6f32a9fb61f00918f874df17719444823137 passedrestorelist;27 protectedtables stable before/afterbackup. Protectedbaselinefile SHA25694070a0a256a3d729e35b90bf686f1786fdf437a03259d09d89f45ca9b6ccd52. PayloadSHA25683c4f1d8b2a2260e6f22deee2436d41cbd235f5cbc64c808bcdf45c68a199e29. Rollback1181-file manifestSHA256011c3a2938f992b2d7b8368a38acca6dbeda4ac100a566be7238618a0857a275. Rawcontent/credentials remain0600/private within0700 evidence.
+
+Coordinator review found rollback must not attempt Dockerstop on a failedstart/Created candidate before restartingold. Helper now inspects exact candidate state and stops only ifrunning; Created skipsstop, retainedoldstart proceeds. Offline regression was red against temporary unfixedhelper then all6helpertests green; finalread-onlypreflight passed with27 protectedtables unchanged. Quoteprobe uses the exact reviewed_scope region/nonrejected predicates; pending reviewstate is not misrepresented as approvedrights. HelperSHA256bc166587cc0e9f14b1db797e7b72990ef35718d297364cdcc43d2e388e01e1fe, privatehandoffmanifest8a38d403ad9f55932efa85de5852b292ed9eab877044b4fe1524b37b730e422e. HANDOFF.md in the evidencepath provides exact check/stage/activate/one-attemptrollback commands. HelperchecksDockerfree>=512MiB immediately beforestage/activation, existingimage/sourcebind/no build; lastobserved1,014,288,384bytes. Finalcandidatecreatepayload is prepared only: NO livecandidatecreated,servicestoppedorstarted.
+
+Coordinator actions pending: independent finalhelper/artifact/config review; stageexactunstartedcandidate; inspectcomparison/createdID; oneactivationattemptwithautomaticone-rollbackonfailure; then protected/health/purchase acceptance and separately authorized bounded2024USmakes observation. Issue401 remainsopen; Issue414/ProjectitemDone records mergedcodeonly.

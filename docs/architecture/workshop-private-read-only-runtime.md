@@ -9,3 +9,5 @@ Worker prepares artifacts/fixtures/freshprivatebackup/protectedbaseline/one-atte
 Exact protectedtables before selector request; after reviewed bounded selector deepening allow only enumerated provenance-backed inserts and preserve every preexisting snapshot/vehicle/configuration row. Auth/payment/article/request/publication invariants remain exact. Realpaidaccess and article rights are not established by fixture tests. Public evidence contains only safe metadata; fullinspect/env/dumps/rawlicensedcontent remain private.
 
 Concrete todo: synchronize/pin/preflight; immutable-source actualimage fixture checks; freshbackup/protectedbaseline/checkedhelper; coordinator reviewed execution and bounded selector acceptance, as detailed in plan/record.
+
+Prepared under checkpoint4d43eb7: immutable144-test fixtureacceptance and actualimage startup/schema passed; freshbackup/27-tablebaseline/rollbacksource pinned. Checkedhelper6offline regressions includes Created-state failedstart rollback. Live stage/activation remains coordinator-only and unexecuted; exact evidence/hashes in runtimeverificationreceipt.

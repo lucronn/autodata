@@ -1,6 +1,6 @@
 # Private read-only runtime rollout verification
 
-Status: synchronized planning checkpoint for preparation only; exact protected merge92d81a1/tree0e4038a6 now available. Immutable candidate, fresh backup and checked helper remain pending checkpoint preflight. No worker serving mutation authority.
+Status: preparation complete under passing checkpoint4d43eb71ab3526d93aaf78c42094a25f8efe6779; immutable source/tests, freshbackup/protectedbaseline and checkedhelper ready for coordinator review. Live staging/activation and real selector acceptance remain unexecuted. No worker serving mutation authority.
 
 Issue https://github.com/lucronn/autodata/issues/401; Project https://github.com/users/lucronn/projects/8; plan docs/superpowers/plans/2026-11-14-private-read-only-runtime-rollout.md. Python417 and Go412 require protection/currentCI first. Prior61f1939 passed115isolatedcatalogtests but cannot start unchanged publicStripeTest and is retained test evidence only.
 
@@ -27,3 +27,11 @@ Read-only backup capacity precheck: persistent evidence free13,458,776,064bytes;
 ## Protected merge preparation boundary
 
 Exact protectedsource92d81a1afbcf9e025d017b9b30f6dd4bb54f3e8a/tree0e4038a6bd506fd1349caa0bfa320813106ce5ad independently verified; Go3a18d9c ancestry and no pyproject/sharedcontracts diff from61f1939 verified. GitHub confirms417 merged2026-11-15T01:14:51Z; strict main/browser/R3 checks SUCCESS, BugbotNEUTRAL. Earlier pending/DRAFT statements are historical. Currentpreparation todo is the plan/record four-item list: synchronize/preflight; immutable actualimage fixtureacceptance; freshbackup/protectedbaseline/checkedhelper; exact coordinatorhandoff and bounded postactivationtruth. No archive/helper/live mutation before passing checkpoint.
+
+## Final preparation receipt
+
+Exact source92d81a1/tree0e4038a6 archived immutable:1351entries,33,392,640bytes, archiveSHA256fcf878bb07c54ab3c779cd66ae3bf23d7fe0995b7e133de2c26b668ec74e3abd and manifest987be0bbb915ed404748a60dae6ac6179088f2a6c09660228adf890179c866b4. Gate4d43eb7 PASS and tracking readbacks before artifact/helper work. Exactarchive fixtures144passed93subtests; actualimage5c8e realCLI internalPG startup/schema042/health200/purchasefalse/quotefalse/checkout503/providerNone/READONLY passed. Fixturecontainer86111ec1566c88a54e34ea46db14e75b7f29855cc7d0f9531fa57520c5fcd69c retainedstopped; freshsyntheticDB lifecycle_test_readonly_92d81a1 retained.
+
+Fresh before.dump15,886,521bytes/SHA256963f34d8c4de79efaa0bc690c2ba6f32a9fb61f00918f874df17719444823137 andrestorelistpassed;27 protectedtables unchanged aroundbackup and finalread-onlypreflight. Backup/rawinspect/payload/rowhashes remain0600 under0700 /home/corp/autodata-evidence/private-read-only-runtime-92d81a1-20261115. Immutablecandidate /home/corp/autodata-candidate/private-read-only-92d81a1-20261115/source. No source/secret/content files published.
+
+HelperSHA256bc166587cc0e9f14b1db797e7b72990ef35718d297364cdcc43d2e388e01e1fe; handoffmanifestSHA2568a38d403ad9f55932efa85de5852b292ed9eab877044b4fe1524b37b730e422e. Coordinator-reviewed created-state rollback gap corrected: inspectcandidate, stoponlyifrunning, thenrestartretainedold. Newregression redagainstunfixedcopy then6offlinehelpertestsPASS; finalreadonlycheckPASS. Source/rollbackfullmanifest, exactpublicrelease/config/env,27tablebaseline and>=512MiBDockerspace recheckedbeforestage/activate. One staging/activation/rollback attempt markers failclosed; noautomaticDBrestore. No servingcontainercreated/stopped/started, no externalprovider/payment/modelcall. Existingpaidaccess/rights remainunproven; Issue401open until actualselectoracceptance. Issue414closed/ProjectDone for protectedcodemergeonly.
