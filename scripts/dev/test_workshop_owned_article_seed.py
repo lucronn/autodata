@@ -48,6 +48,9 @@ class OwnedSeedTests(unittest.TestCase):
   self.assertEqual(rows['catalog_articles']['vehicle_configuration_id'],f['ids']['configuration'])
   images=json.loads(rows['catalog_articles']['images'])
   self.assertEqual(len(images),1);self.assertEqual(images[0]['storage_key'],'procedure-images/'+f['image']['sha256'])
+  stored_steps=json.loads(rows['catalog_articles']['steps'])
+  self.assertEqual(stored_steps[0]['image_ids'],[f['image']['id']])
+  self.assertNotIn('image_ids',f['article']['steps'][0])
   self.assertEqual(json.loads(rows['catalog_articles']['source_original']),f)
   self.assertTrue(set(s.OWNED_TABLES)<=set(s.COUNT_TABLES))
  def test_seed_inserts_no_customer_payment_or_grant(self):
