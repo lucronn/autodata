@@ -529,10 +529,10 @@ def _deepen_selector_scope(
                             provenance=configurations.provenance,
                         )
                     except Exception as error:  # noqa: BLE001 - one model must not stop the walk
-                        print(
-                            f"catalog deepening persist failed for {year} {make} {model}: "
-                            f"{type(error).__name__}: {error}",
-                            flush=True,
+                        _configuration_diagnostic(
+                            {"scope": "configurations", "year": year, "make": make, "model": model, "region": region},
+                            stage="row_persistence", outcome="failed", error=error,
+                            row_count=len(configurations.rows),
                         )
     except _SelectorDeepeningStopped:
         pass

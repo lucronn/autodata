@@ -1,5 +1,7 @@
 """Safe configuration anomalies preserve source and persistence decisions."""
 import hashlib
+from contextlib import ExitStack, redirect_stdout
+import io
 import json
 import os
 from pathlib import Path
@@ -14,6 +16,9 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parents[1] / 'src'))
 from autodata_ingestion import catalog_service as catalog
 from lifecycle_support import fresh_database
+from autodata_ingestion.source_connector_client import SourceConnectorClient
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/dev"))
+from source_connector_fixture_server import serve_connector
 
 SECRET = 'licensed-credential-DO-NOT-LOG'
 REQUEST = {'scope': 'configurations', 'year': 2024, 'make': 'Example', 'model': 'Car', 'region': 'US'}
@@ -123,6 +128,27 @@ class ConfigurationDiagnosticTests(unittest.TestCase):
             self.service([provider]).resolve(catalog.CatalogRequest('2024', ' EXAMPLE ', ' car ', region='us', scope='configurations'))
         self.assertIn('provider=unknown', self.assert_safe(logs))
 
+    def test_background_configuration_persistence_redacts_and_preserves_cleanup(self):
+        providers = (Provider('bankone', payload('bankone')), Provider('banktwo', payload('banktwo')))
+        control = Mock()
+        output = io.StringIO()
+        key = 'fixture-background'
+        with patch.object(catalog, '_configured_catalog_providers', return_value=providers), patch.object(catalog, '_persist_resolved_catalog_rows', side_effect=ValueError(SECRET)) as persist, patch.object(catalog, '_DEEPEN_IN_FLIGHT', {key}), patch.object(catalog, '_DEEPEN_CONTROL', control), patch.object(catalog._LOG, 'warning') as warning, redirect_stdout(output):
+            result = catalog._deepen_selector_scope(REQUEST, 'models', [{'model': 'Car'}], key, control)
+            self.assertIsNone(result)
+            self.assertEqual(catalog._DEEPEN_IN_FLIGHT, set())
+            self.assertIsNone(catalog._DEEPEN_CONTROL)
+        self.assertNotIn(SECRET, output.getvalue())
+        self.assertEqual(output.getvalue(), '')
+        self.assertEqual(warning.call_count, 1)
+        args = warning.call_args.args
+        text = args[0] % args[1:]
+        self.assertNotIn(SECRET, text)
+        self.assertIn('scope_hash=' + scope_hash(), text)
+        self.assertIn('provider=aggregate stage=row_persistence outcome=failed error_type=ValueError row_count=1', text)
+        self.assertEqual([p.calls for p in providers], [2, 2])
+        persist.assert_called_once()
+
     def ensure(self):
         return catalog.ensure_catalog_hydration(json.dumps({**REQUEST, 'idempotency_key': uuid.uuid4().hex}))
 
@@ -154,6 +180,11 @@ def test_configuration_marker_requires_all_providers_and_successful_persistence(
                  Provider('banktwo', payload('banktwo', empty=outcome == 'empty'))]
     if outcome == 'exception':
         providers[0] = Provider('bankone', ValueError(SECRET))
+    _assert_configuration_marker(repo, providers, monkeypatch, caplog, outcome)
+    assert [p.calls for p in providers] == [1, 1]
+
+
+def _assert_configuration_marker(repo, providers, monkeypatch, caplog, outcome):
     env = {'AUTODATA_DB_ADDRESS': 'postgres:5432', 'AUTODATA_POSTGRES_DB': repo.database_name,
            'AUTODATA_POSTGRES_USER': 'lifecycle_test', 'AUTODATA_POSTGRES_PASSWORD': 'lifecycle_test_only',
            'AUTODATA_SOURCE_PERSIST': '1', 'AUTODATA_S3_ENDPOINT': 'minio:9000',
@@ -180,4 +211,24 @@ def test_configuration_marker_requires_all_providers_and_successful_persistence(
     if marker:
         assert {p['provider'] for p in marker['provenance']} == {'autoapi', 'autoapitwo'}
     assert SECRET not in caplog.text
-    assert [p.calls for p in providers] == [1, 1]
+
+
+@pytest.mark.parametrize('outcome', ['complete', 'exception'])
+def test_real_http_two_bank_configuration_persistence(fresh_database, monkeypatch, caplog, outcome):
+    """Real loopback connector clients -> source objects/PostgreSQL, never live banks."""
+    with ExitStack() as stack:
+        servers = [stack.enter_context(serve_connector(bank)) for bank in ('bankone', 'banktwo')]
+        for server in servers:
+            def response(path, request_payload=None, *, fixture=server):
+                fixture.calls.append(path)
+                assert path.startswith('/v1/catalog/configurations?')
+                if outcome == 'exception' and fixture.provider == 'bankone':
+                    return 503, {'error': SECRET}
+                item = {'opaque_ref': 'fixture-car', 'label': 'Example Car 2.0L',
+                        'year': 2024, 'make': 'Example', 'model': 'Car', 'region': 'US', 'engine': '2.0L'}
+                return 200, fixture.envelope(scope='configurations', complete=True, items=[item])
+            server.response = response
+        providers = [catalog._SourceCatalogProvider(SourceConnectorClient(
+            server.url, token=server.token, provider=server.provider)) for server in servers]
+        _assert_configuration_marker(fresh_database(), providers, monkeypatch, caplog, outcome)
+        assert [len(server.calls) for server in servers] == [1, 1]
