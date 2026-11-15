@@ -25,3 +25,14 @@ Commit/push this synchronized planning checkpoint and run machine preflight at i
 - [x] Observe red-first Python, Go, browser and acceptance-harness g/pay regressions while retaining strict negative cases
 - [x] Implement the narrow two-form URL compatibility change, synchronized OpenAPI and real harness parsing without URL-derived session identity
 - [ ] Run relevant full tests, independent exact-head review and required CI; retain separate isolated TEST/runtime and licensed browser acceptance evidence
+
+## Protected-base integration checkpoint
+
+Protected master: `92d81a1afbcf9e025d017b9b30f6dd4bb54f3e8a`, tree `0e4038a6bd506fd1349caa0bfa320813106ce5ad` (#412 then #417). Published PR421 source: `3aaa904304d613852761b0d787407190eeaa9779`, implementation `282954f0deea35a154c385104044b671a1c64971`. No reimplementation, provider sessions, runtime changes or deployment. Prepare this docs-only checkpoint directly on protected master and pass its exact-SHA preflight before merging it into the published PR branch; preserve both published histories. Resolve documentation-only overlap in favor of combined historical evidence and this current checkpoint; stop for coordinator if application conflicts alter reviewed behavior. Revalidate all relevant suites and required strict CI, then request independent exact-head review and hold merge.
+
+Integration record: `docs/agents/records/2026-11-14-stripe-checkout-url-protected-base.json`
+
+- [ ] Synchronize Issue420, Project8, plan and canonical architecture at protected master92d81a1 and pass checkpoint preflight
+- [ ] Merge the synchronized checkpoint into PR421 preserving reviewed implementation282954f and exact master ancestry
+- [ ] Run focused and full relevant Go, Node, worker, browser, release-evidence and contract checks on the integrated source
+- [ ] Push the protected-base candidate, rerun strict required CI, hand off independent exact-head review and hold merge; no provider sessions or deployment

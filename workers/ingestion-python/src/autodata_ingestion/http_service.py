@@ -91,7 +91,8 @@ def dispatch_request(
 
 
 def dispatch_commerce(service, path, payload):
-    from .commerce_service import exact_fields, CommerceError
+    from .commerce_service import exact_fields, CommerceError, assert_commerce_operation
+    assert_commerce_operation(service, path)
     if path == '/internal/commerce/purchase-config':
         exact_fields(payload, set())
         return service.purchase_configuration()
@@ -172,7 +173,7 @@ def make_handler(internal_token: str = "", *, commerce=None):
             self._write_json(getattr(result,"http_status",200), result)
 
         def _commerce(self):
-            from .commerce_service import CommerceError
+            from .commerce_service import CommerceError, assert_commerce_operation
             if not configured_token or not hmac.compare_digest(self.headers.get('X-Autodata-Internal-Token','').encode(),configured_token.encode()):
                 self._write_json(401, {'error':{'code':'INTERNAL_AUTHENTICATION_REQUIRED'}})
                 return
@@ -180,6 +181,8 @@ def make_handler(internal_token: str = "", *, commerce=None):
                 self._write_json(503, {'error':{'code':'COMMERCE_UNAVAILABLE'}})
                 return
             try:
+                path = urlsplit(self.path).path
+                assert_commerce_operation(commerce, path)
                 if self.headers.get('Transfer-Encoding'):
                     raise CommerceError()
                 length = int(self.headers.get('Content-Length','-1'))
@@ -189,7 +192,6 @@ def make_handler(internal_token: str = "", *, commerce=None):
                 raw = self.rfile.read(length)
                 if len(raw) != length:
                     raise CommerceError()
-                path = urlsplit(self.path).path
                 if path == '/internal/commerce/stripe/webhook':
                     result = commerce.webhook(self.headers.get('Stripe-Signature',''),raw)
                 else:

@@ -253,7 +253,7 @@ func (s *Server) commerceCall(w http.ResponseWriter, r *http.Request, operation 
 		writeAPIError(w, r, status, code, "Commerce request could not be completed.", false)
 		return
 	}
-	public, ok := commercePublicResult(operation, status, result, input)
+	public, ok := commercePublicResult(operation, status, result, input, s.commerceClient)
 	if !ok {
 		unavailable()
 		return
