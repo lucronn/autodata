@@ -2,7 +2,7 @@
   "goal": "Preserve nonduplicated legacy article introduction/body text before usable structured steps while retaining authoritative-document precedence and safe text rendering.",
   "todo": [
     "Document retained source/projection shapes and exact duplicate/ambiguous legacy-body policy; keep authored M2A fixture unchanged.",
-    "Add red-first client renderer regressions for intro plus steps, numbered and unnumbered replay, ambiguity, document precedence, partial/empty data, image/order preservation and inert markup.",
+    "Add red-first client renderer regressions for intro plus steps, matched replay, unrelated/mismatched numbered lists, unnumbered replay, ambiguity, document precedence, partial/empty data, image/order preservation and inert markup.",
     "Implement the bounded presentation helper and render leading blocks before structured steps through existing safe DOM constructors.",
     "Run complete client/demo tests, syntax/diff checks and a bounded offline sandboxed-browser probe; commit/push and open dependent PR for root review without merge/deploy."
   ],
@@ -13,7 +13,7 @@
     "docs/architecture/workshop-legacy-article-intro.md"
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-15T03:40:41.662105+00:00",
+  "updated_at": "2026-11-15T03:43:53.611304+00:00",
   "source_base_sha": "9f73f1426101f18020ef4d29969f05d29da5039a",
   "source_base_tree": "4f3558278bb65cfa483c3c3ffc54d60580f2166a",
   "implementation_allowlist": [
@@ -27,6 +27,6 @@
     "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhI0tiE",
     "project_status": "In Progress",
     "readback_verified": true,
-    "issue_body_sha256": "805a60490c5d84c7311495689236b15fdcc6e120ed9dace1430acf6dc510692b"
+    "issue_body_sha256": "8999b4fda152e66084948e3b878bb04a20f3c1ee7303ae2a8df029591af6d67d"
   }
 }

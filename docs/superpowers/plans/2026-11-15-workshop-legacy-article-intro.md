@@ -7,7 +7,7 @@ Depends on PR #432 exact9f73f1426101f18020ef4d29969f05d29da5039a/tree4f3558278bb
 
 Todo:
 - Document retained source/projection shapes and exact duplicate/ambiguous legacy-body policy; keep authored M2A fixture unchanged.
-- Add red-first client renderer regressions for intro plus steps, numbered and unnumbered replay, ambiguity, document precedence, partial/empty data, image/order preservation and inert markup.
+- Add red-first client renderer regressions for intro plus steps, matched replay, unrelated/mismatched numbered lists, unnumbered replay, ambiguity, document precedence, partial/empty data, image/order preservation and inert markup.
 - Implement the bounded presentation helper and render leading blocks before structured steps through existing safe DOM constructors.
 - Run complete client/demo tests, syntax/diff checks and a bounded offline sandboxed-browser probe; commit/push and open dependent PR for root review without merge/deploy.
 
@@ -19,9 +19,9 @@ Owning source/projection inspection, without reading licensed provider content: 
 
 ## Decision
 
-Add a small pure presentation helper used only for usable structured steps with no authoritative document blocks. If legacyArticleBlocks recognizes a numbered step, retain only blocks before its first step; render structured steps once afterward. This reuses existing number/decimal handling. For an unnumbered body, remove only a complete exact whitespace-token suffix replay of the displayed structured sequence, checking both action-or-heading plus instructions and instructions-only. Match case and punctuation exactly; choose the longest matching sequence. Return the unchanged preceding body through existing legacy block parsing. A body equal to the replay yields no introduction. A distinct unmatched body is retained; never guess near matches, use fuzzy deletion, reinterpret HTML, mutate article objects or rewrite stored/provenance content.
+Add a small pure presentation helper used only for usable structured steps with no authoritative document blocks. If legacyArticleBlocks recognizes numbered steps, suppress that replay only when the complete numbered sequence matches actual structured steps in count, order, ordinal and exact whitespace-normalized displayed text (action-or-heading plus instructions, or instructions-only). Retain only its leading blocks before the first matched step. If any numbered item differs, preserve the entire body through legacyLeadBlocks; never pass legacy parts-only step blocks to the structured renderer. This reuses existing number/decimal handling. For an unnumbered body, remove only a complete exact whitespace-token suffix replay of the displayed structured sequence, checking both action-or-heading plus instructions and instructions-only. Match case and punctuation exactly; choose the longest matching sequence. Return the unchanged preceding body through existing legacy block parsing. A body equal to the replay yields no introduction. A distinct unmatched body is retained; never guess near matches, use fuzzy deletion, reinterpret HTML, mutate article objects or rewrite stored/provenance content.
 
-Ambiguity: an unnumbered body with partial, interleaved, differently punctuated or reordered overlap cannot be safely reconciled by this bounded projection rule. Preserve unmatched text even if some words repeat; an authoritative ordered document is the durable representation for exact interleaving. A numbered body's content at/after the first legacy step continues to be represented by structured steps, matching prior precedence; this change recovers its leading content, not arbitrary conflicting source edits. Test and document these limits rather than claiming semantic deduplication.
+Ambiguity: an unnumbered body with partial, interleaved, differently punctuated or reordered overlap cannot be safely reconciled by this bounded projection rule. Preserve unmatched text even if some words repeat; an authoritative ordered document is the durable representation for exact interleaving. Unrelated, differently numbered, reordered, partial or conflicting numbered bodies remain intact as body text. The helper cannot infer that a numbered warranty/storage list is a procedure replay. Test and document these limits rather than claiming semantic deduplication.
 
 Render introductory blocks with existing renderBlocks/element textContent constructors before the existing structured-step loop. Preserve authoritative document precedence, usable-step/image behavior, body-only and partially unusable-step fallbacks, origin/completion/authentication policy. No innerHTML or new DOM sink, dependency, schema/API contract, credential/service, CSS or backend change.
 
@@ -38,3 +38,7 @@ Add client helper and actual renderContent harness tests before implementation: 
 - docs/verification/2026-11-15-workshop-legacy-article-intro.md
 
 Plan and synchronized record are docs-only gate files. Create/push the checkpoint and run exact pre_implementation.py before editing the above implementation files. Keep a separate branch/worktree on the named UI head, then open a dependent PR for root review. No merge/deploy; integration/rebase only after coordinator supplies the protected #432 base. No Docker startup/build/cache pruning or M1/M2A mutation.
+
+## Root review amendment before correction
+
+Root found that treating every numbered body as replay could discard an unrelated numbered list, and parts-only legacy steps are incompatible with renderBlocks step fields. Exact numbered matching and actual-renderer preservation tests are required. Synchronize this docs-only checkpoint and rerun exact preflight before correction. Earlier299-test/browser receipts are historical and do not prove this new guard.
