@@ -22,6 +22,11 @@ IMAGE = 'sha256:3132da4cdfa56a36240132e7c83e2bf260f679c0294c7dc06669cb607c6390f7
 CONTAINER = '343896791b0377600b9825b53c1ddb1b179d54c424d19ea935c0b9b8a681eb07'
 DOCKER = ['/usr/bin/docker', '--host', 'unix:///var/run/docker.sock']
 CHILD_ENV = {'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8', 'LC_ALL': 'C.UTF-8'}
+
+SOURCE_ROOT = '/home/corp/autodata-candidate/private-diagnostics-svg-083f1a5-20261115/source'
+SOURCE_HASHES = {'workers/ingestion-python/src/autodata_ingestion/http_service.py': 'd665fe2f79e18f661dcd5bb06ae258f0fbd0e8427dd748669d820bc27d2b63b2', 'workers/ingestion-python/src/autodata_ingestion/article_lifecycle_store.py': '49a1af17c4a6815ff40ae54f47723a7b71f28e5df673dd822f5d90674078032d', 'workers/ingestion-python/src/autodata_ingestion/worker.py': '03c768e60be7a0564056a8da09a5c4619bcd6a26f1f076e0eeef38fdfe23e3db', 'workers/ingestion-python/src/autodata_ingestion/commerce_service.py': '156890573e52aa5f61db03b13229cf77740f56721379d39912c344a0e075eec7'}
+EXPECTED_ENV = {'AUTODATA_DB_ADDRESS': '127.0.0.1:5432', 'AUTODATA_POSTGRES_DB': 'autodata', 'AUTODATA_POSTGRES_USER': 'autodata', 'AUTODATA_SOURCE_BUCKET': 'autodata-sources', 'AUTODATA_S3_ENDPOINT': '127.0.0.1:19000', 'AUTODATA_S3_ADDRESS': '127.0.0.1:19000'}
+EXPECTED_RUNTIME = {'id': '343896791b0377600b9825b53c1ddb1b179d54c424d19ea935c0b9b8a681eb07', 'image': 'sha256:3132da4cdfa56a36240132e7c83e2bf260f679c0294c7dc06669cb607c6390f7', 'running': True, 'readonly': True, 'network': 'host', 'mounts': [{'source': '/home/corp/autodata-candidate/private-diagnostics-svg-083f1a5-20261115/source', 'destination': '/app', 'rw': False, 'type': 'bind'}], 'env': {'AUTODATA_DB_ADDRESS': '127.0.0.1:5432', 'AUTODATA_POSTGRES_DB': 'autodata', 'AUTODATA_POSTGRES_USER': 'autodata', 'AUTODATA_SOURCE_BUCKET': 'autodata-sources', 'AUTODATA_S3_ENDPOINT': '127.0.0.1:19000', 'AUTODATA_S3_ADDRESS': '127.0.0.1:19000'}}
 TYPES = {'heading', 'paragraph', 'ordered_list', 'unordered_list', 'step', 'table',
          'callout', 'image', 'link', 'break', 'unknown'}
 SQL = """SELECT jsonb_build_object(
@@ -165,6 +170,7 @@ def transport():
     resource.setrlimit(resource.RLIMIT_FSIZE, (0, 0))
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     require(os.environ.get('AUTODATA_DB_ADDRESS') == '127.0.0.1:5432', 'LOCAL_ENDPOINT')
+    require(all(os.environ.get(k) == v for k, v in EXPECTED_ENV.items()), 'LOCAL_ENDPOINT')
     endpoint = os.environ.get('AUTODATA_S3_ENDPOINT', '')
     endpoint = urlsplit(endpoint if '://' in endpoint else 'http://' + endpoint)
     require(endpoint.scheme == 'http' and endpoint.netloc == '127.0.0.1:19000' and
@@ -207,7 +213,7 @@ def transport():
 
 
 def validator_command(script, name):
-    return [*DOCKER, 'run', '--rm', '-i', '--name', name, '--log-driver', 'none',
+    return [*DOCKER, 'run', '--pull', 'never', '--rm', '-i', '--name', name, '--log-driver', 'none',
         '--network', 'none', '--read-only', '--cap-drop', 'ALL',
         '--security-opt', 'no-new-privileges', '--pids-limit', '32',
         '--memory', '128m', '--memory-swap', '128m', '--cpus', '0.5',
@@ -217,26 +223,170 @@ def validator_command(script, name):
         '--entrypoint', '/usr/local/bin/python3', IMAGE, '-I', '-S', '-B', '/audit.py', '--validate']
 
 
-def run():
-    # Exact code passed as argv; stdin/stdout are private subprocess pipes.
-    script = Path(__file__).resolve()
-    source = script.read_text()
-    child = subprocess.run([*DOCKER, 'exec', '-e', 'PYTHONDONTWRITEBYTECODE=1', '-i',
-        CONTAINER, '/usr/local/bin/python3', '-B', '-c', source, '--transport'],
-        capture_output=True, timeout=25, env=CHILD_ENV)
+def bounded_run(argv, *, input=None, timeout, stdout_max, stderr_max=4096):
+    """Drain both pipes concurrently with hard byte/deadline caps; never log."""
+    import selectors
+    import time
+    process = subprocess.Popen(argv, stdin=subprocess.PIPE if input is not None else subprocess.DEVNULL,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=CHILD_ENV, close_fds=True)
+    deadline = time.monotonic() + timeout
+    streams = {'stdout': bytearray(), 'stderr': bytearray()}
+    caps = {'stdout': stdout_max, 'stderr': stderr_max}
+    pending = memoryview(input or b'')
+    selector = selectors.DefaultSelector()
+    try:
+        for name, pipe in [('stdout', process.stdout), ('stderr', process.stderr)]:
+            os.set_blocking(pipe.fileno(), False)
+            selector.register(pipe, selectors.EVENT_READ, name)
+        if process.stdin:
+            os.set_blocking(process.stdin.fileno(), False)
+            if pending:
+                selector.register(process.stdin, selectors.EVENT_WRITE, 'stdin')
+            else:
+                process.stdin.close()
+        while selector.get_map():
+            remaining = deadline - time.monotonic()
+            require(remaining > 0, 'SUBPROCESS_TIMEOUT')
+            for key, _ in selector.select(remaining):
+                if key.data == 'stdin':
+                    try:
+                        count = os.write(key.fd, pending[:16384])
+                        pending = pending[count:]
+                    except BrokenPipeError:
+                        pending = pending[len(pending):]
+                    if not pending:
+                        selector.unregister(key.fileobj)
+                        key.fileobj.close()
+                    continue
+                data = os.read(key.fd, 16384)
+                if not data:
+                    selector.unregister(key.fileobj)
+                    key.fileobj.close()
+                else:
+                    buffer = streams[key.data]
+                    require(len(buffer) + len(data) <= caps[key.data], 'SUBPROCESS_OUTPUT_LIMIT')
+                    buffer.extend(data)
+        remaining = deadline - time.monotonic()
+        require(remaining > 0, 'SUBPROCESS_TIMEOUT')
+        try:
+            code = process.wait(timeout=remaining)
+        except subprocess.TimeoutExpired:
+            raise Refused('SUBPROCESS_TIMEOUT') from None
+        return subprocess.CompletedProcess(argv, code, stdout=bytes(streams['stdout']), stderr=bytes(streams['stderr']))
+    finally:
+        selector.close()
+        if process.poll() is None:
+            process.kill()
+        process.wait(timeout=2)
+        for pipe in (process.stdin, process.stdout, process.stderr):
+            if pipe is not None and not pipe.closed:
+                pipe.close()
+
+
+def script_guard(script, expected):
+    """Require reviewed physical root-owned package; return exact sealed bytes."""
+    import stat
+    require(isinstance(expected, str) and re.fullmatch('[0-9a-f]{64}', expected), 'SCRIPT_SEAL')
+    require(script.is_absolute() and script == script.resolve() and not script.is_symlink(), 'SCRIPT_SEAL')
+    parent = script.parent
+    info = parent.stat()
+    require(info.st_uid == 0 and info.st_gid == 0 and stat.S_IMODE(info.st_mode) == 0o700 and
+            info.st_dev == Path('/home').stat().st_dev, 'SCRIPT_SEAL')
+    descriptor = os.open(script, os.O_RDONLY | os.O_NOFOLLOW)
+    try:
+        info = os.fstat(descriptor)
+        require(stat.S_ISREG(info.st_mode) and info.st_uid == 0 and info.st_gid == 0 and
+                stat.S_IMODE(info.st_mode) == 0o400 and info.st_nlink == 1 and info.st_size <= 65536, 'SCRIPT_SEAL')
+        raw = os.read(descriptor, 65537)
+        require(digest(raw) == expected and len(raw) == info.st_size, 'SCRIPT_SEAL')
+        return raw, (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+    finally:
+        os.close(descriptor)
+
+
+def runtime_snapshot(value):
+    """Parse Docker response privately, returning only exact nonsecret contract."""
+    require(isinstance(value, list) and len(value) == 1, 'RUNTIME_DRIFT')
+    item = value[0]
+    env = {}
+    for entry in item['Config']['Env']:
+        name, separator, content = entry.partition('=')
+        if name in EXPECTED_ENV:
+            require(separator and name not in env, 'RUNTIME_DRIFT')
+            env[name] = content
+    require(type(item['State']['Running']) is bool and type(item['HostConfig']['ReadonlyRootfs']) is bool and all(type(m['RW']) is bool for m in item['Mounts']), 'RUNTIME_DRIFT')
+    contract = {'id': item['Id'], 'image': item['Image'], 'running': item['State']['Running'],
+        'readonly': item['HostConfig']['ReadonlyRootfs'], 'network': item['HostConfig']['NetworkMode'],
+        'mounts': [{'type': m['Type'], 'source': m['Source'], 'destination': m['Destination'], 'rw': m['RW']} for m in item['Mounts']],
+        'env': env}
+    require(contract == EXPECTED_RUNTIME, 'RUNTIME_DRIFT')
+    for name, expected in SOURCE_HASHES.items():
+        path = Path(SOURCE_ROOT) / name
+        require(path.resolve() == path and not path.is_symlink() and path.is_file() and
+                path.stat().st_size <= 2 * 1024 * 1024, 'SOURCE_DRIFT')
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+        try:
+            require(digest(os.read(descriptor, 2 * 1024 * 1024 + 1)) == expected, 'SOURCE_DRIFT')
+        finally:
+            os.close(descriptor)
+    return contract
+
+
+def runtime_guard():
+    child = bounded_run([*DOCKER, 'inspect', CONTAINER], timeout=5, stdout_max=131072)
+    require(child.returncode == 0, 'RUNTIME_DRIFT')
+    return runtime_snapshot(json.loads(child.stdout))
+
+
+def receipt_guard(value):
+    """An untrusted/swapped child cannot add any free text to parent output."""
+    bools = {'passed': True, 'source_hash_verified': True, 'identity_verified': True,
+        'ordered_projection_schema_verified': True, 'canonical_published': True,
+        'paid_reader_acceptance': False, 'licensed_display': False}
+    keys = set(bools) | {'version', 'unreviewed', 'license_metadata_empty', 'body_bytes',
+        'body_sha256', 'private_selection_sha256', 'documents', 'supplier_calls', 'model_calls'}
+    require(isinstance(value, dict) and set(value) == keys, 'RECEIPT_SCHEMA')
+    require(type(value['version']) is int and value['version'] == 1, 'RECEIPT_SCHEMA')
+    for name, expected in bools.items():
+        require(type(value[name]) is bool and value[name] is expected, 'RECEIPT_SCHEMA')
+    for name in ['unreviewed', 'license_metadata_empty']:
+        require(type(value[name]) is bool, 'RECEIPT_SCHEMA')
+    for name in ['supplier_calls', 'model_calls']:
+        require(type(value[name]) is int and value[name] == 0, 'RECEIPT_SCHEMA')
+    require(type(value['body_bytes']) is int and 0 < value['body_bytes'] <= BODY_MAX, 'RECEIPT_SCHEMA')
+    for name in ['body_sha256', 'private_selection_sha256']:
+        require(isinstance(value[name], str) and re.fullmatch('[0-9a-f]{64}', value[name]), 'RECEIPT_SCHEMA')
+    documents = value['documents']
+    require(isinstance(documents, dict) and set(documents) == {'source_document', 'current_document'}, 'RECEIPT_SCHEMA')
+    for document in documents.values():
+        require(isinstance(document, dict) and set(document) == {'blocks', 'nodes', 'sha256'}, 'RECEIPT_SCHEMA')
+        require(type(document['blocks']) is int and 0 < document['blocks'] <= 1024 and
+                type(document['nodes']) is int and 0 < document['nodes'] <= 16000 and
+                isinstance(document['sha256'], str) and re.fullmatch('[0-9a-f]{64}', document['sha256']), 'RECEIPT_SCHEMA')
+    return value
+
+
+def run(expected_hash):
+    script = Path(__file__).absolute()
+    source, seal = script_guard(script, expected_hash)
+    before = runtime_guard()
+    child = bounded_run([*DOCKER, 'exec', '-e', 'PYTHONDONTWRITEBYTECODE=1', '-i',
+        CONTAINER, '/usr/local/bin/python3', '-B', '-c', source.decode('utf-8'), '--transport'],
+        timeout=25, stdout_max=INPUT_MAX)
+    after = runtime_guard()
+    require(before == after, 'RUNTIME_DRIFT')
+    require(script_guard(script, expected_hash) == (source, seal), 'SCRIPT_SEAL')
     require(child.returncode == 0 and 0 < len(child.stdout) <= INPUT_MAX, 'TRANSPORT_FAILED')
     name = 'autodata-retained-integrity-' + uuid.uuid4().hex
     try:
-        result = subprocess.run(validator_command(script, name), input=child.stdout,
-            capture_output=True, timeout=10, env=CHILD_ENV)
-        require(result.returncode == 0 and len(result.stdout) <= 4096, 'VALIDATOR_FAILED')
-        receipt = json.loads(result.stdout)
-        require(receipt.get('passed') is True, 'VALIDATOR_FAILED')
+        result = bounded_run(validator_command(script, name), input=child.stdout,
+            timeout=10, stdout_max=4096)
+        require(result.returncode == 0, 'VALIDATOR_FAILED')
+        require(script_guard(script, expected_hash) == (source, seal), 'SCRIPT_SEAL')
+        receipt = receipt_guard(json.loads(result.stdout))
         return receipt
     finally:
-        # Cleanup only this fresh random validator, never a serving container.
-        subprocess.run([*DOCKER, 'rm', '-f', name], capture_output=True,
-                       timeout=5, check=False, env=CHILD_ENV)
+        bounded_run([*DOCKER, 'rm', '-f', name], timeout=5, stdout_max=1024)
 
 
 def main():
@@ -245,12 +395,14 @@ def main():
     mode.add_argument('--validate', action='store_true')
     mode.add_argument('--transport', action='store_true', help=argparse.SUPPRESS)
     mode.add_argument('--run', action='store_true', help='Requires prior exact-package coordinator review')
+    parser.add_argument('--expected-script-sha256', help='Required reviewed sealed-script hash for --run')
     args = parser.parse_args()
     try:
         if args.transport:
             transport()
             return 0
-        receipt = validate(sys.stdin.buffer.read(INPUT_MAX + 1)) if args.validate else run()
+        receipt = validate(sys.stdin.buffer.read(INPUT_MAX + 1)) if args.validate else run(args.expected_script_sha256)
+        receipt_guard(receipt)
         print(json.dumps(receipt, sort_keys=True))
         return 0
     except BaseException as error:

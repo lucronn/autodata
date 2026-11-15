@@ -54,3 +54,28 @@ Concrete todo:
 - Test runtime/source/script/receipt drift, output overflow and timeout with authored local fixtures only. No Docker run/exec or real DB/S3/payload GET before root revised-package review. Hold final CI for coordinated base.
 
 Source mount/hash anchors must be independently pinned, not trusted from execution-time readback. Root-owned seal is preparation only, not runtime authority. Existing fixed SELECT/read-only transaction/local oneGET limits remain. No grant/paid reader/rights/display claims.
+
+
+## Hardened package review seal — runtime and authored Docker fixture HELD
+
+Hardening checkpoint `4889e80a74458c5d2f95b187ab7d364747e6f5ec` passed preflight before implementation. Root authorized only narrowly filtered exact-candidate inspect and local code hashes. Those metadata reads were performed; no Docker run/exec, DB/S3 content/metadata call or article byte read occurred in this phase. Raw inspect retained private0600 under physical0700 `/home/corp/.local/state/autodata-retained-integrity-hardening-20261115/`; filtered receipt contains only approved nonsecret fields. Four selected code hashes independently match protected083f1a5.
+
+New physical package `/home/corp/.local/state/autodata-retained-integrity-428-20261115` root:root0700; three scripts root:root0400, regular/nonsymlink/nlink1. Static root-only script_guard and all-three-file hash verification PASS without Docker or DB/S3 access. Package manifest SHA256 `b9d873fe7fb7684f4c9fbbec5c814282cddd054bbdc37b20282b1def8150f63f`. Harness SHA256 `bf24f67bda8d0a28d69f33b7efdce29399134766bc428edc4f7499d14bbf8e52`. Unit tests SHA256 `6101c4559591464050cb6d9307381b2ba0a4e79ea3077afe734ae8876daaa895`; authored-only validator fixture SHA256 `a89d207332046ed7665ee9f574d9d0bdd2179e034e59b107a13d72463da9dae2`.
+
+Four requested hardenings:
+- Runtime guard bounded Docker inspect before AND immediately after transport requires exactID/image/running/read-only/hostnetwork, sole `/app` bind from `/home/corp/autodata-candidate/private-diagnostics-svg-083f1a5-20261115/source` RWfalse, exact approved DB/user/bucket/endpoints. Four bounded nonsymlink local source-file SHA256 anchors checked both times: http_service, article_lifecycle_store, worker, commerce_service. All match protected083f source; raw Env is never emitted. Transport also requires exact same nonsecret env. No self-trusting live source seal.
+- Run requires reviewed expected-script hash, physical root-owned0700 parent and root-owned0400 regular/nonsymlink/nlink1 script. Read once through O_NOFOLLOW fd with64KiB cap; byte hash+device/inode/size/mtime/ctime checked after transport and after validator. Those exact captured reviewed bytes are passed to transport argv, and same root-sealed script is validator readonly mount. Mutable-worktree --run now fails before Docker. Root package is the sole execution path; earlier worktree-only command is SUPERSEDED.
+- Parent strictly validates exact receipt keys/types/ranges/boolean constants/hash syntax including nested documents before printing. Validator main uses same guard. Unknown child fields/free text/extra nested keys/string-vs-bool/invalid hashes fail fixed RECEIPT_SCHEMA; raw child output is never forwarded.
+- All subprocess stdout/stderr drain concurrently through selectors, capped per stream while reading, with absolute deadlines and process kill/wait. Transport stdout512KiB/stderr4KiB/25s; inspect128KiB/4KiB/5s; validator4KiB/4KiB/10s; own-child cleanup1KiB/4KiB/5s. Inputs use concurrent bounded pipe writes. Docker child `--pull never` prevents accidental registry requests. Existing no-network/read-only/cap-drop/no-newprivs/CPU/memory/PID/no-log protections remain.
+
+Fourteen authored-only unit tests PASS, including real LOCAL Python subprocess overflow on either stdout/stderr and deadline, runtime/source/hash drift, script mutable/symlink refusal, malicious extra child text/type/nested fields, post-transport seal change, cleanup scope, guards/receipt/body/schema tests. git diff --check PASS. These tests did not run Docker or access real data. Physical root package seal check PASS is filesystem-only. Actual kernel/Docker validator launch and actual SDK transport remain UNTESTED pending review.
+
+Review sequence: first approve ONLY authored Docker validator fixture (no runtime inspect/transport/DB/S3):
+`/usr/bin/sudo -n /usr/bin/env -i PATH=/usr/bin:/bin LANG=C.UTF-8 LC_ALL=C.UTF-8 PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 -B /home/corp/.local/state/autodata-retained-integrity-428-20261115/retained_article_validator_fixture.py bf24f67bda8d0a28d69f33b7efdce29399134766bc428edc4f7499d14bbf8e52`
+
+It generates fictional in-memory bytes/documents, uses same sealed no-network child, strict redacted receipt equality and seal checks, removes only its fresh random validator. It contains no call to transport/run/runtime_guard. No real credentials or source bytes are fed to child.
+
+Only after separate concrete approval, one real hash-only execution command would be:
+`/usr/bin/sudo -n /usr/bin/env -i PATH=/usr/bin:/bin LANG=C.UTF-8 LC_ALL=C.UTF-8 PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 -B /home/corp/.local/state/autodata-retained-integrity-428-20261115/retained_article_integrity.py --run --expected-script-sha256 bf24f67bda8d0a28d69f33b7efdce29399134766bc428edc4f7499d14bbf8e52`
+
+Both commands are currently HELD for root review. No protected payload is written to disk; output contains only strict receipt fields. No paid GET, grant/session write, supplier/model/ingestion request, image recapture, display, runtime reconfiguration or rights assertion is included. Final PR/CI still held for coordinated base.

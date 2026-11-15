@@ -8,6 +8,8 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
+import os
 import types
 import unittest
 from unittest.mock import patch
@@ -93,8 +95,8 @@ class IntegrityTests(unittest.TestCase):
             self.assertEqual(m.main(), 1)
         self.assertNotIn('PRIVATE_SOURCE', output.getvalue())
         self.assertEqual(json.loads(output.getvalue())['code'], 'INTEGRITY_FAILED')
-        with patch.object(m.subprocess, 'run', return_value=subprocess.CompletedProcess([], 1, stdout=b'PRIVATE_SOURCE', stderr=b'PRIVATE_SOURCE')):
-            with self.assertRaisesRegex(m.Refused, '^TRANSPORT_FAILED$'): m.run()
+        with patch.object(m, 'script_guard', return_value=(b'authored', (1,))), patch.object(m, 'runtime_guard', return_value={}), patch.object(m, 'bounded_run', return_value=subprocess.CompletedProcess([], 1, stdout=b'PRIVATE_SOURCE', stderr=b'PRIVATE_SOURCE')):
+            with self.assertRaisesRegex(m.Refused, '^TRANSPORT_FAILED$'): m.run('0' * 64)
 
     def test_validator_is_network_none_read_only_no_secrets(self):
         argv = m.validator_command(Path('/fixture/audit.py'), 'fixture')
@@ -115,8 +117,8 @@ class IntegrityTests(unittest.TestCase):
             if 'exec' in argv: return subprocess.CompletedProcess(argv, 0, stdout=b'{}', stderr=b'')
             if 'run' in argv: raise subprocess.TimeoutExpired(argv, 10)
             return subprocess.CompletedProcess(argv, 0, stdout=b'', stderr=b'')
-        with patch.object(m.subprocess, 'run', side_effect=run):
-            with self.assertRaises(subprocess.TimeoutExpired): m.run()
+        with patch.object(m, 'script_guard', return_value=(b'authored', (1,))), patch.object(m, 'runtime_guard', return_value={}), patch.object(m, 'bounded_run', side_effect=run):
+            with self.assertRaises(subprocess.TimeoutExpired): m.run('0' * 64)
         self.assertEqual(calls[-1][:len(m.DOCKER) + 2], m.DOCKER + ['rm', '-f'])
         self.assertTrue(calls[-1][-1].startswith('autodata-retained-integrity-'))
         self.assertNotIn(m.CONTAINER, calls[-1])
@@ -133,6 +135,72 @@ class IntegrityTests(unittest.TestCase):
                 with self.assertRaises(m.Refused): m.transport_audit(event, args)
         m.transport_audit('open', ('/source', 'r', m.os.O_RDONLY))
         m.transport_audit('socket.connect', (None, ('127.0.0.1', 19000)))
+
+    def test_receipt_rejects_free_text_extra_keys_types_and_nested_changes(self):
+        good = m.validate(m.encoded(fixture()))
+        self.assertEqual(m.receipt_guard(good), good)
+        changes = [lambda v: v.update(raw_body='PRIVATE_SOURCE'),
+                   lambda v: v.update(body_sha256='PRIVATE_SOURCE'),
+                   lambda v: v.update(body_bytes=True),
+                   lambda v: v.update(passed=1),
+                   lambda v: v.update(supplier_calls=False),
+                   lambda v: v['documents']['source_document'].update(text='PRIVATE_SOURCE'),
+                   lambda v: v['documents']['source_document'].update(nodes=999999)]
+        for change in changes:
+            value = copy.deepcopy(good); change(value)
+            with self.assertRaisesRegex(m.Refused, 'RECEIPT_SCHEMA'): m.receipt_guard(value)
+
+    def test_bounded_real_authored_subprocess_pipes_and_deadline(self):
+        command = [sys.executable, '-I', '-S', '-c']
+        result = m.bounded_run(command + ['import sys; b=sys.stdin.buffer.read(); sys.stderr.write("note"); sys.stdout.buffer.write(b)'],
+                               input=b'authored', timeout=2, stdout_max=8)
+        self.assertEqual(result.stdout, b'authored')
+        self.assertEqual(result.stderr, b'note')
+        for stream in ['stdout', 'stderr']:
+            with self.subTest(stream=stream), self.assertRaisesRegex(m.Refused, 'SUBPROCESS_OUTPUT_LIMIT'):
+                m.bounded_run(command + ['import sys; sys.' + stream + '.write("x"*100000)'],
+                              timeout=2, stdout_max=64, stderr_max=64)
+        with self.assertRaisesRegex(m.Refused, 'SUBPROCESS_TIMEOUT'):
+            m.bounded_run(command + ['import time; time.sleep(5)'], timeout=.05, stdout_max=64)
+
+    def test_runtime_contract_drift_and_source_hash_drift_authored(self):
+        e = m.EXPECTED_RUNTIME
+        raw = [{'Id':e['id'], 'Image':e['image'], 'State':{'Running':True},
+                'HostConfig':{'ReadonlyRootfs':True,'NetworkMode':'host'},
+                'Config':{'Env':[k+'='+v for k,v in e['env'].items()]+['PRIVATE_SECRET=never-output']},
+                'Mounts':[{'Type':x['type'],'Source':x['source'],'Destination':x['destination'],'RW':x['rw']} for x in e['mounts']]}]
+        with tempfile.TemporaryDirectory() as directory:
+            p = Path(directory)/'authored.py'; p.write_bytes(b'authored')
+            with patch.object(m,'SOURCE_ROOT',directory), patch.object(m,'SOURCE_HASHES',{'authored.py':m.digest(b'authored')}):
+                self.assertEqual(m.runtime_snapshot(raw),e)
+                for change in [lambda v:v[0].update(Id='swapped'), lambda v:v[0].update(Image='swapped'),
+                               lambda v:v[0]['State'].update(Running=False),
+                               lambda v:v[0]['HostConfig'].update(ReadonlyRootfs=False),
+                               lambda v:v[0]['HostConfig'].update(NetworkMode='bridge'),
+                               lambda v:v[0]['Mounts'][0].update(RW=True),
+                               lambda v:v[0]['Config']['Env'].append('AUTODATA_POSTGRES_DB=other')]:
+                    value = copy.deepcopy(raw); change(value)
+                    with self.assertRaisesRegex(m.Refused,'RUNTIME_DRIFT'):m.runtime_snapshot(value)
+                p.write_bytes(b'swapped')
+                with self.assertRaisesRegex(m.Refused,'SOURCE_DRIFT'):m.runtime_snapshot(raw)
+
+    def test_script_guard_refuses_mutable_worktree_and_symlink(self):
+        with tempfile.TemporaryDirectory() as directory:
+            p=Path(directory)/'audit.py';p.write_bytes(b'authored');p.chmod(0o400)
+            with self.assertRaisesRegex(m.Refused,'SCRIPT_SEAL'):m.script_guard(p,m.digest(b'authored'))
+            link=Path(directory)/'link.py';link.symlink_to(p)
+            with self.assertRaisesRegex(m.Refused,'SCRIPT_SEAL'):m.script_guard(link,m.digest(b'authored'))
+
+    def test_parent_rejects_swapped_child_receipt_and_script_drift(self):
+        good=m.validate(m.encoded(fixture())); good['raw']='PRIVATE_SOURCE'
+        def run(argv, **kwargs):
+            if 'exec' in argv:return subprocess.CompletedProcess(argv,0,stdout=b'{}',stderr=b'')
+            if 'run' in argv:return subprocess.CompletedProcess(argv,0,stdout=m.encoded(good),stderr=b'')
+            return subprocess.CompletedProcess(argv,0,stdout=b'',stderr=b'')
+        with patch.object(m,'script_guard',return_value=(b'authored',(1,))), patch.object(m,'runtime_guard',return_value={}),patch.object(m,'bounded_run',side_effect=run):
+            with self.assertRaisesRegex(m.Refused,'RECEIPT_SCHEMA'):m.run('0'*64)
+        with patch.object(m,'script_guard',side_effect=[(b'authored',(1,)),(b'swapped',(2,))]),patch.object(m,'runtime_guard',return_value={}),patch.object(m,'bounded_run',side_effect=run):
+            with self.assertRaisesRegex(m.Refused,'SCRIPT_SEAL'):m.run('0'*64)
 
     def test_transport_local_endpoint_guard_precedes_any_client_import(self):
         # No psycopg/minio on this host is needed: the endpoint guard runs first.
