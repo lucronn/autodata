@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "ownership": "authored-synthetic",
+  "ids": {
+    "snapshot": "b4800f63-0bfa-583a-95df-d18b000df4f9",
+    "evidence": "8817e71d-3cbc-5a1b-bc9a-2ef84cd8a259",
+    "vehicle": "f9e8bdf0-7315-5026-a8a5-fb3c51fa7037",
+    "base": "1a2606f9-1839-5b98-a92f-79608a1e9ce4",
+    "configuration": "a3c85e03-d082-5278-8344-0e8af8489a18",
+    "article": "8e16346d-66aa-5891-b7a5-6d6250f4d6d7"
+  },
+  "vehicle": {
+    "make": "Owned",
+    "model": "Training Bench",
+    "year": 2026,
+    "region": "US",
+    "trim": "Fictional rig",
+    "engine": "1.0"
+  },
+  "article": {
+    "article_id": "owned-training-dial-v1",
+    "title": "Training bench: blue dial check",
+    "kind": "procedure",
+    "body": "Wholly authored synthetic training instructions for a fictional bench. This fixture describes no real vehicle.",
+    "steps": [
+      {
+        "number": 1,
+        "heading": "Set the marker",
+        "instructions": [
+          "Turn the blue training dial to the square marker."
+        ]
+      },
+      {
+        "number": 2,
+        "heading": "Confirm the marker",
+        "instructions": [
+          "Check that the orange marker sits beside the blue square."
+        ]
+      }
+    ]
+  },
+  "image": {
+    "file": "diagram.png",
+    "id": "owned-diagram",
+    "alt": "Authored blue and orange training diagram",
+    "sha256": "0b8b5af7a0d855adf36faefd83e29a604f33b9adfc1041fc9ede505b6b266dd9",
+    "width": 64,
+    "height": 48
+  }
+}
