@@ -32,7 +32,7 @@ Protected master: `92d81a1afbcf9e025d017b9b30f6dd4bb54f3e8a`, tree `0e4038a6bd50
 
 Integration record: `docs/agents/records/2026-11-14-stripe-checkout-url-protected-base.json`
 
-- [ ] Synchronize Issue420, Project8, plan and canonical architecture at protected master92d81a1 and pass checkpoint preflight
-- [ ] Merge the synchronized checkpoint into PR421 preserving reviewed implementation282954f and exact master ancestry
+- [x] Synchronize Issue420, Project8, plan and canonical architecture at protected master92d81a1 and pass checkpoint preflight
+- [x] Merge the synchronized checkpoint into PR421 preserving reviewed implementation282954f and exact master ancestry
 - [ ] Run focused and full relevant Go, Node, worker, browser, release-evidence and contract checks on the integrated source
 - [ ] Push the protected-base candidate, rerun strict required CI, hand off independent exact-head review and hold merge; no provider sessions or deployment
