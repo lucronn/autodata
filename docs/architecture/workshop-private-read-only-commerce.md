@@ -15,3 +15,7 @@ Concrete todo:
 - [ ] Run focused/full ingestion/runtime startup checks and independent exact-head review/requiredCI before integration; retain separate fresh rollout gate before live config or service changes.
 
 Read-only quotes retain product/scope/price data and explicitly set purchasable:false. Purchase config remains disabled. This capability boolean is preserved through the public Go transport. Review correction tracked on#414/#417 before integration.
+
+## Protected-base integration checkpoint
+
+Go PR#412 merged as exact master3a18d9c7ca51606a1dfb6d7691d3039d6d27c9f3. Concrete todo: synchronize this plan/Issue414/Project8/record before integration; merge that exact base without rewriting published history; retain Python implementation scope and truthful purchasable:false; rerun focused isolated commerce/runtime and public Go compatibility checks, requiredCI and independent exact-head review. Hold merge for coordinator. No live runtime mutation or SVG/image dependency change. Final private runtime gate remains separate and must pin the protected source before SVG#419.

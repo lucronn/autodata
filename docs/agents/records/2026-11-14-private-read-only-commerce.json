@@ -12,8 +12,9 @@
     "Add red-first service/startup/HTTP and isolatedDB regressions for explicit merchant/livemode/price pins, allowed scoped reads, forced disabled purchase and zero-call blocked operations.",
     "Implement minimal read-only commerce composition with scoped read predicates and read-only DB transactions; deny checkout/webhook/order-status/reconciliation/demo at service and dispatch boundaries.",
     "Run focused/full ingestion/runtime startup checks and independent exact-head review/requiredCI before integration; retain separate fresh rollout gate before live config or service changes.",
-    "Resolve reviewed quote capability mismatch: read-only quote preserves scope/price fields and reports purchasable:false; red-first direct/privateHTTP regressions, focused/runtime recheck and exact-head review."
+    "Resolve reviewed quote capability mismatch: read-only quote preserves scope/price fields and reports purchasable:false; red-first direct/privateHTTP regressions, focused/runtime recheck and exact-head review.",
+    "Integrate exact protected Go read_only base3a18d9c7ca51606a1dfb6d7691d3039d6d27c9f3 without changing Python scope; rerun focused compatibility/runtime checks and strict requiredCI; hold merge for coordinator exact-head review."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-15T00:35:40.272120Z"
+  "updated_at": "2026-11-15T00:54:31.357363+00:00"
 }

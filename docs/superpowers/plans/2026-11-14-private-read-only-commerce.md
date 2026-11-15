@@ -35,3 +35,7 @@ Only workers/ingestion-python/src/autodata_ingestion/commerce_service.py and htt
 ## Review amendment: truthful quote capability
 
 Review of99b1c619 found inherited quote reports purchasable:true despite read_only checkout refusal. Override only ReadOnlyCommerceService.quote to preserve validated scope/price/DTO fields while returning purchasable:false. Add red-first direct and actual privateHTTP quote assertions, preserving ordinary Stripe quote behavior. Go public transport should preserve that false boolean; its independent Go owner covers any needed public regression. Concrete todo: synchronize this correction/new pinned preflight before code; add failing direct/privateHTTP assertions; minimal subclass override; rerun focused/runtime/fullchecks and exact-head review.
+
+## Protected-base integration checkpoint
+
+Go PR#412 merged as exact master3a18d9c7ca51606a1dfb6d7691d3039d6d27c9f3. Concrete todo: synchronize this plan/Issue414/Project8/record before integration; merge that exact base without rewriting published history; retain Python implementation scope and truthful purchasable:false; rerun focused isolated commerce/runtime and public Go compatibility checks, requiredCI and independent exact-head review. Hold merge for coordinator. No live runtime mutation or SVG/image dependency change. Final private runtime gate remains separate and must pin the protected source before SVG#419.

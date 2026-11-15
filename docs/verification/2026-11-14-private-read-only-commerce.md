@@ -37,3 +37,7 @@ Quote amendment0b2460f576b7ef8511f8435f574b60b062015468 passed preflight and Iss
 After correction: focused new+existing commerce/PG/HTTP47passed,53subtests. Full ingestion unit suite before quote override:1205passed,477skipped,232subtests in132.46seconds. Prior actual-runtime-image unittest77passed and complete isolated catalog acceptance115passed/42subtests. No serving mutation or external provider/payment/model request.
 
 Cross-PR deployment dependency: public Go quote validation in c115dcd rejects purchasable:false; Go#412 owner is implementing a mode-bound read_only allowance/public regression. No compatible public/private rollout until both changes are reviewed/merged with currentCI/protection and a new gate explicitly approves private mode plus source mount. Parent will merge#412 first; #417 must update base and rerun strictCI afterward.
+
+## Protected-base integration checkpoint
+
+Go PR#412 merged as exact master3a18d9c7ca51606a1dfb6d7691d3039d6d27c9f3. Concrete todo: synchronize this plan/Issue414/Project8/record before integration; merge that exact base without rewriting published history; retain Python implementation scope and truthful purchasable:false; rerun focused isolated commerce/runtime and public Go compatibility checks, requiredCI and independent exact-head review. Hold merge for coordinator. No live runtime mutation or SVG/image dependency change. Final private runtime gate remains separate and must pin the protected source before SVG#419.
