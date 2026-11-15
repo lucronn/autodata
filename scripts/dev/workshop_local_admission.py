@@ -44,7 +44,7 @@ def policy_services():
     services["postgres"]=service("postgres",{"POSTGRES_DB":"workshop_local_m1","POSTGRES_USER":"workshop_local_m1","POSTGRES_PASSWORD":"${M1_DB_PASSWORD:?required}"},["postgres"],[mount("pgdata","/var/lib/postgresql/data")],["/tmp:rw,noexec,nosuid,size=32m","/run/postgresql:rw,noexec,nosuid,size=16m,uid=999,gid=999"],768,"999:999")
     services["nats"]=service("nats",{},["-js","-sd","/data","-m","8222"],[mount("nats-data","/data")],["/tmp:rw,noexec,nosuid,size=16m"],128)
     services["minio"]=service("minio",{"AWS_ACCESS_KEY_ID":"${M1_S3_ACCESS:?required}","AWS_SECRET_ACCESS_KEY":"${M1_S3_SECRET:?required}","S3_BUCKET":"workshop-local-m1-sources"},["mini","-dir=/data","-s3.port=9000"],[mount("s3-data","/data"),mount("s3-work","/tmp")],[],256)
-    services["migration-runner"]=service("migration-runner",{"PGHOST":"postgres","PGPORT":"5432","PGDATABASE":"workshop_local_m1","PGUSER":"workshop_local_m1","PGPASSWORD":"${M1_DB_PASSWORD:?required}"},["sh","/src/scripts/dev/migrate_sql.sh"],[mount("source","/src",True)],["/tmp:rw,noexec,nosuid,size=32m"],256)
+    services["migration-runner"]=service("migration-runner",{"PGHOST":"postgres","PGPORT":"5432","PGDATABASE":"workshop_local_m1","PGUSER":"workshop_local_m1","PGPASSWORD":"${M1_DB_PASSWORD:?required}"},["sh","/src/scripts/dev/migrate_sql.sh"],[mount("source","/src",True)],["/tmp:rw,noexec,nosuid,size=32m","/var/lib/postgresql/data:rw,noexec,nosuid,size=1m"],256)
     private={**base,"AUTODATA_INGESTION_HTTP_ADDR":":8081","AUTODATA_INGESTION_INTERNAL_TOKEN":"${M1_INTERNAL_TOKEN:?required}","BANKONE_BASE_URL":"","BANKTWO_BASE_URL":"","INCEPTION_API_BASE_URL":"","AUTODATA_KNOWLEDGE_SOURCE_URI_TEMPLATE":"","AUTODATA_KNOWLEDGE_SOURCE_URL_TEMPLATE":"","AUTODATA_FAST_CONSUMER_ENABLED":"0","AUTODATA_KNOWLEDGE_CONSUMER_ENABLED":"0","AUTODATA_MERCURY2_EXTRACTION_ENABLED":"0","AUTODATA_MERCURY2_JOB_PLANS_ENABLED":"0","AUTODATA_MERCURY2_PROCEDURE_COMPOSITION_ENABLED":"0","AUTODATA_DERIVED_ARTICLE_CACHE_ENABLED":"0","PYTHONDONTWRITEBYTECODE":"1","PYTHONPATH":"/src/workers/ingestion-python/src:/src/packages/contracts/python:/src/workers/enrichment-python/src","HOME":"/tmp"}
     services["ingestion-http"]=service("ingestion-http",private,["python","-m","autodata_ingestion.http_service"],[mount("source","/src",True)],["/tmp:rw,noexec,nosuid,size=64m"],768,entrypoint=[])
     services["ingestion-http"]["working_dir"]="/src"
@@ -107,6 +107,15 @@ def validate_config(config):
     for keys in [{"POSTGRES_PASSWORD","PGPASSWORD","AUTODATA_POSTGRES_PASSWORD"},{"AWS_ACCESS_KEY_ID","AUTODATA_S3_ACCESS_KEY"},{"AWS_SECRET_ACCESS_KEY","AUTODATA_S3_SECRET_KEY"}]:
         if len({v for e in envs for k,v in e.items() if k in keys})!=1:errors.append("local_material_mismatch")
     return sorted(set(errors))
+
+
+def image_volume_errors(metadata, service):
+    explicit={v["target"] for v in service.get("volumes",[]) if v.get("type")=="bind"}
+    for mount in service.get("tmpfs",[]):
+        target,_,options=mount.partition(":")
+        if re.search(r"(?:^|,)size=[1-9][0-9]*[mk](?:,|$)",options) and "noexec" in options.split(",") and "nosuid" in options.split(","):explicit.add(target)
+    declared=set((metadata.get("Config",{}).get("Volumes") or {}).keys())
+    return [] if declared<=explicit else ["unmasked_image_volume"]
 
 
 def capacity_errors(*,docker_free,home_free,docker_inodes,home_inodes,growth_bytes):
@@ -243,9 +252,10 @@ def main(argv=None):
         binary=ROOT/"bin/autodata-api"
         if hashlib.sha256(binary.read_bytes()).hexdigest()!=manifest["binary_sha256"]:errors.append("binary_hash")
         if hashlib.sha256(json.dumps(config,sort_keys=True,separators=(",",":")).encode()).hexdigest()!=manifest["config_sha256"]:errors.append("config_hash")
-        for image in IMAGES.values():
+        for service,image in IMAGES.items():
             meta=json.loads(_capture(["docker","image","inspect",image]))[0]
             if meta["Id"]!=image or meta["Os"]!="linux" or meta["Architecture"]!="amd64":errors.append("cached_image")
+            errors+=image_volume_errors(meta,config["services"][service])
         d=os.statvfs("/mnt/openfoam/docker");h=os.statvfs(ROOT)
         errors+=capacity_errors(docker_free=d.f_bavail*d.f_frsize,home_free=h.f_bavail*h.f_frsize,docker_inodes=d.f_favail,home_inodes=h.f_favail,growth_bytes=args.growth_bytes)
         print(json.dumps({"admitted":not errors,"errors":sorted(set(errors)),"service_count":len(config["services"]),"docker_free_bytes":d.f_bavail*d.f_frsize,"home_free_bytes":h.f_bavail*h.f_frsize},sort_keys=True))

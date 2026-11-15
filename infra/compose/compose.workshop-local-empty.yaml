@@ -217,7 +217,8 @@
         }
       ],
       "tmpfs": [
-        "/tmp:rw,noexec,nosuid,size=32m"
+        "/tmp:rw,noexec,nosuid,size=32m",
+        "/var/lib/postgresql/data:rw,noexec,nosuid,size=1m"
       ],
       "mem_limit": "256m",
       "cpus": 1.0,

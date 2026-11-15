@@ -156,6 +156,15 @@ class AdmissionTests(unittest.TestCase):
         self.assertTrue(a.private_mode_errors(0o700,[0o644]))
         self.assertEqual(a.private_mode_errors(0o700,[0o600]),[])
 
+    def test_image_declared_volumes_require_explicit_bounded_targets(self):
+        metadata={"Config":{"Volumes":{"/var/lib/postgresql/data":{}}}}
+        self.assertTrue(a.image_volume_errors(metadata,{"volumes":[],"tmpfs":[]}))
+        self.assertTrue(a.image_volume_errors(metadata,{"volumes":[],"tmpfs":["/var/lib/postgresql/data:rw"]}))
+        self.assertEqual(a.image_volume_errors(metadata,{"volumes":[],"tmpfs":["/var/lib/postgresql/data:rw,noexec,nosuid,size=1m"]}),[])
+        self.assertEqual(a.image_volume_errors(metadata,{"volumes":[{"type":"bind","target":"/var/lib/postgresql/data"}],"tmpfs":[]}),[])
+        self.assertEqual(a.image_volume_errors({"Config":{"Volumes":None}},{"volumes":[],"tmpfs":[]}),[])
+        self.assertTrue(a.image_volume_errors({"Config":{"Volumes":{"/unexpected":{}}}},candidate()["services"]["api"]))
+
     def test_helper_contains_no_docker_mutation_or_general_shell(self):
         self.assertEqual(a.DOCKER_READ_COMMANDS, {"image-inspect", "compose-config", "network-list-inspect", "container-list-inspect"})
         code = Path(a.__file__).read_text()
