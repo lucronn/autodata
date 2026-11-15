@@ -3,9 +3,9 @@
 Issue https://github.com/lucronn/autodata/issues/398; Project https://github.com/users/lucronn/projects/8.
 Plan docs/superpowers/plans/2026-11-15-workshop-local-empty-runtime.md; record docs/agents/records/2026-11-15-workshop-local-empty-runtime.json.
 
-Status: planning synchronized; implementation/runtime acceptance pending. Internal local fixture only; purchases disabled; original real-data issue remains open.
+Status: preparatory exact-source M1 canary accepted and stopped; see docs/verification/2026-11-15-workshop-local-empty-runtime.md. Purchases disabled; Issue398 remains open. Final protected-base integration requires a fresh synchronized gate.
 
-Use a standalone Compose file and fixed project autodata-workshop-local-m1-20261115, internal network and sole publication127.0.0.1:3041. Environment test/local auth, no Firebase, no credentials or requests to Stripe/providers/models. API ingestion URL empty prevents hydration. Fresh empty stores; six services only. No fake purchased content/grant or article seed.
+Use a standalone Compose file and fixed project autodata-workshop-local-m1-20261115, internal network, zero Docker publications, and bounded host-only forwarder127.0.0.1:3041. Environment test/local auth, no Firebase, no credentials or requests to Stripe/providers/models. API ingestion URL empty prevents hydration. Fresh empty stores; six services only. No fake purchased content/grant or article seed.
 
 ## Immutable local carrier images
 
@@ -30,7 +30,7 @@ Proposed limits MiB: API512, private768, PG768, NATS128, S3256, migration256. Re
 2. Run red-first tests, implement allowlist, run targeted and existing compose-image tests; commit/push for review. Snapshot exact immutable implementation SHA/tree, record archive/binary/config hashes.
 3. Prepare private physical-home binds and ownership, no source data. Host build with home GOCACHE/GOMODCACHE/GOTMPDIR, GOTOOLCHAIN local, CGO disabled and module lock readonly. Check cached dependency metadata and image architecture/user/read-only entrypoint assumptions.
 4. Secret-safe admission helper captures standalone Compose config JSON internally with explicit private env-file; never print config/env/inspect/raw logs. Check source/image/hash/network/mount/environment and disk-growth receipts. No mutation in helper.
-5. Compose exact project/file/private-env up --no-build --pull never --no-deps postgres; measure/check; repeat nats/minio. Run exact migration-runner --rm --no-deps. Check schema and empty aggregates only in new DB. Start ingestion-http/api only; measure/check.
+5. Compose exact project/file/private-env up --no-build --pull never --no-deps postgres; measure/check; repeat nats/minio. Run the exact named migration-runner with its declared image volume masked by bounded tmpfs; preserve its stopped identity and volumes. Check schema and empty aggregates only in new DB. Start ingestion-http/api only; measure/check.
 6. Check health/dependency-backed readyz, static assets, disabled purchase/commerce and empty catalog. Recheck source no-hydration/no-registry path and no workers. Restart only new API/private once; repeat. Record actual identities/limits/deltas and stops.
 7. Stop exact new services; preserve bind dirs/config/evidence. No down -v, global prune, automatic reset or production changes. On startup/image/dependency/S3-readonly failure stop and report; do not widen scope.
 
@@ -39,3 +39,11 @@ No payment drain needed because purchases never enabled. On failure stop new app
 ## Loopback amendment checkpoint (2026-11-15)
 
 Original local API boot succeeded only at its internal bridge address; Docker did not materialize127.0.0.1:3041 on internal network. All new services stopped; no loopback acceptance claimed. New plan docs/superpowers/plans/2026-11-15-workshop-local-loopback-forwarder.md and record docs/agents/records/2026-11-15-workshop-local-loopback-forwarder.json synchronize a bounded stdlib host forwarder: IPv4 loopback3041 only, exact admitted API ID/network/IP:8080, <=16concurrent/256total/600seconds, bounded64KiB buffers/15second idle timeout, per-connection+watchdog identity verification, fence on lifecycle change. Remove ineffective Compose ports; keep all Docker networking internal. No forwarder code/start before exact amendment preflight and root implementation review. Existing data, effective-ENV/image-volume guards and no-provider boundary remain. A clean credential-free ingestion build is required for external M2.
+
+## Accepted local ingress contract
+
+Launch only from admitted immutable source, with the pinned host Python and minimal environment. The forwarder has no target/bind arguments. Before listening it validates the exact six actual resources, policy/effective environment, storage identity, config/archive/binary hashes and capacity using the pinned local Docker executable/socket and minimal child environment.
+
+The0600 process receipt uses exclusive lifetime flock and atomic replacement. Each connection is checked before and after upstream connect; watchdog checks API ID/network/IP/StartedAt/Pid/RestartCount plus archive/binary/source-tree stat guards. A restart, source mutation,600second lifetime or256connection limit requires explicit fresh admission/launch. Bounds:16concurrent,64KiB directional buffers,15second idle timeout. Listener127.0.0.1 only, no Docker publication. Stop verified forwarder PID then fixed M1 services; preserve data and the recorded old anonymous volume. No down-v/prune/reset.
+
+HTTP entry/module checks and synthetic Origin/Cookie/CSRF transport tests passed. Firebase exchange is disabled; an authenticated Firebase browser/CSRF purchase flow is outside empty M1 acceptance. The cached ingestion image embeds nonempty credential defaults; explicit blanking/internal networking is M1-only containment. Replace it with a clean credential-free build before external exposure.
