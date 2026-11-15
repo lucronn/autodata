@@ -11,3 +11,5 @@ Exact protectedtables before selector request; after reviewed bounded selector d
 Concrete todo: synchronize/pin/preflight; immutable-source actualimage fixture checks; freshbackup/protectedbaseline/checkedhelper; coordinator reviewed execution and bounded selector acceptance, as detailed in plan/record.
 
 Prepared under checkpoint4d43eb7: immutable144-test fixtureacceptance and actualimage startup/schema passed; freshbackup/27-tablebaseline/rollbacksource pinned. Checkedhelper6offline regressions includes Created-state failedstart rollback. Live stage/activation remains coordinator-only and unexecuted; exact evidence/hashes in runtimeverificationreceipt.
+
+Coordinator activated reviewed92 runtime as6fcc910d46d5; retained7ce6 rollback. Makes/models now durablycomplete with bothproviders and unchangedprotectedstate. Integra cachedconfiguration remains selectable while collectioncoverage isunproved; this API distinction is intentional, not grounds to invent completeness. See runtimeverificationreceipt and PROPOSED configurationdiagnostics successorplan; no newimplementationgate exists for that proposal.
