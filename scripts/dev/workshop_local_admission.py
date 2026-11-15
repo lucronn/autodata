@@ -64,14 +64,19 @@ def _substitute(value):
 
 def _normalize(service):
     service=json.loads(json.dumps(service))
+    for key in ["environment"]:
+        service.setdefault(key,{})
+    service.setdefault("tmpfs",[])
+    if service.get("entrypoint","missing") is None:service.pop("entrypoint")
     nets=service.get("networks")
     if isinstance(nets,dict) and nets=={"internal":None}:service["networks"]=["internal"]
     if "mem_limit" in service:
         v=service["mem_limit"]
-        if isinstance(v,str) and v.endswith("m"):service["mem_limit"]=int(v[:-1])*1024**2
+        if isinstance(v,str):service["mem_limit"]=int(v[:-1])*1024**2 if v.endswith("m") else int(v)
     service.pop("container_name",None) if service.get("container_name")=="" else None
     for v in service.get("volumes",[]):
         v.setdefault("read_only",False)
+        v.setdefault("bind",{}).setdefault("create_host_path",False)
     for port in service.get("ports",[]):
         port.pop("mode",None) if port.get("mode")=="ingress" else None
     return service
@@ -80,7 +85,8 @@ def _normalize(service):
 def validate_config(config):
     errors=[]
     if set(config)-{"name","services","networks"} or config.get("name")!=PROJECT:return ["config_shape"]
-    networks=config.get("networks",{})
+    networks=json.loads(json.dumps(config.get("networks",{})))
+    if networks.get("internal",{}).get("ipam")=={}:networks["internal"].pop("ipam")
     expected_net={"internal":True,"name":PROJECT+"_internal"}
     if networks!={"internal":expected_net}:errors.append("network_contract")
     services=config.get("services",{})

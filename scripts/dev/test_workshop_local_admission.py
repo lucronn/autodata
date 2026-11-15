@@ -28,6 +28,19 @@ class AdmissionTests(unittest.TestCase):
     def test_valid_six_service_candidate(self):
         self.assertEqual(a.validate_config(candidate()), [])
 
+    def test_compose_renderer_harmless_defaults(self):
+        c=candidate();c["networks"]["internal"]["ipam"]={}
+        for service in c["services"].values():
+            service["mem_limit"]=str(int(service["mem_limit"][:-1])*1024**2)
+            service["networks"]={"internal":None}
+            if "entrypoint" not in service:service["entrypoint"]=None
+            if service.get("environment")=={}:service.pop("environment")
+            if service.get("tmpfs")==[]:service.pop("tmpfs")
+            for volume in service["volumes"]:
+                volume["bind"].pop("create_host_path")
+                if not volume["read_only"]:volume.pop("read_only")
+        self.assertEqual(a.validate_config(c),[])
+
     def test_network_and_exposure_mutants(self):
         changes = [
             lambda c: c["services"]["api"]["ports"][0].update(host_ip="0.0.0.0"),
