@@ -90,14 +90,14 @@ class ThirdAttemptGuardTests(unittest.TestCase):
   with tempfile.TemporaryDirectory() as directory:
    root=Path(directory);old=root/'browser-failure-diagnostics.json';old.write_text('old failure')
    output=s.reserve_attempt(root,'a'*64,'b'*64)
-   self.assertEqual(output.name,'browser-image-contract-v1');self.assertEqual(output.stat().st_mode&0o777,0o700)
+   self.assertEqual(output.name,'browser-image-contract-v2');self.assertEqual(output.stat().st_mode&0o777,0o700)
    marker=root/s.ATTEMPT_NAME;self.assertEqual(marker.stat().st_mode&0o777,0o600)
    self.assertEqual(json.loads(marker.read_text())['manifest_sha256'],'a'*64)
    with self.assertRaises(FileExistsError):s.reserve_attempt(root,'a'*64,'b'*64)
    self.assertEqual(old.read_text(),'old failure')
  def test_existing_output_or_result_fails_before_dispatch_marker(self):
   import tempfile
-  for name in ('browser-image-contract-v1','browser-failure-image-contract-v1.json','browser-acceptance-image-contract-v1.json'):
+  for name in ('browser-image-contract-v2','browser-failure-image-contract-v2.json','browser-acceptance-image-contract-v2.json'):
    with self.subTest(name=name),tempfile.TemporaryDirectory() as directory:
     root=Path(directory);(root/name).write_text('preserved')
     with self.assertRaises(FileExistsError):s.reserve_attempt(root,'a'*64,'b'*64)
@@ -108,4 +108,66 @@ class ThirdAttemptGuardTests(unittest.TestCase):
    root=Path(directory);target=root/'target';target.write_text('preserved');(root/s.ATTEMPT_NAME).symlink_to(target)
    with self.assertRaises(FileExistsError):s.reserve_attempt(root,'a'*64,'b'*64)
    self.assertEqual(target.read_text(),'preserved')
+class TmpfsOperationalTests(unittest.TestCase):
+ def test_physical_and_tmpfs_margins_cover_observed_burst(self):
+  policy={'home_free_baseline':10000000000,'home_guard_growth':32*1024**2,'home_growth_cap':64*1024**2,'home_absolute_floor':1,'docker_absolute_floor':1,'tmp_free_baseline':2000000000,'tmp_guard_growth':96*1024**2,'tmp_growth_cap':128*1024**2,'min_available_memory':1024**3,'min_inodes':1000,'entry_home_floor':1,'tmp_entry_floor':512*1024**2}
+  obs={'home_free':policy['home_free_baseline'],'docker_free':2000000000,'tmp_free':policy['tmp_free_baseline'],'memory_available':2*1024**3,'inodes':10000}
+  self.assertEqual(s.capacity_errors(obs,policy),[])
+  at_guard={**obs,'home_free':obs['home_free']-32*1024**2}
+  self.assertIn('home_growth_guard',s.capacity_errors(at_guard,policy));self.assertLess(32*1024**2+10047488,policy['home_growth_cap'])
+  self.assertIn('tmp_growth_guard',s.capacity_errors({**obs,'tmp_free':obs['tmp_free']-96*1024**2},policy))
+  self.assertIn('memory_guard',s.capacity_errors({**obs,'memory_available':1},policy))
+ def test_tmpfs_and_socket_boundary_rejects_before_dispatch(self):
+  from unittest.mock import patch
+  with patch('subprocess.Popen',side_effect=AssertionError('no_dispatch')) as dispatch:
+   self.assertEqual(s.tmpfs_errors('tmpfs',46,66315,81),[])
+   self.assertTrue(s.tmpfs_errors('ext4',66315,66315,81));self.assertTrue(s.tmpfs_errors('tmpfs',46,66315,108))
+   self.assertEqual(dispatch.call_count,0)
+ def test_changed_harness_hash_fails_closed(self):
+  self.assertEqual(s.identity_errors({'harness_sha256':'a'*64,'helper_sha256':{'f':'b'*64}},{'harness_sha256':'a'*64,'helper_sha256':{'f':'b'*64}}),[])
+  self.assertTrue(s.identity_errors({'harness_sha256':'a'*64,'helper_sha256':{'f':'b'*64}},{'harness_sha256':'c'*64,'helper_sha256':{'f':'b'*64}}))
+  self.assertTrue(s.identity_errors({'harness_sha256':'a'*64,'helper_sha256':{'f':'b'*64}},{'harness_sha256':'a'*64,'helper_sha256':{'f':'c'*64}}))
+ def test_physical_helper_import_cannot_use_changed_sibling(self):
+  from unittest.mock import patch
+  from types import SimpleNamespace
+  import sys
+  with patch.dict(sys.modules,{'workshop_owned_article_forwarder':SimpleNamespace(__file__='/untrusted/sibling.py')}),patch('subprocess.Popen',side_effect=AssertionError('no_dispatch')) as dispatch:
+   with self.assertRaises(ValueError):s.runtime_modules()
+   self.assertEqual(dispatch.call_count,0)
+ @unittest.skipUnless(s.NODE.is_file(),'Node offline journal fixture')
+ def test_actual_journal_schema_bounds_and_preserved_prefix(self):
+  good={'stage':'desktop_detail','category':'catalog','method':'GET','status':200,'count':4}
+  bad=[{**good,'url':'https://secret.invalid'},{**good,'status':999},{**good,'count':221},{**good,'stage':'secret/path'}]
+  result=s.node_run({'action':'policy','cases':[],'journal_test':[good,*bad]},5)
+  self.assertEqual(result['journal_valid'],[True,False,False,False,False]);self.assertTrue(result['journal_prefix_preserved']);self.assertTrue(result['journal_bound_rejected'])
+class ActualOperationalBoundaryTests(unittest.TestCase):
+ def test_actual_temp_context_is_private_tmpfs_and_rejects_low_entry_before_dispatch(self):
+  from unittest.mock import patch
+  with patch('subprocess.Popen',side_effect=AssertionError('no_dispatch')) as dispatch:
+   with s.browser_environment() as env:
+    root=Path(env['HOME']);self.assertEqual(root.parent,Path('/tmp'));self.assertEqual(root.stat().st_mode&0o777,0o700)
+    self.assertEqual(env['TMPDIR'],env['HOME']);self.assertTrue(Path(env['XDG_CACHE_HOME']).is_relative_to(root));self.assertNotEqual(root.stat().st_dev,s.RUNTIME_ROOT.stat().st_dev)
+   self.assertFalse(root.exists())
+   with patch.object(s,'capacity_errors',return_value=['memory_guard']):
+    with self.assertRaises(ValueError):
+     with s.browser_environment({'owned':'test'}):self.fail('entry_must_reject')
+   self.assertEqual(dispatch.call_count,0)
+ def test_actual_operational_guard_rejects_changed_owned_harness_before_dispatch(self):
+  import tempfile,json,hashlib
+  from unittest.mock import patch
+  with tempfile.TemporaryDirectory(dir='/tmp') as directory:
+   base=Path(directory);runtime=base/'runtime';physical=runtime/'source/scripts/dev';physical.mkdir(parents=True);private=runtime/'private-config';private.mkdir();(runtime/'bin').mkdir()
+   harness=base/'runner.py';harness.write_text('# owned original');archive=runtime/'source.tar';archive.write_bytes(b'owned archive');binary=runtime/'bin/autodata-api';binary.write_bytes(b'owned binary');accepted=private/'accepted-state.json';accepted.write_text('{}')
+   sha=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
+   helpers={}
+   for name in s.HELPERS:
+    p=physical/(name+'.py');p.write_text('# owned helper');helpers[name]=sha(p)
+   manifest=private/'manifest.json';manifest.write_text(json.dumps({'source_sha':'668d4c86f4097b9d2c7880dedf2e0fccc8079da6','source_tree':'1'*40,'config_sha256':'2'*64}))
+   receipt={k:'' for k in ('version','gate_sha','harness_source_sha','harness_tree','harness_sha256','test_sha256','runtime_source_sha','runtime_tree','runtime_manifest_sha256','runtime_archive_sha256','runtime_binary_sha256','runtime_config_sha256','runtime_accepted_sha256','helper_sha256','capacity','namespace','dependency_pins')}
+   receipt.update(version=1,namespace='image-contract-v2',harness_sha256=sha(harness),helper_sha256=helpers,runtime_source_sha='668d4c86f4097b9d2c7880dedf2e0fccc8079da6',runtime_tree='1'*40,runtime_config_sha256='2'*64,runtime_manifest_sha256=sha(manifest),runtime_archive_sha256=sha(archive),runtime_binary_sha256=sha(binary),runtime_accepted_sha256=sha(accepted),capacity={'home_growth_cap':67108864,'home_guard_growth':33554432,'tmp_growth_cap':134217728,'tmp_guard_growth':100663296})
+   seal=base/'seal.json';seal.write_text(json.dumps(receipt));seal.chmod(0o600)
+   with patch.object(s,'RUNTIME_ROOT',runtime),patch.object(s,'OPERATIONAL_SEAL',seal),patch.object(s,'__file__',str(harness)),patch('subprocess.Popen',side_effect=AssertionError('no_dispatch')) as dispatch:
+    self.assertEqual(s.operational_guard()['harness_sha256'],sha(harness));harness.write_text('# owned changed')
+    with self.assertRaises(ValueError):s.operational_guard()
+    self.assertEqual(dispatch.call_count,0)
 if __name__=='__main__':unittest.main()

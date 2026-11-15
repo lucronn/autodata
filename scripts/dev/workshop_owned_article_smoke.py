@@ -16,6 +16,9 @@ import re
 import stat
 import subprocess
 import tempfile
+import importlib
+import time
+from contextlib import contextmanager
 from urllib.parse import urlsplit
 
 ORIGIN='http://127.0.0.1:3042'
@@ -107,6 +110,80 @@ class BrowserFailure(ValueError):
         super().__init__('browser_failed')
 
 
+RUNTIME_ROOT=Path('/home/corp/autodata-workshop-owned-article-data-20261115/m2a')
+OPERATIONAL_SEAL=Path('/home/corp/autodata-evidence/m2a-tmpfs-v2-operational-20261115/operational-seal.json')
+HELPERS=('workshop_owned_article_admission','workshop_owned_article_forwarder','workshop_owned_article_seed')
+
+
+def identity_errors(expected,actual):
+    return [] if expected==actual else ['operational_identity']
+
+
+def tmpfs_errors(kind,device,home_device,socket_bytes):
+    return [] if kind=='tmpfs' and device!=home_device and 0<socket_bytes<108 else ['tmpfs_policy']
+
+
+def capacity_errors(observed,policy,entry=False):
+    errors=[]
+    if policy['home_free_baseline']-observed['home_free']>=policy['home_guard_growth']:errors.append('home_growth_guard')
+    if policy['tmp_free_baseline']-observed['tmp_free']>=policy['tmp_guard_growth']:errors.append('tmp_growth_guard')
+    if observed['home_free']<=policy['home_absolute_floor']:errors.append('home_floor')
+    if observed['docker_free']<=policy['docker_absolute_floor']:errors.append('docker_floor')
+    if observed['memory_available']<policy['min_available_memory']:errors.append('memory_guard')
+    if observed['inodes']<policy['min_inodes']:errors.append('inode_guard')
+    if entry and (observed['home_free']<policy['entry_home_floor'] or observed['tmp_free']<policy['tmp_entry_floor']):errors.append('entry_guard')
+    return errors
+
+
+def observation():
+    home=os.statvfs(RUNTIME_ROOT);docker=os.statvfs('/mnt/openfoam/docker');tmp=os.statvfs('/tmp')
+    memory=next(int(line.split()[1])*1024 for line in Path('/proc/meminfo').read_text().splitlines() if line.startswith('MemAvailable:'))
+    return {'home_free':home.f_bavail*home.f_frsize,'docker_free':docker.f_bavail*docker.f_frsize,'tmp_free':tmp.f_bavail*tmp.f_frsize,'memory_available':memory,'inodes':min(home.f_favail,docker.f_favail,tmp.f_favail)}
+
+
+def runtime_modules():
+    directory=RUNTIME_ROOT/'source/scripts/dev'
+    for name in HELPERS:
+        loaded=sys.modules.get(name)
+        if loaded is not None and Path(loaded.__file__).resolve()!=directory/(name+'.py'):raise ValueError('physical_helper_import')
+    sys.path.insert(0,str(directory))
+    modules={name:importlib.import_module(name) for name in HELPERS}
+    if any(Path(module.__file__).resolve()!=directory/(name+'.py') for name,module in modules.items()):raise ValueError('physical_helper_import')
+    return modules['workshop_owned_article_forwarder'],modules['workshop_owned_article_seed']
+
+
+def operational_guard():
+    info=OPERATIONAL_SEAL.lstat()
+    if not stat.S_ISREG(info.st_mode) or info.st_uid!=os.getuid() or info.st_nlink!=1 or stat.S_IMODE(info.st_mode)!=0o600 or info.st_size>32768:raise ValueError('operational_receipt')
+    fd=os.open(OPERATIONAL_SEAL,os.O_RDONLY|os.O_NOFOLLOW)
+    with os.fdopen(fd,'rb') as stream:
+        if os.fstat(stream.fileno())!=info:raise ValueError('operational_receipt_changed')
+        seal=json.load(stream)
+    required={'version','gate_sha','harness_source_sha','harness_tree','harness_sha256','test_sha256','runtime_source_sha','runtime_tree','runtime_manifest_sha256','runtime_archive_sha256','runtime_binary_sha256','runtime_config_sha256','runtime_accepted_sha256','helper_sha256','capacity','namespace','dependency_pins'}
+    if set(seal)!=required or seal['version']!=1 or seal['namespace']!='image-contract-v2' or seal['runtime_source_sha']!='668d4c86f4097b9d2c7880dedf2e0fccc8079da6':raise ValueError('operational_contract')
+    hashes={name:hashlib.sha256((RUNTIME_ROOT/'source/scripts/dev'/(name+'.py')).read_bytes()).hexdigest() for name in HELPERS}
+    actual={'harness_sha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),'helper_sha256':hashes}
+    if identity_errors({key:seal[key] for key in actual},actual):raise ValueError('operational_identity')
+    for child,key in [('source.tar','runtime_archive_sha256'),('bin/autodata-api','runtime_binary_sha256'),('private-config/manifest.json','runtime_manifest_sha256'),('private-config/accepted-state.json','runtime_accepted_sha256')]:
+        if hashlib.sha256((RUNTIME_ROOT/child).read_bytes()).hexdigest()!=seal[key]:raise ValueError('runtime_identity')
+    manifest=json.loads((RUNTIME_ROOT/'private-config/manifest.json').read_text())
+    if manifest['source_sha']!=seal['runtime_source_sha'] or manifest['source_tree']!=seal['runtime_tree'] or manifest['config_sha256']!=seal['runtime_config_sha256']:raise ValueError('runtime_manifest')
+    policy=seal['capacity']
+    if (policy['home_growth_cap'],policy['home_guard_growth'],policy['tmp_growth_cap'],policy['tmp_guard_growth'])!=(67108864,33554432,134217728,100663296):raise ValueError('capacity_policy')
+    return seal
+
+
+@contextmanager
+def browser_environment(policy=None):
+    mount=[line.split(' - ',1)[1].split()[0] for line in Path('/proc/self/mountinfo').read_text().splitlines() if line.split()[4]=='/tmp']
+    if len(mount)!=1 or tmpfs_errors(mount[0],Path('/tmp').stat().st_dev,RUNTIME_ROOT.stat().st_dev,81):raise ValueError('tmpfs_policy')
+    if policy and capacity_errors(observation(),policy,entry=True):raise ValueError('browser_capacity')
+    with tempfile.TemporaryDirectory(prefix='.m2a-browser-',dir='/tmp') as tmp:
+        root=Path(tmp);root.chmod(0o700);cache=root/'.cache';cache.mkdir(mode=0o700)
+        if len(os.fsencode(str(root/'playwright_chromiumdev_profile-XXXXXX/SingletonSocket')))>=108:raise ValueError('socket_path')
+        yield {'PATH':'/usr/bin:/bin','HOME':tmp,'TMPDIR':tmp,'XDG_CACHE_HOME':str(cache),'LANG':'C.UTF-8'}
+
+
 RUNNER=r'''
 const fs=require('fs');const crypto=require('crypto');
 process.umask(0o077);
@@ -138,14 +215,20 @@ async function captureFailure(result,page,target){
  try{const bytes=await page.screenshot({path:target,fullPage:true,timeout:1500});result.partial_screenshot.saved=true;result.partial_screenshot.sha256=hash(bytes);if(target)fs.chmodSync(target,0o600);}catch{}
  return result;
 }
+
+function journalValid(e){return e&&Object.keys(e).sort().join(',')==='category,count,method,stage,status'&&SAFE_STAGES.has(e.stage)&&[...CATEGORIES,'lifecycle'].includes(e.category)&&['GET','NONE','OTHER'].includes(e.method)&&Number.isInteger(e.status)&&(e.status===0||e.status>=100&&e.status<=599)&&Number.isInteger(e.count)&&e.count>=0&&e.count<=220;}
+function journalWriter(write){let bytes=0,count=0;return e=>{if(!journalValid(e))throw Error('journal_schema');const line=JSON.stringify(e)+'\n';const size=Buffer.byteLength(line);if(bytes+size>65536||count>=512)throw Error('journal_bound');write(line);bytes+=size;count++;};}
+
 const hash=b=>crypto.createHash('sha256').update(b).digest('hex');
 function assert(value,code){if(!value)throw Error(code);}
-(async()=>{let browser,input,report,diagnosticPage,requests=0,stage='input';try{
+(async()=>{let browser,input,report,diagnosticPage,journalFD,journal,requests=0,stage='input';try{
  input=JSON.parse(fs.readFileSync(0,'utf8'));
+ if(input.action==='policy'&&input.journal_test){const lines=[];const writer=journalWriter(line=>lines.push(line));writer(input.journal_test[0]);const preserved=lines[0];let bounded=false;try{for(let n=0;n<600;n++)writer(input.journal_test[0]);}catch{bounded=true;}console.log(JSON.stringify({ok:true,journal_valid:input.journal_test.map(journalValid),journal_prefix_preserved:lines[0]===preserved,journal_bound_rejected:bounded}));return;}
  if(input.action==='policy'&&input.failure_policy){const failures=[];for(const item of input.failures){const result=failureDiagnostic(item.code,item.stage,{requests:item.requests,route_statuses:item.route_statuses});if(input.screenshot_failure)await captureFailure(result,{screenshot:async()=>{throw Error('synthetic screenshot failure');}},null);failures.push(result);}console.log(JSON.stringify({ok:true,failures}));return;}
  if(input.action==='policy'){console.log(JSON.stringify({ok:true,policies:input.cases.map(([u,m])=>policy(u,m)),denials:(input.denials||[]).map(([u,status,simulated])=>expectedDenial(u,status,simulated))}));return;}
  if(input.action==='validate'){console.log(JSON.stringify({ok:true,configs:input.configs.map(([a,c])=>configSafe(a,c)),presentations:input.presentations.map(([t,a])=>presentationSafe(t,a)),pngs:(input.pngs||[]).map(([r,f])=>pngSafe(r,f))}));return;}
  if(!['probe','smoke'].includes(input.action))throw Error('unsupported_action');stage='launch';
+ if(input.action==='smoke'){journalFD=fs.openSync(input.journal,'wx',0o600);journal=journalWriter(line=>{const bytes=Buffer.from(line);let at=0;while(at<bytes.length)at+=fs.writeSync(journalFD,bytes,at,bytes.length-at);fs.fsyncSync(journalFD);});journal({stage:'launch',category:'lifecycle',method:'NONE',status:0,count:0});}
  const {chromium}=require('/home/corp/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
  browser=await chromium.launch({executablePath:'/usr/bin/chromium',chromiumSandbox:true,headless:true,timeout:15000});
  if(input.action==='probe'){stage='probe';const page=await browser.newPage();await page.goto('about:blank');console.log(JSON.stringify({ok:true,version:browser.version(),sandbox_enabled:true}));return;}
@@ -157,7 +240,8 @@ function assert(value,code){if(!value)throw Error(code);}
   await context.route('**/*',async route=>{
    const req=route.request(),kind=policy(req.url(),req.method());
    const path=new URL(req.url()).pathname;if(path==='/v1/workshop/quote')report.quote_requests++;if(path.endsWith('/prepare'))report.prepare_requests++;
-   if(++requests>220){report.external_requests.push('request_bound');return route.abort();}
+   if(++requests<=220&&journal)journal({stage,category:category(req.url(),req.method()),method:req.method()==='GET'?'GET':'OTHER',status:0,count:requests});
+   if(requests>220){report.external_requests.push('request_bound');return route.abort();}
    if(kind==='abort'){report.external_requests.push('blocked_request');return route.abort();}
    if(kind==='session'&&simulate){if(!configSafe(boundary.auth,boundary.commerce)){report.page_errors.push('config_before_simulation');return route.abort();}report.simulated_paths.push('/auth/session');return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({version:'v1',authenticated:true,roles:['dataset_viewer'],expires_at:new Date(Date.now()+180000).toISOString(),csrf_token:'synthetic-m2a-browser-only'})});}
    const headers={...req.headers()};delete headers.authorization;
@@ -165,7 +249,9 @@ function assert(value,code){if(!value)throw Error(code);}
    return route.continue({headers});
   });
   for(const [path,key] of [['/auth/config','auth'],['/workshop/purchase-config.json','commerce']]){
+   if(++requests>220)throw Error('response_bound');if(journal)journal({stage,category:category(ORIGIN+path),method:'GET',status:0,count:requests});
    const response=await context.request.get(ORIGIN+path,{maxRedirects:0,timeout:5000});
+   if(journal)journal({stage,category:category(ORIGIN+path),method:'GET',status:response.status(),count:requests});
    assert(response.status()===200,'real_config_status');boundary[key]=await response.json();
   }
   assert(configSafe(boundary.auth,boundary.commerce),'real_local_disabled_config');report.real_config_verified++;
@@ -174,7 +260,7 @@ function assert(value,code){if(!value)throw Error(code);}
   page.on('pageerror',()=>report.page_errors.push('page_error'));
   page.on('console',msg=>{if(msg.type()!=='error')return;const text=msg.text(),match=text.match(/^Failed to load resource: the server responded with a status of (401|503) /);if(match&&expectedDenial(msg.location().url,Number(match[1]),simulate))report.expected_http_denials.push({kind:'unshimmed_session',status:Number(match[1])});else report.console_errors.push('console_error');});
   page.on('response',response=>{pending.push((async()=>{
-   const u=new URL(response.url());const cat=category(response.url());const found=report.route_statuses.find(x=>x.category===cat&&x.status===response.status());if(found)found.count++;else if(report.route_statuses.length<64)report.route_statuses.push({category:cat,status:response.status(),count:1});if(u.origin!==ORIGIN){report.external_requests.push('external_response');return;}
+   const u=new URL(response.url());const cat=category(response.url());if(journal)journal({stage,category:cat,method:'GET',status:response.status(),count:requests});const found=report.route_statuses.find(x=>x.category===cat&&x.status===response.status());if(found)found.count++;else if(report.route_statuses.length<64)report.route_statuses.push({category:cat,status:response.status(),count:1});if(u.origin!==ORIGIN){report.external_requests.push('external_response');return;}
    if(response.status()>=300&&response.status()<400){report.external_requests.push('redirect');return;}
    const image=u.pathname.startsWith('/v1/catalog/images/');const catalog=policy(response.url(),'GET')==='catalog';
    if(!image&&!catalog&&u.pathname!=='/workshop/purchase-config.json'&&u.pathname!=='/auth/config')return;
@@ -235,18 +321,25 @@ function assert(value,code){if(!value)throw Error(code);}
  assert(report.real_config_verified===3,'real_config_each_context');
  assert(!report.external_requests.length&&!report.console_errors.length&&!report.page_errors.length,'browser_errors');
  report.ok=true;report.requests=requests;report.browser_version=browser.version();report.sandbox_enabled=true;console.log(JSON.stringify(report));
- }catch(e){const safeReport=report?{requests,simulated_sessions:report.simulated_paths.length,external_requests:report.external_requests.length,console_errors:report.console_errors.length,page_errors:report.page_errors.length,quote_requests:report.quote_requests,prepare_requests:report.prepare_requests,real_config_verified:report.real_config_verified,layouts_completed:report.layouts.length,route_statuses:report.route_statuses}:{};const code=e.message==='browser_errors'&&report?.page_errors.length?report.page_errors[0]:e.message;const result=failureDiagnostic(code,stage,safeReport);await captureFailure(result,diagnosticPage,input?.output?input.output+'/failure.png':null);console.log(JSON.stringify(result));process.exitCode=1;}finally{if(browser)await browser.close();}})();
+ }catch(e){const safeReport=report?{requests,simulated_sessions:report.simulated_paths.length,external_requests:report.external_requests.length,console_errors:report.console_errors.length,page_errors:report.page_errors.length,quote_requests:report.quote_requests,prepare_requests:report.prepare_requests,real_config_verified:report.real_config_verified,layouts_completed:report.layouts.length,route_statuses:report.route_statuses}:{};const code=e.message==='browser_errors'&&report?.page_errors.length?report.page_errors[0]:e.message;const result=failureDiagnostic(code,stage,safeReport);await captureFailure(result,diagnosticPage,input?.output?input.output+'/failure.png':null);console.log(JSON.stringify(result));process.exitCode=1;}finally{if(browser)await browser.close();if(journalFD!==undefined)fs.closeSync(journalFD);}})();
 '''
 
 
 def node_run(payload,timeout):
-    # Short path avoids Chromium Unix-domain socket limits. No ambient Node,
-    # Docker, proxy, credential, browser or user profile configuration is copied.
-    with tempfile.TemporaryDirectory(prefix='.m2a-browser-',dir=None if payload.get('action') in ('policy','validate') else '/home/corp') as tmp:
-        process=subprocess.Popen([str(NODE),'-e',RUNNER],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,start_new_session=True,env={'PATH':'/usr/bin:/bin','HOME':tmp,'TMPDIR':tmp,'LANG':'C.UTF-8'})
-        try:out,err=process.communicate(json.dumps(payload),timeout=timeout)
-        except subprocess.TimeoutExpired:
-            os.killpg(process.pid,signal.SIGKILL);process.communicate();raise ValueError('browser_timeout')
+    policy=operational_guard()['capacity'] if payload.get('action')=='smoke' else None
+    with browser_environment(policy) as env:
+        process=subprocess.Popen([str(NODE),'-e',RUNNER],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,start_new_session=True,env=env)
+        deadline=time.monotonic()+timeout;initial=True
+        try:
+            while True:
+                if policy and capacity_errors(observation(),policy):raise ValueError('browser_capacity')
+                remaining=deadline-time.monotonic()
+                if remaining<=0:raise ValueError('browser_timeout')
+                try:
+                    out,err=process.communicate(json.dumps(payload) if initial else None,timeout=min(.05,remaining));break
+                except subprocess.TimeoutExpired:initial=False
+        except BaseException:
+            os.killpg(process.pid,signal.SIGKILL);process.communicate();raise
         if len(out)>65536:raise ValueError('browser_output_bound')
         result=json.loads(out)
         if process.returncode or not result.get('ok',True):raise BrowserFailure(result)
@@ -265,15 +358,16 @@ def listener_guard(manifest_hash,state_hash):
     return receipt
 
 
-ATTEMPT_NAME='browser-attempt-image-contract-v1.started.json'
-OUTPUT_NAME='browser-image-contract-v1'
-FAILURE_NAME='browser-failure-image-contract-v1.json'
-SUCCESS_NAME='browser-acceptance-image-contract-v1.json'
+ATTEMPT_NAME='browser-attempt-image-contract-v2.started.json'
+OUTPUT_NAME='browser-image-contract-v2'
+FAILURE_NAME='browser-failure-image-contract-v2.json'
+SUCCESS_NAME='browser-acceptance-image-contract-v2.json'
+JOURNAL_NAME='browser-events-image-contract-v2.jsonl'
 
 
 def reserve_attempt(private,manifest_hash,state_hash):
     # One-use reservation precedes process launch; every earlier attempt is kept.
-    for name in (OUTPUT_NAME,FAILURE_NAME,SUCCESS_NAME):
+    for name in (OUTPUT_NAME,FAILURE_NAME,SUCCESS_NAME,JOURNAL_NAME):
         if os.path.lexists(private/name):raise FileExistsError('attempt_output_exists')
     fd=os.open(private/ATTEMPT_NAME,os.O_CREAT|os.O_EXCL|os.O_WRONLY|os.O_NOFOLLOW,0o600)
     with os.fdopen(fd,'w') as stream:
@@ -288,22 +382,22 @@ def reserve_attempt(private,manifest_hash,state_hash):
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--probe',action='store_true');args=parser.parse_args()
     try:
-        pins=dependencies()
+        if args.probe:raise ValueError('probe_not_authorized')
+        seal=operational_guard();f,s=runtime_modules();pins=dependencies()
+        if pins!=seal['dependency_pins']:raise ValueError('dependency_seal')
         if args.probe:
             result=node_run({'action':'probe'},25);result['dependency_pins']=pins
         else:
-            import workshop_owned_article_seed as s
-            import workshop_owned_article_forwarder as f
             check,mh,sh=f.make_checker();binding=check();listener_guard(mh,sh)
             seed,_=f.read_private(f.PRIVATE/'owned-seed.json')
             if seed.get('manifest_sha256')!=mh or seed.get('accepted_sha256')!=sh or seed.get('fixture_sha256')!=hashlib.sha256((s.FIXTURES/'article.json').read_bytes()).hexdigest() or not seed.get('commerce_zero') or seed.get('object_count')!=2:raise ValueError('seed_receipt')
             output=reserve_attempt(f.PRIVATE,mh,sh)
-            result=node_run({'action':'smoke','fixture':s.load_fixture(),'output':str(output)},120)
-            if check()!=binding or dependencies()!=pins:raise ValueError('browser_binding_changed')
+            result=node_run({'action':'smoke','fixture':s.load_fixture(),'output':str(output),'journal':str(f.PRIVATE/JOURNAL_NAME)},120)
+            if operational_guard()!=seal or check()!=binding or dependencies()!=pins:raise ValueError('browser_binding_changed')
             listener_guard(mh,sh)
             if trace_errors(result['simulated_paths'],result['external_requests'],result['console_errors']) or result['page_errors']:raise ValueError('browser_trace')
             for path in output.iterdir():os.chmod(path,0o600)
-            result.update(dependency_pins=pins,manifest_sha256=mh,accepted_sha256=sh,fixture_sha256=seed['fixture_sha256'],auth_simulation_only=True)
+            result.update(dependency_pins=pins,manifest_sha256=mh,accepted_sha256=sh,fixture_sha256=seed['fixture_sha256'],auth_simulation_only=True,operational_seal_sha256=hashlib.sha256(OPERATIONAL_SEAL.read_bytes()).hexdigest(),journal_sha256=hashlib.sha256((f.PRIVATE/JOURNAL_NAME).read_bytes()).hexdigest())
             path=f.PRIVATE/SUCCESS_NAME;fd=os.open(path,os.O_CREAT|os.O_EXCL|os.O_WRONLY|os.O_NOFOLLOW,0o600)
             with os.fdopen(fd,'w') as stream:json.dump(result,stream,sort_keys=True);stream.write('\n')
         print(json.dumps(result,sort_keys=True));return 0

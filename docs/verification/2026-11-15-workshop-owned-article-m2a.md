@@ -76,3 +76,10 @@ Todo: Use verified tmpfs private HOME/TMPDIR/XDG_CACHE_HOME, fresh current-basel
 Todo: Add exclusive v2 one-use marker and bounded durable safe stage/category/status journal, run focused offline tests and seal exact new host harness/operational receipt for root review before service or browser actions.
 
 Todo: Only after separate root authorization restart the exact six resources, re-attest data read-only, run one authored desktop/mobile PNG/body/order/history/auth acceptance, preserve diagnostics and stop all owned processes/resources.
+
+
+## Independent host-only tmpfs harness preparation
+
+At synchronized gateb5555a88,78 owned-article tests pass. Red-first tests reproduced v2 namespace mismatch and absent temp/hash/helper/journal/capacity checks, then passed after host-only implementation. Actual owned temp context proved private /tmp location and low-entry rejection with0dispatches; owned operational receipt fixture proved changed runner rejection before Popen. Pure Node policy/validation tests exercised journal validator/prefix/bounds without Chromium. No application browser or service was launched.
+
+Only offloaded smoke harness/test changed. Serving source668d/archive041f834b/binarybb11d963/manifestda5353e9 and priorcfb rollback remain unchanged. New runtime/harness identities are separately sealed; no Go build/archive staging or physical service-source replacement. New capacity baseline7270658048,64MiB cap/32MiB guard; tmpfs128MiB cap/96MiB guard. Actual root review and a separately authorized v2 application attempt remain pending; no image-display acceptance claim.
