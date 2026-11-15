@@ -30,3 +30,13 @@ Make the promised durable atomicreplacement explicit: fsync stagedoverridefile a
 ## Current prepared execution root
 
 Use onlyphysical `/home/corp/.local/state/autodata-preview-canary-5981b97-20261115`, finalhelpermanifest `8ee47c6705ee4a0ac62c8282580485808f004f6956fdbf74ad06992c32be4eed`. Priorautofs/loopexecutionpathisblocked/historical. Amendmentgate801a964 passed beforechanges; physicalpath/localDocker/minimalenv/activationmarker/fsync/user+rootcontext/no-navigationChromiumfixtures andfreshbaselinepassed. Canonicalverificationreceipt containsallfinalhashes. Rootconcretereview/activation remains pending; no serving mutation.
+
+## Deterministic browser QA and exact safe auth routes amendment
+
+Independent review blocksactivation: browser QA deniedrequired GET/auth/config and post-domcontentloaded initialDisabled sampling couldfalse-failfasthealthybootstrap. Before QAhelper/fixture edits, synchronize this amendment/Issue424/Project8/canonicaldocs/record and pass pinnedpreflight. These areprivate test-tooling changes, notproduct/UI/runtimebehaviorchanges.
+
+Routepolicy mustpermit exactsame-origin GET/auth/config and GET/auth/session (noquery) whiledenyingallwrites andotherprotecteddynamicroutes. Theactualanonymousappautomaticallyrequests GET/v1/catalog/years afterauthbootstrap; suppress onlythatknownGETprefetch withoutdispatch/providertrigger and recordit separately as expected canarysuppression, notcatalogacceptance or unexpectedwrite. Otherprotected/writerequests remainfailures. Coordinator explicitlyagreed tothisboundary.
+
+Make signintransitiondeterministic byholding onlythebrowser's safe/auth/config completion behindaboundedclient-sidebarrier. Navigateatcommit, observeattachedsigninbuttondisabled whilebarrierclosed, thenrelease andrequirebuttonreadiness. Neverdependonpost-DOMContentLoadedtiming/sleepsforinitialstate. Includehandoffdisclosureofcontrolledrequest/suppressedcatalogscope.
+
+Meaningfulregression: locallyserveexactprotectedWorkshopHTML/bootstrap/app/authassets withsyntheticauthconfig/session andfixtureFirebaseSDK (noexternalnetwork/provider). Testexactrouteallow/deny/expected-suppressioncontract, fastconfig/smallpagehealthytransition andwronginitialenabled/missingreadyfailures; exerciseactualQAfunctions fromactualpage. Keepfixtureslocal/noaccount/sessionwrites, no publicnavigation. Rerunexactclean-envChromiumlaunch, physicalbaseline40checks/protected27, andmanifest/packageintegrity. ResealallphysicalQA/probe/helper/command/dependencyhashes andsendfreshconcretepackageforindependentrootreview; no servingmutation.

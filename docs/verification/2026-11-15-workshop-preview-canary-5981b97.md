@@ -78,3 +78,13 @@ ActualhelperrollbackfixturesPASS: noactivation/wrongmanifestmarkerrefusedbeforew
 Freshphysicalclean-envbaseline40checksPASS; exactpublic3a18d9c/PID620960/envread_only, private6fcc/image5c/source92 and27protectedtablefingerprints unchanged. Physicalbrowserruntime **actual no-navigation Chromiumlaunch/close PASS** underexactcleanenv: Playwright1.62.1, Chromium145.0.7632.159;15secondlaunch/30secondouterbound. Onlyboolean/version recorded; no publicrequest/navigation. Candidatebrowseracceptance remains pendingrootdecision/activation.
 
 Rootrollback-state,activationmarker,newinstallpathremainabsent. No servingmutation/provider/content/payment/privateimageoperation. Freshconcretepackage requiresindependentrootreview beforecanary. Physicalmountverified; coldbootdurability remainsunproved.
+
+## Deterministic browser QA and exact safe auth routes amendment
+
+Independent review blocksactivation: browser QA deniedrequired GET/auth/config and post-domcontentloaded initialDisabled sampling couldfalse-failfasthealthybootstrap. Before QAhelper/fixture edits, synchronize this amendment/Issue424/Project8/canonicaldocs/record and pass pinnedpreflight. These areprivate test-tooling changes, notproduct/UI/runtimebehaviorchanges.
+
+Routepolicy mustpermit exactsame-origin GET/auth/config and GET/auth/session (noquery) whiledenyingallwrites andotherprotecteddynamicroutes. Theactualanonymousappautomaticallyrequests GET/v1/catalog/years afterauthbootstrap; suppress onlythatknownGETprefetch withoutdispatch/providertrigger and recordit separately as expected canarysuppression, notcatalogacceptance or unexpectedwrite. Otherprotected/writerequests remainfailures. Coordinator explicitlyagreed tothisboundary.
+
+Make signintransitiondeterministic byholding onlythebrowser's safe/auth/config completion behindaboundedclient-sidebarrier. Navigateatcommit, observeattachedsigninbuttondisabled whilebarrierclosed, thenrelease andrequirebuttonreadiness. Neverdependonpost-DOMContentLoadedtiming/sleepsforinitialstate. Includehandoffdisclosureofcontrolledrequest/suppressedcatalogscope.
+
+Meaningfulregression: locallyserveexactprotectedWorkshopHTML/bootstrap/app/authassets withsyntheticauthconfig/session andfixtureFirebaseSDK (noexternalnetwork/provider). Testexactrouteallow/deny/expected-suppressioncontract, fastconfig/smallpagehealthytransition andwronginitialenabled/missingreadyfailures; exerciseactualQAfunctions fromactualpage. Keepfixtureslocal/noaccount/sessionwrites, no publicnavigation. Rerunexactclean-envChromiumlaunch, physicalbaseline40checks/protected27, andmanifest/packageintegrity. ResealallphysicalQA/probe/helper/command/dependencyhashes andsendfreshconcretepackageforindependentrootreview; no servingmutation.
