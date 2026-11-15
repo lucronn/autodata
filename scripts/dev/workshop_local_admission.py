@@ -121,7 +121,9 @@ def image_env_errors(metadata, service):
         sensitive=re.search(r"PASSWORD|SECRET|TOKEN|API_KEY|CREDENTIAL|BEARER|AUTHORIZATION|_KEY$",key) is not None
         if (key.startswith(IMAGE_CONFIG_PREFIXES) or sensitive) and key not in explicit:errors.append("unreviewed_image_env")
     effective={**inherited,**explicit}
-    if any(effective.get(k) for k in EXTERNAL_BLANK_KEYS):errors.append("external_effective_material")
+    provider=re.compile(r"BANKONE|BANKTWO|INCEPTION|STRIPE|FIREBASE|GOOGLE")
+    sensitive=re.compile(r"PASSWORD|SECRET|TOKEN|API_KEY|ACCESS_KEY|CREDENTIAL|BEARER|AUTHORIZATION|PRIVATE_KEY")
+    if any(value and (key in EXTERNAL_BLANK_KEYS or provider.search(key) and sensitive.search(key)) for key,value in effective.items()):errors.append("external_effective_material")
     # Other intended values are enforced by the exact fixed Compose policy above.
     return sorted(set(errors))
 

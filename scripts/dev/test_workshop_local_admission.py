@@ -178,6 +178,13 @@ class AdmissionTests(unittest.TestCase):
             self.assertTrue(errors);self.assertNotIn("sentinel",json.dumps(errors))
         self.assertTrue(a.image_env_errors({"Config":{"Env":["AUTODATA_IMAGE_URL_KEY="]}},{"environment":{}}))
 
+    def test_new_explicit_provider_secrets_still_must_be_empty(self):
+        for key in ["AUTODATA_INCEPTION_API_KEY","STRIPE_SECRET_KEY","GOOGLE_APPLICATION_CREDENTIALS","FIREBASE_NEW_TOKEN","BANKONE_ACCESS_KEY","AUTODATA_BANKTWO_PASSWORD"]:
+            with self.subTest(key=key):
+                meta={"Config":{"Env":[key+"=synthetic-secret-sentinel"]}}
+                self.assertTrue(a.image_env_errors(meta,{"environment":{key:"synthetic-secret-sentinel"}}))
+                self.assertEqual(a.image_env_errors(meta,{"environment":{key:""}}),[])
+
     def test_helper_contains_no_docker_mutation_or_general_shell(self):
         self.assertEqual(a.DOCKER_READ_COMMANDS, {"image-inspect", "compose-config", "network-list-inspect", "container-list-inspect"})
         code = Path(a.__file__).read_text()
