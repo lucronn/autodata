@@ -3,7 +3,7 @@ FROM python:3.14-slim
 WORKDIR /app
 COPY workers/ingestion-python/pyproject.toml ./
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends poppler-utils tesseract-ocr \
+    && apt-get install -y --no-install-recommends libcairo2 fonts-dejavu-core poppler-utils tesseract-ocr \
     && rm -rf /var/lib/apt/lists/*
 RUN python -c "import tomllib,subprocess; p=tomllib.load(open('pyproject.toml','rb')); subprocess.check_call(['pip','install','--no-cache-dir',*p['project']['dependencies']])"
 COPY workers/ingestion-python/src ./src

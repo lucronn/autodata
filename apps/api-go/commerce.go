@@ -104,7 +104,7 @@ func commerceHostedURL(v string) bool {
 		return false
 	}
 	u, e := url.Parse(v)
-	return e == nil && u.Scheme == "https" && u.Host == "checkout.stripe.com" && u.User == nil && strings.HasPrefix(u.Path, "/c/pay/")
+	return e == nil && u.Scheme == "https" && u.Host == "checkout.stripe.com" && u.User == nil && (strings.HasPrefix(u.Path, "/c/pay/") || strings.HasPrefix(u.Path, "/g/pay/")) && len(u.Path) > len("/c/pay/")
 }
 func commerceScopeValid(id, region string) bool { return commerceUUID(id) && commerceRegion(region) }
 func commerceErrorCode(body []byte) string {
