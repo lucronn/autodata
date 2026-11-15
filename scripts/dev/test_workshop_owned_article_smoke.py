@@ -53,4 +53,27 @@ class BrowserBoundaryTests(unittest.TestCase):
   bad=[good.replace(f['body'],''),good+'\n'+f['body'],good.replace('First\nDo first.','Do first.\nFirst'),good.replace('Original authored intro.\n','')+'\nOriginal authored intro.']
   result=s.node_run({'action':'validate','configs':[],'presentations':[[good,f]]+[[text,f] for text in bad]},5)
   self.assertEqual(result['presentations'],[True]+[False]*len(bad))
+ @unittest.skipUnless(s.NODE.is_file(),'Node optional offline diagnostics probe')
+ def test_failure_diagnostics_keep_safe_stage_code_and_counts_only(self):
+  cases=[{'code':'display_body_once_and_step_order','stage':'desktop_detail','requests':17,'route_statuses':[{'category':'catalog','status':200,'count':4}]},{'code':'secret https://external.invalid','stage':'unsafe/private/path','requests':999999,'route_statuses':[{'category':'https://external.invalid','status':999,'count':999999}]}]
+  actual=s.node_run({'action':'policy','cases':[],'failure_policy':True,'failures':cases},5)
+  safe,unsafe=actual['failures'];self.assertEqual(safe['code'],'display_body_once_and_step_order');self.assertEqual(safe['stage'],'desktop_detail');self.assertEqual(safe['counters']['requests'],17)
+  self.assertEqual(unsafe['code'],'browser_runtime');self.assertEqual(unsafe['stage'],'unknown');self.assertEqual(unsafe['route_statuses'],[])
+  self.assertNotIn('external.invalid',str(unsafe));self.assertLessEqual(unsafe['counters']['requests'],221)
+ @unittest.skipUnless(s.NODE.is_file(),'Node optional offline diagnostics probe')
+ def test_failure_screenshot_error_preserves_primary_failure(self):
+  result=s.node_run({'action':'policy','cases':[],'failure_policy':True,'failures':[{'code':'display_body_once_and_step_order','stage':'mobile_detail','requests':9}],'screenshot_failure':True},5)
+  self.assertEqual(result['failures'][0]['code'],'display_body_once_and_step_order');self.assertTrue(result['failures'][0]['partial_screenshot']['attempted']);self.assertFalse(result['failures'][0]['partial_screenshot']['saved'])
+ def test_private_failure_receipt_rejects_unbounded_or_unknown_fields(self):
+  import tempfile,json
+  safe={'ok':False,'error':'owned_browser_failed_preserve_state','code':'browser_runtime','stage':'launch','counters':{'requests':0},'route_statuses':[],'partial_screenshot':{'attempted':False,'saved':False}}
+  with tempfile.TemporaryDirectory() as directory:
+   path=Path(directory)/'failure.json';s.write_failure_receipt(path,safe)
+   self.assertEqual(path.stat().st_mode&0o777,0o600);self.assertEqual(json.loads(path.read_text()),safe)
+   for bad in [{**safe,'url':'https://external.invalid'},{**safe,'code':'secret token value'},{**safe,'counters':{'requests':222}},{**safe,'route_statuses':[{'category':'catalog','status':999,'count':1}]}]:
+    with self.assertRaises(ValueError):s.write_failure_receipt(Path(directory)/'rejected.json',bad)
+ @unittest.skipUnless(s.NODE.is_file(),'Node optional offline action probe')
+ def test_unknown_action_fails_before_browser_or_application_request(self):
+  with self.assertRaises(s.BrowserFailure) as caught:s.node_run({'action':'unknown'},5)
+  self.assertEqual(caught.exception.receipt['code'],'unsupported_action');self.assertEqual(caught.exception.receipt['stage'],'input');self.assertEqual(caught.exception.receipt['counters']['requests'],0);self.assertFalse(caught.exception.receipt['partial_screenshot']['attempted'])
 if __name__=='__main__':unittest.main()
