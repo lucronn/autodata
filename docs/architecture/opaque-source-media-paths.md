@@ -94,3 +94,14 @@ container build, and `git diff --check` pass. The running release-candidate
 stack has no stable image-reference key configured, so it fails closed and
 cannot serve its existing local image objects until that environment is
 configured.
+
+## Retained reader evidence (2026-11-14)
+
+A read-only inspection of the retained serving snapshot found eight available
+article documents across two exact vehicle configurations. All 14 image
+occurrences in those current articles were unavailable and lacked storage keys.
+The existing active entitlement has no customer, configuration or commerce
+order scope. These storage facts do not establish an authenticated Workshop
+read or supplier permission for external testers. See
+`docs/verification/2026-11-14-workshop-retained-reader-acceptance.md` for the
+aggregate evidence and remaining acceptance work.
