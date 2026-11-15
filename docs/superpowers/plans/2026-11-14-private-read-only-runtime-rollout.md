@@ -39,3 +39,9 @@ After coordinator dispatch one public2024USmakes GET, independent durable scope 
 - [ ] Build/hash/test immutable finalsource and actual-runtime fixture startup/quote/schema with no externalcalls.
 - [ ] Capture new private backup/protected baseline; prepare exactsource/mode replacement/rollback; coordinatorreviews+dispatches.
 - [ ] Provehealth/readonlycommerce/selectorwrites/disabledpurchase/protectedstate, then bounded realselectortruth and remaininggaps.
+
+## Additional version and rollback boundaries
+
+Pin the exact protected merge of Python PR417 with Go PR412 ancestry, before SVG Issue419 dependency changes. Never select a moving master tip. Verify the pinned source dependency manifest against the existing image: no CairoSVG/libcairo-dependent SVG source may enter this source-only release. SVG localization needs its separately reviewed image/build gate. Stop if merge ancestry includes that dependency before a compatible image is separately authorized.
+
+Restarting the retained old e4af862 predecessor runs its existing Stripe verify_merchant and verify_price startup reads. The new read_only runtime performs neither. Rollback therefore must not be represented as zero provider I/O; it preserves the old non-payment startup behavior and may fail if those dependencies are unavailable. No checkout, settlement or direct source traversal is authorized by rollback. Preserve failure evidence if old readiness cannot recover.
