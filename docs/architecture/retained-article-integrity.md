@@ -79,3 +79,23 @@ Only after separate concrete approval, one real hash-only execution command woul
 `/usr/bin/sudo -n /usr/bin/env -i PATH=/usr/bin:/bin LANG=C.UTF-8 LC_ALL=C.UTF-8 PYTHONDONTWRITEBYTECODE=1 /usr/bin/python3 -B /home/corp/.local/state/autodata-retained-integrity-428-20261115/retained_article_integrity.py --run --expected-script-sha256 bf24f67bda8d0a28d69f33b7efdce29399134766bc428edc4f7499d14bbf8e52`
 
 Both commands are currently HELD for root review. No protected payload is written to disk; output contains only strict receipt fields. No paid GET, grant/session write, supplier/model/ingestion request, image recapture, display, runtime reconfiguration or rights assertion is included. Final PR/CI still held for coordinated base.
+
+
+## Actual bounded retained-body integrity proof — PASS
+
+The coordinator independently reviewed exact sealed code `9424dfee0474d44b7eb2511d64945c0c3a92e57b`, verified root-owned package hashes, ran the authored-only Docker validator fixture PASS, then executed **exactly one** real hash-only --run from the sealed physical package under clean env. No additional runtime/DB/S3/Docker/provider request was made while recording this outcome.
+
+Private receipt `/home/corp/.local/state/autodata-retained-integrity-outcome-20261115/receipt.json`, mode0600, SHA256 `7abd8798fa6e864c1afae6290579f57e1b724aa0c8d2f95870b859e58247e455`. This documentation agent independently read the receipt locally, verified its file hash and extracted only the following redacted fields. Article identity/title, protected body, source-body hash, projection hashes and selection hash remain private and are not published here.
+
+- passed, source_hash_verified, identity_verified, ordered_projection_schema_verified and canonical_published: true.
+- Retained body length:2283bytes; source document9blocks/103JSONnodes; current document10blocks/113JSONnodes.
+- unreviewed and license_metadata_empty: true.
+- licensed_display and paid_reader_acceptance: false; supplier_calls and model_calls:0.
+
+The coordinator independently postchecked candidate343896 running with restart count0, unchanged StartedAt and image3132, no residual authored/integrity validator containers, public health200 and stable Docker/home capacity. Those postchecks are coordinator observations, not extra requests by the documentation agent. The harness's pre/post exact candidate/env/source/script guards passed as prerequisites of its successful receipt.
+
+This proves one already retained source object's bytes matched the persisted source snapshot hash, the selected opaque article/source/current published canonical identities were consistent, and source/current ordered projection structure met the bounded validator checks. It does not prove canonical semantic correctness, human review, supplier permission or real catalog completeness. It did not render licensed content or access images, paid-reader routes, Firebase/Stripe/session/grant creation, supplier/model/ingestion work. Existing published data remains UNREVIEWED and lacks affirmative license metadata. No stored SVG original or localized real image was repaired by this run.
+
+Normal paid-reader acceptance remains blocked on an authorized exact configuration-scoped entitlement via genuine TEST settlement after owner UID/project/origin/terms, plus applicable content permissions. Legacy nonpaid list/detail may schedule writes and were not called. Paid GET remains grant-gated and requires Firebase GetUser/internal read-only grants-check dependencies; this lower-layer integrity proof does not bypass or replace them. Any real image recapture still requires supplier rights and an exact bounded provider-GET gate. External/public licensed exposure stays disabled.
+
+The internal integrity objective is complete; code PR/final CI/protected-base integration remain HELD for coordinator scheduling and review. No merge/deploy/second real read is authorized by this result. Prior gate/negative tests and first-preparation limitations are retained as history, superseded only as to the now-observed authored Docker launch and one real integrity run.
