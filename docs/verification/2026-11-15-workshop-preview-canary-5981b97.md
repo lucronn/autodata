@@ -4,7 +4,7 @@ Issue: https://github.com/lucronn/autodata/issues/424
 Project: https://github.com/users/lucronn/projects/8 item PVTI_lAHOCSJ8cc4BiQ2BzhI0NZI.
 Plan: docs/superpowers/plans/2026-11-15-workshop-preview-canary-5981b97.md
 
-Status: exact-source artifact, baseline and fixture-tested helpers prepared for independent rootreview. **No runtime mutation performed.** Rootreviews concretepackage/commands before execution.
+Status: **physical package resealed after rootreview blockers; current execution root and hashes are in the final section below. Earlier loop/autofs package is historical.** Exact-source artifact, baseline and fixture-tested helpers prepared for independent rootreview. **No runtime mutation performed.** Rootreviews concretepackage/commands before execution.
 
 Protectedsource `5981b97f187364e54737919fd8cdb49e7566d981`, tree `b3f321d0263e12da2d5c54f136c9ffcee155e1d1`, protected422merge/tree-identicalrevieweded7ffa6, requiredCI43665654018 allthreeSUCCESS. Preparationgate `fde78f74eafeb6101a969a16c2483fdc573d8edf` directlydescends thatprotectedsource; Issue424/Project8 readback and machinepreflight synchronized/errors[] passedbeforeartifact/helpergeneration.
 
@@ -58,3 +58,23 @@ Amendment todo:
 Before changing package/helper, synchronize this additional rootreview requirement and pass the amended checkpoint. restore() must refuse before reserving rollback or restarting unless the physicalpackage contains the exclusive activation-attempted marker bound to the exactmanifest, with validated owner/mode/nosymlink/content. Fixturetest no-marker refusal before writes/restart/rollbackreservation, then oneallowedactivationmarker/rollback and repeatedrollbackrefusal. Rootreserves thatmarker exclusively beforeinstall/switch.
 
 Make the promised durable atomicreplacement explicit: fsync stagedoverridefile and containingdirectory before rename; after same-directory rename fsync finaloverridefile and directory before daemonreload. Rollback's atomic_restore must fsync the restoredfile and containingdirectory too. Rootcommandallowlist must contain exactbounded fsync operations; no implieddurability frominstall/mv alone. Allmanifestartifact/probe/browser/helper/backup/command paths must be physical; retain loopbackpackage onlyas historicalevidence.
+
+## Physical package final review seal
+
+**Current execution/rollback package only:** `/home/corp/.local/state/autodata-preview-canary-5981b97-20261115` on `/dev/nvme0n1p11` ext4 (physicalhome),198sealedphysicalfiles. Prior loop/autofs package/path/seals above are historical and must not be used for execution/rollback. Physical/localDocker checkpoint147cc1a and activation/fsync checkpoint `801a96479b62bb5c6f9aa8aa5635d08b7671c88f` synchronized Issue424/Project8/canonicaldocs and passed machinepreflight before relocation/helper edits. Oldpackage remains unchanged.
+
+- HelpermanifestSHA256 `8ee47c6705ee4a0ac62c8282580485808f004f6956fdbf74ad06992c32be4eed`.
+- ReleasemanifestSHA256 `8047ee4ddc638626db7b43e5506987b03fa9c45cd7eb733f409fb67d4a0a3674`.
+- RollbackhelperSHA256 `7a2c8f1440e099dbc548b4af3a0d9ae697c03e412c421ab672a089222c766927`.
+- ProbeSHA256 `8396ff03f6383764ee15d82a5daad65c73dfa134f4b89865cb46785eba91f544`.
+- PhysicalROOT-COMMANDS.mdSHA256 `4771b29be801fffbe385051d2081ceee489cb0385cb71fde7ebb6032d5f42623`.
+
+Exactprotectedsource/binary/archive/13assetpins unchanged;1367physicalsourcecopyfiles verified. Manifestartifact_path nowphysical. Physicalcontract checksrealpath/device/findmnt/fixeddependencies plusactivation/rollback-statepayloads whenpresent. Existinginstalledoldbinary/config andprivateDockercontract remaininspectedlive dependencies only. CopiedphysicalPlaywright1.62.1/core plusabsolute/usr/bin/node and/usr/bin/chromium avoidoffloadednodeexecution.
+
+Dockerinspect/exec use `/usr/bin/docker --config PHYSICAL_ROOT/docker-cli-config --host unix:///var/run/docker.sock` withminimalfixedchildenv; inheritedDockerhost/context/config/TLS/cert/proxy/PATH cannotselectanotherdaemon/executable. Isolatedargv/envfixtures andactualread-onlybaselinecheckasbothuserandrootunderhostileoverridesPASS; foreignexecutionrootrefused.
+
+ActualhelperrollbackfixturesPASS: noactivation/wrongmanifestmarkerrefusedbeforewrite/reservation/restart; preparation/restoredriftrefusal; unchangedenv/exactbytes+metadata; oneinertrestart/repeatrefusal. Activationmarker isexclusive/rootowned0600/exactmanifest-bound. Stagedandfinaloverridefile+directoryfsync commands areexplicit aroundatomicrename; rollback andbackupwrites fsyncfiles/directories. ShellallowlistsyntaxPASS. No realrollbackexercise.
+
+Freshphysicalclean-envbaseline40checksPASS; exactpublic3a18d9c/PID620960/envread_only, private6fcc/image5c/source92 and27protectedtablefingerprints unchanged. Physicalbrowserruntime **actual no-navigation Chromiumlaunch/close PASS** underexactcleanenv: Playwright1.62.1, Chromium145.0.7632.159;15secondlaunch/30secondouterbound. Onlyboolean/version recorded; no publicrequest/navigation. Candidatebrowseracceptance remains pendingrootdecision/activation.
+
+Rootrollback-state,activationmarker,newinstallpathremainabsent. No servingmutation/provider/content/payment/privateimageoperation. Freshconcretepackage requiresindependentrootreview beforecanary. Physicalmountverified; coldbootdurability remainsunproved.
