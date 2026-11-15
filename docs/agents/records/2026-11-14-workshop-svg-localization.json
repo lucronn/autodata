@@ -7,10 +7,10 @@
     "docs/architecture/workshop-svg-localization.md"
   ],
   "todo": [
-    "Add pinned renderer and bounded isolated SVG rasterization with external-reference denial",
+    "Add pinned isolated SVG rasterization, validated embedded PNG/JPEG data, tightly recognized inert W3C SVG DOCTYPE removal, and external-reference denial",
     "Preserve exact originals and PNG derivation metadata and honest capture failure reasons",
     "Test hostile and valid synthetic SVG capture and run required checks without production mutation"
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-14T23:00:00Z"
+  "updated_at": "2026-11-14T23:30:00Z"
 }
