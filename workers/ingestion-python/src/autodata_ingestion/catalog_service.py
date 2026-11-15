@@ -13,8 +13,11 @@ import time
 from copy import deepcopy
 from threading import Event, RLock, Thread
 from typing import Any, Callable, Iterable, Mapping
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 from uuid import uuid4
+
+
+from . import selector_job
 
 
 _LOG = logging.getLogger(__name__)
@@ -154,7 +157,7 @@ class CacheFirstCatalogService:
         for provider in self._providers:
             try:
                 payload = _call_provider(provider, request)
-            except _SelectorDeepeningStopped:
+            except (_SelectorDeepeningStopped, selector_job.SelectorJobStopped):
                 raise
             except Exception as error:  # noqa: BLE001 - one source may be unavailable while another is usable
                 _configuration_diagnostic(request, provider=provider, stage="provider_resolution", outcome="failed", error=error)
@@ -174,7 +177,10 @@ class CacheFirstCatalogService:
                 completed_providers += 1
             else:
                 _configuration_diagnostic(request, provider=provider, stage="provider_resolution", outcome="incomplete", row_count=len(normalized_rows))
-        if request.scope in {"makes", "models", "configurations"}:
+        if request.scope in {"makes", "models", "configurations"} or any(
+            getattr(getattr(provider, "deepening_control", None), "initial_selector_budget", False)
+            for provider in self._providers
+        ):
             complete = bool(self._providers) and completed_providers == len(self._providers)
             if not complete:
                 missing.add(request.scope)
@@ -334,6 +340,9 @@ def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
             _HYDRATION_RESULTS[key] = (time.monotonic(), deepcopy(result))
         return result
 
+    if scope in {"years", "makes", "models"}:
+        return _ensure_initial_selector(request, key)
+
     stage = "provider_configuration"
     resolved = None
     configuration_control = _ConfigurationHydrationControl() if scope == "configurations" else None
@@ -397,9 +406,6 @@ def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
                 "persistence": persistence,
                 "coverage": coverage,
             }
-            if scope in {"makes", "models"} and resolved.rows:
-                stage = "deepening"
-                result["deepening"] = _schedule_selector_deepening(request, scope, resolved.rows)
     except _ConfigurationHydrationStopped as error:
         _configuration_diagnostic(
             request, stage="provider_resolution" if stage == "resolve" else stage,
@@ -427,6 +433,67 @@ def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
     finally:
         if configuration_control is not None:
             _configuration_budget_event(request, configuration_control, "finished")
+    with _HYDRATION_LOCK:
+        _HYDRATION_RESULTS[key] = (time.monotonic(), deepcopy(result))
+    return result
+
+
+def _ensure_initial_selector(request, key):
+    # Validate in the parent before acquiring admission or starting any process.
+    scope = str(request["scope"]).strip()
+    request = {**request, "scope": scope}
+    model = CatalogRequest(int(request.get("year", 2000)), str(request.get("make", "unknown")),
+                           "unknown", str(request.get("region", "US")), scope=scope)
+    if len(model.make) > 256 or len(model.region) > 32:
+        raise ValueError("catalog selector exceeds input limit")
+    result = {"status": "deferred", "hydration_key": key, "scope": scope,
+              "complete": False, "missing_scopes": [scope], "rows": [], "retry_after_seconds": 30}
+    if not _configured_catalog_providers():
+        result["status"] = "accepted"
+        return result
+    token = selector_job.ADMISSION.acquire(request)
+    if token is None:
+        result["stop_reason"] = "admission"
+        return result
+    deadline = time.monotonic() + 20
+    complete = False
+    stage = "resolve"
+    try:
+        normalized = {"scope": scope, "year": model.year, "make": model.make,
+                      "region": model.region}
+        payload = selector_job.run_owned(normalized, deadline)
+        selector_job.SelectorJobControl(deadline).remaining()
+        resolved = CatalogResult(rows=tuple(_canonical_rows(payload["rows"], scope=scope)),
+                                 complete=payload["complete"],
+                                 provenance=tuple(_provenance(payload["provenance"])),
+                                 missing_scopes=tuple(payload["missing_scopes"]))
+        stage = "coverage_persistence"
+        # Initial selectors are sparse: makes/models rows live in the scoped
+        # marker, never the full vehicle/S3 evidence persistence pipeline.
+        if scope == "years" and not resolved.complete:
+            # Go hydrates years only while the durable years read is empty.
+            # A partial upsert would suppress its next cold retry indefinitely.
+            coverage = {"status": "skipped_incomplete_years", "row_count": 0}
+            persistence = dict(coverage)
+        else:
+            coverage = _persist_hydration_scope(request, resolved, deadline=deadline)
+            persistence = {"status": "selector_scope_only", "row_count": 0}
+        selector_job.SelectorJobControl(deadline).remaining()
+        complete = resolved.complete
+        result.update(status="hydrated", complete=complete, missing_scopes=list(resolved.missing_scopes),
+                      rows=list(resolved.rows), provenance=list(resolved.provenance), coverage=coverage,
+                      persistence=persistence)
+        if complete or scope != "years":
+            result.pop("retry_after_seconds", None)
+    except selector_job.SelectorJobStopped as error:
+        result["stop_reason"] = error.reason
+    except Exception as error:
+        if not isinstance(error, ValueError):
+            _LOG.error("catalog selector ensure failed scope=%s stage=%s error_type=%s",
+                       scope, stage, type(error).__name__)
+        raise
+    finally:
+        selector_job.ADMISSION.release(token, complete=complete)
     with _HYDRATION_LOCK:
         _HYDRATION_RESULTS[key] = (time.monotonic(), deepcopy(result))
     return result
@@ -1315,7 +1382,7 @@ def _persist_resolved_catalog_rows(
     return {"status": "persisted", "row_count": len(persistable), **result}
 
 
-def _persist_hydration_scope(request: Mapping[str, Any], result: CatalogResult) -> dict[str, Any]:
+def _persist_hydration_scope(request: Mapping[str, Any], result: CatalogResult, *, deadline: float | None = None) -> dict[str, Any]:
     """Persist a durable completeness marker for a successful scoped read."""
 
     # Empty rows are allowed: a complete provider enumeration with no matching
@@ -1334,8 +1401,19 @@ def _persist_hydration_scope(request: Mapping[str, Any], result: CatalogResult) 
     import psycopg
     from psycopg.types.json import Jsonb
 
-    with psycopg.connect(**_conninfo()) as connection:
+    conninfo = _conninfo()
+    if deadline is not None:
+        remaining = selector_job.SelectorJobControl(deadline).remaining()
+        # Reserve connect/commit time; do not start a write at the deadline.
+        if remaining < 2:
+            raise selector_job.SelectorJobStopped("elapsed")
+        milliseconds = min(1000, max(1, int((remaining - 1) * 1000)))
+        conninfo.update(connect_timeout=1,
+                        options=f"-c statement_timeout={milliseconds} -c lock_timeout=250")
+    with psycopg.connect(**conninfo) as connection:
         with connection.cursor() as cursor:
+            if deadline is not None:
+                selector_job.SelectorJobControl(deadline - 1).remaining()
             if selector_scope:
                 selector_rows = []
                 for row in result.rows:
@@ -1375,16 +1453,50 @@ def _persist_hydration_scope(request: Mapping[str, Any], result: CatalogResult) 
                      Jsonb(selector_rows), 1 if result.complete else 0),
                 )
             else:
-                cursor.execute(
-                    """
-                    INSERT INTO vehicle_catalog_hydration_scopes
-                        (scope_key, scope, model_year, make, model, region, provenance)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (scope_key) DO UPDATE
-                    SET provenance = EXCLUDED.provenance, updated_at = now()
-                    """,
-                    (scope_key, scope, year, make, model, region, Jsonb(list(result.provenance))),
-                )
+                if deadline is not None and scope == "years":
+                    # Exact row/page binding, with a normalized projection hash.
+                    years = sorted({int(row["year"]) for row in result.rows})
+                    if any(value < 1886 or value > 2100 for value in years):
+                        raise ValueError("source year is outside the supported range")
+                    projection_hash = sha256(json.dumps(years, separators=(",", ":")).encode()).hexdigest()
+                    records = {}
+                    for row in result.rows:
+                        mappings = row.get("provider_mappings", ())
+                        if not mappings:
+                            raise ValueError("source year lacks page provenance")
+                        for mapping in mappings:
+                            if not all(mapping.get(name) for name in ("provider", "source_uri", "source_version")):
+                                raise ValueError("source year lacks page provenance")
+                            identity = (mapping["provider"], mapping["source_version"], int(row["year"]))
+                            records.setdefault(identity, {"provider": identity[0], "source_version": identity[1],
+                                "year": identity[2], "source_uri": mapping["source_uri"]})
+                    selector_job.SelectorJobControl(deadline - 1).remaining()
+                    cursor.execute(
+                        """
+                        INSERT INTO vehicle_catalog_years
+                            (provider, source_version, year, source_uri, response_hash)
+                        SELECT provider, source_version, year, source_uri, %s
+                        FROM jsonb_to_recordset(%s) AS years(
+                            provider text, source_version text, year integer, source_uri text)
+                        ON CONFLICT (provider, source_version, year) DO UPDATE
+                        SET source_uri = EXCLUDED.source_uri,
+                            response_hash = EXCLUDED.response_hash,
+                            fetched_at = now(), updated_at = now()
+                        """, (projection_hash, Jsonb(list(records.values()))),
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        INSERT INTO vehicle_catalog_hydration_scopes
+                            (scope_key, scope, model_year, make, model, region, provenance)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (scope_key) DO UPDATE
+                        SET provenance = EXCLUDED.provenance, updated_at = now()
+                        """,
+                        (scope_key, scope, year, make, model, region, Jsonb(list(result.provenance))),
+                    )
+        if deadline is not None:
+            selector_job.SelectorJobControl(deadline - 1).remaining()
         connection.commit()
     return {"status": "persisted", "scope_key": scope_key}
 
@@ -1426,14 +1538,18 @@ class _SourceCatalogProvider:
             else:
                 from .source_connector_client import SourceConnectorError
 
-                timeout = self.deepening_control.before_request()
+                timeout = (self.deepening_control.remaining()
+                           if getattr(self.deepening_control, "initial_selector_budget", False)
+                           else self.deepening_control.before_request())
                 try:
                     page = self.client.catalog(
                         scope, selector, cursor, timeout=timeout,
                         before_additional_request=self.deepening_control.before_request,
+                        **({"read_control": self.deepening_control} if getattr(self.deepening_control, "initial_selector_budget", False) else {}),
                     )
                 except SourceConnectorError as error:
-                    if getattr(self.deepening_control, "configuration_budget", False):
+                    if (getattr(self.deepening_control, "configuration_budget", False)
+                            or getattr(self.deepening_control, "initial_selector_budget", False)):
                         # Deadline body errors are wrapped by the connector;
                         # classify expired/cancelled work before supplier errors.
                         self.deepening_control.remaining()
@@ -1493,6 +1609,14 @@ class _SourceCatalogProvider:
                     "provider_id": item["opaque_ref"],
                     "provider_label": item["label"],
                 }]
+                if getattr(self.deepening_control, "initial_selector_budget", False):
+                    page_uri = f"{self.client.base_url}/v1/catalog/{scope}"
+                    if scope == "years" and cursor is not None:
+                        page_uri += "?" + urlencode({"cursor": cursor})
+                    row["provider_mappings"][0].update(
+                        source_uri=page.source_locator or page_uri,
+                        source_version=page.source_revision,
+                    )
                 rows.append(row)
             if page.complete:
                 # Completeness belongs to the requested selector scope. Sparse

@@ -120,8 +120,15 @@ def test_partial_selector_retry_is_bounded_then_replays_complete(monkeypatch):
     monkeypatch.setattr(service, "_configured_catalog_providers", lambda: (first, second))
     monkeypatch.setattr(service, "_persist_resolved_catalog_rows", lambda *a, **k: {})
     persisted = []
-    monkeypatch.setattr(service, "_persist_hydration_scope", lambda request, result: persisted.append(result) or {})
-    monkeypatch.setattr(service, "_schedule_selector_deepening", lambda *a: {})
+    monkeypatch.setattr(service, "_persist_hydration_scope", lambda request, result, **kwargs: persisted.append(result) or {})
+    monkeypatch.setattr(service, "_schedule_selector_deepening", lambda *a: pytest.fail("public descendant job"))
+    monkeypatch.setattr(service.selector_job, "ADMISSION", service.selector_job.SelectorAdmission(clock=lambda: clock[0]))
+    def owned(request, deadline):
+        resolved = service.CacheFirstCatalogService(cache_reader=lambda _: None, providers=(first, second)).resolve(
+            service.CatalogRequest(2020, "Ford", "unknown", scope="models"))
+        return {"rows": list(resolved.rows), "complete": resolved.complete,
+                "missing_scopes": list(resolved.missing_scopes), "provenance": list(resolved.provenance)}
+    monkeypatch.setattr(service.selector_job, "run_owned", owned)
     request = '{"scope":"models","year":2020,"make":"Ford","idempotency_key":"selector-retry-test"}'
     service._HYDRATION_RESULTS.pop("selector-retry-test", None)
     try:
@@ -131,6 +138,9 @@ def test_partial_selector_retry_is_bounded_then_replays_complete(monkeypatch):
         assert service.ensure_catalog_hydration(request) == partial
         assert len(calls) == 2
         clock[0] = 21.0
+        deferred = service.ensure_catalog_hydration(request)
+        assert not deferred["complete"] and deferred["stop_reason"] == "admission" and len(calls) == 2
+        clock[0] = 31.0
         healthy[0] = True
         complete = service.ensure_catalog_hydration(request)
         assert complete["complete"] and len(complete["rows"]) == 2
