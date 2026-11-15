@@ -162,3 +162,43 @@ checkpoint `3694ec9ef240de31eab4db6b51776b25a61a2fd7`. This was a source/fixture
 CI result, not Stripe settlement or staging acceptance. The PR-associated
 required check and independent exact-head review are rechecked after each
 subsequent documentation commit.
+
+## Existing private Stripe acceptance and Docker configuration
+
+A follow-up inventory after Docker recovery found merchant configuration key
+names in both `autodata-ingestion-grant-ready-e4af862` and
+`autodata-checkout-test-ingestion-http-1`: commerce mode, environment, public
+origin, Stripe account, Price, secret key, webhook secret and purchase notices.
+Only key names were emitted from current Docker inspection; current secret
+values, validity, live/test prefix, account and Price were not disclosed or
+revalidated. Empty local environment-file searches and inaccessible cloud
+Secret Manager do **not** establish that credentials are missing: Docker has
+an existing private configuration source that must be assessed through the
+approved operator path before requesting replacements.
+
+Retained sanitized private evidence already exists at
+`/home/corp/autodata-evidence/stripe-test-2026-11-06/`. Its preflight records
+source `36359d5e46d37387f210bc467971eef8eaa6857a`, official Stripe16.1.0,
+API2025-08-27.basil, test key, matching merchant and active USD2000 test Price.
+The named checkout/webhook/grant/refund-restart/cleanup receipts report:
+
+- Actual test Checkout creation and idempotent order/session, card only,
+  quantity one, fixed USD2000, followed by genuine CLI settlement delivery.
+- Owner paid grant/library and wrong-owner, adjacent-configuration,
+  other-region and bad-signature denials.
+- Full test refund, genuine refund delivery and monotone revocation surviving
+  service reconstruction and database restart, without resurrection or duplicate
+  grant. The separate settlement replay is explicitly described as an
+  authentic SDK-retrieved event signed locally, not another genuine delivery.
+- Test payment fully refunded, no open Checkout, temporary owned acceptance
+  resources/listener removed, no Stripe endpoint created, and public purchase
+  configuration untouched. The historical external config probe was403;
+  it did not directly prove public readiness.
+
+These are historical retained summaries, not a fresh rerun against current
+master or proof of available supplier rights. The historical configuration
+booleans recorded test keys present and live keys absent in two private
+containers. Preserve this commerce milestone while keeping the outstanding
+Firebase/tester/HTTPS staging/licensed article-media browser acceptance under
+#398 separate. No current key was used, checkout allocated, webhook delivered,
+refund issued or grant changed by this readiness lane.
