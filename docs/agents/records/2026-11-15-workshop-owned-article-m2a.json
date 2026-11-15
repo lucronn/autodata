@@ -12,10 +12,11 @@
     "Boot fresh empty M2A on loopback3042, verify actual auth gates before one authored article/image seed, keep all customer/payment/grant rows zero",
     "Exercise desktop and narrow mobile selector/index/detail/image through real PG/S3, verify screenshot/no clipping/console errors/back/reload, stop owned resources and hold PR/merge for root",
     "Preserve sanitized browser failure stage/code/counters/route statuses and private partial screenshot, reseal exact package and obtain root review before same-resource retry",
-    "Add fixed held-ebed evidence relocation helper and owned fixture tests; permit reviewed offloaded fresh Go output/temp with physical active binary retained only on byte identity"
+    "Add fixed held-ebed evidence relocation helper and owned fixture tests; permit reviewed offloaded fresh Go output/temp with physical active binary retained only on byte identity",
+    "Build/reseal exact diagnostics source using reviewed offloaded output/temp, retain physical binary only on fresh hash+byte identity; verify stopped resource/storage policy and deliver complete package for root review before runtime restart/browser retry"
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-15T04:21:37.684037+00:00",
+  "updated_at": "2026-11-15T04:28:35.986813+00:00",
   "source_base_sha": "f534d0aeb76973ca3b8c70b14c806973edb1b457",
   "source_base_tree": "902287299c37c49ebb3cae2245303e0c95100e90",
   "implementation_allowlist": [
@@ -39,8 +40,17 @@
     "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhH730A",
     "project_status": "In Progress",
     "readback_verified": true,
-    "issue_body_sha256": "21b4e8686c48a9213fb0e9913ec5bcf6d9124a3cedcd928e32828e8dc358b7c6"
+    "issue_body_sha256": "fca48128b8c786dca1e31ad861c73f510e5fae3e2dba2c92ae08c6467a38e85c"
   },
   "diagnostics_amendment_base": "bed885976f932cb94e4858625d6f8699e7c6e10e",
-  "relocation_amendment_base": "c4d185f105db909eb6eda3f2417074628d58ea4d"
+  "relocation_amendment_base": "c4d185f105db909eb6eda3f2417074628d58ea4d",
+  "archival_mapping": {
+    "original": "/home/corp/autodata-workshop-owned-article-data-20261115/held-ebed-package",
+    "archive": "/home/corp/autodata-evidence/local-staging-runtime-draft-20261115/held-ebed-package",
+    "approved_inventory_sha256": "efdeac101b2e1c775a6361aa59ceef152e30a66b722aa5d2e2d2427d8a68ac54",
+    "copy_receipt_sha256": "851cf15c0f7e322ed3fa09c6ab03eb210bdc3f0350c9b521474406e0ee9cdd01",
+    "cleanup_receipt_sha256": "6ebc257054aefddbed33d45b70c0dbb99f1d6bc0a4c5d7d2fe140a5da28291bb",
+    "independent_target_readback_files": 1404,
+    "original_absent": true
+  }
 }
