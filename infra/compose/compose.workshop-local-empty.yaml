@@ -1,0 +1,410 @@
+{
+  "name": "autodata-workshop-local-m1-20261115",
+  "services": {
+    "postgres": {
+      "image": "sha256:151aa1c2e849e7828ed8aef2183ae15f692cbe887d2f28921d8b44b26e154d7e",
+      "pull_policy": "never",
+      "environment": {
+        "POSTGRES_DB": "workshop_local_m1",
+        "POSTGRES_USER": "workshop_local_m1",
+        "POSTGRES_PASSWORD": "${M1_DB_PASSWORD:?required}"
+      },
+      "command": [
+        "postgres"
+      ],
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "${M1_ROOT:?required}/pgdata",
+          "target": "/var/lib/postgresql/data",
+          "read_only": false,
+          "bind": {
+            "create_host_path": false
+          }
+        }
+      ],
+      "tmpfs": [
+        "/tmp:rw,noexec,nosuid,size=32m",
+        "/run/postgresql:rw,noexec,nosuid,size=16m,uid=999,gid=999"
+      ],
+      "mem_limit": "768m",
+      "cpus": 1.0,
+      "user": "999:999",
+      "read_only": true,
+      "cap_drop": [
+        "ALL"
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "restart": "no",
+      "networks": [
+        "internal"
+      ],
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "5m",
+          "max-file": "2"
+        }
+      },
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "pg_isready",
+          "-U",
+          "workshop_local_m1",
+          "-d",
+          "workshop_local_m1"
+        ],
+        "interval": "3s",
+        "timeout": "3s",
+        "retries": 20
+      }
+    },
+    "nats": {
+      "image": "sha256:8b9f712ae2148dcbd9d7f3d16a942d515e290526e5d018500931eab62b18e045",
+      "pull_policy": "never",
+      "environment": {},
+      "command": [
+        "-js",
+        "-sd",
+        "/data",
+        "-m",
+        "8222"
+      ],
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "${M1_ROOT:?required}/nats-data",
+          "target": "/data",
+          "read_only": false,
+          "bind": {
+            "create_host_path": false
+          }
+        }
+      ],
+      "tmpfs": [
+        "/tmp:rw,noexec,nosuid,size=16m"
+      ],
+      "mem_limit": "128m",
+      "cpus": 1.0,
+      "user": "1000:1000",
+      "read_only": true,
+      "cap_drop": [
+        "ALL"
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "restart": "no",
+      "networks": [
+        "internal"
+      ],
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "5m",
+          "max-file": "2"
+        }
+      },
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "wget",
+          "-q",
+          "-O",
+          "/dev/null",
+          "http://127.0.0.1:8222/healthz"
+        ],
+        "interval": "3s",
+        "timeout": "3s",
+        "retries": 20
+      }
+    },
+    "minio": {
+      "image": "sha256:7b5ca1f11aa4c91593612d2d4a9e253ec9152a4bd13a19e551290a042a4c52f5",
+      "pull_policy": "never",
+      "environment": {
+        "AWS_ACCESS_KEY_ID": "${M1_S3_ACCESS:?required}",
+        "AWS_SECRET_ACCESS_KEY": "${M1_S3_SECRET:?required}",
+        "S3_BUCKET": "workshop-local-m1-sources"
+      },
+      "command": [
+        "mini",
+        "-dir=/data",
+        "-s3.port=9000"
+      ],
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "${M1_ROOT:?required}/s3-data",
+          "target": "/data",
+          "read_only": false,
+          "bind": {
+            "create_host_path": false
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${M1_ROOT:?required}/s3-work",
+          "target": "/tmp",
+          "read_only": false,
+          "bind": {
+            "create_host_path": false
+          }
+        }
+      ],
+      "tmpfs": [],
+      "mem_limit": "256m",
+      "cpus": 1.0,
+      "user": "1000:1000",
+      "read_only": true,
+      "cap_drop": [
+        "ALL"
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "restart": "no",
+      "networks": [
+        "internal"
+      ],
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "5m",
+          "max-file": "2"
+        }
+      },
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "wget",
+          "-q",
+          "-O",
+          "/dev/null",
+          "http://127.0.0.1:9333/cluster/status"
+        ],
+        "interval": "3s",
+        "timeout": "3s",
+        "retries": 20
+      }
+    },
+    "migration-runner": {
+      "image": "sha256:ab20e934b27ba3ff927c1b4c9ff8cf6c32f315f743efe68dd3441182a87fb085",
+      "pull_policy": "never",
+      "environment": {
+        "PGHOST": "postgres",
+        "PGPORT": "5432",
+        "PGDATABASE": "workshop_local_m1",
+        "PGUSER": "workshop_local_m1",
+        "PGPASSWORD": "${M1_DB_PASSWORD:?required}"
+      },
+      "command": [
+        "sh",
+        "/src/scripts/dev/migrate_sql.sh"
+      ],
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "${M1_ROOT:?required}/source",
+          "target": "/src",
+          "read_only": true,
+          "bind": {
+            "create_host_path": false
+          }
+        }
+      ],
+      "tmpfs": [
+        "/tmp:rw,noexec,nosuid,size=32m"
+      ],
+      "mem_limit": "256m",
+      "cpus": 1.0,
+      "user": "1000:1000",
+      "read_only": true,
+      "cap_drop": [
+        "ALL"
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "restart": "no",
+      "networks": [
+        "internal"
+      ],
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "5m",
+          "max-file": "2"
+        }
+      }
+    },
+    "ingestion-http": {
+      "image": "sha256:5c8e79b93db464da854ad33dc499e25c153bbcd52757569b1f2a4e5072acecb4",
+      "pull_policy": "never",
+      "environment": {
+        "AUTODATA_DB_ADDRESS": "postgres:5432",
+        "AUTODATA_POSTGRES_DB": "workshop_local_m1",
+        "AUTODATA_POSTGRES_USER": "workshop_local_m1",
+        "AUTODATA_POSTGRES_PASSWORD": "${M1_DB_PASSWORD:?required}",
+        "AUTODATA_S3_ADDRESS": "minio:9000",
+        "AUTODATA_S3_ENDPOINT": "minio:9000",
+        "AUTODATA_S3_ACCESS_KEY": "${M1_S3_ACCESS:?required}",
+        "AUTODATA_S3_SECRET_KEY": "${M1_S3_SECRET:?required}",
+        "AUTODATA_SOURCE_BUCKET": "workshop-local-m1-sources",
+        "AUTODATA_NATS_ADDRESS": "nats:4222",
+        "AUTODATA_ENV": "test",
+        "AUTODATA_COMMERCE_MODE": "disabled",
+        "AUTODATA_PUBLIC_ORIGIN": "http://localhost:3041",
+        "AUTODATA_INGESTION_HTTP_ADDR": ":8081",
+        "AUTODATA_INGESTION_INTERNAL_TOKEN": "${M1_INTERNAL_TOKEN:?required}",
+        "BANKONE_BASE_URL": "",
+        "BANKTWO_BASE_URL": "",
+        "INCEPTION_API_BASE_URL": "",
+        "AUTODATA_KNOWLEDGE_SOURCE_URI_TEMPLATE": "",
+        "AUTODATA_KNOWLEDGE_SOURCE_URL_TEMPLATE": "",
+        "AUTODATA_FAST_CONSUMER_ENABLED": "0",
+        "AUTODATA_KNOWLEDGE_CONSUMER_ENABLED": "0",
+        "AUTODATA_MERCURY2_EXTRACTION_ENABLED": "0",
+        "AUTODATA_MERCURY2_JOB_PLANS_ENABLED": "0",
+        "AUTODATA_MERCURY2_PROCEDURE_COMPOSITION_ENABLED": "0",
+        "AUTODATA_DERIVED_ARTICLE_CACHE_ENABLED": "0",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONPATH": "/src/workers/ingestion-python/src:/src/packages/contracts/python:/src/workers/enrichment-python/src",
+        "HOME": "/tmp"
+      },
+      "command": [
+        "python",
+        "-m",
+        "autodata_ingestion.http_service"
+      ],
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "${M1_ROOT:?required}/source",
+          "target": "/src",
+          "read_only": true,
+          "bind": {
+            "create_host_path": false
+          }
+        }
+      ],
+      "tmpfs": [
+        "/tmp:rw,noexec,nosuid,size=64m"
+      ],
+      "mem_limit": "768m",
+      "cpus": 1.0,
+      "user": "1000:1000",
+      "read_only": true,
+      "cap_drop": [
+        "ALL"
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "restart": "no",
+      "networks": [
+        "internal"
+      ],
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "5m",
+          "max-file": "2"
+        }
+      },
+      "entrypoint": [],
+      "working_dir": "/src",
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/healthz',timeout=2)"
+        ],
+        "interval": "3s",
+        "timeout": "3s",
+        "retries": 20
+      }
+    },
+    "api": {
+      "image": "sha256:93c9cc81d720d1ff82111b60a91820a263f3735a4dbb1efe189e63ec3a76e578",
+      "pull_policy": "never",
+      "environment": {
+        "AUTODATA_DB_ADDRESS": "postgres:5432",
+        "AUTODATA_POSTGRES_DB": "workshop_local_m1",
+        "AUTODATA_POSTGRES_USER": "workshop_local_m1",
+        "AUTODATA_POSTGRES_PASSWORD": "${M1_DB_PASSWORD:?required}",
+        "AUTODATA_S3_ADDRESS": "minio:9000",
+        "AUTODATA_S3_ENDPOINT": "minio:9000",
+        "AUTODATA_S3_ACCESS_KEY": "${M1_S3_ACCESS:?required}",
+        "AUTODATA_S3_SECRET_KEY": "${M1_S3_SECRET:?required}",
+        "AUTODATA_SOURCE_BUCKET": "workshop-local-m1-sources",
+        "AUTODATA_NATS_ADDRESS": "nats:4222",
+        "AUTODATA_ENV": "test",
+        "AUTODATA_COMMERCE_MODE": "disabled",
+        "AUTODATA_PUBLIC_ORIGIN": "http://localhost:3041",
+        "AUTODATA_API_ADDR": ":8080",
+        "AUTODATA_AUTH_MODE": "local",
+        "AUTODATA_PROJECTION_STORE": "postgres",
+        "AUTODATA_INGESTION_URL": "",
+        "AUTODATA_IMAGE_URL_KEY": "${M1_IMAGE_KEY:?required}"
+      },
+      "command": [
+        "/runtime/autodata-api"
+      ],
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "${M1_ROOT:?required}/bin/autodata-api",
+          "target": "/runtime/autodata-api",
+          "read_only": true,
+          "bind": {
+            "create_host_path": false
+          }
+        }
+      ],
+      "tmpfs": [
+        "/tmp:rw,noexec,nosuid,size=32m"
+      ],
+      "mem_limit": "512m",
+      "cpus": 1.0,
+      "user": "1000:1000",
+      "read_only": true,
+      "cap_drop": [
+        "ALL"
+      ],
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "restart": "no",
+      "networks": [
+        "internal"
+      ],
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "5m",
+          "max-file": "2"
+        }
+      },
+      "entrypoint": [],
+      "ports": [
+        {
+          "target": 8080,
+          "published": "3041",
+          "host_ip": "127.0.0.1",
+          "protocol": "tcp"
+        }
+      ]
+    }
+  },
+  "networks": {
+    "internal": {
+      "internal": true,
+      "name": "autodata-workshop-local-m1-20261115_internal"
+    }
+  }
+}

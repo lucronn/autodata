@@ -1,0 +1,130 @@
+"""Isolation boundary tests; no Docker/provider access."""
+import copy
+import importlib.util
+import io
+import json
+from pathlib import Path
+import unittest
+import tempfile
+import tarfile
+import hashlib
+from contextlib import redirect_stdout
+
+ROOT = Path(__file__).resolve().parents[2]
+SPEC = importlib.util.spec_from_file_location("admission", Path(__file__).with_name("workshop_local_admission.py"))
+a = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(a)
+
+
+def candidate():
+    text = (ROOT / "infra/compose/compose.workshop-local-empty.yaml").read_text()
+    text = text.replace("${M1_ROOT:?required}", str(a.ROOT))
+    for key in ("DB_PASSWORD", "S3_ACCESS", "S3_SECRET", "INTERNAL_TOKEN", "IMAGE_KEY"):
+        text = text.replace("${M1_" + key + ":?required}", "m1_" + "a" * 48)
+    return json.loads(text)
+
+
+class AdmissionTests(unittest.TestCase):
+    def test_valid_six_service_candidate(self):
+        self.assertEqual(a.validate_config(candidate()), [])
+
+    def test_network_and_exposure_mutants(self):
+        changes = [
+            lambda c: c["services"]["api"]["ports"][0].update(host_ip="0.0.0.0"),
+            lambda c: c["services"]["api"]["ports"][0].update(published="3042"),
+            lambda c: c["services"]["postgres"].update(ports=[{"target":5432,"published":"5432"}]),
+            lambda c: c["networks"]["internal"].update(internal=False),
+            lambda c: c["networks"]["internal"].update(external=True),
+            lambda c: c["services"]["api"].update(network_mode="host"),
+            lambda c: c["services"]["api"].update(extra_hosts=["host:host-gateway"]),
+            lambda c: c["services"].update(worker=copy.deepcopy(c["services"]["api"])),
+        ]
+        self.assertRejected(changes)
+
+    def assertRejected(self, changes):
+        for number, change in enumerate(changes):
+            with self.subTest(case=number):
+                c = candidate(); change(c)
+                self.assertTrue(a.validate_config(c))
+
+    def test_credentials_and_hydration_fail_closed(self):
+        changes = [
+            lambda c: c["services"]["api"]["environment"].update(AUTODATA_COMMERCE_MODE="stripe_test"),
+            lambda c: c["services"]["api"]["environment"].update(AUTODATA_INGESTION_URL="synthetic-secret-sentinel"),
+            lambda c: c["services"]["api"]["environment"].update(AUTODATA_ENV="staging"),
+            lambda c: c["services"]["api"]["environment"].update(AUTODATA_AUTH_MODE="firebase"),
+            lambda c: c["services"]["ingestion-http"]["environment"].update(BANKONE_BASE_URL="synthetic-secret-sentinel"),
+            lambda c: c["services"]["ingestion-http"]["environment"].update(AUTODATA_STRIPE_SECRET_KEY="synthetic-secret-sentinel"),
+            lambda c: c["services"]["api"].update(env_file=["/run/base44/app.env"]),
+            lambda c: c["services"]["api"]["environment"].update(AUTODATA_READINESS_MODE="static"),
+        ]
+        self.assertRejected(changes)
+
+    def test_image_mount_and_write_mutants(self):
+        self.assertRejected([
+            lambda c: c["services"]["api"].update(image="golang:latest"),
+            lambda c: c["services"]["api"].update(build="."),
+            lambda c: c["services"]["api"].update(pull_policy="always"),
+            lambda c: c["services"]["api"].update(privileged=True),
+            lambda c: c["services"]["api"].update(read_only=False),
+            lambda c: c["services"]["api"].update(devices=["/dev/sda"]),
+            lambda c: c["services"]["api"]["volumes"][0].update(read_only=False),
+            lambda c: c["services"]["api"]["volumes"][0].update(source="/home/corp/Documents/ChatGPT/autodata"),
+            lambda c: c["services"]["api"]["volumes"][0].update(source=str(a.ROOT / "../escape")),
+            lambda c: c["services"]["api"]["logging"]["options"].update({"max-size":"1g"}),
+            lambda c: c["services"]["minio"]["volumes"][1].update(target="/elsewhere"),
+            lambda c: c["services"]["api"].pop("tmpfs"),
+        ])
+
+    def test_redaction_never_echoes_mutated_values(self):
+        c = candidate(); c["services"]["api"]["environment"]["evil"] = "synthetic-secret-sentinel"
+        self.assertNotIn("sentinel", json.dumps(a.validate_config(c)))
+        self.assertNotIn("sentinel", a.safe_failure(ValueError("synthetic-secret-sentinel")))
+
+    def test_capacity_requires_known_growth_and_reserves(self):
+        good = dict(docker_free=1024*1024*1024, home_free=10*1024**3, docker_inodes=10000, home_inodes=10000, growth_bytes=64*1024**2)
+        self.assertEqual(a.capacity_errors(**good), [])
+        for field, value in [("docker_free", 600*1024**2),("home_free",1024**3),("docker_inodes",2),("home_inodes",2),("growth_bytes",None),("growth_bytes",-1),("growth_bytes",512*1024**2)]:
+            with self.subTest(field=field,value=value):
+                bad={**good,field:value}; self.assertTrue(a.capacity_errors(**bad))
+
+    def test_source_manifest_is_exact_and_complete(self):
+        valid={key:"a"*length for key,length in a.HASH_FIELDS.items()}
+        valid["dependency_compatible"]=True
+        self.assertEqual(a.manifest_errors(valid),[])
+        for key in valid:
+            bad=valid.copy(); bad.pop(key)
+            self.assertTrue(a.manifest_errors(bad))
+        self.assertTrue(a.manifest_errors({**valid,"dependency_compatible":False}))
+        self.assertTrue(a.manifest_errors({**valid,"source_sha":"HEAD"}))
+
+    def test_path_device_and_symlink_rejected(self):
+        self.assertTrue(a.path_errors(a.ROOT / "..", lambda p: {"device":"wrong","fstype":"ext4","symlink":False}))
+        self.assertTrue(a.path_errors(a.ROOT, lambda p: {"device":a.DEVICE,"fstype":"ext4","symlink":True}))
+        self.assertTrue(a.path_errors(a.ROOT, lambda p: {"device":"wrong","fstype":"ext4","symlink":False}))
+        self.assertEqual(a.path_errors(a.ROOT, lambda p: {"device":a.DEVICE,"fstype":"ext4","symlink":False}),[])
+
+    def test_archive_binding_rejects_tampered_extra_and_wrong_commit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp); source=root/"source"; source.mkdir()
+            live=source/"app.py"; live.write_bytes(b"fixture")
+            archive=root/"source.tar"
+            with tarfile.open(archive,"w",format=tarfile.PAX_FORMAT,pax_headers={"comment":"a"*40}) as tf:
+                tf.add(live,arcname="app.py")
+            manifest={"source_sha":"a"*40,"archive_sha256":hashlib.sha256(archive.read_bytes()).hexdigest()}
+            self.assertEqual(a.archive_errors(archive,source,manifest),[])
+            live.write_bytes(b"tampered")
+            self.assertTrue(a.archive_errors(archive,source,manifest))
+            live.write_bytes(b"fixture"); (source/"extra").write_text("unexpected")
+            self.assertTrue(a.archive_errors(archive,source,manifest))
+            (source/"extra").unlink()
+            self.assertTrue(a.archive_errors(archive,source,{**manifest,"source_sha":"b"*40}))
+
+    def test_helper_contains_no_docker_mutation_or_general_shell(self):
+        self.assertEqual(a.DOCKER_READ_COMMANDS, {"image-inspect", "compose-config"})
+        code = Path(a.__file__).read_text()
+        self.assertNotIn("shell=True",code)
+
+
+if __name__ == "__main__":
+    unittest.main()
