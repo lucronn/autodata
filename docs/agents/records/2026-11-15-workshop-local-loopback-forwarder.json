@@ -1,0 +1,34 @@
+{
+  "goal": "Provide bounded loopback-only ingress to the isolated empty M1 Workshop while Docker remains internal",
+  "plan_ref": "docs/superpowers/plans/2026-11-15-workshop-local-loopback-forwarder.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/398",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/operations/workshop-local-empty-runtime.md"
+  ],
+  "todo": [
+    "Add red-first fixed-loopback relay/identity/lifecycle/concurrency/buffer/header-transparency tests",
+    "Remove ineffective Compose publication and add bounded host forwarder with exact API/container/network/IP binding",
+    "Build immutable amended source and prove loopback health/assets/disabled empty-state plus fail-closed restart behavior",
+    "Stop only new M1 forwarder/services, preserve data and record evidence; keep398 real-data acceptance open"
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-15T02:13:55.789158+00:00",
+  "source_base_sha": "e23c183b8b9c7b87093d1ed61d115f9723e7b83f",
+  "source_base_tree": "16bce16afb2261f476817a4967c9b7c741b4b435",
+  "implementation_allowlist": [
+    "infra/compose/compose.workshop-local-empty.yaml",
+    "scripts/dev/workshop_local_admission.py",
+    "scripts/dev/test_workshop_local_admission.py",
+    "scripts/dev/workshop_local_forwarder.py",
+    "scripts/dev/test_workshop_local_forwarder.py",
+    "docs/operations/workshop-local-empty-runtime.md",
+    "docs/verification/2026-11-15-workshop-local-empty-runtime.md"
+  ],
+  "tracking_sync": {
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhH730A",
+    "project_status": "In Progress",
+    "readback_verified": true,
+    "issue_body_sha256": "f00d838833487df48c346fe46dbbbe373f969d8bfea0022635bdd9a5acfef9c9"
+  }
+}
