@@ -48,6 +48,15 @@ Canary acceptance covers source5981b97/binaryad5ad70c at r2 only, with private92
 No runtime mutation, provider request, historical helper execution or merge is authorized here. Normal protected PR CI is authorized after this gate. Root owns independent review/merge.
 
 Current concrete todo:
-- [ ] Integrate protected083f1a5/tree2c6a681, retain its canonical diagnostics plan unchanged and pass this synchronized amendment checkpoint before importing four canary outcome snapshots.
-- [ ] Preserve seven original release snapshots plus four exacta026a0f canary snapshots; keep archival JSON byte-identical, label preparation text historical/non-replayable and link the accepted attempt2 source-only outcome with all real-data, licensed-reader, Stripe and durability limits.
+- [x] Integrate protected083f1a5/tree2c6a681, retain its canonical diagnostics plan unchanged and pass this synchronized amendment checkpoint before importing four canary outcome snapshots.
+- [x] Preserve seven original release snapshots plus four exacta026a0f canary snapshots; keep archival JSON byte-identical, label preparation text historical/non-replayable and link the accepted attempt2 source-only outcome with all real-data, licensed-reader, Stripe and durability limits.
 - [ ] Validate fourteen-document final scope, provenance, JSON, links, redaction and chronology; open a protected-master documentation PR, complete strict required CI and hand exact head to root without merging or runtime mutation.
+
+
+## Integrated documentation verification
+
+Amendment checkpoint `fb9e2be` passed canonical preflight with `status: synchronized`, `errors: []` before the four canary snapshots were copied. Protected083f1a5 integration retains the canonical diagnostics plan byte-for-byte. Preservation milestone `90c0362` adds the exact a026a0f canary record and three Markdown histories, with prominent accepted-source-only/non-replayable labels; three imported archival JSON records remain byte-identical. The initial public receipt links the later accepted canary. Historical diagnostics-proposal wording is now explicitly dated; no protected diagnostics implementation/document was changed.
+
+Final diff contains fourteen added documentation files, no implementation/helper/configuration/data/image files. All source snapshot paths/blobs and the protected base/tree are pinned above. Integrated validation parsed all JSON, resolved15 repository references and5 relative Markdown links, found no private-key/access-key/live-secret patterns, and passed whitespace/scope checks. Repository governance10 tests passed. No runtime helper, provider request, serving mutation or merge was performed. Private local evidence: `/home/corp/.local/state/release-receipts-preservation-20261115/integrated-validation.json`; original preservation evidence remains historical at its earlier recorded private path.
+
+The normal documentation PR and strict required CI are the remaining verification boundary; root owns independent exact-head review and merge. Real-data/Integra completeness, licensed reader/media/supplier rights, Firebase user acceptance, real Stripe checkout/settlement, private SVG runtime and cold-boot acceptance remain separate.
