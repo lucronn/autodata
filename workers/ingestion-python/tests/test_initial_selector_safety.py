@@ -322,3 +322,24 @@ def test_direct_initial_read_hook_charges_first_dispatch_and_body_without_timeou
     client=SourceConnectorClient('http://127.0.0.1:1',provider='bankone',opener=one)
     assert client.catalog('years',read_control=control).complete
     assert control.requests==1 and control.rows==1 and control.bytes>0
+
+
+def test_unfiltered_years_scope_cannot_bypass_cooldown_with_region():
+    clock=Clock(); admission=job.SelectorAdmission(clock=clock)
+    token=admission.acquire({'scope':'years','region':'US'})
+    admission.release(token,complete=False); clock.now=7
+    assert admission.acquire({'scope':'years','year':2024,'make':'ignored','region':'CA'}) is None
+
+
+def test_paginated_years_retains_exact_fallback_page_uri():
+    from autodata_ingestion.source_connector_client import SourceConnectorClient
+    from test_source_connector_client import _Response, _envelope
+    control=job.SelectorJobControl(time.monotonic()+3,dispatch_interval=0)
+    calls=[]
+    def pages(request,**kwargs):
+        calls.append(request.full_url); last=len(calls)==2
+        return _Response(_envelope(scope='years',items=[{'year':2023 if last else 2024,'opaque_ref':'y','label':'year'}],
+                                   complete=last,next_cursor=None if last else 'authored/cursor'),url=request.full_url)
+    provider=catalog._SourceCatalogProvider(SourceConnectorClient('http://127.0.0.1:1',provider='bankone',opener=pages),deepening_control=control)
+    result=provider.resolve_catalog(catalog.CatalogRequest(2024,'unknown','unknown',scope='years'))
+    assert [row['provider_mappings'][0]['source_uri'] for row in result['rows']]==calls
