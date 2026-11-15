@@ -35,3 +35,13 @@ No production mode, traffic, DNS, payment enablement, secret, deployment, source
 - [ ] Close exact-head Chromium startup race: add a red-first initial-HTML sign-in regression, render the control disabled until the existing session callback enables it, and rerun the 120-case browser inventory.
 - [ ] Run focused/full Node, Go and Python tests, syntax/diff checks and local browser smoke; obtain independent exact-head re-review and current CI.
 - [ ] Merge only if live branch protection permits; keep real licensed-data/test-payment browser acceptance and deployment separately blocked until evidenced.
+
+
+## Current readiness assessment
+
+Read-only source, public purchase/readiness and staging infrastructure evidence
+is recorded in `docs/verification/2026-11-14-workshop-stripe-test-readiness.md`
+under Issue #398 and Project #8. The public purchase configuration remains
+disabled; the isolated authorized staging runtime and authentic test settlement
+acceptance remain outstanding. This documentation checkpoint introduces no new
+implementation or runtime authority.

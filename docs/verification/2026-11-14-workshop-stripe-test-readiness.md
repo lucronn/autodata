@@ -109,3 +109,56 @@ remains open. No additional implementation was necessary for this assessment.
 - [ ] Run and retain real-data/test-settlement browser acceptance, including denial
       and revocation, on the exact staged release.
 - [ ] Update #398 and Project #8 with that evidence before claiming completion.
+
+## Read-only staging infrastructure inventory
+
+The follow-up inventory found no existing segregated Workshop staging runtime:
+
+- `https://staging.cars.tk/` completed HTTPS and returned Vercel **404
+  DEPLOYMENT_NOT_FOUND** at 2026-11-14T23:16:26Z. Public A answers were
+  `64.29.17.1` and `216.198.79.1`, with no CNAME answer. This identifies edge
+  routing, not an application, reserved VM address or proof of alias ownership.
+- Authenticated read-only inventory of the historical candidate GCP project
+  `vehapi-torque` returned no Compute instances, static addresses or Cloud DNS
+  zones. Its three existing Cloud Run services were unrelated to Workshop;
+  none was a staging application. The ambient gcloud default project differed;
+  every inventory command selected the candidate explicitly, without changing
+  defaults. The candidate remains an owner decision, not an approved target.
+- Secret Manager name inventory included `stripe-secret-key` and
+  `stripe-webhook-secret`. Subsequent describe/version-list calls failed with
+  **BILLING_DISABLED**. No secret payload, active version, merchant, key mode or
+  webhook binding was established. A billing project readback separately
+  failed **SERVICE_DISABLED** for the Cloud Billing API. No API, billing account
+  or secret setting was changed; listed names are not usable-credential proof.
+- The local AutoData tunnel configuration maps both existing public hostnames
+  to the same localhost API port. It does not define a separate staging
+  listener or audience. The generic cloudflared configuration is token-managed;
+  no token was extracted. Reusing the existing hostname would not isolate data
+  or payments, and no route was repointed.
+- Existing Vercel CLI credentials were rejected. Subsequent read-only CLI
+  commands opened device-authentication waits; those were stopped without
+  completing login. No authenticated alias/zone ownership readback or Vercel
+  change occurred. Reauthentication or another authorized account route is
+  needed before any eventual staging alias/DNS work.
+- GitHub environment inventory exposed only `Preview` and `Production`, both
+  without protection rules. Repository secret/variable inventories were empty.
+  The separately protected staging publisher/operator identities and explicit
+  accepted manifests described in #312 were not established here.
+
+The useful next steps before supplier/tester answers are to review the exact
+staging topology and cost/configuration choices, restore authenticated DNS
+account visibility, resolve the candidate cloud billing/API prerequisite,
+prepare the restricted-access mechanism and obtain a reviewed deployment gate.
+None requires importing licensed content or granting access. Provisioning,
+changing DNS/tunnel routes, enabling APIs/billing, supplying credentials and
+starting a staged service each remain concrete coordinator decisions; this
+inventory did not perform them. A new local fixture runtime can test code but
+cannot establish an existing stable HTTPS origin or real-data acceptance.
+
+Manual full Autonomous Verification run
+[43652359524](https://github.com/lucronn/autodata/actions/runs/43652359524)
+passed policy, DTO browser inventory and R3 preparation jobs at documentation
+checkpoint `3694ec9ef240de31eab4db6b51776b25a61a2fd7`. This was a source/fixture
+CI result, not Stripe settlement or staging acceptance. The PR-associated
+required check and independent exact-head review are rechecked after each
+subsequent documentation commit.
