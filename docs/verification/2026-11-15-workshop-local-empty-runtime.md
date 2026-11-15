@@ -14,7 +14,7 @@ Master later advanced through #422 to5981b97f187364e54737919fd8cdb49e7566d981/tr
 
 ## Actual acceptance
 
-Full admission and actual policy/effective ENV passed before each transition. Corrected migration ran twice idempotently plus final refresh:42 ledger rows, state hash8da0fdf80336bd4f23cc545680d75485. One dataset_products bootstrap metadata row is migration040 behavior. Accounts/sessions/orders/payments/grants/articles/sources/fetch-jobs/configurations remained0. S3onebucket/zeroobjects. Source connector registry empty, implementation module bound from admitted source. No provider/model/Stripe/Firebase requests.
+Full admission and actual policy/effective ENV passed before each transition. Corrected migration ran twice idempotently plus final refresh:42 ledger rows, state hash8da0fdf80336bd4f23cc545680d75485. One dataset_products bootstrap metadata row is migration040 behavior. Accounts/sessions/orders/payments/grants/articles/sources/fetch-jobs/configurations remained0. S3onebucket/zeroobjects. Source connector registry empty, implementation module bound from admitted source. No outbound provider/model/Stripe/Firebase requests.
 
 Loopback health/ready/Workshop200; seven app modules plus entry assets200; purchase/demo flags false; catalog years empty; quote/webhook503; checkout/library401; Firebase exchange503 with synthetic headers. Coordinator independently probed health/ready/Workshop/purchase-config and exact127.0.0.1:3041 listener. No browser automation or authenticated Firebase/CSRF purchase flow executed.
 
