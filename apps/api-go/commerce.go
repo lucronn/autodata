@@ -121,7 +121,7 @@ func commerceErrorCode(body []byte) string {
 
 // Project private responses into bounded public DTOs. Unknown private fields
 // are never serialized, and a malformed success cannot become a public success.
-func commercePublicResult(operation string, status int, body []byte, input map[string]any) (any, bool) {
+func commercePublicResult(operation string, status int, body []byte, input map[string]any, client CommerceClient) (any, bool) {
 	if len(body) > maxCommerceResponseBytes {
 		return nil, false
 	}
@@ -140,10 +140,16 @@ func commercePublicResult(operation string, status int, body []byte, input map[s
 	switch operation {
 	case "quote":
 		var v commerceQuote
-		if status != 200 || json.Unmarshal(body, &v) != nil {
+		var availability struct {
+			Purchasable *bool `json:"purchasable"`
+		}
+		// Accepting false must not also accept missing or null availability.
+		if status != 200 || json.Unmarshal(body, &v) != nil || json.Unmarshal(body, &availability) != nil || availability.Purchasable == nil {
 			return nil, false
 		}
-		return v, v.Version == "v1" && v.ProductKey == "workshop-configuration-v1" && scopeMatches(v.ConfigurationID, v.Region) && len(v.ConfigurationLabel) > 0 && len(v.ConfigurationLabel) <= 1024 && v.AmountMinor == 2000 && v.Currency == "USD" && v.PurchaseTermsVersion == "workshop-v1" && v.Purchasable
+		configured, ok := client.(*HTTPCommerceClient)
+		availabilityAllowed := v.Purchasable || (ok && configured != nil && configured.readOnly)
+		return v, v.Version == "v1" && v.ProductKey == "workshop-configuration-v1" && scopeMatches(v.ConfigurationID, v.Region) && len(v.ConfigurationLabel) > 0 && len(v.ConfigurationLabel) <= 1024 && v.AmountMinor == 2000 && v.Currency == "USD" && v.PurchaseTermsVersion == "workshop-v1" && availabilityAllowed
 	case "checkouts":
 		var v commerceCheckout
 		if json.Unmarshal(body, &v) != nil || v.Version != "v1" || !commerceUUID(v.OrderID) || !scopeMatches(v.ConfigurationID, v.Region) {
