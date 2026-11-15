@@ -110,6 +110,14 @@ def candidate_identity(value):
     return value
 
 
+def trusted_hosted_checkout(value):
+    # The provider URL is opaque; it does not encode authoritative session identity.
+    if not isinstance(value,str) or not value.startswith('https://checkout.stripe.com/') or any(c.isspace() or ord(c)<32 or ord(c)==127 for c in value):return False
+    try:url=urlsplit(value)
+    except ValueError:return False
+    return url.scheme=='https' and url.netloc=='checkout.stripe.com' and re.fullmatch(r'/[cg]/pay/[^/]+',url.path) is not None and not url.query
+
+
 def allowed_external(value):
     url = urlsplit(value)
     return url.scheme == 'https' and not url.username and not url.password and url.port is None and (
@@ -117,7 +125,7 @@ def allowed_external(value):
         (url.hostname == 'fixture-project.firebaseapp.com' and url.path in ('/__/auth/handler', '/__/auth/iframe')) or
         (url.hostname == 'identitytoolkit.googleapis.com' and url.path in ('/v1/projects', '/v1/accounts:signInWithIdp', '/v1/accounts:lookup')) or
         (url.hostname == 'securetoken.googleapis.com' and url.path == '/v1/token') or
-        (url.hostname == 'checkout.stripe.com' and re.fullmatch(r'/c/pay/(?:fixture|cs_test_[a-f0-9]{32})',url.path)))
+        trusted_hosted_checkout(value))
 
 
 def validate_results(rows, expected):
@@ -769,8 +777,7 @@ def api21_checkout_identity(request,response,key):
         if not isinstance(checkout.get(field),str) or not re.fullmatch(uuid_pattern,checkout[field]):raise ValueError('invalid identity')
     hosted=checkout.get('checkout_url')
     if not isinstance(hosted,str):raise ValueError('invalid hosted checkout')
-    url=urlsplit(hosted)
-    if not isinstance(hosted,str) or url.scheme!='https' or url.netloc!='checkout.stripe.com' or not re.fullmatch(r'/c/pay/cs_test_[a-f0-9]{32}',url.path) or url.query:raise ValueError('invalid hosted checkout')
+    if not trusted_hosted_checkout(hosted):raise ValueError('invalid hosted checkout')
     return {field:checkout[field] for field in ('order_id','configuration_id','region','checkout_url')}
 
 
@@ -1154,8 +1161,7 @@ class APIFixture(DTOFixture):
                 order=checkout.get('order_id');hosted=checkout.get('checkout_url')
                 assert isinstance(order,str) and re.fullmatch(uuid_pattern,order), 'invalid checkout order'
                 assert isinstance(hosted,str) and allowed_external(hosted), 'untrusted hosted checkout'
-                hosted_url=urlsplit(hosted)
-                assert hosted_url.hostname=='checkout.stripe.com' and re.fullmatch(r'/c/pay/cs_test_[a-f0-9]{32}',hosted_url.path) and not hosted_url.query, 'invalid hosted checkout session'
+                assert trusted_hosted_checkout(hosted), 'invalid hosted checkout session'
                 identity={'order_id':order,'configuration_id':configuration,'region':body['region'],'checkout_url':hosted}
                 if self.observations:
                     def delivery(state):
@@ -1194,10 +1200,12 @@ class APIFixture(DTOFixture):
         durable=rows['workshop_orders'][0]
         assert durable['status']=='open'
         for field in ('order_id','configuration_id','region'):assert durable[field]==checkout[field]
-        assert durable['checkout_session_id']==urlsplit(checkout['checkout_url']).path.rsplit('/',1)[1]
+        assert durable['checkout_url']==checkout['checkout_url']
+        assert isinstance(durable['checkout_session_id'],str) and re.fullmatch(r'cs_test_[a-f0-9]{32}',durable['checkout_session_id'])
         assert snapshot['payment_calls']>0
         if previous_snapshot is not None:
             assert snapshot['payment_calls']==previous_snapshot['payment_calls'], 'retry created provider work'
+            assert durable['checkout_session_id']==previous_snapshot['paid_rows']['workshop_orders'][0]['checkout_session_id'], 'retry changed stored provider session'
 
 async def api21_get(context,url,*,phase=None,actor='owner',**kwargs):
     observations=getattr(context,'_api21',None)
@@ -1305,7 +1313,7 @@ async def api_case(browser,origin,name,output,observations=None):
             transport.validate_pending_checkout(lost_measurement,lost_snapshot)
             if observations:observations.phase='checkout-retry-http'
             await page.locator('#retry').click()
-        await page.wait_for_url(re.compile(r'https://checkout\.stripe\.com/c/pay/cs_test_[a-f0-9]{32}.*'))
+        await page.wait_for_url(trusted_hosted_checkout)
         pending=await api_measure(context,origin,'pending-checkout-measurement')
         assert pending['workshop_orders']==1 and pending['entitlements']==0
         if name==API_CASES[0]:

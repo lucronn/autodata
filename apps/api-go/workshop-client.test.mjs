@@ -2177,6 +2177,7 @@ class ArticleMediaNode {
     this.open = false;
     this._text = '';
   }
+  focus() { this.focusCalls = (this.focusCalls || 0) + 1; }
   get textContent() { return this._text + this.children.map(n => n.textContent).join(''); }
   set textContent(value) { this.replaceChildren(); this._text = String(value); }
   get isConnected() { return this.tagName === 'body' || Boolean(this.parentNode?.isConnected); }
@@ -2305,6 +2306,49 @@ test('article tab title clears on catalog and library navigation', () => {
   assert.equal(context.document.title, 'AutoData — The workshop reference');
   assert.equal(nodes.library.hidden, false);
   assert.equal(nodes.catalog.hidden, true);
+});
+
+test('article navigation focuses its visible heading once before preparation and preserves focus during updates', async () => {
+  let resolvePrepare;
+  const article = mediaArticle([{ type: 'paragraph', text: 'Ready content.' }]);
+  const h = articleMediaHarness({
+    session: { state: { authenticated: true, csrf: 'csrf' } },
+    stage: () => {},
+    requestArticleJSON: () => new Promise(resolve => { resolvePrepare = resolve; }),
+    readArticle: async (read, { onUpdate }) => {
+      const response = await read();
+      onUpdate(response);
+      h.nodes.get('print').focus();
+      onUpdate(response);
+      return response;
+    },
+  });
+  runInNewContext([
+    appSection('function show(', 'function clearProtected('),
+    appSection('async function loadArticle(', 'function openArticle('),
+  ].join('\n'), h.context);
+  const pending = h.context.loadArticle('a', h.g);
+  const title = h.nodes.get('article-title');
+  assert.equal(h.nodes.get('reader').hidden, false);
+  assert.equal(h.nodes.get('catalog').hidden, true);
+  assert.equal(title.textContent, 'Opening article…');
+  assert.equal(title.focusCalls, 1, 'focus must enter the reader while preparation is pending');
+  resolvePrepare({ data: { article } });
+  await pending;
+  assert.equal(title.textContent, 'Pump service');
+  assert.equal(title.focusCalls, 1, 'prepare and polling updates must not reclaim focus');
+  assert.equal(h.nodes.get('print').focusCalls, 1);
+});
+
+test('obsolete article navigation leaves current heading and focus alone', async () => {
+  const h = articleMediaHarness({ session: { state: { authenticated: true } } });
+  runInNewContext(appSection('async function loadArticle(', 'function openArticle('), h.context);
+  h.nodes.get('article-title').textContent = 'Current article';
+  h.navigation.clear();
+  await h.context.loadArticle('obsolete', h.g);
+  assert.equal(h.nodes.get('article-title').textContent, 'Current article');
+  assert.equal(h.nodes.get('article-title').focusCalls, undefined);
+  assert.deepEqual(h.shows, []);
 });
 
 test('retrying a visible article keeps its tab title while preparation fails', async () => {
@@ -2802,4 +2846,335 @@ test('actual selector source request failure retains its retry action',async()=>
 test('legacy selector responses without completion metadata remain usable',async()=>{
  const h=selectorOptionsHarness({items:[{year:2024}]});await h.load();
  assert.notEqual(h.statuses.at(-1).error,true);assert.match(h.statuses.at(-1).text,/Choose your vehicle/);
+});
+
+test('both Stripe hosted path forms preserve opaque tokens with strict authority', async () => {
+ const { hostedCheckoutURL } = await import('./workshop/commerce.mjs');
+ for (const prefix of ['c','g']) {
+  const hosted = `https://checkout.stripe.com/${prefix}/pay/opaque_Checkout42#opaque%2Ffragment`;
+  assert.equal(hostedCheckoutURL(hosted), hosted);
+  for (const invalid of [hosted.replace('https:', 'http:'), hosted.replace('checkout.stripe.com', 'checkout.stripe.com.evil'), hosted.replace('checkout.stripe.com', 'user@checkout.stripe.com'), hosted.replace('checkout.stripe.com', 'checkout.stripe.com:443'), `https://checkout.stripe.com/${prefix}/pay/`, hosted+' ', hosted+'\u0000']) assert.equal(hostedCheckoutURL(invalid), null);
+ }
+ for (const invalid of ['https://checkout.stripe.com/pay/opaque','https://checkout.stripe.com/x/pay/opaque']) assert.equal(hostedCheckoutURL(invalid),null);
+});
+
+// These transports are local doubles; production session and route-selection code runs unchanged.
+test('session exposes only explicit known config modes and resets mode when authority is cleared', async () => {
+  const { createSession } = await import('./workshop/auth.mjs');
+  for (const mode of ['local', 'firebase', undefined, null, 'LOCAL', 'other', true]) {
+    let config = { mode };
+    const session = createSession({ request: async path => {
+      if (path === '/auth/config') return config;
+      return { authenticated: true, roles: ['dataset_viewer'], expires_at: '2099-01-01T00:00:00Z', csrf_token: 'csrf' };
+    }, loadSDK: () => assert.fail('an existing session needs no SDK') });
+    assert.equal(session.state.mode, null);
+    await session.bootstrap();
+    assert.equal(session.state.authenticated, true);
+    assert.equal(session.state.mode, ['local', 'firebase'].includes(mode) ? mode : null);
+    session.clear();
+    assert.equal(session.state.mode, null);
+    assert.equal(session.state.authenticated, false);
+    config = null;
+    await session.bootstrap();
+    assert.equal(session.state.mode, null);
+  }
+});
+
+test('an explicit local config mode cannot authenticate an invalid session or enable Google login', async () => {
+  const { createSession } = await import('./workshop/auth.mjs');
+  const session = createSession({ request: async path => path === '/auth/config'
+    ? { mode: 'local' }
+    : { authenticated: true, roles: [], expires_at: '2099-01-01T00:00:00Z', csrf_token: 'csrf' },
+    loadSDK: () => assert.fail('local configuration must not initialize Firebase') });
+  await session.bootstrap();
+  assert.equal(session.state.mode, 'local');
+  assert.equal(session.state.authenticated, false);
+  assert.equal(session.state.csrf, '');
+  assert.equal(session.state.available, false);
+  assert.equal(session.state.ready, false);
+});
+
+test('failed or obsolete configuration reads cannot preserve or restore local session mode', async () => {
+  const { createSession } = await import('./workshop/auth.mjs');
+  let readConfig = async () => ({ mode: 'local' });
+  const session = createSession({ request: async path => path === '/auth/config'
+    ? readConfig()
+    : { authenticated: true, roles: ['dataset_viewer'], expires_at: '2099-01-01T00:00:00Z', csrf_token: 'csrf' } });
+  await session.bootstrap();
+  assert.equal(session.state.mode, 'local');
+  let release;
+  readConfig = () => new Promise(resolve => { release = resolve; });
+  const obsolete = session.bootstrap();
+  assert.equal(session.state.mode, null, 'bootstrap must clear old mode before its first await');
+  readConfig = async () => ({ mode: 'firebase' });
+  await session.bootstrap();
+  release({ mode: 'local' });
+  await obsolete;
+  assert.equal(session.state.mode, 'firebase');
+  readConfig = async () => { throw new TypeError('offline'); };
+  await session.bootstrap();
+  assert.equal(session.state.mode, null);
+  const controller = new AbortController();
+  readConfig = async () => { controller.abort(); return { mode: 'local' }; };
+  await session.bootstrap({ signal: controller.signal });
+  assert.equal(session.state.mode, null);
+});
+
+function selectionQuoteHarness(merchant, { authenticated = true, request = async () => quoteTermsFixture() } = {}) {
+  const navigation = new NavigationGeneration(), generation = navigation.next(), calls = [], opened = [], nodes = new Map();
+  const context = {
+    merchant, quote: null, validScope, validQuote, scope: () => scope,
+    session: { state: { authenticated } }, clearProtected() {}, renderPurchase() {}, show() {}, status() {},
+    $: id => { if (!nodes.has(id)) nodes.set(id, {}); return nodes.get(id); },
+    requestJSON: async (path, options) => { calls.push({ path, options }); return request(path, options); },
+    loadArticles: async (g, id) => opened.push({ g, id }),
+  };
+  runInNewContext(appSection('async function selectVehicle(', 'async function loadArticles('), context);
+  return { context, navigation, generation, calls, opened };
+}
+
+for (const merchant of [{ enabled: false }, null, {}, { enabled: 'true' }]) {
+  test(`selection skips unusable quote for config ${JSON.stringify(merchant)} and still opens authorized articles`, async () => {
+    const h = selectionQuoteHarness(merchant, { request: () => assert.fail('disabled quote must never be requested') });
+    await h.context.selectVehicle(h.generation, 'article-a');
+    assert.equal(h.calls.length, 0);
+    assert.equal(h.context.quote, null);
+    assert.equal(h.opened.length, 1);
+    assert.equal(h.opened[0].id, 'article-a');
+  });
+}
+
+test('disabled quote selection retains signed-out and obsolete-navigation boundaries', async () => {
+  const signedOut = selectionQuoteHarness({ enabled: false }, { authenticated: false });
+  await signedOut.context.selectVehicle(signedOut.generation);
+  assert.equal(signedOut.calls.length, 0);
+  assert.equal(signedOut.opened.length, 0);
+  const stale = selectionQuoteHarness({ enabled: false });
+  stale.navigation.clear();
+  await stale.context.selectVehicle(stale.generation);
+  assert.equal(stale.calls.length, 0);
+  assert.equal(stale.opened.length, 0);
+});
+
+test('enabled purchasing keeps scoped quote validation, tolerated unavailable quote, and article reads', async () => {
+  for (const result of [quoteTermsFixture(), { ...quoteTermsFixture(), amount_minor: 1 }, new Error('503')]) {
+    const h = selectionQuoteHarness({ enabled: true }, { request: async () => {
+      if (result instanceof Error) throw result;
+      return result;
+    } });
+    await h.context.selectVehicle(h.generation, 'article-a');
+    assert.equal(h.calls.length, 1);
+    assert.equal(h.calls[0].path, `/v1/workshop/quote?configuration_id=${scope.configuration_id}&region=${scope.region}`);
+    assert.equal(h.calls[0].options.signal, h.generation.signal);
+    assert.equal(h.context.quote, validQuote(result, scope) ? result : null);
+    assert.equal(h.opened.length, 1);
+  }
+});
+
+test('enabled quote cannot publish or continue after its selection is canceled', async () => {
+  for (const reject of [false, true]) {
+    let resolveRequest, rejectRequest;
+    const h = selectionQuoteHarness({ enabled: true }, { request: () => new Promise((resolve, fail) => { resolveRequest = resolve; rejectRequest = fail; }) });
+    const pending = h.context.selectVehicle(h.generation);
+    h.navigation.clear();
+    if (reject) rejectRequest(new DOMException('canceled', 'AbortError'));
+    else resolveRequest(quoteTermsFixture());
+    if (reject) await assert.rejects(pending, { name: 'AbortError' });
+    else await pending;
+    assert.equal(h.context.quote, null);
+    assert.equal(h.opened.length, 0);
+  }
+});
+
+function articleRouteHarness(mode, request, authenticated = true) {
+  const h = articleMediaHarness({
+    session: { state: { mode, authenticated, csrf: 'csrf' } }, stage() {}, requestArticleJSON: request,
+    readArticle: async (read, options) => {
+      const { readArticle } = await import('./workshop/article-read.mjs');
+      return readArticle(read, { ...options, wait: async () => {} });
+    },
+  });
+  runInNewContext(appSection('async function loadArticle(', 'function openArticle('), h.context);
+  return h;
+}
+
+for (const mode of ['local', 'firebase', undefined, null, 'LOCAL', 'other']) {
+  test(`article opening mode ${String(mode)} uses only its authorized real route`, async () => {
+    const calls = [], article = mediaArticle([{ type: 'paragraph', text: 'Stored procedure.' }]);
+    const h = articleRouteHarness(mode, async (path, options) => { calls.push({ path, options }); return { data: { article } }; });
+    await h.context.loadArticle('a', h.g);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].path, mode === 'local' ? '/v1/catalog/vehicles/v/articles/a' : '/v1/catalog/vehicles/v/articles/a/prepare');
+    assert.equal(calls[0].options.method || 'GET', mode === 'local' ? 'GET' : 'POST');
+    assert.equal(calls[0].options.signal, h.g.signal);
+    if (mode === 'local') {
+      assert.equal(calls[0].options.body, undefined);
+      assert.equal(calls[0].options.headers, undefined);
+    } else {
+      assert.deepEqual(Object.keys(calls[0].options.body), []);
+      assert.equal(calls[0].options.headers['X-CSRF-Token'], 'csrf');
+    }
+    assert.match(h.nodes.get('article-content').textContent, /Stored procedure/);
+    assert.equal(h.context.currentArticle, article);
+  });
+}
+
+test('local mode preserves actual GET polling responses and session authorization', async () => {
+  const calls = [], ready = mediaArticle([{ type: 'paragraph', text: 'Stored result.' }]);
+  const h = articleRouteHarness('local', async (path, options) => {
+    calls.push({ path, options });
+    return { data: { article: calls.length === 1 ? { ...ready, processing: { job_id: 'job', state: 'running' } } : ready } };
+  });
+  await h.context.loadArticle('a', h.g);
+  assert.equal(calls.length, 2);
+  assert.ok(calls.every(c => c.path === '/v1/catalog/vehicles/v/articles/a' && !c.options.method));
+  assert.equal(h.context.currentArticle, ready);
+  const signedOut = articleRouteHarness('local', () => assert.fail('local mode does not grant a session'), false);
+  await signedOut.context.loadArticle('a', signedOut.g);
+  assert.equal(signedOut.context.currentArticle, null);
+});
+
+for (const mode of ['local', 'firebase']) {
+  test(`article ${mode} route rejects canceled reads and cannot publish obsolete responses`, async () => {
+    for (const reject of [false, true]) {
+      let resolveRead, rejectRead;
+      const h = articleRouteHarness(mode, () => new Promise((resolve, fail) => { resolveRead = resolve; rejectRead = fail; }));
+      const pending = h.context.loadArticle('a', h.g);
+      h.navigation.clear();
+      if (reject) rejectRead(new DOMException('canceled', 'AbortError'));
+      else resolveRead({ data: { article: mediaArticle([{ type: 'paragraph', text: 'Obsolete content.' }]) } });
+      if (reject) await assert.rejects(pending, { name: 'AbortError' });
+      else await pending;
+      assert.equal(h.context.currentArticle, null);
+      assert.doesNotMatch(h.nodes.get('article-content').textContent, /Obsolete/);
+    }
+  });
+}
+
+const legacyIntroSteps = [
+  { number: 1, heading: 'Set the marker', instructions: ['Turn the blue training dial to the square marker.'], image_ids: ['owned-diagram'] },
+  { number: 2, heading: 'Confirm the marker', instructions: ['Check that the orange marker sits beside the blue square.'] },
+];
+const legacyIntroText = 'Wholly authored synthetic training instructions for a fictional bench. This fixture describes no real vehicle.';
+function legacyIntroArticle(body, changes = {}) {
+  return mediaArticle([], [{ id: 'owned-diagram', url: mediaURL('owned'), alt: 'Authored training diagram' }], {
+    body, steps: structuredClone(legacyIntroSteps), ...changes,
+  });
+}
+const occurrences = (text, part) => text.split(part).length - 1;
+
+test('legacy introduction stays visible once before ordered usable steps and their image', () => {
+  const article = legacyIntroArticle(legacyIntroText), before = JSON.stringify(article);
+  const h = articleMediaHarness(), parent = h.content(article), text = parent.textContent;
+  assert.equal(occurrences(text, legacyIntroText), 1);
+  assert.ok(text.indexOf(legacyIntroText) < text.indexOf(legacyIntroSteps[0].heading));
+  assert.ok(text.indexOf(legacyIntroSteps[0].instructions[0]) < text.indexOf(legacyIntroSteps[1].heading));
+  for (const step of legacyIntroSteps) {
+    assert.equal(occurrences(text, step.heading), 1);
+    assert.equal(occurrences(text, step.instructions[0]), 1);
+  }
+  assert.deepEqual(mediaTags(parent), ['p', 'section', 'section']);
+  assert.deepEqual(mediaIDs(parent), ['owned-diagram']);
+  assert.equal(JSON.stringify(article), before, 'presentation cannot change retained source or projections');
+});
+
+test('legacy numbered replay retains leading headings and callouts without repeated steps', () => {
+  const body = 'TRAINING\n\nAuthored introductory note.\n\nNOTE: Keep the bench clear. 1.Set the marker Turn the blue training dial to the square marker. 2.Confirm the marker Check that the orange marker sits beside the blue square.';
+  const parent = articleMediaHarness().content(legacyIntroArticle(body));
+  assert.deepEqual(mediaTags(parent), ['h3', 'p', 'aside', 'section', 'section']);
+  assert.match(parent.textContent, /TRAININGAuthored introductory note\.NoteKeep the bench clear\./i);
+  for (const step of legacyIntroSteps) assert.equal(occurrences(parent.textContent, step.instructions[0]), 1);
+  assert.deepEqual(mediaIDs(parent), ['owned-diagram']);
+});
+
+for (const instructionsOnly of [false, true]) {
+  for (const intro of ['', legacyIntroText]) {
+    test(`legacy unnumbered complete replay ${instructionsOnly ? 'instructions' : 'headings'} keeps only ${intro ? 'distinct intro' : 'steps'}`, () => {
+      const replay = legacyIntroSteps.flatMap(step => [...(instructionsOnly ? [] : [step.heading]), ...step.instructions]).join('\n');
+      const article = legacyIntroArticle([intro, replay].filter(Boolean).join('\n\n'));
+      const presentation = articlePresentation(article), parent = articleMediaHarness().content(article);
+      assert.equal(presentation.introBlocks.length, intro ? 1 : 0);
+      if (intro) assert.equal(occurrences(parent.textContent, intro), 1);
+      for (const step of legacyIntroSteps) {
+        assert.equal(occurrences(parent.textContent, step.heading), 1);
+        assert.equal(occurrences(parent.textContent, step.instructions[0]), 1);
+      }
+    });
+  }
+}
+
+test('legacy whitespace-only replay differences normalize without changing retained introduction', () => {
+  const replay = legacyIntroSteps.flatMap(step => [step.heading, ...step.instructions]).join('\t\r\n');
+  const presentation = articlePresentation(legacyIntroArticle('Distinct intro.\n\n'+replay.replaceAll(' ', '\u00a0')));
+  assert.deepEqual(presentation.introBlocks, [{ type: 'paragraph', text: 'Distinct intro.' }]);
+});
+
+test('legacy numbered step projections from normalization do not create an introduction', () => {
+  const steps = [{ action: 'Set the marker', instructions: ['Turn the blue dial.'] }, { action: 'Confirm the marker', instructions: ['Observe the orange marker.'] }];
+  const body = steps.map((step, i) => `${i + 1}. ${step.action}\n${step.instructions.join('\n')}`).join('\n');
+  assert.deepEqual(articlePresentation({ body, steps }).introBlocks, []);
+});
+
+test('legacy partial or differently punctuated unnumbered overlap is preserved without fuzzy deletion', () => {
+  for (const body of ['Turn the blue training dial to the square marker.', 'turn the blue training dial to the square marker. Check that the orange marker sits beside the blue square.', 'Turn the blue training dial to the square marker! Check that the orange marker sits beside the blue square.']) {
+    const presentation = articlePresentation(legacyIntroArticle(body));
+    assert.equal(presentation.introBlocks.map(block => block.text).join(' '), body);
+  }
+});
+
+test('legacy intro decimals and unrelated numbers remain text; action wins over stale heading in replay', () => {
+  const steps = [{ action: 'Set marker', heading: 'Old heading', instructions: ['Use 1.5 turns.'] }];
+  assert.deepEqual(articlePresentation({ body: 'Model CTX1.5 reference. Set marker Use 1.5 turns.', steps }).introBlocks,
+    [{ type: 'paragraph', text: 'Model CTX1.5 reference.' }]);
+  assert.equal(articlePresentation({ body: 'Old heading Use 1.5 turns.', steps }).introBlocks[0].text, 'Old heading', 'distinct stale heading is retained while exact instruction replay is removed');
+});
+
+test('legacy introduction never overrides document authority or changes partial-step and empty-body fallbacks', () => {
+  const article = legacyIntroArticle(legacyIntroText, { document: { blocks: [{ type: 'paragraph', text: 'Authoritative ordered text.' }] } });
+  assert.deepEqual(articlePresentation(article).introBlocks, []);
+  const authoritative = articleMediaHarness().content(article);
+  assert.equal(authoritative.textContent, 'Authoritative ordered text.');
+  assert.deepEqual(mediaIDs(authoritative), []);
+  const incomplete = articlePresentation({ body: 'Retain entire fallback.', steps: [legacyIntroSteps[0], {}] });
+  assert.deepEqual(incomplete.introBlocks, []);
+  assert.deepEqual(incomplete.steps, []);
+  assert.deepEqual(incomplete.blocks, [{ type: 'paragraph', text: 'Retain entire fallback.' }]);
+  const empty = articleMediaHarness().content(legacyIntroArticle(''));
+  assert.deepEqual(mediaTags(empty), ['section', 'section']);
+});
+
+test('legacy introduction HTML-like text is inert through actual DOM construction', () => {
+  const attack = '<img src=x onerror="globalThis.introExecuted=true"> Authored note.';
+  const parent = articleMediaHarness().content(legacyIntroArticle(attack));
+  assert.equal(parent.children[0].tagName, 'p');
+  assert.equal(parent.children[0].textContent, attack);
+  assert.equal(parent.children[0].children.length, 0);
+  assert.deepEqual(mediaIDs(parent), ['owned-diagram'], 'only the real structured-step illustration is present');
+  assert.equal(globalThis.introExecuted, undefined);
+});
+
+for (const [name, body] of [
+  ['unrelated warranty list', 'Owned reference. 1. Warranty covers the fictional dial. 2. Storage requires a dry training bench.'],
+  ['partial procedure', 'Owned reference. 1. Set the marker Turn the blue training dial to the square marker.'],
+  ['changed ordinal', 'Owned reference. 7. Set the marker Turn the blue training dial to the square marker. 8. Confirm the marker Check that the orange marker sits beside the blue square.'],
+  ['reordered procedure', 'Owned reference. 2. Confirm the marker Check that the orange marker sits beside the blue square. 1. Set the marker Turn the blue training dial to the square marker.'],
+  ['changed instruction', 'Owned reference. 1. Set the marker Turn the blue training dial to a different marker. 2. Confirm the marker Check that the orange marker sits beside the blue square.'],
+]) {
+  test(`legacy unmatched numbered ${name} retains complete text and ordinals in actual renderer`, () => {
+    const article = legacyIntroArticle(body), before = JSON.stringify(article);
+    const intro = articlePresentation(article).introBlocks;
+    assert.ok(intro.every(block => block.type !== 'step'), 'parts-only legacy steps cannot reach structured renderBlocks');
+    const parent = articleMediaHarness().content(article), text = parent.textContent;
+    assert.ok(text.includes(body), 'all unmatched numbered body text remains visible verbatim');
+    assert.ok(text.indexOf(body) < text.lastIndexOf(legacyIntroSteps[0].heading));
+    assert.equal(parent.children.filter(node => node.tagName === 'section').length, 2, 'only actual structured steps become procedure sections');
+    assert.equal(JSON.stringify(article), before);
+  });
+}
+
+test('legacy numbered instructions-only exact replay retains introduction and renders instructions once', () => {
+  const body = `${legacyIntroText} 1. ${legacyIntroSteps[0].instructions[0]} 2. ${legacyIntroSteps[1].instructions[0]}`;
+  const parent = articleMediaHarness().content(legacyIntroArticle(body));
+  assert.equal(occurrences(parent.textContent, legacyIntroText), 1);
+  for (const step of legacyIntroSteps) assert.equal(occurrences(parent.textContent, step.instructions[0]), 1);
 });

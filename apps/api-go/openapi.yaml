@@ -2520,7 +2520,7 @@ components:
         checkout_url:
           type: string
           format: uri
-          pattern: ^https://checkout[.]stripe[.]com/c/pay/
+          pattern: ^https://checkout[.]stripe[.]com/[cg]/pay/[^/?#]+
           description: Exact validated Stripe-hosted HTTPS URL, including its opaque
             provider fragment when present.
         provider_expires_at:

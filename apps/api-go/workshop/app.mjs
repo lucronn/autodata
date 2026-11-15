@@ -401,15 +401,17 @@ async function selectVehicle(g, articleID = "") {
   renderPurchase();
   if (!validScope(scope())) return;
   const selected = scope();
-  try {
-    const q = await requestJSON(
-      `/v1/workshop/quote?configuration_id=${selected.configuration_id}&region=${selected.region}`,
-      { signal: g.signal },
-    );
-    if (!g.current()) return;
-    quote = validQuote(q, selected) ? q : null;
-  } catch (error) {
-    if (g.signal.aborted) throw error;
+  if (merchant?.enabled === true) {
+    try {
+      const q = await requestJSON(
+        `/v1/workshop/quote?configuration_id=${selected.configuration_id}&region=${selected.region}`,
+        { signal: g.signal },
+      );
+      if (!g.current()) return;
+      quote = validQuote(q, selected) ? q : null;
+    } catch (error) {
+      if (g.signal.aborted) throw error;
+    }
   }
   if (!g.current()) return;
   renderPurchase();
@@ -744,6 +746,7 @@ function renderContent(parent, article, g) {
       g,
     );
   else if (presentation.steps.length) {
+    renderBlocks(parent, presentation.introBlocks, images, null, g);
     for (const step of presentation.steps) {
       const section = element("section", undefined, "procedure-step");
       if (Number.isInteger(step.number))
@@ -829,8 +832,11 @@ function renderArticle(article, g) {
   document.title = `${article.title || "Article"} | AutoData`;
 }
 async function loadArticle(id, g) {
-  if (!session.state.authenticated) return;
+  if (!session.state.authenticated || !g.current()) return;
   show("reader");
+  if (currentArticle?.id !== id)
+    $("article-title").textContent = "Opening article…";
+  $("article-title").focus();
   $("print").disabled = true;
   $("article-content").replaceChildren();
   renderedRevision = "";
@@ -838,12 +844,14 @@ async function loadArticle(id, g) {
   renewalUsed = false;
   stage("article");
   status("Opening article…", { busy: true });
-  const first = await requestArticleJSON(`${articlePath(id)}/prepare`, {
-    method: "POST",
-    body: {},
-    headers: { "X-CSRF-Token": session.state.csrf },
-    signal: g.signal,
-  });
+  const first = session.state.mode === "local"
+    ? await requestArticleJSON(articlePath(id), { signal: g.signal })
+    : await requestArticleJSON(`${articlePath(id)}/prepare`, {
+        method: "POST",
+        body: {},
+        headers: { "X-CSRF-Token": session.state.csrf },
+        signal: g.signal,
+      });
   if (!g.current()) return;
   if (first.data?.article) renderArticle(first.data.article, g);
   let initial = first;
@@ -1401,7 +1409,7 @@ $("back").addEventListener("click", () => {
   updateURL();
   show("catalog");
   renderArticles();
-  $("catalog-title").focus({ preventScroll: true });
+  $("catalog-title").focus();
 });
 $("print").addEventListener("click", () => {
   if (readableArticle(currentArticle) && session.state.authenticated)

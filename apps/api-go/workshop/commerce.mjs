@@ -39,7 +39,7 @@ export function hostedCheckoutURL(value) {
       !u.port &&
       !u.username &&
       !u.password &&
-      /^\/c\/pay\/[^/]+/.test(u.pathname)
+      /^\/[cg]\/pay\/[^/]+/.test(u.pathname)
       ? value
       : null;
   } catch {

@@ -113,6 +113,11 @@ func (s *customerAuthService) session(r *http.Request, checkUser bool) (customer
 	if err != nil {
 		return customerSession{}, "", err
 	}
+	// Recheck every lookup so a cookie issued before tester removal cannot
+	// retain access after the process loads a new immutable allowlist.
+	if !s.config.allowsTester(session.ProjectID, session.UID) {
+		return customerSession{}, "", ErrCustomerBlocked
+	}
 	if !session.ExpiresAt.After(s.clock()) {
 		return customerSession{}, "", ErrUnauthenticated
 	}

@@ -1,0 +1,17 @@
+{
+  "goal": "Integrate reviewed staging Stripe TEST server UID restriction on protected master5b3e19d without runtime changes",
+  "plan_ref": "docs/superpowers/plans/2026-11-14-workshop-staging-tester-allowlist.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/413",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/workshop-staging-tester-allowlist.md"
+  ],
+  "todo": [
+    "Synchronize Issue413, Project8, plan and canonical architecture at protected master5b3e19d and pass checkpoint preflight",
+    "Merge the synchronized checkpoint into PR415 preserving the reviewed six-file auth implementation and exact master ancestry",
+    "Run focused staging audience, full Go API, auth Firebase race and full Workshop client regressions on integrated source",
+    "Push the protected-base candidate, rerun strict required CI, hand off independent exact-head review and hold merge without runtime or provider actions"
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-15T01:40:45.680706+00:00"
+}

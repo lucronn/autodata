@@ -4085,8 +4085,30 @@ class Api21V2RawInspectorTests(unittest.TestCase):
                 self.reject(model)
         model=self.model();events=model[0]['evidence']['results'][0]['observations']['events'];next(e for e in events if e['phase']=='checkout-first-delivery')['payload']['http_event']['seq']=1;self.reject(model)
 
+    def test_opaque_g_pay_receipts_keep_stored_session_authority(self):
+        old='https://checkout.stripe.com/c/pay/cs_test_'+'1'*32+'#fixture'
+        hosted='https://checkout.stripe.com/g/pay/opaque_Checkout42#fixture'
+        def transform(value):
+            if isinstance(value,list):return [transform(v) for v in value]
+            if not isinstance(value,dict):return hosted if value==old else value
+            value={k:transform(v) for k,v in value.items()}
+            if 'immutable_rows' in value and 'immutable_sha256' in value:
+                value['immutable_sha256']=hashlib.sha256(json.dumps(value['immutable_rows'],sort_keys=True,allow_nan=False).encode()).hexdigest()
+            if value.get('availability')=='retained' and value.get('parsed') is not None:
+                return self.body(value['parsed'],request=value['byte_source']=='playwright-request-post-data-buffer')
+            return value
+        self.assertEqual(len(self.inspect(transform(self.model()))['observed_case_ids']),21)
+
+    def test_g_pay_opaque_checkout_identity(self):
+        hosted='https://checkout.stripe.com/g/pay/opaque_Checkout42#opaque%2Ffragment'
+        posted=dict(configuration_id=self.uid(1),region='US')
+        identity=dict(order_id=self.uid(20),configuration_id=self.uid(1),region='US',checkout_url=hosted)
+        payload=dict(idempotency_key=self.uid(10),checkout_identity=identity,request=self.body(posted,request=True),
+                     response=self.body(dict(version='v1',state='checkout',**identity)))
+        self.assertEqual(assembler._api21_v2_checkout(payload),identity)
+
     def test_checkout_url_exact_predicate_and_retry_identity(self):
-        invalid=['https://checkout.stripe.com.evil.test/c/pay/cs_test_'+'1'*32,'https://CHECKOUT.STRIPE.COM/c/pay/cs_test_'+'1'*32,'https://checkout.stripe.com./c/pay/cs_test_'+'1'*32,'https://checkout.stripe.com:443/c/pay/cs_test_'+'1'*32,'https://user@checkout.stripe.com/c/pay/cs_test_'+'1'*32,'http://checkout.stripe.com/c/pay/cs_test_'+'1'*32,'https://checkout.stripe.com/pay/cs_test_'+'1'*32,'https://checkout.stripe.com/c/pay/cs_live_'+'1'*32,'https://checkout.stripe.com/c/pay/cs_test_'+'A'*32,'https://checkout.stripe.com/c/pay/cs_test_'+'1'*32+'?x=1']
+        invalid=['https://checkout.stripe.com.evil.test/c/pay/cs_test_'+'1'*32,'https://CHECKOUT.STRIPE.COM/c/pay/cs_test_'+'1'*32,'https://checkout.stripe.com./c/pay/cs_test_'+'1'*32,'https://checkout.stripe.com:443/c/pay/cs_test_'+'1'*32,'https://user@checkout.stripe.com/c/pay/cs_test_'+'1'*32,'http://checkout.stripe.com/c/pay/cs_test_'+'1'*32,'https://checkout.stripe.com/pay/cs_test_'+'1'*32,'https://checkout.stripe.com/g/pay/','https://checkout.stripe.com/x/pay/opaque','https://checkout.stripe.com/c/pay/cs_test_'+'1'*32+'?x=1']
         for url in invalid:
             with self.subTest(url_index=invalid.index(url)):
                 model=self.model()
@@ -4281,7 +4303,7 @@ class Api21V2RawInspectorTests(unittest.TestCase):
 
     def test_checkout_source_urlsplit_predicate_retains_original_fragments(self):
         payload=next(e['payload'] for e in self.model()[0]['evidence']['results'][0]['observations']['events'] if e['phase']=='checkout-first-http')
-        for url in ('https://checkout.stripe.com/c/pay/cs_test_'+'1'*32,'https://checkout.stripe.com/c/pay/cs_test_'+'1'*32+'#fixture fragment',' HTTPS://checkout.stripe.com/c/pay/cs_test_'+'1'*32+'#fixture'):
+        for url in ('https://checkout.stripe.com/c/pay/cs_test_'+'1'*32,'https://checkout.stripe.com/c/pay/cs_test_'+'1'*32+'#fixture%20fragment','https://checkout.stripe.com/g/pay/opaque_Checkout42#fixture'):
             with self.subTest(url_index=len(url)):
                 payload['checkout_identity']=dict(payload['checkout_identity'],checkout_url=url);payload['response']=self.body(dict(payload['response']['parsed'],checkout_url=url))
                 self.assertEqual(assembler._api21_v2_checkout(payload)['checkout_url'],url)
