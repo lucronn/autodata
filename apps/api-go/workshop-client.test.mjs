@@ -2009,6 +2009,7 @@ function articleMediaHarness(overrides = {}) {
   const shows = [], statuses = [];
   const context = {
     URL, uuid, articlePresentation, localImageURL, sourceReferenceURL, processingArticle, readableArticle,
+    session: { state: { mode: null } },
     document: { body, title: '', createElement: tag => new ArticleMediaNode(tag),
       createDocumentFragment: () => new ArticleMediaNode('#fragment') },
     location: { origin: 'https://cars.example' },
@@ -2928,4 +2929,46 @@ test('legacy numbered instructions-only exact replay retains introduction and re
   const parent = articleMediaHarness().content(legacyIntroArticle(body));
   assert.equal(occurrences(parent.textContent, legacyIntroText), 1);
   for (const step of legacyIntroSteps) assert.equal(occurrences(parent.textContent, step.instructions[0]), 1);
+});
+
+const localOpaqueImagePath = token => `/v1/catalog/images/${token}`;
+const localOpaqueImageToken = 'AbCd0123_-'.repeat(15);
+test('local opaque image URLs require explicit local mode and retain strict URL boundaries', () => {
+  const origin = 'https://cars.example', path = localOpaqueImagePath(localOpaqueImageToken);
+  assert.equal(localImageURL(path, origin, { authMode: 'local' }), origin + path);
+  for (const authMode of [undefined, null, 'firebase', 'LOCAL', true])
+    assert.equal(localImageURL(path, origin, { authMode }), null);
+  for (const authMode of ['local', 'firebase', undefined]) {
+    assert.equal(localImageURL('/v1/catalog/images/v2.opaque', origin, { authMode }), origin + '/v1/catalog/images/v2.opaque');
+    for (const value of [
+      'https://cars.example.attacker.test' + path, 'https://other.cars.example' + path,
+      'http://cars.example' + path, 'https://cars.example:444' + path,
+      'https://user:pass@cars.example' + path, path + '?src=external', path + '#fragment',
+      '/other/' + localOpaqueImageToken, path + '/extra', path + '.png', path + '=',
+      '/v1/catalog/images/' + 'a'.repeat(37), '/v1/catalog/images/' + 'a'.repeat(41),
+      '/v1/catalog/images/' + 'a'.repeat(6001), '/v1/catalog/images/%41' + localOpaqueImageToken,
+      'data:image/png;base64,YQ==', 'javascript:alert(1)', path + '\n',
+    ]) assert.equal(localImageURL(value, origin, { authMode }), null, value);
+  }
+});
+
+test('local referenced step images render and reconcile with opaque tokens without broad compatibility', () => {
+  const image = { id: 'local-image', url: localOpaqueImagePath(localOpaqueImageToken), alt: 'Stored diagram' };
+  const article = mediaArticle([], [image], { steps: [{ number: 1, action: 'Inspect', instructions: ['Inspect the stored diagram.'], image_ids: ['local-image'] }] });
+  for (const mode of ['local', 'firebase', undefined]) {
+    const h = articleMediaHarness({ session: { state: { mode } } });
+    const parent = h.render(article);
+    const images = mediaDescendants(parent, 'img');
+    assert.equal(images.length, mode === 'local' ? 1 : 0);
+    if (mode === 'local') {
+      assert.equal(images[0].src, 'https://cars.example' + image.url);
+      assert.equal(images[0].referrerPolicy, 'no-referrer');
+      const replacement = localOpaqueImagePath('ZyXw9876_-'.repeat(15));
+      h.context.reconcileImages(parent, [{ ...image, url: replacement }], h.g);
+      assert.equal(images[0].src, 'https://cars.example' + replacement);
+      h.navigation.clear();
+      h.context.reconcileImages(parent, [image], h.g);
+      assert.equal(images[0].src, 'https://cars.example' + replacement);
+    }
+  }
 });

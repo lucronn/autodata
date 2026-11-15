@@ -511,7 +511,7 @@ function imageMap(article) {
 }
 function addImage(parent, image, caption, g) {
   const figure = element("figure");
-  const url = localImageURL(image?.url, location.origin),
+  const url = localImageURL(image?.url, location.origin, { authMode: session.state.mode }),
     id = assetID(image);
   if (url && id) {
     const img = element("img");
@@ -696,7 +696,7 @@ function reconcileImages(parent, images, g) {
     const found = images.find(
       (image) => assetID(image) === img.dataset.assetId,
     );
-    const url = localImageURL(found?.url, location.origin);
+    const url = localImageURL(found?.url, location.origin, { authMode: session.state.mode });
     if (url && img.src !== url && g.current()) {
       img.dataset.replacement = "1";
       img.src = url;
