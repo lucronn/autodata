@@ -98,3 +98,23 @@ Current concrete todo:
 - [ ] Preserve exclusive M2A build-slot hold; await root capacity release and remeasure/amend exact source/runtime/protected/storage admission.
 - [ ] Only after release, build/test and seal all15 asset pins plus physical bounded one-attempt artifact/helpers/rollback package; hand root exact hashes/commands for independent review.
 - [ ] Root alone approves/executes activation or rollback; keep anonymous source-only and synthetic intro/local-image limits explicit, with no supplier/quote/prepare/provider/Stripe calls.
+
+
+## Active build-only capacity release after obsolete-cfb archival
+
+Root authorized exact-source build/package preparation, with NO public switch. Root copy/unlink receipt `held-bed88597-autodata-api-cleanup-receipt.json` SHA256b3c89ad3749606941f31337e5dcff840518c04a5529049d074771ba29adfce16 preserves historical E1 seal and verified offloaded binary. Fresh physical/home7,324,135,424B exceeds strict7,314,866,176B entry by9,269,248B; offloaded ext4/devloop0 has12,180,959,232B. M2A six services/relay are stopped per root. Admission remains per-phase/continuous, not a promised future capacity. Stop on guard failure and report; no cleanup or threshold expansion.
+
+This supersedes the exclusive-slot build hold only. Selected source remains protecteda82b31dc8850aa3956972928b8c720969765a972/tree11503a735d7d983ca3ebf090b471c89682e77278. Root specifically approves bulky build outputs on offloaded ext4. Fresh private0700 scratch/cache/logs are `/home/corp/autodata-evidence/workshop-client-preview-a82b31d-build-20261115`; mount must be/devloop0 ext4, different from physical/home. No archive/source/cache/compiler/browser copy starts before this synchronized committed checkpoint passes preflight. No source/private env/credential/backups move from their current locations. Exact public Git archive, expanded public source, compile/test temp/output and copied Go build cache may be created in build-only scratch; it is never a runtime/rollback dependency.
+
+Use pinnedGo1.26.4, linux/amd64 CGO0,-trimpath,-modreadonly,GOPROXYoff,GOSUMDBoff,GOTOOLCHAINlocal,GOMAXPROCS2,-p2 and GOMEMLIMIT1GiB. Copy existing Go cache to private offloaded cache under measured baseline+256MiB cap; no module download. Bound build-source/temp/output<=1GiB; offloaded volume must retain>=1GiB free; physical/home always retains7,180,648,448B floor+warm and remaining package reservation. Measure peak scratch/cache/package allocation and minfree/RAM. Require MemAvailable>=2GiB and effective cgroup headroom>=2GiB where finite; abort child process group and stop if guards fail. No Docker image build/pull or Docker-volume allocation.
+
+Final physical0700 package and root0555 install target remain uniquea82 paths in prior active checkpoint; installation is pending root review. Physical final archive<=34MiB, binary<=60MiB,browser<=20MiB, metadata<=4MiB,dirs<=1MiB,total<=128MiB; copied payloads hash-match build source. Verify exact source file hashes, all15 embedded assets, full Go API/shared-contract and Workshop Node suites, synthetic rollback/identity/browser-policy fixtures, actual local-only fixture if within limits, and bounded baseline readiness/purchase/demo/assets + protected27 read-only checks only; never supplier/catalog/quote/prepare/provider/Stripe. Raw env/rows stay private. Env/99/private/sourcebytes remain untouched. Final helper/probe/browser/commands/archive/binary/file-manifest hashes and current private/public baselines return to root for review; no root backup/activation marker/install/99 mutation/restart is performed by this agent.
+
+The128MiB cap covers PREPARATION. A later ordinary install-copy allocates another~61.4MB; do not treat it as covered by this reservation. Root activation must independently obtain enough current capacity or review a distinct inode-link strategy. This preparation neither changes the install strategy nor approves activation.
+
+Current concrete todo:
+
+- [x] Synchronize root build-only release, exacta82 source, archival cleanup, fresh physical capacity and ext4 build paths; pass pinned preflight.
+- [ ] Measure exact runtime/private/source/toolchain/memory baseline; guarded offloaded build/test and physical<=128MiB archive/binary/browser/helper sealing.
+- [ ] Exercise synthetic refusal/rollback/browser policy and safe baseline/protected read-only checks; hand root exact immutable package/hash/evidence, remaining capacity and extra-install budget limitation.
+- [ ] Root independently reviews and separately authorizes activation/rollback; preserve all public/private runtime until then.
