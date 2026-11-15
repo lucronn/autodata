@@ -52,7 +52,7 @@ Baseline evidence `/tmp/workshop-signin-headless.json` and `-headed.json` record
 Concrete todo:
 
 - [x] Confirm protected merge of PR412, pin merged full source SHA/tree and exact git archive, run source suites and rebuild/hash the API artifact.
-- [ ] Seal exact source/binary/asset pins in this plan and verification; synchronize Issue410/Project8, commit checkpoint and pass canonical preflight before runtime execution.
+- [x] Seal exact source/binary/asset pins in this plan and verification; synchronize Issue410/Project8, commit checkpoint and pass canonical preflight before runtime execution.
 - [ ] Capture hash-verified private rollback copies of the existing API env and99 override; install the new binary and atomically change only the API env commerce mode and override binary path.
 - [ ] Restart only the API once and verify process identity, dependency/readiness convergence, disabled purchase/demo, exact embedded assets and real browser sign-in readiness/navigation layout.
 - [ ] On any failure restore both exact previous files and old executable once; retain bounded rollback probes and report final state without changing private ingestion or payments.
@@ -62,3 +62,11 @@ Concrete todo:
 After synchronized checkpoint preflight, prepare `release_probe.py` and `rollback_helper.py` only under the private persistent evidence root above. No repository implementation file or live runtime is modified. `release_probe.py baseline|candidate|rollback` performs only the bounded no-redirect readiness/route/asset GET checks in this plan and writes sanitized phase receipts. Candidate checks merged asset hashes and demo false; old baseline/rollback omit new demo endpoint and merged assets. Keep the exact route correction: public /workshop/308 Location:/workshop; hash public /workshop200 and local /workshop/200.
 
 `rollback_helper.py prepare` is a root-only private backup/payload preparation operation, requiring the frozen baseline identity/hashes and a previously absent private rollback-state directory. Save original env/99 with0600 permissions and prepare target env/99 bytes privately, verifying exact target hashes. It does not install anything or touch services. Root may use those reviewed target bytes for the separately described atomic installation. `rollback_helper.py restore` is an explicit live rollback action only when root invokes it after failed rollout: verify saved hashes/stat metadata, accepted old/new live file hashes, original binary and unchanged dependency/ingestion identity; reserve a one-attempt marker; atomically restore both originals, daemon-reload and restart only the API once, then invoke bounded old-source rollback probes. Refuse unexpected drift or repeated rollback and report actual failure for root recovery. No apply, auto-retry, alternate artifact or private-worker change is implemented. Seal helper file hashes and compile/help/self-check receipts in the canonical verification before final execution handoff; no helper rollback is run by this preparation lane.
+
+## Sealed helper execution artifacts
+
+- `release-manifest.json` SHA256 `b72ab1d1928cb4e958d8576ae173aefe8c990c27f1bdd81ae6f53cbcb064b50d`.
+- `release_probe.py` SHA256 `56d843a9fceff78c497aab6926075216e2d4095117f8652d83db60f929c84c7c`.
+- `rollback_helper.py` SHA256 `93c3073a8549dc90613ee45674dc1480833156c509abc1fbc465e18d081b6366`.
+
+Canonical receipt records helper compilation, current baseline8 checks and offline drift/restore/one-attempt fixture PASS. The private ROOT-COMMANDS.md is a command recipe for root; no root prepare or runtime step has been executed. Repeat final exact-checkpoint preflight and literal tracking readback before root runs this bounded release.
