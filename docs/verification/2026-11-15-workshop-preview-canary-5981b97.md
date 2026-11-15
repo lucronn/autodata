@@ -134,3 +134,23 @@ Executable command delta is exactly four `/usr/bin/sudo ` prefixes: post-install
 Root0700 synthetic state fixture passed all three check dispatches under sudo, denied them unprivileged, and preserved bytes/metadata. Actual helper check call graph inspection found no file mutation; production SQL explicitly read-only. Actual sudo baseline output `{"baseline_identity":"verified","live_mutation":false}`; protected output `{"protected_tables_equal":27,"live_mutation":false}`. Shell syntax PASS. Candidate identity check is fixture-only before switch. Safe before/after hashes+uid/gid/mode/size/mtime/ctime for existing marker/root backups/installed candidate/live env+override plus PID/exe are byte-identical. Dynamic state is excluded from static payload; receipts contain hashes/metadata only. No raw config/content emitted.
 
 Only static command instructions/syntax extraction, isolated fixture/script/log, safe before/after receipts, package metadata/handoff and manifest were updated. Existing dynamic marker, root backups, installed binary and live configuration/runtime remain unchanged. Root review is the next step for continuation of the existing attempt. Purchases and licensed exposure remain disabled; no provider calls/recapture/private image rollout.
+
+
+## First attempt CLOSED — recovered baseline; do not retry
+
+Candidate identity and candidate probe40 passed. Browser mobile/desktop had all acceptance fields pass except one denied POST per viewport. Exactly one rollback was invoked; the helper reported immediate `rollback_executable_mismatch` after restart. This reported verifier failure is distinct from recovery: independent root checks subsequently verified old executable/PID1178108, original override/env hashes, baseline probe40 and protected27 PASS. Existing activation marker and rollback reservation remain preserved. No second marker or restart is permitted under that attempt.
+
+Read-only bounded browser reproduction against recovered old source identified same-origin POST `/cdn-cgi/rum` without query, resourceType xhr; it was aborted. Cloudflare documents this as automatic Web Analytics telemetry (https://developers.cloudflare.com/web-analytics/faq/). It is not required app authority. A new package may classify only exact same-origin query-free POST `/cdn-cgi/rum` as browser-local synthetic suppression with no network dispatch; all other writes remain blocked and acceptance-failing.
+
+## New attempt preparation gate — no activation
+
+Prepare a fresh physical package `/home/corp/.local/state/autodata-preview-canary-5981b97-attempt2-20261115` and new installed binary path `workshop-preview-5981b97-r2`. Retain protected source5981b97/treeb3f321d and exact binaryad5ad70c. Never copy/reuse old activation marker/root backup/rollback reservation or write old package. Re-capture safe baseline metadata and protected counts, independently recheck source/binary pins; target only executable path to r2. New release manifest/hash and helpers/commands must bind this new package; root review required before any prepare/install/marker/switch.
+
+Rollback verifier currently samples MainPID executable immediately after Type=simple start of `/usr/bin/env ... binary`; env may not have execed the pinned binary yet. This is a plausible timing race, not proven forensic causation. Add bounded monotonic identity polling after exactly one restart: tolerate missing PID/process and transient env, require old executable+hash and active service within deadline, then run existing bounded readiness/asset probe. Polling never restarts service. Timeout fails closed and retains one-attempt reservation. Synthetic fixtures must cover env→binary, PID0/disappearance, permanent mismatch/timeouts and exactly one inert restart, alongside existing marker/drift/fsync/repeat refusals.
+
+Concrete todo:
+- Record first attempt as closed and independently recovered; synchronize Issue424/Project8/canonical docs/record and pass pinned gate before new package edits.
+- Create fresh physical package with no dynamic attempt state; preserve source/binary and new exact path/manifest pins.
+- Suppress only exact Cloudflare telemetry locally and test negative route variants plus actual protected app bootstrap.
+- Fix bounded rollback identity/readiness verification; test race/timeout and single restart on isolated synthetic files only.
+- Run clean-env browser launch/baseline/protected checks, reseal new package/commands and send root review; perform no serving mutation/provider/account/payment writes.

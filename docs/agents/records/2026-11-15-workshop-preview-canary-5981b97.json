@@ -8,11 +8,12 @@
     "docs/verification/2026-11-15-workshop-preview-canary-5981b97.md"
   ],
   "todo": [
-    "Synchronize same-attempt sudo read-only-check correction and pass pinned preflight before package edits",
-    "Correct post-prepare check/candidate-check/protected-check commands to sudo clean env without repeating prepare/marker/install/restart",
-    "Prove read-only check dispatch and root-only0700 state behavior in isolated fixture; verify actual root baseline and protected check",
-    "Confirm existing dynamic marker/backups/installed binary unchanged, reseal static command/evidence hashes and return continuation for root review"
+    "Record closed first attempt and synchronize new-attempt preparation gate",
+    "Prepare fresh physical package/r2 path without reusing prior dynamic state",
+    "Test exact local Cloudflare telemetry suppression and all other write denial",
+    "Add bounded rollback executable/readiness wait with isolated race/timeout/single-restart fixtures",
+    "Reseal exact source/binary/manifest/helper commands and return root handoff without serving mutation"
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-15T02:45:50.812746+00:00"
+  "updated_at": "2026-11-15T02:51:01.724259+00:00"
 }
