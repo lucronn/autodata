@@ -79,21 +79,36 @@ Root review requested an explicit incomplete-years caller no-write result and tw
 
 Root review follow-up passed at the explicit caller boundary: red-first
 `5074b5d1` fails when a complete source plus incomplete/error source reaches
-persistence. The caller now returns `skipped_incomplete_years`/row_count0
+persistence. The caller now returns `skipped_incomplete_years`/`row_count=0`
 for coverage and persistence, retains retry metadata, and does not call the
 lower helper. The pre-existing lower guard remains as defense in depth.
 No observed durable partial write is claimed. Makes/models still persist
-truthful version0 partial rows.
+truthful version 0 partial rows.
 
-Final focused follow-up: **147 passed,17 skipped,42 subtests**. Enabled fresh
-synthetic PG/Go integrations: **6 passed** in23.33s. The added actual Go
-cold-reader case uses a complete first supplier fixture and503 second fixture:
+Final focused follow-up: **147 passed, 17 skipped, 42 subtests**. Enabled fresh
+synthetic PG/Go integrations: **6 passed** in 23.33s. The added actual Go
+cold-reader case uses a complete first supplier fixture and 503 second fixture:
 Go returns empty, PG years/markers remain empty, and a retry before scope
 cooldown dispatches nothing. After a test-only admission clock advance beyond
 30s plus simulated process-cache expiry, both authored suppliers become healthy;
-the same cold Go GET reattempts and returns ordered2023/2024. The real owned
+the same cold Go GET reattempts and returns ordered 2023/2024. The real owned
 provider process still uses real elapsed time and six-second spacing.
 All task PG/S3/test containers and internal network were removed again, with
 zero residual task-label matches. No real provider/service operation occurred.
 
 Strict CI import follow-up: child source must bind to the package root that loaded the parent, instead of assuming pytest/runtime sys.path changes were exported in PYTHONPATH. Build the child environment with that absolute source root first, preserve explicitly configured source credentials, disable bytecode writes, and test owned successful/DNS/header/trickle paths with PYTHONPATH absent. Keep stderr redacted and provider/IPC/resource bounds unchanged. This is not supplier compatibility evidence.
+
+The first exact-head CI run 43675809125 failed six owned-child cases because
+pytest configured only the parent sys.path, not exported PYTHONPATH. No source
+request was dispatched by those failed child imports. Red-first `19d4e373`
+reproduced the failure with PYTHONPATH removed. The child now binds to the
+loaded parent package root and disables bytecode writes, retaining the same
+provider/deadline/IPC limits and redacted stderr.
+
+The CI-equivalent worker-directory command with PYTHONPATH absent now passes:
+**147 passed, 17 skipped, 42 subtests** in 9.16s. The standalone owned-job
+module passes all 29 tests without PYTHONPATH, including real local successful
+connector and DNS/header/trickle cases. Enabled PG/actual-Go fixtures reran
+with the source binding fix: **6 passed** in 21.89s, with task fixtures cleaned.
+The queued intermediate run 43676223215 was canceled because it predates this
+concrete import fix. Final exact-head strict CI is the remaining code gate.

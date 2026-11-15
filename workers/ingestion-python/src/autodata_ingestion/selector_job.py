@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 import selectors
 import signal
 import subprocess
@@ -118,9 +119,16 @@ def run_owned(request, absolute_deadline, *, command=None):
         raise SelectorJobStopped('invalid_result')
     if time.monotonic() >= absolute_deadline:
         raise SelectorJobStopped('elapsed')
+    # pytest/launchers may add the loaded source root only to parent sys.path.
+    # Bind children to that same root, independent of the inherited cwd/path.
+    child_env = dict(os.environ)
+    source_root = str(Path(__file__).resolve().parent.parent)
+    child_env['PYTHONPATH'] = source_root + (
+        os.pathsep + child_env['PYTHONPATH'] if child_env.get('PYTHONPATH') else '')
+    child_env['PYTHONDONTWRITEBYTECODE'] = '1'
     process = subprocess.Popen(command or [sys.executable, '-c', 'from autodata_ingestion.selector_job import _main; _main()'],
                                stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                               stderr=subprocess.DEVNULL, start_new_session=True)
+                               stderr=subprocess.DEVNULL, start_new_session=True, env=child_env)
     output = bytearray()
     try:
         # Both pipes are nonblocking; even a child that never reads stdin is bounded.

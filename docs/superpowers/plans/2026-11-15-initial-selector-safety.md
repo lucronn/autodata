@@ -34,7 +34,7 @@ Concrete todo:
 - Prevent expired jobs from provider dispatch or persistence; preserve existing partial rows and truthful completion
 - Run focused plus existing selector connector catalog configuration regressions and open review PR without live calls or merge
 
-Root review follow-up: keep the existing lower persistence guard, and explicitly skip the persistence helper in the initial-years caller when any source is incomplete/failed. Return an explicit zero-write outcome. Red-first caller test must use one successful source plus an incomplete/error source, preserve makes/models version0 partial behavior, and prove cold years can retry after30s cooldown. Add an enabled isolated Go/HTTP/owned-source/PG partial→healthy regression, with test-only admission clock/cache expiry control and authored local source data. No serving or real provider access.
+Root review follow-up: keep the existing lower persistence guard, and explicitly skip the persistence helper in the initial-years caller when any source is incomplete/failed. Return an explicit zero-write outcome. Red-first caller test must use one successful source plus an incomplete/error source, preserve makes/models version 0 partial behavior, and prove cold years can retry after30s cooldown. Add an enabled isolated Go/HTTP/owned-source/PG partial→healthy regression, with test-only admission clock/cache expiry control and authored local source data. No serving or real provider access.
 
 - Make incomplete years an explicit caller no-write outcome and prove two-source cold retry
 
@@ -43,3 +43,5 @@ Root-review follow-up implemented and verified:147 focused passes;6 enabled synt
 Strict CI import follow-up: child source must bind to the package root that loaded the parent, instead of assuming pytest/runtime sys.path changes were exported in PYTHONPATH. Build the child environment with that absolute source root first, preserve explicitly configured source credentials, disable bytecode writes, and test owned successful/DNS/header/trickle paths with PYTHONPATH absent. Keep stderr redacted and provider/IPC/resource bounds unchanged. This is not supplier compatibility evidence.
 
 - Bind owned child imports to parent package root and test without PYTHONPATH
+
+CI import fix verified with PYTHONPATH absent:147 focused passes;6 enabled isolated PG/Go passes. The parent-loaded source root is explicit in the child environment. The final review head requires a replacement strict CI run.
