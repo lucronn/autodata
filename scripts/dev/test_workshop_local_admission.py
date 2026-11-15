@@ -43,8 +43,8 @@ class AdmissionTests(unittest.TestCase):
 
     def test_network_and_exposure_mutants(self):
         changes = [
-            lambda c: c["services"]["api"]["ports"][0].update(host_ip="0.0.0.0"),
-            lambda c: c["services"]["api"]["ports"][0].update(published="3042"),
+            lambda c: c["services"]["api"].update(ports=[{"target":8080,"published":"3041","host_ip":"0.0.0.0"}]),
+            lambda c: c["services"]["api"].update(ports=[{"target":8080,"published":"3041","host_ip":"127.0.0.1"}]),
             lambda c: c["services"]["postgres"].update(ports=[{"target":5432,"published":"5432"}]),
             lambda c: c["networks"]["internal"].update(internal=False),
             lambda c: c["networks"]["internal"].update(external=True),

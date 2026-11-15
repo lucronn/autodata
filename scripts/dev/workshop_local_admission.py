@@ -50,7 +50,6 @@ def policy_services():
     services["ingestion-http"]["working_dir"]="/src"
     api={**base,"AUTODATA_API_ADDR":":8080","AUTODATA_AUTH_MODE":"local","AUTODATA_PROJECTION_STORE":"postgres","AUTODATA_INGESTION_URL":"","AUTODATA_IMAGE_URL_KEY":"${M1_IMAGE_KEY:?required}"}
     services["api"]=service("api",api,["/runtime/autodata-api"],[mount("bin/autodata-api","/runtime/autodata-api",True)],["/tmp:rw,noexec,nosuid,size=32m"],512,entrypoint=[])
-    services["api"]["ports"]=[{"target":8080,"published":"3041","host_ip":"127.0.0.1","protocol":"tcp"}]
     for name,cmd in {"postgres":["pg_isready","-U","workshop_local_m1","-d","workshop_local_m1"],"nats":["wget","-q","-O","/dev/null","http://127.0.0.1:8222/healthz"],"minio":["wget","-q","-O","/dev/null","http://127.0.0.1:9333/cluster/status"],"ingestion-http":["python","-c","import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/healthz',timeout=2)"]}.items():
         services[name]["healthcheck"]={"test":["CMD",*cmd],"interval":"3s","timeout":"3s","retries":20}
     return services
@@ -200,6 +199,7 @@ def ownership_errors(networks, containers, marker):
         nets=c.get("NetworkSettings",{}).get("Networks",{})
         if set(nets)!={PROJECT+"_internal"} or nets.get(PROJECT+"_internal",{}).get("NetworkID")!=marker.get("network_id"):errors.append("container_attachment")
         if c.get("HostConfig",{}).get("ReadonlyRootfs") is not True:errors.append("container_root_writable")
+        if c.get("HostConfig",{}).get("PortBindings") or c.get("NetworkSettings",{}).get("Ports"):errors.append("container_publication")
     return sorted(set(errors))
 
 

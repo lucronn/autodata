@@ -398,15 +398,7 @@
           "max-file": "2"
         }
       },
-      "entrypoint": [],
-      "ports": [
-        {
-          "target": 8080,
-          "published": "3041",
-          "host_ip": "127.0.0.1",
-          "protocol": "tcp"
-        }
-      ]
+      "entrypoint": []
     }
   },
   "networks": {
