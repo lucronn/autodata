@@ -34,7 +34,20 @@ Observe focused regressions red before implementation, then green. Cover malform
 
 ## Concrete todo
 
-- [ ] Synchronize plan, Issue413, Project8 and canonical documentation; pass exact-base preflight
-- [ ] Add red-first strict staging configuration, login-before-rotation and every-session stale-cookie denial regressions
-- [ ] Implement immutable server UID restriction only in staging Stripe TEST mode without production effects
+- [x] Synchronize plan, Issue413, Project8 and canonical documentation; pass exact-base preflight
+- [x] Add red-first strict staging configuration, login-before-rotation and every-session stale-cookie denial regressions
+- [x] Implement immutable server UID restriction only in staging Stripe TEST mode without production effects
 - [ ] Run focused and full relevant tests, independent exact-head review and required CI; retain separate runtime and licensed-data acceptance gates
+
+
+## Local implementation checkpoint
+
+Planning checkpoint f35aedf was committed/pushed before tests or code and passed
+machine preflight with synchronized/errors[]. Issue413 and its Project8 item
+were read back with the same goal and concrete todos. The focused regressions
+were observed red before implementation: malformed/missing config accepted,
+outsider verified login rotated a session, removed tester reached commerce and
+wrong-project/UID stale cookies were accepted. Those cases now pass. Final full
+Go API suite and261 Workshop client tests pass; focused race checks and exact
+review/required CI are tracked in the verification document. No runtime was
+changed and no real tester/credential/provider/content acceptance was attempted.
