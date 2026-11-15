@@ -9,11 +9,11 @@
   ],
   "todo": [
     "Integrate exact reviewed M2A fixture and isolation helpers on protected a82b31dc, preserve historical evidence and add exclusive third-attempt browser outputs/one-use guard with red-first tests",
-    "Build and reseal immutable source/archive/new embedded-UI Go binary using offloaded temp/output, 160MiB maximum incremental physical-home growth and live warm-floor abort; verify stopped actual identities/config/fixture and deliver package to root before services or browser",
+    "Build and reseal immutable source/archive/new embedded-UI Go binary using offloaded temp/output, 128MiB maximum incremental physical-home growth and live warm-floor abort; verify stopped actual identities/config/fixture and deliver package to root before services or browser",
     "After separate root package and one-run approval, restart the same six services under per-phase admission, verify real served asset hashes and read-only six-row/two-object provenance, run exactly one authored desktop/mobile PNG/body/order/history acceptance, re-attest zero commerce/jobs and stop owned resources"
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-15T06:56:23.605834+00:00",
+  "updated_at": "2026-11-15T06:56:45.039231+00:00",
   "source_base_sha": "a82b31dc8850aa3956972928b8c720969765a972",
   "source_base_tree": "11503a735d7d983ca3ebf090b471c89682e77278",
   "implementation_allowlist": [
@@ -34,7 +34,7 @@
     "scripts/dev/test_workshop_owned_article_relocate.py"
   ],
   "reviewed_m2a_source": "2f9ab9bf573720280893cb3ac1b6aecce4e539a2",
-  "max_incremental_home_bytes": 167772160,
+  "max_incremental_home_bytes": 134217728,
   "root_review_before_runtime": true,
   "tracking_sync": {
     "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhH730A",
@@ -42,5 +42,6 @@
     "issue_body_sha256": "df4d4d821d7f1350d46c43273467901b64ac1835946e115761bf9fdf8213ffbb",
     "issue_readback_verified": true,
     "project_readback_verified": true
-  }
+  },
+  "entry_home_free_bytes": 7314866176
 }
