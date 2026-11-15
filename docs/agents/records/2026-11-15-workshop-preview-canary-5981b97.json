@@ -15,5 +15,30 @@
     "Reseal exact source/binary/manifest/helper commands and return root handoff without serving mutation"
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-15T02:51:01.724259+00:00"
+  "updated_at": "2026-11-15T02:56:51.331258+00:00",
+  "outcome": {
+    "source_only_preview": "accepted",
+    "successful_attempt": 2,
+    "source_sha": "5981b97f187364e54737919fd8cdb49e7566d981",
+    "candidate_probe_checks": 40,
+    "protected_tables_equal": 27,
+    "browser_viewports_passed": [
+      390,
+      1440
+    ],
+    "receipt_sha256": {
+      "candidate-probes-1794711352126381263.json": "e8b82538131e5f8375e8fc81976e62e30d5c3899f11728b5a2c844b6759d2ec4",
+      "browser-acceptance.json": "724a3d1208e0b9197e0b40fd3ac80b493020bf017e0482b4b52f596e74edb63e",
+      "browser-390.png": "07e482286ef5c58db1f2b460971b28caf015c95cc792117407db046ed1471f87",
+      "browser-1440.png": "d00ffe12a58a0cad2830da1fa6866f54534bda9ecf82fada0e387df92a70a46c"
+    },
+    "first_attempt": "closed; helper rollback reported mismatch; independently recovered baseline verified",
+    "remaining_gates": [
+      "real catalog/provider acceptance",
+      "authenticated licensed content and supplier rights",
+      "real Stripe checkout/settlement",
+      "private SVG image deployment",
+      "cold boot durability"
+    ]
+  }
 }

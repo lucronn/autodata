@@ -114,3 +114,23 @@ New exact pins:
 - attempt2-verification.json: `2232219dc8bf573787e3354506d127b66a577ba30ce1076f981eb2ae09eb91e8`.
 
 ROOT-COMMANDS.md.diff records only fresh package/install/manifest/target/temp-file pins and new-attempt status plus exact local telemetry policy and bounded rollback verification explanation. New temporary override suffix5981b97-attempt2 avoids prior attempt files. All post-prepare checks retain sudo clean env. Physical HANDOFF.md and helper/contract diffs give exact reviewable behavior. Unused copied historical receipts/tooling are explicitly isolated under historical-provenance and excluded from execution/seal; source payload and actual execution dependencies are sealed. Root review is pending; no serving mutation, marker/backup/install/restart, provider recapture, licensed display or private image rollout occurred during new preparation.
+
+
+## Actual successful public source-only canary — second attempt
+
+The coordinator executed the independently reviewed **fresh attempt2 only**, from `/home/corp/.local/state/autodata-preview-canary-5981b97-attempt2-20261115`. Candidate-check passed before and after browser QA, including unchanged27 protected table fingerprints. Candidate probe40 PASS and browser receipt PASS were independently read back and hashed for this documentation update. No additional serving mutation was performed while recording evidence.
+
+Root independently verified MainPID1202200 with executable `/usr/local/libexec/autodata/workshop-preview-5981b97-r2/autodata-api`, binary SHA256 `ad5ad70c777a19c2446275cf7640e8777429d3fc3bb334cc3522ff43e1d29750`, override SHA256 `41a658a3c90114458ca260441a548259ab3ef7c32b1a27c9e69e88c18132c840`, and unchanged env SHA256 `74a93e2198fe8b024fadce9a26845990f3c15cbc9681ddd873a704e13a16aa03`. Public health is OK, demo false and purchase enabled false. Private ingestion6fcc/image5c/source92 remains unchanged per helper. These runtime identity observations are coordinator evidence; the receipt hash verification below was performed directly by this documentation agent.
+
+Published protected source `5981b97f187364e54737919fd8cdb49e7566d981`, tree `b3f321d0263e12da2d5c54f136c9ffcee155e1d1`. Release manifest `061a69a1a37cfe79d5d7899d4f254c3c84b0812532bb5aa4dbea4889bb52ed43`; preactivation static helper manifest `b228418c4e620b7ea466ac91d56cdb92ea15b9b527619b658a9bda32ff34329a` (215files). New activation/runtime receipts are separate from that immutable preparation seal.
+
+Mobile390x844 and desktop1440x900 each returned200, proved config held before disabled sampling then enabled sign-in, had hidden purchase UI, no horizontal overflow/page errors/critical error and zero unexpected blocked requests. Each recorded one exact RUM POST locally fulfilled204 with no network dispatch and one years GET locally fulfilled with synthetic empty complete response. Safe anonymous screenshots and receipt hashes:
+
+- candidate-probes-1794711352126381263.json: `e8b82538131e5f8375e8fc81976e62e30d5c3899f11728b5a2c844b6759d2ec4`.
+- browser-acceptance.json: `724a3d1208e0b9197e0b40fd3ac80b493020bf017e0482b4b52f596e74edb63e`.
+- browser-390.png: `07e482286ef5c58db1f2b460971b28caf015c95cc792117407db046ed1471f87`.
+- browser-1440.png: `d00ffe12a58a0cad2830da1fa6866f54534bda9ecf82fada0e387df92a70a46c`.
+
+The first attempt remains CLOSED and is not retried: candidate identity/probe40 passed, browser failed on the denied telemetry POST, and one rollback reported immediate executable mismatch. Independent settled baseline identity/override/env/probe40/protected27 then passed. Its marker and rollback reservation remain retained; neither authorized this new attempt. Actual rollback recovery was verified after settlement; the first helper still reported failure. The revised wait behavior has synthetic coverage and was not exercised by a real second-attempt rollback because this attempt succeeded.
+
+This completes only the bounded public **source-only preview release**. Browser years data was synthetic, so real catalog/provider acceptance is not claimed. No authenticated licensed article/media display, real-data recovery/recapture, supplier redistribution-rights confirmation, Firebase user acceptance, real Stripe checkout/settlement or new grants are proved. Purchases and external licensed-content exposure remain disabled. Private SVG runtime-image deployment and cold-boot/reboot durability remain separate gates. No provider/account/payment writes, licensed recapture or private service/image mutation were authorized by this acceptance. The successful release does not waive those gates.
