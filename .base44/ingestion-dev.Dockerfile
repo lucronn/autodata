@@ -9,10 +9,11 @@ ENV PYTHONPATH=/app/workers/ingestion-python/src:/app/packages/contracts/python 
     PYTHONUNBUFFERED=1
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends poppler-utils tesseract-ocr \
+    && apt-get install -y --no-install-recommends libcairo2 fonts-dejavu-core poppler-utils tesseract-ocr \
     && rm -rf /var/lib/apt/lists/*
 
 RUN pip install --no-cache-dir \
+    "CairoSVG==2.9.1" \
     "minio>=7.2,<8" \
     "nats-py>=2.9,<3" \
     "Pillow>=11,<13" \

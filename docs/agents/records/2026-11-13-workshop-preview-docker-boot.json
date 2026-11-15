@@ -1,0 +1,26 @@
+{
+  "goal": "Prevent the purchase-disabled Workshop preview API from starting before its Docker-hosted PostgreSQL dependency after a host reboot, without changing live service state in the code task.",
+  "plan_ref": "docs/superpowers/plans/2026-11-13-workshop-preview-docker-boot.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/391",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/verification/2026-11-13-workshop-preview-docker-boot.md"
+  ],
+  "todo": [
+    "Synchronize this plan, Issue #391, Project #8, the canonical verification document, and a committed exact-base preflight record.",
+    "Add a failing structural test for the preview API drop-in: Docker pull-in and ordering are present, and no service command, environment, checkout, or grant setting is changed.",
+    "Add only the preview API Docker dependency drop-in, then pass the focused test, systemd syntax verification, and git diff --check.",
+    "Obtain an independent exact-head review and required PR CI; merge only if live branch protection and the review gates pass.",
+    "Keep host installation/restart/enabling and reboot acceptance as separate release work with rollback and public disabled-purchase checks."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-13T21:35:00Z",
+  "tracking_sync": {
+    "issue_comment": "https://github.com/lucronn/autodata/issues/391#issuecomment-6865494834",
+    "project_item": "PVTI_lAHOCSJ8cc4BiQ2BzhHfSQM",
+    "project_field": "Source or dependency reference",
+    "project_status": "In Progress",
+    "readback": "Issue comment and Project source field were read back after synchronization; the current public readyz failure and source-only plan are linked.",
+    "updated_at": "2026-11-13T21:35:00Z"
+  }
+}
