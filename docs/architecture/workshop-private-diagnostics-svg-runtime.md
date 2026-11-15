@@ -1,6 +1,6 @@
 # Private diagnostics/SVG runtime compatibility
 
-Status: amended physical handoff verified; 23 offline tests, actual-image hostile-context fixture, fresh fsynced physical backup and passive baseline check passed. Independent coordinator review and every serving mutation remain held.
+Status: final storage-root identity amendment planned; helper remains blocked for serving execution until fixed-context DockerRootDir guard/drift fixture and reseal pass.
 
 Use cached3132 dependency image plus immutable protected083 full source bind, retaining6fcc/source92/image5c8 rollback. Explicit Entrypoint=/usr/local/bin/python and Cmd=-m autodata_ingestion.http_service preserve the existing legacy preview's effective direct Python argv and ambient-env process contract; the cached GCE entrypoint/file-secret graph is unchanged. Coordinator accepted this direction contingent on actual-image executable/User/workdir/mount/RO/env-name/argv proof and final manifest review.
 
@@ -11,3 +11,5 @@ The immutable083 source, actual-image fixture, exact worker delta, current publi
 Mandatory amendment is in the canonical plan: physical .local/state root on /dev/nvme0n1p11, pinned absolute local Docker/socket/empty config and minimal env, proxy-free HTTP, read-only PGOPTIONS, fsynced backup/markers/directory, broad recovery finally and exact retained identity plus protected/catalog postchecks. New synchronized checkpoint/preflight precede helper edits. Old loop-backed helper/manifest/backup must not authorize activation.
 
 The amendment is implemented and verified on the physical root: absolute pinned local child boundary, proxy isolation, READ ONLY PG defaults, crash-durable file/directory/marker ordering, broad recovery finally and exact retained/protected/catalog postchecks.23 offline tests plus actual-image hostile-context fixture and fresh backup passed. Exact artifact hashes are in canonical verification; coordinator review and serving execution remain held.
+
+Final storage admission must assert the pinned local daemon DockerRootDir equals /mnt/openfoam/docker before measurement/floor; implementation follows a synchronized amendment checkpoint. Helper-only egress claims exclude background requests triggered by unchanged public ingress; aggregate request counters must be reported unavailable if not exposed.

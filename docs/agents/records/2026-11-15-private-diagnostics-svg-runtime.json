@@ -8,12 +8,12 @@
     "docs/verification/2026-11-15-private-diagnostics-svg-runtime.md"
   ],
   "todo": [
-    "DONE gate4ec0f70/Issue401 comment6888352277/Project8/preflight synchronized before edits.",
-    "DONE physical .local/state execution root, pinned absolute local Docker/socket/empty config/minimal env/systemctl/isolated Python/PG17; proxy-free HTTP and forced READ ONLY SQL.",
-    "DONE fsynced dump/TOC/files/markers/directory/source, broad rollback finally with exact retained identity and protected/catalog postchecks;23 offline tests and actual-image hostile-context PNG/PG fixture pass.",
-    "DONE fresh physical backup/restore-list,27 protected and12 catalog baselines equal; publish exact helper e08d763c/manifest e2f6e8eb hashes.",
-    "TODO independent coordinator review, recheck storage/pins, separate check/stage/activate/verify; hold provider GET for separate sealed one-request internal probe."
+    "Synchronize final DockerRootDir identity/egress wording amendment and preflight before editing helper.",
+    "Assert fixed-context Docker info data-root equals /mnt/openfoam/docker before measuring storage; add drift test proving no measurement on mismatch.",
+    "Rerun existing23 tests plus new drift fixture and passive baseline check; reseal helper/manifest, preserve fresh physical backup.",
+    "Scope egress to helper dispatch; inspect safe aggregate counters if available, otherwise mark unavailable; no global live-zero claim.",
+    "Hold serving create/start/stop and real probe for independent coordinator review."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-15T03:12:25.352680+00:00"
+  "updated_at": "2026-11-15T03:12:48.628924+00:00"
 }
