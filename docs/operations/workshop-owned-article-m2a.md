@@ -115,4 +115,3 @@ Todo: Use verified tmpfs private HOME/TMPDIR/XDG_CACHE_HOME, fresh current-basel
 Todo: Add exclusive v2 one-use marker and bounded durable safe stage/category/status journal, run focused offline tests and seal exact new host harness/operational receipt for root review before service or browser actions.
 
 Todo: Only after separate root authorization restart the exact six resources, re-attest data read-only, run one authored desktop/mobile PNG/body/order/history/auth acceptance, preserve diagnostics and stop all owned processes/resources.
-
