@@ -1,0 +1,46 @@
+{
+  "goal": "Complete one private authored M2A article/image display acceptance on protected PR439 with genuine PG/S3 responses and preserved original body",
+  "plan_ref": "docs/superpowers/plans/2026-11-15-workshop-owned-article-image-contract-acceptance.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/398",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/operations/workshop-owned-article-m2a.md",
+    "docs/verification/2026-11-15-workshop-owned-article-m2a.md"
+  ],
+  "todo": [
+    "Integrate exact reviewed M2A fixture and isolation helpers on protected a82b31dc, preserve historical evidence and add exclusive third-attempt browser outputs/one-use guard with red-first tests",
+    "Build and reseal immutable source/archive/new embedded-UI Go binary using offloaded temp/output, 160MiB maximum incremental physical-home growth and live warm-floor abort; verify stopped actual identities/config/fixture and deliver package to root before services or browser",
+    "After separate root package and one-run approval, restart the same six services under per-phase admission, verify real served asset hashes and read-only six-row/two-object provenance, run exactly one authored desktop/mobile PNG/body/order/history acceptance, re-attest zero commerce/jobs and stop owned resources"
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-15T06:56:23.605834+00:00",
+  "source_base_sha": "a82b31dc8850aa3956972928b8c720969765a972",
+  "source_base_tree": "11503a735d7d983ca3ebf090b471c89682e77278",
+  "implementation_allowlist": [
+    "infra/compose/compose.workshop-owned-article.yaml",
+    "scripts/dev/workshop_owned_article_admission.py",
+    "scripts/dev/test_workshop_owned_article_admission.py",
+    "scripts/dev/workshop_owned_article_forwarder.py",
+    "scripts/dev/test_workshop_owned_article_forwarder.py",
+    "scripts/dev/workshop_owned_article_seed.py",
+    "scripts/dev/test_workshop_owned_article_seed.py",
+    "scripts/dev/workshop_owned_article_smoke.py",
+    "scripts/dev/test_workshop_owned_article_smoke.py",
+    "scripts/dev/fixtures/workshop_owned_article/article.json",
+    "scripts/dev/fixtures/workshop_owned_article/diagram.png",
+    "docs/operations/workshop-owned-article-m2a.md",
+    "docs/verification/2026-11-15-workshop-owned-article-m2a.md",
+    "scripts/dev/workshop_owned_article_relocate.py",
+    "scripts/dev/test_workshop_owned_article_relocate.py"
+  ],
+  "reviewed_m2a_source": "2f9ab9bf573720280893cb3ac1b6aecce4e539a2",
+  "max_incremental_home_bytes": 167772160,
+  "root_review_before_runtime": true,
+  "tracking_sync": {
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhH730A",
+    "project_status": "In Progress",
+    "issue_body_sha256": "df4d4d821d7f1350d46c43273467901b64ac1835946e115761bf9fdf8213ffbb",
+    "issue_readback_verified": true,
+    "project_readback_verified": true
+  }
+}
