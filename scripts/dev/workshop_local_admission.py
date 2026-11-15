@@ -16,7 +16,8 @@ import tarfile
 ROOT = Path("/home/corp/autodata-workshop-test-data-20261115/m1")
 DEVICE = "/dev/nvme0n1p11"
 PROJECT = "autodata-workshop-local-m1-20261115"
-DOCKER_READ_COMMANDS = {"image-inspect", "compose-config"}
+DOCKER_READ_COMMANDS = {"image-inspect", "compose-config", "network-list-inspect", "container-list-inspect"}
+DATA_DIRS = ("pgdata", "nats-data", "s3-data", "s3-work")
 HASH_FIELDS = {"source_sha":40,"source_tree":40,"archive_sha256":64,"binary_sha256":64,"config_sha256":64}
 IMAGES = dict(zip(("postgres","nats","minio","migration-runner","ingestion-http","api"), (
 "sha256:151aa1c2e849e7828ed8aef2183ae15f692cbe887d2f28921d8b44b26e154d7e",
@@ -144,6 +145,46 @@ def archive_errors(archive, source, manifest):
     return errors
 
 
+def private_mode_errors(root_mode, file_modes):
+    return [] if root_mode==0o700 and all(m==0o600 for m in file_modes) else ["private_mode"]
+
+
+def fresh_data_errors(empty, marker, storage=None):
+    if set(empty)!=set(DATA_DIRS):return ["data_directory_set"]
+    if marker is None:return [] if all(empty.values()) else ["data_not_fresh"]
+    return [] if marker.get("storage")==storage else ["data_identity"]
+
+
+def ownership_errors(networks, containers, marker):
+    if marker is None:return [] if not networks and not containers else ["preexisting_resources"]
+    errors=[]
+    if len(networks)!=1:return ["owned_network_missing"]
+    net=networks[0]
+    labels=net.get("Labels") or {}
+    if (net.get("Id")!=marker.get("network_id") or net.get("Name")!=PROJECT+"_internal" or net.get("Internal") is not True or labels.get("com.docker.compose.project")!=PROJECT or labels.get("com.docker.compose.network")!="internal"):errors.append("network_owner")
+    accepted=marker.get("containers",{})
+    if {c.get("Id") for c in containers}!=set(accepted):errors.append("container_set")
+    if set(net.get("Containers",{}))-set(accepted):errors.append("network_foreign_attachment")
+    for c in containers:
+        label=c.get("Config",{}).get("Labels") or {};name=label.get("com.docker.compose.service")
+        if name not in IMAGES or accepted.get(c.get("Id"))!=name or label.get("com.docker.compose.project")!=PROJECT or c.get("Image")!=IMAGES.get(name):errors.append("container_owner")
+        if c.get("Name")!="/"+PROJECT+"-"+str(name)+"-1":errors.append("container_name")
+        nets=c.get("NetworkSettings",{}).get("Networks",{})
+        if set(nets)!={PROJECT+"_internal"} or nets.get(PROJECT+"_internal",{}).get("NetworkID")!=marker.get("network_id"):errors.append("container_attachment")
+        if c.get("HostConfig",{}).get("ReadonlyRootfs") is not True:errors.append("container_root_writable")
+    return sorted(set(errors))
+
+
+def runtime_resources():
+    net_ids=_capture(["docker","network","ls","-q","--filter","name=^"+PROJECT+"_internal$"]).split()
+    # Union catches both mismatched labels and same-name unlabelled resources.
+    ids=set(_capture(["docker","ps","-aq","--filter","label=com.docker.compose.project="+PROJECT]).split())
+    ids.update(_capture(["docker","ps","-aq","--filter","name="+PROJECT]).split())
+    nets=json.loads(_capture(["docker","network","inspect",*net_ids])) if net_ids else []
+    containers=json.loads(_capture(["docker","inspect",*sorted(ids)])) if ids else []
+    return nets,containers
+
+
 def _path_evidence(path):
     parts=[path,*path.parents]
     symlink=any(p.is_symlink() for p in parts)
@@ -175,13 +216,26 @@ def main(argv=None):
     parser.add_argument("--compose",type=Path,required=True)
     parser.add_argument("--env-file",type=Path,required=True)
     parser.add_argument("--manifest",type=Path,required=True)
+    parser.add_argument("--state-receipt",type=Path,help="exact private accepted M1 resource/state receipt; omit only for fresh first start")
     parser.add_argument("--growth-bytes",type=int,required=True,help="measured upper allowance over bounded local window")
     args=parser.parse_args(argv)
     try:
-        if args.env_file.stat().st_mode&0o077 or args.manifest.stat().st_mode&0o077:raise RuntimeError("private_modes")
+        if args.env_file.parent!=ROOT/"private-config" or args.manifest.parent!=ROOT/"private-config":raise RuntimeError("private_paths")
+        modes=[args.env_file.stat().st_mode&0o777,args.manifest.stat().st_mode&0o777]
+        if private_mode_errors(ROOT.stat().st_mode&0o777,modes):raise RuntimeError("private_modes")
+        if (ROOT/"private-config").stat().st_mode&0o777!=0o700:raise RuntimeError("private_directory_mode")
         config=json.loads(_capture(["docker","compose","--project-name",PROJECT,"--file",str(args.compose),"--env-file",str(args.env_file),"config","--format","json"]))
         errors=validate_config(config)
         manifest=json.loads(args.manifest.read_text());errors+=manifest_errors(manifest)
+        marker=None
+        if args.state_receipt:
+            if args.state_receipt!=ROOT/"private-config/accepted-state.json" or args.state_receipt.stat().st_mode&0o777!=0o600:raise RuntimeError("state_receipt_path")
+            marker=json.loads(args.state_receipt.read_text())
+            if set(marker)!={"network_id","containers","storage","source_sha"} or marker["source_sha"]!=manifest["source_sha"]:errors.append("state_receipt_contract")
+        storage={name:[(ROOT/name).stat().st_dev,(ROOT/name).stat().st_ino] for name in DATA_DIRS}
+        empty={name:True if marker is not None else not any((ROOT/name).iterdir()) for name in DATA_DIRS}
+        errors+=fresh_data_errors(empty,marker,storage)
+        nets,containers=runtime_resources();errors+=ownership_errors(nets,containers,marker)
         for p in [ROOT,*[Path(v["source"]) for s in config["services"].values() for v in s.get("volumes",[])]]:errors+=path_errors(p)
         errors+=archive_errors(ROOT/"source.tar", ROOT/"source", manifest)
         actual_tree=_capture(["git","-C",str(Path(__file__).resolve().parents[2]),"show","-s","--format=%T",manifest["source_sha"]]).strip()

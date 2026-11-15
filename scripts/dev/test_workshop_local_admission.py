@@ -133,8 +133,31 @@ class AdmissionTests(unittest.TestCase):
             (source/"extra").unlink()
             self.assertTrue(a.archive_errors(archive,source,{**manifest,"source_sha":"b"*40}))
 
+    def test_first_start_rejects_existing_resources_or_nonempty_data(self):
+        self.assertTrue(a.ownership_errors([{"Id":"unknown"}],[],None))
+        self.assertTrue(a.ownership_errors([],[{"Id":"unknown"}],None))
+        self.assertEqual(a.ownership_errors([],[],None),[])
+        self.assertTrue(a.fresh_data_errors({"pgdata":False,"nats-data":True,"s3-data":True,"s3-work":True},None))
+        self.assertEqual(a.fresh_data_errors({k:True for k in a.DATA_DIRS},None),[])
+
+    def test_restart_rejects_external_attachment_wrong_owner_or_identity(self):
+        marker={"network_id":"network1","containers":{"container1":"api"},"storage":{"pgdata":[1,2]},"source_sha":"a"*40}
+        net={"Id":"network1","Name":a.PROJECT+"_internal","Internal":True,"Labels":{"com.docker.compose.project":a.PROJECT,"com.docker.compose.network":"internal"},"Containers":{"container1":{}}}
+        con={"Id":"container1","Name":"/"+a.PROJECT+"-api-1","Image":a.IMAGES["api"],"Config":{"Labels":{"com.docker.compose.project":a.PROJECT,"com.docker.compose.service":"api"}},"HostConfig":{"ReadonlyRootfs":True},"NetworkSettings":{"Networks":{a.PROJECT+"_internal":{"NetworkID":"network1"}}}}
+        self.assertEqual(a.ownership_errors([net],[con],marker),[])
+        bad=copy.deepcopy(net);bad["Containers"]["outsider"]={}
+        self.assertTrue(a.ownership_errors([bad],[con],marker))
+        bad=copy.deepcopy(con);bad["Config"]["Labels"]["com.docker.compose.project"]="other"
+        self.assertTrue(a.ownership_errors([net],[bad],marker))
+        bad=copy.deepcopy(con);bad["NetworkSettings"]["Networks"]["other"]={}
+        self.assertTrue(a.ownership_errors([net],[bad],marker))
+        self.assertTrue(a.fresh_data_errors({k:False for k in a.DATA_DIRS},marker,{"pgdata":[7,8]}))
+        self.assertTrue(a.private_mode_errors(0o755,[0o600]))
+        self.assertTrue(a.private_mode_errors(0o700,[0o644]))
+        self.assertEqual(a.private_mode_errors(0o700,[0o600]),[])
+
     def test_helper_contains_no_docker_mutation_or_general_shell(self):
-        self.assertEqual(a.DOCKER_READ_COMMANDS, {"image-inspect", "compose-config"})
+        self.assertEqual(a.DOCKER_READ_COMMANDS, {"image-inspect", "compose-config", "network-list-inspect", "container-list-inspect"})
         code = Path(a.__file__).read_text()
         self.assertNotIn("shell=True",code)
 
