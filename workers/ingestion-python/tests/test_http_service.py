@@ -93,17 +93,18 @@ class HTTPServiceTests(unittest.TestCase):
         self.assertEqual(result["status"], "ready")
         self.assertEqual(calls[0]["query"], "replace alternator and starter")
 
-    def test_catalog_ensure_dispatches_years_to_year_manifest(self):
+    def test_catalog_ensure_dispatches_years_to_bounded_selector(self):
         calls = []
 
-        def catalog_years_runner(serialized_request):
+        def catalog_runner(serialized_request):
             calls.append(json.loads(serialized_request))
             return {"status": "scheduled", "scope": "years"}
 
         result = dispatch_request(
             "/v1/catalog/ensure",
             {"scope": "years", "idempotency_key": "catalog-hydration:years"},
-            catalog_years_runner=catalog_years_runner,
+            catalog_runner=catalog_runner,
+            catalog_years_runner=lambda *_: self.fail("legacy manifest scheduled"),
         )
 
         self.assertEqual(result["status"], "scheduled")

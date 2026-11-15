@@ -366,7 +366,8 @@ class CatalogServiceTests(unittest.TestCase):
                     "idempotency_key": f"caller-secret-{stage}",
                 })
                 with patch.object(catalog_service, "_configured_catalog_providers", return_value=(object(),)), \
-                        patch.object(catalog_service.CacheFirstCatalogService, "resolve", return_value=CatalogResult(rows=(), complete=False, missing_scopes=("makes",))) as resolve, \
+                        patch.object(catalog_service.selector_job, "run_owned", return_value={"rows": [], "complete": False, "missing_scopes": ["makes"], "provenance": []}) as resolve, \
+                        patch.object(catalog_service.selector_job, "ADMISSION", catalog_service.selector_job.SelectorAdmission()), \
                         patch.object(catalog_service, "_persist_resolved_catalog_rows", return_value={"status": "no_persistable_rows", "row_count": 0}), \
                         patch.object(catalog_service, "_persist_hydration_scope", return_value={"status": "persisted"}) as persist:
                     operation = resolve if failing_operation == "resolve" else persist

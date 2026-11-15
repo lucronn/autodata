@@ -52,12 +52,8 @@ def dispatch_request(
         if scope not in {"years", "makes", "models", "configurations", "articles", "article"}:
             raise ValueError("catalog hydration scope is invalid")
         serialized = json.dumps(dict(payload), ensure_ascii=False, sort_keys=True)
-        if scope == "years":
-            if catalog_years_runner is None:
-                from .catalog_years import ensure_catalog_years
-
-                catalog_years_runner = ensure_catalog_years
-            return catalog_years_runner(serialized)
+        # Public years shares initial selector admission; the explicit legacy
+        # manifest helper must never schedule an uncharged daemon here.
         if catalog_runner is None:
             from .catalog_service import ensure_catalog_hydration
 

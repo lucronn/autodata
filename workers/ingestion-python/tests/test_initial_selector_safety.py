@@ -247,3 +247,66 @@ def test_actual_http_years_boundary_uses_shared_job_not_legacy_manifest(monkeypa
     monkeypatch.setattr(catalog,'_ensure_initial_selector',lambda request,key: calls.append(request['scope']) or {'complete':False,'stop_reason':'admission'})
     result=dispatch_request('/v1/catalog/ensure',{'scope':'years','idempotency_key':'http-cold-years'})
     assert result['complete'] is False and calls==['years']
+
+
+@pytest.mark.parametrize('scope',['years','makes','models'])
+def test_real_owned_job_resolves_only_authored_local_connector(monkeypatch,scope):
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from test_source_connector_client import _envelope
+    calls=[]
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            calls.append(self.path)
+            item={'year':2024,'opaque_ref':'authored','label':'Authored'}
+            if scope != 'years': item['make']='Authored'
+            if scope == 'models': item['model']='Fiction'
+            body=json.dumps(_envelope(scope=scope,items=[item],complete=True,next_cursor=None)).encode()
+            self.send_response(200); self.send_header('Content-Type','application/json'); self.send_header('Content-Length',str(len(body))); self.end_headers(); self.wfile.write(body)
+        def log_message(self,*args): pass
+    server=ThreadingHTTPServer(('127.0.0.1',0),Handler)
+    thread=threading.Thread(target=server.serve_forever,daemon=True); thread.start()
+    monkeypatch.setenv('BANKONE_BASE_URL',f'http://127.0.0.1:{server.server_port}')
+    monkeypatch.setenv('BANKTWO_BASE_URL','')
+    try:
+        result=job.run_owned({'scope':scope,'year':2024,'make':'Authored'},time.monotonic()+3)
+        assert result['complete'] is True and len(result['rows'])==1
+        assert len(calls)==1 and calls[0].startswith('/v1/catalog/'+scope)
+    finally:
+        server.shutdown(); server.server_close(); thread.join(2)
+
+
+def test_years_bounded_persistence_is_one_transaction_and_never_false_complete(monkeypatch):
+    import psycopg
+    from autodata_ingestion import catalog_sync
+    statements=[]; events=[]; connections=[]
+    class Cursor:
+        def __enter__(self): return self
+        def __exit__(self,*args): pass
+        def execute(self,sql,params): statements.append((sql,params))
+    class Connection:
+        def __enter__(self): return self
+        def __exit__(self,*args): events.append('rollback' if args[0] else 'exit')
+        def cursor(self): return Cursor()
+        def commit(self): events.append('commit')
+    def connect(**kwargs): connections.append(kwargs); return Connection()
+    monkeypatch.setattr(catalog_sync,'_conninfo',lambda: {'host':'127.0.0.1'})
+    monkeypatch.setattr(psycopg,'connect',connect)
+    monkeypatch.setenv('AUTODATA_SOURCE_PERSIST','1')
+    request={'scope':'years'}
+    partial=catalog.CatalogResult(rows=({'year':2024},),complete=False,missing_scopes=('years',))
+    assert catalog._persist_hydration_scope(request,partial,deadline=time.monotonic()+3)['status']=='not_complete'
+    assert not connections and not statements
+    mapping={'provider':'autoapi','source_uri':'http://127.0.0.1:1/v1/catalog/years','source_version':'authored-v1'}
+    resolved=catalog.CatalogResult(rows=tuple({'year':year,'provider_mappings':[mapping]} for year in (2024,2024,2023)),complete=True)
+    assert catalog._persist_hydration_scope(request,resolved,deadline=time.monotonic()+3)['status']=='persisted'
+    assert len(connections)==1 and connections[0]['connect_timeout']==1
+    assert connections[0]['options']=='-c statement_timeout=1000 -c lock_timeout=250'
+    assert len(statements)==1 and 'INSERT INTO vehicle_catalog_years' in statements[0][0]
+    assert sorted(row['year'] for row in statements[0][1][1].obj)==[2023,2024]
+    assert all(row['source_version']=='authored-v1' for row in statements[0][1][1].obj)
+    assert all('INSERT INTO vehicle_catalog_hydration_scopes' not in sql for sql,_ in statements)
+    assert events==['commit','exit']
+    statements.clear(); connections.clear()
+    with pytest.raises(job.SelectorJobStopped,match='elapsed'):
+        catalog._persist_hydration_scope(request,resolved,deadline=time.monotonic()+.5)
+    assert not connections and not statements

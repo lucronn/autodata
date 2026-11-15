@@ -178,6 +178,7 @@ class SourceConnectorClient:
         self, scope: str, selector: Mapping[str, Any] | None = None, cursor: str | None = None,
         *, timeout: float | None = None,
         before_additional_request: Callable[[], float] | None = None,
+        read_control: Any = None,
     ) -> SourceEnvelopeV1 | SourceCatalogAbsence:
         if not isinstance(scope, str) or scope not in _SCOPES:
             raise ValueError("unsupported catalog scope")
@@ -206,10 +207,13 @@ class SourceConnectorClient:
             if remaining is not None and remaining <= 0:
                 raise SourceConnectorError("UPSTREAM_UNAVAILABLE", retryable=True)
             suffix = f"?{urlencode(page_query)}" if page_query else ""
-            return self._read(
+            page = self._read(
                 "GET", f"/v1/catalog/{page_scope}{suffix}", operation="catalog", scope=page_scope,
-                timeout=remaining, deadline=deadline,
+                timeout=remaining, deadline=deadline, read_control=read_control,
             )
+            if read_control is not None:
+                read_control.consume_rows(len(page.body["items"]))
+            return page
 
         try:
             return read_page(scope, query)
@@ -319,7 +323,9 @@ class SourceConnectorClient:
     def _read(
         self, method: str, path: str, *, operation: str, payload: Mapping[str, Any] | None = None,
         scope: str | None = None, timeout: float | None = None, deadline: float | None = None,
+        read_control: Any = None,
     ) -> SourceEnvelopeV1:
+        response_limit = min(self.max_bytes, 1024 * 1024) if read_control is not None else self.max_bytes
         url = self.base_url + path
         data = json.dumps(payload, separators=(",", ":")).encode() if payload is not None else None
         headers = {"Accept": "application/json, application/octet-stream", "User-Agent": "autodata-source-client/1"}
@@ -340,12 +346,14 @@ class SourceConnectorClient:
                 declared = _header(response_headers, "content-length")
                 if declared is not None:
                     try:
-                        if int(declared) > self.max_bytes or int(declared) < 0:
+                        if read_control is not None and int(declared) > response_limit:
+                            read_control.stop("response_limit")
+                        if int(declared) > response_limit or int(declared) < 0:
                             raise SourceConnectorError("INVALID_UPSTREAM_RESPONSE")
                     except ValueError as error:
                         raise SourceConnectorError("INVALID_UPSTREAM_RESPONSE") from error
                 if deadline is None:
-                    raw = response.read(self.max_bytes + 1)
+                    raw = response.read(response_limit + 1)
                 else:
                     # read() can wait forever when a peer trickles bytes inside
                     # the socket idle timeout. read1() returns available chunks
@@ -368,7 +376,7 @@ class SourceConnectorClient:
                         timer.daemon = True
                         timer.start()
                     try:
-                        while size <= self.max_bytes:
+                        while size <= response_limit:
                             remaining = deadline - time.monotonic()
                             if remaining <= 0:
                                 raise TimeoutError("catalog deadline exceeded")
@@ -382,11 +390,13 @@ class SourceConnectorClient:
                                     # socket; preserve every other transport error.
                                     if error.errno != errno.EBADF:
                                         raise
-                            chunk = response.read1(min(65536, self.max_bytes + 1 - size))
+                            chunk = response.read1(min(65536, response_limit + 1 - size))
                             if time.monotonic() >= deadline:
                                 raise TimeoutError("catalog deadline exceeded")
                             if not chunk:
                                 break
+                            if read_control is not None:
+                                read_control.consume_bytes(len(chunk))
                             chunks.append(chunk)
                             size += len(chunk)
                         raw = b"".join(chunks)
@@ -398,7 +408,9 @@ class SourceConnectorClient:
                         if timer is not None:
                             timer.cancel()
                             timer.join()
-                if len(raw) > self.max_bytes:
+                if len(raw) > response_limit:
+                    if read_control is not None:
+                        read_control.stop("response_limit")
                     raise SourceConnectorError("INVALID_UPSTREAM_RESPONSE")
                 media = (_header(response_headers, "content-type") or "").split(";", 1)[0].strip().lower()
                 if operation == "resource" and media == "application/octet-stream":
