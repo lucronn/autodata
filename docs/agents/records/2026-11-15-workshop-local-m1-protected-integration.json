@@ -23,5 +23,11 @@
     "scripts/dev/test_workshop_local_forwarder.py",
     "docs/operations/workshop-local-empty-runtime.md",
     "docs/verification/2026-11-15-workshop-local-empty-runtime.md"
-  ]
+  ],
+  "tracking_sync": {
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhH730A",
+    "project_status": "In Progress",
+    "readback_verified": true,
+    "issue_body_sha256": "691b5c17bfac7f6e5df16d977b20648af12cfe67110280f293562030214c52e9"
+  }
 }
