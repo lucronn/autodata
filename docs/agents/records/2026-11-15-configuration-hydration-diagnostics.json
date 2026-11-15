@@ -12,8 +12,9 @@
     "Write red-first per-bank/stage/class/hashed-scope/redaction and unchanged-result/exception/HTTP regressions, including unknown secret-bearing exception names and internal persistence ValueError.",
     "Implement minimal configuration-only anomaly logging in catalog_service.py with fixed enums/hash/count/allowlisted error classes; no raw payloads/messages/URLs/IDs/credentials or coverage/flag/persistence/dispatch changes.",
     "Run focused synthetic PostgreSQL/S3/HTTP and Go usability checks; retain no-provider-call/no-serving-mutation boundary.",
-    "Hold final PR strictCI/merge until coordinator supplies protected415/422 integration pins, update exact base then independent review/requiredCI/protectedmerge; separate runtimegate before any later deployment or one authorized live acceptance request."
+    "Hold final PR strictCI/merge until coordinator supplies protected415/422 integration pins, update exact base then independent review/requiredCI/protectedmerge; separate runtimegate before any later deployment or one authorized live acceptance request.",
+    "Coordinator-approved amendment: after a fresh synchronized checkpoint/preflight, red-first stdout/log sentinel regression and logging-only replacement of the existing _deepen_selector_scope configuration persistence exception print; preserve traversal/catch/continue/budgets/coverage/nonconfiguration logging."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-15T01:41:19.601690+00:00"
+  "updated_at": "2026-11-15T01:44:52.754628+00:00"
 }
