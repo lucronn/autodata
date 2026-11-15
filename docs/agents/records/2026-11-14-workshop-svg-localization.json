@@ -1,0 +1,16 @@
+{
+  "goal": "Localize provider SVG illustrations as bounded PNG derivatives while preserving exact source provenance",
+  "plan_ref": "docs/superpowers/plans/2026-11-14-workshop-svg-localization.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/419",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/workshop-svg-localization.md"
+  ],
+  "todo": [
+    "Integrate exact protected #421 master 5b3e19d through synchronized checkpoint preserving reviewed SVG implementation",
+    "Run focused synthetic actual-image and isolated PostgreSQL/S3 lifecycle persistence checks after integration",
+    "Hold final review-head push and strict CI until #415 protected merge; keep PR422 draft and no runtime activation"
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-15T01:40:39.989353+00:00"
+}
