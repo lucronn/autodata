@@ -1,0 +1,17 @@
+{
+  "goal": "Keep the Workshop activity status aligned with actual purchase availability after an entitlement-required response.",
+  "plan_ref": "docs/superpowers/plans/2026-11-08-workshop-purchase-availability-status.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/388",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/verification/2026-11-08-workshop-purchase-availability-status.md"
+  ],
+  "todo": [
+    "Reproduce the missing-quote purchase status contradiction on the exact planning base.",
+    "Align the entitlement-required activity status with the rendered purchase availability without changing checkout behavior.",
+    "Cover invalid merchant configuration, valid quote, and validated unresolved-order controls.",
+    "Verify Workshop and Go suites, syntax, diff, independent review, and required CI before integration."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-09T02:28:02Z"
+}

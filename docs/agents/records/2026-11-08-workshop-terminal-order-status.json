@@ -1,0 +1,16 @@
+{
+  "goal": "Clear terminal Workshop payment-status actions while retaining the pending order manual check.",
+  "plan_ref": "docs/superpowers/plans/2026-11-08-workshop-terminal-order-status.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/377",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/verification/2026-11-08-workshop-terminal-order-status.md"
+  ],
+  "todo": [
+    "Add failing tests using the real Workshop order-status function for terminal and current 404 outcomes with pending and stale-generation controls.",
+    "Clear the old order ID and hide its button only for current terminal or not-found outcomes without changing payment or access contracts.",
+    "Run focused/full Workshop and Go checks, independent review and required CI before integrating the scoped fix."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-08T22:20:24Z"
+}

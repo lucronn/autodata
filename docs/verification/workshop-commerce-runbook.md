@@ -9,7 +9,16 @@ release acceptance remain separate gates. This document does not approve deploym
 
 ## Configuration
 
-`AUTODATA_COMMERCE_MODE` is explicitly `disabled`, `stripe_test` or `stripe_live`.
+The Go API accepts `AUTODATA_COMMERCE_MODE=read_only` for a purchase-disabled
+preview that retains authenticated private quote, library and grant reads.
+Purchase configuration is forced disabled locally; checkout, webhook, demo-mode
+and order-status transport are blocked before any private request. Order status
+can reconcile expired sessions, so it is excluded from this read-only boundary.
+This mode changes no private ingestion configuration, grant or Firebase rule.
+See [the canonical specification](../architecture/workshop-read-only-commerce.md).
+Selecting it on a running host requires a separately synchronized rollout gate.
+
+The private ingestion authority accepts `disabled`, `stripe_test` or `stripe_live`.
 The committed manifests keep it disabled. Disabled routes return 503 and never
 construct a Stripe client. Enabled ingestion HTTP and the existing payment
 reconciler require the Stripe 16.1.0 production image and secret-managed

@@ -119,6 +119,23 @@ class SourceEnvelopeV1:
         )
 
 
+@dataclass(frozen=True)
+class SourceCatalogAbsence:
+    """Complete parent enumeration proving a requested catalog label absent.
+
+    Pages are the original validated envelopes, never a fabricated child page.
+    Only the catalog provider converts this proof to completed empty coverage.
+    """
+
+    requested_scope: str
+    requested_selector: Mapping[str, str | int]
+    parent_scope: str
+    parent_selector: Mapping[str, str | int]
+    missing_field: str
+    missing_value: str
+    pages: tuple[SourceEnvelopeV1, ...]
+
+
 class SourceConnectorClient:
     """Read a single bank origin using the shared `/v1` operations only."""
 
@@ -161,7 +178,8 @@ class SourceConnectorClient:
         self, scope: str, selector: Mapping[str, Any] | None = None, cursor: str | None = None,
         *, timeout: float | None = None,
         before_additional_request: Callable[[], float] | None = None,
-    ) -> SourceEnvelopeV1:
+        read_control: Any = None,
+    ) -> SourceEnvelopeV1 | SourceCatalogAbsence:
         if not isinstance(scope, str) or scope not in _SCOPES:
             raise ValueError("unsupported catalog scope")
         selector = selector or {}
@@ -173,6 +191,9 @@ class SourceConnectorClient:
                 query[key] = _selector_field(key, selector[key])
         if cursor is not None:
             query["cursor"] = _bounded_text(cursor, "cursor", 512)
+        if read_control is not None:
+            remaining = read_control.remaining()
+            timeout = min(timeout, remaining) if timeout is not None else remaining
         # Keep label discovery and retry inside the caller's elapsed budget.
         # Exact source labels remain a single-request fast path.
         deadline = time.monotonic() + min(self.timeout, timeout) if timeout is not None else None
@@ -181,7 +202,8 @@ class SourceConnectorClient:
 
         def read_page(page_scope: str, page_query: Mapping[str, str | int]) -> SourceEnvelopeV1:
             nonlocal dispatched
-            allowance = before_additional_request() if dispatched and before_additional_request else None
+            allowance = (read_control.before_request() if read_control is not None else
+                         before_additional_request() if dispatched and before_additional_request else None)
             remaining = deadline - time.monotonic() if deadline is not None else timeout
             if allowance is not None:
                 remaining = min(remaining, allowance) if remaining is not None else allowance
@@ -189,10 +211,13 @@ class SourceConnectorClient:
             if remaining is not None and remaining <= 0:
                 raise SourceConnectorError("UPSTREAM_UNAVAILABLE", retryable=True)
             suffix = f"?{urlencode(page_query)}" if page_query else ""
-            return self._read(
+            page = self._read(
                 "GET", f"/v1/catalog/{page_scope}{suffix}", operation="catalog", scope=page_scope,
-                timeout=remaining, deadline=deadline,
+                timeout=remaining, deadline=deadline, read_control=read_control,
             )
+            if read_control is not None:
+                read_control.consume_rows(len(page.body["items"]))
+            return page
 
         try:
             return read_page(scope, query)
@@ -207,14 +232,23 @@ class SourceConnectorClient:
         # Public IDs discard case and punctuation. Recover only labels proved
         # unique by complete provider enumeration; never guess capitalization.
         repaired = dict(query)
-        repaired["make"] = self._catalog_label(
+        requested_selector = {key: value for key, value in query.items() if key != "cursor"}
+        make = self._catalog_label(
             "makes", "make", {"year": query["year"]}, str(query["make"]), read_page,
+            requested_scope=scope, requested_selector=requested_selector,
         )
+        if isinstance(make, SourceCatalogAbsence):
+            return make
+        repaired["make"] = make
         if scope == "configurations":
-            repaired["model"] = self._catalog_label(
+            model = self._catalog_label(
                 "models", "model", {"year": query["year"], "make": repaired["make"]},
                 str(query["model"]), read_page,
+                requested_scope=scope, requested_selector=requested_selector,
             )
+            if isinstance(model, SourceCatalogAbsence):
+                return model
+            repaired["model"] = model
         if repaired == query:
             raise SourceConnectorError("NOT_FOUND", status=404)
         return read_page(scope, repaired)
@@ -223,7 +257,8 @@ class SourceConnectorClient:
     def _catalog_label(
         scope: str, field: str, query: Mapping[str, str | int], value: str,
         read_page: Callable[[str, Mapping[str, str | int]], SourceEnvelopeV1],
-    ) -> str:
+        *, requested_scope: str, requested_selector: Mapping[str, str | int],
+    ) -> str | SourceCatalogAbsence:
         def slug(label: str) -> str:
             return re.sub(r"[^a-z0-9]+", "-", label.lower()).strip("-")
 
@@ -231,17 +266,27 @@ class SourceConnectorClient:
         if not target:
             raise SourceConnectorError("NOT_FOUND", status=404)
         matches: set[str] = set()
+        pages: list[SourceEnvelopeV1] = []
         page_query = dict(query)
         seen: set[str] = set()
         for _ in range(1000):
             page = read_page(scope, page_query)
+            pages.append(page)
             for item in page.body["items"]:
                 label = item.get(field)
-                if isinstance(label, str) and slug(label) == target:
+                if not isinstance(label, str) or not slug(label):
+                    raise SourceConnectorError("INVALID_UPSTREAM_RESPONSE")
+                if slug(label) == target:
                     matches.add(label)
             if page.complete:
+                if not matches:
+                    return SourceCatalogAbsence(
+                        requested_scope=requested_scope, requested_selector=dict(requested_selector),
+                        parent_scope=scope, parent_selector=dict(query),
+                        missing_field=field, missing_value=value, pages=tuple(pages),
+                    )
                 if len(matches) != 1:
-                    raise SourceConnectorError("AMBIGUOUS" if matches else "NOT_FOUND")
+                    raise SourceConnectorError("AMBIGUOUS")
                 return next(iter(matches))
             cursor = page.next_cursor
             if not cursor or cursor in seen:
@@ -282,7 +327,9 @@ class SourceConnectorClient:
     def _read(
         self, method: str, path: str, *, operation: str, payload: Mapping[str, Any] | None = None,
         scope: str | None = None, timeout: float | None = None, deadline: float | None = None,
+        read_control: Any = None,
     ) -> SourceEnvelopeV1:
+        response_limit = min(self.max_bytes, 1024 * 1024) if read_control is not None else self.max_bytes
         url = self.base_url + path
         data = json.dumps(payload, separators=(",", ":")).encode() if payload is not None else None
         headers = {"Accept": "application/json, application/octet-stream", "User-Agent": "autodata-source-client/1"}
@@ -303,12 +350,14 @@ class SourceConnectorClient:
                 declared = _header(response_headers, "content-length")
                 if declared is not None:
                     try:
-                        if int(declared) > self.max_bytes or int(declared) < 0:
+                        if read_control is not None and int(declared) > response_limit:
+                            read_control.stop("response_limit")
+                        if int(declared) > response_limit or int(declared) < 0:
                             raise SourceConnectorError("INVALID_UPSTREAM_RESPONSE")
                     except ValueError as error:
                         raise SourceConnectorError("INVALID_UPSTREAM_RESPONSE") from error
                 if deadline is None:
-                    raw = response.read(self.max_bytes + 1)
+                    raw = response.read(response_limit + 1)
                 else:
                     # read() can wait forever when a peer trickles bytes inside
                     # the socket idle timeout. read1() returns available chunks
@@ -331,7 +380,7 @@ class SourceConnectorClient:
                         timer.daemon = True
                         timer.start()
                     try:
-                        while size <= self.max_bytes:
+                        while size <= response_limit:
                             remaining = deadline - time.monotonic()
                             if remaining <= 0:
                                 raise TimeoutError("catalog deadline exceeded")
@@ -345,11 +394,13 @@ class SourceConnectorClient:
                                     # socket; preserve every other transport error.
                                     if error.errno != errno.EBADF:
                                         raise
-                            chunk = response.read1(min(65536, self.max_bytes + 1 - size))
+                            chunk = response.read1(min(65536, response_limit + 1 - size))
                             if time.monotonic() >= deadline:
                                 raise TimeoutError("catalog deadline exceeded")
                             if not chunk:
                                 break
+                            if read_control is not None:
+                                read_control.consume_bytes(len(chunk))
                             chunks.append(chunk)
                             size += len(chunk)
                         raw = b"".join(chunks)
@@ -361,7 +412,9 @@ class SourceConnectorClient:
                         if timer is not None:
                             timer.cancel()
                             timer.join()
-                if len(raw) > self.max_bytes:
+                if len(raw) > response_limit:
+                    if read_control is not None:
+                        read_control.stop("response_limit")
                     raise SourceConnectorError("INVALID_UPSTREAM_RESPONSE")
                 media = (_header(response_headers, "content-type") or "").split(";", 1)[0].strip().lower()
                 if operation == "resource" and media == "application/octet-stream":

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -319,5 +320,52 @@ func TestConfiguredCustomerAuthRequiresPersistenceAndWiresServer(t *testing.T) {
 	response := customerHTTP(t, server.Handler(), "GET", "/auth/config", "", nil, nil)
 	if response.Code != 200 {
 		t.Fatal("auth routes missing from API")
+	}
+}
+
+func TestStagingTesterLoginChecksVerifiedIdentityBeforeRotation(t *testing.T) {
+	now := time.Now().UTC()
+	for _, tc := range []struct {
+		uid, project string
+		verifyErr    error
+		want         int
+	}{{"fixture-user", "fixture-project", nil, 204}, {"second-user", "fixture-project", nil, 204}, {"outsider", "fixture-project", nil, 403}, {"fixture-user", "other-project", nil, 401}, {"fixture-user", "fixture-project", ErrUnauthenticated, 401}} {
+		t.Run(tc.uid+tc.project+fmt.Sprint(tc.want), func(t *testing.T) {
+			store := &customerSessionFixture{}
+			verifier := &customerVerifierFixture{identity: VerifiedCustomerIdentity{ProjectID: tc.project, UID: tc.uid, AuthTime: now.Unix(), IssuedAt: now.Unix(), Expires: now.Add(time.Hour).Unix()}, loginErr: tc.verifyErr}
+			service := &customerAuthService{config: stagingTesterTestConfig(t, `["fixture-user","second-user"]`), store: store, verifier: verifier, now: func() time.Time { return now }}
+			headers := map[string]string{"Origin": "https://cars.example", "Content-Type": "application/json", "X-Autodata-Session-Exchange": "1", "X-Tester-UID": "fixture-user", "X-Verified-Email": "tester@example.invalid"}
+			w := customerHTTP(t, customerAuthHandler(service), "POST", "/auth/firebase/session", `{"id_token":"fixture"}`, headers, nil)
+			if w.Code != tc.want {
+				t.Fatalf("want %d got%d", tc.want, w.Code)
+			}
+			if tc.want == 204 {
+				if store.rotations != 1 || len(w.Result().Cookies()) != 1 {
+					t.Fatal("approved login failed")
+				}
+			} else if store.rotations != 0 {
+				t.Fatal("denied login rotated account/session")
+			}
+			if tc.want == 403 && len(w.Result().Cookies()) != 0 {
+				t.Fatal("denied tester got cookie")
+			}
+		})
+	}
+}
+func TestStagingTesterStaleCookieCannotReachCheckout(t *testing.T) {
+	calls := 0
+	server, cookie, csrf := commerceTestAPI(t, commerceFixture(func(context.Context, string, []byte, string) (int, []byte, error) { calls++; return 503, nil, nil }))
+	server.customerAuth.config = stagingTesterTestConfig(t, `["approved-user"]`)
+	store := server.customerAuth.store.(*customerSessionFixture)
+	store.session.ProjectID = "fixture-project"
+	store.session.UID = "removed-user"
+	headers := map[string]string{"Content-Type": "application/json", "Origin": "https://cars.example", "X-CSRF-Token": csrf, "Idempotency-Key": commerceOrderID, "X-Tester-UID": "approved-user"}
+	w := customerHTTP(t, server.Handler(), "POST", "/v1/workshop/checkout-sessions", commerceCheckoutBody, headers, cookie)
+	if w.Code != 403 || calls != 0 {
+		t.Fatal("removed tester reached commerce", w.Code, calls)
+	}
+	w = customerHTTP(t, customerAuthHandler(server.customerAuth), "GET", "/auth/session", "", nil, cookie)
+	if w.Code != 403 {
+		t.Fatal("removed tester session accepted", w.Code)
 	}
 }

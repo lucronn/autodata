@@ -16,6 +16,7 @@ from .article_lifecycle_types import (
 from .source_adapters import adapt_bound_article
 from .source_connector_client import SourceConnectorError
 from .article_document import build_ordered_document
+from .svg_rasterization import rasterize_svg, SVGUnavailable, RASTERIZER_VERSION
 
 
 def snapshot_id(digest):
@@ -258,21 +259,35 @@ def capture_source_article(context, *, registry, object_store, deadline_seconds=
     # All requests share one deadline; no more than four can run concurrently.
     def fetch(pair):
         ref, role = pair
+        originals = []
         try:
             envelope = read(ref)
             resource = upload_resource(envelope, ref, role, bounded_objects)
-            if role == "asset" and (
-                not resource["media_type"].startswith("image/")
-                or resource["media_type"] == "image/svg+xml"
-            ):
-                return ref, role, None, "UNSUPPORTED_ASSET_MEDIA"
-            return ref, role, resource, None
+            if role == "asset" and resource["media_type"] == "image/svg+xml":
+                original = {**resource, "role": "asset_original"}
+                originals.append(original)
+                png = rasterize_svg(envelope.to_source_resource().payload, timeout=remaining())
+                digest = sha256(png).hexdigest()
+                key = "sources/" + digest[:16] + "/" + digest
+                bounded_objects.put_object(key, png, "image/png")
+                resource = {
+                    **resource, "media_type": "image/png", "sha256": digest,
+                    "object_key": key, "source_snapshot_id": str(snapshot_id(digest)),
+                    "derived_from_sha256": original["sha256"],
+                    "derivation_version": RASTERIZER_VERSION,
+                }
+            if role == "asset" and not resource["media_type"].startswith("image/"):
+                return ref, role, None, "UNSUPPORTED_ASSET_MEDIA", originals
+            return ref, role, resource, None, originals
+        except SVGUnavailable as error:
+            return ref, role, None, str(error), originals
         except SourceConnectorError as error:
             return (
                 ref,
                 role,
                 None,
                 "SOURCE_NOT_FOUND" if error.status == 404 else error.code,
+                originals,
             )
 
     pool = ThreadPoolExecutor(max_workers=4)
@@ -285,12 +300,16 @@ def capture_source_article(context, *, registry, object_store, deadline_seconds=
             resource = None
             failure = "CAPTURE_DEADLINE"
         else:
-            _, _, resource, failure = future.result()
+            _, _, resource, failure, originals = future.result()
+            for original in originals:
+                resources.append(original)
+                provenance.append(deepcopy(original))
+                manifest.append({k: original[k] for k in ("role", "opaque_ref", "sha256", "media_type")})
         if resource:
             resources.append(resource)
             provenance.append(deepcopy(resource))
             manifest.append(
-                {k: resource[k] for k in ("role", "opaque_ref", "sha256", "media_type")}
+                {k: resource[k] for k in ("role", "opaque_ref", "sha256", "media_type", "derived_from_sha256", "derivation_version") if k in resource}
             )
             if role == "asset":
                 localized[ref] = resource
@@ -408,8 +427,7 @@ def capture_source_article(context, *, registry, object_store, deadline_seconds=
     for ref in refs:
         if ref not in positioned:
             local = localized.get(ref)
-            blocks.append(
-                {
+            node = {
                     "kind": "image",
                     "image_id": (
                         local["sha256"]
@@ -421,9 +439,11 @@ def capture_source_article(context, *, registry, object_store, deadline_seconds=
                     "media_type": local["media_type"] if local else None,
                     "fetch_failed": not bool(local),
                     "reason": failures.get(ref),
+                    "status": "available" if local else "unavailable",
                     "evidence_ids": list(context.evidence_ids),
                 }
-            )
+            blocks.append(node)
+            image_records[node["image_id"]] = deepcopy(node)
     evidence_ids = list(context.evidence_ids) or [
         "source:" + resources[0]["source_snapshot_id"]
     ]
@@ -436,7 +456,7 @@ def capture_source_article(context, *, registry, object_store, deadline_seconds=
         local = image_records.get(node.get("image_id"))
         if local:
             for name in ("status", "media_type", "content_sha256", "storage_key"):
-                if name in local:
+                if local.get(name) is not None:
                     node[name] = local[name]
             node["unavailable_reason"] = (
                 local.get("reason") if local["status"] == "unavailable" else None

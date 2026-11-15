@@ -52,12 +52,8 @@ def dispatch_request(
         if scope not in {"years", "makes", "models", "configurations", "articles", "article"}:
             raise ValueError("catalog hydration scope is invalid")
         serialized = json.dumps(dict(payload), ensure_ascii=False, sort_keys=True)
-        if scope == "years":
-            if catalog_years_runner is None:
-                from .catalog_years import ensure_catalog_years
-
-                catalog_years_runner = ensure_catalog_years
-            return catalog_years_runner(serialized)
+        # Public years shares initial selector admission; the explicit legacy
+        # manifest helper must never schedule an uncharged daemon here.
         if catalog_runner is None:
             from .catalog_service import ensure_catalog_hydration
 
@@ -91,10 +87,14 @@ def dispatch_request(
 
 
 def dispatch_commerce(service, path, payload):
-    from .commerce_service import exact_fields, CommerceError
+    from .commerce_service import exact_fields, CommerceError, assert_commerce_operation
+    assert_commerce_operation(service, path)
     if path == '/internal/commerce/purchase-config':
         exact_fields(payload, set())
         return service.purchase_configuration()
+    if path == '/internal/commerce/demo-mode':
+        exact_fields(payload, set())
+        return service.demo_mode_status()
     if path == '/internal/commerce/quote':
         exact_fields(payload,{'configuration_id','region'})
         return service.quote(payload['configuration_id'],payload['region'])
@@ -104,7 +104,12 @@ def dispatch_commerce(service, path, payload):
         'orders/status':{'order_id'},'library':{'cursor','limit'},'grants/check':{'configuration_id','region'}}
     if suffix not in additions:
         raise CommerceError('NOT_FOUND',404)
-    exact_fields(payload, fields | additions[suffix])
+    if suffix == 'checkouts' and isinstance(payload, dict) and 'expected_mode' in payload:
+        exact_fields(payload, fields | additions[suffix] | {'expected_mode'})
+        if payload['expected_mode'] != 'stripe_test' or getattr(getattr(service, 'config', None), 'mode', None) != 'stripe_test':
+            raise CommerceError('COMMERCE_UNAVAILABLE', 503)
+    else:
+        exact_fields(payload, fields | additions[suffix])
     owner = payload['customer_account_id'],payload['organization_id']
     if suffix == 'checkouts':
         return service.checkout(*owner,payload['idempotency_key'],{key:payload[key] for key in ('configuration_id','region','terms_version')})
@@ -164,7 +169,7 @@ def make_handler(internal_token: str = "", *, commerce=None):
             self._write_json(getattr(result,"http_status",200), result)
 
         def _commerce(self):
-            from .commerce_service import CommerceError
+            from .commerce_service import CommerceError, assert_commerce_operation
             if not configured_token or not hmac.compare_digest(self.headers.get('X-Autodata-Internal-Token','').encode(),configured_token.encode()):
                 self._write_json(401, {'error':{'code':'INTERNAL_AUTHENTICATION_REQUIRED'}})
                 return
@@ -172,6 +177,8 @@ def make_handler(internal_token: str = "", *, commerce=None):
                 self._write_json(503, {'error':{'code':'COMMERCE_UNAVAILABLE'}})
                 return
             try:
+                path = urlsplit(self.path).path
+                assert_commerce_operation(commerce, path)
                 if self.headers.get('Transfer-Encoding'):
                     raise CommerceError()
                 length = int(self.headers.get('Content-Length','-1'))
@@ -181,7 +188,6 @@ def make_handler(internal_token: str = "", *, commerce=None):
                 raw = self.rfile.read(length)
                 if len(raw) != length:
                     raise CommerceError()
-                path = urlsplit(self.path).path
                 if path == '/internal/commerce/stripe/webhook':
                     result = commerce.webhook(self.headers.get('Stripe-Signature',''),raw)
                 else:

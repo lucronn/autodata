@@ -1,0 +1,22 @@
+{
+  "goal": "Bound public initial selector hydration and prevent uncharged descendant work",
+  "plan_ref": "docs/superpowers/plans/2026-11-15-initial-selector-safety.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/436",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/initial-selector-safety.md",
+    "docs/verification/2026-11-15-initial-selector-safety.md"
+  ],
+  "todo": [
+    "Synchronize Issue436 Project8 plan canonical docs record and pinned preflight",
+    "Write red-first shared budget admission cooldown nested repair and owned slow-network tests",
+    "Implement initial years makes models owned child shared12requests20s1MiBpage4MiBtotal5000rows and6sdispatchfloor",
+    "Admit one global active initial job with6sglobal and30sscope cooldown; no public descendant deepening",
+    "Prevent expired jobs from provider dispatch or persistence; preserve existing partial rows and truthful completion",
+    "Run focused plus existing selector connector catalog configuration regressions and open review PR without live calls or merge",
+    "Make incomplete years an explicit caller no-write outcome and prove two-source cold retry",
+    "Bind owned child imports to parent package root and test without PYTHONPATH"
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-15T04:20:47.154227+00:00"
+}

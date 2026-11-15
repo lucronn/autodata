@@ -6,7 +6,7 @@ AutoData uses trunk-based development with a protected `master` branch (the repo
 
 - Work is performed on short-lived branches named `automation/<topic>` or an equivalent team convention.
 - Pull requests are small, linked to a GitHub Issue, and use squash merge.
-- `master` requires successful CI, review from the owning CODEOWNERS group, and no unresolved blocking review thread.
+- `master` requires successful configured CI, an independent review of the exact candidate SHA, no unresolved blocking review thread, and every approval that live branch protection requires. A CODEOWNERS mapping identifies ownership and routes review; it does not by itself require a GitHub approval from the PR author.
 - Releases are created from tagged commits on `master`; release notes identify schema, API, worker, and data-contract changes.
 - No long-lived `develop` or release branches are required for the initial organization.
 - Emergency changes still pass the same automated checks and receive a follow-up incident or review record.
@@ -62,6 +62,38 @@ CODEOWNERS should align with domain responsibility rather than programming langu
 | Security, source rights, takedown | Security/data-governance owners |
 
 Ownership names are configured when the actual GitHub organization is known; the blueprint does not invent accounts or teams.
+
+### Single-maintainer Workshop review
+
+For a bounded Workshop app or documentation PR in this single-maintainer
+repository, a read-only AI reviewer separate from the implementer may satisfy
+the repository's independent-review decision. The retained review must identify
+the exact head SHA and base, inspect the diff against the linked plan and tests,
+record Critical/Important/Minor findings and a merge verdict, and leave no
+unresolved Critical or Important finding. A changed head requires a fresh review
+of the changed range. The PR or its linked verification document points to the
+review evidence and exact-head CI. The implementer's own assessment is not an
+independent review, and an AI verdict is never described as a GitHub approval.
+
+`.github/CODEOWNERS` remains the source of path ownership and review routing.
+When the only eligible CODEOWNER is also the PR author, the repository does not
+wait for a self-authored GitHub approval that GitHub cannot record. If live
+branch protection requires an approving review or code-owner approval, that
+GitHub requirement still blocks merge until satisfied; no automation bypasses
+it or changes protection settings to make a PR mergeable. The same applies to
+failed/pending required checks and blocking review threads. Payment, grant,
+authentication, schema, source-rights, security, and production changes retain
+their own stronger task-specific gates; this paragraph grants no acceptance or
+deployment authority for them.
+
+The autonomous release controller still requires its eight independent
+decisions and its designated release-agent authority for controller-managed
+runs. A Codex-managed PR may use this documented exact-head review and GitHub
+checks without claiming to have passed a release-controller run it did not
+execute. If one PR is waiting on a genuine gate, record the blocker and take
+the next safe, independently tracked Workshop app task; unchanged PR polling
+alone is not development progress. Changing this review rule requires direct
+repository-owner authorization, exact-head independent review, and required CI.
 
 ## Pull-request requirements
 

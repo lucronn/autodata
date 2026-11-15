@@ -154,6 +154,29 @@ class BrowserCheckoutResponseLoss(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(fixture.checkout_count, 2)
         self.assertEqual(fixture.lost_response_count, 1)
 
+    async def test_g_pay_opaque_url_survives_response_loss_and_retry(self):
+        fixture,first,retry=self.fixture(),CheckoutRoute(),CheckoutRoute(status=200)
+        hosted='https://checkout.stripe.com/g/pay/opaque_Checkout42#opaque%2Ffragment'
+        for route in (first,retry):route.fetched_response.data['checkout_url']=hosted
+        await fixture.route(first);await fixture.route(retry)
+        self.assertEqual([r['checkout_url'] for r in fixture.checkout_responses],[hosted,hosted])
+        self.assertTrue(smoke.allowed_external(hosted))
+
+    async def test_pending_opaque_url_uses_durable_session_and_conserves_retry_identity(self):
+        fixture,route=self.fixture(),CheckoutRoute()
+        hosted='https://checkout.stripe.com/g/pay/opaque_Checkout42#opaque%2Ffragment'
+        route.fetched_response.data['checkout_url']=hosted
+        await fixture.route(route)
+        measure=dict(workshop_orders=1,workshop_checkout_requests=1,entitlements=0,
+                     orders=[dict(order_id=smoke.ORDER,state='open',configuration_id=smoke.CONFIG,region='US')])
+        snapshot=dict(payment_calls=1,paid_rows={'workshop_orders':[dict(order_id=smoke.ORDER,status='open',configuration_id=smoke.CONFIG,
+                      region='US',checkout_session_id='cs_test_'+'a'*32,checkout_url=hosted)],'entitlements':[]})
+        fixture.validate_pending_checkout(measure,snapshot)
+        changed=copy.deepcopy(snapshot);changed['paid_rows']['workshop_orders'][0]['checkout_session_id']='cs_test_'+'b'*32
+        with self.assertRaises(AssertionError):fixture.validate_pending_checkout(measure,changed,snapshot)
+        changed=copy.deepcopy(snapshot);changed['paid_rows']['workshop_orders'][0]['checkout_session_id']='cs_live_'+'a'*32
+        with self.assertRaises(AssertionError):fixture.validate_pending_checkout(measure,changed)
+
     async def test_unrelated_routes_leave_one_shot_available(self):
         for kwargs, scenario, events in [
             ({}, smoke.API_CASES[1], ['continue']),
@@ -223,7 +246,7 @@ class BrowserCheckoutResponseLoss(unittest.IsolatedAsyncioTestCase):
             dict(valid, configuration_id=smoke.OTHER), dict(valid, region='CA'),
             dict(valid, order_id='invalid'), dict(valid, order_id=None),
             dict(valid, checkout_url='https://checkout.stripe.com.evil/c/pay/cs_test_'+'a'*32+'#fidkdFixtureFragment'),
-            dict(valid, checkout_url='https://checkout.stripe.com/c/pay/fixture'),
+            dict(valid, checkout_url='https://checkout.stripe.com/c/pay/'),
             dict(valid, checkout_url='https://checkout.stripe.com/c/pay/cs_test_'+'a'*32+'?token=x'),
             dict(valid, checkout_url='https://evil.invalid/c/pay/cs_test_'+'a'*32)]
         for data in variants:
@@ -278,7 +301,7 @@ class BrowserCheckoutResponseLoss(unittest.IsolatedAsyncioTestCase):
         measure = dict(workshop_orders=1, workshop_checkout_requests=1, entitlements=0,
             orders=[dict(order_id=smoke.ORDER, state='open', configuration_id=smoke.CONFIG, region='US')])
         snapshot = dict(payment_calls=1, paid_rows={'workshop_orders': [dict(order_id=smoke.ORDER,
-            status='open', configuration_id=smoke.CONFIG, region='US', checkout_session_id='cs_test_'+'a'*32)],
+            status='open', configuration_id=smoke.CONFIG, region='US', checkout_session_id='cs_test_'+'a'*32, checkout_url=fixture.checkout_responses[0]['checkout_url'])],
             'entitlements': []})
         fixture.validate_pending_checkout(measure, snapshot)
         await fixture.route(CheckoutRoute())
@@ -1288,7 +1311,7 @@ class API21FakeBrowser:
             payment_events=int(self.paid),image_reads=self.reads,orders=[order] if exists else [])
     def snapshot(self):
         return dict(payment_calls=1,paid_rows=dict(workshop_orders=[dict(order_id=smoke.ORDER,
-            configuration_id=smoke.CONFIG,region='US',status='open',checkout_session_id='cs_test_'+'a'*32)],entitlements=[]),
+            configuration_id=smoke.CONFIG,region='US',status='open',checkout_session_id='cs_test_'+'a'*32,checkout_url='https://checkout.stripe.com/c/pay/cs_test_'+'a'*32+'#fidkdFixtureFragment')],entitlements=[]),
             provider_calls={'bankone':1,'banktwo':0},source_calls={'bankone':1,'banktwo':0},asset_calls={'bankone':1,'banktwo':0},
             model_calls=1,counts={'published_revisions':1},immutable_sha256='a'*64)
 
@@ -1790,12 +1813,12 @@ class API21ObservationsTests(unittest.IsolatedAsyncioTestCase):
     async def test_checkout_url_predicate_rejects_untrusted_components_and_keeps_fragment(self):
         route=CheckoutRoute();request=smoke.api21_body(route.request.post_data.encode(),'playwright-request-post-data-buffer')
         base=route.fetched_response.data.copy();hosted=base['checkout_url']
-        for url in (hosted,hosted.split('#')[0],hosted+'another fragment'):
+        for url in (hosted,hosted.split('#')[0],hosted+'another%20fragment',hosted.replace('/c/pay/cs_test_'+'a'*32,'/g/pay/opaque_Checkout42')):
             response=smoke.api21_body(json.dumps(dict(base,checkout_url=url)).encode(),'playwright-response-body')
             self.assertEqual(smoke.api21_checkout_identity(request,response,route.request.headers['idempotency-key'])['checkout_url'],url)
         for url in (hosted.replace('https:','http:'),hosted.replace('checkout.stripe.com','evil.test'),
                 hosted.replace('checkout.stripe.com','user@checkout.stripe.com'),hosted.replace('checkout.stripe.com','checkout.stripe.com:443'),
-                hosted.replace('#','?unexpected=1#'),hosted.replace('cs_test_','cs_live_'),hosted.replace('/c/pay/','/pay/')):
+                hosted.replace('#','?unexpected=1#'),hosted+' ',hosted.replace('/c/pay/','/pay/')):
             response=smoke.api21_body(json.dumps(dict(base,checkout_url=url)).encode(),'playwright-response-body')
             with self.subTest(url=url),self.assertRaises(ValueError):smoke.api21_checkout_identity(request,response,route.request.headers['idempotency-key'])
 

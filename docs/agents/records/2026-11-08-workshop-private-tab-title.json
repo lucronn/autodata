@@ -1,0 +1,16 @@
+{
+  "goal": "Clear a purchased Workshop article title from the browser tab on navigation or protected-state invalidation.",
+  "plan_ref": "docs/superpowers/plans/2026-11-08-workshop-private-tab-title.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/381",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/verification/2026-11-08-workshop-private-tab-title.md"
+  ],
+  "todo": [
+    "Reproduce stale article tab titles through actual Workshop navigation and protected-clear functions.",
+    "Restore the public Workshop title at both boundaries while retaining article-specific titles during display.",
+    "Run focused/full Workshop and Go checks, independent review and required CI before integrating the bounded fix."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-08T23:50:00Z"
+}

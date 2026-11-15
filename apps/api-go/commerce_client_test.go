@@ -135,6 +135,16 @@ func TestCommerceConfigurationFailsClosed(t *testing.T) {
 	}
 }
 
+func TestCommerceConfigurationRejectsTestModeOnPublicProductionOrigin(t *testing.T) {
+	for _, origin := range []string{"https://cars.tk", "https://autodata.cars.tk"} {
+		values := map[string]string{"AUTODATA_COMMERCE_MODE": "stripe_test", "AUTODATA_INGESTION_URL": "http://localhost:8081", "AUTODATA_INGESTION_INTERNAL_TOKEN": "token", "AUTODATA_PUBLIC_ORIGIN": origin}
+		client, err := configuredCommerceClient(func(key string) string { return values[key] })
+		if err == nil || client != nil {
+			t.Fatalf("test checkout accepted public production origin %q", origin)
+		}
+	}
+}
+
 type commerceRoundTrip func(*http.Request) (*http.Response, error)
 
 func (f commerceRoundTrip) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
@@ -187,7 +197,7 @@ func TestWorkshopCommercePythonIntegration(t *testing.T) {
 		if err != nil || status != 200 {
 			t.Fatalf("actual Python %s response failed: HTTP %d", operation, status)
 		}
-		projected, ok := commercePublicResult(operation, status, raw, input)
+		projected, ok := commercePublicResult(operation, status, raw, input, client)
 		if !ok {
 			t.Fatalf("actual Python %s response violates the public DTO contract", operation)
 		}
@@ -237,7 +247,7 @@ func TestCommerceFixtureLibraryTerminalCursorProjection(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			raw := []byte(`{"version":"v1","items":` + tc.items + `,"next_cursor":` + tc.cursor + `}`)
-			projected, ok := commercePublicResult("library", 200, raw, map[string]any{"limit": 20})
+			projected, ok := commercePublicResult("library", 200, raw, map[string]any{"limit": 20}, nil)
 			if !ok {
 				t.Fatal("valid library cursor representation rejected")
 			}

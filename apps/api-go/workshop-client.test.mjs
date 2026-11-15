@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { NavigationGeneration, processingArticle, readableArticle } from './workshop/article-read.mjs';
-import { purchaseConfiguration, uuid, validScope } from './workshop/commerce.mjs';
+import { purchaseConfiguration, uuid, validQuote, validScope } from './workshop/commerce.mjs';
 import { articlePresentation, configurationLabel, filterArticles, hasSourceReference, legacyArticleBlocks, localImageURL, readCollection, requestJSON, sourceReferenceURL } from './workshop/catalog.mjs';
 import { LOAD_STAGES, loadingProgress } from './workshop/progress.mjs';
 
@@ -166,6 +166,102 @@ test('checkout attempt shares one in-flight request and retries the same key/bod
   assert.equal(calls[0].headers['Idempotency-Key'], calls[1].headers['Idempotency-Key']);
   assert.deepEqual(calls[0].body, calls[1].body);
   assert.ok(![...values.values()].join('').includes('csrf'));
+});
+test('banner-bearing test tab asserts test mode on each checkout request', async () => {
+  const { createCheckout } = await import('./workshop/commerce.mjs');
+  const calls = [];
+  const storage = { getItem: () => null, setItem: () => {}, removeItem: () => {} };
+  const checkout = createCheckout({ expectedMode: 'stripe_test', storage, uuid: () => orderID,
+    request: async (path, options) => { calls.push([path, options]); return { version: 'v1', ...scope, order_id: orderID, state: 'processing' }; } });
+  await checkout.start(scope, 'csrf');
+  await checkout.start(scope, 'csrf');
+  assert.equal(calls.length, 2);
+  for (const [path, options] of calls) {
+    assert.equal(path, '/v1/workshop/checkout-sessions');
+    assert.equal(options.body.expected_mode, 'stripe_test');
+  }
+});
+test('checkout attempt for a new configuration or region waits and uses its own response and key', async () => {
+  const { createCheckout } = await import('./workshop/commerce.mjs');
+  for (const nextScope of [
+    { configuration_id: '55555555-5555-4555-8555-555555555555', region: 'US' },
+    { ...scope, region: 'CA' },
+  ]) {
+    const nextOrder = '88888888-8888-4888-8888-888888888888';
+    const keys = ['66666666-6666-4666-8666-666666666666', '77777777-7777-4777-8777-777777777777'];
+    const values = new Map(), calls = [], releases = [];
+    const storage = { getItem: k => values.get(k) ?? null, setItem: (k,v) => values.set(k,v), removeItem: k => values.delete(k) };
+    const checkout = createCheckout({ storage, uuid: () => keys.shift(), request: (_path, options) => {
+      calls.push(options);
+      return new Promise(resolve => releases.push(resolve));
+    } });
+    const first = checkout.start(scope, 'csrf');
+    const second = checkout.start(nextScope, 'csrf');
+    assert.notStrictEqual(second, first);
+    assert.equal(calls.length, 1);
+    releases[0]({ version: 'v1', ...scope, order_id: orderID, state: 'processing' });
+    const firstResult = await first;
+    assert.equal(firstResult.configuration_id, scope.configuration_id);
+    assert.equal(firstResult.region, scope.region);
+    await new Promise(setImmediate);
+    assert.equal(calls.length, 2);
+    assert.equal(calls[1].body.configuration_id, nextScope.configuration_id);
+    assert.equal(calls[1].body.region, nextScope.region);
+    assert.notEqual(calls[0].headers['Idempotency-Key'], calls[1].headers['Idempotency-Key']);
+    releases[1]({ version: 'v1', ...nextScope, order_id: nextOrder, state: 'processing' });
+    const result = await second;
+    assert.equal(result.configuration_id, nextScope.configuration_id);
+    assert.equal(result.region, nextScope.region);
+    const savedAttempt = JSON.parse([...values.values()][0]);
+    assert.equal(savedAttempt.configuration_id, nextScope.configuration_id);
+    assert.equal(savedAttempt.region, nextScope.region);
+  }
+});
+test('aborted queued checkout attempt does not send another vehicle request', async () => {
+  const { createCheckout } = await import('./workshop/commerce.mjs');
+  const nextScope = { configuration_id: '55555555-5555-4555-8555-555555555555', region: 'US' };
+  const calls = []; let release;
+  const storage = new Map();
+  const checkout = createCheckout({ storage: {
+    getItem: k => storage.get(k) ?? null,
+    setItem: (k,v) => storage.set(k,v),
+    removeItem: k => storage.delete(k),
+  }, uuid: () => '66666666-6666-4666-8666-666666666666', request: (_path, options) => {
+    calls.push(options);
+    return new Promise(resolve => { release = resolve; });
+  } });
+  const first = checkout.start(scope, 'csrf');
+  const controller = new AbortController();
+  const queued = checkout.start(nextScope, 'csrf', { signal: controller.signal });
+  controller.abort();
+  release({ version: 'v1', ...scope, order_id: orderID, state: 'processing' });
+  await first;
+  await assert.rejects(queued, { name: 'AbortError' });
+  assert.equal(calls.length, 1);
+});
+test('checkout attempt restarts same vehicle after the old navigation aborts', async () => {
+  const { createCheckout } = await import('./workshop/commerce.mjs');
+  const values = new Map(), calls = [], releases = [];
+  const checkout = createCheckout({ storage: {
+    getItem: k => values.get(k) ?? null,
+    setItem: (k,v) => values.set(k,v),
+    removeItem: k => values.delete(k),
+  }, uuid: () => '66666666-6666-4666-8666-666666666666', request: (_path, options) => {
+    calls.push(options);
+    return new Promise(resolve => releases.push(resolve));
+  } });
+  const old = new AbortController();
+  const first = checkout.start(scope, 'csrf', { signal: old.signal });
+  const firstRejected = assert.rejects(first, { name: 'AbortError' });
+  old.abort();
+  const replacement = checkout.start(scope, 'fresh-csrf', { signal: new AbortController().signal });
+  releases[0]({ version: 'v1', ...scope, order_id: orderID, state: 'processing' });
+  await firstRejected;
+  await new Promise(setImmediate);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].headers['Idempotency-Key'], calls[1].headers['Idempotency-Key']);
+  releases[1]({ version: 'v1', ...scope, order_id: orderID, state: 'processing' });
+  assert.equal((await replacement).order_id, orderID);
 });
 test('reader is sequential, retains source during transient failure and stops at terminal canonical', async () => {
   const { readArticle } = await import('./workshop/article-read.mjs');
@@ -779,14 +875,746 @@ test('login route awaits restoration completion before signIn resolves', async (
   assert.equal(h.calls.checkouts, 0);
 });
 
+test('navigation invalidation clears prior order status', () => {
+  const button = { hidden: false };
+  const context = {
+    currentOrder: '11111111-1111-4111-8111-111111111111',
+    navigation: { clear() {} },
+    clearProtected() {},
+    $: id => { assert.equal(id, 'check-order'); return button; },
+  };
+  runInNewContext(appSection('function invalidate(', 'async function operation('), context);
+  context.invalidate();
+  assert.equal(button.hidden, true);
+  assert.equal(context.currentOrder, '');
+});
+
+function orderStatusHarness(response, { selectionError = null } = {}) {
+  const nodes = {
+    'check-order': { hidden: true },
+    'purchase-message': { textContent: '' },
+  };
+  let checkoutClears = 0;
+  let selectionCalls = 0;
+  const statuses = [];
+  const context = {
+    currentOrder: '', paidOrder: '', unconfirmedOrder: null, vehicle: null, quote: null, merchant: null, access: 'missing',
+    $: id => nodes[id],
+    validScope, scope: () => ({ configuration_id: context.vehicle?.id, region: context.vehicle?.region }),
+    validQuote: () => false, purchaseConfiguration: () => false,
+    navigation: { clear() {} }, clearProtected() {}, clearOrderRoute() {},
+    status(message) { statuses.push(message); }, renderPurchase() {}, show() {}, async selectVehicle() {
+      const error = Array.isArray(selectionError) ? selectionError[selectionCalls] : selectionError;
+      selectionCalls++;
+      if (error) throw error;
+    },
+    checkout: { clear() { checkoutClears++; } },
+    async pollOrder(id, { onUpdate }) {
+      assert.equal(id, orderID);
+      if (response instanceof Error) throw response;
+      onUpdate(response);
+      return response;
+    },
+  };
+  runInNewContext(
+    appSection('function invalidate(', 'async function operation(') +
+    appSection('async function checkOrder(', 'async function purchase()'),
+    context,
+  );
+  return {
+    context, button: nodes['check-order'], statuses,
+    checkoutClears: () => checkoutClears,
+    check: () => context.checkOrder({ current: () => true, signal: {} }, orderID),
+  };
+}
+
+for (const state of ['paid', 'expired', 'canceled', 'revoked']) {
+  test(`order status clears terminal action after ${state}`, async () => {
+    const response = {
+      version: 'v1', order_id: orderID, ...scope, state,
+      retry_disposition: ['expired', 'canceled'].includes(state) ? 'new_key' : 'do_not_repay',
+      timedOut: false,
+    };
+    const h = orderStatusHarness(response);
+    await h.check();
+    assert.equal(h.context.currentOrder, '');
+    assert.equal(h.button.hidden, true);
+    assert.equal(h.checkoutClears(), ['expired', 'canceled'].includes(state) ? 1 : 0);
+  });
+}
+
+test('order status clears missing action on current 404', async () => {
+  const error = Object.assign(new Error('Order not found'), { status: 404 });
+  const h = orderStatusHarness(error);
+  await assert.rejects(h.check(), received => received === error);
+  assert.equal(h.context.currentOrder, '');
+  assert.equal(h.button.hidden, true);
+  assert.equal(h.checkoutClears(), 1);
+});
+
+test('paid article 404 keeps the settled order and offers status recheck, not purchase retry', async () => {
+  const error = Object.assign(new Error('Article index not found'), { status: 404 });
+  const h = orderStatusHarness({
+    version: 'v1', order_id: orderID, ...scope, state: 'paid',
+    retry_disposition: 'do_not_repay', timedOut: false,
+  }, { selectionError: error });
+  await h.check();
+  assert.equal(h.context.currentOrder, orderID);
+  assert.equal(h.button.hidden, false);
+  assert.equal(h.checkoutClears(), 0);
+  assert.equal(h.context.access, 'pending');
+  assert.match(h.statuses.at(-1), /do not pay again/);
+});
+
+test('paid access missing keeps status action without inviting repayment', async () => {
+  const error = Object.assign(new Error('Access not ready'), {
+    status: 403, code: 'ENTITLEMENT_REQUIRED',
+  });
+  const h = orderStatusHarness({
+    version: 'v1', order_id: orderID, ...scope, state: 'paid',
+    retry_disposition: 'do_not_repay', timedOut: false,
+  }, { selectionError: [error, null] });
+  await h.check();
+  assert.equal(h.context.currentOrder, orderID);
+  assert.equal(h.button.hidden, false);
+  assert.equal(h.context.access, 'pending');
+  assert.equal(h.checkoutClears(), 0);
+  assert.match(h.statuses.at(-1), /Payment received.*do not pay again/);
+  await h.check();
+  assert.equal(h.context.currentOrder, '');
+  assert.equal(h.button.hidden, true);
+});
+
+function paidPurchaseLifecycleHarness(selectionErrors, { realArticleIndex = false, afterPartial = null, articleReadResponses = null, articleOpenError = null, orderResponses = null } = {}) {
+  const navigation = new NavigationGeneration();
+  const nodes = new Map();
+  const $ = id => {
+    if (!nodes.has(id)) nodes.set(id, {
+      hidden: false, disabled: false, checked: id === 'agreement', value: '',
+      textContent: '', dataset: {}, children: [],
+      replaceChildren(...children) { this.children = children; },
+      append(...children) { this.children.push(...children); }, removeAttribute() {},
+    });
+    return nodes.get(id);
+  };
+  const location = {
+    pathname: '/workshop/',
+    search: `?configuration=${scope.configuration_id}&region=${scope.region}`,
+    assign() { throw new Error('Unexpected hosted checkout'); },
+  };
+  const history = {
+    replaceState(_state, _unused, url) { location.search = new URL(url, 'https://workshop.example').search; },
+    pushState(_state, _unused, url) { location.search = new URL(url, 'https://workshop.example').search; },
+  };
+  const statuses = [];
+  let checkoutStarts = 0, orderReads = 0, selections = 0;
+  const context = {
+    $, location, history, URLSearchParams, URL, uuid, validScope, validQuote,
+    purchaseConfiguration, configurationLabel, navigation,
+    document: { title: '', body: { dataset: {} }, visibilityState: 'visible', createTextNode: text => ({ textContent: text }) },
+    element: (tag, text) => ({ tag, textContent: text }),
+    names: ['year', 'make', 'model', 'configuration'],
+    vehicle: { id: scope.configuration_id, region: scope.region }, quote,
+    merchant: merchantFixture(), access: 'missing', currentOrder: '', paidOrder: null, unconfirmedOrder: null,
+    articles: [],
+    sessionEstablished: true, signingIn: false,
+    session: { state: { authenticated: true, ready: true, csrf: 'test-csrf' },
+      async bootstrap() {}, clear() {
+        context.session.state.authenticated = false;
+        context.session.state.ready = false;
+        context.renderPurchase();
+      } },
+    scope: () => ({ configuration_id: context.vehicle?.id, region: context.vehicle?.region }),
+    checkout: { async start() {
+      checkoutStarts++;
+      return { version: 'v1', ...scope, order_id: orderID, state: 'processing' };
+    }, clear() {} },
+    async pollOrder(id, { onUpdate }) {
+      assert.equal(id, orderID);
+      orderReads++;
+      const paid = { version: 'v1', ...scope, order_id: orderID, state: 'paid', retry_disposition: 'do_not_repay' };
+      const response = orderResponses ? orderResponses.shift() : paid;
+      if (response instanceof Error) throw response;
+      onUpdate(response);
+      return response;
+    },
+    async selectVehicle() {
+      const error = selectionErrors[selections++];
+      if (error) throw error;
+      context.access = 'owned';
+    },
+    clearProtected() { context.access = 'unknown'; },
+    show() {},
+    status(message, options = {}) { statuses.push({ message, options }); },
+    stage() {}, articlePath: () => `/v1/catalog/vehicles/${scope.configuration_id}/articles`,
+    renderArticles() { $('articles').replaceChildren(...context.articles.map(item => ({ id: item.id }))); },
+    async loadArticle() { if (articleOpenError) throw articleOpenError; },
+    readCollection: (read, options) => readCollection(read, {
+      ...options, wait: async () => { if (afterPartial) await afterPartial(context); },
+    }),
+    async requestJSON(path) {
+      if (!realArticleIndex) return merchantFixture();
+      if (path.startsWith('/v1/workshop/quote')) return quote;
+      if (path.includes('/articles')) {
+        if (articleReadResponses) {
+          const response = articleReadResponses.shift();
+          if (response instanceof Error) throw response;
+          return response;
+        }
+        if (!context.articles.length) return { items: [{ id: routeArticle, title: 'Private article' }], hydrating: true, complete: false };
+        throw selectionErrors[0];
+      }
+      return merchantFixture();
+    },
+  };
+  runInNewContext(
+    (realArticleIndex ? appSection('function show(', 'function clearProtected()') : '') +
+    (realArticleIndex ? appSection('function clearProtected()', 'function invalidate()') : '') +
+    appSection('function invalidate(', 'function updateURL(') +
+    appSection('function updateURL(', 'function populate(') +
+    appSection('function renderPurchase(', 'async function selectVehicle(') +
+    (realArticleIndex ? appSection('async function selectVehicle(', 'function renderArticles(') : '') +
+    (articleOpenError ? appSection('function openArticle(', 'function validSourceURL(') : '') +
+    appSection('async function checkOrder(', 'async function signIn()') +
+    appSection('async function bootstrap()', 'for (const [index, name] of names.entries())') +
+    appSection('let lifecycleCheck = null;', 'window.addEventListener("pageshow"'),
+    context,
+  );
+  return { context, $, location, statuses,
+    checkoutStarts: () => checkoutStarts, orderReads: () => orderReads };
+}
+
+test('paid catalog withdrawal through purchase never invites repayment or a no-op purchase retry', async () => {
+  const withdrawn = Object.assign(new Error('Catalog withdrawn'), { status: 410, code: 'CATALOG_WITHDRAWN' });
+  const h = paidPurchaseLifecycleHarness([withdrawn]);
+  await h.context.purchase();
+  assert.equal(h.checkoutStarts(), 1);
+  assert.equal(h.context.currentOrder, orderID);
+  assert.equal(h.$('check-order').hidden, false);
+  assert.equal(h.context.access, 'pending');
+  assert.match(h.$('purchase-message').textContent, /Payment received.*do not pay again/);
+  assert.doesNotMatch(h.$('purchase-action').textContent, /Buy/);
+  assert.equal(h.$('purchase-action').disabled, true);
+  assert.match(h.statuses.at(-1).message, /do not pay again/);
+  assert.equal(h.statuses.at(-1).options.retry, undefined);
+});
+
+test('paid partial article index is cleared when a later poll withdraws the catalog', async () => {
+  const withdrawn = Object.assign(new Error('Catalog withdrawn'), { status: 410, code: 'CATALOG_WITHDRAWN' });
+  const h = paidPurchaseLifecycleHarness([withdrawn], { realArticleIndex: true });
+  await h.context.purchase();
+  assert.equal(h.context.currentOrder, orderID);
+  assert.equal(h.context.access, 'pending');
+  assert.equal(h.$('check-order').hidden, false);
+  assert.equal(h.context.articles.length, 0);
+  assert.equal(h.$('articles').children.length, 0);
+  assert.doesNotMatch(h.$('purchase-action').textContent, /Buy/);
+});
+
+test('search during a partial paid index keeps its order resume route after withdrawal', async () => {
+  const withdrawn = Object.assign(new Error('Catalog withdrawn'), { status: 410, code: 'CATALOG_WITHDRAWN' });
+  const required = Object.assign(new Error('Access not ready'), { status: 403, code: 'ENTITLEMENT_REQUIRED' });
+  const h = paidPurchaseLifecycleHarness([withdrawn], {
+    realArticleIndex: true,
+    articleReadResponses: [
+      { items: [{ id: routeArticle, title: 'Private article' }], hydrating: true, complete: false },
+      withdrawn, required,
+    ],
+    afterPartial(context) {
+      context.$('search').value = 'pump';
+      context.updateURL({ replace: true });
+    },
+  });
+  await h.context.purchase();
+  assert.equal(h.context.access, 'pending');
+  assert.equal(new URLSearchParams(h.location.search).get('order'), orderID);
+  assert.equal(h.$('articles').children.length, 0);
+  assert.doesNotMatch(h.$('purchase-action').textContent, /Buy/);
+  await h.context.recheck();
+  assert.equal(h.orderReads(), 2);
+  assert.equal(h.context.access, 'pending');
+  assert.equal(h.context.currentOrder, orderID);
+  assert.doesNotMatch(h.$('purchase-action').textContent, /Buy/);
+});
+
+test('opening a partial paid article cannot turn its entitlement error into Buy', async () => {
+  const required = Object.assign(new Error('Access not ready'), { status: 403, code: 'ENTITLEMENT_REQUIRED' });
+  const h = paidPurchaseLifecycleHarness([], {
+    realArticleIndex: true,
+    articleReadResponses: [
+      { items: [{ id: routeArticle, title: 'Private article' }], hydrating: true, complete: false },
+    ],
+    articleOpenError: required,
+    async afterPartial(context) {
+      assert.equal(context.$('articles').children.length, 1);
+      context.openArticle(routeArticle);
+      await new Promise(setImmediate);
+    },
+  });
+  await h.context.purchase();
+  assert.equal(h.orderReads(), 1);
+  assert.equal(h.context.currentOrder, orderID);
+  assert.equal(new URLSearchParams(h.location.search).get('order'), orderID);
+  assert.equal(h.context.access, 'pending');
+  assert.equal(h.$('check-order').hidden, false);
+  assert.equal(h.$('articles').children.length, 0);
+  assert.doesNotMatch(h.$('purchase-action').textContent, /Buy/);
+  assert.equal(h.$('purchase-action').disabled, true);
+});
+
+for (const [label, statusCode] of [['not found', 404], ['withdrawn', 410], ['unavailable', 503]]) {
+  test(`opening a partial paid article that is ${label} keeps no-repay pending UI`, async () => {
+    const error = Object.assign(new Error(`Article ${label}`), { status: statusCode, code: 'HTTP_ERROR' });
+    const h = paidPurchaseLifecycleHarness([], {
+      realArticleIndex: true,
+      articleReadResponses: [
+        { items: [{ id: routeArticle, title: 'Private article' }], hydrating: true, complete: false },
+      ],
+      articleOpenError: error,
+      async afterPartial(context) {
+        context.openArticle(routeArticle);
+        await new Promise(setImmediate);
+      },
+    });
+    await h.context.purchase();
+    assert.equal(h.context.access, 'pending');
+    assert.equal(h.context.currentOrder, orderID);
+    assert.equal(h.context.paidOrder?.id, orderID);
+    assert.equal(new URLSearchParams(h.location.search).get('order'), orderID);
+    assert.equal(h.$('check-order').hidden, false);
+    assert.equal(h.$('articles').children.length, 0);
+    assert.match(h.$('purchase-message').textContent, /do not pay again/);
+    assert.doesNotMatch(h.$('purchase-action').textContent, /Buy|Open articles/);
+    assert.equal(h.$('purchase-action').disabled, true);
+  });
+}
+
+test('revoked partial paid article clears terminal order action and resume route', async () => {
+  const revoked = Object.assign(new Error('Access revoked'), { status: 403, code: 'ENTITLEMENT_REVOKED' });
+  const h = paidPurchaseLifecycleHarness([], {
+    realArticleIndex: true,
+    articleReadResponses: [
+      { items: [{ id: routeArticle, title: 'Private article' }], hydrating: true, complete: false },
+    ],
+    articleOpenError: revoked,
+    async afterPartial(context) {
+      context.openArticle(routeArticle);
+      await new Promise(setImmediate);
+    },
+  });
+  await h.context.purchase();
+  assert.equal(h.context.access, 'revoked');
+  assert.equal(h.context.currentOrder, '');
+  assert.equal(h.context.paidOrder, null);
+  assert.equal(new URLSearchParams(h.location.search).has('order'), false);
+  assert.equal(h.$('check-order').hidden, true);
+  assert.equal(h.$('articles').children.length, 0);
+  assert.match(h.$('purchase-message').textContent, /Access revoked/);
+});
+
+test('unauthorized partial paid article requires sign-in and retains owner-only order recovery', async () => {
+  const unauthorized = Object.assign(new Error('Sign in again'), { status: 401 });
+  const h = paidPurchaseLifecycleHarness([], {
+    realArticleIndex: true,
+    articleReadResponses: [
+      { items: [{ id: routeArticle, title: 'Private article' }], hydrating: true, complete: false },
+      { items: [{ id: routeArticle, title: 'Private article' }], hydrating: false, complete: true },
+    ],
+    articleOpenError: unauthorized,
+    async afterPartial(context) {
+      context.openArticle(routeArticle);
+      await new Promise(setImmediate);
+    },
+  });
+  await h.context.purchase();
+  assert.equal(h.context.session.state.authenticated, false);
+  assert.equal(h.context.currentOrder, orderID);
+  assert.equal(new URLSearchParams(h.location.search).get('order'), orderID);
+  assert.equal(h.$('articles').children.length, 0);
+  assert.match(h.$('purchase-action').textContent, /Sign in/);
+  h.context.session.state.authenticated = true;
+  h.context.session.state.ready = true;
+  await h.context.restoreRoute();
+  assert.equal(h.orderReads(), 2);
+  assert.equal(h.context.access, 'owned');
+  assert.equal(new URLSearchParams(h.location.search).has('order'), false);
+});
+
+test('order 404 on status recheck after partial paid index clears private rows without inviting repayment', async () => {
+  const missingOrder = Object.assign(new Error('Order not found'), { status: 404 });
+  const paid = { version: 'v1', ...scope, order_id: orderID, state: 'paid', retry_disposition: 'do_not_repay' };
+  const h = paidPurchaseLifecycleHarness([], {
+    realArticleIndex: true,
+    orderResponses: [paid, missingOrder],
+    articleReadResponses: [
+      { items: [{ id: routeArticle, title: 'Private article' }], hydrating: true, complete: false },
+    ],
+    async afterPartial(context) {
+      assert.equal(context.$('articles').children.length, 1);
+      await context.operation(g => context.checkOrder(g, orderID));
+    },
+  });
+  await h.context.purchase();
+  assert.equal(h.checkoutStarts(), 1);
+  assert.equal(h.orderReads(), 2);
+  assert.equal(h.context.access, 'pending');
+  assert.equal(h.context.currentOrder, orderID);
+  assert.equal(h.$('check-order').hidden, false);
+  assert.equal(new URLSearchParams(h.location.search).get('order'), orderID);
+  assert.equal(h.$('articles').children.length, 0);
+  assert.equal(h.$('welcome').hidden, false);
+  assert.match(h.$('purchase-message').textContent, /do not pay again/);
+  assert.doesNotMatch(h.$('purchase-action').textContent, /Buy/);
+  assert.equal(h.$('purchase-action').disabled, true);
+});
+
+test('revoked order on status recheck after partial paid index shows terminal guidance', async () => {
+  const paid = { version: 'v1', ...scope, order_id: orderID, state: 'paid', retry_disposition: 'do_not_repay' };
+  const revoked = { version: 'v1', ...scope, order_id: orderID, state: 'revoked', retry_disposition: 'do_not_repay' };
+  const h = paidPurchaseLifecycleHarness([], {
+    realArticleIndex: true,
+    orderResponses: [paid, revoked],
+    articleReadResponses: [
+      { items: [{ id: routeArticle, title: 'Private article' }], hydrating: true, complete: false },
+    ],
+    async afterPartial(context) {
+      assert.equal(context.$('articles').children.length, 1);
+      await context.operation(g => context.checkOrder(g, orderID));
+    },
+  });
+  await h.context.purchase();
+  assert.equal(h.orderReads(), 2);
+  assert.equal(h.context.access, 'revoked');
+  assert.equal(h.context.currentOrder, '');
+  assert.equal(h.context.paidOrder, null);
+  assert.equal(h.$('check-order').hidden, true);
+  assert.equal(new URLSearchParams(h.location.search).has('order'), false);
+  assert.equal(h.$('articles').children.length, 0);
+  assert.equal(h.$('welcome').hidden, false);
+  assert.equal(h.$('catalog').hidden, true);
+  assert.match(h.$('purchase-message').textContent, /Access revoked/);
+});
+
+test('processing order alone does not claim confirmed paid access on an entitlement error', async () => {
+  const required = Object.assign(new Error('Access not ready'), { status: 403, code: 'ENTITLEMENT_REQUIRED' });
+  const h = paidPurchaseLifecycleHarness([]);
+  h.context.currentOrder = orderID;
+  await h.context.operation(async () => { throw required; });
+  assert.equal(h.context.access, 'missing');
+});
+
+test('purchase availability status reports unavailable without a quote', async () => {
+  const required = Object.assign(new Error('Access not ready'), { status: 403, code: 'ENTITLEMENT_REQUIRED' });
+  const h = paidPurchaseLifecycleHarness([]);
+  h.context.quote = null;
+  await h.context.operation(async () => { throw required; });
+  assert.equal(h.context.access, 'missing');
+  assert.equal(h.$('purchase-action').disabled, true);
+  assert.match(h.$('purchase-message').textContent, /Purchasing is currently unavailable/);
+  assert.match(h.statuses.at(-1).message, /Purchasing is currently unavailable/);
+});
+
+test('purchase availability status reports unavailable without merchant configuration', async () => {
+  const required = Object.assign(new Error('Access not ready'), { status: 403, code: 'ENTITLEMENT_REQUIRED' });
+  const h = paidPurchaseLifecycleHarness([]);
+  h.context.merchant = null;
+  await h.context.operation(async () => { throw required; });
+  assert.equal(h.$('purchase-action').disabled, true);
+  assert.match(h.statuses.at(-1).message, /Purchasing is currently unavailable/);
+});
+
+test('purchase availability status keeps valid quote invitation', async () => {
+  const required = Object.assign(new Error('Access not ready'), { status: 403, code: 'ENTITLEMENT_REQUIRED' });
+  const h = paidPurchaseLifecycleHarness([]);
+  await h.context.operation(async () => { throw required; });
+  assert.equal(h.$('purchase-action').disabled, false);
+  assert.equal(h.statuses.at(-1).message, 'This vehicle is available to purchase.');
+});
+
+test('purchase availability status requests sign-in instead of inviting purchase', async () => {
+  const required = Object.assign(new Error('Access not ready'), { status: 403, code: 'ENTITLEMENT_REQUIRED' });
+  const h = paidPurchaseLifecycleHarness([]);
+  h.context.session.state.authenticated = false;
+  await h.context.operation(async () => { throw required; });
+  assert.equal(h.$('purchase-action').textContent, 'Sign in with Google');
+  assert.equal(h.$('purchase-action').disabled, false);
+  assert.match(h.statuses.at(-1).message, /Sign in to check access and purchase/);
+});
+
+test('purchase availability status keeps validated processing order no-repay guidance', async () => {
+  const required = Object.assign(new Error('Access not ready'), { status: 403, code: 'ENTITLEMENT_REQUIRED' });
+  const processing = { version: 'v1', order_id: orderID, ...scope, state: 'processing', retry_disposition: 'do_not_repay', timedOut: true };
+  const h = paidPurchaseLifecycleHarness([], { orderResponses: [processing] });
+  await h.context.operation(g => h.context.checkOrder(g, orderID));
+  assert.equal(h.context.unconfirmedOrder?.id, orderID);
+  await h.context.operation(async () => { throw required; });
+  assert.equal(h.$('purchase-action').disabled, true);
+  assert.equal(h.$('purchase-action').textContent, 'Payment pending');
+  assert.match(h.statuses.at(-1).message, /confirmation is pending.*do not pay again/i);
+});
+
+test('processing checkout timeout keeps status check without an enabled Buy action', async () => {
+  const processing = {
+    version: 'v1', order_id: orderID, ...scope, state: 'processing',
+    retry_disposition: 'do_not_repay', timedOut: true,
+  };
+  const h = paidPurchaseLifecycleHarness([], { orderResponses: [processing, processing] });
+  await h.context.purchase();
+  assert.equal(h.checkoutStarts(), 1);
+  assert.equal(h.context.currentOrder, orderID);
+  assert.equal(h.$('check-order').hidden, false);
+  assert.equal(h.context.access, 'missing');
+  assert.match(h.$('purchase-message').textContent, /confirmation.*do not pay again/i);
+  assert.doesNotMatch(h.$('purchase-action').textContent, /Buy|Payment received/);
+  assert.equal(h.$('purchase-action').disabled, true);
+  await h.context.purchase(); // Direct activation must not start a second checkout.
+  assert.equal(h.checkoutStarts(), 1);
+});
+
+test('owner-only processing route recovery keeps a scoped confirmation-pending action', async () => {
+  const processing = {
+    version: 'v1', order_id: orderID, ...scope, state: 'processing',
+    retry_disposition: 'do_not_repay', timedOut: true,
+  };
+  const h = paidPurchaseLifecycleHarness([], { orderResponses: [processing] });
+  h.location.search = `?order=${orderID}`;
+  await h.context.restoreRoute();
+  assert.equal(h.checkoutStarts(), 0);
+  assert.equal(h.orderReads(), 1);
+  assert.equal(h.context.unconfirmedOrder?.id, orderID);
+  assert.equal(h.context.access, 'unknown'); // Route restoration invalidates prior access.
+  assert.equal(h.$('check-order').hidden, false);
+  assert.equal(h.$('purchase-action').disabled, true);
+  assert.doesNotMatch(h.$('purchase-action').textContent, /Buy|Payment received/);
+  h.context.vehicle = { id: previousConfiguration, region: scope.region };
+  h.context.quote = { ...quote, configuration_id: previousConfiguration };
+  h.context.access = 'missing'; // A separate access check found the other scope purchasable.
+  h.context.renderPurchase();
+  assert.equal(h.$('purchase-action').disabled, false);
+  assert.match(h.$('purchase-action').textContent, /Buy for \$20 USD/);
+});
+
+test('fresh order-only return reveals Check payment status after owner validation', async () => {
+  const processing = {
+    version: 'v1', order_id: orderID, ...scope, state: 'processing',
+    retry_disposition: 'do_not_repay', timedOut: true,
+  };
+  const h = paidPurchaseLifecycleHarness([], { orderResponses: [processing] });
+  h.context.vehicle = null;
+  h.context.quote = null;
+  h.location.search = `?order=${orderID}`;
+  await h.context.restoreRoute();
+  assert.equal(h.context.vehicle?.id, scope.configuration_id);
+  assert.equal(h.context.vehicle?.region, scope.region);
+  assert.equal(h.$('purchase').hidden, false);
+  assert.equal(h.$('check-order').hidden, false);
+  assert.equal(h.$('purchase-action').disabled, true);
+  assert.match(h.$('purchase-message').textContent, /confirmation.*do not pay again/i);
+  assert.equal(h.checkoutStarts(), 0);
+});
+
+for (const state of ['creating', 'open', 'reconciliation_required']) {
+  test(`unresolved ${state} order keeps a validated no-repay action`, async () => {
+    const processing = {
+      version: 'v1', order_id: orderID, ...scope, state: 'processing',
+      retry_disposition: 'do_not_repay', timedOut: true,
+    };
+    const unresolved = { ...processing, state };
+    const h = paidPurchaseLifecycleHarness([], { orderResponses: [processing, unresolved] });
+    await h.context.purchase();
+    await h.context.operation(g => h.context.checkOrder(g, orderID));
+    assert.equal(h.context.currentOrder, orderID);
+    assert.equal(h.context.unconfirmedOrder?.id, orderID);
+    assert.equal(h.$('check-order').hidden, false);
+    assert.equal(h.$('purchase-action').disabled, true);
+    assert.doesNotMatch(h.$('purchase-action').textContent, /Buy|Payment received/);
+    await h.context.purchase();
+    assert.equal(h.checkoutStarts(), 1);
+  });
+}
+
+test('a URL-only missing order never claims pending confirmation', async () => {
+  const missing = Object.assign(new Error('Order not found'), { status: 404 });
+  const h = paidPurchaseLifecycleHarness([], { orderResponses: [missing] });
+  h.location.search = `?order=${orderID}`;
+  await h.context.restoreRoute();
+  assert.equal(h.checkoutStarts(), 0);
+  assert.equal(h.context.unconfirmedOrder, null);
+  assert.equal(h.context.currentOrder, '');
+  assert.equal(h.$('check-order').hidden, true);
+  assert.doesNotMatch(h.$('purchase-message').textContent, /Payment confirmation is pending|Payment received/);
+});
+
+test('a missing processing order clears the pending action and allows a fresh purchase', async () => {
+  const processing = {
+    version: 'v1', order_id: orderID, ...scope, state: 'processing',
+    retry_disposition: 'do_not_repay', timedOut: true,
+  };
+  const missing = Object.assign(new Error('Order not found'), { status: 404 });
+  const h = paidPurchaseLifecycleHarness([], { orderResponses: [processing, missing] });
+  await h.context.purchase();
+  assert.equal(h.$('purchase-action').disabled, true);
+  await h.context.operation(g => h.context.checkOrder(g, orderID));
+  assert.equal(h.context.currentOrder, '');
+  assert.equal(h.context.unconfirmedOrder, null);
+  assert.equal(h.$('check-order').hidden, true);
+  assert.equal(h.$('purchase-action').disabled, false);
+  assert.match(h.$('purchase-action').textContent, /Buy for \$20 USD/);
+});
+
+for (const state of ['expired', 'canceled', 'revoked', 'paid']) {
+  test(`processing order resolving as ${state} does not retain a stale pending action`, async () => {
+    const processing = {
+      version: 'v1', order_id: orderID, ...scope, state: 'processing',
+      retry_disposition: 'do_not_repay', timedOut: true,
+    };
+    const resolved = {
+      version: 'v1', order_id: orderID, ...scope, state,
+      retry_disposition: ['expired', 'canceled'].includes(state) ? 'new_key' : 'do_not_repay',
+    };
+    const h = paidPurchaseLifecycleHarness([], { orderResponses: [processing, resolved] });
+    await h.context.purchase();
+    await h.context.operation(g => h.context.checkOrder(g, orderID));
+    assert.equal(h.context.unconfirmedOrder, null);
+    assert.equal(h.context.currentOrder, '');
+    assert.equal(h.$('check-order').hidden, true);
+    if (['expired', 'canceled'].includes(state)) {
+      assert.equal(h.$('purchase-action').disabled, false);
+      assert.match(h.$('purchase-action').textContent, /Buy for \$20 USD/);
+      assert.match(h.statuses.at(-1).message, /Choose Buy again/);
+    } else if (state === 'revoked') {
+      assert.equal(h.context.access, 'revoked');
+      assert.equal(h.$('purchase-action').disabled, true);
+      assert.match(h.$('purchase-message').textContent, /Access revoked/);
+    } else {
+      assert.equal(h.context.access, 'owned');
+      h.context.renderPurchase(); // The harness selectVehicle stub does not render its success path.
+      assert.match(h.$('purchase-action').textContent, /Open articles/);
+    }
+  });
+}
+
+for (const state of ['expired', 'canceled']) {
+  test(`fresh order-only ${state} result gives a usable next step`, async () => {
+    const processing = {
+      version: 'v1', order_id: orderID, ...scope, state: 'processing',
+      retry_disposition: 'do_not_repay', timedOut: true,
+    };
+    const terminal = { ...processing, state, retry_disposition: 'new_key' };
+    const h = paidPurchaseLifecycleHarness([], { orderResponses: [processing, terminal] });
+    h.context.vehicle = null;
+    h.context.quote = null;
+    h.location.search = `?order=${orderID}`;
+    await h.context.restoreRoute();
+    await h.context.operation(g => h.context.checkOrder(g, orderID));
+    assert.equal(h.context.currentOrder, '');
+    assert.equal(h.context.unconfirmedOrder, null);
+    assert.equal(h.$('purchase-action').disabled, true);
+    assert.match(h.statuses.at(-1).message, /select.*vehicle.*check access/i);
+    assert.doesNotMatch(h.statuses.at(-1).message, /Choose Buy again/);
+  });
+}
+
+test('confirmed paid marker for another vehicle does not mask missing access', async () => {
+  const required = Object.assign(new Error('Access not ready'), { status: 403, code: 'ENTITLEMENT_REQUIRED' });
+  const h = paidPurchaseLifecycleHarness([]);
+  h.context.currentOrder = orderID;
+  h.context.paidOrder = { id: orderID, ...scope };
+  h.context.vehicle = { id: previousConfiguration, region: scope.region };
+  await h.context.operation(async () => { throw required; });
+  assert.equal(h.context.access, 'missing');
+});
+
+test('paid processing checkout survives focus recheck without a second Buy invitation', async () => {
+  const required = Object.assign(new Error('Access not ready'), { status: 403, code: 'ENTITLEMENT_REQUIRED' });
+  const h = paidPurchaseLifecycleHarness([required, required]);
+  await h.context.purchase();
+  assert.equal(h.orderReads(), 1);
+  assert.equal(h.context.access, 'pending');
+  await h.context.recheck();
+  assert.equal(h.checkoutStarts(), 1);
+  assert.equal(h.orderReads(), 2);
+  assert.equal(h.context.currentOrder, orderID);
+  assert.equal(h.context.access, 'pending');
+  assert.equal(h.$('check-order').hidden, false);
+  assert.doesNotMatch(h.$('purchase-action').textContent, /Buy/);
+  assert.match(h.$('purchase-message').textContent, /do not pay again/);
+});
+
+test('confirmed article access replaces the resumed order route with its vehicle route', async () => {
+  const required = Object.assign(new Error('Access not ready'), { status: 403, code: 'ENTITLEMENT_REQUIRED' });
+  const h = paidPurchaseLifecycleHarness([required, null]);
+  await h.context.purchase();
+  assert.equal(new URLSearchParams(h.location.search).get('order'), orderID);
+  await h.context.recheck();
+  const route = new URLSearchParams(h.location.search);
+  assert.equal(route.has('order'), false);
+  assert.equal(route.get('configuration'), scope.configuration_id);
+  assert.equal(route.get('region'), scope.region);
+  assert.equal(h.context.currentOrder, '');
+  assert.equal(h.$('check-order').hidden, true);
+  assert.equal(h.context.access, 'owned');
+});
+
+test('paid article authentication failure retains order route for sign-in recovery', async () => {
+  const unauthorized = Object.assign(new Error('Sign in again'), { status: 401 });
+  const h = paidPurchaseLifecycleHarness([unauthorized, null]);
+  await h.context.purchase();
+  assert.equal(h.checkoutStarts(), 1);
+  assert.equal(h.orderReads(), 1);
+  assert.equal(h.context.session.state.authenticated, false);
+  assert.equal(new URLSearchParams(h.location.search).get('order'), orderID);
+  assert.doesNotMatch(h.$('purchase-action').textContent, /Buy/);
+  h.context.session.state.authenticated = true;
+  await h.context.restoreRoute();
+  assert.equal(h.orderReads(), 2);
+  assert.equal(h.context.access, 'owned');
+  assert.equal(new URLSearchParams(h.location.search).has('order'), false);
+});
+
+test('order status retains pending action when confirmation times out', async () => {
+  const h = orderStatusHarness({
+    version: 'v1', order_id: orderID, ...scope, state: 'processing',
+    retry_disposition: 'do_not_repay', timedOut: true,
+  });
+  await h.check();
+  assert.equal(h.context.currentOrder, orderID);
+  assert.equal(h.button.hidden, false);
+  assert.equal(h.checkoutClears(), 0);
+});
+
+test('stale order status 404 does not clear newer checkout or action', async () => {
+  let rejectOrder;
+  let current = true;
+  let checkoutClears = 0;
+  const button = { hidden: true };
+  const context = {
+    currentOrder: '', paidOrder: '', unconfirmedOrder: null, $: () => button, status() {},
+    pollOrder: () => new Promise((_, reject) => { rejectOrder = reject; }),
+    checkout: { clear() { checkoutClears++; } },
+  };
+  runInNewContext(appSection('async function checkOrder(', 'async function purchase()'), context);
+  const pending = context.checkOrder({ current: () => current, signal: {} }, orderID);
+  const newerOrder = '55555555-5555-4555-8555-555555555555';
+  context.currentOrder = newerOrder;
+  current = false;
+  const error = Object.assign(new Error('Old order not found'), { status: 404 });
+  rejectOrder(error);
+  await assert.rejects(pending, received => received === error);
+  assert.equal(context.currentOrder, newerOrder);
+  assert.equal(button.hidden, false);
+  assert.equal(checkoutClears, 0);
+});
+
 function articleIndexHarness(responses) {
   const navigation = new NavigationGeneration();
   const nodes = new Map();
   function element(tag, text = '', className = '') {
-    return { tag, textContent: text, className, hidden: false, value: '', dataset: {}, children: [], events: {},
-      append(child) { this.children.push(child); },
+    return { tag, textContent: text, className, hidden: false, value: '', dataset: {}, attributes: {}, children: [], events: {},
+      append(...children) { this.children.push(...children); },
       replaceChildren(...children) { this.children = children; },
       addEventListener(name, callback) { this.events[name] = callback; },
+      setAttribute(name, value) { this.attributes[name] = String(value); },
       removeAttribute() {},
     };
   }
@@ -798,7 +1626,7 @@ function articleIndexHarness(responses) {
   const context = {
     $, element, URL, location: { href: 'https://cars.example/workshop?vehicle=B' },
     document: { body: { dataset: {} } },
-    quote: null, articles: [], access: '', retryAction: null, filterArticles,
+    quote: null, articles: [], indexComplete: false, indexFailed: false, access: '', retryAction: null, filterArticles,
     stage() {}, renderPurchase() {}, show() {},
     articlePath: () => '/v1/catalog/vehicles/B/articles',
     requestJSON(path, options) {
@@ -888,11 +1716,95 @@ test('partial index rows remain clickable during preparation and saved articles 
   assert.equal(saved.statuses.some(s => s.complete === true), false);
 });
 
+test('saved article link survives an incomplete index and retries the same article', async () => {
+  const pending = indexResponse('pending', { hydrating: true, items: [] });
+  const ready = indexResponse('completed', { complete: true, items: [
+    { id: 'saved/article', title: 'Oil pump', kind: 'procedure' },
+  ] });
+  const h = articleIndexHarness([pending, pending, pending, ready]);
+  await h.load('saved/article');
+  assert.equal(h.requests.length, 3);
+  assert.equal(h.opened.length, 0);
+  assert.match(h.$('activity-text').textContent, /still being prepared/i);
+  assert.equal(h.$('retry').hidden, false);
+  await h.context.retryAction();
+  assert.equal(h.requests.length, 4);
+  assert.equal(h.opened[0]?.id, 'saved/article');
+});
+
+test('saved article link missing from a complete index is unavailable', async () => {
+  const h = articleIndexHarness([indexResponse('completed', { complete: true, items: [] })]);
+  await assert.rejects(h.load('saved/article'), /unavailable for the selected vehicle/i);
+  assert.equal(h.opened.length, 0);
+});
+
+test('saved article link missing from a failed index reports index failure', async () => {
+  const h = articleIndexHarness([indexResponse('failed', { items: [] })]);
+  await h.load('saved/article');
+  assert.match(h.$('activity-text').textContent, /could not be prepared/i);
+  assert.equal(h.$('retry').hidden, true);
+  assert.equal(h.opened.length, 0);
+});
+
 test('nonempty explicit completed article index is ready after one read', async () => {
   const h = articleIndexHarness([indexResponse('completed', { complete: true, items: [{ id: 'saved', title: 'Pump' }] })]);
   await h.load();
   assert.equal(h.requests.length, 1);
   assert.equal(h.$('completion-status').textContent, 'Article index ready.');
+});
+
+test('article index type labels show readable kinds beside titles without changing links', async () => {
+  const h = articleIndexHarness([indexResponse('completed', { complete: true, items: [
+    { id: 'source/procedure', title: 'Replace oil pump', kind: 'procedure' },
+    { id: 'source/bulletin', title: 'Oil pressure notice', kind: 'technical_service_bulletin' },
+    { id: 'source/other', title: 'Legacy entry', kind: 'legacy-content' },
+  ] })]);
+  await h.load();
+  const list = h.$('articles').children[0];
+  assert.equal(list.tag, 'ul');
+  assert.equal(list.attributes.role, 'list');
+  assert.deepEqual(list.children.map(row => row.children[0].children.map(span => span.textContent)), [
+    ['Replace oil pump', 'Procedure'],
+    ['Oil pressure notice', 'Technical service bulletin'],
+    ['Legacy entry', 'Legacy content'],
+  ]);
+  assert.equal(new URL(list.children[0].children[0].href, 'https://cars.example').searchParams.get('article'), 'source/procedure');
+});
+
+test('article index empty states distinguish pending, completed empty and no search matches', async () => {
+  const pending = articleIndexHarness([indexResponse('pending', { items: [] })]);
+  await pending.load();
+  assert.equal(pending.$('no-results').hidden, false);
+  assert.match(pending.$('no-results').textContent, /still being prepared/i);
+
+  const empty = articleIndexHarness([indexResponse('completed', { complete: true, items: [] })]);
+  await empty.load();
+  assert.equal(empty.$('no-results').hidden, false);
+  assert.match(empty.$('no-results').textContent, /no articles are currently available/i);
+
+  const search = articleIndexHarness([indexResponse('completed', { complete: true, items: [
+    { id: 'source/pump', title: 'Oil pump', kind: 'procedure' },
+  ] })]);
+  await search.load();
+  search.$('search').value = 'alternator';
+  search.context.renderArticles();
+  assert.equal(search.$('no-results').hidden, false);
+  assert.match(search.$('no-results').textContent, /no articles match this search/i);
+});
+
+test('completed empty article index stays empty when a saved search query is present', async () => {
+  const h = articleIndexHarness([indexResponse('completed', { complete: true, items: [] })]);
+  h.$('search').value = 'alternator';
+  await h.load();
+  assert.equal(h.$('no-results').hidden, false);
+  assert.match(h.$('no-results').textContent, /no articles are currently available/i);
+});
+
+test('article index terminal failure does not claim it is still being prepared', async () => {
+  const h = articleIndexHarness([indexResponse('failed', { items: [] })]);
+  await h.load();
+  assert.equal(h.$('no-results').hidden, false);
+  assert.match(h.$('no-results').textContent, /could not be prepared/i);
 });
 
 test('actual status DOM clears vehicle A completion immediately before vehicle B pending or terminal read resolves', async () => {
@@ -953,6 +1865,32 @@ const merchantFixture = () => ({
 });
 const quoteTermsFixture = () => ({ purchase_terms_version: 'workshop-v1' });
 
+test('paid access pending renders a non-Buy action even without merchant configuration', () => {
+  for (const merchant of [merchantFixture(), null]) {
+    const nodes = new Map();
+    const $ = id => {
+      if (!nodes.has(id)) nodes.set(id, {
+        hidden: false, disabled: false, textContent: '',
+        replaceChildren() {}, append() {},
+      });
+      return nodes.get(id);
+    };
+    const context = {
+      $, validScope, validQuote, purchaseConfiguration, configurationLabel,
+      scope: () => scope, quote, merchant, access: 'pending', currentOrder: '', unconfirmedOrder: null,
+      vehicle: { id: scope.configuration_id, region: scope.region },
+      session: { state: { authenticated: true, ready: true } },
+      document: { createTextNode: text => ({ textContent: text }) },
+      element: (tag, text) => ({ tag, textContent: text }),
+    };
+    runInNewContext(appSection('function renderPurchase(', 'async function selectVehicle('), context);
+    context.renderPurchase();
+    assert.match($('purchase-message').textContent, /Payment received.*do not pay again/);
+    assert.equal($('purchase-action').disabled, true);
+    assert.doesNotMatch($('purchase-action').textContent, /Buy/);
+  }
+});
+
 test('purchase readiness requires the supported terms contract', async t => {
   assert.equal(purchaseConfiguration(merchantFixture(), quoteTermsFixture()), true);
   for (const [label, version] of [
@@ -1001,6 +1939,7 @@ class ArticleMediaNode {
     this.open = false;
     this._text = '';
   }
+  focus() { this.focusCalls = (this.focusCalls || 0) + 1; }
   get textContent() { return this._text + this.children.map(n => n.textContent).join(''); }
   set textContent(value) { this.replaceChildren(); this._text = String(value); }
   get isConnected() { return this.tagName === 'body' || Boolean(this.parentNode?.isConnected); }
@@ -1063,8 +2002,8 @@ function articleMediaHarness(overrides = {}) {
   const body = new ArticleMediaNode('body'), nodes = new Map();
   const ids = ['articles', 'article-content', 'source-review-frame', 'reference-data', 'library-items',
     'article-title', 'catalog-count', 'article-note', 'source-review-meta', 'source-review', 'print',
-    'reader', 'catalog', 'source-review-link', 'reader-vehicle', 'reader-engine', 'purchase-selection',
-    'article-kind', 'article-reference', 'source-review-load'];
+    'welcome', 'reader', 'catalog', 'library', 'source-review-link', 'reader-vehicle', 'reader-engine', 'purchase-selection',
+    'article-kind', 'article-reference', 'source-review-load', 'check-order'];
   for (const id of ids) { const node = new ArticleMediaNode('div'); nodes.set(id, node); body.append(node); }
   const navigation = new NavigationGeneration(), g = navigation.next();
   const shows = [], statuses = [];
@@ -1076,6 +2015,7 @@ function articleMediaHarness(overrides = {}) {
     $: id => { assert.ok(nodes.has(id), `known DOM node ${id}`); return nodes.get(id); },
     navigation, currentArticle: null, renderedRevision: '', sourceData: null, sourceURL: '', sourceRevision: 0,
     renewalUsed: false, renewal: null, renewalFailures: new Set(), articles: [], libraryItems: [], libraryCursor: null,
+    currentOrder: '',
     access: 'granted', quote: { configuration_label: '2005 Toyota' }, vehicle: { region: 'US' },
     articlePath: id => `/v1/catalog/vehicles/v/articles/${id}`,
     requestArticleJSON: () => assert.fail('unexpected article request'),
@@ -1094,6 +2034,93 @@ function articleMediaHarness(overrides = {}) {
     content(article) { const parent = new ArticleMediaNode('div'); body.append(parent); context.renderContent(parent, article, g); return parent; },
   };
 }
+
+test('article tab title clears when protected content is invalidated', () => {
+  const h = articleMediaHarness();
+  h.render(mediaArticle([{ type: 'paragraph', text: 'Check pump.' }]));
+  assert.equal(h.context.document.title, 'Pump service | AutoData');
+  h.context.clearProtected();
+  assert.equal(h.context.document.title, 'AutoData — The workshop reference');
+});
+
+test('article tab title clears on catalog and library navigation', () => {
+  const nodes = Object.fromEntries(['welcome', 'catalog', 'reader', 'library']
+    .map(id => [id, { hidden: true }]));
+  const context = { document: { title: 'Pump service | AutoData' }, $: id => nodes[id] };
+  runInNewContext(appSection('function show(', 'function clearProtected('), context);
+  context.show('catalog');
+  assert.equal(context.document.title, 'AutoData — The workshop reference');
+  assert.equal(nodes.catalog.hidden, false);
+  assert.equal(nodes.library.hidden, true);
+  context.document.title = 'Other private article | AutoData';
+  context.show('library');
+  assert.equal(context.document.title, 'AutoData — The workshop reference');
+  assert.equal(nodes.library.hidden, false);
+  assert.equal(nodes.catalog.hidden, true);
+});
+
+test('article navigation focuses its visible heading once before preparation and preserves focus during updates', async () => {
+  let resolvePrepare;
+  const article = mediaArticle([{ type: 'paragraph', text: 'Ready content.' }]);
+  const h = articleMediaHarness({
+    session: { state: { authenticated: true, csrf: 'csrf' } },
+    stage: () => {},
+    requestArticleJSON: () => new Promise(resolve => { resolvePrepare = resolve; }),
+    readArticle: async (read, { onUpdate }) => {
+      const response = await read();
+      onUpdate(response);
+      h.nodes.get('print').focus();
+      onUpdate(response);
+      return response;
+    },
+  });
+  runInNewContext([
+    appSection('function show(', 'function clearProtected('),
+    appSection('async function loadArticle(', 'function openArticle('),
+  ].join('\n'), h.context);
+  const pending = h.context.loadArticle('a', h.g);
+  const title = h.nodes.get('article-title');
+  assert.equal(h.nodes.get('reader').hidden, false);
+  assert.equal(h.nodes.get('catalog').hidden, true);
+  assert.equal(title.textContent, 'Opening article…');
+  assert.equal(title.focusCalls, 1, 'focus must enter the reader while preparation is pending');
+  resolvePrepare({ data: { article } });
+  await pending;
+  assert.equal(title.textContent, 'Pump service');
+  assert.equal(title.focusCalls, 1, 'prepare and polling updates must not reclaim focus');
+  assert.equal(h.nodes.get('print').focusCalls, 1);
+});
+
+test('obsolete article navigation leaves current heading and focus alone', async () => {
+  const h = articleMediaHarness({ session: { state: { authenticated: true } } });
+  runInNewContext(appSection('async function loadArticle(', 'function openArticle('), h.context);
+  h.nodes.get('article-title').textContent = 'Current article';
+  h.navigation.clear();
+  await h.context.loadArticle('obsolete', h.g);
+  assert.equal(h.nodes.get('article-title').textContent, 'Current article');
+  assert.equal(h.nodes.get('article-title').focusCalls, undefined);
+  assert.deepEqual(h.shows, []);
+});
+
+test('retrying a visible article keeps its tab title while preparation fails', async () => {
+  let rejectPrepare;
+  const h = articleMediaHarness({
+    session: { state: { authenticated: true, csrf: 'csrf' } },
+    stage: () => {},
+    requestArticleJSON: () => new Promise((_, reject) => { rejectPrepare = reject; }),
+  });
+  h.render(mediaArticle([{ type: 'paragraph', text: 'Check pump.' }]));
+  runInNewContext([
+    appSection('function show(', 'function clearProtected('),
+    appSection('async function loadArticle(', 'function openArticle('),
+  ].join('\n'), h.context);
+  const retry = h.context.loadArticle('a', h.g);
+  assert.equal(h.nodes.get('article-title').textContent, 'Pump service');
+  assert.equal(h.context.document.title, 'Pump service | AutoData');
+  rejectPrepare(new Error('temporarily unavailable'));
+  await assert.rejects(retry, /temporarily unavailable/);
+  assert.equal(h.context.document.title, 'Pump service | AutoData');
+});
 
 for (const [type, tag] of [['ordered_list', 'ol'], ['unordered_list', 'ul']]) {
   test(`article block media ${type} keeps normalized items and retained sibling figure order`, () => {
@@ -1149,6 +2176,68 @@ test('article block media mixed document preserves each contextual placement and
   assert.deepEqual(mediaTags(parent), ['ol', 'figure', 'aside', 'section', 'div', 'figure']);
   assert.deepEqual(mediaIDs(parent.children[3]), ['step']);
   assert.deepEqual(mediaIDs(mediaDescendants(parent, 'td')[0]), ['cell']);
+});
+
+for (const origin of ['source', 'canonical']) {
+  test(`article table block image stays beside the semantic table in the ${origin} reader`, () => {
+    const h = articleMediaHarness();
+    const parent = h.render(mediaArticle([
+      { type: 'table', caption: 'Torque values', columns: ['Part', 'Torque'], rows: [['Bolt', '30 Nm']],
+        images: [{ asset_id: 'row-image', alt: 'Bolt orientation', url: 'https://provider.example/untrusted.png' }] },
+      { type: 'paragraph', text: 'Continue after the table.' },
+    ], [{ id: 'row-image', url: mediaURL('row'), alt: 'Pool description' }],
+    { content_origin: origin, complete: origin === 'canonical' }));
+    assert.deepEqual(mediaTags(parent), ['div', 'figure', 'p']);
+    assert.deepEqual(mediaTags(parent.children[0]), ['table']);
+    assert.equal(mediaDescendants(parent, 'caption')[0].textContent, 'Torque values');
+    assert.deepEqual(mediaDescendants(parent, 'th').map(n => n.scope), ['col', 'col']);
+    assert.deepEqual(mediaDescendants(parent, 'td').map(n => n.textContent), ['Bolt', '30 Nm']);
+    assert.deepEqual(mediaIDs(parent), ['row-image']);
+    const image = mediaDescendants(parent, 'img')[0];
+    assert.equal(image.src, 'https://cars.example/v1/catalog/images/v2.row');
+    assert.equal(image.alt, 'Bolt orientation');
+    assert.equal(image.referrerPolicy, 'no-referrer');
+    assert.equal(mediaDescendants(parent, 'figcaption')[0].textContent, 'Bolt orientation');
+    assert.equal(parent.children[2].textContent, 'Continue after the table.');
+  });
+}
+
+for (const [name, ref, pool] of [
+  ['missing ID', { unavailable_reason: 'missing source image reference' }, { id: 'unrelated', url: mediaURL('unrelated') }],
+  ['missing pool mapping', { asset_id: 'missing', url: mediaURL('untrusted') }, { id: 'unrelated', url: mediaURL('unrelated') }],
+]) {
+  test(`article table block image ${name} never borrows unrelated pool media`, () => {
+    const h = articleMediaHarness();
+    const parent = h.content(mediaArticle([
+      { type: 'table', rows: [['Bolt']], images: [ref] },
+    ], [pool]));
+    assert.deepEqual(mediaIDs(parent), []);
+    assert.deepEqual(mediaTags(parent), ['div', 'figure']);
+    assert.deepEqual(mediaTags(parent.children[1]), ['p']);
+    assert.equal(parent.children[1].textContent, 'Illustration unavailable.');
+  });
+}
+
+test('article table cell image missing an ID never borrows unrelated pool media', () => {
+  const h = articleMediaHarness();
+  const parent = h.content(mediaArticle([
+    { type: 'table', rows: [[{ text: 'Bolt', images: [{ status: 'unavailable' }] }]] },
+  ], [{ id: 'unrelated', url: mediaURL('unrelated') }]));
+  assert.deepEqual(mediaIDs(parent), []);
+  const cell = mediaDescendants(parent, 'td')[0];
+  assert.deepEqual(mediaTags(cell), ['span', 'figure']);
+  assert.equal(cell.children[1].textContent, 'Illustration unavailable.');
+});
+
+test('article table block image already shown in a cell is not repeated', () => {
+  const h = articleMediaHarness();
+  const parent = h.content(mediaArticle([
+    { type: 'table', rows: [[{ text: 'Bolt', images: [{ asset_id: 'shared' }] }]],
+      images: [{ image_id: 'shared' }, { asset_id: 'row-only' }] },
+  ], [{ id: 'shared', url: mediaURL('shared') }, { id: 'row-only', url: mediaURL('row-only') }]));
+  assert.deepEqual(mediaIDs(parent), ['shared', 'row-only']);
+  assert.deepEqual(mediaIDs(mediaDescendants(parent, 'td')[0]), ['shared']);
+  assert.deepEqual(mediaTags(parent), ['div', 'figure']);
 });
 
 for (const type of ['ordered_list', 'unordered_list', 'callout']) {
@@ -1433,3 +2522,410 @@ for (const outcome of ['resolve', 'reject']) {
     assert.equal(sourceCalls, 0); assert.deepEqual(h.shows, []); assert.deepEqual(h.statuses, []);
   });
 }
+
+function selectorOptionsHarness(response) {
+ const nodes = new Map();
+ const $ = id => { if (!nodes.has(id)) nodes.set(id, {value:'',disabled:false,hidden:true,textContent:'',dataset:{}}); return nodes.get(id); };
+ const statuses=[], displayed=[];
+ const context={ $, navigation:new NavigationGeneration(), document:{body:{dataset:{}}}, retryAction:null, currentOrder:'', paidOrder:'', stage(){}, selectorPath:()=>'/choices', requestJSON:async()=>{if(response instanceof Error)throw response;return response;},
+  readCollection:(read,options)=>readCollection(read,{...options,attempts:2,wait:async()=>{}}),
+  populate(name,items,desired){displayed.push(items);$(name).disabled=!items.length;$(name).value=desired;},
+  recordStatus:(text,options={})=>statuses.push({text,...options}), restoreRoute(){},
+ };
+ runInNewContext(appSection('function status(', 'function stage(')+appSection('async function operation(', 'function updateURL(')+appSection('async function loadOptions(', 'function renderPurchase(')+
+  'const actualStatus = status; status = (text, options = {}) => { recordStatus(text, options); actualStatus(text, options); };',context);
+ return {context,$,statuses,displayed,load:(desired='',current)=>context.operation(g=>context.loadOptions('configuration',current?{...g,current}:g,desired),()=>context.restoreRoute())};
+}
+
+test('actual selector timeout remains a retryable loading failure with partial rows preserved', async()=>{
+ for(const items of [[],[{id:'cfg-1',engine:'2.0L',complete:true}]]) {
+  const h=selectorOptionsHarness({items,complete:false,hydrating:true});
+  await h.load();
+  const last=h.statuses.at(-1);
+  assert.equal(last.error,true);
+  assert.match(last.text,/loading|load/i);
+  assert.doesNotMatch(last.text,/No choices|Choose your vehicle/);
+  assert.equal(typeof last.retry,'function');
+  assert.equal(h.$('retry').hidden,false);
+  assert.equal(typeof h.context.retryAction,'function');
+  assert.deepEqual(h.displayed.at(-1),items);
+  assert.equal(h.$('configuration').disabled,!items.length);
+ }
+});
+test('actual selector incomplete nonhydrating scope does not claim empty completion',async()=>{
+ const h=selectorOptionsHarness({items:[],complete:false,hydrating:false});await h.load();
+ assert.equal(h.statuses.at(-1).error,true);assert.equal(typeof h.statuses.at(-1).retry,'function');
+ assert.equal(h.$('retry').hidden,false);assert.equal(typeof h.context.retryAction,'function');
+});
+test('selector success hides retry for completed and saved partial choices',async()=>{
+ for(const [response,desired] of [
+  [{items:[{id:'cfg-1',complete:true}],complete:true,hydrating:false},''],
+  [{items:[],complete:true,hydrating:false},''],
+  [{items:[{id:'cfg-1',complete:true}],complete:false,hydrating:true},'cfg-1'],
+ ]) {
+  const h=selectorOptionsHarness(response);await h.load(desired);
+  assert.notEqual(h.statuses.at(-1).error,true);
+  assert.equal(h.$('retry').hidden,true);
+  assert.equal(h.context.retryAction,null);
+ }
+});
+test('actual selector completed empty scope reports no choices without a loading failure',async()=>{
+ const h=selectorOptionsHarness({items:[],complete:true,hydrating:false});await h.load();
+ assert.match(h.statuses.at(-1).text,/No .*choices/i);assert.notEqual(h.statuses.at(-1).error,true);
+});
+test('missing saved selector is not declared unavailable until the scope completes',async()=>{
+ const h=selectorOptionsHarness({items:[],complete:false,hydrating:true});await h.load('missing');
+ assert.equal(h.statuses.at(-1).error,true);assert.doesNotMatch(h.statuses.at(-1).text,/saved.*unavailable/i);
+ const complete=selectorOptionsHarness({items:[],complete:true,hydrating:false});
+ await complete.load('missing');assert.match(complete.statuses.at(-1).text,/saved vehicle choice is unavailable/);
+});
+test('actual selector still resumes a saved row before background hydration completes',async()=>{
+ const h=selectorOptionsHarness({items:[{id:'cfg-1',complete:true}],complete:false,hydrating:true});await h.load('cfg-1');
+ assert.notEqual(h.statuses.at(-1).error,true);assert.equal(h.$('configuration').value,'cfg-1');
+});
+test('actual selector ignores results after generation changes',async()=>{
+ const h=selectorOptionsHarness({items:[],complete:true,hydrating:false});await h.load('',()=>false);
+ assert.equal(h.displayed.length,0);assert.equal(h.statuses.length,1);
+});
+
+test('actual selector source request failure retains its retry action',async()=>{
+ const h=selectorOptionsHarness(new Error('Cannot reach AutoData. Try again.'));await h.load();
+ assert.equal(h.statuses.at(-1).error,true);assert.match(h.statuses.at(-1).text,/Cannot reach/);
+ assert.equal(typeof h.statuses.at(-1).retry,'function');
+ assert.equal(h.$('retry').hidden,false);assert.equal(typeof h.context.retryAction,'function');
+});
+test('legacy selector responses without completion metadata remain usable',async()=>{
+ const h=selectorOptionsHarness({items:[{year:2024}]});await h.load();
+ assert.notEqual(h.statuses.at(-1).error,true);assert.match(h.statuses.at(-1).text,/Choose your vehicle/);
+});
+
+test('both Stripe hosted path forms preserve opaque tokens with strict authority', async () => {
+ const { hostedCheckoutURL } = await import('./workshop/commerce.mjs');
+ for (const prefix of ['c','g']) {
+  const hosted = `https://checkout.stripe.com/${prefix}/pay/opaque_Checkout42#opaque%2Ffragment`;
+  assert.equal(hostedCheckoutURL(hosted), hosted);
+  for (const invalid of [hosted.replace('https:', 'http:'), hosted.replace('checkout.stripe.com', 'checkout.stripe.com.evil'), hosted.replace('checkout.stripe.com', 'user@checkout.stripe.com'), hosted.replace('checkout.stripe.com', 'checkout.stripe.com:443'), `https://checkout.stripe.com/${prefix}/pay/`, hosted+' ', hosted+'\u0000']) assert.equal(hostedCheckoutURL(invalid), null);
+ }
+ for (const invalid of ['https://checkout.stripe.com/pay/opaque','https://checkout.stripe.com/x/pay/opaque']) assert.equal(hostedCheckoutURL(invalid),null);
+});
+
+// These transports are local doubles; production session and route-selection code runs unchanged.
+test('session exposes only explicit known config modes and resets mode when authority is cleared', async () => {
+  const { createSession } = await import('./workshop/auth.mjs');
+  for (const mode of ['local', 'firebase', undefined, null, 'LOCAL', 'other', true]) {
+    let config = { mode };
+    const session = createSession({ request: async path => {
+      if (path === '/auth/config') return config;
+      return { authenticated: true, roles: ['dataset_viewer'], expires_at: '2099-01-01T00:00:00Z', csrf_token: 'csrf' };
+    }, loadSDK: () => assert.fail('an existing session needs no SDK') });
+    assert.equal(session.state.mode, null);
+    await session.bootstrap();
+    assert.equal(session.state.authenticated, true);
+    assert.equal(session.state.mode, ['local', 'firebase'].includes(mode) ? mode : null);
+    session.clear();
+    assert.equal(session.state.mode, null);
+    assert.equal(session.state.authenticated, false);
+    config = null;
+    await session.bootstrap();
+    assert.equal(session.state.mode, null);
+  }
+});
+
+test('an explicit local config mode cannot authenticate an invalid session or enable Google login', async () => {
+  const { createSession } = await import('./workshop/auth.mjs');
+  const session = createSession({ request: async path => path === '/auth/config'
+    ? { mode: 'local' }
+    : { authenticated: true, roles: [], expires_at: '2099-01-01T00:00:00Z', csrf_token: 'csrf' },
+    loadSDK: () => assert.fail('local configuration must not initialize Firebase') });
+  await session.bootstrap();
+  assert.equal(session.state.mode, 'local');
+  assert.equal(session.state.authenticated, false);
+  assert.equal(session.state.csrf, '');
+  assert.equal(session.state.available, false);
+  assert.equal(session.state.ready, false);
+});
+
+test('failed or obsolete configuration reads cannot preserve or restore local session mode', async () => {
+  const { createSession } = await import('./workshop/auth.mjs');
+  let readConfig = async () => ({ mode: 'local' });
+  const session = createSession({ request: async path => path === '/auth/config'
+    ? readConfig()
+    : { authenticated: true, roles: ['dataset_viewer'], expires_at: '2099-01-01T00:00:00Z', csrf_token: 'csrf' } });
+  await session.bootstrap();
+  assert.equal(session.state.mode, 'local');
+  let release;
+  readConfig = () => new Promise(resolve => { release = resolve; });
+  const obsolete = session.bootstrap();
+  assert.equal(session.state.mode, null, 'bootstrap must clear old mode before its first await');
+  readConfig = async () => ({ mode: 'firebase' });
+  await session.bootstrap();
+  release({ mode: 'local' });
+  await obsolete;
+  assert.equal(session.state.mode, 'firebase');
+  readConfig = async () => { throw new TypeError('offline'); };
+  await session.bootstrap();
+  assert.equal(session.state.mode, null);
+  const controller = new AbortController();
+  readConfig = async () => { controller.abort(); return { mode: 'local' }; };
+  await session.bootstrap({ signal: controller.signal });
+  assert.equal(session.state.mode, null);
+});
+
+function selectionQuoteHarness(merchant, { authenticated = true, request = async () => quoteTermsFixture() } = {}) {
+  const navigation = new NavigationGeneration(), generation = navigation.next(), calls = [], opened = [], nodes = new Map();
+  const context = {
+    merchant, quote: null, validScope, validQuote, scope: () => scope,
+    session: { state: { authenticated } }, clearProtected() {}, renderPurchase() {}, show() {}, status() {},
+    $: id => { if (!nodes.has(id)) nodes.set(id, {}); return nodes.get(id); },
+    requestJSON: async (path, options) => { calls.push({ path, options }); return request(path, options); },
+    loadArticles: async (g, id) => opened.push({ g, id }),
+  };
+  runInNewContext(appSection('async function selectVehicle(', 'async function loadArticles('), context);
+  return { context, navigation, generation, calls, opened };
+}
+
+for (const merchant of [{ enabled: false }, null, {}, { enabled: 'true' }]) {
+  test(`selection skips unusable quote for config ${JSON.stringify(merchant)} and still opens authorized articles`, async () => {
+    const h = selectionQuoteHarness(merchant, { request: () => assert.fail('disabled quote must never be requested') });
+    await h.context.selectVehicle(h.generation, 'article-a');
+    assert.equal(h.calls.length, 0);
+    assert.equal(h.context.quote, null);
+    assert.equal(h.opened.length, 1);
+    assert.equal(h.opened[0].id, 'article-a');
+  });
+}
+
+test('disabled quote selection retains signed-out and obsolete-navigation boundaries', async () => {
+  const signedOut = selectionQuoteHarness({ enabled: false }, { authenticated: false });
+  await signedOut.context.selectVehicle(signedOut.generation);
+  assert.equal(signedOut.calls.length, 0);
+  assert.equal(signedOut.opened.length, 0);
+  const stale = selectionQuoteHarness({ enabled: false });
+  stale.navigation.clear();
+  await stale.context.selectVehicle(stale.generation);
+  assert.equal(stale.calls.length, 0);
+  assert.equal(stale.opened.length, 0);
+});
+
+test('enabled purchasing keeps scoped quote validation, tolerated unavailable quote, and article reads', async () => {
+  for (const result of [quoteTermsFixture(), { ...quoteTermsFixture(), amount_minor: 1 }, new Error('503')]) {
+    const h = selectionQuoteHarness({ enabled: true }, { request: async () => {
+      if (result instanceof Error) throw result;
+      return result;
+    } });
+    await h.context.selectVehicle(h.generation, 'article-a');
+    assert.equal(h.calls.length, 1);
+    assert.equal(h.calls[0].path, `/v1/workshop/quote?configuration_id=${scope.configuration_id}&region=${scope.region}`);
+    assert.equal(h.calls[0].options.signal, h.generation.signal);
+    assert.equal(h.context.quote, validQuote(result, scope) ? result : null);
+    assert.equal(h.opened.length, 1);
+  }
+});
+
+test('enabled quote cannot publish or continue after its selection is canceled', async () => {
+  for (const reject of [false, true]) {
+    let resolveRequest, rejectRequest;
+    const h = selectionQuoteHarness({ enabled: true }, { request: () => new Promise((resolve, fail) => { resolveRequest = resolve; rejectRequest = fail; }) });
+    const pending = h.context.selectVehicle(h.generation);
+    h.navigation.clear();
+    if (reject) rejectRequest(new DOMException('canceled', 'AbortError'));
+    else resolveRequest(quoteTermsFixture());
+    if (reject) await assert.rejects(pending, { name: 'AbortError' });
+    else await pending;
+    assert.equal(h.context.quote, null);
+    assert.equal(h.opened.length, 0);
+  }
+});
+
+function articleRouteHarness(mode, request, authenticated = true) {
+  const h = articleMediaHarness({
+    session: { state: { mode, authenticated, csrf: 'csrf' } }, stage() {}, requestArticleJSON: request,
+    readArticle: async (read, options) => {
+      const { readArticle } = await import('./workshop/article-read.mjs');
+      return readArticle(read, { ...options, wait: async () => {} });
+    },
+  });
+  runInNewContext(appSection('async function loadArticle(', 'function openArticle('), h.context);
+  return h;
+}
+
+for (const mode of ['local', 'firebase', undefined, null, 'LOCAL', 'other']) {
+  test(`article opening mode ${String(mode)} uses only its authorized real route`, async () => {
+    const calls = [], article = mediaArticle([{ type: 'paragraph', text: 'Stored procedure.' }]);
+    const h = articleRouteHarness(mode, async (path, options) => { calls.push({ path, options }); return { data: { article } }; });
+    await h.context.loadArticle('a', h.g);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].path, mode === 'local' ? '/v1/catalog/vehicles/v/articles/a' : '/v1/catalog/vehicles/v/articles/a/prepare');
+    assert.equal(calls[0].options.method || 'GET', mode === 'local' ? 'GET' : 'POST');
+    assert.equal(calls[0].options.signal, h.g.signal);
+    if (mode === 'local') {
+      assert.equal(calls[0].options.body, undefined);
+      assert.equal(calls[0].options.headers, undefined);
+    } else {
+      assert.deepEqual(Object.keys(calls[0].options.body), []);
+      assert.equal(calls[0].options.headers['X-CSRF-Token'], 'csrf');
+    }
+    assert.match(h.nodes.get('article-content').textContent, /Stored procedure/);
+    assert.equal(h.context.currentArticle, article);
+  });
+}
+
+test('local mode preserves actual GET polling responses and session authorization', async () => {
+  const calls = [], ready = mediaArticle([{ type: 'paragraph', text: 'Stored result.' }]);
+  const h = articleRouteHarness('local', async (path, options) => {
+    calls.push({ path, options });
+    return { data: { article: calls.length === 1 ? { ...ready, processing: { job_id: 'job', state: 'running' } } : ready } };
+  });
+  await h.context.loadArticle('a', h.g);
+  assert.equal(calls.length, 2);
+  assert.ok(calls.every(c => c.path === '/v1/catalog/vehicles/v/articles/a' && !c.options.method));
+  assert.equal(h.context.currentArticle, ready);
+  const signedOut = articleRouteHarness('local', () => assert.fail('local mode does not grant a session'), false);
+  await signedOut.context.loadArticle('a', signedOut.g);
+  assert.equal(signedOut.context.currentArticle, null);
+});
+
+for (const mode of ['local', 'firebase']) {
+  test(`article ${mode} route rejects canceled reads and cannot publish obsolete responses`, async () => {
+    for (const reject of [false, true]) {
+      let resolveRead, rejectRead;
+      const h = articleRouteHarness(mode, () => new Promise((resolve, fail) => { resolveRead = resolve; rejectRead = fail; }));
+      const pending = h.context.loadArticle('a', h.g);
+      h.navigation.clear();
+      if (reject) rejectRead(new DOMException('canceled', 'AbortError'));
+      else resolveRead({ data: { article: mediaArticle([{ type: 'paragraph', text: 'Obsolete content.' }]) } });
+      if (reject) await assert.rejects(pending, { name: 'AbortError' });
+      else await pending;
+      assert.equal(h.context.currentArticle, null);
+      assert.doesNotMatch(h.nodes.get('article-content').textContent, /Obsolete/);
+    }
+  });
+}
+
+const legacyIntroSteps = [
+  { number: 1, heading: 'Set the marker', instructions: ['Turn the blue training dial to the square marker.'], image_ids: ['owned-diagram'] },
+  { number: 2, heading: 'Confirm the marker', instructions: ['Check that the orange marker sits beside the blue square.'] },
+];
+const legacyIntroText = 'Wholly authored synthetic training instructions for a fictional bench. This fixture describes no real vehicle.';
+function legacyIntroArticle(body, changes = {}) {
+  return mediaArticle([], [{ id: 'owned-diagram', url: mediaURL('owned'), alt: 'Authored training diagram' }], {
+    body, steps: structuredClone(legacyIntroSteps), ...changes,
+  });
+}
+const occurrences = (text, part) => text.split(part).length - 1;
+
+test('legacy introduction stays visible once before ordered usable steps and their image', () => {
+  const article = legacyIntroArticle(legacyIntroText), before = JSON.stringify(article);
+  const h = articleMediaHarness(), parent = h.content(article), text = parent.textContent;
+  assert.equal(occurrences(text, legacyIntroText), 1);
+  assert.ok(text.indexOf(legacyIntroText) < text.indexOf(legacyIntroSteps[0].heading));
+  assert.ok(text.indexOf(legacyIntroSteps[0].instructions[0]) < text.indexOf(legacyIntroSteps[1].heading));
+  for (const step of legacyIntroSteps) {
+    assert.equal(occurrences(text, step.heading), 1);
+    assert.equal(occurrences(text, step.instructions[0]), 1);
+  }
+  assert.deepEqual(mediaTags(parent), ['p', 'section', 'section']);
+  assert.deepEqual(mediaIDs(parent), ['owned-diagram']);
+  assert.equal(JSON.stringify(article), before, 'presentation cannot change retained source or projections');
+});
+
+test('legacy numbered replay retains leading headings and callouts without repeated steps', () => {
+  const body = 'TRAINING\n\nAuthored introductory note.\n\nNOTE: Keep the bench clear. 1.Set the marker Turn the blue training dial to the square marker. 2.Confirm the marker Check that the orange marker sits beside the blue square.';
+  const parent = articleMediaHarness().content(legacyIntroArticle(body));
+  assert.deepEqual(mediaTags(parent), ['h3', 'p', 'aside', 'section', 'section']);
+  assert.match(parent.textContent, /TRAININGAuthored introductory note\.NoteKeep the bench clear\./i);
+  for (const step of legacyIntroSteps) assert.equal(occurrences(parent.textContent, step.instructions[0]), 1);
+  assert.deepEqual(mediaIDs(parent), ['owned-diagram']);
+});
+
+for (const instructionsOnly of [false, true]) {
+  for (const intro of ['', legacyIntroText]) {
+    test(`legacy unnumbered complete replay ${instructionsOnly ? 'instructions' : 'headings'} keeps only ${intro ? 'distinct intro' : 'steps'}`, () => {
+      const replay = legacyIntroSteps.flatMap(step => [...(instructionsOnly ? [] : [step.heading]), ...step.instructions]).join('\n');
+      const article = legacyIntroArticle([intro, replay].filter(Boolean).join('\n\n'));
+      const presentation = articlePresentation(article), parent = articleMediaHarness().content(article);
+      assert.equal(presentation.introBlocks.length, intro ? 1 : 0);
+      if (intro) assert.equal(occurrences(parent.textContent, intro), 1);
+      for (const step of legacyIntroSteps) {
+        assert.equal(occurrences(parent.textContent, step.heading), 1);
+        assert.equal(occurrences(parent.textContent, step.instructions[0]), 1);
+      }
+    });
+  }
+}
+
+test('legacy whitespace-only replay differences normalize without changing retained introduction', () => {
+  const replay = legacyIntroSteps.flatMap(step => [step.heading, ...step.instructions]).join('\t\r\n');
+  const presentation = articlePresentation(legacyIntroArticle('Distinct intro.\n\n'+replay.replaceAll(' ', '\u00a0')));
+  assert.deepEqual(presentation.introBlocks, [{ type: 'paragraph', text: 'Distinct intro.' }]);
+});
+
+test('legacy numbered step projections from normalization do not create an introduction', () => {
+  const steps = [{ action: 'Set the marker', instructions: ['Turn the blue dial.'] }, { action: 'Confirm the marker', instructions: ['Observe the orange marker.'] }];
+  const body = steps.map((step, i) => `${i + 1}. ${step.action}\n${step.instructions.join('\n')}`).join('\n');
+  assert.deepEqual(articlePresentation({ body, steps }).introBlocks, []);
+});
+
+test('legacy partial or differently punctuated unnumbered overlap is preserved without fuzzy deletion', () => {
+  for (const body of ['Turn the blue training dial to the square marker.', 'turn the blue training dial to the square marker. Check that the orange marker sits beside the blue square.', 'Turn the blue training dial to the square marker! Check that the orange marker sits beside the blue square.']) {
+    const presentation = articlePresentation(legacyIntroArticle(body));
+    assert.equal(presentation.introBlocks.map(block => block.text).join(' '), body);
+  }
+});
+
+test('legacy intro decimals and unrelated numbers remain text; action wins over stale heading in replay', () => {
+  const steps = [{ action: 'Set marker', heading: 'Old heading', instructions: ['Use 1.5 turns.'] }];
+  assert.deepEqual(articlePresentation({ body: 'Model CTX1.5 reference. Set marker Use 1.5 turns.', steps }).introBlocks,
+    [{ type: 'paragraph', text: 'Model CTX1.5 reference.' }]);
+  assert.equal(articlePresentation({ body: 'Old heading Use 1.5 turns.', steps }).introBlocks[0].text, 'Old heading', 'distinct stale heading is retained while exact instruction replay is removed');
+});
+
+test('legacy introduction never overrides document authority or changes partial-step and empty-body fallbacks', () => {
+  const article = legacyIntroArticle(legacyIntroText, { document: { blocks: [{ type: 'paragraph', text: 'Authoritative ordered text.' }] } });
+  assert.deepEqual(articlePresentation(article).introBlocks, []);
+  const authoritative = articleMediaHarness().content(article);
+  assert.equal(authoritative.textContent, 'Authoritative ordered text.');
+  assert.deepEqual(mediaIDs(authoritative), []);
+  const incomplete = articlePresentation({ body: 'Retain entire fallback.', steps: [legacyIntroSteps[0], {}] });
+  assert.deepEqual(incomplete.introBlocks, []);
+  assert.deepEqual(incomplete.steps, []);
+  assert.deepEqual(incomplete.blocks, [{ type: 'paragraph', text: 'Retain entire fallback.' }]);
+  const empty = articleMediaHarness().content(legacyIntroArticle(''));
+  assert.deepEqual(mediaTags(empty), ['section', 'section']);
+});
+
+test('legacy introduction HTML-like text is inert through actual DOM construction', () => {
+  const attack = '<img src=x onerror="globalThis.introExecuted=true"> Authored note.';
+  const parent = articleMediaHarness().content(legacyIntroArticle(attack));
+  assert.equal(parent.children[0].tagName, 'p');
+  assert.equal(parent.children[0].textContent, attack);
+  assert.equal(parent.children[0].children.length, 0);
+  assert.deepEqual(mediaIDs(parent), ['owned-diagram'], 'only the real structured-step illustration is present');
+  assert.equal(globalThis.introExecuted, undefined);
+});
+
+for (const [name, body] of [
+  ['unrelated warranty list', 'Owned reference. 1. Warranty covers the fictional dial. 2. Storage requires a dry training bench.'],
+  ['partial procedure', 'Owned reference. 1. Set the marker Turn the blue training dial to the square marker.'],
+  ['changed ordinal', 'Owned reference. 7. Set the marker Turn the blue training dial to the square marker. 8. Confirm the marker Check that the orange marker sits beside the blue square.'],
+  ['reordered procedure', 'Owned reference. 2. Confirm the marker Check that the orange marker sits beside the blue square. 1. Set the marker Turn the blue training dial to the square marker.'],
+  ['changed instruction', 'Owned reference. 1. Set the marker Turn the blue training dial to a different marker. 2. Confirm the marker Check that the orange marker sits beside the blue square.'],
+]) {
+  test(`legacy unmatched numbered ${name} retains complete text and ordinals in actual renderer`, () => {
+    const article = legacyIntroArticle(body), before = JSON.stringify(article);
+    const intro = articlePresentation(article).introBlocks;
+    assert.ok(intro.every(block => block.type !== 'step'), 'parts-only legacy steps cannot reach structured renderBlocks');
+    const parent = articleMediaHarness().content(article), text = parent.textContent;
+    assert.ok(text.includes(body), 'all unmatched numbered body text remains visible verbatim');
+    assert.ok(text.indexOf(body) < text.lastIndexOf(legacyIntroSteps[0].heading));
+    assert.equal(parent.children.filter(node => node.tagName === 'section').length, 2, 'only actual structured steps become procedure sections');
+    assert.equal(JSON.stringify(article), before);
+  });
+}
+
+test('legacy numbered instructions-only exact replay retains introduction and renders instructions once', () => {
+  const body = `${legacyIntroText} 1. ${legacyIntroSteps[0].instructions[0]} 2. ${legacyIntroSteps[1].instructions[0]}`;
+  const parent = articleMediaHarness().content(legacyIntroArticle(body));
+  assert.equal(occurrences(parent.textContent, legacyIntroText), 1);
+  for (const step of legacyIntroSteps) assert.equal(occurrences(parent.textContent, step.instructions[0]), 1);
+});

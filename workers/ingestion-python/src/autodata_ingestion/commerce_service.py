@@ -21,6 +21,8 @@ TERMS = "workshop-v1"
 # Preserve the card-only Checkout contract across Stripe SDK default changes.
 STRIPE_API_VERSION = '2025-08-27.basil'
 LIVE = ('creating', 'open', 'processing', 'paid', 'reconciliation_required')
+READ_ONLY_COMMERCE_PATHS = frozenset('/internal/commerce/' + path for path in
+    ('purchase-config', 'quote', 'library', 'grants/check'))
 
 
 class CommerceError(ValueError):
@@ -33,6 +35,11 @@ class CommerceResult(dict):
     def __init__(self, value, http_status=200):
         super().__init__(value)
         self.http_status = http_status
+
+
+def assert_commerce_operation(service, path):
+    if getattr(service, 'read_only', False) and path not in READ_ONLY_COMMERCE_PATHS:
+        raise CommerceError('COMMERCE_UNAVAILABLE', 503)
 
 
 def exact_fields(value, fields):
@@ -68,7 +75,7 @@ def validate_checkout_url(value):
         parsed = urlsplit(value)
         valid = (parsed.scheme == 'https' and parsed.hostname == 'checkout.stripe.com'
                  and parsed.netloc == 'checkout.stripe.com'
-                 and parsed.path.startswith('/c/pay/') and len(parsed.path)>len('/c/pay/')
+                 and parsed.path.startswith(('/c/pay/', '/g/pay/')) and len(parsed.path)>len('/c/pay/')
                  and not any(c.isspace() or ord(c)<32 or ord(c)==127 for c in value))
     except (ValueError, TypeError):
         valid = False
@@ -144,6 +151,8 @@ class CommerceConfig:
 
 
 class CommerceService:
+    read_only = False
+
     def __init__(self, connection_factory, config, provider, *, clock=None, purchase_config=None):
         if config.mode not in {'stripe_test', 'stripe_live'} or not config.account_id or not config.price_id:
             raise CommerceError('COMMERCE_UNAVAILABLE', 503)
@@ -160,12 +169,18 @@ class CommerceService:
     def purchase_configuration(self):
         return CommerceResult(self._purchase_config.public())
 
+    def demo_mode_status(self):
+        """Private, read-only mode handshake; never an entitlement decision."""
+        return CommerceResult({'mode': self.config.mode, 'purchase_enabled': self._purchase_config.enabled})
+
     @contextmanager
     def transaction(self):
         from psycopg.rows import dict_row
         with self.connect() as connection:
             with connection.transaction():
                 with connection.cursor(row_factory=dict_row) as cursor:
+                    if self.read_only:
+                        cursor.execute('SET TRANSACTION READ ONLY')
                     cursor.execute("SET LOCAL statement_timeout = '3s'")
                     cursor.execute("SET LOCAL lock_timeout = '3s'")
                     yield connection, cursor
@@ -469,12 +484,17 @@ class CommerceService:
         with self.transaction() as (_, cursor):
             self._account(cursor, account_id, organization_id)
             validate_uuid(configuration_id); validate_region(region)
-            cursor.execute("SELECT 1 FROM workshop_orders WHERE customer_account_id=%s AND configuration_id=%s AND region=%s AND stripe_account_id=%s AND livemode=%s AND status='revoked' LIMIT 1", (account_id,configuration_id,region,self.config.account_id,self.config.livemode))
+            if self.read_only:
+                self._scope(cursor, configuration_id, region)
+            price_clause = ' AND expected_price_id=%s' if self.read_only else ''
+            price_args = (self.config.price_id,) if self.read_only else ()
+            cursor.execute("SELECT 1 FROM workshop_orders WHERE customer_account_id=%s AND configuration_id=%s AND region=%s AND stripe_account_id=%s AND livemode=%s" + price_clause + " AND status='revoked' LIMIT 1", (account_id,configuration_id,region,self.config.account_id,self.config.livemode) + price_args)
             if cursor.fetchone():
                 raise CommerceError('ENTITLEMENT_REVOKED',403)
             cursor.execute("""SELECT e.entitlement_id,e.status,o.order_id FROM entitlements e JOIN workshop_orders o ON o.order_id=e.commerce_order_id
-                WHERE e.customer_account_id=%s AND e.configuration_id=%s AND e.region=%s AND o.stripe_account_id=%s AND o.livemode=%s
-                ORDER BY e.granted_at DESC LIMIT 1""", (account_id, configuration_id, region, self.config.account_id, self.config.livemode))
+                WHERE e.customer_account_id=%s AND e.configuration_id=%s AND e.region=%s AND o.stripe_account_id=%s AND o.livemode=%s"""
+                + (' AND o.expected_price_id=%s' if self.read_only else '')
+                + ' ORDER BY e.granted_at DESC LIMIT 1', (account_id, configuration_id, region, self.config.account_id, self.config.livemode) + price_args)
             grant = cursor.fetchone()
             if not grant:
                 raise CommerceError('ENTITLEMENT_REQUIRED', 403)
@@ -497,11 +517,12 @@ class CommerceService:
         with self.transaction() as (_, cursor):
             self._account(cursor, account_id, organization_id)
             clause = 'AND (o.created_at,o.order_id)<(%s,%s)' if after else ''
-            args = [account_id, self.config.account_id, self.config.livemode] + (list(after) if after else []) + [limit + 1]
+            price_clause = ' AND o.expected_price_id=%s' if self.read_only else ''
+            args = [account_id, self.config.account_id, self.config.livemode] + ([self.config.price_id] if self.read_only else []) + (list(after) if after else []) + [limit + 1]
             cursor.execute("""SELECT o.*,concat_ws(' ',b.make,b.model,b.model_year::text,c.trim) AS label,e.status AS grant_status,e.granted_at
                 FROM workshop_orders o JOIN vehicle_configurations c ON c.vehicle_configuration_id=o.configuration_id
                 JOIN vehicle_identity_bases b USING(vehicle_identity_base_id) LEFT JOIN entitlements e ON e.entitlement_id=o.entitlement_id
-                WHERE o.customer_account_id=%s AND o.stripe_account_id=%s AND o.livemode=%s AND (o.status='revoked' OR e.entitlement_id IS NOT NULL) """ + clause + ' ORDER BY o.created_at DESC,o.order_id DESC LIMIT %s', args)
+                WHERE o.customer_account_id=%s AND o.stripe_account_id=%s AND o.livemode=%s""" + price_clause + " AND (o.status='revoked' OR e.entitlement_id IS NOT NULL) " + clause + ' ORDER BY o.created_at DESC,o.order_id DESC LIMIT %s', args)
             rows = cursor.fetchall()
             items = []
             for order in rows[:limit]:
@@ -546,6 +567,25 @@ class CommerceService:
         return bool(cursor.fetchone())
 
 
+class ReadOnlyCommerceService(CommerceService):
+    """Retain configured entitlement reads without a payment provider."""
+    read_only = True
+
+    def __init__(self, connection_factory, config, *, clock=None):
+        super().__init__(connection_factory, config, None, clock=clock,
+                         purchase_config=PurchaseConfig.disabled())
+
+    def quote(self, configuration_id, region):
+        result = super().quote(configuration_id, region)
+        result['purchasable'] = False
+        return result
+
+    def _payment_unavailable(self, *args, **kwargs):
+        raise CommerceError('COMMERCE_UNAVAILABLE', 503)
+
+    checkout = order_status = webhook = reconcile_event = _reconcile_expiry = demo_mode_status = _payment_unavailable
+
+
 def database_connection():
     import psycopg
     address = os.environ.get('AUTODATA_DB_ADDRESS', 'postgres:5432')
@@ -559,12 +599,34 @@ def configured_commerce(*, connection_factory=database_connection):
     mode = os.environ.get('AUTODATA_COMMERCE_MODE', 'disabled')
     if mode == 'disabled':
         return None
+    if mode == 'read_only':
+        pinned_mode = os.environ.get('AUTODATA_COMMERCE_READ_ONLY_MODE', '')
+        account = os.environ.get('AUTODATA_STRIPE_ACCOUNT_ID', '')
+        price = os.environ.get('AUTODATA_STRIPE_PRICE_ID', '')
+        if (pinned_mode not in {'stripe_test', 'stripe_live'}
+                or not re.fullmatch(r'acct_[A-Za-z0-9]+', account)
+                or not re.fullmatch(r'price_[A-Za-z0-9]+', price)
+                or not os.environ.get('AUTODATA_INGESTION_INTERNAL_TOKEN', '').strip()):
+            raise CommerceError('COMMERCE_CONFIGURATION_INVALID', 503)
+        checkout_return_origin(os.environ.get('AUTODATA_ENV', ''), os.environ.get('AUTODATA_PUBLIC_ORIGIN', ''))
+        service = ReadOnlyCommerceService(connection_factory, CommerceConfig(pinned_mode, account, price))
+        try:
+            with service.transaction() as (_, cursor):
+                cursor.execute("SELECT 1 FROM schema_migrations WHERE version='040_workshop_commerce'")
+                if not cursor.fetchone():
+                    raise ValueError()
+                service._product(cursor)
+        except Exception:
+            raise CommerceError('COMMERCE_CONFIGURATION_INVALID', 503) from None
+        return service
     if mode not in {'stripe_test', 'stripe_live'}:
         raise CommerceError('COMMERCE_CONFIGURATION_INVALID', 503)
     purchase_config, malformed = parse_purchase_config(os.environ.get('AUTODATA_WORKSHOP_PURCHASE_CONFIG_JSON'))
     if malformed:
         logging.getLogger(__name__).warning('Workshop purchase configuration invalid; new checkout disabled')
     origin = checkout_return_origin(os.environ.get('AUTODATA_ENV', ''), os.environ.get('AUTODATA_PUBLIC_ORIGIN', ''))
+    if mode == 'stripe_test' and urlsplit(origin).hostname.rstrip('.').lower() in {'cars.tk', 'autodata.cars.tk'}:
+        raise CommerceError('COMMERCE_CONFIGURATION_INVALID', 503)
     key, webhook, account, price, token = [os.environ.get(name, '').strip() for name in
         ('AUTODATA_STRIPE_SECRET_KEY', 'AUTODATA_STRIPE_WEBHOOK_SECRET', 'AUTODATA_STRIPE_ACCOUNT_ID', 'AUTODATA_STRIPE_PRICE_ID', 'AUTODATA_INGESTION_INTERNAL_TOKEN')]
     if not all((key, webhook, account, price, token)) or not key.startswith('sk_live_' if mode == 'stripe_live' else 'sk_test_'):

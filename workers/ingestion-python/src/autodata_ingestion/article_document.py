@@ -180,6 +180,10 @@ def build_ordered_document(
                 seen_image_keys.update(_image_identities(block))
             elif bkind in {"table", "grid"}:
                 for row in block.get("rows") or []:
+                    if isinstance(row, Mapping):
+                        for row_img in row.get("images") or []:
+                            if isinstance(row_img, Mapping):
+                                seen_image_keys.update(_image_identities(row_img))
                     cells = row if isinstance(row, list) else row.get("cells", []) if isinstance(row, Mapping) else []
                     for cell in cells:
                         if isinstance(cell, Mapping):
@@ -821,19 +825,21 @@ def _step_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str,
         raw.get("body"),
     ]
     instruction_images: list[dict[str, Any]] = []
+    instruction_text = ""
     instructions = raw.get("instructions")
     if isinstance(instructions, list):
         cleaned_instructions: list[str] = []
         for item in instructions:
             if isinstance(item, Mapping):
-                item_text = _clean_text(
-                    item.get("text")
-                    or item.get("action")
-                    or item.get("instruction")
-                    or item.get("value")
-                    or item.get("content")
-                    or item.get("body")
-                )
+                item_text = ""
+                for candidate in (
+                    item.get("text"), item.get("action"), item.get("instruction"),
+                    item.get("value"), item.get("content"), item.get("body"),
+                    item.get("description"),
+                ):
+                    item_text = _clean_text(candidate)
+                    if item_text:
+                        break
                 for img in item.get("images") or []:
                     if isinstance(img, Mapping):
                         instruction_images.append(_normalize_cell_image(img))
@@ -842,7 +848,8 @@ def _step_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str,
             if item_text:
                 cleaned_instructions.append(item_text)
         if cleaned_instructions:
-            text_candidates.append(" ".join(cleaned_instructions))
+            instruction_text = " ".join(cleaned_instructions)
+    text_candidates.append(" ".join(part for part in (_clean_text(raw.get("description")), instruction_text) if part))
 
     text = ""
     for candidate in text_candidates:

@@ -56,9 +56,100 @@ def _rank_articles(articles: Iterable[Mapping[str, Any]], query: str, limit: int
 
 
 def _article_text(article: Mapping[str, Any]) -> str:
-    return " ".join(
+    normalized_document = article.get("normalized_document")
+    normalized_blocks = normalized_document.get("blocks") if isinstance(normalized_document, Mapping) else None
+    has_rendered_document = isinstance(normalized_blocks, list) and bool(normalized_blocks)
+    parts = [
         str(article.get(field, ""))
-        for field in ("article_id", "title", "bucket", "bulletin_number", "body", "content", "steps")
+        for field in (
+            "article_id", "title", "bucket", "bulletin_number",
+            "summary", "description",
+        )
+    ]
+    if has_rendered_document:
+        # Normalization projects compatibility body/steps from the document.
+        # That projection includes labels that the Workshop does not render.
+        parts.append(_visible_block_text(normalized_blocks))
+    else:
+        parts.extend(str(article.get(field, "")) for field in ("body", "content"))
+        parts.extend(_visible_block_text(article.get(field)) for field in ("steps", "blocks"))
+    return " ".join(parts)
+
+
+def _visible_block_text(value: Any) -> str:
+    if isinstance(value, (str, int, float)) and not isinstance(value, bool):
+        return str(value)
+    if isinstance(value, Mapping):
+        block_type = value.get("type")
+        if block_type in ("heading", "paragraph", "link"):
+            visible_fields = ("text",)
+        elif block_type == "callout":
+            return " ".join((_visible_block_text(value.get("label")), _visible_block_text(value.get("text")),
+                             _visible_image_refs_text(value.get("images"))))
+        elif block_type == "image":
+            return _visible_block_text(value.get("alt") or value.get("caption"))
+        elif block_type == "step":
+            return " ".join((_visible_block_text(value.get("text")), _visible_block_text(value.get("action")),
+                             _visible_block_text(value.get("instructions")), _visible_image_refs_text(value.get("images"))))
+        elif block_type in ("ordered_list", "unordered_list"):
+            items = value.get("items")
+            return " ".join((_visible_list_items_text(items), _visible_image_refs_text(value.get("images"))))
+        elif block_type == "table":
+            return " ".join(_visible_block_text(part) for part in (
+                value.get("label") or value.get("caption"),
+                _visible_table_columns_text(value.get("columns")),
+                _visible_table_rows_text(value.get("rows")),
+            ))
+        elif block_type == "break":
+            return ""
+        elif block_type is not None:
+            text = value.get("text")
+            return _visible_block_text(text if text is not None else value.get("unavailable_reason"))
+        else:
+            visible_fields = (
+                "text", "label", "title", "caption", "alt", "description", "value",
+                "content", "body", "action", "instruction", "items", "rows", "cells",
+                "columns", "blocks", "instructions", "images",
+            )
+        return " ".join(_visible_block_text(value[field]) for field in visible_fields if field in value)
+    if isinstance(value, (list, tuple)):
+        return " ".join(_visible_block_text(item) for item in value)
+    return ""
+
+
+def _visible_image_refs_text(value: Any) -> str:
+    if not isinstance(value, (list, tuple)):
+        return ""
+    return " ".join(_visible_block_text(ref.get("alt")) for ref in value if isinstance(ref, Mapping))
+
+
+def _visible_list_items_text(value: Any) -> str:
+    if not isinstance(value, (list, tuple)):
+        return ""
+    return " ".join(
+        " ".join((_visible_block_text(item.get("text")), _visible_image_refs_text(item.get("images"))))
+        if isinstance(item, Mapping) else _visible_block_text(item)
+        for item in value
+    )
+
+
+def _visible_table_columns_text(value: Any) -> str:
+    if not isinstance(value, (list, tuple)):
+        return ""
+    return " ".join(_visible_block_text(column.get("text") if isinstance(column, Mapping) else column)
+                    for column in value)
+
+
+def _visible_table_rows_text(value: Any) -> str:
+    if not isinstance(value, (list, tuple)):
+        return ""
+    return " ".join(
+        " ".join(
+            " ".join((_visible_block_text(cell.get("text")), _visible_image_refs_text(cell.get("images"))))
+            if isinstance(cell, Mapping) else _visible_block_text(cell)
+            for cell in row
+        )
+        for row in value if isinstance(row, (list, tuple))
     )
 
 

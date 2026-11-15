@@ -15,6 +15,7 @@ import (
 type HTTPCommerceClient struct {
 	baseURL, token string
 	client         *http.Client
+	readOnly       bool
 }
 
 func NewHTTPCommerceClient(baseURL, token string) (*HTTPCommerceClient, error) {
@@ -26,7 +27,7 @@ func NewHTTPCommerceClient(baseURL, token string) (*HTTPCommerceClient, error) {
 }
 func commerceTimeout(op string) time.Duration {
 	switch op {
-	case "quote", "library", "grants/check", "purchase-config":
+	case "quote", "library", "grants/check", "purchase-config", "demo-mode":
 		return 2 * time.Second
 	default:
 		return 20 * time.Second
@@ -34,12 +35,24 @@ func commerceTimeout(op string) time.Duration {
 }
 func (c *HTTPCommerceClient) Do(ctx context.Context, operation string, body []byte, signature string) (int, []byte, error) {
 	switch operation {
-	case "quote", "checkouts", "orders/status", "library", "grants/check", "stripe/webhook", "purchase-config":
+	case "quote", "checkouts", "orders/status", "library", "grants/check", "stripe/webhook", "purchase-config", "demo-mode":
 	default:
 		return 0, nil, fmt.Errorf("invalid commerce operation")
 	}
 	if c == nil || c.client == nil || c.token == "" || len(body) > 1<<20 || len(signature) > 4096 {
 		return 0, nil, ErrVehicleGrantUnavailable
+	}
+	if c.readOnly {
+		switch operation {
+		case "quote", "library", "grants/check":
+		case "purchase-config":
+			b, err := json.Marshal(disabledWorkshopPurchaseConfig())
+			return http.StatusOK, b, err
+		default:
+			// Order status can reconcile expired sessions with Stripe. Only
+			// explicitly read-only operations may reach the private authority.
+			return 0, nil, ErrVehicleGrantUnavailable
+		}
 	}
 	ctx, cancel := context.WithTimeout(ctx, commerceTimeout(operation))
 	defer cancel()
@@ -91,18 +104,22 @@ func (c *HTTPCommerceClient) CheckVehicleGrant(ctx context.Context, accountID, o
 	return grant, nil
 }
 
-// Enabled commerce requires its private authenticated authority; disabled mode
-// retains the routes with safe 503 responses and performs no payment operation.
+// Read-only commerce retains private grant/library/quote reads but blocks
+// payment operations locally. Disabled mode constructs no private client.
 func configuredCommerceClient(getenv func(string) string) (CommerceClient, error) {
 	mode := getenv("AUTODATA_COMMERCE_MODE")
 	switch mode {
 	case "", "disabled":
 		return nil, nil
-	case "stripe_test", "stripe_live":
+	case "read_only", "stripe_test", "stripe_live":
+		if mode == "stripe_test" && workshopProductionOrigin(getenv("AUTODATA_PUBLIC_ORIGIN")) {
+			return nil, fmt.Errorf("invalid commerce configuration")
+		}
 		client, err := NewHTTPCommerceClient(getenv("AUTODATA_INGESTION_URL"), getenv("AUTODATA_INGESTION_INTERNAL_TOKEN"))
 		if err != nil {
 			return nil, err
 		}
+		client.readOnly = mode == "read_only"
 		return client, nil
 	default:
 		return nil, fmt.Errorf("invalid commerce mode")
