@@ -2903,3 +2903,29 @@ test('legacy introduction HTML-like text is inert through actual DOM constructio
   assert.deepEqual(mediaIDs(parent), ['owned-diagram'], 'only the real structured-step illustration is present');
   assert.equal(globalThis.introExecuted, undefined);
 });
+
+for (const [name, body] of [
+  ['unrelated warranty list', 'Owned reference. 1. Warranty covers the fictional dial. 2. Storage requires a dry training bench.'],
+  ['partial procedure', 'Owned reference. 1. Set the marker Turn the blue training dial to the square marker.'],
+  ['changed ordinal', 'Owned reference. 7. Set the marker Turn the blue training dial to the square marker. 8. Confirm the marker Check that the orange marker sits beside the blue square.'],
+  ['reordered procedure', 'Owned reference. 2. Confirm the marker Check that the orange marker sits beside the blue square. 1. Set the marker Turn the blue training dial to the square marker.'],
+  ['changed instruction', 'Owned reference. 1. Set the marker Turn the blue training dial to a different marker. 2. Confirm the marker Check that the orange marker sits beside the blue square.'],
+]) {
+  test(`legacy unmatched numbered ${name} retains complete text and ordinals in actual renderer`, () => {
+    const article = legacyIntroArticle(body), before = JSON.stringify(article);
+    const intro = articlePresentation(article).introBlocks;
+    assert.ok(intro.every(block => block.type !== 'step'), 'parts-only legacy steps cannot reach structured renderBlocks');
+    const parent = articleMediaHarness().content(article), text = parent.textContent;
+    assert.ok(text.includes(body), 'all unmatched numbered body text remains visible verbatim');
+    assert.ok(text.indexOf(body) < text.lastIndexOf(legacyIntroSteps[0].heading));
+    assert.equal(parent.children.filter(node => node.tagName === 'section').length, 2, 'only actual structured steps become procedure sections');
+    assert.equal(JSON.stringify(article), before);
+  });
+}
+
+test('legacy numbered instructions-only exact replay retains introduction and renders instructions once', () => {
+  const body = `${legacyIntroText} 1. ${legacyIntroSteps[0].instructions[0]} 2. ${legacyIntroSteps[1].instructions[0]}`;
+  const parent = articleMediaHarness().content(legacyIntroArticle(body));
+  assert.equal(occurrences(parent.textContent, legacyIntroText), 1);
+  for (const step of legacyIntroSteps) assert.equal(occurrences(parent.textContent, step.instructions[0]), 1);
+});

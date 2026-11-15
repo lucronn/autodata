@@ -153,7 +153,25 @@ export function legacyArticleBlocks(body) {
 function legacyIntroductionBlocks(body, steps) {
   const blocks = legacyArticleBlocks(body);
   const firstStep = blocks.findIndex(block => block.type === 'step');
-  if (firstStep !== -1) return blocks.slice(0, firstStep);
+  if (firstStep !== -1) {
+    const numbered = blocks.slice(firstStep);
+    const normalized = text => normalizedArticleText(text).replace(/\s+/gu, ' ');
+    const replay = numbered.length === steps.length && numbered.every((block, index) => {
+      const step = steps[index];
+      const ordinal = Number.isInteger(step.number) ? step.number : index + 1;
+      const text = (block.parts || []).map(part => part.type === 'callout'
+        ? `${part.label}: ${part.text}` : part.text).join(' ');
+      const variants = [
+        [step.action || step.heading, ...(step.instructions || [])],
+        step.instructions || [],
+      ].map(parts => normalized(parts.filter(part => typeof part === 'string').join(' ')));
+      return block.type === 'step' && block.number === ordinal &&
+        variants.some(variant => variant && variant === normalized(text));
+    });
+    // An unrelated numbered list is body text, not a replay. Leading-text
+    // parsing retains its literal ordinals/parts without a fake step projection.
+    return replay ? blocks.slice(0, firstStep) : legacyLeadBlocks(body);
+  }
 
   const words = [...body.matchAll(/\S+/gu)];
   const sequences = [
