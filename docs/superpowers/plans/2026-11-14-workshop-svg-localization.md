@@ -48,3 +48,12 @@ Current integration todo:
 - Integrate this exact protected #421 base through the synchronized checkpoint; report conflicts and branch checkpoint.
 - Run focused actual-image synthetic SVG and enabled isolated PostgreSQL/S3 lifecycle checks without provider calls or serving writes.
 - Hold final review-head push and strict CI until coordinator supplies #415 protected merge; then synchronize the final current-base gate and verify once. Keep #422 draft and hold all merges/runtime activation/licensed recapture.
+
+## Final protected #415 integration checkpoint
+
+Coordinator supplied protected master `76fb21e8f7c080e93f6d38de93a2e1a22cd11f39`, tree `c4b63d3635e7cc5b084f0d9df6154334e6dc36a3`, after protected #415 merge with #421/#417 ancestry. This docs-only checkpoint is created directly on that exact base. Synchronize Issue #419/Project #8 and pass pinned preflight before integrating into #422. Preserve reviewed SVG implementation from `a021fcc50ed29b7ca61772f383f7c221ad2d08c5`.
+
+Final integration todo:
+- Integrate exact protected #415 base through this synchronized checkpoint and report exact head/tree/conflicts.
+- Verify unchanged reviewed renderer/capture/image dependency source and rerun focused actual-image and enabled isolated PostgreSQL/S3 lifecycle checks as appropriate.
+- Push final #422 review head and pass all required strict CI on this current protected base; keep PR draft for coordinator review. No merge/deploy/provider call/licensed recapture is authorized.
