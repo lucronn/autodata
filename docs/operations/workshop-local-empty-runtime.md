@@ -56,3 +56,13 @@ Todo:
 - Copy exact five reviewed Compose/admission/forwarder implementation and test blobs after checkpoint preflight
 - Run focused checks and strict CI at the exact integrated head; hold merge for root
 - Record source/tree/blob and CI evidence; keep Issue398 open for real-data/payment acceptance
+
+## Protected #425 integration checkpoint
+
+Goal: Integrate the empty local Workshop M1 milestone on protected #425 source with all five reviewed implementation blobs unchanged.
+Protected083f1a502a0f18d371793df59d3310408059d44e/tree2c6a681b31c0031743f5580825949ad192e87f04. Plan docs/superpowers/plans/2026-11-15-workshop-local-m1-protected425-integration.md; record docs/agents/records/2026-11-15-workshop-local-m1-protected425-integration.json. Prior CI43668033888 passed atdebedf34; new exact-head CI pending.
+
+Todo:
+- Merge exact protected #425 source after this docs checkpoint passes preflight, preserving all five M1 implementation blobs
+- Run focused tests and strict CI at the exact merged feature head; hold merge for root
+- Record integrated source/tree/blob and CI evidence; keep Issue398 open and historical94d3 runtime untouched

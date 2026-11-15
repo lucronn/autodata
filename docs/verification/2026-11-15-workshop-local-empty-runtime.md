@@ -42,3 +42,9 @@ Private0600 evidence under /home/corp/autodata-workshop-test-data-20261115/m1/ev
 ## M2 prerequisites
 
 Separate gate: clean credential-free ingestion build/digest; explicit Stripe TEST account/webhook inputs; Firebase project/UID allowlist/tester rights; supplier display/copy/test-use rights; ingress/hosting credentials and cost choice; real-data provenance and purchase/entitlement acceptance. Cached ingestion local image embeds nonempty credential defaults and has no registry digest; M1 blanking/internal-network containment must not carry into external tester exposure.
+
+## Protected integration history
+
+Fresh gate eddff105bd8e2f924add34cba837367e8fff0009 passed before exact five reviewed blobs were copied onto5981b97. Integration headdebedf34c3ec3cf711941cf7bc12c085995c90c0/treef3d411ca92fe5058ef555d0845d15f21e25b2109 passed all three jobs in [CI43668033888](https://github.com/lucronn/autodata/actions/runs/43668033888).
+
+Protected master then advanced through #425 to083f1a502a0f18d371793df59d3310408059d44e/tree2c6a681b31c0031743f5580825949ad192e87f04. Follow-up plan docs/superpowers/plans/2026-11-15-workshop-local-m1-protected425-integration.md requires a docs checkpoint/preflight before normal source merge and exact-head CI. Historical94d3 local canary remains stopped and distinct; no integrated runtime claim.
