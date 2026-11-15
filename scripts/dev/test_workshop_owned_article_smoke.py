@@ -90,14 +90,14 @@ class ThirdAttemptGuardTests(unittest.TestCase):
   with tempfile.TemporaryDirectory() as directory:
    root=Path(directory);old=root/'browser-failure-diagnostics.json';old.write_text('old failure')
    output=s.reserve_attempt(root,'a'*64,'b'*64)
-   self.assertEqual(output.name,'browser-image-contract-v2');self.assertEqual(output.stat().st_mode&0o777,0o700)
+   self.assertEqual(output.name,'browser-image-contract-v3');self.assertEqual(output.stat().st_mode&0o777,0o700)
    marker=root/s.ATTEMPT_NAME;self.assertEqual(marker.stat().st_mode&0o777,0o600)
    self.assertEqual(json.loads(marker.read_text())['manifest_sha256'],'a'*64)
    with self.assertRaises(FileExistsError):s.reserve_attempt(root,'a'*64,'b'*64)
    self.assertEqual(old.read_text(),'old failure')
  def test_existing_output_or_result_fails_before_dispatch_marker(self):
   import tempfile
-  for name in ('browser-image-contract-v2','browser-failure-image-contract-v2.json','browser-acceptance-image-contract-v2.json'):
+  for name in ('browser-image-contract-v3','browser-failure-image-contract-v3.json','browser-acceptance-image-contract-v3.json'):
    with self.subTest(name=name),tempfile.TemporaryDirectory() as directory:
     root=Path(directory);(root/name).write_text('preserved')
     with self.assertRaises(FileExistsError):s.reserve_attempt(root,'a'*64,'b'*64)
@@ -164,10 +164,47 @@ class ActualOperationalBoundaryTests(unittest.TestCase):
     p=physical/(name+'.py');p.write_text('# owned helper');helpers[name]=sha(p)
    manifest=private/'manifest.json';manifest.write_text(json.dumps({'source_sha':'668d4c86f4097b9d2c7880dedf2e0fccc8079da6','source_tree':'1'*40,'config_sha256':'2'*64}))
    receipt={k:'' for k in ('version','gate_sha','harness_source_sha','harness_tree','harness_sha256','test_sha256','runtime_source_sha','runtime_tree','runtime_manifest_sha256','runtime_archive_sha256','runtime_binary_sha256','runtime_config_sha256','runtime_accepted_sha256','helper_sha256','capacity','namespace','dependency_pins')}
-   receipt.update(version=1,namespace='image-contract-v2',harness_sha256=sha(harness),helper_sha256=helpers,runtime_source_sha='668d4c86f4097b9d2c7880dedf2e0fccc8079da6',runtime_tree='1'*40,runtime_config_sha256='2'*64,runtime_manifest_sha256=sha(manifest),runtime_archive_sha256=sha(archive),runtime_binary_sha256=sha(binary),runtime_accepted_sha256=sha(accepted),capacity={'home_growth_cap':67108864,'home_guard_growth':33554432,'tmp_growth_cap':134217728,'tmp_guard_growth':100663296})
+   receipt.update(version=1,namespace='image-contract-v3',harness_sha256=sha(harness),helper_sha256=helpers,runtime_source_sha='668d4c86f4097b9d2c7880dedf2e0fccc8079da6',runtime_tree='1'*40,runtime_config_sha256='2'*64,runtime_manifest_sha256=sha(manifest),runtime_archive_sha256=sha(archive),runtime_binary_sha256=sha(binary),runtime_accepted_sha256=sha(accepted),capacity={'home_growth_cap':67108864,'home_guard_growth':33554432,'tmp_growth_cap':134217728,'tmp_guard_growth':100663296})
    seal=base/'seal.json';seal.write_text(json.dumps(receipt));seal.chmod(0o600)
    with patch.object(s,'RUNTIME_ROOT',runtime),patch.object(s,'OPERATIONAL_SEAL',seal),patch.object(s,'__file__',str(harness)),patch('subprocess.Popen',side_effect=AssertionError('no_dispatch')) as dispatch:
     self.assertEqual(s.operational_guard()['harness_sha256'],sha(harness));harness.write_text('# owned changed')
     with self.assertRaises(ValueError):s.operational_guard()
     self.assertEqual(dispatch.call_count,0)
+class SafeOriginV3Tests(unittest.TestCase):
+ @unittest.skipUnless(s.NODE.is_file(),'Node no-dispatch error-origin fixture')
+ def test_actual_event_and_delayed_response_origins_are_distinct_and_sanitized(self):
+  actual=s.node_run({'action':'policy','cases':[],'error_origin_test':True},5)
+  self.assertEqual(actual['safe_errors'][0],{'origin':'page_exception','stage':'desktop_navigation','code':'page_exception','category':'lifecycle','status':0,'operation':'page_event'})
+  self.assertEqual(actual['safe_errors'][1],{'origin':'response_validator','stage':'desktop_detail','code':'response_exception','category':'catalog','status':200,'operation':'body_read'})
+  self.assertEqual(actual['safe_errors'][2]['code'],'real_png')
+  self.assertEqual(actual['safe_errors'][2]['operation'],'field_assertion')
+  self.assertNotIn('secret.invalid',str(actual));self.assertNotIn('protected body',str(actual))
+  self.assertTrue(actual['schema_rejected']);self.assertTrue(actual['bound_rejected']);self.assertTrue(actual['prefix_preserved'])
+ def test_v3_marker_namespace_preserves_consumed_v2(self):
+  import tempfile
+  with tempfile.TemporaryDirectory(dir='/tmp') as d:
+   p=Path(d);old=p/'browser-attempt-image-contract-v2.started.json';old.write_text('consumed')
+   self.assertEqual(s.reserve_attempt(p,'a'*64,'b'*64).name,'browser-image-contract-v3')
+   self.assertEqual(old.read_text(),'consumed');self.assertIn('v3',s.ERROR_JOURNAL_NAME)
+ @unittest.skipUnless(s.NODE.is_file(),'Node no-dispatch durable error-journal fixture')
+ def test_owned_error_journal_is_exclusive_private_and_survives_abrupt_exit(self):
+  import tempfile,subprocess,json,os
+  with tempfile.TemporaryDirectory(dir='/tmp') as d:
+   path=Path(d)/'errors.jsonl'
+   payload={'action':'policy','cases':[],'error_journal_fixture':str(path),'abrupt_exit':True}
+   result=subprocess.run([str(s.NODE),'-e',s.RUNNER],input=json.dumps(payload),text=True,capture_output=True,timeout=5)
+   self.assertEqual(result.returncode,23);self.assertEqual(path.stat().st_mode&0o777,0o600)
+   rows=[json.loads(line) for line in path.read_text().splitlines()];self.assertEqual(len(rows),1);self.assertEqual(rows[0]['origin'],'page_exception')
+   before=path.read_bytes();second=s.node_run({'action':'policy','cases':[],'error_journal_fixture':str(path)},5)
+   self.assertTrue(second['exclusive_rejected']);self.assertEqual(path.read_bytes(),before)
+ def test_failure_diagnostic_rejects_unsafe_error_fields(self):
+  good={'ok':False,'error':'owned_browser_failed_preserve_state','code':'browser_runtime','stage':'final_validation','counters':{},'route_statuses':[],'partial_screenshot':{'attempted':False,'saved':False},'error_diagnostics':{'records':[{'origin':'page_exception','stage':'desktop_navigation','code':'page_exception','category':'lifecycle','status':0,'operation':'page_event'}],'page_exception_count':1,'response_validator_count':0,'journal_sha256':'a'*64}}
+  self.assertEqual(s.validate_failure_receipt(good),good)
+  import copy
+  for mutation in ['url','stage','count']:
+   bad=copy.deepcopy(good)
+   if mutation=='url':bad['error_diagnostics']['records'][0]['url']='secret'
+   elif mutation=='stage':bad['error_diagnostics']['records'][0]['stage']='arbitrary'
+   else:bad['error_diagnostics']['page_exception_count']=2
+   with self.assertRaises(ValueError):s.validate_failure_receipt(bad)
 if __name__=='__main__':unittest.main()

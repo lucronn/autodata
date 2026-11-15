@@ -82,7 +82,8 @@ ROUTE_CATEGORIES = {'catalog', 'static', 'session', 'auth_config', 'commerce', '
 
 
 def validate_failure_receipt(result):
-    if not isinstance(result,dict) or set(result)!={'ok','error','code','stage','counters','route_statuses','partial_screenshot'}:raise ValueError('failure_shape')
+    if not isinstance(result,dict) or set(result) not in ({'ok','error','code','stage','counters','route_statuses','partial_screenshot'},{'ok','error','code','stage','counters','route_statuses','partial_screenshot','error_diagnostics'}):raise ValueError('failure_shape')
+    if 'error_diagnostics' in result:validate_error_diagnostics(result['error_diagnostics'])
     if result['ok'] is not False or result['error']!='owned_browser_failed_preserve_state' or result['code'] not in FAILURE_CODES or result['stage'] not in FAILURE_STAGES:raise ValueError('failure_code')
     counts=result['counters']
     if not isinstance(counts,dict) or set(counts)-FAILURE_COUNTERS or any(type(v) is not int or not 0<=v<=221 for v in counts.values()):raise ValueError('failure_counters')
@@ -95,6 +96,24 @@ def validate_failure_receipt(result):
     if image['saved'] and (not image['attempted'] or re.fullmatch('[a-f0-9]{64}',image.get('sha256','')) is None):raise ValueError('failure_screenshot_hash')
     if not image['saved'] and 'sha256' in image:raise ValueError('failure_screenshot_hash')
     return result
+
+
+def validate_error_diagnostics(value):
+    if not isinstance(value,dict) or set(value)!={'records','page_exception_count','response_validator_count','journal_sha256'}:raise ValueError('error_diagnostics_shape')
+    records=value['records']
+    if not isinstance(records,list) or len(records)>16:raise ValueError('error_diagnostics_bound')
+    for item in records:
+        if not isinstance(item,dict) or set(item)!={'origin','stage','code','category','status','operation'}:raise ValueError('error_diagnostics_record')
+        if item['origin'] not in {'page_exception','response_validator'} or item['stage'] not in FAILURE_STAGES or item['category'] not in ROUTE_CATEGORIES|{'lifecycle'} or type(item['status']) is not int or not (item['status']==0 or 100<=item['status']<=599):raise ValueError('error_diagnostics_value')
+        if item['origin']=='page_exception':
+            if item['code']!='page_exception' or item['operation']!='page_event' or item['category']!='lifecycle' or item['status']!=0:raise ValueError('error_diagnostics_page')
+        elif item['code'] not in FAILURE_CODES|{'response_exception'} or item['operation'] not in {'body_read','json_decode','field_assertion'}:raise ValueError('error_diagnostics_response')
+    for origin in ('page_exception','response_validator'):
+        count=value[origin+'_count']
+        if type(count) is not int or count!=sum(r['origin']==origin for r in records):raise ValueError('error_diagnostics_count')
+    digest=value['journal_sha256']
+    if digest is not None and (not isinstance(digest,str) or re.fullmatch('[a-f0-9]{64}',digest) is None):raise ValueError('error_diagnostics_hash')
+    return value
 
 
 def write_failure_receipt(path,result):
@@ -111,7 +130,7 @@ class BrowserFailure(ValueError):
 
 
 RUNTIME_ROOT=Path('/home/corp/autodata-workshop-owned-article-data-20261115/m2a')
-OPERATIONAL_SEAL=Path('/home/corp/autodata-evidence/m2a-tmpfs-v2-operational-20261115/operational-seal.json')
+OPERATIONAL_SEAL=Path('/home/corp/autodata-evidence/m2a-safe-origin-v3-operational-20261115/operational-seal.json')
 HELPERS=('workshop_owned_article_admission','workshop_owned_article_forwarder','workshop_owned_article_seed')
 
 
@@ -160,7 +179,7 @@ def operational_guard():
         if os.fstat(stream.fileno())!=info:raise ValueError('operational_receipt_changed')
         seal=json.load(stream)
     required={'version','gate_sha','harness_source_sha','harness_tree','harness_sha256','test_sha256','runtime_source_sha','runtime_tree','runtime_manifest_sha256','runtime_archive_sha256','runtime_binary_sha256','runtime_config_sha256','runtime_accepted_sha256','helper_sha256','capacity','namespace','dependency_pins'}
-    if set(seal)!=required or seal['version']!=1 or seal['namespace']!='image-contract-v2' or seal['runtime_source_sha']!='668d4c86f4097b9d2c7880dedf2e0fccc8079da6':raise ValueError('operational_contract')
+    if set(seal)!=required or seal['version']!=1 or seal['namespace']!='image-contract-v3' or seal['runtime_source_sha']!='668d4c86f4097b9d2c7880dedf2e0fccc8079da6':raise ValueError('operational_contract')
     hashes={name:hashlib.sha256((RUNTIME_ROOT/'source/scripts/dev'/(name+'.py')).read_bytes()).hexdigest() for name in HELPERS}
     actual={'harness_sha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),'helper_sha256':hashes}
     if identity_errors({key:seal[key] for key in actual},actual):raise ValueError('operational_identity')
@@ -208,7 +227,7 @@ function category(url,method='GET'){try{const u=new URL(url);if(u.origin!==ORIGI
 function failureDiagnostic(code,stage,report={}){
  const counters={};for(const key of COUNTERS){const value=report[key];counters[key]=Number.isInteger(value)?Math.max(0,Math.min(221,value)):0;}
  const routes=(Array.isArray(report.route_statuses)?report.route_statuses:[]).filter(x=>CATEGORIES.has(x.category)&&Number.isInteger(x.status)&&x.status>=100&&x.status<=599&&Number.isInteger(x.count)&&x.count>=1&&x.count<=221).slice(0,64).map(x=>({category:x.category,status:x.status,count:x.count}));
- return{ok:false,error:'owned_browser_failed_preserve_state',code:safeCode(code),stage:SAFE_STAGES.has(stage)?stage:'unknown',counters,route_statuses:routes,partial_screenshot:{attempted:false,saved:false}};
+ return{ok:false,error:'owned_browser_failed_preserve_state',code:safeCode(code),stage:SAFE_STAGES.has(stage)?stage:'unknown',counters,route_statuses:routes,partial_screenshot:{attempted:false,saved:false},error_diagnostics:errorDiagnostics(report.safe_errors||[])};
 }
 async function captureFailure(result,page,target){
  if(!page)return result;result.partial_screenshot.attempted=true;
@@ -219,20 +238,33 @@ async function captureFailure(result,page,target){
 function journalValid(e){return e&&Object.keys(e).sort().join(',')==='category,count,method,stage,status'&&SAFE_STAGES.has(e.stage)&&[...CATEGORIES,'lifecycle'].includes(e.category)&&['GET','NONE','OTHER'].includes(e.method)&&Number.isInteger(e.status)&&(e.status===0||e.status>=100&&e.status<=599)&&Number.isInteger(e.count)&&e.count>=0&&e.count<=220;}
 function journalWriter(write){let bytes=0,count=0;return e=>{if(!journalValid(e))throw Error('journal_schema');const line=JSON.stringify(e)+'\n';const size=Buffer.byteLength(line);if(bytes+size>65536||count>=512)throw Error('journal_bound');write(line);bytes+=size;count++;};}
 
+function errorSnapshot(origin,stage,category='lifecycle',status=0){return Object.freeze({origin,stage:SAFE_STAGES.has(stage)?stage:'unknown',category:CATEGORIES.has(category)?category:'lifecycle',status:Number.isInteger(status)&&(status===0||status>=100&&status<=599)?status:0});}
+function safeError(snapshot,operation,code){return{...snapshot,operation,code:snapshot.origin==='page_exception'?'page_exception':SAFE_CODES.has(code)?code:'response_exception'};}
+function errorValid(e){return e&&Object.keys(e).sort().join(',')==='category,code,operation,origin,stage,status'&&SAFE_STAGES.has(e.stage)&&[...CATEGORIES,'lifecycle'].includes(e.category)&&Number.isInteger(e.status)&&(e.status===0||e.status>=100&&e.status<=599)&&((e.origin==='page_exception'&&e.code==='page_exception'&&e.operation==='page_event'&&e.category==='lifecycle'&&e.status===0)||(e.origin==='response_validator'&&(e.code==='response_exception'||SAFE_CODES.has(e.code))&&['body_read','json_decode','field_assertion'].includes(e.operation)));}
+function errorWriter(write){let bytes=0,count=0;return e=>{if(!errorValid(e))throw Error('error_schema');const line=JSON.stringify(e)+'\n',size=Buffer.byteLength(line);if(count>=16||bytes+size>8192)throw Error('error_bound');write(line);bytes+=size;count++;};}
+function durableErrorWriter(path){const fd=fs.openSync(path,'wx',0o600);const directory=fs.openSync(require('node:path').dirname(path),'r');try{fs.fsyncSync(directory);}finally{fs.closeSync(directory);}return{fd,write:errorWriter(line=>{const bytes=Buffer.from(line);let at=0;while(at<bytes.length)at+=fs.writeSync(fd,bytes,at,bytes.length-at);fs.fsyncSync(fd);})};}
+function attachPageErrors(page,getStage,record){page.on('pageerror',()=>record(safeError(errorSnapshot('page_exception',getStage()),'page_event')));}
+function responseFailure(snapshot,getOperation,record){return error=>record(safeError(snapshot,getOperation(),error?.message));}
+function errorDiagnostics(records=[],journal_sha256=null){return{records,page_exception_count:records.filter(x=>x.origin==='page_exception').length,response_validator_count:records.filter(x=>x.origin==='response_validator').length,journal_sha256};}
+
 const hash=b=>crypto.createHash('sha256').update(b).digest('hex');
 function assert(value,code){if(!value)throw Error(code);}
-(async()=>{let browser,input,report,diagnosticPage,journalFD,journal,requests=0,stage='input';try{
+(async()=>{let browser,input,report,diagnosticPage,journalFD,journal,errorFD,errorJournal,requests=0,stage='input';try{
  input=JSON.parse(fs.readFileSync(0,'utf8'));
+ if(input.action==='policy'&&input.error_origin_test){const {EventEmitter}=require('node:events'),page=new EventEmitter(),records=[],lines=[],write=errorWriter(line=>lines.push(line));let current='desktop_navigation';const record=e=>{write(e);records.push(e);};attachPageErrors(page,()=>current,record);page.emit('pageerror',Error('secret https://secret.invalid protected body'));const snapshot=errorSnapshot('response_validator','desktop_detail','catalog',200);const deferred=Promise.resolve().then(()=>{throw Error('secret https://secret.invalid protected body');}).catch(responseFailure(snapshot,()=>'body_read',record));current='desktop_history';await deferred;record(safeError(errorSnapshot('response_validator','mobile_image','image',200),'field_assertion','real_png'));let schema_rejected=false,bound_rejected=false;try{write({...records[0],url:'secret'});}catch{schema_rejected=true;}const first=lines[0];try{for(let n=0;n<20;n++)write(records[0]);}catch{bound_rejected=true;}console.log(JSON.stringify({ok:true,safe_errors:records,schema_rejected,bound_rejected,prefix_preserved:lines[0]===first}));return;}
+ if(input.action==='policy'&&input.error_journal_fixture){let writer;try{writer=durableErrorWriter(input.error_journal_fixture);}catch(e){if(e.code!=='EEXIST')throw e;console.log(JSON.stringify({ok:true,exclusive_rejected:true}));return;}writer.write(safeError(errorSnapshot('page_exception','desktop_navigation'),'page_event'));if(input.abrupt_exit)process.exit(23);fs.closeSync(writer.fd);console.log(JSON.stringify({ok:true,exclusive_rejected:false}));return;}
+
  if(input.action==='policy'&&input.journal_test){const lines=[];const writer=journalWriter(line=>lines.push(line));writer(input.journal_test[0]);const preserved=lines[0];let bounded=false;try{for(let n=0;n<600;n++)writer(input.journal_test[0]);}catch{bounded=true;}console.log(JSON.stringify({ok:true,journal_valid:input.journal_test.map(journalValid),journal_prefix_preserved:lines[0]===preserved,journal_bound_rejected:bounded}));return;}
  if(input.action==='policy'&&input.failure_policy){const failures=[];for(const item of input.failures){const result=failureDiagnostic(item.code,item.stage,{requests:item.requests,route_statuses:item.route_statuses});if(input.screenshot_failure)await captureFailure(result,{screenshot:async()=>{throw Error('synthetic screenshot failure');}},null);failures.push(result);}console.log(JSON.stringify({ok:true,failures}));return;}
  if(input.action==='policy'){console.log(JSON.stringify({ok:true,policies:input.cases.map(([u,m])=>policy(u,m)),denials:(input.denials||[]).map(([u,status,simulated])=>expectedDenial(u,status,simulated))}));return;}
  if(input.action==='validate'){console.log(JSON.stringify({ok:true,configs:input.configs.map(([a,c])=>configSafe(a,c)),presentations:input.presentations.map(([t,a])=>presentationSafe(t,a)),pngs:(input.pngs||[]).map(([r,f])=>pngSafe(r,f))}));return;}
  if(!['probe','smoke'].includes(input.action))throw Error('unsupported_action');stage='launch';
- if(input.action==='smoke'){journalFD=fs.openSync(input.journal,'wx',0o600);journal=journalWriter(line=>{const bytes=Buffer.from(line);let at=0;while(at<bytes.length)at+=fs.writeSync(journalFD,bytes,at,bytes.length-at);fs.fsyncSync(journalFD);});journal({stage:'launch',category:'lifecycle',method:'NONE',status:0,count:0});}
+ if(input.action==='smoke'){const errors=durableErrorWriter(input.error_journal);errorFD=errors.fd;errorJournal=errors.write;journalFD=fs.openSync(input.journal,'wx',0o600);journal=journalWriter(line=>{const bytes=Buffer.from(line);let at=0;while(at<bytes.length)at+=fs.writeSync(journalFD,bytes,at,bytes.length-at);fs.fsyncSync(journalFD);});journal({stage:'launch',category:'lifecycle',method:'NONE',status:0,count:0});}
  const {chromium}=require('/home/corp/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
  browser=await chromium.launch({executablePath:'/usr/bin/chromium',chromiumSandbox:true,headless:true,timeout:15000});
  if(input.action==='probe'){stage='probe';const page=await browser.newPage();await page.goto('about:blank');console.log(JSON.stringify({ok:true,version:browser.version(),sandbox_enabled:true}));return;}
- const fixture=input.fixture;report={ok:false,simulated_paths:[],external_requests:[],console_errors:[],page_errors:[],responses:[],layouts:[],negative_auth:false,expected_http_denials:[],quote_requests:0,prepare_requests:0,real_config_verified:0,route_statuses:[]};
+ const fixture=input.fixture;report={ok:false,simulated_paths:[],external_requests:[],console_errors:[],page_errors:[],responses:[],layouts:[],negative_auth:false,expected_http_denials:[],quote_requests:0,prepare_requests:0,real_config_verified:0,route_statuses:[],safe_errors:[]};
+ const recordError=e=>{if(errorJournal)errorJournal(e);report.safe_errors.push(e);report.page_errors.push(e.code);};
  const pending=[];
  const makeContext=async(simulate,viewport)=>{
   const boundary={auth:null,commerce:null};
@@ -257,20 +289,20 @@ function assert(value,code){if(!value)throw Error(code);}
   assert(configSafe(boundary.auth,boundary.commerce),'real_local_disabled_config');report.real_config_verified++;
   const page=await context.newPage();diagnosticPage=page;page.setDefaultTimeout(10000);page.setDefaultNavigationTimeout(10000);
   page.on('download',async download=>{await download.cancel();report.external_requests.push('download');});
-  page.on('pageerror',()=>report.page_errors.push('page_error'));
+  attachPageErrors(page,()=>stage,recordError);
   page.on('console',msg=>{if(msg.type()!=='error')return;const text=msg.text(),match=text.match(/^Failed to load resource: the server responded with a status of (401|503) /);if(match&&expectedDenial(msg.location().url,Number(match[1]),simulate))report.expected_http_denials.push({kind:'unshimmed_session',status:Number(match[1])});else report.console_errors.push('console_error');});
-  page.on('response',response=>{pending.push((async()=>{
+  page.on('response',response=>{const snapshot=errorSnapshot('response_validator',stage,category(response.url()),response.status());let operation='field_assertion';pending.push((async()=>{
    const u=new URL(response.url());const cat=category(response.url());if(journal)journal({stage,category:cat,method:'GET',status:response.status(),count:requests});const found=report.route_statuses.find(x=>x.category===cat&&x.status===response.status());if(found)found.count++;else if(report.route_statuses.length<64)report.route_statuses.push({category:cat,status:response.status(),count:1});if(u.origin!==ORIGIN){report.external_requests.push('external_response');return;}
    if(response.status()>=300&&response.status()<400){report.external_requests.push('redirect');return;}
    const image=u.pathname.startsWith('/v1/catalog/images/');const catalog=policy(response.url(),'GET')==='catalog';
    if(!image&&!catalog&&u.pathname!=='/workshop/purchase-config.json'&&u.pathname!=='/auth/config')return;
-   const data=await response.body();assert(data.length<=2097152,'response_bound');
+   operation='body_read';const data=await response.body();operation='field_assertion';assert(data.length<=2097152,'response_bound');
    const item={kind:image?'image':catalog?'catalog':u.pathname==='/auth/config'?'auth_config':'commerce',status:response.status(),bytes:data.length,sha256:hash(data),mime:(response.headers()['content-type']||'').split(';')[0]};
    report.responses.push(item);
    if(!simulate)return;
    assert(response.status()===200,'real_response_status');
    if(image){assert(pngSafe(item,fixture),'real_png');return;}
-   const parsed=JSON.parse(data);
+   operation='json_decode';const parsed=JSON.parse(data);operation='field_assertion';
    if(item.kind==='auth_config'){assert(parsed.mode==='local','auth_config_local');return;}
    if(item.kind==='commerce'){assert(parsed.enabled===false,'commerce_disabled');return;}
    if(u.pathname.endsWith('/articles/'+fixture.ids.article)){
@@ -278,7 +310,7 @@ function assert(value,code){if(!value)throw Error(code);}
     assert(JSON.stringify(article.steps.map(s=>({number:s.number,heading:s.heading,instructions:s.instructions})))===JSON.stringify(fixture.article.steps),'real_article_steps');
     report.real_detail_verified=true;
    }
-  })().catch(error=>report.page_errors.push(safeCode(error.message))));});
+  })().catch(responseFailure(snapshot,()=>operation,recordError)));});
   return{context,page};
  };
  for(const [name,viewport] of [['desktop',{width:1440,height:1000}],['mobile',{width:390,height:844}]]){
@@ -320,8 +352,8 @@ function assert(value,code){if(!value)throw Error(code);}
  assert(report.quote_requests===0&&report.prepare_requests===0,'no_quote_or_prepare');
  assert(report.real_config_verified===3,'real_config_each_context');
  assert(!report.external_requests.length&&!report.console_errors.length&&!report.page_errors.length,'browser_errors');
- report.ok=true;report.requests=requests;report.browser_version=browser.version();report.sandbox_enabled=true;console.log(JSON.stringify(report));
- }catch(e){const safeReport=report?{requests,simulated_sessions:report.simulated_paths.length,external_requests:report.external_requests.length,console_errors:report.console_errors.length,page_errors:report.page_errors.length,quote_requests:report.quote_requests,prepare_requests:report.prepare_requests,real_config_verified:report.real_config_verified,layouts_completed:report.layouts.length,route_statuses:report.route_statuses}:{};const code=e.message==='browser_errors'&&report?.page_errors.length?report.page_errors[0]:e.message;const result=failureDiagnostic(code,stage,safeReport);await captureFailure(result,diagnosticPage,input?.output?input.output+'/failure.png':null);console.log(JSON.stringify(result));process.exitCode=1;}finally{if(browser)await browser.close();if(journalFD!==undefined)fs.closeSync(journalFD);}})();
+ report.error_diagnostics=errorDiagnostics(report.safe_errors,errorFD!==undefined?hash(fs.readFileSync(input.error_journal)):null);report.ok=true;report.requests=requests;report.browser_version=browser.version();report.sandbox_enabled=true;console.log(JSON.stringify(report));
+ }catch(e){const safeReport=report?{requests,simulated_sessions:report.simulated_paths.length,external_requests:report.external_requests.length,console_errors:report.console_errors.length,page_errors:report.page_errors.length,quote_requests:report.quote_requests,prepare_requests:report.prepare_requests,real_config_verified:report.real_config_verified,layouts_completed:report.layouts.length,route_statuses:report.route_statuses,safe_errors:report.safe_errors}:{};const code=e.message==='browser_errors'&&report?.page_errors.length?report.page_errors[0]:e.message;const result=failureDiagnostic(code,stage,safeReport);if(errorFD!==undefined){fs.fsyncSync(errorFD);result.error_diagnostics.journal_sha256=hash(fs.readFileSync(input.error_journal));}await captureFailure(result,diagnosticPage,input?.output?input.output+'/failure.png':null);console.log(JSON.stringify(result));process.exitCode=1;}finally{if(browser)await browser.close();if(journalFD!==undefined)fs.closeSync(journalFD);if(errorFD!==undefined)fs.closeSync(errorFD);}})();
 '''
 
 
@@ -358,16 +390,17 @@ def listener_guard(manifest_hash,state_hash):
     return receipt
 
 
-ATTEMPT_NAME='browser-attempt-image-contract-v2.started.json'
-OUTPUT_NAME='browser-image-contract-v2'
-FAILURE_NAME='browser-failure-image-contract-v2.json'
-SUCCESS_NAME='browser-acceptance-image-contract-v2.json'
-JOURNAL_NAME='browser-events-image-contract-v2.jsonl'
+ATTEMPT_NAME='browser-attempt-image-contract-v3.started.json'
+OUTPUT_NAME='browser-image-contract-v3'
+FAILURE_NAME='browser-failure-image-contract-v3.json'
+SUCCESS_NAME='browser-acceptance-image-contract-v3.json'
+JOURNAL_NAME='browser-events-image-contract-v3.jsonl'
+ERROR_JOURNAL_NAME='browser-errors-image-contract-v3.jsonl'
 
 
 def reserve_attempt(private,manifest_hash,state_hash):
     # One-use reservation precedes process launch; every earlier attempt is kept.
-    for name in (OUTPUT_NAME,FAILURE_NAME,SUCCESS_NAME,JOURNAL_NAME):
+    for name in (OUTPUT_NAME,FAILURE_NAME,SUCCESS_NAME,JOURNAL_NAME,ERROR_JOURNAL_NAME):
         if os.path.lexists(private/name):raise FileExistsError('attempt_output_exists')
     fd=os.open(private/ATTEMPT_NAME,os.O_CREAT|os.O_EXCL|os.O_WRONLY|os.O_NOFOLLOW,0o600)
     with os.fdopen(fd,'w') as stream:
@@ -392,12 +425,12 @@ def main():
             seed,_=f.read_private(f.PRIVATE/'owned-seed.json')
             if seed.get('manifest_sha256')!=mh or seed.get('accepted_sha256')!=sh or seed.get('fixture_sha256')!=hashlib.sha256((s.FIXTURES/'article.json').read_bytes()).hexdigest() or not seed.get('commerce_zero') or seed.get('object_count')!=2:raise ValueError('seed_receipt')
             output=reserve_attempt(f.PRIVATE,mh,sh)
-            result=node_run({'action':'smoke','fixture':s.load_fixture(),'output':str(output),'journal':str(f.PRIVATE/JOURNAL_NAME)},120)
+            result=node_run({'action':'smoke','fixture':s.load_fixture(),'output':str(output),'journal':str(f.PRIVATE/JOURNAL_NAME),'error_journal':str(f.PRIVATE/ERROR_JOURNAL_NAME)},120)
             if operational_guard()!=seal or check()!=binding or dependencies()!=pins:raise ValueError('browser_binding_changed')
             listener_guard(mh,sh)
             if trace_errors(result['simulated_paths'],result['external_requests'],result['console_errors']) or result['page_errors']:raise ValueError('browser_trace')
             for path in output.iterdir():os.chmod(path,0o600)
-            result.update(dependency_pins=pins,manifest_sha256=mh,accepted_sha256=sh,fixture_sha256=seed['fixture_sha256'],auth_simulation_only=True,operational_seal_sha256=hashlib.sha256(OPERATIONAL_SEAL.read_bytes()).hexdigest(),journal_sha256=hashlib.sha256((f.PRIVATE/JOURNAL_NAME).read_bytes()).hexdigest())
+            result.update(dependency_pins=pins,manifest_sha256=mh,accepted_sha256=sh,fixture_sha256=seed['fixture_sha256'],auth_simulation_only=True,operational_seal_sha256=hashlib.sha256(OPERATIONAL_SEAL.read_bytes()).hexdigest(),journal_sha256=hashlib.sha256((f.PRIVATE/JOURNAL_NAME).read_bytes()).hexdigest(),error_journal_sha256=hashlib.sha256((f.PRIVATE/ERROR_JOURNAL_NAME).read_bytes()).hexdigest())
             path=f.PRIVATE/SUCCESS_NAME;fd=os.open(path,os.O_CREAT|os.O_EXCL|os.O_WRONLY|os.O_NOFOLLOW,0o600)
             with os.fdopen(fd,'w') as stream:json.dump(result,stream,sort_keys=True);stream.write('\n')
         print(json.dumps(result,sort_keys=True));return 0
