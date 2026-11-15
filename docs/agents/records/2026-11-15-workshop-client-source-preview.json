@@ -7,11 +7,11 @@
     "docs/architecture/workshop-client-source-preview.md"
   ],
   "todo": [
-    "Synchronize protected f534d0a/tree902287 and reviewed source CI; commit/pass pinned preflight before small helper/fixture edits.",
-    "While M2A writes/capacity hold persists, implement only <=1MiB unsealed helper/fixture code with synthetic tests and no large artifact allocation.",
-    "After root confirms M2A quiescence and fresh capacity/private/source checks, build with measured off-home scratch and <=128MiB final physical-home growth, seal all15 assets and a fresh exact one-attempt rollback package.",
-    "Compare any newly protected437 public-runtime subtree/ABI and amend/reseal on delta; retain private-safety external-tester prerequisite; send completed package to root without public switch."
+    "Revalidate909671f4 gate and current read-only public/private/storage baseline without serving/provider requests.",
+    "Strengthen exact anonymous GET-only route admission and synthetic no-dispatch fixtures within1MiB helper cap; keep all real entrypoints unsealed.",
+    "Await root-supplied final protected source/tree after local image fix and explicit disk confirmation; synchronize/pass new source-pinned checkpoint before build or sealing.",
+    "Prepare/test/hash bounded physical one-attempt package and send root for independent review; root alone activates or rolls back without supplier/quote/prepare/Stripe calls."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-15T04:26:21.772685+00:00"
+  "updated_at": "2026-11-15T04:35:04.897330+00:00"
 }
