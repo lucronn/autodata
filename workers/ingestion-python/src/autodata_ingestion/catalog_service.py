@@ -402,7 +402,8 @@ def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
                 result["deepening"] = _schedule_selector_deepening(request, scope, resolved.rows)
     except _ConfigurationHydrationStopped as error:
         _configuration_diagnostic(
-            request, stage="provider_resolution", outcome="incomplete", error=error,
+            request, stage="provider_resolution" if stage == "resolve" else stage,
+            outcome="incomplete", error=error,
             row_count=len(resolved.rows) if resolved is not None else -1,
         )
         raise

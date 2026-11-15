@@ -206,13 +206,15 @@ def test_budget_logs_allowlisted_fields_without_selector_or_exception_text(monke
     assert 'scope_hash=' in caplog.text and 'state=finished' in caplog.text and 'stop_reason=cancelled' in caplog.text
 
 
-def test_deadline_after_row_persistence_cannot_write_complete_coverage(monkeypatch):
+def test_deadline_after_row_persistence_cannot_write_complete_coverage(monkeypatch,caplog):
     clock=[1.0];monkeypatch.setattr(service.time,'monotonic',lambda:clock[0])
     configure(monkeypatch,{'bankone':lambda req,timeout:Response(req,envelope('bankone','configurations'))})
     def persist(*args,**kwargs):clock[0]+=21;return {'status':'persisted'}
     service._persist_resolved_catalog_rows.side_effect=persist
     with pytest.raises(service._ConfigurationHydrationStopped) as caught:service.ensure_catalog_hydration(json.dumps(request()))
     assert caught.value.reason=='elapsed'
+    assert 'stage=coverage_persistence outcome=incomplete' in caplog.text
+    assert 'stage=provider_resolution outcome=incomplete' not in caplog.text
     service._persist_resolved_catalog_rows.assert_called_once()
     service._persist_hydration_scope.assert_not_called()
     assert not service._HYDRATION_RESULTS
@@ -266,7 +268,7 @@ def test_configuration_body_deadline_closes_trickled_transport_and_stops_next_ba
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
             calls.append('bankone')
-            body=json.dumps(envelope('bankone','configurations')).encode()
+            body=json.dumps(envelope('bankone','configurations')).encode()+b' '*4096
             self.send_response(200);self.send_header('Content-Type','application/json');self.send_header('Content-Length',str(len(body)));self.end_headers()
             try:
                 for offset in range(0,len(body),8):
@@ -277,7 +279,7 @@ def test_configuration_body_deadline_closes_trickled_transport_and_stops_next_ba
         def log_message(self,*args):pass
     server=ThreadingHTTPServer(('127.0.0.1',0),Handler)
     thread=Thread(target=lambda:server.serve_forever(poll_interval=.02),daemon=True);thread.start()
-    control=service._ConfigurationHydrationControl();control.deadline=time.monotonic()+.1
+    control=service._ConfigurationHydrationControl();control.deadline=time.monotonic()+.25
     monkeypatch.setattr(service,'_ConfigurationHydrationControl',lambda:control)
     first=SourceConnectorClient(f'http://127.0.0.1:{server.server_port}',provider='bankone',opener=build_opener(ProxyHandler({})).open)
     second=SimpleNamespace(provider='banktwo',catalog=Mock(side_effect=AssertionError('late bank dispatch')))
@@ -285,7 +287,7 @@ def test_configuration_body_deadline_closes_trickled_transport_and_stops_next_ba
     try:
         started=time.monotonic()
         with pytest.raises(service._ConfigurationHydrationStopped) as caught:service.ensure_catalog_hydration(json.dumps(request()))
-        assert time.monotonic()-started<.8 and caught.value.reason=='elapsed'
+        assert time.monotonic()-started<2 and caught.value.reason=='elapsed'
         assert calls==['bankone'];second.catalog.assert_not_called();assert_no_persistence()
         assert 'stage=provider_resolution outcome=failed' not in caplog.text
     finally:

@@ -9,11 +9,11 @@
   ],
   "todo": [
     "DONE gate985658a/Issue401 comment6888496088/Project readback/preflight before code.",
-    "DONE config-only12/20 control/local stop/429/expired error conversion/start-finish events; transport and other scopes unchanged.",
-    "DONE20 new tests; focused102 passed47 skipped42 subtests; physical red/green receipts and code patch hashes sealed.",
-    "TODO coordinate protected427 integration checkpoint before final strict PR CI/merge/exact-head review.",
-    "TODO separately gated merged-source runtime/watchdog rollout before one real internal GET; no deployment claim."
+    "DONE config-only12/20 control, local stop/429/expired error conversion, safe start/finish events; actual persistence stage retained.",
+    "DONE final20 new tests within102 passed47 skipped42 subtests; physical final patch e82eab90/verification211ccff4.",
+    "TODO open final code PR/start strict CI on protected4048 per coordinator priority; hold docs-only427 behind code and require independent exact-head review/merge.",
+    "TODO separate merged-source runtime/watchdog gate before one real internal GET; budget not deployed."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-15T03:25:33.178205+00:00"
+  "updated_at": "2026-11-15T03:27:12.247724+00:00"
 }
