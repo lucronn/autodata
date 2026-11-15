@@ -111,3 +111,13 @@ Clean-env no-navigation Chromium launch passed again (Playwright 1.62.1, Chromiu
 Updated sealed files versus prior 8ee47 manifest: ROOT-COMMANDS.md (QA explanation only), browser_acceptance.cjs, new browser_contract.cjs, new verify_browser_contract.cjs, new browser-contract-fixture.log, new baseline probe receipt and new postqa-protected-check.log. Physical HANDOFF.md and physical-preparation.json contain the exact delta and current pins.
 
 No root rollback state, activation marker or installed candidate exists. Independent root re-review and execution remain pending. No public runtime mutation, provider recapture, licensed-content exposure or private image rollout occurred.
+
+## Same-attempt privileged read-only checks amendment
+
+Root has completed prepare, the exclusive activation marker and immutable candidate install. API override/service have NOT switched. The unprivileged post-install helper check failed with PermissionError because valid rollback-state is root0700; the same sudo clean-env check passed. This is an execution-command permission correction within the existing attempt, not a new activation.
+
+Synchronize this amendment/Issue424/Project8/canonicaldocs/record and pass pinned preflight before editing package commands or manifests. Keep source/binary/release manifest/rollback helper unchanged. Never rewrite the existing activation marker, root backups, installed binary or service configuration. Do not repeat prepare/marker/install/restart.
+
+Run post-prepare/post-install check, post-switch candidate-check (including independent QA recheck) and failure protected-check under `/usr/bin/sudo /usr/bin/env -i PATH=/usr/bin:/bin LANG=C.UTF-8 LC_ALL=C.UTF-8 /usr/bin/python3` using the physical helper path. Initial pre-prepare historical check may remain unprivileged; the continuation command uses sudo because root-only state now exists.
+
+Verify helper check/candidate-check/protected-check branches only inspect/read (no create/replace/fsync/restart path). Add isolated root-only0700 state fixture proving privileged read-only dispatch, unprivileged denial and unchanged metadata/bytes for checks. Rerun actual root check/protected-check against current baseline without switching API. Capture safe dynamic marker/root-backup/installed-binary hash+metadata before/after, without raw config/content, to prove no changes. Reseal static commands/fixture evidence/helper manifest and send exact command diff/hash pins for root re-review. Dynamic release state is retained, never included as mutable payload in a new static seal.

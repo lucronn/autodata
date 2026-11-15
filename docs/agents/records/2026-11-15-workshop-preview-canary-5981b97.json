@@ -8,11 +8,11 @@
     "docs/verification/2026-11-15-workshop-preview-canary-5981b97.md"
   ],
   "todo": [
-    "Synchronize deterministic private browser-QA safe-auth-route amendment and pass pinned preflight before QA edits",
-    "Permit exact safe GET auth config/session; deny writes/protected routes and explicitly suppress known catalog prefetch without provider dispatch",
-    "Test actual protected page/assets with controlled local auth fixture, deterministic gated disabled-to-ready transition and meaningful negative cases",
-    "Rerun clean-env Chromium and baseline/protected/package checks, reseal physical package and send for root review before serving mutation"
+    "Synchronize same-attempt sudo read-only-check correction and pass pinned preflight before package edits",
+    "Correct post-prepare check/candidate-check/protected-check commands to sudo clean env without repeating prepare/marker/install/restart",
+    "Prove read-only check dispatch and root-only0700 state behavior in isolated fixture; verify actual root baseline and protected check",
+    "Confirm existing dynamic marker/backups/installed binary unchanged, reseal static command/evidence hashes and return continuation for root review"
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-15T02:39:56.097214+00:00"
+  "updated_at": "2026-11-15T02:45:50.812746+00:00"
 }
