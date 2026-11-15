@@ -1,0 +1,17 @@
+{
+  "goal": "Preserve completed public API and private read_only ingestion release receipts on protected master with accurate historical chronology and unchanged acceptance limits.",
+  "plan_ref": "docs/superpowers/plans/2026-11-15-release-receipts-preservation.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/423",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/verification/2026-11-15-release-receipts-preservation.md"
+  ],
+  "todo": [
+    "Pin protected base, verify all eight exact source blobs and path absence, and commit synchronized plan/Issue/Project/canonical documentation with passing exact-base preflight before snapshot edits.",
+    "Copy only the eight approved Markdown/JSON snapshots, label pre-execution text historical, link public release chronology to the later private acceptance, preserve all partial-response/rollback-defect/acceptance limits and the unsynchronized diagnostic proposal.",
+    "Validate exact path set, JSON, provenance, internal links, chronology, safe-content redaction and diff whitespace without runtime/provider calls.",
+    "Hold final PR/CI until root supplies PR422 protected merge SHA/tree; integrate that exact base, recheck no overlap and source scope, then open a normal protected-master documentation PR for independent exact-head review and required CI."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-15T02:11:40.389397+00:00"
+}
