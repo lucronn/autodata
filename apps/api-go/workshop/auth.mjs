@@ -49,6 +49,7 @@ export function createSession({
   onChange = () => {},
 } = {}) {
   const state = {
+    mode: null,
     authenticated: false,
     csrf: "",
     ready: false,
@@ -66,6 +67,7 @@ export function createSession({
   const changed = () => onChange({ ...state });
   const clear = () => {
     epoch++;
+    state.mode = null;
     state.authenticated = false;
     state.csrf = "";
     state.ready = false;
@@ -123,6 +125,7 @@ export function createSession({
     clear,
     async bootstrap({ signal } = {}) {
       const current = ++epoch;
+      state.mode = null;
       state.authenticated = false;
       state.csrf = "";
       state.ready = false;
@@ -132,6 +135,7 @@ export function createSession({
         config = null;
       }
       if (signal?.aborted || current !== epoch) return;
+      state.mode = ["local", "firebase"].includes(config?.mode) ? config.mode : null;
       state.available = validLoginConfig(config);
       try {
         const data = await request("/auth/session", { signal, timeout: 10000 });
