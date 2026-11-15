@@ -8,13 +8,13 @@
     "docs/verification/2026-11-15-retained-article-integrity.md"
   ],
   "todo": [
-    "Refresh PR434 onto exact protected a82b31dc preserving all implementation and historical one-shot proof bytes",
+    "Refresh PR434 onto exact protected b3214b69 preserving all implementation and historical one-shot proof bytes",
     "Synchronize Issue428 Project8 Review canonical docs and machine preflight at committed checkpoint",
     "Verify unchanged implementation blobs and seven-path scope then push exact old-head lease for strict remote CI",
     "Hold merge deployment and any further real-data execution for coordinator"
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-15T07:01:37.403313+00:00",
+  "updated_at": "2026-11-15T17:22:43.940831+00:00",
   "outcome": {
     "bounded_retained_integrity": "passed",
     "reviewed_code_sha": "9424dfee0474d44b7eb2511d64945c0c3a92e57b",
@@ -27,7 +27,7 @@
     "body_bytes": 2283,
     "licensed_display": false,
     "paid_reader_acceptance": false,
-    "code_pr_ci": "prior head all three required checks passed run43673423719; refreshed head strict CI pending"
+    "code_pr_ci": "fresh exact-head strict CI pending after protected b3214b69 integration; prior runs historical"
   },
-  "protected_source_sha": "a82b31dc8850aa3956972928b8c720969765a972"
+  "protected_source_sha": "b3214b693c58e3fc13b607f24f232db2ea4e8a2a"
 }

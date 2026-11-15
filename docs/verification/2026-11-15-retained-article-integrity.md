@@ -112,3 +112,10 @@ Concrete todo for this refresh (Issue [#428](https://github.com/lucronn/autodata
 - Synchronize Issue/Project, this plan, canonical documentation and record; run machine preflight at the committed checkpoint.
 - Verify unchanged implementation blobs and the seven-path PR scope; push with the exact old-head lease and obtain strict remote CI.
 - Hold merge, deployment and all further real-data runs for the coordinator.
+
+
+## Protected historical-docs integration refresh — 2026-11-15
+
+Current PR #434 base is protected `b3214b693c58e3fc13b607f24f232db2ea4e8a2a` (merged PR #442). This supersedes the a82 integration checkpoint only for PR base/CI scheduling. The ordinary rebase was conflict-free; all three implementation/test blobs, historical candidate343/source083f pins, the single redacted proof and every prior rights/paid-reader limitation remain unchanged. Fresh strict remote CI is required for the resulting head; prior-head CI is historical.
+
+Concrete todo (Issue #428 / Project #8 Review): synchronize this base update and record, commit and preflight the checkpoint, verify the unchanged three implementation blobs/seven-path scope, push with an exact old-head lease and update the PR head/base/CI report. Hold merge, deployment and any new real-data run. Validation is metadata/preflight only; no local tests, build, Docker, browser, SQL/S3 or provider access. Existing offloaded worktree only; no runtime package allocation.
