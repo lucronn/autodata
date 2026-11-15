@@ -11,10 +11,11 @@
     "Pin source/image/binary/browser identities, prove bounded default-sandbox browser launch and obtain root review before Docker startup",
     "Boot fresh empty M2A on loopback3042, verify actual auth gates before one authored article/image seed, keep all customer/payment/grant rows zero",
     "Exercise desktop and narrow mobile selector/index/detail/image through real PG/S3, verify screenshot/no clipping/console errors/back/reload, stop owned resources and hold PR/merge for root",
-    "Preserve sanitized browser failure stage/code/counters/route statuses and private partial screenshot, reseal exact package and obtain root review before same-resource retry"
+    "Preserve sanitized browser failure stage/code/counters/route statuses and private partial screenshot, reseal exact package and obtain root review before same-resource retry",
+    "Add fixed held-ebed evidence relocation helper and owned fixture tests; permit reviewed offloaded fresh Go output/temp with physical active binary retained only on byte identity"
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-15T04:17:13.251978+00:00",
+  "updated_at": "2026-11-15T04:21:37.684037+00:00",
   "source_base_sha": "f534d0aeb76973ca3b8c70b14c806973edb1b457",
   "source_base_tree": "902287299c37c49ebb3cae2245303e0c95100e90",
   "implementation_allowlist": [
@@ -30,13 +31,16 @@
     "scripts/dev/fixtures/workshop_owned_article/article.json",
     "scripts/dev/fixtures/workshop_owned_article/diagram.png",
     "docs/operations/workshop-owned-article-m2a.md",
-    "docs/verification/2026-11-15-workshop-owned-article-m2a.md"
+    "docs/verification/2026-11-15-workshop-owned-article-m2a.md",
+    "scripts/dev/workshop_owned_article_relocate.py",
+    "scripts/dev/test_workshop_owned_article_relocate.py"
   ],
   "tracking_sync": {
     "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhH730A",
     "project_status": "In Progress",
     "readback_verified": true,
-    "issue_body_sha256": "02fcc2b0a6c36863901e003dc3ce4ffc6e6a8578a51ee5d760143400923327c4"
+    "issue_body_sha256": "21b4e8686c48a9213fb0e9913ec5bcf6d9124a3cedcd928e32828e8dc358b7c6"
   },
-  "diagnostics_amendment_base": "bed885976f932cb94e4858625d6f8699e7c6e10e"
+  "diagnostics_amendment_base": "bed885976f932cb94e4858625d6f8699e7c6e10e",
+  "relocation_amendment_base": "c4d185f105db909eb6eda3f2417074628d58ea4d"
 }
