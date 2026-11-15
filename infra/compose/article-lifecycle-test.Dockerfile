@@ -1,6 +1,6 @@
 FROM golang:1.26 AS go-toolchain
 FROM python:3.14-slim AS lifecycle-runtime
-RUN apt-get update && apt-get install -y --no-install-recommends poppler-utils tesseract-ocr postgresql-client git && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends libcairo2 fonts-dejavu-core poppler-utils tesseract-ocr postgresql-client git && rm -rf /var/lib/apt/lists/*
 COPY workers/ingestion-python/pyproject.toml /tmp/pyproject.toml
 RUN python -c "import tomllib,subprocess; p=tomllib.load(open('/tmp/pyproject.toml','rb')); subprocess.check_call(['pip','install','--no-cache-dir',*p['project']['dependencies'],'pytest>=8,<10'])"
 
