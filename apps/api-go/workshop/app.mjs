@@ -662,6 +662,7 @@ function renderContent(parent, article, g) {
       g,
     );
   else if (presentation.steps.length) {
+    renderBlocks(parent, presentation.introBlocks, images, null, g);
     for (const step of presentation.steps) {
       const section = element("section", undefined, "procedure-step");
       if (Number.isInteger(step.number))
