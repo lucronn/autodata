@@ -1,6 +1,6 @@
 # Historical Workshop evidence consolidation plan
 
-Status: synchronized planning checkpoint; imports remain blocked until exact committed checkpoint preflight passes.
+Status: gated documentation import complete; lightweight checks passed. Draft PR, independent exact-head review and remote CI remain the delivery boundary.
 Protected base: `a82b31dc8850aa3956972928b8c720969765a972` (PR439). Planning checkpoint will be its direct descendant; machine validation uses that committed checkpoint so the plan is actually present at the validated SHA.
 Issue: https://github.com/lucronn/autodata/issues/441
 Project: https://github.com/users/lucronn/projects/8
@@ -49,9 +49,9 @@ Do not import private receipts, credentials, licensed prose/media, helpers, exec
 
 ## Concrete todo
 
-- [ ] Synchronize focused plan, Issue, Project8 item/readback, canonical verification and machine record on protected a82; commit/push checkpoint and pass exact-checkpoint preflight before imports.
-- [ ] Import only25 approved source paths, preserve original JSON bytes/receipt facts, archive all historical runtime language, and correct stale readiness/tunnel interpretation without claiming a fresh inspection.
-- [ ] Run lightweight exact-scope/provenance/JSON/Markdown-link/chronology/redaction/whitespace checks only; no build, Docker, runtime or external provider tests. Preserve the active M2A build slot.
+- [x] Synchronize focused plan, Issue, Project8 item/readback, canonical verification and machine record on protected a82; commit/push checkpoint and pass exact-checkpoint preflight before imports.
+- [x] Import only25 approved source paths, preserve original JSON bytes/receipt facts, archive all historical runtime language, and correct stale readiness/tunnel interpretation without claiming a fresh inspection.
+- [x] Run lightweight exact-scope/provenance/JSON/Markdown-link/chronology/redaction/whitespace checks only; no build, Docker, runtime or external provider tests. Preserve the active M2A build slot.
 - [ ] Commit/push validated milestone, open one draft PR, synchronize Issue/Project with exact head/tree/gate/checks and remote CI; hold merge and all seven source PR closures for root.
 
 ## Review boundaries and replacement mapping
@@ -63,3 +63,11 @@ Do not import private receipts, credentials, licensed prose/media, helpers, exec
 ## Gate and delivery
 
 Canonical rule: `docs/agents/pre-implementation-gate.md`. No implementation source changes are authorized. Root owns independent exact-head review/merge. A later protected-base change requires coordination and strict up-to-date CI; remote CI validates broader suites. Do not run local builds or start services to validate documentation. Historical plans/JSON are never replay authority. There is no DNS/Firebase/tunnel/payment/service mutation, new Checkout, refund or grant in this task.
+
+## Import verification receipt
+
+Planning gate `acc0c16` is a direct descendant of protected `a82b31dc8850aa3956972928b8c720969765a972`; it was committed/pushed with exact Issue441 body and Project8 source/todo/In Progress readback before import. Canonical preflight at that exact checkpoint returned `{"status":"synchronized","errors":[]}`. Imports began only afterward.
+
+Lightweight import checks passed: exact25-path import scope; all7 historical JSON source records byte-identical; all16 non-408 Markdown files byte-identical to their source heads after removing only the new dated archival wrapper; both408 documents have the explicit planned readiness/tunnel correction only.14 literal repository-document references and23 relative Markdown links resolved in imported documents. JSON parsing, secret-pattern scan and `git diff --check` passed. Final scope is28 documentation paths including this task's3 gate files. No application, workflow, helper, config or licensed bytes were imported.
+
+The original private runtime/payment receipts were neither executed nor independently revalidated by this documentation task. Their historical source attribution, recorded hashes and acceptance/failure limits are preserved. No current cloud, tunnel, Firebase, Stripe, provider or runtime inspection was performed. No local builds, Docker commands or services ran; M2A's physical build slot was preserved. Remote CI remains required on the final draft head.

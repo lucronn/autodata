@@ -35,3 +35,14 @@ No production mode, traffic, DNS, payment enablement, secret, deployment, source
 - [ ] Close exact-head Chromium startup race: add a red-first initial-HTML sign-in regression, render the control disabled until the existing session callback enables it, and rerun the 120-case browser inventory.
 - [ ] Run focused/full Node, Go and Python tests, syntax/diff checks and local browser smoke; obtain independent exact-head re-review and current CI.
 - [ ] Merge only if live branch protection permits; keep real licensed-data/test-payment browser acceptance and deployment separately blocked until evidenced.
+
+
+## Historical readiness assessment (2026-11-14)
+
+> **Archived report (2026-11-14), preserved from PR #408 at `6037c9af34cf41e92cffd67ceaf26f65d5991a44`.** Runtime, source, health and acceptance statements describe that dated checkpoint only, not present service state. Operational steps and old planning records are historical/non-replayable; this import creates no execution authority. See the [consolidated evidence and corrections](../../verification/2026-11-15-historical-evidence-consolidation.md).
+
+The dated source/public/staging observations are preserved in
+`docs/verification/2026-11-14-workshop-stripe-test-readiness.md`, with explicit
+supersession and tunnel-interpretation corrections. The assessment is historical,
+not an active runtime inventory. It does not establish a current Firebase tester,
+segregated external TEST origin or real-data purchase acceptance.
