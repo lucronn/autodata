@@ -98,7 +98,7 @@ def validate_config(config):
         env=actual.get("environment",{})
         if set(env)!=set(want["environment"]):errors.append("environment_keys_"+name)
         for key,value in want["environment"].items():
-            if key in SECRET_KEYS:
+            if key in SECRET_KEYS and value.startswith("${M1_"):
                 if not isinstance(env.get(key),str) or not re.fullmatch(r"m1_[0-9a-f]{48}",env[key]):errors.append("local_material_"+name)
                 else:want["environment"][key]=env[key]
         if actual!=want:errors.append("service_contract_"+name)
