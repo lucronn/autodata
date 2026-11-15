@@ -8,6 +8,7 @@ import time
 from types import SimpleNamespace
 
 import pytest
+sys.path.insert(0,str(Path(__file__).parents[1]/"src"))
 from autodata_ingestion import catalog_service as catalog
 try:
     from autodata_ingestion import selector_job as job
@@ -118,8 +119,9 @@ def test_existing_public_selector_must_not_start_detached_deepening(monkeypatch)
 
 
 @pytest.mark.parametrize('stall', ['dns', 'headers', 'trickle'])
-def test_actual_connector_dns_headers_trickle_hard_deadline(tmp_path, stall):
+def test_actual_connector_dns_headers_trickle_hard_deadline(tmp_path, stall, monkeypatch):
     """Exercise the connector's real opener/read1 path inside the owned child."""
+    monkeypatch.delenv("PYTHONPATH",raising=False)
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
     seen = threading.Event()
     class Handler(BaseHTTPRequestHandler):
@@ -251,6 +253,7 @@ def test_actual_http_years_boundary_uses_shared_job_not_legacy_manifest(monkeypa
 
 @pytest.mark.parametrize('scope',['years','makes','models'])
 def test_real_owned_job_resolves_only_authored_local_connector(monkeypatch,scope):
+    monkeypatch.delenv('PYTHONPATH',raising=False)
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
     from test_source_connector_client import _envelope
     calls=[]
