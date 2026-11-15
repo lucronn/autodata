@@ -1939,6 +1939,7 @@ class ArticleMediaNode {
     this.open = false;
     this._text = '';
   }
+  focus() { this.focusCalls = (this.focusCalls || 0) + 1; }
   get textContent() { return this._text + this.children.map(n => n.textContent).join(''); }
   set textContent(value) { this.replaceChildren(); this._text = String(value); }
   get isConnected() { return this.tagName === 'body' || Boolean(this.parentNode?.isConnected); }
@@ -2056,6 +2057,49 @@ test('article tab title clears on catalog and library navigation', () => {
   assert.equal(context.document.title, 'AutoData — The workshop reference');
   assert.equal(nodes.library.hidden, false);
   assert.equal(nodes.catalog.hidden, true);
+});
+
+test('article navigation focuses its visible heading once before preparation and preserves focus during updates', async () => {
+  let resolvePrepare;
+  const article = mediaArticle([{ type: 'paragraph', text: 'Ready content.' }]);
+  const h = articleMediaHarness({
+    session: { state: { authenticated: true, csrf: 'csrf' } },
+    stage: () => {},
+    requestArticleJSON: () => new Promise(resolve => { resolvePrepare = resolve; }),
+    readArticle: async (read, { onUpdate }) => {
+      const response = await read();
+      onUpdate(response);
+      h.nodes.get('print').focus();
+      onUpdate(response);
+      return response;
+    },
+  });
+  runInNewContext([
+    appSection('function show(', 'function clearProtected('),
+    appSection('async function loadArticle(', 'function openArticle('),
+  ].join('\n'), h.context);
+  const pending = h.context.loadArticle('a', h.g);
+  const title = h.nodes.get('article-title');
+  assert.equal(h.nodes.get('reader').hidden, false);
+  assert.equal(h.nodes.get('catalog').hidden, true);
+  assert.equal(title.textContent, 'Opening article…');
+  assert.equal(title.focusCalls, 1, 'focus must enter the reader while preparation is pending');
+  resolvePrepare({ data: { article } });
+  await pending;
+  assert.equal(title.textContent, 'Pump service');
+  assert.equal(title.focusCalls, 1, 'prepare and polling updates must not reclaim focus');
+  assert.equal(h.nodes.get('print').focusCalls, 1);
+});
+
+test('obsolete article navigation leaves current heading and focus alone', async () => {
+  const h = articleMediaHarness({ session: { state: { authenticated: true } } });
+  runInNewContext(appSection('async function loadArticle(', 'function openArticle('), h.context);
+  h.nodes.get('article-title').textContent = 'Current article';
+  h.navigation.clear();
+  await h.context.loadArticle('obsolete', h.g);
+  assert.equal(h.nodes.get('article-title').textContent, 'Current article');
+  assert.equal(h.nodes.get('article-title').focusCalls, undefined);
+  assert.deepEqual(h.shows, []);
 });
 
 test('retrying a visible article keeps its tab title while preparation fails', async () => {
