@@ -1,0 +1,40 @@
+{
+  "goal": "Prove private authored article and image display through real isolated PG/S3 and Go Workshop with explicit browser-only auth simulation",
+  "plan_ref": "docs/superpowers/plans/2026-11-15-workshop-owned-article-m2a.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/398",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/operations/workshop-owned-article-m2a.md"
+  ],
+  "todo": [
+    "Add independent fixed-profile admission/relay and red-first authored seed/browser boundary tests without changing five M1 files",
+    "Pin source/image/binary/browser identities, prove bounded default-sandbox browser launch and obtain root review before Docker startup",
+    "Boot fresh empty M2A on loopback3042, verify actual auth gates before one authored article/image seed, keep all customer/payment/grant rows zero",
+    "Exercise desktop and narrow mobile selector/index/detail/image through real PG/S3, verify screenshot/no clipping/console errors/back/reload, stop owned resources and hold PR/merge for root"
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-15T03:20:58.251816+00:00",
+  "source_base_sha": "4048f3fae50161af5b5ab8300670e3beb817ce1a",
+  "source_base_tree": "a1aa86183a2e015e74565fd939a70b3eb96010b1",
+  "implementation_allowlist": [
+    "infra/compose/compose.workshop-owned-article.yaml",
+    "scripts/dev/workshop_owned_article_admission.py",
+    "scripts/dev/test_workshop_owned_article_admission.py",
+    "scripts/dev/workshop_owned_article_forwarder.py",
+    "scripts/dev/test_workshop_owned_article_forwarder.py",
+    "scripts/dev/workshop_owned_article_seed.py",
+    "scripts/dev/test_workshop_owned_article_seed.py",
+    "scripts/dev/workshop_owned_article_smoke.py",
+    "scripts/dev/test_workshop_owned_article_smoke.py",
+    "scripts/dev/fixtures/workshop_owned_article/article.json",
+    "scripts/dev/fixtures/workshop_owned_article/diagram.png",
+    "docs/operations/workshop-owned-article-m2a.md",
+    "docs/verification/2026-11-15-workshop-owned-article-m2a.md"
+  ],
+  "tracking_sync": {
+    "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhH730A",
+    "project_status": "In Progress",
+    "readback_verified": true,
+    "issue_body_sha256": "9b9b35e75bd67164654a4c98f3ae7beca5e5c6d8ecc3b87960e82184e0a19fdb"
+  }
+}
