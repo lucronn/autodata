@@ -24,9 +24,9 @@ class SelectorJobStopped(Exception):
 class SelectorJobControl:
     initial_selector_budget = True
 
-    def __init__(self, deadline, *, clock=time.monotonic, sleep=time.sleep, dispatch_interval=6):
+    def __init__(self, deadline, *, clock=None, sleep=None, dispatch_interval=6):
         self.deadline = deadline
-        self.clock, self.sleep = clock, sleep
+        self.clock, self.sleep = clock or time.monotonic, sleep or time.sleep
         self.dispatch_interval = dispatch_interval
         self.next_dispatch = 0.0
         self.requests = self.bytes = self.rows = 0
@@ -76,8 +76,8 @@ def scope_key(request):
 
 class SelectorAdmission:
     """Process-global admission, independent of caller-controlled idempotency keys."""
-    def __init__(self, *, clock=time.monotonic):
-        self.clock, self.lock = clock, RLock()
+    def __init__(self, *, clock=None):
+        self.clock, self.lock = clock or time.monotonic, RLock()
         self.active = None
         self.next_attempt = 0.0
         self.cooldowns = {}

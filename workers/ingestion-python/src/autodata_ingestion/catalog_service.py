@@ -1529,7 +1529,9 @@ class _SourceCatalogProvider:
             else:
                 from .source_connector_client import SourceConnectorError
 
-                timeout = self.deepening_control.before_request()
+                timeout = (self.deepening_control.remaining()
+                           if getattr(self.deepening_control, "initial_selector_budget", False)
+                           else self.deepening_control.before_request())
                 try:
                     page = self.client.catalog(
                         scope, selector, cursor, timeout=timeout,

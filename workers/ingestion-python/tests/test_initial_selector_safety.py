@@ -310,3 +310,15 @@ def test_years_bounded_persistence_is_one_transaction_and_never_false_complete(m
     with pytest.raises(job.SelectorJobStopped,match='elapsed'):
         catalog._persist_hydration_scope(request,resolved,deadline=time.monotonic()+.5)
     assert not connections and not statements
+
+
+def test_direct_initial_read_hook_charges_first_dispatch_and_body_without_timeout():
+    from autodata_ingestion.source_connector_client import SourceConnectorClient
+    from test_source_connector_client import _Response, _envelope
+    control=job.SelectorJobControl(time.monotonic()+3,dispatch_interval=0)
+    def one(request,**kwargs):
+        assert 0<kwargs['timeout']<=3
+        return _Response(_envelope(scope='years',items=[{'year':2024,'opaque_ref':'y','label':'2024'}],complete=True,next_cursor=None),url=request.full_url)
+    client=SourceConnectorClient('http://127.0.0.1:1',provider='bankone',opener=one)
+    assert client.catalog('years',read_control=control).complete
+    assert control.requests==1 and control.rows==1 and control.bytes>0

@@ -191,6 +191,9 @@ class SourceConnectorClient:
                 query[key] = _selector_field(key, selector[key])
         if cursor is not None:
             query["cursor"] = _bounded_text(cursor, "cursor", 512)
+        if read_control is not None:
+            remaining = read_control.remaining()
+            timeout = min(timeout, remaining) if timeout is not None else remaining
         # Keep label discovery and retry inside the caller's elapsed budget.
         # Exact source labels remain a single-request fast path.
         deadline = time.monotonic() + min(self.timeout, timeout) if timeout is not None else None
@@ -199,7 +202,8 @@ class SourceConnectorClient:
 
         def read_page(page_scope: str, page_query: Mapping[str, str | int]) -> SourceEnvelopeV1:
             nonlocal dispatched
-            allowance = before_additional_request() if dispatched and before_additional_request else None
+            allowance = (read_control.before_request() if read_control is not None else
+                         before_additional_request() if dispatched and before_additional_request else None)
             remaining = deadline - time.monotonic() if deadline is not None else timeout
             if allowance is not None:
                 remaining = min(remaining, allowance) if remaining is not None else allowance
