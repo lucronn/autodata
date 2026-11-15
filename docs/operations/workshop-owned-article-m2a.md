@@ -26,7 +26,7 @@ Coordinator-approved console accounting preserves exact native HTTP failures fro
 Before first Docker start, send exact committed implementation/source/tree, safe rendered topology/full admission/test/package pins and measured capacity for root review. Subsequent runtime phases and empty actual auth/readiness proof precede seed. Seed/partial/browser failure preserves data for review. M1 runtime/source/cache/receipts stay unchanged. Final integration awaits coordinator's latest protected code base and a fresh checkpoint if it advances; no expensive PR CI yet.
 
 
-## Protected combined UI integration checkpoint (2026-11-16 UTC)
+## Protected combined UI integration checkpoint (2026-11-15 UTC)
 
 Protected source f534d0aeb76973ca3b8c70b14c806973edb1b457/tree902287299c37c49ebb3cae2245303e0c95100e90 includes PR432 and dependent PR435. The previous ebedbc18 package remains held, unstarted and unseeded; preserve its private physical receipt and immutable pins before replacing only source/archive/binary/config at the independent M2A root. All four stores must remain empty through the next root review. M1 is unchanged.
 
@@ -40,3 +40,16 @@ Capacity is measured, never assumed: retain Docker813694976 bytes and home704643
 
 
 Integration implementation checks:50 M2A tests,33 M1 tests and3 Compose image tests pass on the protected combined UI integration. Seed-helper read-only inspect may precede the empty-auth receipt under full resource admission; writes retain the exact receipt gate. Browser prerequisites verify real auth/config local and purchase configuration disabled before the single simulated session response. The original authored body must appear once before ordered headings/instructions; all quote and prepare attempts are errors. Old expected quote503 is no longer accepted. No application startup/seed/acceptance is authorized until root reviews the fresh immutable physical package.
+
+
+## Browser diagnostics amendment (2026-11-15 UTC)
+
+The bed88597 runtime passed six-service actual policy,42 migrations plus unchanged repeat, empty-auth/readiness, one authored six-row/two-object seed and exact repeat. First browser attempt failed before screenshots; the wrapper discarded the Node stable assertion code and partial counters. All six owned services and relay are stopped, attachments0, stores preserved. No retry before root review.
+
+Todo: Preserve sanitized browser failure stage/code/counters/route statuses and private partial screenshot, reseal exact package and obtain root review before same-resource retry.
+
+Allowlisted correction only in workshop_owned_article_smoke.py and its tests: strict stable error-code/stage allowlists, bounded counters and category/status aggregates, no response bodies/headers/URLs, private screenshot if a page exists when failure occurs. Preserve partial safe diagnostics through Python instead of replacing them with a generic error. Red-first synthetic failure tests must cover unsafe error text/stage rejection, counter/category/status bounds, receipt private modes and screenshot capture failure. Keep the sole session simulation, authentic PG/S3 responses, original body once/ordered steps, zero quote/prepare and no external authority unchanged. No product edits.
+
+Rebuild/reseal immutable source/archive/binary/config/manifest within measured capacity, preserve the old exact package and historical receipts. Stopped actual resources/config and storage identities must match before only accepted-state.source_sha advances; do not let a receipt bless unexpected resources. The old seed/auth receipts retain their original source/binding. After independent root package review only: restart the same admitted resources in order, revalidate readiness and actual policy, perform read-only exact row/object readback against the historical fixture marker, and explicitly re-attest a provenance-linked seed receipt to the new source/accepted binding before retrying the browser. No fresh insert/reset/delete/upsert or fabricated empty-auth claim. Keep the successful historical first seed and empty-auth evidence intact.
+
+Home reserve remains7046430720 bytes, warm-build abort threshold7180648448 bytes; Docker reserve813694976 bytes. Preserve immutable old archive/binary via same-filesystem links and replace source only with the exact new archive while stopped; retain the old full archive for reconstruction. Stop before a reserve breach. No runtime restart or browser retry until root reviews the complete new package.

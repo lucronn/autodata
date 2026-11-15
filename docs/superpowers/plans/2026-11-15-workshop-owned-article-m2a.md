@@ -91,7 +91,7 @@ Retain Docker512MiB floor plus128MiB startup/72MiB logs/64MiB growth and home2Gi
 Stop exact owned browser/relay/M2A services, preserve state, verify listener absent/no attachments and M1 unchanged. No public exposure, provider/model/Stripe/Firebase calls, fake payments/grants, PR/merge without root review. Defer expensive exact-head CI until latest protected SHA is coordinated; if PR427 lands first, create a fresh synchronized integration checkpoint/preflight before source integration.
 
 
-## Protected combined UI integration checkpoint (2026-11-16 UTC)
+## Protected combined UI integration checkpoint (2026-11-15 UTC)
 
 Protected source f534d0aeb76973ca3b8c70b14c806973edb1b457/tree902287299c37c49ebb3cae2245303e0c95100e90 includes PR432 and dependent PR435. The previous ebedbc18 package remains held, unstarted and unseeded; preserve its private physical receipt and immutable pins before replacing only source/archive/binary/config at the independent M2A root. All four stores must remain empty through the next root review. M1 is unchanged.
 
@@ -102,3 +102,16 @@ Use the installed matching Node Playwright1.62.1/core1.62.1 with pinned system C
 The old expected disabled-quote503 exception is superseded by protected PR432: zero quote and zero prepare requests are required. Missing simulated auth may still produce the explicit negative-control auth/session401; every other console/page/resource failure remains blocking. The original fixture body must be visible and must not be altered to hide omission. Seed read-only inspect may precede the empty-auth receipt only under full actual-resource admission; writes still require that receipt.
 
 Capacity is measured, never assumed: retain Docker813694976 bytes and home7046430720 bytes plus inode floor1000. Preserve old pins within this budget, cap additional warm build growth at256MiB and abort the compiler process group before home reaches the full floor plus128MiB. No cache pruning or old-state reset. Root reviews the immutable source/archive/binary/config/manifest, tests and physical/capacity package before any M2A Docker mutation. Issue398 remains open; authored local display is not licensed provider/Firebase/payment acceptance.
+
+
+## Browser diagnostics amendment (2026-11-15 UTC)
+
+The bed88597 runtime passed six-service actual policy,42 migrations plus unchanged repeat, empty-auth/readiness, one authored six-row/two-object seed and exact repeat. First browser attempt failed before screenshots; the wrapper discarded the Node stable assertion code and partial counters. All six owned services and relay are stopped, attachments0, stores preserved. No retry before root review.
+
+Todo: Preserve sanitized browser failure stage/code/counters/route statuses and private partial screenshot, reseal exact package and obtain root review before same-resource retry.
+
+Allowlisted correction only in workshop_owned_article_smoke.py and its tests: strict stable error-code/stage allowlists, bounded counters and category/status aggregates, no response bodies/headers/URLs, private screenshot if a page exists when failure occurs. Preserve partial safe diagnostics through Python instead of replacing them with a generic error. Red-first synthetic failure tests must cover unsafe error text/stage rejection, counter/category/status bounds, receipt private modes and screenshot capture failure. Keep the sole session simulation, authentic PG/S3 responses, original body once/ordered steps, zero quote/prepare and no external authority unchanged. No product edits.
+
+Rebuild/reseal immutable source/archive/binary/config/manifest within measured capacity, preserve the old exact package and historical receipts. Stopped actual resources/config and storage identities must match before only accepted-state.source_sha advances; do not let a receipt bless unexpected resources. The old seed/auth receipts retain their original source/binding. After independent root package review only: restart the same admitted resources in order, revalidate readiness and actual policy, perform read-only exact row/object readback against the historical fixture marker, and explicitly re-attest a provenance-linked seed receipt to the new source/accepted binding before retrying the browser. No fresh insert/reset/delete/upsert or fabricated empty-auth claim. Keep the successful historical first seed and empty-auth evidence intact.
+
+Home reserve remains7046430720 bytes, warm-build abort threshold7180648448 bytes; Docker reserve813694976 bytes. Preserve immutable old archive/binary via same-filesystem links and replace source only with the exact new archive while stopped; retain the old full archive for reconstruction. Stop before a reserve breach. No runtime restart or browser retry until root reviews the complete new package.
