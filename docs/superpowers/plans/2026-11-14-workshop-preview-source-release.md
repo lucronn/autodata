@@ -15,7 +15,12 @@ The source delta from cad924e touches API authentication timing, commerce route 
 
 The API environment file `/etc/autodata/preview/api-public-preview.env` currently hashes to `3c0a5d519fb055d6ef87b421abbe9dc731e20250c86606fb2987822442c7bac1`; do not disclose or copy its contents into repository evidence. Re-check hash and effective ExecStart immediately before rollout; a drift requires coordinator review. Keep port18080, environment file, database, ingestion3031, NATS, object storage, proxy and Docker dependency drop-in unchanged. No ingestion/schema/service dependency redesign, DNS, grants, secrets, checkout attempt or purchase enablement.
 
-## Bounded coordinator rollout and rollback
+## Compatibility blocker discovered before rollout
+
+The unchanged environment contains `AUTODATA_ENV=production`, `AUTODATA_PUBLIC_ORIGIN=https://autodata.cars.tk` and `AUTODATA_COMMERCE_MODE=stripe_test`. This is a non-secret compatibility observation; purchase is disabled by the existing private authority. Current source `configuredCommerceClient` rejects stripe_test for that public origin. Therefore the binary-only unchanged-env rollout below is BLOCKED and must not execute. Setting API commerce disabled also removes the grant checker required by `validatePaidCatalogDependencies` under Firebase and cannot preserve the existing paid catalog. Do not relabel the public API stripe_live merely to evade initialization checks. A separately synchronized source/configuration decision is required. The old live binary stays in place; passing tests/build is only an artifact receipt.
+
+## Bounded coordinator rollout and rollback (blocked)
+
 
 After test success and exact-checkpoint preflight/readback, coordinator alone installs the hash-verified binary root-owned0755 at `/usr/local/libexec/autodata/workshop-preview-c115dcde-r1/autodata-api` (directory root-owned0755, destination previously absent). Preserve the old binary. Capture effective service identity, existing override bytes and hashes, private ingestion health, local/public readiness and purchase disabled; missing or unhealthy baseline blocks the switch.
 

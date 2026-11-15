@@ -1,6 +1,6 @@
 # Workshop preview source release verification
 
-Status: synchronized planning checkpoint; no live release performed.
+Status: exact-source artifact verified; public deployment BLOCKED by current source/host commerce-mode incompatibility. No live release performed.
 
 Goal: Publish exact current Workshop source as a purchase-disabled public preview while preserving runtime dependencies and a verified binary rollback.
 
@@ -16,3 +16,11 @@ Concrete todo:
 - [ ] Build the pinned API source and run API/shared-contract and Workshop regression tests; retain hashes and logs.
 - [ ] Hand the verified artifact and bounded rollout/rollback to the coordinator; coordinator alone switches the API binary after gate readback.
 - [ ] Verify public/local readiness, exact embedded assets and disabled purchase configuration; record final runtime identity and any rollback.
+
+## Exact-source artifact receipt
+
+Planning checkpoint `be44de35682489f4f0d189598461c0a582c71178` was committed/pushed after Issue410 and Project8 readback; canonical machine preflight returned `{"status":"synchronized","errors":[]}` before build/testing. Exact product archive SHA256 `d11db71acf3ef4636cee7947f074a0d76f1154b7fade6a80985819bd523938ed`. API and shared-contract `go test ./...` both passed; Workshop Node suites passed267 tests with0 failures. Build used Go1.26.4 linux/amd64, CGO_ENABLED=0, `go build -trimpath` from the archive. No application file was modified.
+
+Binary SHA256 `d5fea4d91d289e244b2d09cfe7bfb9563d38a1eed719b54090b2b1cee579f506` (61395149 bytes). Private binary: `/home/corp/autodata-evidence/preview-source-release-c115dcde/autodata-api`; manifest, complete logs and build metadata are in the same evidence directory. This binary has not been installed or started against serving dependencies.
+
+The public environment's non-secret mode fields are production + public autodata.cars.tk origin + stripe_test. Current source refuses this combination at commerce initialization. Disabled API commerce also removes required grant-check transport. The binary-only rollout is blocked; no service, DNS, database, ingestion, purchase, grant or secret state was changed. Coordinator received the exact finding before any installation. A later decision must preserve grant checks and disabled purchase while respecting the newly merged non-production-only test checkout boundary.
