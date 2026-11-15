@@ -24,6 +24,13 @@ def candidate():
     return json.loads(text)
 
 
+def runtime_fixture():
+    config=candidate();actual=[]
+    for name,svc in config["services"].items():
+        actual.append({"Image":svc["image"],"Config":{"Labels":{"com.docker.compose.service":name},"User":svc["user"],"Cmd":svc["command"],"Env":[k+"="+v for k,v in svc["environment"].items()],"WorkingDir":svc.get("working_dir","")},"HostConfig":{"ReadonlyRootfs":True,"Privileged":False,"CapDrop":["ALL"],"CapAdd":[],"SecurityOpt":["no-new-privileges:true"],"ExtraHosts":[],"Devices":[],"Memory":int(svc["mem_limit"][:-1])*1024**2,"NanoCpus":1000000000,"LogConfig":{"Type":svc["logging"]["driver"],"Config":svc["logging"]["options"]},"Tmpfs":dict(item.split(":",1) for item in svc["tmpfs"]),"PortBindings":{}},"Mounts":[{"Type":"bind","Source":m["source"],"Destination":m["target"],"RW":not m["read_only"]} for m in svc["volumes"]]})
+    return config,actual
+
+
 class AdmissionTests(unittest.TestCase):
     def test_valid_six_service_candidate(self):
         self.assertEqual(a.validate_config(candidate()), [])
@@ -184,6 +191,13 @@ class AdmissionTests(unittest.TestCase):
                 meta={"Config":{"Env":[key+"=synthetic-secret-sentinel"]}}
                 self.assertTrue(a.image_env_errors(meta,{"environment":{key:"synthetic-secret-sentinel"}}))
                 self.assertEqual(a.image_env_errors(meta,{"environment":{key:""}}),[])
+
+    def test_actual_resource_policy_rejects_security_env_and_mount_drift(self):
+        config,actual=runtime_fixture()
+        self.assertEqual(a.runtime_policy_errors(actual,config),[])
+        for mutate in [lambda c:c[0]["HostConfig"].update(Memory=1),lambda c:c[0]["HostConfig"].update(CapAdd=["ALL"]),lambda c:c[0]["HostConfig"].update(PortBindings={"8080/tcp":[]}),lambda c:c[0]["HostConfig"].update(Tmpfs={"/tmp":"rw"}),lambda c:c[0]["Mounts"][0].update(RW=False),lambda c:c[0]["Config"]["Env"].append("NEW_PROVIDER_SECRET=synthetic-secret-sentinel")]:
+            changed=copy.deepcopy(actual);mutate(changed)
+            self.assertTrue(a.runtime_policy_errors(changed,config))
 
     def test_helper_contains_no_docker_mutation_or_general_shell(self):
         self.assertEqual(a.DOCKER_READ_COMMANDS, {"image-inspect", "compose-config", "network-list-inspect", "container-list-inspect"})

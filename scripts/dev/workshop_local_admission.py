@@ -213,6 +213,36 @@ def runtime_resources():
     return nets,containers
 
 
+def runtime_policy_errors(containers, config):
+    errors=[]
+    for container in containers:
+        name=(container.get("Config",{}).get("Labels") or {}).get("com.docker.compose.service")
+        if name not in config.get("services",{}):errors.append("runtime_unknown_service");continue
+        wanted=_normalize(config["services"][name]);actual=container.get("Config",{});host=container.get("HostConfig",{})
+        if container.get("Image")!=wanted["image"] or actual.get("User")!=wanted["user"] or actual.get("Cmd")!=wanted["command"]:errors.append("runtime_process")
+        if "working_dir" in wanted and actual.get("WorkingDir")!=wanted["working_dir"]:errors.append("runtime_working_directory")
+        if "entrypoint" in wanted and actual.get("Entrypoint") not in [wanted["entrypoint"],None if wanted["entrypoint"]==[] else wanted["entrypoint"]]:errors.append("runtime_entrypoint")
+        if host.get("ReadonlyRootfs") is not True or host.get("Privileged") or host.get("CapDrop")!=["ALL"] or host.get("CapAdd") or host.get("SecurityOpt")!=["no-new-privileges:true"] or host.get("ExtraHosts") or host.get("Devices") or host.get("PortBindings"):errors.append("runtime_security")
+        if host.get("Memory")!=wanted["mem_limit"] or host.get("NanoCpus")!=int(float(wanted["cpus"])*1000000000):errors.append("runtime_resource_limit")
+        logging=wanted["logging"]
+        if host.get("LogConfig")!={"Type":logging["driver"],"Config":logging["options"]}:errors.append("runtime_logging")
+        if (host.get("Tmpfs") or {})!=dict(item.split(":",1) for item in wanted.get("tmpfs",[])):errors.append("runtime_tmpfs")
+        if host.get("RestartPolicy",{}).get("Name","no")!="no":errors.append("runtime_restart")
+        mounts=container.get("Mounts",[])
+        if any(m.get("Type") not in ["bind","tmpfs"] for m in mounts):errors.append("runtime_mount_type")
+        observed=sorted((m["Source"],m["Destination"],not m["RW"]) for m in mounts if m.get("Type")=="bind")
+        expected=sorted((m["source"],m["target"],m.get("read_only",False)) for m in wanted.get("volumes",[]))
+        if observed!=expected:errors.append("runtime_mount")
+        env=dict(item.split("=",1) for item in actual.get("Env",[]) if "=" in item)
+        specified=wanted.get("environment",{})
+        if any(env.get(k)!=v for k,v in specified.items()):errors.append("runtime_environment")
+        for key in env:
+            sensitive=re.search(r"PASSWORD|SECRET|TOKEN|API_KEY|CREDENTIAL|BEARER|AUTHORIZATION|_KEY$",key) is not None
+            if (key.startswith(IMAGE_CONFIG_PREFIXES) or sensitive) and key not in specified:errors.append("runtime_unreviewed_env")
+        errors+=image_env_errors({"Config":{"Env":actual.get("Env",[])}},{"environment":env})
+    return sorted(set(errors))
+
+
 def _path_evidence(path):
     parts=[path,*path.parents]
     symlink=any(p.is_symlink() for p in parts)
@@ -230,7 +260,11 @@ def path_errors(path,probe=_path_evidence):
 
 def _capture(command):
     # Capture stderr too: it can include interpolated private configuration.
-    result=subprocess.run(command,capture_output=True,text=True,timeout=30,check=False)
+    env=None
+    if command[0]=="docker":
+        command=["/usr/bin/docker","--host","unix:///var/run/docker.sock",*command[1:]]
+        env={"PATH":"/usr/bin:/bin","LANG":"C.UTF-8","HOME":"/nonexistent"}
+    result=subprocess.run(command,capture_output=True,text=True,timeout=30,check=False,env=env)
     if result.returncode:raise RuntimeError("read_command_failed")
     return result.stdout
 
@@ -264,6 +298,7 @@ def main(argv=None):
         empty={name:True if marker is not None else not any((ROOT/name).iterdir()) for name in DATA_DIRS}
         errors+=fresh_data_errors(empty,marker,storage)
         nets,containers=runtime_resources();errors+=ownership_errors(nets,containers,marker)
+        errors+=runtime_policy_errors(containers,config)
         for p in [ROOT,*[Path(v["source"]) for s in config["services"].values() for v in s.get("volumes",[])]]:errors+=path_errors(p)
         errors+=archive_errors(ROOT/"source.tar", ROOT/"source", manifest)
         actual_tree=_capture(["git","-C",str(Path(__file__).resolve().parents[2]),"show","-s","--format=%T",manifest["source_sha"]]).strip()
