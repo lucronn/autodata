@@ -1,6 +1,6 @@
 # Private diagnostics/SVG runtime compatibility
 
-Status: first handoff BLOCKED; canonical plan now requires physical-root/local-daemon/fsync/rollback amendment and fresh checks before review. Earlier fixture results are historical; all serving mutation remains held.
+Status: amended physical handoff verified; 23 offline tests, actual-image hostile-context fixture, fresh fsynced physical backup and passive baseline check passed. Independent coordinator review and every serving mutation remain held.
 
 Use cached3132 dependency image plus immutable protected083 full source bind, retaining6fcc/source92/image5c8 rollback. Explicit Entrypoint=/usr/local/bin/python and Cmd=-m autodata_ingestion.http_service preserve the existing legacy preview's effective direct Python argv and ambient-env process contract; the cached GCE entrypoint/file-secret graph is unchanged. Coordinator accepted this direction contingent on actual-image executable/User/workdir/mount/RO/env-name/argv proof and final manifest review.
 
@@ -9,3 +9,5 @@ No application/schema/dependency/connector/commerce/flag change. Isolated actual
 The immutable083 source, actual-image fixture, exact worker delta, current public API pins,10 offline rollback/storage tests and prepared backup are recorded in the canonical verification document. Candidate payload changes only image, full source mount, explicit Python Entrypoint and Cmd; retain6fcc/source92/image5c8. Activation excludes all live article capture/recapture/intake/ensure and provider dispatch. All27 protected tables and12 hashed catalog row inventories must remain exact through activation. The future internal configuration probe may add legitimate scoped selectors; it must enumerate additions and preserve all baseline/protected rows.
 
 Mandatory amendment is in the canonical plan: physical .local/state root on /dev/nvme0n1p11, pinned absolute local Docker/socket/empty config and minimal env, proxy-free HTTP, read-only PGOPTIONS, fsynced backup/markers/directory, broad recovery finally and exact retained identity plus protected/catalog postchecks. New synchronized checkpoint/preflight precede helper edits. Old loop-backed helper/manifest/backup must not authorize activation.
+
+The amendment is implemented and verified on the physical root: absolute pinned local child boundary, proxy isolation, READ ONLY PG defaults, crash-durable file/directory/marker ordering, broad recovery finally and exact retained/protected/catalog postchecks.23 offline tests plus actual-image hostile-context fixture and fresh backup passed. Exact artifact hashes are in canonical verification; coordinator review and serving execution remain held.
