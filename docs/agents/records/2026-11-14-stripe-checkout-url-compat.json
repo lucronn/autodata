@@ -1,0 +1,17 @@
+{
+  "goal": "Support current Stripe hosted Checkout g/pay URLs without broadening trusted authority",
+  "plan_ref": "docs/superpowers/plans/2026-11-14-stripe-checkout-url-compat.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/420",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/stripe-checkout-url-compat.md"
+  ],
+  "todo": [
+    "Synchronize plan, Issue420, Project8 and canonical documentation; pass pinned-base preflight",
+    "Observe red-first Python, Go, browser and acceptance-harness g/pay regressions while retaining strict negative cases",
+    "Implement the narrow two-form URL compatibility change, synchronized OpenAPI and real harness parsing without URL-derived session identity",
+    "Run relevant full tests, independent exact-head review and required CI; retain separate isolated TEST/runtime and licensed browser acceptance evidence"
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-15T00:42:23.839331+00:00"
+}

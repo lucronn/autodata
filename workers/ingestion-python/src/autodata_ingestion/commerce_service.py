@@ -75,7 +75,7 @@ def validate_checkout_url(value):
         parsed = urlsplit(value)
         valid = (parsed.scheme == 'https' and parsed.hostname == 'checkout.stripe.com'
                  and parsed.netloc == 'checkout.stripe.com'
-                 and parsed.path.startswith('/c/pay/') and len(parsed.path)>len('/c/pay/')
+                 and parsed.path.startswith(('/c/pay/', '/g/pay/')) and len(parsed.path)>len('/c/pay/')
                  and not any(c.isspace() or ord(c)<32 or ord(c)==127 for c in value))
     except (ValueError, TypeError):
         valid = False

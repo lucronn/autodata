@@ -53,6 +53,17 @@ class CommerceAuthorityTests(unittest.TestCase):
         self.assertEqual(canonical_checkout_hash('id','US','v1'),canonical_checkout_hash('id','US','v1'))
         self.assertNotEqual(canonical_checkout_hash('id','US','v1'),canonical_checkout_hash('id','CA','v1'))
 
+    def test_current_hosted_checkout_paths_are_opaque_and_strict(self):
+        for prefix in ('c','g'):
+            hosted=f'https://checkout.stripe.com/{prefix}/pay/opaque_Checkout42#opaque%2Ffragment'
+            self.assertEqual(validate_checkout_url(hosted),hosted)
+            for value in (hosted.replace('https:','http:'),hosted.replace('checkout.stripe.com','checkout.stripe.com.evil'),
+                          hosted.replace('checkout.stripe.com','user@checkout.stripe.com'),hosted.replace('checkout.stripe.com','checkout.stripe.com:443'),
+                          f'https://checkout.stripe.com/{prefix}/pay/',hosted+' ',hosted+'\x00'):
+                with self.subTest(value=value),self.assertRaises(CommerceError):validate_checkout_url(value)
+        for value in ('https://checkout.stripe.com/pay/opaque','https://checkout.stripe.com/x/pay/opaque'):
+            with self.assertRaises(CommerceError):validate_checkout_url(value)
+
     def test_return_origin_is_server_configured_and_environment_bound(self):
         for origin in ('https://autodata.cars.tk', 'https://cars.tk'):
             with self.subTest(origin=origin):
