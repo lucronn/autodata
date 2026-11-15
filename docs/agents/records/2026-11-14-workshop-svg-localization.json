@@ -1,0 +1,16 @@
+{
+  "goal": "Localize provider SVG illustrations as bounded PNG derivatives while preserving exact source provenance",
+  "plan_ref": "docs/superpowers/plans/2026-11-14-workshop-svg-localization.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/419",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/workshop-svg-localization.md"
+  ],
+  "todo": [
+    "Add pinned renderer and bounded isolated SVG rasterization with external-reference denial",
+    "Preserve exact originals and PNG derivation metadata and honest capture failure reasons",
+    "Test hostile and valid synthetic SVG capture and run required checks without production mutation"
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-14T23:00:00Z"
+}
