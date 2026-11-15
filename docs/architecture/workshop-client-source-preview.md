@@ -17,7 +17,12 @@ Public desktop/mobile QA will hold auth/config to prove deterministic disabledâ†
 
 Concrete todo:
 
-- [ ] Commit and machine-check this planning-only checkpoint; hold all build/helper/package/runtime work until root supplies protected UI source SHA/tree and independently reviewed exact-head CI.
+- [x] Commit and machine-check this planning-only checkpoint; hold all build/helper/package/runtime work until root supplies protected UI source SHA/tree and independently reviewed exact-head CI.
 - [ ] After that dependency, synchronize a fresh exact-source/base checkpoint and measured baseline, build/test immutable source and prepare a fresh physical one-attempt release/rollback package for root review.
 - [ ] Validate exact source/client regressions, old-private compatibility, physical/local-Docker/protected-state/permissions/rollback identity-wait and deterministic browser route-policy fixtures without provider or Stripe calls.
 - [ ] Root alone authorizes and executes one reviewed source-only switch, desktop/mobile anonymous acceptance or one exact rollback; preserve honest source-only receipts without real-data, licensed-reader, Firebase settlement or durability claims.
+
+
+## Planning verification receipt
+
+Planning checkpoint `a4423b2f35f64941ba7dcad3934318405358abe2` / tree `e920c9ade365f0f90a2043849c65329b014e5e07` synchronized Issue431/Project8 and passed canonical preflight with `status:synchronized`, `errors:[]`. Repository governance10 tests and whitespace checks passed. No implementation/helper/artifact was prepared, no serving request or mutation occurred for this source-canary task, and no PR/CI was opened for this planning branch. Artifact/execution boundaries above remain held. Future preparation requires a new protected UI source/tree checkpoint and root-reviewed CI/package; the planning commit is not a release source.
