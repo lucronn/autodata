@@ -1,0 +1,17 @@
+{
+  "goal": "Implement offline private capture process supervision with durable16-request180-second bounds and verified kill/reap while keeping provider dispatch disabled",
+  "plan_ref": "docs/superpowers/plans/2026-11-16-private-capture-supervisor.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/401",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/private-capture-supervisor.md"
+  ],
+  "todo": [
+    "Synchronize protected-base plan, Issue401, Project8 and canonical supervisor contract before code",
+    "Add red child-stall, TERM-resistant descendant and exhausted-budget regressions without supplier calls",
+    "Implement durable consumed16-request journal,180-second monotonic run budget, bounded operation child process groups, output caps and unconditional owned kill/reap",
+    "Run offline supervisor tests and seal reviewable branch/evidence; keep dispatch null pending independently verified origin-to-deployed-commit/image attestation"
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-16T06:37:14.768091+00:00"
+}
