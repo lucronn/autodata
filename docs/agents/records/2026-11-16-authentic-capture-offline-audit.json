@@ -1,0 +1,17 @@
+{
+  "goal": "Audit retained authentic captures offline with integrity, positional media binding, binary availability and explicit rights evidence while withholding external display acceptance",
+  "plan_ref": "docs/superpowers/plans/2026-11-16-authentic-capture-offline-audit.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/401",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/authentic-capture-offline-audit.md"
+  ],
+  "todo": [
+    "Implement metadata-only offline audit using existing connector envelope and article adapters; no network, runtime or persistence",
+    "Verify retained body/envelope hashes, exact per-position bindings including repeats, declared references and local asset bytes",
+    "Validate explicit content-hash-bound rights evidence references; unknown, incomplete or forged evidence blocks external display",
+    "Add owned regressions for repeated images, missing/forged bindings, hash mismatch, unavailable binaries, unknown rights and output redaction; run retained40 corpus and push reviewable evidence"
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-16T06:27:48.223142+00:00"
+}
