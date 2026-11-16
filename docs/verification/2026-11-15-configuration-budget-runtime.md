@@ -113,3 +113,10 @@ Helper SHA d781f3696eab8d865193908295d8e3fb742061f2656e40bb65e815bce81063d9. Com
 ```
 
 After root independently reviews the produced mapping and copy result, cleanup uses the exact mapping_sha256 returned by copy with the same helper hash. It cannot be pinned before copying because the receipt binds newly allocated archive inodes. Root must not invoke copy/cleanup until exact helper review. No provider or runtime action is authorized by this archival gate.
+
+
+## Current PR440 protected-be1 integration verification
+
+Docs-only checkpoint `c081407e` is directly based on protected `be1a1f235e8eeacc051ac905c4ed8a953a41c8a9`; its synchronized Issue401/Project8 plan/record passed exact checkpoint preflight before any helper file was copied. The four helper and four test Git blob IDs equal independently reviewed `0212dd8d` exactly. Current architecture/records distinguish historical272/4048/b435/a82 gates and the single manual-INCONCLUSIVE configuration GET from current source-only authority. Historical TODOs are preserved as historical records, not a pending request to replay that GET.
+
+Focused no-provider checks: configuration watchdog/runtime/observer unittest modules76 PASS; archive owned-fixture module15 PASS (91 total). Helper files compile via in-memory Python compile; all four current records pass machine preflight at their checkpoint. No build, activation, live Docker/systemd/SQL operation, runtime request or provider call was performed. Tests use owned temporary files and injected synthetic subprocess/timeout/restart behavior; they do not establish real provider success. Worktree and Git metadata reside on offloaded ext4; historical auth-probe/M1 caches and M2A package/data/markers are untouched. Draft PR440 remains held for independent exact-head review and required CI.
