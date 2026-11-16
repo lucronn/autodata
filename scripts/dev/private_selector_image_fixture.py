@@ -65,10 +65,10 @@ class Fixture:
         finally:
             for identifier, role in reversed(owned):
                 try:
-                    self.check(); c.require(self.backend.fixture_cleanup_owned(identifier, role) is True, 'fixture_cleanup_ownership')
+                    c.require(self.backend.fixture_cleanup_owned(identifier, role) is True, 'fixture_cleanup_ownership')
                     self.backend.stop_fixture(identifier)
                     c.require(self.backend.fixture_stopped(identifier) is True, 'fixture_stop_unknown')
-                    self.check(); c.require(self.backend.fixture_cleanup_owned(identifier, role) is True, 'fixture_cleanup_ownership')
+                    c.require(self.backend.fixture_cleanup_owned(identifier, role) is True, 'fixture_cleanup_ownership')
                     self.backend.remove_fixture(identifier)
                     c.require(self.backend.fixture_absent(identifier) is True, 'fixture_remove_unknown')
                     self.backend.record_once('fixture-cleaned-' + role, {'id': identifier})
@@ -77,9 +77,14 @@ class Fixture:
             try:
                 c.require(self.backend.owned_database_bucket_removed(self.manifest['run_id']) is True,
                           'synthetic_data_cleanup_unknown')
-                c.require(self.backend.serving_snapshot() == before, 'serving_changed')
             except Exception:
                 cleanup_failed = True
+            # Boundary drift is acceptance evidence; it must never block owned cleanup.
+            try:
+                self.check()
+                c.require(self.backend.serving_snapshot() == before, 'serving_changed')
+            except Exception:
+                failed = True
         if failed or cleanup_failed:
             self.backend.record_once('fixture-hold', {'acceptance_failed': failed,
                                                      'cleanup_unknown': cleanup_failed})

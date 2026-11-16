@@ -35,6 +35,21 @@ class Tests(unittest.TestCase):
         self.assertFalse(b.fixture_values)
         self.assertFalse(b.markers['fixture-hold']['cleanup_unknown'])
 
+    def test_boundary_failure_in_finally_never_blocks_owned_stop_and_remove(self):
+        v,b,adapter=self.fixture(); cleanup_phase=[False]; original=adapter.check
+        def check():
+            if cleanup_phase[0]:raise c.Refused('public_peer_capacity_drift')
+            return original()
+        def exercise(*_):cleanup_phase[0]=True;return dict(b.fixture_checks)
+        with patch.object(adapter,'check',side_effect=check),patch.object(b,'exercise_fixture',side_effect=exercise):
+            with self.assertRaises(c.Refused):adapter.run()
+        self.assertIn(('fixture_stop','b'*64),b.events)
+        self.assertIn(('fixture_stop','c'*64),b.events)
+        self.assertFalse(b.fixture_values)
+        self.assertFalse(b.markers['fixture-hold']['cleanup_unknown'])
+        self.assertTrue(b.markers['fixture-hold']['acceptance_failed'])
+        self.assertNotIn('fixture-result',b.markers)
+
     def test_supplier_or_payment_or_model_flag_refuses_and_cleans(self):
         v, b, adapter = self.fixture(); b.fixture_checks['no_supplier_or_payment_or_model_request'] = False
         with self.assertRaises(c.Refused): adapter.run()

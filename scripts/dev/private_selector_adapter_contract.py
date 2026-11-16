@@ -91,7 +91,11 @@ def validate(manifest, phase):
 
 
 def boundary(backend, manifest, phase):
-    """Must be called before every backend mutation, including cleanup/recovery.
+    """Admission for forward mutations and recovery; fixture cleanup uses immutable ownership.
+
+    After a fixture starts, global drift cannot veto cleanup of twice-verified
+    owned IDs. The fixture records this boundary again after cleanup as acceptance
+    evidence. Never weaken immutable ownership/daemon identity for cleanup.
 
     A future reviewed transport must implement these methods with the pinned
     executable/empty physical Docker config/local socket, file+parent fsync,

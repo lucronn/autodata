@@ -113,5 +113,14 @@
     "immutable_cleanup_verified_twice": true,
     "approval_files_installed": false,
     "actual_image_result": "NOT_RUN"
+  },
+  "post_cleanup_boundary_verification": {
+    "owned_tests": 247,
+    "new_tests": 1,
+    "red_regression": "global finally boundary drift skipped owned stops",
+    "owned_cleanup_before_boundary": true,
+    "boundary_drift_is_acceptance_failure_not_cleanup_unknown": true,
+    "approval_files_installed": false,
+    "actual_image_result": "NOT_RUN"
   }
 }
