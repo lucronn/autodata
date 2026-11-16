@@ -12,7 +12,7 @@
     "Create a fresh offloaded attempt2 package and unused marker mapping, pin unchanged public/private source/runtime and toolchains, prove no-dispatch dry admission and seal for root review"
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-16T05:00:07.041012+00:00",
+  "updated_at": "2026-11-16T05:02:41.592757+00:00",
   "tracking_sync": {
     "issue_comment_ref": "https://github.com/lucronn/autodata/issues/431#issuecomment-6907773226",
     "issue_readback_verified": true,
@@ -21,5 +21,19 @@
   },
   "execution_authorized": false,
   "attempt": 2,
-  "prior_evidence_immutable": true
+  "prior_evidence_immutable": true,
+  "preparation": {
+    "status": "SEALED_NO_DISPATCH_ROOT_REVIEW_PENDING",
+    "implementation_head": "2ae1ca1fc6497914064fcd1283859ef09ae2bf29",
+    "implementation_tree": "b48bfc2470ee017ed55ef648d9c9a9aab087ea27",
+    "python_tests": 13,
+    "node_tests": 8,
+    "review_seal_sha256": "06e92c30a8de539b7e87c81e3dcce956d9e9c052e905818421fdf25c59240f35",
+    "package_seal_sha256": "82653354582f5095fcd58a5408f8acf1950d2a3d8296763c6579eb80411d4898",
+    "dry_proof_sha256": "0286dd3fba3e703e6f9ddfa505274d508a21ff33863c2b4c4993652b7b790400",
+    "prior_files_preserved": 16,
+    "subprocess_dns_connect_bind_calls": 0,
+    "browser_dispatched": false,
+    "marker_absent": true
+  }
 }
