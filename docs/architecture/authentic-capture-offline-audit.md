@@ -17,3 +17,39 @@ The audit reads the retained capture layout and optional local rights/asset evid
 Output external_display_allowed remains false: this offline audit cannot establish live ownership, independent technical review, authentication or legal approval. It reports technical readiness and rights-evidence completeness separately. CLI returns success for a completed truthful audit even when coverage is incomplete, and nonzero for malformed inputs/integrity failure. The40 retained articles have no media binaries/rights evidence; preserve this honest outcome.
 
 No provider requests, Docker/runtime changes, database/S3 writes, model calls or public content exposure. Implement only this developer tool, owned tests and documentation. Test against the retained40 corpus without committing it.
+
+## Command and input contract
+
+Run from a checkout with the existing ingestion dependencies:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=workers/ingestion-python/src:packages/contracts/python python3 -m autodata_ingestion.capture_audit /private/capture-root
+```
+
+The command emits JSON to stdout; operators may save it in a private evidence directory. Exit0 means a truthful audit completed, including incomplete media or unknown rights. Exit2 means malformed input, integrity failure or adaptation failure. No output field grants display permission: `external_display_allowed` is always false, including when every local file and evidence reference checks out.
+
+Required inputs are `selection-manifest.json`, `file-hashes.json`, and the selected folders' `metadata.json`, `source-envelope.json`, and `source-resource.bin`. The supplied hashes establish local consistency, not authenticated origin or entitlement. No Python from the capture directory is imported or executed. Reads refuse parent traversal, symlinks and non-regular/oversized files. JSON duplicate keys are rejected.
+
+Optional `audit-assets.json` has one `resources` array. Each entry has exactly `provider`, `resource_ref`, `envelope_path`, `payload_path`, `envelope_sha256`, and `payload_sha256`. Paths are relative to the capture root. Each entry refers to the retained connector response envelope and original binary bytes; the existing envelope validator verifies provider, embedded bytes and hash. Duplicate provider/ref entries fail closed. Only declared image resources are used; no URLs are fetched. A local manifest association remains an assertion to review, not independently authenticated resource provenance.
+
+Optional `audit-rights.json` has one `records` array. Each record has exactly these fields:
+
+```json
+{
+  "provider": "bankone",
+  "resource_sha256": ["<body SHA256>", "<available asset SHA256>"],
+  "audience": "restricted_external_testers",
+  "permitted_use": "display",
+  "reviewer": "<private responsible reviewer reference>",
+  "valid_until": "2027-01-01T00:00:00Z",
+  "evidence": {"path": "rights/private-evidence.pdf", "sha256": "<evidence file SHA256>"}
+}
+```
+
+A matching record must cover the article body and all available declared binary hashes, match provider/audience/use, name a reviewer, remain unexpired and reference nonempty local evidence bytes with the exact hash. The audit outputs evidence hashes only. `EVIDENCE_REFERENCED` means that local references check out; the reviewer identity, document meaning, supplier permission and legal validity remain unverified. An absent, invalid, wrong-scope or expired record cannot authorize display. Unknown binary identities or unbound positions remain media gaps irrespective of rights records.
+
+## Meaning of coverage
+
+Each adapter-detected image occurrence is a separate position, including repeats and images nested in tables. A repeated exact binding shares a retained binary while preserving each position. `missing_binaries` counts declared refs without a local asset entry, separately from unbound positions; it does not count remote404s. Position refs are hashed in output.
+
+`local_capture_complete` means body/envelope consistency, successful adaptation, every detected position bound to a declared locally retained binary, and no missing declared binary. It does not establish decoded-image validity, image order beyond the existing adapter, render acceptance, source completeness, canonical review, DB/S3 persistence, current provider access or rights. Image-free articles can satisfy this limited local check. The audit deliberately does not rasterize SVG or invoke any subprocess.
