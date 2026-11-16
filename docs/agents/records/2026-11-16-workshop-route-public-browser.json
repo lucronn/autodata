@@ -4,7 +4,8 @@
   "issue_ref": "https://github.com/lucronn/autodata/issues/448",
   "project_ref": "https://github.com/users/lucronn/projects/8",
   "repository_doc_refs": [
-    "docs/architecture/workshop-route-public-browser.md"
+    "docs/architecture/workshop-route-public-browser.md",
+    "docs/verification/2026-11-16-workshop-route-public-browser.md"
   ],
   "todo": [
     "Record independently verified source-only release and synchronize Issue448/Project8/plan/canonical record at a new pinned preflight before browser helper edits",
@@ -12,7 +13,7 @@
     "Run pure Node/Python refusal/terminal/source tests and default no-dispatch proof, seal exact packet and commands for independent root review; hold actual browser execution"
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-16T06:35:04.245321+00:00",
+  "updated_at": "2026-11-16T06:37:13.628746+00:00",
   "protected_source_sha": "09524db599a82e7f8c79a1d8fb43bfadc6bbe2f3",
   "implementation_allowlist": [
     "scripts/dev/workshop_route_browser/*"
@@ -21,6 +22,18 @@
   "tracking_sync": {
     "issue": 448,
     "project_item": "PVTI_lAHOCSJ8cc4BiQ2BzhJEKA8",
-    "status": "In Progress"
+    "status": "Review"
+  },
+  "implementation_head": "dc8a087705dec32f8b73d3cb30eceb00ddcf075d",
+  "verification": {
+    "package_sha256": "269da8d3cf8d70a6dd68191901fbef527df72e1a0c2f4e0faf3053d39b42fa9d",
+    "review_seal_sha256": "5db501185a7293376efe73cd49b5db91baa17c0ef37e74e33dc7222ce65ec56a",
+    "dry_sha256": "22016d79d3a50a4d4a5237442796e6c508504987cf96852a4866ce46eaa1ac25",
+    "python_tests": 13,
+    "node_tests": 17,
+    "skipped": 0,
+    "browser_dispatched": false,
+    "one_use_marker_absent": true,
+    "proxy_absent": true
   }
 }
