@@ -20,5 +20,18 @@
     "project_readback_verified": true
   },
   "execution_authorized": false,
-  "attempt": 5
+  "attempt": 5,
+  "preparation": {
+    "status": "SEALED_ROOT_REVIEW_PENDING",
+    "implementation_head": "c6a047eec8194e6cfcb0e7c6402492f206c536f9",
+    "implementation_tree": "ce5f2451dfe82ac96ec6b47b58216fa8ed826f10",
+    "python_tests": 13,
+    "node_tests": 17,
+    "source_bound_test_passed": true,
+    "package_seal_sha256": "5985dc13d1b9f7eb810750d342f68dee2d277500b695f4414a21277bb4186540",
+    "review_seal_sha256": "186bf896f2a9d50e280b8908418d96856eb0dd6c5f943c85c6f4be8dfe65f216",
+    "dry_proof_sha256": "2be069427472564c7912641afaa5345221c6c87976e380c721ed8f45e771b5ff",
+    "dispatch_calls": 0,
+    "marker_absent": true
+  }
 }

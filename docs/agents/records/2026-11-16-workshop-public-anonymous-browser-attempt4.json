@@ -33,5 +33,13 @@
     "dry_proof_sha256": "e8dbbd0ef7e3849ba8c5a8af5c860212145720a8ae1cd1199ab6c0595763e7a8",
     "marker_absent": true,
     "subprocess_dns_connect_bind_calls": 0
+  },
+  "outcome": {
+    "status": "CONSUMED_SAFE_FAILURE_HARNESS_TERMINAL_PREDICATE",
+    "outcome_sha256": "ff86544dcc4b7093c8fac6799c79d918e8662ea72d7fdb255a6b420b909cc67c",
+    "browser_sha256": "bc1c1e73c74a2c5142a2badf4bd481ddfe97fdee00de1ecbcb51eb5eec4e7341",
+    "journal_sha256": "709a73a41cc4df482d00dee000346e2c84dc34ca7f7cc942305bc184d8584d06",
+    "diagnostic_errors": 0,
+    "public_ui_acceptance": false
   }
 }
