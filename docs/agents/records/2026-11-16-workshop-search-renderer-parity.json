@@ -7,11 +7,11 @@
     "docs/verification/2026-11-16-workshop-search-renderer-parity.md"
   ],
   "todo": [
-    "Synchronize local checkpoint and pass pinned machine gate before implementation.",
-    "Integrate424/a82 behavior and add red-first cross-renderer fixtures.",
-    "Repair legacy body search only; preserve document and paid image boundaries.",
-    "Run bounded offline tests and hand root exact unpushed head/tree/gaps; hold runtime/CI/push/merge."
+    "Completed synchronized gates850d5f3c/631a000b and protected424 conflict-free local integration.",
+    "Completed red-first shared renderer/search fixtures and narrow intro replay extraction repair at6dafaaff.",
+    "Completed bounded offline Go/Node/contracts/syntax verification; root exact-head/PR-body review pending.",
+    "Keep branch unpushed/PR draft and paid-runtime/M2A/authenticated-reader acceptance held; no deployment."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-16T05:20:57.154816+00:00"
+  "updated_at": "2026-11-16T05:25:16.085258+00:00"
 }
