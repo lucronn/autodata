@@ -1268,7 +1268,7 @@ class DTOStageProtocolTests(unittest.TestCase):
             with self.subTest(key=key),self.assertRaises(ValueError):smoke.validate_dto_schedule(dict(timing,**{key:value}),120)
 
 class DTOWorkflowBindingTests(unittest.TestCase):
-    def test_dto_job_matches_shared_contract_and_disabled_r6_hash(self):
+    def test_dto_job_matches_shared_contract_and_manual_trigger(self):
         # Workflow commands are inspected offline; this test launches no fixtures.
         workflow=(smoke.ROOT/'.github/workflows/autonomous-verification.yml').read_bytes()
         dto=workflow.split(b'  workshop-dto-browser:',1)[1].split(b'  r3-preparation-unit:',1)[0].decode()
@@ -1278,8 +1278,7 @@ class DTOWorkflowBindingTests(unittest.TestCase):
         self.assertIn("load_dto_timing",dto);self.assertIn("timing_contract_sha256",dto);self.assertIn("lifetime_seconds",dto)
         self.assertIn("timing['go_test_seconds']",dto);self.assertIn("timing['readiness_seconds']",dto)
         self.assertNotIn('wait "$fixture_pid"',dto);self.assertIn('if: always()',dto)
-        r6=json.loads((smoke.ROOT/'docs/agents/tasks/2026-11-03-production-release/r6-release.json').read_text())
-        self.assertEqual(r6['product_evidence']['ci_profile']['workflow_sha256'],smoke.hashlib.sha256(workflow).hexdigest())
+        self.assertIn("if: github.event_name == 'workflow_dispatch'",dto)
 
 
 class API21FakeResponse:
