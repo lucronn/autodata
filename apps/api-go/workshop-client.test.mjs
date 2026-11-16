@@ -3221,3 +3221,19 @@ test('local referenced step images render and reconcile with opaque tokens witho
     }
   }
 });
+
+// Shared with Go search tests; these are hand-authored visible/hidden terms,
+// checked against current articlePresentation and the actual reader DOM harness.
+const searchRendererFixtures = JSON.parse(readFileSync(new URL('./testdata/workshop-search-renderer.json', import.meta.url), 'utf8'));
+for (const fixture of searchRendererFixtures) test(`search renderer fixture: ${fixture.name}`, () => {
+  const article = mediaArticle([], [], fixture.article);
+  const presentation = articlePresentation(article);
+  assert.equal(presentation.introBlocks.length > 0, fixture.has_intro);
+  const rendered = articleMediaHarness().render(article).textContent;
+  const lower = rendered.toLowerCase();
+  for (const query of fixture.visible_queries) {
+    for (const word of query.toLowerCase().split(/\s+/)) assert.ok(lower.includes(word), `${query} is visible`);
+  }
+  for (const query of fixture.hidden_queries) assert.ok(!lower.includes(query.toLowerCase()), `${query} remains hidden`);
+  for (const phrase of fixture.once) assert.equal(rendered.split(phrase).length - 1, 1, `${phrase} renders once`);
+});

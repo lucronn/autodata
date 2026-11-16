@@ -28,17 +28,17 @@ func TestCatalogArticleSearchUsesRenderedDocumentNotHiddenCompatibilityFields(t 
 	}
 }
 
-func TestCatalogArticleSearchMatchesRenderedLegacyStepsBeforeHiddenBody(t *testing.T) {
+func TestCatalogArticleSearchMatchesRenderedLegacyIntroductionAndSteps(t *testing.T) {
 	article := CatalogArticle{
 		Title: "Maintenance guide", Kind: "procedure", Body: "Check coolant level.",
 		Steps: []CatalogStep{{Action: "Inspect reservoir", Heading: "HiddenHeadingMarker", Instructions: []string{"Top up approved fluid."}}},
 	}
-	for _, query := range []string{"reservoir", "approved fluid", "maintenance procedure"} {
+	for _, query := range []string{"coolant", "reservoir", "approved fluid", "maintenance procedure"} {
 		if len(filterCatalogArticleSearch([]CatalogArticle{article}, query)) != 1 {
 			t.Fatalf("legacy query %q did not match", query)
 		}
 	}
-	for _, query := range []string{"coolant", "HiddenHeadingMarker", "brake"} {
+	for _, query := range []string{"HiddenHeadingMarker", "brake"} {
 		if len(filterCatalogArticleSearch([]CatalogArticle{article}, query)) != 0 {
 			t.Fatalf("hidden or unrelated query %q matched", query)
 		}

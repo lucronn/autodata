@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -47,7 +48,7 @@ func catalogArticleSearchText(article CatalogArticle) string {
 			parts = append(parts, catalogBlockSearchText(block, images))
 		}
 	} else {
-		// Workshop renders usable legacy steps instead of the compatibility body.
+		// Workshop renders retained introductions alongside usable legacy steps.
 		// A partly empty sequence falls back to the body, matching articlePresentation.
 		usable := len(article.Steps) > 0
 		for _, step := range article.Steps {
@@ -58,6 +59,7 @@ func catalogArticleSearchText(article CatalogArticle) string {
 			usable = usable && visible
 		}
 		if usable {
+			parts = append(parts, catalogLegacyIntroductionSearchText(article.Body, article.Steps))
 			for _, step := range article.Steps {
 				if step.Action != "" {
 					parts = append(parts, step.Action)
@@ -95,6 +97,91 @@ func catalogArticleSearchText(article CatalogArticle) string {
 		}
 	}
 	return strings.Join(parts, " ")
+}
+
+// These are the replay decisions made by articlePresentation, not a second
+// layout renderer. Only exact replays disappear from the introduction; an
+// unrelated body or numbered list remains visible and therefore searchable.
+var catalogLegacyStepBoundary = regexp.MustCompile(`\b([0-9]{1,2})\.\s*([A-Z])`)
+var catalogLegacyCallout = regexp.MustCompile(`(?i)(^| )(NOTE|HINT|CAUTION|WARNING|IMPORTANT) *: *`)
+
+func catalogLegacyIntroductionSearchText(body string, steps []CatalogStep) string {
+	body = strings.Join(strings.Fields(body), " ")
+	boundaries := catalogLegacyStepBoundary.FindAllStringSubmatchIndex(body, -1)
+	if len(boundaries) > 0 {
+		replay := len(boundaries) == len(steps)
+		if replay {
+			for index, boundary := range boundaries {
+				ordinal, _ := strconv.Atoi(body[boundary[2]:boundary[3]])
+				number := steps[index].Number
+				if number <= 0 {
+					number = index + 1
+				} // Public orderedCatalogSteps normalizes missing ordinals.
+				end := len(body)
+				if index+1 < len(boundaries) {
+					end = boundaries[index+1][0]
+				}
+				text := body[boundary[4]:end] // Keep the uppercase letter consumed by RE2.
+				text = catalogLegacyCallout.ReplaceAllStringFunc(text, func(marker string) string {
+					prefix := ""
+					if strings.HasPrefix(marker, " ") {
+						prefix = " "
+					}
+					label := strings.TrimSpace(strings.SplitN(marker, ":", 2)[0])
+					return prefix + strings.ToUpper(label) + ": "
+				})
+				text = strings.Join(strings.Fields(text), " ")
+				matched := false
+				for _, parts := range catalogLegacyReplayVariants(steps[index : index+1]) {
+					candidate := strings.Join(strings.Fields(strings.Join(parts, " ")), " ")
+					matched = matched || candidate != "" && candidate == text
+				}
+				if ordinal != number || !matched {
+					replay = false
+					break
+				}
+			}
+		}
+		if replay {
+			return strings.TrimSpace(body[:boundaries[0][0]])
+		}
+		return body
+	}
+	words := strings.Fields(body)
+	// The full step projection has at least as many words as instructions alone,
+	// matching the renderer's longest-exact-suffix-first decision.
+	for _, parts := range catalogLegacyReplayVariants(steps) {
+		suffix := strings.Fields(strings.Join(parts, " "))
+		if len(suffix) == 0 || len(suffix) > len(words) {
+			continue
+		}
+		start := len(words) - len(suffix)
+		matched := true
+		for index, word := range suffix {
+			if words[start+index] != word {
+				matched = false
+				break
+			}
+		}
+		if matched {
+			return strings.Join(words[:start], " ")
+		}
+	}
+	return body
+}
+
+func catalogLegacyReplayVariants(steps []CatalogStep) [][]string {
+	full, instructions := []string{}, []string{}
+	for _, step := range steps {
+		heading := step.Action
+		if heading == "" {
+			heading = step.Heading
+		}
+		full = append(full, heading)
+		full = append(full, step.Instructions...)
+		instructions = append(instructions, step.Instructions...)
+	}
+	return [][]string{full, instructions}
 }
 
 func catalogBlockSearchText(block CatalogDocumentBlock, images []CatalogImage) string {
