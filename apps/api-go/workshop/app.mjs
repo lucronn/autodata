@@ -328,7 +328,10 @@ function renderPurchase() {
       .filter(Boolean)
       .join(" / ");
   const priced = validQuote(quote, scope()),
-    configured = purchaseConfiguration(merchant, quote);
+    configured = purchaseConfiguration(merchant, quote, {
+      testCheckout: !$('test-banner').hidden,
+      origin: globalThis.location?.origin,
+    });
   $("purchase-price").textContent = priced
     ? "$20 USD · one-time"
     : "Price is currently unavailable.";
