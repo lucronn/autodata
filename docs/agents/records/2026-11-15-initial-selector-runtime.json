@@ -7,13 +7,13 @@
     "docs/architecture/initial-selector-runtime.md"
   ],
   "todo": [
-    "Synchronize offloaded-only adapter amendment Issue401/Project8/docs/record/readbacks/preflight before implementation",
-    "Implement private_selector_adapter_contract/image_fixture/runtime_adapter cores plus focused owned mocks; no exposed live backend/execute CLI",
-    "Run offloaded drytests and seal exactcode/tests/head/tree for rootreview; no physicalhome/SQL/container/browser/provider",
-    "Physicalpackage/freshbackup/liveadaptertransport execution require separate reviewed admission; publicbrowserpending; preserve17295/343/public/v6manual evidence"
+    "Sync concrete-local-transport offloaded-only amendment Issue401/Project8/docs/record/readbacks/preflight",
+    "Implement fixeddaemon/socket/data-root boundeddefault-disabled transport, physicalsource/package/cap/seal verifier, durablelocked receipts and exact lifecycle state proof",
+    "Add transport+fixtureplan/payload artifact hashes to sharedcontract; ownedfilesystem/runner/socket/HTTP/SQL mocks only, no dispatch",
+    "Seal exacthead/tree/code/tests/dryproof forrootreview; actualfixtureplan+physicalpackage/backup/SQL/container/provider/browser execution remainHELD"
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-16T04:49:20.274174+00:00",
+  "updated_at": "2026-11-16T04:56:38.798870+00:00",
   "historical_goal": "Plan source-only private initial-selector safety runtime rollout preserving17295 rollback and incomplete v6 evidence",
   "historical_todo": [
     "Synchronize exact protected a82 Issue401/Project8/docs/record/readback/preflight before implementation",
@@ -53,5 +53,6 @@
   "container_mutations_approved": false,
   "provider_probe_approved": false,
   "preallocation_review_sha256": "e22f32b2032499ec12bca2d9bc375367786a4d01632684413cc1b828d9ca458c",
-  "adapter_implementation_only": true
+  "adapter_implementation_only": true,
+  "transport_implementation_only": true
 }
