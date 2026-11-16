@@ -212,3 +212,22 @@ Concrete todo:
 - [ ] Implement fresh attempt2 accounting/guard tests and dry proof; verify absent paths and fresh runtime/storage admission.
 - [ ] Run guarded offline Go/Node tests and exact-source build, seal bounded source-only package, compare unchanged runtime and report hashes/capacity.
 - [ ] Hold browser/install/public switch for independent root review and separate authorization.
+
+
+## Attempt2 build-only result (2026-11-16T04:22Z)
+
+Gate ff63e24168c62c0a5eb376625f015c4ab2184b8e passed machine preflight (`status:synchronized`, no errors), exact Issue431 body and Project8 In Progress readback. Root independently reviewed the dry receipt/helpers and authorized exactly one attempt2 dispatch. Dry receipt SHA22b3b25f486eb0747fccb7d672459379ebb5d6cff835ee2fbff1036c44cba392; monitor SHA68512617c99e06b97b1fa56a54667f42eb45a6461964ab3f695ff1b01b3253ab; reserve accounting SHAbec9fc6d249b0d1a44b2cf645ce6ec92d2c6526183ef8f9921932b7198360c89. Thirteen dry guard tests passed, including transient ENOENT refusal/retry and real owned-child termination on persistent allocation, capacity and external-growth failures.
+
+**BUILD/TESTS PASS; NOT DEPLOYED.** Exact selected protected source a82b31dc8850aa3956972928b8c720969765a972/tree11503a735d7d983ca3ebf090b471c89682e77278 built offline; current protected be1a1f235e8eeacc051ac905c4ed8a953a41c8a9 has identical apps/api-go tree f4faba6ee59f0000522d6962478098456957ed16. Verified every1409 tracked source files and all15 embedded Workshop assets against the source archive. API Go suite passed (package17.273s), shared-contract Go suite passed; Workshop client/demo Node307/307 passed; build succeeded. No overall PASS was claimed for stopped attempt1, whose evidence remains untouched.
+
+Exact archive33,884,160B SHA4d1536d534a9327a4524b0e35cf234c83e5de4a8d18353fd6ca3b6343f7d5e74; source-file manifest SHA1b3b4d3f6d7e686f26e7b81586f2c02a3065cc6ee838beaea15e5fa4baf515a2; all15-asset manifest SHAa5afdb3df9945bb71586d09aca08621d7a8cfc9536d95dd8097dceefd727d204; candidate binary61,405,300B SHAbb11d963666e4fc44f6b0879ebb55a14cf7b2ca221bad6ffa8d3282d5360203e. Source-only physical package `/home/corp/.local/state/autodata-workshop-client-preview-a82b31d-attempt2-20261115` independently verified/fsynced, private0700 directory/0600 files, no symlinks/hardlinks, device66315. Final allocated95,612,928B<128MiB; remaining prep38,604,800B and separate full64MiB install reservation remain. Offloaded scratch/cache/log/helper evidence is under the exact attempt2-build path above. No future install directory exists.
+
+BUILD-RESULT.json SHA14db51dc13482a3224d15a971e9a09431b92c4dadacb8b481c8f4cece5bcc3fe; final PACKAGE-SEAL.json SHA9dfcdcf3a39de85f74b5b9514406ea0ec0452d65c8ed96e33936e95663443cca. The seal enumerates every physical file, exact source/asset checks and toolchain hashes; the build result enumerates per-step logs/hashes and monitored peaks. Measured scratch peak137,691,136B, cache peak2,744,508,416B against baseline2,712,387,584B, physical package peak during build95,604,736B before final seal, minimum free home5,985,153,024B during monitored build, minimum RAM7,759,888,384B, maximum external growth3,067,904B<96MiB stop. Fresh post-seal home5,983,690,752B, offload3,766,095,872B, tmpfs7,022,370,816B are timestamped observations only, not future admission.
+
+Exact serving PID1202200 loaded/installed binaryad5ad70c, env74a93e21,99=41a658a3, dependency493beef2 and private17295/image3132/source272 lifecycle/environment/source guard matched dry/build/final baselines. No serving/rollback/private input was modified. No browser, live HTTP, supplier/catalog/quote/prepare/provider/Stripe/Firebase call, install or switch occurred. Synthetic/offline unit tests do not prove authenticated real article or supplier behavior. The package is source-only evidence; it is not a reviewed activation/rollback package. Preserve separate private-selector-safety prerequisite before inviting external live-catalog testers.
+
+Current todo:
+- [x] Synchronize fresh attempt2 checkpoint and pass pinned preflight/readbacks.
+- [x] Pass13 dry guard tests and root helper review; exact fresh admission/runtime pins.
+- [x] Run single guarded offline API/contracts Go and307 Node tests; exact-a82 build; independently verify/fsync bounded source-only physical package and report hashes/capacity.
+- [ ] Root independently reviews exact source-only package and releases capacity; separately gate browser/safe-probe/rollback/activation package. No public version has been published by this preparation.
