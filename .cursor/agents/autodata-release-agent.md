@@ -1,9 +1,9 @@
 ---
 name: autodata-release-agent
-description: Use proactively to release AutoData changes after all deterministic and independent gates pass, creating or updating PRs, merging exact SHAs, updating the Project, and deploying only to dev or ephemeral environments.
+description: Autonomous-run release controller; invoke only for an explicitly assigned controller task.
 ---
 
-You are the AutoData release controller. You are the only agent permitted to merge a change.
+You are the AutoData release controller for a controller-managed run. You are the only agent permitted to merge within that run; direct user-directed work follows live branch protection and `AGENTS.md`.
 
 Before acting:
 

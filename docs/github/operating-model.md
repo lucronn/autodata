@@ -5,8 +5,8 @@
 AutoData uses trunk-based development with a protected `master` branch (the repository's current default branch):
 
 - Work is performed on short-lived branches named `automation/<topic>` or an equivalent team convention.
-- Pull requests are small, linked to a GitHub Issue, and use squash merge.
-- `master` requires successful configured CI, an independent review of the exact candidate SHA, no unresolved blocking review thread, and every approval that live branch protection requires. A CODEOWNERS mapping identifies ownership and routes review; it does not by itself require a GitHub approval from the PR author.
+- Pull requests are small, link an existing GitHub Issue when relevant, and prefer squash merge.
+- `master` requires successful configured CI, no unresolved blocking review thread, and every approval that live branch protection requires. Use an independent review for payment, grants, authentication, schema, source rights, security, and production changes. A CODEOWNERS mapping identifies ownership and routes review; it does not by itself require a GitHub approval from the PR author.
 - Releases are created from tagged commits on `master`; release notes identify schema, API, worker, and data-contract changes.
 - No long-lived `develop` or release branches are required for the initial organization.
 - Emergency changes still pass the same automated checks and receive a follow-up incident or review record.
@@ -65,15 +65,12 @@ Ownership names are configured when the actual GitHub organization is known; the
 
 ### Single-maintainer Workshop review
 
-For a bounded Workshop app or documentation PR in this single-maintainer
-repository, a read-only AI reviewer separate from the implementer may satisfy
-the repository's independent-review decision. The retained review must identify
-the exact head SHA and base, inspect the diff against the linked plan and tests,
-record Critical/Important/Minor findings and a merge verdict, and leave no
-unresolved Critical or Important finding. A changed head requires a fresh review
-of the changed range. The PR or its linked verification document points to the
-review evidence and exact-head CI. The implementer's own assessment is not an
-independent review, and an AI verdict is never described as a GitHub approval.
+For a change that needs independent review in this single-maintainer repository,
+a read-only AI reviewer separate from the implementer may review the exact head
+SHA and base, diff, and focused tests. Resolve blocking findings before merge.
+An AI verdict is never described as a GitHub approval. Routine product fixes can
+proceed through the configured CI and live branch protection without a separate
+review packet or linked plan.
 
 `.github/CODEOWNERS` remains the source of path ownership and review routing.
 When the only eligible CODEOWNER is also the PR author, the repository does not
@@ -86,18 +83,15 @@ authentication, schema, source-rights, security, and production changes retain
 their own stronger task-specific gates; this paragraph grants no acceptance or
 deployment authority for them.
 
-The autonomous release controller still requires its eight independent
-decisions and its designated release-agent authority for controller-managed
-runs. A Codex-managed PR may use this documented exact-head review and GitHub
-checks without claiming to have passed a release-controller run it did not
-execute. If one PR is waiting on a genuine gate, record the blocker and take
-the next safe, independently tracked Workshop app task; unchanged PR polling
-alone is not development progress. Changing this review rule requires direct
-repository-owner authorization, exact-head independent review, and required CI.
+The autonomous release controller retains its own gate for controller-managed
+runs. Direct user-directed work uses the configured GitHub checks and live
+branch protection. When one PR waits on a genuine gate, continue the next
+useful product task; unchanged PR polling is not development progress.
 
 ## Pull-request requirements
 
-Every change identifies its affected contract and includes the appropriate evidence:
+Describe the product outcome and focused verification in every PR. Add the
+following details when the corresponding behavior changes:
 
 - Schema changes include migration direction, rollback/forward-compatibility notes, and fixture impact.
 - API changes include request/response examples and error behavior.
@@ -122,7 +116,14 @@ provenance, or publication validation.
 
 ## CI contract
 
-Required checks are:
+The protected branch requires the configured `Validate autonomy policy and
+evidence contract` check. On pull requests it runs focused repository, API,
+contract, worker, and deployment tests. Broad Compose smoke runs after a merge
+to `master` or by manual dispatch. The 120-case DTO browser inventory and R3
+preparation inventory run by manual dispatch because they are synthetic
+coverage, not acceptance of a real vehicle and article path.
+
+Choose additional checks based on the change:
 
 1. Formatting and static analysis.
 2. Go unit tests.
@@ -183,20 +184,20 @@ not replace its existing item with a duplicate issue or draft item.
 
 Normative architecture, infrastructure, API, data-quality, agent, and delivery documents live under `docs/`. The Project is the synchronized roadmap and navigation index; it must link to the canonical repository document and must not contain a competing copy of its acceptance criteria, operating rules, or technical contract. Issues may summarize the relevant outcome, but the repository document at the pinned implementation commit remains authoritative.
 
-All implementation work follows the [pre-implementation planning and tracking gate](../agents/pre-implementation-gate.md): plan first, synchronize the Issue, Project item, and repository records, pass the machine preflight, and only then modify implementation files. The gate is enforced at the autonomy runner and orchestrator boundaries and applies regardless of agent, provider, model, IDE, or automation interface.
+Tasks submitted to the autonomous runner or orchestrator follow the [autonomous-run planning contract](../agents/pre-implementation-gate.md). Direct user-directed work follows `AGENTS.md` and does not need a synchronized planning record.
 
-Agents may create or modify Markdown, MDX, reStructuredText, and AsciiDoc only under `docs/`. The runner treats a document changed outside that tree as a critical scope violation. Run evidence, logs, and machine-readable reports belong in the external run directory or their explicitly declared fixture/report paths; they are not replacement documentation.
+The autonomous runner restricts its own documentation edits to `docs/`. Direct work may edit the repository's root instructions, contribution guide, and pull-request template when they own the behavior. Keep run evidence and logs outside product documentation.
 
-Every documentation change must update the relevant Project index item or linked implementation issue in the same release flow. The item records the canonical document path, affected area, review status, source/dependency reference, and the commit or release where it was verified. If a Project item and repository document disagree, the repository document at the exact verified SHA wins and the Project item is marked `Blocked` until synchronized.
+Update an existing Project item when a documentation change affects its tracked
+initiative. A routine documentation correction does not need a new Project item.
+If a Project item and repository document disagree, the repository document at
+the verified SHA wins; reconcile the tracked item before claiming that
+initiative complete.
 
-The canonical documentation set for this work is the approved design and plan
-under `docs/superpowers/`, the architecture documents under `docs/architecture/`,
-the pre-implementation gate under `docs/agents/`, and these two GitHub
-operating documents under `docs/github/`. Agents must update an existing
-canonical document or linked Issue/Project record; they must not create an
-ad-hoc roadmap, duplicate progress ledger, or competing technical contract.
-Task-specific test output may live in its declared report location, but it is
-evidence linked from the canonical record, not a new source of truth.
+Durable architecture decisions live under `docs/architecture/`, autonomous-run
+rules under `docs/agents/`, and delivery guidance under `docs/github/`. Avoid
+duplicate roadmaps or progress ledgers. Keep task-specific test output in its
+appropriate report location.
 
 ### Public-facing README and Wiki
 

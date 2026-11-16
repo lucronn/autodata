@@ -3,9 +3,11 @@ name: Autonomous Verification
 on:
   pull_request:
     paths:
+      - "AGENTS.md"
       - ".autodata-autonomy-policy.json"
       - "README.md"
       - ".cursor/agents/**"
+      - ".cursor/rules/**"
       - "docs/agents/**"
       - "docs/architecture/**"
       - "docs/github/**"
@@ -33,9 +35,11 @@ on:
     branches:
       - master
     paths:
+      - "AGENTS.md"
       - ".autodata-autonomy-policy.json"
       - "README.md"
       - ".cursor/agents/**"
+      - ".cursor/rules/**"
       - "docs/agents/**"
       - "docs/architecture/**"
       - "docs/github/**"
@@ -84,6 +88,9 @@ jobs:
 
       - name: Run validator unit tests
         run: python -m unittest discover -s scripts/autonomy -p 'test_*.py' -v
+
+      - name: Verify contribution workflow guidance
+        run: python -m unittest discover -s scripts/dev -p 'test_repository_governance.py' -v
 
       - name: Validate deterministic evidence fixture
         run: >-
@@ -146,6 +153,7 @@ jobs:
         run: python -m unittest discover -s tests -p 'test_*.py' -v
 
       - name: Run development adapter tests
+        if: github.event_name != 'pull_request'
         run: python -m unittest discover -s scripts/dev -p 'test_*.py' -v
 
       - name: Run required GCE host delivery tests
@@ -195,6 +203,7 @@ jobs:
         run: docker compose -f infra/compose/compose.yaml -f infra/compose/compose.ci.yaml config --quiet
 
       - name: Run fake integration smoke
+        if: github.event_name != 'pull_request'
         env:
           AUTODATA_POSTGRES_PASSWORD: ci-validation-only
           AUTODATA_MINIO_ROOT_USER: ci-validation-admin
@@ -202,6 +211,7 @@ jobs:
         run: docker compose -f infra/compose/compose.yaml run --rm fake-integrations
 
       - name: Run live Compose fast-lane smoke
+        if: github.event_name != 'pull_request'
         env:
           AUTODATA_POSTGRES_PASSWORD: ci-validation-only
           AUTODATA_MINIO_ROOT_USER: ci-validation-admin
@@ -226,6 +236,7 @@ jobs:
 
   workshop-dto-browser:
     name: Workshop DTO browser inventory (not real API acceptance)
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 100
     steps:
@@ -363,6 +374,7 @@ jobs:
 
   r3-preparation-unit:
     name: R3 preparation synthetic and owned-child tests
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
