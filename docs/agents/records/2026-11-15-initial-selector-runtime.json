@@ -1,5 +1,5 @@
 {
-  "goal": "Refresh draft PR440 helper-only integration onto protected be1a1f23, preserve the eight independently reviewed implementation blobs and distinguish historical inconclusive evidence from current execution authority",
+  "goal": "Implement and independently review an offloaded, default-disabled fixed-local-daemon transport and proof adapter while all physical, runtime and provider execution remain held",
   "plan_ref": "docs/superpowers/plans/2026-11-15-initial-selector-runtime.md",
   "issue_ref": "https://github.com/lucronn/autodata/issues/401",
   "project_ref": "https://github.com/users/lucronn/projects/8",
@@ -7,13 +7,12 @@
     "docs/architecture/initial-selector-runtime.md"
   ],
   "todo": [
-    "Sync concrete-local-transport offloaded-only amendment Issue401/Project8/docs/record/readbacks/preflight",
-    "Implement fixeddaemon/socket/data-root boundeddefault-disabled transport, physicalsource/package/cap/seal verifier, durablelocked receipts and exact lifecycle state proof",
-    "Add transport+fixtureplan/payload artifact hashes to sharedcontract; ownedfilesystem/runner/socket/HTTP/SQL mocks only, no dispatch",
-    "Seal exacthead/tree/code/tests/dryproof forrootreview; actualfixtureplan+physicalpackage/backup/SQL/container/provider/browser execution remainHELD"
+    "Review exact disabled transport code/seal and owned 155-test proof",
+    "Separately synchronize concrete synthetic fixture plan/payloads/launcher/lifecycle hashes and obtain root phase approval",
+    "Keep physical source/archive/backup/SQL/container/activation/provider/browser execution held; remeasure capacity and identities before any future admission"
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-16T04:56:38.798870+00:00",
+  "updated_at": "2026-11-16T05:06:14.399439+00:00",
   "historical_goal": "Plan source-only private initial-selector safety runtime rollout preserving17295 rollback and incomplete v6 evidence",
   "historical_todo": [
     "Synchronize exact protected a82 Issue401/Project8/docs/record/readback/preflight before implementation",
@@ -23,7 +22,7 @@
     "Exact package/fixture/seal/capacity milestone for root review; serving activation and separate initial probe held/internal-request-ended fence proof required"
   ],
   "current_integration_plan_ref": "docs/superpowers/plans/2026-11-15-pr440-protected-be1-integration.md",
-  "current_protected_source_sha": "be1a1f235e8eeacc051ac905c4ed8a953a41c8a9",
+  "current_protected_source_sha": "4246264a881382676927e22adad0a1d240f03268",
   "reviewed_helper_head": "0212dd8d708d3acb522f520f25800b24fa2d60cc",
   "execution_authorized": false,
   "historical_probe_outcome": "INCONCLUSIVE_MANUAL_TARGET_ONLY_TIMESTAMP_REFRESH",
@@ -36,8 +35,8 @@
     "preliminary_tree": "e167e3ecab877ca8fde0ca4cf39916a750281733",
     "serving_source": "272aeeaad8399c305468e5d486cc391d7340f6a4"
   },
-  "protected_source_sha": "be1a1f235e8eeacc051ac905c4ed8a953a41c8a9",
-  "protected_source_tree": "39eb3530ac50bad0ecdb01a733a6a0cb373af5cf",
+  "protected_source_sha": "4246264a881382676927e22adad0a1d240f03268",
+  "protected_source_tree": "23b4d820670ed04ae6aeb0bc03365c4c0ec77645",
   "current_protected_master": "4246264a881382676927e22adad0a1d240f03268",
   "protected_helper_sha": "4246264a881382676927e22adad0a1d240f03268",
   "protected_helper_tree": "23b4d820670ed04ae6aeb0bc03365c4c0ec77645",
@@ -54,5 +53,14 @@
   "provider_probe_approved": false,
   "preallocation_review_sha256": "e22f32b2032499ec12bca2d9bc375367786a4d01632684413cc1b828d9ca458c",
   "adapter_implementation_only": true,
-  "transport_implementation_only": true
+  "transport_implementation_only": true,
+  "product_source_sha": "a82b31dc8850aa3956972928b8c720969765a972",
+  "product_source_tree": "11503a735d7d983ca3ebf090b471c89682e77278",
+  "transport_verification": {
+    "private_tests": 64,
+    "combined_tests": 155,
+    "actual_image_fixture_executed": false,
+    "dispatch_enabled": false,
+    "evidence_root": "/home/corp/autodata-evidence/private-selector-local-transport-424-20261116"
+  }
 }

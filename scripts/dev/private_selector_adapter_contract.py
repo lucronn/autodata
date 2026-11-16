@@ -34,9 +34,10 @@ SECONDARY_IDENTITY = {
     'hostconfig_by_status': {'exited': '34418021636c59610bdc662197ff49bc65ad4970cbf29def9665aa290b4a155c'},
 }
 ARTIFACTS = {'fixture': {'archive', 'source_inventory', 'fixture_adapter', 'fixture_bootstrap',
-                         'fixture_client', 'contract'},
+                         'fixture_client', 'contract', 'transport', 'fixture_plan',
+                         'fixture_payload_bootstrap', 'fixture_payload_worker'},
              'runtime': {'archive', 'source_inventory', 'dump', 'toc', 'baseline39',
-                         'fixture_receipt', 'runtime_adapter', 'contract', 'launcher', 'payload'}}
+                         'fixture_receipt', 'runtime_adapter', 'contract', 'launcher', 'payload', 'transport'}}
 
 
 class Refused(RuntimeError):
