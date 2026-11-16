@@ -1,6 +1,6 @@
 # Initial-selector private runtime rollout draft
 
-Status: protected424 post-public metadata/dry-planner checkpoint synchronized; public slot HELD, physical/SQL/runtime/provider execution prohibited.
+Status: protected424 gate synchronized; public slot released; physical/SQL/runtime/provider phases HELD for exact root preallocation review.
 Issue: https://github.com/lucronn/autodata/issues/401
 Source implementation: https://github.com/lucronn/autodata/pull/437 (Issue436).
 Project: https://github.com/users/lucronn/projects/8
@@ -143,3 +143,4 @@ Concrete todo:
 7. First initialselector realGET remains separately held without positiveinitialjob/internalGoPOST-ended/fence proof; mergedconfigurationSTART/FIN watcher cannot establish it. No routepoll/configreplay/article recapture/payment.
 
 Dry-planner implementation evidence: scripts/dev/private_selector_phase_plan.py SHA46928faa164f1092e0f977b22f41a5197042e00292a6a50fa4b907f51d20a018; eight focused owned tests PASS, CLI VALID_DRY_PLAN_EXECUTION_HELD. Offloaded receipt/validated plan/tests at /home/corp/autodata-evidence/private-selector-post-public-424-gate-20261116; planSHA18f32c674115a23a64cb869ea2e1b5034073041598453f25ef2a4fb5cee66cb5. No execution dispatcher exists. Actual-image fixture adapter, physical backup and external activation helper remain separately reviewed future work; no execution acceptance claimed. Root publicslot release remains mandatory.
+Coordinator capacity handoff update: independent public receipt prefixa00b2dc4 confirmed PID1293423/binarybb11, unchanged private/protected27/rollback. Root released exclusive public slot to this lane; this removes only slot contention. Physical allocation, SQL, Docker mutations, activation and provider GET remain HELD pending root review of preallocation-review.json SHAe22f32b2032499ec12bca2d9bc375367786a4d01632684413cc1b828d9ca458c at /home/corp/autodata-evidence/private-selector-preallocation-424-20261116. Exact a82 tar stream33,884,160B SHA4d1536d534a9327a4524b0e35cf234c83e5de4a8d18353fd6ca3b6343f7d5e74; no archive created. Fresh capacity home5,913,411,584/Docker990,789,632 passes proposed admissions with276,267,008/42,876,928B margins, not reserved. Physical roots absent; fresh backup/fixture/activator remain pending. Dryplanner39fc6e7d and its receipt deliberately retain pre-handoff false-slot state as immutable dry proof; no claim it authorizes current execution.
