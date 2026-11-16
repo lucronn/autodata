@@ -31,6 +31,7 @@ on:
       - "CONTRIBUTING.md"
       - "SECURITY.md"
       - "scripts/dev/test_repository_governance.py"
+      - ".base44/ingestion-dev.Dockerfile"
   push:
     branches:
       - master
@@ -63,6 +64,7 @@ on:
       - "CONTRIBUTING.md"
       - "SECURITY.md"
       - "scripts/dev/test_repository_governance.py"
+      - ".base44/ingestion-dev.Dockerfile"
   workflow_dispatch:
 
 permissions:
