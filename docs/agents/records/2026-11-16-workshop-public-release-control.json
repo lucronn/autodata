@@ -12,7 +12,7 @@
     "Bind exacta82 source/bb11 candidate and current1202200/ad5 public plus17295 private identities; separately reserve rootfs/home capacity and prepare an offloaded sealed artifact/command handoff for root review before any physical control copy/install/switch/probe"
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-16T04:48:06.524573+00:00",
+  "updated_at": "2026-11-16T04:48:28.264405+00:00",
   "implementation_allowlist": [
     "scripts/dev/workshop_public_release.py",
     "scripts/dev/test_workshop_public_release.py",
@@ -24,7 +24,7 @@
   "tracking_sync": {
     "issue_comment_ref": "https://github.com/lucronn/autodata/issues/431#issuecomment-6907591247",
     "issue_readback_verified": true,
-    "project_status": "Done",
+    "project_status": "In Progress",
     "project_readback_verified": true
   },
   "execution_authorized": false,
@@ -59,6 +59,7 @@
       "Earlier broad Issue431 checklist included a post-switch anonymous public browser; current reviewed source-only controls scoped browser acceptance separately and no such public browser was dispatched"
     ],
     "post_switch_public_browser_dispatched": false,
-    "issue_closure_requires_coordinator_scope_amendment_or_separate_anonymous_ui_item": true
+    "issue_closure_requires_coordinator_scope_amendment_or_separate_anonymous_ui_item": false,
+    "issue_status": "OPEN_PUBLIC_ANONYMOUS_BROWSER_PENDING"
   }
 }
