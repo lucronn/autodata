@@ -1,51 +1,12 @@
 # AutoData agent instructions
 
-Before any implementation work, read the canonical [pre-implementation planning and tracking gate](docs/agents/pre-implementation-gate.md).
+Ship the smallest working product change on the existing stack. Inspect the current behavior, change the owning code, run focused checks, and verify the user-visible path. Keep one active slice at a time. Do not assign routine work to parallel agents. Reuse an existing issue when one applies; routine user-directed work does not need a new plan, Project item, evidence packet, or approval from another agent before implementation.
 
-No implementation agent may modify implementation files until the required plan, GitHub Issue/Project update, canonical repository-document update, concrete `todo` list, and machine-checked `status: synchronized` record exist at the pinned base SHA. This file is only a discovery pointer; the canonical rule and record shape live under `docs/agents/`.
+Use a short pull request that says what works, how it was checked, and what remains unverified. Run deeper integration checks when the change touches payments, authentication, licensed data, schema migrations, or production deployment. Preserve source rights, access control, and rollback for those changes. Do not turn a missing optional test environment into a new infrastructure project when the product path can be tested directly.
 
-## Commit and push cadence
+`scripts/autonomy/runner.py` and `scripts/autonomy/orchestrator.py` have their own machine-checked planning contract. Follow [the autonomous-run gate](docs/agents/pre-implementation-gate.md) when invoking that automation. It does not gate ordinary user-directed edits.
 
-- Commit small, coherent milestones frequently as work progresses. Keep each
-  commit independently reviewable and use a clear message describing its purpose.
-- Run the checks appropriate to each milestone, then promptly push completed,
-  validated commits to the assigned feature branch. Follow the coordinator's
-  branch ownership and integration instructions when multiple agents collaborate.
-- Keep the pre-implementation gate and required verification intact. Frequent
-  commits do not authorize an agent to expand its scope, merge, or deploy.
-- Do not create empty commits, unrelated cosmetic changes, or rewrite published
-  history solely to inflate GitHub activity.
+Commit and push coherent, tested changes to a short-lived branch. Keep credentials and private source content out of commits and logs.
 
-## Base44 sandbox environment
-
-`docker-compose.base44.yml` is the sandbox-only development stack; it does not
-replace `infra/compose/compose.yaml`.
-
-- Start: `docker compose -f docker-compose.base44.yml up -d --build`.
-- The Go API is the only application process. It serves the dashboard,
-  workshop, Swagger UI, `/openapi.json` and `/v1/catalog/*`, and is mapped to
-  host port 3000 (`/healthz` liveness, `/readyz` checks DB, NATS and S3).
-- Application processes run from the bind-mounted checkout (`go run .`, Python
-  modules) on plain runtime images; `.base44/ingestion-dev.Dockerfile` installs
-  only the ingestion dependencies and copies no source.
-- The API embeds its static assets (`//go:embed`), so editing
-  `apps/api-go/{dashboard,workshop,swagger-*}` requires
-  `docker compose -f docker-compose.base44.yml restart api`. Go code changes
-  likewise need a restart; there is no Go file watcher.
-- `minio` runs SeaweedFS with the repository's pinned CI image because the MinIO
-  image is no longer publicly pullable; the API and workers still address S3 as
-  `minio:9000`.
-- No external credentials are required. `scripts/dev/ingestion_smoke.py` and
-  `autodata_ingestion.ingest_fixture` are available under
-  `--profile smoke`. Tests run inside the containers, e.g.
-  `docker compose -f docker-compose.base44.yml exec -T api go test ./...`.
-- The workshop catalog is populated by the external Bankone/Banktwo Source
-  Connector services (`BANKONE_BASE_URL` / `BANKTWO_BASE_URL`). Without a
-  reachable connector `/v1/catalog/years` correctly returns `{"items":[]}`, so
-  the vehicle cascade stays empty even though the API is healthy.
-- Provider credentials are platform secrets, delivered outside the repo at
-  `/run/base44/app.env`. `ingestion-http` loads that file last (after the
-  committed `.env.base44-defaults` placeholders), so dashboard values always
-  win; never add `INCEPTION_API_KEY`, `BANKONE_BASE_URL` or `BANKTWO_BASE_URL`
-  under compose `environment:`. The non-secret Mercury-2 tuning flags
-  (`AUTODATA_MERCURY2_*`, `INCEPTION_MODEL`, ...) mirror `infra/compose`.
+For sandbox commands and current service wiring, consult
+`docs/architecture/infrastructure-and-dev.md` and inspect the running stack.

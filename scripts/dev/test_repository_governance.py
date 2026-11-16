@@ -132,17 +132,13 @@ class RepositoryGovernanceTests(unittest.TestCase):
     def test_pull_request_template_captures_delivery_contract(self) -> None:
         content = self.read(".github/PULL_REQUEST_TEMPLATE.md")
         for heading in (
-            "## Linked issue",
             "## Outcome",
-            "## Contract and schema impact",
-            "## Provenance and evidence",
             "## Verification",
-            "## Security and secrets",
-            "## Documentation and Project tracking",
+            "## Risk and rollout",
         ):
             self.assertIn(heading, content)
         self.assertIn("sample data/", content)
-        self.assertIn("automation/<topic>", content)
+        self.assertNotIn("Every change must be tracked in Project #8", content)
 
     def test_issue_forms_cover_required_outcomes(self) -> None:
         forms = {
