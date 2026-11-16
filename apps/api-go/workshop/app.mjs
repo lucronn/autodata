@@ -789,6 +789,7 @@ async function loadArticle(id, g) {
   );
   if (!g.current()) return;
   const article = result.data?.article;
+  const readable = readableArticle(article);
   status(
     result.timedOut
       ? "Preparation is taking longer. You can check again."
@@ -796,10 +797,10 @@ async function loadArticle(id, g) {
         ? "This article needs review."
         : article?.processing?.state === "failed"
           ? "Preparation could not finish. Available source can still be read."
-          : readableArticle(article)
+          : readable
             ? "Article ready."
             : "No readable content is available.",
-    { retry: () => openArticle(id), complete: readableArticle(article) },
+    { retry: result.timedOut || !readable ? () => openArticle(id) : null, complete: readable },
   );
 }
 function openArticle(id) {
