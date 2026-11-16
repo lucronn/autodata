@@ -1,0 +1,17 @@
+{
+  "goal": "Prepare separately gated offloaded executable M2A V3 diagnostic successor and dry-only proof; actual diagnostic held behind private completion/root review.",
+  "plan_ref": "docs/superpowers/plans/2026-11-16-m2a-v3-executable-successor.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/444",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/operations/m2a-v3-executable-successor.md"
+  ],
+  "todo": [
+    "Synchronize checkpoint and pinned preflight before code.",
+    "Prepare exact offloaded successor with authorization fences, fresh public pins and conservative private reservations.",
+    "Test pure refusal/arithmetic/preservation paths and seal dry-only proof; report root.",
+    "Hold all M2A/runtime/SQL/relay/browser/provider actions and preserve private first claim."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-16T04:46:40.185493+00:00"
+}

@@ -1,0 +1,41 @@
+# Serialized M2A V3 executable diagnostic successor
+
+Issue: https://github.com/lucronn/autodata/issues/444
+Project: https://github.com/users/lucronn/projects/8
+Prior inert review: https://github.com/lucronn/autodata/issues/443
+Private first-claim lane: https://github.com/lucronn/autodata/issues/401
+Public release: https://github.com/lucronn/autodata/issues/431
+
+## Goal and authority
+
+Prepare a new OFFLOADED executable successor at /home/corp/autodata-evidence/m2a-safe-origin-v3-executable-20261116, preserving sealed inert review root m2a-safe-origin-v3-capacity-20261116 (package370f42e3) and all original M2A physical source/data/config, six stopped exact containers, historical V3 harness1557e9c5/sealf299e6ca and V1/V2 consumed markers. Metadata/code/logs only, offloaded ext4 device1792, <=4MiB/free>=1GiB. No binary/archive/store/credential copy or physical allocation. No M2A services, SQL, relay, HTTP, browser or provider dispatch during this task. Public has just changed to PID1293423/startticks19892443/binarybb11d963; remeasure exact executable/env/override/unit and capture private worker identity without env disclosure. Private lane has first physical slot claim. This plan authorizes preparation and tests, never activation.
+
+## Conservative simultaneous proposed capacity
+
+Retain physical5GiB5368709120B+128MiB unowned134217728B+public pending prep38604800B/install67108864B+private pending128MiB134217728B+M2A64MiB67108864B =>strict home entry>5809967104B, effective warm5742858240B. Completed public allocations are already in measured free; retained public pending amounts are conservative until root explicitly closes them, not a claim that another install is needed. Private retained steady growth is measured later, never subtracted speculatively. Docker floor813694976B+private64MiB67108864B+unowned64MiB67108864B+M2A64MiB67108864B =>entry>1015021568B/warm947912704B; current~990.8MB is expected FAIL. No simultaneous runtime authorized even if capacity passes. Existing private/M2A original floors are not rewritten.
+
+M2A home/Docker cap64MiB each with cumulative aggregate free-space drop stop32MiB; retain32MiB burst, count unrelated growth too. tmpfs>=512MiB plus pending private64MiB =>entry/free floor603979776B, M2A cap128MiB/stop96MiB/burst32MiB. Private actual fixture tmpfs plan is not yet approved; 64MiB is conservative provisional, actual private fixture termination/remaining reservations must be reviewed before M2A. RAM/finite cgroup>=1GiB; free inodes>1000. Pin candidate baseline values/time, do not reset after failure. Dry receipt separately reports correctness PASS and live capacity FAIL/PASS with execution HELD; fail conditions retained as evidence, not retried to get green.
+
+## Executable successor design
+
+Copy only explicit helper/test/inventory files from sealed443 into absent new offloaded root, record mapping/hashes. Replace inert fences with exact-package authorization guards BEFORE eager imports/I/O; ordinary safe library import remains available for pure tests. Runtime entrypoints must reject absent/malformed/symlink/wrongowner/wrongmode/oversized authorization, wrong stage/package/gate/policy/public pins, missing explicit private-complete+slot-release statements, and consumed stage reservations. New EXECUTION-AUTHORIZATION.json remains ABSENT in this task. A future root-created exact JSON authorization must pin the final package seal and gate, exact current public identity hash, private completion receipt path/hash, and permitted fixed stages; root reviews any private completion receipt, never infer completion from a path string. Authorization is an audit/admission fence, not cryptographic proof of human intent. No authorization writer or approve command supplied. Future code is executable only with that separately reviewed file and fresh guards; current capacity failure still blocks.
+
+Namespace all new evidence/markers as executable-v3; preserve canonical shared relay lifetime lock against competing old implementations. Preserve original JavaScript RUNNER byte-identically, exact safe-origin local session-only simulation and actual catalog/article/image responses, no quote/prepare/provider/Stripe/Firebase calls, strict zero browser/validator errors. Preserve forwarder binding/security/port/lifecycle/byte-transparency and resource limits, immutable physical helper pins separate from offloaded operational imports. Re-pin all explicit helper/launcher/seal dependencies. All capacity callers use the new strict shared policy. Check current public baseline during every capacity monitor cycle and fail on identity/env/override drift. Private baseline at dry preparation is historical only; future root must independently review the private completion/candidate identity before authorization. Do not assert currently running17295 remains final.
+
+Fix only independently evidenced inherited capacity-wrapper defects needed for executable correctness, with red-first tests: shared observation supplies growth fields expected by lifecycle trace, fail-safe empty trace handling, explicit distinct service/browser/relay stage authorization, and no action on eager import. Do not alter product source, SQL semantics, auth shim or application/browser acceptance rules. No broad refactor.
+
+## One-use future diagnostic order (HELD)
+
+1. Root completes private lane, validates candidate/rollback/public state, explicitly releases serialized physical slot and closes/reviews pending reservations. Fresh synchronized gate/reseal pins actual public/private identities and capacity baseline/reservations; no silent reset. If policy unchanged and fresh package baseline still valid, root may explicitly retain it; any failed capacity guard holds execution.
+2. Independent root review of exact executable package/dry receipt/dependencies/commands; create exact authorization only then. Six M2A services must initially be stopped, internal network unattached, no publications, original package/config/storage inode/source hashes exact, all new one-use markers/profile/receipt paths absent. Reserve one diagnostic attempt before first container start; no automatic retry after any phase/guard failure.
+3. Exact six existing IDs only; phase operator sequential postgres,nats,minio,migration-runner,ingestion-http,api. Per-phase O_EXCL markers/receipts and actual policy/env/source/config/image/health/capacity checks; never compose up/create/build/pull. Any failure stops only exact owned IDs, records failure and holds manual review.
+4. Reviewed read-only prebrowser actual-store attestation (no seed/reset/write) checks historical expected schema/owned rows/objects/config/auth/purchase/image binding. This SQL/HTTP stage needs separate explicit authorization; no such attestation in current dry task.
+5. Exactly one lifecycle: loopback127.0.0.1:3042 actual-port pinned relay, one-use harness launch, default sandbox/tmpfs browser policy, desktop/mobile actual authored article+PNG path with session-only auth shim; never supplier/provider/commerce routes. Preserve failure diagnostics/screenshot and stop; no synthetic catalog/body/image fulfillment and no zero-error waiver.
+6. Read-only postbrowser attestation, owned process cleanup, exact six stopped/internal network unattached/3042 absent/source/storage/public identity preserved. Preserve consumed attempt even on failure. No cleanup of historical evidence, no SQL restore or original input changes.
+
+## Todo
+
+- Synchronize plan/Issue444/Project8/canonical document/record and pinned preflight before implementation.
+- Seal new public baseline, private reservation evidence and absent offloaded successor paths; copy explicit443 helpers with new exact-package runtime fences, shared conservative policy and unique markers.
+- Red/green pure tests for authorization/refusal/capacity/trace correctness, unchanged JS/forwarder invariants and offloaded imports. No runtime-bearing imports or live dispatch in tests.
+- Seal no-dispatch proof with six stopped fixed-container/network inspect only, original input preservation, correctness and capacity status separately; return exact package/gate/test hashes and future authorization conditions. Keep physical slot with private lane.
