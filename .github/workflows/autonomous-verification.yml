@@ -107,6 +107,15 @@ jobs:
           if grep -Eq '^(infra/deploy/gce/|infra/compose/|apps/api-go/purchase_config.go$|workers/ingestion-python/src/autodata_ingestion/purchase_config.py$)' "$changed"; then
             echo 'gce=true' >> "$GITHUB_OUTPUT"
           fi
+          if grep -Eq '^(apps/api-go/.*\.go$|apps/api-go/go\.(mod|sum)$|apps/api-go/Dockerfile$|packages/contracts/|scripts/contracts/|db/migrations/)' "$changed"; then
+            echo 'go=true' >> "$GITHUB_OUTPUT"
+          fi
+          if grep -Eq '^(apps/api-go/workshop/|apps/api-go/workshop-client/|apps/api-go/workshop-client\.test\.mjs$|scripts/dev/test_workshop_browser_smoke\.py$)' "$changed"; then
+            echo 'workshop_client=true' >> "$GITHUB_OUTPUT"
+          fi
+          if grep -Eq '^(packages/contracts/|scripts/contracts/)' "$changed"; then
+            echo 'contracts=true' >> "$GITHUB_OUTPUT"
+          fi
           if grep -Ev '^scripts/dev/test_repository_governance.py$' "$changed" | grep -Eq '^(apps/api-go/|workers/|packages/contracts/|db/migrations/|infra/compose/|scripts/dev/)'; then
             echo 'integration=true' >> "$GITHUB_OUTPUT"
           fi
@@ -116,6 +125,7 @@ jobs:
           python-version: "3.12"
 
       - name: Set up Go
+        if: github.event_name == 'workflow_dispatch' || steps.change_scope.outputs.go == 'true'
         uses: actions/setup-go@v5
         with:
           go-version: "1.26.x"
@@ -135,11 +145,13 @@ jobs:
           --json
 
       - name: Set up build-only Node
+        if: github.event_name == 'workflow_dispatch' || steps.change_scope.outputs.workshop_client == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: "22"
 
       - name: Verify pinned browser SDK and native client helpers
+        if: github.event_name == 'workflow_dispatch' || steps.change_scope.outputs.workshop_client == 'true'
         run: |
           npm --prefix apps/api-go/workshop-client ci --ignore-scripts --no-audit --no-fund
           node apps/api-go/workshop-client/build.mjs --check
@@ -147,20 +159,24 @@ jobs:
           python -m unittest scripts/dev/test_workshop_browser_smoke.py -v
 
       - name: Run Go API tests
+        if: github.event_name == 'workflow_dispatch' || steps.change_scope.outputs.go == 'true'
         working-directory: apps/api-go
         run: go test ./...
 
       - name: Validate shared contract bindings
+        if: github.event_name == 'workflow_dispatch' || steps.change_scope.outputs.contracts == 'true'
         run: |
           python scripts/contracts/generate.py
           git diff --exit-code -- packages/contracts/go/contracts.go packages/contracts/python/autodata_contracts/contracts.py
 
       - name: Run shared contract tests
+        if: github.event_name == 'workflow_dispatch' || steps.change_scope.outputs.contracts == 'true'
         run: |
           python -m pip install --disable-pip-version-check --no-input PyYAML jsonschema referencing
           python -m unittest discover -s scripts/contracts -p 'test_*.py' -v
 
       - name: Run Go contract tests
+        if: github.event_name == 'workflow_dispatch' || steps.change_scope.outputs.contracts == 'true'
         working-directory: packages/contracts/go
         run: go test ./...
 
