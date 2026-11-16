@@ -873,17 +873,22 @@ async function loadArticle(id, g) {
   );
   if (!g.current()) return;
   const article = result.data?.article;
+  const readable = readableArticle(article);
   status(
     result.timedOut
       ? "Preparation is taking longer. You can check again."
       : article?.processing?.state === "needs_review"
-        ? "This article needs review."
+        ? readable
+          ? article.content_origin === "source"
+            ? "Stored source is readable. Article preparation needs review."
+            : "Article is readable. An update needs review."
+          : "This article needs review."
         : article?.processing?.state === "failed"
           ? "Preparation could not finish. Available source can still be read."
-          : readableArticle(article)
+          : readable
             ? "Article ready."
             : "No readable content is available.",
-    { retry: () => openArticle(id), complete: readableArticle(article) },
+    { retry: result.timedOut || !readable ? () => openArticle(id) : null, complete: readable },
   );
 }
 function openArticle(id) {

@@ -1,0 +1,8 @@
+---
+description: Ship the smallest working product slice with focused verification
+alwaysApply: true
+---
+
+Read `AGENTS.md`. For direct user-directed work, inspect the existing runtime, implement the owning change, and verify the visible behavior. Do not require a new plan, GitHub Issue, Project item, or synchronized preflight before editing.
+
+The record in `docs/agents/pre-implementation-gate.md` is required only when invoking the autonomous runner or orchestrator. Keep payment, access, source-rights, migration, and production changes under focused end-to-end review.

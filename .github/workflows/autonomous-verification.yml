@@ -3,9 +3,11 @@ name: Autonomous Verification
 on:
   pull_request:
     paths:
+      - "AGENTS.md"
       - ".autodata-autonomy-policy.json"
       - "README.md"
       - ".cursor/agents/**"
+      - ".cursor/rules/**"
       - "docs/agents/**"
       - "docs/architecture/**"
       - "docs/github/**"
@@ -29,13 +31,16 @@ on:
       - "CONTRIBUTING.md"
       - "SECURITY.md"
       - "scripts/dev/test_repository_governance.py"
+      - ".base44/ingestion-dev.Dockerfile"
   push:
     branches:
       - master
     paths:
+      - "AGENTS.md"
       - ".autodata-autonomy-policy.json"
       - "README.md"
       - ".cursor/agents/**"
+      - ".cursor/rules/**"
       - "docs/agents/**"
       - "docs/architecture/**"
       - "docs/github/**"
@@ -59,6 +64,7 @@ on:
       - "CONTRIBUTING.md"
       - "SECURITY.md"
       - "scripts/dev/test_repository_governance.py"
+      - ".base44/ingestion-dev.Dockerfile"
   workflow_dispatch:
 
 permissions:
@@ -72,18 +78,63 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Select affected suites
+        if: github.event_name != 'workflow_dispatch'
+        id: change_scope
+        env:
+          BASE_SHA: ${{ github.event.before }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          changed="$RUNNER_TEMP/changed-files"
+          if [ "$GITHUB_EVENT_NAME" = 'pull_request' ]; then
+            base=HEAD^1
+          else
+            base="$BASE_SHA"
+            if ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+              git fetch --no-tags --depth=1 origin "$base"
+            fi
+          fi
+          git diff --name-only --no-renames "$base" HEAD > "$changed"
+          if grep -Eq '^(workers/ingestion-python/|packages/contracts/|db/migrations/)' "$changed"; then
+            echo 'ingestion=true' >> "$GITHUB_OUTPUT"
+          fi
+          if grep -Eq '^(workers/enrichment-python/|packages/contracts/|db/migrations/)' "$changed"; then
+            echo 'enrichment=true' >> "$GITHUB_OUTPUT"
+          fi
+          if grep -Eq '^(infra/deploy/gce/|infra/compose/|apps/api-go/purchase_config.go$|workers/ingestion-python/src/autodata_ingestion/purchase_config.py$)' "$changed"; then
+            echo 'gce=true' >> "$GITHUB_OUTPUT"
+          fi
+          if grep -Eq '^(apps/api-go/.*\.go$|apps/api-go/go\.(mod|sum)$|apps/api-go/Dockerfile$|packages/contracts/|scripts/contracts/|db/migrations/)' "$changed"; then
+            echo 'go=true' >> "$GITHUB_OUTPUT"
+          fi
+          if grep -Eq '^(apps/api-go/workshop/|apps/api-go/workshop-client/|apps/api-go/workshop-client\.test\.mjs$|scripts/dev/test_workshop_browser_smoke\.py$)' "$changed"; then
+            echo 'workshop_client=true' >> "$GITHUB_OUTPUT"
+          fi
+          if grep -Eq '^(packages/contracts/|scripts/contracts/)' "$changed"; then
+            echo 'contracts=true' >> "$GITHUB_OUTPUT"
+          fi
+          if grep -Ev '^(scripts/dev/test_repository_governance\.py$|scripts/dev/test_workshop_browser_smoke\.py$|apps/api-go/workshop/|apps/api-go/workshop-client/|apps/api-go/workshop-client\.test\.mjs$)' "$changed" | grep -Eq '^(apps/api-go/|workers/|packages/contracts/|db/migrations/|infra/compose/|scripts/dev/)'; then
+            echo 'integration=true' >> "$GITHUB_OUTPUT"
+          fi
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
       - name: Set up Go
+        if: github.event_name == 'workflow_dispatch' || steps.change_scope.outputs.go == 'true'
         uses: actions/setup-go@v5
         with:
           go-version: "1.26.x"
 
       - name: Run validator unit tests
         run: python -m unittest discover -s scripts/autonomy -p 'test_*.py' -v
+
+      - name: Verify contribution workflow guidance
+        run: python -m unittest discover -s scripts/dev -p 'test_repository_governance.py' -v
 
       - name: Validate deterministic evidence fixture
         run: >-
@@ -94,11 +145,13 @@ jobs:
           --json
 
       - name: Set up build-only Node
+        if: github.event_name == 'workflow_dispatch' || steps.change_scope.outputs.workshop_client == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: "22"
 
       - name: Verify pinned browser SDK and native client helpers
+        if: github.event_name == 'workflow_dispatch' || steps.change_scope.outputs.workshop_client == 'true'
         run: |
           npm --prefix apps/api-go/workshop-client ci --ignore-scripts --no-audit --no-fund
           node apps/api-go/workshop-client/build.mjs --check
@@ -106,24 +159,29 @@ jobs:
           python -m unittest scripts/dev/test_workshop_browser_smoke.py -v
 
       - name: Run Go API tests
+        if: github.event_name == 'workflow_dispatch' || steps.change_scope.outputs.go == 'true'
         working-directory: apps/api-go
         run: go test ./...
 
       - name: Validate shared contract bindings
+        if: github.event_name == 'workflow_dispatch' || steps.change_scope.outputs.contracts == 'true'
         run: |
           python scripts/contracts/generate.py
           git diff --exit-code -- packages/contracts/go/contracts.go packages/contracts/python/autodata_contracts/contracts.py
 
       - name: Run shared contract tests
+        if: github.event_name == 'workflow_dispatch' || steps.change_scope.outputs.contracts == 'true'
         run: |
           python -m pip install --disable-pip-version-check --no-input PyYAML jsonschema referencing
           python -m unittest discover -s scripts/contracts -p 'test_*.py' -v
 
       - name: Run Go contract tests
+        if: github.event_name == 'workflow_dispatch' || steps.change_scope.outputs.contracts == 'true'
         working-directory: packages/contracts/go
         run: go test ./...
 
       - name: Run ingestion worker tests
+        if: github.event_name == 'workflow_dispatch' || steps.change_scope.outputs.ingestion == 'true'
         working-directory: workers/ingestion-python
         run: |
           python -m pip install --disable-pip-version-check --no-input pytest
@@ -142,13 +200,16 @@ jobs:
           python -m pytest tests -q
 
       - name: Run enrichment worker tests
+        if: github.event_name == 'workflow_dispatch' || steps.change_scope.outputs.enrichment == 'true'
         working-directory: workers/enrichment-python
         run: python -m unittest discover -s tests -p 'test_*.py' -v
 
       - name: Run development adapter tests
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && steps.change_scope.outputs.integration == 'true')
         run: python -m unittest discover -s scripts/dev -p 'test_*.py' -v
 
       - name: Run required GCE host delivery tests
+        if: github.event_name == 'workflow_dispatch' || steps.change_scope.outputs.gce == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -195,6 +256,7 @@ jobs:
         run: docker compose -f infra/compose/compose.yaml -f infra/compose/compose.ci.yaml config --quiet
 
       - name: Run fake integration smoke
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && steps.change_scope.outputs.integration == 'true')
         env:
           AUTODATA_POSTGRES_PASSWORD: ci-validation-only
           AUTODATA_MINIO_ROOT_USER: ci-validation-admin
@@ -202,6 +264,7 @@ jobs:
         run: docker compose -f infra/compose/compose.yaml run --rm fake-integrations
 
       - name: Run live Compose fast-lane smoke
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && steps.change_scope.outputs.integration == 'true')
         env:
           AUTODATA_POSTGRES_PASSWORD: ci-validation-only
           AUTODATA_MINIO_ROOT_USER: ci-validation-admin
@@ -226,6 +289,7 @@ jobs:
 
   workshop-dto-browser:
     name: Workshop DTO browser inventory (not real API acceptance)
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 100
     steps:
@@ -363,6 +427,7 @@ jobs:
 
   r3-preparation-unit:
     name: R3 preparation synthetic and owned-child tests
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

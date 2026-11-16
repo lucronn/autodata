@@ -1,49 +1,45 @@
 # Contributing to AutoData
 
-AutoData is developed through the public repository and GitHub Project #8. The
-Project tracks outcomes, dependencies, risk, and release status. Normative
-technical decisions remain in the canonical documents under `docs/`; do not
-create a second design or infrastructure-document tree.
+AutoData is developed on `master` through short pull requests. GitHub Project #8
+tracks multi-step initiatives; routine fixes can use the pull request alone.
+Keep durable technical decisions under `docs/` when they affect future work.
 
 ## Before changing code
 
-1. Find or create the GitHub issue describing the measurable outcome.
-2. Add the issue to Project #8 and set its Area, Priority, Risk, Target release,
-   and Source or dependency reference fields.
-3. Confirm the affected bounded context and contract in the relevant document.
-4. Keep the supplied `sample data/` directory local-only unless redistribution
+1. Reproduce the user-visible problem on the existing stack and choose the
+   smallest change that can make one path work.
+2. Reuse an existing issue when one applies. Create a new issue or Project #8
+   item only when coordination across several changes is actually needed.
+3. Keep the supplied `sample data/` directory local-only unless redistribution
    rights have been explicitly approved. Never commit source payloads,
    credentials, tokens, or production identifiers.
 
 ## Branches and pull requests
 
-Create a short-lived branch from `master` using the `automation/<topic>` naming
-convention. The protected `master` branch is the only release line. Use a
-small pull request, link it to the issue, and use squash merging. Do not force
-push or create parallel long-lived development branches.
+Create a short-lived branch from `master` (for example, `automation/<topic>` or
+`codex/<topic>`). The protected `master` branch is the release line. Use a small
+pull request, link an existing issue if there is one, and prefer squash merging.
 
-The pull-request template is the delivery checklist. In particular, describe
-API/event/schema/entitlement impact, preserve provenance and evidence for every
-published fact, and state idempotency, retry, and dead-letter behavior for
-asynchronous work. Explain any infrastructure check that could not run rather
-than reporting it as passed.
+State the working outcome and focused verification in the pull request. For
+payment, authentication, licensed data, schema, or production changes, include
+the specific risk and rollback check. Preserve provenance for published facts;
+describe idempotency, retry, and dead-letter behavior when asynchronous work
+changes. Report missing test coverage plainly.
 
 ## Verification
 
-Run the checks relevant to the change. The baseline commands are:
+Run focused checks relevant to the change. Examples:
 
 ```sh
 (cd apps/api-go && go test ./...)
 (cd packages/contracts/go && go test ./...)
-python3 -m unittest discover -s scripts/autonomy -p 'test_*.py' -v
 python3 -m unittest discover -s scripts/contracts -p 'test_*.py' -v
-python3 -m unittest discover -s scripts/dev -p 'test_*.py' -v
 ```
 
-Changes to workers, contracts, migrations, infrastructure, source adapters,
-or publication behavior require the corresponding integration or Compose
-verification described in `docs/architecture/infrastructure-and-dev.md` and
-the workflow. Local credentials are deterministic development values only;
+Run the corresponding integration or Compose check before merging payment,
+authentication, source-ingestion, migration, and production-deployment changes.
+The extended GitHub workflow runs on `master` and can be dispatched before a
+high-risk merge. Local credentials are deterministic development values only;
 production or provider credentials belong in secret-managed environment
 configuration.
 
@@ -59,8 +55,7 @@ configuration.
 
 ## Documentation and release tracking
 
-Put normative Markdown, architecture decisions, operations guidance, and
-runbooks under `docs/`. Update the relevant Project #8 item in the same release
-flow and include the verified commit or release reference. Releases are tagged
-from `master` and must summarize schema, API, worker, data-contract, and
-operational changes where applicable.
+Put durable architecture decisions and runbooks under `docs/`. Update Project #8
+for initiatives it already tracks; do not create tracking work for a small fix.
+Releases from `master` summarize material schema, API, worker, data-contract,
+and operational changes.
