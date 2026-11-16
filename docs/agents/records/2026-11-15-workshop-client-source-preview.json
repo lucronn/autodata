@@ -1,5 +1,5 @@
 {
-  "goal": "Record successful single guarded offline attempt2 exact-a82 build/source-only package; hold browser/install/switch for root independent review.",
+  "goal": "Prepare separate sealed local-only Chromium fixture and no-dispatch guard/route proof for exact a82 packaged assets; hold every fixture/browser/public dispatch for root review.",
   "plan_ref": "docs/superpowers/plans/2026-11-15-workshop-client-source-preview.md",
   "issue_ref": "https://github.com/lucronn/autodata/issues/431",
   "project_ref": "https://github.com/users/lucronn/projects/8",
@@ -7,11 +7,11 @@
     "docs/architecture/workshop-client-source-preview.md"
   ],
   "todo": [
-    "Completed synchronized ff63e241 gate/preflight/Issue431/Project8 readbacks and independently reviewed13-test dry guard.",
-    "Completed offline API/contracts Go and307 Workshop Node tests; exact-a82 build,1409 source files/15 assets verified and95,612,928B physical source-only package sealed.",
-    "Root independently reviews PACKAGE-SEAL SHA9dfcdcf3a39de85f74b5b9514406ea0ec0452d65c8ed96e33936e95663443cca and BUILD-RESULT SHA14db51dc13482a3224d15a971e9a09431b92c4dadacb8b481c8f4cece5bcc3fe, then separately gates browser/probes/activation; no runtime action authorized.",
-    "Preserve serving/private/rollback/attempt1 and M2A/private floors; capacity observations require remeasurement before future admission."
+    "Synchronize fixture plan/Issue431/Project8/canonical record and pinned preflight.",
+    "Implement guarded no-dispatch proof and meaningful route/tmpfs/refusal/owned-child cleanup tests; seal helpers and commands in separate offloaded tiny fixture root.",
+    "Report exact receipt/helper hashes/route allowlist/commands; await root independent review and explicit one-attempt local-only browser authorization.",
+    "Preserve immutable source-only package, serving/private/rollback and all capacity floors; no public/provider action."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-16T04:23:11.174424+00:00"
+  "updated_at": "2026-11-16T04:23:50.572594+00:00"
 }
