@@ -7,12 +7,12 @@
     "docs/architecture/initial-selector-runtime.md"
   ],
   "todo": [
-    "Synchronize fixture package checkpoint/readbacks/preflight",
-    "Implement import-inert exact-synthetic bootstrap/client and pure offloaded review builder/proof composition with owned tests",
-    "Seal exact package/tests/commands for independent root review; all actual-image/physical/SQL/container/HTTP/provider execution held"
+    "Independent root review exact fixture payloads, proof composition, package seal and dry commands",
+    "Fresh separately reviewed binding of synthetic network/peer/lifecycle/env/source/capacity and explicit phase approval before any real fixture",
+    "Preserve runtime/private/public/rollback and historical v6 evidence; physical/SQL/container/HTTP/provider execution remains held"
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-16T05:19:13.329522+00:00",
+  "updated_at": "2026-11-16T05:22:14.746867+00:00",
   "historical_goal": "Plan source-only private initial-selector safety runtime rollout preserving17295 rollback and incomplete v6 evidence",
   "historical_todo": [
     "Synchronize exact protected a82 Issue401/Project8/docs/record/readback/preflight before implementation",
@@ -63,5 +63,13 @@
     "dispatch_enabled": false,
     "evidence_root": "/home/corp/autodata-evidence/private-selector-local-transport-424-20261116"
   },
-  "fixture_payload_implementation_only": true
+  "fixture_payload_implementation_only": true,
+  "fixture_payload_verification": {
+    "new_owned_tests": 14,
+    "combined_tests": 169,
+    "seconds": 2.077,
+    "actual_image_result": "NOT_RUN",
+    "execution_approved": false,
+    "evidence_root": "/home/corp/autodata-evidence/private-selector-fixture-payload-a82-20261116"
+  }
 }
