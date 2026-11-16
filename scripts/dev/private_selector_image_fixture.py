@@ -65,10 +65,10 @@ class Fixture:
         finally:
             for identifier, role in reversed(owned):
                 try:
-                    self.check(); self.owned(identifier, role)
+                    self.check(); c.require(self.backend.fixture_cleanup_owned(identifier, role) is True, 'fixture_cleanup_ownership')
                     self.backend.stop_fixture(identifier)
                     c.require(self.backend.fixture_stopped(identifier) is True, 'fixture_stop_unknown')
-                    self.check(); self.owned(identifier, role)
+                    self.check(); c.require(self.backend.fixture_cleanup_owned(identifier, role) is True, 'fixture_cleanup_ownership')
                     self.backend.remove_fixture(identifier)
                     c.require(self.backend.fixture_absent(identifier) is True, 'fixture_remove_unknown')
                     self.backend.record_once('fixture-cleaned-' + role, {'id': identifier})

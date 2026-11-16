@@ -309,6 +309,71 @@ class Tests(unittest.TestCase):
             with self.assertRaises(c.Refused): connection.connect()
         connect.assert_not_called()
 
+    def cleanup_fixture_raw(self):
+        identifier='e'*64;network='9'*64
+        raw={'Id':identifier,'Name':'/autodata-selector-fixture-'+self.value['run_id']+'-worker',
+             'Image':c.IMAGE,'Config':{'Env':['AUTH=fixture'],'Cmd':['authored']},
+             'Mounts':[{'Source':str(self.source),'Destination':'/app','RW':False}],
+             'HostConfig':{'NetworkMode':network,'OomKillDisable':False,'Memory':768*c.MIB},
+             'NetworkSettings':{'Networks':{'owned':{'NetworkID':network}}},
+             'State':{'Status':'running','Running':True,'Pid':456,'Restarting':False}}
+        self.backend.created[identifier]='worker'
+        self.backend.fixture_created[identifier]={'raw':copy.deepcopy(raw),'role':'worker',
+                                                   'network':network,'peer_ids':['8'*64]}
+        return identifier,raw
+
+    def test_full_hostconfig_structure_allows_only_observed_false_to_null(self):
+        created={'Memory':768*c.MIB,'OomKillDisable':False,'NetworkMode':'9'*64}
+        m.validate_fixture_hostconfig(created,created)
+        m.validate_fixture_hostconfig({**created,'OomKillDisable':None},created)
+        for raw in ({**created,'Memory':1},{**created,'OomKillDisable':True},
+                    {**created,'ExtraUnreviewed':True},{'Memory':768*c.MIB,'NetworkMode':'9'*64}):
+            with self.assertRaises(c.Refused):m.validate_fixture_hostconfig(raw,created)
+
+    def test_hostconfig_or_status_failure_still_stops_reaps_removes_owned_fixture(self):
+        identifier,raw=self.cleanup_fixture_raw()
+        raw['HostConfig']['Memory']=1;raw['State']['Status']='unexpected-running-status'
+        with self.assertRaises(c.Refused):
+            m.validate_fixture_hostconfig(raw['HostConfig'],self.backend.fixture_created[identifier]['raw']['HostConfig'])
+        def docker(*args,**kwargs):
+            if args[0]=='stop':raw['State'].update(Status='unexpected-stopped-status',Running=False,Pid=0)
+            return b''
+        with patch.object(self.backend,'raw_inspect',side_effect=lambda _:copy.deepcopy(raw)), \
+             patch.object(self.backend,'pause'),patch.object(self.backend,'fixture_identity',side_effect=c.Refused('hostconfig mismatch')) as normal, \
+             patch.object(self.backend,'docker',side_effect=docker) as calls:
+            self.backend.stop_fixture(identifier)
+            self.assertTrue(self.backend.fixture_stopped(identifier))
+            self.backend.remove_fixture(identifier)
+        normal.assert_not_called()
+        self.assertIn(unittest.mock.call('stop','--time','0',identifier,timeout=5,limit=4096),calls.call_args_list)
+        self.assertIn(unittest.mock.call('rm',identifier,timeout=5,limit=4096),calls.call_args_list)
+
+    def test_cleanup_requires_two_immutable_never_foreign_proofs(self):
+        identifier,raw=self.cleanup_fixture_raw()
+        with patch.object(self.backend,'raw_inspect',return_value=raw) as inspect,patch.object(self.backend,'pause'):
+            self.assertTrue(self.backend.fixture_cleanup_owned(identifier,'worker'))
+        self.assertEqual(inspect.call_count,2)
+        mutations=[lambda x:x['Config'].update(Env=['AUTH=foreign']),
+                   lambda x:x['Mounts'][0].update(Source='/foreign/production'),
+                   lambda x:x['HostConfig'].update(NetworkMode='host'),
+                   lambda x:x['NetworkSettings']['Networks']['owned'].update(NetworkID='7'*64),
+                   lambda x:x.update(Id=c.OLD)]
+        for change in mutations:
+            changed=copy.deepcopy(raw);change(changed)
+            with patch.object(self.backend,'raw_inspect',return_value=changed),patch.object(self.backend,'docker') as docker:
+                with self.assertRaises(c.Refused):self.backend.stop_fixture(identifier)
+            docker.assert_not_called()
+        with patch.object(self.backend,'raw_inspect') as inspect:
+            with self.assertRaises(c.Refused):self.backend.fixture_cleanup_owned(c.OLD)
+        inspect.assert_not_called()
+
+    def test_cleanup_second_immutable_change_prevents_stop(self):
+        identifier,raw=self.cleanup_fixture_raw();changed=copy.deepcopy(raw);changed['Config']['Env']=['AUTH=foreign']
+        with patch.object(self.backend,'raw_inspect',side_effect=[raw,changed]),patch.object(self.backend,'pause'), \
+             patch.object(self.backend,'docker') as docker:
+            with self.assertRaises(c.Refused):self.backend.stop_fixture(identifier)
+        docker.assert_not_called()
+
     def test_bootstrap_default_admission_is_exact_and_worker_keeps_original_names(self):
         import private_selector_fixture_package as package
         base={'PATH':'/usr/bin'};defaults=dict(package.BOOTSTRAP_DEFAULTS)
@@ -357,7 +422,7 @@ class Tests(unittest.TestCase):
         identifier='b'*64;self.backend.created[identifier]='bootstrap'
         for removed in (True,False):
             receipt={'cleanup':{'database_removed':removed,'bucket_removed':True}}
-            with patch.object(self.backend,'fixture_identity'), \
+            with patch.object(self.backend,'fixture_cleanup_owned',return_value=True), \
                  patch.object(self.backend,'docker',side_effect=[b'',json.dumps(receipt).encode()]) as docker:
                 if removed:self.backend.stop_fixture(identifier)
                 else:

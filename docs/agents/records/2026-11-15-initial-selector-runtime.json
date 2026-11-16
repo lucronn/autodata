@@ -104,5 +104,14 @@
     "create_only_receipt_sha256": "74fd441afc72dc781d4149c0f6c73e37c7b8b5bacfa8833364c62dc6f38594da",
     "actual_image_result": "NOT_RUN",
     "final_fixture_execution_approved": false
+  },
+  "observed_lifecycle_cleanup_verification": {
+    "owned_tests": 246,
+    "new_tests": 5,
+    "red_regression": "started fixtures stranded by ordinary identity cleanup guard",
+    "projected_running_hash_used": false,
+    "immutable_cleanup_verified_twice": true,
+    "approval_files_installed": false,
+    "actual_image_result": "NOT_RUN"
   }
 }

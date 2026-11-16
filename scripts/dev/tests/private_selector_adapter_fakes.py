@@ -87,6 +87,8 @@ class Backend:
                                          'policy': copy.deepcopy(f.OWNED_POLICY)}
         return identifier
     def fixture_identity(self, identifier): return copy.deepcopy(self.fixture_values[identifier])
+    def fixture_cleanup_owned(self, identifier, role=None):
+        return identifier in self.fixture_values and (role is None or self.fixture_values[identifier]['role'] == role)
     def wait_fixture_ready(self, identifier):
         self.events.append(('fixture_ready', identifier))
 

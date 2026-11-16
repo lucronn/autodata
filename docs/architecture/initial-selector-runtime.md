@@ -227,3 +227,6 @@ Concrete todo:
 2. Add cleanup-only twice-verified immutable exact-ID/name/image/full Config/mount/pinned-network proof, excluding serving/rollback/peer IDs. Stop/removal/termination proof must use it so status or HostConfig mismatch cannot strand an owned process.
 3. Red/green regressions prove rejected running normalization still reaches stop/reap/remove, while changed immutable/foreign identities are never touched, and cleanup failure never claims success.
 4. Reseal final packet/launcher. No install of approval files or START/exec/SQL/productHTTP/provider until root exact review.
+
+
+Observed-lifecycle/cleanup correction:246 owned tests PASS/4.071s (five new). Red reproduced normal identity rejection preventing any stop after START. Primary now captures/durably seals actual Created identity and compares full HostConfig structure allowing only OomKillDisable false-to-null. Cleanup independently verifies immutable exact-ID/name/image/full Config/mount/pinned-network ownership twice, excludes serving/rollback/peer IDs, and reaches stop/termination/removal despite status or HostConfig mismatch. Wrong Config/mount/network/foreign IDs still refuse before stop; unknown cleanup never claims success. No projected Running/Exited hash is used for admission. Approval profiles remain uninstalled; no START/exec/SQL/productHTTP/provider request occurred.

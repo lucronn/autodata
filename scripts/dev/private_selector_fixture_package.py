@@ -9,7 +9,7 @@ import private_selector_adapter_contract as c
 REPO=Path(__file__).resolve().parents[2]
 OFFLOADED_DEVICE=1792
 EVIDENCE=Path('/home/corp/autodata-evidence')
-TRANSPORT_SHA='a4fed281a6346219803a1914e3c286dc6fca80e1f423afd2793f82f4083e6c70'
+TRANSPORT_SHA='369f8b46fa5610303c871144faac293fb3fd2ad1fa44b6013b1201789519e124'
 ARCHIVE_SHA='4d1536d534a9327a4524b0e35cf234c83e5de4a8d18353fd6ca3b6343f7d5e74'
 PACKAGE='/home/corp/autodata-candidate/private-initial-selector-a82b31d-20261115'
 

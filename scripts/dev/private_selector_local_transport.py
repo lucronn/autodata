@@ -52,6 +52,14 @@ SOURCE_EXECUTABLE_PATHS = {source: _ARCHIVE_EXECUTABLES for source in (
 
 BOOTSTRAP_DEFAULT_HASHES = {'CGO_ENABLED': '67631e924016daab9f22ee64adb8e4ea259f31feca87c4a08402df3e0b070fbb', 'GOMODCACHE': '6c898aceedd0882b013b88da8b2dfde1a292e3197e85160053eb6b6893593a75', 'GOTOOLCHAIN': 'ced13a1008572fc321541a3f1bfdcdf71021008a22f9163c0440e371653ba69d'}
 
+def validate_fixture_hostconfig(actual, created):
+    """Compare full observed structure; only the known false-to-null normalization is allowed."""
+    expected = dict(created)
+    if expected.get('OomKillDisable') is False and actual.get('OomKillDisable', False) is None:
+        expected['OomKillDisable'] = None
+    c.require(c.typed_equal(actual, expected), 'fixture_hostconfig_structure')
+
+
 def validate_image_environment(role, env, old_names, image_env):
     """Bootstrap admits only three exact immutable-image defaults; worker is exact."""
     c.require(role in ('bootstrap', 'worker'), 'fixture_role')
@@ -249,7 +257,7 @@ class LocalTransport:
     def __init__(self, manifest, *, external_seal_sha=None, dispatch_enabled=False, runner=None):
         self.manifest = manifest; self.phase = manifest.get('phase')
         self.external_seal_sha = external_seal_sha; self.dispatch_enabled = dispatch_enabled
-        self.runner = runner or bounded; self.lock_fd = None; self.created = {}; self.fixture_cleanup = False; self.fixture_metadata = None
+        self.runner = runner or bounded; self.lock_fd = None; self.created = {}; self.fixture_cleanup = False; self.fixture_metadata = None; self.fixture_created = {}
 
     def enabled(self):
         c.require(self.dispatch_enabled is True and c.full_id(self.external_seal_sha), 'dispatch_disabled')
@@ -554,9 +562,15 @@ class LocalTransport:
         plan = private_json(self.paths()['fixture_plan'])
         self.validate_fixture_payload(role, payload)
         status = raw['State']['Status']
-        expected_hash = plan.get('hostconfig_by_status', {}).get(role, {}).get(status)
-        c.require(c.full_id(expected_hash) and c.digest(raw['HostConfig']) == expected_hash,
-                  'fixture_lifecycle_hash')
+        c.require(status in ('created', 'running', 'exited'), 'fixture_lifecycle_status')
+        if identifier in self.fixture_created:
+            validate_fixture_hostconfig(raw['HostConfig'], self.fixture_created[identifier]['raw']['HostConfig'])
+        else:
+            expected_hash = plan.get('hostconfig_by_status', {}).get(role, {}).get('created')
+            c.require(status == 'created' and raw['State']['Running'] is False
+                      and raw['State']['Pid'] == 0 and raw['State']['StartedAt'] == '0001-01-01T00:00:00Z'
+                      and c.full_id(expected_hash) and c.digest(raw['HostConfig']) == expected_hash,
+                      'fixture_created_snapshot')
         expected_name = '/autodata-selector-fixture-' + self.manifest['run_id'] + '-' + role
         c.require(raw['Name'] == expected_name and raw['Image'] == payload['Image'], 'fixture_actual_name_image')
         for name in ('User', 'WorkingDir', 'Entrypoint', 'Cmd'):
@@ -566,12 +580,45 @@ class LocalTransport:
         c.require(len(raw['Mounts']) == 1 and raw['Mounts'][0]['Source'] == str(PACKAGE / 'source')
                   and raw['Mounts'][0]['Destination'] == '/app' and raw['Mounts'][0]['RW'] is False,
                   'fixture_actual_mount')
+        if identifier not in self.fixture_created:
+            snapshot = {'raw': json.loads(json.dumps(raw)), 'role': role,
+                        'network': plan['network']['id'], 'peer_ids': sorted(plan['network']['peer_identities'])}
+            self.record_once('fixture-created-snapshot-' + role,
+                             {'id': identifier, 'role': role, 'name': raw['Name'], 'image': raw['Image'],
+                              'config_sha256': c.digest(raw['Config']), 'mounts_sha256': c.digest(raw['Mounts']),
+                              'hostconfig': raw['HostConfig'], 'network': snapshot['network']})
+            self.fixture_created[identifier] = snapshot
         import private_selector_image_fixture as fixture
         c.require(Path(fixture.__file__).resolve() == ROOT / 'private_selector_image_fixture.py',
                   'loaded_fixture_adapter')
         return {'id': identifier, 'run_id': self.manifest['run_id'], 'role': role,
                 'image': payload['Image'], 'source': c.SOURCE, 'owned_synthetic': True,
                 'policy': fixture.OWNED_POLICY}
+
+    def fixture_cleanup_owned(self, identifier, role=None):
+        """Twice-verified immutable ownership; no lifecycle/status hash can block owned stop."""
+        c.require(c.full_id(identifier) and identifier in self.created
+                  and identifier in self.fixture_created, 'fixture_cleanup_not_owned')
+        snapshot = self.fixture_created[identifier]; original = snapshot['raw']
+        c.require(identifier not in {PG, c.OLD, c.SECONDARY, *snapshot['peer_ids']}
+                  and self.created[identifier] == snapshot['role']
+                  and (role is None or role == snapshot['role']), 'fixture_cleanup_foreign')
+        proofs = []
+        for index in range(2):
+            if index: self.pause(.05)
+            raw = self.raw_inspect(identifier)
+            proof = {key: raw[key] for key in ('Id', 'Name', 'Image', 'Config', 'Mounts')}
+            expected = {key: original[key] for key in proof}
+            c.require(c.typed_equal(proof, expected), 'fixture_cleanup_immutable_changed')
+            c.require(raw['HostConfig'].get('NetworkMode') == snapshot['network']
+                      and c.full_id(snapshot['network']), 'fixture_cleanup_network_changed')
+            networks = raw.get('NetworkSettings', {}).get('Networks', {})
+            c.require(isinstance(networks, dict) and all(
+                isinstance(value, dict) and value.get('NetworkID', '') in ('', snapshot['network'])
+                for value in networks.values()), 'fixture_cleanup_foreign_network')
+            proofs.append(proof)
+        c.require(c.typed_equal(proofs[0], proofs[1]), 'fixture_cleanup_identity_unstable')
+        return True
 
     def start_fixture(self, identifier):
         self.fixture_identity(identifier)
@@ -615,7 +662,7 @@ class LocalTransport:
         return value['checks']
 
     def stop_fixture(self, identifier):
-        self.fixture_identity(identifier)
+        c.require(self.fixture_cleanup_owned(identifier) is True, 'fixture_cleanup_ownership')
         bootstrap = self.created[identifier] == 'bootstrap'
         self.docker('stop', '--time', '65' if bootstrap else '0', identifier,
                     timeout=70 if bootstrap else 5, limit=4096)
@@ -628,16 +675,16 @@ class LocalTransport:
         samples = []
         for index in range(3):
             if index: self.pause(.2)
-            self.fixture_identity(identifier)
+            c.require(self.fixture_cleanup_owned(identifier) is True, 'fixture_cleanup_ownership')
             value = self.raw_inspect(identifier)['State']
             c.require(value['Running'] is False and value['Pid'] == 0 and value['Restarting'] is False
-                      and value['Status'] in ('created', 'exited'), 'fixture_stop_unknown')
+                      and isinstance(value['Status'], str), 'fixture_stop_unknown')
             samples.append(value)
         c.require(samples[0] == samples[1] == samples[2], 'fixture_stop_unstable')
         return True
 
     def remove_fixture(self, identifier):
-        self.fixture_identity(identifier); self.fixture_stopped(identifier)
+        c.require(self.fixture_cleanup_owned(identifier) is True, 'fixture_cleanup_ownership'); self.fixture_stopped(identifier)
         self.docker('rm', identifier, timeout=5, limit=4096)
 
     def fixture_absent(self, identifier):
