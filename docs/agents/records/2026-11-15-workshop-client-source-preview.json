@@ -1,5 +1,5 @@
 {
-  "goal": "Prepare separate sealed local-only Chromium fixture and no-dispatch guard/route proof for exact a82 packaged assets; hold every fixture/browser/public dispatch for root review.",
+  "goal": "Hand off sealed local-only Chromium fixture no-dispatch proof for exact a82 source package; await root review and explicit one-attempt authorization.",
   "plan_ref": "docs/superpowers/plans/2026-11-15-workshop-client-source-preview.md",
   "issue_ref": "https://github.com/lucronn/autodata/issues/431",
   "project_ref": "https://github.com/users/lucronn/projects/8",
@@ -7,11 +7,11 @@
     "docs/architecture/workshop-client-source-preview.md"
   ],
   "todo": [
-    "Synchronize fixture plan/Issue431/Project8/canonical record and pinned preflight.",
-    "Preserve DRY-STOP-1/helper hash; narrowly correct/test exact stacked autofs+ext4 JSON admission; rerun no-dispatch proof and seal fixture.",
-    "Report exact receipt/helper hashes/route allowlist/commands; await root independent review and explicit one-attempt local-only browser authorization.",
-    "Preserve immutable source-only package, serving/private/rollback and all capacity floors; no public/provider action."
+    "Completed synchronized8caf668a gate and no-dispatch proof;9 Python+9 Node tests pass, original dry parser STOP preserved.",
+    "Root reviews FIXTURE-SEAL SHA8f47179bc18b942ee7c225acb923beacefede8665a44b1a56be066ca9d140d8c and DRY-FIXTURE-RECEIPT SHA6ab0615d2f94dc9689c1836b8be800c3395d82547a586885e2c9d78e923965ae.",
+    "Hold binary/Chromium/browser dispatch and public switch until root explicit approval; profile/attempt marker absent; exact source package/runtime untouched.",
+    "Fresh storage/runtime admission and owned cleanup required for any later authorized attempt; preserve distinct M2A/private floors."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-16T04:27:00.947436+00:00"
+  "updated_at": "2026-11-16T04:27:54.758578+00:00"
 }
