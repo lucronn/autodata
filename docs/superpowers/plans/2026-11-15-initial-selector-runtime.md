@@ -213,3 +213,19 @@ Offloaded package /home/corp/autodata-evidence/private-selector-fixture-payload-
 Fourteen new owned tests and isolated combined169 tests PASS in2.077s. Meaningful source behavior proof uses exact protecteda82 selector_job SHA6132ce57d1c9cedcf087d70b43a80cd3523ec4f34cb444bf031889658dab5700: three authored stalled subprocesses stop and are reaped, shared12 reservations/deadline-before-next-dispatch, byte/row limits and global admission/cooldown. Other tests prove production-DB/bucket/provider refusal before adapter import, cleanup ordering including failed migration/create, route allowlist, host/behavior proof separation, contract drift refusal, no physical-output path and no evidence overwrite. No Docker, SQL, HTTP, supplier, browser, image or serving operation ran. Future real localhost/PG/S3/actual-image payload behavior is specified but remains unexecuted; this receipt does not assert those checks passed.
 
 Next review: exact payloads/proof-composition and package seal/commands; bind still-missing synthetic peer/env/lifecycle/package inputs only after fresh separately reviewed admission. Actual fixture execution/physical allocation/backup/activation remain HELD. Initial-selector production GET remains separate and requires positive internal request-ended/fence proof; v6 manual INCONCLUSIVE remains unchanged/no replay.
+
+
+## Readiness and failure-cleanup correction (2026-11-16)
+
+Issue: https://github.com/lucronn/autodata/issues/401
+Project: https://github.com/users/lucronn/projects/8
+
+Read-only audit found that the transport starts bootstrap and worker then immediately parses the bootstrap last log line. Migration/seed may still be running, so a blank log can cause JSON failure. Forced bootstrap stop cannot prove its Python finally ran. Execution of the existing packet remains held.
+
+Concrete todo:
+1. Await one bounded, validated synthetic bootstrap metadata receipt before worker start, with immediate exited-bootstrap failure and finite monotonic timeout.
+2. On both successful and failed behavior, clean only the exact run-owned synthetic database and bucket while ownership is verified, and positively verify absence before reporting cleanup; preserve primary failure and fail closed on unknown cleanup.
+3. Add owned mocked transport tests for delayed/failed/bootstrap readiness, behavior failure cleanup, timeout and cleanup rejection.
+4. Derive exact existing internal synthetic network/peer pins through read-only Docker inspection; prepare a review package bound to exact source archive and changed helper hashes. No Docker mutation, SQL/provider request, or serving activation in this checkpoint.
+
+All previous public/private runtime, licensed material, Stripe, rollback and historical v6 evidence holds remain.
