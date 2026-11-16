@@ -12,7 +12,7 @@
     "Bind exacta82 source/bb11 candidate and current1202200/ad5 public plus17295 private identities; separately reserve rootfs/home capacity and prepare an offloaded sealed artifact/command handoff for root review before any physical control copy/install/switch/probe"
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-16T04:32:20.916590+00:00",
+  "updated_at": "2026-11-16T04:47:23.620803+00:00",
   "implementation_allowlist": [
     "scripts/dev/workshop_public_release.py",
     "scripts/dev/test_workshop_public_release.py",
@@ -22,10 +22,40 @@
   "protected_base_sha": "be1a1f235e8eeacc051ac905c4ed8a953a41c8a9",
   "artifact_source_sha": "a82b31dc8850aa3956972928b8c720969765a972",
   "tracking_sync": {
-    "issue_comment_ref": "https://github.com/lucronn/autodata/issues/431#issuecomment-6907385468",
+    "issue_comment_ref": "https://github.com/lucronn/autodata/issues/431#issuecomment-6907591247",
     "issue_readback_verified": true,
-    "project_status": "In Progress",
+    "project_status": "Done",
     "project_readback_verified": true
   },
-  "execution_authorized": false
+  "execution_authorized": false,
+  "execution_authority_note": "Root completed one separately authorized release; no future runtime mutation is authorized by this record.",
+  "release_outcome": {
+    "status": "SOURCE_ONLY_RELEASED_INDEPENDENTLY_VERIFIED",
+    "executed_by": "root",
+    "source_sha": "a82b31dc8850aa3956972928b8c720969765a972",
+    "binary_sha256": "bb11d963666e4fc44f6b0879ebb55a14cf7b2ca221bad6ffa8d3282d5360203e",
+    "pid": 1293423,
+    "start_ticks": "19892443",
+    "restarts": 0,
+    "baseline_canary_sha256": "d176d1b499282f07a5db36ea3f9ffb3856e15b97317e5f7a6747c845c3020798",
+    "candidate_canary_sha256": "37e7566f2207cb0022c76742401ca06df44d230e7a5dd918cc0c1bfd92e60947",
+    "protected_before_sha256": "55789e26851f73c351da39d21d2d957a7e651998594c332aadfde177872d351f",
+    "independent_canary_sha256": "3a630092e5ddda862643b2c30c081eba88217abfa6764b793269ca5a3a9f790a",
+    "independent_verification_sha256": "a00b2dc4f5dad57b1068850206eb3d7bc876b787ddc3dbb52f87a6edfe3721f0",
+    "checks_passed": 42,
+    "private_and_protected27_unchanged": true,
+    "env_unchanged": true,
+    "commerce_enabled": false,
+    "demo_enabled": false,
+    "old_binary_and_exact_rollback_inputs_retained": true,
+    "rollback_exercised": false,
+    "capacity_slot_releasable": true,
+    "no_future_mutation_authorized": true,
+    "limits": [
+      "No real Firebase sign-in acceptance; root anonymous endpoint observations had UA-dependent edge403",
+      "No real supplier/article/rights or Stripe TEST acceptance",
+      "Historical synthetic fixture2 remains distinct from public real-data acceptance",
+      "Issue431 open pending coordinator closure; Issue398 real-data scope remains open"
+    ]
+  }
 }

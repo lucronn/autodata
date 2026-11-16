@@ -1,12 +1,13 @@
 # Source-only public release-control package
 
+Current status: source-only public release completed by root; independent read-only verification passed. See the current outcome below. Future execution is not authorized by this document.
 Goal: Prepare a separately sealed source-only public API release-control package with dry admission, exact no-provider probes and one-attempt install/switch/rollback, without executing deployment
 
 Issue: https://github.com/lucronn/autodata/issues/431
 Project: https://github.com/users/lucronn/projects/8
 Protected integration basebe1a1f235e8eeacc051ac905c4ed8a953a41c8a9; selected built sourcea82b31dc8850aa3956972928b8c720969765a972/tree11503a735d7d983ca3ebf090b471c89682e77278, API treef4faba6ee59f0000522d6962478098456957ed16 equalsbe1.
 
-## Todo
+## Todo (preparation completed; historical scope)
 
 - Synchronize Issue431/Project8/current gate and pass pinned checkpoint preflight before implementation; preserve sealed build package9dfcdcf3 and all current public/private service inputs
 - Implement fixed-target admission/probe/release controls with root-only physical execution fence, unchanged env, exact99 path replacement and durable one-use activation/rollback guards; prove refusal/rollback/capacity/HTTP behavior using owned offline fixtures only
@@ -48,4 +49,18 @@ The docs checkpoint `de211e43` passed synchronized preflight before implementati
 
 Protected master subsequently advanced to `4246264a`; the selected API source tree remains unchanged. The manifest separately pins all 15 candidate assets and all 15 original `5981b97` assets. The parent independently observed exactly three changed JS assets and twelve unchanged assets. Both forward and rollback canaries require exact disabled purchase/demo configurations and ready health dependencies; no catalog, sign-in, article, image or payment operation is admitted. Baseline canary must pass before install, and root must separately review the fresh protected-table snapshot before authorizing install.
 
-Preparation is complete only after the separately sealed offloaded manifest passes default no-dispatch admission. Execution remains unauthorized. No physical control directory is created, no public files are changed, and no serving process is restarted. Source-only HTTP canaries do not establish real Firebase, supplier, article or Stripe acceptance. If a protected table changes for any reason, automatic progress stops; no database restoration is attempted.
+Preparation passed the separately sealed offloaded manifest default no-dispatch admission. At that checkpoint execution remained unauthorized; root subsequently supplied independent authorization and performed the release recorded below. No physical control directory is created, no public files are changed, and no serving process is restarted. Source-only HTTP canaries do not establish real Firebase, supplier, article or Stripe acceptance. If a protected table changes for any reason, automatic progress stops; no database restoration is attempted.
+
+## Released source-only outcome (current)
+
+Root independently authorized and completed the public API release. The active API is source `a82b31dc8850aa3956972928b8c720969765a972`, binary `bb11d963666e4fc44f6b0879ebb55a14cf7b2ca221bad6ffa8d3282d5360203e`, PID1293423/startticks19892443/restarts0. Installed and loaded inode/hash agree. Exact99 target hash is `b9d00378ce917cc53d515e7460774712c5e179ae9bfefed3bee7886b55b74c7c`; env `74a93e21` remains byte-identical with read_only commerce and Firebase auth. The original `ad5ad70c` binary and exact original99/env rollback backups remain retained. No rollback was exercised.
+
+Root prepare/install/switch passed. Baseline42/42 receipt is `d176d1b499282f07a5db36ea3f9ffb3856e15b97317e5f7a6747c845c3020798`; protected-before is `55789e26851f73c351da39d21d2d957a7e651998594c332aadfde177872d351f`; candidate42/42 is `37e7566f2207cb0022c76742401ca06df44d230e7a5dd918cc0c1bfd92e60947`. Independent read-only candidate-check passed actual binary/lifecycle/env/private/protected27 guards, and a separate fixed42 GET canary passed all42. Independent HTTP receipt is `3a630092e5ddda862643b2c30c081eba88217abfa6764b793269ca5a3a9f790a`; aggregate receipt is `a00b2dc4f5dad57b1068850206eb3d7bc876b787ddc3dbb52f87a6edfe3721f0`, retained privately under `workshop-public-release-independent-verification-20261116`.
+
+All15 exact candidate embedded assets match. Local/public health and readiness return200; purchase.enabled=false and demo.enabled=false; purchase policy URLs/tax_notice remain null. Private ingestion17295/image3132/source272/lifecycle/env and protected27 aggregate fingerprints are unchanged. Independent verification requested no catalog, article, image, sign-in, provider or Stripe route and made no service mutation. Root separately reported anonymous `/auth/config`200 and `/auth/session`401 with its custom smoke UA; a later default Python-UA config fetch was edge403. This was not real Firebase sign-in acceptance and was not repeated by the independent verifier.
+
+Source-only release is complete. Accepted synthetic fixture2 remains synthetic UI evidence. Current authenticated Firebase, real supplier/article/rights and Stripe TEST acceptance remain separate under Issue398. Preparation, switch or canary success does not authorize any subsequent runtime mutation. Future rollback remains separately controlled by its retained one-use marker and exact original inputs.
+
+The public preparation capacity slot is releasable: all transient verification processes ended and no bulk write remains pending. Preserve physical source payload95,612,928B, installed candidate, old binary and root-only rollback controls; their allocations remain counted by future lanes. Independent snapshot: home5,914,931,200B/rootfs2,919,981,056B/Docker990,797,824B. These observations are not new admission baselines. Root releases the slot; every later lane remeasures and applies its own reviewed floors.
+
+Tracking: Issue431 outcome comment https://github.com/lucronn/autodata/issues/431#issuecomment-6907591247; Project8 item is Done, independently read back. Issue431 remains open pending coordinator closure; broad real-data acceptance remains open in Issue398. Earlier planning-only holds above describe the closed preparation history, not the current released runtime.
