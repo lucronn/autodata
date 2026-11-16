@@ -1,0 +1,25 @@
+{
+  "goal": "Prepare separate anonymous public browser attempt3 with exact pinned Cloudflare HTML normalization and correlated safe blocked-resource diagnostics, preserving real responses and both consumed attempts",
+  "plan_ref": "docs/superpowers/plans/2026-11-16-workshop-public-anonymous-browser-attempt3.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/431",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/workshop-public-anonymous-browser.md"
+  ],
+  "todo": [
+    "Synchronize Issue431/Project8/plan/canonical record and preserve attempt2 failure plus exact saved HTML evidence before implementation",
+    "Add exact single beacon-and-indent normalization, strict mutation regressions and finite blocked analytics/decoration diagnostics without altering actual edge HTML or CSP",
+    "Reseal a fresh offloaded attempt3 with immutable prior evidence and snapshot pins, run pure and no-dispatch admission tests, and submit exact command/seal for root review before any browser"
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-16T05:07:32.616926+00:00",
+  "tracking_sync": {
+    "issue_comment_ref": "https://github.com/lucronn/autodata/issues/431#issuecomment-6907880292",
+    "issue_readback_verified": true,
+    "project_status": "In Progress",
+    "project_readback_verified": true
+  },
+  "execution_authorized": false,
+  "attempt": 3,
+  "prior_evidence_immutable": true
+}
