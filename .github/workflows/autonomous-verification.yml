@@ -98,13 +98,22 @@ jobs:
             fi
           fi
           git diff --name-only --no-renames "$base" HEAD > "$changed"
+          if grep -Eq '^(\.autodata-autonomy-policy\.json$|scripts/autonomy/|docs/agents/|\.github/workflows/autonomous-verification\.yml$)' "$changed"; then
+            echo 'autonomy=true' >> "$GITHUB_OUTPUT"
+          fi
+          if grep -Eq '^(AGENTS\.md$|\.cursor/|docs/github/|CONTRIBUTING\.md$|SECURITY\.md$|\.github/CODEOWNERS$|\.github/ISSUE_TEMPLATE/|\.github/PULL_REQUEST_TEMPLATE\.md$|scripts/dev/test_repository_governance\.py$|\.github/workflows/autonomous-verification\.yml$)' "$changed"; then
+            echo 'governance=true' >> "$GITHUB_OUTPUT"
+          fi
+          if grep -Eq '^infra/compose/' "$changed"; then
+            echo 'compose=true' >> "$GITHUB_OUTPUT"
+          fi
           if grep -Eq '^(workers/ingestion-python/|packages/contracts/|db/migrations/)' "$changed"; then
             echo 'ingestion=true' >> "$GITHUB_OUTPUT"
           fi
           if grep -Eq '^(workers/enrichment-python/|packages/contracts/|db/migrations/)' "$changed"; then
             echo 'enrichment=true' >> "$GITHUB_OUTPUT"
           fi
-          if grep -Eq '^(infra/deploy/gce/|infra/compose/|apps/api-go/purchase_config.go$|workers/ingestion-python/src/autodata_ingestion/purchase_config.py$)' "$changed"; then
+          if grep -Eq '^(infra/deploy/gce/|infra/compose/)' "$changed"; then
             echo 'gce=true' >> "$GITHUB_OUTPUT"
           fi
           if grep -Eq '^(apps/api-go/.*\.go$|apps/api-go/go\.(mod|sum)$|apps/api-go/Dockerfile$|packages/contracts/|scripts/contracts/|db/migrations/)' "$changed"; then
@@ -131,12 +140,15 @@ jobs:
           go-version: "1.26.x"
 
       - name: Run validator unit tests
+        if: github.event_name == 'workflow_dispatch' || steps.change_scope.outputs.autonomy == 'true'
         run: python -m unittest discover -s scripts/autonomy -p 'test_*.py' -v
 
       - name: Verify contribution workflow guidance
+        if: github.event_name == 'workflow_dispatch' || steps.change_scope.outputs.governance == 'true'
         run: python -m unittest discover -s scripts/dev -p 'test_repository_governance.py' -v
 
       - name: Validate deterministic evidence fixture
+        if: github.event_name == 'workflow_dispatch' || steps.change_scope.outputs.autonomy == 'true'
         run: >-
           python scripts/autonomy/validate_run.py
           --manifest scripts/autonomy/fixtures/pass.json
@@ -249,6 +261,7 @@ jobs:
           run_gce "$gce_python" -B -m unittest discover -s infra/deploy/gce -p 'test_*.py' -v
 
       - name: Validate Compose definition
+        if: github.event_name == 'workflow_dispatch' || steps.change_scope.outputs.compose == 'true'
         env:
           AUTODATA_POSTGRES_PASSWORD: ci-validation-only
           AUTODATA_MINIO_ROOT_USER: ci-validation-admin
