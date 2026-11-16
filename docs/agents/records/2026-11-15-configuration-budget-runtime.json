@@ -1,0 +1,41 @@
+{
+  "goal": "Refresh draft PR440 helper-only integration onto protected be1a1f23, preserve the eight independently reviewed implementation blobs and distinguish historical inconclusive evidence from current execution authority",
+  "plan_ref": "docs/superpowers/plans/2026-11-15-configuration-budget-runtime.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/401",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/workshop-configuration-budget-runtime.md",
+    "docs/verification/2026-11-15-configuration-budget-runtime.md"
+  ],
+  "todo": [
+    "Synchronize Issue401/Project8, corrected canonical current-versus-historical docs and matching records at a docs-only protected-base checkpoint; pass exact checkpoint preflight before copying helper files",
+    "Copy the exact four helper and four test blobs from reviewed0212dd8d, run focused owned/offline tests and verify all eight Git blob IDs unchanged",
+    "Push the refreshed draft PR440 with an exact old-head lease, update its base/head verification text and run required exact-head CI; hold merge, build, activation, runtime and provider requests for root"
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-16T04:14:43.282193+00:00",
+  "historical_goal": "Prepare reviewed protected272aeea configuration-budget source/runtime package and independently supervised one-GET watchdog integration, preserving existing343896 and6fcc rollback; root alone activates or dispatches.",
+  "historical_todo": [
+    "DONE gate55b40dd8 exact-scoped archive helper with15ownedfixturetests/fsyncorder, reviewed-helperSHA+mappingSHA phases. TODO root exactreview then copy and separately reviewed cleanup; livev6 originals untouched, no runtime/provider/SQL.",
+    "DONE offline gate8f618f9c baseline-only128MiB size/SHA256 sealed reader/writer; red8\u2192green76 incl exact91,366,487-byte keyed hash fixture. V6oneGET incomplete/manualINCONCLUSIVE recorded truthfully; no runtime/provider/GET/product changes. TODO independent source review; not deployed, no retry/rollback.",
+    "DONE gate49067a32 v6 exact state HostConfig map, red3\u2192green72, owned normalization +finalbyte r4fixtures3PASS/cleaned, source admission/seal/passivePASS. Root activated17295; v5 refused preGET. TODO independent v6 review/approval/onearmedGET; none dispatched.",
+    "DONE cb63c3bc red5\u2192green71 acceptance/stop-unknown correction, final-byte r3 owned fixtures3 PASS/cleaned, v5 sealed passive-check PASS. TODO root review/activation/one armed GET; candidate preserved on unclassified delta; no dispatch.",
+    "DONE staged17295 watchdog adapter + red-first offline69 tests + three root-admitted final-byte fixtures; v4 sealed passive check PASS. TODO independent coordinator review/activation/one real GET; none dispatched.",
+    "DONE v3 intentional-stop/seal and root stage-only17295; serving343 unchanged. Activation and production watchdog arm remain coordinator-held.",
+    "DONE admission9711b45c red-first no-overlap core45/private adapter11 tests, SQL extra statements/socket recheck; combined39-table v2 read-only snapshot and backup prepared. Watchdog production integration/root review still TODO.",
+    "Gate exact protected272aeeaad8399c305468e5d486cc391d7340f6a4/tree7dc98e7fcbb984c01b8deb76c8a611b4a553e240 with reviewed helper3a67801d, synchronize Issue401/Project8/docs/checkpoint/preflight before adapters.",
+    "Produce immutable physical272 source archive/manifest, compare cached3132 build inputs, read-only actual runtime/image/public/PG identities and storage; no candidate arm/create/start/stop.",
+    "Adapt private r2 rollout package for exact343 predecessor and protected272 source; preserve6fcc secondary, fresh dump/TOC+protected27/catalog12 baseline; red-first regression tested safe predecessor admission.",
+    "Integrate supervised watchdog/ExecStopPost finalizer, liveness/cursor-bound logs, bounded no-retry HTTP and passive SQL adapters using offline+owned isolated synthetic fixtures only; no live provider GET.",
+    "Deliver exact artifact hashes/commands for independent root review; hold activation, transient live watchdog arm and real GET."
+  ],
+  "current_integration_plan_ref": "docs/superpowers/plans/2026-11-15-pr440-protected-be1-integration.md",
+  "current_protected_source_sha": "be1a1f235e8eeacc051ac905c4ed8a953a41c8a9",
+  "reviewed_helper_head": "0212dd8d708d3acb522f520f25800b24fa2d60cc",
+  "execution_authorized": false,
+  "historical_probe_outcome": "INCONCLUSIVE_MANUAL_TARGET_ONLY_TIMESTAMP_REFRESH",
+  "automatic_verified": false,
+  "protected_source_sha": "be1a1f235e8eeacc051ac905c4ed8a953a41c8a9",
+  "protected_source_tree": "39eb3530ac50bad0ecdb01a733a6a0cb373af5cf",
+  "current_protected_master": "be1a1f235e8eeacc051ac905c4ed8a953a41c8a9"
+}
