@@ -16,3 +16,9 @@ All edits/logs/cache remain in the isolated offloaded worktree/evidence location
 - Merge exact protected09524db599a82e7f8c79a1d8fb43bfadc6bbe2f3 into verified draft head6dfe602c without rewriting history.
 - Resolve only the test harness namespace conflict by retaining searchNavigation plus rows/Option, preserving the auto-merged route-state and paid search source.
 - Run all Workshop Node harness tests, JS syntax checks and focused Python migration/receipt regressions; push draft head and verify exact-head CI. Keep runtime12-case acceptance NOT_RUN.
+
+## Protected09524 integration result
+
+Amendment checkpointf5e65035 passed pinned preflight. Merged exact protected09524db599a82e7f8c79a1d8fb43bfadc6bbe2f3, resolving the only textual conflict in the library test context by retaining searchNavigation, rows:{} and Option. No hand-authored production JS change: the auto-merged app.mjs added/removed lines exactly equal protected PR447, independently compared in MERGE-REVIEW.json; all five paid migration Python files are byte-identical to verified6dfe602c. Thus the route-state baseline is retained together with draft paid search.
+
+Merged-tree verification: all331 Workshop Node tests PASS/zero skips; app/test JS syntax PASS; seven focused paid-migration/typed-ledger checks PASS; staged diff whitespace PASS. Evidence: /home/corp/autodata-evidence/paid-catalog-master09524-tests-20261116. The unchanged full synthetic Python suite previously passed164 tests at6dfe602c. Final-head CI remains required after push. PR394 stays draft and actual12-case paid PG/HTTP plus authenticated reader/search acceptance remain NOT_RUN. No Docker, Go build, SQL, provider, Stripe, browser or service dispatch.
