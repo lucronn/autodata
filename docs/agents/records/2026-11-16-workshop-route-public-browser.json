@@ -1,0 +1,26 @@
+{
+  "goal": "Prepare source-bound anonymous public desktop/mobile browser verification for released09524db without dispatch",
+  "plan_ref": "docs/superpowers/plans/2026-11-16-workshop-route-public-browser.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/448",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/workshop-route-public-browser.md"
+  ],
+  "todo": [
+    "Record independently verified source-only release and synchronize Issue448/Project8/plan/canonical record at a new pinned preflight before browser helper edits",
+    "Prepare a fresh offloaded one-use anonymous public browser packet using accepted source-bound controller and strict route/proxy policy, refreshed09524db assets/PID1676278/release/payload/tool pins",
+    "Run pure Node/Python refusal/terminal/source tests and default no-dispatch proof, seal exact packet and commands for independent root review; hold actual browser execution"
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-16T06:35:04.245321+00:00",
+  "protected_source_sha": "09524db599a82e7f8c79a1d8fb43bfadc6bbe2f3",
+  "implementation_allowlist": [
+    "scripts/dev/workshop_route_browser/*"
+  ],
+  "browser_execution_authorized": false,
+  "tracking_sync": {
+    "issue": 448,
+    "project_item": "PVTI_lAHOCSJ8cc4BiQ2BzhJEKA8",
+    "status": "In Progress"
+  }
+}
