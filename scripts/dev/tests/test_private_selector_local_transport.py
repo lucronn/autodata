@@ -309,6 +309,19 @@ class Tests(unittest.TestCase):
             with self.assertRaises(c.Refused): connection.connect()
         connect.assert_not_called()
 
+    def test_bootstrap_default_admission_is_exact_and_worker_keeps_original_names(self):
+        import private_selector_fixture_package as package
+        base={'PATH':'/usr/bin'};defaults=dict(package.BOOTSTRAP_DEFAULTS)
+        m.validate_image_environment('bootstrap',{**base,**defaults},set(base),{**base,**defaults})
+        m.validate_image_environment('worker',base,set(base),base)
+        for env,image in [(base,{**base,**defaults}),
+                          ({**base,**defaults},{**base,**defaults,'AWS_SECRET_ACCESS_KEY':'sentinel'}),
+                          ({**base,**defaults,'AWS_SECRET_ACCESS_KEY':'sentinel'},{**base,**defaults,'AWS_SECRET_ACCESS_KEY':'sentinel'}),
+                          ({**base,**defaults},{**base,**defaults,'GOTOOLCHAIN':'changed'}),
+                          ({**base,**defaults,'GOTOOLCHAIN':'changed'},{**base,**defaults})]:
+            with self.assertRaises(c.Refused):m.validate_image_environment('bootstrap',env,set(base),image)
+        with self.assertRaises(c.Refused):m.validate_image_environment('worker',{**base,**defaults},set(base),{**base,**defaults})
+
     def test_delayed_bootstrap_metadata_waits_and_preserves_validated_receipt(self):
         identifier='b'*64;self.backend.created[identifier]='bootstrap'
         metadata={'database':'lifecycle_test_'+self.value['run_id'],

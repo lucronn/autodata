@@ -50,6 +50,22 @@ _ARCHIVE_EXECUTABLES = frozenset({
 SOURCE_EXECUTABLE_PATHS = {source: _ARCHIVE_EXECUTABLES for source in (
     c.SOURCE, c.OLD_IDENTITY['source'], c.SECONDARY_IDENTITY['source'])}
 
+BOOTSTRAP_DEFAULT_HASHES = {'CGO_ENABLED': '67631e924016daab9f22ee64adb8e4ea259f31feca87c4a08402df3e0b070fbb', 'GOMODCACHE': '6c898aceedd0882b013b88da8b2dfde1a292e3197e85160053eb6b6893593a75', 'GOTOOLCHAIN': 'ced13a1008572fc321541a3f1bfdcdf71021008a22f9163c0440e371653ba69d'}
+
+def validate_image_environment(role, env, old_names, image_env):
+    """Bootstrap admits only three exact immutable-image defaults; worker is exact."""
+    c.require(role in ('bootstrap', 'worker'), 'fixture_role')
+    extra = set(BOOTSTRAP_DEFAULT_HASHES) if role == 'bootstrap' else set()
+    c.require(not (set(old_names) & extra) and set(env) == set(old_names) | extra,
+              'fixture_environment_names_user')
+    c.require(set(image_env) <= set(env), 'image_environment_defaults')
+    if role == 'bootstrap':
+        c.require(set(image_env) - set(old_names) == extra, 'bootstrap_image_default_names')
+        for key, expected in BOOTSTRAP_DEFAULT_HASHES.items():
+            c.require(hashlib.sha256((key + '=' + image_env.get(key, '')).encode()).hexdigest() == expected
+                      and env.get(key) == image_env.get(key), 'bootstrap_image_default_value')
+
+
 PROTECTED = tuple(sorted('''auth_sessions canonical_article_aliases canonical_article_reviews
 canonical_article_revisions canonical_article_rewrite_attempts canonical_article_source_observations
 canonical_article_source_revisions canonical_articles catalog_article_index_pages
@@ -500,11 +516,11 @@ class LocalTransport:
         c.require(len(env) == len(entries) and env == plan.get('synthetic_environment', {}).get(role),
                   'synthetic_environment_seal')
         raw_old = self.raw_inspect(c.OLD); old_env = dict(x.split('=', 1) for x in raw_old['Config']['Env'])
-        c.require(set(env) == set(old_env) and payload.get('User', '') == raw_old['Config']['User'],
-                  'fixture_environment_names_user')
+        c.require(payload.get('User', '') == raw_old['Config']['User'], 'fixture_environment_names_user')
         metadata = json.loads(self.docker('image', 'inspect', image))[0]
-        c.require(metadata['Id'] == image and {x.split('=', 1)[0] for x in metadata['Config']['Env']} <= set(env),
-                  'image_environment_defaults')
+        c.require(metadata['Id'] == image, 'image_environment_defaults')
+        validate_image_environment(role, env, set(old_env),
+                                   dict(x.split('=', 1) for x in metadata['Config']['Env']))
         for key in ('BANKONE_BASE_URL', 'BANKTWO_BASE_URL'):
             c.require(re.fullmatch(r'http://127\.0\.0\.1:[1-9][0-9]{0,4}', env.get(key, '')) is not None,
                       'synthetic_provider_endpoint')

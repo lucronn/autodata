@@ -169,7 +169,14 @@ class Tests(unittest.TestCase):
             self.assertIsNone(payload['HostConfig']['NetworkMode']);self.assertTrue(payload['HostConfig']['ReadonlyRootfs'])
             self.assertNotIn('PortBindings',payload['HostConfig'])
             self.assertEqual(payload['HostConfig']['RestartPolicy'],{'Name':'no'})
-            self.assertEqual({x.split('=',1)[0] for x in payload['Env']},set(names()))
+            self.assertEqual({x.split('=',1)[0] for x in payload['Env']},set(names()) | (set(package.BOOTSTRAP_DEFAULTS) if role=='bootstrap' else set()))
+
+    def test_bootstrap_explicit_defaults_do_not_change_worker_names(self):
+        files=package.review_files(names(),self.run)
+        bootstrap_env=dict(x.split('=',1) for x in json.loads(files['fixture-bootstrap.create.json'])['Env'])
+        worker_env=dict(x.split('=',1) for x in json.loads(files['fixture-worker.create.json'])['Env'])
+        self.assertEqual(set(bootstrap_env)-set(worker_env),{'CGO_ENABLED','GOMODCACHE','GOTOOLCHAIN'})
+        self.assertEqual(set(worker_env),set(names()))
 
     def test_builder_rejects_physical_destination_and_existing_output(self):
         with self.assertRaises(c.Refused):package.build('/home/corp/physical-package',names(),self.run)

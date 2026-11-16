@@ -88,5 +88,14 @@
     "actual_image_result": "NOT_RUN",
     "physical_source_writes": 0,
     "slot": "HOLD_M2A_R3"
+  },
+  "bootstrap_default_control_verification": {
+    "owned_tests": 237,
+    "new_tests": 8,
+    "red_regression": "bootstrap explicit default names absent",
+    "prior_root_approved_created_id": "263ed604f270c473ad3fcbdf860fc5a322974eaf7f449bf75c803bc7c21a7564",
+    "prior_id_never_started_removed_absent": true,
+    "further_create_approved": false,
+    "actual_image_result": "NOT_RUN"
   }
 }

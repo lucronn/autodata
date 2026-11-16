@@ -9,10 +9,11 @@ import private_selector_adapter_contract as c
 REPO=Path(__file__).resolve().parents[2]
 OFFLOADED_DEVICE=1792
 EVIDENCE=Path('/home/corp/autodata-evidence')
-TRANSPORT_SHA='e2a73b3d7cffed37cdddcca39a84d8e846d87b5e90325a19fb916a5643485bc6'
+TRANSPORT_SHA='a4fed281a6346219803a1914e3c286dc6fca80e1f423afd2793f82f4083e6c70'
 ARCHIVE_SHA='4d1536d534a9327a4524b0e35cf234c83e5de4a8d18353fd6ca3b6343f7d5e74'
 PACKAGE='/home/corp/autodata-candidate/private-initial-selector-a82b31d-20261115'
 
+BOOTSTRAP_DEFAULTS={'CGO_ENABLED': '0', 'GOMODCACHE': '/opt/go-module-cache', 'GOTOOLCHAIN': 'local'}
 
 def sha(data):return hashlib.sha256(data).hexdigest()
 
@@ -67,15 +68,16 @@ def review_files(names,run,*,repo=REPO):
     for name,source in sources.items():files[name]=(repo/source).read_bytes()
     c.require(sha(files['private_selector_local_transport.py'])==TRANSPORT_SHA,'transport_byte_drift')
     env=environment(names,run)
+    environments={'worker':env,'bootstrap':{**env,**BOOTSTRAP_DEFAULTS}}
     plan={'run_id':run,'network':{'id':None,'peer_identities':{}},'hostconfig_by_status':{},
-        'synthetic_environment':{'bootstrap':env,'worker':env},'execution_approved':False,
+        'synthetic_environment':environments,'execution_approved':False,
         'unresolved':['exact internal synthetic network and peer identities','current daemon/socket/data-root/capacity readback',
             'full Created/Running/Exited HostConfig hashes for both fixture roles','immutable physical source/archive and rollback inventories',
             'sealed physical launcher with external execution-seal SHA and root phase approval'],
         'lifetime_limits':{'host_fixture_client_seconds':120,'owned_initial_job_seconds':20,
             'configuration_requests_dispatched':0,'actual_image_executed':False}}
     for role in ('bootstrap','worker'):
-        files['fixture-'+role+'.create.json']=json.dumps(payload(role,run,env,files['fixture_bootstrap.py'].decode()),sort_keys=True,indent=2).encode()+b'\n'
+        files['fixture-'+role+'.create.json']=json.dumps(payload(role,run,environments[role],files['fixture_bootstrap.py'].decode()),sort_keys=True,indent=2).encode()+b'\n'
     files['fixture-plan.json']=json.dumps(plan,sort_keys=True,indent=2).encode()+b'\n'
     artifact_files={'transport':'private_selector_local_transport.py','contract':'private_selector_adapter_contract.py',
         'fixture_adapter':'private_selector_image_fixture.py','fixture_bootstrap':'fixture_bootstrap.py',
