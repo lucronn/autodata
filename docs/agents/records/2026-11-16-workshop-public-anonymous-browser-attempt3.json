@@ -12,7 +12,7 @@
     "Reseal a fresh offloaded attempt3 with immutable prior evidence and snapshot pins, run pure and no-dispatch admission tests, and submit exact command/seal for root review before any browser"
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-16T05:07:32.616926+00:00",
+  "updated_at": "2026-11-16T05:11:58.838821+00:00",
   "tracking_sync": {
     "issue_comment_ref": "https://github.com/lucronn/autodata/issues/431#issuecomment-6907880292",
     "issue_readback_verified": true,
@@ -21,5 +21,20 @@
   },
   "execution_authorized": false,
   "attempt": 3,
-  "prior_evidence_immutable": true
+  "prior_evidence_immutable": true,
+  "preparation": {
+    "status": "SEALED_CORRECTED_ROOT_ONE_RUN_REVIEW_PENDING",
+    "implementation_head": "e1a22f5daa37109ce7d08ed4353d02cc6dce9e4e",
+    "implementation_tree": "f1ff03c2cc5788941fb23db381605cbee1e23784",
+    "python_tests": 13,
+    "node_tests": 12,
+    "saved_snapshots_mutation_test_passed": true,
+    "actual_document_csp_preserved": true,
+    "package_seal_sha256": "c102ec61c408fc1118f5a3e2b5137885f7c5f9519aeba6cb1d36f88c133fdf52",
+    "review_seal_sha256": "e36be75ba7dff99279e8d15d0afeed0e3115f0b4507219a95282f3e6faee2cbb",
+    "dry_proof_sha256": "7ed75454765825ea89ca68c9ac8b72e2413b54b99669bf6c7e70f39457d0a671",
+    "marker_absent": true,
+    "subprocess_dns_connect_bind_calls": 0,
+    "browser_dispatched": false
+  }
 }
