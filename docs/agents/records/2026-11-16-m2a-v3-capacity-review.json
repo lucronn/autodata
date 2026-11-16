@@ -7,11 +7,11 @@
     "docs/operations/m2a-v3-capacity-review.md"
   ],
   "todo": [
-    "Synchronize Issue443/Project8/plan/canonical record and pinned preflight before implementation.",
-    "Inventory and pin historical floors/imports/source/seals/markers; create explicit offloaded operational copies and shared proposed capacity policy, review-only CLI fences.",
-    "Run pure/no-dispatch refusal/arithmetic/import/source-preservation tests; seal exact copies/policy/receipt and report root.",
-    "Preserve public-exclusive capacity and all original M2A source/data/seals/markers; hold services/SQL/relay/browser/provider work for separate root activation gate."
+    "Completed synchronized checkpoint ebd0111a and pinned preflight before implementation.",
+    "Completed explicit offloaded copies,33-site inventory, strict shared proposed policy and inert execution fences.",
+    "Completed43 tests and sealed dry-only proof/package; independent root review pending.",
+    "Preserve public-exclusive capacity; hold original M2A services/SQL/relay/browser/provider work for separate activation gate."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-16T04:35:37.747702+00:00"
+  "updated_at": "2026-11-16T04:42:05.993122+00:00"
 }
