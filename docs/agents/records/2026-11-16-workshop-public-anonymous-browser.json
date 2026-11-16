@@ -12,7 +12,7 @@
     "Prove policy, cleanup, capacity and default no-dispatch guards with owned fixtures; seal exact helpers/toolchain/current-runtime pins and report for root review before one browser authorization"
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-16T04:50:20.761633+00:00",
+  "updated_at": "2026-11-16T04:58:04.965351+00:00",
   "protected_base_sha": "4246264a881382676927e22adad0a1d240f03268",
   "artifact_source_sha": "a82b31dc8850aa3956972928b8c720969765a972",
   "implementation_allowlist": [
@@ -27,5 +27,18 @@
     "project_status": "In Progress",
     "project_readback_verified": true
   },
-  "execution_authorized": false
+  "execution_authorized": false,
+  "preparation": {
+    "status": "SEALED_NO_DISPATCH_ROOT_REVIEW_PENDING",
+    "implementation_head": "73c5010a5ef6196342cf85d3fb6187c0ea15db0e",
+    "implementation_tree": "30d49cc2bff029818121812d00fbc4ce615cca90",
+    "python_tests": 12,
+    "node_tests": 5,
+    "review_seal_sha256": "54c3965ccb03824777363571064e1d31800d0a250f222f87ce12f01a7220bb34",
+    "package_seal_sha256": "6e42bf1f7b569e8dca078f034f014c6b8996c83a4358a4d444cf5d8db9a71ae9",
+    "dry_proof_sha256": "e24581718bed0d38bd9a785626122dad697555754550521b21bc7fe91a2cc837",
+    "subprocess_dns_connect_bind_calls": 0,
+    "browser_dispatched": false,
+    "one_use_marker_absent": true
+  }
 }
