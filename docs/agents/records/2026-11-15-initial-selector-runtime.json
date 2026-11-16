@@ -1,5 +1,5 @@
 {
-  "goal": "Implement and independently review an offloaded, default-disabled fixed-local-daemon transport and proof adapter while all physical, runtime and provider execution remain held",
+  "goal": "Prepare a non-dispatch actual-image synthetic fixture package on offloaded storage, preserving sealed disabled transport and all execution holds",
   "plan_ref": "docs/superpowers/plans/2026-11-15-initial-selector-runtime.md",
   "issue_ref": "https://github.com/lucronn/autodata/issues/401",
   "project_ref": "https://github.com/users/lucronn/projects/8",
@@ -7,12 +7,12 @@
     "docs/architecture/initial-selector-runtime.md"
   ],
   "todo": [
-    "Review exact disabled transport code/seal and owned 155-test proof",
-    "Separately synchronize concrete synthetic fixture plan/payloads/launcher/lifecycle hashes and obtain root phase approval",
-    "Keep physical source/archive/backup/SQL/container/activation/provider/browser execution held; remeasure capacity and identities before any future admission"
+    "Synchronize fixture package checkpoint/readbacks/preflight",
+    "Implement import-inert exact-synthetic bootstrap/client and pure offloaded review builder/proof composition with owned tests",
+    "Seal exact package/tests/commands for independent root review; all actual-image/physical/SQL/container/HTTP/provider execution held"
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-16T05:06:14.399439+00:00",
+  "updated_at": "2026-11-16T05:19:13.329522+00:00",
   "historical_goal": "Plan source-only private initial-selector safety runtime rollout preserving17295 rollback and incomplete v6 evidence",
   "historical_todo": [
     "Synchronize exact protected a82 Issue401/Project8/docs/record/readback/preflight before implementation",
@@ -62,5 +62,6 @@
     "actual_image_fixture_executed": false,
     "dispatch_enabled": false,
     "evidence_root": "/home/corp/autodata-evidence/private-selector-local-transport-424-20261116"
-  }
+  },
+  "fixture_payload_implementation_only": true
 }
