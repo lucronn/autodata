@@ -1,0 +1,24 @@
+{
+  "goal": "Prepare one separately reviewed anonymous browser attempt4 with bounded safe same-origin route and finite console diagnostics, preserving exact edge validation and all consumed attempts",
+  "plan_ref": "docs/superpowers/plans/2026-11-16-workshop-public-anonymous-browser-attempt4.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/431",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/workshop-public-anonymous-browser.md"
+  ],
+  "todo": [
+    "Synchronize Issue431/Project8 and immutable attempt3 failure evidence before edits",
+    "Add red-first bounded query-free human-readable same-origin path and finite console-code diagnostics; preserve deny policy and exact edge-only console classification",
+    "Seal a fresh offloaded attempt4 and run pure/default no-dispatch proof for root review before any dispatch"
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-16T05:13:20.745310+00:00",
+  "tracking_sync": {
+    "issue_comment_ref": "https://github.com/lucronn/autodata/issues/431#issuecomment-6907963889",
+    "issue_readback_verified": true,
+    "project_status": "In Progress",
+    "project_readback_verified": true
+  },
+  "execution_authorized": false,
+  "attempt": 4
+}
