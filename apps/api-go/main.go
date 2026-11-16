@@ -236,6 +236,7 @@ func (s *Server) Handler() http.Handler {
 	})
 	mux.HandleFunc("/workshop/purchase-config.json", s.workshopPurchaseConfig)
 	mux.HandleFunc("/workshop/demo-mode.json", s.workshopDemoMode)
+	mux.HandleFunc("/workshop/test-notices/", s.workshopTestNotice)
 	workshopAssets, err := fs.Sub(dashboardFiles, "workshop")
 	if err != nil {
 		panic("embedded workshop assets unavailable: " + err.Error())
