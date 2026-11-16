@@ -1,5 +1,5 @@
 {
-  "goal": "Prepare guarded source-only public Workshop package from protecteda82 using reviewed offloaded ext4 build scratch and <=128MiB physical-home growth; no activation.",
+  "goal": "Synchronize root-selected public-only5GiB reserve plus128MiBdrift/128MiBprep/64MiBinstall; copy-only verify unused M1GoCache; hold build/unlink/runtime until rootreview.",
   "plan_ref": "docs/superpowers/plans/2026-11-15-workshop-client-source-preview.md",
   "issue_ref": "https://github.com/lucronn/autodata/issues/431",
   "project_ref": "https://github.com/users/lucronn/projects/8",
@@ -7,11 +7,11 @@
     "docs/architecture/workshop-client-source-preview.md"
   ],
   "todo": [
-    "Synchronize root build-only release, exacta82 source, archival cleanup, fresh physical capacity and ext4 build paths; pass pinned preflight.",
-    "Measure runtime/private/source/toolchain/memory baseline; guarded offloaded build/test and physical<=128MiB archive/binary/browser/helper sealing.",
-    "Exercise synthetic refusal/rollback/browser policy and safe baseline/protected read-only checks; hand root exact immutable hashes/evidence/capacity and extra-install budget limitation.",
-    "Root independently reviews and separately authorizes activation/rollback; preserve public/private runtime until then."
+    "Synchronize root public-lane reserve amendment and copy-only M1GoCache scope; pass pinned checkpoint preflight.",
+    "Seal/copy/fsync/independently verify exact M1GoCache and restore mapping under link/ref/device/capacity guards; preserve originals and send rootreceipt.",
+    "Await root cleanup/freshadmission; no build/browser/unlink/runtime; future attempt2 requires fresh monitored paths/tests.",
+    "Root reviews finalpackage and separately authorizes activation/rollback; no provider/Stripe and no M2A/privatefloor reset."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-15T07:20:37.157486+00:00"
+  "updated_at": "2026-11-16T04:17:14.396602+00:00"
 }
