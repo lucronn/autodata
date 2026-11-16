@@ -105,6 +105,9 @@ jobs:
           if grep -Eq '^(infra/deploy/gce/|infra/compose/|apps/api-go/purchase_config.go$|workers/ingestion-python/src/autodata_ingestion/purchase_config.py$)' "$changed"; then
             echo 'gce=true' >> "$GITHUB_OUTPUT"
           fi
+          if grep -Ev '^scripts/dev/test_repository_governance.py$' "$changed" | grep -Eq '^(apps/api-go/|workers/|packages/contracts/|db/migrations/|infra/compose/|scripts/dev/)'; then
+            echo 'integration=true' >> "$GITHUB_OUTPUT"
+          fi
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -184,7 +187,7 @@ jobs:
         run: python -m unittest discover -s tests -p 'test_*.py' -v
 
       - name: Run development adapter tests
-        if: github.event_name != 'pull_request'
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && steps.change_scope.outputs.integration == 'true')
         run: python -m unittest discover -s scripts/dev -p 'test_*.py' -v
 
       - name: Run required GCE host delivery tests
@@ -235,7 +238,7 @@ jobs:
         run: docker compose -f infra/compose/compose.yaml -f infra/compose/compose.ci.yaml config --quiet
 
       - name: Run fake integration smoke
-        if: github.event_name != 'pull_request'
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && steps.change_scope.outputs.integration == 'true')
         env:
           AUTODATA_POSTGRES_PASSWORD: ci-validation-only
           AUTODATA_MINIO_ROOT_USER: ci-validation-admin
@@ -243,7 +246,7 @@ jobs:
         run: docker compose -f infra/compose/compose.yaml run --rm fake-integrations
 
       - name: Run live Compose fast-lane smoke
-        if: github.event_name != 'pull_request'
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && steps.change_scope.outputs.integration == 'true')
         env:
           AUTODATA_POSTGRES_PASSWORD: ci-validation-only
           AUTODATA_MINIO_ROOT_USER: ci-validation-admin
