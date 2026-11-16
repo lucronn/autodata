@@ -32,6 +32,7 @@ func purchaseForbidden(c rune) bool {
 }
 
 var purchaseURLPattern = regexp.MustCompile(`^https://([^/?#]+)(/[^?#]*)?$`)
+var purchaseLocalTestOriginPattern = regexp.MustCompile(`^http://(?:localhost|127\.0\.0\.1):([1-9][0-9]{0,4})$`)
 var purchaseLabelPattern = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$`)
 var purchaseFinalLabelPattern = regexp.MustCompile(`^[A-Za-z]{2,63}$`)
 
@@ -65,6 +66,26 @@ func purchaseURLValid(value string) bool {
 		}
 	}
 	return true
+}
+
+func purchaseLocalTestOriginValid(origin string) bool {
+	parts := purchaseLocalTestOriginPattern.FindStringSubmatch(origin)
+	if parts == nil {
+		return false
+	}
+	port, err := strconv.Atoi(parts[1])
+	return err == nil && port <= 65535
+}
+
+func (s *Server) purchaseLocalTestOrigin() string {
+	if !s.workshopTestCheckout || s.customerAuth == nil {
+		return ""
+	}
+	config := s.customerAuth.config
+	if config.Environment != "test" || config.Mode != "firebase" || config.commerceMode != "stripe_test" || !purchaseLocalTestOriginValid(config.Origin) {
+		return ""
+	}
+	return config.Origin
 }
 
 // Validate scalar escapes before encoding/json can silently replace lone surrogates.
@@ -149,6 +170,10 @@ func purchaseJSONValue(d *json.Decoder) error {
 	return nil
 }
 func decodeWorkshopPurchaseConfig(b []byte) (workshopPurchaseConfig, error) {
+	return decodeWorkshopPurchaseConfigForLocalTest(b, "")
+}
+
+func decodeWorkshopPurchaseConfigForLocalTest(b []byte, localTestOrigin string) (workshopPurchaseConfig, error) {
 	bad := func() (workshopPurchaseConfig, error) {
 		return workshopPurchaseConfig{}, fmt.Errorf("invalid purchase configuration")
 	}
@@ -191,8 +216,14 @@ func decodeWorkshopPurchaseConfig(b []byte) (workshopPurchaseConfig, error) {
 		}
 		return disabledWorkshopPurchaseConfig(), nil
 	}
-	for _, value := range urls {
-		if value == nil || !purchaseURLValid(*value) {
+	localNotices := []string{"terms", "privacy", "refund", "contact"}
+	localOriginValid := purchaseLocalTestOriginValid(localTestOrigin)
+	for i, value := range urls {
+		if value == nil {
+			return bad()
+		}
+		localNotice := localOriginValid && *value == localTestOrigin+"/workshop/test-notices/"+localNotices[i]
+		if !purchaseURLValid(*value) && !localNotice {
 			return bad()
 		}
 	}
@@ -229,7 +260,7 @@ func (s *Server) workshopPurchaseConfig(w http.ResponseWriter, r *http.Request) 
 			fail(503, "COMMERCE_UNAVAILABLE")
 			return
 		}
-		result, e = decodeWorkshopPurchaseConfig(b)
+		result, e = decodeWorkshopPurchaseConfigForLocalTest(b, s.purchaseLocalTestOrigin())
 		if e != nil {
 			fail(503, "COMMERCE_UNAVAILABLE")
 			return
