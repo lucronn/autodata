@@ -1,5 +1,15 @@
 # Public source-only release control
 
+## Current outcome: source-only release and anonymous UI accepted
+
+Root executed the independently reviewed attempt5 exactly once. Desktop1440x900 and mobile390x844 passed, errors[], page errors0/CSP violation events0; screenshots preserved. Actual public document/static assets, Firebase-mode auth/config200 and anonymous auth/session401 were observed; sign-in was not clicked and auth was not simulated. Each viewport used exactly one browser-local synthetic empty years response. RUM synthetic policy remained present but unused (0). Exact Cloudflare beacon and /cdn-cgi/speculation metadata were blocked before network with matching finite diagnostics; actual document bytes/headers were not replaced. Edge HTML raw1a22e7d4 normalized only the exact pinned insertion to canonical6841aa7e for validation. No CSP header was present, so this proves no observed CSP violation, not enforced CSP protection.
+
+BROWSER-RESULT6866edb4a42bfec80eea22472042d231c0766875adede96fdaa90a3f7b887077; OUTCOME8d58621d1c86fcd7013351a4141869265e3d9c754f9b537471ab7c4de34500fc; journal9a5d35ec42d910eeea28221de918d4f7026f6a60ca1fb98c13431011b0882117. Screenshot desktopSHA d00ffe12a58a0cad2830da1fa6866f54534bda9ecf82fada0e387df92a70a46c, mobileSHA07e482286ef5c58db1f2b460971b28caf015c95cc792117407db046ed1471f87. Evidence root /home/corp/autodata-evidence/workshop-public-anonymous-a82b31d-attempt5-20261116; package5985dc13d1b9f7eb810750d342f68dee2d277500b695f4414a21277bb4186540; consumed marker017c19a00d3d91a5e2471f67b4457eb6fc3db4e3882e20c081bd77241cfd457b. Prior four attempts/markers remain preserved.
+
+Controller confirms no service mutation, owned children0, proxy listener absent and tmpfs profile removed after reaping. Proxy upstream2/connected2 (public API only), header rejected25; no denied request was forwarded. Browser provider/write dispatch0. Root independently confirms public PID1293423/start19892443/binarybb11 stable and public/private guards pass. Earlier source-only switch/canary42/42 remains valid, env74a93e21/private/protected27 unchanged, old binary/exact99 rollback retained. No new browser or runtime operation is authorized by this record.
+
+Issue431 original source-only API release plus post-switch anonymous desktop/mobile browser item is satisfied and safe to close; Project8 Done. Real Firebase sign-in, nonempty supplier catalog, licensed article/image display, rights, purchases/Stripe/payment settlement and durability acceptance are separate and remain open under Issue398. Synthetic empty years means this is anonymous UI/layout/JS/bootstrap acceptance only. Historical planning/held statuses below describe their original checkpoints and are superseded by this outcome.
+
 Current status: source-only public release completed by root; independent read-only verification passed. See the current outcome below. Future execution is not authorized by this document.
 Goal: Prepare a separately sealed source-only public API release-control package with dry admission, exact no-provider probes and one-attempt install/switch/rollback, without executing deployment
 

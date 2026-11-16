@@ -12,12 +12,13 @@
     "Seal offloaded attempt5 with unchanged route/proxy/capacity/one-use controls and pure/default no-dispatch proof for root review"
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-16T05:17:37.293321+00:00",
+  "updated_at": "2026-11-16T05:19:22.083353+00:00",
   "tracking_sync": {
     "issue_comment_ref": "https://github.com/lucronn/autodata/issues/431#issuecomment-6908029839",
     "issue_readback_verified": true,
     "project_status": "In Progress",
-    "project_readback_verified": true
+    "project_readback_verified": true,
+    "outcome_comment_ref": "https://github.com/lucronn/autodata/issues/431#issuecomment-6908058381"
   },
   "execution_authorized": false,
   "attempt": 5,
@@ -33,5 +34,28 @@
     "dry_proof_sha256": "2be069427472564c7912641afaa5345221c6c87976e380c721ed8f45e771b5ff",
     "dispatch_calls": 0,
     "marker_absent": true
+  },
+  "outcome": {
+    "status": "PUBLIC_ANONYMOUS_UI_PASS",
+    "source_only_release_and_original_browser_scope_complete": true,
+    "browser_sha256": "6866edb4a42bfec80eea22472042d231c0766875adede96fdaa90a3f7b887077",
+    "outcome_sha256": "8d58621d1c86fcd7013351a4141869265e3d9c754f9b537471ab7c4de34500fc",
+    "journal_sha256": "9a5d35ec42d910eeea28221de918d4f7026f6a60ca1fb98c13431011b0882117",
+    "marker_sha256": "017c19a00d3d91a5e2471f67b4457eb6fc3db4e3882e20c081bd77241cfd457b",
+    "desktop_screenshot_sha256": "d00ffe12a58a0cad2830da1fa6866f54534bda9ecf82fada0e387df92a70a46c",
+    "mobile_screenshot_sha256": "07e482286ef5c58db1f2b460971b28caf015c95cc792117407db046ed1471f87",
+    "viewports": [
+      "1440x900",
+      "390x844"
+    ],
+    "errors": [],
+    "real_static_auth_bootstrap": true,
+    "synthetic_years": true,
+    "signin_clicked": false,
+    "provider_or_write_dispatches": 0,
+    "csp_header_present": false,
+    "owned_remaining": 0,
+    "proxy_absent": true,
+    "issue398_remains_separate": true
   }
 }
