@@ -248,3 +248,10 @@ Todo:
 - [ ] Implement separate guarded no-dispatch proof, route refusal mocks and tmpfs-capacity/owned-child kill tests; seal exact fixture helpers/commands/receipt.
 - [ ] Report root exact hashes/allowlist/commands for independent review; await explicit one-attempt dispatch authorization.
 - [ ] Hold all public/browser/provider action until separately authorized; source-only candidate package unchanged.
+
+
+### Fixture executable-copy and owned-process amendment
+
+Root explicitly approves exact SHA-verified0555 executable copy to offloaded ext4 fixture `autodata-api` from immutable physical source0600 `autodata-api` (SHA bb11d963666e4fc44f6b0879ebb55a14cf7b2ca221bad6ffa8d3282d5360203e). Source metadata/content remains unchanged; copy exclusive, fsync and independently verify61,405,300bytes/hash. Fixture cap is68MiB (64MiB executable+4MiB helpers/log/screenshots), superseding4MiB total. ext4 mount rw,nosuid,nodev permits execution; recheck mount/device. Profile stays short private tmpfs path above. No memfd or physical package mutation.
+
+For reliable process cleanup, later reviewed runner owns exact Go binary PID/process group at127.0.0.1:18432 and Chromium PID/process group with CDP bound127.0.0.1:18433; Node connects to this local CDP and creates blocked-serviceworker contexts. Reject existing listeners on either port. Chromium uses dedicated short profile/temp/XDG/crash paths on tmpfs, no-sandbox/disable-dev-shm-usage, background-networking/component-update/sync/crash reporter disabled, all external HTTP(S) forced to refusing loopback proxy127.0.0.1:9 and external DNS denied; browser route blocks all off-origin traffic as a second layer. No unrelated process is signalled; on success/failure terminate only owned Node/Chromium/API groups, wait/reap before final baseline comparison and receipt. Preserve profile/evidence, no automatic cleanup/retry. Chromium/proxy are never started by dry proof. Resource/port/route tests before exact no-dispatch receipt; root reviews before any fixture child dispatch.
