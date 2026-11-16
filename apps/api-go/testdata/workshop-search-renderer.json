@@ -1,0 +1,290 @@
+[
+  {
+    "name": "introduction with usable steps",
+    "article": {
+      "title": "Service guide",
+      "body": "Distinct introduction about coolant.",
+      "steps": [
+        {
+          "number": 1,
+          "action": "Inspect reservoir",
+          "instructions": [
+            "Top up approved fluid."
+          ]
+        }
+      ]
+    },
+    "has_intro": true,
+    "visible_queries": [
+      "coolant",
+      "approved fluid"
+    ],
+    "hidden_queries": [],
+    "once": [
+      "Distinct introduction about coolant.",
+      "Top up approved fluid."
+    ]
+  },
+  {
+    "name": "exact numbered replay only",
+    "article": {
+      "title": "Service guide",
+      "body": "1.Remove the pump.2.Refit the cover.",
+      "steps": [
+        {
+          "number": 1,
+          "action": "Remove the pump."
+        },
+        {
+          "number": 2,
+          "action": "Refit the cover."
+        }
+      ]
+    },
+    "has_intro": false,
+    "visible_queries": [
+      "pump",
+      "cover"
+    ],
+    "hidden_queries": [],
+    "once": [
+      "Remove the pump.",
+      "Refit the cover."
+    ]
+  },
+  {
+    "name": "unmatched numbered body",
+    "article": {
+      "title": "Service guide",
+      "body": "Workshop note. 1.Adjust belt tension. 2.Record the measurement.",
+      "steps": [
+        {
+          "number": 1,
+          "action": "Inspect housing."
+        },
+        {
+          "number": 2,
+          "instructions": [
+            "Clean the seal."
+          ]
+        }
+      ]
+    },
+    "has_intro": true,
+    "visible_queries": [
+      "belt tension",
+      "measurement",
+      "housing"
+    ],
+    "hidden_queries": [],
+    "once": [
+      "Adjust belt tension.",
+      "Clean the seal."
+    ]
+  },
+  {
+    "name": "flat suffix replay",
+    "article": {
+      "title": "Service guide",
+      "body": "Introduction on clearance. Remove the pump. Refit the cover.",
+      "steps": [
+        {
+          "number": 1,
+          "action": "Remove the pump."
+        },
+        {
+          "number": 2,
+          "action": "Refit the cover."
+        }
+      ]
+    },
+    "has_intro": true,
+    "visible_queries": [
+      "clearance",
+      "cover"
+    ],
+    "hidden_queries": [],
+    "once": [
+      "Introduction on clearance.",
+      "Remove the pump.",
+      "Refit the cover."
+    ]
+  },
+  {
+    "name": "numbered instructions only replay",
+    "article": {
+      "title": "Service guide",
+      "body": "Instruction introduction. 1.Remove the pump.2.Refit the cover.",
+      "steps": [
+        {
+          "number": 1,
+          "action": "Preparation",
+          "instructions": [
+            "Remove the pump."
+          ]
+        },
+        {
+          "number": 2,
+          "action": "Completion",
+          "instructions": [
+            "Refit the cover."
+          ]
+        }
+      ]
+    },
+    "has_intro": true,
+    "visible_queries": [
+      "introduction",
+      "pump",
+      "Completion"
+    ],
+    "hidden_queries": [],
+    "once": [
+      "Instruction introduction.",
+      "Remove the pump.",
+      "Refit the cover."
+    ]
+  },
+  {
+    "name": "flat instructions only suffix",
+    "article": {
+      "title": "Service guide",
+      "body": "Safety on coolant. Remove the pump. Refit the cover.",
+      "steps": [
+        {
+          "number": 1,
+          "action": "Preparation",
+          "instructions": [
+            "Remove the pump."
+          ]
+        },
+        {
+          "number": 2,
+          "action": "Completion",
+          "instructions": [
+            "Refit the cover."
+          ]
+        }
+      ]
+    },
+    "has_intro": true,
+    "visible_queries": [
+      "coolant",
+      "pump"
+    ],
+    "hidden_queries": [],
+    "once": [
+      "Safety on coolant.",
+      "Remove the pump.",
+      "Refit the cover."
+    ]
+  },
+  {
+    "name": "document overrides legacy body and steps",
+    "article": {
+      "title": "Service guide",
+      "body": "HiddenCompatMarker",
+      "steps": [
+        {
+          "number": 1,
+          "action": "HiddenStepMarker"
+        }
+      ],
+      "document": {
+        "schema_version": 1,
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": "Visible canonical torque."
+          }
+        ]
+      }
+    },
+    "has_intro": false,
+    "visible_queries": [
+      "canonical torque"
+    ],
+    "hidden_queries": [
+      "HiddenCompatMarker",
+      "HiddenStepMarker"
+    ],
+    "once": [
+      "Visible canonical torque."
+    ]
+  },
+  {
+    "name": "partly empty steps use body fallback",
+    "article": {
+      "title": "Service guide",
+      "body": "Fallback pressure procedure.",
+      "steps": [
+        {
+          "number": 1,
+          "action": "HiddenPartialStep"
+        },
+        {
+          "number": 2
+        }
+      ]
+    },
+    "has_intro": false,
+    "visible_queries": [
+      "pressure"
+    ],
+    "hidden_queries": [
+      "HiddenPartialStep"
+    ],
+    "once": [
+      "Fallback pressure procedure."
+    ]
+  },
+  {
+    "name": "normalized introduction and numbered suffix",
+    "article": {
+      "title": "Service guide",
+      "body": "CAUTION:\nRelease pressure.\n\nDistinct\u00a0coolant introduction.1.Remove the pump.",
+      "steps": [
+        {
+          "number": 1,
+          "action": "Remove the pump."
+        }
+      ]
+    },
+    "has_intro": true,
+    "visible_queries": [
+      "pressure",
+      "coolant",
+      "pump"
+    ],
+    "hidden_queries": [],
+    "once": [
+      "Release pressure.",
+      "Remove the pump."
+    ]
+  },
+  {
+    "name": "numbered callout replay",
+    "article": {
+      "title": "Service guide",
+      "body": "Distinct warning introduction.1.NOTE: Remove pump.",
+      "steps": [
+        {
+          "number": 1,
+          "instructions": [
+            "NOTE: Remove pump."
+          ]
+        }
+      ]
+    },
+    "has_intro": true,
+    "visible_queries": [
+      "warning",
+      "Remove pump"
+    ],
+    "hidden_queries": [],
+    "once": [
+      "Distinct warning introduction.",
+      "NOTE: Remove pump."
+    ]
+  }
+]

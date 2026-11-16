@@ -42,6 +42,7 @@ const demoPath = (path) => {
 const names = ["year", "make", "model", "configuration"];
 const rows = Object.fromEntries(names.map((name) => [name, []]));
 const navigation = new NavigationGeneration();
+const searchNavigation = new NavigationGeneration();
 const checkout = createCheckout({
   expectedMode: $('test-banner').hidden ? undefined : 'stripe_test',
 });
@@ -49,6 +50,12 @@ let vehicle = null,
   articles = [],
   indexComplete = false,
   indexFailed = false,
+  searchItems = null,
+  searchQuery = "",
+  searchPending = false,
+  searchComplete = false,
+  searchError = false,
+  searchTimer = null,
   currentArticle = null,
   renderedRevision = "",
   sourceURL = "",
@@ -120,6 +127,14 @@ function show(id) {
 }
 function clearProtected() {
   document.title = "AutoData — The workshop reference";
+  searchNavigation.clear();
+  clearTimeout(searchTimer);
+  searchItems = null;
+  searchQuery = "";
+  searchPending = false;
+  searchComplete = false;
+  searchError = false;
+  searchTimer = null;
   articles = [];
   indexComplete = false;
   indexFailed = false;
@@ -440,6 +455,15 @@ async function loadArticles(g, articleID = "") {
       desired: articleID,
       onUpdate(result) {
         if (!g.current()) return;
+        const descriptorFields = [
+          "id", "title", "kind", "component", "availability", "content_status",
+          "source_revision_id", "canonical_revision_id", "view_revision", "review_status",
+        ];
+        const indexChanged = result.items.length !== articles.length ||
+          result.items.some((item, index) => descriptorFields.some(
+            (field) => item[field] !== articles[index]?.[field],
+          ));
+        const completenessChanged = indexComplete !== (result.complete === true);
         articles = result.items;
         indexComplete = result.complete === true;
         indexFailed =
@@ -448,7 +472,12 @@ async function loadArticles(g, articleID = "") {
         access = "owned";
         renderPurchase();
         show("catalog");
-        renderArticles();
+        const query = $("search").value.trim();
+        if (query && (searchQuery !== query ||
+          (!searchPending && searchItems === null && !searchError) ||
+          indexChanged ||
+          completenessChanged)) scheduleArticleSearch();
+        else renderArticles();
       },
     },
   );
@@ -475,12 +504,53 @@ async function loadArticles(g, articleID = "") {
   }
 }
 
+function scheduleArticleSearch() {
+  const query = $("search").value.trim();
+  searchNavigation.clear();
+  clearTimeout(searchTimer);
+  searchTimer = null;
+  searchQuery = query;
+  searchItems = null;
+  searchPending = Boolean(query && vehicle?.id && access === "owned");
+  searchComplete = false;
+  searchError = false;
+  renderArticles();
+  if (!searchPending) return;
+  const generation = searchNavigation.next();
+  const vehicleID = vehicle.id;
+  searchTimer = setTimeout(() => {
+    searchTimer = null;
+    void requestJSON(demoPath(`${articlePath()}?q=${encodeURIComponent(query)}`), {
+      signal: generation.signal,
+    }).then((result) => {
+      if (!generation.current() || vehicle?.id !== vehicleID || $("search").value.trim() !== query) return;
+      searchItems = Array.isArray(result.items) ? result.items : [];
+      searchComplete = result.complete === true;
+      searchPending = false;
+      renderArticles();
+    }).catch((error) => {
+      if (!generation.current() || vehicle?.id !== vehicleID) return;
+      if ([401, 403, 410].includes(error.status)) {
+        // Reuse the paid purchase boundary: a changed grant must not expose
+        // cached rows or turn an already-paid order into another Buy action.
+        void operation(async () => { throw error; });
+        return;
+      }
+      searchPending = false;
+      searchError = true;
+      renderArticles();
+    });
+  }, 300);
+}
+
 function renderArticles() {
   $("vehicle-caption").textContent =
     quote?.configuration_label || $("purchase-selection").textContent;
   const query = $("search").value.trim();
+  const searching = Boolean(query && searchQuery === query);
   const visible = openDemo ? articles.filter((item) => item.availability === 'available') : articles;
-  const items = filterArticles(visible, query);
+  const results = searching ? (searchItems || []) : filterArticles(visible, query);
+  const items = openDemo ? results.filter((item) => item.availability === 'available') : results;
   const list = element("ul", undefined, "article-list");
   list.setAttribute("role", "list");
   for (const item of items) {
@@ -516,18 +586,33 @@ function renderArticles() {
     list.append(li);
   }
   $("articles").replaceChildren(list);
-  $("catalog-count").textContent = openDemo
-    ? `${items.length} available articles · ${articles.length} indexed`
-    : `${items.length} articles`;
-  $("no-results").textContent = openDemo && articles.length > 0 && visible.length === 0
-    ? "No articles are readable yet for this vehicle. Choose another vehicle or check back later."
-    : indexFailed
-    ? "This article index could not be prepared. Check the status above."
-    : !indexComplete
-      ? "This article index is still being prepared. Check again shortly."
-      : query && articles.length > 0
-        ? "No articles match this search. Try a component name or a shorter phrase."
-        : "No articles are currently available for this vehicle.";
+  const resultsComplete = searching ? searchComplete && indexComplete : indexComplete;
+  const countText = searching && searchPending
+    ? "Searching articles…"
+    : searching && searchError
+      ? "Article search is unavailable. Try again."
+      : indexFailed
+        ? "Article index could not be prepared."
+        : !resultsComplete
+          ? `${items.length} articles so far. Article index is still being prepared.`
+          : openDemo
+            ? `${items.length} available articles · ${articles.length} indexed`
+            : `${items.length} articles`;
+  // Avoid mutating the polite live region with the same pending text on every keystroke.
+  if ($("catalog-count").textContent !== countText) $("catalog-count").textContent = countText;
+  $("no-results").textContent = searching && searchError
+    ? "Article search is unavailable. Try again."
+    : searching && searchPending
+      ? "Searching articles…"
+      : openDemo && articles.length > 0 && visible.length === 0
+        ? "No articles are readable yet for this vehicle. Choose another vehicle or check back later."
+        : indexFailed
+          ? "This article index could not be prepared. Check the status above."
+          : !resultsComplete
+            ? "This article index is still being prepared. Check again shortly."
+            : query && articles.length > 0
+              ? "No articles match this search. Try a component name or a shorter phrase."
+              : "No articles are currently available for this vehicle.";
   $("no-results").hidden = items.length > 0;
 }
 const assetID = (image) =>
@@ -670,8 +755,8 @@ function renderBlocks(parent, blocks, images, review, g) {
       parent.append(
         element(
           "aside",
-          block.text ??
-            block.unavailable_reason ??
+          block.text ||
+            block.unavailable_reason ||
             "This source block needs review.",
           "article-callout",
         ),
@@ -1347,7 +1432,7 @@ $("check-order").addEventListener("click", () => {
 });
 $("search").addEventListener("input", () => {
   updateURL({ replace: true });
-  renderArticles();
+  scheduleArticleSearch();
 });
 $("retry").addEventListener("click", () => retryAction?.());
 $("cancel").addEventListener("click", () => {
