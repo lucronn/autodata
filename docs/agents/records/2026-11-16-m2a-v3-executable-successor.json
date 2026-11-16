@@ -7,11 +7,11 @@
     "docs/operations/m2a-v3-executable-successor.md"
   ],
   "todo": [
-    "Synchronize checkpoint and pinned preflight before code.",
-    "Prepare exact offloaded successor with authorization fences, fresh public pins and conservative private reservations.",
-    "Test pure refusal/arithmetic/preservation paths and seal dry-only proof; report root.",
-    "Hold all M2A/runtime/SQL/relay/browser/provider actions and preserve private first claim."
+    "Completed synchronized preparation checkpoint5ba0638e and pinned preflight before implementation.",
+    "Completed separately sealed executable successor with absent exact-package authority, new public pins/private pending reservations and one-use runtime fences.",
+    "Completed50 tests and correctnessPASS/capacityFAIL/executionHELD dry proof; root independent review pending.",
+    "Keep private first claim and M2A/runtime/SQL/relay/browser/provider work held until fresh post-private synchronized gate/root slot release/exact authorization."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-16T04:46:40.185493+00:00"
+  "updated_at": "2026-11-16T04:50:58.084366+00:00"
 }
