@@ -165,7 +165,7 @@ def child_case(go_name,provider,fresh_database,monkeypatch,directory):
     try:
         repo=fresh_database(through=0);result['fixture_database']=repo.database_name
         manifest=[p.name for p in sorted((ROOT/'db/migrations').glob('*.sql'))]
-        assert len(manifest)==42 and manifest[-1]=='042_catalog_selector_rows.sql'
+        assert len(manifest)==40 and manifest[-1]=='040_workshop_commerce.sql'
         emitted=subprocess.run(['sh',str(ROOT/'scripts/dev/migrate_sql.sh'),'--emit'],cwd=ROOT,capture_output=True,timeout=10,check=False)
         (directory/'migration-driver.sql').write_bytes(emitted.stdout);(directory/'migration-driver.stderr').write_bytes(emitted.stderr);assert emitted.returncode==0
         migrations=dict(manifest=manifest,driver_sha256=digest(emitted.stdout),driver_exit_code=0,runner_sha256=digest((ROOT/'scripts/dev/migrate_sql.sh').read_bytes()))

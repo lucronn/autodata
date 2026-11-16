@@ -410,12 +410,14 @@ select:enabled:hover {
   color: var(--quiet);
   margin-top: 10px;
 }
-.search-label {
-  font-size: 13px;
+.article-search {
   width: 310px;
   max-width: 100%;
-  display: block;
   flex-shrink: 0;
+}
+.search-label {
+  font-size: 13px;
+  display: block;
 }
 .search-label input {
   display: block;
@@ -805,7 +807,7 @@ footer {
   .catalog-header {
     gap: 24px;
   }
-  .search-label {
+  .article-search {
     width: 250px;
   }
 }
@@ -904,7 +906,7 @@ footer {
   .catalog h2 {
     font-size: 33px;
   }
-  .search-label {
+  .article-search {
     width: 100%;
     margin-top: 25px;
   }
