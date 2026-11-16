@@ -55,10 +55,16 @@ def _gce_workflow_errors(text: str) -> tuple[str, ...]:
         steps = _workflow_section(job, 'steps:', 4)
         try:
             step = _workflow_section(steps, '- name: Run required GCE host delivery tests', 6)
+            scope = _workflow_section(steps, '- name: Select affected PR suites', 6)
         except ValueError:
             return tuple(errors + ['gce_step'])
-        if re.search(r'(?m)^        (?:if|continue-on-error):', step):
+        required_condition = "        if: github.event_name != 'pull_request' || steps.pr_scope.outputs.gce == 'true'\n"
+        if step.count('        if: ') != 1 or required_condition not in step or '        continue-on-error:' in step:
             errors.append('gce_step')
+        if ('        id: pr_scope\n' not in scope or
+                'infra/deploy/gce/|infra/compose/' not in scope or
+                "echo 'gce=true' >> \"$GITHUB_OUTPUT\"" not in scope):
+            errors.append('gce_scope')
         if '        shell: bash\n' not in step:
             errors.append('gce_step')
         dependency = steps.index('      - name: Run ingestion worker tests\n')
@@ -232,6 +238,9 @@ class RepositoryGovernanceTests(unittest.TestCase):
     def test_gce_required_step_mutations_fail(self) -> None:
         workflow = self.read(".github/workflows/autonomous-verification.yml")
         self.assertEqual(_gce_workflow_errors(workflow), ())
+        narrowed = workflow.replace('infra/deploy/gce/|infra/compose/', 'infra/compose/', 1)
+        self.assertNotEqual(narrowed, workflow)
+        self.assertIn('gce_scope', _gce_workflow_errors(narrowed))
         header = "      - name: Run required GCE host delivery tests\n"
         body = _workflow_section(workflow, header.strip(), 6)
         step = header + body
