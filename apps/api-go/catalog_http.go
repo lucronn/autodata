@@ -299,9 +299,13 @@ func (s *Server) respondCatalogArticleView(response http.ResponseWriter, request
 			return
 		}
 		view.Article = article
-		if err := s.rewritePaidCatalogArticleImages(request.Context(), principal, scope.configuration, *scope.identity, &view); err != nil {
-			s.writePaidCatalogError(response, request, err)
-			return
+		if scope.openDemo {
+			clonePaidCatalogArticleImages(&view.Article)
+		} else {
+			if err := s.rewritePaidCatalogArticleImages(request.Context(), principal, scope.configuration, *scope.identity, &view); err != nil {
+				s.writePaidCatalogError(response, request, err)
+				return
+			}
 		}
 		article = view.Article
 	} else {

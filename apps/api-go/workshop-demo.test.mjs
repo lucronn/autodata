@@ -29,11 +29,12 @@ test('real demo uses the ordinary app only in test mode; sample stays separate',
   for (const [search, ready, expected, banner, fetchCount] of scenarios) {
     const loaded = [];
     const calls = [];
-    const nodes = new Map(['test-banner', 'test-unavailable'].map(id => [id, { hidden: true }]));
+    const nodes = new Map(['test-banner', 'open-demo-banner', 'test-unavailable'].map(id => [id, { hidden: true }]));
     const main = { hidden: false };
     const nav = { hidden: false };
     await runInNewContext(`(async () => { ${code} })()`, {
       URLSearchParams, location: { search }, document: {
+        documentElement: { dataset: {} },
         getElementById: id => nodes.get(id),
         querySelector: selector => selector === 'main' ? main : nav,
       },
@@ -60,11 +61,11 @@ test('real demo request fails closed on unavailable or malformed mode signal', a
     async () => ({ ok: true, json: async () => ({ enabled: 'true' }) }),
   ]) {
     const loaded = [];
-    const nodes = new Map(['test-banner', 'test-unavailable'].map(id => [id, { hidden: true }]));
+    const nodes = new Map(['test-banner', 'open-demo-banner', 'test-unavailable'].map(id => [id, { hidden: true }]));
     const main = { hidden: false };
     await runInNewContext(`(async () => { ${code} })()`, {
       URLSearchParams, location: { search: '?demo=1' },
-      document: { getElementById: id => nodes.get(id), querySelector: () => main },
+      document: { documentElement: { dataset: {} }, getElementById: id => nodes.get(id), querySelector: () => main },
       fetch: response, loadModule: async path => loaded.push(path),
     });
     assert.deepEqual(loaded, []);
@@ -72,6 +73,23 @@ test('real demo request fails closed on unavailable or malformed mode signal', a
     assert.equal(nodes.get('test-unavailable').hidden, false);
     assert.equal(main.hidden, true);
   }
+});
+test('open demo handshake loads the real app without test checkout UI', async () => {
+  const code = source('bootstrap.mjs').replaceAll('import(', 'loadModule(');
+  const loaded = [];
+  const nodes = new Map(['test-banner', 'open-demo-banner', 'test-unavailable'].map(id => [id, { hidden: true }]));
+  const root = { dataset: {} };
+  await runInNewContext(`(async () => { ${code} })()`, {
+    URLSearchParams,
+    location: { search: '?demo=1' },
+    document: { documentElement: root, getElementById: id => nodes.get(id), querySelector: () => ({ hidden: false }) },
+    fetch: async () => ({ ok: true, json: async () => ({ enabled: true, access: 'open' }) }),
+    loadModule: async path => loaded.push(path),
+  });
+  assert.deepEqual(loaded, ['./app.mjs']);
+  assert.equal(root.dataset.workshopMode, 'open-demo');
+  assert.equal(nodes.get('open-demo-banner').hidden, false);
+  assert.equal(nodes.get('test-banner').hidden, true);
 });
 // Minimal DOM surface for exercising actual event handlers without a runtime dependency.
 class Element {

@@ -71,6 +71,7 @@ type Server struct {
 	ingestionClient            IngestionClient
 	commerceClient             CommerceClient
 	workshopTestCheckout       bool
+	workshopOpenDemoHost       string
 	vehicleIdentity            VehicleIdentityStore
 	catalog                    CatalogStore
 	catalogImageKey            []byte
@@ -699,6 +700,7 @@ func main() {
 		log.Fatal("configure commerce: invalid configuration")
 	}
 	application.workshopTestCheckout = workshopTestCheckoutMode(os.Getenv("AUTODATA_COMMERCE_MODE"), os.Getenv("AUTODATA_ENV"), authConfig.Mode, authConfig.Origin)
+	application.workshopOpenDemoHost = workshopOpenDemoHost(os.Getenv("AUTODATA_WORKSHOP_OPEN_DEMO"), os.Getenv("AUTODATA_ENV"), authConfig.Origin)
 	if application.validatePaidCatalogDependencies() != nil {
 		log.Fatal("configure paid catalog: required dependency unavailable")
 	}

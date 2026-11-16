@@ -140,6 +140,73 @@ func paidHTTPServer() (*Server, *paidHTTPStore, *paidGrantClient) {
 	s.commerceClient = g
 	return s, c, g
 }
+
+func TestOpenDemoIsLoopbackTestOnly(t *testing.T) {
+	for _, tc := range []struct {
+		flag, environment, origin, want string
+	}{
+		{"1", "test", "http://localhost:3013", "localhost:3013"},
+		{"1", "test", "http://127.0.0.1:3013", "127.0.0.1:3013"},
+		{"", "test", "http://localhost:3013", ""},
+		{"1", "staging", "http://localhost:3013", ""},
+		{"1", "production", "http://localhost:3013", ""},
+		{"1", "test", "https://autodata.cars.tk", ""},
+		{"1", "test", "https://demo.example", ""},
+		{"1", "test", "http://localhost:3013/path", ""},
+	} {
+		if got := workshopOpenDemoHost(tc.flag, tc.environment, tc.origin); got != tc.want {
+			t.Fatalf("open demo host for %q %q %q = %q, want %q", tc.flag, tc.environment, tc.origin, got, tc.want)
+		}
+	}
+}
+
+func TestOpenDemoReadsExactCatalogWithoutLoginOrGrant(t *testing.T) {
+	s, c, grant := paidHTTPServer()
+	s.auth = &fakeAuthenticator{err: ErrUnauthenticated}
+	s.workshopOpenDemoHost = workshopOpenDemoHost("1", "test", "http://localhost:3013")
+	id := "55555555-5555-4555-8555-555555555555"
+	c.identity = PaidArticleIdentity{ConfigurationID: paidTestConfiguration, CanonicalArticleID: id, VehicleID: paidTestVehicle, ProviderSlug: "bankone", SourceVehicleRef: "opaque/vehicle", SourceArticleRef: "opaque/article"}
+	c.PutArticle(CatalogArticle{ID: id, VehicleID: paidTestConfiguration, CanonicalArticleID: &id, Title: "Stored procedure", Availability: "available", Body: "private body"})
+	c.view = &CatalogArticleView{Article: CatalogArticle{ID: id, CanonicalArticleID: &id, Title: "Stored procedure", Availability: "available", Body: "private body", Images: []CatalogImage{{ID: "asset", URL: "https://provider.example/secret"}}}}
+	c.progress = &CatalogArticleProgress{Status: "completed", Complete: true}
+	root := "/v1/catalog/vehicles/" + paidTestConfiguration + "/articles"
+	request := func(path, host string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(http.MethodGet, path, nil)
+		r.Host = host
+		w := httptest.NewRecorder()
+		s.Handler().ServeHTTP(w, r)
+		return w
+	}
+	mode := request("/workshop/demo-mode.json", "localhost:3013")
+	if mode.Code != 200 || strings.TrimSpace(mode.Body.String()) != `{"enabled":true,"access":"open"}` {
+		t.Fatalf("mode = %d %s", mode.Code, mode.Body.String())
+	}
+	for _, path := range []string{root + "?demo=1", root + "/" + id + "?demo=1"} {
+		w := request(path, "localhost:3013")
+		if w.Code != 200 || w.Header().Get("Cache-Control") != "private, no-store" {
+			t.Fatalf("open demo %s = %d %s", path, w.Code, w.Body.String())
+		}
+		if path == root+"/"+id+"?demo=1" && (!strings.Contains(w.Body.String(), "private body") || strings.Contains(w.Body.String(), "provider.example")) {
+			t.Fatal("article body missing or provider URL leaked")
+		}
+	}
+	if grant.calls != 0 {
+		t.Fatal("open demo contacted purchase grant checker")
+	}
+	for _, path := range []string{root, root + "?demo=1&demo=1", root + "?demo=1&region=US", "/v1/catalog/vehicles/" + paidTestVehicle + "/articles?demo=1"} {
+		w := request(path, "localhost:3013")
+		if w.Code == 200 {
+			t.Fatalf("unscoped request succeeded: %s", path)
+		}
+	}
+	if w := request(root+"?demo=1", "public.example"); w.Code == 200 {
+		t.Fatal("different Host received open demo content")
+	}
+	s.workshopOpenDemoHost = ""
+	if w := request(root+"?demo=1", "localhost:3013"); w.Code == 200 {
+		t.Fatal("disabled demo received open content")
+	}
+}
 func TestPaidCatalogPublicSelectorsAndDeniedBeforeWork(t *testing.T) {
 	s, c, g := paidHTTPServer()
 	for _, path := range []string{"/v1/catalog/years", "/v1/catalog/years/2024/makes", "/v1/catalog/years/2024/makes/acme/models", "/v1/catalog/years/2024/makes/acme/models/roadster/configurations"} {
