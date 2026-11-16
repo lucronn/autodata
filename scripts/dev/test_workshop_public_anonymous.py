@@ -53,3 +53,7 @@ class AdmissionTests(unittest.TestCase):
    root=Path(d);(root/'PACKAGE-SEAL.json').write_text('sealed');(root/'helper').write_text('original')
    m={'_reviewed_seal':a.sha(root/'PACKAGE-SEAL.json'),'_sealed_files':{'helper':'0'*64},'_dependency_guard':{}}
    with self.assertRaises(a.Refused):a.runtime_guard(m)
+ def test_upstream_failure_diagnostics_are_safe_and_specific(self):
+  state=a.ProxyState(['1.1.1.1']);handler=object.__new__(a.Tunnel);handler.rfile=io.BytesIO(b'CONNECT autodata.cars.tk:443 HTTP/1.1\r\nHost: autodata.cars.tk:443\r\n\r\n');handler.wfile=io.BytesIO();handler.server=type('S',(),{'state':state})();handler.connection=Mock()
+  with patch.object(a.socket,'create_connection',side_effect=OSError('do not expose')) as connect:handler.handle();connect.assert_called_once()
+  self.assertEqual(state.upstream_attempted,1);self.assertEqual(state.upstream_connected,0);self.assertEqual(state.upstream_failed,1)

@@ -82,7 +82,9 @@ def public_addresses():
   if timer[0]:signal.setitimer(signal.ITIMER_REAL,max(.001,timer[0]-(time.monotonic()-started)),timer[1])
  need(addresses and all(ipaddress.ip_address(x).is_global and not ipaddress.ip_address(x).is_multicast for x in addresses),'upstream_address');return addresses
 class ProxyState:
- def __init__(self,ips):self.ips=ips;self.lock=threading.Lock();self.active=0;self.total=0;self.bytes=0;self.denied=0;self.end=time.monotonic()+120;self.failed=False
+ def __init__(self,ips):self.ips=ips;self.lock=threading.Lock();self.active=0;self.total=0;self.bytes=0;self.denied=0;self.end=time.monotonic()+120;self.failed=False;self.header_rejected=0;self.upstream_attempted=0;self.upstream_connected=0;self.upstream_failed=0;self.client_io_failed=0
+ def count(self,name):
+  with self.lock:setattr(self,name,getattr(self,name)+1)
  def enter(self):
   with self.lock:
    if self.active>=16 or self.total>=128 or time.monotonic()>=self.end:self.failed=True;return False
@@ -94,15 +96,16 @@ class Tunnel(socketserver.StreamRequestHandler):
   s=self.server.state
   if not s.enter():return
   try:
-   self.connection.settimeout(5);line=self.rfile.readline(4097);headers=[]
+   phase='headers';self.connection.settimeout(5);line=self.rfile.readline(4097);headers=[]
    while True:
     item=self.rfile.readline(4097)
     if item==b'\r\n':break
-    if not item or len(item)>4096 or len(headers)>=16:s.denied+=1;return
+    if not item or len(item)>4096 or len(headers)>=16:s.count('denied');s.count('header_rejected');return
     headers.append(item)
-   if not valid_connect(line,headers):s.denied+=1;return
+   if not valid_connect(line,headers):s.count('denied');s.count('header_rejected');return
+   phase='upstream_connect';s.count('upstream_attempted')
    with socket.create_connection((s.ips[0],443),timeout=5) as upstream:
-    self.wfile.write(b'HTTP/1.1 200 Connection Established\r\n\r\n');self.wfile.flush();sockets=[self.connection,upstream]
+    s.count('upstream_connected');phase='tunnel_io';self.wfile.write(b'HTTP/1.1 200 Connection Established\r\n\r\n');self.wfile.flush();sockets=[self.connection,upstream]
     while time.monotonic()<s.end and not s.failed:
      ready,_,_=select.select(sockets,[],[],.25)
      for source in ready:
@@ -110,7 +113,7 @@ class Tunnel(socketserver.StreamRequestHandler):
       if not data:return
       if not s.account(len(data)):return
       (upstream if source is self.connection else self.connection).sendall(data)
-  except (OSError,ValueError):pass
+  except (OSError,ValueError):s.count('upstream_failed' if phase=='upstream_connect' else 'client_io_failed')
   finally:
    with s.lock:s.active-=1
 class Proxy(socketserver.ThreadingTCPServer):
@@ -173,7 +176,7 @@ def run_once(m,seal):
   if profile:
    residual={'path':str(profile),'bytes':allocation(profile),'entries':sum(1 for _ in profile.rglob('*')),'owned_remaining':len(left)}
    if not left:shutil.rmtree(profile);residual['removed_after_reap']=True
-  persist('OUTCOME.json',{'passed':passed,'failure':failure,'remaining_owned':len(left),'proxy_listener_absent':port_absent,'tmpfs_metadata':residual,'proxy':None if proxy_state is None else {'total':proxy_state.total,'denied':proxy_state.denied,'bytes':proxy_state.bytes},'no_service_mutation':True,'no_signin_or_provider_or_stripe_acceptance':True})
+  persist('OUTCOME.json',{'passed':passed,'failure':failure,'remaining_owned':len(left),'proxy_listener_absent':port_absent,'tmpfs_metadata':residual,'proxy':None if proxy_state is None else {'total':proxy_state.total,'denied':proxy_state.denied,'bytes':proxy_state.bytes,'header_rejected':proxy_state.header_rejected,'upstream_attempted':proxy_state.upstream_attempted,'upstream_connected':proxy_state.upstream_connected,'upstream_failed':proxy_state.upstream_failed,'client_io_failed':proxy_state.client_io_failed},'no_service_mutation':True,'no_signin_or_provider_or_stripe_acceptance':True})
  return 0 if passed else 1
 def main(argv=None):
  p=argparse.ArgumentParser();p.add_argument('--reviewed-seal',required=True);p.add_argument('--run-once',action='store_true');args=p.parse_args(argv)
