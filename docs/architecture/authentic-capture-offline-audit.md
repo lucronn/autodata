@@ -5,6 +5,8 @@ Goal: Audit retained authentic captures offline with integrity, positional media
 Issue: https://github.com/lucronn/autodata/issues/401
 Project: https://github.com/users/lucronn/projects/8
 
+## Concrete todo
+
 - [ ] Implement metadata-only offline audit using existing connector envelope and article adapters; no network, runtime or persistence
 - [ ] Verify retained body/envelope hashes, exact per-position bindings including repeats, declared references and local asset bytes
 - [ ] Validate explicit content-hash-bound rights evidence references; unknown, incomplete or forged evidence blocks external display
