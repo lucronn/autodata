@@ -78,14 +78,24 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 2
-      - name: Select affected PR suites
-        if: github.event_name == 'pull_request'
-        id: pr_scope
+      - name: Select affected suites
+        if: github.event_name != 'workflow_dispatch'
+        id: change_scope
+        env:
+          BASE_SHA: ${{ github.event.before }}
         shell: bash
         run: |
           set -euo pipefail
           changed="$RUNNER_TEMP/changed-files"
-          git diff --name-only HEAD^1 HEAD > "$changed"
+          if [ "$GITHUB_EVENT_NAME" = 'pull_request' ]; then
+            base=HEAD^1
+          else
+            base="$BASE_SHA"
+            if ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+              git fetch --no-tags --depth=1 origin "$base"
+            fi
+          fi
+          git diff --name-only --no-renames "$base" HEAD > "$changed"
           if grep -Eq '^(workers/ingestion-python/|packages/contracts/|db/migrations/)' "$changed"; then
             echo 'ingestion=true' >> "$GITHUB_OUTPUT"
           fi
@@ -150,7 +160,7 @@ jobs:
         run: go test ./...
 
       - name: Run ingestion worker tests
-        if: github.event_name != 'pull_request' || steps.pr_scope.outputs.ingestion == 'true'
+        if: github.event_name == 'workflow_dispatch' || steps.change_scope.outputs.ingestion == 'true'
         working-directory: workers/ingestion-python
         run: |
           python -m pip install --disable-pip-version-check --no-input pytest
@@ -169,7 +179,7 @@ jobs:
           python -m pytest tests -q
 
       - name: Run enrichment worker tests
-        if: github.event_name != 'pull_request' || steps.pr_scope.outputs.enrichment == 'true'
+        if: github.event_name == 'workflow_dispatch' || steps.change_scope.outputs.enrichment == 'true'
         working-directory: workers/enrichment-python
         run: python -m unittest discover -s tests -p 'test_*.py' -v
 
@@ -178,7 +188,7 @@ jobs:
         run: python -m unittest discover -s scripts/dev -p 'test_*.py' -v
 
       - name: Run required GCE host delivery tests
-        if: github.event_name != 'pull_request' || steps.pr_scope.outputs.gce == 'true'
+        if: github.event_name == 'workflow_dispatch' || steps.change_scope.outputs.gce == 'true'
         shell: bash
         run: |
           set -euo pipefail

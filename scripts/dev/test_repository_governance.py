@@ -55,13 +55,16 @@ def _gce_workflow_errors(text: str) -> tuple[str, ...]:
         steps = _workflow_section(job, 'steps:', 4)
         try:
             step = _workflow_section(steps, '- name: Run required GCE host delivery tests', 6)
-            scope = _workflow_section(steps, '- name: Select affected PR suites', 6)
+            scope = _workflow_section(steps, '- name: Select affected suites', 6)
         except ValueError:
             return tuple(errors + ['gce_step'])
-        required_condition = "        if: github.event_name != 'pull_request' || steps.pr_scope.outputs.gce == 'true'\n"
+        required_condition = "        if: github.event_name == 'workflow_dispatch' || steps.change_scope.outputs.gce == 'true'\n"
         if step.count('        if: ') != 1 or required_condition not in step or '        continue-on-error:' in step:
             errors.append('gce_step')
-        if ('        id: pr_scope\n' not in scope or
+        if ("        if: github.event_name != 'workflow_dispatch'\n" not in scope or
+                '        id: change_scope\n' not in scope or
+                '          BASE_SHA: ${{ github.event.before }}\n' not in scope or
+                'git diff --name-only --no-renames "$base" HEAD' not in scope or
                 'infra/deploy/gce/|infra/compose/' not in scope or
                 "echo 'gce=true' >> \"$GITHUB_OUTPUT\"" not in scope):
             errors.append('gce_scope')
@@ -209,7 +212,7 @@ class RepositoryGovernanceTests(unittest.TestCase):
                          ["paths"])
         self.assertEqual(_workflow_section(triggers, "workflow_dispatch:", 2).strip(), "")
 
-    def test_ci_includes_gce_in_each_event_and_required_step(self) -> None:
+    def test_ci_scopes_gce_to_owning_paths_and_manual_run(self) -> None:
         workflow = self.read(".github/workflows/autonomous-verification.yml")
         self.assertEqual(_gce_workflow_errors(workflow), ())
 
