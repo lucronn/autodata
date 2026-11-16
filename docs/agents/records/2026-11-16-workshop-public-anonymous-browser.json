@@ -29,7 +29,7 @@
   },
   "execution_authorized": false,
   "preparation": {
-    "status": "SEALED_NO_DISPATCH_ROOT_REVIEW_PENDING",
+    "status": "HISTORICAL_PREPARATION_BEFORE_FAILED_ROOT_ATTEMPT1",
     "implementation_head": "73c5010a5ef6196342cf85d3fb6187c0ea15db0e",
     "implementation_tree": "30d49cc2bff029818121812d00fbc4ce615cca90",
     "python_tests": 12,
@@ -40,5 +40,14 @@
     "subprocess_dns_connect_bind_calls": 0,
     "browser_dispatched": false,
     "one_use_marker_absent": true
+  },
+  "attempt1_outcome": {
+    "status": "FAILED_PROXY_RESOLVER_BEFORE_PUBLIC_RESPONSE",
+    "outcome_sha256": "384f79c8330d8460778074712bba982d27f6c24df8a77cf0558965f62cfa405e",
+    "proxy_total": 0,
+    "owned_process_and_listener_absent": true,
+    "marker_consumed": true,
+    "evidence_preserved": true,
+    "new_plan_ref": "docs/superpowers/plans/2026-11-16-workshop-public-anonymous-browser-attempt2.md"
   }
 }
