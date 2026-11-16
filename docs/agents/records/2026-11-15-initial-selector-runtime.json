@@ -1,0 +1,41 @@
+{
+  "goal": "Refresh draft PR440 helper-only integration onto protected be1a1f23, preserve the eight independently reviewed implementation blobs and distinguish historical inconclusive evidence from current execution authority",
+  "plan_ref": "docs/superpowers/plans/2026-11-15-initial-selector-runtime.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/401",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/initial-selector-runtime.md"
+  ],
+  "todo": [
+    "Synchronize Issue401/Project8, corrected canonical current-versus-historical docs and matching records at a docs-only protected-base checkpoint; pass exact checkpoint preflight before copying helper files",
+    "Copy the exact four helper and four test blobs from reviewed0212dd8d, run focused owned/offline tests and verify all eight Git blob IDs unchanged",
+    "Push the refreshed draft PR440 with an exact old-head lease, update its base/head verification text and run required exact-head CI; hold merge, build, activation, runtime and provider requests for root"
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-16T04:14:43.285942+00:00",
+  "historical_goal": "Plan source-only private initial-selector safety runtime rollout preserving17295 rollback and incomplete v6 evidence",
+  "historical_todo": [
+    "Synchronize exact protected a82 Issue401/Project8/docs/record/readback/preflight before implementation",
+    "M2A exclusive package/build/browser slot: HOLD all archive/fixture/container/activation; await root release and fresh home/Docker admissions",
+    "Then exact17295/343 readback and immutable a82 RO archive/manifest within128MiBhome64MiBDocker caps; unchanged four-module allowlist",
+    "Owned cached3132 synthetic child/PG/read_only/SVG fixtures and cleanup only after release; no persistent shared-role changes, provider/payment calls or image builds/pulls",
+    "Exact package/fixture/seal/capacity milestone for root review; serving activation and separate initial probe held/internal-request-ended fence proof required"
+  ],
+  "current_integration_plan_ref": "docs/superpowers/plans/2026-11-15-pr440-protected-be1-integration.md",
+  "current_protected_source_sha": "be1a1f235e8eeacc051ac905c4ed8a953a41c8a9",
+  "reviewed_helper_head": "0212dd8d708d3acb522f520f25800b24fa2d60cc",
+  "execution_authorized": false,
+  "historical_probe_outcome": "INCONCLUSIVE_MANUAL_TARGET_ONLY_TIMESTAMP_REFRESH",
+  "automatic_verified": false,
+  "historical_source_pins": {
+    "protected_source_sha": "a82b31dc8850aa3956972928b8c720969765a972",
+    "protected_source_tree": "11503a735d7d983ca3ebf090b471c89682e77278",
+    "current_protected_master": "a82b31dc8850aa3956972928b8c720969765a972",
+    "preliminary_head": "2f766d103f75990351e3759b89249fce5b0784d7",
+    "preliminary_tree": "e167e3ecab877ca8fde0ca4cf39916a750281733",
+    "serving_source": "272aeeaad8399c305468e5d486cc391d7340f6a4"
+  },
+  "protected_source_sha": "be1a1f235e8eeacc051ac905c4ed8a953a41c8a9",
+  "protected_source_tree": "39eb3530ac50bad0ecdb01a733a6a0cb373af5cf",
+  "current_protected_master": "be1a1f235e8eeacc051ac905c4ed8a953a41c8a9"
+}

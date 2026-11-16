@@ -1,0 +1,30 @@
+{
+  "goal": "Consolidate unique historical Workshop release and acceptance evidence into one documentation-only PR without runtime authority.",
+  "plan_ref": "docs/superpowers/plans/2026-11-15-historical-evidence-consolidation.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/441",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/verification/2026-11-15-historical-evidence-consolidation.md"
+  ],
+  "todo": [
+    "Synchronize plan, Issue441, Project8 and canonical verification on protected a82; pass committed-checkpoint preflight before imports.",
+    "Import only25 approved source paths with exact JSON and dated/non-replayable Markdown plus stale-readiness/tunnel corrections.",
+    "Run lightweight scope/provenance/JSON/Markdown-link/chronology/redaction/whitespace checks only, preserving M2A build slot.",
+    "Open one draft PR and report exact head/tree/gate/CI to root; leave merge, source PR closures and unresolved policy348 held."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-15T07:01:17.051614Z",
+  "protected_base_sha": "a82b31dc8850aa3956972928b8c720969765a972",
+  "project_item_id": "PVTI_lAHOCSJ8cc4BiQ2BzhI2DKQ",
+  "source_prs": [
+    427,
+    408,
+    370,
+    369,
+    368,
+    365,
+    418
+  ],
+  "source_path_count": 25,
+  "final_path_count": 28
+}
