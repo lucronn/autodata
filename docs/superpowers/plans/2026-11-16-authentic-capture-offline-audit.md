@@ -17,3 +17,5 @@ The audit reads the retained capture layout and optional local rights/asset evid
 Output external_display_allowed remains false: this offline audit cannot establish live ownership, independent technical review, authentication or legal approval. It reports technical readiness and rights-evidence completeness separately. CLI returns success for a completed truthful audit even when coverage is incomplete, and nonzero for malformed inputs/integrity failure. The40 retained articles have no media binaries/rights evidence; preserve this honest outcome.
 
 No provider requests, Docker/runtime changes, database/S3 writes, model calls or public content exposure. Implement only this developer tool, owned tests and documentation. Test against the retained40 corpus without committing it.
+
+Protected implementation parent: `09524db`. Planning-only checkpoint391b8cb8 on selector ancestry is superseded; this audit branch excludes unmerged selector helpers.

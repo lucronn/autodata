@@ -13,5 +13,7 @@
     "Add owned regressions for repeated images, missing/forged bindings, hash mismatch, unavailable binaries, unknown rights and output redaction; run retained40 corpus and push reviewable evidence"
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-16T06:27:48.223142+00:00"
+  "updated_at": "2026-11-16T06:28:18.148090+00:00",
+  "implementation_parent": "09524db",
+  "superseded_checkpoint": "391b8cb8 (planning only; unmerged selector helper ancestry excluded)"
 }
