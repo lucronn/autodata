@@ -794,7 +794,11 @@ async function loadArticle(id, g) {
     result.timedOut
       ? "Preparation is taking longer. You can check again."
       : article?.processing?.state === "needs_review"
-        ? "This article needs review."
+        ? readable
+          ? article.content_origin === "source"
+            ? "Stored source is readable. Article preparation needs review."
+            : "Article is readable. An update needs review."
+          : "This article needs review."
         : article?.processing?.state === "failed"
           ? "Preparation could not finish. Available source can still be read."
           : readable
