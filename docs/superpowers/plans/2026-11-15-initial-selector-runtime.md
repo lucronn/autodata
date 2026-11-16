@@ -243,3 +243,17 @@ Concrete todo:
 2. Add meaningful regression showing current correct0555 sources fail before the change, then pass; reject0555 at unpinned paths and0444/ writable modes at pinned executable paths.
 3. Re-run owned tests and read-only retained-source verification, reseal the review packet with the changed helper hash and exact archive mode provenance.
 4. Keep physical source allocation, Docker mutation, provider/SQL requests and actual-image execution held through M2A R3 teardown and root slot release. Preserve all serving/rollback source bytes/modes.
+
+
+## Explicit bootstrap image defaults and persistent CREATE-only control (2026-11-16)
+
+Issue: https://github.com/lucronn/autodata/issues/401
+Project: https://github.com/users/lucronn/projects/8
+
+The approved bootstrap CREATE-only probe never started and was removed after root independent exact-ID review. It proved cached35fd adds exactly three default Env names (CGO_ENABLED,GOMODCACHE,GOTOOLCHAIN). Root approved exact key/value hash provenance and a bootstrap-only correction; worker3132 retains the exact serving39-name contract. An inline ID validator used strict set subset and rejected a valid64-hex ID. Replace ephemeral control with a reviewed persistent control that saves CREATE response before validation and uses the shared full_id regex.
+
+Concrete todo:
+1. Add explicit three-name/value-hash-pinned35fd bootstrap defaults to generated payload and transport admission; reject any unreviewed/sensitive inherited default. Preserve worker3132 exact39-name contract.
+2. Red/green owned tests demonstrate missing bootstrap names and reject extra/sensitive/changed defaults, while worker remains exact.
+3. Prepare a persistently sealed CREATE-only control with response-first receipts and regex ID validation, bounded subprocesses, never-started full identity proof, exact-ID removal and absence. It must not START/exec/SQL/HTTP/provider dispatch.
+4. Reseal helper/physical review metadata and commands; no further CREATE or fixture start until independent root review. Existing source/rollback bytes/modes preserved.

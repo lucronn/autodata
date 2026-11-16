@@ -1,5 +1,5 @@
 {
-  "goal": "Correct immutable source inventory mode contract using exact archive-pinned executable paths",
+  "goal": "Pin explicit bootstrap image defaults and durable CREATE-only lifecycle proof control",
   "plan_ref": "docs/superpowers/plans/2026-11-15-initial-selector-runtime.md",
   "issue_ref": "https://github.com/lucronn/autodata/issues/401",
   "project_ref": "https://github.com/users/lucronn/projects/8",
@@ -7,13 +7,13 @@
     "docs/architecture/initial-selector-runtime.md"
   ],
   "todo": [
-    "Pin exact six executable paths for sourcea82/272/083 and require0555 there/0444 elsewhere",
-    "Red-green owned regression for valid immutable executables and unauthorized executable/mode changes",
-    "Re-run owned suite and read-only retained-source verification; reseal review package",
-    "Preserve serving/rollback sources; no physical allocation or Docker/SQL/provider execution until M2A teardown and root release"
+    "Pin only three exact35fd bootstrap defaults; worker3132 keeps serving39 names",
+    "Red-green tests for explicit defaults, unknown sensitive inheritance and exact worker environment",
+    "Persistent CREATE-only control persists response before regex ID validation and proves exact never-started cleanup",
+    "Reseal review packet; hold further CREATE and START/exec/SQL/HTTP/provider pending root review"
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-16T06:05:46.792960+00:00",
+  "updated_at": "2026-11-16T06:10:37.768842+00:00",
   "historical_goal": "Plan source-only private initial-selector safety runtime rollout preserving17295 rollback and incomplete v6 evidence",
   "historical_todo": [
     "Synchronize exact protected a82 Issue401/Project8/docs/record/readback/preflight before implementation",

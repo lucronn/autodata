@@ -179,3 +179,17 @@ Concrete todo:
 
 
 Exact source-mode correction verified: transport pins the six executable paths for each immutable sourcea82/272/083, requiring0555 there and0444 elsewhere. Red regression reproduced prior artifact_metadata rejection for legitimate immutable executables. Green suite229 tests PASS/4.544s (three new mode tests); wrong executable location, lost execute bits, writable modes, missing pinned paths and unknown source identities refuse. Independent Git ls-tree provenance confirms the exact six paths for all three source SHAs. Read-only real source272(1388files) and083(1372files) now pass the actual inventory verifier; all preserved bytes/modes unchanged. Actual image NOT_RUN; physical allocation and Docker/SQL/provider execution remain held through M2A R3 teardown/root release.
+
+
+## Explicit bootstrap image defaults and persistent CREATE-only control (2026-11-16)
+
+Issue: https://github.com/lucronn/autodata/issues/401
+Project: https://github.com/users/lucronn/projects/8
+
+The approved bootstrap CREATE-only probe never started and was removed after root independent exact-ID review. It proved cached35fd adds exactly three default Env names (CGO_ENABLED,GOMODCACHE,GOTOOLCHAIN). Root approved exact key/value hash provenance and a bootstrap-only correction; worker3132 retains the exact serving39-name contract. An inline ID validator used strict set subset and rejected a valid64-hex ID. Replace ephemeral control with a reviewed persistent control that saves CREATE response before validation and uses the shared full_id regex.
+
+Concrete todo:
+1. Add explicit three-name/value-hash-pinned35fd bootstrap defaults to generated payload and transport admission; reject any unreviewed/sensitive inherited default. Preserve worker3132 exact39-name contract.
+2. Red/green owned tests demonstrate missing bootstrap names and reject extra/sensitive/changed defaults, while worker remains exact.
+3. Prepare a persistently sealed CREATE-only control with response-first receipts and regex ID validation, bounded subprocesses, never-started full identity proof, exact-ID removal and absence. It must not START/exec/SQL/HTTP/provider dispatch.
+4. Reseal helper/physical review metadata and commands; no further CREATE or fixture start until independent root review. Existing source/rollback bytes/modes preserved.
