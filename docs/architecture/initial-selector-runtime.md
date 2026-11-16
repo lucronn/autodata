@@ -196,3 +196,17 @@ Concrete todo:
 
 
 Bootstrap-default/control correction verified: generated bootstrap payload explicitly includes exactly the three cached35fd default names; transport pins their key=value SHA256 and rejects unknown/sensitive/changed inheritance. Worker3132 remains exactly39 production environment names. Persistent scripts/dev/private_selector_create_only_control.py saves/fsyncs CREATE response before shared regex ID validation, stores exact identity, validates never-started state twice and removes only exact verified IDs. Default CLI is validation-only; execute requires an exact externally approved control hash/new output root. Owned suite237 tests PASS/4.090s (eight new); red reproduced missing bootstrap defaults. Prior263ed6 never-started probe removed/absence proven under root exact-ID approval; no further CREATE or START/exec/SQL/provider dispatch occurred. Next CREATE control and final fixture remain held for root review.
+
+
+## Final physical actual-image fixture launcher (2026-11-16)
+
+Issue: https://github.com/lucronn/autodata/issues/401
+Project: https://github.com/users/lucronn/projects/8
+
+Root-approved persistent V2 CREATE-only control passed for both roles. Each full identity/never-started state was checked twice, exact ID removed and absence proven. Both actual Created HostConfig hashes ared7097185; only historical OomKillDisable false-to-null proposes running/exiteda547cc66, which must pass exact-root review before START.
+
+Concrete todo:
+1. Add a default-held fixed-physical-path launcher that verifies externally supplied manifest/execution-seal/launcher hashes, all physical artifact hashes, exact source inventory and imports before exposing the existing one-shot Fixture runner.
+2. Prove metadata-only execution cannot construct a live backend; test hash mismatch and explicit one-shot handoff to the sealed client wrapper.
+3. Bind full physical inventory, refreshed peers, actual Created and proposed Running/Exited hashes, retained rollback inventories and exact final launcher argv; seal both HELD and execution-request candidates for root review.
+4. No START/exec/SQL/product HTTP/provider calls before explicit root exact-command approval. Never imply actual behavior acceptance from CREATE-only proof.
