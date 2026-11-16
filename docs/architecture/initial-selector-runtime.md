@@ -210,3 +210,6 @@ Concrete todo:
 2. Prove metadata-only execution cannot construct a live backend; test hash mismatch and explicit one-shot handoff to the sealed client wrapper.
 3. Bind full physical inventory, refreshed peers, actual Created and proposed Running/Exited hashes, retained rollback inventories and exact final launcher argv; seal both HELD and execution-request candidates for root review.
 4. No START/exec/SQL/product HTTP/provider calls before explicit root exact-command approval. Never imply actual behavior acceptance from CREATE-only proof.
+
+
+Final fixed-path launcher owned verification:241 tests PASS; four new tests prove metadata-only cannot construct/wrap a backend, absent approval refuses before capability, hash failure prevents handoff even with execute flag, and explicit execution uses sealed wrapper once and closes on failure. Launcher verifies physical module locations, external manifest/seal/self hashes, complete artifact hashes and source inventory; default operation is filesystem-only validation. No START/exec/SQL/productHTTP/provider occurred. CREATE-only V2 receipt74fd441a remains the only new lifecycle evidence; final run is separately held for exact root command approval.
