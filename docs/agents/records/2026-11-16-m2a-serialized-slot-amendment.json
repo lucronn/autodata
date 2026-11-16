@@ -1,0 +1,18 @@
+{
+  "goal": "Run exactly one actual-store M2A authored-article browser acceptance before the held private selector fixture, under an exclusive released physical slot and a reviewed successor gate.",
+  "plan_ref": "docs/superpowers/plans/2026-11-16-m2a-serialized-slot-amendment.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/444",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/operations/2026-11-16-m2a-serialized-slot-amendment.md"
+  ],
+  "todo": [
+    "Synchronize this amendment on Issue444/Project8 and validate the committed planning base before changing executable helpers.",
+    "Root independently verifies private selector fixtures stopped/reaped and records an exclusive M2A slot lease; keep existing private worker/public process pinned without claiming private acceptance complete.",
+    "Create one separately sealed offloaded V3 successor with slot-held authorization semantics and unchanged conservative reservations/baseline; preserve original seals and all one-use attempt markers.",
+    "Run focused authorization/capacity/refusal tests and independent exact-package review, then root may authorize one six-container PG/S3 diagnostic, pre/post read-only store attestation and one browser lifecycle.",
+    "Preserve all failures; tear down only exact six M2A IDs and owned relay/browser processes before root releases the slot to the private fixture."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-16T05:54:50.494340+00:00"
+}
