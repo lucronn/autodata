@@ -1,5 +1,5 @@
 {
-  "goal": "Synchronize root-selected public-only5GiB reserve plus128MiBdrift/128MiBprep/64MiBinstall; copy-only verify unused M1GoCache; hold build/unlink/runtime until rootreview.",
+  "goal": "Prepare fresh guarded offline attempt2 exact-a82 public source-only build/package under explicit public-only reserve; preserve runtime and attempt1; no browser/switch.",
   "plan_ref": "docs/superpowers/plans/2026-11-15-workshop-client-source-preview.md",
   "issue_ref": "https://github.com/lucronn/autodata/issues/431",
   "project_ref": "https://github.com/users/lucronn/projects/8",
@@ -7,11 +7,11 @@
     "docs/architecture/workshop-client-source-preview.md"
   ],
   "todo": [
-    "Synchronize root public-lane reserve amendment and copy-only M1GoCache scope; pass pinned checkpoint preflight.",
-    "Seal/copy/fsync/independently verify exact M1GoCache and restore mapping under link/ref/device/capacity guards; preserve originals and send rootreceipt.",
-    "Await root cleanup/freshadmission; no build/browser/unlink/runtime; future attempt2 requires fresh monitored paths/tests.",
-    "Root reviews finalpackage and separately authorizes activation/rollback; no provider/Stripe and no M2A/privatefloor reset."
+    "Synchronize attempt2 plan/Issue431/Project8/canonical record and pass pinned preflight.",
+    "Implement/test fresh reserve accounting and corrected monitor; dry proof and exact absent-path/runtime/storage admission.",
+    "Run guarded offline API/contracts Go and Workshop Node tests; exact-a82 build and bounded source-only package; report hashes/capacity and unchanged runtime.",
+    "Hold browser/install/public switch pending independent root review and separate authorization; M2A/private floors unchanged."
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-16T04:17:14.396602+00:00"
+  "updated_at": "2026-11-16T04:19:56.645998+00:00"
 }
