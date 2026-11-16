@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { NavigationGeneration, processingArticle, readableArticle } from './workshop/article-read.mjs';
-import { purchaseConfiguration, uuid, validQuote, validScope } from './workshop/commerce.mjs';
+import { purchaseConfiguration, uuid, validQuote, validScope, validLibrary } from './workshop/commerce.mjs';
 import { articlePresentation, configurationLabel, filterArticles, hasSourceReference, legacyArticleBlocks, localImageURL, readCollection, requestJSON, sourceReferenceURL } from './workshop/catalog.mjs';
 import { LOAD_STAGES, loadingProgress } from './workshop/progress.mjs';
 
@@ -731,12 +731,14 @@ function loginRouteHarness(search, { authenticate = true, signInError = null, lo
     selections: [], libraries: 0, orders: [], options: [], invalidations: 0 };
   const elements = new Map();
   const element = name => {
-    if (!elements.has(name)) elements.set(name, { value: '' });
+    if (!elements.has(name)) elements.set(name, { value: '', disabled: false, children: [],
+      replaceChildren(...children) { this.children = children; this.value = ''; } });
     return elements.get(name);
   };
   const configuration = { id: routeConfiguration, region: 'US' };
   const context = {
-    URLSearchParams, uuid, validScope,
+    URLSearchParams, uuid, validScope, configurationLabel,
+    Option: function(text, value) { return { text, value }; },
     location: { search }, signingIn: false,
     vehicle: { id: previousConfiguration, region: 'US' }, quote: null,
     names: ['year', 'make', 'model', 'configuration'],
@@ -768,10 +770,12 @@ function loginRouteHarness(search, { authenticate = true, signInError = null, lo
     async loadOptions(name, g, desired) {
       assert.equal(g.current(), true);
       calls.options.push({ name, desired });
-      element(name).value = desired;
+      context.populate(name, name === 'configuration' ? [configuration] :
+        [name === 'year' ? { year: Number(desired) || 2026 } : { id: desired || 'choice', name: desired }], desired);
     },
   };
   runInNewContext(
+    appSection('function populate(', 'function selectorPath(') +
     appSection('async function signIn() {', 'async function bootstrap() {') +
     appSection('async function restoreRoute() {', 'for (const [index, name] of names.entries())'),
     context,
@@ -813,6 +817,109 @@ for (const route of loginRoutes) {
     if (route.query.includes('q=brakes')) assert.equal(h.element('search').value, 'brakes');
   });
 }
+
+function seedPriorRoute(h) {
+  for (const name of h.context.names) {
+    h.context.populate(name, [name === 'year' ? { year: 1999 } : { id: 'prior', name: 'Prior vehicle' }]);
+    h.element(name).value = 'prior';
+  }
+  h.element('search').value = 'old vehicle only';
+  h.context.quote = { configuration_label: 'Prior vehicle' };
+}
+
+for (const query of ['', '&q=brake+pads']) {
+  test(`direct article route restores its own query ${query || '(empty)'} and clears prior selector options`, async () => {
+    const h = loginRouteHarness(`?configuration=${routeConfiguration}&region=US&article=${routeArticle}${query}`);
+    seedPriorRoute(h);
+    await h.context.restoreRoute();
+    assert.equal(h.element('search').value, query ? 'brake pads' : '');
+    for (const name of h.context.names) {
+      assert.equal(h.element(name).value, '');
+      assert.equal(h.element(name).disabled, true);
+      assert.equal(h.element(name).children.length, 1);
+      assert.equal(h.context.rows[name].length, 0);
+    }
+    assert.equal(h.context.quote, null);
+    assert.deepEqual(h.calls.selections, [{ configuration: routeConfiguration, region: 'US', article: routeArticle }]);
+  });
+}
+
+for (const query of ['?view=library', `?order=${routeOrder}`]) {
+  test(`non-selector route ${query} drops prior vehicle context and query`, async () => {
+    const h = loginRouteHarness(query);
+    seedPriorRoute(h);
+    await h.context.restoreRoute();
+    assert.equal(h.context.vehicle, null);
+    assert.equal(h.context.quote, null);
+    assert.equal(h.element('search').value, '');
+    for (const name of h.context.names) {
+      assert.equal(h.element(name).value, '');
+      assert.equal(h.element(name).disabled, true);
+      assert.equal(h.context.rows[name].length, 0);
+    }
+  });
+}
+
+test('partial saved hierarchy clears stale descendants before restoring its chosen year', async () => {
+  const h = loginRouteHarness('?year=2020&q=oil');
+  seedPriorRoute(h);
+  await h.context.restoreRoute();
+  assert.equal(h.element('year').value, '2020');
+  assert.equal(h.element('make').value, '');
+  assert.equal(h.element('model').disabled, true);
+  assert.equal(h.element('configuration').disabled, true);
+  assert.equal(h.context.vehicle, null);
+  assert.equal(h.element('search').value, 'oil');
+  assert.deepEqual(h.calls.options, [{ name: 'year', desired: '2020' }, { name: 'make', desired: '' }]);
+});
+
+test('saved hierarchy restores all exact vehicle choices and query over prior state', async () => {
+  const h = loginRouteHarness(`?year=2020&make=toyota&model=rav4&configuration=${routeConfiguration}&region=US&q=pump`);
+  seedPriorRoute(h);
+  await h.context.restoreRoute();
+  assert.deepEqual(h.context.names.map(name => h.element(name).value), ['2020', 'toyota', 'rav4', routeConfiguration]);
+  assert.equal(h.element('search').value, 'pump');
+  assert.deepEqual(h.calls.selections, [{ configuration: routeConfiguration, region: 'US', article: '' }]);
+});
+
+test('My vehicles activation clears the previous vehicle search and selector options in its saved URL', async () => {
+  const h = loginRouteHarness('?view=library');
+  const location = { pathname: '/workshop/', search: '?view=library&q=old+vehicle+only' };
+  seedPriorRoute(h);
+  const makeElement = (tag, text) => ({
+    tag, textContent: text, children: [], events: {},
+    append(...nodes) { this.children.push(...nodes); },
+    addEventListener(name, callback) { this.events[name] = callback; },
+  });
+  const list = makeElement('ul');
+  list.replaceChildren = () => { list.children = []; };
+  const get = h.context.$;
+  h.context.$ = id => id === 'library-items' ? list : get(id);
+  Object.assign(h.context, {
+    location, URLSearchParams, validLibrary, element: makeElement,
+    history: { pushState(_state, _title, url) { location.search = new URL(url, 'https://workshop.example').search; } },
+    currentOrder: '', libraryItems: [], libraryCursor: null, clearReader() {},
+    session: { state: { authenticated: true } },
+    async requestJSON() { return { version: 'v1', next_cursor: null, items: [{
+      configuration_id: routeConfiguration, region: 'US', library_item_id: routeOrder,
+      label: 'Purchased vehicle', access_state: 'viewable', granted_at: '2026-11-16T00:00:00Z',
+    }] }; },
+  });
+  runInNewContext(appSection('function updateURL(', 'function rememberOrderRoute(') +
+    appSection('async function library(', 'function clearReader('), h.context);
+  await h.context.library({ signal: new AbortController().signal, current: () => true });
+  list.children[0].children[2].events.click();
+  assert.equal(h.element('search').value, '');
+  const route = new URLSearchParams(location.search);
+  assert.equal(route.get('configuration'), routeConfiguration);
+  assert.equal(route.get('region'), 'US');
+  for (const name of ['year', 'make', 'model', 'q', 'view']) assert.equal(route.has(name), false);
+  for (const name of h.context.names) {
+    assert.equal(h.context.rows[name].length, 0);
+    assert.equal(h.element(name).disabled, true);
+  }
+  assert.deepEqual(h.calls.selections, [{ configuration: routeConfiguration, region: 'US', article: '' }]);
+});
 
 for (const outcome of ['canceled', 'failed']) {
   test(`login route stays put after ${outcome} sign-in without checkout replay`, async () => {
@@ -992,7 +1099,7 @@ function paidPurchaseLifecycleHarness(selectionErrors, { realArticleIndex = fals
     if (!nodes.has(id)) nodes.set(id, {
       hidden: false, disabled: false, checked: id === 'agreement', value: '',
       textContent: '', dataset: {}, children: [],
-      replaceChildren(...children) { this.children = children; },
+      replaceChildren(...children) { this.children = children; this.value = ''; },
       append(...children) { this.children.push(...children); }, removeAttribute() {},
     });
     return nodes.get(id);
@@ -1010,7 +1117,8 @@ function paidPurchaseLifecycleHarness(selectionErrors, { realArticleIndex = fals
   let checkoutStarts = 0, orderReads = 0, selections = 0;
   const context = {
     $, location, history, URLSearchParams, URL, uuid, validScope, validQuote,
-    purchaseConfiguration, configurationLabel, navigation,
+    purchaseConfiguration, configurationLabel, navigation, rows: {},
+    Option: function(text, value) { return { text, value }; },
     document: { title: '', body: { dataset: {} }, visibilityState: 'visible', createTextNode: text => ({ textContent: text }) },
     element: (tag, text) => ({ tag, textContent: text }),
     names: ['year', 'make', 'model', 'configuration'],
@@ -1071,7 +1179,7 @@ function paidPurchaseLifecycleHarness(selectionErrors, { realArticleIndex = fals
     (realArticleIndex ? appSection('function show(', 'function clearProtected()') : '') +
     (realArticleIndex ? appSection('function clearProtected()', 'function invalidate()') : '') +
     appSection('function invalidate(', 'function updateURL(') +
-    appSection('function updateURL(', 'function populate(') +
+    appSection('function updateURL(', 'function selectorPath(') +
     appSection('function renderPurchase(', 'async function selectVehicle(') +
     (realArticleIndex ? appSection('async function selectVehicle(', 'function renderArticles(') : '') +
     (articleOpenError ? appSection('function openArticle(', 'function validSourceURL(') : '') +

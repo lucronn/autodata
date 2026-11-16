@@ -979,7 +979,8 @@ async function library(g, append = false) {
       button.addEventListener("click", () => {
         // A library item is an exact configuration/region route. A previous
         // browse hierarchy can belong to a different vehicle and must be cleared.
-        for (const name of names) $(name).value = "";
+        for (const name of names) populate(name, []);
+        $("search").value = "";
         vehicle = {
           id: item.configuration_id,
           region: item.region,
@@ -1201,6 +1202,13 @@ async function restoreRoute() {
   invalidate();
   show("welcome");
   const params = new URLSearchParams(location.search);
+  // URL state is authoritative on history, sign-in, and direct-link restores.
+  // A prior vehicle must not leave usable descendants or filter another index.
+  for (const name of names) populate(name, []);
+  $("search").value = params.get("q") || "";
+  vehicle = null;
+  quote = null;
+  renderPurchase();
   return operation(
     async (g) => {
       const order = params.get("order");
@@ -1221,9 +1229,6 @@ async function restoreRoute() {
         await selectVehicle(g, params.get("article") || "");
         return;
       }
-      vehicle = null;
-      quote = null;
-      renderPurchase();
       for (const name of names) {
         const desired = params.get(name) || "";
         await loadOptions(name, g, desired);
@@ -1232,7 +1237,6 @@ async function restoreRoute() {
       vehicle = rows.configuration.find(
         (item) => item.id === $("configuration").value,
       );
-      $("search").value = params.get("q") || "";
       await selectVehicle(g, params.get("article") || "");
     },
     () => restoreRoute(),
