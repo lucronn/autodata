@@ -1,0 +1,18 @@
+{
+  "goal": "Restore vehicle selector and article-search state from the current URL so direct article links, browser history, and library vehicle navigation cannot reuse another vehicle\u2019s choices or query.",
+  "plan_ref": "docs/superpowers/plans/2026-11-16-workshop-route-state.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/446",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/workshop-route-state.md"
+  ],
+  "todo": [
+    "Synchronize Issue/Project/canonical docs and pass the exact committed checkpoint preflight before implementation.",
+    "Add production-function regressions for direct configuration/article links with and without q, library routes and library vehicle activation, partial hierarchy and full saved hierarchy restoration; include stale prior selector options/query/context.",
+    "Reset route-owned selector/search/context state and clear library vehicle search without changing article access, checkout, order polling, API or source data.",
+    "Run focused failing/green regressions, complete Workshop client/demo tests, syntax and diff checks; commit/push evidence for coordinator review.",
+    "Hold deployment and external authenticated/provider/Stripe calls; coordinator owns integration and public runtime."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-16T05:56:36.624353+00:00"
+}
