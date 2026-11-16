@@ -76,6 +76,25 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Select affected PR suites
+        if: github.event_name == 'pull_request'
+        id: pr_scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          changed="$RUNNER_TEMP/changed-files"
+          git diff --name-only HEAD^1 HEAD > "$changed"
+          if grep -Eq '^(workers/ingestion-python/|packages/contracts/|db/migrations/)' "$changed"; then
+            echo 'ingestion=true' >> "$GITHUB_OUTPUT"
+          fi
+          if grep -Eq '^(workers/enrichment-python/|packages/contracts/|db/migrations/)' "$changed"; then
+            echo 'enrichment=true' >> "$GITHUB_OUTPUT"
+          fi
+          if grep -Eq '^(infra/deploy/gce/|infra/compose/|apps/api-go/purchase_config.go$|workers/ingestion-python/src/autodata_ingestion/purchase_config.py$)' "$changed"; then
+            echo 'gce=true' >> "$GITHUB_OUTPUT"
+          fi
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -131,6 +150,7 @@ jobs:
         run: go test ./...
 
       - name: Run ingestion worker tests
+        if: github.event_name != 'pull_request' || steps.pr_scope.outputs.ingestion == 'true'
         working-directory: workers/ingestion-python
         run: |
           python -m pip install --disable-pip-version-check --no-input pytest
@@ -149,6 +169,7 @@ jobs:
           python -m pytest tests -q
 
       - name: Run enrichment worker tests
+        if: github.event_name != 'pull_request' || steps.pr_scope.outputs.enrichment == 'true'
         working-directory: workers/enrichment-python
         run: python -m unittest discover -s tests -p 'test_*.py' -v
 
@@ -157,6 +178,7 @@ jobs:
         run: python -m unittest discover -s scripts/dev -p 'test_*.py' -v
 
       - name: Run required GCE host delivery tests
+        if: github.event_name != 'pull_request' || steps.pr_scope.outputs.gce == 'true'
         shell: bash
         run: |
           set -euo pipefail
