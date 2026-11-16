@@ -3,6 +3,8 @@ import json
 import os
 import re
 import subprocess
+import signal
+import threading
 import sys
 import uuid
 from pathlib import Path
@@ -18,7 +20,7 @@ def ownership(env):
     return name
 
 
-def bootstrap(env, *, connect, identifier, migrate, seed, hold):
+def bootstrap(env, *, connect, identifier, migrate, seed, hold, cleanup_bucket=None, emit_cleanup=None):
     """Adapters are injected for offline tests; only this exact DB is touched."""
     name = ownership(env)
     created = False
@@ -33,13 +35,26 @@ def bootstrap(env, *, connect, identifier, migrate, seed, hold):
             raise ValueError('synthetic_seed_contract')
         hold({'database': name, **metadata})
     finally:
-        if created:
-            with connect('lifecycle_fixture', autocommit=True) as db:
-                db.execute(identifier('DROP DATABASE IF EXISTS {} WITH (FORCE)', name))
+        # Both cleanups are attempted even when readiness/behavior failed.
+        database_removed = bucket_removed = False
+        try:
+            if created:
+                with connect('lifecycle_fixture', autocommit=True) as db:
+                    db.execute(identifier('DROP DATABASE IF EXISTS {} WITH (FORCE)', name))
+                    row = db.execute('SELECT count(*) FROM pg_database WHERE datname=%s', (name,)).fetchone()
+                    if row[0] != 0: raise ValueError('synthetic_database_cleanup_unknown')
+                database_removed = True
+        finally:
+            if created and cleanup_bucket is not None:
+                bucket_removed = cleanup_bucket() is True
+            if emit_cleanup is not None:
+                emit_cleanup({'database_removed': database_removed, 'bucket_removed': bucket_removed})
 
 
 def main():
     name = ownership(os.environ)  # Refuse before importing any database adapter.
+    stopping = threading.Event()
+    signal.signal(signal.SIGTERM, lambda *_: stopping.set())
     import psycopg
     from psycopg import sql
     from psycopg.rows import dict_row
@@ -57,6 +72,7 @@ def main():
                  'PGDATABASE': database, 'PGUSER': 'lifecycle_test', 'PGPASSWORD': 'lifecycle_test_only'},
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=45)
         if result.returncode: raise ValueError('synthetic_migration_failed')
+        if stopping.is_set(): raise ValueError('synthetic_bootstrap_stopped')
 
     def seed(database):
         repo = Repository(database)
@@ -76,12 +92,30 @@ def main():
 
     def hold(metadata):
         print(json.dumps(metadata, sort_keys=True), flush=True)
-        # OpenStdin/StdinOnce are sealed by the host adapter; EOF cleans this DB.
-        sys.stdin.buffer.read(1)
+        # Graceful container stop requests cleanup even before client execution.
+        stopping.wait()
+
+    def cleanup_bucket():
+        from minio import Minio
+        from minio.deleteobjects import DeleteObject
+        from urllib3 import PoolManager, Timeout
+        run = name.removeprefix('lifecycle_test_')
+        bucket = 'autodata-selector-fixture-' + run
+        if os.environ.get('AUTODATA_SOURCE_BUCKET') != bucket:
+            raise ValueError('synthetic_bucket_required')
+        client = Minio('minio:9000', access_key='fixture', secret_key='fixture', secure=False,
+            http_client=PoolManager(timeout=Timeout(connect=2, read=2), retries=False))
+        if client.bucket_exists(bucket):
+            errors = list(client.remove_objects(bucket, [DeleteObject(x.object_name, version_id=x.version_id)
+                for x in client.list_objects(bucket, recursive=True, include_version=True)]))
+            if errors: raise ValueError('synthetic_bucket_cleanup_unknown')
+            client.remove_bucket(bucket)
+        return not client.bucket_exists(bucket)
 
     bootstrap(os.environ, connect=connect,
               identifier=lambda pattern,n: sql.SQL(pattern).format(sql.Identifier(n)),
-              migrate=migrate, seed=seed, hold=hold)
+              migrate=migrate, seed=seed, hold=hold, cleanup_bucket=cleanup_bucket,
+              emit_cleanup=lambda value: print(json.dumps({'cleanup': value}, sort_keys=True), flush=True))
 
 
 if __name__ == '__main__': main()

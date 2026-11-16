@@ -67,25 +67,59 @@ class Tests(unittest.TestCase):
         class Connection:
             def __enter__(self):return self
             def __exit__(self,*_):pass
-            def execute(self,value):events.append(value)
+            def execute(self,value,*args):
+                events.append(value);return self
+            def fetchone(self):return (0,)
         def connect(database,**kw):
             self.assertEqual(database,'lifecycle_fixture');self.assertTrue(kw['autocommit']);return Connection()
         expected={k:self.fixture[k] for k in ('configuration','foreign_configuration','owner','organization','entitlement')}
         bootstrap.bootstrap(self.env,connect=connect,identifier=lambda p,n:(p,n),
             migrate=lambda n:events.append(('migrate',n)),seed=lambda n:expected,
             hold=lambda data:events.append(('hold',data['database'])))
-        self.assertEqual(events,[('CREATE DATABASE {}',self.fixture['database']),('migrate',self.fixture['database']),('hold',self.fixture['database']),('DROP DATABASE IF EXISTS {} WITH (FORCE)',self.fixture['database'])])
+        self.assertEqual(events,[('CREATE DATABASE {}',self.fixture['database']),('migrate',self.fixture['database']),('hold',self.fixture['database']),('DROP DATABASE IF EXISTS {} WITH (FORCE)',self.fixture['database']),'SELECT count(*) FROM pg_database WHERE datname=%s'])
 
     def test_bootstrap_failed_migration_cleans_only_created_owned_database(self):
         db=Mock();db.__enter__=Mock(return_value=db);db.__exit__=Mock(return_value=False)
+        db.execute.return_value.fetchone.return_value=(0,)
         migrate=Mock(side_effect=RuntimeError('authored failure'))
         with self.assertRaises(RuntimeError):bootstrap.bootstrap(self.env,connect=Mock(return_value=db),identifier=lambda p,n:(p,n),migrate=migrate,seed=Mock(),hold=Mock())
-        self.assertEqual(db.execute.call_args_list[-1].args[0],('DROP DATABASE IF EXISTS {} WITH (FORCE)',self.fixture['database']))
+        self.assertEqual(db.execute.call_args_list[-2].args[0],('DROP DATABASE IF EXISTS {} WITH (FORCE)',self.fixture['database']))
 
     def test_create_failure_never_drops_preexisting_database(self):
         db=Mock();db.__enter__=Mock(return_value=db);db.__exit__=Mock(return_value=False);db.execute.side_effect=RuntimeError('already exists')
         with self.assertRaises(RuntimeError):bootstrap.bootstrap(self.env,connect=Mock(return_value=db),identifier=lambda p,n:(p,n),migrate=Mock(),seed=Mock(),hold=Mock())
         self.assertEqual(db.execute.call_count,1)
+
+    def test_failed_behavior_still_emits_positive_database_and_bucket_cleanup(self):
+        db=Mock();db.__enter__=Mock(return_value=db);db.__exit__=Mock(return_value=False)
+        db.execute.return_value.fetchone.return_value=(0,)
+        emitted=Mock();bucket=Mock(return_value=True)
+        expected={k:self.fixture[k] for k in ('configuration','foreign_configuration','owner','organization','entitlement')}
+        with self.assertRaisesRegex(RuntimeError,'behavior'):
+            bootstrap.bootstrap(self.env,connect=Mock(return_value=db),identifier=lambda p,n:(p,n),
+                migrate=Mock(),seed=lambda _:expected,hold=Mock(side_effect=RuntimeError('behavior')),
+                cleanup_bucket=bucket,emit_cleanup=emitted)
+        bucket.assert_called_once_with()
+        emitted.assert_called_once_with({'database_removed':True,'bucket_removed':True})
+
+    def test_failed_database_absence_still_attempts_bucket_without_success_receipt(self):
+        db=Mock();db.__enter__=Mock(return_value=db);db.__exit__=Mock(return_value=False)
+        db.execute.return_value.fetchone.return_value=(1,)
+        emitted=Mock();bucket=Mock(return_value=True)
+        with self.assertRaisesRegex(ValueError,'cleanup_unknown'):
+            bootstrap.bootstrap(self.env,connect=Mock(return_value=db),identifier=lambda p,n:(p,n),
+                migrate=Mock(side_effect=RuntimeError('migration')),seed=Mock(),hold=Mock(),
+                cleanup_bucket=bucket,emit_cleanup=emitted)
+        bucket.assert_called_once_with()
+        emitted.assert_called_once_with({'database_removed':False,'bucket_removed':True})
+
+    def test_create_collision_never_cleans_preexisting_bucket(self):
+        db=Mock();db.__enter__=Mock(return_value=db);db.__exit__=Mock(return_value=False)
+        db.execute.side_effect=RuntimeError('collision');bucket=Mock()
+        with self.assertRaises(RuntimeError):
+            bootstrap.bootstrap(self.env,connect=Mock(return_value=db),identifier=Mock(),
+                migrate=Mock(),seed=Mock(),hold=Mock(),cleanup_bucket=bucket)
+        bucket.assert_not_called()
 
     def test_authored_banks_scopes_and_partial_failure_are_deterministic(self):
         for bank in ('bankone','banktwo'):

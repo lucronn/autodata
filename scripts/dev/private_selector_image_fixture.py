@@ -56,6 +56,7 @@ class Fixture:
                                          {'id': identifier, 'role': role, 'run_id': self.manifest['run_id']})
                 self.check(); self.owned(identifier, role)
                 self.backend.start_fixture(identifier)
+                if role == 'bootstrap': self.backend.wait_fixture_ready(identifier)
             result = self.backend.exercise_fixture(owned[-1][0], self.manifest)
             c.require(isinstance(result, dict) and set(result) == CHECKS
                       and all(v is True for v in result.values()), 'fixture_acceptance')

@@ -220,7 +220,7 @@ class LocalTransport:
     def __init__(self, manifest, *, external_seal_sha=None, dispatch_enabled=False, runner=None):
         self.manifest = manifest; self.phase = manifest.get('phase')
         self.external_seal_sha = external_seal_sha; self.dispatch_enabled = dispatch_enabled
-        self.runner = runner or bounded; self.lock_fd = None; self.created = {}; self.fixture_cleanup = False
+        self.runner = runner or bounded; self.lock_fd = None; self.created = {}; self.fixture_cleanup = False; self.fixture_metadata = None
 
     def enabled(self):
         c.require(self.dispatch_enabled is True and c.full_id(self.external_seal_sha), 'dispatch_disabled')
@@ -548,30 +548,52 @@ class LocalTransport:
         self.fixture_identity(identifier)
         self.docker('start', identifier, timeout=10, limit=4096)
 
+    def wait_fixture_ready(self, identifier):
+        self.fixture_identity(identifier)
+        c.require(self.created.get(identifier) == 'bootstrap', 'fixture_bootstrap_role')
+        deadline = time.monotonic() + 60
+        names = {'database', 'configuration', 'foreign_configuration', 'owner', 'organization', 'entitlement'}
+        while time.monotonic() < deadline:
+            self.fixture_identity(identifier)
+            c.require(self.raw_inspect(identifier)['State']['Running'] is True, 'fixture_bootstrap_exited')
+            raw = self.docker('logs', '--tail', '1', identifier, timeout=5, limit=16384).strip()
+            if raw:
+                data = json.loads(raw)
+                c.require(isinstance(data, dict) and set(data) == names
+                          and data['database'] == 'lifecycle_test_' + self.manifest['run_id'], 'fixture_database_metadata')
+                for key in names - {'database'}:
+                    c.require(isinstance(data[key], str) and str(uuid.UUID(data[key])) == data[key], 'fixture_uuid')
+                self.fixture_metadata = data
+                return
+            self.pause(.2)
+        raise c.Refused('fixture_bootstrap_deadline')
+
     def exercise_fixture(self, identifier, manifest):
         self.fixture_identity(identifier)
         c.require(c.digest(manifest) == c.digest(self.manifest), 'fixture_client_manifest')
         bootstrap = [k for k, role in self.created.items() if role == 'bootstrap']
         c.require(len(bootstrap) == 1, 'fixture_bootstrap_id')
-        data = json.loads(self.docker('logs', '--tail', '1', bootstrap[0], timeout=5, limit=16384))
-        names = {'database', 'configuration', 'foreign_configuration', 'owner', 'organization', 'entitlement'}
-        c.require(set(data) == names and data['database'] == 'lifecycle_test_' + manifest['run_id'],
-                  'fixture_database_metadata')
-        for key in names - {'database'}:
-            c.require(isinstance(data[key], str) and str(uuid.UUID(data[key])) == data[key], 'fixture_uuid')
+        c.require(isinstance(self.fixture_metadata, dict), 'fixture_bootstrap_not_ready')
+        data = dict(self.fixture_metadata)
         data['bucket'] = 'autodata-selector-fixture-' + manifest['run_id']
         with regular(self.paths()['fixture_client'], maximum=262144) as stream: script = stream.read()
         prefix = ('import json\nFIXTURE=json.loads(' + repr(json.dumps(data)) + ')\n').encode()
         value = json.loads(self.docker('exec', '-i', identifier, '/usr/local/bin/python', '-B', '-',
                                        data=prefix + script, timeout=120, limit=65536))
         c.require(isinstance(value, dict) and set(value) == {'checks', 'cleanup'}, 'fixture_client_result')
-        self.fixture_cleanup = c.typed_equal(value['cleanup'], {'database_removed': True, 'bucket_removed': True})
+        c.require(c.typed_equal(value['cleanup'], {'database_removed': True, 'bucket_removed': True}), 'fixture_client_cleanup_unknown')
         self.record_once('transport-fixture-client', value)
         return value['checks']
 
     def stop_fixture(self, identifier):
         self.fixture_identity(identifier)
-        self.docker('stop', '--time', '0', identifier, timeout=5, limit=4096)
+        bootstrap = self.created[identifier] == 'bootstrap'
+        self.docker('stop', '--time', '65' if bootstrap else '0', identifier,
+                    timeout=70 if bootstrap else 5, limit=4096)
+        if bootstrap:
+            value = json.loads(self.docker('logs', '--tail', '1', identifier, timeout=5, limit=16384))
+            self.fixture_cleanup = c.typed_equal(value, {'cleanup': {'database_removed': True, 'bucket_removed': True}})
+            c.require(self.fixture_cleanup, 'fixture_bootstrap_cleanup_unknown')
 
     def fixture_stopped(self, identifier):
         samples = []

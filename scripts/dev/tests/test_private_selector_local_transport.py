@@ -210,6 +210,13 @@ class Tests(unittest.TestCase):
             with self.assertRaises(c.Refused): self.backend.stop(c.OLD)
         docker.assert_not_called()
 
+    def test_runtime_stop_preserves_immediate_fence_command(self):
+        self.backend.phase='runtime'
+        with patch.object(self.backend,'inspect',return_value=state(c.OLD_IDENTITY,'running')), \
+             patch.object(self.backend,'docker') as docker:
+            self.backend.stop(c.OLD)
+        docker.assert_called_once_with('stop','--time','0',c.OLD,timeout=5,limit=4096)
+
     def test_sql_is_single_fixed_connection_readonly_bounded_and_no_user_input(self):
         query = m.combined_sql()
         self.assertEqual(query.count('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY'), 1)
@@ -261,6 +268,49 @@ class Tests(unittest.TestCase):
         with patch.object(m.http.client.HTTPConnection, 'connect') as connect:
             with self.assertRaises(c.Refused): connection.connect()
         connect.assert_not_called()
+
+    def test_delayed_bootstrap_metadata_waits_and_preserves_validated_receipt(self):
+        identifier='b'*64;self.backend.created[identifier]='bootstrap'
+        metadata={'database':'lifecycle_test_'+self.value['run_id'],
+                  **dict.fromkeys(('configuration','foreign_configuration','owner','organization','entitlement'),
+                                  '00000000-0000-4000-8000-000000000001')}
+        with patch.object(self.backend,'fixture_identity'),patch.object(self.backend,'raw_inspect',return_value={'State':{'Running':True}}), \
+             patch.object(self.backend,'docker',side_effect=[b'',json.dumps(metadata).encode()]) as docker, \
+             patch.object(self.backend,'pause') as pause:
+            self.backend.wait_fixture_ready(identifier)
+        pause.assert_called_once_with(.2)
+        self.assertEqual(self.backend.fixture_metadata,metadata)
+        self.assertEqual(docker.call_count,2)
+
+    def test_exited_bootstrap_never_reads_logs_or_claims_readiness(self):
+        identifier='b'*64;self.backend.created[identifier]='bootstrap'
+        with patch.object(self.backend,'fixture_identity'),patch.object(self.backend,'raw_inspect',return_value={'State':{'Running':False}}), \
+             patch.object(self.backend,'docker') as docker:
+            with self.assertRaises(c.Refused):self.backend.wait_fixture_ready(identifier)
+        docker.assert_not_called();self.assertIsNone(self.backend.fixture_metadata)
+
+    def test_bootstrap_readiness_deadline_and_wrong_database_refuse(self):
+        identifier='b'*64;self.backend.created[identifier]='bootstrap'
+        with patch.object(self.backend,'fixture_identity'),patch.object(m.time,'monotonic',side_effect=[0,61]), \
+             patch.object(self.backend,'docker') as docker:
+            with self.assertRaises(c.Refused):self.backend.wait_fixture_ready(identifier)
+        docker.assert_not_called()
+        with patch.object(self.backend,'fixture_identity'),patch.object(self.backend,'raw_inspect',return_value={'State':{'Running':True}}), \
+             patch.object(self.backend,'docker',return_value=b'{"database":"protected"}'):
+            with self.assertRaises(c.Refused):self.backend.wait_fixture_ready(identifier)
+        self.assertIsNone(self.backend.fixture_metadata)
+
+    def test_graceful_bootstrap_stop_requires_positive_cleanup_log(self):
+        identifier='b'*64;self.backend.created[identifier]='bootstrap'
+        for removed in (True,False):
+            receipt={'cleanup':{'database_removed':removed,'bucket_removed':True}}
+            with patch.object(self.backend,'fixture_identity'), \
+                 patch.object(self.backend,'docker',side_effect=[b'',json.dumps(receipt).encode()]) as docker:
+                if removed:self.backend.stop_fixture(identifier)
+                else:
+                    with self.assertRaises(c.Refused):self.backend.stop_fixture(identifier)
+            self.assertEqual(self.backend.fixture_cleanup,removed)
+            self.assertEqual(docker.call_args_list[0].args,('stop','--time','65',identifier))
 
     def test_cli_is_metadata_only_even_for_approved_mock_manifest(self):
         p = self.base / 'dry.json'; p.write_text(json.dumps(self.value)); p.chmod(0o600)

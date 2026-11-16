@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 from private_selector_adapter_fakes import Backend, manifest, c, f
 
 
@@ -11,6 +12,14 @@ class Tests(unittest.TestCase):
         self.assertTrue(result['serving_unchanged']); self.assertTrue(result['owned_cleanup'])
         self.assertEqual([e[1] for e in b.events if e[0] == 'fixture_remove'], ['c' * 64, 'b' * 64])
         self.assertIn('fixture-result', b.markers)
+
+    def test_readiness_failure_prevents_worker_creation_and_cleans_bootstrap(self):
+        v,b,adapter=self.fixture()
+        with patch.object(b,'wait_fixture_ready',side_effect=c.Refused('bootstrap_deadline')):
+            with self.assertRaises(c.Refused):adapter.run()
+        self.assertEqual([x for x in b.events if x[0]=='fixture_create'], [('fixture_create','bootstrap')])
+        self.assertIn(('fixture_remove','b'*64),b.events)
+        self.assertNotIn('fixture-result',b.markers)
 
     def test_supplier_or_payment_or_model_flag_refuses_and_cleans(self):
         v, b, adapter = self.fixture(); b.fixture_checks['no_supplier_or_payment_or_model_request'] = False

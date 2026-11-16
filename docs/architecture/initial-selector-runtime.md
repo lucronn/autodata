@@ -159,3 +159,6 @@ Concrete todo:
 4. Derive exact existing internal synthetic network/peer pins through read-only Docker inspection; prepare a review package bound to exact source archive and changed helper hashes. No Docker mutation, SQL/provider request, or serving activation in this checkpoint.
 
 All previous public/private runtime, licensed material, Stripe, rollback and historical v6 evidence holds remain.
+
+
+Readiness correction implementation: bounded validated bootstrap metadata precedes worker creation. Graceful bootstrap stop receives SIGTERM, attempts exact run-owned DB/bucket cleanup, verifies absence and emits a cleanup receipt; transport requires that receipt after stop and never accepts the client flag alone. Create collision cannot delete a preexisting bucket. Runtime immediate-stop fence is unchanged. Owned test suite: 178 tests PASS (9 new); no Docker mutation/SQL/provider request occurred. Actual image remains NOT_RUN. Existing synthetic network/peer/source pins are collected read-only in the fresh review packet; physical inventory, lifecycle HostConfig proof and exact launcher remain unadmitted for independent root review.

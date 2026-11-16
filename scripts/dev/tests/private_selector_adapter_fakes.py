@@ -87,6 +87,9 @@ class Backend:
                                          'policy': copy.deepcopy(f.OWNED_POLICY)}
         return identifier
     def fixture_identity(self, identifier): return copy.deepcopy(self.fixture_values[identifier])
+    def wait_fixture_ready(self, identifier):
+        self.events.append(('fixture_ready', identifier))
+
     def start_fixture(self, identifier): self.events.append(('fixture_start', identifier))
     def exercise_fixture(self, identifier, manifest): return copy.deepcopy(self.fixture_checks)
     def stop_fixture(self, identifier):

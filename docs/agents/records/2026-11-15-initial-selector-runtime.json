@@ -72,5 +72,11 @@
     "actual_image_result": "NOT_RUN",
     "execution_approved": false,
     "evidence_root": "/home/corp/autodata-evidence/private-selector-fixture-payload-a82-20261116"
+  },
+  "readiness_cleanup_verification": {
+    "owned_tests": 178,
+    "actual_image_result": "NOT_RUN",
+    "docker_mutations": 0,
+    "provider_requests": 0
   }
 }
