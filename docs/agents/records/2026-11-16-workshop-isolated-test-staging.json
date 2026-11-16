@@ -1,0 +1,18 @@
+{
+  "goal": "Prepare current-source isolated Workshop Stripe TEST staging with truthful TEST-only notices and durable secret delivery",
+  "plan_ref": "docs/superpowers/plans/2026-11-16-workshop-isolated-test-staging.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/445",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/operations/workshop-isolated-test-staging.md"
+  ],
+  "todo": [
+    "Synchronize plan, Issue445, Project8 and canonical documentation; pass exact-base preflight",
+    "Add server-gated TEST-only notices with route and production-mode denial tests",
+    "Add offline isolated-stack renderer and durable JSON secret launcher; test production/live/shared-resource/empty-tester refusal",
+    "Prepare reviewed current-source runtime inputs; hold Docker, DNS/origin and external Stripe TEST calls for coordinator review",
+    "Run actual restricted authenticated TEST checkout/grant/read/denial/refund acceptance only after runtime prerequisites; do not substitute fixtures or claim missing licensed acceptance"
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-16T05:56:25.404619Z"
+}
