@@ -14,6 +14,11 @@ def enabled_public():
     return dict(DISABLED, enabled=True, terms_url="https://legal.example.test/terms", privacy_url="https://legal.example.test/privacy", refund_url="https://legal.example.test/refund", contact_url="https://legal.example.test/contact", tax_notice="Synthetic fixture notice")
 def enabled_config():
     return PurchaseConfig.from_public(enabled_public())
+def local_enabled_public(origin):
+    return dict(enabled_public(), **{
+        f'{name}_url': f'{origin}/workshop/test-notices/{name}'
+        for name in ('terms', 'privacy', 'refund', 'contact')
+    })
 URL_VECTORS = [{'id': 'plain_https', 'url': 'https://legal.example.test/terms', 'valid': True}, {'id': 'explicit_443', 'url': 'https://legal.example.test:443/terms', 'valid': True}, {'id': 'mixed_ascii', 'url': 'https://Legal.Example.TEST/terms', 'valid': True}, {'id': 'punycode', 'url': 'https://xn--bcher-kva.example/terms', 'valid': True}, {'id': 'encoded_space', 'url': 'https://legal.example.test/terms%20v1', 'valid': True}, {'id': 'encoded_octets', 'url': 'https://legal.example.test/a%2Fb%FF', 'valid': True}, {'id': 'wrong_scheme', 'url': 'http://legal.example.test/terms', 'valid': False}, {'id': 'upper_scheme', 'url': 'HTTPS://legal.example.test/terms', 'valid': False}, {'id': 'credentials', 'url': 'https://user:pass@legal.example.test/terms', 'valid': False}, {'id': 'empty_query', 'url': 'https://legal.example.test/terms?', 'valid': False}, {'id': 'query', 'url': 'https://legal.example.test/terms?v=1', 'valid': False}, {'id': 'empty_fragment', 'url': 'https://legal.example.test/terms#', 'valid': False}, {'id': 'fragment', 'url': 'https://legal.example.test/terms#v1', 'valid': False}, {'id': 'wrong_port', 'url': 'https://legal.example.test:444/terms', 'valid': False}, {'id': 'padded_port', 'url': 'https://legal.example.test:0443/terms', 'valid': False}, {'id': 'empty_port', 'url': 'https://legal.example.test:/terms', 'valid': False}, {'id': 'ipv4', 'url': 'https://127.0.0.1/terms', 'valid': False}, {'id': 'ipv6', 'url': 'https://[::1]/terms', 'valid': False}, {'id': 'localhost', 'url': 'https://localhost/terms', 'valid': False}, {'id': 'trailing_dot', 'url': 'https://legal.example.test./terms', 'valid': False}, {'id': 'empty_label', 'url': 'https://legal..test/terms', 'valid': False}, {'id': 'leading_hyphen', 'url': 'https://-legal.example.test/terms', 'valid': False}, {'id': 'trailing_hyphen', 'url': 'https://legal-.example.test/terms', 'valid': False}, {'id': 'underscore', 'url': 'https://legal_site.example.test/terms', 'valid': False}, {'id': 'numeric_tld', 'url': 'https://legal.example.123/terms', 'valid': False}, {'id': 'unicode_host', 'url': 'https://bücher.example/terms', 'valid': False}, {'id': 'host_escape', 'url': 'https://legal%2Eexample.test/terms', 'valid': False}, {'id': 'incomplete_escape', 'url': 'https://legal.example.test/a%2', 'valid': False}, {'id': 'bad_escape', 'url': 'https://legal.example.test/a%G0', 'valid': False}, {'id': 'bare_percent', 'url': 'https://legal.example.test/a%', 'valid': False}, {'id': 'space', 'url': 'https://legal.example.test/terms v1', 'valid': False}, {'id': 'tab', 'url': 'https://legal.example.test/terms\tv1', 'valid': False}, {'id': 'nbsp', 'url': 'https://legal.example.test/terms\xa0v1', 'valid': False}, {'id': 'line_separator', 'url': 'https://legal.example.test/terms\u2028v1', 'valid': False}, {'id': 'feff', 'url': 'https://legal.example.test/terms\ufeffv1', 'valid': False}, {'id': 'c0', 'url': 'https://legal.example.test/terms\x01v1', 'valid': False}, {'id': 'del', 'url': 'https://legal.example.test/terms\x7fv1', 'valid': False}, {'id': 'c1', 'url': 'https://legal.example.test/terms\x9fv1', 'valid': False}]
 FORBIDDEN = list(range(33)) + list(range(127,161)) + [0x1680] + list(range(0x2000,0x200b)) + [0x2028,0x2029,0x202f,0x205f,0x3000,0xfeff]
 
@@ -52,6 +57,25 @@ class PurchaseConfigTests(unittest.TestCase):
         for code in FORBIDDEN:
             for value in (chr(code)+'https://legal.example.test/a','https://legal.example.test/a'+chr(code)+'b','https://legal.example.test/a'+chr(code)):
                 self.assertTrue(parse_purchase_config(json.dumps(dict(enabled_public(),terms_url=value)))[1],repr(value))
+
+    def test_exact_loopback_notices_require_explicit_test_origin(self):
+        origin = 'http://localhost:3013'
+        value = local_enabled_public(origin)
+        raw = json.dumps(value)
+        self.assertTrue(parse_purchase_config(raw)[1])
+        config, malformed = parse_purchase_config(raw, local_test_origin=origin)
+        self.assertFalse(malformed)
+        self.assertEqual(config.public(), value)
+        for invalid_origin in ('http://localhost:0', 'http://localhost:65536',
+                               'http://other.test:3013', 'https://localhost:3013'):
+            with self.subTest(origin=invalid_origin):
+                self.assertTrue(parse_purchase_config(raw, local_test_origin=invalid_origin)[1])
+        for invalid_url in (origin + '/workshop/test-notices/contact',
+                            'http://127.0.0.1:3013/workshop/test-notices/terms',
+                            origin + '/workshop/test-notices/terms?x=1'):
+            with self.subTest(url=invalid_url):
+                changed = dict(value, terms_url=invalid_url)
+                self.assertTrue(parse_purchase_config(json.dumps(changed), local_test_origin=origin)[1])
 
     def test_utf8_raw_notice_url_and_dns_boundaries(self):
         for n,valid in ((1024,True),(1025,False)):
@@ -132,7 +156,8 @@ class PurchaseConfigTests(unittest.TestCase):
         env=dict(AUTODATA_COMMERCE_MODE='stripe_test',AUTODATA_ENV='test',AUTODATA_PUBLIC_ORIGIN='http://127.0.0.1:3000',
             AUTODATA_STRIPE_SECRET_KEY='sk_test_fixture',AUTODATA_STRIPE_WEBHOOK_SECRET='whsec_fixture',
             AUTODATA_STRIPE_ACCOUNT_ID='acct_fixture',AUTODATA_STRIPE_PRICE_ID='price_fixture',AUTODATA_INGESTION_INTERNAL_TOKEN='fixture-token')
-        for raw,enabled,diagnostic in (('{"enabled":false}',False,True),(json.dumps(DISABLED),False,False),(json.dumps(enabled_public()),True,False)):
+        for raw,enabled,diagnostic in (('{"enabled":false}',False,True),(json.dumps(DISABLED),False,False),(json.dumps(enabled_public()),True,False),
+                                       (json.dumps(local_enabled_public('http://127.0.0.1:3000')),True,False)):
             calls.clear()
             with patch.dict('os.environ',dict(env,AUTODATA_WORKSHOP_PURCHASE_CONFIG_JSON=raw),clear=True),patch.dict('sys.modules',{'stripe':stripe}),patch('autodata_ingestion.stripe_adapter.StripePaymentProvider',Provider),patch.object(CommerceService,'transaction',transaction):
                 with (self.assertLogs('autodata_ingestion.commerce_service') if diagnostic else self.assertNoLogs('autodata_ingestion.commerce_service')) as logs:
