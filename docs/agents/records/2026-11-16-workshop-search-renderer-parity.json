@@ -1,0 +1,17 @@
+{
+  "goal": "Repair draft394 proven legacy body/introduction search parity on current protected424 without changing renderer/image authorization; offline-only root review, no push.",
+  "plan_ref": "docs/superpowers/plans/2026-11-16-workshop-search-renderer-parity.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/393",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/verification/2026-11-16-workshop-search-renderer-parity.md"
+  ],
+  "todo": [
+    "Synchronize local checkpoint and pass pinned machine gate before implementation.",
+    "Integrate424/a82 behavior and add red-first cross-renderer fixtures.",
+    "Repair legacy body search only; preserve document and paid image boundaries.",
+    "Run bounded offline tests and hand root exact unpushed head/tree/gaps; hold runtime/CI/push/merge."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-16T05:20:57.154816+00:00"
+}
