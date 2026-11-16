@@ -1,6 +1,6 @@
 # Initial-selector private runtime rollout draft
 
-Status: protected a82 gate synchronized; M2A exclusive capacity slot HOLD; no package, serving or probe authority before the stated releases.
+Status: protected424 post-public metadata/dry-planner checkpoint synchronized; public slot HELD, physical/SQL/runtime/provider execution prohibited.
 Issue: https://github.com/lucronn/autodata/issues/401
 Source implementation: https://github.com/lucronn/autodata/pull/437 (Issue436).
 Project: https://github.com/users/lucronn/projects/8
@@ -122,3 +122,22 @@ Protected `be1a1f235e8eeacc051ac905c4ed8a953a41c8a9`; current integration plan `
 - Synchronize Issue401/Project8, corrected canonical current-versus-historical docs and matching records at a docs-only protected-base checkpoint; pass exact checkpoint preflight before copying helper files
 - Copy the exact four helper and four test blobs from reviewed0212dd8d, run focused owned/offline tests and verify all eight Git blob IDs unchanged
 - Push the refreshed draft PR440 with an exact old-head lease, update its base/head verification text and run required exact-head CI; hold merge, build, activation, runtime and provider requests for root
+
+## Protected 424 post-public gate — slot HELD
+
+Current implementation checkpoint pins protected4246264a881382676927e22adad0a1d240f03268/tree23b4d820670ed04ae6aeb0bc03365c4c0ec77645 for merged PR440 helpers; product remains immutablea82b31dc8850aa3956972928b8c720969765a972/tree11503a735d7d983ca3ebf090b471c89682e77278. Workers are byte-identical424/a82. Prior0212 checkpoint and high7.315GB admission are superseded only for this new explicit post-public policy.
+
+Public source-only release passed coordinator42/42 checks; independent staging readback/capacity-slot handoff pending. Read-only /proc proof: PID1293423/startticks19892443, executable /usr/local/libexec/autodata/workshop-client-preview-a82b31d-a2/autodata-api, binarySHAbb11d963666e4fc44f6b0879ebb55a14cf7b2ca221bad6ffa8d3282d5360203e. Do not touch public runtime. Private remains17295/source272/image3132 running, rollback343/source083/image3132 exited, as exact sealed baseline cf8eb143851861d67dc2625db60c6669ced421b3b70f0b4429aba725a152d11c in /home/corp/autodata-evidence/private-selector-a82-activation-review-4246264-20261116. Recheck identities before any admitted execution. Priorv6 manualINCONCLUSIVE remains unchanged/no replay.
+
+Post-public physical /home policy: absolute5GiB5,368,709,120B plus128MiB134,217,728B unowned drift plus private128MiB134,217,728B =5,637,144,576B admission after completed public install. Add64MiB67,108,864B only if install remains unallocated,128MiB134,217,728B only if public package remains unallocated; no double counting measured completed artifacts. During phases preserve absolute+drift+remaining private cap; phaseend>=5,502,926,848B. Private incremental caps archive36MiB/source40MiB/backup+TOC24MiB/helpers+seals8MiB/scratch20MiB sum128MiB. Offhome fixture output/scratch separate64MiB. Docker existing reserve813,694,976B+private64MiB+unowned64MiB=947,912,704B admission, end880,803,840B. No floor auto-relaxation; remeasure before every allocation/create/start. Lastreadonly04:45:41Z home5,917,487,104/Docker990,801,920/offhome3,567,771,648B; unreserved.
+
+This gate authorizes metadata and an offloaded dry-only executable phase planner/tests after synchronization/preflight. Public release retains slot: NO physical-home allocation, SQL, container create/start/stop, activation, imagepull/build, provider/catalog/article/payment request until explicit coordinator slot release AND phase review/approval. Passing dry validation is not actual-image/backup/activation acceptance. Source and execution roots remain absent.
+
+Concrete todo:
+1. Commit this424 gate; synchronize Issue401/Project8/canonicaldocs/record, verifyreadbacks and machine preflight before dry-planner implementation.
+2. Offloaded validate-only planner+owned tests pins protectedhelpers/publicruntime/sourceimage/capmath/one-at-a-time phase order; refuses execution and unresolved slot; no runtime or SQL dispatch.
+3. After explicit root slotrelease/review, fresh17295/343/public/image/socket/data-root/capacityreadback; immutablea82archive33,884,160B andROsource/fsync/inventory under36/40MiBcaps, nohelperbranchproductsource.
+4. Separate reviewed actualcached3132 HTTP/child/PG/read_only/SVG owned fixture plan: synthetic lifecycleUUID DB/bucket/private network; no persistent sharedrole changes or realcredentials/provider/payment/model; cleanup+servingunchanged receipt. Cachedimage only/nopullbuild.
+5. Freshphysicalbackup/TOC+compact coherent39table baseline only after exact reviewed boundedSQL/backup command approval; protected27/catalog12/passiveSQLread_only; noautomaticDBrestore. Rebind/review externalruntime_rollout/passive_baseline helpers (not merged440) and exact candidatecreate/lifecyclehashes/seals before any stage/activate.
+6. Root independent review gates activation separately; health/commerce probes only,purchasefalse/quotefalse/providerNone, protected/catalog equal, preserve17295firstrollback/343secondary. Candidate intentionalstop+stablePid0/Restartingfalse+verifiedoldidentity before restartold; unknownstate manualhold/no overlap.
+7. First initialselector realGET remains separately held without positiveinitialjob/internalGoPOST-ended/fence proof; mergedconfigurationSTART/FIN watcher cannot establish it. No routepoll/configreplay/article recapture/payment.

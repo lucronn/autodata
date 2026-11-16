@@ -7,12 +7,15 @@
     "docs/architecture/initial-selector-runtime.md"
   ],
   "todo": [
-    "Synchronize Issue401/Project8, corrected canonical current-versus-historical docs and matching records at a docs-only protected-base checkpoint; pass exact checkpoint preflight before copying helper files",
-    "Copy the exact four helper and four test blobs from reviewed0212dd8d, run focused owned/offline tests and verify all eight Git blob IDs unchanged",
-    "Push the refreshed draft PR440 with an exact old-head lease, update its base/head verification text and run required exact-head CI; hold merge, build, activation, runtime and provider requests for root"
+    "Synchronize protected424 helper/producta82/publicPID1293423 Issue401/Project8/docs/record/readbacks/preflight before dry-planner implementation",
+    "Public release slot HELD: no physical-home/SQL/container/build/activation/provider; postpublic home5637144576 Docker947912704 admissions, exact128MiBhome64MiBDocker caps",
+    "Offloaded dry-only executable planner and owned tests pin phases/source/image/public/private identities, no execution dispatcher",
+    "After root explicit release+review: immutablea82 archive/ROsource fsync inventory, owned cached3132 synthetic HTTP/child/PG/read_only/SVG fixture cleanup under caps",
+    "Separate root command review for fresh physical dump/TOC coherent39baseline and external activationhelper reseal; retain17295/343 rollback",
+    "Initial real probe separately HELD/internaljob+GoPOST end/fence proof; v6manualINCONCLUSIVE no replay"
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-16T04:14:43.285942+00:00",
+  "updated_at": "2026-11-16T04:46:02.637299+00:00",
   "historical_goal": "Plan source-only private initial-selector safety runtime rollout preserving17295 rollback and incomplete v6 evidence",
   "historical_todo": [
     "Synchronize exact protected a82 Issue401/Project8/docs/record/readback/preflight before implementation",
@@ -37,5 +40,13 @@
   },
   "protected_source_sha": "be1a1f235e8eeacc051ac905c4ed8a953a41c8a9",
   "protected_source_tree": "39eb3530ac50bad0ecdb01a733a6a0cb373af5cf",
-  "current_protected_master": "be1a1f235e8eeacc051ac905c4ed8a953a41c8a9"
+  "current_protected_master": "4246264a881382676927e22adad0a1d240f03268",
+  "protected_helper_sha": "4246264a881382676927e22adad0a1d240f03268",
+  "protected_helper_tree": "23b4d820670ed04ae6aeb0bc03365c4c0ec77645",
+  "public_runtime": {
+    "pid": 1293423,
+    "start_ticks": "19892443",
+    "source": "a82b31dc8850aa3956972928b8c720969765a972",
+    "binary_sha256": "bb11d963666e4fc44f6b0879ebb55a14cf7b2ca221bad6ffa8d3282d5360203e"
+  }
 }
