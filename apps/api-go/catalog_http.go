@@ -207,6 +207,15 @@ func (s *Server) listCatalogArticles(response http.ResponseWriter, request *http
 		s.writeCatalogError(response, request, err)
 		return
 	}
+	if scope, ok := request.Context().Value(paidCatalogContextKey{}).(paidCatalogContext); ok && scope.openDemo && query != "" {
+		available := make([]CatalogArticle, 0, len(items))
+		for _, item := range items {
+			if item.Availability == "available" {
+				available = append(available, item)
+			}
+		}
+		items = available
+	}
 	progress, err := s.catalog.CatalogArticleProgress(request.Context(), principal, vehicleID)
 	if err != nil {
 		s.writeCatalogError(response, request, err)
@@ -324,9 +333,13 @@ func (s *Server) respondCatalogArticleView(response http.ResponseWriter, request
 			return
 		}
 		view.Article = article
-		if err := s.rewritePaidCatalogArticleImages(request.Context(), principal, scope.configuration, *scope.identity, &view); err != nil {
-			s.writePaidCatalogError(response, request, err)
-			return
+		if scope.openDemo {
+			clonePaidCatalogArticleImages(&view.Article)
+		} else {
+			if err := s.rewritePaidCatalogArticleImages(request.Context(), principal, scope.configuration, *scope.identity, &view); err != nil {
+				s.writePaidCatalogError(response, request, err)
+				return
+			}
 		}
 		article = view.Article
 	} else {

@@ -40,6 +40,9 @@ func (s *Server) paidCatalogEnabled() bool {
 // Resolve only metadata before checking the current exact grant. Legacy vehicle
 // aliases deliberately cannot select one of several purchased configurations.
 func (s *Server) resolvePaidCatalogScope(ctx context.Context, p Principal, configurationID, requestedRegion string) (CatalogConfiguration, error) {
+	return s.resolveCatalogScope(ctx, p, configurationID, requestedRegion, true)
+}
+func (s *Server) resolveCatalogScope(ctx context.Context, p Principal, configurationID, requestedRegion string, requireGrant bool) (CatalogConfiguration, error) {
 	id := strings.ToLower(configurationID)
 	if configurationID != strings.TrimSpace(configurationID) || !commerceUUID(id) || s.catalog == nil {
 		return CatalogConfiguration{}, ErrCatalogNotFound
@@ -51,8 +54,10 @@ func (s *Server) resolvePaidCatalogScope(ctx context.Context, p Principal, confi
 	if configuration.ID != id || !commerceRegion(configuration.Region) || (requestedRegion != "" && requestedRegion != configuration.Region) {
 		return CatalogConfiguration{}, ErrCatalogNotFound
 	}
-	if err = s.checkPaidCatalogGrant(ctx, p, configuration); err != nil {
-		return CatalogConfiguration{}, err
+	if requireGrant {
+		if err = s.checkPaidCatalogGrant(ctx, p, configuration); err != nil {
+			return CatalogConfiguration{}, err
+		}
 	}
 	return configuration, nil
 }
@@ -238,6 +243,7 @@ type paidCatalogContextKey struct{}
 type paidCatalogContext struct {
 	configuration CatalogConfiguration
 	identity      *PaidArticleIdentity
+	openDemo      bool
 }
 
 func (s *Server) catalogSelector(next authenticatedHandler) http.Handler {
@@ -250,18 +256,20 @@ func (s *Server) catalogProtected(next authenticatedHandler, article bool) http.
 	if !s.paidCatalogEnabled() {
 		return s.requireRole("dataset_viewer", next)
 	}
-	return s.paidCatalogAuthenticated(func(w http.ResponseWriter, r *http.Request, p Principal) {
+	serve := func(w http.ResponseWriter, r *http.Request, p Principal, openDemo bool) {
+		w.Header().Set("Cache-Control", "private, no-store")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
 		regions := r.URL.Query()["region"]
 		if len(regions) > 1 {
 			s.writePaidCatalogError(w, r, ErrCatalogNotFound)
 			return
 		}
-		configuration, err := s.resolvePaidCatalogScope(r.Context(), p, r.PathValue("vehicle_id"), r.URL.Query().Get("region"))
+		configuration, err := s.resolveCatalogScope(r.Context(), p, r.PathValue("vehicle_id"), r.URL.Query().Get("region"), !openDemo)
 		if err != nil {
 			s.writePaidCatalogError(w, r, err)
 			return
 		}
-		scope := paidCatalogContext{configuration: configuration}
+		scope := paidCatalogContext{configuration: configuration, openDemo: openDemo}
 		if article {
 			identity, err := s.loadPaidArticleIdentity(r.Context(), configuration, r.PathValue("article_id"))
 			if err != nil {
@@ -271,6 +279,14 @@ func (s *Server) catalogProtected(next authenticatedHandler, article bool) http.
 			scope.identity = &identity
 		}
 		next(w, r.WithContext(context.WithValue(r.Context(), paidCatalogContextKey{}, scope)), p)
+	}
+	paid := s.paidCatalogAuthenticated(func(w http.ResponseWriter, r *http.Request, p Principal) { serve(w, r, p, false) })
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.workshopOpenDemoRequest(r) {
+			serve(w, r, Principal{}, true)
+			return
+		}
+		paid.ServeHTTP(w, r)
 	})
 }
 func (s *Server) paidCatalogAuthenticated(next authenticatedHandler) http.Handler {

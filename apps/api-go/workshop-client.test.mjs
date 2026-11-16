@@ -1,11 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { runInNewContext } from 'node:vm';
+import { runInNewContext as runVM } from 'node:vm';
 import { NavigationGeneration, processingArticle, readableArticle } from './workshop/article-read.mjs';
 import { purchaseConfiguration, uuid, validQuote, validScope, validLibrary } from './workshop/commerce.mjs';
 import { articlePresentation, configurationLabel, filterArticles, hasSourceReference, legacyArticleBlocks, localImageURL, readCollection, requestJSON, sourceReferenceURL } from './workshop/catalog.mjs';
 import { LOAD_STAGES, loadingProgress } from './workshop/progress.mjs';
+
+// The app sections below run without the module bootstrap. Model the ordinary
+// paid path unless a test explicitly opts into the open demo.
+function runInNewContext(code, context) {
+  context.openDemo ??= false;
+  context.demoPath ??= path => path;
+  return runVM(code, context);
+}
 
 test('loading progress uses fixed ordered stages and caps incomplete hydration', () => {
   assert.deepEqual(LOAD_STAGES.map(stage => stage.key), ['year', 'make', 'model', 'configuration', 'articles', 'article']);
@@ -1717,7 +1725,7 @@ test('stale order status 404 does not clear newer checkout or action', async () 
   assert.equal(checkoutClears, 0);
 });
 
-function articleIndexHarness(responses, { wait = async () => {} } = {}) {
+function articleIndexHarness(responses, { wait = async () => {}, openDemo = false } = {}) {
   const navigation = new NavigationGeneration();
   const searchNavigation = new NavigationGeneration();
   const nodes = new Map();
@@ -1736,7 +1744,8 @@ function articleIndexHarness(responses, { wait = async () => {} } = {}) {
   };
   const statuses = [], updates = [], opened = [], requests = [], results = [], shown = [], clearedOrders = [];
   const context = {
-    $, element, URL, location: { href: 'https://cars.example/workshop?vehicle=B' },
+    $, element, URL, openDemo, demoPath: path => openDemo ? `${path}${path.includes('?') ? '&' : '?'}demo=1` : path,
+    location: { href: `https://cars.example/workshop?vehicle=B${openDemo ? '&demo=1' : ''}` },
     document: { title: '', body: { dataset: {} } },
     navigation, quote: null, vehicle: { id: 'B', region: 'US' }, articles: [], indexComplete: false, indexFailed: false, access: '', retryAction: null, filterArticles,
     searchNavigation, searchItems: null, searchQuery: '', searchPending: false, searchComplete: false, searchError: false, searchTimer: null,
@@ -1784,6 +1793,26 @@ function articleIndexHarness(responses, { wait = async () => {} } = {}) {
 
 const indexResponse = (status, { complete = false, retryable = false, hydrating = false, items = [] } = {}) =>
   ({ items, complete, hydrating, progress: status ? { status, retryable } : null });
+
+test('open demo requests the real index and shows only readable articles', async () => {
+  const h = articleIndexHarness([indexResponse('completed', { complete: true, items: [
+    { id: 'ready', title: 'Stored procedure', availability: 'available' },
+    { id: 'waiting', title: 'Index only', availability: 'unavailable' },
+  ] })], { openDemo: true });
+  await h.load();
+  assert.equal(h.requests[0].path, '/v1/catalog/vehicles/B/articles?demo=1');
+  assert.equal(h.$('articles').children[0].children.length, 1);
+  assert.match(h.$('catalog-count').textContent, /1 available articles · 2 indexed/);
+});
+
+test('open demo direct link to an indexed but unreadable article stays in the index', async () => {
+  const h = articleIndexHarness([indexResponse('completed', { complete: true, items: [
+    { id: 'waiting', title: 'Index only', availability: 'unavailable' },
+  ] })], { openDemo: true });
+  await h.load('waiting');
+  assert.equal(h.opened.length, 0);
+  assert.match(h.$('activity-text').textContent, /indexed but not readable yet/);
+});
 
 test('actual article index flow polls until explicit current completion', async () => {
   for (const responses of [
@@ -1927,6 +1956,25 @@ test('Workshop input searches owned article content through protected index quer
   assert.deepEqual(list.children.map(row => row.children[0].children[0].textContent), ['Service notes']);
   assert.equal(new URL(list.children[0].children[0].href, 'https://cars.example').searchParams.get('article'), 'content-hit');
   assert.equal(h.$('catalog-count').textContent, '1 articles');
+});
+
+test('open demo content search keeps its access marker and excludes unreadable hits', async () => {
+  const h = articleIndexHarness([
+    indexResponse('completed', { complete: true, items: [
+      { id: 'ready', title: 'Service notes', availability: 'available' },
+      { id: 'waiting', title: 'Index only', availability: 'unavailable' },
+    ] }),
+    indexResponse('completed', { complete: true, items: [
+      { id: 'ready', title: 'Service notes', availability: 'available' },
+      { id: 'waiting', title: 'Index only', availability: 'unavailable' },
+    ] }),
+  ], { openDemo: true });
+  await h.load();
+  h.$('search').value = 'ground strap';
+  h.$('search').events.input();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.requests[1].path, '/v1/catalog/vehicles/B/articles?q=ground%20strap&demo=1');
+  assert.equal(h.$('articles').children[0].children.length, 1);
 });
 
 test('hydrating index polls do not restart a settled owned-content search', async () => {
@@ -2252,6 +2300,26 @@ test('purchase readiness requires the supported terms contract', async t => {
   assert.equal(purchaseConfiguration(merchantFixture(), {}), false);
   assert.equal(purchaseConfiguration(merchantFixture(), null), false);
   assert.equal(purchaseConfiguration(null, quoteTermsFixture()), false);
+});
+
+test('purchase readiness accepts only exact loopback TEST notice links', () => {
+  const origin = 'http://localhost:3013';
+  const config = merchantFixture();
+  for (const key of ['terms_url', 'privacy_url', 'refund_url', 'contact_url'])
+    config[key] = `${origin}/workshop/test-notices/${key.slice(0, -4)}`;
+  const quote = quoteTermsFixture();
+  assert.equal(purchaseConfiguration(config, quote), false);
+  assert.equal(purchaseConfiguration(config, quote, { testCheckout: false, origin }), false);
+  assert.equal(purchaseConfiguration(config, quote, { testCheckout: true, origin }), true);
+  for (const badOrigin of ['http://localhost:3014', 'http://localhost',
+    'http://localhost:3013/', 'http://localhost:3013.evil.test',
+    'http://127.0.0.2:3013', 'https://localhost:3013'])
+    assert.equal(purchaseConfiguration(config, quote, { testCheckout: true, origin: badOrigin }), false, badOrigin);
+  for (const key of ['terms_url', 'privacy_url', 'refund_url', 'contact_url']) {
+    for (const suffix of ['?x=1', '/', '#fragment', '-other'])
+      assert.equal(purchaseConfiguration({ ...config, [key]: config[key] + suffix }, quote,
+        { testCheckout: true, origin }), false, key + suffix);
+  }
 });
 
 test('purchase readiness fails closed for unavailable merchant fields', () => {
@@ -3029,10 +3097,10 @@ test('failed or obsolete configuration reads cannot preserve or restore local se
   assert.equal(session.state.mode, null);
 });
 
-function selectionQuoteHarness(merchant, { authenticated = true, request = async () => quoteTermsFixture() } = {}) {
+function selectionQuoteHarness(merchant, { authenticated = true, openDemo = false, request = async () => quoteTermsFixture() } = {}) {
   const navigation = new NavigationGeneration(), generation = navigation.next(), calls = [], opened = [], nodes = new Map();
   const context = {
-    merchant, quote: null, validScope, validQuote, scope: () => scope,
+    merchant, openDemo, quote: null, validScope, validQuote, scope: () => scope,
     session: { state: { authenticated } }, clearProtected() {}, renderPurchase() {}, show() {}, status() {},
     $: id => { if (!nodes.has(id)) nodes.set(id, {}); return nodes.get(id); },
     requestJSON: async (path, options) => { calls.push({ path, options }); return request(path, options); },
@@ -3041,6 +3109,17 @@ function selectionQuoteHarness(merchant, { authenticated = true, request = async
   runInNewContext(appSection('async function selectVehicle(', 'async function loadArticles('), context);
   return { context, navigation, generation, calls, opened };
 }
+
+test('open demo selects a vehicle without login, quote, or purchase', async () => {
+  const h = selectionQuoteHarness({ enabled: true }, {
+    authenticated: false, openDemo: true,
+    request: () => assert.fail('open demo must not request a quote'),
+  });
+  await h.context.selectVehicle(h.generation, 'article-a');
+  assert.equal(h.calls.length, 0);
+  assert.equal(h.opened.length, 1);
+  assert.equal(h.opened[0].id, 'article-a');
+});
 
 for (const merchant of [{ enabled: false }, null, {}, { enabled: 'true' }]) {
   test(`selection skips unusable quote for config ${JSON.stringify(merchant)} and still opens authorized articles`, async () => {
@@ -3095,7 +3174,7 @@ test('enabled quote cannot publish or continue after its selection is canceled',
   }
 });
 
-function articleRouteHarness(mode, request, authenticated = true) {
+function articleRouteHarness(mode, request, authenticated = true, openDemo = false) {
   const h = articleMediaHarness({
     session: { state: { mode, authenticated, csrf: 'csrf' } }, stage() {}, requestArticleJSON: request,
     readArticle: async (read, options) => {
@@ -3103,9 +3182,23 @@ function articleRouteHarness(mode, request, authenticated = true) {
       return readArticle(read, { ...options, wait: async () => {} });
     },
   });
+  h.context.openDemo = openDemo;
+  h.context.demoPath = path => openDemo ? `${path}?demo=1` : path;
   runInNewContext(appSection('async function loadArticle(', 'function openArticle('), h.context);
   return h;
 }
+
+test('open demo reads an article with GET and no session or checkout', async () => {
+  const calls = [], article = mediaArticle([{ type: 'paragraph', text: 'Stored procedure.' }]);
+  const h = articleRouteHarness('firebase', async (path, options) => {
+    calls.push({ path, options });
+    return { data: { article } };
+  }, false, true);
+  await h.context.loadArticle('a', h.g);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].path, '/v1/catalog/vehicles/v/articles/a?demo=1');
+  assert.equal(calls[0].options.method, undefined);
+});
 
 for (const mode of ['local', 'firebase', undefined, null, 'LOCAL', 'other']) {
   test(`article opening mode ${String(mode)} uses only its authorized real route`, async () => {

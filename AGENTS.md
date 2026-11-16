@@ -2,6 +2,8 @@
 
 Ship the smallest working product change on the existing stack. Inspect the current behavior, change the owning code, run focused checks, and verify the user-visible path. Keep one active slice at a time. Do not assign routine work to parallel agents. Reuse an existing issue when one applies; routine user-directed work does not need a new plan, Project item, evidence packet, or approval from another agent before implementation.
 
+Treat the autonomous controller as opt-in only when the user explicitly requests a controller-managed run or invokes its runner. A request to use multiple agents is a request for bounded contributions to the current task; it does not activate the controller, its pre-implementation gate, or its full review chain. Finish the current product path before creating new coordination tooling. If routine CI invokes unrelated suites, correct its path selection and keep the checks that cover the changed behavior.
+
 Use a short pull request that says what works, how it was checked, and what remains unverified. Run deeper integration checks when the change touches payments, authentication, licensed data, schema migrations, or production deployment. Preserve source rights, access control, and rollback for those changes. Do not turn a missing optional test environment into a new infrastructure project when the product path can be tested directly.
 
 `scripts/autonomy/runner.py` and `scripts/autonomy/orchestrator.py` have their own machine-checked planning contract. Follow [the autonomous-run gate](docs/agents/pre-implementation-gate.md) when invoking that automation. It does not gate ordinary user-directed edits.

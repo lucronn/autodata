@@ -34,6 +34,29 @@ func workshopTestCheckoutMode(mode, environment, authMode, origin string) bool {
 	}
 }
 
+// Open access is limited to the explicitly enabled, loopback-only TEST stack.
+// The public origin and the request Host must agree before any licensed content
+// is served without a customer grant.
+func workshopOpenDemoHost(flag, environment, origin string) string {
+	if flag != "1" || environment != "test" {
+		return ""
+	}
+	u, err := url.Parse(origin)
+	if err != nil || u.Scheme != "http" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
+		return ""
+	}
+	if host := strings.ToLower(u.Hostname()); host != "localhost" && host != "127.0.0.1" {
+		return ""
+	}
+	return u.Host
+}
+
+func (s *Server) workshopOpenDemoRequest(r *http.Request) bool {
+	values := r.URL.Query()["demo"]
+	return s.workshopOpenDemoHost != "" && r.Method == http.MethodGet &&
+		r.Host == s.workshopOpenDemoHost && len(values) == 1 && values[0] == "1"
+}
+
 func workshopPrivateTestModeReady(body []byte) bool {
 	if len(body) > 256 {
 		return false
@@ -87,6 +110,13 @@ func (s *Server) workshopDemoMode(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.URL.RawQuery != "" || r.URL.ForceQuery {
 		http.Error(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+	if s.workshopOpenDemoHost != "" && r.Host == s.workshopOpenDemoHost && s.paidCatalogEnabled() {
+		w.WriteHeader(http.StatusOK)
+		if r.Method != http.MethodHead {
+			_, _ = w.Write([]byte("{\"enabled\":true,\"access\":\"open\"}\n"))
+		}
 		return
 	}
 	enabled := false
