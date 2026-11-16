@@ -1,0 +1,31 @@
+{
+  "goal": "Prepare a separately sealed source-only public API release-control package with dry admission, exact no-provider probes and one-attempt install/switch/rollback, without executing deployment",
+  "plan_ref": "docs/superpowers/plans/2026-11-16-workshop-public-release-control.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/431",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/workshop-public-release-control.md"
+  ],
+  "todo": [
+    "Synchronize Issue431/Project8/current gate and pass pinned checkpoint preflight before implementation; preserve sealed build package9dfcdcf3 and all current public/private service inputs",
+    "Implement fixed-target admission/probe/release controls with root-only physical execution fence, unchanged env, exact99 path replacement and durable one-use activation/rollback guards; prove refusal/rollback/capacity/HTTP behavior using owned offline fixtures only",
+    "Bind exacta82 source/bb11 candidate and current1202200/ad5 public plus17295 private identities; separately reserve rootfs/home capacity and prepare an offloaded sealed artifact/command handoff for root review before any physical control copy/install/switch/probe"
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-16T04:32:20.916590+00:00",
+  "implementation_allowlist": [
+    "scripts/dev/workshop_public_release.py",
+    "scripts/dev/test_workshop_public_release.py",
+    "scripts/dev/workshop_public_probe.py",
+    "scripts/dev/test_workshop_public_probe.py"
+  ],
+  "protected_base_sha": "be1a1f235e8eeacc051ac905c4ed8a953a41c8a9",
+  "artifact_source_sha": "a82b31dc8850aa3956972928b8c720969765a972",
+  "tracking_sync": {
+    "issue_comment_ref": "https://github.com/lucronn/autodata/issues/431#issuecomment-6907385468",
+    "issue_readback_verified": true,
+    "project_status": "In Progress",
+    "project_readback_verified": true
+  },
+  "execution_authorized": false
+}
