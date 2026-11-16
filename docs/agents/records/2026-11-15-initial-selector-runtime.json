@@ -1,5 +1,5 @@
 {
-  "goal": "Seal fixed-path actual-image fixture launcher and complete physical execution-request package for root review",
+  "goal": "Replace projected lifecycle hash admission with observed structure and immutable exact-ID cleanup fallback",
   "plan_ref": "docs/superpowers/plans/2026-11-15-initial-selector-runtime.md",
   "issue_ref": "https://github.com/lucronn/autodata/issues/401",
   "project_ref": "https://github.com/users/lucronn/projects/8",
@@ -7,13 +7,13 @@
     "docs/architecture/initial-selector-runtime.md"
   ],
   "todo": [
-    "Fixed-path default-held launcher verifies external manifest/seal/launcher and physical artifact hashes before one-shot Fixture handoff",
-    "Owned no-live-backend metadata-only/hash-mismatch/explicit handoff tests",
-    "Bind physical source, refreshed peers, actual Created/proposed running lifecycle and rollback inventory hashes in exact root-review packet",
-    "Hold START/exec/SQL/productHTTP/provider until explicit root command approval"
+    "Durably capture actual Created snapshot and admit only exact structure plus OomKillDisable false-to-null",
+    "Twice-verified immutable never-foreign cleanup ownership for stop/termination/removal despite status or HostConfig mismatch",
+    "Red-green failure cleanup regressions, foreign identity rejection and truthful cleanup failure",
+    "Reseal final packet; keep approval install and all fixture START/exec/SQL/productHTTP/provider held for root review"
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-16T06:14:02.992438+00:00",
+  "updated_at": "2026-11-16T06:17:25.223949+00:00",
   "historical_goal": "Plan source-only private initial-selector safety runtime rollout preserving17295 rollback and incomplete v6 evidence",
   "historical_todo": [
     "Synchronize exact protected a82 Issue401/Project8/docs/record/readback/preflight before implementation",

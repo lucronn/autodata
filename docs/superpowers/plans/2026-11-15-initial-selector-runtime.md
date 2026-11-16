@@ -271,3 +271,17 @@ Concrete todo:
 2. Prove metadata-only execution cannot construct a live backend; test hash mismatch and explicit one-shot handoff to the sealed client wrapper.
 3. Bind full physical inventory, refreshed peers, actual Created and proposed Running/Exited hashes, retained rollback inventories and exact final launcher argv; seal both HELD and execution-request candidates for root review.
 4. No START/exec/SQL/product HTTP/provider calls before explicit root exact-command approval. Never imply actual behavior acceptance from CREATE-only proof.
+
+
+## Observed lifecycle structure and immutable cleanup fallback (2026-11-16)
+
+Issue: https://github.com/lucronn/autodata/issues/401
+Project: https://github.com/users/lucronn/projects/8
+
+Root review found projected running/exited hashes can prevent current finally cleanup from reaching stop when daemon normalization differs. Approval files remain uninstalled and no fixture START occurred.
+
+Concrete todo:
+1. Capture and durably bind the exact observed Created identity before START. Normal identity compares complete HostConfig structure to that snapshot, allowing only OomKillDisable false-to-null; remove projected Running/Exited hash admission.
+2. Add cleanup-only twice-verified immutable exact-ID/name/image/full Config/mount/pinned-network proof, excluding serving/rollback/peer IDs. Stop/removal/termination proof must use it so status or HostConfig mismatch cannot strand an owned process.
+3. Red/green regressions prove rejected running normalization still reaches stop/reap/remove, while changed immutable/foreign identities are never touched, and cleanup failure never claims success.
+4. Reseal final packet/launcher. No install of approval files or START/exec/SQL/productHTTP/provider until root exact review.
