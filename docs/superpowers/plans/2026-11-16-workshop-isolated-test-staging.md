@@ -30,9 +30,9 @@ No other application/contracts/schema/UI purchase flow files are authorized. No 
 Meaningful denial tests cover unavailable production/disabled modes, four exact pages, unknown/encoded traversal/methods, HEAD and cache/security headers. Renderer tests cover production origins, HTTP, malformed or empty tester IDs, live secret material, unapproved secret keys, symlink/permissions, shared runtime roots, no secret values in rendered Compose, disabled default, stripe_test equality and exact resource isolation. Run focused/full Go API and Python helper tests plus diff check. Review exact candidate before runtime; preserve failures.
 
 ## Concrete todo
-- [ ] Synchronize plan, Issue445, Project8 and canonical documentation; pass exact-base preflight
-- [ ] Add server-gated TEST-only notices with route and production-mode denial tests
-- [ ] Add offline isolated-stack renderer and durable JSON secret launcher; test production/live/shared-resource/empty-tester refusal
+- [x] Synchronize plan, Issue445, Project8 and canonical documentation; pass exact-base preflight
+- [x] Add server-gated TEST-only notices with route and production-mode denial tests
+- [x] Add offline isolated-stack renderer and durable JSON secret launcher; test production/live/shared-resource/empty-tester refusal
 - [ ] Prepare reviewed current-source runtime inputs; hold Docker, DNS/origin and external Stripe TEST calls for coordinator review
 - [ ] Run actual restricted authenticated TEST checkout/grant/read/denial/refund acceptance only after runtime prerequisites; do not substitute fixtures or claim missing licensed acceptance
 
@@ -49,6 +49,8 @@ The existing runner retries verified pending events and calls reconcile_workshop
 Red/green validation: disabled service absence; enabled exact mode/DB/network/mount/command/resource/restart contract; private role/no Firebase/bank/model credentials; disabled/live/production/shared-DB refusal before child launch; exact existing-runner --once argv and finite10-pass budget; subprocess timeout/nonzero stop; wall deadline suppression and no secret/result logging. No database/provider/container needed. Run the full staging helper suite and offline Compose syntax validation, commit/push exact branch and report source/test diff.
 
 Concrete todo:
-- [ ] Pin this amendment with Issue445/Project8/canonical operation and pass preflight before implementation.
-- [ ] Add red-first reconciler contract/budget/denial tests and fixed TEST-only bounded service/launcher role.
+- [x] Pin this amendment with Issue445/Project8/canonical operation and pass preflight before implementation (31421bd).
+- [x] Add red-first reconciler contract/budget/denial tests and fixed TEST-only bounded service/launcher role.
 - [ ] Run offline tests/Compose syntax/diff checks; commit/push exact candidate for root review without runtime activation.
+
+Validation: all12 offline staging-helper tests pass, including five red-first reconciler cases. Disabled and enabled fixture Compose syntax checks pass without services. Existing runner/commerce/schema have no diff. No Go source changed in this amendment; previous focused notice tests remain the available Go evidence, and build/runtime/provider actions remain held.

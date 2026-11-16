@@ -6,6 +6,9 @@ import unittest
 from unittest.mock import patch
 import subprocess
 import sys
+from types import SimpleNamespace
+from contextlib import redirect_stdout
+import io
 
 import workshop_test_staging as staging
 
@@ -18,6 +21,78 @@ def profile():
 
 
 class StagingTest(unittest.TestCase):
+    def reconciler_env(self):
+        p = profile(); p["enabled"] = True
+        env = staging.render(p)["services"]["payment-reconciler"]["environment"].copy()
+        env.update({k: "private-isolated" for k in staging.COMMON})
+        env.update({"AUTODATA_STRIPE_SECRET_KEY": "sk_test_private", "AUTODATA_STRIPE_WEBHOOK_SECRET": "whsec_private", "INCEPTION_API_KEY": "must-not-inherit", "GOOGLE_APPLICATION_CREDENTIALS": "/owner-adc"})
+        return env
+
+    def test_reconciler_only_exists_for_explicit_test_enablement(self):
+        self.assertNotIn("payment-reconciler", staging.render(profile())["services"])
+        p = profile(); p["enabled"] = True
+        c = staging.render(p); self.assertEqual(len(c["services"]), 7)
+        s = c["services"]["payment-reconciler"]
+        self.assertEqual(s["environment"]["AUTODATA_COMMERCE_MODE"], "stripe_test")
+        self.assertEqual(s["environment"]["AUTODATA_POSTGRES_DB"], "workshop_stripe_staging")
+        self.assertEqual(s["command"], ["python", "/src/scripts/dev/workshop_test_staging.py", "exec", "--role", "reconciler", "--private", "/run/staging/private.json"])
+        self.assertEqual(s["networks"], ["internal", "egress"])
+        self.assertEqual(s["restart"], "no"); self.assertEqual(s["mem_limit"], "384m"); self.assertEqual(s["cpus"], 0.5)
+        self.assertNotIn("ports", s); self.assertNotIn("healthcheck", s)
+        self.assertEqual(s["stop_grace_period"], "10s"); self.assertTrue(s["init"])
+        self.assertEqual(len(s["volumes"]), 2)
+        self.assertTrue(s["volumes"][1]["source"].endswith("/private/reconciler.json"))
+        for v in s["volumes"]: self.assertTrue(v["read_only"]); self.assertFalse(v["bind"]["create_host_path"])
+        for key in staging.INHERITED_CLEAR:
+            if key not in {"AUTODATA_STRIPE_ACCOUNT_ID", "AUTODATA_STRIPE_PRICE_ID"}: self.assertEqual(s["environment"][key], "")
+
+    def test_reconciler_role_refuses_disabled_and_has_no_identity_provider_keys(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "private.json"
+            data = {k: "private-isolated" for k in staging.COMMON}
+            data.update({"AUTODATA_STRIPE_SECRET_KEY": "sk_test_private", "AUTODATA_STRIPE_WEBHOOK_SECRET": "whsec_private"})
+            p.write_text(json.dumps(data)); p.chmod(0o600)
+            self.assertEqual(staging.private_material(p, "reconciler", True), data)
+            with self.assertRaises(ValueError): staging.private_material(p, "reconciler", False)
+            data["GOOGLE_APPLICATION_CREDENTIALS"] = "/old-admin"
+            p.write_text(json.dumps(data))
+            with self.assertRaises(ValueError): staging.private_material(p, "reconciler", True)
+
+    def test_reconciler_invokes_bounded_existing_runner_without_logging_results(self):
+        clock = [0.0]; calls = []
+        def run(argv, **kw):
+            calls.append((argv, kw)); clock[0] += 1
+            return SimpleNamespace(returncode=0, stdout="private payment result")
+        def sleep(seconds): clock[0] += seconds
+        output = io.StringIO()
+        with redirect_stdout(output):
+            status = staging.bounded_reconcile(env=self.reconciler_env(), run=run, monotonic=lambda: clock[0], sleep=sleep)
+        self.assertEqual(status, 0); self.assertEqual(len(calls), 10); self.assertLessEqual(clock[0], 600)
+        for argv, kw in calls:
+            self.assertEqual(argv[1:], [str(Path(staging.__file__).with_name("reconcile_payments.py")), "--once", "--batch-size", "10"])
+            self.assertLessEqual(kw["timeout"], 45); self.assertEqual(kw["stdout"], subprocess.DEVNULL); self.assertEqual(kw["stderr"], subprocess.DEVNULL)
+            self.assertNotIn("INCEPTION_API_KEY", kw["env"]); self.assertNotIn("GOOGLE_APPLICATION_CREDENTIALS", kw["env"])
+        self.assertNotIn("private", output.getvalue())
+
+    def test_reconciler_refuses_live_production_and_shared_db_before_launch(self):
+        for key, value in [("AUTODATA_COMMERCE_MODE", "disabled"), ("AUTODATA_COMMERCE_MODE", "stripe_live"), ("AUTODATA_ENV", "production"), ("AUTODATA_PUBLIC_ORIGIN", "https://autodata.cars.tk"), ("AUTODATA_DB_ADDRESS", "production:5432"), ("AUTODATA_POSTGRES_DB", "autodata"), ("AUTODATA_STRIPE_SECRET_KEY", "sk_live_FORBIDDEN")]:
+            env = self.reconciler_env(); env[key] = value
+            with self.subTest(key=key, value=value), patch.object(subprocess, "run") as child, self.assertRaises(ValueError):
+                staging.bounded_reconcile(env=env, run=child)
+            child.assert_not_called()
+
+    def test_reconciler_timeout_failure_and_deadline_stop(self):
+        for result in [SimpleNamespace(returncode=1), subprocess.TimeoutExpired(["runner"], 45)]:
+            child = unittest.mock.Mock(side_effect=result if isinstance(result, Exception) else None, return_value=result)
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(staging.bounded_reconcile(env=self.reconciler_env(), run=child, monotonic=lambda: 0, sleep=lambda _: self.fail("failure must not poll")), 2)
+            self.assertEqual(child.call_count, 1)
+        clock = [0.0]; child = unittest.mock.Mock(return_value=SimpleNamespace(returncode=0))
+        def stop_after_sleep(_): clock[0] = 600
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(staging.bounded_reconcile(env=self.reconciler_env(), run=child, monotonic=lambda: clock[0], sleep=stop_after_sleep), 0)
+        self.assertEqual(child.call_count, 1)
+
     def test_isolated_disabled_defaults_and_secret_absence(self):
         c = staging.render(profile())
         self.assertEqual(c["name"], staging.PROJECT)

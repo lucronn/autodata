@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline TEST stack rendering. Never starts Docker or calls a provider."""
+"""Offline TEST renderer and guarded launchers; render never activates runtime."""
 from __future__ import annotations
 
 import argparse
@@ -13,6 +13,7 @@ import stat
 import subprocess
 import sys
 import tarfile
+import time
 from urllib.parse import urlsplit
 
 PROJECT = "autodata-workshop-stripe-staging-20261116"
@@ -22,9 +23,11 @@ COMMON = {"AUTODATA_POSTGRES_PASSWORD", "AUTODATA_S3_ACCESS_KEY",
 ROLE_KEYS = {
     "api": COMMON | {"AUTODATA_IMAGE_URL_KEY"},
     "ingestion": COMMON | {"AUTODATA_STRIPE_SECRET_KEY", "AUTODATA_STRIPE_WEBHOOK_SECRET"},
+    "reconciler": COMMON | {"AUTODATA_STRIPE_SECRET_KEY", "AUTODATA_STRIPE_WEBHOOK_SECRET"},
 }
 COMMANDS = {"api": ["/runtime/autodata-api"],
-            "ingestion": ["python", "-m", "autodata_ingestion.http_service"]}
+            "ingestion": ["python", "-m", "autodata_ingestion.http_service"],
+            "reconciler": ["python", "/src/scripts/dev/workshop_test_staging.py", "bounded-reconcile"]}
 INHERITED_CLEAR = {"AUTODATA_BANKONE_API_KEY", "AUTODATA_BANKTWO_API_KEY",
                    "BANKONE_BASE_URL", "BANKTWO_BASE_URL",
                    "AUTODATA_MINIO_ROOT_USER", "AUTODATA_MINIO_ROOT_PASSWORD",
@@ -47,6 +50,7 @@ PUBLIC_KEYS = {
         "AUTODATA_FIREBASE_PROJECT_ID", "AUTODATA_FIREBASE_WEB_API_KEY", "AUTODATA_FIREBASE_WEB_APP_ID",
         "AUTODATA_FIREBASE_AUTH_DOMAIN"},
     "ingestion": PUBLIC_COMMON | {"AUTODATA_INGESTION_HTTP_ADDR", "AUTODATA_WORKSHOP_PURCHASE_CONFIG_JSON"},
+    "reconciler": PUBLIC_COMMON | {"AUTODATA_WORKSHOP_PURCHASE_CONFIG_JSON"},
 }
 
 
@@ -88,10 +92,12 @@ def private_material(path, role, enabled):
             fail()
     if not isinstance(d, dict) or set(d) - ROLE_KEYS[role]:
         fail()
+    if role == "reconciler" and not enabled:
+        fail()
     if not enabled and set(d) & {"AUTODATA_STRIPE_SECRET_KEY", "AUTODATA_STRIPE_WEBHOOK_SECRET"}:
         fail()
     required = COMMON | ({"AUTODATA_IMAGE_URL_KEY"} if role == "api" else set())
-    if enabled and role == "ingestion":
+    if enabled and role in {"ingestion", "reconciler"}:
         required |= {"AUTODATA_STRIPE_SECRET_KEY", "AUTODATA_STRIPE_WEBHOOK_SECRET"}
     if not required <= set(d) or any(not isinstance(v, str) or not v or any(ord(c) < 32 or 127 <= ord(c) <= 159 for c in v) for v in d.values()):
         fail()
@@ -186,12 +192,67 @@ def render(p, root=RUNTIME_ROOT):
         **{"AUTODATA_FIREBASE_" + k.upper(): v for k, v in {"project_id":p["firebase"]["project_id"], "web_api_key":p["firebase"]["api_key"], "web_app_id":p["firebase"]["app_id"], "auth_domain":p["firebase"]["auth_domain"]}.items()}})
     notices = {"enabled": p["enabled"], "terms_version": "workshop-v1", **{k + "_url": p["origin"] + "/workshop/test-notices/" + name if p["enabled"] else None for k, name in [("terms", "terms"), ("privacy", "privacy"), ("refund", "refund"), ("contact", "contact")]}, "tax_notice": "Stripe TEST only: the displayed USD20 is simulated; no actual payment or tax is collected." if p["enabled"] else None}
     services["ingestion-http"]["environment"].update({"PYTHONPATH": "/src/workers/ingestion-python/src", "AUTODATA_INGESTION_HTTP_ADDR": ":8081", "AUTODATA_WORKSHOP_PURCHASE_CONFIG_JSON": json.dumps(notices, separators=(",", ":"))})
+    if p["enabled"]:
+        reconciler = copy.deepcopy(services["ingestion-http"])
+        reconciler["command"] = ["python", "/src/scripts/dev/workshop_test_staging.py", "exec", "--role", "reconciler", "--private", "/run/staging/private.json"]
+        reconciler["volumes"] = [bind(str(root / "source"), "/src"), bind(secret + "/reconciler.json", "/run/staging/private.json")]
+        reconciler["environment"].pop("AUTODATA_INGESTION_HTTP_ADDR", None)
+        reconciler.pop("healthcheck", None)
+        reconciler.update({"mem_limit": "384m", "cpus": 0.5, "init": True, "stop_grace_period": "10s"})
+        services["payment-reconciler"] = reconciler
     for service in services.values():
         service["environment"] = {key: value.replace("$", "$$") for key, value in service["environment"].items()}
     wire = json.dumps(c, indent=2)
     if "${" in wire or "M1_" in wire or "local-m1" in wire:
         fail()
     return c
+
+
+def reconciler_environment(env):
+    required = {"AUTODATA_ENV": "staging", "AUTODATA_COMMERCE_MODE": "stripe_test",
+        "AUTODATA_DB_ADDRESS": "postgres:5432", "AUTODATA_POSTGRES_DB": "workshop_stripe_staging",
+        "AUTODATA_POSTGRES_USER": "workshop_stripe_staging", "AUTODATA_S3_ADDRESS": "minio:9000",
+        "AUTODATA_S3_ENDPOINT": "minio:9000", "AUTODATA_SOURCE_BUCKET": "workshop-stripe-staging-sources",
+        "AUTODATA_NATS_ADDRESS": "nats:4222", "AUTODATA_SOURCE_PERSIST": "0"}
+    if any(env.get(k) != v for k,v in required.items()) or not origin_valid(env.get("AUTODATA_PUBLIC_ORIGIN")):
+        fail()
+    if (not re.fullmatch(r"acct_[A-Za-z0-9]+", env.get("AUTODATA_STRIPE_ACCOUNT_ID", "")) or
+            not re.fullmatch(r"price_[A-Za-z0-9]+", env.get("AUTODATA_STRIPE_PRICE_ID", ""))):
+        fail()
+    if any(not isinstance(env.get(k), str) or not env[k] or any(ord(c) < 32 or 127 <= ord(c) <= 159 for c in env[k]) for k in ROLE_KEYS["reconciler"]):
+        fail()
+    if not env["AUTODATA_STRIPE_SECRET_KEY"].startswith("sk_test_"):
+        fail()
+    child = {k:v for k,v in env.items() if k in PUBLIC_KEYS["reconciler"] | ROLE_KEYS["reconciler"]}
+    if any("sk_live_" in v or "rk_live_" in v for v in child.values()):
+        fail()
+    return child
+
+
+def bounded_reconcile(*, env=None, run=subprocess.run, monotonic=time.monotonic, sleep=time.sleep):
+    """Bound the unchanged runner's real pending-payment and SQL scheduling pass."""
+    child = reconciler_environment(os.environ if env is None else env)
+    deadline = monotonic() + 600
+    command = [sys.executable, str(Path(__file__).resolve().with_name("reconcile_payments.py")), "--once", "--batch-size", "10"]
+    for index in range(10):
+        remaining = deadline - monotonic()
+        if remaining <= 0:
+            break
+        try:
+            result = run(command, env=child, timeout=min(45, remaining), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+        except (subprocess.TimeoutExpired, OSError):
+            print("TEST reconciliation stopped: child unavailable or timed out", flush=True)
+            return 2
+        if result.returncode != 0 or monotonic() > deadline:
+            print("TEST reconciliation stopped: child failed or budget exceeded", flush=True)
+            return 2
+        print("TEST reconciliation pass complete", flush=True)
+        if index < 9:
+            remaining = deadline - monotonic()
+            if remaining > 0:
+                sleep(min(15, remaining))
+    print("TEST reconciliation bounded run complete", flush=True)
+    return 0
 
 
 def verify_source(source, source_sha):
@@ -226,6 +287,7 @@ def main():
     sub = a.add_subparsers(dest="action", required=True)
     r = sub.add_parser("render"); r.add_argument("--profile", type=Path, required=True)
     x = sub.add_parser("exec"); x.add_argument("--role", choices=ROLE_KEYS, required=True); x.add_argument("--private", type=Path, required=True)
+    sub.add_parser("bounded-reconcile")
     args = a.parse_args()
     try:
         if args.action == "render":
@@ -237,6 +299,8 @@ def main():
                 fail()
             verify_source(RUNTIME_ROOT / "source", p["source_sha"])
             print(json.dumps(c, indent=2))
+        elif args.action == "bounded-reconcile":
+            return bounded_reconcile()
         else:
             if (os.environ.get("AUTODATA_ENV") != "staging" or
                     os.environ.get("AUTODATA_COMMERCE_MODE") not in {"disabled", "stripe_test"} or
@@ -251,6 +315,8 @@ def main():
                 env.pop("AUTODATA_STRIPE_ACCOUNT_ID", None)
                 env.pop("AUTODATA_STRIPE_PRICE_ID", None)
             env.update(values)
+            if args.role == "reconciler":
+                env = reconciler_environment(env)
             os.execvpe(COMMANDS[args.role][0], COMMANDS[args.role], env)
     except (ValueError, OSError, KeyError, TypeError, AttributeError, tarfile.TarError):
         print("isolated TEST staging refused invalid input", file=sys.stderr)
