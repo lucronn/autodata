@@ -1,0 +1,33 @@
+{
+  "goal": "Prove one retained real article source and projection integrity internally with hash-only output and no external work or writes",
+  "plan_ref": "docs/superpowers/plans/2026-11-15-retained-article-integrity.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/428",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/retained-article-integrity.md",
+    "docs/verification/2026-11-15-retained-article-integrity.md"
+  ],
+  "todo": [
+    "Refresh PR434 onto exact protected b3214b69 preserving all implementation and historical one-shot proof bytes",
+    "Synchronize Issue428 Project8 Review canonical docs and machine preflight at committed checkpoint",
+    "Verify unchanged implementation blobs and seven-path scope then push exact old-head lease for strict remote CI",
+    "Hold merge deployment and any further real-data execution for coordinator"
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-15T17:22:43.940831+00:00",
+  "outcome": {
+    "bounded_retained_integrity": "passed",
+    "reviewed_code_sha": "9424dfee0474d44b7eb2511d64945c0c3a92e57b",
+    "real_runs": 1,
+    "authored_docker_fixture": "passed",
+    "receipt_file_sha256": "7abd8798fa6e864c1afae6290579f57e1b724aa0c8d2f95870b859e58247e455",
+    "source_hash_verified": true,
+    "identity_verified": true,
+    "ordered_projection_schema_verified": true,
+    "body_bytes": 2283,
+    "licensed_display": false,
+    "paid_reader_acceptance": false,
+    "code_pr_ci": "fresh exact-head strict CI pending after protected b3214b69 integration; prior runs historical"
+  },
+  "protected_source_sha": "b3214b693c58e3fc13b607f24f232db2ea4e8a2a"
+}
