@@ -26,7 +26,7 @@ CASE_ASSERTIONS=dict(zip(GO_NAMES,(
  ('actual_s3_reader','invalid_media_zero_reader','current_grant_identity_rechecked','stale_context_zero_reader','media_security_headers'),
  ('source_html_json_media','content_search_before_rights_change','historical_source_selected','rights_denied_before_reader','source_sanitizer_no_private_leak'),
  ('thirteen_routes_denied_before_work','unauthenticated_401','explicit_local_compatibility'))))
-MIGRATION_ASSERTIONS=('fresh_manifest_applied_001_040','empty_replay_noop_001_040','populated_replay_noop_001_040')
+MIGRATION_ASSERTIONS=('fresh_manifest_applied_001_042','empty_replay_noop_001_042','populated_replay_noop_001_042')
 RAW_FILES=('workshop-paid-access-tests.xml','workshop-paid-access-pytest.stdout.log','workshop-paid-access-pytest.stderr.log','runner-input-before.json','runner-input-after.json','runner-git-before.json','runner-git-after.json')
 
 def go_valid(events,name):

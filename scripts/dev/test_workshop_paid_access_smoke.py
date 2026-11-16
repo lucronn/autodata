@@ -1,9 +1,10 @@
 from pathlib import Path
+import ast
 import sys
 import tempfile
 import unittest
 sys.path.insert(0,str(Path(__file__).resolve().parent))
-from workshop_paid_access_smoke import GO_NAMES, CASE_IDS, CASE_ASSERTIONS, junit_valid, go_valid, success
+from workshop_paid_access_smoke import GO_NAMES, CASE_IDS, CASE_ASSERTIONS, MIGRATION_ASSERTIONS, junit_valid, go_valid, success
 import release_acceptance
 
 class PaidAccessCollectorTests(unittest.TestCase):
@@ -37,3 +38,39 @@ class PaidAccessCollectorTests(unittest.TestCase):
         self.assertEqual(GO_NAMES, release_acceptance.PAID_GO_ROOTS)
         self.assertEqual(tuple(CASE_ASSERTIONS[name] for name in GO_NAMES),
             release_acceptance.PAID_CASE_ASSERTIONS)
+
+    def test_paid_current_head_migration_contract_uses_actual_source_inventory(self):
+        root = Path(__file__).resolve().parents[2]
+        manifest = tuple(path.name for path in sorted((root / 'db/migrations').glob('*.sql')))
+        self.assertEqual(len(manifest), 42)
+        self.assertEqual(manifest[-1], '042_catalog_selector_rows.sql')
+        self.assertEqual(release_acceptance.PAID_MIGRATION_MANIFEST, manifest)
+        rows = {table: [] for table in release_acceptance.PAID_PG_TABLES}
+        rows['schema_migrations'] = [
+            dict(version=name[:-4], applied_at='2026-11-16T00:00:00Z')
+            for name in manifest]
+        release_acceptance._paid_migration_rows(rows)
+        expected = ('fresh_manifest_applied_001_042', 'empty_replay_noop_001_042',
+                    'populated_replay_noop_001_042')
+        self.assertEqual(MIGRATION_ASSERTIONS, expected)
+        self.assertEqual(release_acceptance.PAID_MIGRATION_ASSERTIONS, expected)
+
+    def test_actual_paid_child_manifest_guard_accepts_current_head_and_rejects_drift(self):
+        # Compile only the owning assertion: never import fixture/DB runtime code.
+        root = Path(__file__).resolve().parents[2]
+        path = root / 'workers/ingestion-python/tests/test_paid_catalog_api_integration.py'
+        child = next(node for node in ast.parse(path.read_text()).body
+                     if isinstance(node, ast.FunctionDef) and node.name == 'child_case')
+        guards = [node.test for node in ast.walk(child) if isinstance(node, ast.Assert)
+                  and any(isinstance(name, ast.Name) and name.id == 'manifest'
+                          for name in ast.walk(node.test))]
+        self.assertEqual(len(guards), 1)
+        guard = compile(ast.Expression(guards[0]), str(path), 'eval')
+        manifest = [path.name for path in sorted((root / 'db/migrations').glob('*.sql'))]
+        def accepts(candidate):
+            return eval(guard, {'__builtins__': {}, 'len': len}, {'manifest': candidate})
+        self.assertTrue(accepts(manifest))
+        for candidate in (manifest[:40], manifest + ['043_unreviewed.sql'],
+                          manifest[:-1] + ['042_wrong.sql']):
+            with self.subTest(manifest=candidate):
+                self.assertFalse(accepts(candidate))

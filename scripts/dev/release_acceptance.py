@@ -81,8 +81,8 @@ PAID_CASE_ASSERTIONS = (
     ('source_html_json_media', 'content_search_before_rights_change', 'historical_source_selected', 'rights_denied_before_reader',
      'source_sanitizer_no_private_leak'),
     ('thirteen_routes_denied_before_work', 'unauthenticated_401', 'explicit_local_compatibility'))
-PAID_MIGRATION_ASSERTIONS = ('fresh_manifest_applied_001_040', 'empty_replay_noop_001_040',
-                            'populated_replay_noop_001_040')
+PAID_MIGRATION_ASSERTIONS = ('fresh_manifest_applied_001_042', 'empty_replay_noop_001_042',
+                            'populated_replay_noop_001_042')
 PAID_COLLECTOR_FILES = ('workshop-paid-access-tests.xml', 'workshop-paid-access-pytest.stdout.log',
     'workshop-paid-access-pytest.stderr.log', 'runner-input-before.json', 'runner-input-after.json',
     'runner-git-before.json', 'runner-git-after.json')
@@ -171,6 +171,8 @@ PAID_MIGRATION_MANIFEST = (
     '038_article_transform_publication.sql',
     '039_production_identity_sessions.sql',
     '040_workshop_commerce.sql',
+    '041_article_source_projection_v2.sql',
+    '042_catalog_selector_rows.sql',
 )
 
 DTO_ENGINES = ('chromium', 'firefox', 'webkit')
@@ -963,7 +965,7 @@ def _paid_migration_rows(rows):
         array(values)
         require(all(type(row) is dict and row for row in values), 'paid_migration_row_shape')
     ledger = rows['schema_migrations']
-    require(len(ledger) == 40, 'paid_migration_ledger_inventory')
+    require(len(ledger) == 42, 'paid_migration_ledger_inventory')
     versions = []
     for row in ledger:
         exact(row, ('version', 'applied_at'))

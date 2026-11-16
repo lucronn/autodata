@@ -1103,7 +1103,7 @@ class PaidPGSnapshotTests(unittest.TestCase):
 
 
 class PaidMigrationReceiptTests(unittest.TestCase):
-    manifest = ['001_extensions.sql', '002_platform_spine.sql', '003_canonical_vehicle.sql', '004_normalized_source_bundle.sql', '005_preserve_duplicate_article_ids.sql', '006_backfill_article_source_locators.sql', '007_link_evidence_to_revision.sql', '008_publication_outbox_delivery.sql', '009_feedback_evidence_link.sql', '010_evidence_review_metadata.sql', '011_feedback_review_metadata.sql', '012_payment_fulfillment_reconciliation.sql', '013_dataset_request_ownership.sql', '014_normalized_article_content.sql', '015_vehicle_identity_resolution.sql', '016_catalog_article_configuration.sql', '017_knowledge_catalog_evidence_index.sql', '018_source_review_items.sql', '019_article_content_provenance.sql', '020_autoapi_article_fetch_jobs.sql', '021_autoapi_article_fetch_job_retries.sql', '022_job_plan_derived_articles.sql', '023_catalog_article_images.sql', '024_catalog_article_operations.sql', '025_chat_quote_procedure.sql', '026_chat_quote_operation_categories.sql', '027_chat_runtime_durable_state.sql', '028_vehicle_provider_mappings.sql', '029_vehicle_catalog_sync.sql', '030_vehicle_catalog_years.sql', '031_catalog_article_classification.sql', '032_catalog_article_source_original.sql', '033_catalog_scope_coverage.sql', '034_catalog_article_progress.sql', '035_ordered_article_document.sql', '036_source_fetch_jobs.sql', '037_article_source_lifecycle.sql', '038_article_transform_publication.sql', '039_production_identity_sessions.sql', '040_workshop_commerce.sql']
+    manifest = ['001_extensions.sql', '002_platform_spine.sql', '003_canonical_vehicle.sql', '004_normalized_source_bundle.sql', '005_preserve_duplicate_article_ids.sql', '006_backfill_article_source_locators.sql', '007_link_evidence_to_revision.sql', '008_publication_outbox_delivery.sql', '009_feedback_evidence_link.sql', '010_evidence_review_metadata.sql', '011_feedback_review_metadata.sql', '012_payment_fulfillment_reconciliation.sql', '013_dataset_request_ownership.sql', '014_normalized_article_content.sql', '015_vehicle_identity_resolution.sql', '016_catalog_article_configuration.sql', '017_knowledge_catalog_evidence_index.sql', '018_source_review_items.sql', '019_article_content_provenance.sql', '020_autoapi_article_fetch_jobs.sql', '021_autoapi_article_fetch_job_retries.sql', '022_job_plan_derived_articles.sql', '023_catalog_article_images.sql', '024_catalog_article_operations.sql', '025_chat_quote_procedure.sql', '026_chat_quote_operation_categories.sql', '027_chat_runtime_durable_state.sql', '028_vehicle_provider_mappings.sql', '029_vehicle_catalog_sync.sql', '030_vehicle_catalog_years.sql', '031_catalog_article_classification.sql', '032_catalog_article_source_original.sql', '033_catalog_scope_coverage.sql', '034_catalog_article_progress.sql', '035_ordered_article_document.sql', '036_source_fetch_jobs.sql', '037_article_source_lifecycle.sql', '038_article_transform_publication.sql', '039_production_identity_sessions.sql', '040_workshop_commerce.sql', '041_article_source_projection_v2.sql', '042_catalog_selector_rows.sql']
     # Retained v2 producer digest of scripts/dev/migrate_sql.sh; no authority claim.
     runner_sha256 = '4970eab6f20be35c354547ed5acf73c991dae1a83433094715f051463790a8f3'
     driver = b'-- synthetic already-emitted driver; never executed\n'
@@ -1259,13 +1259,14 @@ class PaidMigrationReceiptTests(unittest.TestCase):
             self.assertEqual(result['status'],'unavailable');self.assertEqual(result['observed_migration_phase_count'],36)
             self.assertTrue(all(result[flag] is False for flag in assembler.FLAGS))
 
-    def test_ledger_requires_exact_typed_001_040_inventory(self):
+    def test_ledger_requires_exact_typed_001_042_inventory(self):
         self.assertTrue(callable(getattr(assembler,'_paid_migration_rows',None)))
         raw={table:[] for table in PaidPGSnapshotTests.tables}
         raw['schema_migrations']=[dict(version=name[:-4],applied_at='2026-11-03T00:00:00Z') for name in self.manifest]
         assembler._paid_migration_rows(raw)
         for name,mutate in [('duplicate',lambda r:r['schema_migrations'].__setitem__(1,copy.deepcopy(r['schema_migrations'][0]))),
             ('missing',lambda r:r['schema_migrations'].pop()),
+            ('old_040_head',lambda r:r.__setitem__('schema_migrations',r['schema_migrations'][:40])),
             ('unknown_version',lambda r:r['schema_migrations'][0].update(version='001_wrong')),
             ('timestamp',lambda r:r['schema_migrations'][0].update(applied_at='yesterday')),
             ('timestamp_type',lambda r:r['schema_migrations'][0].update(applied_at=True)),
