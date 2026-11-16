@@ -1,0 +1,17 @@
+{
+  "goal": "Prepare separately sealed offloaded M2A V3 capacity operational copies and strict dry-only proof for root review; all services/SQL/relay/browser/provider actions held.",
+  "plan_ref": "docs/superpowers/plans/2026-11-16-m2a-v3-capacity-review.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/443",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/operations/m2a-v3-capacity-review.md"
+  ],
+  "todo": [
+    "Synchronize Issue443/Project8/plan/canonical record and pinned preflight before implementation.",
+    "Inventory and pin historical floors/imports/source/seals/markers; create explicit offloaded operational copies and shared proposed capacity policy, review-only CLI fences.",
+    "Run pure/no-dispatch refusal/arithmetic/import/source-preservation tests; seal exact copies/policy/receipt and report root.",
+    "Preserve public-exclusive capacity and all original M2A source/data/seals/markers; hold services/SQL/relay/browser/provider work for separate root activation gate."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-16T04:35:37.747702+00:00"
+}
