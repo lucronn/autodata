@@ -4,7 +4,8 @@
   "issue_ref": "https://github.com/lucronn/autodata/issues/448",
   "project_ref": "https://github.com/users/lucronn/projects/8",
   "repository_doc_refs": [
-    "docs/architecture/workshop-route-source-release.md"
+    "docs/architecture/workshop-route-source-release.md",
+    "docs/verification/2026-11-16-workshop-route-source-release.md"
   ],
   "todo": [
     "Synchronize protected09524db plan/Issue448/Project8/record and pass pinned machine preflight before helpers or build",
@@ -13,7 +14,7 @@
     "Seal fresh root-only one-switch/one-rollback controls,42 fixed GET canaries and protected27 read-only fingerprints with a82 immediate rollback for independent root review; do not switch public service"
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-16T06:26:13.760610+00:00",
+  "updated_at": "2026-11-16T06:30:57.918766+00:00",
   "protected_base_sha": "09524db599a82e7f8c79a1d8fb43bfadc6bbe2f3",
   "artifact_source_sha": "09524db599a82e7f8c79a1d8fb43bfadc6bbe2f3",
   "implementation_allowlist": [
@@ -23,6 +24,18 @@
   "tracking_sync": {
     "issue": 448,
     "project_item": "PVTI_lAHOCSJ8cc4BiQ2BzhJEKA8",
-    "status": "In Progress"
+    "status": "Review"
+  },
+  "implementation_head": "9ff49f35214352da23e728464d9e5daae24f8d2b",
+  "verification": {
+    "packet_seal_sha256": "4085014b7643375863b6165a95f0aa41bd485cfc503f54f566c9d36ec6870fee",
+    "offline_build": "PASS",
+    "go_api": "PASS",
+    "go_contracts": "PASS",
+    "node": 314,
+    "python_helpers": 63,
+    "local_synthetic_fixture": "PASS",
+    "source_only_not_deployed": true,
+    "live_sql_get_or_public_switch_dispatch": false
   }
 }
