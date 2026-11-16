@@ -233,3 +233,12 @@ Todo:
 - [ ] Create absent separate fixture2/profile mapping, narrowly correct canonical index validation and add per-path receipts/redirection regression tests; retain prior evidence unchanged.
 - [ ] Run no-dispatch proof and seal exact fixture2 package; root independently reviews before new one-attempt dispatch.
 - [ ] No public activation or real-data/Firebase/provider/Stripe claim; retain source-only limits and separate private floors.
+
+
+### Fixture2 sealed no-dispatch handoff
+
+Fresh gate d7aa1049 passed machine preflight. Separate fixture2 path above is61,521,920allocatedB<68MiB. Fifteen Python tests (including six new canonical-route/status/hash/redirect/body-limit cases) and nine unchanged Node route-policy tests pass. index.html maps to local `/workshop/`200 hash; direct `/workshop/index.html` must separately301 Location`./` without following. Per-path NDJSON trace is written before status/location/length/hash assertions. Browser code SHA1a3e1446a8ef6dfa86deb12f580c527da0f3df63840b90ed7a09dc15569bd9a0 and contract SHAe062ab2bf49b9f37cbf857f405458784d3938eca5191ce51ffe0aff0e31740f1 are unchanged from reviewed original.
+
+Fixture2 FIXTURE-SEAL.json SHA66ec31a9c1a95edfbe130816b6b2ae7e63948a94b6307074f3b1b9bc8e1ba360; DRY-FIXTURE-RECEIPT.json SHA70cbef9406305bb03d9e20018fbb1a44801f2ee15c2bb55c4e15471ec5a55bf0; fixture_guard.py SHAfb012787781fbbe3cac1e2fdb806cc74ec3febe42455753341e7a7165ee5dca7; ROOT-COMMANDS.md SHAd0fc45b3449d29ed382f9703771c54a10972f798ec16f141688348d2edbf86cd; new regression test SHA857a8df9b7b7fb128318144718608fadc07cf75c748f8723a238951ab02ac1c1. Original consumed fixture sealed files independently rehashed unchanged; its failure receipt/profile retained. New `/tmp/ad-ui-a82-a2-q2` and marker absent. Physical source package/public/private unchanged. Dry home5,938,708,480B/tmpfs7,022,370,816B/RAM8,253,456,384B are observations requiring fresh admission.
+
+Root independently reviews these exact files before any new one-use fixture2 dispatch. Future command, NOT EXECUTED: from fixture2 root, `PYTHONDONTWRITEBYTECODE=1 python3 -B fixture_guard.py --run-reviewed-fixture`. No API/Chromium/browser process was started by fixture2 preparation. Public activation and real-data/authenticated/provider claims remain held.
