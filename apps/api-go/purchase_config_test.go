@@ -118,6 +118,72 @@ func TestPurchaseConfigStrictDecode(t *testing.T) {
 		}
 	}
 }
+
+func localTestPurchaseConfig() string {
+	replacer := strings.NewReplacer(
+		"https://legal.example.test/terms", "http://localhost:3013/workshop/test-notices/terms",
+		"https://legal.example.test/privacy", "http://localhost:3013/workshop/test-notices/privacy",
+		"https://legal.example.test/refund", "http://localhost:3013/workshop/test-notices/refund",
+		"https://legal.example.test/contact", "http://localhost:3013/workshop/test-notices/contact",
+	)
+	return replacer.Replace(purchaseEnabled)
+}
+
+func TestPurchaseConfigLocalTestNotices(t *testing.T) {
+	raw := localTestPurchaseConfig()
+	if _, err := decodeWorkshopPurchaseConfig([]byte(raw)); err == nil {
+		t.Fatal("default decoder accepted loopback notices")
+	}
+	if got, err := decodeWorkshopPurchaseConfigForLocalTest([]byte(raw), "http://localhost:3013"); err != nil || !got.Enabled {
+		t.Fatal("exact TEST notices rejected", err)
+	}
+	for _, origin := range []string{"", "http://localhost:3014", "http://localhost:0", "http://localhost:65536", "http://localhost:03013", "http://localhost:3013/", "http://127.0.0.2:3013", "https://localhost:3013"} {
+		if _, err := decodeWorkshopPurchaseConfigForLocalTest([]byte(raw), origin); err == nil {
+			t.Fatal("accepted mismatched or invalid origin", origin)
+		}
+	}
+	for _, suffix := range []string{"/privacy", "/terms?x=1", "/terms/", "/terms#fragment"} {
+		changed := strings.Replace(raw, "/test-notices/terms", "/test-notices"+suffix, 1)
+		if _, err := decodeWorkshopPurchaseConfigForLocalTest([]byte(changed), "http://localhost:3013"); err == nil {
+			t.Fatal("accepted wrong TEST notice", suffix)
+		}
+	}
+
+	private := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, raw)
+	}))
+	defer private.Close()
+	client, err := NewHTTPCommerceClient(private.URL, "fixture-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name, environment, mode, commerceMode string
+		testCheckout                          bool
+		want                                  int
+	}{
+		{"private TEST", "test", "firebase", "stripe_test", true, 200},
+		{"TEST flag off", "test", "firebase", "stripe_test", false, 503},
+		{"staging", "staging", "firebase", "stripe_test", true, 503},
+		{"other auth", "test", "local", "stripe_test", true, 503},
+		{"other commerce", "test", "firebase", "stripe_live", true, 503},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := NewServer(staticReadiness{})
+			s.commerceClient = client
+			s.customerAuth = &customerAuthService{config: customerAuthConfig{
+				Environment: tc.environment, Mode: tc.mode, Origin: "http://localhost:3013", commerceMode: tc.commerceMode,
+			}}
+			s.workshopTestCheckout = tc.testCheckout
+			w := httptest.NewRecorder()
+			s.Handler().ServeHTTP(w, httptest.NewRequest("GET", "/workshop/purchase-config.json", nil))
+			if w.Code != tc.want {
+				t.Fatal(w.Code, w.Body.String())
+			}
+		})
+	}
+}
+
 func TestPurchaseConfigFullServerNetwork(t *testing.T) {
 	for _, raw := range []string{purchaseDisabled, purchaseEnabled, `{"enabled":true}`, strings.Replace(purchaseEnabled, `"enabled":true`, `"extra":1,"enabled":true`, 1)} {
 		t.Run(raw, func(t *testing.T) {

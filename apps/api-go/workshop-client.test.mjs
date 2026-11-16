@@ -2016,6 +2016,26 @@ test('purchase readiness requires the supported terms contract', async t => {
   assert.equal(purchaseConfiguration(null, quoteTermsFixture()), false);
 });
 
+test('purchase readiness accepts only exact loopback TEST notice links', () => {
+  const origin = 'http://localhost:3013';
+  const config = merchantFixture();
+  for (const key of ['terms_url', 'privacy_url', 'refund_url', 'contact_url'])
+    config[key] = `${origin}/workshop/test-notices/${key.slice(0, -4)}`;
+  const quote = quoteTermsFixture();
+  assert.equal(purchaseConfiguration(config, quote), false);
+  assert.equal(purchaseConfiguration(config, quote, { testCheckout: false, origin }), false);
+  assert.equal(purchaseConfiguration(config, quote, { testCheckout: true, origin }), true);
+  for (const badOrigin of ['http://localhost:3014', 'http://localhost',
+    'http://localhost:3013/', 'http://localhost:3013.evil.test',
+    'http://127.0.0.2:3013', 'https://localhost:3013'])
+    assert.equal(purchaseConfiguration(config, quote, { testCheckout: true, origin: badOrigin }), false, badOrigin);
+  for (const key of ['terms_url', 'privacy_url', 'refund_url', 'contact_url']) {
+    for (const suffix of ['?x=1', '/', '#fragment', '-other'])
+      assert.equal(purchaseConfiguration({ ...config, [key]: config[key] + suffix }, quote,
+        { testCheckout: true, origin }), false, key + suffix);
+  }
+});
+
 test('purchase readiness fails closed for unavailable merchant fields', () => {
   for (const enabled of [false, null, undefined, 'true', 1])
     assert.equal(purchaseConfiguration({ ...merchantFixture(), enabled }, quoteTermsFixture()), false);

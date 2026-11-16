@@ -92,8 +92,19 @@ export function validLibrary(data) {
       ),
   );
 }
-export function purchaseConfiguration(config, quote) {
+export function purchaseConfiguration(config, quote, { testCheckout = false, origin = '' } = {}) {
   const keys = ["terms_url", "privacy_url", "refund_url", "contact_url"];
+  let localTestOrigin = '';
+  if (testCheckout) {
+    try {
+      const current = new URL(origin);
+      if (current.protocol === 'http:' && current.port && current.origin === origin &&
+          (current.hostname === 'localhost' || current.hostname === '127.0.0.1'))
+        localTestOrigin = current.origin;
+    } catch {
+      // An invalid origin cannot enable loopback notice links.
+    }
+  }
   return Boolean(
     config?.enabled === true &&
       config.terms_version === "workshop-v1" &&
@@ -108,7 +119,10 @@ export function purchaseConfiguration(config, quote) {
           return false;
         try {
           const url = new URL(config[key]);
-          return url.protocol === "https:" && !url.username && !url.password;
+          const localNotice = localTestOrigin && url.origin === localTestOrigin &&
+            config[key] === `${localTestOrigin}/workshop/test-notices/${key.slice(0, -4)}`;
+          return !url.username && !url.password &&
+            (url.protocol === "https:" || localNotice);
         } catch {
           return false;
         }
