@@ -1,0 +1,17 @@
+{
+  "goal": "Repair stale paid integration fixture and typed migration receipt assumptions for current42-migration PR394 head; keep draft/runtime holds.",
+  "plan_ref": "docs/superpowers/plans/2026-11-16-paid-catalog-current-migrations.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/393",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/verification/2026-11-16-paid-catalog-current-migrations.md"
+  ],
+  "todo": [
+    "Synchronize Issue393/Project8, plan, canonical verification doc and record; commit checkpoint and pass pinned preflight.",
+    "Add source-only red regression for exact current 42-file migration manifest and paid producer/validator agreement.",
+    "Correct only paid migration count, terminal filename, exact inventory and 001_042 receipt assertions; verify targeted offline suites.",
+    "Push draft PR394 head and inspect exact-head CI; keep guarded paid PostgreSQL/HTTP and authenticated reader/search acceptance pending."
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-16T06:12:16.184546+00:00"
+}
