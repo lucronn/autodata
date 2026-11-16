@@ -32,7 +32,8 @@ class StagingTest(unittest.TestCase):
             if name in {"api", "ingestion-http"}:
                 self.assertEqual(s["environment"]["AUTODATA_COMMERCE_MODE"], "disabled")
                 for key in staging.INHERITED_CLEAR | set().union(*staging.ROLE_KEYS.values()):
-                    self.assertEqual(s["environment"][key], "")
+                    if name != "api" or key not in staging.PUBLIC_KEYS["api"]:
+                        self.assertEqual(s["environment"][key], "")
             else:
                 self.assertEqual(s["networks"], ["internal"])
                 self.assertNotIn("ports", s)
@@ -69,6 +70,7 @@ class StagingTest(unittest.TestCase):
             def write(d, mode=0o600): p.write_text(json.dumps(d)); p.chmod(mode)
             write(valid)
             self.assertEqual(staging.private_material(p, "ingestion", True), valid)
+            with self.assertRaises(ValueError): staging.private_material(p, "ingestion", False)
             variants = [{**valid, "AUTODATA_STRIPE_SECRET_KEY": "sk_live_PRIVATE"}, {**valid, "AUTODATA_ENV": "production"}, {k:v for k,v in valid.items() if k != "AUTODATA_STRIPE_WEBHOOK_SECRET"}]
             for value in variants:
                 write(value)
@@ -81,11 +83,15 @@ class StagingTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "^invalid isolated TEST staging input$"): staging.private_material(p, "ingestion", True)
 
     def test_launcher_removes_inherited_provider_credentials(self):
-        env = {"AUTODATA_ENV": "staging", "AUTODATA_COMMERCE_MODE": "disabled", "AUTODATA_PUBLIC_ORIGIN": "https://test.example.org", **{k: "inherited-sensitive" for k in staging.INHERITED_CLEAR}}
+        env = {**{k: "inherited-sensitive" for k in staging.INHERITED_CLEAR}, "AUTODATA_ENV": "staging", "AUTODATA_COMMERCE_MODE": "disabled", "AUTODATA_PUBLIC_ORIGIN": "https://test.example.org", "INCEPTION_API_KEY": "inherited-model-key", "UNKNOWN_VENDOR_CREDENTIAL": "unrecognized", "STRIPE_API_KEY": "sk_live_inherited", "LD_PRELOAD": "/untrusted/library.so"}
         with patch.dict(os.environ, env, clear=True), patch.object(sys, "argv", ["launcher", "exec", "--role", "api", "--private", "/private.json"]), patch.object(staging, "private_material", return_value={"AUTODATA_IMAGE_URL_KEY": "private-current"}), patch.object(os, "execvpe") as execute:
             self.assertEqual(staging.main(), 0)
             child_env = execute.call_args.args[2]
-            self.assertFalse(set(child_env) & staging.INHERITED_CLEAR)
+            self.assertFalse(set(child_env) & (staging.INHERITED_CLEAR - staging.PUBLIC_KEYS["api"]))
+            self.assertNotIn("AUTODATA_STRIPE_ACCOUNT_ID", child_env)
+            self.assertNotIn("AUTODATA_STRIPE_PRICE_ID", child_env)
+            for key in ["INCEPTION_API_KEY", "UNKNOWN_VENDOR_CREDENTIAL", "STRIPE_API_KEY", "LD_PRELOAD"]:
+                self.assertNotIn(key, child_env)
             self.assertEqual(child_env["AUTODATA_IMAGE_URL_KEY"], "private-current")
 
     def test_actual_source_bytes_are_verified(self):
@@ -104,6 +110,14 @@ class StagingTest(unittest.TestCase):
                 staging.verify_source(source, sha)
                 (source / "example").write_text("changed bytes")
                 with self.assertRaises(ValueError): staging.verify_source(source, sha)
+
+    def test_disabled_ingestion_child_has_no_stripe_or_firebase_credentials(self):
+        env = {**{k: "inherited-sensitive" for k in staging.INHERITED_CLEAR | set().union(*staging.ROLE_KEYS.values())}, "AUTODATA_ENV": "staging", "AUTODATA_COMMERCE_MODE": "disabled", "AUTODATA_PUBLIC_ORIGIN": "https://test.example.org"}
+        with patch.dict(os.environ, env, clear=True), patch.object(sys, "argv", ["launcher", "exec", "--role", "ingestion", "--private", "/private.json"]), patch.object(staging, "private_material", return_value={k: "private-isolated" for k in staging.COMMON}), patch.object(os, "execvpe") as execute:
+            self.assertEqual(staging.main(), 0)
+            child_env = execute.call_args.args[2]
+            self.assertFalse(any("STRIPE" in k or "FIREBASE" in k or k.startswith("GOOGLE_") for k in child_env))
+            self.assertEqual(set(child_env) & set().union(*staging.ROLE_KEYS.values()), staging.COMMON)
 
 
 if __name__ == "__main__": unittest.main()

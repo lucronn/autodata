@@ -27,7 +27,27 @@ COMMANDS = {"api": ["/runtime/autodata-api"],
             "ingestion": ["python", "-m", "autodata_ingestion.http_service"]}
 INHERITED_CLEAR = {"AUTODATA_BANKONE_API_KEY", "AUTODATA_BANKTWO_API_KEY",
                    "BANKONE_BASE_URL", "BANKTWO_BASE_URL",
-                   "AUTODATA_MINIO_ROOT_USER", "AUTODATA_MINIO_ROOT_PASSWORD"}
+                   "AUTODATA_MINIO_ROOT_USER", "AUTODATA_MINIO_ROOT_PASSWORD",
+                   "INCEPTION_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY",
+                   "GOOGLE_API_KEY", "GEMINI_API_KEY", "GOOGLE_APPLICATION_CREDENTIALS",
+                   "GOOGLE_CLOUD_QUOTA_PROJECT", "FIREBASE_CONFIG", "FIREBASE_AUTH_EMULATOR_HOST",
+                   "AUTODATA_FIREBASE_PROJECT_ID", "AUTODATA_FIREBASE_WEB_API_KEY",
+                   "AUTODATA_FIREBASE_WEB_APP_ID", "AUTODATA_FIREBASE_AUTH_DOMAIN",
+                   "AUTODATA_STRIPE_ACCOUNT_ID", "AUTODATA_STRIPE_PRICE_ID",
+                   "STRIPE_API_KEY", "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET"}
+PUBLIC_COMMON = {"PATH", "LANG", "LC_ALL", "PYTHONPATH", "AUTODATA_DB_ADDRESS",
+                 "AUTODATA_POSTGRES_DB", "AUTODATA_POSTGRES_USER", "AUTODATA_S3_ADDRESS",
+                 "AUTODATA_S3_ENDPOINT", "AUTODATA_SOURCE_BUCKET", "AUTODATA_NATS_ADDRESS",
+                 "AUTODATA_ENV", "AUTODATA_PUBLIC_ORIGIN", "AUTODATA_COMMERCE_MODE",
+                 "AUTODATA_SOURCE_REGION", "AUTODATA_SOURCE_PERSIST", "BASE44_PREVIEW_MODE",
+                 "AUTODATA_STRIPE_ACCOUNT_ID", "AUTODATA_STRIPE_PRICE_ID"}
+PUBLIC_KEYS = {
+    "api": PUBLIC_COMMON | {"AUTODATA_AUTH_MODE", "AUTODATA_API_ADDR", "AUTODATA_PROJECTION_STORE",
+        "AUTODATA_INGESTION_URL", "AUTODATA_WORKSHOP_TESTER_UIDS_JSON", "GOOGLE_APPLICATION_CREDENTIALS",
+        "AUTODATA_FIREBASE_PROJECT_ID", "AUTODATA_FIREBASE_WEB_API_KEY", "AUTODATA_FIREBASE_WEB_APP_ID",
+        "AUTODATA_FIREBASE_AUTH_DOMAIN"},
+    "ingestion": PUBLIC_COMMON | {"AUTODATA_INGESTION_HTTP_ADDR", "AUTODATA_WORKSHOP_PURCHASE_CONFIG_JSON"},
+}
 
 
 def fail():
@@ -67,6 +87,8 @@ def private_material(path, role, enabled):
         except (ValueError, UnicodeError):
             fail()
     if not isinstance(d, dict) or set(d) - ROLE_KEYS[role]:
+        fail()
+    if not enabled and set(d) & {"AUTODATA_STRIPE_SECRET_KEY", "AUTODATA_STRIPE_WEBHOOK_SECRET"}:
         fail()
     required = COMMON | ({"AUTODATA_IMAGE_URL_KEY"} if role == "api" else set())
     if enabled and role == "ingestion":
@@ -222,7 +244,12 @@ def main():
                 fail()
             enabled = os.environ["AUTODATA_COMMERCE_MODE"] == "stripe_test"
             values = private_material(args.private, args.role, enabled)
-            env = {k:v for k,v in os.environ.items() if k not in INHERITED_CLEAR | set().union(*ROLE_KEYS.values())}
+            # Start from a role-specific public allowlist: unknown image or
+            # ambient credentials never cross into the child environment.
+            env = {k:v for k,v in os.environ.items() if k in PUBLIC_KEYS[args.role]}
+            if not enabled:
+                env.pop("AUTODATA_STRIPE_ACCOUNT_ID", None)
+                env.pop("AUTODATA_STRIPE_PRICE_ID", None)
             env.update(values)
             os.execvpe(COMMANDS[args.role][0], COMMANDS[args.role], env)
     except (ValueError, OSError, KeyError, TypeError, AttributeError, tarfile.TarError):
