@@ -1,0 +1,37 @@
+{
+  "goal": "Refresh draft PR440 helper-only integration onto protected be1a1f23, preserve the eight independently reviewed implementation blobs and distinguish historical inconclusive evidence from current execution authority",
+  "plan_ref": "docs/superpowers/plans/2026-11-15-configuration-probe-watchdog.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/401",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/workshop-configuration-probe-watchdog.md",
+    "docs/verification/2026-11-15-configuration-probe-watchdog.md"
+  ],
+  "todo": [
+    "Synchronize Issue401/Project8, corrected canonical current-versus-historical docs and matching records at a docs-only protected-base checkpoint; pass exact checkpoint preflight before copying helper files",
+    "Copy the exact four helper and four test blobs from reviewed0212dd8d, run focused owned/offline tests and verify all eight Git blob IDs unchanged",
+    "Push the refreshed draft PR440 with an exact old-head lease, update its base/head verification text and run required exact-head CI; hold merge, build, activation, runtime and provider requests for root"
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-16T04:14:43.284280+00:00",
+  "historical_goal": "Implement a helper-only, fail-closed one-request configuration watchdog core and offline synthetic tests on protected4048; product runtime source remains unresolved and all live execution held.",
+  "historical_todo": [
+    "TODO staged17295 exact identity watchdog adapter + offline red-first tests, sealed manifest/command package and root-admitted fixture; no activation/GET.",
+    "DONE cc755675 intentional-stop restart-policy fixture + core48/private adapter14/baseline4 PASS; external seal-v3/launcher passive check PASS. TODO root review/staged-ID-bound watchdog final integration; no stage/activate/GET.",
+    "DONE admission9711b45c red-first no-overlap core45/private adapter11 tests, SQL extra statements/socket recheck; combined39-table v2 read-only snapshot and backup prepared. Watchdog production integration/root review still TODO.",
+    "DONE synchronized gate18aed62/Issue401 comment6888651102/Project readback/preflight before implementation.",
+    "DONE helper core+validate-only CLI and33 offline tests; no Docker/provider/service calls.",
+    "DONE gate17c1cfc + red6 failures/green42 tests reviewed defects: verify predecessor before any start, preserve candidate-failure recovery/receipt invariants; reverify supervisor liveness immediately before dispatch and refuse dead supervisor.",
+    "TODO coordinator source review; after429 protected merge fresh runtime gate before supervised-service/HTTP/PG/image integration.",
+    "TODO independently review exact runtime/probe artifacts before any activation/arm/one GET."
+  ],
+  "current_integration_plan_ref": "docs/superpowers/plans/2026-11-15-pr440-protected-be1-integration.md",
+  "current_protected_source_sha": "be1a1f235e8eeacc051ac905c4ed8a953a41c8a9",
+  "reviewed_helper_head": "0212dd8d708d3acb522f520f25800b24fa2d60cc",
+  "execution_authorized": false,
+  "historical_probe_outcome": "INCONCLUSIVE_MANUAL_TARGET_ONLY_TIMESTAMP_REFRESH",
+  "automatic_verified": false,
+  "protected_source_sha": "be1a1f235e8eeacc051ac905c4ed8a953a41c8a9",
+  "protected_source_tree": "39eb3530ac50bad0ecdb01a733a6a0cb373af5cf",
+  "current_protected_master": "be1a1f235e8eeacc051ac905c4ed8a953a41c8a9"
+}
