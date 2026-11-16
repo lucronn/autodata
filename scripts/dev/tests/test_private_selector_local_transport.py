@@ -43,6 +43,8 @@ class Tests(unittest.TestCase):
             kwargs.setdefault('device', self.root.stat().st_dev)
             return original_regular(path, **kwargs)
         item = patch.object(m, 'regular', side_effect=owned_regular); item.start(); self.addCleanup(item.stop)
+        item = patch.object(m, 'SOURCE_EXECUTABLE_PATHS', {c.SOURCE: frozenset()})
+        item.start(); self.addCleanup(item.stop)
         self.value = manifest('fixture')
         self.value['transport'] = {'offloaded_root': str(self.off), 'docker_start_free': 1000000000}
         self.backend = m.LocalTransport(self.value, dispatch_enabled=True, external_seal_sha='0' * 64,
@@ -79,6 +81,44 @@ class Tests(unittest.TestCase):
 
     def test_valid_owned_seal_and_full_source_inventory(self):
         self.assertEqual(self.backend.seal()['manifest_sha256'], c.digest(self.value))
+
+    def test_archive_pinned_readonly_executable_is_admitted(self):
+        self.source.chmod(0o755)
+        paths=('infra/deploy/gce/backup-host.sh','infra/deploy/gce/cloud-bootstrap.sh',
+               'infra/deploy/gce/deploy.sh','infra/deploy/gce/restore.sh',
+               'infra/deploy/gce/runtime-entrypoint.sh','scripts/dev/ingest_banktwo_service.py')
+        m.SOURCE_EXECUTABLE_PATHS[c.SOURCE]=frozenset(paths)
+        inventory=json.loads((self.package/'manifest.json').read_text())
+        for name in paths:
+            p=self.source/name;p.parent.mkdir(parents=True,exist_ok=True)
+            p.write_text('authored archive executable\n');p.chmod(0o555)
+            inventory['files'][name]=sha(p)
+        for folder,dirs,files in os.walk(self.source,topdown=False):Path(folder).chmod(0o555)
+        (self.package/'manifest.json').write_text(json.dumps(inventory))
+        self.reseal()
+        self.backend.seal()
+
+    def test_executable_pin_rejects_lost_exec_unpinned_exec_or_writable_modes(self):
+        self.test_archive_pinned_readonly_executable_is_admitted()
+        executable=self.source/'infra/deploy/gce/backup-host.sh'
+        for mode in (0o444,0o755,0o644):
+            executable.chmod(mode)
+            with self.assertRaises(c.Refused):self.backend.seal()
+        executable.chmod(0o555)
+        self.source_file.chmod(0o555)
+        with self.assertRaises(c.Refused):self.backend.seal()
+
+    def test_executable_pin_requires_all_paths_and_known_source(self):
+        self.test_archive_pinned_readonly_executable_is_admitted()
+        inventory=json.loads((self.package/'manifest.json').read_text())
+        name='infra/deploy/gce/backup-host.sh'
+        del inventory['files'][name]
+        (self.package/'manifest.json').write_text(json.dumps(inventory));self.reseal()
+        with self.assertRaisesRegex(c.Refused,'source_mode_pin'):self.backend.seal()
+        inventory['source_sha']='a'*40
+        (self.package/'manifest.json').write_text(json.dumps(inventory));self.reseal()
+        with self.assertRaisesRegex(c.Refused,'source_mode_pin'):
+            m.verify_inventory(self.package,sha(self.package/'manifest.json'),'a'*40,c.TREE)
 
     def test_source_edit_extra_file_and_writable_mode_refuse(self):
         self.source_file.chmod(0o644)

@@ -176,3 +176,6 @@ Concrete todo:
 2. Add meaningful regression showing current correct0555 sources fail before the change, then pass; reject0555 at unpinned paths and0444/ writable modes at pinned executable paths.
 3. Re-run owned tests and read-only retained-source verification, reseal the review packet with the changed helper hash and exact archive mode provenance.
 4. Keep physical source allocation, Docker mutation, provider/SQL requests and actual-image execution held through M2A R3 teardown and root slot release. Preserve all serving/rollback source bytes/modes.
+
+
+Exact source-mode correction verified: transport pins the six executable paths for each immutable sourcea82/272/083, requiring0555 there and0444 elsewhere. Red regression reproduced prior artifact_metadata rejection for legitimate immutable executables. Green suite229 tests PASS/4.544s (three new mode tests); wrong executable location, lost execute bits, writable modes, missing pinned paths and unknown source identities refuse. Independent Git ls-tree provenance confirms the exact six paths for all three source SHAs. Read-only real source272(1388files) and083(1372files) now pass the actual inventory verifier; all preserved bytes/modes unchanged. Actual image NOT_RUN; physical allocation and Docker/SQL/provider execution remain held through M2A R3 teardown/root release.

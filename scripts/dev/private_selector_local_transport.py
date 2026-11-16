@@ -40,6 +40,16 @@ ROLLBACK = {
     c.OLD: Path('/home/corp/autodata-candidate/private-configuration-budget-272aeea-20261115'),
     c.SECONDARY: Path('/home/corp/autodata-candidate/private-diagnostics-svg-083f1a5-20261115'),
 }
+# Git archive executable paths are identical for these three immutable sources.
+# The exact path set is pinned, rather than accepting executable mode everywhere.
+_ARCHIVE_EXECUTABLES = frozenset({
+    'infra/deploy/gce/backup-host.sh', 'infra/deploy/gce/cloud-bootstrap.sh',
+    'infra/deploy/gce/deploy.sh', 'infra/deploy/gce/restore.sh',
+    'infra/deploy/gce/runtime-entrypoint.sh', 'scripts/dev/ingest_banktwo_service.py',
+})
+SOURCE_EXECUTABLE_PATHS = {source: _ARCHIVE_EXECUTABLES for source in (
+    c.SOURCE, c.OLD_IDENTITY['source'], c.SECONDARY_IDENTITY['source'])}
+
 PROTECTED = tuple(sorted('''auth_sessions canonical_article_aliases canonical_article_reviews
 canonical_article_revisions canonical_article_rewrite_attempts canonical_article_source_observations
 canonical_article_source_revisions canonical_articles catalog_article_index_pages
@@ -143,6 +153,8 @@ def verify_inventory(parent, expected_manifest, source, tree):
     c.require(manifest.get('source_sha') == source and manifest.get('tree') == tree, 'source_pin')
     entries = manifest.get('files', {})
     c.require(isinstance(entries, dict) and 0 < len(entries) <= 2000, 'source_inventory')
+    executables = SOURCE_EXECUTABLE_PATHS.get(source)
+    c.require(executables is not None and executables <= set(entries), 'source_mode_pin')
     actual = set(); root = parent / 'source'
     for folder, dirs, files in os.walk(root, followlinks=False):
         directory = Path(folder); state = directory.lstat()
@@ -153,7 +165,8 @@ def verify_inventory(parent, expected_manifest, source, tree):
         for n in files:
             p = directory / n; relative = str(p.relative_to(root)); actual.add(relative)
             c.require(relative in entries and c.full_id(entries[relative])
-                      and file_hash(p, modes=(0o444,)) == entries[relative], 'source_file')
+                      and file_hash(p, modes=(0o555,) if relative in executables else (0o444,))
+                      == entries[relative], 'source_file')
     c.require(actual == set(entries), 'source_extras_or_missing')
 
 

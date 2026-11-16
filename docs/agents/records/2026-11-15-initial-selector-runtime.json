@@ -78,5 +78,15 @@
     "actual_image_result": "NOT_RUN",
     "docker_mutations": 0,
     "provider_requests": 0
+  },
+  "source_mode_contract_verification": {
+    "owned_tests": 229,
+    "new_mode_tests": 3,
+    "red_regression": "artifact_metadata on legitimate0555 executable",
+    "exact_git_sources_verified": 3,
+    "real_rollback_inventories_verified": 2,
+    "actual_image_result": "NOT_RUN",
+    "physical_source_writes": 0,
+    "slot": "HOLD_M2A_R3"
   }
 }
