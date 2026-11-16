@@ -25,3 +25,7 @@ At route restoration, clear all selector rows/options with the existing populate
 Implementation allowlist: apps/api-go/workshop/app.mjs and apps/api-go/workshop-client.test.mjs, plus the task’s canonical docs/record. No runtime mutation or deployment.
 
 Planning checkpoint synchronized with Issue #446 / Project #8 before implementation. Runtime and deployment remain coordinator-owned.
+
+## Implementation checkpoint
+
+Pre-implementation gate passed at `2c90eff82a95b6ee58e68f42b0100d62c3dee45d`. The route reset and regressions are implemented; the complete Workshop client/demo suite passes 314 tests. See `docs/verification/2026-11-16-workshop-route-state.md`. Coordinator review/integration and runtime acceptance remain pending.
