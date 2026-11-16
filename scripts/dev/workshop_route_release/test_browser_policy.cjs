@@ -1,0 +1,5 @@
+const{test}=require('node:test'),a=require('node:assert/strict'),{requestDecision:d}=require('./browser_contract.cjs'),o='https://autodata.cars.tk';
+test('safe auth/static reads',()=>{for(const p of ['/auth/config','/auth/session','/workshop/app.mjs','/workshop/fonts/InstrumentSans.ttf'])a.equal(d('GET',o+p,o),'allow')});
+test('exact synthetic telemetry and years',()=>{a.equal(d('POST',o+'/cdn-cgi/rum',o),'suppress_edge_telemetry');a.equal(d('GET',o+'/v1/catalog/years',o),'suppress_catalog_prefetch')});
+test('no external provider or Stripe reads',()=>{for(const h of ['https://accounts.google.com/','https://checkout.stripe.com/','https://example.test/'])a.equal(d('GET',h,o),'deny_external')});
+test('protected/write/query/trailing variants refuse',()=>{for(const[m,p]of [['POST','/auth/session'],['GET','/auth/config?x=1'],['GET','/v1/workshop/quote'],['POST','/v1/catalog/years'],['GET','/v1/catalog/years?x=1'],['POST','/cdn-cgi/rum?x=1'],['POST','/cdn-cgi/rum/'],['PUT','/cdn-cgi/rum']])a.ok(d(m,o+p,o).startsWith('deny'))});
