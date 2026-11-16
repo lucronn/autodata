@@ -36,5 +36,14 @@
     "marker_absent": true,
     "subprocess_dns_connect_bind_calls": 0,
     "browser_dispatched": false
+  },
+  "outcome": {
+    "status": "CONSUMED_SAFE_FAILURE",
+    "outcome_sha256": "a3d4f9906eee378563374d76869b7ff2491d1aedaf129460ebebf824c6a6ee3b",
+    "browser_sha256": "520239e09765308dbcda3a2a6ec8045836098ce8fafce0801a8e84c714bac973",
+    "journal_sha256": "c4da34a1bb780bd8aa4b0acefb18dfb723ff9c128730c2ce26a1cf428368f3f7",
+    "exact_edge_html_verified": true,
+    "remaining_request_identified_offline": "GET /cdn-cgi/speculation",
+    "public_ui_acceptance": false
   }
 }

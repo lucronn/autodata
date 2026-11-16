@@ -12,7 +12,7 @@
     "Seal a fresh offloaded attempt4 and run pure/default no-dispatch proof for root review before any dispatch"
   ],
   "status": "synchronized",
-  "updated_at": "2026-11-16T05:13:59.217214+00:00",
+  "updated_at": "2026-11-16T05:14:44.260012+00:00",
   "tracking_sync": {
     "issue_comment_ref": "https://github.com/lucronn/autodata/issues/431#issuecomment-6907963889",
     "issue_readback_verified": true,
@@ -20,5 +20,18 @@
     "project_readback_verified": true
   },
   "execution_authorized": false,
-  "attempt": 4
+  "attempt": 4,
+  "preparation": {
+    "status": "SEALED_ROOT_REVIEW_PENDING",
+    "implementation_head": "015701dc498a9ab4b8cf8e5e1ce0243229e46e23",
+    "implementation_tree": "241793a2ac9c57500e69ba35afd350e2e928a697",
+    "python_tests": 13,
+    "node_tests": 16,
+    "exact_saved_snapshots_test_passed": true,
+    "package_seal_sha256": "8052ec9a42dd53e9b8b6cb3ed1c1ed69d6168660ef1904ccfb73823719e9d796",
+    "review_seal_sha256": "19c81dd5d9b446c87d7c53cd475183257545c2c06b2969329a2bb0c10e9364ba",
+    "dry_proof_sha256": "e8dbbd0ef7e3849ba8c5a8af5c860212145720a8ae1cd1199ab6c0595763e7a8",
+    "marker_absent": true,
+    "subprocess_dns_connect_bind_calls": 0
+  }
 }
