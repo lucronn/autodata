@@ -144,3 +144,24 @@ Offline SHA256 of GET /cdn-cgi/speculation exactly equals e0079c8af58d5969cfdd40
 Gate84aa77a6 preflight synchronized/errors[] before the identified-metadata implementation. Code015701dc498a9ab4b8cf8e5e1ce0243229e46e23/tree241793a2ac9c57500e69ba35afd350e2e928a697; Python unchanged576051fb.13Python+16Node tests pass (exact saved HTML snapshot mutation test executed), red-first4 failures. Exact blocked resource console classifier requires actual block, exact location, <=512 characters, resource-load prefix and finite net error/status family; suffix variants are accepted without raw message logging. It does not waive arbitrary JS/CSP messages. Safe diagnostics use finite vocabulary/charset/segments and omit unrecognized paths; all unknown network traffic remains fatal.
 
 Offloaded attempt4 PACKAGE-SEAL8052ec9a42dd53e9b8b6cb3ed1c1ed69d6168660ef1904ccfb73823719e9d796; REVIEW-SEAL19c81dd5d9b446c87d7c53cd475183257545c2c06b2969329a2bb0c10e9364ba; DRY-PROOFe8dbbd0ef7e3849ba8c5a8af5c860212145720a8ae1cd1199ab6c0595763e7a8; ROOT-COMMANDSb9814d37105fa18a4376352e6da4233a500bb6969c9a634fd3f071867676a496. Actual default dry PASS with subprocess/DNS/connect/bind forbidden0; marker absent,48 prior files unchanged. No attempt4 dispatch during preparation. Home5,850,275,840/root2,928,484,352/Docker990,629,888/tmp7,007,903,744/RAM8,026,480,640B at dry. Root independent review and one-run authorization required.
+
+# Anonymous public browser attempt5 terminal-state correction
+
+Goal: Correct only anonymous browser terminal empty-years assertion against sealed a82 source, then seal a separate one-use attempt5 for independent review
+
+Issue: https://github.com/lucronn/autodata/issues/431
+Project: https://github.com/users/lucronn/projects/8
+
+## Todo
+
+- Preserve consumed attempt4 and synchronize Issue431/Project8/plan/canonical record before edits
+- Red-first correct terminal predicate to exact activity text and ready tone with disabled one-option year and hidden purchase; prove using exact sealed source
+- Seal offloaded attempt5 with unchanged route/proxy/capacity/one-use controls and pure/default no-dispatch proof for root review
+
+## Exact correction and immutable boundary
+
+Attempt4 consumed once: OUTCOME ff86544dcc4b7093c8fac6799c79d918e8662ea72d7fdb255a6b420b909cc67c; browserbc1c1e73c74a2c5142a2badf4bd481ddfe97fdee00de1ecbcb51eb5eec4e7341; journal709a73a41cc4df482d00dee000346e2c84dc34ca7f7cc942305bc184d8584d06. Zero diagnostic errors; exact blocked beacon/speculation classifications and observed real assets/auth/purchase passed. It timed out only because harness used completion-status; sealed a82 app status writes activity-text always and completion-status only when complete=true. Empty choices use defaultcomplete=false. Desktop screenshot correct. Preserve all four consumed packages/markers and runtime/data byte-identical.
+
+Only scripts/dev/workshop_public_anonymous.cjs terminal predicate and matching .cjs tests may change. Require exact #activity-text value `No choices are available for this selection. Choose another vehicle.`, #activity dataset tone ready, disabled #year with exactly one Choose year option, hidden #purchase. No longer inspect completion-status. Add red-first pure regression and execute actual pinned status function prefix from sealed source with owned fake DOM; prove completion-status unchanged and activity ready. Pin source-app fixture SHA3f57116f72f81e22b580f6694fd0c178d2acb5be4584d037a00bbc64ca8ea9f2; no product changes.
+
+Fresh offloaded package /home/corp/autodata-evidence/workshop-public-anonymous-a82b31d-attempt5-20261116 only; same Python controller/tests, exact edge normalization, proxy/routes/pins/caps/sandbox/one-use/cleanup. Real static/auth config/session; no sign-in click. Empty years/local RUM disclosed synthetic, no real catalog/provider/Stripe/Firebase credential calls or service changes. Source-only release successful; public anonymous acceptance pending until both viewports pass. Root reviews seal/dry proof and separately authorizes one use; no browser dispatch during preparation. Entry5570035712B/home32MiB guard64cap, Docker813694976B, root2181038080B, tmp128MiB cap96guard/free512MiB, offload1GiB/artifact4MiB, RAM1GiB and120s supervised browser unchanged.

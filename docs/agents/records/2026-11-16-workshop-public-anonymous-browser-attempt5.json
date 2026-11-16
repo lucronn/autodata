@@ -1,0 +1,24 @@
+{
+  "goal": "Correct only anonymous browser terminal empty-years assertion against sealed a82 source, then seal a separate one-use attempt5 for independent review",
+  "plan_ref": "docs/superpowers/plans/2026-11-16-workshop-public-anonymous-browser-attempt5.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/431",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/workshop-public-anonymous-browser.md"
+  ],
+  "todo": [
+    "Preserve consumed attempt4 and synchronize Issue431/Project8/plan/canonical record before edits",
+    "Red-first correct terminal predicate to exact activity text and ready tone with disabled one-option year and hidden purchase; prove using exact sealed source",
+    "Seal offloaded attempt5 with unchanged route/proxy/capacity/one-use controls and pure/default no-dispatch proof for root review"
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-16T05:17:37.293321+00:00",
+  "tracking_sync": {
+    "issue_comment_ref": "https://github.com/lucronn/autodata/issues/431#issuecomment-6908029839",
+    "issue_readback_verified": true,
+    "project_status": "In Progress",
+    "project_readback_verified": true
+  },
+  "execution_authorized": false,
+  "attempt": 5
+}
