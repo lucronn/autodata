@@ -1,0 +1,28 @@
+{
+  "goal": "Prepare exact protected09524db route-state source-only public release and synthetic acceptance for independent root review without public activation",
+  "plan_ref": "docs/superpowers/plans/2026-11-16-workshop-route-source-release.md",
+  "issue_ref": "https://github.com/lucronn/autodata/issues/448",
+  "project_ref": "https://github.com/users/lucronn/projects/8",
+  "repository_doc_refs": [
+    "docs/architecture/workshop-route-source-release.md"
+  ],
+  "todo": [
+    "Synchronize protected09524db plan/Issue448/Project8/record and pass pinned machine preflight before helpers or build",
+    "Prepare fresh guarded offline Go/contracts/Node tests, exact source/archive/binary and all15 asset inventories with immutable physical payload",
+    "Run a separate one-use loopback synthetic browser and route-state tests without provider/Firebase/Stripe dispatch; retain exact anonymous years GET and RUM POST local fulfillment",
+    "Seal fresh root-only one-switch/one-rollback controls,42 fixed GET canaries and protected27 read-only fingerprints with a82 immediate rollback for independent root review; do not switch public service"
+  ],
+  "status": "synchronized",
+  "updated_at": "2026-11-16T06:26:13.760610+00:00",
+  "protected_base_sha": "09524db599a82e7f8c79a1d8fb43bfadc6bbe2f3",
+  "artifact_source_sha": "09524db599a82e7f8c79a1d8fb43bfadc6bbe2f3",
+  "implementation_allowlist": [
+    "scripts/dev/workshop_route_release/*"
+  ],
+  "execution_authorized": false,
+  "tracking_sync": {
+    "issue": 448,
+    "project_item": "PVTI_lAHOCSJ8cc4BiQ2BzhJEKA8",
+    "status": "In Progress"
+  }
+}
