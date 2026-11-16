@@ -162,3 +162,17 @@ All previous public/private runtime, licensed material, Stripe, rollback and his
 
 
 Readiness correction implementation: bounded validated bootstrap metadata precedes worker creation. Graceful bootstrap stop receives SIGTERM, attempts exact run-owned DB/bucket cleanup, verifies absence and emits a cleanup receipt; transport requires that receipt after stop and never accepts the client flag alone. Create collision cannot delete a preexisting bucket. Runtime immediate-stop fence is unchanged. Owned test suite: 226 tests PASS (9 new); no Docker mutation/SQL/provider request occurred. Actual image remains NOT_RUN. Existing synthetic network/peer/source pins are collected read-only in the fresh review packet; physical inventory, lifecycle HostConfig proof and exact launcher remain unadmitted for independent root review.
+
+
+## Exact immutable source-mode contract correction (2026-11-16)
+
+Issue: https://github.com/lucronn/autodata/issues/401
+Project: https://github.com/users/lucronn/projects/8
+
+Read-only audit proved all retained source272/source083 content hashes match, but six archive-authored executable paths are0555. The current helper wrongly admits0444 only. The exact a82 archive has the same six executable paths.
+
+Concrete todo:
+1. Pin the six archive-authored executable paths for each exact supported source SHA (a82,272,083), accept exactly0555 there and0444 elsewhere, and reject missing/extra executable modes or unknown source identities.
+2. Add meaningful regression showing current correct0555 sources fail before the change, then pass; reject0555 at unpinned paths and0444/ writable modes at pinned executable paths.
+3. Re-run owned tests and read-only retained-source verification, reseal the review packet with the changed helper hash and exact archive mode provenance.
+4. Keep physical source allocation, Docker mutation, provider/SQL requests and actual-image execution held through M2A R3 teardown and root slot release. Preserve all serving/rollback source bytes/modes.
