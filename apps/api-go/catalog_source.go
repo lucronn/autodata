@@ -76,7 +76,8 @@ func (s *Server) servePaidCatalogSource(w http.ResponseWriter, r *http.Request, 
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	r = r.WithContext(ctx)
-	configuration, err := s.resolvePaidCatalogScope(ctx, p, r.PathValue("vehicle_id"), r.URL.Query().Get("region"))
+	openDemo := s.workshopOpenDemoRequest(r)
+	configuration, err := s.resolveCatalogScope(ctx, p, r.PathValue("vehicle_id"), r.URL.Query().Get("region"), !openDemo)
 	if err != nil {
 		s.writePaidCatalogError(w, r, err)
 		return
@@ -128,8 +129,14 @@ func (s *Server) servePaidCatalogSource(w http.ResponseWriter, r *http.Request, 
 	stored.Images = append([]CatalogImage{}, stored.Images...)
 	stored.Document = publicCatalogDocument(stored.Document)
 	now := time.Now()
-	ref := paidCatalogProjectionReference(p, configuration, identity, view, selected, "source", now)
-	s.rewritePaidCatalogImages(stored.Images, stored, ref, now)
+	if !openDemo {
+		ref := paidCatalogProjectionReference(p, configuration, identity, view, selected, "source", now)
+		s.rewritePaidCatalogImages(stored.Images, stored, ref, now)
+	} else {
+		for i := range stored.Images {
+			stored.Images[i].URL = ""
+		}
+	}
 	var format, content string
 	if stored.Document != nil {
 		format, content = "html", renderCatalogOrderedSource(stored.Document, stored.Images)
