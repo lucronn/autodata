@@ -15,5 +15,26 @@
   "status": "synchronized",
   "updated_at": "2026-11-16T06:28:18.148090+00:00",
   "implementation_parent": "09524db",
-  "superseded_checkpoint": "391b8cb8 (planning only; unmerged selector helper ancestry excluded)"
+  "superseded_checkpoint": "391b8cb8 (planning only; unmerged selector helper ancestry excluded)",
+  "verification": {
+    "planning_checkpoint": "f657ee77",
+    "implementation_sha": "761b9f17",
+    "owned_tests": 22,
+    "focused_tests_passed": 88,
+    "focused_subtests_passed": 36,
+    "broader_tests_passed": 229,
+    "broader_tests_failed": 4,
+    "broader_failure": "unchanged SVG cases; host CairoSVG2.9.1 missing; baseline SVG_RENDER_UNAVAILABLE",
+    "retained_articles": 40,
+    "body_envelope_integrity": 40,
+    "adapted": 40,
+    "image_positions": 118,
+    "bound_positions": 0,
+    "missing_binaries": 64,
+    "rights_evidence_referenced": 0,
+    "external_display_allowed": false,
+    "report_sha256": "2d314e26ceb49efcf6f771978716a68dd79d4dfab12401d84db2ac23ff3ab178",
+    "provider_requests": 0,
+    "runtime_mutations": 0
+  }
 }
