@@ -34,15 +34,21 @@ func workshopTestCheckoutMode(mode, environment, authMode, origin string) bool {
 	}
 }
 
-// Open access is limited to the explicitly enabled, loopback-only TEST stack.
-// The public origin and the request Host must agree before any licensed content
-// is served without a customer grant.
+// Open access requires an explicitly enabled TEST stack. The external demo
+// origin is fixed so a production hostname cannot accidentally expose licensed
+// content without a customer grant. The request Host must match it exactly.
 func workshopOpenDemoHost(flag, environment, origin string) string {
 	if flag != "1" || environment != "test" {
 		return ""
 	}
 	u, err := url.Parse(origin)
-	if err != nil || u.Scheme != "http" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
+	if err != nil || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
+		return ""
+	}
+	if u.Scheme == "https" && u.Host == "demo.cars.tk" {
+		return u.Host
+	}
+	if u.Scheme != "http" {
 		return ""
 	}
 	if host := strings.ToLower(u.Hostname()); host != "localhost" && host != "127.0.0.1" {
