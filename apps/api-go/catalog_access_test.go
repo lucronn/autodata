@@ -151,16 +151,23 @@ func paidHTTPServer() (*Server, *paidHTTPStore, *paidGrantClient) {
 	return s, c, g
 }
 
-func TestOpenDemoIsLoopbackTestOnly(t *testing.T) {
+func TestOpenDemoRequiresApprovedTestOrigin(t *testing.T) {
 	for _, tc := range []struct {
 		flag, environment, origin, want string
 	}{
 		{"1", "test", "http://localhost:3013", "localhost:3013"},
 		{"1", "test", "http://127.0.0.1:3013", "127.0.0.1:3013"},
+		{"1", "test", "https://demo.cars.tk", "demo.cars.tk"},
+		{"", "test", "https://demo.cars.tk", ""},
+		{"1", "staging", "https://demo.cars.tk", ""},
+		{"1", "production", "https://demo.cars.tk", ""},
 		{"", "test", "http://localhost:3013", ""},
 		{"1", "staging", "http://localhost:3013", ""},
 		{"1", "production", "http://localhost:3013", ""},
 		{"1", "test", "https://autodata.cars.tk", ""},
+		{"1", "test", "https://cars.tk", ""},
+		{"1", "test", "http://demo.cars.tk", ""},
+		{"1", "test", "https://demo.cars.tk:443", ""},
 		{"1", "test", "https://demo.example", ""},
 		{"1", "test", "http://localhost:3013/path", ""},
 	} {
@@ -221,6 +228,18 @@ func TestOpenDemoReadsExactCatalogWithoutLoginOrGrant(t *testing.T) {
 	s.workshopOpenDemoHost = ""
 	if w := request(root+"?demo=1", "localhost:3013"); w.Code == 200 {
 		t.Fatal("disabled demo received open content")
+	}
+	s.workshopOpenDemoHost = workshopOpenDemoHost("1", "test", "https://demo.cars.tk")
+	if w := request("/workshop/demo-mode.json", "demo.cars.tk"); w.Code != 200 || strings.TrimSpace(w.Body.String()) != `{"enabled":true,"access":"open"}` {
+		t.Fatalf("external mode = %d %s", w.Code, w.Body.String())
+	}
+	for _, path := range []string{root + "?demo=1", root + "/" + id + "?demo=1", root + "?demo=1&q=private"} {
+		if w := request(path, "demo.cars.tk"); w.Code != 200 {
+			t.Fatalf("external demo %s = %d %s", path, w.Code, w.Body.String())
+		}
+	}
+	if w := request(root+"?demo=1", "localhost:3013"); w.Code == 200 || grant.calls != 0 {
+		t.Fatal("external demo accepted another Host or contacted the grant checker")
 	}
 }
 func TestPaidCatalogPublicSelectorsAndDeniedBeforeWork(t *testing.T) {
