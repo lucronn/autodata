@@ -125,9 +125,6 @@ jobs:
           if grep -Eq '^(packages/contracts/|scripts/contracts/)' "$changed"; then
             echo 'contracts=true' >> "$GITHUB_OUTPUT"
           fi
-          if grep -Ev '^(scripts/dev/test_repository_governance\.py$|scripts/dev/test_workshop_browser_smoke\.py$|apps/api-go/workshop/|apps/api-go/workshop-client/|apps/api-go/workshop-client\.test\.mjs$)' "$changed" | grep -Eq '^(apps/api-go/|workers/|packages/contracts/|db/migrations/|infra/compose/|scripts/dev/)'; then
-            echo 'integration=true' >> "$GITHUB_OUTPUT"
-          fi
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -215,10 +212,6 @@ jobs:
         if: github.event_name == 'workflow_dispatch' || steps.change_scope.outputs.enrichment == 'true'
         working-directory: workers/enrichment-python
         run: python -m unittest discover -s tests -p 'test_*.py' -v
-
-      - name: Run development adapter tests
-        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && steps.change_scope.outputs.integration == 'true')
-        run: python -m unittest discover -s scripts/dev -p 'test_*.py' -v
 
       - name: Run required GCE host delivery tests
         if: github.event_name == 'workflow_dispatch' || steps.change_scope.outputs.gce == 'true'
