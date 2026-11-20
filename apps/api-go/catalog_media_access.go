@@ -140,6 +140,53 @@ func (s *Server) paidCatalogSourceImages(ctx context.Context, p Principal, confi
 	return source.Images, nil
 }
 
+type paidCatalogImageViewStore interface {
+	paidCatalogImageView(context.Context, string, string, string, bool) (CatalogArticleView, []CatalogImage, error)
+}
+
+// The article can acquire a source after the request authorized its identity.
+// Refresh once, and mint only when the response and current image view agree.
+func (s *Server) refreshPaidCatalogArticleImageContext(ctx context.Context, p Principal, configuration CatalogConfiguration, previous PaidArticleIdentity, view CatalogArticleView) (PaidArticleIdentity, []CatalogImage, error) {
+	if err := ctx.Err(); err != nil {
+		return PaidArticleIdentity{}, nil, err
+	}
+	currentConfiguration, err := s.resolveCatalogScope(ctx, p, configuration.ID, configuration.Region, false)
+	if err != nil {
+		return PaidArticleIdentity{}, nil, err
+	}
+	current, err := s.paidMediaIdentity(ctx, currentConfiguration, previous.CanonicalArticleID)
+	if err != nil {
+		return PaidArticleIdentity{}, nil, err
+	}
+	if current.VehicleID != previous.VehicleID || current.ProviderSlug != previous.ProviderSlug ||
+		current.SourceVehicleRef != previous.SourceVehicleRef || current.SourceArticleRef != previous.SourceArticleRef ||
+		!samePaidCatalogID(current.CurrentSourceRevisionID, view.Article.SourceRevisionID) {
+		return PaidArticleIdentity{}, nil, ErrCatalogNotFound
+	}
+	store, ok := s.catalog.(paidCatalogImageViewStore)
+	if !ok {
+		return PaidArticleIdentity{}, nil, ErrVehicleGrantUnavailable
+	}
+	projection, images, err := store.paidCatalogImageView(ctx, currentConfiguration.ID, current.CanonicalArticleID, *view.Article.SourceRevisionID, false)
+	if err != nil {
+		return PaidArticleIdentity{}, nil, err
+	}
+	if projection.Withdrawn {
+		return PaidArticleIdentity{}, nil, ErrCatalogWithdrawn
+	}
+	if !paidCatalogViewMatches(projection, current) || !samePaidCatalogID(projection.Article.SourceRevisionID, view.Article.SourceRevisionID) ||
+		!samePaidCatalogID(projection.Article.CanonicalRevisionID, view.Article.CanonicalRevisionID) {
+		return PaidArticleIdentity{}, nil, ErrCatalogNotFound
+	}
+	if err := ctx.Err(); err != nil {
+		return PaidArticleIdentity{}, nil, err
+	}
+	if err := s.checkPaidCatalogGrant(ctx, p, currentConfiguration); err != nil {
+		return PaidArticleIdentity{}, nil, err
+	}
+	return current, images, ctx.Err()
+}
+
 func (s *Server) rewritePaidCatalogArticleImages(ctx context.Context, p Principal, configuration CatalogConfiguration, identity PaidArticleIdentity, view *CatalogArticleView) error {
 	if view == nil {
 		return ErrCatalogNotFound
@@ -155,14 +202,17 @@ func (s *Server) rewritePaidCatalogArticleImages(ctx context.Context, p Principa
 		return ErrCatalogNotFound
 	}
 	// A cold lifecycle projection may have no source yet. It cannot mint URLs.
-	if view.Article.SourceRevisionID == nil || identity.CurrentSourceRevisionID == nil {
+	if view.Article.SourceRevisionID == nil || !commerceUUID(*view.Article.SourceRevisionID) {
 		return nil
 	}
 	selected := *view.Article.SourceRevisionID
-	if !commerceUUID(selected) || !commerceUUID(*identity.CurrentSourceRevisionID) {
-		return nil
+	var sourceImages []CatalogImage
+	var err error
+	if samePaidCatalogID(identity.CurrentSourceRevisionID, view.Article.SourceRevisionID) {
+		sourceImages, err = s.paidCatalogSourceImages(ctx, p, configuration.ID, identity.CanonicalArticleID, selected)
+	} else {
+		identity, sourceImages, err = s.refreshPaidCatalogArticleImageContext(ctx, p, configuration, identity, *view)
 	}
-	sourceImages, err := s.paidCatalogSourceImages(ctx, p, configuration.ID, identity.CanonicalArticleID, selected)
 	if err != nil {
 		return err
 	}
@@ -207,9 +257,7 @@ func (s *Server) servePaidCatalogImage(w http.ResponseWriter, r *http.Request, p
 		s.writePaidCatalogError(w, r, ErrCatalogNotFound)
 		return
 	}
-	store, narrow := s.catalog.(interface {
-		paidCatalogImageView(context.Context, string, string, string, bool) (CatalogArticleView, []CatalogImage, error)
-	})
+	store, narrow := s.catalog.(paidCatalogImageViewStore)
 	articleProjection := ref.Projection == "article"
 	var view CatalogArticleView
 	var sourceImages []CatalogImage
