@@ -63,6 +63,7 @@ let vehicle = null,
   sourceData = null;
 let quote = null,
   merchant = null,
+  merchantRequest = null,
   access = "unknown",
   libraryCursor = null,
   libraryItems = [],
@@ -392,13 +393,15 @@ function renderPurchase() {
           ? "Payment received. Article access is still being checked. Use Check payment status; do not pay again."
           : confirming && session.state.authenticated
             ? "Payment confirmation is pending. Use Check payment status; do not pay again."
-            : !configured
-              ? "Purchasing is currently unavailable. You can keep browsing."
-              : !session.state.authenticated
-                ? "Sign in to check access and purchase for your account."
-                : access === "missing"
-                  ? "One purchase for this exact configuration and region. No renewal is required, subject to published terms and source availability."
-                  : "Checking access. Try again if the service is unavailable.";
+            : merchantRequest
+              ? "Checking purchase availability…"
+              : !configured
+                ? "Purchasing is currently unavailable. You can keep browsing."
+                : !session.state.authenticated
+                  ? "Sign in to check access and purchase for your account."
+                  : access === "missing"
+                    ? "One purchase for this exact configuration and region. No renewal is required, subject to published terms and source availability."
+                    : "Checking access. Try again if the service is unavailable.";
   $("purchase-action").textContent = !session.state.authenticated
     ? "Sign in with Google"
     : access === "owned"
@@ -444,7 +447,13 @@ async function selectVehicle(g, articleID = "") {
   if (!validScope(scope())) return;
   const selected = scope();
   const quoteRequest = (async () => {
-    if (openDemo || merchant?.enabled !== true) return;
+    if (openDemo) return;
+    if (merchantRequest) await merchantRequest;
+    if (!g.current()) return;
+    if (merchant?.enabled !== true) {
+      renderPurchase();
+      return;
+    }
     try {
       const q = await requestJSON(
         `/v1/workshop/quote?configuration_id=${selected.configuration_id}&region=${selected.region}`,
@@ -460,6 +469,7 @@ async function selectVehicle(g, articleID = "") {
       }
     } catch {
       // The quote is optional for owned articles. Its absence keeps Buy disabled.
+      if (g.current()) renderPurchase();
     }
   })();
   if (!openDemo && !session.state.authenticated) {
@@ -1388,11 +1398,13 @@ async function bootstrap() {
     ? requestJSON("/v1/catalog/years").catch(() => null)
     : null;
   if (!openDemo) {
-    const [, config] = await Promise.all([
-      session.bootstrap(),
-      requestJSON("/workshop/purchase-config.json").catch(() => null),
-    ]);
-    merchant = config;
+    merchantRequest = requestJSON("/workshop/purchase-config.json")
+      .catch(() => null)
+      .then((config) => {
+        merchant = config;
+        merchantRequest = null;
+      });
+    await session.bootstrap();
   }
   sessionEstablished = true;
   await restoreRoute(years);

@@ -1322,7 +1322,7 @@ function paidPurchaseLifecycleHarness(selectionErrors, { realArticleIndex = fals
     element: (tag, text) => ({ tag, textContent: text }),
     names: ['year', 'make', 'model', 'configuration'],
     vehicle: { id: scope.configuration_id, region: scope.region }, quote,
-    merchant: merchantFixture(), access: 'missing', currentOrder: '', paidOrder: null, unconfirmedOrder: null,
+    merchant: merchantFixture(), merchantRequest: null, access: 'missing', currentOrder: '', paidOrder: null, unconfirmedOrder: null,
     articles: [], searchItems: null, searchQuery: '', searchPending: false,
     searchComplete: false, searchError: false, searchTimer: null,
     sourceRevision: 0,
@@ -2499,6 +2499,33 @@ test('paid access pending renders a non-Buy action even without merchant configu
   }
 });
 
+test('checkout remains disabled while purchase settings are loading', () => {
+  const nodes = new Map();
+  const $ = id => {
+    if (!nodes.has(id)) nodes.set(id, { replaceChildren() {}, append() {} });
+    return nodes.get(id);
+  };
+  const context = {
+    $, validScope, validQuote, purchaseConfiguration, configurationLabel,
+    scope: () => scope, quote: scopedQuoteFixture(), merchant: null,
+    merchantRequest: Promise.resolve(), access: 'missing', currentOrder: '', unconfirmedOrder: null,
+    vehicle: { id: scope.configuration_id, region: scope.region },
+    session: { state: { authenticated: true, ready: true } },
+    document: { createTextNode: text => ({ textContent: text }) },
+    element: (tag, text) => ({ tag, textContent: text }),
+  };
+  runInNewContext(appSection('function renderPurchase(', 'async function selectVehicle('), context);
+  context.renderPurchase();
+  assert.equal($('purchase-message').textContent, 'Checking purchase availability…');
+  assert.equal($('purchase-action').disabled, true);
+  assert.equal($('purchase-terms').hidden, true);
+  context.merchant = merchantFixture();
+  context.merchantRequest = null;
+  context.renderPurchase();
+  assert.equal($('purchase-action').disabled, false);
+  assert.equal($('purchase-terms').hidden, false);
+});
+
 test('purchase readiness requires the supported terms contract', async t => {
   assert.equal(purchaseConfiguration(merchantFixture(), quoteTermsFixture()), true);
   for (const [label, version] of [
@@ -3526,7 +3553,7 @@ const scopedQuoteFixture = () => ({
 function selectionQuoteHarness(merchant, { authenticated = true, openDemo = false, request = async () => scopedQuoteFixture() } = {}) {
   const navigation = new NavigationGeneration(), generation = navigation.next(), calls = [], opened = [], nodes = new Map();
   const context = {
-    merchant, openDemo, quote: null, access: "unknown", validScope, validQuote, scope: () => scope,
+    merchant, merchantRequest: null, openDemo, quote: null, access: "unknown", validScope, validQuote, scope: () => scope,
     session: { state: { authenticated } }, clearProtected() {}, renderPurchase() {}, show() {}, status() {},
     $: id => { if (!nodes.has(id)) nodes.set(id, {}); return nodes.get(id); },
     requestJSON: async (path, options) => { calls.push({ path, options }); return request(path, options); },
@@ -3583,6 +3610,59 @@ test('enabled purchasing keeps scoped quote validation, tolerated unavailable qu
     assert.equal(h.context.quote, validQuote(result, scope) ? result : null);
     assert.equal(h.opened.length, 1);
   }
+});
+
+test('startup restores an authenticated route before purchase configuration settles', async () => {
+  let finishMerchant;
+  const opened = [];
+  const config = { enabled: true };
+  const context = {
+    URLSearchParams, location: { search: '?view=library' }, openDemo: false,
+    merchant: null, merchantRequest: null, sessionEstablished: false,
+    session: { async bootstrap() {} }, invalidate() {}, renderPurchase() {},
+    requestJSON(path) {
+      assert.equal(path, '/workshop/purchase-config.json');
+      return new Promise(resolve => { finishMerchant = resolve; });
+    },
+    async restoreRoute() { opened.push('library'); },
+  };
+  runInNewContext(appSection('async function bootstrap()', 'async function restoreRoute('), context);
+  const booted = context.bootstrap();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(opened, ['library']);
+  assert.equal(context.sessionEstablished, true);
+  assert.equal(context.merchant, null);
+  finishMerchant(config);
+  await booted;
+  await context.merchantRequest;
+  assert.equal(context.merchant, config);
+});
+
+test('owned articles can open before the purchase settings and scoped quote arrive', async () => {
+  let finishMerchant;
+  const h = selectionQuoteHarness(null);
+  h.context.merchantRequest = new Promise(resolve => { finishMerchant = resolve; });
+  await h.context.selectVehicle(h.generation, 'article-a');
+  assert.equal(h.opened[0]?.id, 'article-a');
+  assert.equal(h.calls.length, 0);
+  h.context.merchant = { enabled: true };
+  finishMerchant();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.calls.length, 1);
+  assert.equal(validQuote(h.context.quote, scope), true);
+});
+
+test('an obsolete vehicle cannot request a quote when purchase settings arrive', async () => {
+  let finishMerchant;
+  const h = selectionQuoteHarness(null);
+  h.context.merchantRequest = new Promise(resolve => { finishMerchant = resolve; });
+  await h.context.selectVehicle(h.generation, 'article-a');
+  h.navigation.clear();
+  h.context.merchant = { enabled: true };
+  finishMerchant();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.calls.length, 0);
+  assert.equal(h.context.quote, null);
 });
 
 test('owned articles open while a scoped quote is still in flight', async () => {
