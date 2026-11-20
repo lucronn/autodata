@@ -225,14 +225,19 @@ export function createSession({
       clear();
       state.message = "Signing out…";
       changed();
-      if (sdk && auth) await sdk.signOut(auth).catch(() => {});
+      const firebaseLogout = sdk && auth
+        ? Promise.resolve().then(() => sdk.signOut(auth)).catch(() => {})
+        : null;
       try {
-        await request("/auth/logout", {
-          method: "POST",
-          body: {},
-          headers: { "X-CSRF-Token": csrf },
-          timeout: 10000,
-        });
+        await Promise.all([
+          request("/auth/logout", {
+            method: "POST",
+            body: {},
+            headers: { "X-CSRF-Token": csrf },
+            timeout: 10000,
+          }),
+          firebaseLogout,
+        ]);
         state.message = "Signed out.";
         state.ready = false;
         changed();

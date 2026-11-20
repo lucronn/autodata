@@ -207,76 +207,9 @@ def _store_captured_source(cur, lease, captured):
     ).fetchone()
     if observed:
         return observed["source_revision_id"]
-    snapshots = {}
-    for resource in captured.resources:
-        snapshots[str(resource["source_snapshot_id"])] = persist_resource(
-            cur, resource
-        )
-    body_snapshot = snapshots[str(captured.body_source_snapshot_id)]
-    revision_id = uuid4()
-    row = cur.execute(
-        """INSERT INTO canonical_article_source_revisions(source_revision_id,canonical_article_id,source_fingerprint,body_source_snapshot_id,resource_manifest,source_document,source_images,source_body,source_steps,projection_status,evidence_manifest,captured_at,projection_version)
-    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT(canonical_article_id,source_fingerprint,projection_version) DO NOTHING RETURNING source_revision_id""",
-        (
-            revision_id,
-            lease.canonical_article_id,
-            captured.source_fingerprint,
-            body_snapshot,
-            Jsonb(
-                _remap_snapshot_references(captured.resource_manifest, snapshots)
-            ),
-            Jsonb(captured.source_document),
-            Jsonb(captured.source_images),
-            captured.source_body,
-            Jsonb(captured.source_steps),
-            captured.projection_status,
-            Jsonb(
-                _remap_snapshot_references(captured.evidence_manifest, snapshots)
-            ),
-            captured.captured_at,
-            captured.projection_version,
-        ),
-    ).fetchone()
-    if row is None:
-        row = cur.execute(
-            """SELECT source_revision_id, source_document FROM canonical_article_source_revisions
-            WHERE canonical_article_id=%s AND source_fingerprint=%s AND projection_version=%s""",
-            (lease.canonical_article_id, captured.source_fingerprint, captured.projection_version),
-        ).fetchone()
-        if source_only and projection == "source-projection-v3" and row["source_document"] != captured.source_document:
-            raise ValueError("SOURCE_MEDIA_REPLAY_PROJECTION_CONFLICT")
-    revision_id = row["source_revision_id"]
-    provenance = _remap_snapshot_references(captured.resource_provenance, snapshots)
-    body_resource = next(r for r in captured.resources if r["role"] == "body")
-    cur.execute(
-        """INSERT INTO canonical_article_source_observations(source_observation_id,canonical_article_id,source_revision_id,source_fetch_job_id,request_generation,body_provider_revision,resource_provenance,captured_context,resolution_source_snapshot_id,descriptor_source_snapshot_id,captured_at)
-    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-        (
-            uuid4(),
-            lease.canonical_article_id,
-            revision_id,
-            lease.job_id,
-            job["request_generation"],
-            next(
-                (
-                    r.get("source_revision")
-                    for r in provenance
-                    if r.get("role") == "body"
-                ),
-                body_resource["source_revision"],
-            ),
-            Jsonb(provenance),
-            Jsonb(
-                {
-                    "vehicle": context.vehicle,
-                    "descriptor": context.descriptor,
-                    "evidence_ids": list(context.evidence_ids),
-                }
-            ),
-            context.resolution_snapshot_id,
-            context.descriptor_snapshot_id,
-            captured.captured_at,
-        ),
+    revision_id = _persist_article_capture(
+        cur, lease.canonical_article_id, lease.job_id, job["request_generation"], captured,
+        verify_existing=source_only and projection == "source-projection-v3",
     )
     if source_only:
         cur.execute("""UPDATE source_fetch_jobs SET source_revision_id=%s,transformation_key=NULL,
@@ -359,6 +292,83 @@ def _store_captured_source(cur, lease, captured):
     cur.execute(
         """UPDATE canonical_articles SET current_source_revision_id=%s,current_canonical_revision_id=%s,current_job_id=%s,updated_at=clock_timestamp() WHERE canonical_article_id=%s""",
         (revision_id, current_canonical, current_job, lease.canonical_article_id),
+    )
+    return revision_id
+
+
+def _persist_article_capture(cur, canonical_article_id, job_id, generation, captured, *, verify_existing=False):
+    """Append immutable source and observation inside an article owner's transaction."""
+    context = captured.context
+    snapshots = {}
+    for resource in captured.resources:
+        snapshots[str(resource["source_snapshot_id"])] = persist_resource(
+            cur, resource
+        )
+    body_snapshot = snapshots[str(captured.body_source_snapshot_id)]
+    revision_id = uuid4()
+    row = cur.execute(
+        """INSERT INTO canonical_article_source_revisions(source_revision_id,canonical_article_id,source_fingerprint,body_source_snapshot_id,resource_manifest,source_document,source_images,source_body,source_steps,projection_status,evidence_manifest,captured_at,projection_version)
+    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT(canonical_article_id,source_fingerprint,projection_version) DO NOTHING RETURNING source_revision_id""",
+        (
+            revision_id,
+            canonical_article_id,
+            captured.source_fingerprint,
+            body_snapshot,
+            Jsonb(
+                _remap_snapshot_references(captured.resource_manifest, snapshots)
+            ),
+            Jsonb(captured.source_document),
+            Jsonb(captured.source_images),
+            captured.source_body,
+            Jsonb(captured.source_steps),
+            captured.projection_status,
+            Jsonb(
+                _remap_snapshot_references(captured.evidence_manifest, snapshots)
+            ),
+            captured.captured_at,
+            captured.projection_version,
+        ),
+    ).fetchone()
+    if row is None:
+        row = cur.execute(
+            """SELECT source_revision_id, source_document FROM canonical_article_source_revisions
+            WHERE canonical_article_id=%s AND source_fingerprint=%s AND projection_version=%s""",
+            (canonical_article_id, captured.source_fingerprint, captured.projection_version),
+        ).fetchone()
+        if verify_existing and row["source_document"] != captured.source_document:
+            raise ValueError("SOURCE_MEDIA_REPLAY_PROJECTION_CONFLICT")
+    revision_id = row["source_revision_id"]
+    provenance = _remap_snapshot_references(captured.resource_provenance, snapshots)
+    body_resource = next(r for r in captured.resources if r["role"] == "body")
+    cur.execute(
+        """INSERT INTO canonical_article_source_observations(source_observation_id,canonical_article_id,source_revision_id,source_fetch_job_id,request_generation,body_provider_revision,resource_provenance,captured_context,resolution_source_snapshot_id,descriptor_source_snapshot_id,captured_at)
+    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+        (
+            uuid4(),
+            canonical_article_id,
+            revision_id,
+            job_id,
+            generation,
+            next(
+                (
+                    r.get("source_revision")
+                    for r in provenance
+                    if r.get("role") == "body"
+                ),
+                body_resource["source_revision"],
+            ),
+            Jsonb(provenance),
+            Jsonb(
+                {
+                    "vehicle": context.vehicle,
+                    "descriptor": context.descriptor,
+                    "evidence_ids": list(context.evidence_ids),
+                }
+            ),
+            context.resolution_snapshot_id,
+            context.descriptor_snapshot_id,
+            captured.captured_at,
+        ),
     )
     return revision_id
 

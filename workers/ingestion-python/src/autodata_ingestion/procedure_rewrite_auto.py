@@ -1,9 +1,9 @@
 """Automatic full-prose rewriting with permanent, mechanically checked output.
 
 Checks preserve structure and literal technical tokens. Current prose drafts
-also preserve recognizable safety prerequisites and hardware orientation,
-check common action verbs, and reject near-verbatim wording. Semantic
-equivalence still requires comparison with the source procedure.
+also check recognizable safety prerequisites, direction, and action wording.
+Some reassigned component instructions and unsupported introductions can be
+detected mechanically. Semantic equivalence still requires source comparison.
 """
 from collections import Counter
 from hashlib import sha256
@@ -17,7 +17,8 @@ from .article_lifecycle_types import ValidationResult
 PROFILE = "full-prose-auto-v1"
 _PROSE_PROMPT_V4 = "full-prose-auto-prompt-v4"
 _PROSE_PROMPT_V5 = "full-prose-auto-prompt-v5"
-_PROSE_PROMPT_VERSION = "full-prose-auto-prompt-v6"
+_PROSE_PROMPT_V6 = "full-prose-auto-prompt-v6"
+_PROSE_PROMPT_VERSION = "full-prose-auto-prompt-v7"
 _WORDS = re.compile(r"\w+")
 _INLINE_WARNING = re.compile(
     r"(?:^|[.!?]\s+|\n)[ \t]*(?:warnings?|caution|danger|notice|important)\s*[:!–—-]"
@@ -134,6 +135,35 @@ _INTRO_DIRECTIVE = re.compile(
 )
 
 
+_SIMPLE_ACTION = r"(?:remove|take\s+off|lift\s+off|inspect|check|connect|attach|disconnect|detach|install|fit)"
+_TARGET_WORD = r"[a-z]+(?:-[a-z]+)*"
+_SIMPLE_TARGET = r"(?:the\s+)?(?P<object>" + _TARGET_WORD + r"(?:\s+" + _TARGET_WORD + r"){0,5})"
+_SIMPLE_DIRECTIVE = re.compile(
+    r"(?P<verb>" + _SIMPLE_ACTION + r")\s+" + _SIMPLE_TARGET + r"\s*[.!]?",
+    re.IGNORECASE,
+)
+_SPLIT_REMOVAL = re.compile(r"(?:take|lift)\s+" + _SIMPLE_TARGET + r"\s+off\s*[.!]?", re.IGNORECASE)
+_TARGET_DELIMITERS = frozenset(
+    "after again already and as at before behind between but carefully equally evenly first for from "
+    "gently here if in into near next now of on onto or over slowly then there through to under until "
+    "the a an using when while with without".split()
+)
+_INTRO_RISK_CLAIM = re.compile(
+    r"\b(?:safe(?:ty)?\s+(?:to|for)|guarantee[sd]?|"
+    r"no\s+(?:[a-z-]+\s+){1,6}(?:needed|required|necessary)|"
+    r"(?:applies|applicable)\s+(?:only\s+)?to|compatible\s+with|"
+    r"(?:vehicles?|models?|versions?|trims?)\s+(?:equipped|fitted)\s+with)\b",
+    re.IGNORECASE,
+)
+_INTRO_COMPONENT = re.compile(
+    r"\b(?:airbags?|auxiliary batter(?:y|ies)|brake lines?|brake fluid|"
+    r"brake calipers?|fuel (?:pump|rail|lines?)|hydraulic pressure|"
+    r"high[-\s]voltage batter(?:y|ies)|traction batter(?:y|ies)|steering (?:rack|column))\b",
+    re.IGNORECASE,
+)
+_INTRO_DIRECTION = re.compile(r"\b(?:LH|RH|left[-\s]hand|right[-\s]hand|inboard|outboard)\b", re.IGNORECASE)
+
+
 def _technical_only(text):
     """Only token-only specifications can stay verbatim without a prose rewrite."""
     return not any(char.isalpha() for char in full._TOKENS.sub("", text))
@@ -229,12 +259,12 @@ def _build_auto_prompt_v5(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def build_auto_prompt(document, *, context):
+def _auto_prompt_payload_v6(document, *, context):
     previous = _build_auto_prompt_v5(document, context=context)
     payload = json.loads(previous)
     if not payload["slots"]:
-        return previous
-    payload["prompt_version"] = _PROSE_PROMPT_VERSION
+        return payload
+    payload["prompt_version"] = _PROSE_PROMPT_V6
     for slot in payload["slots"]:
         if _negative_scope(slot["text"]):
             slot["required_action"] = "retain"
@@ -243,12 +273,28 @@ def build_auto_prompt(document, *, context):
         "position or side are valid. Preserve explicit negative conditions and applicability "
         "restrictions marked retain."
     )
+    return payload
+
+
+def _build_auto_prompt_v6(document, *, context):
+    payload = _auto_prompt_payload_v6(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def build_auto_prompt(document, *, context):
+    payload = _auto_prompt_payload_v6(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_VERSION
+        payload["rules"].append(
+            "Keep each simple directive's original target. Describe the subject of the article in the "
+            "introduction. Leave applicability, safety assurances and procedural guarantees in the source."
+        )
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
 def _auto_prompt_version(document, *, context, prompt_hash):
     """Identify the rules bound to the saved model attempt."""
-    for builder in (build_auto_prompt, _build_auto_prompt_v5, _build_auto_prompt_v4,
+    for builder in (build_auto_prompt, _build_auto_prompt_v6, _build_auto_prompt_v5, _build_auto_prompt_v4,
                     _build_auto_prompt_v2, _build_auto_prompt_v1):
         payload = builder(document, context=context)
         if sha256(payload.encode()).hexdigest() == prompt_hash:
@@ -357,8 +403,98 @@ def _direction_scope(text):
     return labels, tuple(oriented_actions)
 
 
+def _simple_directive(text):
+    text = text.strip()
+    match = _SIMPLE_DIRECTIVE.fullmatch(text)
+    if match:
+        # The existing action pattern recognizes "fit" with a determiner.
+        action = _ACTIONS.match(match["verb"] + " the").lastgroup
+    else:
+        match = _SPLIT_REMOVAL.fullmatch(text)
+        action = "remove"
+    if not match:
+        return None
+    target = tuple(_WORDS.findall(match["object"].casefold()))
+    if not set(target).isdisjoint(_TARGET_DELIMITERS):
+        return None
+    return action, target
+
+
+def _check_target_swaps(slots, restored):
+    # A reciprocal swap or cycle of distinct, source-unique instructions is
+    # evidence of reassignment. A repeated operation or one-way match is
+    # insufficient because two source phrases can name the same component.
+    if len(slots) < 2:
+        return
+    original = [_simple_directive(slot["text"]) for slot in slots]
+    counts = Counter(target for target in original if target)
+    unique = {target: index for index, target in enumerate(original) if counts[target] == 1}
+    if len(unique) < 2:
+        return
+    moves = {}
+    for target, index in unique.items():
+        replacement = _simple_directive(full._get(restored, slots[index]["path"]))
+        if replacement in unique and replacement != target:
+            moves[index] = unique[replacement]
+    visited = set()
+    for index in moves:
+        path = set()
+        while index in moves and index not in visited:
+            if index in path:
+                raise ValueError("REWRITE_COMPONENT_SWAP")
+            path.add(index)
+            index = moves[index]
+        visited.update(path)
+
+
+def _introduction_terms(text):
+    terms = set()
+    for match in _INTRO_COMPONENT.finditer(text):
+        phrase = " ".join(match.group().casefold().replace("-", " ").split())
+        if phrase.endswith("batteries"):
+            phrase = phrase.removesuffix("batteries") + "battery"
+        terms.add(phrase.removesuffix("s"))
+    return terms
+
+
+def _explicit_intro_directions(text):
+    # A compound corner or a technical side name can be checked directly.
+    # Ordinary phrases like "in front of" need broader context.
+    return {
+        direction for direction in _direction_labels(text)
+        if " " in direction
+    } | {
+        direction for match in _INTRO_DIRECTION.finditer(text) for direction in _direction_labels(match.group())
+    }
+
+
+def _check_intro_claims(source, slots, introduction):
+    if _INTRO_RISK_CLAIM.search(introduction):
+        raise ValueError("REWRITE_INTRODUCTION_UNSUPPORTED_CLAIM")
+    components = _introduction_terms(introduction)
+    directions = _explicit_intro_directions(introduction)
+    if not components and not directions:
+        return
+    evidence = [source.get("title", ""), *(slot["text"] for slot in slots)]
+    evidence.extend(
+        block["text"] for block in source["blocks"] if block["type"] in {"heading", "callout"}
+    )
+    for text in evidence:
+        if not isinstance(text, str):
+            continue
+        if components:
+            components.difference_update(_introduction_terms(text))
+        if directions:
+            directions.difference_update(_direction_labels(text))
+        if not components and not directions:
+            return
+    raise ValueError("REWRITE_INTRODUCTION_UNSUPPORTED_CLAIM")
+
+
 def _uses_prose_guards(prompt_version, slot_count):
-    return bool(slot_count) and prompt_version in (None, _PROSE_PROMPT_V4, _PROSE_PROMPT_V5, _PROSE_PROMPT_VERSION)
+    return bool(slot_count) and prompt_version in (
+        None, _PROSE_PROMPT_V4, _PROSE_PROMPT_V5, _PROSE_PROMPT_V6, _PROSE_PROMPT_VERSION,
+    )
 
 
 def _require_changes(source, candidate, *, prompt_version):
@@ -367,7 +503,8 @@ def _require_changes(source, candidate, *, prompt_version):
     slots = full.prose_slots(source)
     guard_prose = _uses_prose_guards(prompt_version, len(slots))
     guard_actions = guard_prose and prompt_version != _PROSE_PROMPT_V4
-    guard_direction = guard_prose and prompt_version in (None, _PROSE_PROMPT_VERSION)
+    guard_direction = guard_prose and prompt_version in (None, _PROSE_PROMPT_V6, _PROSE_PROMPT_VERSION)
+    guard_claims = guard_prose and prompt_version in (None, _PROSE_PROMPT_VERSION)
     introduction = candidate["blocks"][0].get("text", "")
     if guard_prose and (_INLINE_WARNING.search(introduction) or (guard_actions and _PREREQUISITE.search(introduction))):
         raise ValueError("REWRITE_SAFETY_MUTATION")
@@ -375,6 +512,8 @@ def _require_changes(source, candidate, *, prompt_version):
         raise ValueError("REWRITE_INTRODUCTION_INSTRUCTION")
     if guard_actions and _spec_scope(introduction):
         raise ValueError("REWRITE_SPEC_SCOPE_MUTATION")
+    if guard_claims:
+        _check_intro_claims(source, slots, introduction)
     for slot in slots:
         original = slot["text"]
         replacement = full._get(restored, slot["path"])
@@ -405,6 +544,8 @@ def _require_changes(source, candidate, *, prompt_version):
             original_actions = _execution_order(original)
             if original_actions and original_actions != _execution_order(replacement):
                 raise ValueError("REWRITE_ACTION_MUTATION")
+    if guard_claims:
+        _check_target_swaps(slots, restored)
 
 
 def render_auto(source, response, *, prompt_version=None):
@@ -429,7 +570,8 @@ def validate_auto(source, candidate, *, response=None, prompt_version=None):
         validator_version = {
             _PROSE_PROMPT_V4: "full-prose-auto-validator-v2",
             _PROSE_PROMPT_V5: "full-prose-auto-validator-v3",
-        }.get(prompt_version, "full-prose-auto-validator-v4")
+            _PROSE_PROMPT_V6: "full-prose-auto-validator-v4",
+        }.get(prompt_version, "full-prose-auto-validator-v5")
     report.update(validator_version=validator_version, profile_version=PROFILE,
         publication_mode="automatic", content_acceptance_required=False,
         complete_rewrite=False, passed=not errors, error_codes=errors)

@@ -478,7 +478,10 @@ function deferredAuthOperation() {
   return { promise, resolve, reject };
 }
 
-async function sessionPreparationHarness({ authenticated = false, persistence = async () => {}, constructProvider = () => {}, popup } = {}) {
+async function sessionPreparationHarness({
+  authenticated = false, persistence = async () => {}, constructProvider = () => {}, popup,
+  sdkSignOut = async () => {}, serverLogout = async () => {},
+} = {}) {
   const { createSession } = await import('./workshop/auth.mjs');
   const calls = { loads: 0, initializations: 0, providers: 0, persistence: 0, popups: 0, signouts: 0, exchanges: 0 };
   const changes = [], user = {}, auth = {};
@@ -512,7 +515,7 @@ async function sessionPreparationHarness({ authenticated = false, persistence = 
       assert.equal(forceRefresh, true);
       return { token: 'synthetic-token', authTime: new Date().toISOString() };
     },
-    signOut: async actualAuth => { assert.equal(actualAuth, auth); calls.signouts++; },
+    signOut: async actualAuth => { assert.equal(actualAuth, auth); await sdkSignOut(++calls.signouts); },
   };
   const session = createSession({
     loadSDK: async () => { calls.loads++; return sdk; },
@@ -525,6 +528,7 @@ async function sessionPreparationHarness({ authenticated = false, persistence = 
       }
       if (path === '/auth/logout') {
         assert.equal(options.headers['X-CSRF-Token'], 'cookie-csrf');
+        await serverLogout();
         authenticated = false;
         return null;
       }
@@ -539,6 +543,39 @@ async function sessionPreparationHarness({ authenticated = false, persistence = 
   });
   return { session, calls, changes };
 }
+
+test('server revocation starts while Firebase logout is pending', async () => {
+  const sdkStarted = deferredAuthOperation();
+  const sdkFinished = deferredAuthOperation();
+  const serverFinished = deferredAuthOperation();
+  let serverStarted = false;
+  const { session } = await sessionPreparationHarness({
+    sdkSignOut(attempt) {
+      if (attempt === 2) {
+        sdkStarted.resolve();
+        return sdkFinished.promise;
+      }
+    },
+    serverLogout() {
+      serverStarted = true;
+      return serverFinished.promise;
+    },
+  });
+  await session.bootstrap();
+  await session.signIn();
+  const logout = session.logout();
+  await sdkStarted.promise;
+  try {
+    assert.equal(serverStarted, true);
+    assert.equal(session.state.authenticated, false);
+    assert.equal(session.state.message, 'Signing out…');
+  } finally {
+    sdkFinished.resolve();
+    serverFinished.resolve();
+    assert.equal(await logout, true);
+  }
+  assert.equal(session.state.message, 'Signed out.');
+});
 
 test('logout preparation preserves provider readiness across an epoch-changing bootstrap', async () => {
   const started = deferredAuthOperation(), firstPersistence = deferredAuthOperation();

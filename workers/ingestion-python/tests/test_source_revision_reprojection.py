@@ -364,7 +364,8 @@ def test_repeat_apply_of_v2_current_source_is_idempotent(runtime, monkeypatch):
     assert second["status"] == "already_applied" and all_rows(runtime.repo) == before
 
 
-def seed_historical_figure(runtime, monkeypatch, provider, *, version="source-projection-v2", publish=False):
+def seed_historical_figure(runtime, monkeypatch, provider, *, version="source-projection-v2",
+                           publish=False, body_fixture=None):
     from io import BytesIO
     from PIL import Image
     from autodata_ingestion import source_article_capture as capture_module
@@ -372,8 +373,11 @@ def seed_historical_figure(runtime, monkeypatch, provider, *, version="source-pr
 
     runtime.article_id = runtime.articles[provider]
     server = runtime.servers[provider]
-    server.body(b'<p>Remove the pump.</p><img data-resource-ref="figure" alt="Pump alignment">'
-                b'<p>Install the replacement.</p>', assets=["figure"])
+    body, media = body_fixture or (
+        b'<p>Remove the pump.</p><img data-resource-ref="figure" alt="Pump alignment">'
+        b'<p>Install the replacement.</p>', "text/html",
+    )
+    server.body(body, media, assets=["figure"])
     figure = BytesIO()
     Image.new("RGB", (24, 24), "green").save(figure, format="PNG")
     server.body(figure.getvalue(), "image/png", ref="figure", kind="asset")
@@ -407,7 +411,7 @@ def seed_historical_figure(runtime, monkeypatch, provider, *, version="source-pr
                                        object_store=runtime.objects, model_client=model)
     state = runtime.read_current()
     assert bool(state["canonical_revision_id"]) == publish
-    assert [block["type"] for block in state["document"]["blocks"]] == ["paragraph", "paragraph", "image"]
+    assert state["document"]["blocks"][-1]["type"] == "image"
     runtime.reset_counters()
     return state["source_revision_id"]
 
