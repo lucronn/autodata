@@ -11,6 +11,7 @@ import signal
 import stat
 import subprocess
 import sys
+import tempfile
 import time
 from urllib.parse import parse_qs, urlsplit
 from urllib.request import Request, urlopen
@@ -384,6 +385,10 @@ def _child(root_name,engine,provider,directory,monkeypatch):
     try:
         assert binding['binding_state']=='complete','API21 source binding unavailable'
         with ExitStack() as stack:
+            # The Stripe SDK resolves a home directory even with its mock HTTP
+            # transport. A container UID may have no passwd entry.
+            fixture_home = stack.enter_context(tempfile.TemporaryDirectory(prefix="workshop-fixture-home-"))
+            monkeypatch.setenv("HOME", fixture_home)
             repo=Repository(os.environ['AUTODATA_WORKSHOP_BROWSER_DATABASE']);result['fixture_database']=repo.database_name
             runtime=LifecycleRuntime(repo,stack)
             scope=configure_scoped_runtime(runtime,provider)
