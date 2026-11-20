@@ -137,6 +137,37 @@ def test_historical_model_output_uses_original_prompt_rules():
     assert result.provenance["original_prompt_version"] == _HISTORICAL_PROMPT
 
 
+@pytest.mark.parametrize("prompt_version", ["full-prose-auto-prompt-v11", "full-prose-auto-prompt-v12"])
+def test_repair_replays_cell_prose_with_original_prompt_version(prompt_version):
+    text = "Remove the cover while the ignition is off."
+    draft = "With the ignition off, take the cover off."
+    instruction = _document([{"kind": "text", "text": text}])["blocks"][0]
+    instruction["block_id"] = "nested-cell-instruction"
+    old = _document([{"kind": "table", "rows": [["25 Nm"]]}, _image()])
+    old["blocks"][0]["rows"][0][0] = {"text": "25 Nm", "blocks": [instruction]}
+    repaired = deepcopy(old)
+    figure = repaired["blocks"].pop()
+    figure["source_order"] = 1
+    cell = repaired["blocks"][0]["rows"][0][0]
+    cell["blocks"][0]["source_order"] = 2
+    cell["blocks"].insert(0, figure)
+    payload = {"introduction": "This procedure describes component access.", "replacements": [
+        {**prose_slots(old, include_cell_blocks=True)[0], "action": "rewrite", "text": draft, "reason": ""},
+    ]}
+    published = render_auto(old, payload, prompt_version=prompt_version)
+
+    result = repair_published_media(old, published, repaired, response=payload, prompt_version=prompt_version)
+
+    repaired_cell = result.document["blocks"][1]["rows"][0][0]
+    assert repaired_cell["text"] == "25 Nm"
+    assert repaired_cell["blocks"][0] == figure
+    assert repaired_cell["blocks"][1]["text"] == draft
+    assert result.remapped_response["replacements"][0]["path"] == "/blocks/0/rows/0/0/blocks/1/text"
+    assert result.validation.passed
+    assert result.provenance["original_prompt_version"] == prompt_version
+    assert result.provenance["model_dispatch_count"] == 0
+
+
 def test_reviewed_repair_preserves_approved_effective_response():
     old, _, repaired, _ = _fixture()
     corrected_response = _response(old, ["Take the pump off.", "Fit the cover in place."])
