@@ -1173,6 +1173,11 @@ footer {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.source-review :focus[tabindex="-1"] {
+  outline: 2px solid var(--blue);
+  outline-offset: 4px;
+  scroll-margin-block: 16px;
+}
 button {
   min-block-size: 28px;
 }

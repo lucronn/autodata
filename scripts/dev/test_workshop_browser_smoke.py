@@ -1398,6 +1398,12 @@ class API21FakeLocator:
         assert self.selector.endswith(" :scope > :is(p, figure)")
         assert "tagName" in expression
         return "P,FIGURE,P,FIGURE,P"
+    async def press(self, key):
+        assert key == 'Enter' and self.selector.endswith('table td figure + .source-reference')
+        self.page.emit(
+            'https://127.0.0.1:32001/v1/catalog/vehicles/'+smoke.CONFIG+'/articles/'+smoke.ARTICLE+'/source',
+            {'source':'Remove the pump.'},
+        )
     async def click(self,**kwargs):
         context=self.page.context;browser=context.browser
         if self.selector=='#signin':context.signed=True

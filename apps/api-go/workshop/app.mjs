@@ -675,16 +675,16 @@ function addImage(parent, image, caption, g, alt = caption) {
 function appendSource(parent, block, review, g) {
   const href = sourceReferenceURL(review, block);
   if (!href) return;
-  const link = element("a", "Source ↗", "source-reference");
+  const link = element("a", "View source", "source-reference");
   link.href = "#source-review";
   link.addEventListener("click", (event) => {
     event.preventDefault();
     if (g.current())
-      void loadSource(href, g).catch((error) => handleSourceError(error, g));
+      void loadSource(href, g, block.block_id || "").catch((error) => handleSourceError(error, g));
   });
   parent.append(link);
 }
-function renderBlocks(parent, blocks, images, review, g) {
+function renderBlocks(parent, blocks, images, review, g, sourceTarget = null) {
   const isListNumber = value =>
     Number.isInteger(value) && value >= -2147483648 && value <= 2147483647;
   const find = (ref) => {
@@ -705,10 +705,12 @@ function renderBlocks(parent, blocks, images, review, g) {
     if (value.asset_id || value.image_id || value.status === "unavailable")
       addReference(target, value);
     for (const ref of value.images || []) addReference(target, ref);
-    if (Array.isArray(value.blocks)) renderBlocks(target, value.blocks, images, review, g);
+    if (Array.isArray(value.blocks)) renderBlocks(target, value.blocks, images, review, g, sourceTarget);
   };
   for (const block of blocks || []) {
     if (!block || typeof block !== "object") continue;
+    const locate = sourceTarget !== null && block.block_id === sourceTarget.id;
+    const childIndex = locate ? parent.children.length : 0;
     const type = block.type;
     if (type === "heading" || type === "paragraph" || type === "link") {
       const tag = type === "heading"
@@ -805,6 +807,7 @@ function renderBlocks(parent, blocks, images, review, g) {
           "article-callout",
         ),
       );
+    if (locate) sourceTarget.node = parent.children[childIndex];
     appendSource(parent, block, review, g);
   }
 }
@@ -996,7 +999,7 @@ function validSourceURL(value) {
     return null;
   }
 }
-async function loadSource(value, g) {
+async function loadSource(value, g, blockID = null) {
   const requested = validSourceURL(value);
   if (!requested) throw new Error("This source reference is unavailable.");
   const selected = ++sourceRevision;
@@ -1015,8 +1018,9 @@ async function loadSource(value, g) {
     )
       throw new Error("The source reference changed. Reload this article.");
     const fragment = document.createDocumentFragment();
+    const sourceTarget = blockID ? { id: blockID, node: null } : null;
     if (data.document?.blocks?.length)
-      renderBlocks(fragment, data.document.blocks, data.images || [], null, g);
+      renderBlocks(fragment, data.document.blocks, data.images || [], null, g, sourceTarget);
     else if (data.source?.format === "json")
       fragment.append(element("pre", data.content ?? ""));
     else fragment.append(element("p", "Stored source is unavailable."));
@@ -1026,6 +1030,11 @@ async function loadSource(value, g) {
     sourceURL = demoPath(requested.href);
     $("article-reference").open = true;
     $("source-review-meta").textContent = "Stored source loaded.";
+    if (blockID !== null) {
+      const target = sourceTarget?.node || $("source-review-title");
+      target.setAttribute("tabindex", "-1");
+      target.focus();
+    }
   } catch (error) {
     if (g.current() && selected === sourceRevision) throw error;
   } finally {

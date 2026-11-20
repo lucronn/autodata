@@ -2628,7 +2628,7 @@ function mediaArticle(blocks, images = [], changes = {}) {
 function articleMediaHarness(overrides = {}) {
   const body = new ArticleMediaNode('body'), nodes = new Map();
   const ids = ['articles', 'article-content', 'source-review-frame', 'reference-data', 'library-items',
-    'article-title', 'catalog-count', 'article-note', 'source-review-meta', 'source-review', 'print',
+    'article-title', 'catalog-count', 'article-note', 'source-review-meta', 'source-review', 'source-review-title', 'print',
     'welcome', 'reader', 'catalog', 'library', 'source-review-link', 'reader-vehicle', 'reader-engine', 'purchase-selection',
     'article-kind', 'article-reference', 'source-review-load', 'check-order'];
   for (const id of ids) { const node = new ArticleMediaNode('div'); nodes.set(id, node); body.append(node); }
@@ -2810,7 +2810,7 @@ for (const label of ['Warning', 'Note']) {
     assert.equal(aside.children[1].children[0].textContent, 'Keep clear.');
     assert.deepEqual(mediaTags(aside.children[1].children[0]), []);
     assert.deepEqual(mediaIDs(aside), ['direct', 'flattened']);
-    assert.equal(parent.children[2].textContent, 'Source ↗');
+    assert.equal(parent.children[2].textContent, 'View source');
     assert.equal(parent.children[3].textContent, 'After');
   });
 }
@@ -3095,6 +3095,33 @@ test('article block media actual loadSource renders retained shapes and rejects 
   assert.equal(calls.length, count);
   assert.equal(frame.children[0], first);
   assert.equal(frame.hidden, false);
+});
+
+test('an inline source reference focuses the matching nested figure in the pinned copy', async () => {
+  const figure = { type: 'image', block_id: 'article:figure:2', asset_id: 'drawing', evidence_ids: ['page-1'] };
+  const blocks = [{ type: 'table', rows: [[{ blocks: [{ ...figure, block_id: 'article:figure:1' }, figure] }]] }];
+  const images = [{ id: 'drawing', url: mediaURL('figure') }];
+  let requested;
+  const h = articleMediaHarness({ requestJSON: async path => {
+    requested = path;
+    return { source: { url: mediaSourceURL }, document: { blocks }, images };
+  } });
+  const content = h.render(mediaArticle([
+    { type: 'paragraph', block_id: 'article:introduction', text: 'Rewritten introduction' },
+    ...blocks,
+  ], images, { content_origin: 'canonical', source_review: { available: true, url: mediaSourceURL } }));
+  const links = mediaDescendants(content, 'a');
+  assert.equal(links.length, 2);
+  assert.equal(links[1].textContent, 'View source');
+  links[1].dispatch('click', { preventDefault() {} });
+  await new Promise(setImmediate);
+  const [first, cited] = mediaDescendants(h.nodes.get('source-review-frame'), 'figure');
+  assert.equal(requested, `${mediaSourceURL}&evidence_id=page-1`);
+  assert.equal(first.focusCalls, undefined);
+  assert.equal(cited.getAttribute('tabindex'), '-1');
+  assert.equal(cited.focusCalls, 1);
+  await h.context.loadSource(mediaSourceURL, h.g, 'block-missing-in-copy');
+  assert.equal(h.nodes.get('source-review-title').focusCalls, 1);
 });
 
 for (const type of ['ordered_list', 'unordered_list', 'callout']) {

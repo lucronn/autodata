@@ -1471,11 +1471,17 @@ async def api_case(browser,origin,name,output,observations=None):
             assert urlsplit(image_url).path.startswith('/v1/catalog/images/v2.')
             image=await api21_get(context,image_url,phase='source-image-http');assert image.status==200 and len(await image.body())>0
             if observations:observations.phase='source-review-http'
-            await page.locator('#article-reference summary').click();await page.locator('#source-review-load').click()
+            if linked_pdf:
+                source_link = page.locator(nested_item + ' table td figure + .source-reference').last
+                await source_link.press('Enter')
+            else:
+                await page.locator('#article-reference summary').click();await page.locator('#source-review-load').click()
             await expect(page.locator('#source-review-frame')).to_contain_text('Remove the pump.')
             await expect(page.locator('#source-review-frame')).to_contain_text('Install a new oil seal after the flange is dry.')
             if linked_pdf:
-                await expect_linked_pdf(page.locator('#source-review-frame'))
+                source_frame = page.locator('#source-review-frame')
+                await expect_linked_pdf(source_frame)
+                await expect(source_frame.locator('table td figure').last).to_be_focused()
             else:
                 stored_figure = page.locator(
                     '#source-review-frame ol[start="4"] > li[value="9"] table td figure img[alt="Drive alignment"]'
