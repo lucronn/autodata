@@ -29,23 +29,34 @@ test('real demo uses the ordinary app only in test mode; sample stays separate',
   for (const [search, ready, expected, banner, fetchCount] of scenarios) {
     const loaded = [];
     const calls = [];
+    const preload = [];
     const nodes = new Map(['test-banner', 'open-demo-banner', 'test-unavailable'].map(id => [id, { hidden: true }]));
     const main = { hidden: false };
     const nav = { hidden: false };
     await runInNewContext(`(async () => { ${code} })()`, {
       URLSearchParams, location: { search }, document: {
         documentElement: { dataset: {} },
+        createElement: tag => ({ tag }),
+        head: { append: element => preload.push(element) },
         getElementById: id => nodes.get(id),
         querySelector: selector => selector === 'main' ? main : nav,
       },
-      fetch: async (path, options) => { calls.push([path, options]); return { ok: true, json: async () => ({ enabled: ready }) }; },
+      fetch: async path => {
+        calls.push({ path, preload: preload.slice(), imports: loaded.slice() });
+        return { ok: true, json: async () => ({ enabled: ready }) };
+      },
       loadModule: async path => loaded.push(path),
     });
     assert.deepEqual(loaded, expected);
     assert.equal(nodes.get('test-banner').hidden, !banner);
     assert.equal(nodes.get('test-unavailable').hidden, !(search.includes('demo=1') && !ready));
     assert.equal(calls.length, fetchCount);
-    if (fetchCount) assert.equal(calls[0][0], '/workshop/demo-mode.json');
+    assert.deepEqual(preload, fetchCount && !search.includes('demo=1') ? [
+      { tag: 'link', rel: 'modulepreload', href: '/workshop/app.mjs' },
+    ] : []);
+    if (fetchCount) assert.deepEqual(calls[0], {
+      path: '/workshop/demo-mode.json', preload, imports: [],
+    });
     if (search.includes('demo=1') && !ready) {
       assert.equal(main.hidden, true);
       assert.equal(nav.hidden, true);
