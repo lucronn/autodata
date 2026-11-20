@@ -822,12 +822,10 @@ def automatic_runtime(runtime, provider):
             if model.mode in {"copy", "unsafe"}:
                 for slot, row in zip(prompt["slots"], replacements):
                     row["text"] = "First, " + slot["text"] if model.mode == "copy" else "Reconnect the battery."
-            if model.mode in {"condition_preserved", "condition_inverted"}:
-                state = "off" if model.mode == "condition_preserved" else "on"
-                assert [slot["text"] for slot in prompt["slots"]] == [
-                    "Remove the pump while the ignition is off.",
-                ]
-                replacements[0]["text"] = f"With the ignition {state}, take the pump off."
+            if model.mode == "explicit_rewrite":
+                original, replacement = model.explicit_rewrite
+                assert [slot["text"] for slot in prompt["slots"]] == [original]
+                replacements[0]["text"] = replacement
             result = {"introduction":"This procedure describes removing the pump.","replacements":replacements}
             raw = json.dumps({"choices":[{"message":{"content":json.dumps(result)}}]}).encode()
             self.send_response(200);self.send_header("Content-Type","application/json")
@@ -955,11 +953,23 @@ def test_automatic_rejected_rewrite_leaves_source_readable(runtime, mode, source
 
 @pytest.mark.parametrize("provider", ["bankone", "banktwo"])
 @pytest.mark.parametrize("preserved", [True, False])
-def test_automatic_ignition_condition_controls_publication(runtime, provider, preserved):
+@pytest.mark.parametrize(("original", "valid", "invalid"), [
+    pytest.param(
+        "Remove the pump while the ignition is off.",
+        "With the ignition off, take the pump off.",
+        "With the ignition on, take the pump off.", id="ignition",
+    ),
+    pytest.param(
+        "Inspect connector C-17 for corrosion.",
+        "Check the C-17 connector for signs of corrosion.",
+        "Check the C-17 connector for signs of wear.", id="inspection",
+    ),
+])
+def test_automatic_qualifier_controls_publication(runtime, provider, preserved, original, valid, invalid):
     ensure = automatic_runtime(runtime, provider)
-    original = "Remove the pump while the ignition is off."
     runtime.change_fixture_body(f"<ol><li>{original}</li></ol>".encode())
-    runtime.model.mode = "condition_preserved" if preserved else "condition_inverted"
+    runtime.model.mode = "explicit_rewrite"
+    runtime.model.explicit_rewrite = (original, valid if preserved else invalid)
     job = ensure().job_id
     runtime.start_workers(1)
     runtime.wait_for(lambda: runtime.read_current()["processing_state"] in ("completed", "failed", "needs_review"))
@@ -973,14 +983,14 @@ def test_automatic_ignition_condition_controls_publication(runtime, provider, pr
         events = conn.execute("SELECT count(*) AS n FROM publication_events").fetchone()["n"]
     if preserved:
         assert state["content_origin"] == "canonical"
-        assert "With the ignition off, take the pump off." in state["body"]
+        assert valid in state["body"]
         assert attempt == {"status": "succeeded", "error_code": None}
         assert events == 1
     else:
         assert state["content_origin"] == "source"
         assert state["canonical_revision_id"] is None
         assert original in state["body"]
-        assert "ignition on" not in state["body"]
+        assert invalid not in state["body"]
         assert attempt == {"status": "failed", "error_code": "REWRITE_QUALIFIER_MUTATION"}
         assert events == 0
     assert runtime.counters() == {"source": 1, "asset": 0, "model": 1, "schedule": 1}
