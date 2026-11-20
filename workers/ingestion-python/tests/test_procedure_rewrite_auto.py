@@ -375,6 +375,96 @@ def test_automatic_rewrite_keeps_nonprocedural_negative_phrasing_editable(source
     assert result.error_code is None
 
 
+@pytest.mark.parametrize("draft", [
+    ("Remove the cable shield.", "Remove the inlet cover."),
+    ("Take off the cable shield.", "Lift off the inlet cover."),
+    ("Take the cable shield off.", "Lift the inlet cover off."),
+])
+def test_automatic_rewrite_rejects_reciprocal_swaps_of_unambiguous_simple_targets(draft):
+    source = document("Remove the inlet cover.", "Remove the cable shield.")
+    result = run(source, response(*draft))
+    assert result.error_code == "REWRITE_COMPONENT_SWAP"
+    assert result.document == source
+
+
+def test_automatic_rewrite_rejects_swapping_brief_unarticled_targets():
+    source = document("Remove inlet cover.", "Remove harness shield.")
+    result = run(source, response("Take off the harness shield.", "Lift the inlet cover off."))
+    assert result.error_code == "REWRITE_COMPONENT_SWAP"
+    assert result.document == source
+
+
+def test_automatic_rewrite_rejects_a_cycle_of_distinct_simple_targets():
+    source = document("Remove the inlet cover.", "Remove the cable shield.", "Remove the pump guard.")
+    result = run(source, response("Take off the cable shield.", "Take the pump guard off.",
+                                  "Lift off the inlet cover."))
+    assert result.error_code == "REWRITE_COMPONENT_SWAP"
+    assert result.document == source
+
+
+@pytest.mark.parametrize("source_texts,draft", [
+    (("Remove the inlet cover.", "Remove the inlet cover."),
+     ("Take off the inlet cover.", "Take off the inlet cover.")),
+    (("Remove the inlet cover.", "Remove the cable shield."),
+     ("Take the cover off the inlet.", "Take off the wiring shield.")),
+    (("Remove the inlet cover.", "Remove the cover from the inlet."),
+     ("Take the cover off the inlet.", "Lift off the inlet cover.")),
+    (("Remove the inlet cover.", "Remove the cable shield after the latch releases."),
+     ("Take the inlet cover off.", "Once the latch releases, take the cable shield off.")),
+    (("Inspect the pump casing.", "Check the pump casing."),
+     ("Look over and inspect the casing of the pump.", "Visually inspect the casing of the pump.")),
+    (("Remove the inlet cover.", "Remove the cable shield.", "Remove the inlet cover."),
+     ("Take off the cable shield.", "Lift off the inlet cover.", "Take the inlet cover off.")),
+])
+def test_automatic_rewrite_keeps_repeat_operations_and_nonliteral_aliases_editable(source_texts, draft):
+    result = run(document(*source_texts), response(*draft))
+    assert result.error_code is None
+
+
+@pytest.mark.parametrize("intro", [
+    "This procedure applies to diesel models equipped with an auxiliary battery.",
+    "No battery isolation is required for this service.",
+    "This repair is safe to perform with the engine running.",
+    "This procedure restores hydraulic pressure by bleeding the brake lines.",
+    "This procedure describes access to the right rear pump cover.",
+    "The pump cover procedure is guaranteed to fix the issue.",
+])
+def test_automatic_rewrite_rejects_unsupported_claims_in_introduction(intro):
+    source = document("Remove the pump cover.")
+    result = run(source, response("Take the cover off the pump.", introduction=intro))
+    assert result.error_code == "REWRITE_INTRODUCTION_UNSUPPORTED_CLAIM"
+    assert result.document == source
+
+
+@pytest.mark.parametrize("source_text,draft,intro", [
+    ("Remove the pump cover.", "Take the cover off the pump.",
+     "This procedure covers access to the pump by removing its cover."),
+    ("Remove the pump cover.", "Take the cover off the pump.", "This article covers pump cover removal."),
+    ("Remove the right rear pump cover.", "Take the pump cover off from the right rear.",
+     "This procedure describes access to the rear-right pump cover."),
+    ("Inspect the brake lines.", "Check the brake lines for wear.",
+     "This procedure covers a brake line inspection."),
+    ("Inspect the brake lines.", "Check the brake lines for wear.",
+     "This section describes checking the brake lines."),
+    ("Remove the high-voltage battery cover.", "Take the cover off the high-voltage battery.",
+     "This procedure describes gaining access to the high voltage battery."),
+])
+def test_automatic_rewrite_accepts_coherent_source_bound_introductions(source_text, draft, intro):
+    result = run(document(source_text), response(draft, introduction=intro))
+    assert result.error_code is None
+
+
+def test_intro_component_can_be_grounded_in_protected_source_text():
+    source = document("Remove the guide bracket.")
+    source["blocks"].append({
+        "block_id": "s0", "source_order": 2, "type": "callout", "label": "Caution",
+        "text": "Protect the brake lines before removing the guide bracket.",
+        "evidence_ids": ["fixture-evidence"],
+    })
+    payload = response("Take off the guide bracket.", introduction="This procedure describes access near the brake line.")
+    assert run(source, payload).error_code is None
+
+
 def test_technical_only_retention_is_explicit_and_table_stays_exact():
     source = document("25 Nm", "Remove the cover.")
     source["blocks"].append({"block_id":"table", "source_order":3,"type":"table",
@@ -422,12 +512,12 @@ def test_prompt_asks_for_automatic_full_prose_without_human_review_obligations()
     assert prompt["slots"][0]["text"] == "Remove the cover."
 
 
-def test_prompt_v6_declares_complete_response_rows_and_server_required_actions():
+def test_prompt_v7_declares_complete_response_rows_and_server_required_actions():
     source = document("Remove the cover.", "25 Nm", "Never start the motor.",
                       "Fit the cover only after the seal sits flush.")
     before = deepcopy(source)
     prompt = json.loads(rewrite.build_rewrite_prompt(source, context={}, profile_version=PROFILE))
-    assert prompt["prompt_version"] == "full-prose-auto-prompt-v6"
+    assert prompt["prompt_version"] == "full-prose-auto-prompt-v7"
     assert prompt["response_shape"] == {"introduction": "string", "replacements": [
         {"block_id": "string", "path": "string", "action": "rewrite|retain", "text": "string", "reason": "string"}]}
     assert [slot["required_action"] for slot in prompt["slots"]] == ["rewrite", "rewrite_or_retain", "retain", "retain"]
@@ -464,7 +554,7 @@ def test_historical_v4_prompt_digest_and_validation_report_remain_stable():
     assert historical.passed and historical.report["validator_version"] == "full-prose-auto-validator-v2"
     current = validate_auto(source, candidate, response=payload)
     assert current.error_codes == ("REWRITE_ACTION_MUTATION",)
-    assert current.report["validator_version"] == "full-prose-auto-validator-v4"
+    assert current.report["validator_version"] == "full-prose-auto-validator-v5"
 
 
 def test_historical_v5_prompt_digest_and_validation_report_remain_stable():
@@ -485,20 +575,40 @@ def test_historical_v5_prompt_digest_and_validation_report_remain_stable():
     assert historical.passed and historical.report["validator_version"] == "full-prose-auto-validator-v3"
     current = auto.validate_auto(source, candidate, response=payload)
     assert current.error_codes == ("REWRITE_DIRECTION_MUTATION",)
-    assert current.report["validator_version"] == "full-prose-auto-validator-v4"
+    assert current.report["validator_version"] == "full-prose-auto-validator-v5"
+
+
+def test_historical_v6_prompt_digest_and_validation_report_remain_stable():
+    from autodata_ingestion import procedure_rewrite_auto as auto
+    from hashlib import sha256
+
+    source = document("Remove the inlet cover.", "Remove the cable shield.")
+    context = {"vehicle": "routing-only"}
+    digest = sha256(auto._build_auto_prompt_v6(source, context=context).encode()).hexdigest()
+    assert digest == "8cb4564ba563dc7fbd04a443abc67b71b2c50718ed5607d194a06227e86bf87d"
+    version = auto._auto_prompt_version(source, context=context, prompt_hash=digest)
+    assert version == "full-prose-auto-prompt-v6"
+
+    payload = response("Take off the cable shield.", "Lift off the inlet cover.")
+    candidate = auto.render_auto(source, payload, prompt_version=version)
+    historical = auto.validate_auto(source, candidate, response=payload, prompt_version=version)
+    assert historical.passed and historical.report["validator_version"] == "full-prose-auto-validator-v4"
+    current = auto.validate_auto(source, candidate, response=payload)
+    assert current.error_codes == ("REWRITE_COMPONENT_SWAP",)
+    assert current.report["validator_version"] == "full-prose-auto-validator-v5"
 
 
 def test_auto_prompt_hash_accepts_only_exact_server_reconstructions():
     from hashlib import sha256
     from autodata_ingestion.procedure_rewrite_auto import (
         _auto_prompt_version, _build_auto_prompt_v1, _build_auto_prompt_v2,
-        _build_auto_prompt_v4, _build_auto_prompt_v5, build_auto_prompt,
+        _build_auto_prompt_v4, _build_auto_prompt_v5, _build_auto_prompt_v6, build_auto_prompt,
     )
     source = document("Remove the cover.")
     context = {"vehicle": "routing-only"}
     prompts = [builder(source, context=context) for builder in
                (_build_auto_prompt_v1, _build_auto_prompt_v2, _build_auto_prompt_v4, _build_auto_prompt_v5,
-                build_auto_prompt)]
+                _build_auto_prompt_v6, build_auto_prompt)]
     for prompt in prompts:
         digest = sha256(prompt.encode()).hexdigest()
         assert _auto_prompt_version(source, context=context, prompt_hash=digest) == json.loads(prompt)["prompt_version"]
@@ -514,7 +624,7 @@ def test_auto_prompt_hash_accepts_only_exact_server_reconstructions():
     assert not _auto_prompt_version(source, context=context, prompt_hash="0" * 64)
 
 
-def test_prompt_v6_response_example_satisfies_strict_renderer():
+def test_prompt_v7_response_example_satisfies_strict_renderer():
     source = document("Remove the cover.", "25 Nm")
     prompt = json.loads(rewrite.build_rewrite_prompt(source, context={}, profile_version=PROFILE))
     payload = {"introduction": "The procedure covers removal of the cover.", "replacements": []}
