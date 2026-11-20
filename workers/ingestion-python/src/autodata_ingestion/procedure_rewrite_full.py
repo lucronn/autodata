@@ -71,7 +71,10 @@ def prose_slots(document, *, include_cell_blocks=False):
                         cells = row["cells"]
                         row_path += "/cells"
                     for column_index, cell in enumerate(cells):
-                        if isinstance(cell, dict) and cell.get("blocks"):
+                        if (
+                            isinstance(cell, dict) and cell.get("blocks")
+                            and cell.get("protected_text") is not True
+                        ):
                             visit(cell["blocks"], f"{row_path}/{column_index}/blocks")
     visit(document["blocks"], "/blocks")
     return slots

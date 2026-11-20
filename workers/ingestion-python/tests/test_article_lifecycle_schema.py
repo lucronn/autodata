@@ -337,39 +337,45 @@ def test_pdf_figure_projection_upgrade_preserves_v6_before_advancing(fresh_datab
                             (article,)).fetchone()['current_source_revision_id'] == v7
 
 
-def test_multi_figure_upgrade_preserves_same_byte_v7_publication(fresh_database, capture_fixture):
+@pytest.mark.parametrize("migration,previous,new", [
+    (48, "source-projection-v7", "source-projection-v8"),
+    (49, "source-projection-v8", "source-projection-v9"),
+])
+def test_figure_order_upgrade_preserves_same_byte_publication(
+    fresh_database, capture_fixture, migration, previous, new,
+):
     from autodata_ingestion import article_lifecycle_store as store
     from autodata_ingestion.article_lifecycle import run_article_job
     from autodata_ingestion.source_job_persistence import claim_source_job, refresh_article_job
     from test_article_source_persistence import prepare
     from test_article_transform import Model
 
-    repo = fresh_database(through=47)
+    repo = fresh_database(through=migration - 1)
     _, lease, captured = prepare(repo, capture_fixture)
     article = lease.canonical_article_id
-    v7 = store.store_captured_source(repo, lease, dataclasses.replace(
-        captured, projection_version="source-projection-v7",
+    old_id = store.store_captured_source(repo, lease, dataclasses.replace(
+        captured, projection_version=previous,
     ))
     run_article_job(
         repo, lease, registry=capture_fixture.registry, object_store=capture_fixture.objects,
         model_client=Model(),
     )
     published = store.load_article_state(repo, article)
-    assert published["source_revision_id"] == v7
+    assert published["source_revision_id"] == old_id
     assert published["canonical_revision_id"] is not None
     assert published["content_origin"] == "canonical"
     with pytest.raises(psycopg.errors.CheckViolation):
-        append_projection(repo, v7, "source-projection-v8")
+        append_projection(repo, old_id, new)
 
     before = lifecycle_history(repo)
-    apply_migration(repo, 48)
+    apply_migration(repo, migration)
     assert lifecycle_history(repo) == before
 
     refresh = refresh_article_job(repo, article, actor="fixture", reason="recapture identical source bytes")
     refreshed_lease = claim_source_job(repo, worker_id=uuid.uuid4(), job_id=refresh.job_id)
     assert store.store_captured_source(repo, refreshed_lease, dataclasses.replace(
-        captured, projection_version="source-projection-v8",
-    )) == v7
+        captured, projection_version=new,
+    )) == old_id
     refreshed = store.load_article_state(repo, article)
     for field in ("source_revision_id", "canonical_revision_id", "content_origin", "document", "body"):
         assert refreshed[field] == published[field]
@@ -377,12 +383,12 @@ def test_multi_figure_upgrade_preserves_same_byte_v7_publication(fresh_database,
     for table in ("canonical_article_source_revisions", "canonical_article_revisions", "publication_events"):
         assert after[table] == before[table]
 
-    v8 = append_projection(repo, v7, "source-projection-v8")
+    new_id = append_projection(repo, old_id, new)
     with repo.connect() as conn:
         conn.execute("""UPDATE canonical_articles SET current_source_revision_id=%s,
-            current_canonical_revision_id=NULL WHERE canonical_article_id=%s""", (v8, article))
-    for target in (None, v7):
+            current_canonical_revision_id=NULL WHERE canonical_article_id=%s""", (new_id, article))
+    for target in (None, old_id):
         with pytest.raises(psycopg.errors.CheckViolation, match="source projection downgrade"), repo.connect() as conn:
             conn.execute("UPDATE canonical_articles SET current_source_revision_id=%s WHERE canonical_article_id=%s",
                          (target, article))
-    assert store.load_article_state(repo, article)["source_revision_id"] == v8
+    assert store.load_article_state(repo, article)["source_revision_id"] == new_id

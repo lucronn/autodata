@@ -1758,42 +1758,137 @@ def test_authored_headings_keep_metadata_and_instruction_boundaries(capture_fixt
     assert [slot["text"] for slot in prose_slots(document)] == ["Remove the pump.", "Inspect the cover."]
 
 
+@pytest.mark.parametrize("provider", ["bankone", "banktwo"])
+@pytest.mark.parametrize("position", ["before", "between", "after"])
+def test_html_table_cell_preserves_png_position_without_rewriting_cell_text(
+    capture_fixture, provider, position,
+):
+    import json
+    from io import BytesIO
+
+    from PIL import Image
+    from autodata_ingestion.article_document import validate_ordered_document
+    from autodata_ingestion.procedure_normalize import normalize_procedure_article
+    from autodata_ingestion.procedure_rewrite_auto import render_auto, validate_auto
+    from autodata_ingestion.procedure_rewrite_full import prose_slots
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    png = BytesIO()
+    Image.new("RGB", (20, 20), "green").save(png, format="PNG")
+    image = '<img src="/diagram" alt="Alignment marks">'
+    before, after = "Before turning.", "After fitting."
+    cell_markup = {
+        "before": image + before + " " + after,
+        "between": before + image + after,
+        "after": before + " " + after + image,
+    }[position]
+    markup = f"<p>Remove the pump.</p><table><tr><td>{cell_markup}</td></tr></table>"
+    body, media = markup.encode(), "text/html"
+    if provider == "banktwo":
+        body = json.dumps({"_embedded": {"data": {"article": {"content": markup}}}}).encode()
+        media = "application/hal+json"
+    fixture = capture_fixture
+    fixture.body(provider, body, media, assets=["figure"],
+                 asset_bindings=[{"source_url": "/diagram", "resource_ref": "figure"}])
+    fixture.body(provider, png.getvalue(), "image/png", ref="figure", kind="asset")
+    context = fixture.context(provider)
+    options = {"registry": fixture.registry, "object_store": fixture.objects, "keep_bound_pdf_iframes": True}
+    legacy = capture_source_article(context, **options)
+    corrected = capture_source_article(context, keep_html_table_image_order=True, **options)
+    historic_cell = legacy.source_document["blocks"][1]["rows"][0][0]
+    cell = corrected.source_document["blocks"][1]["rows"][0][0]
+    assert historic_cell["text"] == f"{before} {after}"
+    assert historic_cell["images"][0]["alt"] == "Alignment marks"
+    assert legacy.projection_version == "source-projection-v2"
+    assert corrected.source_fingerprint == legacy.source_fingerprint
+    assert corrected.resource_manifest == legacy.resource_manifest
+    assert corrected.evidence_manifest == legacy.evidence_manifest
+    assert corrected.source_body.split() == legacy.source_body.split()
+    assert corrected.source_steps == legacy.source_steps
+    assert corrected.projection_status == "readable"
+    assert not validate_ordered_document(corrected.source_document, strict=True)
+    assert "/diagram" not in repr(corrected.source_document)
+
+    if position == "after":
+        assert corrected.projection_version == legacy.projection_version
+        assert corrected.source_document == legacy.source_document
+    else:
+        assert corrected.projection_version == "source-projection-v9"
+        assert cell["protected_text"] is True
+        assert [(block["type"], block.get("text")) for block in cell["blocks"]] == (
+            [("image", None), ("paragraph", f"{before} {after}")]
+            if position == "before" else [("paragraph", before), ("image", None), ("paragraph", after)]
+        )
+        normalized = normalize_procedure_article({
+            "normalized_document": corrected.source_document,
+            "body": corrected.source_body, "steps": corrected.source_steps,
+        })["normalized_document"]
+        assert normalized == corrected.source_document
+        slots = prose_slots(normalized, include_cell_blocks=True)
+        assert [slot["text"] for slot in slots] == ["Remove the pump."]
+        response = {
+            "introduction": "This procedure covers pump removal.",
+            "replacements": [{**slots[0], "action": "rewrite", "text": "Take off the pump.", "reason": ""}],
+        }
+        canonical = render_auto(normalized, response)
+        assert validate_auto(normalized, canonical, response=response).passed
+        assert canonical["blocks"][2]["rows"][0][0] == cell
+
+    [old_image], [new_image] = legacy.source_images, corrected.source_images
+    for field in ("asset_id", "image_id", "storage_key", "content_sha256", "evidence_ids", "status", "media_type"):
+        assert new_image[field] == old_image[field]
+    assert fixture.objects.data[new_image["storage_key"]] == (png.getvalue(), "image/png")
+    assert fixture.resource_calls(provider, "figure") == 2
+
+
 def test_bound_pdf_embed_keeps_table_cell_order_and_refuses_unbound_markup(capture_fixture):
     from io import BytesIO
 
+    from PIL import Image
     from reportlab.pdfgen import canvas
     from autodata_ingestion.article_document import validate_ordered_document
+    from autodata_ingestion.procedure_rewrite_full import prose_slots
     from autodata_ingestion.source_article_capture import capture_source_article
 
     pdf_bytes = BytesIO()
     pdf = canvas.Canvas(pdf_bytes)
     pdf.drawString(72, 718, "Check the drive seal.")
     pdf.save()
+    png = BytesIO()
+    Image.new("RGB", (20, 20), "green").save(png, format="PNG")
     fixture = capture_fixture
     fixture.body("bankone", (
         b'<p>Inspect the housing.</p><table><tr><td>Drive reference'
+        b'<img data-resource-ref="alignment" alt="Alignment marks">'
         b'<iframe src="/docs/drive"></iframe>Finish the inspection.</td><td>Torque reference'
         b'<object type="application/pdf" data="/docs/drive"></object></td></tr></table>'
         b'<iframe src="/docs/unbound"><p>Hidden fallback text</p></iframe>'
         b'<p>Install the cover.</p>'
-    ), assets=["drive"], asset_bindings=[{"source_url": "/docs/drive", "resource_ref": "drive"}])
+    ), assets=["drive", "alignment"], asset_bindings=[{"source_url": "/docs/drive", "resource_ref": "drive"}])
     fixture.body("bankone", pdf_bytes.getvalue(), "application/pdf", ref="drive", kind="asset")
-    captured = capture_source_article(
-        fixture.context("bankone"), registry=fixture.registry, object_store=fixture.objects,
-        keep_bound_pdf_iframes=True,
-    )
+    fixture.body("bankone", png.getvalue(), "image/png", ref="alignment", kind="asset")
+    context = fixture.context("bankone")
+    options = {"registry": fixture.registry, "object_store": fixture.objects, "keep_bound_pdf_iframes": True}
+    historical = capture_source_article(context, **options)
+    captured = capture_source_article(context, keep_html_table_image_order=True, **options)
     assert captured.projection_version == "source-projection-v6"
+    assert captured.source_document == historical.source_document
+    assert captured.source_fingerprint == historical.source_fingerprint
     assert captured.projection_status == "readable"
     assert not validate_ordered_document(captured.source_document, strict=True)
     table = captured.source_document["blocks"][1]
     left, right = table["rows"][0]
-    assert [node["text"] for node in left["blocks"]] == [
-        "Drive reference", "Check the drive seal.", "Finish the inspection.",
+    assert [node.get("text") or node.get("alt") for node in left["blocks"]] == [
+        "Drive reference", "Alignment marks", "Check the drive seal.", "Finish the inspection.",
     ]
     assert [node["text"] for node in right["blocks"]] == ["Torque reference", "Check the drive seal."]
+    assert [slot["text"] for slot in prose_slots(captured.source_document, include_cell_blocks=True)].count(
+        "Check the drive seal.",
+    ) == 2
     assert "Hidden fallback text" not in captured.source_body
     assert "/docs/" not in repr(captured.source_document)
-    assert fixture.resource_calls("bankone", "drive") == 1
+    assert fixture.resource_calls("bankone", "drive") == 2
+    assert fixture.resource_calls("bankone", "alignment") == 2
     assert fixture.resource_calls("bankone", "unbound") == 0
 
 

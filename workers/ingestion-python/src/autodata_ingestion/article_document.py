@@ -851,12 +851,16 @@ def _table_cell(value: Any, *, evidence_ids: list[str], preserve_marked_cells: b
         if isinstance(direct_img, Mapping):
             images.append(_normalize_cell_image(direct_img))
     nested = value.get("blocks")
-    if preserve_marked_cells and isinstance(nested, list) and value.get("_preserve_cell_block_order") is True:
+    ordered_html_cell = value.get("_ordered_html_table_cell") is True
+    if preserve_marked_cells and isinstance(nested, list) and (
+        ordered_html_cell or value.get("_preserve_cell_block_order") is True
+    ):
         return {
             "text": direct_text,
             "blocks": build_ordered_document(
                 {"evidence_ids": evidence_ids}, nested, preserve_marked_cells=preserve_marked_cells,
             )["blocks"],
+            **({"protected_text": True} if ordered_html_cell else {}),
             **({"images": images} if images else {}),
         }
     if isinstance(nested, list):

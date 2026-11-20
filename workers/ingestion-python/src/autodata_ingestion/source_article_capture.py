@@ -186,7 +186,7 @@ def _replace_pdf_embeds(value, documents):
 def capture_source_article(
     context, *, registry, object_store, deadline_seconds=30.0,
     keep_embedded_pdf=False, keep_html_headings=False, keep_bound_pdf_iframes=False,
-    keep_pdf_figure_order=False, keep_multiple_pdf_figures=False,
+    keep_pdf_figure_order=False, keep_multiple_pdf_figures=False, keep_html_table_image_order=False,
 ):
     if not 0 < deadline_seconds <= 30:
         raise ValueError("capture deadline must be within 30 seconds")
@@ -262,6 +262,7 @@ def capture_source_article(
             keep_bound_pdf_iframes=keep_bound_pdf_iframes,
             keep_pdf_figure_order=keep_pdf_figure_order,
             keep_multiple_pdf_figures=keep_multiple_pdf_figures,
+            keep_html_table_image_order=keep_html_table_image_order,
         )
         article = parsing.result(timeout=remaining())
     except (ValueError, TypeError, KeyError, UnicodeError) as error:
@@ -277,6 +278,7 @@ def capture_source_article(
         parser_pool.shutdown(wait=False, cancel_futures=True)
     blocks = deepcopy(article["blocks"])
     handled_pdf_embeds = article.get("handled_pdf_embeds") is True
+    positioned_html_table_images = article.get("positioned_html_table_images") is True
     positioned_pdf_figures = article.get("positioned_pdf_figures") is True
     pdf_asset_order = article.get("pdf_legacy_asset_order", [])
     new_structure = article.get("embedded_pdf") or (
@@ -590,7 +592,7 @@ def capture_source_article(
     doc = build_ordered_document(
         {"article_id": str(article_id(context.key)), "evidence_ids": evidence_ids},
         blocks,
-        preserve_marked_cells=handled_pdf_embeds,
+        preserve_marked_cells=handled_pdf_embeds or positioned_html_table_images,
     )
     for node in _image_nodes(doc["blocks"]):
         local = image_records.get(node.get("image_id"))
@@ -648,7 +650,8 @@ def capture_source_article(
         ),
         datetime.now(timezone.utc),
         projection_version=(
-            "source-projection-v8" if pdf_asset_orders
+            "source-projection-v9" if positioned_html_table_images
+            else "source-projection-v8" if pdf_asset_orders
             else "source-projection-v7" if positioned_pdf_figures
             else "source-projection-v6" if handled_pdf_embeds
             else "source-projection-v5" if new_structure

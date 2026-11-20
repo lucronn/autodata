@@ -156,6 +156,7 @@ def _store_captured_source(cur, lease, captured):
 
     structural_versions = (
         "source-projection-v5", "source-projection-v6", "source-projection-v7", "source-projection-v8",
+        "source-projection-v9",
     )
     new_structure = captured.projection_version in structural_versions
     live_capture = not source_only and (captured.projection_version == "source-projection-v2" or new_structure)

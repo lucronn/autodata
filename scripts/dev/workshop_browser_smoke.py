@@ -1318,6 +1318,19 @@ async def expect_linked_pdf(article, *, rewritten=False):
     await expect(figures.last.locator('img')).to_have_js_property('naturalWidth', 128)
 
 
+async def expect_html_table_figure(article):
+    from playwright.async_api import expect
+
+    cell = article.locator('td:has(img[alt="Table alignment"])')
+    await expect(cell.locator(':scope > p')).to_have_text(
+        ['Check the reference mark.', 'Keep the shim seated.'],
+    )
+    assert await cell.locator(':scope > :is(p, figure)').evaluate_all(
+        'nodes => nodes.map(node => node.tagName).join(",")'
+    ) == 'P,FIGURE,P'
+    await expect(cell.get_by_role('img', name='Table alignment')).to_have_js_property('naturalWidth', 24)
+
+
 async def api_case(browser,origin,name,output,observations=None):
     from playwright.async_api import expect
     context=page=None;failure=None;result=None
@@ -1456,6 +1469,7 @@ async def api_case(browser,origin,name,output,observations=None):
             await expect(depth_label).to_have_text('Drive seal seating depth: 2.0 mm')
             if linked_pdf:
                 await expect_linked_pdf(article_content)
+                await expect_html_table_figure(article_content)
             else:
                 nested_figure = nested_item + ' table td figure:has(img[alt="Drive alignment"])'
                 await expect(page.locator(nested_item + " table caption")).to_have_text("Alignment reference")
@@ -1481,6 +1495,7 @@ async def api_case(browser,origin,name,output,observations=None):
             if linked_pdf:
                 source_frame = page.locator('#source-review-frame')
                 await expect_linked_pdf(source_frame)
+                await expect_html_table_figure(source_frame)
                 await expect(source_frame.locator('table td figure').last).to_be_focused()
             else:
                 stored_figure = page.locator(
@@ -1510,6 +1525,7 @@ async def api_case(browser,origin,name,output,observations=None):
             await expect(depth_label).to_have_text('Drive seal seating depth: 2.0 mm')
             if linked_pdf:
                 await expect_linked_pdf(article_content, rewritten=True)
+                await expect_html_table_figure(article_content)
             else:
                 await expect(page.locator(nested_figure + " figcaption")).to_have_text("Drive alignment reference")
                 await expect(page.locator(nested_item + " aside")).to_contain_text("Keep the drive seal in place.")
@@ -1518,6 +1534,8 @@ async def api_case(browser,origin,name,output,observations=None):
             reader_before=(await api_measure(context,origin,'reader-before-measurement'))['image_reads']
             await page.reload();await expect(page.locator('#article-kind')).to_have_text('Workshop article')
             await expect(page.locator(nested_item + " > p").first).to_have_text("Take off the pump.")
+            if linked_pdf:
+                await expect_html_table_figure(article_content)
             # The page can render a warm article from the prepare response.
             # Capture the actual read endpoint separately after the GUI reload.
             warm_detail=await api21_get(context,origin+f'/v1/catalog/vehicles/{configuration}/articles/{article_id}',

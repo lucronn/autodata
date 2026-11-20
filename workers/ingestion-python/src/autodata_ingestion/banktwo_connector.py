@@ -52,7 +52,7 @@ class ArticleParser(HTMLParser):
 
     def __init__(
         self, *, asset_bindings=(), preserve_legacy_list_starts=True, keep_html_headings=False,
-        keep_bound_pdf_iframes=False,
+        keep_bound_pdf_iframes=False, keep_html_table_image_order=False,
     ):
         super().__init__(convert_charrefs=True)
         self._asset_bindings = {item["source_url"]: item["resource_ref"] for item in asset_bindings}
@@ -67,7 +67,9 @@ class ArticleParser(HTMLParser):
         self._preserve_legacy_list_starts = preserve_legacy_list_starts
         self._keep_html_headings = keep_html_headings
         self._keep_bound_pdf_iframes = keep_bound_pdf_iframes
+        self._keep_html_table_image_order = keep_html_table_image_order
         self.handled_pdf_embeds = False
+        self.positioned_html_table_images = False
         self._hidden_embed_tags: list[str] = []
         self._heading: dict[str, Any] | None = None
         self._table_rows = None
@@ -173,7 +175,15 @@ class ArticleParser(HTMLParser):
     def _flush_cell(self):
         self.flush()
         if self._table_cell is not None and self._table_row is not None:
-            self._table_row.append({"blocks": self._table_cell})
+            cell = {"blocks": self._table_cell}
+            if self._keep_html_table_image_order:
+                kinds = [block["kind"] for block in self._table_cell]
+                # Cells with a linked document already have ordered blocks.
+                if ("document_embed" not in kinds and "image" in kinds
+                        and "text" in kinds[kinds.index("image") + 1:]):
+                    cell["_ordered_html_table_cell"] = True
+                    self.positioned_html_table_images = True
+            self._table_row.append(cell)
         self._table_cell = None
 
     def _flush_row(self):

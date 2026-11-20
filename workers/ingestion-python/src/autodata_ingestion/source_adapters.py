@@ -1750,6 +1750,7 @@ def adapt_bound_article(
     resource: SourceResource, context, *, keep_embedded_pdf: bool = False,
     keep_html_headings: bool = False, keep_bound_pdf_iframes: bool = False,
     keep_pdf_figure_order: bool = False, keep_multiple_pdf_figures: bool = False,
+    keep_html_table_image_order: bool = False,
 ) -> dict[str, Any]:
     """Adapt fetched bytes under proven connector scope, without weakening URL intake."""
     from .banktwo_connector import ArticleParser
@@ -1884,6 +1885,7 @@ def adapt_bound_article(
                         keep_bound_pdf_iframes=keep_bound_pdf_iframes,
                         keep_pdf_figure_order=keep_pdf_figure_order,
                         keep_multiple_pdf_figures=keep_multiple_pdf_figures,
+                        keep_html_table_image_order=keep_html_table_image_order,
                     )
                 blocks = segment_plain_article_text(text)
         return {
@@ -1902,6 +1904,7 @@ def adapt_bound_article(
             preserve_legacy_list_starts=False,
             keep_html_headings=keep_html_headings,
             keep_bound_pdf_iframes=keep_bound_pdf_iframes,
+            keep_html_table_image_order=keep_html_table_image_order,
         )
         parser.feed(html)
         parser.close()
@@ -1936,6 +1939,7 @@ def adapt_bound_article(
             "asset_resource_refs": [],
             **({"authored_html_headings": True} if keep_html_headings else {}),
             **({"handled_pdf_embeds": True} if parser.handled_pdf_embeds else {}),
+            **({"positioned_html_table_images": True} if parser.positioned_html_table_images else {}),
         }
     if media == "text/plain":
         return {
