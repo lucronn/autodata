@@ -49,7 +49,8 @@ _SPELLED_UNIT = (
     r"ohms?|watts?|hertz|degrees?\s+(?:Celsius|Fahrenheit)"
 )
 _MEASUREMENT_VALUE = re.compile(
-    r"(?<![\w./-])" + full._NUMBER + r"\s*(?:"
+    r"(?<![\w./-])(?:" + full._SIGN + r")?" + full._NUMBER
+    + r"(?:[ \t]*[–—−~…-][ \t]*[+−-]?" + full._NUMBER + r")?\s*(?:"
     + "|".join(unit for unit in full._UNITS if len(unit) > 1)
     + r"|[VALΩ%°]|in\.(?=\s|$)|(?i:" + _SPELLED_UNIT + r"))(?![\w/-]|\.\w)"
 )

@@ -220,6 +220,8 @@ def test_automatic_rewrite_rejects_an_imperative_introduction(intro):
     ("Tighten the cover screws to 25Nm.", "Tighten the mounting screws to 25Nm."),
     ("Warm the cover to 30–40 °C before testing the seal.",
      "Before testing the seal, warm the housing to 30–40 °C."),
+    ("Cool the probe to -25 °C.", "Lower the axle temperature to -25 °C."),
+    ("Set the front tire pressure to 30-40 psi.", "Use a range of 30-40 psi for the spare tire."),
     ("Read the gauge in kilopascals after it stabilizes.",
      "Once the needle settles, read the result in pounds per square inch."),
     ("Read the gauge in kilopascals after it stabilizes.",
