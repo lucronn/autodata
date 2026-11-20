@@ -619,6 +619,82 @@ def test_automatic_rewrite_preserves_equivalent_and_unresolved_qualifier_phrasin
     assert result.error_code is None
 
 
+@pytest.mark.parametrize("source_text,draft,error", [
+    ("Remove all fasteners except the captive bolt.",
+     "Take off every fastener, including the captive bolt.", "REWRITE_QUALIFIER_MUTATION"),
+    ("Remove the clips, other than the cable clip.",
+     "Take off the cable clip as well as the other clips.", "REWRITE_QUALIFIER_MUTATION"),
+    ("Inspect all hinges excluding the latch hinge.",
+     "Check all hinges except the center hinge.", "REWRITE_QUALIFIER_MUTATION"),
+    ("Remove all fasteners except the captive bolt.",
+     "Take off every fastener.", "REWRITE_QUALIFIER_MUTATION"),
+    ("Except if the seal is dry, inspect the housing.",
+     "Check the housing whenever needed.", "REWRITE_SAFETY_MUTATION"),
+    ("Inspect the seal, then inspect the cover.",
+     "Check the seal, or check the cover instead.", "REWRITE_CLAUSE_MUTATION"),
+    ("Inspect either the seal or the cover.",
+     "Check the seal and check the cover.", "REWRITE_CLAUSE_MUTATION"),
+    ("Either inspect the seal or inspect the cover.",
+     "Check the seal and check the cover.", "REWRITE_CLAUSE_MUTATION"),
+    ("If the retaining clip is damaged and the seal is dry, inspect the harness.",
+     "Check the harness if the retaining clip is damaged or the seal is dry.", "REWRITE_QUALIFIER_MUTATION"),
+    ("If the retaining clip is damaged and the seal is dry, inspect the harness.",
+     "Check the harness if the retaining clip is damaged.", "REWRITE_QUALIFIER_MUTATION"),
+    ("If the seal is dry and cool, remove the cover.",
+     "Take the cover off if the seal is dry.", "REWRITE_QUALIFIER_MUTATION"),
+    ("When the seal is dry, remove the cover.",
+     "Take the cover off if the seal is dry and cool.", "REWRITE_QUALIFIER_MUTATION"),
+    ("If the seal is dry or cool, remove the cover.",
+     "When the seal is cool and dry, take the cover off.", "REWRITE_QUALIFIER_MUTATION"),
+    ("If the seal is dry and the housing is cool, inspect the harness.",
+     "Check the harness if the seal is cool and the housing is dry.", "REWRITE_QUALIFIER_MUTATION"),
+    ("Install a new oil seal.", "Fit the used oil seal into place.", "REWRITE_QUALIFIER_MUTATION"),
+    ("Install a new outer seal.", "Fit the used outer seal into place.", "REWRITE_QUALIFIER_MUTATION"),
+    ("Install an undamaged new seal.", "Fit a damaged new seal into place.", "REWRITE_QUALIFIER_MUTATION"),
+    ("Install a new rubber oil seal.", "Fit a used rubber oil seal into place.", "REWRITE_QUALIFIER_MUTATION"),
+    ("Remove the old transmission seal.", "Take the new transmission seal off.", "REWRITE_QUALIFIER_MUTATION"),
+])
+def test_automatic_rewrite_v10_rejects_proven_scope_changes(source_text, draft, error):
+    source = document(source_text)
+    result = run(source, response(draft))
+    assert result.error_code == error
+    assert result.document == source
+
+
+@pytest.mark.parametrize("source_text,draft", [
+    ("Remove all fasteners except the captive bolt.",
+     "Take off all fasteners other than the captive bolt."),
+    ("Inspect either the seal or the cover.",
+     "Either check the cover or check the seal instead."),
+    ("Inspect the seal, then inspect the cover.",
+     "After checking the seal, check the cover."),
+    ("If the seal is dry and the housing is cool, inspect the harness.",
+     "Check the harness when the housing is cool and the seal is dry."),
+    ("If the seal is dry and cool, remove the cover.",
+     "Take the cover off when the seal is cool and dry."),
+    ("If the retaining clip is damaged or the seal is dry, inspect the harness.",
+     "Check the harness when the seal is dry or the retaining clip is damaged."),
+    ("If the seal is dry and the housing is cool, inspect the harness.",
+     "Check the harness when the seal has dried and the housing has cooled."),
+    ("Install a new rubber oil seal.", "Fit the replacement rubber oil seal into place."),
+    ("Install a new outer seal.", "Fit the outer replacement seal into place."),
+    ("Install an undamaged original oil seal.", "Fit the old undamaged oil seal into place."),
+])
+def test_automatic_rewrite_v10_preserves_equivalent_scope(source_text, draft):
+    result = run(document(source_text), response(draft))
+    assert result.error_code is None
+
+
+def test_automatic_rewrite_v10_retains_conditional_exception_exactly():
+    first = "Except if the seal is dry, inspect the housing."
+    source = document(first, "Remove the cover.")
+    payload = response(first, "Take the cover off.")
+    payload["replacements"][0].update(action="retain", reason="Keep the source exception.")
+    result = run(source, payload)
+    assert result.error_code is None
+    assert result.document["blocks"][1]["text"] == first
+
+
 def test_technical_only_retention_is_explicit_and_table_stays_exact():
     source = document("25 Nm", "Remove the cover.")
     source["blocks"].append({"block_id":"table", "source_order":3,"type":"table",
@@ -666,15 +742,16 @@ def test_prompt_asks_for_automatic_full_prose_without_human_review_obligations()
     assert prompt["slots"][0]["text"] == "Remove the cover."
 
 
-def test_prompt_v9_declares_complete_response_rows_and_server_required_actions():
+def test_prompt_v10_declares_complete_response_rows_and_server_required_actions():
     source = document("Remove the cover.", "25 Nm", "Never start the motor.",
-                      "Fit the cover only after the seal sits flush.")
+                      "Fit the cover only after the seal sits flush.",
+                      "Except if the seal is dry, inspect the housing.")
     before = deepcopy(source)
     prompt = json.loads(rewrite.build_rewrite_prompt(source, context={}, profile_version=PROFILE))
-    assert prompt["prompt_version"] == "full-prose-auto-prompt-v9"
+    assert prompt["prompt_version"] == "full-prose-auto-prompt-v10"
     assert prompt["response_shape"] == {"introduction": "string", "replacements": [
         {"block_id": "string", "path": "string", "action": "rewrite|retain", "text": "string", "reason": "string"}]}
-    assert [slot["required_action"] for slot in prompt["slots"]] == ["rewrite", "rewrite_or_retain", "retain", "retain"]
+    assert [slot["required_action"] for slot in prompt["slots"]] == ["rewrite", "rewrite_or_retain", "retain", "retain", "retain"]
     rules = " ".join(prompt["rules"])
     assert 'reason:""' in rules
     assert "exactly five keys" in rules
@@ -708,7 +785,7 @@ def test_historical_v4_prompt_digest_and_validation_report_remain_stable():
     assert historical.passed and historical.report["validator_version"] == "full-prose-auto-validator-v2"
     current = validate_auto(source, candidate, response=payload)
     assert current.error_codes == ("REWRITE_ACTION_MUTATION",)
-    assert current.report["validator_version"] == "full-prose-auto-validator-v7"
+    assert current.report["validator_version"] == "full-prose-auto-validator-v8"
 
 
 def test_historical_v5_prompt_digest_and_validation_report_remain_stable():
@@ -729,7 +806,7 @@ def test_historical_v5_prompt_digest_and_validation_report_remain_stable():
     assert historical.passed and historical.report["validator_version"] == "full-prose-auto-validator-v3"
     current = auto.validate_auto(source, candidate, response=payload)
     assert current.error_codes == ("REWRITE_DIRECTION_MUTATION",)
-    assert current.report["validator_version"] == "full-prose-auto-validator-v7"
+    assert current.report["validator_version"] == "full-prose-auto-validator-v8"
 
 
 def test_historical_v6_prompt_digest_and_validation_report_remain_stable():
@@ -749,7 +826,7 @@ def test_historical_v6_prompt_digest_and_validation_report_remain_stable():
     assert historical.passed and historical.report["validator_version"] == "full-prose-auto-validator-v4"
     current = auto.validate_auto(source, candidate, response=payload)
     assert current.error_codes == ("REWRITE_COMPONENT_SWAP",)
-    assert current.report["validator_version"] == "full-prose-auto-validator-v7"
+    assert current.report["validator_version"] == "full-prose-auto-validator-v8"
 
 
 def test_historical_v7_prompt_candidate_and_validation_hashes_remain_stable():
@@ -776,7 +853,7 @@ def test_historical_v7_prompt_candidate_and_validation_hashes_remain_stable():
     current = auto.validate_auto(source, candidate, response=payload)
     assert current.passed is False
     assert current.report["passed"] is False
-    assert current.report["validator_version"] == "full-prose-auto-validator-v7"
+    assert current.report["validator_version"] == "full-prose-auto-validator-v8"
     assert current.error_codes == ("REWRITE_CLAUSE_MUTATION",)
 
 
@@ -806,12 +883,37 @@ def test_historical_v8_prompt_candidate_and_validation_hashes_remain_stable():
     assert current.error_codes == ("REWRITE_QUALIFIER_MUTATION",)
 
 
+def test_historical_v9_prompt_candidate_and_validation_hashes_remain_stable():
+    from hashlib import sha256
+    from autodata_ingestion import procedure_rewrite_auto as auto
+
+    source = document("Install a new oil seal.")
+    payload = response("Fit the used oil seal into place.")
+    context = {"vehicle": "routing-only"}
+    prompt = auto._build_auto_prompt_v9(source, context=context)
+    prompt_hash = sha256(prompt.encode()).hexdigest()
+    assert prompt_hash == "13cb6f8ddc88bed61bacf96da7839468447a6c6c2bf2c496289faac1b8289e38"
+    version = auto._auto_prompt_version(source, context=context, prompt_hash=prompt_hash)
+    assert version == "full-prose-auto-prompt-v9"
+
+    candidate = auto.render_auto(source, payload, prompt_version=version)
+    historical = auto.validate_auto(source, candidate, response=payload, prompt_version=version)
+    assert historical.passed
+    assert historical.report["validator_version"] == "full-prose-auto-validator-v7"
+    assert digest_json(candidate) == "79c64e1180988281853e16b91a4da5e124a5a6250cd92b40b96713a9345cd0f4"
+    assert digest_json(historical.report) == "edfe4cdccc79773c6098aa4679e2cb57850601de0c4494ccc3dc4f1e67a2e268"
+
+    current = auto.validate_auto(source, candidate, response=payload)
+    assert current.error_codes == ("REWRITE_QUALIFIER_MUTATION",)
+    assert current.report["validator_version"] == "full-prose-auto-validator-v8"
+
+
 def test_auto_prompt_hash_accepts_only_exact_server_reconstructions():
     from hashlib import sha256
     from autodata_ingestion.procedure_rewrite_auto import (
         _auto_prompt_version, _build_auto_prompt_v1, _build_auto_prompt_v2,
         _build_auto_prompt_v4, _build_auto_prompt_v5, _build_auto_prompt_v6, _build_auto_prompt_v7,
-        _build_auto_prompt_v8, build_auto_prompt,
+        _build_auto_prompt_v8, _build_auto_prompt_v9, build_auto_prompt,
     )
     source = document("Remove the cover.")
     context = {"vehicle": "routing-only"}

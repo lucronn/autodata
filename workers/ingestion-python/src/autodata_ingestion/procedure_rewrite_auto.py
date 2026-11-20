@@ -20,7 +20,8 @@ _PROSE_PROMPT_V5 = "full-prose-auto-prompt-v5"
 _PROSE_PROMPT_V6 = "full-prose-auto-prompt-v6"
 _PROSE_PROMPT_V7 = "full-prose-auto-prompt-v7"
 _PROSE_PROMPT_V8 = "full-prose-auto-prompt-v8"
-_PROSE_PROMPT_VERSION = "full-prose-auto-prompt-v9"
+_PROSE_PROMPT_V9 = "full-prose-auto-prompt-v9"
+_PROSE_PROMPT_VERSION = "full-prose-auto-prompt-v10"
 _WORDS = re.compile(r"\w+")
 _INLINE_WARNING = re.compile(
     r"(?:^|[.!?]\s+|\n)[ \t]*(?:warnings?|caution|danger|notice|important)\s*[:!–—-]"
@@ -163,6 +164,20 @@ _CLAUSE_GERUNDS = {
 }
 _CLAUSE_GERUND = re.compile(r"^(" + "|".join(_CLAUSE_GERUNDS) + r")(?=\s)", re.IGNORECASE)
 
+# These selectors describe the literal target of a simple directive.
+_EXCEPTION_SELECTOR = re.compile(
+    r"\s+(except(?:\s+for)?|other\s+than|excluding|including|as\s+well\s+as)\s+", re.IGNORECASE,
+)
+_EXCEPTION_CONDITION = re.compile(r"\bexcept\s+(?:if|when)\b", re.IGNORECASE)
+_EXCEPTION_NOUN = re.compile(
+    r"(?:the\s+|an?\s+)?(" + _TARGET_WORD + r"(?:\s+" + _TARGET_WORD + r"){0,5})", re.IGNORECASE,
+)
+_ALTERNATIVE = re.compile(r"(?:\s*,\s*|\s+)or\s+", re.IGNORECASE)
+_EITHER = re.compile(r"^either\s+|\s+instead$", re.IGNORECASE)
+_SHARED_ALTERNATIVE = re.compile(
+    r"(?P<verb>" + _SIMPLE_ACTION + r")\s+either\s+(?P<first>.+)", re.IGNORECASE,
+)
+_LOGICAL_SEPARATOR = re.compile(r"\s+(and|or)\s+", re.IGNORECASE)
 
 _PART_STATE = {
     "new": "replacement", "replacement": "replacement", "old": "original",
@@ -175,6 +190,17 @@ _PART_QUALIFIER = (
 )
 _PART_TARGET = re.compile(_PART_QUALIFIER, re.IGNORECASE)
 _PART_REMOVAL = re.compile(r"(?:take|lift)\s+" + _PART_QUALIFIER + r"\s+off", re.IGNORECASE)
+_PART_QUALITY = {
+    **_PART_STATE, "damaged": "damaged", "undamaged": "undamaged",
+}
+_DESCRIBED_PART = (
+    r"(?:the|this|that|a|an)\s+(?P<modifiers>(?:" + _TARGET_WORD + r"\s+){0,4})"
+    r"(?P<part>" + _PARTS + r")"
+)
+_DESCRIBED_PART_TARGET = re.compile(_DESCRIBED_PART, re.IGNORECASE)
+_DESCRIBED_PART_REMOVAL = re.compile(
+    r"(?:take|lift)\s+" + _DESCRIBED_PART + r"\s+off", re.IGNORECASE,
+)
 _IMPERATIVE_START = re.compile(
     r"^(?:" + _SIMPLE_ACTION + r"|take|lift)\s", re.IGNORECASE,
 )
@@ -183,12 +209,16 @@ _INSPECTION_FOCUS = re.compile(
     r"\s+for\s+(?:signs\s+of\s+)?(wear|damage|corrosion|leaks?|cracks?)$",
     re.IGNORECASE,
 )
-_GIVEN_CONDITION = re.compile(
-    r"\b(?P<marker>if|when|once|before|after)\s+(?:the\s+)?"
-    r"(?P<subject>" + _TARGET_WORD + r"(?:\s+" + _TARGET_WORD + r"){0,3})\s+"
-    r"(?P<verb>is|are|has|have)\s+(?P<state>dry|dried|cool|cooled|damaged|off|on|closed|open)"
-    r"(?=[,.\s]|$)", re.IGNORECASE,
+_CONDITION_STATE = r"dry|dried|cool|cooled|damaged|off|on|closed|open"
+_CONDITION_PREDICATE = (
+    r"(?:the\s+)?(?P<subject>" + _TARGET_WORD + r"(?:\s+" + _TARGET_WORD + r"){0,3})\s+"
+    r"(?P<verb>is|are|has|have)\s+(?P<state>" + _CONDITION_STATE + r")(?=[,.\s]|$)"
 )
+_GIVEN_CONDITION = re.compile(
+    r"\b(?P<marker>if|when|once|before|after)\s+" + _CONDITION_PREDICATE, re.IGNORECASE,
+)
+_CONTINUED_PREDICATE = re.compile(_CONDITION_PREDICATE, re.IGNORECASE)
+_CONTINUED_STATE = re.compile(r"(" + _CONDITION_STATE + r")(?=[,.\s]|$)", re.IGNORECASE)
 _SWITCH_IGNITION = re.compile(r"\b(before|after|once)\s+switching\s+(?:the\s+)?ignition\s+(on|off)\b", re.IGNORECASE)
 _OPTIONAL_TASK = re.compile(r"\bif\s+(?:desired|wanted)\b", re.IGNORECASE)
 _TASK_APPLICABILITY = re.compile(
@@ -205,6 +235,7 @@ _QUALIFIER_MARKER = re.compile(
     r"\b(if|when|once|before|after|wear|damage|corrosion|leaks?|cracks?|"
     r"new|replacement|old|original|used|existing|with|using)\b", re.IGNORECASE,
 )
+_PART_QUALITY_MARKER = re.compile(r"\b(?:damaged|undamaged)\b", re.IGNORECASE)
 
 
 _INTRO_RISK_CLAIM = re.compile(
@@ -372,21 +403,44 @@ def _build_auto_prompt_v8(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def build_auto_prompt(document, *, context):
+def _auto_prompt_payload_v9(document, *, context):
     payload = _auto_prompt_payload_v8(document, context=context)
     if payload["slots"]:
-        payload["prompt_version"] = _PROSE_PROMPT_VERSION
+        payload["prompt_version"] = _PROSE_PROMPT_V9
         payload["rules"].append(
             "Keep the original conditions, vehicle applicability, component state, specified tool, "
             "and scope of inspection. Do not add qualifiers unsupported by the original slot."
+        )
+    return payload
+
+
+def _build_auto_prompt_v9(document, *, context):
+    payload = _auto_prompt_payload_v9(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def build_auto_prompt(document, *, context):
+    payload = _auto_prompt_payload_v9(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_VERSION
+        for slot in payload["slots"]:
+            if _EXCEPTION_CONDITION.search(slot["text"]):
+                slot["required_action"] = "retain"
+        payload["rules"].append(
+            "Keep each exception with its original task and excluded component. Preserve whether "
+            "paired directives are alternatives or both required, and whether conditions require "
+            "all or any of their predicates. Keep each state with its original component."
         )
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
 def _auto_prompt_version(document, *, context, prompt_hash):
     """Identify the rules bound to the saved model attempt."""
-    for builder in (build_auto_prompt, _build_auto_prompt_v8, _build_auto_prompt_v7, _build_auto_prompt_v6,
-                    _build_auto_prompt_v5, _build_auto_prompt_v4, _build_auto_prompt_v2, _build_auto_prompt_v1):
+    for builder in (
+        build_auto_prompt, _build_auto_prompt_v9, _build_auto_prompt_v8, _build_auto_prompt_v7,
+        _build_auto_prompt_v6, _build_auto_prompt_v5, _build_auto_prompt_v4,
+        _build_auto_prompt_v2, _build_auto_prompt_v1,
+    ):
         payload = builder(document, context=context)
         if sha256(payload.encode()).hexdigest() == prompt_hash:
             return json.loads(payload)["prompt_version"]
@@ -566,6 +620,73 @@ def _clause_assignment_changed(original, replacement):
     )
 
 
+def _alternative_pair(text):
+    text = text.strip().rstrip(".!")
+    pair = _ALTERNATIVE.split(text)
+    if len(pair) != 2:
+        return None
+    left, right = (_EITHER.sub("", clause.strip()) for clause in pair)
+    first, second = _simple_directive(left), _simple_directive(right)
+    if second is None and (shared := _SHARED_ALTERNATIVE.fullmatch(left)):
+        verb = shared["verb"]
+        first = _simple_directive(f"{verb} {shared['first']}")
+        second = _simple_directive(f"{verb} {right}")
+    return Counter((first, second)) if first is not None and second is not None else None
+
+
+def _alternative_changed(original, replacement):
+    if not (_ALTERNATIVE.search(original) or _ALTERNATIVE.search(replacement)):
+        return False
+    source, draft = _alternative_pair(original), _alternative_pair(replacement)
+    if (source is None) == (draft is None):
+        return False
+    alternative, other = (source, replacement) if source is not None else (draft, original)
+    pair = _clause_pair(other)
+    return pair is not None and alternative == Counter(pair[0])
+
+
+def _quantified_target(words):
+    # Equal universal quantifiers permit ordinary regular noun inflection.
+    if len(words) > 1 and words[0] in {"all", "every"}:
+        noun = words[-1]
+        if words[0] == "all" and noun.endswith("s") and not noun.endswith(("ss", "us")):
+            noun = noun.removesuffix("s")
+        return ("all", *words[1:-1], noun)
+    return words
+
+
+def _exception_target(text):
+    text = text.strip().rstrip(".!")
+    selector = _EXCEPTION_SELECTOR.search(text)
+    action = _simple_directive(text[:selector.start()].rstrip(" ,") if selector else text)
+    if action is None:
+        return None
+    verb, target = action
+    target = _quantified_target(target)
+    if selector is None:
+        return verb, target, None, ()
+    included = selector[1].casefold() in {"including", "as well as"}
+    named = _EXCEPTION_NOUN.fullmatch(text[selector.end():].strip())
+    words = tuple(_WORDS.findall(named[1].casefold())) if named else ()
+    if not words or not set(words).isdisjoint(_TARGET_DELIMITERS):
+        return None
+    return verb, target, included, words
+
+
+def _exception_changed(original, replacement):
+    if not (_EXCEPTION_SELECTOR.search(original) or _EXCEPTION_SELECTOR.search(replacement)):
+        return False
+    source, draft = _exception_target(original), _exception_target(replacement)
+    if source is None or draft is None or source[0] != draft[0]:
+        return False
+    if source[2] is not False and draft[2] is not False:
+        return False
+    if source[1] == draft[1]:
+        return source[2:] != draft[2:]
+    exclusion, other = (source, draft) if source[2] is False else (draft, source)
+    return other[2] is True and other[1] == exclusion[3] and other[3] == ("other", *exclusion[1])
+
+
 def _check_target_swaps(slots, restored):
     # A reciprocal swap or cycle of distinct, source-unique instructions is
     # evidence of reassignment. A repeated operation or one-way match is
@@ -637,27 +758,85 @@ def _check_intro_claims(source, slots, introduction):
     raise ValueError("REWRITE_INTRODUCTION_UNSUPPORTED_CLAIM")
 
 
-def _split_qualifier(text, match):
+def _split_qualifier(text, match, *, end=None):
     """Remove one complete leading or trailing qualifier."""
     prefix = text[:match.start()].strip(" ,")
-    suffix = text[match.end():].strip(" ,")
+    suffix = text[match.end() if end is None else end:].strip(" ,")
     return (prefix or suffix) if bool(prefix) != bool(suffix) else None
 
 
-def _qualifier_task(text):
+def _condition_predicate(subject, verb, state):
+    words = tuple(_WORDS.findall(subject))
+    mode = "has" if verb in {"has", "have"} else "is"
+    if state not in _STATE_GRAMMAR[mode] or not set(words).isdisjoint(_TARGET_DELIMITERS):
+        return None
+    return words, {"dried": "dry", "cooled": "cool"}.get(state, state)
+
+
+def _logical_condition(text, condition, predicate, relation):
+    """Bound a flat conjunction or disjunction of explicit states."""
+    end = condition.end()
+    subject, verb = condition.group("subject", "verb")
+    predicates = [predicate]
+    operator = None
+    while separator := _LOGICAL_SEPARATOR.match(text, end):
+        if len(predicates) >= 4 or operator not in (None, separator[1]):
+            return None
+        operator = separator[1]
+        position = separator.end()
+        if next_predicate := _CONTINUED_PREDICATE.match(text, position):
+            subject, verb, state = next_predicate.group("subject", "verb", "state")
+            end = next_predicate.end()
+        elif next_state := _CONTINUED_STATE.match(text, position):
+            state = next_state[1]
+            end = next_state.end()
+        else:
+            return None
+        parsed = _condition_predicate(subject, verb, state)
+        if parsed is None:
+            return None
+        predicates.append(parsed)
+    if operator is None:
+        return ("condition", relation, *predicate), end
+    distinct = frozenset(predicates)
+    if len(distinct) == 1:
+        return ("condition", relation, *predicate), end
+    return ("condition", relation, operator, distinct), end
+
+
+def _part_target(target, *, extended):
+    if not extended:
+        return target["part"], (_PART_STATE[target["state"]],) if target["state"] else ()
+    modifiers = target["modifiers"].split()
+    if not set(modifiers).isdisjoint(_TARGET_DELIMITERS):
+        return None
+    if sum(word in _PART_STATE for word in modifiers) > 1:
+        return None
+    states = tuple(_PART_QUALITY[word] for word in modifiers if word in _PART_QUALITY)
+    descriptors = [word for word in modifiers if word not in _PART_QUALITY]
+    subject = " ".join([*descriptors, target["part"]])
+    return subject, states
+
+
+def _qualifier_task(text, *, extended=False):
     """Recognize one imperative with a literal target and bounded qualifiers."""
     text = text.casefold().strip().rstrip(".!")
     facts = []
+    condition_end = None
     if condition := _GIVEN_CONDITION.search(text):
         marker, subject, verb, state = condition.group("marker", "subject", "verb", "state")
-        verb = "has" if verb in {"has", "have"} else "is"
-        if state not in _STATE_GRAMMAR[verb]:
+        predicate = _condition_predicate(subject, verb, state)
+        if predicate is None:
             return None
         relation = {"if": "condition", "when": "condition", "once": "after"}.get(marker, marker)
-        state = {"dried": "dry", "cooled": "cool"}.get(state, state)
-        if not set(_WORDS.findall(subject)).isdisjoint(_TARGET_DELIMITERS):
-            return None
-        facts.append(("condition", relation, tuple(_WORDS.findall(subject)), state))
+        if extended:
+            logical = _logical_condition(text, condition, predicate, relation)
+            if logical is None:
+                return None
+            fact, condition_end = logical
+        else:
+            fact = ("condition", relation, *predicate)
+        facts.append(fact)
         qualifier = condition
     elif switch := _SWITCH_IGNITION.search(text):
         relation = "before" if switch[1] == "before" else "after"
@@ -676,7 +855,7 @@ def _qualifier_task(text):
         qualifier = None
 
     if qualifier is not None:
-        text = _split_qualifier(text, qualifier)
+        text = _split_qualifier(text, qualifier, end=condition_end)
         if text is None:
             return None
 
@@ -697,14 +876,17 @@ def _qualifier_task(text):
         target_text = text[opening.end():]
         if opening[0].strip() in {"fit", "install"}:
             target_text = target_text.removesuffix(" into place")
-        if target := _PART_TARGET.fullmatch(target_text):
-            if target["state"]:
-                facts.append(("part-state", _PART_STATE[target["state"]]))
-            text = f"{opening[0]}the {target['part']}"
-        elif removal := _PART_REMOVAL.fullmatch(text):
-            if removal["state"]:
-                facts.append(("part-state", _PART_STATE[removal["state"]]))
-            text = f"remove the {removal['part']}"
+        subject_pattern = _DESCRIBED_PART_TARGET if extended else _PART_TARGET
+        removal_pattern = _DESCRIBED_PART_REMOVAL if extended else _PART_REMOVAL
+        target = subject_pattern.fullmatch(target_text)
+        removal = removal_pattern.fullmatch(text) if target is None else None
+        if target or removal:
+            part = _part_target(target or removal, extended=extended)
+            if part is None:
+                return None
+            subject, states = part
+            facts.extend(("part-state", state) for state in states)
+            text = f"{'remove ' if removal else opening[0]}the {subject}"
 
     task = _simple_directive(text)
     if task is None:
@@ -712,14 +894,17 @@ def _qualifier_task(text):
     return task, frozenset(facts)
 
 
-def _qualifier_changed(original, replacement):
-    if not (_QUALIFIER_MARKER.search(original) or _QUALIFIER_MARKER.search(replacement)):
+def _qualifier_changed(original, replacement, *, extended=False):
+    if not any(
+        _QUALIFIER_MARKER.search(text) or (extended and _PART_QUALITY_MARKER.search(text))
+        for text in (original, replacement)
+    ):
         return False
-    source = _qualifier_task(original)
+    source = _qualifier_task(original, extended=extended)
     if source is None:
         return False
     source_action, source_facts = source
-    draft = _qualifier_task(replacement)
+    draft = _qualifier_task(replacement, extended=extended)
     if draft is None:
         return False
     draft_action, draft_facts = draft
@@ -735,7 +920,7 @@ def _qualifier_changed(original, replacement):
 def _uses_prose_guards(prompt_version, slot_count):
     return bool(slot_count) and prompt_version in (
         None, _PROSE_PROMPT_V4, _PROSE_PROMPT_V5, _PROSE_PROMPT_V6, _PROSE_PROMPT_V7,
-        _PROSE_PROMPT_V8, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V8, _PROSE_PROMPT_V9, _PROSE_PROMPT_VERSION,
     )
 
 
@@ -749,8 +934,13 @@ def _require_changes(source, candidate, *, prompt_version):
     guard_claims = guard_direction and prompt_version != _PROSE_PROMPT_V6
     guard_clauses = guard_claims and prompt_version != _PROSE_PROMPT_V7
     guard_qualifiers = guard_clauses and prompt_version != _PROSE_PROMPT_V8
+    guard_scope = guard_qualifiers and prompt_version != _PROSE_PROMPT_V9
     introduction = candidate["blocks"][0].get("text", "")
-    if guard_prose and (_INLINE_WARNING.search(introduction) or (guard_actions and _PREREQUISITE.search(introduction))):
+    if guard_prose and (
+        _INLINE_WARNING.search(introduction)
+        or (guard_actions and _PREREQUISITE.search(introduction))
+        or (guard_scope and _EXCEPTION_CONDITION.search(introduction))
+    ):
         raise ValueError("REWRITE_SAFETY_MUTATION")
     if guard_actions and _INTRO_DIRECTIVE.search(introduction):
         raise ValueError("REWRITE_INTRODUCTION_INSTRUCTION")
@@ -765,6 +955,7 @@ def _require_changes(source, candidate, *, prompt_version):
             _INLINE_WARNING.search(text)
             or (guard_actions and _PREREQUISITE.search(text))
             or (guard_direction and _negative_scope(text))
+            or (guard_scope and _EXCEPTION_CONDITION.search(text))
             for text in (original, replacement)
         ):
             if original != replacement:
@@ -790,7 +981,11 @@ def _require_changes(source, candidate, *, prompt_version):
                 raise ValueError("REWRITE_ACTION_MUTATION")
         if guard_clauses and _clause_assignment_changed(original, replacement):
             raise ValueError("REWRITE_CLAUSE_MUTATION")
-        if guard_qualifiers and _qualifier_changed(original, replacement):
+        if guard_scope and _alternative_changed(original, replacement):
+            raise ValueError("REWRITE_CLAUSE_MUTATION")
+        if guard_scope and _exception_changed(original, replacement):
+            raise ValueError("REWRITE_QUALIFIER_MUTATION")
+        if guard_qualifiers and _qualifier_changed(original, replacement, extended=guard_scope):
             raise ValueError("REWRITE_QUALIFIER_MUTATION")
     if guard_claims:
         _check_target_swaps(slots, restored)
@@ -821,7 +1016,8 @@ def validate_auto(source, candidate, *, response=None, prompt_version=None):
             _PROSE_PROMPT_V6: "full-prose-auto-validator-v4",
             _PROSE_PROMPT_V7: "full-prose-auto-validator-v5",
             _PROSE_PROMPT_V8: "full-prose-auto-validator-v6",
-        }.get(prompt_version, "full-prose-auto-validator-v7")
+            _PROSE_PROMPT_V9: "full-prose-auto-validator-v7",
+        }.get(prompt_version, "full-prose-auto-validator-v8")
     report.update(validator_version=validator_version, profile_version=PROFILE,
         publication_mode="automatic", content_acceptance_required=False,
         complete_rewrite=False, passed=not errors, error_codes=errors)
