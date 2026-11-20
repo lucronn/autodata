@@ -1963,8 +1963,8 @@ function articleIndexHarness(responses, { wait = async () => {}, openDemo = fals
     document: { title: '', body: { dataset: {} } },
     navigation, quote: null, vehicle: { id: 'B', region: 'US' }, articles: [], indexComplete: false, indexFailed: false, access: '', retryAction: null, filterArticles,
     searchNavigation, searchItems: null, searchQuery: '', searchPending: false, searchComplete: false, searchError: false, searchTimer: null,
-    currentArticle: null, renderedRevision: '', sourceData: null, sourceURL: '', sourceRevision: 0,
-    renewalUsed: false, renewal: null, libraryItems: [], libraryCursor: null,
+    currentArticle: null, renderedRevision: '', sourceURL: '', sourceRevision: 0, displayedSourceRevision: 0,
+    articleImageRefresh: null, sourceImageRefresh: null, libraryItems: [], libraryCursor: null,
     currentOrder: '', paidOrder: null, unconfirmedOrder: null, viewGeneration: null,
     clearOrderRoute(id) { clearedOrders.push(id); },
     session: { clear() {}, async bootstrap() {} },
@@ -2598,6 +2598,7 @@ class ArticleMediaNode {
   get textContent() { return this._text + this.children.map(n => n.textContent).join(''); }
   set textContent(value) { this.replaceChildren(); this._text = String(value); }
   get isConnected() { return this.tagName === 'body' || Boolean(this.parentNode?.isConnected); }
+  contains(node) { return node === this || Boolean(node?.parentNode && this.contains(node.parentNode)); }
   get nextSibling() {
     const siblings = this.parentNode?.children || [];
     return siblings[siblings.indexOf(this) + 1] || null;
@@ -2671,8 +2672,8 @@ function articleMediaHarness(overrides = {}) {
     $: id => { assert.ok(nodes.has(id), `known DOM node ${id}`); return nodes.get(id); },
     navigation, searchNavigation, searchItems: null, searchQuery: '', searchPending: false,
     searchComplete: false, searchError: false, searchTimer: null, clearTimeout() {},
-    currentArticle: null, renderedRevision: '', sourceData: null, sourceURL: '', sourceRevision: 0,
-    renewalUsed: false, renewal: null, renewalFailures: new Set(), articles: [], libraryItems: [], libraryCursor: null,
+    currentArticle: null, renderedRevision: '', sourceURL: '', sourceRevision: 0, displayedSourceRevision: 0,
+    articleImageRefresh: null, sourceImageRefresh: null, articles: [], libraryItems: [], libraryCursor: null,
     currentOrder: '',
     access: 'granted', quote: { configuration_label: '2005 Toyota' }, vehicle: { region: 'US' },
     articlePath: id => `/v1/catalog/vehicles/v/articles/${id}`,
@@ -3259,27 +3260,57 @@ test('article block media actual renewal shares one request and reconciles both 
   const h = articleMediaHarness({ requestArticleJSON: (path, options) => { calls.push({ path, options }); return pending.promise; } });
   const parent = h.render(renewalFixture()), images = mediaDescendants(parent, 'img');
   assert.equal(images.length, 2);
-  images[0].dispatch('error'); const renewal = h.context.renewal;
-  images[1].dispatch('error');
-  assert.equal(calls.length, 1); assert.equal(h.context.renewal, renewal);
+  const renewal = Promise.all(images.map(img => h.context.renewMedia(h.g, img)));
+  assert.equal(calls.length, 1);
   assert.equal(calls[0].path, '/v1/catalog/vehicles/v/articles/a'); assert.equal(calls[0].options.signal, h.g.signal);
   pending.resolve(renewedArticle()); await renewal;
   assert.deepEqual(mediaDescendants(parent, 'img'), images, 'stable revision retains image nodes');
   assert.deepEqual(images.map(n => n.src), ['https://cars.example/v1/catalog/images/v2.new-list', 'https://cars.example/v1/catalog/images/v2.new-callout']);
   assert.deepEqual(images.map(n => n.dataset.replacement), ['1', '1']);
-  assert.equal(h.context.renewal, null); assert.equal(h.context.renewalFailures.size, 0);
   images[0].dispatch('error'); images[1].dispatch('error');
   assert.equal(calls.length, 1);
   assert.deepEqual(mediaIDs(parent), []);
   assert.equal(mediaDescendants(parent, 'figure')[0].textContent, 'Illustration unavailable. Refresh this article to try again.');
+});
+
+test('a figure that fails later reuses the refreshed article links', async () => {
+  let requests = 0;
+  const h = articleMediaHarness({ requestArticleJSON: async () => { requests++; return renewedArticle(); } });
+  const [first, later] = mediaDescendants(h.render(renewalFixture()), 'img');
+  await h.context.renewMedia(h.g, first);
+  assert.equal(first.src, 'https://cars.example/v1/catalog/images/v2.new-list');
+  assert.equal(later.src, 'https://cars.example/v1/catalog/images/v2.old-callout');
+  await h.context.renewMedia(h.g, later);
+  assert.equal(later.src, 'https://cars.example/v1/catalog/images/v2.new-callout');
+  assert.equal(later.isConnected, true);
+  assert.equal(requests, 1);
+});
+
+test('a pinned source figure refreshes only the selected source after article media have refreshed', async () => {
+  let articleRequests = 0, sourceRequests = 0;
+  const h = articleMediaHarness({
+    requestArticleJSON: async () => { articleRequests++; return renewedArticle(); },
+    requestJSON: async () => ({
+      source: { url: mediaSourceURL }, document: renewalFixture().document,
+      images: [{ id: 'list', url: mediaURL(++sourceRequests === 1 ? 'old-stored' : 'new-stored') }],
+    }),
+  });
+  const [first] = mediaDescendants(h.render(renewalFixture()), 'img');
+  await h.context.renewMedia(h.g, first);
+  await h.context.loadSource(mediaSourceURL, h.g);
+  const [stored] = mediaDescendants(h.nodes.get('source-review-frame'), 'img');
+  await h.context.renewMedia(h.g, stored);
+  assert.equal(stored.src, 'https://cars.example/v1/catalog/images/v2.new-stored');
+  assert.equal(stored.isConnected, true);
+  assert.equal(articleRequests, 1);
+  assert.equal(sourceRequests, 2);
 });
 test('same-navigation publication prevents an outstanding media renewal from restoring the old revision', async () => {
   const pending = deferredAuthOperation();
   const h = articleMediaHarness({ requestArticleJSON: () => pending.promise });
   const parent = h.render(renewalFixture());
   const first = mediaDescendants(parent, 'img')[0];
-  first.dispatch('error');
-  const renewal = h.context.renewal;
+  const renewal = h.context.renewMedia(h.g, first);
   const published = { ...renewedArticle().data.article, content_origin: 'canonical', view_revision: 'publication' };
   h.render(published);
   const next = mediaDescendants(parent, 'img')[0];
@@ -3288,8 +3319,7 @@ test('same-navigation publication prevents an outstanding media renewal from res
   await renewal;
   assert.equal(h.context.currentArticle.view_revision, 'publication');
   assert.equal(mediaDescendants(parent, 'img')[0], next);
-  assert.equal(h.context.renewal, null);
-  assert.equal(h.context.renewalFailures.size, 0);
+  assert.equal(h.context.articleImageRefresh, null);
 });
 
 test('media renewal replaces failed figures within their scoped responses only', async () => {
@@ -3312,12 +3342,11 @@ test('media renewal replaces failed figures within their scoped responses only',
     { id: 'callout', url: mediaURL('old-stored-callout') },
   ], null, h.g);
   const [healthySource, failedSource] = mediaDescendants(frame, 'img');
-  h.context.sourceData = { source: { url: mediaSourceURL } };
   h.context.sourceURL = 'https://cars.example' + mediaSourceURL;
-  failedArticle.dispatch('error');
-  failedSource.dispatch('error');
+  const renewal = Promise.all([h.context.renewMedia(h.g, failedArticle), h.context.renewMedia(h.g, failedSource)]);
+  assert.deepEqual(calls, ['https://cars.example' + mediaSourceURL], 'pinned refresh starts while article response is pending');
   pending.resolve(renewedArticle());
-  await h.context.renewal;
+  await renewal;
   assert.deepEqual(calls, ['https://cars.example' + mediaSourceURL]);
   assert.deepEqual([failedArticle, healthyArticle, healthySource, failedSource].map(img => img.src), [
     'https://cars.example/v1/catalog/images/v2.new-list',
@@ -3341,10 +3370,10 @@ for (const changed of [false, true]) {
     const frame = h.nodes.get('source-review-frame');
     h.context.renderBlocks(frame, [{ type: 'callout', text: 'Stored', images: [{ asset_id: 'stored' }] }],
       [{ id: 'stored', url: mediaURL('old-stored') }], null, h.g);
-    frame.hidden = false; h.context.sourceData = { source: { url: mediaSourceURL } }; h.context.sourceURL = 'https://cars.example' + mediaSourceURL;
+    frame.hidden = false; h.context.sourceURL = 'https://cars.example' + mediaSourceURL;
     const image = mediaDescendants(frame, 'img')[0];
     assert.ok(image, 'stored-source callout must contain a retained figure');
-    image.dispatch('error'); await h.context.renewal;
+    await h.context.renewMedia(h.g, image);
     assert.equal(calls.length, 1); assert.equal(calls[0].url, 'https://cars.example' + mediaSourceURL); assert.equal(calls[0].options.signal, h.g.signal);
     assert.equal(calls[0].options.headers.Prefer, 'workshop-source-document');
     if (changed) {
@@ -3364,11 +3393,11 @@ for (const status of [401, 403, 410]) {
     for (const id of ['articles', 'source-review-frame', 'reference-data', 'library-items']) h.nodes.get(id).textContent = 'Protected';
     h.nodes.get('source-review-link').href = mediaSourceURL;
     const image = mediaDescendants(h.nodes.get('article-content'), 'img')[0];
-    assert.ok(image); image.dispatch('error'); await h.context.renewal;
+    assert.ok(image); await h.context.renewMedia(h.g, image);
     assert.equal(h.g.current(), false);
     assert.equal(h.g.signal.aborted, true);
     for (const id of ['articles', 'article-content', 'source-review-frame', 'reference-data', 'library-items']) assert.equal(h.nodes.get(id).textContent, '', id);
-    assert.equal(h.context.currentArticle, null); assert.equal(h.context.sourceData, null); assert.equal(h.context.sourceURL, '');
+    assert.equal(h.context.currentArticle, null); assert.equal(h.context.sourceImageRefresh, null); assert.equal(h.context.sourceURL, '');
     assert.equal(h.nodes.get('source-review-link').href, undefined);
     assert.equal(h.nodes.get('source-review-frame').hidden, true); assert.equal(h.nodes.get('print').disabled, true);
     assert.equal(h.context.document.body.dataset.printable, 'false');
@@ -3380,9 +3409,9 @@ for (const outcome of ['resolve', 'reject']) {
     const pending = deferredAuthOperation(); let sourceCalls = 0;
     const h = articleMediaHarness({ requestArticleJSON: () => pending.promise, requestJSON: () => { sourceCalls++; assert.fail('stale renewal cannot fetch source'); } });
     h.render(renewalFixture());
-    h.context.sourceData = { source: { url: mediaSourceURL } }; h.context.sourceURL = mediaSourceURL;
+    h.context.sourceURL = mediaSourceURL;
     const image = mediaDescendants(h.nodes.get('article-content'), 'img')[0];
-    assert.ok(image); image.dispatch('error'); const renewal = h.context.renewal;
+    assert.ok(image); const renewal = h.context.renewMedia(h.g, image);
     h.context.invalidate(); const next = h.navigation.next();
     h.context.renderArticle(mediaArticle([{ type: 'paragraph', text: 'New selected article' }], [], { id: 'b', view_revision: 'view-b' }), next);
     h.nodes.get('source-review-frame').textContent = 'New source';
@@ -3958,11 +3987,10 @@ test('local referenced step images render and retry with opaque tokens without b
       assert.equal(images[0].src, 'https://cars.example' + image.url);
       assert.equal(images[0].referrerPolicy, 'no-referrer');
       const replacement = localOpaqueImagePath('ZyXw9876_-'.repeat(15));
-      const failures = new Set(images);
-      h.context.retryFailedImages(parent, [{ ...image, url: replacement }], failures, h.g);
+      assert.equal(h.context.retryImage(images[0], [{ ...image, url: replacement }]), true);
       assert.equal(images[0].src, 'https://cars.example' + replacement);
       h.navigation.clear();
-      h.context.retryFailedImages(parent, [image], failures, h.g);
+      void h.context.renewMedia(h.g, images[0]);
       assert.equal(images[0].src, 'https://cars.example' + replacement);
     }
   }
@@ -4053,8 +4081,7 @@ test('a stale media renewal cannot clear a newly opened pinned source', async ()
   h.render(renewalFixture());
   await h.context.loadSource(mediaSourceURL, h.g);
   const frame = h.nodes.get('source-review-frame');
-  mediaDescendants(frame, 'img')[0].dispatch('error');
-  const renewal = h.context.renewal;
+  const renewal = h.context.renewMedia(h.g, mediaDescendants(frame, 'img')[0]);
   await renewalRequested.promise;
   assert.equal(calls.length, 2);
   await h.context.loadSource(newerURL, h.g);

@@ -60,7 +60,7 @@ let vehicle = null,
   renderedRevision = "",
   sourceURL = "",
   sourceRevision = 0,
-  sourceData = null;
+  displayedSourceRevision = 0;
 let quote = null,
   merchant = null,
   merchantRequest = null,
@@ -71,9 +71,8 @@ let quote = null,
   paidOrder = null,
   unconfirmedOrder = null,
   retryAction = null,
-  renewalUsed = false,
-  renewal = null,
-  renewalFailures = new Set(),
+  articleImageRefresh = null,
+  sourceImageRefresh = null,
   viewGeneration = null,
   sessionEstablished = false,
   signingIn = false;
@@ -151,12 +150,11 @@ function clearProtected() {
   access = "unknown";
 }
 function resetReaderMedia() {
-  renewalUsed = false;
-  renewal = null;
-  renewalFailures = new Set();
-  sourceData = null;
+  articleImageRefresh = null;
+  sourceImageRefresh = null;
   sourceURL = "";
   ++sourceRevision;
+  displayedSourceRevision = sourceRevision;
   $("source-review").hidden = true;
   $("source-review-load").disabled = false;
   $("source-review-frame").replaceChildren();
@@ -871,19 +869,22 @@ function renderContent(parent, article, g) {
     }
   else parent.append(element("p", "No readable content is available yet."));
 }
-function retryFailedImages(parent, images, failures, g) {
-  if (!g.current()) return;
-  for (const img of parent.querySelectorAll("img[data-asset-id]")) {
-    if (!failures.has(img) || img.dataset.replacement === "1") continue;
-    const found = images.find(
-      (image) => assetID(image) === img.dataset.assetId,
-    );
-    const url = localImageURL(found?.url, location.origin, { authMode: session.state.mode });
-    if (url && img.src !== url) {
-      img.dataset.replacement = "1";
-      img.src = url;
-    }
-  }
+function retryImage(img, images) {
+  const found = images.find(
+    (image) => image.status !== "unavailable" && assetID(image) === img.dataset.assetId,
+  );
+  const url = localImageURL(found?.url, location.origin, { authMode: session.state.mode });
+  if (!url || img.src === url) return false;
+  img.dataset.replacement = "1";
+  img.src = url;
+  return true;
+}
+function showUnavailableImage(img) {
+  img.replaceWith(element(
+    "p",
+    "Illustration unavailable. Refresh this article to try again.",
+    "image-missing",
+  ));
 }
 function renderArticle(article, g) {
   if (!g.current()) return;
@@ -1036,8 +1037,9 @@ async function loadSource(value, g, blockID = null) {
     else fragment.append(element("p", "Stored source is unavailable."));
     $("source-review-frame").replaceChildren(fragment);
     $("source-review-frame").hidden = false;
-    sourceData = data;
+    sourceImageRefresh = null;
     sourceURL = demoPath(requested.href);
+    displayedSourceRevision = selected;
     $("article-reference").open = true;
     $("source-review-meta").textContent = "Stored source loaded.";
     if (blockID !== null) {
@@ -1061,88 +1063,57 @@ function handleSourceError(error, g) {
   status(error.message || "Stored source is unavailable.", { error: true });
 }
 async function renewMedia(g, failed) {
-  if (!g.current()) return;
-  if (failed.dataset.replacement === "1" || (renewalUsed && !renewal)) {
-    failed.replaceWith(
-      element(
-        "p",
-        "Illustration unavailable. Refresh this article to try again.",
-        "image-missing",
-      ),
-    );
+  if (!g.current() || !currentArticle || !failed.isConnected) return;
+  if (failed.dataset.replacement === "1") {
+    showUnavailableImage(failed);
     return;
   }
-  renewalFailures.add(failed);
-  if (renewal) return renewal;
-  renewalUsed = true;
-  const failures = renewalFailures;
-  const current = () => g.current() && renewalFailures === failures;
-  let articleImages;
-  renewal = (async () => {
+  const stored = $("source-review-frame").contains(failed);
+  const revision = renderedRevision;
+  const sourceSelection = displayedSourceRevision;
+  const selectedSourceURL = sourceURL;
+  const current = () => g.current() && renderedRevision === revision &&
+    (!stored || displayedSourceRevision === sourceSelection);
+  const refresh = async () => {
     try {
-      const response = await requestArticleJSON(
-        demoPath(articlePath(currentArticle.id)),
-        { signal: g.signal },
-      );
-      if (!current()) return;
-      renderArticle(response.data.article, g);
-      if (!current()) return;
-      articleImages = imageMap(response.data.article);
-      const frame = $("source-review-frame");
-      if (sourceData && sourceURL &&
-          [...frame.querySelectorAll("img[data-asset-id]")].some((img) => failures.has(img))) {
-        // Do not hold the article's figures while fetching the pinned source.
-        retryFailedImages($("article-content"), articleImages, failures, g);
-        const selectedSourceURL = sourceURL;
-        const sourceSelection = sourceRevision;
-        const stillSelected = () =>
-          current() && sourceSelection === sourceRevision && selectedSourceURL === sourceURL;
-        let data;
-        try {
-          data = await requestJSON(selectedSourceURL, { signal: g.signal, headers: sourceDocumentHeaders });
-        } catch (error) {
-          if (stillSelected()) throw error;
-          return;
-        }
-        if (!stillSelected()) return;
-        const requested = validSourceURL(selectedSourceURL),
-          returned = validSourceURL(data.source?.url);
+      if (stored) {
+        const requested = validSourceURL(selectedSourceURL);
+        if (!requested) return [];
+        const data = await requestJSON(selectedSourceURL, { signal: g.signal, headers: sourceDocumentHeaders });
+        if (!current()) return [];
+        const returned = validSourceURL(data.source?.url);
         if (
           !returned ||
           returned.searchParams.get("source_revision_id") !==
-            requested?.searchParams.get("source_revision_id")
+            requested.searchParams.get("source_revision_id")
         )
           throw new Error("The stored source changed.");
-        retryFailedImages(frame, data.images || [], failures, g);
-        sourceData = data;
+        return data.images || [];
       }
+      const response = await requestArticleJSON(demoPath(articlePath(currentArticle.id)), { signal: g.signal });
+      if (!current()) return [];
+      renderArticle(response.data.article, g);
+      return imageMap(response.data.article);
     } catch (error) {
-      if (!current()) return;
-      if ([401, 403, 410].includes(error.status)) {
+      if (current() && [401, 403, 410].includes(error.status)) {
         invalidate();
         show("welcome");
         status(error.message, { error: true });
       }
-    } finally {
-      if (current()) {
-        if (articleImages)
-          retryFailedImages($("article-content"), articleImages, failures, g);
-        for (const image of failures) {
-          if (image.isConnected && image.dataset.replacement !== "1")
-            image.replaceWith(
-              element(
-                "p",
-                "Illustration unavailable. Refresh this article to try again.",
-                "image-missing",
-              ),
-            );
-        }
-        failures.clear();
-        renewal = null;
-      }
+      return [];
     }
-  })();
-  return renewal;
+  };
+  // Later failures can reuse the same authorized response within this view.
+  const pending = stored
+    ? (sourceImageRefresh ??= refresh())
+    : (articleImageRefresh ??= refresh());
+  const images = await pending;
+  if (
+    current() && failed.isConnected && failed.dataset.replacement !== "1" &&
+    !retryImage(failed, images)
+  ) {
+    showUnavailableImage(failed);
+  }
 }
 async function library(g, append = false) {
   clearReader();
