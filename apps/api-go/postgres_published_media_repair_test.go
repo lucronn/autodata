@@ -2,7 +2,10 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -10,7 +13,26 @@ import (
 
 func TestPostgresPaidCatalogRetainedMediaPublication(t *testing.T) {
 	f := paidSetup(t)
-	f.grant(0, f.configuration, "US")
+	order := f.grant(0, f.configuration, "US")
+	mediaType := os.Getenv("AUTODATA_PAID_TEST_FIGURE_MEDIA_TYPE")
+	switch mediaType {
+	case "image/png", "image/jpeg", "image/gif", "image/webp":
+	default:
+		t.Fatal("fixture requires a supported raster content type")
+	}
+	wantDigest, err := hex.DecodeString(os.Getenv("AUTODATA_PAID_TEST_FIGURE_SHA256"))
+	if err != nil || len(wantDigest) != sha256.Size {
+		t.Fatal("fixture requires the provider figure SHA-256")
+	}
+	readFigure := func(path string) []byte {
+		t.Helper()
+		status, raw, headers := f.call(0, "GET", path, "")
+		if status != 200 || headers.Get("Content-Type") != mediaType {
+			t.Fatalf("retained figure returned status %d, media type %q; want status 200, media type %q",
+				status, headers.Get("Content-Type"), mediaType)
+		}
+		return raw
+	}
 	previous := f.detail(0)
 	if previous.SourceRevisionID == nil || previous.CanonicalRevisionID == nil ||
 		previous.ReviewStatus == nil || *previous.ReviewStatus != "APPROVED" ||
@@ -30,12 +52,12 @@ func TestPostgresPaidCatalogRetainedMediaPublication(t *testing.T) {
 		}
 		return source
 	}
-	oldImage := f.expect(0, "GET", previous.Images[0].URL, "", 200)
+	oldImage := readFigure(previous.Images[0].URL)
 	beforeSource := pinnedSource()
-	oldHistoricalImage := f.expect(0, "GET", beforeSource.Images[0].URL, "", 200)
-	if !bytes.Equal(oldImage, oldHistoricalImage) ||
-		!bytes.HasPrefix(oldImage, []byte("\x89PNG\r\n\x1a\n")) {
-		t.Fatal("localized PNG bytes differ before repair")
+	oldHistoricalImage := readFigure(beforeSource.Images[0].URL)
+	digest := sha256.Sum256(oldImage)
+	if !bytes.Equal(digest[:], wantDigest) || !bytes.Equal(oldImage, oldHistoricalImage) {
+		t.Fatal("localized figure bytes differ from the provider fixture before repair")
 	}
 	f.check("warm_owned_media_read", f.reader.calls.Load() == 2)
 
@@ -74,9 +96,7 @@ func TestPostgresPaidCatalogRetainedMediaPublication(t *testing.T) {
 		return encoded
 	}
 	f.check("approved_prose_and_review_preserved", bytes.Equal(textBlocks(previous), textBlocks(current)))
-	f.check("replacement_uses_same_retained_png", bytes.Equal(
-		f.expect(0, "GET", current.Images[0].URL, "", 200), oldImage,
-	))
+	f.check("replacement_uses_same_retained_figure", bytes.Equal(readFigure(current.Images[0].URL), oldImage))
 
 	historical := pinnedSource()
 	beforeJSON, err := json.Marshal(beforeSource.Document)
@@ -102,12 +122,15 @@ func TestPostgresPaidCatalogRetainedMediaPublication(t *testing.T) {
 		reference.AnchorSourceRevisionID == *current.SourceRevisionID &&
 		reference.AnchorCanonicalRevisionID != nil &&
 		*reference.AnchorCanonicalRevisionID == *current.CanonicalRevisionID)
-	f.check("historical_new_capability_reads_same_png", bytes.Equal(
-		f.expect(0, "GET", historical.Images[0].URL, "", 200), oldImage,
-	))
+	f.check("historical_new_capability_reads_same_figure", bytes.Equal(readFigure(historical.Images[0].URL), oldImage))
 	reads = f.reader.calls.Load()
 	f.expect(1, "GET", sourcePath, "", 403)
 	f.image(1, current.Images[0].URL, 404)
 	f.image(1, historical.Images[0].URL, 404)
 	f.check("scope_denials_before_storage", f.reader.calls.Load() == reads)
+
+	f.exec(`UPDATE entitlements SET status='revoked',revoked_at=now(),revoke_reason='fixture' WHERE commerce_order_id=$1::uuid`, order)
+	f.image(0, current.Images[0].URL, 403)
+	f.image(0, historical.Images[0].URL, 403)
+	f.check("revoked_grant_denies_both_capabilities_before_storage", f.reader.calls.Load() == reads)
 }

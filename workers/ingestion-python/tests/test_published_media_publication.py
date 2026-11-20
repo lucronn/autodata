@@ -281,3 +281,147 @@ def test_publish_historical_technical_profile(runtime, monkeypatch, tmp_path, ca
     _run(runtime, model)
     assert model.calls == calls
     assert runtime.read_current()["canonical_revision_id"] == state["canonical_revision_id"]
+
+
+@pytest.mark.parametrize(("provider", "profile", "numbered_only", "legacy_projection"), [
+    ("bankone", AUTO_PROFILE, True, "source-projection-v2"),
+    ("banktwo", article_content_review.PROFILE, False, "source-projection-v3"),
+    ("banktwo", "technical-prose-v1", False, "source-projection-v2"),
+    ("bankone", "technical-prose-v2", False, "source-projection-v2"),
+])
+def test_publish_retained_ordinals_preserves_prose_and_visibility(
+    runtime, monkeypatch, tmp_path, capsys, provider, profile, numbered_only, legacy_projection,
+):
+    from dataclasses import replace
+    from io import BytesIO
+    from PIL import Image
+    from autodata_ingestion import source_article_capture as capture
+    from autodata_ingestion.article_lifecycle_store import load_source_revision
+    from autodata_ingestion.published_media_publication import ORDINAL_SCHEMA
+    from publish_article_media_repair import main
+
+    runtime.article_id = runtime.articles[provider]
+    server = runtime.servers[provider]
+    procedure = (
+        b'<ol start="4"><li>Remove the pump.</li><li value="9">Install the cover.</li></ol>'
+    )
+    if numbered_only:
+        # Four historical blocks also satisfy the original authoritative layout
+        # check. Test ordinal repair on a retained article with only a body.
+        body = json.dumps({"blocks": [
+            {"type": "heading", "level": 2, "text": "Service procedure"},
+            {"type": "heading", "level": 3, "text": "Pump"},
+            {"type": "ordered_list", "start": 4, "items": [
+                "Remove the pump.", {"number": 9, "text": "Install the cover."},
+            ]},
+            {"type": "heading", "level": 3, "text": "End of procedure"},
+        ]}).encode()
+        server.body(body, "application/json")
+    else:
+        body = procedure + b'<img data-resource-ref="figure" alt="Reference marks">'
+        figure = BytesIO()
+        Image.new("RGB", (24, 24), "green").save(figure, format="PNG")
+        server.body(figure.getvalue(), "image/png", ref="figure", kind="asset")
+        server.body(body, "text/html", assets=["figure"])
+
+    capture_current = capture.capture_source_article
+
+    def before_ordinals(*args, **kwargs):
+        result = capture_current(*args, **kwargs)
+        document = deepcopy(result.source_document)
+        ordered = next(block for block in document["blocks"] if block["type"] == "ordered_list")
+        assert ordered.pop("start") == 4
+        ordered["items"][1] = ordered["items"][1]["text"]
+        body, steps, images = capture.project_document(document)
+        return replace(result, source_document=document, source_body=body, source_steps=steps,
+                       source_images=images, projection_version=legacy_projection)
+
+    class SavedRewrite(FixtureModel):
+        def complete_json(self, prompt):
+            self.calls += 1
+            value = json.loads(prompt)
+            if profile == "technical-prose-v2":
+                return {"operations": [{key: operation[key] for key in ("block_id", "path", "operation_id")}
+                                       for operation in value["plan"]["operations"]]}
+            phrases = {"Remove the pump.": "Take off the pump.", "Install the cover.": "Fit the cover."}
+            replacements = [
+                {"block_id": slot["block_id"], "path": slot["path"], "text": phrases[slot["text"]]}
+                for slot in value["slots"]
+            ]
+            if profile == "technical-prose-v1":
+                return {"replacements": replacements}
+            return {"introduction": "This procedure covers pump removal.",
+                    "replacements": [{**entry, "action": "rewrite", "reason": ""} for entry in replacements]}
+
+    allowlist = _allowlist(tmp_path)
+    model = SavedRewrite()
+    with runtime.repo.connect() as conn:
+        conn.execute(
+            "UPDATE canonical_articles SET target_rewrite_profile_version=%s WHERE canonical_article_id=%s",
+            (profile, runtime.article_id),
+        )
+    from autodata_ingestion.source_job_persistence import ensure_article_job
+
+    with monkeypatch.context() as legacy:
+        legacy.setattr(capture, "capture_source_article", before_ordinals)
+        ensure_article_job(runtime.repo, runtime.article_id, normalization_version="ordered-article-v1",
+                           rewrite_profile_version=profile)
+        _run(runtime, model)
+    if profile == article_content_review.PROFILE:
+        with runtime.repo.connect() as conn:
+            article = conn.execute("SELECT * FROM canonical_articles WHERE canonical_article_id=%s",
+                                   (runtime.article_id,)).fetchone()
+            job = conn.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s",
+                               (article["current_job_id"],)).fetchone()
+            row = conn.execute("SELECT * FROM canonical_article_revisions WHERE transformation_key=%s",
+                               (job["transformation_key"],)).fetchone()
+        source = load_source_revision(runtime.repo, row["source_revision_id"])
+        article_content_review.record_review(
+            runtime.repo, expected=article_content_review.bindings_for(job, article, row, source.source_fingerprint),
+            reviewer_id="content-reviewer", allowlist=allowlist, decision="APPROVED",
+            rationale="Compared every synthetic instruction with the original procedure.",
+            full_content_reviewed=True, fixture_mode=True,
+        )
+        _run(runtime, model)
+
+    original = runtime.read_current()
+    assert original["canonical_revision_id"], runtime.diagnostics()
+    assert model.calls == 1
+    before = _rows(runtime.repo)
+    destination = tmp_path / "ordinal-preview"
+    assert main(["preview", "--ordinals", "--article-id", str(runtime.article_id),
+                 "--source-revision-id", str(original["source_revision_id"]), "--output", str(destination),
+                 "--fixture-mode"], repo=runtime.repo, object_store=runtime.objects) == 0
+    output = json.loads(capsys.readouterr().out)
+    manifest = json.loads((destination / "manifest.json").read_text())
+    assert manifest["schema"] == ORDINAL_SCHEMA
+    assert manifest["repaired_projection_version"] == "source-projection-v4"
+    assert output["manifest_sha256"] == digest_json(manifest)
+    assert _rows(runtime.repo) == before
+
+    args = dict(expected=manifest, object_store=runtime.objects, reviewer_id="media-reviewer",
+                allowlist=allowlist, rationale="Compared original procedure numbering against the retained source.",
+                fixture_mode=True)
+    with pytest.raises(ValueError, match="PUBLISHED_MEDIA_REPAIR_STALE"):
+        publish_retained_media_repair(runtime.repo, **{**args, "expected": {
+            **manifest, "repaired_published_document_hash": "0" * 64,
+        }})
+    assert runtime.read_current() == original and _rows(runtime.repo) == before
+
+    result = publish_retained_media_repair(runtime.repo, **args)
+    assert result["status"] == "published"
+    assert publish_retained_media_repair(runtime.repo, **args) == {**result, "status": "already_published"}
+    updated = runtime.read_current()
+    assert updated["canonical_revision_id"] != original["canonical_revision_id"]
+    assert updated["review_status"] == original["review_status"]
+    assert updated["body"] == original["body"] and updated["images"] == original["images"]
+    source = load_source_revision(runtime.repo, updated["source_revision_id"])
+    assert source.projection_version == "source-projection-v4"
+    assert [step["number"] for step in source.source_steps] == [4, 9]
+    assert [step["number"] for step in updated["steps"]] == [4, 9]
+    assert _rows(runtime.repo)["canonical_article_rewrite_attempts"] == before["canonical_article_rewrite_attempts"]
+
+    runtime.refresh()
+    _run(runtime, model)
+    assert model.calls == 1
+    assert runtime.read_current()["canonical_revision_id"] == updated["canonical_revision_id"]
