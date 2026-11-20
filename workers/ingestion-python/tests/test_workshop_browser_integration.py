@@ -392,14 +392,24 @@ def _child(root_name,engine,provider,directory,monkeypatch):
             repo=Repository(os.environ['AUTODATA_WORKSHOP_BROWSER_DATABASE']);result['fixture_database']=repo.database_name
             runtime=LifecycleRuntime(repo,stack)
             scope=configure_scoped_runtime(runtime,provider)
-            # Newly scoped articles are created after LifecycleRuntime sets up
-            # the legacy mock model, which only supports technical-prose-v1.
-            with repo.connect() as conn:
-                conn.execute(
-                    "UPDATE canonical_articles SET target_rewrite_profile_version = %s "
-                    "WHERE vehicle_configuration_id = %s",
-                    ("technical-prose-v1", scope["configuration"]),
-                )
+            if runtime.servers:
+                with repo.connect() as conn:
+                    conn.execute(
+                        "UPDATE vehicle_configurations SET engine_displacement_l = %s WHERE vehicle_configuration_id = %s",
+                        ("2.0", scope["configuration"]),
+                    )
+            if not google:
+                for server in runtime.servers.values():
+                    body = {
+                        "blocks": [
+                            {"type": "paragraph", "text": "Inspect the alignment marks before removing the pump.",
+                             "images": [{"asset_resource_ref": "figure", "alt": "Alignment marks",
+                                         "caption": "Pump alignment marks"}]},
+                            {"type": "callout", "label": "Warning", "text": "Do not run the pump dry."},
+                            {"type": "step", "number": 1, "text": "Remove the pump."},
+                        ],
+                    }
+                    server.body(json.dumps(body).encode(), "application/json", assets=["figure"])
             bridge=BrowserBridge(runtime)
             model=stack.enter_context(serve(bridge.model_handler()))
             runtime.env['INCEPTION_API_BASE_URL']=model+'/v1';runtime.env['INCEPTION_API_TIMEOUT_SECONDS']='35'

@@ -1209,12 +1209,15 @@ class _ArticleHTMLParser(HTMLParser):
         return _compact_text(" ".join(self._article_body_parts))
 
 
-def _html_article_candidates(resource: SourceResource) -> list[NormalizationCandidate]:
+def _html_article_candidates(
+    resource: SourceResource, *, parser: _ArticleHTMLParser | None = None
+) -> list[NormalizationCandidate]:
     """Extract one article and any explicit vehicle identity from generic HTML."""
 
-    parser = _ArticleHTMLParser()
-    parser.feed(resource.payload.decode("utf-8-sig"))
-    parser.close()
+    if parser is None:
+        parser = _ArticleHTMLParser()
+        parser.feed(resource.payload.decode("utf-8-sig"))
+        parser.close()
     json_ld_records = _json_ld_records(parser.json_ld)
 
     vehicle_values = _meta_values(
@@ -1769,7 +1772,7 @@ def adapt_bound_article(resource: SourceResource, context) -> dict[str, Any]:
                         "number": i,
                         **({"text": s} if isinstance(s, str) else {
                             field: s[field]
-                            for field in ("text", "instruction", "description", "instructions")
+                            for field in ("text", "instruction", "description", "instructions", "images")
                             if field in s
                         }),
                     }
@@ -1810,14 +1813,15 @@ def adapt_bound_article(resource: SourceResource, context) -> dict[str, Any]:
             "asset_resource_refs": [],
         }
     if media == "text/html":
-
+        html = resource.payload.decode("utf-8-sig")
         parser = ArticleParser(asset_bindings=resource.metadata.get("asset_bindings", []))
-        parser.feed(resource.payload.decode("utf-8-sig"))
+        parser.feed(html)
         parser.close()
         parser.flush()
-        # HTML's explicit structured vehicle metadata is checked independently of body text.
+        # Check explicit structured vehicle metadata independently of body text.
         metadata_parser = _ArticleHTMLParser()
-        metadata_parser.feed(resource.payload.decode("utf-8-sig"))
+        metadata_parser.feed(html)
+        metadata_parser.close()
         for field, keys in {
             "year": ("vehicle.year", "vehicle_year", "year"),
             "make": ("vehicle.make", "vehicle_make"),
@@ -1830,7 +1834,7 @@ def adapt_bound_article(resource: SourceResource, context) -> dict[str, Any]:
                 and supplied != str(context.vehicle[field])
             ):
                 raise ValueError("wrong applicability")
-        for candidate in _html_article_candidates(resource):
+        for candidate in _html_article_candidates(resource, parser=metadata_parser):
             if candidate.kind == "vehicle_identity":
                 for field in ("year", "make", "model"):
                     if (
@@ -1852,23 +1856,28 @@ def adapt_bound_article(resource: SourceResource, context) -> dict[str, Any]:
             for c in artifact.candidates
             if c.kind in ("document_text", "ocr_text", "image_text")
         ]
-        images = {
-            image["image_id"]: image
-            for c in text_candidates
-            for image in c.data.get("images", [])
-        }
-        blocks = []
+        pages: dict[int, list[dict[str, Any]]] = {}
+        unplaced = []
+        images = {}
+        # Native text and OCR candidates are produced in separate passes.
         for candidate in text_candidates:
-            blocks.extend(segment_plain_article_text(candidate.data.get("text", "")))
-            page = (
-                candidate.locator.split(":")[1]
-                if candidate.locator.startswith("page:")
-                else None
-            )
-            for image_id, image in list(images.items()):
-                if str(image.get("page")) == page:
-                    blocks.append({"kind": "image", **image})
-                    del images[image_id]
-        blocks.extend({"kind": "image", **image} for image in images.values())
+            segments = segment_plain_article_text(candidate.data.get("text", ""))
+            page = re.match(r"^page:(\d+)(?:$|:)", candidate.locator)
+            if page:
+                pages.setdefault(int(page[1]), []).extend(segments)
+            else:
+                unplaced.extend(segments)
+            for image in candidate.data.get("images", []):
+                images.setdefault(image["image_id"], image)
+        # Add figures after all text regions from their own page.
+        for image in images.values():
+            figure = {"kind": "image", **image}
+            page_number = image.get("page")
+            if isinstance(page_number, int):
+                pages.setdefault(page_number, []).append(figure)
+            else:
+                unplaced.append(figure)
+        blocks = [block for page in sorted(pages) for block in pages[page]]
+        blocks.extend(unplaced)
         return {"blocks": blocks, "asset_resource_refs": []}
     raise ValueError("unsupported article media")

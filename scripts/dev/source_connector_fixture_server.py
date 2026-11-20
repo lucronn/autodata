@@ -161,6 +161,25 @@ def serve_model():
             if fixture.mode=="transport":self.send_error(503);return
             slots=prompt["slots"]
             response={"replacements":[{**slot,"text":slot["text"] if fixture.mode=="unchanged" else slot["text"].replace("Remove","Take off").replace("Install","Fit").replace("Discard","Toss")} for slot in slots]}
+            if str(prompt.get("prompt_version", "")).startswith("full-prose-auto-prompt-"):
+                def replacement(slot):
+                    text = slot["text"]
+                    retained = slot.get("required_action") in ("retain", "rewrite_or_retain")
+                    rewritten = {
+                        "Inspect the alignment marks before removing the pump.": "Check the pump alignment marks before removal.",
+                        "Remove the pump.": "Take off the pump.",
+                    }.get(text, text)
+                    return {
+                        "block_id": slot["block_id"],
+                        "path": slot["path"],
+                        "action": "retain" if retained else "rewrite",
+                        "text": text if retained or fixture.mode == "unchanged" else rewritten,
+                        "reason": "Preserve the source wording." if retained else "",
+                    }
+                response = {
+                    "introduction": "This procedure covers pump removal.",
+                    "replacements": [replacement(slot) for slot in slots],
+                }
             if fixture.mode=="unsafe" and response["replacements"]:response["replacements"][0]["text"]="Install an invented component."
             raw=json.dumps({"choices":[{"message":{"content":json.dumps(response)}}]}).encode()
             self.send_response(200);self.send_header("Content-Type","application/json");self.send_header("Content-Length",str(len(raw)));self.end_headers()

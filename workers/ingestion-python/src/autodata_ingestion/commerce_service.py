@@ -193,7 +193,7 @@ class CommerceService:
 
     def _scope(self, cursor, configuration_id, region):
         validate_uuid(configuration_id); validate_region(region)
-        cursor.execute("""SELECT c.vehicle_configuration_id, concat_ws(' ',b.make,b.model,b.model_year::text,c.trim) AS label
+        cursor.execute("""SELECT c.vehicle_configuration_id, concat_ws(' ',b.model_year::text,b.make,b.model,c.trim,c.engine_displacement_l::text || ' L') AS label
             FROM vehicle_configurations c JOIN vehicle_identity_bases b USING(vehicle_identity_base_id)
             WHERE c.vehicle_configuration_id=%s AND b.region=%s
               AND c.reviewer_state<>'rejected' AND b.reviewer_state<>'rejected'""", (configuration_id, region))
@@ -519,7 +519,7 @@ class CommerceService:
             clause = 'AND (o.created_at,o.order_id)<(%s,%s)' if after else ''
             price_clause = ' AND o.expected_price_id=%s' if self.read_only else ''
             args = [account_id, self.config.account_id, self.config.livemode] + ([self.config.price_id] if self.read_only else []) + (list(after) if after else []) + [limit + 1]
-            cursor.execute("""SELECT o.*,concat_ws(' ',b.make,b.model,b.model_year::text,c.trim) AS label,e.status AS grant_status,e.granted_at
+            cursor.execute("""SELECT o.*,concat_ws(' ',b.model_year::text,b.make,b.model,c.trim,c.engine_displacement_l::text || ' L') AS label,e.status AS grant_status,e.granted_at
                 FROM workshop_orders o JOIN vehicle_configurations c ON c.vehicle_configuration_id=o.configuration_id
                 JOIN vehicle_identity_bases b USING(vehicle_identity_base_id) LEFT JOIN entitlements e ON e.entitlement_id=o.entitlement_id
                 WHERE o.customer_account_id=%s AND o.stripe_account_id=%s AND o.livemode=%s""" + price_clause + " AND (o.status='revoked' OR e.entitlement_id IS NOT NULL) " + clause + ' ORDER BY o.created_at DESC,o.order_id DESC LIMIT %s', args)

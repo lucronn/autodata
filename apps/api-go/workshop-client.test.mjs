@@ -410,6 +410,26 @@ test('session bootstrap validates cookie authority and never loads SDK for exist
   const session=createSession({request:async path=>{calls.push(path);return path==='/auth/config'?{version:'v1',mode:'firebase',login_available:true,providers:['google.com'],firebase:{apiKey:'fixture',authDomain:'fixture-project.firebaseapp.com',projectId:'fixture-project',appId:'1:123:web:abc'}}:{authenticated:true,roles:['dataset_viewer'],expires_at:'2099-01-01T00:00:00Z',csrf_token:'memory-only'};},loadSDK:async()=>{sdkLoads++;}});
   await session.bootstrap();assert.equal(session.state.authenticated,true);assert.equal(sdkLoads,0);assert.deepEqual(calls,['/auth/config','/auth/session']);
 });
+test('session validation starts while login configuration is in flight', async () => {
+  const { createSession } = await import('./workshop/auth.mjs');
+  let release;
+  const calls = [];
+  const session = createSession({
+    request: async path => {
+      calls.push(path);
+      if (path === '/auth/config') return new Promise(resolve => { release = resolve; });
+      return { authenticated: true, roles: ['dataset_viewer'], expires_at: '2099-01-01T00:00:00Z', csrf_token: 'fixture' };
+    },
+  });
+  const pending = session.bootstrap();
+  assert.deepEqual(calls, ['/auth/config', '/auth/session']);
+  assert.equal(session.state.authenticated, false);
+  release({ mode: 'local' });
+  await pending;
+  assert.equal(session.state.authenticated, true);
+  assert.equal(session.state.mode, 'local');
+});
+
 test('Firebase persistence is awaited before popup and token exchange clears SDK user', async () => {
   const { createSession }=await import('./workshop/auth.mjs');const calls=[];let release;
   const user={}; const sdk={initializeApp:()=>({}),initializeAuth:(_,options)=>{assert.equal(options.persistence,'NONE');return {};},inMemoryPersistence:'NONE',browserPopupRedirectResolver:{},setPersistence:()=>new Promise(resolve=>{release=resolve;}),GoogleAuthProvider:class{},signInWithPopup:async()=>{calls.push('popup');return{user};},getIdTokenResult:async()=>({token:'synthetic-token',authTime:new Date().toISOString()}),signOut:async()=>{calls.push('sdk-signout');}};
@@ -785,7 +805,7 @@ function loginRouteHarness(search, { authenticate = true, signInError = null, lo
   runInNewContext(
     appSection('function populate(', 'function selectorPath(') +
     appSection('async function signIn() {', 'async function bootstrap() {') +
-    appSection('async function restoreRoute() {', 'for (const [index, name] of names.entries())'),
+    appSection('async function restoreRoute(', 'for (const [index, name] of names.entries())'),
     context,
   );
   return { context, calls, element };
@@ -800,10 +820,8 @@ const loginRoutes = [
     selections: [{ configuration: routeConfiguration, region: 'US', article: routeArticle }], options: [] },
   { name: 'the article and search in a saved selector hierarchy',
     query: `?year=2020&make=toyota&model=rav4&configuration=${routeConfiguration}&region=US&article=${routeArticle}&q=brakes`,
-    libraries: 0, orders: [],
-    selections: [{ configuration: routeConfiguration, region: 'US', article: routeArticle }],
-    options: [{ name: 'year', desired: '2020' }, { name: 'make', desired: 'toyota' },
-      { name: 'model', desired: 'rav4' }, { name: 'configuration', desired: routeConfiguration }] },
+    libraries: 0, orders: [], options: [],
+    selections: [{ configuration: routeConfiguration, region: 'US', article: routeArticle }] },
   { name: 'the order return before the library or prior configuration',
     query: `?order=${routeOrder}&view=library&configuration=${routeConfiguration}&region=US&article=${routeArticle}`,
     libraries: 0, orders: [routeOrder], selections: [], options: [] },
@@ -2475,6 +2493,19 @@ function articleMediaHarness(overrides = {}) {
   };
 }
 
+test('heading and paragraph illustrations keep their order, alt text, and caption', () => {
+  const h = articleMediaHarness();
+  const content = h.content(mediaArticle([
+    { type: 'heading', level: 3, text: 'Locate the bracket', images: [{ asset_id: 'valid', alt: 'Bracket location', caption: 'View from above' }] },
+    { type: 'paragraph', text: 'Check the alignment mark.', images: [{ asset_id: 'valid', alt: 'Alignment mark' }] },
+    { type: 'step', text: 'Remove the bracket.' },
+  ], [{ asset_id: 'valid', url: '/v1/catalog/images/v2.inline' }]));
+  assert.deepEqual(content.children.slice(0, 5).map(node => node.tagName), ['h3', 'figure', 'p', 'figure', 'section']);
+  assert.equal(content.children[1].children[0].alt, 'Bracket location');
+  assert.equal(content.children[1].children[1].textContent, 'View from above');
+  assert.equal(content.children[3].children[0].alt, 'Alignment mark');
+});
+
 test('empty source block text displays the unavailable reason used by article search', () => {
   const h = articleMediaHarness();
   const content = h.content(mediaArticle([{ type: 'unavailable', text: '', unavailable_reason: 'Wiring diagram pending source review' }]));
@@ -2823,6 +2854,19 @@ for (const [origin, state, retryable, note] of [
   });
 }
 
+test('unreviewed Workshop prose shows a source check notice in the paid reader', () => {
+  const h = articleMediaHarness();
+  h.render(mediaArticle([{ type: 'paragraph', text: 'Draft steps.' }], [], {
+    content_origin: 'canonical', review_status: 'UNREVIEWED',
+  }));
+  assert.equal(h.nodes.get('article-note').hidden, false);
+  assert.match(h.nodes.get('article-note').textContent, /has not been reviewed/);
+  h.render(mediaArticle([{ type: 'paragraph', text: 'Reviewed steps.' }], [], {
+    content_origin: 'canonical', review_status: 'APPROVED',
+  }));
+  assert.equal(h.nodes.get('article-note').hidden, true);
+});
+
 test('article block media actual loadSource renders retained shapes and rejects changed or invalid references', async () => {
   const calls = [];
   let response = { source: { url: mediaSourceURL, format: 'json' }, document: { blocks: [
@@ -3120,10 +3164,16 @@ test('failed or obsolete configuration reads cannot preserve or restore local se
   assert.equal(session.state.mode, null);
 });
 
-function selectionQuoteHarness(merchant, { authenticated = true, openDemo = false, request = async () => quoteTermsFixture() } = {}) {
+const scopedQuoteFixture = () => ({
+  ...scope, version: 'v1', product_key: 'workshop-configuration-v1',
+  configuration_label: '2024 Example Car', amount_minor: 2000, currency: 'USD',
+  purchase_terms_version: 'workshop-v1', purchasable: true,
+});
+
+function selectionQuoteHarness(merchant, { authenticated = true, openDemo = false, request = async () => scopedQuoteFixture() } = {}) {
   const navigation = new NavigationGeneration(), generation = navigation.next(), calls = [], opened = [], nodes = new Map();
   const context = {
-    merchant, openDemo, quote: null, validScope, validQuote, scope: () => scope,
+    merchant, openDemo, quote: null, access: "unknown", validScope, validQuote, scope: () => scope,
     session: { state: { authenticated } }, clearProtected() {}, renderPurchase() {}, show() {}, status() {},
     $: id => { if (!nodes.has(id)) nodes.set(id, {}); return nodes.get(id); },
     requestJSON: async (path, options) => { calls.push({ path, options }); return request(path, options); },
@@ -3168,7 +3218,7 @@ test('disabled quote selection retains signed-out and obsolete-navigation bounda
 });
 
 test('enabled purchasing keeps scoped quote validation, tolerated unavailable quote, and article reads', async () => {
-  for (const result of [quoteTermsFixture(), { ...quoteTermsFixture(), amount_minor: 1 }, new Error('503')]) {
+  for (const result of [scopedQuoteFixture(), { ...scopedQuoteFixture(), amount_minor: 1 }, new Error('503')]) {
     const h = selectionQuoteHarness({ enabled: true }, { request: async () => {
       if (result instanceof Error) throw result;
       return result;
@@ -3182,18 +3232,31 @@ test('enabled purchasing keeps scoped quote validation, tolerated unavailable qu
   }
 });
 
-test('enabled quote cannot publish or continue after its selection is canceled', async () => {
+test('owned articles open while a scoped quote is still in flight', async () => {
+  let release;
+  const h = selectionQuoteHarness({ enabled: true }, {
+    request: () => new Promise(resolve => { release = resolve; }),
+  });
+  await h.context.selectVehicle(h.generation, 'article-a');
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.opened[0]?.id, 'article-a');
+  assert.equal(h.context.quote, null);
+  release(scopedQuoteFixture());
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(validQuote(h.context.quote, scope), true);
+});
+
+test('obsolete quote cannot publish after selection is canceled', async () => {
   for (const reject of [false, true]) {
     let resolveRequest, rejectRequest;
     const h = selectionQuoteHarness({ enabled: true }, { request: () => new Promise((resolve, fail) => { resolveRequest = resolve; rejectRequest = fail; }) });
-    const pending = h.context.selectVehicle(h.generation);
+    await h.context.selectVehicle(h.generation);
+    assert.equal(h.opened.length, 1);
     h.navigation.clear();
     if (reject) rejectRequest(new DOMException('canceled', 'AbortError'));
-    else resolveRequest(quoteTermsFixture());
-    if (reject) await assert.rejects(pending, { name: 'AbortError' });
-    else await pending;
+    else resolveRequest(scopedQuoteFixture());
+    await new Promise(resolve => setImmediate(resolve));
     assert.equal(h.context.quote, null);
-    assert.equal(h.opened.length, 0);
   }
 });
 

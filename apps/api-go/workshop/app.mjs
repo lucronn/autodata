@@ -304,12 +304,19 @@ function selectorPath(name) {
     configuration: `/v1/catalog/years/${year}/makes/${make}/models/${model}/configurations?region=US`,
   }[name];
 }
-async function loadOptions(name, g, desired = "") {
+async function loadOptions(name, g, desired = "", initial = null) {
   status(`Loading ${name} choices…`, { busy: true });
   stage(name);
   $(name).disabled = true;
   const result = await readCollection(
-    () => requestJSON(selectorPath(name), { signal: g.signal }),
+    async () => {
+      if (initial) {
+        const response = await initial;
+        initial = null;
+        if (response) return response;
+      }
+      return requestJSON(selectorPath(name), { signal: g.signal });
+    },
     {
       signal: g.signal,
       desired,
@@ -350,7 +357,7 @@ function renderPurchase() {
       vehicle?.year,
       vehicle?.make,
       vehicle?.model,
-      configurationLabel(vehicle || {}),
+      (vehicle?.engine || vehicle?.trim) && configurationLabel(vehicle),
       vehicle?.region,
     ]
       .filter(Boolean)
@@ -419,13 +426,15 @@ function purchaseConfigured() {
   });
 }
 async function selectVehicle(g, articleID = "") {
+  if (!g.current()) return;
   clearProtected();
   quote = null;
   $("agreement").checked = false;
   renderPurchase();
   if (!validScope(scope())) return;
   const selected = scope();
-  if (!openDemo && merchant?.enabled === true) {
+  const quoteRequest = (async () => {
+    if (openDemo || merchant?.enabled !== true) return;
     try {
       const q = await requestJSON(
         `/v1/workshop/quote?configuration_id=${selected.configuration_id}&region=${selected.region}`,
@@ -433,18 +442,31 @@ async function selectVehicle(g, articleID = "") {
       );
       if (!g.current()) return;
       quote = validQuote(q, selected) ? q : null;
-    } catch (error) {
-      if (g.signal.aborted) throw error;
+      renderPurchase();
+      if (access === "owned") {
+        const label = $("purchase-selection").textContent;
+        $("vehicle-caption").textContent = label;
+        $("reader-vehicle").textContent = label;
+      }
+    } catch {
+      // The quote is optional for owned articles. Its absence keeps Buy disabled.
     }
-  }
-  if (!g.current()) return;
-  renderPurchase();
+  })();
   if (!openDemo && !session.state.authenticated) {
+    await quoteRequest;
+    if (!g.current()) return;
     show("welcome");
     status("Sign in to check access to your selected vehicle.");
     return;
   }
-  await loadArticles(g, articleID);
+  try {
+    await loadArticles(g, articleID);
+  } catch (error) {
+    // When a purchase is required, present the price or its unavailable state
+    // with the access result so the UI does not announce a false checkout failure.
+    if (error.code === "ENTITLEMENT_REQUIRED") await quoteRequest;
+    throw error;
+  }
 }
 async function loadArticles(g, articleID = "") {
   if (!g.current()) return;
@@ -458,6 +480,9 @@ async function loadArticles(g, articleID = "") {
       desired: articleID,
       onUpdate(result) {
         if (!g.current()) return;
+        if (result.configuration?.id === vehicle.id &&
+            result.configuration.region === vehicle.region)
+          vehicle = result.configuration;
         const descriptorFields = [
           "id", "title", "kind", "component", "availability", "content_status",
           "source_revision_id", "canonical_revision_id", "view_revision", "review_status",
@@ -626,7 +651,7 @@ function imageMap(article) {
     ...(article?.steps || []).flatMap((step) => step.images || []),
   ];
 }
-function addImage(parent, image, caption, g) {
+function addImage(parent, image, caption, g, alt = caption) {
   const figure = element("figure");
   const url = localImageURL(image?.url, location.origin, { authMode: session.state.mode }),
     id = assetID(image);
@@ -634,7 +659,7 @@ function addImage(parent, image, caption, g) {
     const img = element("img");
     img.dataset.assetId = id;
     img.src = url;
-    img.alt = caption || image.alt || "Article illustration";
+    img.alt = alt || image.alt || caption || "Article illustration";
     img.referrerPolicy = "no-referrer";
     img.addEventListener("error", () => {
       if (g.current()) void renewMedia(g, img);
@@ -667,16 +692,14 @@ function renderBlocks(parent, blocks, images, review, g) {
   for (const block of blocks || []) {
     if (!block || typeof block !== "object") continue;
     const type = block.type;
-    if (type === "heading")
-      parent.append(
-        element(
-          `h${Math.max(3, Math.min(6, Number(block.level) || 3))}`,
-          block.text ?? "",
-        ),
-      );
-    else if (type === "paragraph" || type === "link")
-      parent.append(element("p", block.text ?? ""));
-    else if (type === "callout") {
+    if (type === "heading" || type === "paragraph" || type === "link") {
+      const tag = type === "heading"
+        ? `h${Math.max(3, Math.min(6, Number(block.level) || 3))}`
+        : "p";
+      parent.append(element(tag, block.text ?? ""));
+      for (const ref of block.images || [])
+        addImage(parent, find(ref), ref?.caption, g, ref?.alt);
+    } else if (type === "callout") {
       const aside = element("aside", undefined, "article-callout");
       const content = element("div");
       content.append(element("span", block.text ?? ""));
@@ -847,10 +870,10 @@ function renderArticle(article, g) {
   $("reader-vehicle").textContent =
     quote?.configuration_label || $("purchase-selection").textContent;
   $("reader-engine").textContent = vehicle.region;
-  $("article-note").hidden = !processingArticle(article) && !(openDemo && article.review_status === 'UNREVIEWED');
+  $("article-note").hidden = !processingArticle(article) && article.review_status !== 'UNREVIEWED';
   $("article-note").textContent = processingArticle(article)
     ? "Preparing articles. Available source remains readable."
-    : openDemo && article.review_status === 'UNREVIEWED'
+    : article.review_status === 'UNREVIEWED'
       ? "Draft content has not been reviewed. Check the stored source before using this procedure."
       : "";
   $("print").disabled = !readableArticle(article);
@@ -1315,18 +1338,22 @@ async function signIn() {
 }
 async function bootstrap() {
   invalidate();
-  if (!openDemo) await session.bootstrap();
-  sessionEstablished = true;
+  const params = new URLSearchParams(location.search);
+  const years = !params.has("year") && !params.has("configuration") &&
+    !params.has("order") && params.get("view") !== "library"
+    ? requestJSON("/v1/catalog/years").catch(() => null)
+    : null;
   if (!openDemo) {
-    try {
-      merchant = await requestJSON("/workshop/purchase-config.json");
-    } catch {
-      merchant = null;
-    }
+    const [, config] = await Promise.all([
+      session.bootstrap(),
+      requestJSON("/workshop/purchase-config.json").catch(() => null),
+    ]);
+    merchant = config;
   }
-  await restoreRoute();
+  sessionEstablished = true;
+  await restoreRoute(years);
 }
-async function restoreRoute() {
+async function restoreRoute(initialYears = null) {
   invalidate();
   show("welcome");
   const params = new URLSearchParams(location.search);
@@ -1349,17 +1376,17 @@ async function restoreRoute() {
         await library(g);
         return;
       }
-      if (uuid(params.get("configuration")) && !params.get("year")) {
-        vehicle = {
-          id: params.get("configuration"),
-          region: params.get("region"),
-        };
-        await selectVehicle(g, params.get("article") || "");
+      const articleID = params.get("article") || "";
+      const exact = { configuration_id: params.get("configuration"), region: params.get("region") };
+      if (uuid(exact.configuration_id) &&
+          (!params.get("year") || (uuid(articleID) && validScope(exact)))) {
+        vehicle = { id: exact.configuration_id, region: exact.region };
+        await selectVehicle(g, articleID);
         return;
       }
       for (const name of names) {
         const desired = params.get(name) || "";
-        await loadOptions(name, g, desired);
+        await loadOptions(name, g, desired, name === "year" ? initialYears : null);
         if (!g.current() || !desired) return;
       }
       vehicle = rows.configuration.find(

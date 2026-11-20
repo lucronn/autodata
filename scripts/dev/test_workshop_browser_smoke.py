@@ -1355,6 +1355,8 @@ class API21FakeContext:
 class API21FakePage:
     def __init__(self,context):self.context=context;self.handlers={};self.url='about:blank'
     def on(self,event,callback):self.handlers[event]=callback
+    async def wait_for_function(self, expression):
+        assert 'naturalWidth > 0' in expression
     def locator(self,selector):return API21FakeLocator(self,selector)
     def emit(self,url,data,request=None):
         observations=getattr(self.context,'_api21',None)
@@ -1401,6 +1403,10 @@ class API21FakeLocator:
     async def get_attribute(self,name):
         if name=='src':return 'https://127.0.0.1:32001/v1/catalog/images/v2.fake-capability'
         return '/v1/catalog/vehicles/'+smoke.CONFIG+'/articles/'+smoke.ARTICLE+'/source?source_revision_id='+smoke.REVISION
+    async def evaluate(self, expression):
+        assert self.selector == '#article-content figure:has(img[alt="Alignment marks"])'
+        assert 'previousElementSibling' in expression
+        return True
     def __getattr__(self,name):
         async def expectation(*args,**kwargs):pass
         return expectation

@@ -273,6 +273,92 @@ def test_exact_declared_image_ref_preserves_source_position(capture_fixture):
     assert captured.source_document["blocks"][1]["status"] == "available"
 
 
+@pytest.mark.parametrize("provider", ["bankone", "banktwo"])
+@pytest.mark.parametrize("attribute", ["data-resource-ref", "asset_resource_ref"])
+def test_html_ref_only_image_keeps_its_position(capture_fixture, provider, attribute):
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    raw = (
+        '<p>Remove pump.</p>'
+        f'<img {attribute}="diagram" alt="Pump diagram">'
+        '<p>Install pump.</p>'
+    ).encode()
+    capture_fixture.body(provider, raw, assets=["diagram"])
+    capture_fixture.body(
+        provider, b"image", "image/png", ref="diagram", kind="asset"
+    )
+
+    captured = capture_source_article(
+        capture_fixture.context(provider, asset_ref="diagram"),
+        registry=capture_fixture.registry,
+        object_store=capture_fixture.objects,
+    )
+
+    assert [block["type"] for block in captured.source_document["blocks"]] == [
+        "paragraph",
+        "image",
+        "paragraph",
+    ]
+    [figure] = captured.source_images
+    assert figure["alt"] == "Pump diagram"
+    assert figure["status"] == "available"
+    assert capture_fixture.resource_calls(provider, "diagram") == 1
+
+
+@pytest.mark.parametrize("provider", ["bankone", "banktwo"])
+@pytest.mark.parametrize("available", [False, True])
+def test_json_steps_keep_attached_figures(capture_fixture, provider, available):
+    import json
+    from autodata_ingestion.article_document import validate_ordered_document
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    raw = {
+        "steps": [
+            {
+                "text": "Remove the pump.",
+                "images": [
+                    {
+                        "asset_resource_ref": "diagram",
+                        "alt": "Pump diagram",
+                        "caption": "Installation marks",
+                        "storage_key": "untrusted/object",
+                    }
+                ],
+            },
+            "Install the replacement.",
+        ]
+    }
+    capture_fixture.body(provider, json.dumps(raw).encode(), "application/json")
+    if available:
+        capture_fixture.body(
+            provider, b"image", "image/png", ref="diagram", kind="asset"
+        )
+
+    captured = capture_source_article(
+        capture_fixture.context(provider),
+        registry=capture_fixture.registry,
+        object_store=capture_fixture.objects,
+    )
+
+    first, second = captured.source_document["blocks"]
+    assert first["text"] == "Remove the pump."
+    assert second["text"] == "Install the replacement."
+    [figure] = first["images"]
+    assert figure["alt"] == "Pump diagram"
+    assert figure["caption"] == "Installation marks"
+    assert [figure] == captured.source_images
+    assert capture_fixture.resource_calls(provider, "diagram") == 1
+    assert validate_ordered_document(captured.source_document, strict=True) == []
+    assert "untrusted/object" not in str(captured.source_document)
+    if available:
+        assert figure["status"] == "available"
+        assert captured.projection_status == "readable"
+        assert capture_fixture.objects.data[figure["storage_key"]] == (b"image", "image/png")
+    else:
+        assert figure["unavailable_reason"] == "SOURCE_NOT_FOUND"
+        assert captured.projection_status == "partial"
+
+
 def test_fixture_pdf_uses_real_adapter_and_keeps_original_bytes(capture_fixture):
     from io import BytesIO
     from reportlab.pdfgen import canvas
@@ -376,13 +462,82 @@ def test_pdf_embedded_figure_is_localized_and_retained(capture_fixture):
     )
 
 
-def test_html_explicit_vehicle_metadata_cannot_override_resolved_scope(capture_fixture):
+def test_mixed_pdf_keeps_ocr_text_and_embedded_figure_in_page_order(
+    capture_fixture, monkeypatch
+):
+    import random
+    from io import BytesIO
+
+    from PIL import Image
+    from reportlab.lib.utils import ImageReader
+    from reportlab.pdfgen import canvas
+
+    from autodata_ingestion import source_adapters
+    from autodata_ingestion.ocr import OCRTextBlock
     from autodata_ingestion.source_article_capture import capture_source_article
 
-    capture_fixture.body(
-        "banktwo",
-        b'<meta name="vehicle" content="1999 Example Car"><p>Remove pump.</p>',
+    image = Image.frombytes("RGB", (96, 96), random.Random(7).randbytes(96 * 96 * 3))
+    figure = BytesIO()
+    image.save(figure, format="PNG")
+    figure.seek(0)
+    buf = BytesIO()
+    pdf = canvas.Canvas(buf)
+    pdf.drawString(72, 720, "Remove the pump.")
+    pdf.showPage()
+    pdf.drawImage(ImageReader(figure), 72, 500, 96, 96)
+    pdf.showPage()
+    pdf.drawString(72, 720, "Install the replacement.")
+    pdf.showPage()
+    pdf.save()
+
+    def read_scanned_page(_digest, _payload, native_pages):
+        assert native_pages == {1, 3}
+        return (
+            OCRTextBlock("Check the seal.", 0.96, (72, 96, 180, 30), page_number=2),
+            OCRTextBlock("Wipe the flange.", 0.96, (72, 140, 180, 30), page_number=2),
+        )
+
+    monkeypatch.setattr(source_adapters, "extract_scanned_pdf_text", read_scanned_page)
+    capture_fixture.body("banktwo", buf.getvalue(), "application/pdf", kind="binary")
+    captured = capture_source_article(
+        capture_fixture.context("banktwo"),
+        registry=capture_fixture.registry,
+        object_store=capture_fixture.objects,
     )
+
+    contents = [
+        (block["type"], block.get("text") or block.get("alt"))
+        for block in captured.source_document["blocks"]
+    ]
+    assert contents == [
+        ("paragraph", "Remove the pump."),
+        ("paragraph", "Check the seal."),
+        ("paragraph", "Wipe the flange."),
+        ("image", "Figure from page 2"),
+        ("paragraph", "Install the replacement."),
+    ]
+    assert captured.source_body.splitlines() == [
+        "Remove the pump.",
+        "Check the seal.",
+        "Wipe the flange.",
+        "Install the replacement.",
+    ]
+    [localized] = captured.source_images
+    payload, media_type = capture_fixture.objects.data[localized["storage_key"]]
+    assert media_type == "image/png"
+    with Image.open(BytesIO(payload)) as stored:
+        assert stored.tobytes() == image.tobytes()
+
+
+@pytest.mark.parametrize("metadata", [
+    b'<meta name="vehicle" content="1999 Example Car">',
+    b'<meta name="vehicle.year" content="1999">',
+    b'<script type="application/ld+json">{"about":{"name":"1999 Example Car"}}</script>',
+])
+def test_html_explicit_vehicle_metadata_cannot_override_resolved_scope(capture_fixture, metadata):
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    capture_fixture.body("banktwo", metadata + b"<p>Remove pump.</p>")
     with pytest.raises(SourceConnectorError, match="applicability"):
         capture_source_article(
             capture_fixture.context("banktwo"),
@@ -500,6 +655,98 @@ def test_nested_article_applicability_must_match_scope(
             registry=capture_fixture.registry,
             object_store=capture_fixture.objects,
         )
+
+
+@pytest.mark.parametrize("provider", ["bankone", "banktwo"])
+@pytest.mark.parametrize("placement", ["single_paragraph", "paragraph", "step", "table", "standalone"])
+def test_short_captured_document_keeps_media_for_auto_rewrite(capture_fixture, provider, placement):
+    import json
+
+    from autodata_ingestion.article_document import build_ordered_document, validate_ordered_document
+    from autodata_ingestion.article_lifecycle_store import StoredSource
+    from autodata_ingestion.procedure_normalize import normalize_procedure_article
+    from autodata_ingestion.procedure_rewrite_auto import render_auto, validate_auto
+    from autodata_ingestion.procedure_rewrite_full import prose_slots
+    from autodata_ingestion.source_article_capture import _image_nodes, capture_source_article
+
+    figures = [
+        {"asset_resource_ref": "available", "alt": "Installation marks"},
+        {"asset_resource_ref": "missing", "alt": "Seal orientation"},
+    ]
+    if placement == "table":
+        positioned = [{"kind": "table", "rows": [[{"text": "Pump seal", "images": figures}]]}]
+    elif placement == "standalone":
+        positioned = [{"kind": "image", **figure} for figure in figures]
+    else:
+        positioned = [{"kind": placement, "text": "Inspect the seal.", "images": figures}]
+    opening = {"kind": "paragraph", "text": "Remove the pump."}
+    if placement == "single_paragraph":
+        opening.update(text="Service the pump.", images=figures)
+        positioned = []
+    payload = {"blocks": [opening, *positioned]}
+    capture_fixture.body(provider, json.dumps(payload).encode(), "application/json")
+    capture_fixture.body(provider, b"localized", "image/png", ref="available", kind="asset")
+    captured = capture_source_article(
+        replace(capture_fixture.context(provider), evidence_ids=()),
+        registry=capture_fixture.registry,
+        object_store=capture_fixture.objects,
+    )
+    assert validate_ordered_document(captured.source_document, strict=True) == []
+    source = StoredSource(
+        source_revision_id=uuid.uuid4(),
+        context=captured.context,
+        source_document=captured.source_document,
+        source_images=captured.source_images,
+        source_body=captured.source_body,
+        source_steps=captured.source_steps,
+        source_fingerprint=captured.source_fingerprint,
+        evidence_manifest=captured.evidence_manifest,
+        body_source_snapshot_id=captured.body_source_snapshot_id,
+        resource_manifest=captured.resource_manifest,
+        projection_status=captured.projection_status,
+        captured_at=captured.captured_at,
+        projection_version=captured.projection_version,
+    )
+    article = source.as_article()
+    normalized = normalize_procedure_article(article)["normalized_document"]
+    assert normalized == captured.source_document
+
+    rebuilt = build_ordered_document(article, article["blocks"])
+    assert validate_ordered_document(rebuilt, strict=True) == []
+    localized, unavailable = list(_image_nodes(rebuilt["blocks"]))
+    assert localized["status"] == "available"
+    assert localized["media_type"] == "image/png"
+    assert localized["storage_key"] == captured.source_images[0]["storage_key"]
+    assert localized["content_sha256"] == sha256(b"localized").hexdigest()
+    assert unavailable["status"] == "unavailable"
+    assert unavailable["unavailable_reason"] == "SOURCE_NOT_FOUND"
+    assert "storage_key" not in unavailable
+    assert localized["evidence_ids"] == unavailable["evidence_ids"] == [
+        "source:" + str(captured.body_source_snapshot_id)
+    ]
+
+    rewrite = {
+        "introduction": "This procedure covers pump removal.",
+        "replacements": [
+            {**slot, "action": "rewrite", "reason": "", "text": {
+                "Remove the pump.": "Take the pump out.",
+                "Service the pump.": "Perform the pump service.",
+                "Inspect the seal.": "Check the seal.",
+            }[slot["text"]]}
+            for slot in prose_slots(normalized)
+        ],
+    }
+    candidate = render_auto(normalized, rewrite)
+    assert validate_auto(normalized, candidate, response=rewrite).passed
+    rewritten_figures = list(_image_nodes(candidate["blocks"]))
+    if placement == "standalone":
+        # Auto rewrite inserts an introduction before the protected original blocks.
+        assert [figure["source_order"] for figure in rewritten_figures] == [3, 4]
+        rewritten_figures = [
+            {**figure, "source_order": figure["source_order"] - 1}
+            for figure in rewritten_figures
+        ]
+    assert rewritten_figures == captured.source_images
 
 
 @pytest.mark.parametrize("provider", ["bankone", "banktwo"])

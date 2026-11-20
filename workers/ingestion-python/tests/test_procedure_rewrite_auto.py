@@ -43,6 +43,100 @@ def test_automatic_profile_rejects_unchanged_ordinary_prose(replacement):
     assert result.document == source
 
 
+@pytest.mark.parametrize(("source_text", "replacement"), [
+    (
+        "After the cap comes off, gently slide the cable from the guide beside the outer bracket.",
+        "Once the cap comes off, gently slide the cable from the guide beside the outer bracket.",
+    ),
+    (
+        "Release the latch, slide the cable along the inner guide and lift it out by hand.",
+        "Open the clip, slide the cable along the inner guide and lift it out manually.",
+    ),
+    ("Remove the cap.", "First, remove the cap."),
+    ("Remove the cap.", "Remove the cap before proceeding."),
+    ("Remove the cap before proceeding.", "Remove the cap."),
+])
+def test_automatic_profile_rejects_near_verbatim_ordinary_prose(source_text, replacement):
+    source = document(source_text)
+    result = run(source, response(replacement))
+    assert result.error_code == "REWRITE_PROSE_TOO_SIMILAR"
+    assert result.document == source
+
+
+@pytest.mark.parametrize("warning", [
+    "Never connect the battery while the connector is wet.",
+    "Warning: Wear eye protection during this procedure.",
+    "Inspect the cable, but do not connect the battery yet.",
+    "The battery cannot be connected while the connector is wet.",
+])
+def test_automatic_profile_retains_inline_safety_instruction(warning):
+    source = document(warning, "Remove the cover.")
+    payload = response("Reconnect the battery before drying the connector.", "Take the cover off.")
+    assert run(source, payload).error_code == "REWRITE_SAFETY_MUTATION"
+    payload["replacements"][0].update(action="retain", text=warning, reason="Exact safety wording")
+    result = run(source, payload)
+    assert result.error_code is None
+    assert result.document["blocks"][1]["text"] == warning
+
+
+def test_current_and_historical_validation_bind_their_own_prose_rules():
+    from autodata_ingestion import procedure_rewrite_auto as auto
+    from autodata_ingestion.procedure_rewrite_full import render_full
+
+    source = document("Remove the cover.")
+    payload = response("First, remove the cover.")
+    candidate = render_full(source, payload, profile_version=PROFILE)
+    historical = auto.validate_auto(source, candidate, response=payload, prompt_version="full-prose-auto-prompt-v2")
+    assert historical.passed
+    assert historical.report["validator_version"] == "full-prose-auto-validator-v1"
+    for bound_response in (payload, None):
+        current = auto.validate_auto(source, candidate, response=bound_response, prompt_version="full-prose-auto-prompt-v4")
+        assert current.error_codes == ("REWRITE_PROSE_TOO_SIMILAR",)
+        assert current.report["validator_version"] == "full-prose-auto-validator-v2"
+
+
+def test_ordinary_text_cannot_be_reduced_to_its_specification():
+    source = document("Tighten the bolts to 25 Nm.")
+    result = run(source, response("25 Nm."))
+    assert result.error_code == "REWRITE_PROSE_MISSING"
+    assert result.document == source
+
+
+def test_automatic_profile_rejects_new_inline_warning_or_prohibition():
+    source = document("Remove the cover.")
+    for payload in (
+        response("Never take the cover off."),
+        response("Take the cover off.", introduction="Do not take the cover off."),
+    ):
+        result = run(source, payload)
+        assert result.error_code == "REWRITE_SAFETY_MUTATION"
+        assert result.document == source
+
+
+def test_distinct_prose_preserves_action_order_facts_and_source_blocks():
+    source = document(
+        "After removing the cover, inspect the cable to check whether the guide is secure.",
+        "Use tool T-42 to tighten the cover bolts evenly to 25 Nm after seating the gasket.",
+    )
+    source["blocks"].extend([
+        {"block_id": "warning", "source_order": 3, "type": "callout",
+         "text": "Before work, isolate the battery.", "evidence_ids": ["safety-evidence"]},
+        {"block_id": "image", "source_order": 4, "type": "image",
+         "status": "unavailable", "unavailable_reason": "fixture", "evidence_ids": ["media-evidence"]},
+    ])
+    replacements = (
+        "Take the cover off before checking that the cable guide is firmly attached.",
+        "With tool T-42, bring the cover bolts up to 25 Nm uniformly once the gasket is seated.",
+    )
+    result = run(source, response(*replacements))
+    assert result.error_code is None
+    assert [block["source_order"] for block in result.document["blocks"]] == [1, 2, 3, 4, 5]
+    for original, rendered, text in zip(source["blocks"][:2], result.document["blocks"][1:3], replacements):
+        assert rendered == dict(original, source_order=original["source_order"] + 1, text=text)
+    for original, rendered in zip(source["blocks"][2:], result.document["blocks"][3:]):
+        assert rendered == dict(original, source_order=original["source_order"] + 1)
+
+
 def test_technical_only_retention_is_explicit_and_table_stays_exact():
     source = document("25 Nm", "Remove the cover.")
     source["blocks"].append({"block_id":"table", "source_order":3,"type":"table",
@@ -90,18 +184,18 @@ def test_prompt_asks_for_automatic_full_prose_without_human_review_obligations()
     assert prompt["slots"][0]["text"] == "Remove the cover."
 
 
-def test_prompt_v2_declares_complete_response_rows_and_server_required_actions():
-    source = document("Remove the cover.", "25 Nm")
+def test_prompt_v4_declares_complete_response_rows_and_server_required_actions():
+    source = document("Remove the cover.", "25 Nm", "Never start the motor.")
     before = deepcopy(source)
     prompt = json.loads(rewrite.build_rewrite_prompt(source, context={}, profile_version=PROFILE))
-    assert prompt["prompt_version"] == "full-prose-auto-prompt-v2"
+    assert prompt["prompt_version"] == "full-prose-auto-prompt-v4"
     assert prompt["response_shape"] == {"introduction": "string", "replacements": [
         {"block_id": "string", "path": "string", "action": "rewrite|retain", "text": "string", "reason": "string"}]}
-    assert [slot["required_action"] for slot in prompt["slots"]] == ["rewrite", "rewrite_or_retain"]
+    assert [slot["required_action"] for slot in prompt["slots"]] == ["rewrite", "rewrite_or_retain", "retain"]
     rules = " ".join(prompt["rules"])
     assert 'reason:""' in rules
     assert "exactly five keys" in rules
-    assert "punctuation changes alone" in rules
+    assert "copying long phrases" in rules
     assert source == before
 
 
@@ -115,26 +209,29 @@ def test_historical_auto_prompt_digest_remains_exact():
 
 def test_auto_prompt_hash_accepts_only_exact_server_reconstructions():
     from hashlib import sha256
-    from autodata_ingestion.procedure_rewrite_auto import _build_auto_prompt_v1, build_auto_prompt, _matches_auto_prompt_hash
+    from autodata_ingestion.procedure_rewrite_auto import (
+        _build_auto_prompt_v1, _build_auto_prompt_v2, _auto_prompt_version, build_auto_prompt,
+    )
     source = document("Remove the cover.")
     context = {"vehicle": "routing-only"}
-    prompts = [_build_auto_prompt_v1(source, context=context), build_auto_prompt(source, context=context)]
+    prompts = [builder(source, context=context) for builder in
+               (_build_auto_prompt_v1, _build_auto_prompt_v2, build_auto_prompt)]
     for prompt in prompts:
         digest = sha256(prompt.encode()).hexdigest()
-        assert _matches_auto_prompt_hash(source, context=context, prompt_hash=digest)
-        assert not _matches_auto_prompt_hash(document("Remove the panel."), context=context, prompt_hash=digest)
-        assert not _matches_auto_prompt_hash(source, context={}, prompt_hash=digest)
+        assert _auto_prompt_version(source, context=context, prompt_hash=digest) == json.loads(prompt)["prompt_version"]
+        assert not _auto_prompt_version(document("Remove the panel."), context=context, prompt_hash=digest)
+        assert not _auto_prompt_version(source, context={}, prompt_hash=digest)
     for mutation in ("rule", "required_action", "version"):
-        changed = json.loads(prompts[1])
+        changed = json.loads(prompts[-1])
         if mutation == "rule": changed["rules"].pop()
         if mutation == "required_action": del changed["slots"][0]["required_action"]
         if mutation == "version": changed["prompt_version"] = "full-prose-auto-prompt-v3"
         encoded = json.dumps(changed, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-        assert not _matches_auto_prompt_hash(source, context=context, prompt_hash=sha256(encoded.encode()).hexdigest())
-    assert not _matches_auto_prompt_hash(source, context=context, prompt_hash="0" * 64)
+        assert not _auto_prompt_version(source, context=context, prompt_hash=sha256(encoded.encode()).hexdigest())
+    assert not _auto_prompt_version(source, context=context, prompt_hash="0" * 64)
 
 
-def test_prompt_v2_response_example_satisfies_strict_existing_renderer():
+def test_prompt_v4_response_example_satisfies_strict_renderer():
     source = document("Remove the cover.", "25 Nm")
     prompt = json.loads(rewrite.build_rewrite_prompt(source, context={}, profile_version=PROFILE))
     payload = {"introduction": "The procedure covers removal of the cover.", "replacements": []}
@@ -225,7 +322,7 @@ def test_zero_slot_output_still_rejects_fabricated_slots_and_unsupported_facts(m
 def test_zero_slot_historical_prompt_reconstruction_and_current_routing_omission():
     from hashlib import sha256
     from autodata_ingestion.procedure_rewrite_auto import (
-        _build_auto_prompt_v1, _build_auto_prompt_v2, build_auto_prompt, _matches_auto_prompt_hash,
+        _build_auto_prompt_v1, _build_auto_prompt_v2, build_auto_prompt, _auto_prompt_version,
     )
     source = zero_slot_document()
     context = {"vehicle": "routing-only"}
@@ -234,30 +331,30 @@ def test_zero_slot_historical_prompt_reconstruction_and_current_routing_omission
     for builder, expected in historical:
         digest = sha256(builder(source, context=context).encode()).hexdigest()
         assert digest == expected
-        assert _matches_auto_prompt_hash(source, context=context, prompt_hash=digest)
-        assert not _matches_auto_prompt_hash(source, context={}, prompt_hash=digest)
+        assert _auto_prompt_version(source, context=context, prompt_hash=digest)
+        assert not _auto_prompt_version(source, context={}, prompt_hash=digest)
     current = build_auto_prompt(source, context=context)
     digest = sha256(current.encode()).hexdigest()
     assert current == build_auto_prompt(source, context={"vehicle": "other routing"})
-    assert _matches_auto_prompt_hash(source, context={}, prompt_hash=digest)
+    assert _auto_prompt_version(source, context={}, prompt_hash=digest)
     changed_source = deepcopy(source)
     changed_source["blocks"][0]["text"] = "Other protected content"
-    assert not _matches_auto_prompt_hash(changed_source, context=context, prompt_hash=digest)
+    assert not _auto_prompt_version(changed_source, context=context, prompt_hash=digest)
     for key, value in [("replacement_count", 1), ("prompt_version", "unrecognized"),
                        ("response_shape", {"introduction": "string", "replacements": [{}]})]:
         changed = json.loads(current)
         changed[key] = value
         encoded = json.dumps(changed, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-        assert not _matches_auto_prompt_hash(source, context=context, prompt_hash=sha256(encoded.encode()).hexdigest())
+        assert not _auto_prompt_version(source, context=context, prompt_hash=sha256(encoded.encode()).hexdigest())
 
 
-def test_nonzero_slot_prompt_remains_exact_v2_bytes():
+def test_nonzero_slot_historical_v2_prompt_digest_remains_exact():
     from hashlib import sha256
-    from autodata_ingestion.procedure_rewrite_auto import _build_auto_prompt_v2, build_auto_prompt
+    from autodata_ingestion.procedure_rewrite_auto import _build_auto_prompt_v2
     source = document("Remove the cover.")
     context = {"vehicle": "routing-only"}
-    prompt = build_auto_prompt(source, context=context)
-    assert prompt == _build_auto_prompt_v2(source, context=context)
+    prompt = _build_auto_prompt_v2(source, context=context)
+    assert json.loads(prompt)["prompt_version"] == "full-prose-auto-prompt-v2"
     assert sha256(prompt.encode()).hexdigest() == "d972668e5934f6f66dee2ead79ee6bd45e4ca3c98e4f8fb94128fa330cdd22b6"
 
 

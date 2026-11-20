@@ -1,9 +1,11 @@
 """Automatic full-prose rewriting with permanent, mechanically checked output.
 
-Checks preserve structure and literal technical tokens; they do not certify
-semantic equivalence. Historical human-review behavior stays in its own profile.
+Checks preserve structure and literal technical tokens. Current prose drafts
+also preserve recognizable inline warnings and reject near-verbatim wording.
+Semantic equivalence still requires comparison with the source procedure.
 """
-from copy import deepcopy
+from collections import Counter
+from hashlib import sha256
 import json
 import re
 
@@ -11,6 +13,14 @@ from . import procedure_rewrite_full as full
 from .article_lifecycle_types import ValidationResult
 
 PROFILE = "full-prose-auto-v1"
+_PROSE_PROMPT_VERSION = "full-prose-auto-prompt-v4"
+_WORDS = re.compile(r"\w+")
+_INLINE_WARNING = re.compile(
+    r"(?:^|[.!?]\s+|\n)[ \t]*(?:warnings?|caution|danger|notice|important)\s*[:!–—-]"
+    r"|\b(?:(?:do|must|should|shall|can|may)\s+not|do\s*-\s*not|"
+    r"(?:don|mustn|shouldn|can)['’]t|cannot|never)\b",
+    re.IGNORECASE,
+)
 
 
 def _technical_only(text):
@@ -49,10 +59,29 @@ def _build_auto_prompt_v2(document, *, context):
 
 
 def build_auto_prompt(document, *, context):
-    historical = _build_auto_prompt_v2(document, context=context)
-    payload = json.loads(historical)
+    payload = json.loads(_build_auto_prompt_v2(document, context=context))
     if payload["slots"]:
-        return historical
+        payload["prompt_version"] = _PROSE_PROMPT_VERSION
+        for slot in payload["slots"]:
+            if _INLINE_WARNING.search(slot["text"]):
+                slot["required_action"] = "retain"
+        payload["rules"] = [rule for rule in payload["rules"]
+            if not rule.startswith((
+                "A valid result is published automatically.", "Use retain only for a leaf",
+                "Every rewrite row must include reason:",
+                "If ambiguous technical notation occurs in ordinary prose",
+                "Follow each server-supplied required_action:",
+                "Use genuinely reworded ordinary prose in every slot.",
+            ))]
+        payload["rules"].extend([
+            "A valid result is published automatically. Rewrite all ordinary prose except explicitly marked safety text.",
+            "Follow each slot's required_action: retain requires exact original safety wording; rewrite_or_retain permits exact retention of technical-only text; rewrite requires complete rewording.",
+            'Every rewrite row must include reason:"". Every retain row must include the exact source text and a nonempty concrete reason.',
+            "Reword ordinary prose throughout each editable slot without copying long phrases, just adding or deleting words around the source wording, or changing only punctuation, capitalization or whitespace. Keep technical terms when needed.",
+            "Keep action order, conditions and references. If ambiguous technical notation prevents a valid rewrite, the article remains available as stored source.",
+            "Do not introduce a new warning or prohibition. Summarize the purpose in the introduction without adding directions or warnings.",
+        ])
+        return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
     payload["prompt_version"] = "full-prose-auto-prompt-v3"
     payload["task"] = "Write only a concise source-bound introduction; there are no editable prose slots."
     payload.pop("context")
@@ -70,40 +99,83 @@ def build_auto_prompt(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def _matches_auto_prompt_hash(document, *, context, prompt_hash):
-    """Accept only exact server-reconstructed historical and current prompts."""
-    from hashlib import sha256
-    return prompt_hash in {sha256(builder(document, context=context).encode()).hexdigest()
-        for builder in (_build_auto_prompt_v1, _build_auto_prompt_v2, build_auto_prompt)}
+def _auto_prompt_version(document, *, context, prompt_hash):
+    """Identify the rules bound to the saved model attempt."""
+    for builder in (build_auto_prompt, _build_auto_prompt_v2, _build_auto_prompt_v1):
+        payload = builder(document, context=context)
+        if sha256(payload.encode()).hexdigest() == prompt_hash:
+            return json.loads(payload)["prompt_version"]
+    return None
 
 
-def _require_changes(source, candidate):
-    # Restoring source order and structure is full.validate_full's responsibility.
-    restored = deepcopy(candidate)
-    restored["blocks"].pop(0)
-    for slot in full.prose_slots(source):
-        if re.findall(r"\w+", full._get(restored, slot["path"]).casefold()) == re.findall(r"\w+", slot["text"].casefold()):
-            if not _technical_only(slot["text"]):
-                raise ValueError("REWRITE_UNCHANGED")
+def _phrase_counts(words):
+    return Counter(tuple(words[offset:offset + 5]) for offset in range(len(words) - 4))
 
 
-def render_auto(source, response):
+def _near_copy(original, replacement):
+    # Units, numeric values and reference tokens must remain exact. Their
+    # mandatory overlap is excluded from the ordinary prose comparison.
+    original_words, replacement_words = [
+        _WORDS.findall(full._TOKENS.sub(" ", text).casefold()) for text in (original, replacement)
+    ]
+    shorter, longer = sorted((original_words, replacement_words), key=len)
+    if shorter and f" {' '.join(shorter)} " in f" {' '.join(longer)} ":
+        return True
+    if len(original_words) < 12 or len(replacement_words) < 5:
+        return False
+    # A majority of shared five-word phrases flags long copied prose,
+    # including a copied sentence surrounded by new material.
+    copied = (_phrase_counts(original_words) & _phrase_counts(replacement_words)).total()
+    return 2 * copied > min(len(original_words), len(replacement_words)) - 4
+
+
+def _uses_prose_guards(prompt_version, slot_count):
+    return bool(slot_count) and prompt_version in (None, _PROSE_PROMPT_VERSION)
+
+
+def _require_changes(source, candidate, *, prompt_version):
+    # The introduced first block is the only offset in source paths.
+    restored = {"blocks": candidate["blocks"][1:]}
+    slots = full.prose_slots(source)
+    guard_prose = _uses_prose_guards(prompt_version, len(slots))
+    if guard_prose and _INLINE_WARNING.search(candidate["blocks"][0]["text"]):
+        raise ValueError("REWRITE_SAFETY_MUTATION")
+    for slot in slots:
+        original = slot["text"]
+        replacement = full._get(restored, slot["path"])
+        if guard_prose and (_INLINE_WARNING.search(original) or _INLINE_WARNING.search(replacement)):
+            if original != replacement:
+                raise ValueError("REWRITE_SAFETY_MUTATION")
+            continue
+        technical_only = _technical_only(original)
+        if (_WORDS.findall(replacement.casefold()) == _WORDS.findall(original.casefold())
+                and not technical_only):
+            raise ValueError("REWRITE_UNCHANGED")
+        if guard_prose and not technical_only and _technical_only(replacement):
+            raise ValueError("REWRITE_PROSE_MISSING")
+        if guard_prose and not technical_only and _near_copy(original, replacement):
+            raise ValueError("REWRITE_PROSE_TOO_SIMILAR")
+
+
+def render_auto(source, response, *, prompt_version=None):
     candidate = full.render_full(source, response, profile_version=PROFILE)
-    _require_changes(source, candidate)
+    _require_changes(source, candidate, prompt_version=prompt_version)
     return candidate
 
 
-def validate_auto(source, candidate, *, response=None):
+def validate_auto(source, candidate, *, response=None, prompt_version=None):
     validation = full.validate_full(source, candidate, response=response, profile_version=PROFILE)
     errors = list(validation.error_codes)
     if validation.passed:
         try:
-            _require_changes(source, candidate)
+            _require_changes(source, candidate, prompt_version=prompt_version)
         except ValueError as error:
             errors.append(str(error))
     report = dict(validation.report)
     errors = sorted(set(errors))
-    report.update(validator_version="full-prose-auto-validator-v1", profile_version=PROFILE,
+    guard_prose = _uses_prose_guards(prompt_version, report["prose_slots"])
+    report.update(validator_version="full-prose-auto-validator-v2" if guard_prose else "full-prose-auto-validator-v1",
+        profile_version=PROFILE,
         publication_mode="automatic", content_acceptance_required=False,
         complete_rewrite=False, passed=not errors, error_codes=errors)
     return ValidationResult(not errors, tuple(errors), report)

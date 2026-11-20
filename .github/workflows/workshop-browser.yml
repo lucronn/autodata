@@ -12,6 +12,7 @@ on:
       - "infra/compose/compose.workshop-browser-test.yaml"
       - "scripts/dev/requirements-workshop-browser.txt"
       - "scripts/dev/workshop_browser_smoke.py"
+      - "scripts/dev/source_connector_fixture_server.py"
       - "scripts/dev/workshop_browser_test.sh"
       - "scripts/dev/fixtures/workshop_customer/**"
       - "workers/ingestion-python/**"

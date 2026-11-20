@@ -300,6 +300,14 @@ func TestPaidCatalogColdReadsDoNotScheduleAndDescriptorsHaveNoBodies(t *testing.
 		if suffix == "" && (strings.Contains(w.Body.String(), "private") || strings.Contains(w.Body.String(), "legacy")) {
 			t.Fatal(w.Body.String())
 		}
+		if suffix == "" {
+			var list CatalogArticlesResponse
+			if err := json.Unmarshal(w.Body.Bytes(), &list); err != nil || list.Configuration == nil ||
+				list.Configuration.ID != paidTestConfiguration || list.Configuration.Region != "CA" ||
+				list.Configuration.Year != 2024 || list.Configuration.Model != "Roadster" {
+				t.Fatalf("exact article index configuration missing: %s", w.Body)
+			}
+		}
 	}
 	if ensure.path != "" {
 		t.Fatal("observational GET scheduled work")
