@@ -187,6 +187,7 @@ def capture_source_article(
     context, *, registry, object_store, deadline_seconds=30.0,
     keep_embedded_pdf=False, keep_html_headings=False, keep_bound_pdf_iframes=False,
     keep_pdf_figure_order=False, keep_multiple_pdf_figures=False, keep_html_table_image_order=False,
+    keep_repeated_pdf_figures=False,
 ):
     if not 0 < deadline_seconds <= 30:
         raise ValueError("capture deadline must be within 30 seconds")
@@ -254,6 +255,9 @@ def capture_source_article(
         raise
     finally:
         body_pool.shutdown(wait=False, cancel_futures=True)
+    def retain_repeats(digest):
+        return keep_repeated_pdf_figures and digest not in context.legacy_published_pdf_roots
+
     parser_pool = ThreadPoolExecutor(max_workers=1)
     try:
         parsing = parser_pool.submit(
@@ -263,6 +267,7 @@ def capture_source_article(
             keep_pdf_figure_order=keep_pdf_figure_order,
             keep_multiple_pdf_figures=keep_multiple_pdf_figures,
             keep_html_table_image_order=keep_html_table_image_order,
+            keep_repeated_pdf_figures=retain_repeats(body.body["sha256"]),
         )
         article = parsing.result(timeout=remaining())
     except (ValueError, TypeError, KeyError, UnicodeError) as error:
@@ -280,6 +285,7 @@ def capture_source_article(
     handled_pdf_embeds = article.get("handled_pdf_embeds") is True
     positioned_html_table_images = article.get("positioned_html_table_images") is True
     positioned_pdf_figures = article.get("positioned_pdf_figures") is True
+    retained_pdf_repeats = article.get("retained_repeated_pdf_figures") is True
     pdf_asset_order = article.get("pdf_legacy_asset_order", [])
     new_structure = article.get("embedded_pdf") or (
         article.get("authored_html_headings") and any(block.get("kind") == "heading" for block in _walk(blocks))
@@ -343,6 +349,7 @@ def capture_source_article(
                     adapted = adapt_bound_pdf_embed(
                         payload, require_complete_ocr=True, keep_pdf_figure_order=keep_pdf_figure_order,
                         keep_multiple_pdf_figures=keep_multiple_pdf_figures,
+                        keep_repeated_pdf_figures=retain_repeats(payload.content_sha256),
                     )
                 except ValueError:
                     adapted = None
@@ -395,6 +402,7 @@ def capture_source_article(
                 documents[ref] = (adapted["blocks"], ["source:" + resource["source_snapshot_id"]],
                                   adapted.get("pdf_legacy_asset_order", []))
                 positioned_pdf_figures |= adapted.get("positioned_pdf_figures") is True
+                retained_pdf_repeats |= adapted.get("retained_repeated_pdf_figures") is True
             for original in originals:
                 resources.append(original)
                 provenance.append(deepcopy(original))
@@ -456,6 +464,7 @@ def capture_source_article(
                 for slot, assigned in zip(pending, sorted(pending, key=lambda entry: entry[1])):
                     embedded_nodes[slot[0]] = assigned[2]
                 del pending_groups[group]
+    uploaded_embedded_images = set()
     for node in embedded_nodes:
         uri = node["url"]
         try:
@@ -466,13 +475,20 @@ def capture_source_article(
             payload = base64.b64decode(encoded, validate=True)
             digest = sha256(payload).hexdigest()
             key = "sources/" + digest[:16] + "/" + digest
-            bounded_objects.put_object(key, payload, media)
             evidence = node.get("evidence_ids")
             parent = next(
                 (evidence_sources[item] for item in evidence if isinstance(item, str) and item in evidence_sources),
                 resources[0],
             ) if isinstance(evidence, list) else resources[0]
             ref = "embedded:" + parent["sha256"] + ":" + digest
+            repeated = retained_pdf_repeats and node.get("_retained_repeated_pdf_figure") is True
+            if repeated and localized.get(ref, {}).get("media_type") == media:
+                node["asset_resource_ref"] = ref
+                continue
+            if not retained_pdf_repeats or (key, media) not in uploaded_embedded_images:
+                bounded_objects.put_object(key, payload, media)
+            if retained_pdf_repeats:
+                uploaded_embedded_images.add((key, media))
             displayable = media in DISPLAYABLE_RASTER_MEDIA
             local = {
                 "provider": provider,
@@ -650,7 +666,8 @@ def capture_source_article(
         ),
         datetime.now(timezone.utc),
         projection_version=(
-            "source-projection-v9" if positioned_html_table_images
+            "source-projection-v10" if retained_pdf_repeats
+            else "source-projection-v9" if positioned_html_table_images
             else "source-projection-v8" if pdf_asset_orders
             else "source-projection-v7" if positioned_pdf_figures
             else "source-projection-v6" if handled_pdf_embeds

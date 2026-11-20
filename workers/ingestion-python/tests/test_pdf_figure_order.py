@@ -1,6 +1,7 @@
 """Synthetic PDF fixtures for the optional Workshop figure placement pass."""
 
 import base64
+from dataclasses import replace
 from io import BytesIO
 from hashlib import sha256
 import json
@@ -71,6 +72,21 @@ def _multi_figure_pdf(*, same_gap=False, overlap=False):
     pdf.drawString(72, 600, "Check the seal.")
     pdf.drawImage(_image(7), 72, 650, width=96, height=70)
     pdf.drawString(72, 400, "Install the seal.")
+    pdf.save()
+    return buffer.getvalue()
+
+
+def _repeated_pdf(*, margin=False, changed=False):
+    buffer = BytesIO()
+    pdf = canvas.Canvas(buffer, invariant=True, pagesize=(612, 792))
+    repeated, unique = _image(7), _image(8)
+    for index, figure in enumerate((repeated, repeated, unique)):
+        pdf.drawString(72, 720, ["Remove the pump.", "Inspect the seal.", "Tighten the bracket."][index])
+        pdf.drawImage(figure, 72, 749 if margin and index < 2 else 550, width=96, height=32 if margin and index < 2 else 96)
+        pdf.drawString(72, 450, [
+            "Check the cover.", "Clean the flange." if not changed else "Check the flange.", "Install the replacement.",
+        ][index])
+        pdf.showPage()
     pdf.save()
     return buffer.getvalue()
 
@@ -258,3 +274,77 @@ def test_overlapping_multiple_figures_keep_legacy_order():
     legacy = adapt_bound_article(resource, None)
     assert sum(block["kind"] == "image" for block in legacy["blocks"]) == 2
     assert adapt_bound_article(resource, None, keep_pdf_figure_order=True, keep_multiple_pdf_figures=True) == legacy
+
+
+@pytest.mark.parametrize("container", ["pdf", "wrapper", "linked"])
+def test_repeated_pdf_retains_each_proven_occurrence_with_one_png_upload(capture_fixture, monkeypatch, container):
+    provider = "banktwo" if container == "linked" else "bankone"
+    payload = _repeated_pdf()
+    context = capture_fixture.context(provider)
+    if container == "linked":
+        body = b'<p>Check the service instructions.</p><iframe src="/fixture/diagrams"></iframe>'
+        capture_fixture.body(
+            provider, body, assets=["addendum"],
+            asset_bindings=[{"source_url": "/fixture/diagrams", "resource_ref": "addendum"}],
+        )
+        capture_fixture.body(provider, payload, "application/pdf", kind="binary", ref="addendum")
+        protected_root = sha256(payload).hexdigest()
+    elif container == "wrapper":
+        body = json.dumps({"body": {"pdf": base64.b64encode(payload).decode()}}).encode()
+        capture_fixture.body(provider, body, "application/json")
+        protected_root = sha256(body).hexdigest()
+    else:
+        capture_fixture.body(provider, payload, "application/pdf", kind="binary")
+        protected_root = sha256(payload).hexdigest()
+    uploads = []
+    store = capture_fixture.objects
+    put = store.put_object
+
+    def record_upload(key, data, mime):
+        uploads.append((key, mime))
+        put(key, data, mime)
+
+    monkeypatch.setattr(store, "put_object", record_upload)
+    options = dict(
+        registry=capture_fixture.registry, object_store=store,
+        keep_bound_pdf_iframes=True, keep_embedded_pdf=True, keep_pdf_figure_order=True,
+        keep_multiple_pdf_figures=True,
+    )
+    legacy = capture_source_article(context, **options)
+    guarded = capture_source_article(
+        replace(context, legacy_published_pdf_roots=frozenset({protected_root})),
+        keep_repeated_pdf_figures=True, **options,
+    )
+    assert guarded.source_document == legacy.source_document
+    assert guarded.source_fingerprint == legacy.source_fingerprint
+    assert guarded.resource_manifest == legacy.resource_manifest
+    assert guarded.evidence_manifest == legacy.evidence_manifest
+    assert [image["alt"] for image in guarded.source_images] == ["Figure from page 3"]
+    uploads.clear()
+
+    captured = capture_source_article(context, keep_repeated_pdf_figures=True, **options)
+    assert captured.projection_version == "source-projection-v10"
+    assert captured.source_body == legacy.source_body
+    assert captured.evidence_manifest == legacy.evidence_manifest
+    assert captured.projection_status == "readable"
+    layout = _layout(captured.source_document["blocks"])
+    assert layout[-9:] == [
+        ("paragraph", "Remove the pump."), ("image", "Figure from page 1"), ("paragraph", "Check the cover."),
+        ("paragraph", "Inspect the seal."), ("image", "Figure from page 2"), ("paragraph", "Clean the flange."),
+        ("paragraph", "Tighten the bracket."), ("image", "Figure from page 3"), ("paragraph", "Install the replacement."),
+    ]
+    first, second, third = captured.source_images
+    assert first["storage_key"] == second["storage_key"] != third["storage_key"]
+    assert first["block_id"] != second["block_id"]
+    assert first["evidence_ids"] == second["evidence_ids"] == third["evidence_ids"]
+    assert uploads.count((first["storage_key"], "image/png")) == 1
+    assert sum(entry.get("role") == "embedded_asset" for entry in captured.resource_manifest) == 2
+    assert "_retained_repeated_pdf_figure" not in repr(captured.source_document)
+
+
+def test_repeated_pdf_margin_art_does_not_change_published_projection():
+    resource = SourceResource.from_bytes("fixture:margin-figures", "fixture", _repeated_pdf(margin=True), "application/pdf")
+    options = dict(keep_pdf_figure_order=True, keep_multiple_pdf_figures=True)
+    legacy = adapt_bound_article(resource, None, **options)
+    assert [block["alt"] for block in legacy["blocks"] if block["kind"] == "image"] == ["Figure from page 3"]
+    assert adapt_bound_article(resource, None, keep_repeated_pdf_figures=True, **options) == legacy

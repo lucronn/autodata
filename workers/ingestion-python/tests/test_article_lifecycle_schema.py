@@ -340,6 +340,7 @@ def test_pdf_figure_projection_upgrade_preserves_v6_before_advancing(fresh_datab
 @pytest.mark.parametrize("migration,previous,new", [
     (48, "source-projection-v7", "source-projection-v8"),
     (49, "source-projection-v8", "source-projection-v9"),
+    (50, "source-projection-v9", "source-projection-v10"),
 ])
 def test_figure_order_upgrade_preserves_same_byte_publication(
     fresh_database, capture_fixture, migration, previous, new,
@@ -392,3 +393,59 @@ def test_figure_order_upgrade_preserves_same_byte_publication(
             conn.execute("UPDATE canonical_articles SET current_source_revision_id=%s WHERE canonical_article_id=%s",
                          (target, article))
     assert store.load_article_state(repo, article)["source_revision_id"] == new_id
+
+
+def test_repeated_pdf_refresh_protects_legacy_publication_until_source_changes(fresh_database, capture_fixture):
+    from autodata_ingestion import article_lifecycle_store as store
+    from autodata_ingestion.article_lifecycle import run_article_job, run_article_worker_once
+    from autodata_ingestion.source_article_capture import capture_source_article
+    from autodata_ingestion.source_job_persistence import refresh_article_job
+    from test_article_source_persistence import prepare
+    from test_article_transform import Model
+    from test_pdf_figure_order import _repeated_pdf
+
+    repo = fresh_database(through=49)
+    context, lease, _ = prepare(repo, capture_fixture)
+    provider, article = context.key.provider, lease.canonical_article_id
+    fixture = capture_fixture
+    options = dict(registry=fixture.registry, object_store=fixture.objects)
+    fixture.body(provider, _repeated_pdf(), "application/pdf", kind="binary")
+    original = capture_source_article(context, keep_pdf_figure_order=True, **options)
+    assert original.projection_version == "source-projection-v7"
+    old_id = store.store_captured_source(repo, lease, original)
+    run_article_job(repo, lease, model_client=Model(), **options)
+    old_view = store.load_article_state(repo, article)
+    assert old_view["source_revision_id"] == old_id
+    assert old_view["content_origin"] == "canonical"
+    old_revision = old_view["canonical_revision_id"]
+    before = lifecycle_history(repo)
+
+    apply_migration(repo, 50)
+    assert lifecycle_history(repo) == before
+
+    class NoDraft:
+        def complete_json(self, _prompt):
+            pytest.fail("identical published PDF triggered another draft")
+
+    unchanged = refresh_article_job(repo, article, actor="fixture", reason="refresh identical PDF")
+    assert run_article_worker_once(repo, worker_id=uuid.uuid4(), model_client=NoDraft(), job_id=unchanged.job_id, **options)
+    unchanged_view = store.load_article_state(repo, article)
+    assert unchanged_view["source_revision_id"] == old_id
+    assert unchanged_view["canonical_revision_id"] == old_revision
+    assert unchanged_view["document"] == old_view["document"]
+
+    fixture.body(provider, _repeated_pdf(changed=True), "application/pdf", kind="binary")
+    changed = refresh_article_job(repo, article, actor="fixture", reason="refresh changed PDF")
+    assert run_article_worker_once(repo, worker_id=uuid.uuid4(), model_client=Model(), job_id=changed.job_id, **options)
+    current = store.load_article_state(repo, article)
+    assert current["content_origin"] == "canonical"
+    assert current["canonical_revision_id"] != old_revision
+    assert current["source_revision_id"] != old_id
+    newer = store.load_source_revision(repo, current["source_revision_id"])
+    assert newer.projection_version == "source-projection-v10"
+    assert [image["alt"] for image in newer.source_images] == [
+        "Figure from page 1", "Figure from page 2", "Figure from page 3",
+    ]
+    after = lifecycle_history(repo)
+    for table in ("canonical_article_source_revisions", "canonical_article_revisions", "publication_events"):
+        assert all(saved in after[table] for saved in before[table])

@@ -4192,6 +4192,24 @@ test('source and canonical viewers retain nested list and table cell content', (
   }
 });
 
+test('source and published viewers place each occurrence of a shared retained PDF figure', () => {
+  const diagrams = [{ id: 'shared', url: mediaURL('shared-pdf') }];
+  const blocks = [
+    { type: 'paragraph', text: 'Open the pump cover.' },
+    { type: 'image', block_id: 'page-1-figure', asset_id: 'shared', alt: 'Figure from page 1' },
+    { type: 'paragraph', text: 'Inspect the seal.' },
+    { type: 'image', block_id: 'page-2-figure', asset_id: 'shared', alt: 'Figure from page 2' },
+    { type: 'paragraph', text: 'Install the replacement.' },
+  ];
+  for (const content_origin of ['source', 'canonical']) {
+    const parent = articleMediaHarness().content(mediaArticle(blocks, diagrams, { content_origin }));
+    assert.deepEqual(mediaTags(parent), ['p', 'figure', 'p', 'figure', 'p']);
+    const occurrences = mediaDescendants(parent, 'img');
+    assert.deepEqual(occurrences.map(image => image.alt), ['Figure from page 1', 'Figure from page 2']);
+    assert.equal(occurrences[0].src, occurrences[1].src);
+  }
+});
+
 test('first publication keeps the approved source panel and its cited focus', async () => {
   const review = { available: true, url: mediaSourceURL };
   const figure = { type: 'image', block_id: 'pinned-figure', asset_id: 'drawing', alt: 'Original drawing' };

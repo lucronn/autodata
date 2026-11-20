@@ -19,6 +19,7 @@ SOURCE_PROJECTION_VERSIONS = (
     "source-projection-v7",
     "source-projection-v8",
     "source-projection-v9",
+    "source-projection-v10",
 )
 
 
@@ -136,6 +137,7 @@ class SourceArticleContext:
     descriptor_snapshot_id: UUID
     resolution_snapshot_id: UUID
     evidence_ids: tuple[str, ...]
+    legacy_published_pdf_roots: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)
