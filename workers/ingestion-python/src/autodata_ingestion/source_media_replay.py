@@ -280,11 +280,19 @@ def _block_inventory(document, body_media):
             ]
         if not isinstance(value, dict):
             return value
-        cleaned = {
-            key: without_media(child) for key, child in value.items()
-            if key not in ("images", "block_id", "source_order")
-        }
-        # A table cell with only text uses the scalar compatibility shape.
+        cleaned = {}
+        for key, child in value.items():
+            if key in ("images", "block_id", "source_order"):
+                continue
+            protected = without_media(child)
+            if (
+                key == "blocks" and isinstance(child, list) and child and not protected
+                and "type" not in value and isinstance(value.get("text"), str)
+            ):
+                # An item may wrap text solely to position a child figure.
+                continue
+            cleaned[key] = protected
+        # List items and table cells with only text use the scalar shape.
         if cleaned.keys() == {"text"}:
             return cleaned["text"]
         return cleaned
