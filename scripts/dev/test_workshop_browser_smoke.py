@@ -1418,9 +1418,10 @@ class API21FakeLocator:
     async def get_attribute(self,name):
         if name=='src':return 'https://127.0.0.1:32001/v1/catalog/images/v2.fake-capability'
         return '/v1/catalog/vehicles/'+smoke.CONFIG+'/articles/'+smoke.ARTICLE+'/source?source_revision_id='+smoke.REVISION
-    async def evaluate(self, expression):
+    async def evaluate(self, expression, text):
         assert self.selector == '#article-content figure:has(img[alt="Alignment marks"])'
         assert 'previousElementSibling' in expression
+        assert text in ('Inspect the alignment marks', 'Check the pump alignment marks')
         return True
     def __getattr__(self,name):
         async def expectation(*args,**kwargs):pass

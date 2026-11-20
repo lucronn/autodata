@@ -1285,6 +1285,19 @@ class APIAssertions(dict):
         super().__setitem__(name,value)
 
 
+async def expect_figure_after_text(figure, text):
+    assert await figure.evaluate(
+        """(node, text) => {
+            let previous = node.previousElementSibling;
+            while (previous?.classList.contains('source-reference')) {
+                previous = previous.previousElementSibling;
+            }
+            return previous?.textContent.includes(text) === true;
+        }""",
+        text,
+    )
+
+
 async def expect_linked_pdf(article, *, rewritten=False):
     from playwright.async_api import expect
 
@@ -1432,7 +1445,7 @@ async def api_case(browser,origin,name,output,observations=None):
             await expect(figure).to_have_count(1)
             if not linked_pdf:
                 await expect(page.locator('#article-content figure:has(img[alt="Alignment marks"]) figcaption')).to_have_text('Pump alignment marks')
-            assert await figure.evaluate("node => node.previousElementSibling.textContent.includes('Inspect the alignment marks')")
+            await expect_figure_after_text(figure, "Inspect the alignment marks")
             nested_item = '#article-content ol[start="4"] > li[value="9"]:has(table)'
             await expect(page.locator(nested_item + " > p").first).to_have_text("Remove the pump.")
             if linked_pdf:
@@ -1476,7 +1489,7 @@ async def api_case(browser,origin,name,output,observations=None):
             await expect(figure).to_have_count(1)
             if not linked_pdf:
                 await expect(page.locator('#article-content figure:has(img[alt="Alignment marks"]) figcaption')).to_have_text('Pump alignment marks')
-            assert await figure.evaluate("node => node.previousElementSibling?.textContent.includes('Check the pump alignment marks')")
+            await expect_figure_after_text(figure, "Check the pump alignment marks")
             await expect(page.locator(nested_item + " > p").first).to_have_text("Take off the pump.")
             if linked_pdf:
                 await expect_linked_pdf(article_content, rewritten=True)
