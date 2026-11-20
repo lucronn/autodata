@@ -1,9 +1,9 @@
 """Automatic full-prose rewriting with permanent, mechanically checked output.
 
 Checks preserve structure and literal technical tokens. Current prose drafts
-also check recognizable safety prerequisites, direction, and action wording.
-Some reassigned component instructions and unsupported introductions can be
-detected mechanically. Semantic equivalence still requires source comparison.
+also check recognizable safety prerequisites, direction, action wording,
+and some exact clause-level component assignments. Semantic equivalence
+still requires source comparison.
 """
 from collections import Counter
 from hashlib import sha256
@@ -18,7 +18,8 @@ PROFILE = "full-prose-auto-v1"
 _PROSE_PROMPT_V4 = "full-prose-auto-prompt-v4"
 _PROSE_PROMPT_V5 = "full-prose-auto-prompt-v5"
 _PROSE_PROMPT_V6 = "full-prose-auto-prompt-v6"
-_PROSE_PROMPT_VERSION = "full-prose-auto-prompt-v7"
+_PROSE_PROMPT_V7 = "full-prose-auto-prompt-v7"
+_PROSE_PROMPT_VERSION = "full-prose-auto-prompt-v8"
 _WORDS = re.compile(r"\w+")
 _INLINE_WARNING = re.compile(
     r"(?:^|[.!?]\s+|\n)[ \t]*(?:warnings?|caution|danger|notice|important)\s*[:!–—-]"
@@ -148,6 +149,20 @@ _TARGET_DELIMITERS = frozenset(
     "gently here if in into near next now of on onto or over slowly then there through to under until "
     "the a an using when while with without".split()
 )
+_CLAUSE_PREFIX_TIMING = re.compile(r"^(before|after)\s+([^,;.!?]+),\s+(.+)$", re.IGNORECASE)
+_CLAUSE_TIMING = re.compile(r"\s+(before|after)\s+", re.IGNORECASE)
+_CLAUSE_THEN = re.compile(r"(?:[.,;]\s*|\s+)(?:and\s+)?then[,\s]+", re.IGNORECASE)
+_CLAUSE_PARALLEL = re.compile(r"\s+and\s+|[.;]\s*", re.IGNORECASE)
+_FIRST_MARKER = re.compile(r"^first[,\s]+|,?\s+first$", re.IGNORECASE)
+_NEXT_MARKER = re.compile(r"^next[,\s]+|,?\s+next$", re.IGNORECASE)
+_CLAUSE_GERUNDS = {
+    "removing": "remove", "lifting off": "lift off", "taking off": "take off",
+    "disconnecting": "disconnect", "detaching": "detach",
+    "inspecting": "inspect", "checking": "check",
+}
+_CLAUSE_GERUND = re.compile(r"^(" + "|".join(_CLAUSE_GERUNDS) + r")(?=\s)", re.IGNORECASE)
+
+
 _INTRO_RISK_CLAIM = re.compile(
     r"\b(?:safe(?:ty)?\s+(?:to|for)|guarantee[sd]?|"
     r"no\s+(?:[a-z-]+\s+){1,6}(?:needed|required|necessary)|"
@@ -281,21 +296,37 @@ def _build_auto_prompt_v6(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def build_auto_prompt(document, *, context):
+def _auto_prompt_payload_v7(document, *, context):
     payload = _auto_prompt_payload_v6(document, context=context)
     if payload["slots"]:
-        payload["prompt_version"] = _PROSE_PROMPT_VERSION
+        payload["prompt_version"] = _PROSE_PROMPT_V7
         payload["rules"].append(
             "Keep each simple directive's original target. Describe the subject of the article in the "
             "introduction. Leave applicability, safety assurances and procedural guarantees in the source."
+        )
+    return payload
+
+
+def _build_auto_prompt_v7(document, *, context):
+    payload = _auto_prompt_payload_v7(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def build_auto_prompt(document, *, context):
+    payload = _auto_prompt_payload_v7(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_VERSION
+        payload["rules"].append(
+            "In a slot with two linked instructions, keep each action with its original component "
+            "and preserve any explicit execution order even when the wording presents the clauses differently."
         )
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
 def _auto_prompt_version(document, *, context, prompt_hash):
     """Identify the rules bound to the saved model attempt."""
-    for builder in (build_auto_prompt, _build_auto_prompt_v6, _build_auto_prompt_v5, _build_auto_prompt_v4,
-                    _build_auto_prompt_v2, _build_auto_prompt_v1):
+    for builder in (build_auto_prompt, _build_auto_prompt_v7, _build_auto_prompt_v6, _build_auto_prompt_v5,
+                    _build_auto_prompt_v4, _build_auto_prompt_v2, _build_auto_prompt_v1):
         payload = builder(document, context=context)
         if sha256(payload.encode()).hexdigest() == prompt_hash:
             return json.loads(payload)["prompt_version"]
@@ -420,6 +451,61 @@ def _simple_directive(text):
     return action, target
 
 
+def _clause_pair(text):
+    """Recognize two complete directives with literal single-component targets."""
+    text = text.strip().rstrip(".!")
+    if prefix := _CLAUSE_PREFIX_TIMING.fullmatch(text):
+        first, second = prefix[2], prefix[3]
+        if prefix[1].casefold() == "before":
+            first, second = second, first
+        ordered = True
+    elif timing := _CLAUSE_TIMING.search(text):
+        first, second = text[:timing.start()], text[timing.end():]
+        if timing[1].casefold() == "after":
+            first, second = second, first
+        ordered = True
+    elif then := _CLAUSE_THEN.search(text):
+        first, second = text[:then.start()], text[then.end():]
+        ordered = True
+    else:
+        pair = _CLAUSE_PARALLEL.split(text, maxsplit=1)
+        if len(pair) != 2:
+            return None
+        first, second = pair
+        ordered = bool(_FIRST_MARKER.search(first.strip()) and _NEXT_MARKER.search(second.strip()))
+
+    clauses = []
+    for clause in (first, second):
+        clause = _NEXT_MARKER.sub("", _FIRST_MARKER.sub("", clause.strip())).strip()
+        clause = _CLAUSE_GERUND.sub(lambda match: _CLAUSE_GERUNDS[match[1].casefold()], clause, count=1)
+        directive = _simple_directive(clause)
+        if directive is None:
+            return None
+        clauses.append(directive)
+    return tuple(clauses), ordered
+
+
+def _clause_assignment_changed(original, replacement):
+    # Unrecognized, repeated, and unmatched targets are inconclusive. An
+    # unordered conjunction supplies no timing constraint by itself.
+    source = _clause_pair(original)
+    if source is None:
+        return False
+    source_clauses, source_ordered = source
+    source_targets = {target for _, target in source_clauses}
+    if len(source_targets) != 2:
+        return False
+    draft = _clause_pair(replacement)
+    if draft is None:
+        return False
+    draft_clauses, draft_ordered = draft
+    if source_targets != {target for _, target in draft_clauses}:
+        return False
+    return set(source_clauses) != set(draft_clauses) or (
+        source_ordered and draft_ordered and source_clauses != draft_clauses
+    )
+
+
 def _check_target_swaps(slots, restored):
     # A reciprocal swap or cycle of distinct, source-unique instructions is
     # evidence of reassignment. A repeated operation or one-way match is
@@ -493,7 +579,7 @@ def _check_intro_claims(source, slots, introduction):
 
 def _uses_prose_guards(prompt_version, slot_count):
     return bool(slot_count) and prompt_version in (
-        None, _PROSE_PROMPT_V4, _PROSE_PROMPT_V5, _PROSE_PROMPT_V6, _PROSE_PROMPT_VERSION,
+        None, _PROSE_PROMPT_V4, _PROSE_PROMPT_V5, _PROSE_PROMPT_V6, _PROSE_PROMPT_V7, _PROSE_PROMPT_VERSION,
     )
 
 
@@ -503,8 +589,9 @@ def _require_changes(source, candidate, *, prompt_version):
     slots = full.prose_slots(source)
     guard_prose = _uses_prose_guards(prompt_version, len(slots))
     guard_actions = guard_prose and prompt_version != _PROSE_PROMPT_V4
-    guard_direction = guard_prose and prompt_version in (None, _PROSE_PROMPT_V6, _PROSE_PROMPT_VERSION)
-    guard_claims = guard_prose and prompt_version in (None, _PROSE_PROMPT_VERSION)
+    guard_direction = guard_prose and prompt_version not in (_PROSE_PROMPT_V4, _PROSE_PROMPT_V5)
+    guard_claims = guard_direction and prompt_version != _PROSE_PROMPT_V6
+    guard_clauses = guard_claims and prompt_version != _PROSE_PROMPT_V7
     introduction = candidate["blocks"][0].get("text", "")
     if guard_prose and (_INLINE_WARNING.search(introduction) or (guard_actions and _PREREQUISITE.search(introduction))):
         raise ValueError("REWRITE_SAFETY_MUTATION")
@@ -544,6 +631,8 @@ def _require_changes(source, candidate, *, prompt_version):
             original_actions = _execution_order(original)
             if original_actions and original_actions != _execution_order(replacement):
                 raise ValueError("REWRITE_ACTION_MUTATION")
+        if guard_clauses and _clause_assignment_changed(original, replacement):
+            raise ValueError("REWRITE_CLAUSE_MUTATION")
     if guard_claims:
         _check_target_swaps(slots, restored)
 
@@ -571,7 +660,8 @@ def validate_auto(source, candidate, *, response=None, prompt_version=None):
             _PROSE_PROMPT_V4: "full-prose-auto-validator-v2",
             _PROSE_PROMPT_V5: "full-prose-auto-validator-v3",
             _PROSE_PROMPT_V6: "full-prose-auto-validator-v4",
-        }.get(prompt_version, "full-prose-auto-validator-v5")
+            _PROSE_PROMPT_V7: "full-prose-auto-validator-v5",
+        }.get(prompt_version, "full-prose-auto-validator-v6")
     report.update(validator_version=validator_version, profile_version=PROFILE,
         publication_mode="automatic", content_acceptance_required=False,
         complete_rewrite=False, passed=not errors, error_codes=errors)
