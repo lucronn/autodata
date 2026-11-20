@@ -1,5 +1,6 @@
 """Exactly 21 required browser cases over actual PG/auth/commerce/catalog/S3 HTTP."""
 from contextlib import ExitStack
+from datetime import datetime
 import json
 import hashlib
 import re
@@ -43,6 +44,14 @@ _INPUTS=('scripts/dev/workshop_browser_smoke.py','scripts/dev/fixtures/workshop_
 
 def _canonical(value):
     return (json.dumps(value,sort_keys=True,separators=(',',':'),ensure_ascii=False,allow_nan=False)+'\n').encode('utf-8')
+
+
+def _snapshot_json_value(value):
+    if isinstance(value, uuid.UUID):
+        return str(value)
+    if isinstance(value, datetime):
+        return value.isoformat()
+    raise TypeError(f"Unsupported snapshot value: {type(value).__name__}")
 
 
 def _strict_json(raw):
@@ -437,7 +446,7 @@ def _child(root_name,engine,provider,directory,monkeypatch):
                 observed=row['observations']
                 assert observed['binding']==expected_binding and observed['status']=='passed' and observed['primary_failure'] is None and observed['publication']=='written'
                 final=bridge.snapshot();assert not final['proxy']['errors'] and final['ensure']['active']==0
-                result['final_snapshot']=final
+                result['final_snapshot']=json.loads(json.dumps(final, default=_snapshot_json_value, allow_nan=False))
                 with urlopen(Request(metadata['origin']+'/__fixture/stop',method='POST'),context=ssl._create_unverified_context(),timeout=2) as response:assert response.status==204
                 _lifecycle(sidecar,'fixture-stop','completed',elapsed_us=go.elapsed())
                 assert go.wait(3)==0,'API21 fixture stop failed';process=None

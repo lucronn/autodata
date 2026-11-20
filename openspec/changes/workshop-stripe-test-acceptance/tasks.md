@@ -36,6 +36,14 @@
   hosted TEST session, reused the order on retry, and denied unpaid access.
   Stripe presented a human verification challenge before payment. The
   unpaid session was expired and the temporary services were removed.
+- A Chromium run against isolated Go, Python and PostgreSQL passed the
+  checkout, signed fixture event, and Library case using synthetic
+  identity and payment transports. The fixture now serializes UUID and
+  timestamp values in its final database snapshot so a completed run can
+  publish its result. A separate Bankone fixture displayed stored source,
+  its image, and source review, then timed out waiting for canonical
+  content after releasing the fixture model. The full API browser suite
+  remains unverified.
 - Real hosted settlement, webhook-driven grant and refund, and licensed
   article acceptance remain open. The prior local Firebase verifier file is
   missing. Use an approved Firebase test environment and tester for the
