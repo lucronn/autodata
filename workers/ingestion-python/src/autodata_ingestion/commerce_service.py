@@ -237,7 +237,7 @@ class CommerceService:
             result.update(state='owned', library_item_id=str(order['order_id']))
             status = 200
         elif order['status'] == 'open' and order.get('checkout_url') and order.get('provider_expires_at') and order['provider_expires_at'] > self.clock():
-            result.update(state='checkout', checkout_url=validate_checkout_url(order['checkout_url']), provider_expires_at=order['provider_expires_at'].isoformat())
+            result.update(state='checkout', checkout_url=validate_checkout_url(order['checkout_url']), provider_expires_at=order['provider_expires_at'].astimezone(UTC).isoformat())
         else:
             status = 202
         return CommerceResult(result, status)
@@ -534,9 +534,9 @@ class CommerceService:
                 elif order['preparation_state'] != 'index_ready' or self._article_pending(cursor, order['configuration_id']):
                     state = 'preparing'
                 item = dict(library_item_id=str(order['order_id']), configuration_id=str(order['configuration_id']), region=order['region'],
-                    label=order['label'], access_state=state, granted_at=order['granted_at'].isoformat() if order['granted_at'] else None)
+                    label=order['label'], access_state=state, granted_at=order['granted_at'].astimezone(UTC).isoformat() if order['granted_at'] else None)
                 if order['revoked_at']:
-                    item['revoked_at'] = order['revoked_at'].isoformat()
+                    item['revoked_at'] = order['revoked_at'].astimezone(UTC).isoformat()
                 if order['preparation_last_error_code']:
                     item['content_error_code'] = order['preparation_last_error_code']
                 items.append(item)

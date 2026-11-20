@@ -275,16 +275,37 @@ def test_duplicate_and_distinct_events_grant_once(commerce):
     assert len(rows)==2 and all('line_items' not in row['payload'] for row in rows)
 
 
-def test_refund_chargeback_ordering_and_monotonic_revocation(commerce):
-    c=commerce;first=checkout(c);sid=order(c,first['order_id'])['checkout_session_id'];c[2].paid(sid)
+def test_refund_chargeback_ordering_and_monotonic_revocation(commerce, monkeypatch):
+    repo, service, stripe, owner, _, _ = commerce
+
+    def non_utc_connection():
+        conn = repo.connect()
+        conn.execute("SET TIME ZONE 'America/New_York'")
+        conn.commit()
+        return conn
+
+    monkeypatch.setattr(service, "connect", non_utc_connection)
+    c = commerce
+    first = checkout(c)
+    initial_order = order(c, first["order_id"])
+    assert first["provider_expires_at"] == initial_order["provider_expires_at"].astimezone(UTC).isoformat()
+    sid = initial_order["checkout_session_id"]
+    stripe.paid(sid)
     assert c[1].webhook(*c[2].event(sid,kind='charge.refunded',refunded=True,amount_refunded=2000))['status']=='accepted'
     assert order(c,first['order_id'])['status']=='revoked'
     tombstone=c[1].library(*c[3])['items'][0]
     assert tombstone['access_state']=='revoked' and tombstone['granted_at'] is None
+    assert tombstone["revoked_at"] == order(c, first["order_id"])["revoked_at"].astimezone(UTC).isoformat()
     assert c[1].webhook(*c[2].event(sid))['status']=='accepted' and counts(c)['entitlements']==0
     with pytest.raises(CommerceError) as error:checkout(c)
     assert error.value.code=='ENTITLEMENT_REVOKED'
     other=str(seed_configuration(c[0],seed_vehicle(c[0])));second=checkout(c,config=other);settle(c,second)
+    paid_item = next(item for item in service.library(*owner)["items"] if item["library_item_id"] == second["order_id"])
+    with repo.connect() as conn:
+        grant = conn.execute(
+            "SELECT granted_at FROM entitlements WHERE commerce_order_id=%s", (second["order_id"],),
+        ).fetchone()
+    assert paid_item["granted_at"] == grant["granted_at"].astimezone(UTC).isoformat()
     sid=order(c,second['order_id'])['checkout_session_id']
     c[1].webhook(*c[2].event(sid,kind='charge.refunded',refunded=False,amount_refunded=100))
     assert order(c,second['order_id'])['status']=='paid'
