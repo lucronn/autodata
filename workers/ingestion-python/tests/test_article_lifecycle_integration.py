@@ -868,12 +868,14 @@ def test_automatic_real_runtime_source_first_publication_and_zero_call_restart(r
 
 
 @pytest.mark.parametrize("point", ["after_model_result_commit", "inside_publication"])
-@pytest.mark.parametrize("prompt_version", ["v1", "v2", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v12", "v13", "v14"])
+@pytest.mark.parametrize(
+    "prompt_version", ["v1", "v2", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v12", "v13", "v14", "v15"],
+)
 def test_automatic_real_process_death_reuses_saved_response(runtime, point, prompt_version):
     ensure = automatic_runtime(runtime,"bankone")
     ensure();runtime.pause(point);runtime.start_workers(1);runtime.await_barrier()
     job = runtime.current_job_id();runtime.kill_worker();runtime.expire_lease(job)
-    if prompt_version != "v14":
+    if prompt_version != "v15":
         from hashlib import sha256
         from psycopg.types.json import Jsonb
         from autodata_ingestion.article_lifecycle_types import digest_json
@@ -881,7 +883,7 @@ def test_automatic_real_process_death_reuses_saved_response(runtime, point, prom
             _build_auto_prompt_v1, _build_auto_prompt_v2, _build_auto_prompt_v4,
             _build_auto_prompt_v5, _build_auto_prompt_v6, _build_auto_prompt_v7, _build_auto_prompt_v8,
             _build_auto_prompt_v9, _build_auto_prompt_v10, _build_auto_prompt_v12, _build_auto_prompt_v13,
-            validate_auto,
+            _build_auto_prompt_v14, validate_auto,
         )
         build_prompt = {
             "v1": _build_auto_prompt_v1,
@@ -895,6 +897,7 @@ def test_automatic_real_process_death_reuses_saved_response(runtime, point, prom
             "v10": _build_auto_prompt_v10,
             "v12": _build_auto_prompt_v12,
             "v13": _build_auto_prompt_v13,
+            "v14": _build_auto_prompt_v14,
         }[prompt_version]
         with runtime.repo.connect() as conn:
             candidate = conn.execute("SELECT r.* FROM canonical_article_revisions r JOIN source_fetch_jobs j USING(transformation_key) WHERE j.source_fetch_job_id=%s", (job,)).fetchone()
@@ -955,24 +958,29 @@ def test_automatic_rejected_rewrite_leaves_source_readable(runtime, mode, source
 
 @pytest.mark.parametrize("provider", ["bankone", "banktwo"])
 @pytest.mark.parametrize("preserved", [True, False])
-@pytest.mark.parametrize(("original", "valid", "invalid"), [
+@pytest.mark.parametrize(("original", "valid", "invalid", "error_code"), [
     pytest.param(
         "Remove the pump while the ignition is off.",
         "With the ignition off, take the pump off.",
-        "With the ignition on, take the pump off.", id="ignition",
+        "With the ignition on, take the pump off.", "REWRITE_QUALIFIER_MUTATION", id="ignition",
     ),
     pytest.param(
         "Inspect connector C-17 for corrosion.",
         "Check the C-17 connector for signs of corrosion.",
-        "Check the C-17 connector for signs of wear.", id="inspection",
+        "Check the C-17 connector for signs of wear.", "REWRITE_QUALIFIER_MUTATION", id="inspection",
     ),
     pytest.param(
         "Inspect connector C-17 for corrosion and cracks.",
         "Check the C-17 connector for signs of cracking and corrosion.",
-        "Check the C-17 connector for signs of corrosion.", id="compound-inspection",
+        "Check the C-17 connector for signs of corrosion.", "REWRITE_QUALIFIER_MUTATION", id="compound-inspection",
+    ),
+    pytest.param(
+        "Either disconnect the battery cable or disconnect the service plug.",
+        "Detach either the service plug or the battery cable.",
+        "Detach either the battery cable or the pump connector.", "REWRITE_CLAUSE_MUTATION", id="alternatives",
     ),
 ])
-def test_automatic_qualifier_controls_publication(runtime, provider, preserved, original, valid, invalid):
+def test_automatic_qualifier_controls_publication(runtime, provider, preserved, original, valid, invalid, error_code):
     ensure = automatic_runtime(runtime, provider)
     runtime.change_fixture_body(f"<ol><li>{original}</li></ol>".encode())
     runtime.model.mode = "explicit_rewrite"
@@ -998,7 +1006,7 @@ def test_automatic_qualifier_controls_publication(runtime, provider, preserved, 
         assert state["canonical_revision_id"] is None
         assert original in state["body"]
         assert invalid not in state["body"]
-        assert attempt == {"status": "failed", "error_code": "REWRITE_QUALIFIER_MUTATION"}
+        assert attempt == {"status": "failed", "error_code": error_code}
         assert events == 0
     assert runtime.counters() == {"source": 1, "asset": 0, "model": 1, "schedule": 1}
 

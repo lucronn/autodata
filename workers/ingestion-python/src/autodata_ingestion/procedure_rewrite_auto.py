@@ -25,7 +25,8 @@ _PROSE_PROMPT_V10 = "full-prose-auto-prompt-v10"
 _CELL_PROSE_PROMPT_V11 = "full-prose-auto-prompt-v11"
 _PROSE_PROMPT_V12 = "full-prose-auto-prompt-v12"
 _PROSE_PROMPT_V13 = "full-prose-auto-prompt-v13"
-_PROSE_PROMPT_VERSION = "full-prose-auto-prompt-v14"
+_PROSE_PROMPT_V14 = "full-prose-auto-prompt-v14"
+_PROSE_PROMPT_VERSION = "full-prose-auto-prompt-v15"
 _WORDS = re.compile(r"\w+")
 _INLINE_WARNING = re.compile(
     r"(?:^|[.!?]\s+|\n)[ \t]*(?:warnings?|caution|danger|notice|important)\s*[:!–—-]"
@@ -528,13 +529,29 @@ def _build_auto_prompt_v13(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def build_auto_prompt(document, *, context):
+def _auto_prompt_payload_v14(document, *, context):
     payload = _auto_prompt_payload_v13(document, context=context)
     if payload["slots"]:
-        payload["prompt_version"] = _PROSE_PROMPT_VERSION
+        payload["prompt_version"] = _PROSE_PROMPT_V14
         payload["rules"].append(
             "If an inspection names several defects on an identified component, keep every "
             "defect and preserve whether the source joins them with and or with or."
+        )
+    return payload
+
+
+def _build_auto_prompt_v14(document, *, context):
+    payload = _auto_prompt_payload_v14(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def build_auto_prompt(document, *, context):
+    payload = _auto_prompt_payload_v14(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_VERSION
+        payload["rules"].append(
+            "Keep each source alternative with its original action and component. You may "
+            "reorder the alternatives and rephrase how they are offered. Keep every option as a choice."
         )
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
@@ -542,9 +559,9 @@ def build_auto_prompt(document, *, context):
 def _auto_prompt_version(document, *, context, prompt_hash):
     """Identify the rules bound to the saved model attempt."""
     for builder in (
-        build_auto_prompt, _build_auto_prompt_v13, _build_auto_prompt_v12, _build_auto_prompt_v11,
-        _build_auto_prompt_v10, _build_auto_prompt_v9, _build_auto_prompt_v8, _build_auto_prompt_v7,
-        _build_auto_prompt_v6, _build_auto_prompt_v5,
+        build_auto_prompt, _build_auto_prompt_v14, _build_auto_prompt_v13, _build_auto_prompt_v12,
+        _build_auto_prompt_v11, _build_auto_prompt_v10, _build_auto_prompt_v9, _build_auto_prompt_v8,
+        _build_auto_prompt_v7, _build_auto_prompt_v6, _build_auto_prompt_v5,
         _build_auto_prompt_v4, _build_auto_prompt_v2, _build_auto_prompt_v1,
     ):
         payload = builder(document, context=context)
@@ -1108,12 +1125,15 @@ def _uses_prose_guards(prompt_version, slot_count):
     return bool(slot_count) and prompt_version in (
         None, _PROSE_PROMPT_V4, _PROSE_PROMPT_V5, _PROSE_PROMPT_V6, _PROSE_PROMPT_V7,
         _PROSE_PROMPT_V8, _PROSE_PROMPT_V9, _PROSE_PROMPT_V10, _CELL_PROSE_PROMPT_V11,
-        _PROSE_PROMPT_V12, _PROSE_PROMPT_V13, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V12, _PROSE_PROMPT_V13, _PROSE_PROMPT_V14, _PROSE_PROMPT_VERSION,
     )
 
 
 def _include_cell_blocks(prompt_version):
-    return prompt_version in (None, _CELL_PROSE_PROMPT_V11, _PROSE_PROMPT_V12, _PROSE_PROMPT_V13, _PROSE_PROMPT_VERSION)
+    return prompt_version in (
+        None, _CELL_PROSE_PROMPT_V11, _PROSE_PROMPT_V12, _PROSE_PROMPT_V13,
+        _PROSE_PROMPT_V14, _PROSE_PROMPT_VERSION,
+    )
 
 
 def _require_changes(source, candidate, *, prompt_version):
@@ -1127,9 +1147,12 @@ def _require_changes(source, candidate, *, prompt_version):
     guard_clauses = guard_claims and prompt_version != _PROSE_PROMPT_V7
     guard_qualifiers = guard_clauses and prompt_version != _PROSE_PROMPT_V8
     guard_scope = guard_qualifiers and prompt_version != _PROSE_PROMPT_V9
-    guard_simultaneous = guard_scope and prompt_version in (None, _PROSE_PROMPT_V12, _PROSE_PROMPT_V13, _PROSE_PROMPT_VERSION)
+    guard_simultaneous = guard_scope and prompt_version in (
+        None, _PROSE_PROMPT_V12, _PROSE_PROMPT_V13, _PROSE_PROMPT_V14, _PROSE_PROMPT_VERSION,
+    )
     guard_identified_inspection = guard_simultaneous and prompt_version != _PROSE_PROMPT_V12
     guard_compound_inspection = guard_identified_inspection and prompt_version != _PROSE_PROMPT_V13
+    guard_bound_alternatives = guard_scope and prompt_version in (None, _PROSE_PROMPT_VERSION)
     introduction = candidate["blocks"][0].get("text", "")
     if guard_prose and (
         _INLINE_WARNING.search(introduction)
@@ -1170,15 +1193,23 @@ def _require_changes(source, candidate, *, prompt_version):
             raise ValueError("REWRITE_UNCHANGED")
         if guard_prose and not technical_only and _near_copy(original, replacement):
             raise ValueError("REWRITE_PROSE_TOO_SIMILAR")
-        if guard_direction and _direction_scope(original) != _direction_scope(replacement):
+        bound_alternatives = False
+        if guard_bound_alternatives and _ALTERNATIVE.search(original):
+            choices = _alternative_pair(original)
+            if choices is not None and len(choices) == 2:
+                bound_alternatives = True
+                if choices != _alternative_pair(replacement):
+                    raise ValueError("REWRITE_CLAUSE_MUTATION")
+        # Proven alternative actions and literal targets have no execution order.
+        if guard_direction and not bound_alternatives and _direction_scope(original) != _direction_scope(replacement):
             raise ValueError("REWRITE_DIRECTION_MUTATION")
-        if guard_actions and not technical_only:
+        if guard_actions and not technical_only and not bound_alternatives:
             original_actions = _execution_order(original)
             if original_actions and original_actions != _execution_order(replacement):
                 raise ValueError("REWRITE_ACTION_MUTATION")
         if guard_clauses and _clause_assignment_changed(original, replacement):
             raise ValueError("REWRITE_CLAUSE_MUTATION")
-        if guard_scope and _alternative_changed(original, replacement):
+        if guard_scope and not bound_alternatives and _alternative_changed(original, replacement):
             raise ValueError("REWRITE_CLAUSE_MUTATION")
         if guard_scope and _exception_changed(original, replacement):
             raise ValueError("REWRITE_QUALIFIER_MUTATION")
@@ -1231,7 +1262,8 @@ def validate_auto(source, candidate, *, response=None, prompt_version=None):
             _CELL_PROSE_PROMPT_V11: "full-prose-auto-validator-v9",
             _PROSE_PROMPT_V12: "full-prose-auto-validator-v10",
             _PROSE_PROMPT_V13: "full-prose-auto-validator-v11",
-        }.get(prompt_version, "full-prose-auto-validator-v12")
+            _PROSE_PROMPT_V14: "full-prose-auto-validator-v12",
+        }.get(prompt_version, "full-prose-auto-validator-v13")
     report.update(validator_version=validator_version, profile_version=PROFILE,
         publication_mode="automatic", content_acceptance_required=False,
         complete_rewrite=False, passed=not errors, error_codes=errors)

@@ -747,7 +747,7 @@ def test_automatic_rewrite_v12_rejects_changed_simultaneous_conditions(in_cell, 
     candidate = render_full(source, payload, profile_version=PROFILE, include_cell_blocks=in_cell)
     validation = auto.validate_auto(source, candidate, response=payload, prompt_version=json.loads(prompt)["prompt_version"])
     assert validation.error_codes == ("REWRITE_QUALIFIER_MUTATION",)
-    assert validation.report["validator_version"] == "full-prose-auto-validator-v12"
+    assert validation.report["validator_version"] == "full-prose-auto-validator-v13"
 
 
 @pytest.mark.parametrize("in_cell", [False, True], ids=["article", "table-cell"])
@@ -768,10 +768,10 @@ def test_automatic_rewrite_v12_preserves_same_state_and_existing_aliases(in_cell
     result = run(source, payload)
     assert result.error_code is None
     version = json.loads(prompt)["prompt_version"]
-    assert version == "full-prose-auto-prompt-v14"
+    assert version == "full-prose-auto-prompt-v15"
     validation = auto.validate_auto(source, result.document, response=payload, prompt_version=version)
     assert validation.passed
-    assert validation.report["validator_version"] == "full-prose-auto-validator-v12"
+    assert validation.report["validator_version"] == "full-prose-auto-validator-v13"
 
 
 def test_automatic_rewrite_v12_rejects_added_condition_in_the_introduction():
@@ -849,10 +849,10 @@ def test_automatic_rewrite_accepts_identified_inspection_aliases(in_cell, source
     result = run(source, payload)
     assert result.error_code is None
     version = json.loads(prompt)["prompt_version"]
-    assert version == "full-prose-auto-prompt-v14"
+    assert version == "full-prose-auto-prompt-v15"
     checked = auto.validate_auto(source, result.document, response=payload, prompt_version=version)
     assert checked.passed
-    assert checked.report["validator_version"] == "full-prose-auto-validator-v12"
+    assert checked.report["validator_version"] == "full-prose-auto-validator-v13"
 
 
 @pytest.mark.parametrize("in_cell,prompt_hash,candidate_hash,report_hash", [
@@ -952,6 +952,79 @@ def test_automatic_reopens_v13_with_original_validation_bytes(in_cell, prompt_ha
     assert auto.validate_auto(source, candidate, response=payload).error_codes == ("REWRITE_QUALIFIER_MUTATION",)
 
 
+@pytest.mark.parametrize("in_cell", [False, True], ids=["article", "table-cell"])
+@pytest.mark.parametrize("source_text,draft,expected", [
+    ("Either disconnect the battery cable or disconnect the service plug.",
+     "Detach either the battery cable or the pump connector.", "REWRITE_CLAUSE_MUTATION"),
+    ("Either disconnect the battery cable or disconnect the service plug.",
+     "Detach the battery cable.", "REWRITE_CLAUSE_MUTATION"),
+    ("Either disconnect the battery cable or disconnect the service plug.",
+     "Detach the battery cable or detach the battery cable.", "REWRITE_CLAUSE_MUTATION"),
+    ("Either disconnect the battery cable or disconnect the service plug.",
+     "Detach the service plug and detach the battery cable.", "REWRITE_CLAUSE_MUTATION"),
+    ("Either remove the fuse or disconnect the battery cable.",
+     "Take the fuse off or detach the pump connector.", "REWRITE_CLAUSE_MUTATION"),
+    ("Either disconnect the left battery cable or remove the rear cover.",
+     "Take the front cover off or detach the left battery cable.", "REWRITE_CLAUSE_MUTATION"),
+    ("Inspect either the battery cable or the service plug.",
+     "Carefully check the service plug or check the pump connector.", "REWRITE_CLAUSE_MUTATION"),
+    ("Either disconnect the battery cable or disconnect the service plug.",
+     "Detach either the service plug or the battery cable.", None),
+    ("Either disconnect the battery cable or disconnect the service plug.",
+     "Detach the service plug, or detach the battery cable instead.", None),
+    ("Either remove the fuse or disconnect the battery cable.",
+     "Detach the battery cable or take the fuse off.", None),
+    ("Either disconnect the left battery cable or remove the rear cover.",
+     "Take the rear cover off or detach the left battery cable.", None),
+    ("Inspect the cover and inspect the shield.", "Check the shield and check the cover.", None),
+    ("Inspect the seal, then inspect the cover.", "After checking the seal, check the cover.", None),
+])
+def test_automatic_rewrite_preserves_bound_alternative_actions(in_cell, source_text, draft, expected):
+    from autodata_ingestion import procedure_rewrite_auto as auto
+    from autodata_ingestion.procedure_rewrite_full import render_full
+
+    source = _scoped_prose_source(source_text, in_cell=in_cell)
+    prompt = auto.build_auto_prompt(source, context={})
+    payload = _scoped_prose_response(prompt, draft)
+    result = run(source, payload)
+    assert result.error_code == expected
+    if expected:
+        assert result.document == source
+    candidate = render_full(source, payload, profile_version=PROFILE, include_cell_blocks=in_cell)
+    checked = auto.validate_auto(source, candidate, response=payload, prompt_version=json.loads(prompt)["prompt_version"])
+    assert checked.error_codes == ((expected,) if expected else ())
+    assert checked.report["validator_version"] == "full-prose-auto-validator-v13"
+
+
+@pytest.mark.parametrize("in_cell,prompt_hash,candidate_hash,report_hash", [
+    (False, "ac73f4c74810a4fddef64626e9c78faabc0bce4d46a11e86cbfb85be16ef4b93",
+     "5603a7753afec6b47dcda10319f892a8c24b81c05b1f6ceb208b26901dfbed66",
+     "45813533d9dc7670abd3d6d16dc9974b2744b975da861057ecc216e756258752"),
+    (True, "9dae6d605cea9a7cb5cd0a3d36980f1c9e32e3f04510436639f84bb9fc4b45e0",
+     "27a7d561ad50fe5326f51afe3ab18830bb994f17f8b73b87c39fa52f482b89b9",
+     "113991d182f8648c51e4ff1084ec4459fc07f474ca7cbb10c424da0e86df0ca4"),
+])
+def test_automatic_reopens_v14_with_original_validation_bytes(in_cell, prompt_hash, candidate_hash, report_hash):
+    from hashlib import sha256
+    from autodata_ingestion import procedure_rewrite_auto as auto
+
+    context = {"make": "Fixture"}
+    source = _scoped_prose_source(
+        "Either disconnect the battery cable or disconnect the service plug.", in_cell=in_cell,
+    )
+    prompt = auto._build_auto_prompt_v14(source, context=context)
+    assert sha256(prompt.encode()).hexdigest() == prompt_hash
+    version = auto._auto_prompt_version(source, context=context, prompt_hash=prompt_hash)
+    assert version == "full-prose-auto-prompt-v14"
+    payload = _scoped_prose_response(prompt, "Detach either the battery cable or the pump connector.")
+    candidate = auto.render_auto(source, payload, prompt_version=version)
+    historical = auto.validate_auto(source, candidate, response=payload, prompt_version=version)
+    assert historical.passed
+    assert digest_json(candidate) == candidate_hash
+    assert digest_json(historical.report) == report_hash
+    assert auto.validate_auto(source, candidate, response=payload).error_codes == ("REWRITE_CLAUSE_MUTATION",)
+
+
 def test_technical_only_retention_is_explicit_and_table_stays_exact():
     source = document("25 Nm", "Remove the cover.")
     source["blocks"].append({"block_id":"table", "source_order":3,"type":"table",
@@ -999,13 +1072,13 @@ def test_prompt_asks_for_automatic_full_prose_without_human_review_obligations()
     assert prompt["slots"][0]["text"] == "Remove the cover."
 
 
-def test_prompt_v14_declares_complete_response_rows_and_server_required_actions():
+def test_prompt_v15_declares_complete_response_rows_and_server_required_actions():
     source = document("Remove the cover.", "25 Nm", "Never start the motor.",
                       "Fit the cover only after the seal sits flush.",
                       "Except if the seal is dry, inspect the housing.")
     before = deepcopy(source)
     prompt = json.loads(rewrite.build_rewrite_prompt(source, context={}, profile_version=PROFILE))
-    assert prompt["prompt_version"] == "full-prose-auto-prompt-v14"
+    assert prompt["prompt_version"] == "full-prose-auto-prompt-v15"
     assert prompt["response_shape"] == {"introduction": "string", "replacements": [
         {"block_id": "string", "path": "string", "action": "rewrite|retain", "text": "string", "reason": "string"}]}
     assert [slot["required_action"] for slot in prompt["slots"]] == ["rewrite", "rewrite_or_retain", "retain", "retain", "retain"]
@@ -1042,7 +1115,7 @@ def test_historical_v4_prompt_digest_and_validation_report_remain_stable():
     assert historical.passed and historical.report["validator_version"] == "full-prose-auto-validator-v2"
     current = validate_auto(source, candidate, response=payload)
     assert current.error_codes == ("REWRITE_ACTION_MUTATION",)
-    assert current.report["validator_version"] == "full-prose-auto-validator-v12"
+    assert current.report["validator_version"] == "full-prose-auto-validator-v13"
 
 
 def test_historical_v5_prompt_digest_and_validation_report_remain_stable():
@@ -1063,7 +1136,7 @@ def test_historical_v5_prompt_digest_and_validation_report_remain_stable():
     assert historical.passed and historical.report["validator_version"] == "full-prose-auto-validator-v3"
     current = auto.validate_auto(source, candidate, response=payload)
     assert current.error_codes == ("REWRITE_DIRECTION_MUTATION",)
-    assert current.report["validator_version"] == "full-prose-auto-validator-v12"
+    assert current.report["validator_version"] == "full-prose-auto-validator-v13"
 
 
 def test_historical_v6_prompt_digest_and_validation_report_remain_stable():
@@ -1083,7 +1156,7 @@ def test_historical_v6_prompt_digest_and_validation_report_remain_stable():
     assert historical.passed and historical.report["validator_version"] == "full-prose-auto-validator-v4"
     current = auto.validate_auto(source, candidate, response=payload)
     assert current.error_codes == ("REWRITE_COMPONENT_SWAP",)
-    assert current.report["validator_version"] == "full-prose-auto-validator-v12"
+    assert current.report["validator_version"] == "full-prose-auto-validator-v13"
 
 
 def test_historical_v7_prompt_candidate_and_validation_hashes_remain_stable():
@@ -1110,7 +1183,7 @@ def test_historical_v7_prompt_candidate_and_validation_hashes_remain_stable():
     current = auto.validate_auto(source, candidate, response=payload)
     assert current.passed is False
     assert current.report["passed"] is False
-    assert current.report["validator_version"] == "full-prose-auto-validator-v12"
+    assert current.report["validator_version"] == "full-prose-auto-validator-v13"
     assert current.error_codes == ("REWRITE_CLAUSE_MUTATION",)
 
 
@@ -1162,7 +1235,7 @@ def test_historical_v9_prompt_candidate_and_validation_hashes_remain_stable():
 
     current = auto.validate_auto(source, candidate, response=payload)
     assert current.error_codes == ("REWRITE_QUALIFIER_MUTATION",)
-    assert current.report["validator_version"] == "full-prose-auto-validator-v12"
+    assert current.report["validator_version"] == "full-prose-auto-validator-v13"
 
 
 def test_auto_prompt_hash_accepts_only_exact_server_reconstructions():
@@ -1171,7 +1244,7 @@ def test_auto_prompt_hash_accepts_only_exact_server_reconstructions():
         _auto_prompt_version, _build_auto_prompt_v1, _build_auto_prompt_v2,
         _build_auto_prompt_v4, _build_auto_prompt_v5, _build_auto_prompt_v6, _build_auto_prompt_v7,
         _build_auto_prompt_v8, _build_auto_prompt_v9, _build_auto_prompt_v10,
-        _build_auto_prompt_v11, _build_auto_prompt_v12, _build_auto_prompt_v13, build_auto_prompt,
+        _build_auto_prompt_v11, _build_auto_prompt_v12, _build_auto_prompt_v13, _build_auto_prompt_v14, build_auto_prompt,
     )
     source = document("Remove the cover.")
     context = {"vehicle": "routing-only"}
@@ -1420,7 +1493,7 @@ def test_auto_rewrites_nested_table_prose_and_preserves_saved_v10(wrapped_row):
     assert auto.validate_auto(source, historical, response=historical_draft, prompt_version=historical_version).passed
 
     prompt = auto.build_auto_prompt(source, context=context)
-    version = "full-prose-auto-prompt-v14"
+    version = "full-prose-auto-prompt-v15"
     assert json.loads(prompt)["prompt_version"] == version
     assert auto._auto_prompt_version(source, context=context, prompt_hash=sha256(prompt.encode()).hexdigest()) == version
     paths = [slot["path"] for slot in json.loads(prompt)["slots"]]
