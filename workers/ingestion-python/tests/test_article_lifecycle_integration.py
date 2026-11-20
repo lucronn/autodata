@@ -798,6 +798,12 @@ def automatic_runtime(runtime, provider):
             if model.mode in {"copy", "unsafe"}:
                 for slot, row in zip(prompt["slots"], replacements):
                     row["text"] = "First, " + slot["text"] if model.mode == "copy" else "Reconnect the battery."
+            if model.mode in {"condition_preserved", "condition_inverted"}:
+                state = "off" if model.mode == "condition_preserved" else "on"
+                assert [slot["text"] for slot in prompt["slots"]] == [
+                    "Remove the pump while the ignition is off.",
+                ]
+                replacements[0]["text"] = f"With the ignition {state}, take the pump off."
             result = {"introduction":"This procedure describes removing the pump.","replacements":replacements}
             raw = json.dumps({"choices":[{"message":{"content":json.dumps(result)}}]}).encode()
             self.send_response(200);self.send_header("Content-Type","application/json")
@@ -840,19 +846,19 @@ def test_automatic_real_runtime_source_first_publication_and_zero_call_restart(r
 
 
 @pytest.mark.parametrize("point", ["after_model_result_commit", "inside_publication"])
-@pytest.mark.parametrize("prompt_version", ["v1", "v2", "v4", "v5", "v6", "v7", "v8", "v9", "v10"])
+@pytest.mark.parametrize("prompt_version", ["v1", "v2", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v12"])
 def test_automatic_real_process_death_reuses_saved_response(runtime, point, prompt_version):
     ensure = automatic_runtime(runtime,"bankone")
     ensure();runtime.pause(point);runtime.start_workers(1);runtime.await_barrier()
     job = runtime.current_job_id();runtime.kill_worker();runtime.expire_lease(job)
-    if prompt_version != "v10":
+    if prompt_version != "v12":
         from hashlib import sha256
         from psycopg.types.json import Jsonb
         from autodata_ingestion.article_lifecycle_types import digest_json
         from autodata_ingestion.procedure_rewrite_auto import (
             _build_auto_prompt_v1, _build_auto_prompt_v2, _build_auto_prompt_v4,
             _build_auto_prompt_v5, _build_auto_prompt_v6, _build_auto_prompt_v7, _build_auto_prompt_v8,
-            _build_auto_prompt_v9, validate_auto,
+            _build_auto_prompt_v9, _build_auto_prompt_v10, validate_auto,
         )
         build_prompt = {
             "v1": _build_auto_prompt_v1,
@@ -863,6 +869,7 @@ def test_automatic_real_process_death_reuses_saved_response(runtime, point, prom
             "v7": _build_auto_prompt_v7,
             "v8": _build_auto_prompt_v8,
             "v9": _build_auto_prompt_v9,
+            "v10": _build_auto_prompt_v10,
         }[prompt_version]
         with runtime.repo.connect() as conn:
             candidate = conn.execute("SELECT r.* FROM canonical_article_revisions r JOIN source_fetch_jobs j USING(transformation_key) WHERE j.source_fetch_job_id=%s", (job,)).fetchone()
@@ -918,6 +925,39 @@ def test_automatic_rejected_rewrite_leaves_source_readable(runtime, mode, source
         ).fetchone()
         assert attempt == {"status": "failed", "error_code": expected_code}
         assert conn.execute("SELECT count(*) AS n FROM publication_events").fetchone()["n"] == 0
+    assert runtime.counters() == {"source": 1, "asset": 0, "model": 1, "schedule": 1}
+
+
+@pytest.mark.parametrize("provider", ["bankone", "banktwo"])
+@pytest.mark.parametrize("preserved", [True, False])
+def test_automatic_ignition_condition_controls_publication(runtime, provider, preserved):
+    ensure = automatic_runtime(runtime, provider)
+    original = "Remove the pump while the ignition is off."
+    runtime.change_fixture_body(f"<ol><li>{original}</li></ol>".encode())
+    runtime.model.mode = "condition_preserved" if preserved else "condition_inverted"
+    job = ensure().job_id
+    runtime.start_workers(1)
+    runtime.wait_for(lambda: runtime.read_current()["processing_state"] in ("completed", "needs_review"))
+    runtime.stop_workers()
+
+    state = runtime.read_current()
+    with runtime.repo.connect() as conn:
+        attempt = conn.execute(
+            "SELECT status, error_code FROM canonical_article_rewrite_attempts WHERE source_fetch_job_id=%s", (job,),
+        ).fetchone()
+        events = conn.execute("SELECT count(*) AS n FROM publication_events").fetchone()["n"]
+    if preserved:
+        assert state["content_origin"] == "canonical"
+        assert "With the ignition off, take the pump off." in state["body"]
+        assert attempt == {"status": "succeeded", "error_code": None}
+        assert events == 1
+    else:
+        assert state["content_origin"] == "source"
+        assert state["canonical_revision_id"] is None
+        assert original in state["body"]
+        assert "ignition on" not in state["body"]
+        assert attempt == {"status": "failed", "error_code": "REWRITE_QUALIFIER_MUTATION"}
+        assert events == 0
     assert runtime.counters() == {"source": 1, "asset": 0, "model": 1, "schedule": 1}
 
 

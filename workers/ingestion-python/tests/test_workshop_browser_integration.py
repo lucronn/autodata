@@ -417,6 +417,7 @@ def _child(root_name,engine,provider,directory,monkeypatch):
                             '<img src="/fixture/alignment.png" alt="Alignment marks">'
                             'Keep the shim seated.</td></tr></table>'
                             '<p>Do not run the pump dry.</p>'
+                            '<p>Remove the cover while the ignition is off.</p>'
                             '<ol start="4"><li value="9">Remove the pump.'
                             '<table><tr><td>'
                             f'<iframe src="{_PDF_LOCATOR}">Hidden fallback.</iframe>'
@@ -435,6 +436,7 @@ def _child(root_name,engine,provider,directory,monkeypatch):
                              "images": [{"asset_resource_ref": "figure", "alt": "Alignment marks",
                                          "caption": "Pump alignment marks"}]},
                             {"type": "callout", "label": "Warning", "text": "Do not run the pump dry."},
+                            {"type": "paragraph", "text": "Remove the cover while the ignition is off."},
                             {"type": "step", "number": 1, "text": "Remove the pump."},
                             {"type": "ordered_list", "start": 4, "items": [
                                 {"text": "Remove the pump.", "number": 9, "blocks": [

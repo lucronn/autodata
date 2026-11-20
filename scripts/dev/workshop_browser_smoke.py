@@ -1454,6 +1454,7 @@ async def api_case(browser,origin,name,output,observations=None):
             await expect(article_content).to_contain_text('Inspect the alignment marks before removing the pump.')
             await expect(article_content).to_contain_text('Remove the pump.')
             await expect(article_content).to_contain_text('Do not run the pump dry.')
+            await expect(article_content).to_contain_text('Remove the cover while the ignition is off.')
             await expect(article_content).to_contain_text('Install a new oil seal after the flange is dry.')
             await expect(article_content).to_contain_text('Tighten the cover bolts to 18 Nm.')
             await expect(page.locator('#print')).to_be_enabled()
@@ -1492,6 +1493,7 @@ async def api_case(browser,origin,name,output,observations=None):
             else:
                 await page.locator('#article-reference summary').click();await page.locator('#source-review-load').click()
             await expect(page.locator('#source-review-frame')).to_contain_text('Remove the pump.')
+            await expect(page.locator('#source-review-frame')).to_contain_text('Remove the cover while the ignition is off.')
             await expect(page.locator('#source-review-frame')).to_contain_text('Install a new oil seal after the flange is dry.')
             if linked_pdf:
                 source_frame = page.locator('#source-review-frame')
@@ -1514,6 +1516,8 @@ async def api_case(browser,origin,name,output,observations=None):
             await expect(page.locator('#reader-engine')).to_have_text('US')
             await expect(article_content).to_contain_text('Take off the pump.')
             await expect(article_content).to_contain_text('Do not run the pump dry.')
+            await expect(article_content).to_contain_text('With the ignition off, take the cover off.')
+            await expect(article_content).not_to_contain_text('Remove the cover while the ignition is off.')
             await expect(article_content).not_to_contain_text('Remove the pump.')
             await expect(article_content).to_contain_text('After the flange has dried, fit the replacement oil seal into place.')
             await expect(article_content).not_to_contain_text('Install a new oil seal after the flange is dry.')
