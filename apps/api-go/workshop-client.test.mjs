@@ -1325,6 +1325,7 @@ function paidPurchaseLifecycleHarness(selectionErrors, { realArticleIndex = fals
     merchant: merchantFixture(), access: 'missing', currentOrder: '', paidOrder: null, unconfirmedOrder: null,
     articles: [], searchItems: null, searchQuery: '', searchPending: false,
     searchComplete: false, searchError: false, searchTimer: null,
+    sourceRevision: 0,
     clearTimeout() {},
     sessionEstablished: true, signingIn: false,
     session: { state: { authenticated: true, ready: true, csrf: 'test-csrf' },
@@ -1962,7 +1963,7 @@ function articleIndexHarness(responses, { wait = async () => {}, openDemo = fals
     document: { title: '', body: { dataset: {} } },
     navigation, quote: null, vehicle: { id: 'B', region: 'US' }, articles: [], indexComplete: false, indexFailed: false, access: '', retryAction: null, filterArticles,
     searchNavigation, searchItems: null, searchQuery: '', searchPending: false, searchComplete: false, searchError: false, searchTimer: null,
-    currentArticle: null, renderedRevision: '', sourceData: null, sourceURL: '', sourceRevision: '',
+    currentArticle: null, renderedRevision: '', sourceData: null, sourceURL: '', sourceRevision: 0,
     renewalUsed: false, renewal: null, libraryItems: [], libraryCursor: null,
     currentOrder: '', paidOrder: null, unconfirmedOrder: null, viewGeneration: null,
     clearOrderRoute(id) { clearedOrders.push(id); },
@@ -2772,6 +2773,47 @@ test('retrying a visible article keeps its tab title while preparation fails', a
   rejectPrepare(new Error('temporarily unavailable'));
   await assert.rejects(retry, /temporarily unavailable/);
   assert.equal(h.context.document.title, 'Pump service | AutoData');
+});
+
+test('opening another article removes the previous source and disables printing until it loads', async () => {
+  let resolvePrepare;
+  const h = articleRouteHarness('firebase', path => {
+    assert.equal(path, '/v1/catalog/vehicles/v/articles/b/prepare');
+    return new Promise(resolve => { resolvePrepare = resolve; });
+  });
+  const previousArticle = mediaArticle([{ type: 'paragraph', text: 'Old procedure.' }], [], {
+    review_status: 'UNREVIEWED', source_review: { available: true, url: mediaSourceURL },
+  });
+  h.render(previousArticle);
+  h.context.requestJSON = async () => ({
+    source: { url: mediaSourceURL },
+    document: { blocks: [{ type: 'paragraph', text: 'Old source copy.' }] },
+  });
+  await h.context.loadSource(mediaSourceURL, h.g);
+  assert.equal(h.nodes.get('source-review-frame').hidden, false);
+  assert.equal(h.context.document.body.dataset.printable, 'true');
+
+  const pending = h.context.loadArticle('b', h.navigation.next());
+  assert.equal(h.nodes.get('article-title').textContent, 'Opening article…');
+  assert.equal(h.context.document.title, 'AutoData — The workshop reference');
+  assert.equal(h.context.currentArticle, null);
+  assert.equal(h.nodes.get('article-kind').textContent, '');
+  assert.equal(h.nodes.get('article-note').hidden, true);
+  assert.equal(h.nodes.get('article-reference').open, false);
+  assert.equal(h.nodes.get('source-review').hidden, true);
+  assert.equal(h.nodes.get('source-review-link').href, undefined);
+  assert.equal(h.nodes.get('source-review-frame').textContent, '');
+  assert.equal(h.context.document.body.dataset.printable, 'false');
+
+  const nextArticle = mediaArticle([{ type: 'paragraph', text: 'Next procedure.' }], [], {
+    id: 'b', title: 'Seal service', view_revision: 'view-2',
+  });
+  resolvePrepare({ data: { article: nextArticle } });
+  await pending;
+  assert.equal(h.nodes.get('article-title').textContent, 'Seal service');
+  assert.equal(h.nodes.get('article-content').textContent, 'Next procedure.');
+  assert.equal(h.nodes.get('source-review').hidden, true);
+  assert.equal(h.context.document.body.dataset.printable, 'true');
 });
 
 for (const [type, tag] of [['ordered_list', 'ol'], ['unordered_list', 'ul']]) {

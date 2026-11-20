@@ -138,36 +138,45 @@ function clearProtected() {
   articles = [];
   indexComplete = false;
   indexFailed = false;
-  currentArticle = null;
-  renderedRevision = "";
-  sourceData = null;
-  sourceURL = "";
-  sourceRevision = 0;
-  renewalUsed = false;
-  renewal = null;
-  renewalFailures = new Set();
-  for (const id of [
-    "articles",
-    "article-content",
-    "source-review-frame",
-    "reference-data",
-    "library-items",
-  ])
+  resetReaderContent();
+  for (const id of ["articles", "reference-data", "library-items"])
     $(id).replaceChildren();
   $("article-title").textContent = "";
   $("catalog-count").textContent = "";
-  $("article-note").textContent = "";
-  $("source-review-meta").textContent = "";
-  $("source-review").hidden = true;
-  $("source-review-frame").hidden = true;
-  $("print").disabled = true;
-  document.body.dataset.printable = "false";
   $("reader").hidden = true;
   $("catalog").hidden = true;
-  $("source-review-link").removeAttribute("href");
   libraryItems = [];
   libraryCursor = null;
   access = "unknown";
+}
+function resetReaderMedia() {
+  renewalUsed = false;
+  renewal = null;
+  renewalFailures = new Set();
+  sourceData = null;
+  sourceURL = "";
+  ++sourceRevision;
+  $("source-review").hidden = true;
+  $("source-review-load").disabled = false;
+  $("source-review-frame").replaceChildren();
+  $("source-review-frame").hidden = true;
+  $("source-review-link").removeAttribute("href");
+  $("source-review-meta").textContent = "";
+}
+function resetReaderContent() {
+  currentArticle = null;
+  renderedRevision = "";
+  resetReaderMedia();
+  $("article-content").replaceChildren();
+  $("article-reference").hidden = true;
+  $("article-reference").open = false;
+  $("article-kind").textContent = "";
+  $("article-note").hidden = true;
+  $("article-note").textContent = "";
+  $("reader-vehicle").textContent = "";
+  $("reader-engine").textContent = "";
+  $("print").disabled = true;
+  document.body.dataset.printable = "false";
 }
 function invalidate() {
   navigation.clear();
@@ -876,16 +885,8 @@ function renderArticle(article, g) {
     renderContent(fragment, article, g);
     if (!g.current()) return;
     $("article-content").replaceChildren(fragment);
+    if (renderedRevision) resetReaderMedia();
     renderedRevision = revision;
-    renewalUsed = false;
-    renewal = null;
-    renewalFailures = new Set();
-    sourceData = null;
-    sourceURL = "";
-    ++sourceRevision;
-    $("source-review-load").disabled = false;
-    $("source-review-frame").replaceChildren();
-    $("source-review-frame").hidden = true;
   }
   currentArticle = article;
   $("article-title").textContent = article.title || "Article";
@@ -919,17 +920,14 @@ function renderArticle(article, g) {
 }
 async function loadArticle(id, g) {
   if ((!openDemo && !session.state.authenticated) || !g.current()) return;
-  show("reader");
-  if (currentArticle?.id !== id)
+  const sameArticle = currentArticle?.id === id;
+  resetReaderContent();
+  if (!sameArticle) {
     $("article-title").textContent = "Opening article…";
+    document.title = "AutoData — The workshop reference";
+  }
+  show("reader");
   $("article-title").focus();
-  $("print").disabled = true;
-  $("article-content").replaceChildren();
-  renderedRevision = "";
-  sourceURL = "";
-  renewalUsed = false;
-  renewal = null;
-  renewalFailures = new Set();
   stage("article");
   status("Opening article…", { busy: true });
   const first = openDemo || session.state.mode === "local"
@@ -1198,12 +1196,8 @@ async function library(g, append = false) {
   status("My vehicles ready.", { complete: true });
 }
 function clearReader() {
-  currentArticle = null;
-  $("article-content").replaceChildren();
-  $("source-review-frame").replaceChildren();
+  resetReaderContent();
   $("reader").hidden = true;
-  $("print").disabled = true;
-  document.body.dataset.printable = "false";
 }
 async function checkOrder(g, id) {
   if (paidOrder?.id !== id) paidOrder = null;
