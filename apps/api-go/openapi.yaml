@@ -2144,6 +2144,26 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/CatalogArticle'
+        configuration:
+          type: object
+          description: Exact configuration admitted by the server for the paid catalog request.
+          required: [id, year, make, model, region]
+          properties:
+            id:
+              type: string
+              format: uuid
+            year:
+              type: integer
+            make:
+              type: string
+            model:
+              type: string
+            region:
+              type: string
+            engine:
+              type: string
+            trim:
+              type: string
     SourceContentResponse:
       type: object
       properties:

@@ -40,11 +40,12 @@ type CatalogConfigurationsResponse struct {
 	CatalogHydrationResponse
 }
 type CatalogArticlesResponse struct {
-	Version   string                  `json:"version"`
-	Items     []CatalogArticle        `json:"items"`
-	Complete  bool                    `json:"complete"`
-	Hydrating bool                    `json:"hydrating"`
-	Progress  *CatalogArticleProgress `json:"progress,omitempty"`
+	Version       string                  `json:"version"`
+	Items         []CatalogArticle        `json:"items"`
+	Complete      bool                    `json:"complete"`
+	Hydrating     bool                    `json:"hydrating"`
+	Progress      *CatalogArticleProgress `json:"progress,omitempty"`
+	Configuration *CatalogConfiguration   `json:"configuration,omitempty"`
 }
 type CatalogArticleResponse struct {
 	Version string         `json:"version"`
@@ -254,9 +255,13 @@ func (s *Server) listCatalogArticles(response http.ResponseWriter, request *http
 			rewriteCatalogImageURLs(&items[index], s.catalogImageKey)
 		}
 	}
+	var configuration *CatalogConfiguration
+	if scope, ok := request.Context().Value(paidCatalogContextKey{}).(paidCatalogContext); ok {
+		configuration = &scope.configuration
+	}
 	writeJSON(response, http.StatusOK, CatalogArticlesResponse{
 		Version: "v1", Items: items, Complete: progress != nil && progress.Complete,
-		Hydrating: hydrating, Progress: progress,
+		Hydrating: hydrating, Progress: progress, Configuration: configuration,
 	})
 }
 

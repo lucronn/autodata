@@ -304,12 +304,19 @@ function selectorPath(name) {
     configuration: `/v1/catalog/years/${year}/makes/${make}/models/${model}/configurations?region=US`,
   }[name];
 }
-async function loadOptions(name, g, desired = "") {
+async function loadOptions(name, g, desired = "", initial = null) {
   status(`Loading ${name} choices…`, { busy: true });
   stage(name);
   $(name).disabled = true;
   const result = await readCollection(
-    () => requestJSON(selectorPath(name), { signal: g.signal }),
+    async () => {
+      if (initial) {
+        const response = await initial;
+        initial = null;
+        if (response) return response;
+      }
+      return requestJSON(selectorPath(name), { signal: g.signal });
+    },
     {
       signal: g.signal,
       desired,
@@ -350,7 +357,7 @@ function renderPurchase() {
       vehicle?.year,
       vehicle?.make,
       vehicle?.model,
-      configurationLabel(vehicle || {}),
+      (vehicle?.engine || vehicle?.trim) && configurationLabel(vehicle),
       vehicle?.region,
     ]
       .filter(Boolean)
@@ -473,6 +480,9 @@ async function loadArticles(g, articleID = "") {
       desired: articleID,
       onUpdate(result) {
         if (!g.current()) return;
+        if (result.configuration?.id === vehicle.id &&
+            result.configuration.region === vehicle.region)
+          vehicle = result.configuration;
         const descriptorFields = [
           "id", "title", "kind", "component", "availability", "content_status",
           "source_revision_id", "canonical_revision_id", "view_revision", "review_status",
@@ -1328,6 +1338,11 @@ async function signIn() {
 }
 async function bootstrap() {
   invalidate();
+  const params = new URLSearchParams(location.search);
+  const years = !params.has("year") && !params.has("configuration") &&
+    !params.has("order") && params.get("view") !== "library"
+    ? requestJSON("/v1/catalog/years").catch(() => null)
+    : null;
   if (!openDemo) {
     const [, config] = await Promise.all([
       session.bootstrap(),
@@ -1336,9 +1351,9 @@ async function bootstrap() {
     merchant = config;
   }
   sessionEstablished = true;
-  await restoreRoute();
+  await restoreRoute(years);
 }
-async function restoreRoute() {
+async function restoreRoute(initialYears = null) {
   invalidate();
   show("welcome");
   const params = new URLSearchParams(location.search);
@@ -1361,17 +1376,17 @@ async function restoreRoute() {
         await library(g);
         return;
       }
-      if (uuid(params.get("configuration")) && !params.get("year")) {
-        vehicle = {
-          id: params.get("configuration"),
-          region: params.get("region"),
-        };
-        await selectVehicle(g, params.get("article") || "");
+      const articleID = params.get("article") || "";
+      const exact = { configuration_id: params.get("configuration"), region: params.get("region") };
+      if (uuid(exact.configuration_id) &&
+          (!params.get("year") || (uuid(articleID) && validScope(exact)))) {
+        vehicle = { id: exact.configuration_id, region: exact.region };
+        await selectVehicle(g, articleID);
         return;
       }
       for (const name of names) {
         const desired = params.get(name) || "";
-        await loadOptions(name, g, desired);
+        await loadOptions(name, g, desired, name === "year" ? initialYears : null);
         if (!g.current() || !desired) return;
       }
       vehicle = rows.configuration.find(

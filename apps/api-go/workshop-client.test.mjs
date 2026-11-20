@@ -805,7 +805,7 @@ function loginRouteHarness(search, { authenticate = true, signInError = null, lo
   runInNewContext(
     appSection('function populate(', 'function selectorPath(') +
     appSection('async function signIn() {', 'async function bootstrap() {') +
-    appSection('async function restoreRoute() {', 'for (const [index, name] of names.entries())'),
+    appSection('async function restoreRoute(', 'for (const [index, name] of names.entries())'),
     context,
   );
   return { context, calls, element };
@@ -820,10 +820,8 @@ const loginRoutes = [
     selections: [{ configuration: routeConfiguration, region: 'US', article: routeArticle }], options: [] },
   { name: 'the article and search in a saved selector hierarchy',
     query: `?year=2020&make=toyota&model=rav4&configuration=${routeConfiguration}&region=US&article=${routeArticle}&q=brakes`,
-    libraries: 0, orders: [],
-    selections: [{ configuration: routeConfiguration, region: 'US', article: routeArticle }],
-    options: [{ name: 'year', desired: '2020' }, { name: 'make', desired: 'toyota' },
-      { name: 'model', desired: 'rav4' }, { name: 'configuration', desired: routeConfiguration }] },
+    libraries: 0, orders: [], options: [],
+    selections: [{ configuration: routeConfiguration, region: 'US', article: routeArticle }] },
   { name: 'the order return before the library or prior configuration',
     query: `?order=${routeOrder}&view=library&configuration=${routeConfiguration}&region=US&article=${routeArticle}`,
     libraries: 0, orders: [routeOrder], selections: [], options: [] },
