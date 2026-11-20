@@ -15,7 +15,7 @@ from .article_lifecycle_types import (
 )
 from .source_adapters import adapt_bound_article
 from .source_connector_client import SourceConnectorError
-from .article_document import build_ordered_document
+from .article_document import build_ordered_document, walk_ordered_list_items
 from .svg_rasterization import rasterize_svg, SVGUnavailable, RASTERIZER_VERSION
 
 
@@ -134,11 +134,11 @@ def project_document(document):
                 )
             ordered_list = node.get("type") == "ordered_list"
             if ordered_list:
-                for item in node.get("items", []):
+                for item, ordinal in walk_ordered_list_items(node):
                     text = item.get("text") if isinstance(item, dict) else item
                     if isinstance(text, str) and text.strip():
                         steps.append({
-                            "number": len(steps) + 1, "text": text,
+                            "number": len(steps) + 1 if ordinal is None else ordinal, "text": text,
                             "evidence_ids": node.get("evidence_ids", []),
                         })
                     visit(item, strings=True)

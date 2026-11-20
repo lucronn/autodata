@@ -1814,7 +1814,10 @@ def adapt_bound_article(resource: SourceResource, context) -> dict[str, Any]:
         }
     if media == "text/html":
         html = resource.payload.decode("utf-8-sig")
-        parser = ArticleParser(asset_bindings=resource.metadata.get("asset_bindings", []))
+        parser = ArticleParser(
+            asset_bindings=resource.metadata.get("asset_bindings", []),
+            preserve_legacy_list_starts=False,
+        )
         parser.feed(html)
         parser.close()
         parser.flush()
