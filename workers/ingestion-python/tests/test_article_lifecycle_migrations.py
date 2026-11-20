@@ -209,7 +209,7 @@ def test_recorded_001_and_partial_unmarked_next_file_remain_retryable(fresh_data
     body = (ROOT / 'db/migrations/002_platform_spine.sql').read_text()
     with repo.connect() as conn:
         conn.execute(body[:body.index(';') + 1])
-    assert len(applied(run_driver(repo))) == 45
+    assert len(applied(run_driver(repo))) == 46
     assert len(versions(repo)) == 47
 
 
@@ -271,7 +271,7 @@ def test_connection_death_releases_lock_and_rolls_back_active_file(fresh_databas
         with repo.connect() as conn:
             assert conn.execute("SELECT to_regclass('killed_backend_ddl') AS object").fetchone()['object'] is None
             assert conn.execute("SELECT to_regclass('dataset_products') AS object").fetchone()['object'] is None
-        assert len(applied(run_driver(repo))) == 45
+        assert len(applied(run_driver(repo))) == 46
     finally:
         if process.poll() is None:
             process.kill()
