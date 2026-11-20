@@ -28,7 +28,8 @@ _PROSE_PROMPT_V13 = "full-prose-auto-prompt-v13"
 _PROSE_PROMPT_V14 = "full-prose-auto-prompt-v14"
 _PROSE_PROMPT_V15 = "full-prose-auto-prompt-v15"
 _PROSE_PROMPT_V16 = "full-prose-auto-prompt-v16"
-_PROSE_PROMPT_VERSION = "full-prose-auto-prompt-v17"
+_PROSE_PROMPT_V17 = "full-prose-auto-prompt-v17"
+_PROSE_PROMPT_VERSION = "full-prose-auto-prompt-v18"
 _WORDS = re.compile(r"\w+")
 _INLINE_WARNING = re.compile(
     r"(?:^|[.!?]\s+|\n)[ \t]*(?:warnings?|caution|danger|notice|important)\s*[:!–—-]"
@@ -93,6 +94,15 @@ _ALTERNATE_TORQUE_VALUE = re.compile(
 )
 _CASELESS_NM_VALUE = re.compile(_MEASUREMENT_AMOUNT + r"(?i:nm)" + _TORQUE_UNIT_END)
 _TORQUE_WORDING = re.compile(r"\b(?:torque|tighten(?:ed|ing|s)?)\b", re.IGNORECASE)
+_DURATION_VALUE = re.compile(
+    _MEASUREMENT_AMOUNT + r"(?:(?i:(?:milli)?seconds?|m?secs?|minutes?|mins?|hours?|hrs?)"
+    r"|ms|(?P<short>[sh]))(?![\w/·⋅^-]|\.\w)",
+)
+_DURATION_WORDING = re.compile(
+    r"\b(?:allow(?:ed|ing|s)?|delay(?:ed|ing|s)?|dwell|elapsed|hold(?:ing|s)?|held|intervals?|"
+    r"pause(?:d|s)?|pulses?|run(?:ning|s)?|tim(?:e|ed|es|ing)|timeout|wait(?:ed|ing|s)?)\b",
+    re.IGNORECASE,
+)
 
 
 def _alternate_torque_scope(text):
@@ -103,10 +113,21 @@ def _alternate_torque_scope(text):
     ))
 
 
-def _spec_scope(text, *, torque_aliases=False):
+def _duration_scope(text):
+    # Use timing context for short forms and keep ms distinct from mS.
+    matches = _DURATION_VALUE.finditer(text)
+    first = next(matches, None)
+    return first is not None and (
+        not first["short"] or _DURATION_WORDING.search(text) is not None
+        or any(not match["short"] for match in matches)
+    )
+
+
+def _spec_scope(text, *, torque_aliases=False, duration_values=False):
     return bool(
         _MEASUREMENT_VALUE.search(text) or _MEASUREMENT_UNITS.search(text)
         or (torque_aliases and _alternate_torque_scope(text))
+        or (duration_values and _duration_scope(text))
     )
 
 
@@ -609,10 +630,10 @@ def _build_auto_prompt_v16(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def build_auto_prompt(document, *, context):
+def _auto_prompt_payload_v17(document, *, context):
     payload = _auto_prompt_payload_v16(document, context=context)
     if payload["slots"]:
-        payload["prompt_version"] = _PROSE_PROMPT_VERSION
+        payload["prompt_version"] = _PROSE_PROMPT_V17
         for slot in payload["slots"]:
             if slot["required_action"] == "rewrite" and _alternate_torque_scope(slot["text"]):
                 slot["required_action"] = "retain"
@@ -620,14 +641,34 @@ def build_auto_prompt(document, *, context):
             "Keep the complete wording of torque specifications marked retain, including "
             "component names, units, limits, and any alternate spelling of the torque unit."
         )
+    return payload
+
+
+def _build_auto_prompt_v17(document, *, context):
+    payload = _auto_prompt_payload_v17(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def build_auto_prompt(document, *, context):
+    payload = _auto_prompt_payload_v17(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_VERSION
+        for slot in payload["slots"]:
+            if slot["required_action"] == "rewrite" and _duration_scope(slot["text"]):
+                slot["required_action"] = "retain"
+        payload["rules"].append(
+            "Keep the complete wording of measured durations marked retain, including the original "
+            "action or component associated with each value and any limits on the duration."
+        )
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
 def _auto_prompt_version(document, *, context, prompt_hash):
     """Identify the rules bound to the saved model attempt."""
     for builder in (
-        build_auto_prompt, _build_auto_prompt_v16, _build_auto_prompt_v15, _build_auto_prompt_v14,
-        _build_auto_prompt_v13, _build_auto_prompt_v12, _build_auto_prompt_v11, _build_auto_prompt_v10, _build_auto_prompt_v9,
+        build_auto_prompt, _build_auto_prompt_v17, _build_auto_prompt_v16, _build_auto_prompt_v15,
+        _build_auto_prompt_v14, _build_auto_prompt_v13, _build_auto_prompt_v12, _build_auto_prompt_v11,
+        _build_auto_prompt_v10, _build_auto_prompt_v9,
         _build_auto_prompt_v8, _build_auto_prompt_v7, _build_auto_prompt_v6, _build_auto_prompt_v5,
         _build_auto_prompt_v4, _build_auto_prompt_v2, _build_auto_prompt_v1,
     ):
@@ -1201,14 +1242,14 @@ def _uses_prose_guards(prompt_version, slot_count):
         None, _PROSE_PROMPT_V4, _PROSE_PROMPT_V5, _PROSE_PROMPT_V6, _PROSE_PROMPT_V7,
         _PROSE_PROMPT_V8, _PROSE_PROMPT_V9, _PROSE_PROMPT_V10, _CELL_PROSE_PROMPT_V11,
         _PROSE_PROMPT_V12, _PROSE_PROMPT_V13, _PROSE_PROMPT_V14, _PROSE_PROMPT_V15, _PROSE_PROMPT_V16,
-        _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V17, _PROSE_PROMPT_VERSION,
     )
 
 
 def _include_cell_blocks(prompt_version):
     return prompt_version in (
         None, _CELL_PROSE_PROMPT_V11, _PROSE_PROMPT_V12, _PROSE_PROMPT_V13,
-        _PROSE_PROMPT_V14, _PROSE_PROMPT_V15, _PROSE_PROMPT_V16, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V14, _PROSE_PROMPT_V15, _PROSE_PROMPT_V16, _PROSE_PROMPT_V17, _PROSE_PROMPT_VERSION,
     )
 
 
@@ -1225,15 +1266,18 @@ def _require_changes(source, candidate, *, prompt_version):
     guard_scope = guard_qualifiers and prompt_version != _PROSE_PROMPT_V9
     guard_simultaneous = guard_scope and prompt_version in (
         None, _PROSE_PROMPT_V12, _PROSE_PROMPT_V13, _PROSE_PROMPT_V14, _PROSE_PROMPT_V15,
-        _PROSE_PROMPT_V16, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V16, _PROSE_PROMPT_V17, _PROSE_PROMPT_VERSION,
     )
     guard_identified_inspection = guard_simultaneous and prompt_version != _PROSE_PROMPT_V12
     guard_compound_inspection = guard_identified_inspection and prompt_version != _PROSE_PROMPT_V13
     guard_bound_alternatives = guard_scope and prompt_version in (
-        None, _PROSE_PROMPT_V15, _PROSE_PROMPT_V16, _PROSE_PROMPT_VERSION,
+        None, _PROSE_PROMPT_V15, _PROSE_PROMPT_V16, _PROSE_PROMPT_V17, _PROSE_PROMPT_VERSION,
     )
-    guard_bound_order = guard_clauses and prompt_version in (None, _PROSE_PROMPT_V16, _PROSE_PROMPT_VERSION)
-    guard_torque_aliases = prompt_version in (None, _PROSE_PROMPT_VERSION)
+    guard_bound_order = guard_clauses and prompt_version in (
+        None, _PROSE_PROMPT_V16, _PROSE_PROMPT_V17, _PROSE_PROMPT_VERSION,
+    )
+    guard_torque_aliases = prompt_version in (None, _PROSE_PROMPT_V17, _PROSE_PROMPT_VERSION)
+    guard_duration_values = prompt_version in (None, _PROSE_PROMPT_VERSION)
     introduction = candidate["blocks"][0].get("text", "")
     if guard_prose and (
         _INLINE_WARNING.search(introduction)
@@ -1243,7 +1287,9 @@ def _require_changes(source, candidate, *, prompt_version):
         raise ValueError("REWRITE_SAFETY_MUTATION")
     if guard_actions and _INTRO_DIRECTIVE.search(introduction):
         raise ValueError("REWRITE_INTRODUCTION_INSTRUCTION")
-    if guard_actions and _spec_scope(introduction, torque_aliases=guard_torque_aliases):
+    if guard_actions and _spec_scope(
+        introduction, torque_aliases=guard_torque_aliases, duration_values=guard_duration_values,
+    ):
         raise ValueError("REWRITE_SPEC_SCOPE_MUTATION")
     if guard_simultaneous and _simultaneous_state(_proof_text(introduction)):
         raise ValueError("REWRITE_INTRODUCTION_UNSUPPORTED_CLAIM")
@@ -1266,8 +1312,8 @@ def _require_changes(source, candidate, *, prompt_version):
         if guard_prose and not technical_only and _technical_only(replacement):
             raise ValueError("REWRITE_PROSE_MISSING")
         if guard_actions and not technical_only and (
-            _spec_scope(original, torque_aliases=guard_torque_aliases)
-            or _spec_scope(replacement, torque_aliases=guard_torque_aliases)
+            _spec_scope(original, torque_aliases=guard_torque_aliases, duration_values=guard_duration_values)
+            or _spec_scope(replacement, torque_aliases=guard_torque_aliases, duration_values=guard_duration_values)
         ):
             if original != replacement:
                 raise ValueError("REWRITE_SPEC_SCOPE_MUTATION")
@@ -1349,7 +1395,8 @@ def validate_auto(source, candidate, *, response=None, prompt_version=None):
             _PROSE_PROMPT_V14: "full-prose-auto-validator-v12",
             _PROSE_PROMPT_V15: "full-prose-auto-validator-v13",
             _PROSE_PROMPT_V16: "full-prose-auto-validator-v14",
-        }.get(prompt_version, "full-prose-auto-validator-v15")
+            _PROSE_PROMPT_V17: "full-prose-auto-validator-v15",
+        }.get(prompt_version, "full-prose-auto-validator-v16")
     report.update(validator_version=validator_version, profile_version=PROFILE,
         publication_mode="automatic", content_acceptance_required=False,
         complete_rewrite=False, passed=not errors, error_codes=errors)
