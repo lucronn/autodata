@@ -1536,6 +1536,11 @@ async def api_case(browser,origin,name,output,observations=None):
                 await expect(page.locator(nested_figure + " figcaption")).to_have_text("Drive alignment reference")
                 await expect(page.locator(nested_item + " aside")).to_contain_text("Keep the drive seal in place.")
             await expect(page.locator('#article-content .source-reference').first).to_be_visible()
+            await expect(page.locator('#source-review-frame')).to_be_visible()
+            await expect(page.locator('#source-review-frame')).to_contain_text('Remove the pump.')
+            if linked_pdf:
+                await expect(source_frame.locator('table td figure').last).to_be_focused()
+                await expect_linked_pdf(source_frame)
             warm_before=await api_snapshot(context,origin,'warm-before-snapshot')
             reader_before=(await api_measure(context,origin,'reader-before-measurement'))['image_reads']
             await page.reload();await expect(page.locator('#article-kind')).to_have_text('Workshop article')

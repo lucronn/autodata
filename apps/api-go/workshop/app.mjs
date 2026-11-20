@@ -149,8 +149,7 @@ function clearProtected() {
   libraryCursor = null;
   access = "unknown";
 }
-function resetReaderMedia() {
-  articleImageRefresh = null;
+function resetSourceReview() {
   sourceImageRefresh = null;
   sourceURL = "";
   ++sourceRevision;
@@ -165,7 +164,8 @@ function resetReaderMedia() {
 function resetReaderContent() {
   currentArticle = null;
   renderedRevision = "";
-  resetReaderMedia();
+  articleImageRefresh = null;
+  resetSourceReview();
   $("article-content").replaceChildren();
   $("article-reference").hidden = true;
   $("article-reference").open = false;
@@ -891,12 +891,25 @@ function renderArticle(article, g) {
   const revision =
     article.view_revision ||
     `${article.content_origin || "legacy"}:${article.source_revision_id || ""}:${article.canonical_revision_id || ""}`;
-  if (revision !== renderedRevision) {
+  const review = article.source_review;
+  const previousReview = currentArticle?.source_review;
+  const reviewURL = review?.available ? review.url : "";
+  const previousURL = previousReview?.available ? previousReview.url : "";
+  const sourceChanged = currentArticle?.id !== article.id ||
+    currentArticle?.source_revision_id !== article.source_revision_id || previousURL !== reviewURL;
+  if (revision !== renderedRevision || sourceChanged) {
     const fragment = document.createDocumentFragment();
     renderContent(fragment, article, g);
     if (!g.current()) return;
     $("article-content").replaceChildren(fragment);
-    if (renderedRevision) resetReaderMedia();
+    articleImageRefresh = null;
+    sourceImageRefresh = null;
+    if (renderedRevision) {
+      // A new article projection can still cite the exact source already open.
+      const pinnedID = !sourceChanged && validSourceURL(reviewURL)?.searchParams.get("source_revision_id");
+      const displayedID = sourceURL && validSourceURL(sourceURL)?.searchParams.get("source_revision_id");
+      if (!pinnedID || (sourceURL && displayedID !== pinnedID)) resetSourceReview();
+    }
     renderedRevision = revision;
   }
   currentArticle = article;
@@ -919,13 +932,12 @@ function renderArticle(article, g) {
   $("print").disabled = !readableArticle(article);
   document.body.dataset.printable = String(readableArticle(article));
   $("article-reference").hidden = false;
-  $("source-review").hidden = !article.source_review?.available;
-  const review = article.source_review;
+  $("source-review").hidden = !review?.available;
   if (review?.available) {
     $("source-review-link").href = demoPath(review.url);
     $("source-review-link").target = "_blank";
     $("source-review-link").rel = "noopener noreferrer";
-    $("source-review-meta").textContent = "Stored source for this article.";
+    if (!sourceURL) $("source-review-meta").textContent = "Stored source for this article.";
   }
   document.title = `${article.title || "Article"} | AutoData`;
 }
@@ -1073,8 +1085,9 @@ async function renewMedia(g, failed) {
   const revision = renderedRevision;
   const sourceSelection = displayedSourceRevision;
   const selectedSourceURL = sourceURL;
-  const current = () => g.current() && renderedRevision === revision &&
+  const visible = () => g.current() && failed.isConnected &&
     (!stored || displayedSourceRevision === sourceSelection);
+  const current = () => visible() && renderedRevision === revision;
   const refresh = async () => {
     try {
       if (stored) {
@@ -1109,12 +1122,13 @@ async function renewMedia(g, failed) {
     ? (sourceImageRefresh ??= refresh())
     : (articleImageRefresh ??= refresh());
   const images = await pending;
-  if (
-    current() && failed.isConnected && failed.dataset.replacement !== "1" &&
-    !retryImage(failed, images)
-  ) {
-    showUnavailableImage(failed);
+  if (!visible() || failed.dataset.replacement === "1") return;
+  if (!current()) {
+    // Media issued for the pre-publication view has a stale anchor.
+    if (stored) return renewMedia(g, failed);
+    return;
   }
+  if (!retryImage(failed, images)) showUnavailableImage(failed);
 }
 async function library(g, append = false) {
   clearReader();

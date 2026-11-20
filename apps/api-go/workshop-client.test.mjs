@@ -4078,14 +4078,95 @@ test('source and canonical viewers retain nested list and table cell content', (
   }
 });
 
-test('a late stored-source response cannot reopen the panel after the article revision changes', async () => {
+test('first publication keeps the approved source panel and its cited focus', async () => {
+  const review = { available: true, url: mediaSourceURL };
+  const figure = { type: 'image', block_id: 'pinned-figure', asset_id: 'drawing', alt: 'Original drawing' };
+  const images = [{ id: 'drawing', url: mediaURL('original') }];
+  let requests = 0;
+  const h = articleMediaHarness({ requestJSON: async () => {
+    requests++;
+    return { source: { url: mediaSourceURL }, document: { blocks: [figure] }, images };
+  } });
+  h.render(mediaArticle([{ type: 'paragraph', text: 'Original instructions' }], [], { source_review: review }));
+  await h.context.loadSource(mediaSourceURL, h.g, figure.block_id);
+  const frame = h.nodes.get('source-review-frame'), cited = mediaDescendants(frame, 'figure')[0];
+  assert.equal(cited.focusCalls, 1);
+
+  const content = h.render(mediaArticle([{ type: 'paragraph', text: 'Published procedure' }], [], {
+    source_review: review, view_revision: 'view-2', content_origin: 'canonical',
+  }));
+  assert.equal(content.textContent, 'Published procedure');
+  assert.equal(frame.hidden, false);
+  assert.equal(frame.children[0], cited);
+  assert.equal(cited.focusCalls, 1);
+  assert.equal(h.nodes.get('source-review-meta').textContent, 'Stored source loaded.');
+  assert.equal(requests, 1);
+
+  h.render(mediaArticle([{ type: 'paragraph', text: 'Published procedure' }], [], {
+    source_review: { available: false }, view_revision: 'view-2', content_origin: 'canonical',
+  }));
+  assert.equal(frame.hidden, true);
+  assert.equal(frame.children.length, 0);
+});
+
+test('a source review can finish during publication while its approved pin stays the same', async () => {
+  const pending = deferredAuthOperation();
+  const review = { available: true, url: mediaSourceURL };
+  const h = articleMediaHarness({ requestJSON: () => pending.promise });
+  h.render(mediaArticle([{ type: 'paragraph', text: 'Original' }], [], { source_review: review }));
+  const load = h.context.loadSource(mediaSourceURL, h.g);
+  h.render(mediaArticle([{ type: 'paragraph', text: 'Published' }], [], {
+    view_revision: 'view-2', content_origin: 'canonical', source_review: review,
+  }));
+  assert.equal(h.nodes.get('source-review-load').disabled, true);
+  pending.resolve({ source: { url: mediaSourceURL }, document: { blocks: [{ type: 'paragraph', text: 'Original' }] } });
+  await load;
+  assert.equal(h.nodes.get('source-review-frame').hidden, false);
+  assert.equal(h.nodes.get('source-review-frame').textContent, 'Original');
+  assert.equal(h.nodes.get('source-review-load').disabled, false);
+});
+
+test('an in-flight source figure repair uses the new publication anchor for the retained panel', async () => {
+  const stale = deferredAuthOperation();
+  const review = { available: true, url: mediaSourceURL };
+  const figure = { type: 'image', asset_id: 'drawing', alt: 'Original drawing' };
+  const source = token => ({
+    source: { url: mediaSourceURL },
+    document: { blocks: [figure] },
+    images: [{ id: 'drawing', url: mediaURL(token) }],
+  });
+  const requests = [];
+  const h = articleMediaHarness({ requestJSON: async url => {
+    requests.push(url);
+    if (requests.length === 2) return stale.promise;
+    return source(requests.length === 1 ? 'original' : 'published-anchor');
+  } });
+  h.render(mediaArticle([{ type: 'paragraph', text: 'Original' }], [], { source_review: review }));
+  await h.context.loadSource(mediaSourceURL, h.g);
+  const frame = h.nodes.get('source-review-frame'), img = mediaDescendants(frame, 'img')[0];
+  const repair = h.context.renewMedia(h.g, img);
+  assert.equal(requests.length, 2);
+  h.render(mediaArticle([{ type: 'paragraph', text: 'Published' }], [], {
+    view_revision: 'view-2', content_origin: 'canonical', source_review: review,
+  }));
+  stale.resolve(source('stale-anchor'));
+  await repair;
+  assert.equal(mediaDescendants(frame, 'img')[0], img);
+  assert.equal(img.src, 'https://cars.example' + mediaURL('published-anchor'));
+  assert.equal(requests.length, 3);
+});
+
+test('a late stored-source response cannot reopen the panel after the approved pin changes', async () => {
   const pending = deferredAuthOperation();
   const h = articleMediaHarness({ requestJSON: () => pending.promise });
-  h.render(mediaArticle([{ type: 'paragraph', text: 'Source displayed' }]));
+  h.render(mediaArticle([{ type: 'paragraph', text: 'Source displayed' }], [], {
+    source_review: { available: true, url: mediaSourceURL },
+  }));
   const load = h.context.loadSource(mediaSourceURL, h.g);
   assert.equal(h.nodes.get('source-review-load').disabled, true);
   h.render(mediaArticle([{ type: 'paragraph', text: 'Workshop revision' }], [], {
     view_revision: 'view-2', content_origin: 'canonical',
+    source_review: { available: true, url: mediaSourceURL.replace('11111111-', '22222222-') },
   }));
   pending.resolve({
     source: { url: mediaSourceURL },
