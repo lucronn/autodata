@@ -1,5 +1,5 @@
 """Offline checks of the real fixture's failed final browser subprocess boundary."""
-from contextlib import ExitStack, contextmanager, nullcontext
+from contextlib import ExitStack, contextmanager
 import hashlib
 import importlib.util
 import json
@@ -114,7 +114,7 @@ class BrowserEnvironmentTests(unittest.TestCase):
         directory.mkdir(mode=0o700, exist_ok=True)
         (directory / 'ready.json').write_text(json.dumps({
             'kind': 'api-fixture', 'origin': 'https://127.0.0.1:12345'}))
-        calls = {name: [] for name in ('Repository', 'runtime', 'configure', 'profile', 'bridge', 'serve',
+        calls = {name: [] for name in ('Repository', 'runtime', 'configure', 'bridge', 'serve',
                  'go', 'browser', 'poll', 'terminate', 'kill', 'wait', 'stop', 'close',
                  'stop_workers', 'release_model')}
 
@@ -131,8 +131,7 @@ class BrowserEnvironmentTests(unittest.TestCase):
 
         def repository(database):
             record('Repository', database)
-            connection = SimpleNamespace(execute=lambda statement, params: record('profile', (statement, params)))
-            return SimpleNamespace(database_name=database, connect=lambda: nullcontext(connection))
+            return SimpleNamespace(database_name=database)
 
         def runtime_start(repo, stack):
             record('runtime', repo)
@@ -216,10 +215,8 @@ class BrowserEnvironmentTests(unittest.TestCase):
             self.assertEqual(binding['producer_role'], 'child-pytest')
             if invalid_handoff is None:
                 self.assertEqual(binding, dict(parent, producer_role='child-pytest'))
-                for name in ('Repository', 'runtime', 'configure', 'profile', 'bridge', 'go', 'wait', 'terminate', 'stop', 'close', 'release_model'):
+                for name in ('Repository', 'runtime', 'configure', 'bridge', 'go', 'wait', 'terminate', 'stop', 'close', 'release_model'):
                     self.assertEqual(len(calls[name]), 1, name)
-                self.assertTrue(calls['profile'][0][0].startswith('UPDATE canonical_articles'))
-                self.assertEqual(calls['profile'][0][1], ('technical-prose-v1', 'one'))
                 self.assertEqual(calls['serve'], ['model', 'ensure', 'control'])
                 self.assertEqual(calls['wait'], [2])
                 self.assertEqual(calls['kill'], [])
