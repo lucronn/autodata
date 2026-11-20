@@ -229,3 +229,55 @@ def test_publish_fences_bad_approval_and_stale_rights(runtime, monkeypatch, tmp_
             rationale="Compared archive placement with the exact published procedure and asset.",
         )
     assert _rows(runtime.repo) == before
+
+
+@pytest.mark.parametrize("profile", ["technical-prose-v1", "technical-prose-v2"])
+def test_publish_historical_technical_profile(runtime, monkeypatch, tmp_path, capsys, profile):
+    allowlist = _allowlist(tmp_path)
+    if profile == "technical-prose-v1":
+        source_id = seed_historical_figure(runtime, monkeypatch, "bankone", publish=True)
+        model = FixtureModel()
+    else:
+        body = (
+            b'<p>Remove the pump.</p><img data-resource-ref="figure" alt="Pump alignment">'
+            b'<p>Install the cover.</p>'
+        )
+        source_id = seed_historical_figure(runtime, monkeypatch, "banktwo", body_fixture=(body, "text/html"))
+
+        class SelectPlan(FixtureModel):
+            def complete_json(self, prompt):
+                self.calls += 1
+                plan = json.loads(prompt)["plan"]
+                return {"operations": [
+                    {key: op[key] for key in ("block_id", "path", "operation_id")}
+                    for op in plan["operations"]
+                ]}
+
+        model = SelectPlan()
+        refresh_article_job(runtime.repo, runtime.article_id, actor="fixture", reason="historical grammar",
+                            rewrite_profile_version=profile)
+        _run(runtime, model)
+        assert model.calls == 1
+    original = runtime.read_current()
+    assert original["source_revision_id"] == source_id
+    assert original["canonical_revision_id"], runtime.diagnostics()
+    assert original["document"]["blocks"][-1]["type"] == "image"
+    before = _rows(runtime.repo)
+    _, manifest = _preview(runtime, original, tmp_path, capsys)
+    assert manifest["profile_version"] == profile
+    assert _rows(runtime.repo) == before
+    result = publish_retained_media_repair(
+        runtime.repo, expected=manifest, object_store=runtime.objects,
+        reviewer_id="media-reviewer", allowlist=allowlist, fixture_mode=True,
+        rationale="Compared archive placement with the exact published procedure and asset.",
+    )
+    state = runtime.read_current()
+    assert result["canonical_revision_id"] == str(state["canonical_revision_id"])
+    assert state["body"] == original["body"] and state["review_status"] == original["review_status"]
+    assert [block["type"] for block in state["document"]["blocks"]] == ["paragraph", "image", "paragraph"]
+    assert _rows(runtime.repo)["canonical_article_rewrite_attempts"] == before["canonical_article_rewrite_attempts"]
+    calls = model.calls
+    refresh_article_job(runtime.repo, runtime.article_id, actor="fixture", reason="same bytes after history repair")
+    _run(runtime, model)
+    assert model.calls == calls
+    assert runtime.read_current()["canonical_revision_id"] == state["canonical_revision_id"]
