@@ -529,13 +529,15 @@ def test_mixed_pdf_keeps_ocr_text_and_embedded_figure_in_page_order(
         assert stored.tobytes() == image.tobytes()
 
 
-def test_html_explicit_vehicle_metadata_cannot_override_resolved_scope(capture_fixture):
+@pytest.mark.parametrize("metadata", [
+    b'<meta name="vehicle" content="1999 Example Car">',
+    b'<meta name="vehicle.year" content="1999">',
+    b'<script type="application/ld+json">{"about":{"name":"1999 Example Car"}}</script>',
+])
+def test_html_explicit_vehicle_metadata_cannot_override_resolved_scope(capture_fixture, metadata):
     from autodata_ingestion.source_article_capture import capture_source_article
 
-    capture_fixture.body(
-        "banktwo",
-        b'<meta name="vehicle" content="1999 Example Car"><p>Remove pump.</p>',
-    )
+    capture_fixture.body("banktwo", metadata + b"<p>Remove pump.</p>")
     with pytest.raises(SourceConnectorError, match="applicability"):
         capture_source_article(
             capture_fixture.context("banktwo"),

@@ -1209,12 +1209,15 @@ class _ArticleHTMLParser(HTMLParser):
         return _compact_text(" ".join(self._article_body_parts))
 
 
-def _html_article_candidates(resource: SourceResource) -> list[NormalizationCandidate]:
+def _html_article_candidates(
+    resource: SourceResource, *, parser: _ArticleHTMLParser | None = None
+) -> list[NormalizationCandidate]:
     """Extract one article and any explicit vehicle identity from generic HTML."""
 
-    parser = _ArticleHTMLParser()
-    parser.feed(resource.payload.decode("utf-8-sig"))
-    parser.close()
+    if parser is None:
+        parser = _ArticleHTMLParser()
+        parser.feed(resource.payload.decode("utf-8-sig"))
+        parser.close()
     json_ld_records = _json_ld_records(parser.json_ld)
 
     vehicle_values = _meta_values(
@@ -1810,14 +1813,15 @@ def adapt_bound_article(resource: SourceResource, context) -> dict[str, Any]:
             "asset_resource_refs": [],
         }
     if media == "text/html":
-
+        html = resource.payload.decode("utf-8-sig")
         parser = ArticleParser(asset_bindings=resource.metadata.get("asset_bindings", []))
-        parser.feed(resource.payload.decode("utf-8-sig"))
+        parser.feed(html)
         parser.close()
         parser.flush()
-        # HTML's explicit structured vehicle metadata is checked independently of body text.
+        # Check explicit structured vehicle metadata independently of body text.
         metadata_parser = _ArticleHTMLParser()
-        metadata_parser.feed(resource.payload.decode("utf-8-sig"))
+        metadata_parser.feed(html)
+        metadata_parser.close()
         for field, keys in {
             "year": ("vehicle.year", "vehicle_year", "year"),
             "make": ("vehicle.make", "vehicle_make"),
@@ -1830,7 +1834,7 @@ def adapt_bound_article(resource: SourceResource, context) -> dict[str, Any]:
                 and supplied != str(context.vehicle[field])
             ):
                 raise ValueError("wrong applicability")
-        for candidate in _html_article_candidates(resource):
+        for candidate in _html_article_candidates(resource, parser=metadata_parser):
             if candidate.kind == "vehicle_identity":
                 for field in ("year", "make", "model"):
                     if (
