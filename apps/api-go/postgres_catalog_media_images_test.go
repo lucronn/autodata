@@ -75,8 +75,8 @@ func TestPostgresPaidCatalogSourceImagesReadScope(t *testing.T) {
 	// A blocked historical body suppresses its figure, even while the current
 	// article and that figure's own asset snapshot remain approved.
 	var quarantine string
-	if err := f.pool.QueryRow(ctx, `INSERT INTO source_review_items(item_key,item_kind,reason_code,source_snapshot_ids)
-		SELECT gen_random_uuid()::text,'quarantine','FIXTURE',jsonb_build_array(body_source_snapshot_id::text)
+	if err := f.pool.QueryRow(ctx, `INSERT INTO source_review_items(source_review_item_id,item_key,item_kind,reason_code,source_snapshot_ids)
+		SELECT gen_random_uuid(),gen_random_uuid()::text,'quarantine','FIXTURE',jsonb_build_array(body_source_snapshot_id::text)
 		FROM canonical_article_source_revisions WHERE source_revision_id=$1::uuid
 		RETURNING source_review_item_id::text`, oldRevision).Scan(&quarantine); err != nil {
 		t.Fatal(err)

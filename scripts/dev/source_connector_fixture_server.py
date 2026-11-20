@@ -169,6 +169,7 @@ def serve_model():
                     rewritten = {
                         "Inspect the alignment marks before removing the pump.": "Check the pump alignment marks before removal.",
                         "Remove the pump.": "Take off the pump.",
+                        "Remove the refreshed pump.": "Take off the refreshed pump.",
                         "Remove the cover while the ignition is off.": "With the ignition off, take the cover off.",
                         "Inspect the seal.": "Check the seal.",
                         "Inspect the gasket.": "Check the gasket.",
