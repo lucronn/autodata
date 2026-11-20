@@ -928,8 +928,8 @@ class APIObservations:
         if phase=='checkout-http':return not self.route_owns_checkout and safe=='/v1/workshop/checkout-sessions'
         source='/v1/catalog/vehicles/{configuration}/articles/{article}'
         if phase=='source-page-http':
-            # Later reads in this window are the normal article status poll.
-            return safe==source and self.started_counts.get(phase, 0)==0
+            # The source assertion owns the first readable response.
+            return safe==source and self.counts.get(phase, 0)==0
         if phase=='source-review-http':return safe==source+'/source'
         return False
     def page_request(self,request):
@@ -950,11 +950,19 @@ class APIObservations:
             # Response-time labels cannot establish an initiating action window.
             if self._page_owns(self.phase,request.url):self.fail('http_failed')
             return
-        original,phase,done,ordinal=owned
+        original,phase,done,request_ordinal=owned
         if original is not request or done.done() or id(request) in self.capturing:self.fail('http_failed');return
         self.capturing.add(id(request));self.responses[id(request)]=response
         async def capture():
             try:
+                if phase == 'source-page-http':
+                    # Keep polling until a response can establish the stored-source
+                    # assertion. Carry the request's initiating phase throughout.
+                    if response is not None and response.status == 202:
+                        return
+                    ordinal = 1
+                else:
+                    ordinal = request_ordinal
                 body=None;key=None
                 if phase=='checkout-http':
                     body=api21_body(getattr(request,'post_data_buffer',None),'playwright-request-post-data-buffer')

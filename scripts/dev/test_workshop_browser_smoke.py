@@ -1667,6 +1667,26 @@ class API21ObservationsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([event['phase'] for event in buffer.events], ['source-page-http'])
         self.assertEqual(buffer.events[0]['payload']['response']['parsed'], {'content': 'source'})
 
+    async def test_source_observation_waits_for_readable_response_after_pending_poll(self):
+        article = 'https://local/v1/catalog/vehicles/' + smoke.CONFIG + '/articles/' + smoke.ARTICLE
+        buffer = self.buffer()
+        buffer.phase = 'source-page-http'
+        pending = API21FakeResponse(article, {'status': 'fetching_source'}, status=202)
+        buffer.page_request(pending.request)
+        buffer.page_response(pending)
+        await buffer.drain()
+        self.assertEqual(buffer.events, [])
+
+        source = API21FakeResponse(article, {'content': 'stored source'})
+        buffer.page_request(source.request)
+        buffer.page_response(source)
+        await buffer.drain()
+        self.assertIsNone(buffer.primary)
+        event, = buffer.events
+        self.assertEqual(event['phase'], 'source-page-http')
+        self.assertEqual(event['payload']['status'], 200)
+        self.assertEqual(event['payload']['response']['parsed'], {'content': 'stored source'})
+
     async def test_source_window_without_actual_response_cannot_pass(self):
         buffer=self.buffer();browser=API21FakeBrowser(smoke.API_CASES[1],missing='source-page-http')
         with TemporaryDirectory() as temp,patch.dict(sys.modules,{'playwright.async_api':SimpleNamespace(expect=lambda value:value)}):

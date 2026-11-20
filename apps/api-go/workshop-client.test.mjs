@@ -278,6 +278,33 @@ test('reader is sequential, retains source during transient failure and stops at
   const result = await readArticle(async () => { calls++; const value=versions.shift();if(value instanceof Error)throw value;return value; }, { now: () => now, wait: async ms => { waits.push(ms);now += ms; }, onUpdate: r => updates.push(r.data.article) });
   assert.equal(calls,3);assert.equal(updates.length,2);assert.deepEqual(waits,[1000,2000]);assert.equal(result.timedOut,false);
 });
+test('reader offers one early cold confirmation and keeps the regular second check', async () => {
+  const { readArticle } = await import('./workshop/article-read.mjs');
+  const pending = {
+    status: 202,
+    retryAfterSeconds: 1,
+    data: { article: { processing: { job_id: 'same-job', state: 'fetching_source' } } },
+  };
+  const complete = { status: 200, data: { article: { body: 'Published procedure' } } };
+  for (const [name, middle, expected] of [
+    ['source takes a second longer', [pending, pending], [1000, 1000, 2000]],
+    ['change of job', [{ ...pending, data: { article: { processing: { job_id: 'new-job', state: 'queued' } } } }], [1000, 2000]],
+    ['retryable overload', [Object.assign(new Error('service busy'), { status: 503, retryable: true, retryAfterSeconds: 7 })], [1000, 7000]],
+    ['readable source', [{ status: 200, retryAfterSeconds: 2, data: { article: {
+      body: 'Stored procedure', processing: { job_id: 'same-job', state: 'rewriting' },
+    } } }], [1000, 2000]],
+  ]) {
+    let now = 0;
+    const responses = [pending, ...middle, complete], waits = [];
+    const result = await readArticle(async () => {
+      const next = responses.shift();
+      if (next instanceof Error) throw next;
+      return next;
+    }, { now: () => now, wait: async ms => { waits.push(ms); now += ms; } });
+    assert.deepEqual(waits, expected, name);
+    assert.equal(result.data.article.body, 'Published procedure', name);
+  }
+});
 test('reader retries failed jobs until canonical without losing source', async () => {
   const { readArticle, processingArticle, readableArticle } = await import('./workshop/article-read.mjs');
   let now = 0, reads = 0, inFlight = 0, maxInFlight = 0;

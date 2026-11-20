@@ -2,7 +2,7 @@
 
 Checks preserve structure and literal technical tokens. Current prose drafts
 also check recognizable safety prerequisites, direction, action wording,
-and some exact clause-level component assignments. Semantic equivalence
+and some clause assignments and task qualifiers. Semantic equivalence
 still requires source comparison.
 """
 from collections import Counter
@@ -19,7 +19,8 @@ _PROSE_PROMPT_V4 = "full-prose-auto-prompt-v4"
 _PROSE_PROMPT_V5 = "full-prose-auto-prompt-v5"
 _PROSE_PROMPT_V6 = "full-prose-auto-prompt-v6"
 _PROSE_PROMPT_V7 = "full-prose-auto-prompt-v7"
-_PROSE_PROMPT_VERSION = "full-prose-auto-prompt-v8"
+_PROSE_PROMPT_V8 = "full-prose-auto-prompt-v8"
+_PROSE_PROMPT_VERSION = "full-prose-auto-prompt-v9"
 _WORDS = re.compile(r"\w+")
 _INLINE_WARNING = re.compile(
     r"(?:^|[.!?]\s+|\n)[ \t]*(?:warnings?|caution|danger|notice|important)\s*[:!–—-]"
@@ -161,6 +162,49 @@ _CLAUSE_GERUNDS = {
     "inspecting": "inspect", "checking": "check",
 }
 _CLAUSE_GERUND = re.compile(r"^(" + "|".join(_CLAUSE_GERUNDS) + r")(?=\s)", re.IGNORECASE)
+
+
+_PART_STATE = {
+    "new": "replacement", "replacement": "replacement", "old": "original",
+    "original": "original", "used": "used", "existing": "existing",
+}
+_PARTS = r"(?:seal|gasket|cover|filter|clip|connector|housing|bracket|bolt|screw|hose|belt)s?"
+_PART_QUALIFIER = (
+    r"(?:the|this|that|a|an)\s+(?:(?P<state>" + "|".join(_PART_STATE) + r")\s+)?"
+    r"(?P<part>" + _PARTS + r")"
+)
+_PART_TARGET = re.compile(_PART_QUALIFIER, re.IGNORECASE)
+_PART_REMOVAL = re.compile(r"(?:take|lift)\s+" + _PART_QUALIFIER + r"\s+off", re.IGNORECASE)
+_IMPERATIVE_START = re.compile(
+    r"^(?:" + _SIMPLE_ACTION + r"|take|lift)\s", re.IGNORECASE,
+)
+_INSPECTION_FOCUS = re.compile(
+    r"^(inspect|check)\s+((?:the\s+)?" + _TARGET_WORD + r"(?:\s+" + _TARGET_WORD + r"){0,5})"
+    r"\s+for\s+(?:signs\s+of\s+)?(wear|damage|corrosion|leaks?|cracks?)$",
+    re.IGNORECASE,
+)
+_GIVEN_CONDITION = re.compile(
+    r"\b(?P<marker>if|when|once|before|after)\s+(?:the\s+)?"
+    r"(?P<subject>" + _TARGET_WORD + r"(?:\s+" + _TARGET_WORD + r"){0,3})\s+"
+    r"(?P<verb>is|are|has|have)\s+(?P<state>dry|dried|cool|cooled|damaged|off|on|closed|open)"
+    r"(?=[,.\s]|$)", re.IGNORECASE,
+)
+_SWITCH_IGNITION = re.compile(r"\b(before|after|once)\s+switching\s+(?:the\s+)?ignition\s+(on|off)\b", re.IGNORECASE)
+_OPTIONAL_TASK = re.compile(r"\bif\s+(?:desired|wanted)\b", re.IGNORECASE)
+_TASK_APPLICABILITY = re.compile(
+    r"\b(?:on|for)\s+(vehicles|models|trims|versions)\s+(?:equipped|fitted)\s+with\s+(?:the|a|an)\s+"
+    r"(" + _TARGET_WORD + r"(?:\s+" + _TARGET_WORD + r"){0,5})(?=[,.;!?]|$)", re.IGNORECASE,
+)
+_TOOL_LIST = r"(?:pry bar|heat gun|screwdriver|pliers|ratchet|socket wrench|torque wrench|puller)"
+_TASK_TOOL = re.compile(r"\b(?:with|using)\s+(?:(?:the|a|an|some)\s+)?(" + _TOOL_LIST + r")(?=[,.\s]|$)", re.IGNORECASE)
+_STATE_GRAMMAR = {
+    "is": frozenset({"dry", "cool", "damaged", "off", "on", "closed", "open"}),
+    "has": frozenset({"dried", "cooled"}),
+}
+_QUALIFIER_MARKER = re.compile(
+    r"\b(if|when|once|before|after|wear|damage|corrosion|leaks?|cracks?|"
+    r"new|replacement|old|original|used|existing|with|using)\b", re.IGNORECASE,
+)
 
 
 _INTRO_RISK_CLAIM = re.compile(
@@ -312,21 +356,37 @@ def _build_auto_prompt_v7(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def build_auto_prompt(document, *, context):
+def _auto_prompt_payload_v8(document, *, context):
     payload = _auto_prompt_payload_v7(document, context=context)
     if payload["slots"]:
-        payload["prompt_version"] = _PROSE_PROMPT_VERSION
+        payload["prompt_version"] = _PROSE_PROMPT_V8
         payload["rules"].append(
             "In a slot with two linked instructions, keep each action with its original component "
             "and preserve any explicit execution order even when the wording presents the clauses differently."
+        )
+    return payload
+
+
+def _build_auto_prompt_v8(document, *, context):
+    payload = _auto_prompt_payload_v8(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def build_auto_prompt(document, *, context):
+    payload = _auto_prompt_payload_v8(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_VERSION
+        payload["rules"].append(
+            "Keep the original conditions, vehicle applicability, component state, specified tool, "
+            "and scope of inspection. Do not add qualifiers unsupported by the original slot."
         )
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
 def _auto_prompt_version(document, *, context, prompt_hash):
     """Identify the rules bound to the saved model attempt."""
-    for builder in (build_auto_prompt, _build_auto_prompt_v7, _build_auto_prompt_v6, _build_auto_prompt_v5,
-                    _build_auto_prompt_v4, _build_auto_prompt_v2, _build_auto_prompt_v1):
+    for builder in (build_auto_prompt, _build_auto_prompt_v8, _build_auto_prompt_v7, _build_auto_prompt_v6,
+                    _build_auto_prompt_v5, _build_auto_prompt_v4, _build_auto_prompt_v2, _build_auto_prompt_v1):
         payload = builder(document, context=context)
         if sha256(payload.encode()).hexdigest() == prompt_hash:
             return json.loads(payload)["prompt_version"]
@@ -577,9 +637,105 @@ def _check_intro_claims(source, slots, introduction):
     raise ValueError("REWRITE_INTRODUCTION_UNSUPPORTED_CLAIM")
 
 
+def _split_qualifier(text, match):
+    """Remove one complete leading or trailing qualifier."""
+    prefix = text[:match.start()].strip(" ,")
+    suffix = text[match.end():].strip(" ,")
+    return (prefix or suffix) if bool(prefix) != bool(suffix) else None
+
+
+def _qualifier_task(text):
+    """Recognize one imperative with a literal target and bounded qualifiers."""
+    text = text.casefold().strip().rstrip(".!")
+    facts = []
+    if condition := _GIVEN_CONDITION.search(text):
+        marker, subject, verb, state = condition.group("marker", "subject", "verb", "state")
+        verb = "has" if verb in {"has", "have"} else "is"
+        if state not in _STATE_GRAMMAR[verb]:
+            return None
+        relation = {"if": "condition", "when": "condition", "once": "after"}.get(marker, marker)
+        state = {"dried": "dry", "cooled": "cool"}.get(state, state)
+        if not set(_WORDS.findall(subject)).isdisjoint(_TARGET_DELIMITERS):
+            return None
+        facts.append(("condition", relation, tuple(_WORDS.findall(subject)), state))
+        qualifier = condition
+    elif switch := _SWITCH_IGNITION.search(text):
+        relation = "before" if switch[1] == "before" else "after"
+        facts.append(("condition", relation, ("ignition",), switch[2]))
+        qualifier = switch
+    elif optional := _OPTIONAL_TASK.search(text):
+        facts.append(("optional",))
+        qualifier = optional
+    elif applicability := _TASK_APPLICABILITY.search(text):
+        words = tuple(_WORDS.findall(applicability[2]))
+        if not set(words).isdisjoint(_TARGET_DELIMITERS):
+            return None
+        facts.append(("applicability", applicability[1], words))
+        qualifier = applicability
+    else:
+        qualifier = None
+
+    if qualifier is not None:
+        text = _split_qualifier(text, qualifier)
+        if text is None:
+            return None
+
+    if tool := _TASK_TOOL.search(text):
+        text = _split_qualifier(text, tool)
+        if text is None:
+            return None
+        facts.append(("tool", tool[1]))
+
+    if inspection := _INSPECTION_FOCUS.fullmatch(text):
+        focus = inspection[3].removesuffix("s")
+        facts.append(("inspection", focus))
+        text = f"{inspection[1]} {inspection[2]}"
+
+    # "Fit a replacement seal into place" and "install a new seal"
+    # bind the same generic part state without an ontology.
+    if opening := _IMPERATIVE_START.match(text):
+        target_text = text[opening.end():]
+        if opening[0].strip() in {"fit", "install"}:
+            target_text = target_text.removesuffix(" into place")
+        if target := _PART_TARGET.fullmatch(target_text):
+            if target["state"]:
+                facts.append(("part-state", _PART_STATE[target["state"]]))
+            text = f"{opening[0]}the {target['part']}"
+        elif removal := _PART_REMOVAL.fullmatch(text):
+            if removal["state"]:
+                facts.append(("part-state", _PART_STATE[removal["state"]]))
+            text = f"remove the {removal['part']}"
+
+    task = _simple_directive(text)
+    if task is None:
+        return None
+    return task, frozenset(facts)
+
+
+def _qualifier_changed(original, replacement):
+    if not (_QUALIFIER_MARKER.search(original) or _QUALIFIER_MARKER.search(replacement)):
+        return False
+    source = _qualifier_task(original)
+    if source is None:
+        return False
+    source_action, source_facts = source
+    draft = _qualifier_task(replacement)
+    if draft is None:
+        return False
+    draft_action, draft_facts = draft
+    if source_action != draft_action:
+        return False
+    if source_facts - draft_facts:
+        return True
+    # A generic inspection can be paraphrased with an illustrative focus.
+    # An explicit source focus still has to survive the rewrite.
+    return any(fact[0] != "inspection" for fact in draft_facts - source_facts)
+
+
 def _uses_prose_guards(prompt_version, slot_count):
     return bool(slot_count) and prompt_version in (
-        None, _PROSE_PROMPT_V4, _PROSE_PROMPT_V5, _PROSE_PROMPT_V6, _PROSE_PROMPT_V7, _PROSE_PROMPT_VERSION,
+        None, _PROSE_PROMPT_V4, _PROSE_PROMPT_V5, _PROSE_PROMPT_V6, _PROSE_PROMPT_V7,
+        _PROSE_PROMPT_V8, _PROSE_PROMPT_VERSION,
     )
 
 
@@ -592,6 +748,7 @@ def _require_changes(source, candidate, *, prompt_version):
     guard_direction = guard_prose and prompt_version not in (_PROSE_PROMPT_V4, _PROSE_PROMPT_V5)
     guard_claims = guard_direction and prompt_version != _PROSE_PROMPT_V6
     guard_clauses = guard_claims and prompt_version != _PROSE_PROMPT_V7
+    guard_qualifiers = guard_clauses and prompt_version != _PROSE_PROMPT_V8
     introduction = candidate["blocks"][0].get("text", "")
     if guard_prose and (_INLINE_WARNING.search(introduction) or (guard_actions and _PREREQUISITE.search(introduction))):
         raise ValueError("REWRITE_SAFETY_MUTATION")
@@ -633,6 +790,8 @@ def _require_changes(source, candidate, *, prompt_version):
                 raise ValueError("REWRITE_ACTION_MUTATION")
         if guard_clauses and _clause_assignment_changed(original, replacement):
             raise ValueError("REWRITE_CLAUSE_MUTATION")
+        if guard_qualifiers and _qualifier_changed(original, replacement):
+            raise ValueError("REWRITE_QUALIFIER_MUTATION")
     if guard_claims:
         _check_target_swaps(slots, restored)
 
@@ -661,7 +820,8 @@ def validate_auto(source, candidate, *, response=None, prompt_version=None):
             _PROSE_PROMPT_V5: "full-prose-auto-validator-v3",
             _PROSE_PROMPT_V6: "full-prose-auto-validator-v4",
             _PROSE_PROMPT_V7: "full-prose-auto-validator-v5",
-        }.get(prompt_version, "full-prose-auto-validator-v6")
+            _PROSE_PROMPT_V8: "full-prose-auto-validator-v6",
+        }.get(prompt_version, "full-prose-auto-validator-v7")
     report.update(validator_version=validator_version, profile_version=PROFILE,
         publication_mode="automatic", content_acceptance_required=False,
         complete_rewrite=False, passed=not errors, error_codes=errors)
