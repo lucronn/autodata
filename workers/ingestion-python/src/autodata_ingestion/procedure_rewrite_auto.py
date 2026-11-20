@@ -1,9 +1,9 @@
 """Automatic full-prose rewriting with permanent, mechanically checked output.
 
 Checks preserve structure and literal technical tokens. Current prose drafts
-also preserve recognizable safety prerequisites, check common action verbs
-and reject near-verbatim wording. Semantic equivalence still requires
-comparison with the source procedure.
+also preserve recognizable safety prerequisites and hardware orientation,
+check common action verbs, and reject near-verbatim wording. Semantic
+equivalence still requires comparison with the source procedure.
 """
 from collections import Counter
 from hashlib import sha256
@@ -16,7 +16,8 @@ from .article_lifecycle_types import ValidationResult
 
 PROFILE = "full-prose-auto-v1"
 _PROSE_PROMPT_V4 = "full-prose-auto-prompt-v4"
-_PROSE_PROMPT_VERSION = "full-prose-auto-prompt-v5"
+_PROSE_PROMPT_V5 = "full-prose-auto-prompt-v5"
+_PROSE_PROMPT_VERSION = "full-prose-auto-prompt-v6"
 _WORDS = re.compile(r"\w+")
 _INLINE_WARNING = re.compile(
     r"(?:^|[.!?]\s+|\n)[ \t]*(?:warnings?|caution|danger|notice|important)\s*[:!–—-]"
@@ -92,6 +93,31 @@ _ACTIONS = re.compile(
     r")\b",
     re.IGNORECASE,
 )
+
+# Location markers are compared on each recognized instruction. Compound
+# labels retain both axes and permit "left front" and "front-left".
+_LATERAL_DIRECTION = r"(?:left|right)(?:[-\s]hand)?|LH|RH"
+_DIRECTION = re.compile(
+    r"\b(?:(?P<lateral_first>" + _LATERAL_DIRECTION + r")[-\s]+(?P<end_after>front|rear)"
+    r"|(?P<end_first>front|rear)[-\s]+(?P<lateral_after>" + _LATERAL_DIRECTION + r")"
+    r"|(?P<lateral>" + _LATERAL_DIRECTION + r")(?!\s+(?:behind|over|the|a|an|handed)\b)"
+    r"|(?P<end>front|rear)|(?P<inner>inboard|inner|inside)|(?P<outer>outboard|outer|outside)"
+    r"|(?P<vertical>upper|lower|top|bottom)(?!\s+(?:the|a|an)\b))\b",
+    re.IGNORECASE,
+)
+_NEGATIVE_SCOPE = re.compile(
+    r"\b(?:forbidden|not\s+permitted)\b"
+    r"|\b(?:if|when)\b[^,;.!?\n]{0,80}\b(?:not|no|without)\b"
+    r"|\b(?:for|on)\s+(?:vehicles|models|versions|engines|trims)\b[^,;.!?\n]{0,60}\bwithout\b",
+    re.IGNORECASE,
+)
+_DIRECTIVE_RESTRICTION = re.compile(
+    r"\b(?:(?:check|inspect|fit|install|remove|disconnect|connect|open|close|use|tighten|loosen)"
+    r"\s+only|without\s+(?:lifting|removing|moving|disconnecting|connecting|opening|"
+    r"closing|touching|starting|stopping|disturbing))\b",
+    re.IGNORECASE,
+)
+
 _TIMING = re.compile(r"\b(before|after|once|ahead of)\b", re.IGNORECASE)
 _SENTENCES = re.compile(r"(?<=[.!?])\s+|\n+")
 _STATE_CLAUSE = re.compile(r"\b(?:that|whether)\b[^,;.!?]*$", re.IGNORECASE)
@@ -184,12 +210,12 @@ def _build_auto_prompt_v4(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def build_auto_prompt(document, *, context):
+def _build_auto_prompt_v5(document, *, context):
     previous = _build_auto_prompt_v4(document, context=context)
     payload = json.loads(previous)
     if not payload["slots"]:
         return previous
-    payload["prompt_version"] = _PROSE_PROMPT_VERSION
+    payload["prompt_version"] = _PROSE_PROMPT_V5
     for slot in payload["slots"]:
         if _PREREQUISITE.search(slot["text"]) or (
                 slot["required_action"] == "rewrite" and _spec_scope(slot["text"])):
@@ -203,9 +229,27 @@ def build_auto_prompt(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
+def build_auto_prompt(document, *, context):
+    previous = _build_auto_prompt_v5(document, context=context)
+    payload = json.loads(previous)
+    if not payload["slots"]:
+        return previous
+    payload["prompt_version"] = _PROSE_PROMPT_VERSION
+    for slot in payload["slots"]:
+        if _negative_scope(slot["text"]):
+            slot["required_action"] = "retain"
+    payload["rules"].append(
+        "Keep every position and side with the original action. Equivalent labels for the same "
+        "position or side are valid. Preserve explicit negative conditions and applicability "
+        "restrictions marked retain."
+    )
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
 def _auto_prompt_version(document, *, context, prompt_hash):
     """Identify the rules bound to the saved model attempt."""
-    for builder in (build_auto_prompt, _build_auto_prompt_v4, _build_auto_prompt_v2, _build_auto_prompt_v1):
+    for builder in (build_auto_prompt, _build_auto_prompt_v5, _build_auto_prompt_v4,
+                    _build_auto_prompt_v2, _build_auto_prompt_v1):
         payload = builder(document, context=context)
         if sha256(payload.encode()).hexdigest() == prompt_hash:
             return json.loads(payload)["prompt_version"]
@@ -233,7 +277,7 @@ def _near_copy(original, replacement):
     return 2 * copied > min(len(original_words), len(replacement_words)) - 4
 
 
-def _actions(text):
+def _action_matches(text):
     actions = []
     previous_end = 0
     inspecting_state = False
@@ -244,36 +288,77 @@ def _actions(text):
         if len(boundaries) > 1:
             inspecting_state = False
         # "Check that the plug is attached" verifies a state.
-        if actions and actions[-1] == "inspect" and _STATE_CLAUSE.search(boundaries[-1]):
+        if actions and actions[-1].lastgroup == "inspect" and _STATE_CLAUSE.search(boundaries[-1]):
             inspecting_state = True
         if not inspecting_state:
-            actions.append(match.lastgroup)
+            actions.append(match)
     return actions
 
 
-def _execution_order(text):
-    """Normalize simple before/after clauses to chronological action order."""
-    actions = []
+def _chronological_clauses(text):
     for sentence in _SENTENCES.split(text.strip()):
         timing = _TIMING.search(sentence)
         if timing is None:
-            actions.extend(_actions(sentence))
+            yield sentence
             continue
         earlier_first = timing[1].casefold() in {"before", "ahead of"}
         if timing.start() == 0 and "," in sentence:
             first, second = sentence.split(",", 1)
-            pieces = (second, first) if earlier_first else (first, second)
+            yield from (second, first) if earlier_first else (first, second)
         else:
             first, second = sentence[:timing.start()], sentence[timing.end():]
-            pieces = (first, second) if earlier_first else (second, first)
-        for piece in pieces:
-            actions.extend(_actions(piece))
+            yield from (first, second) if earlier_first else (second, first)
+
+
+def _execution_order(text):
+    """Normalize simple before/after clauses to chronological action order."""
+    actions = (match.lastgroup for clause in _chronological_clauses(text) for match in _action_matches(clause))
     # One instruction can say "inspect ... to check".
     return tuple(action for action, _ in groupby(actions))
 
 
+def _negative_scope(text):
+    return bool(_NEGATIVE_SCOPE.search(text) or _DIRECTIVE_RESTRICTION.search(text))
+
+
+def _direction_labels(text):
+    labels = []
+    for match in _DIRECTION.finditer(text):
+        if match["inner"]:
+            labels.append("inner")
+        elif match["outer"]:
+            labels.append("outer")
+        elif match["vertical"]:
+            labels.append("upper" if match["vertical"].casefold() in {"upper", "top"} else "lower")
+        else:
+            side = (match["lateral_first"] or match["lateral_after"] or match["lateral"] or "").casefold()
+            end = (match["end_first"] or match["end_after"] or match["end"] or "").casefold()
+            side = ("left" if side.startswith("l") else "right") if side else ""
+            labels.append(" ".join(part for part in (end, side) if part))
+    return tuple(sorted(labels))
+
+
+def _direction_scope(text):
+    labels = _direction_labels(text)
+    if not labels:
+        return (), ()
+    oriented_actions = []
+    for clause in _chronological_clauses(text):
+        actions = _action_matches(clause)
+        if not actions:
+            continue
+        # Labels inside phrasal verbs (e.g. "take the left cover off")
+        # belong to the recognized action, as do labels after its verb.
+        starts = [0, *(match.start() for match in actions[1:]), len(clause)]
+        for action, start, end in zip(actions, starts, starts[1:]):
+            direction = _direction_labels(clause[start:end])
+            if direction:
+                oriented_actions.append((action.lastgroup, direction))
+    return labels, tuple(oriented_actions)
+
+
 def _uses_prose_guards(prompt_version, slot_count):
-    return bool(slot_count) and prompt_version in (None, _PROSE_PROMPT_V4, _PROSE_PROMPT_VERSION)
+    return bool(slot_count) and prompt_version in (None, _PROSE_PROMPT_V4, _PROSE_PROMPT_V5, _PROSE_PROMPT_VERSION)
 
 
 def _require_changes(source, candidate, *, prompt_version):
@@ -282,6 +367,7 @@ def _require_changes(source, candidate, *, prompt_version):
     slots = full.prose_slots(source)
     guard_prose = _uses_prose_guards(prompt_version, len(slots))
     guard_actions = guard_prose and prompt_version != _PROSE_PROMPT_V4
+    guard_direction = guard_prose and prompt_version in (None, _PROSE_PROMPT_VERSION)
     introduction = candidate["blocks"][0].get("text", "")
     if guard_prose and (_INLINE_WARNING.search(introduction) or (guard_actions and _PREREQUISITE.search(introduction))):
         raise ValueError("REWRITE_SAFETY_MUTATION")
@@ -292,8 +378,12 @@ def _require_changes(source, candidate, *, prompt_version):
     for slot in slots:
         original = slot["text"]
         replacement = full._get(restored, slot["path"])
-        if guard_prose and any(_INLINE_WARNING.search(text) or (guard_actions and _PREREQUISITE.search(text))
-                               for text in (original, replacement)):
+        if guard_prose and any(
+            _INLINE_WARNING.search(text)
+            or (guard_actions and _PREREQUISITE.search(text))
+            or (guard_direction and _negative_scope(text))
+            for text in (original, replacement)
+        ):
             if original != replacement:
                 raise ValueError("REWRITE_SAFETY_MUTATION")
             continue
@@ -309,6 +399,8 @@ def _require_changes(source, candidate, *, prompt_version):
             raise ValueError("REWRITE_UNCHANGED")
         if guard_prose and not technical_only and _near_copy(original, replacement):
             raise ValueError("REWRITE_PROSE_TOO_SIMILAR")
+        if guard_direction and _direction_scope(original) != _direction_scope(replacement):
+            raise ValueError("REWRITE_DIRECTION_MUTATION")
         if guard_actions and not technical_only:
             original_actions = _execution_order(original)
             if original_actions and original_actions != _execution_order(replacement):
@@ -334,7 +426,10 @@ def validate_auto(source, candidate, *, response=None, prompt_version=None):
     guard_prose = _uses_prose_guards(prompt_version, report["prose_slots"])
     validator_version = "full-prose-auto-validator-v1"
     if guard_prose:
-        validator_version = "full-prose-auto-validator-v2" if prompt_version == _PROSE_PROMPT_V4 else "full-prose-auto-validator-v3"
+        validator_version = {
+            _PROSE_PROMPT_V4: "full-prose-auto-validator-v2",
+            _PROSE_PROMPT_V5: "full-prose-auto-validator-v3",
+        }.get(prompt_version, "full-prose-auto-validator-v4")
     report.update(validator_version=validator_version, profile_version=PROFILE,
         publication_mode="automatic", content_acceptance_required=False,
         complete_rewrite=False, passed=not errors, error_codes=errors)
