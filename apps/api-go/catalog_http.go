@@ -305,7 +305,10 @@ func (s *Server) getCatalogArticle(response http.ResponseWriter, request *http.R
 	s.respondCatalogArticleView(response, request, principal, view)
 }
 
-const shortSourceCheckPreference = "workshop-short-source-check"
+const (
+	shortSourceCheckPreference      = "workshop-short-source-check"
+	shortPublicationCheckPreference = "workshop-short-publication-check"
+)
 
 func (s *Server) respondCatalogArticleView(response http.ResponseWriter, request *http.Request, principal Principal, view CatalogArticleView) {
 	if view.Withdrawn {
@@ -352,15 +355,24 @@ func (s *Server) respondCatalogArticleView(response http.ResponseWriter, request
 	} else {
 		rewriteCatalogImageURLs(&article, s.catalogImageKey)
 	}
-	if status == http.StatusAccepted && article.Processing.allowShortSourceCheck &&
-		request.Header.Get("Prefer") == shortSourceCheckPreference {
-		// The opting-in reader can check this active capture once before its
-		// normal first read. Explicit retry delays never grant this preference.
-		processing := *article.Processing
-		processing.RetryAfterSeconds = nil
-		article.Processing = &processing
-		response.Header().Del("Retry-After")
-		response.Header().Set("Preference-Applied", shortSourceCheckPreference)
+	if current := article.Processing; current != nil {
+		preference := current.shortReadPreference
+		applicable := preference == shortSourceCheckPreference && status == http.StatusAccepted ||
+			preference == shortPublicationCheckPreference && status == http.StatusOK
+		if applicable {
+			for _, requested := range strings.Split(strings.Join(request.Header.Values("Prefer"), ","), ",") {
+				if strings.TrimSpace(requested) != preference {
+					continue
+				}
+				// Only replace the default read cadence when the client opts in.
+				processing := *current
+				processing.RetryAfterSeconds = nil
+				article.Processing = &processing
+				response.Header().Del("Retry-After")
+				response.Header().Set("Preference-Applied", preference)
+				break
+			}
+		}
 	}
 	article.SourceReview = sourceReviewForArticle(article, vehicleID, article.ID)
 	writeJSON(response, status, CatalogArticleResponse{Version: "v1", Article: article})

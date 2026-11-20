@@ -397,6 +397,46 @@ test('reader confirms newly visible source once before resuming publication back
   assert.deepEqual(starts, [0, 1000, 2000, 3000]);
 });
 
+test('reader checks for first publication early and preserves the regular read on a miss', async () => {
+  const { readArticle } = await import('./workshop/article-read.mjs');
+  const pending = { status: 202, shortSourceCheck: true, data: {
+    article: { processing: { job_id: 'job', state: 'queued' } },
+  } };
+  const source = { status: 200, shortPublicationCheck: true, data: {
+    article: { body: 'Stored', content_origin: 'source', processing: { job_id: 'job', state: 'rewriting' } },
+  } };
+  const timed = { ...source, shortPublicationCheck: false, retryAfterSeconds: 1 };
+  const ready = { status: 200, data: { article: { body: 'Published', content_origin: 'canonical' } } };
+  const busy = Object.assign(new Error('Busy'), { status: 503, retryable: true, retryAfterSeconds: 7 });
+
+  for (const [label, responses, expected] of [
+    ['publication already ready for the probe', [pending, source, ready], [0, 500, 1000]],
+    ['regular read preserved', [pending, source, source, timed, ready], [0, 500, 1000, 1500, 2500]],
+    ['initially readable article', [source, source, timed, ready], [0, 500, 1000, 3000]],
+    ['network failure rejoins regular read', [source, new TypeError('Network failed'), ready], [0, 500, 1000]],
+    ['overload wins over the regular read', [source, busy, ready], [0, 500, 7500]],
+    ['explicit server delay wins', [{ ...source, retryAfterSeconds: 6 }, ready], [0, 6000]],
+  ]) {
+    let now = 0;
+    const starts = [], qualifiers = [];
+    const result = await readArticle(async ({ timeout, preferShortPublicationCheck }) => {
+      starts.push(now);
+      qualifiers.push(preferShortPublicationCheck);
+      const next = responses.shift();
+      if (label === 'network failure rejoins regular read' && next instanceof TypeError) {
+        assert.equal(timeout, 500);
+        now += timeout;
+      }
+      if (next instanceof Error) throw next;
+      return next;
+    }, { now: () => now, wait: async ms => { now += ms; } });
+    assert.deepEqual(starts, expected, label);
+    assert.equal(qualifiers[0], true, label);
+    if (label === 'initially readable article') assert.deepEqual(qualifiers, [true, true, false, false]);
+    assert.equal(result.data.article.body, 'Published', label);
+  }
+});
+
 test('an article body interrupted by its deadline remains retryable', async () => {
   const { requestArticleJSON } = await import('./workshop/catalog.mjs');
   await assert.rejects(requestArticleJSON('/article', {

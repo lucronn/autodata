@@ -49,21 +49,26 @@ export async function readArticle(
   let latest, earlyConfirmationJob;
   let firstReadAt = 0;
   let sourceConfirmationAt = 0;
+  let publicationReadAt = 0;
   let sawFastSource = false;
   let attempt = 0;
   while (now() < deadline) {
     signal?.throwIfAborted();
     let retryAfter = 0, fastPendingJob, fastSource = false, readable = false;
-    let shortSourceCheck = false;
+    let shortSourceCheck = false, shortPublicationCheck = false;
     const startedAt = now();
     if (firstReadAt <= startedAt) firstReadAt = 0;
     if (sourceConfirmationAt <= startedAt) sourceConfirmationAt = 0;
-    const readDeadline = Math.min(deadline, firstReadAt || deadline, sourceConfirmationAt || deadline);
+    if (publicationReadAt <= startedAt) publicationReadAt = 0;
+    const readDeadline = Math.min(
+      deadline, firstReadAt || deadline, sourceConfirmationAt || deadline, publicationReadAt || deadline,
+    );
     try {
       latest = await read({
         signal,
         timeout: Math.max(1, Math.floor(Math.min(10000, readDeadline - startedAt))),
         preferShortSourceCheck: Boolean(firstReadAt),
+        preferShortPublicationCheck: !sawFastSource || Boolean(publicationReadAt),
       });
       signal?.throwIfAborted();
       if (!latest?.data?.article || typeof latest.data.article !== "object")
@@ -80,11 +85,14 @@ export async function readArticle(
       shortSourceCheck = latest.shortSourceCheck === true && retryAfter === 0 &&
         latest.status === 202 && !readable &&
         ["queued", "fetching_source"].includes(article.processing.state);
+      const readableSource = latest.status === 200 && readable && article.content_origin === "source";
+      shortPublicationCheck = latest.shortPublicationCheck === true && retryAfter === 0 &&
+        readableSource && ["normalizing", "rewriting", "validating", "publishing"].includes(article.processing.state);
       if (retryAfter === 1 && article.processing.state !== "failed") {
         if (latest.status === 202 && !readable) {
           fastPendingJob = article.processing.job_id;
         }
-        fastSource = latest.status === 200 && readable && article.content_origin === "source";
+        fastSource = readableSource;
       }
     } catch (error) {
       signal?.throwIfAborted();
@@ -109,6 +117,13 @@ export async function readArticle(
         continue;
       }
     }
+    if (publicationReadAt) {
+      // A missed publication probe rejoins the original read cadence.
+      const regularWait = Math.max(0, publicationReadAt - now());
+      publicationReadAt = 0;
+      await wait(Math.min(remaining, Math.max(regularWait, retryAfter * 1000)), signal);
+      continue;
+    }
     let backoff = [1000, 2000, 4000, 8000, 10000][Math.min(attempt++, 4)];
     if (attempt === 1 && shortSourceCheck) {
       earlyConfirmationJob = latest.data.article.processing.job_id;
@@ -131,11 +146,15 @@ export async function readArticle(
       backoff = Math.max(0, sourceConfirmationAt - now());
       sourceConfirmationAt = 0;
       attempt--;
-    } else if (fastSource && !sawFastSource) {
+    } else if ((fastSource || shortPublicationCheck) && !sawFastSource) {
       sawFastSource = true;
       if (backoff > 1000) {
         sourceConfirmationAt = now() + backoff;
         backoff = 1000;
+      }
+      if (shortPublicationCheck) {
+        publicationReadAt = now() + backoff;
+        backoff = 500;
       }
     }
     await wait(

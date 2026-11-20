@@ -942,11 +942,12 @@ async function loadArticle(id, g) {
   stage("article");
   status("Opening article…", { busy: true });
   const first = openDemo || session.state.mode === "local"
-    ? await requestArticleJSON(demoPath(articlePath(id)), { signal: g.signal })
+    ? await requestArticleJSON(demoPath(articlePath(id)), { signal: g.signal, preferShortPublicationCheck: true })
     : await requestArticleJSON(`${articlePath(id)}/prepare`, {
         method: "POST",
         body: {},
         preferShortSourceCheck: true,
+        preferShortPublicationCheck: true,
         headers: { "X-CSRF-Token": session.state.csrf },
         signal: g.signal,
       });

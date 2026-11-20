@@ -18,13 +18,13 @@ import (
 var ErrCatalogWithdrawn = errors.New("catalog article withdrawn")
 
 type CatalogProcessing struct {
-	JobID                 string  `json:"job_id"`
-	State                 string  `json:"state"`
-	Retryable             bool    `json:"retryable"`
-	RetryAfterSeconds     *int    `json:"retry_after_seconds"`
-	ErrorCode             *string `json:"error_code"`
-	UpdatedAt             string  `json:"updated_at"`
-	allowShortSourceCheck bool
+	JobID               string  `json:"job_id"`
+	State               string  `json:"state"`
+	Retryable           bool    `json:"retryable"`
+	RetryAfterSeconds   *int    `json:"retry_after_seconds"`
+	ErrorCode           *string `json:"error_code"`
+	UpdatedAt           string  `json:"updated_at"`
+	shortReadPreference string
 }
 type CatalogArticleView struct {
 	Article     CatalogArticle
@@ -102,9 +102,15 @@ func lifecycleArticle(article CatalogArticle) CatalogArticle {
 				// keep their normal cadence.
 				seconds = 1
 			}
-			article.Processing.allowShortSourceCheck = !readable &&
-				(article.Processing.State == "queued" || article.Processing.State == "fetching_source")
-			article.Processing.RetryAfterSeconds = &seconds
+			state := processing.State
+			switch {
+			case !readable && (state == "queued" || state == "fetching_source"):
+				processing.shortReadPreference = shortSourceCheckPreference
+			case readable && article.Availability == "available" && article.ContentOrigin != nil && *article.ContentOrigin == "source" &&
+				(state == "normalizing" || state == "rewriting" || state == "validating" || state == "publishing"):
+				processing.shortReadPreference = shortPublicationCheckPreference
+			}
+			processing.RetryAfterSeconds = &seconds
 		}
 		if article.Processing.RetryAfterSeconds != nil && *article.Processing.RetryAfterSeconds < 1 {
 			n := 1
