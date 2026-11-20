@@ -319,9 +319,14 @@ def test_publish_retained_ordinals_preserves_prose_and_visibility(
         server.body(body, "application/json")
     else:
         body = procedure + b'<img data-resource-ref="figure" alt="Reference marks">'
-        figure = BytesIO()
-        Image.new("RGB", (24, 24), "green").save(figure, format="PNG")
-        server.body(figure.getvalue(), "image/png", ref="figure", kind="asset")
+        if profile == article_content_review.PROFILE:
+            drawing = (b'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24">'
+                       b'<rect width="24" height="24" fill="green"/></svg>')
+            server.body(drawing, "image/svg+xml", ref="figure", kind="asset")
+        else:
+            figure = BytesIO()
+            Image.new("RGB", (24, 24), "green").save(figure, format="PNG")
+            server.body(figure.getvalue(), "image/png", ref="figure", kind="asset")
         server.body(body, "text/html", assets=["figure"])
 
     capture_current = capture.capture_source_article
@@ -415,6 +420,8 @@ def test_publish_retained_ordinals_preserves_prose_and_visibility(
     assert updated["canonical_revision_id"] != original["canonical_revision_id"]
     assert updated["review_status"] == original["review_status"]
     assert updated["body"] == original["body"] and updated["images"] == original["images"]
+    if profile == article_content_review.PROFILE:
+        assert updated["images"][0]["media_type"] == "image/png"
     source = load_source_revision(runtime.repo, updated["source_revision_id"])
     assert source.projection_version == "source-projection-v4"
     assert [step["number"] for step in source.source_steps] == [4, 9]
