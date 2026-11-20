@@ -13,11 +13,13 @@ from .article_lifecycle_types import (
     article_id,
     digest_json,
 )
-from .source_adapters import adapt_bound_article
+from .source_adapters import adapt_bound_article, bound_pdf_embed_blocks
 from .source_connector_client import SourceConnectorError
 from .article_document import build_ordered_document, walk_ordered_list_items
 from .svg_rasterization import rasterize_svg, SVGUnavailable, RASTERIZER_VERSION
 
+
+_MAX_LINKED_PDFS = 4
 
 # Keep in sync with the raster types accepted by the catalog image endpoint.
 DISPLAYABLE_RASTER_MEDIA = frozenset({"image/png", "image/jpeg", "image/gif", "image/webp"})
@@ -152,8 +154,38 @@ def project_document(document):
     return "\n".join(texts), steps, images
 
 
+def _replace_pdf_embeds(value, documents):
+    """Expand signed connector document bindings in their original block positions."""
+    if isinstance(value, dict):
+        children = value.get("blocks")
+        if isinstance(children, list) and any(
+            isinstance(node, dict) and node.get("kind") == "document_embed" for node in children
+        ):
+            value["_preserve_cell_block_order"] = True
+        for child in value.values():
+            _replace_pdf_embeds(child, documents)
+    elif isinstance(value, list):
+        expanded = []
+        for node in value:
+            if isinstance(node, dict) and node.get("kind") == "document_embed":
+                ref = node.get("asset_resource_ref")
+                if ref in documents:
+                    blocks, evidence = documents[ref]
+                    expanded.extend({**deepcopy(block), "evidence_ids": evidence} for block in blocks)
+                else:
+                    expanded.append({
+                        "kind": "callout", "label": "Embedded document unavailable",
+                        "text": "This document could not be prepared for Workshop.",
+                    })
+            else:
+                _replace_pdf_embeds(node, documents)
+                expanded.append(node)
+        value[:] = expanded
+
+
 def capture_source_article(
-    context, *, registry, object_store, deadline_seconds=30.0, keep_embedded_pdf=False, keep_html_headings=False,
+    context, *, registry, object_store, deadline_seconds=30.0,
+    keep_embedded_pdf=False, keep_html_headings=False, keep_bound_pdf_iframes=False,
 ):
     if not 0 < deadline_seconds <= 30:
         raise ValueError("capture deadline must be within 30 seconds")
@@ -226,6 +258,7 @@ def capture_source_article(
         parsing = parser_pool.submit(
             adapt_bound_article, body.to_source_resource(), context,
             keep_embedded_pdf=keep_embedded_pdf, keep_html_headings=keep_html_headings,
+            keep_bound_pdf_iframes=keep_bound_pdf_iframes,
         )
         article = parsing.result(timeout=remaining())
     except (ValueError, TypeError, KeyError, UnicodeError) as error:
@@ -240,6 +273,7 @@ def capture_source_article(
     finally:
         parser_pool.shutdown(wait=False, cancel_futures=True)
     blocks = deepcopy(article["blocks"])
+    handled_pdf_embeds = article.get("handled_pdf_embeds") is True
     new_structure = article.get("embedded_pdf") or (
         article.get("authored_html_headings") and any(block.get("kind") == "heading" for block in _walk(blocks))
     )
@@ -255,8 +289,17 @@ def capture_source_article(
             "asset_resource_ref"
         ):
             refs.append(node["asset_resource_ref"])
+    # A provider JSON block cannot authorize a document fetch by declaring a marker.
+    linked_refs = dict.fromkeys(
+        node["asset_resource_ref"] for node in _walk(blocks)
+        if handled_pdf_embeds and node.get("kind") == "document_embed"
+        and isinstance(node.get("asset_resource_ref"), str)
+        and node["asset_resource_ref"] in (body.body.get("asset_resource_refs") or [])
+        and node["asset_resource_ref"] != body_ref
+    )
+    selected_documents = set(list(linked_refs)[:_MAX_LINKED_PDFS])
     # Stable dedupe retains the first source position; opaque refs are never normalized.
-    refs = list(dict.fromkeys(refs))
+    refs = list(dict.fromkeys(ref for ref in refs if ref not in linked_refs))
     for node in _walk(blocks):
         if (
             (node.get("kind") or node.get("type")) == "image"
@@ -266,7 +309,8 @@ def capture_source_article(
             node["asset_resource_ref"] = node["url"]
     labor_ref = context.descriptor.get("labor_resource_ref")
     optional = [(ref, "asset") for ref in refs]
-    if labor_ref and labor_ref not in refs and labor_ref != body_ref:
+    optional += [(ref, "document_asset") for ref in linked_refs if ref in selected_documents]
+    if labor_ref and labor_ref not in refs and labor_ref not in linked_refs and labor_ref != body_ref:
         optional.append((labor_ref, "labor"))
     resources = [upload_resource(body, body_ref, "body", bounded_objects)]
     manifest = [
@@ -275,6 +319,7 @@ def capture_source_article(
     provenance = [deepcopy(resources[0])]
     failures = {}
     localized = {}
+    documents = {}
 
     # All requests share one deadline; no more than four can run concurrently.
     def fetch(pair):
@@ -282,6 +327,18 @@ def capture_source_article(
         originals = []
         try:
             envelope = read(ref)
+            if role == "document_asset":
+                payload = envelope.to_source_resource()
+                if payload.media_type != "application/pdf":
+                    return ref, role, None, "UNSUPPORTED_DOCUMENT_MEDIA", originals, None
+                resource = upload_resource(envelope, ref, role, bounded_objects)
+                try:
+                    blocks = bound_pdf_embed_blocks(payload)
+                except ValueError:
+                    blocks = []
+                if not blocks:
+                    return ref, role, None, "DOCUMENT_EXTRACTION_UNAVAILABLE", [resource], None
+                return ref, role, resource, None, originals, blocks
             resource = upload_resource(envelope, ref, role, bounded_objects)
             if role == "asset" and resource["media_type"] == "image/svg+xml":
                 original = {**resource, "role": "asset_original"}
@@ -299,10 +356,10 @@ def capture_source_article(
             if role == "asset" and resource["media_type"] not in DISPLAYABLE_RASTER_MEDIA:
                 if resource["media_type"].startswith("image/"):
                     originals.append({**resource, "role": "asset_original"})
-                return ref, role, None, "UNSUPPORTED_ASSET_MEDIA", originals
-            return ref, role, resource, None, originals
+                return ref, role, None, "UNSUPPORTED_ASSET_MEDIA", originals, None
+            return ref, role, resource, None, originals, None
         except SVGUnavailable as error:
-            return ref, role, None, str(error), originals
+            return ref, role, None, str(error), originals, None
         except SourceConnectorError as error:
             return (
                 ref,
@@ -310,6 +367,7 @@ def capture_source_article(
                 None,
                 "SOURCE_NOT_FOUND" if error.status == 404 else error.code,
                 originals,
+                None,
             )
 
     pool = ThreadPoolExecutor(max_workers=4)
@@ -322,7 +380,9 @@ def capture_source_article(
             resource = None
             failure = "CAPTURE_DEADLINE"
         else:
-            _, _, resource, failure, originals = future.result()
+            _, _, resource, failure, originals, document_blocks = future.result()
+            if document_blocks is not None:
+                documents[ref] = (document_blocks, ["source:" + resource["source_snapshot_id"]])
             for original in originals:
                 resources.append(original)
                 provenance.append(deepcopy(original))
@@ -341,7 +401,20 @@ def capture_source_article(
             manifest.append(entry)
             provenance.append({"provider": provider, **entry})
     pool.shutdown(wait=False, cancel_futures=True)
-    # Embedded figures are derived only from verified body bytes and never fetched by URL.
+    for ref in linked_refs:
+        if ref not in selected_documents:
+            failure = {"role": "document_asset", "opaque_ref": ref, "failure_code": "DOCUMENT_LIMIT"}
+            failures[ref] = failure["failure_code"]
+            manifest.append(failure)
+            provenance.append({"provider": provider, **failure})
+    if handled_pdf_embeds:
+        _replace_pdf_embeds(blocks, documents)
+
+    # Embedded figures are derived only from verified bytes and never fetched by URL.
+    evidence_sources = {
+        "source:" + resource["source_snapshot_id"]: resource
+        for resource in resources if resource["role"] == "document_asset"
+    }
     for node in _walk(blocks):
         uri = node.get("url", "")
         if (
@@ -358,7 +431,12 @@ def capture_source_article(
                 digest = sha256(payload).hexdigest()
                 key = "sources/" + digest[:16] + "/" + digest
                 bounded_objects.put_object(key, payload, media)
-                ref = "embedded:" + resources[0]["sha256"] + ":" + digest
+                evidence = node.get("evidence_ids")
+                parent = next(
+                    (evidence_sources[item] for item in evidence if isinstance(item, str) and item in evidence_sources),
+                    resources[0],
+                ) if isinstance(evidence, list) else resources[0]
+                ref = "embedded:" + parent["sha256"] + ":" + digest
                 displayable = media in DISPLAYABLE_RASTER_MEDIA
                 local = {
                     "provider": provider,
@@ -368,10 +446,10 @@ def capture_source_article(
                     "sha256": digest,
                     "object_key": key,
                     "source_snapshot_id": str(snapshot_id(digest)),
-                    "source_revision": body.source_revision,
-                    "request_id": body.request_id,
-                    "fetched_at": body.fetched_at,
-                    "locator": resources[0]["locator"],
+                    "source_revision": parent["source_revision"],
+                    "request_id": parent["request_id"],
+                    "fetched_at": parent["fetched_at"],
+                    "locator": parent["locator"],
                 }
                 if displayable:
                     localized[ref] = local
@@ -415,6 +493,8 @@ def capture_source_article(
             ref = node.pop("asset_resource_ref", None)
             positioned.add(ref)
             local = localized.get(ref)
+            document_evidence = [evidence for evidence in node.get("evidence_ids", [])
+                                 if isinstance(evidence, str) and evidence in evidence_sources] if isinstance(node.get("evidence_ids"), list) else []
             node.update(
                 {
                     "image_id": (
@@ -429,7 +509,7 @@ def capture_source_article(
                         )
                     ),
                     "status": "available" if local else "unavailable",
-                    "evidence_ids": list(context.evidence_ids),
+                    "evidence_ids": document_evidence or list(context.evidence_ids),
                 }
             )
             if local:
@@ -476,10 +556,12 @@ def capture_source_article(
     doc = build_ordered_document(
         {"article_id": str(article_id(context.key)), "evidence_ids": evidence_ids},
         blocks,
+        preserve_marked_cells=handled_pdf_embeds,
     )
     for node in _image_nodes(doc["blocks"]):
-        node["evidence_ids"] = list(evidence_ids)
         local = image_records.get(node.get("image_id"))
+        document_evidence = [evidence for evidence in node.get("evidence_ids", []) if evidence in evidence_sources]
+        node["evidence_ids"] = document_evidence or list(evidence_ids)
         if local:
             for name in ("status", "media_type", "content_sha256", "storage_key"):
                 if local.get(name) is not None:
@@ -521,6 +603,9 @@ def capture_source_article(
                 "body_source_snapshot_id": resources[0]["source_snapshot_id"],
             }
             for e in evidence_ids
+        ] + [
+            {"evidence_id": evidence, "body_source_snapshot_id": resource["source_snapshot_id"]}
+            for evidence, resource in evidence_sources.items()
         ],
         (
             "partial"
@@ -528,5 +613,8 @@ def capture_source_article(
             else "readable"
         ),
         datetime.now(timezone.utc),
-        projection_version="source-projection-v5" if new_structure else "source-projection-v2",
+        projection_version=(
+            "source-projection-v6" if handled_pdf_embeds
+            else "source-projection-v5" if new_structure else "source-projection-v2"
+        ),
     )

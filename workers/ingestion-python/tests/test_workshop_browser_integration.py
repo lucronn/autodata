@@ -405,6 +405,26 @@ def _child(root_name,engine,provider,directory,monkeypatch):
                 diagram = BytesIO()
                 Image.new("RGB", (24, 24), "green").save(diagram, format="PNG")
                 for server in runtime.servers.values():
+                    if provider == "banktwo" and root_name == "test_browser_owned_source_canonical_and_media_real_api":
+                        from test_workshop_linked_pdf import _PDF_LOCATOR, _PDF_REF, _pdf_with_fixture_figure
+
+                        pdf, _ = _pdf_with_fixture_figure()
+                        html = (
+                            '<p>Inspect the alignment marks before removing the pump.</p>'
+                            '<img src="/fixture/alignment.png" alt="Alignment marks">'
+                            '<p>Do not run the pump dry.</p>'
+                            '<ol start="4"><li value="9">Remove the pump.'
+                            '<table><tr><td>'
+                            f'<iframe src="{_PDF_LOCATOR}">Hidden fallback.</iframe>'
+                            '<p>Install the replacement.</p>'
+                            '</td></tr></table></li></ol>'
+                        )
+                        server.body(pdf, "application/pdf", ref=_PDF_REF, kind="binary")
+                        server.body(html.encode(), assets=["figure", _PDF_REF], asset_bindings=[
+                            {"source_url": "/fixture/alignment.png", "resource_ref": "figure"},
+                            {"source_url": _PDF_LOCATOR, "resource_ref": _PDF_REF},
+                        ])
+                        continue
                     body = {
                         "blocks": [
                             {"type": "paragraph", "text": "Inspect the alignment marks before removing the pump.",

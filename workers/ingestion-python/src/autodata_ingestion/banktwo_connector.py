@@ -67,6 +67,7 @@ class ArticleParser(HTMLParser):
         self._preserve_legacy_list_starts = preserve_legacy_list_starts
         self._keep_html_headings = keep_html_headings
         self._keep_bound_pdf_iframes = keep_bound_pdf_iframes
+        self.handled_pdf_embeds = False
         self._hidden_embed_tags: list[str] = []
         self._heading: dict[str, Any] | None = None
         self._table_rows = None
@@ -221,6 +222,7 @@ class ArticleParser(HTMLParser):
                 and (attrs.get("type") or "").strip().casefold() == "application/pdf"
             )
         ):
+            self.handled_pdf_embeds = True
             locator = attrs.get("data" if tag == "object" else "src")
             ref = self._asset_bindings.get(locator)
             if ref and not (tag == "iframe" and "srcdoc" in attrs):

@@ -171,6 +171,8 @@ def _nested_image_keys(value, *, image=False):
 def build_ordered_document(
     article: Mapping[str, Any],
     blocks: Any = None,
+    *,
+    preserve_marked_cells: bool = False,
 ) -> dict[str, Any]:
     """Convert adapter blocks into a deterministic, source-order document."""
 
@@ -239,10 +241,10 @@ def build_ordered_document(
             output.append(_image_block(article, source_index, raw, evidence_ids))
             continue
         if kind in {"table", "grid"}:
-            output.append(_table_block(article, source_index, raw, evidence_ids))
+            output.append(_table_block(article, source_index, raw, evidence_ids, preserve_marked_cells))
             continue
         if kind in {"ordered_list", "unordered_list", "list"}:
-            output.append(_list_block(article, source_index, raw, evidence_ids, kind))
+            output.append(_list_block(article, source_index, raw, evidence_ids, kind, preserve_marked_cells))
             continue
         if kind in {"callout", "note", "warning", "caution", "hint", "important"}:
             output.append(_callout_block(article, source_index, raw, evidence_ids, kind))
@@ -355,6 +357,11 @@ def _number_blocks(blocks, parent_id):
             for item_number, item in enumerate(block.get("items", []), start=1):
                 if isinstance(item, dict) and item.get("blocks"):
                     _number_blocks(item["blocks"], f"{block_id}:item:{item_number:04d}")
+        elif block["type"] == "table":
+            for row_number, row in enumerate(block.get("rows", []), start=1):
+                for column_number, cell in enumerate(row, start=1):
+                    if isinstance(cell, dict) and cell.get("blocks"):
+                        _number_blocks(cell["blocks"], f"{block_id}:row:{row_number:04d}:cell:{column_number:04d}")
 
 
 def list_number(value: Any) -> int | None:
@@ -706,7 +713,10 @@ def _image_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str
     return _base_block(article, source_order, "image", evidence_ids=evidence_ids, **fields)
 
 
-def _table_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str, Any], evidence_ids: list[str]) -> dict[str, Any]:
+def _table_block(
+    article: Mapping[str, Any], source_order: int, raw: Mapping[str, Any],
+    evidence_ids: list[str], preserve_marked_cells: bool,
+) -> dict[str, Any]:
     rows = raw.get("rows")
     if not isinstance(rows, list):
         rows = []
@@ -722,7 +732,7 @@ def _table_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str
             values = row
         if not isinstance(values, list):
             values = [values]
-        clean_rows.append([_table_cell(value) for value in values])
+        clean_rows.append([_table_cell(value, evidence_ids=evidence_ids, preserve_marked_cells=preserve_marked_cells) for value in values])
     columns = raw.get("columns") if isinstance(raw.get("columns"), list) else []
     images_raw = raw.get("images")
     clean_images: list[dict[str, Any]] = []
@@ -823,7 +833,7 @@ def _text_block_images(raw: Mapping[str, Any]) -> list[dict[str, Any]]:
     return output
 
 
-def _table_cell(value: Any) -> Any:
+def _table_cell(value: Any, *, evidence_ids: list[str], preserve_marked_cells: bool) -> Any:
     if not isinstance(value, Mapping):
         return _clean_text(value)
     text_parts: list[str] = []
@@ -841,6 +851,14 @@ def _table_cell(value: Any) -> Any:
         if isinstance(direct_img, Mapping):
             images.append(_normalize_cell_image(direct_img))
     nested = value.get("blocks")
+    if preserve_marked_cells and isinstance(nested, list) and value.get("_preserve_cell_block_order") is True:
+        return {
+            "text": direct_text,
+            "blocks": build_ordered_document(
+                {"evidence_ids": evidence_ids}, nested, preserve_marked_cells=preserve_marked_cells,
+            )["blocks"],
+            **({"images": images} if images else {}),
+        }
     if isinstance(nested, list):
         for child in nested:
             if not isinstance(child, Mapping):
@@ -869,7 +887,10 @@ def _list_values(raw):
     return values if isinstance(values, list) else [values]
 
 
-def _list_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str, Any], evidence_ids: list[str], kind: str) -> dict[str, Any]:
+def _list_block(
+    article: Mapping[str, Any], source_order: int, raw: Mapping[str, Any],
+    evidence_ids: list[str], kind: str, preserve_marked_cells: bool,
+) -> dict[str, Any]:
     ordered = kind == "ordered_list"
     start = list_number(raw.get("start")) if ordered else None
     clean_items: list[str | dict[str, Any]] = []
@@ -891,7 +912,9 @@ def _list_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str,
         children = []
         if isinstance(child_blocks, list) and child_blocks:
             item_evidence = _evidence_ids(value, {"evidence_ids": evidence_ids})
-            children = build_ordered_document({"evidence_ids": item_evidence}, child_blocks)["blocks"]
+            children = build_ordered_document(
+                {"evidence_ids": item_evidence}, child_blocks, preserve_marked_cells=preserve_marked_cells,
+            )["blocks"]
         number = list_number(value.get("number")) if ordered else None
         if children or images or number is not None:
             item: dict[str, Any] = {"text": text}

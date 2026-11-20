@@ -1756,3 +1756,70 @@ def test_authored_headings_keep_metadata_and_instruction_boundaries(capture_fixt
         ("paragraph", None, "Inspect the cover."),
     ]
     assert [slot["text"] for slot in prose_slots(document)] == ["Remove the pump.", "Inspect the cover."]
+
+
+def test_bound_pdf_embed_keeps_table_cell_order_and_refuses_unbound_markup(capture_fixture):
+    from io import BytesIO
+
+    from reportlab.pdfgen import canvas
+    from autodata_ingestion.article_document import validate_ordered_document
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    pdf_bytes = BytesIO()
+    pdf = canvas.Canvas(pdf_bytes)
+    pdf.drawString(72, 718, "Check the drive seal.")
+    pdf.save()
+    fixture = capture_fixture
+    fixture.body("bankone", (
+        b'<p>Inspect the housing.</p><table><tr><td>Drive reference'
+        b'<iframe src="/docs/drive"></iframe>Finish the inspection.</td><td>Torque reference'
+        b'<object type="application/pdf" data="/docs/drive"></object></td></tr></table>'
+        b'<iframe src="/docs/unbound"><p>Hidden fallback text</p></iframe>'
+        b'<p>Install the cover.</p>'
+    ), assets=["drive"], asset_bindings=[{"source_url": "/docs/drive", "resource_ref": "drive"}])
+    fixture.body("bankone", pdf_bytes.getvalue(), "application/pdf", ref="drive", kind="asset")
+    captured = capture_source_article(
+        fixture.context("bankone"), registry=fixture.registry, object_store=fixture.objects,
+        keep_bound_pdf_iframes=True,
+    )
+    assert captured.projection_version == "source-projection-v6"
+    assert captured.projection_status == "readable"
+    assert not validate_ordered_document(captured.source_document, strict=True)
+    table = captured.source_document["blocks"][1]
+    left, right = table["rows"][0]
+    assert [node["text"] for node in left["blocks"]] == [
+        "Drive reference", "Check the drive seal.", "Finish the inspection.",
+    ]
+    assert [node["text"] for node in right["blocks"]] == ["Torque reference", "Check the drive seal."]
+    assert "Hidden fallback text" not in captured.source_body
+    assert "/docs/" not in repr(captured.source_document)
+    assert fixture.resource_calls("bankone", "drive") == 1
+    assert fixture.resource_calls("bankone", "unbound") == 0
+
+
+@pytest.mark.parametrize(("mime", "payload", "reason"), [
+    ("image/png", b"not permitted", "UNSUPPORTED_DOCUMENT_MEDIA"),
+    ("application/pdf", b"not a PDF", "DOCUMENT_EXTRACTION_UNAVAILABLE"),
+])
+def test_bound_embed_validation_keeps_surrounding_procedure(capture_fixture, mime, payload, reason):
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    fixture = capture_fixture
+    fixture.body("banktwo", (
+        b'<p>Remove the cover.</p><embed type="application/pdf" src="/docs/drive">'
+        b'<p>Install the cover.</p>'
+    ), assets=["drive"], asset_bindings=[{"source_url": "/docs/drive", "resource_ref": "drive"}])
+    fixture.body("banktwo", payload, mime, ref="drive", kind="asset")
+    captured = capture_source_article(
+        fixture.context("banktwo"), registry=fixture.registry, object_store=fixture.objects,
+        keep_bound_pdf_iframes=True,
+    )
+    assert captured.projection_version == "source-projection-v6"
+    assert captured.projection_status == "partial"
+    before, placeholder, after = captured.source_document["blocks"]
+    assert before["text"] == "Remove the cover." and after["text"] == "Install the cover."
+    assert placeholder["type"] == "callout" and placeholder["label"] == "Embedded document unavailable"
+    assert captured.source_images == []
+    assert captured.resource_manifest[-1] == {
+        "role": "document_asset", "opaque_ref": "drive", "failure_code": reason,
+    }

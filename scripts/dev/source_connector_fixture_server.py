@@ -32,9 +32,9 @@ class ConnectorFixture:
         self.lock = Lock()
 
     def body(
-        self, payload, media_type="text/html", ref="body", kind="article", assets=()
+        self, payload, media_type="text/html", ref="body", kind="article", assets=(), *, asset_bindings=(),
     ):
-        self.resources[ref] = (payload, media_type, kind, list(assets))
+        self.resources[ref] = (payload, media_type, kind, list(assets), list(asset_bindings))
 
     def envelope(self, **fields):
         return {
@@ -63,7 +63,7 @@ class ConnectorFixture:
             finally:
                 with self.lock:
                     self.active -= 1
-            payload, media, kind, assets = self.resources[ref]
+            payload, media, kind, assets, bindings = self.resources[ref]
             content = (
                 {"content_base64": base64.b64encode(payload).decode()}
                 if kind in ("asset", "binary")
@@ -74,6 +74,7 @@ class ConnectorFixture:
                 media_type=media,
                 sha256=sha256(payload).hexdigest(),
                 **content,
+                **({"asset_bindings": bindings} if bindings else {}),
                 **(
                     {"asset_resource_refs": assets}
                     if kind in ("article", "text", "labor")
@@ -168,6 +169,8 @@ def serve_model():
                     rewritten = {
                         "Inspect the alignment marks before removing the pump.": "Check the pump alignment marks before removal.",
                         "Remove the pump.": "Take off the pump.",
+                        "Inspect the seal.": "Check the seal.",
+                        "Install the replacement.": "Fit the replacement unit.",
                     }.get(text, text)
                     return {
                         "block_id": slot["block_id"],

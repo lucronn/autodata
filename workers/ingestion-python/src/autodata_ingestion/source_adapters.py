@@ -1718,7 +1718,8 @@ def _maintenance_xml_blocks(text: str) -> list[dict[str, Any]]:
 
 
 def adapt_bound_article(
-    resource: SourceResource, context, *, keep_embedded_pdf: bool = False, keep_html_headings: bool = False,
+    resource: SourceResource, context, *, keep_embedded_pdf: bool = False,
+    keep_html_headings: bool = False, keep_bound_pdf_iframes: bool = False,
 ) -> dict[str, Any]:
     """Adapt fetched bytes under proven connector scope, without weakening URL intake."""
     from .banktwo_connector import ArticleParser
@@ -1816,9 +1817,8 @@ def adapt_bound_article(
                     locator="body.pdf",
                     metadata={"embedded_in_content_sha256": resource.content_sha256},
                 )
-                artifact = _adapt_pdf_resource(nested, nested.metadata, max_pages=_MAX_BOUND_EMBEDDED_PDF_PAGES)
                 return {
-                    "blocks": _bound_pdf_blocks(artifact),
+                    "blocks": bound_pdf_embed_blocks(nested),
                     "asset_resource_refs": article.get("asset_resource_refs", []),
                     "embedded_pdf": True,
                 }
@@ -1845,7 +1845,10 @@ def adapt_bound_article(
                         resource.locator,
                         resource.metadata,
                     )
-                    return adapt_bound_article(nested, context, keep_html_headings=keep_html_headings)
+                    return adapt_bound_article(
+                        nested, context, keep_html_headings=keep_html_headings,
+                        keep_bound_pdf_iframes=keep_bound_pdf_iframes,
+                    )
                 blocks = segment_plain_article_text(text)
         return {
             "blocks": blocks,
@@ -1862,6 +1865,7 @@ def adapt_bound_article(
             asset_bindings=resource.metadata.get("asset_bindings", []),
             preserve_legacy_list_starts=False,
             keep_html_headings=keep_html_headings,
+            keep_bound_pdf_iframes=keep_bound_pdf_iframes,
         )
         parser.feed(html)
         parser.close()
@@ -1895,6 +1899,7 @@ def adapt_bound_article(
             "blocks": parser.blocks,
             "asset_resource_refs": [],
             **({"authored_html_headings": True} if keep_html_headings else {}),
+            **({"handled_pdf_embeds": True} if parser.handled_pdf_embeds else {}),
         }
     if media == "text/plain":
         return {
@@ -1904,6 +1909,15 @@ def adapt_bound_article(
     if media == "application/pdf":
         return {"blocks": _bound_pdf_blocks(adapt_source_resource(resource)), "asset_resource_refs": []}
     raise ValueError("unsupported article media")
+
+
+def bound_pdf_embed_blocks(resource: SourceResource) -> list[dict[str, Any]]:
+    if (resource.media_type != "application/pdf"
+            or len(resource.payload) > _MAX_BOUND_EMBEDDED_PDF_BYTES
+            or not resource.payload.startswith(b"%PDF-")):
+        raise ValueError("invalid embedded PDF")
+    artifact = _adapt_pdf_resource(resource, resource.metadata, max_pages=_MAX_BOUND_EMBEDDED_PDF_PAGES)
+    return _bound_pdf_blocks(artifact)
 
 
 def _bound_pdf_blocks(artifact: SourceArtifact) -> list[dict[str, Any]]:

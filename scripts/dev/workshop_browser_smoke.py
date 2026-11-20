@@ -1285,6 +1285,25 @@ class APIAssertions(dict):
         super().__setitem__(name,value)
 
 
+async def expect_linked_pdf(article, *, rewritten=False):
+    from playwright.async_api import expect
+
+    cell = article.locator('ol[start="4"] > li[value="9"] table td')
+    figure = cell.locator('figure:has(img[alt="Figure from page 1"])')
+    await expect(figure).to_have_count(1)
+    await expect(cell.locator(':scope > p')).to_have_text(
+        ['Check the seal.', 'Fit the replacement unit.'] if rewritten
+        else ['Inspect the seal.', 'Install the replacement.']
+    )
+    assert await cell.locator(':scope > :is(p, figure)').evaluate_all(
+        "nodes => nodes.map(node => node.tagName).join(',')"
+    ) == "P,FIGURE,P"
+    assert await article.locator('iframe, object, embed').count() == 0
+    await expect(article).not_to_contain_text('Hidden fallback.')
+    assert "/provider-private/" not in await article.inner_html()
+    await expect(figure.locator('img')).to_have_js_property('naturalWidth', 96)
+
+
 async def api_case(browser,origin,name,output,observations=None):
     from playwright.async_api import expect
     context=page=None;failure=None;result=None
@@ -1308,6 +1327,7 @@ async def api_case(browser,origin,name,output,observations=None):
         response=await api21_get(context,origin+'/__fixture/metadata',phase='metadata');metadata=await response.json()
         assert metadata['kind']=='api-fixture'
         scope=metadata['scope'];configuration=scope['configuration'];article_id=scope['article']
+        linked_pdf = name == API_CASES[1] and scope['provider'] == 'banktwo'
         if observations:observations.scope=dict(scope)
         route=origin+'/workshop/?configuration='+configuration+'&region=US'
         before=await api_measure(context,origin,'initial-measurement')
@@ -1410,29 +1430,37 @@ async def api_case(browser,origin,name,output,observations=None):
             await expect(page.locator('#print')).to_be_enabled()
             figure = page.locator('#article-content figure:has(img[alt="Alignment marks"])')
             await expect(figure).to_have_count(1)
-            await expect(page.locator('#article-content figure:has(img[alt="Alignment marks"]) figcaption')).to_have_text('Pump alignment marks')
+            if not linked_pdf:
+                await expect(page.locator('#article-content figure:has(img[alt="Alignment marks"]) figcaption')).to_have_text('Pump alignment marks')
             assert await figure.evaluate("node => node.previousElementSibling.textContent.includes('Inspect the alignment marks')")
             nested_item = '#article-content ol[start="4"] > li[value="9"]:has(table)'
-            nested_figure = nested_item + ' table td figure:has(img[alt="Drive alignment"])'
             await expect(page.locator(nested_item + " > p").first).to_have_text("Remove the pump.")
-            await expect(page.locator(nested_item + " table caption")).to_have_text("Alignment reference")
-            await expect(page.locator(nested_figure)).to_have_count(1)
-            await expect(page.locator(nested_figure + " figcaption")).to_have_text("Drive alignment reference")
-            await expect(page.locator(nested_item + " aside")).to_contain_text("Keep the drive seal in place.")
+            if linked_pdf:
+                await expect_linked_pdf(article_content)
+            else:
+                nested_figure = nested_item + ' table td figure:has(img[alt="Drive alignment"])'
+                await expect(page.locator(nested_item + " table caption")).to_have_text("Alignment reference")
+                await expect(page.locator(nested_figure)).to_have_count(1)
+                await expect(page.locator(nested_figure + " figcaption")).to_have_text("Drive alignment reference")
+                await expect(page.locator(nested_item + " aside")).to_contain_text("Keep the drive seal in place.")
             await page.wait_for_function(
                 "Array.from(document.querySelectorAll('#article-content td img')).some(img => img.complete && img.naturalWidth > 0)"
             )
             await page.wait_for_function("Array.from(document.querySelectorAll('#article-content img')).some(img => img.complete && img.naturalWidth > 0)")
-            image_url=await page.locator('#article-content img').first.get_attribute('src')
+            image_locator = 'img[alt="Figure from page 1"]' if linked_pdf else 'img'
+            image_url=await article_content.locator(image_locator).first.get_attribute('src')
             assert urlsplit(image_url).path.startswith('/v1/catalog/images/v2.')
             image=await api21_get(context,image_url,phase='source-image-http');assert image.status==200 and len(await image.body())>0
             if observations:observations.phase='source-review-http'
             await page.locator('#article-reference summary').click();await page.locator('#source-review-load').click()
             await expect(page.locator('#source-review-frame')).to_contain_text('Remove the pump.')
-            stored_figure = page.locator(
-                '#source-review-frame ol[start="4"] > li[value="9"] table td figure img[alt="Drive alignment"]'
-            )
-            await expect(stored_figure).to_have_count(1)
+            if linked_pdf:
+                await expect_linked_pdf(page.locator('#source-review-frame'))
+            else:
+                stored_figure = page.locator(
+                    '#source-review-frame ol[start="4"] > li[value="9"] table td figure img[alt="Drive alignment"]'
+                )
+                await expect(stored_figure).to_have_count(1)
             source_path=await page.locator('#source-review-link').get_attribute('href')
             assert parse_qs(urlsplit(source_path).query).get('source_revision_id')
             assertions['paid_source_and_actual_s3_image']=True
@@ -1446,11 +1474,15 @@ async def api_case(browser,origin,name,output,observations=None):
             await expect(article_content).to_contain_text('Do not run the pump dry.')
             await expect(article_content).not_to_contain_text('Remove the pump.')
             await expect(figure).to_have_count(1)
-            await expect(page.locator('#article-content figure:has(img[alt="Alignment marks"]) figcaption')).to_have_text('Pump alignment marks')
+            if not linked_pdf:
+                await expect(page.locator('#article-content figure:has(img[alt="Alignment marks"]) figcaption')).to_have_text('Pump alignment marks')
             assert await figure.evaluate("node => node.previousElementSibling?.textContent.includes('Check the pump alignment marks')")
             await expect(page.locator(nested_item + " > p").first).to_have_text("Take off the pump.")
-            await expect(page.locator(nested_figure + " figcaption")).to_have_text("Drive alignment reference")
-            await expect(page.locator(nested_item + " aside")).to_contain_text("Keep the drive seal in place.")
+            if linked_pdf:
+                await expect_linked_pdf(article_content, rewritten=True)
+            else:
+                await expect(page.locator(nested_figure + " figcaption")).to_have_text("Drive alignment reference")
+                await expect(page.locator(nested_item + " aside")).to_contain_text("Keep the drive seal in place.")
             await expect(page.locator('#article-content .source-reference').first).to_be_visible()
             warm_before=await api_snapshot(context,origin,'warm-before-snapshot')
             reader_before=(await api_measure(context,origin,'reader-before-measurement'))['image_reads']
@@ -1463,7 +1495,7 @@ async def api_case(browser,origin,name,output,observations=None):
             assert warm_detail.status==200
             assert (await warm_detail.json())['article']['content_origin']=='canonical'
             await expect(page.locator('#article-content img')).not_to_have_count(0)
-            warm_image=await page.locator('#article-content img').first.get_attribute('src')
+            warm_image=await article_content.locator(image_locator).first.get_attribute('src')
             delivered=await api21_get(context,warm_image,phase='warm-image-http');assert delivered.status==200 and len(await delivered.body())>0
             pinned=await api21_get(context,origin+source_path,phase='warm-pinned-source-http',
                                    headers={'Accept':'application/json'})
