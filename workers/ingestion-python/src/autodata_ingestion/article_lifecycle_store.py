@@ -556,7 +556,7 @@ def _require_full_approval(cur, job, article, candidate):
 def automatic_candidate_validation(cur, job, candidate):
     """Rebuild automatic source, prompt and output from immutable saved evidence."""
     from .article_lifecycle_types import digest_json
-    from .procedure_rewrite_auto import PROFILE, _matches_auto_prompt_hash, validate_auto
+    from .procedure_rewrite_auto import PROFILE, _auto_prompt_version, validate_auto
     from .procedure_normalize import normalize_procedure_article
     if candidate is None:
         raise ValueError("automatic candidate binding missing")
@@ -605,12 +605,15 @@ def automatic_candidate_validation(cur, job, candidate):
         or attempt["profile_version"] != PROFILE or not isinstance(attempt["response"],dict)
         or attempt["response_hash"] != digest_json(attempt["response"])
         or attempt["input_hash"] != digest_json(source)
-        or not _matches_auto_prompt_hash(source,context=context["vehicle"],prompt_hash=attempt["prompt_hash"])
         or attempt["prompt_hash"] != candidate["model_metadata"].get("prompt_hash")
         or attempt["model"] != candidate["model_metadata"].get("model")
         or candidate["model_metadata"].get("profile_version") != PROFILE):
         raise ValueError("automatic saved evidence binding mismatch")
-    validation = validate_auto(source,candidate["canonical_document"],response=attempt["response"])
+    prompt_version = _auto_prompt_version(source, context=context["vehicle"], prompt_hash=attempt["prompt_hash"])
+    if prompt_version is None:
+        raise ValueError("automatic saved prompt binding mismatch")
+    validation = validate_auto(
+        source, candidate["canonical_document"], response=attempt["response"], prompt_version=prompt_version)
     if not validation.passed:
         raise ValueError("automatic rewrite operation binding mismatch")
     return validation

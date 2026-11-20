@@ -795,6 +795,9 @@ def automatic_runtime(runtime, provider):
             model.calls += 1
             replacements = [{"block_id":slot["block_id"],"path":slot["path"],"action":"rewrite",
                 "text":slot["text"].replace("Remove", "Take off"),"reason":""} for slot in prompt["slots"]]
+            if model.mode in {"copy", "unsafe"}:
+                for slot, row in zip(prompt["slots"], replacements):
+                    row["text"] = "First, " + slot["text"] if model.mode == "copy" else "Reconnect the battery."
             result = {"introduction":"This procedure describes removing the pump.","replacements":replacements}
             raw = json.dumps({"choices":[{"message":{"content":json.dumps(result)}}]}).encode()
             self.send_response(200);self.send_header("Content-Type","application/json")
@@ -837,26 +840,72 @@ def test_automatic_real_runtime_source_first_publication_and_zero_call_restart(r
 
 
 @pytest.mark.parametrize("point", ["after_model_result_commit", "inside_publication"])
-@pytest.mark.parametrize("prompt_version", ["v1", "v2"])
+@pytest.mark.parametrize("prompt_version", ["v1", "v2", "v4"])
 def test_automatic_real_process_death_reuses_saved_response(runtime, point, prompt_version):
     ensure = automatic_runtime(runtime,"bankone")
     ensure();runtime.pause(point);runtime.start_workers(1);runtime.await_barrier()
     job = runtime.current_job_id();runtime.kill_worker();runtime.expire_lease(job)
-    if prompt_version == "v1":
+    if prompt_version in {"v1", "v2"}:
         from hashlib import sha256
         from psycopg.types.json import Jsonb
-        from autodata_ingestion.procedure_rewrite_auto import _build_auto_prompt_v1
+        from autodata_ingestion.article_lifecycle_types import digest_json
+        from autodata_ingestion.procedure_rewrite_auto import _build_auto_prompt_v1, _build_auto_prompt_v2, validate_auto
+        build_prompt = _build_auto_prompt_v1 if prompt_version == "v1" else _build_auto_prompt_v2
         with runtime.repo.connect() as conn:
             candidate = conn.execute("SELECT r.* FROM canonical_article_revisions r JOIN source_fetch_jobs j USING(transformation_key) WHERE j.source_fetch_job_id=%s", (job,)).fetchone()
             context = conn.execute("SELECT captured_context FROM canonical_article_source_observations WHERE source_revision_id=%s ORDER BY captured_at LIMIT 1", (candidate["source_revision_id"],)).fetchone()["captured_context"]
-            legacy_hash = sha256(_build_auto_prompt_v1(candidate["normalized_source_document"], context=context["vehicle"]).encode()).hexdigest()
-            conn.execute("UPDATE canonical_article_rewrite_attempts SET prompt_hash=%s WHERE canonical_article_revision_id=%s", (legacy_hash, candidate["canonical_article_revision_id"]))
-            conn.execute("UPDATE canonical_article_revisions SET model_metadata=%s WHERE canonical_article_revision_id=%s", (Jsonb({**candidate["model_metadata"], "prompt_hash": legacy_hash}), candidate["canonical_article_revision_id"]))
+            legacy_hash = sha256(build_prompt(candidate["normalized_source_document"], context=context["vehicle"]).encode()).hexdigest()
+            response = conn.execute("""UPDATE canonical_article_rewrite_attempts SET prompt_hash=%s
+                WHERE canonical_article_revision_id=%s RETURNING response""",
+                (legacy_hash, candidate["canonical_article_revision_id"])).fetchone()["response"]
+            conn.execute("UPDATE canonical_article_revisions SET model_metadata=%s WHERE canonical_article_revision_id=%s",
+                (Jsonb({**candidate["model_metadata"], "prompt_hash": legacy_hash}), candidate["canonical_article_revision_id"]))
+            if point == "inside_publication":
+                # The earlier validation commit would also have used the old rules.
+                report = validate_auto(
+                    candidate["normalized_source_document"], candidate["canonical_document"],
+                    response=response, prompt_version=f"full-prose-auto-prompt-{prompt_version}",
+                ).report
+                validation_hash = digest_json(report)
+                conn.execute("""UPDATE canonical_article_revisions SET validation_report=%s, validation_hash=%s
+                    WHERE canonical_article_revision_id=%s""",
+                    (Jsonb(report), validation_hash, candidate["canonical_article_revision_id"]))
+                conn.execute("""UPDATE source_fetch_jobs SET checkpoint=checkpoint||%s
+                    WHERE source_fetch_job_id=%s""", (Jsonb({"validation_hash": validation_hash}), job))
     runtime.barrier = None;runtime.start_workers(2);runtime.await_publication();runtime.stop_workers()
     assert runtime.counters() == {"source":1,"asset":0,"model":1,"schedule":1}
     with runtime.repo.connect() as conn:
         assert conn.execute("SELECT count(*) AS n FROM publication_events").fetchone()["n"] == 1
         assert conn.execute("SELECT count(*) AS n FROM canonical_article_rewrite_attempts").fetchone()["n"] == 1
+
+
+@pytest.mark.parametrize("mode,source_html,expected_text,expected_code", [
+    ("copy", b"<ol><li>Remove the pump.</li></ol>", "Remove the pump.", "REWRITE_PROSE_TOO_SIMILAR"),
+    (
+        "unsafe", b"<p>Never connect the battery while the connector is wet.</p>",
+        "Never connect the battery while the connector is wet.", "REWRITE_SAFETY_MUTATION",
+    ),
+])
+def test_automatic_rejected_rewrite_leaves_source_readable(runtime, mode, source_html, expected_text, expected_code):
+    ensure = automatic_runtime(runtime, "bankone")
+    runtime.change_fixture_body(source_html)
+    runtime.model.mode = mode
+    job = ensure().job_id
+    runtime.start_workers(1)
+    runtime.wait_for(lambda: runtime.read_current()["processing_error_code"] == expected_code)
+    runtime.stop_workers()
+
+    state = runtime.read_current()
+    assert state["content_origin"] == "source"
+    assert state["canonical_revision_id"] is None
+    assert expected_text in state["body"]
+    with runtime.repo.connect() as conn:
+        attempt = conn.execute(
+            "SELECT status, error_code FROM canonical_article_rewrite_attempts WHERE source_fetch_job_id=%s", (job,),
+        ).fetchone()
+        assert attempt == {"status": "failed", "error_code": expected_code}
+        assert conn.execute("SELECT count(*) AS n FROM publication_events").fetchone()["n"] == 0
+    assert runtime.counters() == {"source": 1, "asset": 0, "model": 1, "schedule": 1}
 
 
 @pytest.mark.parametrize("failure,expected_code,expected_stage", [
