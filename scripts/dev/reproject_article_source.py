@@ -13,6 +13,19 @@ from autodata_ingestion.source_revision_reprojection import reproject_stored_sou
 from autodata_ingestion.article_lifecycle_types import article_id
 
 
+def article_archive(repo=None, object_store=None):
+    if repo is None or object_store is None:
+        from autodata_ingestion.worker import ArticleRepository, ArticleObjectStore
+        if repo is None: repo = ArticleRepository()
+        if object_store is None:
+            endpoint = os.environ["AUTODATA_S3_ENDPOINT"]
+            parsed = urlsplit(endpoint if "://" in endpoint else "http://" + endpoint)
+            object_store = ArticleObjectStore(endpoint=parsed.netloc, secure=parsed.scheme == "https",
+                access_key=os.environ["AUTODATA_S3_ACCESS_KEY"], secret_key=os.environ["AUTODATA_S3_SECRET_KEY"],
+                bucket=os.environ["AUTODATA_SOURCE_BUCKET"])
+    return repo, object_store
+
+
 def main(argv=None, *, repo=None, object_store=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--article-id", type=UUID, required=True)
@@ -32,15 +45,7 @@ def main(argv=None, *, repo=None, object_store=None):
         parser.error("--apply requires --actor, --reason, --expected-fingerprint and --expected-body-sha256")
     if args.apply and args.retained_media and not (args.expected_observation_id and args.expected_document_sha256):
         parser.error("--apply --retained-media requires --expected-observation-id and --expected-document-sha256")
-    if repo is None or object_store is None:
-        from autodata_ingestion.worker import ArticleRepository, ArticleObjectStore
-        if repo is None: repo = ArticleRepository()
-        if object_store is None:
-            endpoint = os.environ["AUTODATA_S3_ENDPOINT"]
-            parsed = urlsplit(endpoint if "://" in endpoint else "http://" + endpoint)
-            object_store = ArticleObjectStore(endpoint=parsed.netloc, secure=parsed.scheme == "https",
-                access_key=os.environ["AUTODATA_S3_ACCESS_KEY"], secret_key=os.environ["AUTODATA_S3_SECRET_KEY"],
-                bucket=os.environ["AUTODATA_SOURCE_BUCKET"])
+    repo, object_store = article_archive(repo, object_store)
     if args.retained_media:
         result = replay_media(args, repo, object_store)
         print(json.dumps(result, sort_keys=True))

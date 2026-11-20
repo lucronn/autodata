@@ -10,7 +10,7 @@ from .procedure_rewrite_auto import PROFILE, render_auto, validate_auto
 from .procedure_rewrite_full import PROFILE as REVIEW_PROFILE
 from .procedure_rewrite_full import _source_valid, prose_slots, render_full, validate_full
 
-_SUPPORTED_PROMPTS = frozenset(f"full-prose-auto-prompt-v{version}" for version in range(1, 7))
+_SUPPORTED_PROMPTS = frozenset(f"full-prose-auto-prompt-v{version}" for version in range(1, 8))
 _POSITION_KEYS = frozenset({"block_id", "source_order"})
 _IMAGE_KEYS = _POSITION_KEYS | {"type"}
 _METHOD = "published-media-placement-v1"
