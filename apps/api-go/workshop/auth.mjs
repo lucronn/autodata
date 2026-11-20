@@ -129,17 +129,17 @@ export function createSession({
       state.authenticated = false;
       state.csrf = "";
       state.ready = false;
-      try {
-        config = await request("/auth/config", { signal, timeout: 10000 });
-      } catch {
-        config = null;
-      }
+      const [configuration, session] = await Promise.allSettled([
+        request("/auth/config", { signal, timeout: 10000 }),
+        request("/auth/session", { signal, timeout: 10000 }),
+      ]);
       if (signal?.aborted || current !== epoch) return;
+      config = configuration.status === "fulfilled" ? configuration.value : null;
       state.mode = ["local", "firebase"].includes(config?.mode) ? config.mode : null;
       state.available = validLoginConfig(config);
       try {
-        const data = await request("/auth/session", { signal, timeout: 10000 });
-        if (signal?.aborted || current !== epoch) return;
+        if (session.status === "rejected") throw session.reason;
+        const data = session.value;
         if (!validSession(data)) throw new Error("Invalid session");
         state.authenticated = true;
         state.csrf = data.csrf_token;

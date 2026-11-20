@@ -419,13 +419,15 @@ function purchaseConfigured() {
   });
 }
 async function selectVehicle(g, articleID = "") {
+  if (!g.current()) return;
   clearProtected();
   quote = null;
   $("agreement").checked = false;
   renderPurchase();
   if (!validScope(scope())) return;
   const selected = scope();
-  if (!openDemo && merchant?.enabled === true) {
+  const quoteRequest = (async () => {
+    if (openDemo || merchant?.enabled !== true) return;
     try {
       const q = await requestJSON(
         `/v1/workshop/quote?configuration_id=${selected.configuration_id}&region=${selected.region}`,
@@ -433,18 +435,31 @@ async function selectVehicle(g, articleID = "") {
       );
       if (!g.current()) return;
       quote = validQuote(q, selected) ? q : null;
-    } catch (error) {
-      if (g.signal.aborted) throw error;
+      renderPurchase();
+      if (access === "owned") {
+        const label = $("purchase-selection").textContent;
+        $("vehicle-caption").textContent = label;
+        $("reader-vehicle").textContent = label;
+      }
+    } catch {
+      // The quote is optional for owned articles. Its absence keeps Buy disabled.
     }
-  }
-  if (!g.current()) return;
-  renderPurchase();
+  })();
   if (!openDemo && !session.state.authenticated) {
+    await quoteRequest;
+    if (!g.current()) return;
     show("welcome");
     status("Sign in to check access to your selected vehicle.");
     return;
   }
-  await loadArticles(g, articleID);
+  try {
+    await loadArticles(g, articleID);
+  } catch (error) {
+    // When a purchase is required, present the price or its unavailable state
+    // with the access result so the UI does not announce a false checkout failure.
+    if (error.code === "ENTITLEMENT_REQUIRED") await quoteRequest;
+    throw error;
+  }
 }
 async function loadArticles(g, articleID = "") {
   if (!g.current()) return;
@@ -626,7 +641,7 @@ function imageMap(article) {
     ...(article?.steps || []).flatMap((step) => step.images || []),
   ];
 }
-function addImage(parent, image, caption, g) {
+function addImage(parent, image, caption, g, alt = caption) {
   const figure = element("figure");
   const url = localImageURL(image?.url, location.origin, { authMode: session.state.mode }),
     id = assetID(image);
@@ -634,7 +649,7 @@ function addImage(parent, image, caption, g) {
     const img = element("img");
     img.dataset.assetId = id;
     img.src = url;
-    img.alt = caption || image.alt || "Article illustration";
+    img.alt = alt || image.alt || caption || "Article illustration";
     img.referrerPolicy = "no-referrer";
     img.addEventListener("error", () => {
       if (g.current()) void renewMedia(g, img);
@@ -667,16 +682,14 @@ function renderBlocks(parent, blocks, images, review, g) {
   for (const block of blocks || []) {
     if (!block || typeof block !== "object") continue;
     const type = block.type;
-    if (type === "heading")
-      parent.append(
-        element(
-          `h${Math.max(3, Math.min(6, Number(block.level) || 3))}`,
-          block.text ?? "",
-        ),
-      );
-    else if (type === "paragraph" || type === "link")
-      parent.append(element("p", block.text ?? ""));
-    else if (type === "callout") {
+    if (type === "heading" || type === "paragraph" || type === "link") {
+      const tag = type === "heading"
+        ? `h${Math.max(3, Math.min(6, Number(block.level) || 3))}`
+        : "p";
+      parent.append(element(tag, block.text ?? ""));
+      for (const ref of block.images || [])
+        addImage(parent, find(ref), ref?.caption, g, ref?.alt);
+    } else if (type === "callout") {
       const aside = element("aside", undefined, "article-callout");
       const content = element("div");
       content.append(element("span", block.text ?? ""));
@@ -1315,15 +1328,14 @@ async function signIn() {
 }
 async function bootstrap() {
   invalidate();
-  if (!openDemo) await session.bootstrap();
-  sessionEstablished = true;
   if (!openDemo) {
-    try {
-      merchant = await requestJSON("/workshop/purchase-config.json");
-    } catch {
-      merchant = null;
-    }
+    const [, config] = await Promise.all([
+      session.bootstrap(),
+      requestJSON("/workshop/purchase-config.json").catch(() => null),
+    ]);
+    merchant = config;
   }
+  sessionEstablished = true;
   await restoreRoute();
 }
 async function restoreRoute() {
