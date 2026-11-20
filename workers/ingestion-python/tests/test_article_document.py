@@ -331,6 +331,8 @@ def test_image_block_preserves_asset_resource_ref_and_attributes():
 
 
 def test_list_block_extracts_clean_text_from_dictionary_items():
+    from autodata_ingestion.article_document import has_structured_list_items
+
     article = {"article_id": "test-list-dicts"}
     document = build_ordered_document(
         article,
@@ -347,6 +349,7 @@ def test_list_block_extracts_clean_text_from_dictionary_items():
         ],
     )
     assert validate_ordered_document(document) == []
+    assert not has_structured_list_items(document)
     block = document["blocks"][0]
     assert block["type"] == "unordered_list"
     assert block["items"] == [
@@ -813,9 +816,80 @@ def test_list_item_images_prescan_deduplication():
     # trailing-fig-2 was not in the blocks, so it gets appended by figure_queue.
     assert len(blocks) == 2
     assert blocks[0]["type"] == "ordered_list"
-    assert blocks[0]["items"] == ["Check 15A horn fuse.", "Check relay socket pins."]
+    first, second = blocks[0]["items"]
+    assert first["text"] == "Check 15A horn fuse."
+    assert first["images"][0]["image_id"] == "item-fig-1"
+    assert second == "Check relay socket pins."
+    assert "images" not in blocks[0]
     assert blocks[1]["type"] == "image"
     assert blocks[1]["image_id"] == "trailing-fig-2"
+
+
+def test_structured_list_keeps_nested_order_ids_and_item_figures():
+    from autodata_ingestion.article_document import has_structured_list_items
+
+    item_image = {"image_id": "item", "storage_key": "figures/item"}
+    nested_image = {"kind": "image", "image_id": "nested", "storage_key": "figures/nested"}
+    document = build_ordered_document(
+        {"article_id": "structured", "evidence_ids": ["source"],
+         "images": [item_image, nested_image]},
+        [
+            {"kind": "ordered_list", "items": [
+                {"text": "Remove the seal.", "images": [
+                    {**item_image, "caption": "First view"},
+                    {**item_image, "caption": "Second view"},
+                ], "blocks": [
+                    {"kind": "warning", "text": "Do not damage the seat."},
+                    nested_image,
+                    {"kind": "step", "text": "Check the groove."},
+                ]},
+                {"blocks": [
+                    {"kind": "step", "text": "Install the replacement."},
+                ]},
+                "Check the fitting.",
+            ]},
+            {"kind": "paragraph", "text": "Wipe excess fluid."},
+        ],
+    )
+    assert has_structured_list_items(document)
+    list_block, following = document["blocks"]
+    first, second, third = list_block["items"]
+    assert first["text"] == "Remove the seal."
+    assert [image["image_id"] for image in first["images"]] == ["item", "item"]
+    assert [image["caption"] for image in first["images"]] == ["First view", "Second view"]
+    assert [block["type"] for block in first["blocks"]] == ["callout", "image", "step"]
+    assert first["blocks"][1]["image_id"] == "nested"
+    assert [block["source_order"] for block in first["blocks"]] == [1, 2, 3]
+    assert first["blocks"][0]["evidence_ids"] == ["source"]
+    assert second["text"] == ""
+    assert second["blocks"][0]["text"] == "Install the replacement."
+    assert third == "Check the fitting."
+    assert "images" not in list_block
+    ids = [block["block_id"] for block in [list_block, *first["blocks"], *second["blocks"], following]]
+    assert len(ids) == len(set(ids))
+    assert following["block_id"] == "structured:block:0002"
+
+
+def test_short_structured_list_without_media_is_authoritative():
+    document = build_ordered_document(
+        {"article_id": "nested-actions", "evidence_ids": ["source"]},
+        [{"kind": "ordered_list", "items": [
+            {"text": "Remove the pump.", "blocks": [
+                {"kind": "paragraph", "text": "Lift the flange."},
+                {"kind": "step", "text": "Check the seal."},
+                {"kind": "warning", "text": "Do not reuse the seal."},
+            ]},
+        ]}],
+    )
+    assert validate_ordered_document(document, strict=True) == []
+    normalized = normalize_procedure_article({
+        "article_id": "nested-actions",
+        "normalized_document": document,
+        "body": "Remove the pump.\nLift the flange.\nCheck the seal.\nDo not reuse the seal.",
+    })
+    assert normalized["normalized_document"] == document
+    assert [step["action"] for step in normalized["steps"]] == ["Remove the pump.", "Check the seal."]
+    assert normalized["steps"][0]["instructions"] == ["Lift the flange."]
 
 
 def test_table_block_direct_images_and_title_heading_label():
@@ -1069,7 +1143,7 @@ def test_image_block_caption_fallback_to_description_and_legend():
     assert b2["alt"] == "Engine compartment fuse block layout"
 
 
-def test_list_block_preserves_label_title_heading_and_collects_item_images():
+def test_list_block_preserves_label_title_heading_and_retains_item_images():
     article = {"article_id": "test-list-label-images"}
     document = build_ordered_document(
         article,
@@ -1105,10 +1179,12 @@ def test_list_block_preserves_label_title_heading_and_collects_item_images():
     l1 = document["blocks"][0]
     assert l1["type"] == "unordered_list"
     assert l1["label"] == "Special Tools Required"
-    assert l1["items"] == ["Universal pulley holder", "19mm deep socket"]
-    assert "images" in l1
-    assert l1["images"][0]["image_id"] == "tool-holder-01"
-    assert l1["images"][0]["storage_key"] == "procedure-images/tool1"
+    first, second = l1["items"]
+    assert first["text"] == "Universal pulley holder"
+    assert second == "19mm deep socket"
+    assert first["images"][0]["image_id"] == "tool-holder-01"
+    assert first["images"][0]["storage_key"] == "procedure-images/tool1"
+    assert "images" not in l1
 
     l2 = document["blocks"][1]
     assert l2["type"] == "ordered_list"

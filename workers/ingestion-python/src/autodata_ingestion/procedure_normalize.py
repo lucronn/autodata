@@ -9,6 +9,7 @@ from typing import Any, Mapping
 from .article_document import (
     build_ordered_document,
     document_from_steps,
+    has_structured_list_items,
     segment_plain_article_text,
     validate_ordered_document,
 )
@@ -298,7 +299,9 @@ def _undersegmented_article(article: Mapping[str, Any]) -> bool:
     body = str(article.get("body") or "").strip()
     document = article.get("normalized_document")
     blocks = document.get("blocks") if isinstance(document, Mapping) else None
-    if isinstance(blocks, list) and (len(blocks) >= 4 or _has_positioned_media(blocks)):
+    if isinstance(blocks, list) and (
+        len(blocks) >= 4 or _has_positioned_media(blocks) or has_structured_list_items(document)
+    ):
         return False
     if body and (
         "\n" in body

@@ -729,7 +729,7 @@ def test_short_captured_document_keeps_media_for_auto_rewrite(capture_fixture, p
         "introduction": "This procedure covers pump removal.",
         "replacements": [
             {**slot, "action": "rewrite", "reason": "", "text": {
-                "Remove the pump.": "Take the pump out.",
+                "Remove the pump.": "Take the pump off.",
                 "Service the pump.": "Perform the pump service.",
                 "Inspect the seal.": "Check the seal.",
             }[slot["text"]]}
@@ -836,6 +836,107 @@ def test_nested_kindless_images_require_verified_provider_bytes(
     else:
         assert not image.get("storage_key")
         assert captured.projection_status == "partial"
+
+
+@pytest.mark.parametrize("provider", ["bankone", "banktwo"])
+def test_capture_keeps_structured_list_actions_and_media_through_full_rewrite(capture_fixture, provider):
+    import json
+
+    from autodata_ingestion.article_document import (
+        has_structured_list_items, project_ordered_document, validate_ordered_document,
+    )
+    from autodata_ingestion.procedure_normalize import normalize_procedure_article
+    from autodata_ingestion.procedure_rewrite_auto import render_auto, validate_auto
+    from autodata_ingestion.procedure_rewrite_full import prose_slots
+    from autodata_ingestion.source_article_capture import capture_source_article, project_document
+
+    payload = {
+        "blocks": [
+            {"kind": "ordered_list", "items": [
+                "Drain the pump.",
+                {"text": "Remove the pump.", "images": [
+                    {"asset_resource_ref": "orientation", "alt": "Orientation"},
+                ], "blocks": [
+                    {"kind": "step", "text": "Inspect the seal."},
+                    {"kind": "warning", "text": "Do not reuse the seal."},
+                    {"kind": "table", "columns": ["Part", "Torque"],
+                     "rows": [["Cover", {"text": "40 Nm", "images": [
+                         {"asset_resource_ref": "torque", "alt": "Torque diagram"},
+                     ]}]]},
+                    {"kind": "image", "asset_resource_ref": "missing", "alt": "Optional detail"},
+                ]},
+                {"blocks": [{"kind": "step", "text": "Fit the replacement."}]},
+                "Check the fitting.",
+            ], "images": [{"asset_resource_ref": "after", "alt": "Summary diagram"}]},
+        ],
+    }
+    raw = json.dumps(payload).encode()
+    capture_fixture.body(provider, raw, "application/json")
+    for ref in ("orientation", "torque", "after"):
+        capture_fixture.body(provider, ref.encode(), "image/png", ref=ref, kind="asset")
+    context = capture_fixture.context(provider)
+    captured = capture_source_article(
+        context, registry=capture_fixture.registry, object_store=capture_fixture.objects,
+    )
+    assert capture_fixture.objects.data[captured.resources[0]["object_key"]][0] == raw
+    assert has_structured_list_items(captured.source_document)
+    assert validate_ordered_document(captured.source_document, strict=True) == []
+    assert captured.source_body.splitlines() == [
+        "Drain the pump.", "Remove the pump.", "Inspect the seal.", "Do not reuse the seal.",
+        "Part", "Torque", "Cover", "40 Nm", "Fit the replacement.", "Check the fitting.",
+    ]
+    assert [step["text"] for step in captured.source_steps] == [
+        "Drain the pump.", "Remove the pump.", "Inspect the seal.", "Fit the replacement.",
+        "Check the fitting.",
+    ]
+    assert [step["number"] for step in captured.source_steps] == [1, 2, 3, 4, 5]
+    assert [image["alt"] for image in captured.source_images] == [
+        "Orientation", "Torque diagram", "Optional detail", "Summary diagram",
+    ]
+    assert [image["status"] for image in captured.source_images] == [
+        "available", "available", "unavailable", "available",
+    ]
+    assert captured.source_images[2]["unavailable_reason"] == "SOURCE_NOT_FOUND"
+    round_trip = json.loads(json.dumps(captured.source_document, sort_keys=True))
+    assert project_document(round_trip) == (
+        captured.source_body, captured.source_steps, captured.source_images,
+    )
+    article = {
+        "normalized_document": captured.source_document,
+        "body": captured.source_body,
+        "steps": captured.source_steps,
+        "images": captured.source_images,
+    }
+    normalized = normalize_procedure_article(article)["normalized_document"]
+    assert normalized == captured.source_document
+
+    slots = prose_slots(normalized)
+    assert [slot["text"] for slot in slots] == [step["text"] for step in captured.source_steps]
+    substitutions = {
+        "Drain the pump.": "Empty the pump.",
+        "Remove the pump.": "Take the pump off.",
+        "Inspect the seal.": "Check the seal condition.",
+        "Fit the replacement.": "Install the replacement.",
+        "Check the fitting.": "Inspect the fitting.",
+    }
+    response = {
+        "introduction": "This procedure covers pump service.",
+        "replacements": [
+            {**slot, "action": "rewrite", "reason": "", "text": substitutions[slot["text"]]}
+            for slot in slots
+        ],
+    }
+    canonical = render_auto(normalized, response)
+    assert validate_auto(normalized, canonical, response=response).passed
+    [_, rewritten_list] = canonical["blocks"]
+    rewritten_item = rewritten_list["items"][1]
+    source_item = captured.source_document["blocks"][0]["items"][1]
+    assert rewritten_item["images"] == source_item["images"]
+    assert rewritten_item["blocks"][0]["text"] == "Check the seal condition."
+    assert rewritten_item["blocks"][1:] == source_item["blocks"][1:]
+    canonical_projection = project_ordered_document(canonical)
+    assert [step["action"] for step in canonical_projection["steps"]] == list(substitutions.values())
+    assert canonical_projection["images"] == captured.source_images
 
 
 def test_unbound_image_cannot_keep_upstream_object_locators(capture_fixture):
