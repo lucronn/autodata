@@ -826,6 +826,14 @@ def automatic_runtime(runtime, provider):
                 original, replacement = model.explicit_rewrite
                 assert [slot["text"] for slot in prompt["slots"]] == [original]
                 replacements[0]["text"] = replacement
+            if model.mode == "explicit_specification":
+                original, mutation = model.explicit_specification
+                assert [slot["text"] for slot in prompt["slots"]] == ["Remove the pump.", original]
+                assert prompt["slots"][1]["required_action"] == "retain"
+                if mutation is None:
+                    replacements[1].update(action="retain", reason="Preserve the exact torque values.")
+                else:
+                    replacements[1]["text"] = mutation
             result = {"introduction":"This procedure describes removing the pump.","replacements":replacements}
             raw = json.dumps({"choices":[{"message":{"content":json.dumps(result)}}]}).encode()
             self.send_response(200);self.send_header("Content-Type","application/json")
@@ -870,13 +878,13 @@ def test_automatic_real_runtime_source_first_publication_and_zero_call_restart(r
 @pytest.mark.parametrize("point", ["after_model_result_commit", "inside_publication"])
 @pytest.mark.parametrize(
     "prompt_version",
-    ["v1", "v2", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v12", "v13", "v14", "v15", "v16"],
+    ["v1", "v2", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v12", "v13", "v14", "v15", "v16", "v17"],
 )
 def test_automatic_real_process_death_reuses_saved_response(runtime, point, prompt_version):
     ensure = automatic_runtime(runtime,"bankone")
     ensure();runtime.pause(point);runtime.start_workers(1);runtime.await_barrier()
     job = runtime.current_job_id();runtime.kill_worker();runtime.expire_lease(job)
-    if prompt_version != "v16":
+    if prompt_version != "v17":
         from hashlib import sha256
         from psycopg.types.json import Jsonb
         from autodata_ingestion.article_lifecycle_types import digest_json
@@ -884,7 +892,7 @@ def test_automatic_real_process_death_reuses_saved_response(runtime, point, prom
             _build_auto_prompt_v1, _build_auto_prompt_v2, _build_auto_prompt_v4,
             _build_auto_prompt_v5, _build_auto_prompt_v6, _build_auto_prompt_v7, _build_auto_prompt_v8,
             _build_auto_prompt_v9, _build_auto_prompt_v10, _build_auto_prompt_v12, _build_auto_prompt_v13,
-            _build_auto_prompt_v14, _build_auto_prompt_v15, validate_auto,
+            _build_auto_prompt_v14, _build_auto_prompt_v15, _build_auto_prompt_v16, validate_auto,
         )
         build_prompt = {
             "v1": _build_auto_prompt_v1,
@@ -900,6 +908,7 @@ def test_automatic_real_process_death_reuses_saved_response(runtime, point, prom
             "v13": _build_auto_prompt_v13,
             "v14": _build_auto_prompt_v14,
             "v15": _build_auto_prompt_v15,
+            "v16": _build_auto_prompt_v16,
         }[prompt_version]
         with runtime.repo.connect() as conn:
             candidate = conn.execute("SELECT r.* FROM canonical_article_revisions r JOIN source_fetch_jobs j USING(transformation_key) WHERE j.source_fetch_job_id=%s", (job,)).fetchone()
@@ -1014,6 +1023,41 @@ def test_automatic_qualifier_controls_publication(runtime, provider, preserved, 
         assert original in state["body"]
         assert invalid not in state["body"]
         assert attempt == {"status": "failed", "error_code": error_code}
+        assert events == 0
+    assert runtime.counters() == {"source": 1, "asset": 0, "model": 1, "schedule": 1}
+
+
+@pytest.mark.parametrize("provider", ["bankone", "banktwo"])
+@pytest.mark.parametrize("preserved", [True, False])
+def test_automatic_torque_units_control_publication(runtime, provider, preserved):
+    original = "Tighten the cover bolts to 18 N-m and the bracket bolts to 25 N-m."
+    invalid = "Torque the bracket bolts to 18 N-m and the cover bolts to 25 N-m."
+    ensure = automatic_runtime(runtime, provider)
+    runtime.change_fixture_body(f"<p>Remove the pump.</p><p>{original}</p>".encode())
+    runtime.model.mode = "explicit_specification"
+    runtime.model.explicit_specification = (original, None if preserved else invalid)
+    job = ensure().job_id
+    runtime.start_workers(1)
+    runtime.wait_for(lambda: runtime.read_current()["processing_state"] in ("completed", "failed", "needs_review"))
+    runtime.stop_workers()
+
+    state = runtime.read_current()
+    assert original in state["body"]
+    assert invalid not in state["body"]
+    with runtime.repo.connect() as conn:
+        attempt = conn.execute(
+            "SELECT status, error_code FROM canonical_article_rewrite_attempts WHERE source_fetch_job_id=%s", (job,),
+        ).fetchone()
+        events = conn.execute("SELECT count(*) AS n FROM publication_events").fetchone()["n"]
+    if preserved:
+        assert state["content_origin"] == "canonical"
+        assert "Take off the pump." in state["body"]
+        assert attempt == {"status": "succeeded", "error_code": None}
+        assert events == 1
+    else:
+        assert state["content_origin"] == "source"
+        assert state["canonical_revision_id"] is None
+        assert attempt == {"status": "failed", "error_code": "REWRITE_SPEC_SCOPE_MUTATION"}
         assert events == 0
     assert runtime.counters() == {"source": 1, "asset": 0, "model": 1, "schedule": 1}
 
