@@ -23,7 +23,8 @@ _PROSE_PROMPT_V8 = "full-prose-auto-prompt-v8"
 _PROSE_PROMPT_V9 = "full-prose-auto-prompt-v9"
 _PROSE_PROMPT_V10 = "full-prose-auto-prompt-v10"
 _CELL_PROSE_PROMPT_V11 = "full-prose-auto-prompt-v11"
-_PROSE_PROMPT_VERSION = "full-prose-auto-prompt-v12"
+_PROSE_PROMPT_V12 = "full-prose-auto-prompt-v12"
+_PROSE_PROMPT_VERSION = "full-prose-auto-prompt-v13"
 _WORDS = re.compile(r"\w+")
 _INLINE_WARNING = re.compile(
     r"(?:^|[.!?]\s+|\n)[ \t]*(?:warnings?|caution|danger|notice|important)\s*[:!–—-]"
@@ -211,6 +212,17 @@ _INSPECTION_FOCUS = re.compile(
     r"\s+for\s+(?:signs\s+of\s+)?(wear|damage|corrosion|leaks?|cracks?)$",
     re.IGNORECASE,
 )
+_IDENTIFIED_INSPECTION = re.compile(
+    r"(?:inspect|check)\s+(?:the\s+)?(?P<target>[a-z0-9./-]+(?:\s+[a-z0-9./-]+){1,5})\s+for\s+"
+    r"(?:(?:signs|indications)\s+of\s+)?"
+    r"(?P<focus>wear|damage|corrosion|leaks?|leakage|cracks?|cracking)", re.IGNORECASE,
+)
+_INSPECTION_MARKER = re.compile(r"\b(?:inspect|check)\b", re.IGNORECASE)
+_COMPONENT_DESCRIPTOR = re.compile(_TARGET_WORD, re.IGNORECASE)
+_COMPONENT_ID = re.compile(full._IDENTIFIER)
+_INSPECTION_FOCUS_ALIASES = {
+    "leaks": "leak", "leakage": "leak", "cracks": "crack", "cracking": "crack",
+}
 _CONDITION_STATE = r"dry|dried|cool|cooled|damaged|off|on|closed|open"
 _CONDITION_PREDICATE = (
     r"(?:the\s+)?(?P<subject>" + _TARGET_WORD + r"(?:\s+" + _TARGET_WORD + r"){0,3})\s+"
@@ -470,14 +482,30 @@ def _build_auto_prompt_v11(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def build_auto_prompt(document, *, context):
+def _auto_prompt_payload_v12(document, *, context):
     payload = _auto_prompt_payload_v11(document, context=context)
     if payload["slots"]:
-        payload["prompt_version"] = _PROSE_PROMPT_VERSION
+        payload["prompt_version"] = _PROSE_PROMPT_V12
         payload["rules"].append(
             "Keep any state required while performing an instruction, such as the ignition being "
             "off or a surface being dry. Preserve the condition's subject and state. A condition "
             "that must hold during the task must not become an earlier step."
+        )
+    return payload
+
+
+def _build_auto_prompt_v12(document, *, context):
+    payload = _auto_prompt_payload_v12(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def build_auto_prompt(document, *, context):
+    payload = _auto_prompt_payload_v12(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_VERSION
+        payload["rules"].append(
+            "When inspecting an identified component, keep its exact identifier and what the "
+            "inspection checks for with that component."
         )
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
@@ -485,8 +513,8 @@ def build_auto_prompt(document, *, context):
 def _auto_prompt_version(document, *, context, prompt_hash):
     """Identify the rules bound to the saved model attempt."""
     for builder in (
-        build_auto_prompt, _build_auto_prompt_v11, _build_auto_prompt_v10, _build_auto_prompt_v9,
-        _build_auto_prompt_v8, _build_auto_prompt_v7, _build_auto_prompt_v6, _build_auto_prompt_v5,
+        build_auto_prompt, _build_auto_prompt_v12, _build_auto_prompt_v11, _build_auto_prompt_v10,
+        _build_auto_prompt_v9, _build_auto_prompt_v8, _build_auto_prompt_v7, _build_auto_prompt_v6, _build_auto_prompt_v5,
         _build_auto_prompt_v4, _build_auto_prompt_v2, _build_auto_prompt_v1,
     ):
         payload = builder(document, context=context)
@@ -825,6 +853,23 @@ def _proof_text(text):
     return text.casefold().strip().rstrip(".!")
 
 
+def _identified_inspection(text):
+    match = _IDENTIFIED_INSPECTION.fullmatch(text.strip().rstrip(".!"))
+    if match is None:
+        return None
+    words = match["target"].split()
+    identifiers = [word for word in words if _COMPONENT_ID.fullmatch(word)]
+    if len(identifiers) != 1:
+        return None
+    identifier = identifiers[0]
+    descriptors = tuple(word.casefold() for word in words if word != identifier)
+    if (not descriptors or not set(descriptors).isdisjoint(_TARGET_DELIMITERS)
+            or not all(_COMPONENT_DESCRIPTOR.fullmatch(word) for word in descriptors)):
+        return None
+    focus = match["focus"].casefold()
+    return identifier, descriptors, _INSPECTION_FOCUS_ALIASES.get(focus, focus)
+
+
 def _simultaneous_state(text):
     for match in _SIMULTANEOUS_CONDITION.finditer(text):
         if match["while"] and not match["copula"]:
@@ -999,12 +1044,12 @@ def _uses_prose_guards(prompt_version, slot_count):
     return bool(slot_count) and prompt_version in (
         None, _PROSE_PROMPT_V4, _PROSE_PROMPT_V5, _PROSE_PROMPT_V6, _PROSE_PROMPT_V7,
         _PROSE_PROMPT_V8, _PROSE_PROMPT_V9, _PROSE_PROMPT_V10, _CELL_PROSE_PROMPT_V11,
-        _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V12, _PROSE_PROMPT_VERSION,
     )
 
 
 def _include_cell_blocks(prompt_version):
-    return prompt_version in (None, _CELL_PROSE_PROMPT_V11, _PROSE_PROMPT_VERSION)
+    return prompt_version in (None, _CELL_PROSE_PROMPT_V11, _PROSE_PROMPT_V12, _PROSE_PROMPT_VERSION)
 
 
 def _require_changes(source, candidate, *, prompt_version):
@@ -1018,7 +1063,8 @@ def _require_changes(source, candidate, *, prompt_version):
     guard_clauses = guard_claims and prompt_version != _PROSE_PROMPT_V7
     guard_qualifiers = guard_clauses and prompt_version != _PROSE_PROMPT_V8
     guard_scope = guard_qualifiers and prompt_version != _PROSE_PROMPT_V9
-    guard_simultaneous = guard_scope and prompt_version in (None, _PROSE_PROMPT_VERSION)
+    guard_simultaneous = guard_scope and prompt_version in (None, _PROSE_PROMPT_V12, _PROSE_PROMPT_VERSION)
+    guard_identified_inspection = guard_simultaneous and prompt_version != _PROSE_PROMPT_V12
     introduction = candidate["blocks"][0].get("text", "")
     if guard_prose and (
         _INLINE_WARNING.search(introduction)
@@ -1071,6 +1117,10 @@ def _require_changes(source, candidate, *, prompt_version):
             raise ValueError("REWRITE_CLAUSE_MUTATION")
         if guard_scope and _exception_changed(original, replacement):
             raise ValueError("REWRITE_QUALIFIER_MUTATION")
+        if guard_identified_inspection and _INSPECTION_MARKER.match(original.lstrip()):
+            inspection = _identified_inspection(original)
+            if inspection is not None and inspection != _identified_inspection(replacement):
+                raise ValueError("REWRITE_QUALIFIER_MUTATION")
         if guard_qualifiers and _qualifier_changed(
             original, replacement, extended=guard_scope, simultaneous=guard_simultaneous,
         ):
@@ -1112,7 +1162,8 @@ def validate_auto(source, candidate, *, response=None, prompt_version=None):
             _PROSE_PROMPT_V9: "full-prose-auto-validator-v7",
             _PROSE_PROMPT_V10: "full-prose-auto-validator-v8",
             _CELL_PROSE_PROMPT_V11: "full-prose-auto-validator-v9",
-        }.get(prompt_version, "full-prose-auto-validator-v10")
+            _PROSE_PROMPT_V12: "full-prose-auto-validator-v10",
+        }.get(prompt_version, "full-prose-auto-validator-v11")
     report.update(validator_version=validator_version, profile_version=PROFILE,
         publication_mode="automatic", content_acceptance_required=False,
         complete_rewrite=False, passed=not errors, error_codes=errors)
