@@ -1056,6 +1056,52 @@ for (const route of loginRoutes) {
   });
 }
 
+const selectedCheckoutRoute = `?year=2020&make=toyota&model=rav4&configuration=${routeConfiguration}&region=US`;
+
+function selectedCheckoutHarness(options) {
+  const h = loginRouteHarness(selectedCheckoutRoute, options);
+  h.context.vehicle = { id: routeConfiguration, region: 'US' };
+  ['2020', 'toyota', 'rav4', routeConfiguration].forEach((value, index) => {
+    const name = h.context.names[index];
+    const item = name === 'year' ? { year: 2020 } : { id: value, name: value };
+    h.context.populate(name, [item], value);
+  });
+  return h;
+}
+
+test('sign-in rechecks paid access for the displayed selection without reloading selector choices', async () => {
+  const h = selectedCheckoutHarness();
+  const before = h.context.names.map(name => h.element(name).children);
+  await h.context.signIn();
+  assert.deepEqual(h.calls.selections, [{ configuration: routeConfiguration, region: 'US', article: '' }]);
+  assert.deepEqual(h.calls.options, []);
+  assert.equal(h.calls.invalidations, 1);
+  assert.equal(h.calls.checkoutClears, 1);
+  assert.equal(h.calls.checkouts, 0);
+  h.context.names.forEach((name, index) => assert.equal(h.element(name).children, before[index]));
+});
+
+for (const change of ['URL', 'selector', 'region']) {
+  test(`sign-in falls back to full restoration when the checkout ${change} changes`, async () => {
+    const pending = deferredAuthOperation();
+    const h = selectedCheckoutHarness({ login: () => pending.promise });
+    const signIn = h.context.signIn();
+    if (change === 'URL') h.context.location.search = '?view=library';
+    if (change === 'selector') h.element('model').value = 'different-model';
+    if (change === 'region') h.context.vehicle.region = 'CA';
+    pending.resolve();
+    await signIn;
+    if (change === 'URL') {
+      assert.equal(h.calls.libraries, 1);
+      assert.deepEqual(h.calls.selections, []);
+    } else {
+      assert.equal(h.calls.options.length, 4);
+      assert.deepEqual(h.calls.selections, [{ configuration: routeConfiguration, region: 'US', article: '' }]);
+    }
+    assert.equal(h.calls.checkouts, 0);
+  });
+}
+
 function seedPriorRoute(h) {
   for (const name of h.context.names) {
     h.context.populate(name, [name === 'year' ? { year: 1999 } : { id: 'prior', name: 'Prior vehicle' }]);

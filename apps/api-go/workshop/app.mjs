@@ -1369,12 +1369,28 @@ async function signIn() {
   if (signingIn) return;
   signingIn = true;
   checkout.clear();
+  const route = location.search;
   try {
     await session.signIn();
   } finally {
     signingIn = false;
   }
-  if (session.state.authenticated) await restoreRoute();
+  if (!session.state.authenticated) return;
+  if (location.search === route) {
+    const params = new URLSearchParams(route);
+    const selected = scope();
+    if (!params.has("order") && !params.has("view") && !params.has("article") &&
+        validScope(selected) && selected.configuration_id === params.get("configuration") &&
+        selected.region === params.get("region") &&
+        names.every((name) => $(name).value === (params.get(name) || ""))) {
+      // Public selector choices remain valid for the same displayed route.
+      // Check paid access again with the newly confirmed session cookie.
+      invalidate();
+      await operation((g) => selectVehicle(g), () => restoreRoute());
+      return;
+    }
+  }
+  await restoreRoute();
 }
 async function bootstrap() {
   invalidate();
