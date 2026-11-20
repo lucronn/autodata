@@ -55,10 +55,19 @@ def _gce_workflow_errors(text: str) -> tuple[str, ...]:
         steps = _workflow_section(job, 'steps:', 4)
         try:
             step = _workflow_section(steps, '- name: Run required GCE host delivery tests', 6)
+            scope = _workflow_section(steps, '- name: Select affected suites', 6)
         except ValueError:
             return tuple(errors + ['gce_step'])
-        if re.search(r'(?m)^        (?:if|continue-on-error):', step):
+        required_condition = "        if: github.event_name == 'workflow_dispatch' || steps.change_scope.outputs.gce == 'true'\n"
+        if step.count('        if: ') != 1 or required_condition not in step or '        continue-on-error:' in step:
             errors.append('gce_step')
+        if ("        if: github.event_name != 'workflow_dispatch'\n" not in scope or
+                '        id: change_scope\n' not in scope or
+                '          BASE_SHA: ${{ github.event.before }}\n' not in scope or
+                'git diff --name-only --no-renames "$base" HEAD' not in scope or
+                'infra/deploy/gce/|infra/compose/' not in scope or
+                "echo 'gce=true' >> \"$GITHUB_OUTPUT\"" not in scope):
+            errors.append('gce_scope')
         if '        shell: bash\n' not in step:
             errors.append('gce_step')
         dependency = steps.index('      - name: Run ingestion worker tests\n')
@@ -132,17 +141,13 @@ class RepositoryGovernanceTests(unittest.TestCase):
     def test_pull_request_template_captures_delivery_contract(self) -> None:
         content = self.read(".github/PULL_REQUEST_TEMPLATE.md")
         for heading in (
-            "## Linked issue",
             "## Outcome",
-            "## Contract and schema impact",
-            "## Provenance and evidence",
             "## Verification",
-            "## Security and secrets",
-            "## Documentation and Project tracking",
+            "## Risk and rollout",
         ):
             self.assertIn(heading, content)
         self.assertIn("sample data/", content)
-        self.assertIn("automation/<topic>", content)
+        self.assertNotIn("Every change must be tracked in Project #8", content)
 
     def test_issue_forms_cover_required_outcomes(self) -> None:
         forms = {
@@ -207,7 +212,7 @@ class RepositoryGovernanceTests(unittest.TestCase):
                          ["paths"])
         self.assertEqual(_workflow_section(triggers, "workflow_dispatch:", 2).strip(), "")
 
-    def test_ci_includes_gce_in_each_event_and_required_step(self) -> None:
+    def test_ci_scopes_gce_to_owning_paths_and_manual_run(self) -> None:
         workflow = self.read(".github/workflows/autonomous-verification.yml")
         self.assertEqual(_gce_workflow_errors(workflow), ())
 
@@ -236,6 +241,9 @@ class RepositoryGovernanceTests(unittest.TestCase):
     def test_gce_required_step_mutations_fail(self) -> None:
         workflow = self.read(".github/workflows/autonomous-verification.yml")
         self.assertEqual(_gce_workflow_errors(workflow), ())
+        narrowed = workflow.replace('infra/deploy/gce/|infra/compose/', 'infra/compose/', 1)
+        self.assertNotEqual(narrowed, workflow)
+        self.assertIn('gce_scope', _gce_workflow_errors(narrowed))
         header = "      - name: Run required GCE host delivery tests\n"
         body = _workflow_section(workflow, header.strip(), 6)
         step = header + body

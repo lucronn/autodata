@@ -1,0 +1,10 @@
+---
+description: Ship the smallest working product slice with focused verification
+alwaysApply: true
+---
+
+Read `AGENTS.md`. For direct user-directed work, inspect the existing runtime, implement the owning change, and verify the visible behavior. Do not require a new plan, GitHub Issue, Project item, or synchronized preflight before editing.
+
+Use specialist agents only when the user explicitly asks for them, and give each a bounded contribution to the current product slice. Asking for multiple agents or faster delivery does not start the autonomous controller; that requires an explicit controller-managed run. Use the checks that cover changed behavior; fix CI path selection when unrelated suites delay a routine change.
+
+The record in `docs/agents/pre-implementation-gate.md` is required only when invoking the autonomous runner or orchestrator. Keep payment, access, source-rights, migration, and production changes under focused end-to-end review.

@@ -27,9 +27,22 @@ import {
 } from "./article-read.mjs";
 
 const $ = (id) => document.getElementById(id);
+const openDemo = document.documentElement.dataset.workshopMode === 'open-demo';
+if (openDemo) {
+  for (const id of ['signin', 'signout', 'my-vehicles']) $(id).hidden = true;
+  $('account-status').hidden = true;
+  document.querySelector('.wordmark').href = '/workshop/?demo=1';
+}
+const demoPath = (path) => {
+  if (!openDemo) return path;
+  const url = new URL(path, location.origin);
+  url.searchParams.set('demo', '1');
+  return url.pathname + url.search;
+};
 const names = ["year", "make", "model", "configuration"];
 const rows = Object.fromEntries(names.map((name) => [name, []]));
 const navigation = new NavigationGeneration();
+const searchNavigation = new NavigationGeneration();
 const checkout = createCheckout({
   expectedMode: $('test-banner').hidden ? undefined : 'stripe_test',
 });
@@ -37,6 +50,12 @@ let vehicle = null,
   articles = [],
   indexComplete = false,
   indexFailed = false,
+  searchItems = null,
+  searchQuery = "",
+  searchPending = false,
+  searchComplete = false,
+  searchError = false,
+  searchTimer = null,
   currentArticle = null,
   renderedRevision = "",
   sourceURL = "",
@@ -108,6 +127,14 @@ function show(id) {
 }
 function clearProtected() {
   document.title = "AutoData — The workshop reference";
+  searchNavigation.clear();
+  clearTimeout(searchTimer);
+  searchItems = null;
+  searchQuery = "";
+  searchPending = false;
+  searchComplete = false;
+  searchError = false;
+  searchTimer = null;
   articles = [];
   indexComplete = false;
   indexFailed = false;
@@ -214,6 +241,7 @@ async function operation(work, retry = null) {
 }
 function updateURL({ article = "", replace = false, library = false } = {}) {
   const p = new URLSearchParams();
+  if (openDemo) p.set('demo', '1');
   for (const name of names) if ($(name).value) p.set(name, $(name).value);
   if (vehicle?.id) {
     p.set("configuration", vehicle.id);
@@ -327,8 +355,16 @@ function renderPurchase() {
     ]
       .filter(Boolean)
       .join(" / ");
+  if (openDemo) {
+    $("purchase").hidden = true;
+    $("purchase-terms").hidden = true;
+    return;
+  }
   const priced = validQuote(quote, scope()),
-    configured = purchaseConfiguration(merchant, quote);
+    configured = purchaseConfiguration(merchant, quote, {
+      testCheckout: !$('test-banner').hidden,
+      origin: globalThis.location?.origin,
+    });
   $("purchase-price").textContent = priced
     ? "$20 USD · one-time"
     : "Price is currently unavailable.";
@@ -386,7 +422,7 @@ async function selectVehicle(g, articleID = "") {
   renderPurchase();
   if (!validScope(scope())) return;
   const selected = scope();
-  if (merchant?.enabled === true) {
+  if (!openDemo && merchant?.enabled === true) {
     try {
       const q = await requestJSON(
         `/v1/workshop/quote?configuration_id=${selected.configuration_id}&region=${selected.region}`,
@@ -400,7 +436,7 @@ async function selectVehicle(g, articleID = "") {
   }
   if (!g.current()) return;
   renderPurchase();
-  if (!session.state.authenticated) {
+  if (!openDemo && !session.state.authenticated) {
     show("welcome");
     status("Sign in to check access to your selected vehicle.");
     return;
@@ -413,12 +449,21 @@ async function loadArticles(g, articleID = "") {
   stage("articles");
   status("Opening your article index…", { busy: true });
   const data = await readCollection(
-    () => requestJSON(articlePath(), { signal: g.signal }),
+    () => requestJSON(demoPath(articlePath()), { signal: g.signal }),
     {
       signal: g.signal,
       desired: articleID,
       onUpdate(result) {
         if (!g.current()) return;
+        const descriptorFields = [
+          "id", "title", "kind", "component", "availability", "content_status",
+          "source_revision_id", "canonical_revision_id", "view_revision", "review_status",
+        ];
+        const indexChanged = result.items.length !== articles.length ||
+          result.items.some((item, index) => descriptorFields.some(
+            (field) => item[field] !== articles[index]?.[field],
+          ));
+        const completenessChanged = indexComplete !== (result.complete === true);
         articles = result.items;
         indexComplete = result.complete === true;
         indexFailed =
@@ -427,12 +472,20 @@ async function loadArticles(g, articleID = "") {
         access = "owned";
         renderPurchase();
         show("catalog");
-        renderArticles();
+        const query = $("search").value.trim();
+        if (query && (searchQuery !== query ||
+          (!searchPending && searchItems === null && !searchError) ||
+          indexChanged ||
+          completenessChanged)) scheduleArticleSearch();
+        else renderArticles();
       },
     },
   );
   if (!g.current()) return;
-  if (articleID && articles.some((item) => item.id === articleID)) {
+  const requestedArticle = articles.find((item) => item.id === articleID);
+  if (openDemo && requestedArticle && requestedArticle.availability !== 'available') {
+    status('This article is indexed but not readable yet. Choose an available article.', { error: true });
+  } else if (articleID && requestedArticle) {
     await loadArticle(articleID, g);
   } else if (articleID && data.complete === true) {
     throw new Error("This article is unavailable for the selected vehicle.");
@@ -451,11 +504,53 @@ async function loadArticles(g, articleID = "") {
   }
 }
 
+function scheduleArticleSearch() {
+  const query = $("search").value.trim();
+  searchNavigation.clear();
+  clearTimeout(searchTimer);
+  searchTimer = null;
+  searchQuery = query;
+  searchItems = null;
+  searchPending = Boolean(query && vehicle?.id && access === "owned");
+  searchComplete = false;
+  searchError = false;
+  renderArticles();
+  if (!searchPending) return;
+  const generation = searchNavigation.next();
+  const vehicleID = vehicle.id;
+  searchTimer = setTimeout(() => {
+    searchTimer = null;
+    void requestJSON(demoPath(`${articlePath()}?q=${encodeURIComponent(query)}`), {
+      signal: generation.signal,
+    }).then((result) => {
+      if (!generation.current() || vehicle?.id !== vehicleID || $("search").value.trim() !== query) return;
+      searchItems = Array.isArray(result.items) ? result.items : [];
+      searchComplete = result.complete === true;
+      searchPending = false;
+      renderArticles();
+    }).catch((error) => {
+      if (!generation.current() || vehicle?.id !== vehicleID) return;
+      if ([401, 403, 410].includes(error.status)) {
+        // Reuse the paid purchase boundary: a changed grant must not expose
+        // cached rows or turn an already-paid order into another Buy action.
+        void operation(async () => { throw error; });
+        return;
+      }
+      searchPending = false;
+      searchError = true;
+      renderArticles();
+    });
+  }, 300);
+}
+
 function renderArticles() {
   $("vehicle-caption").textContent =
     quote?.configuration_label || $("purchase-selection").textContent;
   const query = $("search").value.trim();
-  const items = filterArticles(articles, query);
+  const searching = Boolean(query && searchQuery === query);
+  const visible = openDemo ? articles.filter((item) => item.availability === 'available') : articles;
+  const results = searching ? (searchItems || []) : filterArticles(visible, query);
+  const items = openDemo ? results.filter((item) => item.availability === 'available') : results;
   const list = element("ul", undefined, "article-list");
   list.setAttribute("role", "list");
   for (const item of items) {
@@ -491,14 +586,33 @@ function renderArticles() {
     list.append(li);
   }
   $("articles").replaceChildren(list);
-  $("catalog-count").textContent = `${items.length} articles`;
-  $("no-results").textContent = indexFailed
-    ? "This article index could not be prepared. Check the status above."
-    : !indexComplete
-      ? "This article index is still being prepared. Check again shortly."
-      : query && articles.length > 0
-        ? "No articles match this search. Try a component name or a shorter phrase."
-        : "No articles are currently available for this vehicle.";
+  const resultsComplete = searching ? searchComplete && indexComplete : indexComplete;
+  const countText = searching && searchPending
+    ? "Searching articles…"
+    : searching && searchError
+      ? "Article search is unavailable. Try again."
+      : indexFailed
+        ? "Article index could not be prepared."
+        : !resultsComplete
+          ? `${items.length} articles so far. Article index is still being prepared.`
+          : openDemo
+            ? `${items.length} available articles · ${articles.length} indexed`
+            : `${items.length} articles`;
+  // Avoid mutating the polite live region with the same pending text on every keystroke.
+  if ($("catalog-count").textContent !== countText) $("catalog-count").textContent = countText;
+  $("no-results").textContent = searching && searchError
+    ? "Article search is unavailable. Try again."
+    : searching && searchPending
+      ? "Searching articles…"
+      : openDemo && articles.length > 0 && visible.length === 0
+        ? "No articles are readable yet for this vehicle. Choose another vehicle or check back later."
+        : indexFailed
+          ? "This article index could not be prepared. Check the status above."
+          : !resultsComplete
+            ? "This article index is still being prepared. Check again shortly."
+            : query && articles.length > 0
+              ? "No articles match this search. Try a component name or a shorter phrase."
+              : "No articles are currently available for this vehicle.";
   $("no-results").hidden = items.length > 0;
 }
 const assetID = (image) =>
@@ -511,7 +625,7 @@ function imageMap(article) {
 }
 function addImage(parent, image, caption, g) {
   const figure = element("figure");
-  const url = localImageURL(image?.url, location.origin),
+  const url = localImageURL(image?.url, location.origin, { authMode: session.state.mode }),
     id = assetID(image);
   if (url && id) {
     const img = element("img");
@@ -641,8 +755,8 @@ function renderBlocks(parent, blocks, images, review, g) {
       parent.append(
         element(
           "aside",
-          block.text ??
-            block.unavailable_reason ??
+          block.text ||
+            block.unavailable_reason ||
             "This source block needs review.",
           "article-callout",
         ),
@@ -696,7 +810,7 @@ function reconcileImages(parent, images, g) {
     const found = images.find(
       (image) => assetID(image) === img.dataset.assetId,
     );
-    const url = localImageURL(found?.url, location.origin);
+    const url = localImageURL(found?.url, location.origin, { authMode: session.state.mode });
     if (url && img.src !== url && g.current()) {
       img.dataset.replacement = "1";
       img.src = url;
@@ -730,17 +844,19 @@ function renderArticle(article, g) {
   $("reader-vehicle").textContent =
     quote?.configuration_label || $("purchase-selection").textContent;
   $("reader-engine").textContent = vehicle.region;
-  $("article-note").hidden = !processingArticle(article);
+  $("article-note").hidden = !processingArticle(article) && !(openDemo && article.review_status === 'UNREVIEWED');
   $("article-note").textContent = processingArticle(article)
     ? "Preparing articles. Available source remains readable."
-    : "";
+    : openDemo && article.review_status === 'UNREVIEWED'
+      ? "Draft content has not been reviewed. Check the stored source before using this procedure."
+      : "";
   $("print").disabled = !readableArticle(article);
   document.body.dataset.printable = String(readableArticle(article));
   $("article-reference").hidden = false;
   $("source-review").hidden = !article.source_review?.available;
   const review = article.source_review;
   if (review?.available) {
-    $("source-review-link").href = review.url;
+    $("source-review-link").href = demoPath(review.url);
     $("source-review-link").target = "_blank";
     $("source-review-link").rel = "noopener noreferrer";
     $("source-review-meta").textContent = "Stored source for this article.";
@@ -748,7 +864,7 @@ function renderArticle(article, g) {
   document.title = `${article.title || "Article"} | AutoData`;
 }
 async function loadArticle(id, g) {
-  if (!session.state.authenticated || !g.current()) return;
+  if ((!openDemo && !session.state.authenticated) || !g.current()) return;
   show("reader");
   if (currentArticle?.id !== id)
     $("article-title").textContent = "Opening article…";
@@ -760,8 +876,8 @@ async function loadArticle(id, g) {
   renewalUsed = false;
   stage("article");
   status("Opening article…", { busy: true });
-  const first = session.state.mode === "local"
-    ? await requestArticleJSON(articlePath(id), { signal: g.signal })
+  const first = openDemo || session.state.mode === "local"
+    ? await requestArticleJSON(demoPath(articlePath(id)), { signal: g.signal })
     : await requestArticleJSON(`${articlePath(id)}/prepare`, {
         method: "POST",
         body: {},
@@ -778,7 +894,7 @@ async function loadArticle(id, g) {
         initial = null;
         return value;
       }
-      return requestArticleJSON(articlePath(id), options);
+      return requestArticleJSON(demoPath(articlePath(id)), options);
     },
     {
       signal: g.signal,
@@ -789,17 +905,22 @@ async function loadArticle(id, g) {
   );
   if (!g.current()) return;
   const article = result.data?.article;
+  const readable = readableArticle(article);
   status(
     result.timedOut
       ? "Preparation is taking longer. You can check again."
       : article?.processing?.state === "needs_review"
-        ? "This article needs review."
+        ? readable
+          ? article.content_origin === "source"
+            ? "Stored source is readable. Article preparation needs review."
+            : "Article is readable. An update needs review."
+          : "This article needs review."
         : article?.processing?.state === "failed"
           ? "Preparation could not finish. Available source can still be read."
-          : readableArticle(article)
+          : readable
             ? "Article ready."
             : "No readable content is available.",
-    { retry: () => openArticle(id), complete: readableArticle(article) },
+    { retry: result.timedOut || !readable ? () => openArticle(id) : null, complete: readable },
   );
 }
 function openArticle(id) {
@@ -825,10 +946,10 @@ async function loadSource(value, g) {
   const requested = validSourceURL(value);
   if (!requested) throw new Error("This source reference is unavailable.");
   const selected = ++sourceRevision;
-  sourceURL = requested.href;
+  sourceURL = demoPath(requested.href);
   $("source-review-load").disabled = true;
   try {
-    const data = await requestJSON(requested.pathname + requested.search, {
+    const data = await requestJSON(demoPath(requested.pathname + requested.search), {
       signal: g.signal,
     });
     if (!g.current() || selected !== sourceRevision) return;
@@ -883,7 +1004,7 @@ async function renewMedia(g, failed) {
   renewal = (async () => {
     try {
       const response = await requestArticleJSON(
-        articlePath(currentArticle.id),
+        demoPath(articlePath(currentArticle.id)),
         { signal: g.signal },
       );
       if (!g.current()) return;
@@ -979,7 +1100,8 @@ async function library(g, append = false) {
       button.addEventListener("click", () => {
         // A library item is an exact configuration/region route. A previous
         // browse hierarchy can belong to a different vehicle and must be cleared.
-        for (const name of names) $(name).value = "";
+        for (const name of names) populate(name, []);
+        $("search").value = "";
         vehicle = {
           id: item.configuration_id,
           region: item.region,
@@ -1126,6 +1248,7 @@ async function checkOrder(g, id) {
     );
 }
 async function purchase() {
+  if (openDemo) return;
   if (!session.state.authenticated) {
     await signIn();
     return;
@@ -1176,6 +1299,7 @@ async function purchase() {
   renderPurchase();
 }
 async function signIn() {
+  if (openDemo) return;
   if (signingIn) return;
   signingIn = true;
   checkout.clear();
@@ -1188,12 +1312,14 @@ async function signIn() {
 }
 async function bootstrap() {
   invalidate();
-  await session.bootstrap();
+  if (!openDemo) await session.bootstrap();
   sessionEstablished = true;
-  try {
-    merchant = await requestJSON("/workshop/purchase-config.json");
-  } catch {
-    merchant = null;
+  if (!openDemo) {
+    try {
+      merchant = await requestJSON("/workshop/purchase-config.json");
+    } catch {
+      merchant = null;
+    }
   }
   await restoreRoute();
 }
@@ -1201,15 +1327,22 @@ async function restoreRoute() {
   invalidate();
   show("welcome");
   const params = new URLSearchParams(location.search);
+  // URL state is authoritative on history, sign-in, and direct-link restores.
+  // A prior vehicle must not leave usable descendants or filter another index.
+  for (const name of names) populate(name, []);
+  $("search").value = params.get("q") || "";
+  vehicle = null;
+  quote = null;
+  renderPurchase();
   return operation(
     async (g) => {
       const order = params.get("order");
-      if (uuid(order)) {
+      if (!openDemo && uuid(order)) {
         if (session.state.authenticated) await checkOrder(g, order);
         else status("Sign in to check this payment.");
         return;
       }
-      if (params.get("view") === "library") {
+      if (!openDemo && params.get("view") === "library") {
         await library(g);
         return;
       }
@@ -1221,9 +1354,6 @@ async function restoreRoute() {
         await selectVehicle(g, params.get("article") || "");
         return;
       }
-      vehicle = null;
-      quote = null;
-      renderPurchase();
       for (const name of names) {
         const desired = params.get(name) || "";
         await loadOptions(name, g, desired);
@@ -1232,7 +1362,6 @@ async function restoreRoute() {
       vehicle = rows.configuration.find(
         (item) => item.id === $("configuration").value,
       );
-      $("search").value = params.get("q") || "";
       await selectVehicle(g, params.get("article") || "");
     },
     () => restoreRoute(),
@@ -1283,7 +1412,7 @@ $("signout").addEventListener("click", async () => {
 $("browse").addEventListener("click", () => {
   invalidate();
   show("welcome");
-  history.pushState(null, "", "/workshop/");
+  history.pushState(null, "", openDemo ? "/workshop/?demo=1" : "/workshop/");
   void restoreRoute();
 });
 $("my-vehicles").addEventListener("click", () => {
@@ -1303,7 +1432,7 @@ $("check-order").addEventListener("click", () => {
 });
 $("search").addEventListener("input", () => {
   updateURL({ replace: true });
-  renderArticles();
+  scheduleArticleSearch();
 });
 $("retry").addEventListener("click", () => retryAction?.());
 $("cancel").addEventListener("click", () => {
@@ -1328,7 +1457,7 @@ $("back").addEventListener("click", () => {
   $("catalog-title").focus();
 });
 $("print").addEventListener("click", () => {
-  if (readableArticle(currentArticle) && session.state.authenticated)
+  if (readableArticle(currentArticle) && (openDemo || session.state.authenticated))
     window.print();
 });
 window.addEventListener("popstate", () => void restoreRoute());
@@ -1337,6 +1466,7 @@ let lifecycleCheck = null;
 async function recheck() {
   if (
     !sessionEstablished ||
+    openDemo ||
     signingIn ||
     document.visibilityState === "hidden" ||
     lifecycleCheck
@@ -1358,7 +1488,7 @@ const channel =
     ? new BroadcastChannel("autodata-session-invalidation")
     : null;
 channel?.addEventListener("message", (event) => {
-  if (event.data === "invalidate") {
+  if (!openDemo && event.data === "invalidate") {
     invalidate();
     session.clear();
     void recheck();

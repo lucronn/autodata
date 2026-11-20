@@ -1,11 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { runInNewContext } from 'node:vm';
+import { runInNewContext as runVM } from 'node:vm';
 import { NavigationGeneration, processingArticle, readableArticle } from './workshop/article-read.mjs';
-import { purchaseConfiguration, uuid, validQuote, validScope } from './workshop/commerce.mjs';
+import { purchaseConfiguration, uuid, validQuote, validScope, validLibrary } from './workshop/commerce.mjs';
 import { articlePresentation, configurationLabel, filterArticles, hasSourceReference, legacyArticleBlocks, localImageURL, readCollection, requestJSON, sourceReferenceURL } from './workshop/catalog.mjs';
 import { LOAD_STAGES, loadingProgress } from './workshop/progress.mjs';
+
+// The app sections below run without the module bootstrap. Model the ordinary
+// paid path unless a test explicitly opts into the open demo.
+function runInNewContext(code, context) {
+  context.openDemo ??= false;
+  context.demoPath ??= path => path;
+  return runVM(code, context);
+}
 
 test('loading progress uses fixed ordered stages and caps incomplete hydration', () => {
   assert.deepEqual(LOAD_STAGES.map(stage => stage.key), ['year', 'make', 'model', 'configuration', 'articles', 'article']);
@@ -731,12 +739,14 @@ function loginRouteHarness(search, { authenticate = true, signInError = null, lo
     selections: [], libraries: 0, orders: [], options: [], invalidations: 0 };
   const elements = new Map();
   const element = name => {
-    if (!elements.has(name)) elements.set(name, { value: '' });
+    if (!elements.has(name)) elements.set(name, { value: '', disabled: false, children: [],
+      replaceChildren(...children) { this.children = children; this.value = ''; } });
     return elements.get(name);
   };
   const configuration = { id: routeConfiguration, region: 'US' };
   const context = {
-    URLSearchParams, uuid, validScope,
+    URLSearchParams, uuid, validScope, configurationLabel,
+    Option: function(text, value) { return { text, value }; },
     location: { search }, signingIn: false,
     vehicle: { id: previousConfiguration, region: 'US' }, quote: null,
     names: ['year', 'make', 'model', 'configuration'],
@@ -768,10 +778,12 @@ function loginRouteHarness(search, { authenticate = true, signInError = null, lo
     async loadOptions(name, g, desired) {
       assert.equal(g.current(), true);
       calls.options.push({ name, desired });
-      element(name).value = desired;
+      context.populate(name, name === 'configuration' ? [configuration] :
+        [name === 'year' ? { year: Number(desired) || 2026 } : { id: desired || 'choice', name: desired }], desired);
     },
   };
   runInNewContext(
+    appSection('function populate(', 'function selectorPath(') +
     appSection('async function signIn() {', 'async function bootstrap() {') +
     appSection('async function restoreRoute() {', 'for (const [index, name] of names.entries())'),
     context,
@@ -813,6 +825,109 @@ for (const route of loginRoutes) {
     if (route.query.includes('q=brakes')) assert.equal(h.element('search').value, 'brakes');
   });
 }
+
+function seedPriorRoute(h) {
+  for (const name of h.context.names) {
+    h.context.populate(name, [name === 'year' ? { year: 1999 } : { id: 'prior', name: 'Prior vehicle' }]);
+    h.element(name).value = 'prior';
+  }
+  h.element('search').value = 'old vehicle only';
+  h.context.quote = { configuration_label: 'Prior vehicle' };
+}
+
+for (const query of ['', '&q=brake+pads']) {
+  test(`direct article route restores its own query ${query || '(empty)'} and clears prior selector options`, async () => {
+    const h = loginRouteHarness(`?configuration=${routeConfiguration}&region=US&article=${routeArticle}${query}`);
+    seedPriorRoute(h);
+    await h.context.restoreRoute();
+    assert.equal(h.element('search').value, query ? 'brake pads' : '');
+    for (const name of h.context.names) {
+      assert.equal(h.element(name).value, '');
+      assert.equal(h.element(name).disabled, true);
+      assert.equal(h.element(name).children.length, 1);
+      assert.equal(h.context.rows[name].length, 0);
+    }
+    assert.equal(h.context.quote, null);
+    assert.deepEqual(h.calls.selections, [{ configuration: routeConfiguration, region: 'US', article: routeArticle }]);
+  });
+}
+
+for (const query of ['?view=library', `?order=${routeOrder}`]) {
+  test(`non-selector route ${query} drops prior vehicle context and query`, async () => {
+    const h = loginRouteHarness(query);
+    seedPriorRoute(h);
+    await h.context.restoreRoute();
+    assert.equal(h.context.vehicle, null);
+    assert.equal(h.context.quote, null);
+    assert.equal(h.element('search').value, '');
+    for (const name of h.context.names) {
+      assert.equal(h.element(name).value, '');
+      assert.equal(h.element(name).disabled, true);
+      assert.equal(h.context.rows[name].length, 0);
+    }
+  });
+}
+
+test('partial saved hierarchy clears stale descendants before restoring its chosen year', async () => {
+  const h = loginRouteHarness('?year=2020&q=oil');
+  seedPriorRoute(h);
+  await h.context.restoreRoute();
+  assert.equal(h.element('year').value, '2020');
+  assert.equal(h.element('make').value, '');
+  assert.equal(h.element('model').disabled, true);
+  assert.equal(h.element('configuration').disabled, true);
+  assert.equal(h.context.vehicle, null);
+  assert.equal(h.element('search').value, 'oil');
+  assert.deepEqual(h.calls.options, [{ name: 'year', desired: '2020' }, { name: 'make', desired: '' }]);
+});
+
+test('saved hierarchy restores all exact vehicle choices and query over prior state', async () => {
+  const h = loginRouteHarness(`?year=2020&make=toyota&model=rav4&configuration=${routeConfiguration}&region=US&q=pump`);
+  seedPriorRoute(h);
+  await h.context.restoreRoute();
+  assert.deepEqual(h.context.names.map(name => h.element(name).value), ['2020', 'toyota', 'rav4', routeConfiguration]);
+  assert.equal(h.element('search').value, 'pump');
+  assert.deepEqual(h.calls.selections, [{ configuration: routeConfiguration, region: 'US', article: '' }]);
+});
+
+test('My vehicles activation clears the previous vehicle search and selector options in its saved URL', async () => {
+  const h = loginRouteHarness('?view=library');
+  const location = { pathname: '/workshop/', search: '?view=library&q=old+vehicle+only' };
+  seedPriorRoute(h);
+  const makeElement = (tag, text) => ({
+    tag, textContent: text, children: [], events: {},
+    append(...nodes) { this.children.push(...nodes); },
+    addEventListener(name, callback) { this.events[name] = callback; },
+  });
+  const list = makeElement('ul');
+  list.replaceChildren = () => { list.children = []; };
+  const get = h.context.$;
+  h.context.$ = id => id === 'library-items' ? list : get(id);
+  Object.assign(h.context, {
+    location, URLSearchParams, validLibrary, element: makeElement,
+    history: { pushState(_state, _title, url) { location.search = new URL(url, 'https://workshop.example').search; } },
+    currentOrder: '', libraryItems: [], libraryCursor: null, clearReader() {},
+    session: { state: { authenticated: true } },
+    async requestJSON() { return { version: 'v1', next_cursor: null, items: [{
+      configuration_id: routeConfiguration, region: 'US', library_item_id: routeOrder,
+      label: 'Purchased vehicle', access_state: 'viewable', granted_at: '2026-11-16T00:00:00Z',
+    }] }; },
+  });
+  runInNewContext(appSection('function updateURL(', 'function rememberOrderRoute(') +
+    appSection('async function library(', 'function clearReader('), h.context);
+  await h.context.library({ signal: new AbortController().signal, current: () => true });
+  list.children[0].children[2].events.click();
+  assert.equal(h.element('search').value, '');
+  const route = new URLSearchParams(location.search);
+  assert.equal(route.get('configuration'), routeConfiguration);
+  assert.equal(route.get('region'), 'US');
+  for (const name of ['year', 'make', 'model', 'q', 'view']) assert.equal(route.has(name), false);
+  for (const name of h.context.names) {
+    assert.equal(h.context.rows[name].length, 0);
+    assert.equal(h.element(name).disabled, true);
+  }
+  assert.deepEqual(h.calls.selections, [{ configuration: routeConfiguration, region: 'US', article: '' }]);
+});
 
 for (const outcome of ['canceled', 'failed']) {
   test(`login route stays put after ${outcome} sign-in without checkout replay`, async () => {
@@ -987,12 +1102,13 @@ test('paid access missing keeps status action without inviting repayment', async
 
 function paidPurchaseLifecycleHarness(selectionErrors, { realArticleIndex = false, afterPartial = null, articleReadResponses = null, articleOpenError = null, orderResponses = null } = {}) {
   const navigation = new NavigationGeneration();
+  const searchNavigation = new NavigationGeneration();
   const nodes = new Map();
   const $ = id => {
     if (!nodes.has(id)) nodes.set(id, {
       hidden: false, disabled: false, checked: id === 'agreement', value: '',
       textContent: '', dataset: {}, children: [],
-      replaceChildren(...children) { this.children = children; },
+      replaceChildren(...children) { this.children = children; this.value = ''; },
       append(...children) { this.children.push(...children); }, removeAttribute() {},
     });
     return nodes.get(id);
@@ -1010,13 +1126,16 @@ function paidPurchaseLifecycleHarness(selectionErrors, { realArticleIndex = fals
   let checkoutStarts = 0, orderReads = 0, selections = 0;
   const context = {
     $, location, history, URLSearchParams, URL, uuid, validScope, validQuote,
-    purchaseConfiguration, configurationLabel, navigation,
+    purchaseConfiguration, configurationLabel, navigation, searchNavigation, rows: {},
+    Option: function(text, value) { return { text, value }; },
     document: { title: '', body: { dataset: {} }, visibilityState: 'visible', createTextNode: text => ({ textContent: text }) },
     element: (tag, text) => ({ tag, textContent: text }),
     names: ['year', 'make', 'model', 'configuration'],
     vehicle: { id: scope.configuration_id, region: scope.region }, quote,
     merchant: merchantFixture(), access: 'missing', currentOrder: '', paidOrder: null, unconfirmedOrder: null,
-    articles: [],
+    articles: [], searchItems: null, searchQuery: '', searchPending: false,
+    searchComplete: false, searchError: false, searchTimer: null,
+    clearTimeout() {},
     sessionEstablished: true, signingIn: false,
     session: { state: { authenticated: true, ready: true, csrf: 'test-csrf' },
       async bootstrap() {}, clear() {
@@ -1071,7 +1190,7 @@ function paidPurchaseLifecycleHarness(selectionErrors, { realArticleIndex = fals
     (realArticleIndex ? appSection('function show(', 'function clearProtected()') : '') +
     (realArticleIndex ? appSection('function clearProtected()', 'function invalidate()') : '') +
     appSection('function invalidate(', 'function updateURL(') +
-    appSection('function updateURL(', 'function populate(') +
+    appSection('function updateURL(', 'function selectorPath(') +
     appSection('function renderPurchase(', 'async function selectVehicle(') +
     (realArticleIndex ? appSection('async function selectVehicle(', 'function renderArticles(') : '') +
     (articleOpenError ? appSection('function openArticle(', 'function validSourceURL(') : '') +
@@ -1606,8 +1725,9 @@ test('stale order status 404 does not clear newer checkout or action', async () 
   assert.equal(checkoutClears, 0);
 });
 
-function articleIndexHarness(responses) {
+function articleIndexHarness(responses, { wait = async () => {}, openDemo = false } = {}) {
   const navigation = new NavigationGeneration();
+  const searchNavigation = new NavigationGeneration();
   const nodes = new Map();
   function element(tag, text = '', className = '') {
     return { tag, textContent: text, className, hidden: false, value: '', dataset: {}, attributes: {}, children: [], events: {},
@@ -1622,12 +1742,20 @@ function articleIndexHarness(responses) {
     if (!nodes.has(id)) nodes.set(id, element('div'));
     return nodes.get(id);
   };
-  const statuses = [], updates = [], opened = [], requests = [], results = [];
+  const statuses = [], updates = [], opened = [], requests = [], results = [], shown = [], clearedOrders = [];
   const context = {
-    $, element, URL, location: { href: 'https://cars.example/workshop?vehicle=B' },
-    document: { body: { dataset: {} } },
-    quote: null, articles: [], indexComplete: false, indexFailed: false, access: '', retryAction: null, filterArticles,
-    stage() {}, renderPurchase() {}, show() {},
+    $, element, URL, openDemo, demoPath: path => openDemo ? `${path}${path.includes('?') ? '&' : '?'}demo=1` : path,
+    location: { href: `https://cars.example/workshop?vehicle=B${openDemo ? '&demo=1' : ''}` },
+    document: { title: '', body: { dataset: {} } },
+    navigation, quote: null, vehicle: { id: 'B', region: 'US' }, articles: [], indexComplete: false, indexFailed: false, access: '', retryAction: null, filterArticles,
+    searchNavigation, searchItems: null, searchQuery: '', searchPending: false, searchComplete: false, searchError: false, searchTimer: null,
+    currentArticle: null, renderedRevision: '', sourceData: null, sourceURL: '', sourceRevision: '',
+    renewalUsed: false, renewal: null, libraryItems: [], libraryCursor: null,
+    currentOrder: '', paidOrder: null, unconfirmedOrder: null, viewGeneration: null,
+    clearOrderRoute(id) { clearedOrders.push(id); },
+    session: { clear() {}, async bootstrap() {} },
+    setTimeout(callback) { callback(); return 1; }, clearTimeout() {}, updateURL() {},
+    stage() {}, renderPurchase() {}, show(id) { shown.push(id); },
     articlePath: () => '/v1/catalog/vehicles/B/articles',
     requestJSON(path, options) {
       requests.push({ path, signal: options.signal });
@@ -1636,7 +1764,7 @@ function articleIndexHarness(responses) {
     },
     async readCollection(read, options) {
       const result = await readCollection(read, {
-        ...options, attempts: 3, wait: async () => {},
+        ...options, attempts: 3, wait,
         onUpdate(data, meta) {
           options.onUpdate(data, meta);
           updates.push({ complete: data.complete, count: $('articles').children[0]?.children.length ?? 0,
@@ -1649,21 +1777,42 @@ function articleIndexHarness(responses) {
     },
     loadArticle: async (id, generation) => opened.push({ id, generation }),
     openArticle: id => opened.push({ id }),
-    operation: callback => callback(navigation.next()),
     recordStatus: (text, options) => statuses.push({ text, ...options }),
   };
   runInNewContext(
     appSection('function status(', 'function stage(') +
+    appSection('function clearProtected()', 'function updateURL(') +
     appSection('async function loadArticles(', 'const assetID =') +
+    appSection('$("search").addEventListener("input"', '$("retry").addEventListener') +
     '\nconst actualStatus = status; status = (text, options = {}) => { recordStatus(text, options); actualStatus(text, options); };',
     context,
   );
-  return { context, $, navigation, statuses, updates, opened, requests, results,
+  return { context, $, navigation, statuses, updates, opened, requests, results, shown, clearedOrders,
     load: (article = '', generation = navigation.next()) => context.loadArticles(generation, article) };
 }
 
 const indexResponse = (status, { complete = false, retryable = false, hydrating = false, items = [] } = {}) =>
   ({ items, complete, hydrating, progress: status ? { status, retryable } : null });
+
+test('open demo requests the real index and shows only readable articles', async () => {
+  const h = articleIndexHarness([indexResponse('completed', { complete: true, items: [
+    { id: 'ready', title: 'Stored procedure', availability: 'available' },
+    { id: 'waiting', title: 'Index only', availability: 'unavailable' },
+  ] })], { openDemo: true });
+  await h.load();
+  assert.equal(h.requests[0].path, '/v1/catalog/vehicles/B/articles?demo=1');
+  assert.equal(h.$('articles').children[0].children.length, 1);
+  assert.match(h.$('catalog-count').textContent, /1 available articles · 2 indexed/);
+});
+
+test('open demo direct link to an indexed but unreadable article stays in the index', async () => {
+  const h = articleIndexHarness([indexResponse('completed', { complete: true, items: [
+    { id: 'waiting', title: 'Index only', availability: 'unavailable' },
+  ] })], { openDemo: true });
+  await h.load('waiting');
+  assert.equal(h.opened.length, 0);
+  assert.match(h.$('activity-text').textContent, /indexed but not readable yet/);
+});
 
 test('actual article index flow polls until explicit current completion', async () => {
   for (const responses of [
@@ -1792,6 +1941,251 @@ test('article index empty states distinguish pending, completed empty and no sea
   assert.match(search.$('no-results').textContent, /no articles match this search/i);
 });
 
+test('Workshop input searches owned article content through protected index query', async () => {
+  const h = articleIndexHarness([
+    indexResponse('completed', { complete: true, items: [{ id: 'title-only', title: 'Service notes' }] }),
+    indexResponse('completed', { complete: true, items: [{ id: 'content-hit', title: 'Service notes', kind: 'procedure' }] }),
+  ]);
+  await h.load();
+  h.$('search').value = 'ground strap';
+  h.$('search').events.input();
+  await new Promise(resolve => setImmediate(resolve));
+
+  assert.equal(h.requests[1].path, '/v1/catalog/vehicles/B/articles?q=ground%20strap');
+  const list = h.$('articles').children[0];
+  assert.deepEqual(list.children.map(row => row.children[0].children[0].textContent), ['Service notes']);
+  assert.equal(new URL(list.children[0].children[0].href, 'https://cars.example').searchParams.get('article'), 'content-hit');
+  assert.equal(h.$('catalog-count').textContent, '1 articles');
+});
+
+test('open demo content search keeps its access marker and excludes unreadable hits', async () => {
+  const h = articleIndexHarness([
+    indexResponse('completed', { complete: true, items: [
+      { id: 'ready', title: 'Service notes', availability: 'available' },
+      { id: 'waiting', title: 'Index only', availability: 'unavailable' },
+    ] }),
+    indexResponse('completed', { complete: true, items: [
+      { id: 'ready', title: 'Service notes', availability: 'available' },
+      { id: 'waiting', title: 'Index only', availability: 'unavailable' },
+    ] }),
+  ], { openDemo: true });
+  await h.load();
+  h.$('search').value = 'ground strap';
+  h.$('search').events.input();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.requests[1].path, '/v1/catalog/vehicles/B/articles?q=ground%20strap&demo=1');
+  assert.equal(h.$('articles').children[0].children.length, 1);
+});
+
+test('hydrating index polls do not restart a settled owned-content search', async () => {
+  let releasePoll;
+  const gate = new Promise(resolve => { releasePoll = resolve; });
+  const pending = indexResponse('running', { hydrating: true, items: [{ id: 'index', title: 'Service notes' }] });
+  const h = articleIndexHarness([
+    pending,
+    indexResponse('running', { items: [{ id: 'content-hit', title: 'Ground strap service' }] }),
+    pending,
+    pending,
+  ], { wait: () => gate });
+  const loading = h.load();
+  await new Promise(resolve => setImmediate(resolve));
+  h.$('search').value = 'ground strap';
+  h.$('search').events.input();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.$('articles').children[0].children[0].children[0].children[0].textContent, 'Ground strap service');
+  releasePoll();
+  await loading;
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.requests.filter(request => request.path.includes('?q=')).length, 1);
+  assert.equal(h.$('articles').children[0].children[0].children[0].children[0].textContent, 'Ground strap service');
+});
+
+test('a completed index refreshes a formerly partial content search once', async () => {
+  let releasePoll;
+  const gate = new Promise(resolve => { releasePoll = resolve; });
+  const h = articleIndexHarness([
+    indexResponse('running', { hydrating: true, items: [{ id: 'index', title: 'Service notes' }] }),
+    indexResponse('running', { items: [{ id: 'first', title: 'Ground strap service' }] }),
+    indexResponse('completed', { complete: true, items: [{ id: 'index', title: 'Service notes' }, { id: 'new', title: 'More service notes' }] }),
+    indexResponse('completed', { complete: true, items: [
+      { id: 'first', title: 'Ground strap service' }, { id: 'new', title: 'New ground strap notes' },
+    ] }),
+  ], { wait: () => gate });
+  const loading = h.load();
+  await new Promise(resolve => setImmediate(resolve));
+  h.$('search').value = 'ground strap';
+  h.$('search').events.input();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.context.searchComplete, false);
+  releasePoll();
+  await loading;
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.requests.filter(request => request.path.includes('?q=')).length, 2);
+  assert.equal(h.context.searchComplete, true);
+  assert.deepEqual(h.$('articles').children[0].children.map(row => row.children[0].children[0].textContent), [
+    'Ground strap service', 'New ground strap notes',
+  ]);
+});
+
+test('reopening an owned index removes a withdrawn content-search result', async () => {
+  const privateItem = { id: 'private', title: 'Service notes', source_revision_id: 'source-1' };
+  const h = articleIndexHarness([
+    indexResponse('completed', { complete: true, items: [privateItem] }),
+    indexResponse('completed', { complete: true, items: [privateItem] }),
+    indexResponse('completed', { complete: true, items: [] }),
+    indexResponse('completed', { complete: true, items: [] }),
+  ]);
+  await h.load();
+  h.$('search').value = 'ground strap';
+  h.$('search').events.input();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.$('articles').children[0].children.length, 1);
+  await h.load();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.requests.filter(request => request.path.includes('?q=')).length, 2);
+  assert.equal(h.$('articles').children[0].children.length, 0);
+});
+
+test('reopening an owned index refreshes content search after article revision changes', async () => {
+  const h = articleIndexHarness([
+    indexResponse('completed', { complete: true, items: [{ id: 'article', title: 'Service notes', source_revision_id: 'source-1' }] }),
+    indexResponse('completed', { complete: true, items: [{ id: 'article', title: 'Service notes', source_revision_id: 'source-1' }] }),
+    indexResponse('completed', { complete: true, items: [{ id: 'article', title: 'Service notes', source_revision_id: 'source-2' }] }),
+    indexResponse('completed', { complete: true, items: [] }),
+  ]);
+  await h.load();
+  h.$('search').value = 'old procedure';
+  h.$('search').events.input();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.$('articles').children[0].children.length, 1);
+  await h.load();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.requests.filter(request => request.path.includes('?q=')).length, 2);
+  assert.equal(h.$('articles').children[0].children.length, 0);
+});
+
+test('a complete index becoming incomplete retracts a definitive search no-match', async () => {
+  const descriptor = { id: 'article', title: 'Service notes', source_revision_id: 'source-1' };
+  const h = articleIndexHarness([
+    indexResponse('completed', { complete: true, items: [descriptor] }),
+    indexResponse('completed', { complete: true, items: [] }),
+    indexResponse('running', { items: [descriptor] }),
+    indexResponse('running', { items: [] }),
+  ]);
+  await h.load();
+  h.$('search').value = 'alternator';
+  h.$('search').events.input();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.match(h.$('no-results').textContent, /no articles match/i);
+  await h.load();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.requests.filter(request => request.path.includes('?q=')).length, 2);
+  assert.match(h.$('no-results').textContent, /still being prepared/i);
+  assert.doesNotMatch(h.$('no-results').textContent, /no articles match/i);
+});
+
+test('Workshop content search ignores a stale response after a newer query', async () => {
+  let resolveOld;
+  const h = articleIndexHarness([
+    indexResponse('completed', { complete: true, items: [{ id: 'index', title: 'Service notes' }] }),
+    () => new Promise(resolve => { resolveOld = resolve; }),
+    indexResponse('completed', { complete: true, items: [{ id: 'new', title: 'Battery service' }] }),
+  ]);
+  await h.load();
+  h.$('search').value = 'old';
+  h.$('search').events.input();
+  h.$('search').value = 'battery';
+  h.$('search').events.input();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.requests[1].signal.aborted, true);
+  assert.equal(h.$('articles').children[0].children[0].children[0].children[0].textContent, 'Battery service');
+  resolveOld(indexResponse('completed', { complete: true, items: [{ id: 'old', title: 'Old result' }] }));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.$('articles').children[0].children[0].children[0].children[0].textContent, 'Battery service');
+});
+
+test('Workshop content search cannot publish after selected vehicle changes', async () => {
+  let resolveOld;
+  const h = articleIndexHarness([
+    indexResponse('completed', { complete: true, items: [{ id: 'private-b', title: 'Vehicle B repair' }] }),
+    () => new Promise(resolve => { resolveOld = resolve; }),
+  ]);
+  await h.load();
+  h.$('search').value = 'repair';
+  h.$('search').events.input();
+  h.context.vehicle = { id: 'C', region: 'US' };
+  h.context.clearProtected();
+  resolveOld(indexResponse('completed', { complete: true, items: [{ id: 'private-b', title: 'Vehicle B repair' }] }));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.requests[1].signal.aborted, true);
+  assert.equal(h.$('articles').children.length, 0);
+  assert.equal(h.context.searchItems, null);
+});
+
+test('Workshop content search revocation clears private rows and returns to welcome', async () => {
+  const denied = Object.assign(new Error('Grant revoked'), { status: 403 });
+  const h = articleIndexHarness([
+    indexResponse('completed', { complete: true, items: [{ id: 'private', title: 'Private repair' }] }),
+    () => Promise.reject(denied),
+  ]);
+  await h.load();
+  h.$('search').value = 'repair';
+  h.$('search').events.input();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.context.articles.length, 0);
+  assert.equal(h.$('articles').children.length, 0);
+  assert.equal(h.$('catalog-count').textContent, '');
+  assert.equal(h.shown.at(-1), 'welcome');
+  assert.match(h.statuses.at(-1).text, /Grant revoked/i);
+});
+
+test('Workshop search grant revocation keeps a paid buyer out of a second checkout', async () => {
+  const revoked = Object.assign(new Error('Grant revoked'), { status: 403, code: 'ENTITLEMENT_REVOKED' });
+  const h = articleIndexHarness([
+    indexResponse('completed', { complete: true, items: [{ id: 'private', title: 'Private repair' }] }),
+    () => Promise.reject(revoked),
+  ]);
+  await h.load();
+  h.context.currentOrder = 'paid-order';
+  h.context.paidOrder = { id: 'paid-order', configuration_id: 'B', region: 'US' };
+  h.$('search').value = 'repair';
+  h.$('search').events.input();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.context.access, 'revoked');
+  assert.equal(h.context.currentOrder, '');
+  assert.equal(h.context.paidOrder, null);
+  assert.deepEqual(h.clearedOrders, ['paid-order']);
+  assert.equal(h.$('articles').children.length, 0);
+  assert.match(h.statuses.at(-1).text, /revoked.*support/i);
+});
+
+test('Workshop content search partial response never claims no matches', async () => {
+  const h = articleIndexHarness([
+    indexResponse('pending', { items: [{ id: 'index', title: 'Service notes' }] }),
+    indexResponse('pending', { items: [] }),
+  ]);
+  await h.load();
+  h.$('search').value = 'ground strap';
+  h.$('search').events.input();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.match(h.$('no-results').textContent, /still being prepared/i);
+  assert.doesNotMatch(h.$('no-results').textContent, /no articles match/i);
+  assert.match(h.$('catalog-count').textContent, /still being prepared/i);
+});
+
+test('Workshop search failure is announced in the polite result status', async () => {
+  const h = articleIndexHarness([
+    indexResponse('completed', { complete: true, items: [{ id: 'index', title: 'Service notes' }] }),
+    () => Promise.reject(Object.assign(new Error('temporary outage'), { status: 503 })),
+  ]);
+  await h.load();
+  h.$('search').value = 'ground strap';
+  h.$('search').events.input();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.match(h.$('catalog-count').textContent, /search is unavailable/i);
+  assert.match(h.$('no-results').textContent, /search is unavailable/i);
+});
+
 test('completed empty article index stays empty when a saved search query is present', async () => {
   const h = articleIndexHarness([indexResponse('completed', { complete: true, items: [] })]);
   h.$('search').value = 'alternator';
@@ -1908,6 +2302,26 @@ test('purchase readiness requires the supported terms contract', async t => {
   assert.equal(purchaseConfiguration(null, quoteTermsFixture()), false);
 });
 
+test('purchase readiness accepts only exact loopback TEST notice links', () => {
+  const origin = 'http://localhost:3013';
+  const config = merchantFixture();
+  for (const key of ['terms_url', 'privacy_url', 'refund_url', 'contact_url'])
+    config[key] = `${origin}/workshop/test-notices/${key.slice(0, -4)}`;
+  const quote = quoteTermsFixture();
+  assert.equal(purchaseConfiguration(config, quote), false);
+  assert.equal(purchaseConfiguration(config, quote, { testCheckout: false, origin }), false);
+  assert.equal(purchaseConfiguration(config, quote, { testCheckout: true, origin }), true);
+  for (const badOrigin of ['http://localhost:3014', 'http://localhost',
+    'http://localhost:3013/', 'http://localhost:3013.evil.test',
+    'http://127.0.0.2:3013', 'https://localhost:3013'])
+    assert.equal(purchaseConfiguration(config, quote, { testCheckout: true, origin: badOrigin }), false, badOrigin);
+  for (const key of ['terms_url', 'privacy_url', 'refund_url', 'contact_url']) {
+    for (const suffix of ['?x=1', '/', '#fragment', '-other'])
+      assert.equal(purchaseConfiguration({ ...config, [key]: config[key] + suffix }, quote,
+        { testCheckout: true, origin }), false, key + suffix);
+  }
+});
+
 test('purchase readiness fails closed for unavailable merchant fields', () => {
   for (const enabled of [false, null, undefined, 'true', 1])
     assert.equal(purchaseConfiguration({ ...merchantFixture(), enabled }, quoteTermsFixture()), false);
@@ -2005,15 +2419,18 @@ function articleMediaHarness(overrides = {}) {
     'welcome', 'reader', 'catalog', 'library', 'source-review-link', 'reader-vehicle', 'reader-engine', 'purchase-selection',
     'article-kind', 'article-reference', 'source-review-load', 'check-order'];
   for (const id of ids) { const node = new ArticleMediaNode('div'); nodes.set(id, node); body.append(node); }
-  const navigation = new NavigationGeneration(), g = navigation.next();
+  const navigation = new NavigationGeneration(), searchNavigation = new NavigationGeneration(), g = navigation.next();
   const shows = [], statuses = [];
   const context = {
     URL, uuid, articlePresentation, localImageURL, sourceReferenceURL, processingArticle, readableArticle,
+    session: { state: { mode: null } },
     document: { body, title: '', createElement: tag => new ArticleMediaNode(tag),
       createDocumentFragment: () => new ArticleMediaNode('#fragment') },
     location: { origin: 'https://cars.example' },
     $: id => { assert.ok(nodes.has(id), `known DOM node ${id}`); return nodes.get(id); },
-    navigation, currentArticle: null, renderedRevision: '', sourceData: null, sourceURL: '', sourceRevision: 0,
+    navigation, searchNavigation, searchItems: null, searchQuery: '', searchPending: false,
+    searchComplete: false, searchError: false, searchTimer: null, clearTimeout() {},
+    currentArticle: null, renderedRevision: '', sourceData: null, sourceURL: '', sourceRevision: 0,
     renewalUsed: false, renewal: null, renewalFailures: new Set(), articles: [], libraryItems: [], libraryCursor: null,
     currentOrder: '',
     access: 'granted', quote: { configuration_label: '2005 Toyota' }, vehicle: { region: 'US' },
@@ -2034,6 +2451,15 @@ function articleMediaHarness(overrides = {}) {
     content(article) { const parent = new ArticleMediaNode('div'); body.append(parent); context.renderContent(parent, article, g); return parent; },
   };
 }
+
+test('empty source block text displays the unavailable reason used by article search', () => {
+  const h = articleMediaHarness();
+  const content = h.content(mediaArticle([{ type: 'unavailable', text: '', unavailable_reason: 'Wiring diagram pending source review' }]));
+  assert.match(content.textContent, /Wiring diagram pending source review/);
+  const sourced = h.content(mediaArticle([{ type: 'unavailable', text: 'Visible source note', unavailable_reason: 'Hidden source reason' }]));
+  assert.match(sourced.textContent, /Visible source note/);
+  assert.doesNotMatch(sourced.textContent, /Hidden source reason/);
+});
 
 test('article tab title clears when protected content is invalidated', () => {
   const h = articleMediaHarness();
@@ -2671,10 +3097,10 @@ test('failed or obsolete configuration reads cannot preserve or restore local se
   assert.equal(session.state.mode, null);
 });
 
-function selectionQuoteHarness(merchant, { authenticated = true, request = async () => quoteTermsFixture() } = {}) {
+function selectionQuoteHarness(merchant, { authenticated = true, openDemo = false, request = async () => quoteTermsFixture() } = {}) {
   const navigation = new NavigationGeneration(), generation = navigation.next(), calls = [], opened = [], nodes = new Map();
   const context = {
-    merchant, quote: null, validScope, validQuote, scope: () => scope,
+    merchant, openDemo, quote: null, validScope, validQuote, scope: () => scope,
     session: { state: { authenticated } }, clearProtected() {}, renderPurchase() {}, show() {}, status() {},
     $: id => { if (!nodes.has(id)) nodes.set(id, {}); return nodes.get(id); },
     requestJSON: async (path, options) => { calls.push({ path, options }); return request(path, options); },
@@ -2683,6 +3109,17 @@ function selectionQuoteHarness(merchant, { authenticated = true, request = async
   runInNewContext(appSection('async function selectVehicle(', 'async function loadArticles('), context);
   return { context, navigation, generation, calls, opened };
 }
+
+test('open demo selects a vehicle without login, quote, or purchase', async () => {
+  const h = selectionQuoteHarness({ enabled: true }, {
+    authenticated: false, openDemo: true,
+    request: () => assert.fail('open demo must not request a quote'),
+  });
+  await h.context.selectVehicle(h.generation, 'article-a');
+  assert.equal(h.calls.length, 0);
+  assert.equal(h.opened.length, 1);
+  assert.equal(h.opened[0].id, 'article-a');
+});
 
 for (const merchant of [{ enabled: false }, null, {}, { enabled: 'true' }]) {
   test(`selection skips unusable quote for config ${JSON.stringify(merchant)} and still opens authorized articles`, async () => {
@@ -2737,7 +3174,7 @@ test('enabled quote cannot publish or continue after its selection is canceled',
   }
 });
 
-function articleRouteHarness(mode, request, authenticated = true) {
+function articleRouteHarness(mode, request, authenticated = true, openDemo = false) {
   const h = articleMediaHarness({
     session: { state: { mode, authenticated, csrf: 'csrf' } }, stage() {}, requestArticleJSON: request,
     readArticle: async (read, options) => {
@@ -2745,9 +3182,23 @@ function articleRouteHarness(mode, request, authenticated = true) {
       return readArticle(read, { ...options, wait: async () => {} });
     },
   });
+  h.context.openDemo = openDemo;
+  h.context.demoPath = path => openDemo ? `${path}?demo=1` : path;
   runInNewContext(appSection('async function loadArticle(', 'function openArticle('), h.context);
   return h;
 }
+
+test('open demo reads an article with GET and no session or checkout', async () => {
+  const calls = [], article = mediaArticle([{ type: 'paragraph', text: 'Stored procedure.' }]);
+  const h = articleRouteHarness('firebase', async (path, options) => {
+    calls.push({ path, options });
+    return { data: { article } };
+  }, false, true);
+  await h.context.loadArticle('a', h.g);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].path, '/v1/catalog/vehicles/v/articles/a?demo=1');
+  assert.equal(calls[0].options.method, undefined);
+});
 
 for (const mode of ['local', 'firebase', undefined, null, 'LOCAL', 'other']) {
   test(`article opening mode ${String(mode)} uses only its authorized real route`, async () => {
@@ -2928,4 +3379,62 @@ test('legacy numbered instructions-only exact replay retains introduction and re
   const parent = articleMediaHarness().content(legacyIntroArticle(body));
   assert.equal(occurrences(parent.textContent, legacyIntroText), 1);
   for (const step of legacyIntroSteps) assert.equal(occurrences(parent.textContent, step.instructions[0]), 1);
+});
+
+const localOpaqueImagePath = token => `/v1/catalog/images/${token}`;
+const localOpaqueImageToken = 'AbCd0123_-'.repeat(15);
+test('local opaque image URLs require explicit local mode and retain strict URL boundaries', () => {
+  const origin = 'https://cars.example', path = localOpaqueImagePath(localOpaqueImageToken);
+  assert.equal(localImageURL(path, origin, { authMode: 'local' }), origin + path);
+  for (const authMode of [undefined, null, 'firebase', 'LOCAL', true])
+    assert.equal(localImageURL(path, origin, { authMode }), null);
+  for (const authMode of ['local', 'firebase', undefined]) {
+    assert.equal(localImageURL('/v1/catalog/images/v2.opaque', origin, { authMode }), origin + '/v1/catalog/images/v2.opaque');
+    for (const value of [
+      'https://cars.example.attacker.test' + path, 'https://other.cars.example' + path,
+      'http://cars.example' + path, 'https://cars.example:444' + path,
+      'https://user:pass@cars.example' + path, path + '?src=external', path + '#fragment',
+      '/other/' + localOpaqueImageToken, path + '/extra', path + '.png', path + '=',
+      '/v1/catalog/images/' + 'a'.repeat(37), '/v1/catalog/images/' + 'a'.repeat(41),
+      '/v1/catalog/images/' + 'a'.repeat(6001), '/v1/catalog/images/%41' + localOpaqueImageToken,
+      'data:image/png;base64,YQ==', 'javascript:alert(1)', path + '\n',
+    ]) assert.equal(localImageURL(value, origin, { authMode }), null, value);
+  }
+});
+
+test('local referenced step images render and reconcile with opaque tokens without broad compatibility', () => {
+  const image = { id: 'local-image', url: localOpaqueImagePath(localOpaqueImageToken), alt: 'Stored diagram' };
+  const article = mediaArticle([], [image], { steps: [{ number: 1, action: 'Inspect', instructions: ['Inspect the stored diagram.'], image_ids: ['local-image'] }] });
+  for (const mode of ['local', 'firebase', undefined]) {
+    const h = articleMediaHarness({ session: { state: { mode } } });
+    const parent = h.render(article);
+    const images = mediaDescendants(parent, 'img');
+    assert.equal(images.length, mode === 'local' ? 1 : 0);
+    if (mode === 'local') {
+      assert.equal(images[0].src, 'https://cars.example' + image.url);
+      assert.equal(images[0].referrerPolicy, 'no-referrer');
+      const replacement = localOpaqueImagePath('ZyXw9876_-'.repeat(15));
+      h.context.reconcileImages(parent, [{ ...image, url: replacement }], h.g);
+      assert.equal(images[0].src, 'https://cars.example' + replacement);
+      h.navigation.clear();
+      h.context.reconcileImages(parent, [image], h.g);
+      assert.equal(images[0].src, 'https://cars.example' + replacement);
+    }
+  }
+});
+
+// Shared with Go search tests; these are hand-authored visible/hidden terms,
+// checked against current articlePresentation and the actual reader DOM harness.
+const searchRendererFixtures = JSON.parse(readFileSync(new URL('./testdata/workshop-search-renderer.json', import.meta.url), 'utf8'));
+for (const fixture of searchRendererFixtures) test(`search renderer fixture: ${fixture.name}`, () => {
+  const article = mediaArticle([], [], fixture.article);
+  const presentation = articlePresentation(article);
+  assert.equal(presentation.introBlocks.length > 0, fixture.has_intro);
+  const rendered = articleMediaHarness().render(article).textContent;
+  const lower = rendered.toLowerCase();
+  for (const query of fixture.visible_queries) {
+    for (const word of query.toLowerCase().split(/\s+/)) assert.ok(lower.includes(word), `${query} is visible`);
+  }
+  for (const query of fixture.hidden_queries) assert.ok(!lower.includes(query.toLowerCase()), `${query} remains hidden`);
+  for (const phrase of fixture.once) assert.equal(rendered.split(phrase).length - 1, 1, `${phrase} renders once`);
 });

@@ -30,6 +30,10 @@
       <strong>Test checkout — no real charge.</strong>
       <span>The vehicle catalog and eligible service articles are real. Sign in and use a Stripe test card; access is granted only after verified test settlement.</span>
     </aside>
+    <aside id="open-demo-banner" class="demo-banner" aria-label="Real-data demo" hidden>
+      <strong>Real-data demo — no account or payment needed.</strong>
+      <span>Browse the available stored articles. Some content and illustrations are still being prepared; draft text has not been reviewed.</span>
+    </aside>
     <div class="page">
       <header class="site-header">
         <a class="wordmark" href="/workshop/" aria-label="AutoData home"
@@ -47,7 +51,7 @@
 
       <section id="test-unavailable" role="alert" hidden>
         <h1>Real-data demo unavailable</h1>
-        <p>The test checkout and licensed-data environment are not ready. No payment or vehicle access has been granted.</p>
+        <p>The real-data demo is not enabled on this host.</p>
         <a href="/workshop/">Open the regular Workshop</a>
       </section>
 
@@ -204,15 +208,21 @@
             <div>
               <p id="vehicle-caption" class="caption"></p>
               <h2 id="catalog-title" tabindex="-1">Article index</h2>
-              <p id="catalog-count" class="catalog-count"></p>
+              <p id="catalog-count" class="catalog-count" aria-live="polite"></p>
             </div>
-            <label class="search-label" for="search"
-              >Find an article<input
-                id="search"
-                type="search"
-                placeholder="Try “oil pump”"
-                autocomplete="off"
-            /></label>
+            <search class="article-search">
+              <label class="search-label" for="search"
+                >Find an article<input
+                  id="search"
+                  type="search"
+                  name="q"
+                  placeholder="Try “oil pump”"
+                  autocomplete="off"
+                  autocorrect="off"
+                  autocapitalize="none"
+                  spellcheck="false"
+              /></label>
+            </search>
           </div>
           <div class="list-heading" aria-hidden="true">
             <span>Article</span><span>Type</span>

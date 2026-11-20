@@ -621,10 +621,15 @@ def configured_commerce(*, connection_factory=database_connection):
         return service
     if mode not in {'stripe_test', 'stripe_live'}:
         raise CommerceError('COMMERCE_CONFIGURATION_INVALID', 503)
-    purchase_config, malformed = parse_purchase_config(os.environ.get('AUTODATA_WORKSHOP_PURCHASE_CONFIG_JSON'))
+    environment = os.environ.get('AUTODATA_ENV', '')
+    origin = os.environ.get('AUTODATA_PUBLIC_ORIGIN', '')
+    purchase_config, malformed = parse_purchase_config(
+        os.environ.get('AUTODATA_WORKSHOP_PURCHASE_CONFIG_JSON'),
+        local_test_origin=origin if mode == 'stripe_test' and environment == 'test' and origin.startswith('http://') else None,
+    )
     if malformed:
         logging.getLogger(__name__).warning('Workshop purchase configuration invalid; new checkout disabled')
-    origin = checkout_return_origin(os.environ.get('AUTODATA_ENV', ''), os.environ.get('AUTODATA_PUBLIC_ORIGIN', ''))
+    origin = checkout_return_origin(environment, origin)
     if mode == 'stripe_test' and urlsplit(origin).hostname.rstrip('.').lower() in {'cars.tk', 'autodata.cars.tk'}:
         raise CommerceError('COMMERCE_CONFIGURATION_INVALID', 503)
     key, webhook, account, price, token = [os.environ.get(name, '').strip() for name in

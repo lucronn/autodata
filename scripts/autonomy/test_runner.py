@@ -21,9 +21,9 @@ from runner import (
 class RunnerTests(unittest.TestCase):
     def _frozen_review_prompt(self):
         prompt = (Path(__file__).resolve().parents[2] / '.cursor/agents/autodata-review-agent.md').read_bytes()
-        # Bind the complete prompt at gated base 5da393 without requiring its Git object in shallow CI.
+        # Bind the complete controller-only prompt without requiring its Git object in shallow CI.
         self.assertEqual(hashlib.sha256(prompt).hexdigest(),
-                         'd43f9a584cd5e65b823b1ee401b744e5e4d9923b2e57cd9517cdd7832ade09ed')
+                         'b26c419fed5fe4d54a386c2985b6bab1ee2415b85319971cfed1b4ef6709020f')
         return prompt.decode('utf-8', errors='strict')
 
     def _environment_fixture(self, *, nested=False, source_output=False):

@@ -1,5 +1,5 @@
 """Frozen, syntactically validated purchase notices; no I/O or legal approval."""
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 import re
 
@@ -12,7 +12,9 @@ def _forbidden(code):
             0x2000 <= code <= 0x200a or code in (0x2028, 0x2029, 0x202f, 0x205f, 0x3000, 0xfeff))
 
 
-def _url(value):
+def _url(value, *, local_test_origin=None, notice=None):
+    if local_test_origin and value == f'{local_test_origin}/workshop/test-notices/{notice}':
+        return
     if not isinstance(value, str) or not 1 <= len(value.encode('utf-8')) <= 2048 or any(_forbidden(ord(c)) for c in value):
         raise ValueError('invalid purchase configuration')
     # Inspect raw authority before a URL library can normalize input.
@@ -38,17 +40,23 @@ class PurchaseConfig:
     refund_url: str | None = None
     contact_url: str | None = None
     tax_notice: str | None = None
+    local_test_origin: str | None = field(default=None, repr=False, compare=False)
 
     def __post_init__(self):
         if type(self.enabled) is not bool or self.terms_version != 'workshop-v1':
             raise ValueError('invalid purchase configuration')
+        if self.local_test_origin is not None:
+            match = re.fullmatch(r'http://(?:localhost|127\.0\.0\.1):([1-9][0-9]{0,4})', self.local_test_origin)
+            if not match or int(match.group(1)) > 65535:
+                raise ValueError('invalid local test origin')
         if not self.enabled:
             if any(getattr(self, key) is not None for key in (*_URL_KEYS, 'tax_notice')):
                 raise ValueError('invalid purchase configuration')
             return
         try:
             for key in _URL_KEYS:
-                _url(getattr(self, key))
+                _url(getattr(self, key), local_test_origin=self.local_test_origin,
+                     notice=key.removesuffix('_url'))
             notice = self.tax_notice
             if (not isinstance(notice, str) or not any(not _forbidden(ord(c)) for c in notice) or
                 len(notice.encode('utf-8')) > 1024 or
@@ -58,10 +66,10 @@ class PurchaseConfig:
             raise ValueError('invalid purchase configuration') from None
 
     @classmethod
-    def from_public(cls, value):
+    def from_public(cls, value, *, local_test_origin=None):
         if not isinstance(value, dict) or set(value) != _KEYS:
             raise ValueError('invalid purchase configuration')
-        return cls(**value)
+        return cls(**value, local_test_origin=local_test_origin)
 
     @classmethod
     def disabled(cls):
@@ -84,13 +92,13 @@ def _nonfinite(_):
     raise ValueError('nonfinite purchase configuration')
 
 
-def parse_purchase_config(raw):
+def parse_purchase_config(raw, *, local_test_origin=None):
     if raw is None or raw == '':
         return PurchaseConfig.disabled(), False
     try:
         if not isinstance(raw, str) or len(raw.encode('utf-8')) > 16384:
             raise ValueError()
         value = json.loads(raw, object_pairs_hook=_object, parse_constant=_nonfinite)
-        return PurchaseConfig.from_public(value), False
+        return PurchaseConfig.from_public(value, local_test_origin=local_test_origin), False
     except (ValueError, TypeError, UnicodeError, RecursionError):
         return PurchaseConfig.disabled(), True

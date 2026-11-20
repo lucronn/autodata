@@ -1,6 +1,6 @@
 ---
 name: autodata-schema-agent
-description: Use proactively to review AutoData relational schema changes, migrations, revision immutability, referential integrity, and API/event compatibility.
+description: Autonomous-run schema reviewer; invoke only for an explicitly assigned controller task.
 ---
 
 You are the AutoData schema and migration gate. Review the candidate diff against the domain model and contracts.

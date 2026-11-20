@@ -94,6 +94,7 @@ func TestPaidCatalogGrantErrorsAreSafe(t *testing.T) {
 type paidHTTPStore struct {
 	*memoryCatalogStore
 	protected int
+	searches  int
 	identity  PaidArticleIdentity
 	view      *CatalogArticleView
 	progress  *CatalogArticleProgress
@@ -111,6 +112,15 @@ func (c *paidHTTPStore) ConfigurationByVehicle(_ context.Context, _ Principal, i
 }
 func (c *paidHTTPStore) PaidArticleDescriptors(ctx context.Context, p Principal, id string) ([]CatalogArticle, error) {
 	return c.Articles(ctx, p, id)
+}
+func (c *paidHTTPStore) PaidArticleSearchDescriptors(ctx context.Context, p Principal, id, query string) ([]CatalogArticle, error) {
+	c.protected++
+	c.searches++
+	items, err := c.memoryCatalogStore.Articles(ctx, p, id)
+	if err != nil {
+		return nil, err
+	}
+	return filterCatalogArticleSearch(items, query), nil
 }
 func (c *paidHTTPStore) Articles(ctx context.Context, p Principal, id string) ([]CatalogArticle, error) {
 	c.protected++
@@ -139,6 +149,98 @@ func paidHTTPServer() (*Server, *paidHTTPStore, *paidGrantClient) {
 	g := &paidGrantClient{err: ErrVehicleGrantRequired}
 	s.commerceClient = g
 	return s, c, g
+}
+
+func TestOpenDemoRequiresApprovedTestOrigin(t *testing.T) {
+	for _, tc := range []struct {
+		flag, environment, origin, want string
+	}{
+		{"1", "test", "http://localhost:3013", "localhost:3013"},
+		{"1", "test", "http://127.0.0.1:3013", "127.0.0.1:3013"},
+		{"1", "test", "https://demo.cars.tk", "demo.cars.tk"},
+		{"", "test", "https://demo.cars.tk", ""},
+		{"1", "staging", "https://demo.cars.tk", ""},
+		{"1", "production", "https://demo.cars.tk", ""},
+		{"", "test", "http://localhost:3013", ""},
+		{"1", "staging", "http://localhost:3013", ""},
+		{"1", "production", "http://localhost:3013", ""},
+		{"1", "test", "https://autodata.cars.tk", ""},
+		{"1", "test", "https://cars.tk", ""},
+		{"1", "test", "http://demo.cars.tk", ""},
+		{"1", "test", "https://demo.cars.tk:443", ""},
+		{"1", "test", "https://demo.example", ""},
+		{"1", "test", "http://localhost:3013/path", ""},
+	} {
+		if got := workshopOpenDemoHost(tc.flag, tc.environment, tc.origin); got != tc.want {
+			t.Fatalf("open demo host for %q %q %q = %q, want %q", tc.flag, tc.environment, tc.origin, got, tc.want)
+		}
+	}
+}
+
+func TestOpenDemoReadsExactCatalogWithoutLoginOrGrant(t *testing.T) {
+	s, c, grant := paidHTTPServer()
+	s.auth = &fakeAuthenticator{err: ErrUnauthenticated}
+	s.workshopOpenDemoHost = workshopOpenDemoHost("1", "test", "http://localhost:3013")
+	id := "55555555-5555-4555-8555-555555555555"
+	c.identity = PaidArticleIdentity{ConfigurationID: paidTestConfiguration, CanonicalArticleID: id, VehicleID: paidTestVehicle, ProviderSlug: "bankone", SourceVehicleRef: "opaque/vehicle", SourceArticleRef: "opaque/article"}
+	c.PutArticle(CatalogArticle{ID: id, VehicleID: paidTestConfiguration, CanonicalArticleID: &id, Title: "Stored procedure", Availability: "available", Body: "private body"})
+	unavailableID := "66666666-6666-4666-8666-666666666666"
+	c.PutArticle(CatalogArticle{ID: unavailableID, VehicleID: paidTestConfiguration, CanonicalArticleID: &unavailableID, Title: "Index only", Availability: "unavailable", Body: "private body"})
+	c.view = &CatalogArticleView{Article: CatalogArticle{ID: id, CanonicalArticleID: &id, Title: "Stored procedure", Availability: "available", Body: "private body", Images: []CatalogImage{{ID: "asset", URL: "https://provider.example/secret"}}}}
+	c.progress = &CatalogArticleProgress{Status: "completed", Complete: true}
+	root := "/v1/catalog/vehicles/" + paidTestConfiguration + "/articles"
+	request := func(path, host string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(http.MethodGet, path, nil)
+		r.Host = host
+		w := httptest.NewRecorder()
+		s.Handler().ServeHTTP(w, r)
+		return w
+	}
+	mode := request("/workshop/demo-mode.json", "localhost:3013")
+	if mode.Code != 200 || strings.TrimSpace(mode.Body.String()) != `{"enabled":true,"access":"open"}` {
+		t.Fatalf("mode = %d %s", mode.Code, mode.Body.String())
+	}
+	for _, path := range []string{root + "?demo=1", root + "/" + id + "?demo=1"} {
+		w := request(path, "localhost:3013")
+		if w.Code != 200 || w.Header().Get("Cache-Control") != "private, no-store" {
+			t.Fatalf("open demo %s = %d %s", path, w.Code, w.Body.String())
+		}
+		if path == root+"/"+id+"?demo=1" && (!strings.Contains(w.Body.String(), "private body") || strings.Contains(w.Body.String(), "provider.example")) {
+			t.Fatal("article body missing or provider URL leaked")
+		}
+	}
+	search := request(root+"?demo=1&q=private", "localhost:3013")
+	if search.Code != 200 || !strings.Contains(search.Body.String(), id) || strings.Contains(search.Body.String(), unavailableID) || strings.Contains(search.Body.String(), "private body") {
+		t.Fatalf("open demo search exposed unreadable content: %d %s", search.Code, search.Body.String())
+	}
+	if grant.calls != 0 {
+		t.Fatal("open demo contacted purchase grant checker")
+	}
+	for _, path := range []string{root, root + "?demo=1&demo=1", root + "?demo=1&region=US", "/v1/catalog/vehicles/" + paidTestVehicle + "/articles?demo=1"} {
+		w := request(path, "localhost:3013")
+		if w.Code == 200 {
+			t.Fatalf("unscoped request succeeded: %s", path)
+		}
+	}
+	if w := request(root+"?demo=1", "public.example"); w.Code == 200 {
+		t.Fatal("different Host received open demo content")
+	}
+	s.workshopOpenDemoHost = ""
+	if w := request(root+"?demo=1", "localhost:3013"); w.Code == 200 {
+		t.Fatal("disabled demo received open content")
+	}
+	s.workshopOpenDemoHost = workshopOpenDemoHost("1", "test", "https://demo.cars.tk")
+	if w := request("/workshop/demo-mode.json", "demo.cars.tk"); w.Code != 200 || strings.TrimSpace(w.Body.String()) != `{"enabled":true,"access":"open"}` {
+		t.Fatalf("external mode = %d %s", w.Code, w.Body.String())
+	}
+	for _, path := range []string{root + "?demo=1", root + "/" + id + "?demo=1", root + "?demo=1&q=private"} {
+		if w := request(path, "demo.cars.tk"); w.Code != 200 {
+			t.Fatalf("external demo %s = %d %s", path, w.Code, w.Body.String())
+		}
+	}
+	if w := request(root+"?demo=1", "localhost:3013"); w.Code == 200 || grant.calls != 0 {
+		t.Fatal("external demo accepted another Host or contacted the grant checker")
+	}
 }
 func TestPaidCatalogPublicSelectorsAndDeniedBeforeWork(t *testing.T) {
 	s, c, g := paidHTTPServer()
@@ -201,6 +303,61 @@ func TestPaidCatalogColdReadsDoNotScheduleAndDescriptorsHaveNoBodies(t *testing.
 	}
 	if ensure.path != "" {
 		t.Fatal("observational GET scheduled work")
+	}
+}
+func TestPaidCatalogContentSearchUsesGrantAndReturnsOnlyMatchingDescriptors(t *testing.T) {
+	s, c, g := paidHTTPServer()
+	g.err = nil
+	matchID := "55555555-5555-4555-8555-555555555555"
+	otherID := "66666666-6666-4666-8666-666666666666"
+	c.PutArticle(CatalogArticle{ID: matchID, VehicleID: paidTestConfiguration, CanonicalArticleID: &matchID,
+		Title: "Service notes", Body: "Hidden compatibility body.", Document: &CatalogDocument{Blocks: []CatalogDocumentBlock{{Type: "paragraph", Text: "Inspect the ground strap."}}}})
+	c.PutArticle(CatalogArticle{ID: otherID, VehicleID: paidTestConfiguration, CanonicalArticleID: &otherID,
+		Title: "Service notes", Body: "Check the coolant level."})
+
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, httptest.NewRequest("GET", "/v1/catalog/vehicles/"+paidTestConfiguration+"/articles?q=ground", nil))
+	if w.Code != http.StatusOK {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	var result CatalogArticlesResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if g.calls != 1 || c.searches != 1 || len(result.Items) != 1 || result.Items[0].ID != matchID {
+		t.Fatalf("grant calls=%d searches=%d items=%+v", g.calls, c.searches, result.Items)
+	}
+	if result.Items[0].Body != "" || result.Items[0].Document != nil || len(result.Items[0].Steps) != 0 || len(result.Items[0].Images) != 0 || strings.Contains(w.Body.String(), "ground strap") {
+		t.Fatal("paid content leaked in search descriptors", w.Body.String())
+	}
+	w = httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, httptest.NewRequest("GET", "/v1/catalog/vehicles/"+paidTestConfiguration+"/articles?q=service", nil))
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), matchID) || !strings.Contains(w.Body.String(), otherID) {
+		t.Fatal("title search did not preserve paid descriptor matches", w.Code, w.Body.String())
+	}
+
+	g.err = ErrVehicleGrantRevoked
+	c.protected, c.searches = 0, 0
+	w = httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, httptest.NewRequest("GET", "/v1/catalog/vehicles/"+paidTestConfiguration+"/articles?q=ground", nil))
+	if w.Code != http.StatusForbidden || c.protected != 0 || c.searches != 0 {
+		t.Fatalf("revoked search read protected content: status=%d protected=%d searches=%d", w.Code, c.protected, c.searches)
+	}
+}
+func TestPaidCatalogContentSearchRejectsUnboundedQueriesBeforeCatalogRead(t *testing.T) {
+	s, c, g := paidHTTPServer()
+	g.err = nil
+	for _, suffix := range []string{
+		"?q=one&q=two",
+		"?q=" + strings.Repeat("a", 121),
+		"?q=one+two+three+four+five+six+seven+eight+nine",
+	} {
+		c.protected, c.searches = 0, 0
+		w := httptest.NewRecorder()
+		s.Handler().ServeHTTP(w, httptest.NewRequest("GET", "/v1/catalog/vehicles/"+paidTestConfiguration+"/articles"+suffix, nil))
+		if w.Code != http.StatusUnprocessableEntity || c.protected != 0 || c.searches != 0 {
+			t.Fatalf("query %q: status=%d protected=%d searches=%d", suffix, w.Code, c.protected, c.searches)
+		}
 	}
 }
 func TestPaidCatalogIndexReadinessHydration(t *testing.T) {

@@ -33,6 +33,18 @@ paths:
           pattern: ^[A-Z]{2}$
         description: Optional assertion of the selected configuration region; it must
           match exactly.
+      - name: q
+        in: query
+        required: false
+        schema:
+          type: string
+          maxLength: 120
+        description: Optional case-insensitive search over visible title, kind,
+          component, and current readable article text. At most eight
+          whitespace-separated words. In Firebase mode the current exact
+          configuration grant is checked before searching; results remain
+          metadata-only descriptors in index order. An empty query retains the
+          unfiltered index.
       responses:
         '200':
           description: Metadata-only canonical descriptors and safe current progress;
@@ -62,9 +74,9 @@ paths:
           $ref: '#/components/responses/NotFound'
       description: In Firebase mode vehicle_id is the exact canonical configuration
         UUID, not a base vehicle UUID. A verified session and current owner/configuration/region
-        grant precede descriptor/progress reads. GET never schedules an index or article
-        job. Only canonical identities are returned; document, body, steps and image
-        URLs are omitted.
+        grant precede descriptor/progress reads, including content search. GET
+        never schedules an index or article job. Only canonical identities are
+        returned; document, body, steps and image URLs are omitted.
   /v1/catalog/vehicles/{vehicle_id}/articles/{article_id}:
     get:
       tags:
