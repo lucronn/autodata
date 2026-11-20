@@ -22,7 +22,6 @@
 - [x] Record fixture coverage, real Stripe coverage and supplier-backed
   coverage separately, including any blocked or unverified step.
 
-
 ## Verification on Kali
 
 - Chromium passed 40 Workshop fixture scenarios and eight focused checks
@@ -36,16 +35,17 @@
   hosted TEST session, reused the order on retry, and denied unpaid access.
   Stripe presented a human verification challenge before payment. The
   unpaid session was expired and the temporary services were removed.
-- A Chromium run against isolated Go, Python and PostgreSQL passed the
-  checkout, signed fixture event, and Library case using synthetic
-  identity and payment transports. The fixture now serializes UUID and
-  timestamp values in its final database snapshot so a completed run can
-  publish its result. A separate Bankone fixture displayed stored source,
-  its image, and source review, then timed out waiting for canonical
-  content after releasing the fixture model. The full API browser suite
-  remains unverified.
+- Four Chromium cases passed against isolated Go, Python, PostgreSQL, and
+  object storage with synthetic identity, model, and payment transports.
+  They covered checkout and Library persistence, the Bankone transition
+  from stored source to canonical article and warm media reads, account
+  and vehicle-scope denial, and signed fixture refund revocation. The
+  browser harness records actual upstream Checkout bytes before redirect
+  and verifies the canonical article and exact pinned source after reload.
+  Other browser engines and the full provider matrix were not run locally.
 - Real hosted settlement, webhook-driven grant and refund, and licensed
-  article acceptance remain open. The prior local Firebase verifier file is
-  missing. Use an approved Firebase test environment and tester for the
+  article acceptance remain open. The former local Firebase verifier file is
+  missing and no dedicated TEST project is configured on Kali. Use a
+  dedicated Firebase test environment and tester for the
   authenticated Workshop flow and complete hosted Checkout interactively.
   Keep licensed-data checks scoped to content approved for test use.

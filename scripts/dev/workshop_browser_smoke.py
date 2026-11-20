@@ -840,6 +840,7 @@ class APIObservations:
         self.max_bytes=min(max_bytes,1048576);self.tasks=set();self.counts={};self.pending={};self.started_counts={};self.capturing=set();self.responses={}
         self._slots=[None]*self.max_events;self._count=0;self.last=self.start
         self.reserve=bytearray(16384);self.scope={};self.owner_scope=None
+        self.route_owns_checkout=False
     @property
     def events(self):return self._slots[:self._count]
     def fail(self,reason):
@@ -923,9 +924,9 @@ class APIObservations:
     def _page_owns(self,phase,url):
         safe=api21_route(url,self.scope)
         if phase.startswith('owner-library-'):return safe=='/v1/workshop/library'
-        if phase=='checkout-http':return safe=='/v1/workshop/checkout-sessions'
+        if phase=='checkout-http':return not self.route_owns_checkout and safe=='/v1/workshop/checkout-sessions'
         source='/v1/catalog/vehicles/{configuration}/articles/{article}'
-        if phase in ('source-page-http','warm-page-http'):return safe==source
+        if phase=='source-page-http':return safe==source
         if phase=='source-review-http':return safe==source+'/source'
         return False
     def page_request(self,request):
@@ -1105,6 +1106,7 @@ class APIFixture(DTOFixture):
     def __init__(self,origin,scenario,observations=None):
         super().__init__(origin,scenario)
         self.observations=observations
+        if observations is not None:observations.route_owns_checkout=True
         self.lost_response_count=0
         # Exact request/response identities stay in memory, never browser evidence.
         self.checkout_responses=[]
@@ -1119,12 +1121,14 @@ class APIFixture(DTOFixture):
             safe=re.sub(r'[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}','{uuid}',safe)
             self.requests.append({'method':request.method,'path':safe})
             if request.headers.get('authorization'):self.errors.append('browser sent bearer authorization')
-            if self.scenario==API_CASES[0] and request.method=='POST' and path=='/v1/workshop/checkout-sessions':
-                # Reserve the one-shot before awaiting the real API. A concurrent
-                # activation must fail rather than hide another checkout response.
+            lose_response = self.scenario == API_CASES[0]
+            if (lose_response or self.observations is not None) and request.method=='POST' and path=='/v1/workshop/checkout-sessions':
+                # Capture the upstream entity before delivering it to the page,
+                # where the checkout handler immediately navigates away.
                 self.checkout_count+=1
                 attempt=self.checkout_count
-                assert attempt<=2, 'checkout must have exactly one manual retry'
+                assert attempt <= (2 if lose_response else 1), 'unexpected duplicate checkout request'
+                phase=('checkout-first-http' if attempt==1 else 'checkout-retry-http') if lose_response else 'checkout-http'
                 if attempt==2:
                     assert self.lost_response_count==1, 'retry preceded the completed response loss'
                 key=request.headers.get('idempotency-key')
@@ -1146,11 +1150,10 @@ class APIFixture(DTOFixture):
                 except BaseException:
                     if self.observations:
                         await self.observations.http(None,request.url,'POST',
-                            phase='checkout-first-http' if attempt==1 else 'checkout-retry-http',
-                            request=api21_body(request.post_data_buffer,'playwright-request-post-data-buffer'),key=key,attempt=attempt)
+                            phase=phase,request=api21_body(request.post_data_buffer,'playwright-request-post-data-buffer'),
+                            key=key,attempt=attempt)
                     raise
                 http_ref=None
-                phase='checkout-first-http' if attempt==1 else 'checkout-retry-http'
                 if self.observations:
                     http_ref=await self.observations.http(response,request.url,'POST',phase=phase,
                         request=api21_body(request.post_data_buffer,'playwright-request-post-data-buffer'),key=key,attempt=attempt)
@@ -1163,6 +1166,10 @@ class APIFixture(DTOFixture):
                 assert isinstance(hosted,str) and allowed_external(hosted), 'untrusted hosted checkout'
                 assert trusted_hosted_checkout(hosted), 'invalid hosted checkout session'
                 identity={'order_id':order,'configuration_id':configuration,'region':body['region'],'checkout_url':hosted}
+                if not lose_response:
+                    assert self.observations is not None and self.observations.phase == phase
+                    await route.fulfill(response=response)
+                    return
                 if self.observations:
                     def delivery(state):
                         self.observations.event(phase.replace('-http','-delivery'),
@@ -1399,12 +1406,21 @@ async def api_case(browser,origin,name,output,observations=None):
             await expect(page.locator('#article-content')).not_to_be_empty()
             warm_before=await api_snapshot(context,origin,'warm-before-snapshot')
             reader_before=(await api_measure(context,origin,'reader-before-measurement'))['image_reads']
-            if observations:observations.phase='warm-page-http'
             await page.reload();await expect(page.locator('#article-kind')).to_have_text('Workshop article')
+            # The page can render a warm article from the prepare response.
+            # Capture the actual read endpoint separately after the GUI reload.
+            warm_detail=await api21_get(context,origin+f'/v1/catalog/vehicles/{configuration}/articles/{article_id}',
+                                        phase='warm-page-http')
+            assert warm_detail.status==200
+            assert (await warm_detail.json())['article']['content_origin']=='canonical'
             await expect(page.locator('#article-content img')).not_to_have_count(0)
             warm_image=await page.locator('#article-content img').first.get_attribute('src')
             delivered=await api21_get(context,warm_image,phase='warm-image-http');assert delivered.status==200 and len(await delivered.body())>0
-            pinned=await api21_get(context,origin+source_path,phase='warm-pinned-source-http');assert pinned.status==200
+            pinned=await api21_get(context,origin+source_path,phase='warm-pinned-source-http',
+                                   headers={'Accept':'application/json'})
+            assert pinned.status==200
+            pinned_url=(await pinned.json())['source']['url']
+            assert parse_qs(urlsplit(pinned_url).query)['source_revision_id']==parse_qs(urlsplit(source_path).query)['source_revision_id']
             warm_after=await api_snapshot(context,origin,'warm-after-snapshot')
             reader_after=(await api_measure(context,origin,'reader-after-measurement'))['image_reads']
             validate_warm_runtime(warm_before,warm_after,reader_before,reader_after)

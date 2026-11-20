@@ -1335,6 +1335,12 @@ class API21FakeContext:
             status=404 if phase in ('other-image-denial','adjacent-denial','other-region-denial','unscoped-article-denial','legacy-vehicle-denial') else 401 if phase in ('logout-image-denial','disabled-image-denial') else 403
             data={'error':'denied'}
         elif phase=='other-library-http':data={'items':[]}
+        elif phase=='warm-page-http':
+            assert path == f'/v1/catalog/vehicles/{smoke.CONFIG}/articles/{smoke.ARTICLE}'
+            data={'article':{'content_origin':'canonical'}}
+        elif phase=='warm-pinned-source-http':
+            assert kwargs.get('headers') == {'Accept':'application/json'}
+            data={'source':{'url':smoke.urlsplit(url).path+'?'+smoke.urlsplit(url).query}}
         elif '/images/' in path:browser.reads+=1;data=b'image-original-bytes'
         return API21FakeResponse(url,data,status)
     async def post(self,url):
@@ -1368,7 +1374,6 @@ class API21FakePage:
     async def reload(self):
         phase=getattr(getattr(self.context,'_api21',None),'phase','')
         if phase.startswith('owner-library-'):self.library()
-        elif phase=='warm-page-http':self.emit('https://127.0.0.1:32001/v1/catalog/vehicles/'+smoke.CONFIG+'/articles/'+smoke.ARTICLE,{'content':'canonical'})
     async def wait_for_url(self,pattern):pass
     async def evaluate(self,code):return []
     async def screenshot(self,**kwargs):raise RuntimeError('fake screenshot unavailable')
@@ -1389,8 +1394,8 @@ class API21FakeLocator:
             route.fetched_response.body=lambda:asyncio.sleep(0,result=json.dumps(route.fetched_response.data).encode())
             await context.transport.route(route)
             if browser.name!=smoke.API_CASES[0]:
-                context.transport.checkout_count=1
-                self.page.emit(route.request.url,route.fetched_response.data,route.request)
+                assert route.events == ['fetch','fulfill']
+                assert route.forwarded_response is route.fetched_response
             if browser.name!=smoke.API_CASES[0] or self.selector=='#retry':self.page.url=route.fetched_response.data['checkout_url']
     async def check(self):pass
     async def get_attribute(self,name):
@@ -1612,14 +1617,18 @@ class API21ObservationsTests(unittest.IsolatedAsyncioTestCase):
                     patch.dict(sys.modules,{'playwright.async_api':SimpleNamespace(expect=lambda value:value)}),patch.object(API21FakePage,'emit',emit):
                 result=await smoke.api_case(browser,'https://127.0.0.1:32001',name,Path(temp),observations=buffer)
             self.assertEqual(result['status'],'passed',buffer.primary)
-            self.assertEqual(set(seen),{'source-page-http','source-review-http','warm-page-http'})
+            self.assertEqual(set(seen),{'source-page-http','source-review-http'})
             images=[e['phase'] for e in buffer.events if e['payload']['kind']=='http' and e['payload']['route_template']=='/v1/catalog/images/{capability}']
             self.assertEqual(images[:2],['source-image-http','warm-image-http'])
 
     async def test_unowned_callbacks_fail_only_for_the_phase_owned_route(self):
         article='https://local/v1/catalog/vehicles/'+smoke.CONFIG+'/articles/'+smoke.ARTICLE
-        phases={'source-page-http':article,'source-review-http':article+'/source','warm-page-http':article,
+        phases={'source-page-http':article,'source-review-http':article+'/source',
             'checkout-http':'https://local/v1/workshop/checkout-sessions','owner-library-initial-http':'https://local/v1/workshop/library'}
+        buffer=self.buffer();buffer.phase='warm-page-http'
+        buffer.page_response(API21FakeResponse(article,{}))
+        self.assertIsNone(buffer.primary)
+        self.assertEqual(buffer.events,[])
         for phase,url in phases.items():
             buffer=self.buffer();buffer.phase=phase
             buffer.page_response(API21FakeResponse('https://local/v1/catalog/images/v2.automatic',b'image'))
