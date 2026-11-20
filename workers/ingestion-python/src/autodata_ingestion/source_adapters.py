@@ -864,8 +864,8 @@ def _adapt_pdf_resource(
                                 digest = image["content_sha256"]
                                 positioned_images.append({**image, "url": page_image_payloads[digest]["url"]})
 
-    # Logos/headers often repeat on every page. Keep unique figures that appear
-    # on a single page, plus any sufficiently large image when nothing else remains.
+    # Keep unique images and recurring figures with proven interior placements.
+    # Use the large-image fallback only when neither kind of figure remains.
     kept_images = [
         payload
         for digest, payload in page_image_payloads.items()
@@ -873,18 +873,16 @@ def _adapt_pdf_resource(
     ]
     repeats = [image for image in positioned_images if len(page_image_digests[image["content_sha256"]]) > 1]
     repeated_ids = {image["image_id"] for image in repeats}
-    if not kept_images:
+    if not kept_images and not repeats:
         kept_images = [
             payload
             for payload in page_image_payloads.values()
             if int(payload.get("byte_count") or 0) >= 8_000
         ]
-        if figure_gaps is not None and not repeats:
+        if figure_gaps is not None:
             # The legacy fallback keeps one copy of recurring artwork.
             figure_gaps.clear()
-    if repeats:
-        repeated_digests = {image["content_sha256"] for image in repeats}
-        kept_images = [image for image in kept_images if image["content_sha256"] not in repeated_digests] + repeats
+    kept_images.extend(repeats)
     if figure_gaps is not None and multi_figure_groups:
         kept_ids = {image["image_id"] for image in kept_images}
         for group in multi_figure_groups:

@@ -348,3 +348,30 @@ def test_repeated_pdf_margin_art_does_not_change_published_projection():
     legacy = adapt_bound_article(resource, None, **options)
     assert [block["alt"] for block in legacy["blocks"] if block["kind"] == "image"] == ["Figure from page 3"]
     assert adapt_bound_article(resource, None, keep_repeated_pdf_figures=True, **options) == legacy
+
+
+def test_proven_repeated_pdf_figures_do_not_trigger_large_recurring_art_fallback():
+    stream = BytesIO()
+    pdf = canvas.Canvas(stream, invariant=True, pagesize=(612, 792))
+    diagram, logo = _image(7), _image(8)
+    for page in range(1, 5):
+        pdf.drawString(72, 720, f"Inspect the seal on page {page}.")
+        if page <= 2:
+            pdf.drawImage(diagram, 72, 550, width=96, height=96)
+        else:
+            pdf.drawImage(logo, 72, 750, width=96, height=32)
+        pdf.drawString(72, 450, f"Clean the flange on page {page}.")
+        pdf.showPage()
+    pdf.save()
+    resource = SourceResource.from_bytes("fixture:recurring-figures", "fixture", stream.getvalue(), "application/pdf")
+    options = dict(keep_pdf_figure_order=True, keep_multiple_pdf_figures=True)
+    legacy = adapt_bound_article(resource, None, **options)
+    legacy_figures = [block for block in legacy["blocks"] if block["kind"] == "image"]
+    assert [block["page"] for block in legacy_figures] == [1, 3]
+    assert legacy_figures[0]["content_sha256"] != legacy_figures[1]["content_sha256"]
+
+    retained = adapt_bound_article(resource, None, keep_repeated_pdf_figures=True, **options)
+    assert retained["retained_repeated_pdf_figures"] is True
+    figures = [block for block in retained["blocks"] if block["kind"] == "image"]
+    assert [block["page"] for block in figures] == [1, 2]
+    assert all(figure["content_sha256"] == legacy_figures[0]["content_sha256"] for figure in figures)
