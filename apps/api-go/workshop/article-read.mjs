@@ -46,11 +46,11 @@ export async function readArticle(
   } = {},
 ) {
   const deadline = now() + Math.min(120000, Math.max(0, budgetMs));
-  let latest,
-    attempt = 0;
+  let latest, earlyConfirmationJob;
+  let attempt = 0;
   while (now() < deadline) {
     signal?.throwIfAborted();
-    let retryAfter = 0;
+    let retryAfter = 0, fastPendingJob;
     try {
       latest = await read({
         signal,
@@ -64,8 +64,17 @@ export async function readArticle(
         Number(latest.retryAfterSeconds) || 0,
         Number(latest.data.article.processing?.retry_after_seconds) || 0,
       );
-      if (!processingArticle(latest.data.article))
+      const article = latest.data.article;
+      if (!processingArticle(article))
         return { ...latest, timedOut: false };
+      if (
+        latest.status === 202 &&
+        retryAfter === 1 &&
+        !readableArticle(article) &&
+        article.processing.state !== "failed"
+      ) {
+        fastPendingJob = article.processing.job_id;
+      }
     } catch (error) {
       signal?.throwIfAborted();
       if (
@@ -80,7 +89,18 @@ export async function readArticle(
     }
     const remaining = deadline - now();
     if (remaining <= 0) break;
-    const backoff = [1000, 2000, 4000, 8000, 10000][Math.min(attempt++, 4)];
+    let backoff = [1000, 2000, 4000, 8000, 10000][Math.min(attempt++, 4)];
+    if (attempt === 1 && fastPendingJob) {
+      // Add an early check for newly retained source. If this check misses,
+      // keep the normal two-second check before resuming the usual backoff.
+      earlyConfirmationJob = fastPendingJob;
+    } else if (earlyConfirmationJob !== undefined) {
+      if (fastPendingJob === earlyConfirmationJob) {
+        backoff = 1000;
+        attempt--;
+      }
+      earlyConfirmationJob = undefined;
+    }
     await wait(
       Math.min(remaining, Math.max(backoff, retryAfter * 1000)),
       signal,
