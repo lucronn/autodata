@@ -24,25 +24,25 @@
 
 ## Verification on Kali
 
-- Chromium passed 40 Workshop fixture scenarios and eight focused checks
-  covering desktop and mobile Checkout, cancellation, the pending-to-paid UI
-  transition, and search, article reopen, and reload. The focused cases
-  reproduced the Buy failure against the base before passing on the fix.
-  These browser runs substitute synthetic provider responses and articles.
+- The 120 Workshop UI fixture scenarios passed across Chromium, Firefox,
+  and WebKit. Eight focused desktop and mobile Chromium checks also passed.
+  The focused cases reproduced the Buy failure against the base before
+  passing on the fix.
 - In a separate disposable database, the private commerce service used
   the configured Stripe TEST merchant and one-time USD 20 Price. The TEST
   listener started with its own signing secret. The service created a real
   hosted TEST session, reused the order on retry, and denied unpaid access.
   Stripe presented a human verification challenge before payment. The
   unpaid session was expired and the temporary services were removed.
-- Four Chromium cases passed against isolated Go, Python, PostgreSQL, and
-  object storage with synthetic identity, model, and payment transports.
-  They covered checkout and Library persistence, the Bankone transition
-  from stored source to canonical article and warm media reads, account
-  and vehicle-scope denial, and signed fixture refund revocation. The
-  browser harness records actual upstream Checkout bytes before redirect
-  and verifies the canonical article and exact pinned source after reload.
-  Other browser engines and the full provider matrix were not run locally.
+- All 21 API fixture cases passed across Chromium, Firefox, and WebKit
+  with isolated Go, Python, PostgreSQL, and object storage. They covered
+  sign-in, checkout and Library persistence, both provider fixtures from
+  stored source to canonical article and warm media reads, account and
+  vehicle-scope denial, and signed fixture refund revocation.
+- Run `scripts/dev/workshop_browser_test.sh` to repeat the full API matrix.
+  It uses simulated identity, payments, and source content. The Workshop
+  browser integration workflow runs the same command for relevant pull
+  requests.
 - Real hosted settlement, webhook-driven grant and refund, and licensed
   article acceptance remain open. The former local Firebase verifier file is
   missing and no dedicated TEST project is configured on Kali. Use a
