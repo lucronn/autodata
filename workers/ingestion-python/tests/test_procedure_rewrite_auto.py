@@ -722,11 +722,15 @@ def _simultaneous_condition_response(prompt, draft):
 @pytest.mark.parametrize("in_cell", [False, True], ids=["article", "table-cell"])
 @pytest.mark.parametrize("source_text,draft", [
     ("Remove the cover while the ignition is off.", "Take the cover off while the ignition is on."),
+    ("Remove the cover while the ignition is off.", "Carefully take the cover off for access."),
+    ("Remove the cover while the ignition is off.", "Take the panel off while the ignition is on."),
+    ("Remove the cover while the ignition is off.", "With the ignition off, take the panel off."),
     ("Take the cover off with the ignition switched off.", "Remove the cover with the ignition switched on."),
     ("Remove the cover while the ignition is on.", "With the ignition off, take the cover off."),
     ("Install the gasket with the flange dry.", "Fit the gasket while the flange is wet."),
     ("With the flange dry, install the gasket.", "Fit the gasket into place."),
     ("Install the gasket.", "With the flange dry, fit the gasket."),
+    ("Install the gasket.", "With the flange dry, carefully fit the gasket into place."),
     ("Install the seal while the pump is off.", "Fit the seal while the motor is off."),
     ("Install the seal while the pump is off.", "Fit the seal after the pump is off."),
 ])
@@ -750,6 +754,7 @@ def test_automatic_rewrite_v12_rejects_changed_simultaneous_conditions(in_cell, 
 @pytest.mark.parametrize("source_text,draft", [
     ("Remove the cover while the ignition is off.", "With the ignition off, take the cover off."),
     ("Remove the cover while the ignition is off.", "Take the cover off with the ignition switched off."),
+    ("Remove the cover while the ignition is off.", "With the ignition off, take the cover off for access."),
     ("With the flange dry, install the gasket.", "Fit the gasket while the flange is dry."),
     ("Inspect the cover with a puller.", "Using a puller, check the cover."),
     ("While accessing the seal, remove the cover.", "Take the cover off to reach the seal."),
@@ -767,6 +772,12 @@ def test_automatic_rewrite_v12_preserves_same_state_and_existing_aliases(in_cell
     validation = auto.validate_auto(source, result.document, response=payload, prompt_version=version)
     assert validation.passed
     assert validation.report["validator_version"] == "full-prose-auto-validator-v10"
+
+
+def test_automatic_rewrite_v12_rejects_added_condition_in_the_introduction():
+    source = document("Remove the cover.")
+    payload = response("Take the cover off.", introduction="The procedure is done while the ignition is on.")
+    assert run(source, payload).error_code == "REWRITE_INTRODUCTION_UNSUPPORTED_CLAIM"
 
 
 @pytest.mark.parametrize("in_cell,prompt_hash,candidate_hash,report_hash", [

@@ -821,6 +821,10 @@ def _condition_predicate(subject, verb, state):
     return words, {"dried": "dry", "cooled": "cool"}.get(state, state)
 
 
+def _proof_text(text):
+    return text.casefold().strip().rstrip(".!")
+
+
 def _simultaneous_state(text):
     for match in _SIMULTANEOUS_CONDITION.finditer(text):
         if match["while"] and not match["copula"]:
@@ -879,7 +883,7 @@ def _part_target(target, *, extended):
 
 def _qualifier_task(text, *, extended=False, simultaneous=False):
     """Recognize one imperative with a literal target and bounded qualifiers."""
-    text = text.casefold().strip().rstrip(".!")
+    text = _proof_text(text)
     facts = []
     condition_end = None
     if simultaneous and (state := _simultaneous_state(text)):
@@ -920,6 +924,9 @@ def _qualifier_task(text, *, extended=False, simultaneous=False):
         text = _split_qualifier(text, qualifier, end=condition_end)
         if text is None:
             return None
+
+    if simultaneous and qualifier is not None:
+        text = text.removesuffix(" for access")
 
     if tool := _TASK_TOOL.search(text):
         text = _split_qualifier(text, tool)
@@ -968,12 +975,19 @@ def _qualifier_changed(original, replacement, *, extended=False, simultaneous=Fa
     if source is None:
         return False
     source_action, source_facts = source
+    requires_state = simultaneous and any(fact[:2] == ("condition", "while") for fact in source_facts)
     draft = _qualifier_task(replacement, extended=extended, simultaneous=simultaneous)
     if draft is None:
-        return False
+        # An unrecognized draft cannot drop a known source condition or add
+        # a new, explicit power or surface condition.
+        return requires_state or (
+            simultaneous and _simultaneous_state(_proof_text(replacement)) is not None
+        )
     draft_action, draft_facts = draft
     if source_action != draft_action:
-        return False
+        return requires_state or (
+            simultaneous and any(fact[:2] == ("condition", "while") for fact in draft_facts)
+        )
     if source_facts - draft_facts:
         return True
     # A generic inspection can be paraphrased with an illustrative focus.
@@ -1016,6 +1030,8 @@ def _require_changes(source, candidate, *, prompt_version):
         raise ValueError("REWRITE_INTRODUCTION_INSTRUCTION")
     if guard_actions and _spec_scope(introduction):
         raise ValueError("REWRITE_SPEC_SCOPE_MUTATION")
+    if guard_simultaneous and _simultaneous_state(_proof_text(introduction)):
+        raise ValueError("REWRITE_INTRODUCTION_UNSUPPORTED_CLAIM")
     if guard_claims:
         _check_intro_claims(source, slots, introduction)
     for slot in slots:
