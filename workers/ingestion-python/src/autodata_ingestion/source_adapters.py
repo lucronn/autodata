@@ -1848,9 +1848,10 @@ def adapt_bound_article(
                         "blocks": _maintenance_xml_blocks(text),
                         "asset_resource_refs": article.get("asset_resource_refs", []),
                     }
-                if re.search(
-                    r"</?(?:p|div|ol|ul|li|table|h[1-6]|script|style|img)\b", text, re.I
-                ):
+                html_tags = r"p|div|ol|ul|li|table|h[1-6]|script|style|img"
+                if keep_bound_pdf_iframes:
+                    html_tags += r"|iframe|object|embed"
+                if re.search(rf"</?(?:{html_tags})\b", text, re.I):
                     nested = SourceResource.from_bytes(
                         resource.source_uri,
                         resource.source_version,
@@ -1862,6 +1863,7 @@ def adapt_bound_article(
                     return adapt_bound_article(
                         nested, context, keep_html_headings=keep_html_headings,
                         keep_bound_pdf_iframes=keep_bound_pdf_iframes,
+                        keep_pdf_figure_order=keep_pdf_figure_order,
                     )
                 blocks = segment_plain_article_text(text)
         return {

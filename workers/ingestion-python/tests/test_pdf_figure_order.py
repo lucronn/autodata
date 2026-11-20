@@ -65,9 +65,11 @@ def _layout(blocks):
     return [(block.get("type", block.get("kind")), block.get("text") or block.get("alt")) for block in blocks]
 
 
-@pytest.mark.parametrize("container", ["pdf", "wrapper", "linked"])
-def test_capture_places_pdf_figure_without_changing_text_or_retained_bytes(capture_fixture, container):
-    provider = "banktwo" if container == "linked" else "bankone"
+@pytest.mark.parametrize("container", ["pdf", "wrapper", "linked", "linked-hal", "linked-only-hal"])
+def test_capture_places_pdf_figure_without_changing_text_or_retained_bytes(
+    capture_fixture, container,
+):
+    provider = "banktwo" if container.startswith("linked") else "bankone"
     payload = _pdf()
     context = capture_fixture.context(provider)
     options = {"keep_embedded_pdf": True, "keep_bound_pdf_iframes": True}
@@ -77,8 +79,17 @@ def test_capture_places_pdf_figure_without_changing_text_or_retained_bytes(captu
         body = json.dumps({"body": {"pdf": base64.b64encode(payload).decode()}}).encode()
         capture_fixture.body(provider, body, "application/json")
     else:
+        embedded = '<iframe src="/fixture/diagram"></iframe>'
+        markup = embedded if container == "linked-only-hal" else (
+            f"<p>Read the addendum.</p>{embedded}<p>Close the job.</p>"
+        )
+        if container.endswith("-hal"):
+            body = json.dumps({"_embedded": {"data": {"article": {"content": markup}}}}).encode()
+            media = "application/hal+json"
+        else:
+            body, media = markup.encode(), "text/html"
         capture_fixture.body(
-            provider, b'<p>Read the addendum.</p><iframe src="/fixture/diagram"></iframe><p>Close the job.</p>',
+            provider, body, media,
             assets=["addendum"], asset_bindings=[{"source_url": "/fixture/diagram", "resource_ref": "addendum"}],
         )
         capture_fixture.body(provider, payload, "application/pdf", kind="binary", ref="addendum")
@@ -90,8 +101,9 @@ def test_capture_places_pdf_figure_without_changing_text_or_retained_bytes(captu
         context, registry=capture_fixture.registry, object_store=capture_fixture.objects,
         keep_pdf_figure_order=True, **options,
     )
-    prefix = [("paragraph", "Read the addendum.")] if container == "linked" else []
-    suffix = [("paragraph", "Close the job.")] if container == "linked" else []
+    has_surrounding_prose = container in {"linked", "linked-hal"}
+    prefix = [("paragraph", "Read the addendum.")] if has_surrounding_prose else []
+    suffix = [("paragraph", "Close the job.")] if has_surrounding_prose else []
     first = ("paragraph", "Open the pump cover.")
     second = ("paragraph", "Install the seal.")
     figure = ("image", "Figure from page 1")
@@ -106,6 +118,8 @@ def test_capture_places_pdf_figure_without_changing_text_or_retained_bytes(captu
         "pdf": "source-projection-v2",
         "wrapper": "source-projection-v5",
         "linked": "source-projection-v6",
+        "linked-hal": "source-projection-v6",
+        "linked-only-hal": "source-projection-v6",
     }[container]
     assert positioned.projection_version == "source-projection-v7"
     assert capture_fixture.objects.data == retained_bytes
@@ -113,6 +127,23 @@ def test_capture_places_pdf_figure_without_changing_text_or_retained_bytes(captu
     assert {key: value for key, value in before.items() if key not in ("source_order", "block_id")} == {
         key: value for key, value in after.items() if key not in ("source_order", "block_id")
     }
+
+
+@pytest.mark.parametrize("markup", [
+    '<iframe src="/fixture/diagram" srcdoc="Hidden content."></iframe>',
+    '<iframe src="/fixture/unbound">Hidden content.</iframe>',
+])
+def test_hal_embed_only_requires_connector_binding_without_srcdoc(capture_fixture, markup):
+    body = json.dumps({"_embedded": {"data": {"article": {"content": markup}}}}).encode()
+    adapted = adapt_bound_article(
+        SourceResource.from_bytes(
+            "fixture:hal", "fixture", body, "application/hal+json",
+            metadata={"asset_bindings": [{"source_url": "/fixture/diagram", "resource_ref": "addendum"}]},
+        ),
+        capture_fixture.context("banktwo"), keep_bound_pdf_iframes=True, keep_pdf_figure_order=True,
+    )
+    assert adapted["blocks"] == []
+    assert adapted["handled_pdf_embeds"] is True
 
 
 @pytest.mark.parametrize("layout", [
