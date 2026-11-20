@@ -17,7 +17,8 @@ def run(source, payload):
 
 def test_automatic_rewrite_has_own_identity_and_no_manual_acceptance():
     source = document("Remove the cover.", "Tighten the bolts to 25 Nm with tool T-42.")
-    payload = response("Take the cover off.", "The bolts require tightening to 25 Nm using tool T-42.")
+    payload = response("Take the cover off.", source["blocks"][1]["text"])
+    payload["replacements"][1].update(action="retain", reason="Keep the named bolts and tool with their torque.")
     result = run(source, payload)
     assert result.error_code is None
     assert result.profile_version == PROFILE
@@ -25,7 +26,8 @@ def test_automatic_rewrite_has_own_identity_and_no_manual_acceptance():
     assert report["passed"] and not report["content_acceptance_required"]
     assert report["publication_mode"] == "automatic"
     assert report["profile_version"] == PROFILE
-    assert report["changed_prose_slots"] == ["/blocks/0/text", "/blocks/1/text"]
+    assert report["changed_prose_slots"] == ["/blocks/0/text"]
+    assert report["retained_paths"] == ["/blocks/1/text"]
     reviewed = rewrite.rewrite_ordered_document(source, client=Draft(payload), context={}, profile_version="full-prose-review-v1")
     assert reviewed.error_code is None
     assert result.document["blocks"][0]["block_id"] != reviewed.document["blocks"][0]["block_id"]
@@ -126,9 +128,11 @@ def test_distinct_prose_preserves_action_order_facts_and_source_blocks():
     ])
     replacements = (
         "Take the cover off before checking that the cable guide is firmly attached.",
-        "With tool T-42, bring the cover bolts up to 25 Nm uniformly once the gasket is seated.",
+        source["blocks"][1]["text"],
     )
-    result = run(source, response(*replacements))
+    payload = response(*replacements)
+    payload["replacements"][1].update(action="retain", reason="Keep the gasket condition and the specified torque.")
+    result = run(source, payload)
     assert result.error_code is None
     assert [block["source_order"] for block in result.document["blocks"]] == [1, 2, 3, 4, 5]
     for original, rendered, text in zip(source["blocks"][:2], result.document["blocks"][1:3], replacements):
@@ -149,7 +153,7 @@ def test_distinct_prose_preserves_action_order_facts_and_source_blocks():
     ("Disconnect the battery before handling the connector.",
      "Attach the battery ahead of connector service.", "REWRITE_ACTION_MUTATION"),
     ("Tighten the connector cover screws to 7 Nm.",
-     "Loosen the connector cover screws until they reach 7 Nm.", "REWRITE_ACTION_MUTATION"),
+     "Loosen the connector cover screws until they reach 7 Nm.", "REWRITE_SPEC_SCOPE_MUTATION"),
     ("First disconnect the battery, then remove the connector cover.",
      "Take the connector cover off before detaching the battery.", "REWRITE_ACTION_MUTATION"),
     ("Remove the connector cover.",
@@ -185,8 +189,8 @@ def test_automatic_rewrite_checks_actions_bound_to_each_slot():
 @pytest.mark.parametrize("source_text,draft", [
     ("First disconnect the battery, then remove the connector cover.",
      "Once power has been isolated at the battery, take the cover off the connector."),
-    ("Tighten the connector cover screws to 7 Nm.",
-     "Set the connector cover screw torque to 7 Nm."),
+    ("Tighten the connector cover screws evenly.",
+     "For an even fit, tighten each screw on the connector cover."),
     ("Remove the latch cover and inspect the cable.",
      "Check the cable once the latch cover is removed."),
     ("Open the housing before disconnecting the battery.",
@@ -207,6 +211,71 @@ def test_automatic_rewrite_rejects_an_imperative_introduction(intro):
     source = document("Remove the connector cover.")
     result = run(source, response("Take the cover off the connector.", introduction=intro))
     assert result.error_code == "REWRITE_INTRODUCTION_INSTRUCTION"
+    assert result.document == source
+
+
+@pytest.mark.parametrize("source_text,draft", [
+    ("Tighten the connector cover screws to 7 Nm.", "Set the torque of the battery mounting screws to 7 Nm."),
+    ("Inflate the front left tire to 33 psi.", "Raise the spare tire pressure to 33 psi."),
+    ("Tighten the cover screws to 25Nm.", "Tighten the mounting screws to 25Nm."),
+    ("Warm the cover to 30–40 °C before testing the seal.",
+     "Before testing the seal, warm the housing to 30–40 °C."),
+    ("Read the gauge in kilopascals after it stabilizes.",
+     "Once the needle settles, read the result in pounds per square inch."),
+    ("Read the gauge in kilopascals after it stabilizes.",
+     "Observe the needle after it settles."),
+    ("Read the gauge in psi once it stabilizes.", "Read the needle once it settles."),
+    ("Report the measurement using kilopascals.", "Report the measurement using megapascals."),
+    ("Use kilopascals rather than pounds per square inch.",
+     "Report pressures in pounds per square inch rather than kilopascals."),
+])
+def test_automatic_rewrite_preserves_full_specification_scope(source_text, draft):
+    source = document(source_text, "Inspect the cover.")
+    payload = response(draft, "Check the cover for wear.")
+    result = run(source, payload)
+    assert result.error_code == "REWRITE_SPEC_SCOPE_MUTATION"
+    assert result.document == source
+
+    payload["replacements"][0].update(action="retain", text=source_text, reason="Keep the specification and its context.")
+    model = Draft(payload)
+    result = rewrite.rewrite_ordered_document(source, client=model, context={}, profile_version=PROFILE)
+    assert model.prompt["slots"][0]["required_action"] == "retain"
+    assert result.error_code is None
+    assert result.document["blocks"][1]["text"] == source_text
+    assert result.document["blocks"][2]["text"] == "Check the cover for wear."
+
+
+def test_automatic_rewrite_cannot_invent_a_unit_assignment():
+    source = document("Read the indicated pressure after the needle settles.")
+    result = run(source, response("Read the gauge in kilopascals once it settles."))
+    assert result.error_code == "REWRITE_SPEC_SCOPE_MUTATION"
+    assert result.document == source
+
+
+@pytest.mark.parametrize("source_text,draft", [
+    ("Inspect 2 guides for wear.", "Check the condition of the 2 guides."),
+    ("Inspect the guide at step 2.", "At step 2, check the guide for wear."),
+    ("In the tray, inspect the filter.", "Check the filter in the tray."),
+    ("Spend a few minutes checking the guide.", "Take a moment to inspect the guide."),
+    ("Read the odometer once the display settles.", "Once the display settles, note the odometer reading."),
+    ("The sensor cable extends for miles along the track.", "The sensor cable follows the track for a long distance."),
+    ("The service depot is in Watts.", "Watts is home to the service depot."),
+])
+def test_scoped_guard_leaves_bare_numbers_and_incidental_units_editable(source_text, draft):
+    source = document(source_text)
+    model = Draft(response(draft))
+    result = rewrite.rewrite_ordered_document(source, client=model, context={}, profile_version=PROFILE)
+    assert model.prompt["slots"][0]["required_action"] == "rewrite"
+    assert result.error_code is None
+
+
+def test_introduction_cannot_reassign_an_exact_source_specification():
+    source = document("Tighten the connector cover screws to 7 Nm.", "Inspect the cover.")
+    payload = response("Tighten the connector cover screws to 7 Nm.", "Check the cover for wear.",
+                       introduction="The battery mounting screws require 7 Nm.")
+    payload["replacements"][0].update(action="retain", reason="The scope is exact.")
+    result = run(source, payload)
+    assert result.error_code == "REWRITE_SPEC_SCOPE_MUTATION"
     assert result.document == source
 
 

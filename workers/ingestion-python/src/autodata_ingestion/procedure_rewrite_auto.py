@@ -36,6 +36,39 @@ _PREREQUISITE = re.compile(
     re.IGNORECASE,
 )
 
+# Protect the complete leaf when it assigns a recognized measurement to a
+# component or explicitly states or compares the units of a measurement.
+# This deliberately excludes the shared token grammar's "word after a number"
+# fallback, which also treats counts such as "2 guides" as technical tokens.
+_SPELLED_UNIT = (
+    r"(?:kilo|mega)?pascals?|pounds?\s+per\s+square\s+inch|"
+    r"newton[-\s]+met(?:er|re)s?|(?:foot|inch)[-\s]+pounds?|"
+    r"revolutions?\s+per\s+minute|(?:milli|centi|kilo|micro)?met(?:er|re)s?|"
+    r"inches|feet|(?:kilo|milli)?grams?|pounds?|ounces?|"
+    r"(?:milli)?lit(?:er|re)s?|quarts?|gallons?|volts?|amperes?|amps?|"
+    r"ohms?|watts?|hertz|degrees?\s+(?:Celsius|Fahrenheit)"
+)
+_MEASUREMENT_VALUE = re.compile(
+    r"(?<![\w./-])" + full._NUMBER + r"\s*(?:"
+    + "|".join(unit for unit in full._UNITS if len(unit) > 1)
+    + r"|[VALΩ%°]|in\.(?=\s|$)|(?i:" + _SPELLED_UNIT + r"))(?![\w/-]|\.\w)"
+)
+_UNIT_PHRASE = r"(?i:" + _SPELLED_UNIT + r")"
+_MEASUREMENT_UNITS = re.compile(
+    r"(?i:\bunits\s+of\s+)" + _UNIT_PHRASE + r"\b"
+    r"|\b" + _UNIT_PHRASE + r"\s+(?i:rather\s+than|instead\s+of|versus|vs\.?)\s+"
+    + _UNIT_PHRASE + r"\b"
+    r"|(?i:\b(?:read(?:ing)?|measur(?:e|ed)|display(?:ed)?|report(?:ed)?|record(?:ed)?|"
+    r"express(?:ed)?|specif(?:y|ied)|calibrat(?:e|ed)|convert(?:ed)?)\b[^,;.!?\n]{0,60}"
+    r"\b(?:in|to|using)\s+)"
+    r"(?:" + _UNIT_PHRASE + r"|kPa|MPa|psi|rpm|mm|cm|Nm|bar|°C|°F)\b"
+)
+
+
+def _spec_scope(text):
+    return bool(_MEASUREMENT_VALUE.search(text) or _MEASUREMENT_UNITS.search(text))
+
+
 # Ordered groups of familiar directives and a few common paraphrases.
 # Keep opposite actions in separate groups. The matcher does not infer
 # the component governed by a verb or interpret arbitrary language.
@@ -157,12 +190,14 @@ def build_auto_prompt(document, *, context):
         return previous
     payload["prompt_version"] = _PROSE_PROMPT_VERSION
     for slot in payload["slots"]:
-        if _PREREQUISITE.search(slot["text"]):
+        if _PREREQUISITE.search(slot["text"]) or (
+                slot["required_action"] == "rewrite" and _spec_scope(slot["text"])):
             slot["required_action"] = "retain"
     payload["rules"].append(
         "Keep each slot's action, polarity and execution order. Preserve the original wording of "
-        "conditions and prohibitions marked retain. The introduction must describe the source "
-        "without instructing the reader to perform any action."
+        "conditions, prohibitions and specifications marked retain. Keep each measurement with "
+        "its original component, units and conditions. The introduction must describe the source "
+        "without adding directions or specifications."
     )
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
@@ -251,6 +286,8 @@ def _require_changes(source, candidate, *, prompt_version):
         raise ValueError("REWRITE_SAFETY_MUTATION")
     if guard_actions and _INTRO_DIRECTIVE.search(introduction):
         raise ValueError("REWRITE_INTRODUCTION_INSTRUCTION")
+    if guard_actions and _spec_scope(introduction):
+        raise ValueError("REWRITE_SPEC_SCOPE_MUTATION")
     for slot in slots:
         original = slot["text"]
         replacement = full._get(restored, slot["path"])
@@ -260,11 +297,15 @@ def _require_changes(source, candidate, *, prompt_version):
                 raise ValueError("REWRITE_SAFETY_MUTATION")
             continue
         technical_only = _technical_only(original)
+        if guard_prose and not technical_only and _technical_only(replacement):
+            raise ValueError("REWRITE_PROSE_MISSING")
+        if guard_actions and not technical_only and (_spec_scope(original) or _spec_scope(replacement)):
+            if original != replacement:
+                raise ValueError("REWRITE_SPEC_SCOPE_MUTATION")
+            continue
         if (_WORDS.findall(replacement.casefold()) == _WORDS.findall(original.casefold())
                 and not technical_only):
             raise ValueError("REWRITE_UNCHANGED")
-        if guard_prose and not technical_only and _technical_only(replacement):
-            raise ValueError("REWRITE_PROSE_MISSING")
         if guard_prose and not technical_only and _near_copy(original, replacement):
             raise ValueError("REWRITE_PROSE_TOO_SIMILAR")
         if guard_actions and not technical_only:
