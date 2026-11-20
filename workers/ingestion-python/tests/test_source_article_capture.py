@@ -273,6 +273,92 @@ def test_exact_declared_image_ref_preserves_source_position(capture_fixture):
     assert captured.source_document["blocks"][1]["status"] == "available"
 
 
+@pytest.mark.parametrize("provider", ["bankone", "banktwo"])
+@pytest.mark.parametrize("attribute", ["data-resource-ref", "asset_resource_ref"])
+def test_html_ref_only_image_keeps_its_position(capture_fixture, provider, attribute):
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    raw = (
+        '<p>Remove pump.</p>'
+        f'<img {attribute}="diagram" alt="Pump diagram">'
+        '<p>Install pump.</p>'
+    ).encode()
+    capture_fixture.body(provider, raw, assets=["diagram"])
+    capture_fixture.body(
+        provider, b"image", "image/png", ref="diagram", kind="asset"
+    )
+
+    captured = capture_source_article(
+        capture_fixture.context(provider, asset_ref="diagram"),
+        registry=capture_fixture.registry,
+        object_store=capture_fixture.objects,
+    )
+
+    assert [block["type"] for block in captured.source_document["blocks"]] == [
+        "paragraph",
+        "image",
+        "paragraph",
+    ]
+    [figure] = captured.source_images
+    assert figure["alt"] == "Pump diagram"
+    assert figure["status"] == "available"
+    assert capture_fixture.resource_calls(provider, "diagram") == 1
+
+
+@pytest.mark.parametrize("provider", ["bankone", "banktwo"])
+@pytest.mark.parametrize("available", [False, True])
+def test_json_steps_keep_attached_figures(capture_fixture, provider, available):
+    import json
+    from autodata_ingestion.article_document import validate_ordered_document
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    raw = {
+        "steps": [
+            {
+                "text": "Remove the pump.",
+                "images": [
+                    {
+                        "asset_resource_ref": "diagram",
+                        "alt": "Pump diagram",
+                        "caption": "Installation marks",
+                        "storage_key": "untrusted/object",
+                    }
+                ],
+            },
+            "Install the replacement.",
+        ]
+    }
+    capture_fixture.body(provider, json.dumps(raw).encode(), "application/json")
+    if available:
+        capture_fixture.body(
+            provider, b"image", "image/png", ref="diagram", kind="asset"
+        )
+
+    captured = capture_source_article(
+        capture_fixture.context(provider),
+        registry=capture_fixture.registry,
+        object_store=capture_fixture.objects,
+    )
+
+    first, second = captured.source_document["blocks"]
+    assert first["text"] == "Remove the pump."
+    assert second["text"] == "Install the replacement."
+    [figure] = first["images"]
+    assert figure["alt"] == "Pump diagram"
+    assert figure["caption"] == "Installation marks"
+    assert [figure] == captured.source_images
+    assert capture_fixture.resource_calls(provider, "diagram") == 1
+    assert validate_ordered_document(captured.source_document, strict=True) == []
+    assert "untrusted/object" not in str(captured.source_document)
+    if available:
+        assert figure["status"] == "available"
+        assert captured.projection_status == "readable"
+        assert capture_fixture.objects.data[figure["storage_key"]] == (b"image", "image/png")
+    else:
+        assert figure["unavailable_reason"] == "SOURCE_NOT_FOUND"
+        assert captured.projection_status == "partial"
+
+
 def test_fixture_pdf_uses_real_adapter_and_keeps_original_bytes(capture_fixture):
     from io import BytesIO
     from reportlab.pdfgen import canvas
@@ -374,6 +460,73 @@ def test_pdf_embedded_figure_is_localized_and_retained(capture_fixture):
         "/resources/" in c and not c.endswith("/body")
         for c in capture_fixture.calls("banktwo")
     )
+
+
+def test_mixed_pdf_keeps_ocr_text_and_embedded_figure_in_page_order(
+    capture_fixture, monkeypatch
+):
+    import random
+    from io import BytesIO
+
+    from PIL import Image
+    from reportlab.lib.utils import ImageReader
+    from reportlab.pdfgen import canvas
+
+    from autodata_ingestion import source_adapters
+    from autodata_ingestion.ocr import OCRTextBlock
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    image = Image.frombytes("RGB", (96, 96), random.Random(7).randbytes(96 * 96 * 3))
+    figure = BytesIO()
+    image.save(figure, format="PNG")
+    figure.seek(0)
+    buf = BytesIO()
+    pdf = canvas.Canvas(buf)
+    pdf.drawString(72, 720, "Remove the pump.")
+    pdf.showPage()
+    pdf.drawImage(ImageReader(figure), 72, 500, 96, 96)
+    pdf.showPage()
+    pdf.drawString(72, 720, "Install the replacement.")
+    pdf.showPage()
+    pdf.save()
+
+    def read_scanned_page(_digest, _payload, native_pages):
+        assert native_pages == {1, 3}
+        return (
+            OCRTextBlock("Check the seal.", 0.96, (72, 96, 180, 30), page_number=2),
+            OCRTextBlock("Wipe the flange.", 0.96, (72, 140, 180, 30), page_number=2),
+        )
+
+    monkeypatch.setattr(source_adapters, "extract_scanned_pdf_text", read_scanned_page)
+    capture_fixture.body("banktwo", buf.getvalue(), "application/pdf", kind="binary")
+    captured = capture_source_article(
+        capture_fixture.context("banktwo"),
+        registry=capture_fixture.registry,
+        object_store=capture_fixture.objects,
+    )
+
+    contents = [
+        (block["type"], block.get("text") or block.get("alt"))
+        for block in captured.source_document["blocks"]
+    ]
+    assert contents == [
+        ("paragraph", "Remove the pump."),
+        ("paragraph", "Check the seal."),
+        ("paragraph", "Wipe the flange."),
+        ("image", "Figure from page 2"),
+        ("paragraph", "Install the replacement."),
+    ]
+    assert captured.source_body.splitlines() == [
+        "Remove the pump.",
+        "Check the seal.",
+        "Wipe the flange.",
+        "Install the replacement.",
+    ]
+    [localized] = captured.source_images
+    payload, media_type = capture_fixture.objects.data[localized["storage_key"]]
+    assert media_type == "image/png"
+    with Image.open(BytesIO(payload)) as stored:
+        assert stored.tobytes() == image.tobytes()
 
 
 def test_html_explicit_vehicle_metadata_cannot_override_resolved_scope(capture_fixture):

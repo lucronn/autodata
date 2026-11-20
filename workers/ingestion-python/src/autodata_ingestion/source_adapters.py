@@ -1769,7 +1769,7 @@ def adapt_bound_article(resource: SourceResource, context) -> dict[str, Any]:
                         "number": i,
                         **({"text": s} if isinstance(s, str) else {
                             field: s[field]
-                            for field in ("text", "instruction", "description", "instructions")
+                            for field in ("text", "instruction", "description", "instructions", "images")
                             if field in s
                         }),
                     }
@@ -1852,23 +1852,28 @@ def adapt_bound_article(resource: SourceResource, context) -> dict[str, Any]:
             for c in artifact.candidates
             if c.kind in ("document_text", "ocr_text", "image_text")
         ]
-        images = {
-            image["image_id"]: image
-            for c in text_candidates
-            for image in c.data.get("images", [])
-        }
-        blocks = []
+        pages: dict[int, list[dict[str, Any]]] = {}
+        unplaced = []
+        images = {}
+        # Native text and OCR candidates are produced in separate passes.
         for candidate in text_candidates:
-            blocks.extend(segment_plain_article_text(candidate.data.get("text", "")))
-            page = (
-                candidate.locator.split(":")[1]
-                if candidate.locator.startswith("page:")
-                else None
-            )
-            for image_id, image in list(images.items()):
-                if str(image.get("page")) == page:
-                    blocks.append({"kind": "image", **image})
-                    del images[image_id]
-        blocks.extend({"kind": "image", **image} for image in images.values())
+            segments = segment_plain_article_text(candidate.data.get("text", ""))
+            page = re.match(r"^page:(\d+)(?:$|:)", candidate.locator)
+            if page:
+                pages.setdefault(int(page[1]), []).extend(segments)
+            else:
+                unplaced.extend(segments)
+            for image in candidate.data.get("images", []):
+                images.setdefault(image["image_id"], image)
+        # Add figures after all text regions from their own page.
+        for image in images.values():
+            figure = {"kind": "image", **image}
+            page_number = image.get("page")
+            if isinstance(page_number, int):
+                pages.setdefault(page_number, []).append(figure)
+            else:
+                unplaced.append(figure)
+        blocks = [block for page in sorted(pages) for block in pages[page]]
+        blocks.extend(unplaced)
         return {"blocks": blocks, "asset_resource_refs": []}
     raise ValueError("unsupported article media")

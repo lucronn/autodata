@@ -143,10 +143,15 @@ class ArticleParser(HTMLParser):
                 self._image_link += 1
             elif attrs.get("href"):
                 self.links.append(attrs["href"])
-        if tag == "img" and attrs.get("src"):
+        if tag == "img":
+            src = attrs.get("src") or ""
+            ref = self._asset_bindings.get(src) or attrs.get("data-resource-ref") or attrs.get("asset_resource_ref")
+            if not src and not ref:
+                return
             self.flush()
-            image = {"kind": "image", "url": attrs["src"], "alt": attrs.get("alt", ""), "name": attrs.get("img_name", "")}
-            ref = self._asset_bindings.get(attrs["src"]) or attrs.get("data-resource-ref") or attrs.get("asset_resource_ref")
+            image = {"kind": "image", "alt": attrs.get("alt", ""), "name": attrs.get("img_name", "")}
+            if src:
+                image["url"] = src
             if ref:
                 image["asset_resource_ref"] = ref
             if self._table_cell is not None:

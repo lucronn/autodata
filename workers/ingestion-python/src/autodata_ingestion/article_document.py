@@ -239,6 +239,12 @@ def build_ordered_document(
         if kind in {"step", "instruction"}:
             output.append(_step_block(article, source_index, raw, evidence_ids))
             continue
+        if kind in {"break", "hr", "separator"}:
+            output.append(_base_block(article, source_index, "break", evidence_ids=evidence_ids))
+            continue
+
+        images = _text_block_images(raw)
+        extra_fields = {"images": images} if images else {}
         if kind in {"heading", "title", "section"}:
             text = _clean_text(
                 raw.get("text")
@@ -249,10 +255,7 @@ def build_ordered_document(
                 or raw.get("content")
             )
             if text:
-                output.append(_base_block(article, source_index, "heading", text=text, level=_level(raw), evidence_ids=evidence_ids))
-            continue
-        if kind in {"break", "hr", "separator"}:
-            output.append(_base_block(article, source_index, "break", evidence_ids=evidence_ids))
+                output.append(_base_block(article, source_index, "heading", text=text, level=_level(raw), evidence_ids=evidence_ids, **extra_fields))
             continue
         if kind in {"link", "anchor"}:
             text = _clean_text(
@@ -278,6 +281,7 @@ def build_ordered_document(
                         text=text,
                         href=href,
                         evidence_ids=evidence_ids,
+                        **extra_fields,
                     )
                 )
             continue
@@ -291,23 +295,6 @@ def build_ordered_document(
         if not text:
             output.append(_unknown_block(article, source_index, raw))
             continue
-        images_raw = raw.get("images")
-        extra_fields: dict[str, Any] = {}
-        if isinstance(images_raw, list):
-            clean_images = [
-                _normalize_cell_image(image) for image in images_raw if isinstance(image, Mapping)
-            ]
-            if clean_images:
-                seen_keys: set[str] = set()
-                deduped_images: list[dict[str, Any]] = []
-                for img in clean_images:
-                    keys = _image_identities(img)
-                    if keys and keys & seen_keys:
-                        continue
-                    seen_keys.update(keys)
-                    deduped_images.append(img)
-                if deduped_images:
-                    extra_fields["images"] = deduped_images
         explicit_number = _numbered_text(text)
         if explicit_number is not None:
             number, text = explicit_number
@@ -323,7 +310,7 @@ def build_ordered_document(
                 )
             )
         elif _looks_like_heading(text):
-            output.append(_base_block(article, source_index, "heading", text=text, level=2, evidence_ids=evidence_ids))
+            output.append(_base_block(article, source_index, "heading", text=text, level=2, evidence_ids=evidence_ids, **extra_fields))
         else:
             output.append(_base_block(article, source_index, "paragraph", text=text, evidence_ids=evidence_ids, **extra_fields))
         if figure_queue and re.search(r"\bFigure\s+\d+\b", text, re.IGNORECASE):
@@ -655,6 +642,24 @@ def _normalize_cell_image(raw: Mapping[str, Any]) -> dict[str, Any]:
     if caption:
         out["caption"] = caption
     return out
+
+
+def _text_block_images(raw: Mapping[str, Any]) -> list[dict[str, Any]]:
+    images = raw.get("images")
+    if not isinstance(images, list):
+        return []
+    output = []
+    seen = set()
+    for image in images:
+        if not isinstance(image, Mapping):
+            continue
+        normalized = _normalize_cell_image(image)
+        keys = _image_identities(normalized)
+        if keys & seen:
+            continue
+        seen.update(keys)
+        output.append(normalized)
+    return output
 
 
 def _table_cell(value: Any) -> Any:
@@ -1029,8 +1034,11 @@ def _expand_plain_source_blocks(source_blocks: list[Any]) -> list[Any]:
         if len(segments) <= 1:
             expanded.append(raw)
             continue
-        for segment in segments:
-            expanded.append({**dict(raw), **segment})
+        for index, segment in enumerate(segments):
+            block = {**raw, **segment}
+            if index < len(segments) - 1:
+                block.pop("images", None)
+            expanded.append(block)
     return expanded
 
 

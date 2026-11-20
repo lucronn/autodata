@@ -531,6 +531,36 @@ def test_paragraph_block_extracts_content_and_body_and_preserves_images():
     assert blocks[2]["level"] == 3
 
 
+def test_text_blocks_keep_figures_once_in_source_order():
+    def figure(name):
+        return {"image_id": name, "storage_key": "figures/" + name}
+
+    document = build_ordered_document(
+        {"article_id": "text-figures"},
+        [
+            {"kind": "heading", "text": "Pump assembly", "images": [figure("first")]},
+            {"kind": "text", "text": "PUMP INSPECTION", "images": [figure("second")]},
+            {"kind": "link", "text": "View installation marks", "images": [figure("third")]},
+            {"kind": "paragraph", "text": "Clean the pump.\nCheck the seal.",
+             "images": [figure("fourth"), figure("fourth")]},
+            {"kind": "text", "text": "Install the replacement."},
+        ],
+    )
+
+    ordered_figures = [
+        (block["type"], block["text"], [image["image_id"] for image in block.get("images", [])])
+        for block in document["blocks"]
+    ]
+    assert ordered_figures == [
+        ("heading", "Pump assembly", ["first"]),
+        ("heading", "PUMP INSPECTION", ["second"]),
+        ("link", "View installation marks", ["third"]),
+        ("paragraph", "Clean the pump.", []),
+        ("paragraph", "Check the seal.", ["fourth"]),
+        ("paragraph", "Install the replacement.", []),
+    ]
+
+
 def test_document_figure_queue_does_not_duplicate_block_images():
     article = {
         "article_id": "test-block-img-dedup",
