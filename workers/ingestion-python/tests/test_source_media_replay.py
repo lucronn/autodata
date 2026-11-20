@@ -17,10 +17,14 @@ from autodata_ingestion.source_article_capture import capture_source_article, pr
 from autodata_ingestion.source_connector_client import SourceEnvelopeV1
 
 
+_SVG = b'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><rect width="24" height="24" fill="green"/></svg>'
+
+
 class _Cursor:
     def __init__(self, row, snapshots):
         self.row = row
         self.snapshots = snapshots
+        self.reviews = []
         self.queries = []
 
     def execute(self, sql, parameters):
@@ -32,6 +36,11 @@ class _Cursor:
 
     def fetchall(self):
         sql, (ids,) = self.queries[-1]
+        if "FROM source_review_items" in sql:
+            return [
+                review for review in self.reviews
+                if review["item_kind"] == "quarantine" and set(review["source_snapshot_ids"]).intersection(ids)
+            ]
         if "FROM source_artifacts" in sql:
             return [{
                 "source_snapshot_id": row["source_snapshot_id"],
@@ -79,7 +88,7 @@ class _Connector:
             self.resources["figure"] = self._resource(figure, "image/png")
 
     def _resource(self, payload, mime, *, bindings=None):
-        fields = {"kind": "asset" if mime == "image/png" else "article",
+        fields = {"kind": "asset" if mime.startswith("image/") else "article",
                   "media_type": mime, "sha256": sha256(payload).hexdigest()}
         if bindings is not None:
             fields.update(asset_resource_refs=["figure"], asset_bindings=bindings)
@@ -231,7 +240,8 @@ def test_retained_replay_keeps_verified_media_and_provenance(provider, variant):
 
 
 @pytest.mark.parametrize("provider", ["bankone", "banktwo"])
-def test_replay_and_published_repair_move_detached_figure_into_existing_item(provider):
+@pytest.mark.parametrize("svg", [False, True])
+def test_replay_and_published_repair_move_detached_figure_into_existing_item(provider, svg):
     from autodata_ingestion.procedure_rewrite_auto import render_auto
     from autodata_ingestion.procedure_rewrite_full import prose_slots
     from autodata_ingestion.published_media_repair import repair_published_media
@@ -243,6 +253,8 @@ def test_replay_and_published_repair_move_detached_figure_into_existing_item(pro
         b'<li>Install the cover.</li></ol>'
     )
     client = _Connector(provider, raw, buffer.getvalue())
+    if svg:
+        client.resources["figure"] = client._resource(_SVG, "image/svg+xml")
     cursor, objects = _retained_fixture(client, move_image=False)
     old_document = cursor.row["source_document"]
     [old_list] = old_document["blocks"]
@@ -312,12 +324,15 @@ def test_apply_binding_shares_locks_for_all_observed_snapshot_ids():
     cursor, _ = _fixture("bankone")
     preview = replay.load_media_replay_binding(cursor, cursor.row["source_revision_id"])
     locked = replay.load_media_replay_binding(cursor, cursor.row["source_revision_id"], lock=True)
-    snapshot_query, (snapshot_ids,) = cursor.queries[-2]
-    artifact_query, (artifact_ids,) = cursor.queries[-1]
+    snapshot_query, (snapshot_ids,) = cursor.queries[-3]
+    artifact_query, (artifact_ids,) = cursor.queries[-2]
+    review_query, (review_ids,) = cursor.queries[-1]
     assert "FOR SHARE OF s" in snapshot_query
     assert snapshot_ids == sorted(row["source_snapshot_id"] for row in cursor.snapshots)
     assert "FOR SHARE OF a" in artifact_query
     assert artifact_ids == sorted(row["source_snapshot_id"] for row in cursor.snapshots[:2])
+    assert "FOR SHARE OF q" in review_query
+    assert review_ids == sorted(map(str, {*artifact_ids, cursor.row["descriptor_source_snapshot_id"]}))
     assert preview == locked
 
 
@@ -494,3 +509,159 @@ def test_retained_numbered_list_refuses_reversed_markup():
     cursor, objects = _retained_numbered_list("banktwo", reversed_list=True)
     with pytest.raises(ValueError, match="SOURCE_MEDIA_REPLAY_UNSUPPORTED"):
         replay.preview_media_replay(cursor, cursor.row["source_revision_id"], object_store=objects, ordinals=True)
+
+
+def _retained_svg(provider="bankone", *, ordinals=False):
+    bindings = None
+    if provider == "banktwo":
+        image = b'<img src="/fixture/alignment" alt="Pump alignment">'
+        bindings = [{"source_url": "/fixture/alignment", "resource_ref": "figure"}]
+    else:
+        image = b'<img data-resource-ref="figure" alt="Pump alignment">'
+    if ordinals:
+        raw = (
+            b'<ol start="4"><li>Remove the pump.' + image
+            + b'</li><li value="9">Install the cover.</li></ol>'
+        )
+    else:
+        raw = b"<p>Remove the pump.</p>" + image + b"<p>Install the cover.</p>"
+    client = _Connector(provider, raw, bindings=bindings)
+    client.resources["figure"] = client._resource(_SVG, "image/svg+xml")
+    cursor, objects = _retained_fixture(client, move_image=not ordinals)
+    if ordinals:
+        [block] = cursor.row["source_document"]["blocks"]
+        block.pop("start")
+        block["items"][1] = block["items"][1]["text"]
+        cursor.row["projection_version"] = "source-projection-v3"
+    return cursor, objects
+
+
+@pytest.mark.parametrize("provider", ["bankone", "banktwo"])
+@pytest.mark.parametrize("ordinals", [False, True])
+def test_retained_svg_requires_exact_png_rendition_and_preserves_figure(provider, ordinals):
+    cursor, objects = _retained_svg(provider, ordinals=ordinals)
+    before = deepcopy((cursor.row, cursor.snapshots, objects.data, objects.writes))
+    body, original, derivative = cursor.row["resource_provenance"]
+    assert original["role"] == "asset_original"
+    assert derivative["derived_from_sha256"] == original["sha256"]
+    assert derivative["derivation_version"] == replay.RASTERIZER_VERSION
+    assert objects.data[original["object_key"]] == _SVG
+    with Image.open(BytesIO(objects.data[derivative["object_key"]])) as png:
+        assert png.format == "PNG" and png.getpixel((12, 12))[:3] == (0, 128, 0)
+
+    binding, captured = replay.preview_media_replay(
+        cursor, cursor.row["source_revision_id"], object_store=objects, ordinals=ordinals,
+    )
+
+    assert [key for key, _ in objects.reads] == [
+        resource["object_key"] for resource in (body, original, derivative)
+    ]
+    assert captured.resource_manifest == before[0]["resource_manifest"]
+    assert captured.resource_provenance == before[0]["resource_provenance"]
+    assert captured.source_fingerprint == binding.source_fingerprint
+    [image] = captured.source_images
+    assert image["content_sha256"] == derivative["sha256"]
+    assert image["media_type"] == "image/png"
+    if ordinals:
+        assert captured.projection_version == "source-projection-v4"
+        assert [step["number"] for step in captured.source_steps] == [4, 9]
+        assert captured.source_images == before[0]["source_images"]
+    else:
+        assert captured.projection_version == "source-projection-v3"
+        assert [block["type"] for block in captured.source_document["blocks"]] == [
+            "paragraph", "image", "paragraph",
+        ]
+    assert (cursor.row, cursor.snapshots, objects.data, objects.writes) == before
+
+
+@pytest.mark.parametrize(("mutation", "code"), [
+    ("orphan_original", "UNSUPPORTED"),
+    ("orphan_derivative", "UNSUPPORTED"),
+    ("wrong_version", "UNSUPPORTED"),
+    ("wrong_digest", "BINDING_MISMATCH"),
+    ("wrong_ref", "BINDING_MISMATCH"),
+    ("wrong_request", "BINDING_MISMATCH"),
+])
+def test_retained_svg_rejects_unbound_derivative_before_object_reads(mutation, code):
+    cursor, objects = _retained_svg()
+    manifest = cursor.row["resource_manifest"]
+    provenance = cursor.row["resource_provenance"]
+    if mutation == "orphan_original":
+        manifest.pop()
+        provenance.pop()
+    elif mutation == "orphan_derivative":
+        manifest.pop(1)
+        provenance.pop(1)
+    elif mutation == "wrong_version":
+        manifest[2]["derivation_version"] = provenance[2]["derivation_version"] = "unknown-rasterizer"
+    elif mutation == "wrong_digest":
+        manifest[2]["derived_from_sha256"] = provenance[2]["derived_from_sha256"] = "f" * 64
+    elif mutation == "wrong_ref":
+        manifest[2]["opaque_ref"] = provenance[2]["opaque_ref"] = "another-figure"
+    else:
+        provenance[2]["request_id"] = str(uuid4())
+    with pytest.raises(ValueError, match="^SOURCE_MEDIA_REPLAY_" + code + "$"):
+        replay.preview_media_replay(cursor, cursor.row["source_revision_id"], object_store=objects)
+    assert not objects.reads
+
+
+@pytest.mark.parametrize("resource_index", [1, 2])
+def test_retained_svg_rejects_tampered_object(resource_index):
+    cursor, objects = _retained_svg()
+    key = cursor.row["resource_provenance"][resource_index]["object_key"]
+    objects.data[key] += b"tampered"
+    with pytest.raises(ValueError, match="^SOURCE_MEDIA_REPLAY_OBJECT_MISMATCH$"):
+        replay.preview_media_replay(cursor, cursor.row["source_revision_id"], object_store=objects)
+
+
+def test_retained_svg_rejects_changed_rasterizer_output():
+    cursor, objects = _retained_svg()
+    buffer = BytesIO()
+    Image.new("RGB", (24, 24), "red").save(buffer, format="PNG")
+    writes = objects.writes
+    with patch(
+        "autodata_ingestion.source_article_capture.rasterize_svg", return_value=buffer.getvalue(),
+    ) as rasterize:
+        # Ordinary capture treats the rejected sink write as a failed derivative.
+        with pytest.raises(ValueError, match="^SOURCE_MEDIA_REPLAY_BINDING_MISMATCH$"):
+            replay.preview_media_replay(cursor, cursor.row["source_revision_id"], object_store=objects)
+    assert rasterize.call_args.args == (_SVG,)
+    assert objects.writes == writes
+
+
+@pytest.mark.parametrize(("snapshot_index", "field", "status", "code"), [
+    (1, "takedown_status", "takedown", "WITHDRAWN"),
+    (2, "extraction_status", "quarantined", "QUARANTINED"),
+    (1, "review", "rejected", "QUARANTINED"),
+    (2, "review", "pending", "QUARANTINED"),
+])
+def test_retained_svg_checks_rights_for_both_objects_before_read_and_at_apply(snapshot_index, field, status, code):
+    cursor, objects = _retained_svg()
+    snapshot = cursor.snapshots[snapshot_index]
+    if field == "review":
+        cursor.reviews.append({
+            "item_kind": "quarantine", "status": status,
+            "source_snapshot_ids": [str(snapshot["source_snapshot_id"])],
+        })
+    else:
+        snapshot[field] = status
+    with pytest.raises(ValueError, match="^SOURCE_MEDIA_REPLAY_" + code + "$"):
+        replay.preview_media_replay(cursor, cursor.row["source_revision_id"], object_store=objects)
+    with pytest.raises(ValueError, match="^SOURCE_MEDIA_REPLAY_" + code + "$"):
+        replay.load_media_replay_binding(cursor, cursor.row["source_revision_id"], lock=True)
+    assert not objects.reads
+
+
+def test_review_quarantine_uses_retained_article_scope_and_approval():
+    cursor, objects = _fixture("bankone")
+    cursor.reviews.extend([
+        {"item_kind": "quarantine", "status": "approved",
+         "source_snapshot_ids": [str(cursor.row["descriptor_source_snapshot_id"])]},
+        {"item_kind": "conflict", "status": "pending",
+         "source_snapshot_ids": [cursor.row["resource_provenance"][0]["source_snapshot_id"]]},
+        {"item_kind": "quarantine", "status": "pending", "source_snapshot_ids": [str(uuid4())]},
+    ])
+    replay.preview_media_replay(cursor, cursor.row["source_revision_id"], object_store=objects)
+    cursor.reviews[0]["status"] = "pending"
+    with pytest.raises(ValueError, match="^SOURCE_MEDIA_REPLAY_QUARANTINED$"):
+        replay.load_media_replay_binding(cursor, cursor.row["source_revision_id"], lock=True)

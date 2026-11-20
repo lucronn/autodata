@@ -36,6 +36,7 @@ from .source_connector_client import (
     _safe_locator,
     _valid_asset_bindings,
 )
+from .svg_rasterization import RASTERIZER_VERSION
 
 MEDIA_REPLAY_SOURCE_VERSIONS = frozenset({"source-projection-v1", "source-projection-v2"})
 MEDIA_REPLAY_PROJECTION_VERSION = "source-projection-v3"
@@ -47,6 +48,7 @@ _MAX_RESOURCES = 32
 _BODY_MEDIA = frozenset({"text/html", "application/json", "application/hal+json", "application/pdf"})
 _REVERSED_HTML_LIST = re.compile(r"<ol\b[^>]*\breversed\b", re.IGNORECASE)
 _MANIFEST_FIELDS = frozenset({"role", "opaque_ref", "sha256", "media_type"})
+_DERIVATION_FIELDS = frozenset({"derived_from_sha256", "derivation_version"})
 _PROVENANCE_FIELDS = _MANIFEST_FIELDS | {
     "provider", "object_key", "source_snapshot_id", "source_revision",
     "request_id", "fetched_at", "locator",
@@ -152,27 +154,49 @@ def _resource_binding(row, context, manifest, provenance, *, ordinals):
     snapshots = set()
     for index, (entry, owner) in enumerate(zip(manifest, provenance, strict=True)):
         role, mime = entry.get("role"), entry.get("media_type")
+        original = manifest[index - 1] if index and manifest[index - 1]["role"] == "asset_original" else None
+        entry_fields = _MANIFEST_FIELDS
+        expected_fields = _PROVENANCE_FIELDS
         if index == 0:
             supported = role == "body" and isinstance(mime, str) and mime in _BODY_MEDIA
+            if "asset_bindings" in owner:
+                expected_fields = expected_fields | {"asset_bindings"}
+        elif original is not None:
+            supported = (
+                role == "asset" and mime == "image/png" and entry.get("derivation_version") == RASTERIZER_VERSION
+            )
+            entry_fields = entry_fields | _DERIVATION_FIELDS
+            expected_fields = expected_fields | _DERIVATION_FIELDS
+        elif role == "asset_original":
+            supported = mime == "image/svg+xml" and index + 1 < len(manifest)
         else:
             supported = role in ("asset", "embedded_asset") and isinstance(mime, str) and mime in DISPLAYABLE_RASTER_MEDIA
-        if not supported or set(entry) != _MANIFEST_FIELDS:
+        if not supported or set(entry) != entry_fields:
             raise ValueError("SOURCE_MEDIA_REPLAY_UNSUPPORTED")
-        owner_fields = set(owner)
-        expected_fields = _PROVENANCE_FIELDS
-        if role == "body" and "asset_bindings" in owner:
-            expected_fields = expected_fields | {"asset_bindings"}
-        if (owner_fields != expected_fields or owner.get("provider") != context.key.provider
-                or any(owner.get(key) != entry[key] for key in _MANIFEST_FIELDS)):
+        if (set(owner) != expected_fields or owner.get("provider") != context.key.provider
+                or any(owner.get(key) != entry[key] for key in entry_fields)):
             raise ValueError("SOURCE_MEDIA_REPLAY_BINDING_MISMATCH")
 
         ref = _source_ref(entry["opaque_ref"])
         digest = entry["sha256"]
         if not isinstance(digest, str) or not _SHA256.fullmatch(digest):
             raise ValueError("SOURCE_MEDIA_REPLAY_BINDING_MISMATCH")
-        if ref in references or owner["object_key"] != _key(digest):
+        if owner["object_key"] != _key(digest):
             raise ValueError("SOURCE_MEDIA_REPLAY_BINDING_MISMATCH")
-        references.add(ref)
+        if original is None:
+            if ref in references:
+                raise ValueError("SOURCE_MEDIA_REPLAY_BINDING_MISMATCH")
+            references.add(ref)
+        elif (
+            ref != original["opaque_ref"]
+            or digest == original["sha256"]
+            or entry["derived_from_sha256"] != original["sha256"]
+            or any(
+                owner[key] != provenance[index - 1][key]
+                for key in ("source_revision", "request_id", "fetched_at", "locator")
+            )
+        ):
+            raise ValueError("SOURCE_MEDIA_REPLAY_BINDING_MISMATCH")
         source_snapshot_id = _uuid(owner["source_snapshot_id"])
         snapshots.add(source_snapshot_id)
         _uuid(owner["request_id"])
@@ -258,12 +282,25 @@ def _load_snapshots(cur, ids, *, resource_ids, lock):
     return tuple(snapshots)
 
 
+def _check_review_quarantine(cur, snapshot_ids, *, lock):
+    review_sql = """
+        SELECT q.status
+        FROM source_review_items q
+        WHERE q.item_kind = 'quarantine' AND q.source_snapshot_ids ?| %s::text[]
+        ORDER BY q.source_review_item_id"""
+    if lock:
+        review_sql += " FOR SHARE OF q"
+    reviews = cur.execute(review_sql, (sorted(map(str, snapshot_ids)),)).fetchall()
+    if any(review["status"] != "approved" for review in reviews):
+        raise ValueError("SOURCE_MEDIA_REPLAY_QUARANTINED")
+
+
 def _asset_inventory(images, provenance):
     if not isinstance(images, (tuple, list)):
         raise ValueError("SOURCE_MEDIA_REPLAY_ASSET_DRIFT")
     allowed = {
         (row["sha256"], row["object_key"], row["media_type"])
-        for row in provenance if row["role"] != "body"
+        for row in provenance if row["role"] in ("asset", "embedded_asset")
     }
     counter = Counter()
     for image in images:
@@ -374,6 +411,7 @@ def load_media_replay_binding(cur, source_revision_id, *, lock=False, ordinals=F
                 or snapshot.artifact_key != resource["object_key"]
                 or snapshot.media_type != resource["media_type"]):
             raise ValueError("SOURCE_MEDIA_REPLAY_BINDING_MISMATCH")
+    _check_review_quarantine(cur, snapshot_ids | {context.descriptor_snapshot_id}, lock=lock)
     return MediaReplayBinding(
         canonical_article_id=row["canonical_article_id"],
         source_revision_id=row["source_revision_id"],
@@ -474,7 +512,8 @@ class _OfflineConnector:
         direct_refs = [row["opaque_ref"] for row in resources if row["role"] == "asset"]
         for resource in resources:
             role = resource["role"]
-            if role == "embedded_asset":
+            # Capture must render the retained SVG; the PNG is the exact sink expectation.
+            if role == "embedded_asset" or "derived_from_sha256" in resource:
                 continue
             body = {"kind": "article" if role == "body" else "asset",
                     "media_type": resource["media_type"], "sha256": resource["sha256"]}
