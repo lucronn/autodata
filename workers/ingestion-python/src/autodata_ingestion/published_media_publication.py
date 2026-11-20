@@ -20,7 +20,12 @@ from .article_document import project_ordered_document
 from .article_lifecycle_store import _latest_content_review, _persist_article_capture, automatic_candidate_validation
 from .article_lifecycle_types import digest_json, transformation_key
 from .procedure_normalize import normalize_procedure_article
-from .procedure_rewrite_auto import PROFILE as AUTO_PROFILE, _auto_prompt_version
+from .procedure_rewrite_auto import (
+    PROFILE as AUTO_PROFILE,
+    SOURCE_PRESERVING_METHOD,
+    _auto_prompt_version,
+    build_source_preserving_candidate,
+)
 from .procedure_rewrite_full import PROFILE as REVIEW_PROFILE, validate_full
 from .published_media_repair import PublishedMediaRepair, repair_published_media
 from .source_media_replay import (
@@ -112,16 +117,25 @@ def _publication_evidence(cur, article, binding, *, fixture_mode, lock):
             SELECT * FROM canonical_article_rewrite_attempts
             WHERE canonical_article_revision_id=%s AND source_fetch_job_id=%s AND status='succeeded'
             """, (revision_id, job["source_fetch_job_id"])).fetchone()
-        if attempt is None:
+        if row["model_metadata"].get("transformation_method") == SOURCE_PRESERVING_METHOD:
+            # Automatic validation above has independently rebuilt the exact
+            # source-heading introduction and proved there was no model attempt.
+            attempt = None
+            response = {"introduction": document["blocks"][0]["text"], "replacements": []}
+            prompt_version = "full-prose-auto-prompt-v3"
+        elif attempt is not None:
+            response = attempt["response"]
+            prompt_version = _auto_prompt_version(
+                source, context=binding.context.vehicle, prompt_hash=attempt["prompt_hash"],
+            )
+        else:
             raise ValueError("PUBLISHED_MEDIA_REPAIR_ATTEMPT_REQUIRED")
-        response = attempt["response"]
-        prompt_version = _auto_prompt_version(
-            source, context=binding.context.vehicle, prompt_hash=attempt["prompt_hash"],
-        )
     if (not validation.passed or validation.report != row["validation_report"]
         or digest_json(validation.report) != row["validation_hash"]):
         raise ValueError("PUBLISHED_MEDIA_REPAIR_VALIDATION_MISMATCH")
-    authors.update((attempt["provider"], attempt["model"], row["model_metadata"].get("drafting_actor")))
+    if attempt is not None:
+        authors.update((attempt["provider"], attempt["model"]))
+    authors.add(row["model_metadata"].get("drafting_actor"))
     authors.discard(None)
     if profile == REVIEW_PROFILE and latest["authorized_reviewer_id"] in authors:
         raise ValueError("PUBLISHED_MEDIA_REPAIR_REVIEW_REQUIRED")
@@ -139,6 +153,10 @@ def _plan(cur, article, binding, captured, *, fixture_mode, lock=False):
         row["normalized_source_document"], row["canonical_document"], normalized,
         response=response, prompt_version=prompt_version, profile=row["rewrite_profile_version"],
     )
+    if attempt is None:
+        preserving_document, _ = build_source_preserving_candidate(normalized)
+        if digest_json(preserving_document) != digest_json(repair.document):
+            raise ValueError("PUBLISHED_MEDIA_REPAIR_SOURCE_HEADING_CHANGED")
     manifest = {
         "schema": SCHEMA,
         "article_id": str(binding.canonical_article_id),
@@ -152,8 +170,9 @@ def _plan(cur, article, binding, captured, *, fixture_mode, lock=False):
         "current_job_id": str(article["current_job_id"]),
         "request_generation": article["request_generation"],
         "normalization_version": row["normalization_version"],
-        "original_attempt_id": str(attempt["rewrite_attempt_id"]),
-        "original_prompt_hash": attempt["prompt_hash"],
+        "original_attempt_id": str(attempt["rewrite_attempt_id"]) if attempt else None,
+        "original_prompt_hash": attempt["prompt_hash"] if attempt else None,
+        "original_transformation_method": row["model_metadata"].get("transformation_method"),
         "original_review_id": str(review["canonical_article_review_id"]) if review else None,
         "original_review_status": decision,
         "original_validation_hash": row["validation_hash"],

@@ -55,8 +55,8 @@ def _allowlist(tmp_path):
     return path
 
 
-def _seed(runtime, monkeypatch, provider, profile, allowlist):
-    source_id = seed_historical_figure(runtime, monkeypatch, provider)
+def _seed(runtime, monkeypatch, provider, profile, allowlist, *, body_fixture=None):
+    source_id = seed_historical_figure(runtime, monkeypatch, provider, body_fixture=body_fixture)
     model = FixtureModel()
     refresh_article_job(runtime.repo, runtime.article_id, actor="fixture",
                         reason="publish historical projection", rewrite_profile_version=profile)
@@ -82,7 +82,7 @@ def _seed(runtime, monkeypatch, provider, profile, allowlist):
     assert state["source_revision_id"] == source_id
     assert state["canonical_revision_id"], runtime.diagnostics()
     assert state["document"]["blocks"][-1]["type"] == "image"
-    assert model.calls == 1
+    assert model.calls == (0 if body_fixture else 1)
     return state, model
 
 
@@ -109,15 +109,23 @@ def _preview(runtime, original, tmp_path, capsys):
     return destination, manifest
 
 
-@pytest.mark.parametrize(("provider", "profile", "review_status"), [
-    ("bankone", AUTO_PROFILE, "UNREVIEWED"),
-    ("banktwo", article_content_review.PROFILE, "APPROVED"),
+@pytest.mark.parametrize(("provider", "profile", "review_status", "source_preserving"), [
+    ("bankone", AUTO_PROFILE, "UNREVIEWED", False),
+    ("banktwo", article_content_review.PROFILE, "APPROVED", False),
+    ("banktwo", AUTO_PROFILE, "UNREVIEWED", True),
 ])
 def test_publish_preserves_live_article_and_switches_layout_atomically(
-    runtime, monkeypatch, tmp_path, capsys, provider, profile, review_status,
+    runtime, monkeypatch, tmp_path, capsys, provider, profile, review_status, source_preserving,
 ):
     allowlist = _allowlist(tmp_path)
-    original, model = _seed(runtime, monkeypatch, provider, profile, allowlist)
+    body_fixture = None
+    if source_preserving:
+        body_fixture = (json.dumps({"blocks": [
+            {"type": "heading", "level": 2, "text": "Pump specifications"},
+            {"type": "image", "asset_resource_ref": "figure", "alt": "Pump alignment"},
+            {"type": "table", "columns": ["Component", "Torque"], "rows": [["Mounting bolts", "40 Nm"]]},
+        ]}).encode(), "application/json")
+    original, model = _seed(runtime, monkeypatch, provider, profile, allowlist, body_fixture=body_fixture)
     assert original["review_status"] == review_status
     before = _rows(runtime.repo)
     traffic = runtime.counters()
@@ -125,7 +133,9 @@ def test_publish_preserves_live_article_and_switches_layout_atomically(
     assert _rows(runtime.repo) == before
     candidate = json.loads((destination / "candidate.json").read_text())
     assert candidate["before"] == original["document"]
-    assert [block["type"] for block in candidate["after"]["blocks"]] == ["paragraph", "paragraph", "image", "paragraph"]
+    expected_types = ["paragraph", "heading", "image", "table"] if source_preserving else ["paragraph", "paragraph", "image", "paragraph"]
+    assert [block["type"] for block in candidate["after"]["blocks"]] == expected_types
+    assert (manifest["original_attempt_id"] is None) == source_preserving
 
     def lose_transaction(point):
         assert point == "inside_publication"
@@ -167,7 +177,7 @@ def test_publish_preserves_live_article_and_switches_layout_atomically(
     repeat = publish_retained_media_repair(runtime.repo, **kwargs)
     assert repeat == {**published, "status": "already_published"}
     assert _rows(runtime.repo) == after
-    assert model.calls == 1
+    assert model.calls == (0 if source_preserving else 1)
     assert runtime.counters() == {**traffic, "schedule": traffic["schedule"] + 1}
 
     refresh_article_job(runtime.repo, runtime.article_id, actor="fixture", reason="same source bytes refresh")
@@ -176,7 +186,7 @@ def test_publish_preserves_live_article_and_switches_layout_atomically(
     assert refreshed["canonical_revision_id"] == state["canonical_revision_id"]
     assert refreshed["source_revision_id"] == state["source_revision_id"]
     assert refreshed["review_status"] == state["review_status"]
-    assert model.calls == 1
+    assert model.calls == (0 if source_preserving else 1)
     assert _rows(runtime.repo)["publication_events"] == after["publication_events"]
 
 
