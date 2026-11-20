@@ -431,6 +431,73 @@ def test_html_list_keeps_nested_table_figures_and_tail(capture_fixture, provider
     assert capture_fixture.objects.data[captured.resources[0]["object_key"]][0] == raw
 
 
+@pytest.mark.parametrize("provider", ["bankone", "banktwo"])
+@pytest.mark.parametrize("embedded", [False, True])
+@pytest.mark.parametrize("file_format,mime,available", [
+    ("JPEG", "image/jpeg", True),
+    ("GIF", "image/gif", True),
+    ("WEBP", "image/webp", True),
+    ("BMP", "image/bmp", False),
+    ("TIFF", "image/tiff", False),
+])
+def test_capture_raster_availability_matches_paid_media(
+    capture_fixture, provider, embedded, file_format, mime, available,
+):
+    from base64 import b64encode
+    from io import BytesIO
+
+    from PIL import Image
+
+    from autodata_ingestion.article_document import validate_ordered_document
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    stream = BytesIO()
+    Image.new("RGB", (24, 18), "green").save(stream, format=file_format)
+    original = stream.getvalue()
+    if embedded:
+        figure = f'<img src="data:{mime};base64,{b64encode(original).decode()}" alt="Alignment marks">'
+    else:
+        figure = '<img data-resource-ref="figure" alt="Alignment marks">'
+        capture_fixture.body(provider, original, mime, ref="figure", kind="asset")
+    raw = f"<p>Inspect the seal.</p>{figure}<p>Install the replacement.</p>".encode()
+    capture_fixture.body(provider, raw)
+    captured = capture_source_article(
+        capture_fixture.context(provider),
+        registry=capture_fixture.registry,
+        object_store=capture_fixture.objects,
+    )
+
+    assert validate_ordered_document(captured.source_document, strict=True) == []
+    assert [block["type"] for block in captured.source_document["blocks"]] == [
+        "paragraph", "image", "paragraph",
+    ]
+    [image] = captured.source_images
+    assert image["alt"] == "Alignment marks"
+    assert image["status"] == ("available" if available else "unavailable")
+    assert captured.projection_status == ("readable" if available else "partial")
+    _, retained = captured.resources
+    assert retained["sha256"] == sha256(original).hexdigest()
+    assert capture_fixture.objects.data[retained["object_key"]] == (original, mime)
+    assert retained in captured.resource_provenance
+    assert "data:" not in str(captured.source_document)
+    if available:
+        assert retained["role"] == ("embedded_asset" if embedded else "asset")
+        assert image["storage_key"] == retained["object_key"]
+        assert image["content_sha256"] == retained["sha256"]
+        assert image["media_type"] == mime
+    else:
+        assert retained["role"] == "asset_original"
+        assert captured.resource_manifest[1]["role"] == "asset_original"
+        assert image["unavailable_reason"] == "UNSUPPORTED_ASSET_MEDIA"
+        assert "storage_key" not in image
+        assert "content_sha256" not in image
+        assert retained["object_key"] not in str(captured.source_document)
+        if not embedded:
+            assert captured.resource_manifest[-1] == {
+                "role": "asset", "opaque_ref": "figure", "failure_code": "UNSUPPORTED_ASSET_MEDIA",
+            }
+
+
 def test_fixture_pdf_uses_real_adapter_and_keeps_original_bytes(capture_fixture):
     from io import BytesIO
     from reportlab.pdfgen import canvas
