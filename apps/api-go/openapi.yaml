@@ -602,6 +602,14 @@ paths:
           enum:
           - application/json
           - text/html
+      - name: Prefer
+        in: header
+        required: false
+        description: Use workshop-source-document with application/json to return
+          the ordered document and images with an empty content string when structured blocks are available.
+        schema:
+          type: string
+          example: workshop-source-document
       - name: source_revision_id
         in: query
         required: false
@@ -632,6 +640,11 @@ paths:
               schema:
                 type: string
                 example: private, no-store
+            Preference-Applied:
+              description: Acknowledges the ordered-document preference when applied.
+              schema:
+                type: string
+                example: workshop-source-document
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':

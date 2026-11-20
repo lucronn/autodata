@@ -999,6 +999,7 @@ function validSourceURL(value) {
     return null;
   }
 }
+const sourceDocumentHeaders = { Prefer: "workshop-source-document" };
 async function loadSource(value, g, blockID = null) {
   const requested = validSourceURL(value);
   if (!requested) throw new Error("This source reference is unavailable.");
@@ -1007,6 +1008,7 @@ async function loadSource(value, g, blockID = null) {
   try {
     const data = await requestJSON(demoPath(requested.pathname + requested.search), {
       signal: g.signal,
+      headers: sourceDocumentHeaders,
     });
     if (!g.current() || selected !== sourceRevision) return;
     const returned = validSourceURL(data.source?.url);
@@ -1089,7 +1091,7 @@ async function renewMedia(g, failed) {
           current() && sourceSelection === sourceRevision && selectedSourceURL === sourceURL;
         let data;
         try {
-          data = await requestJSON(selectedSourceURL, { signal: g.signal });
+          data = await requestJSON(selectedSourceURL, { signal: g.signal, headers: sourceDocumentHeaders });
         } catch (error) {
           if (stillSelected()) throw error;
           return;

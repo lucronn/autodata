@@ -3087,6 +3087,7 @@ test('article block media actual loadSource renders retained shapes and rejects 
   assert.equal(h.nodes.get('source-review-load').disabled, false);
   assert.equal(calls[0].path, mediaSourceURL);
   assert.equal(calls[0].options.signal, h.g.signal);
+  assert.equal(calls[0].options.headers.Prefer, 'workshop-source-document');
   response = { ...response, source: { url: mediaSourceURL.replace('11111111-', '22222222-') } };
   await assert.rejects(h.context.loadSource(mediaSourceURL, h.g), /source reference changed/);
   assert.equal(frame.children[0], first);
@@ -3276,6 +3277,7 @@ for (const changed of [false, true]) {
     assert.ok(image, 'stored-source callout must contain a retained figure');
     image.dispatch('error'); await h.context.renewal;
     assert.equal(calls.length, 1); assert.equal(calls[0].url, 'https://cars.example' + mediaSourceURL); assert.equal(calls[0].options.signal, h.g.signal);
+    assert.equal(calls[0].options.headers.Prefer, 'workshop-source-document');
     if (changed) {
       assert.deepEqual(mediaIDs(frame), []);
       assert.equal(frame.textContent, 'NoteStoredIllustration unavailable. Refresh this article to try again.');

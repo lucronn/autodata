@@ -24,6 +24,8 @@ type CatalogSourceContentResponse struct {
 	ViewRevision *string             `json:"view_revision,omitempty"`
 }
 
+const catalogSourceDocumentPreference = "workshop-source-document"
+
 var unsafeCatalogSourceStyle = regexp.MustCompile(`(?i)(?:url\s*\([^)]*\)|expression\s*\(|behavior\s*:|-moz-binding\s*:)`)
 
 func (s *Server) serveCatalogSource(response http.ResponseWriter, request *http.Request, principal Principal) {
@@ -45,7 +47,7 @@ func (s *Server) serveCatalogSource(response http.ResponseWriter, request *http.
 		rewriteCatalogImageURLs(&article, s.catalogImageKey)
 		stored.Images = article.Images
 		format = "html"
-		content = renderCatalogOrderedSource(stored.Document, stored.Images)
+		content = renderCatalogSourceContent(response, request, stored.Document, stored.Images)
 	} else {
 		format, content, err = renderStoredCatalogSource(stored.Original, stored.SourceURI, s.catalogImageKey)
 	}
@@ -139,7 +141,7 @@ func (s *Server) servePaidCatalogSource(w http.ResponseWriter, r *http.Request, 
 	}
 	var format, content string
 	if stored.Document != nil {
-		format, content = "html", renderCatalogOrderedSource(stored.Document, stored.Images)
+		format, content = "html", renderCatalogSourceContent(w, r, stored.Document, stored.Images)
 	} else {
 		format, content, err = renderStoredCatalogSource(stored.Original, stored.SourceURI, s.catalogImageKey)
 		// Paid review exposes ordered projections or sanitized HTML, never a
@@ -192,6 +194,16 @@ func catalogSourceFormat(raw json.RawMessage) string {
 func acceptsJSON(request *http.Request) bool {
 	accept := strings.ToLower(request.Header.Get("Accept"))
 	return strings.Contains(accept, "application/json") && !strings.Contains(accept, "text/html")
+}
+
+func renderCatalogSourceContent(response http.ResponseWriter, request *http.Request, document *CatalogDocument, images []CatalogImage) string {
+	if len(document.Blocks) > 0 && acceptsJSON(request) && request.Header.Get("Prefer") == catalogSourceDocumentPreference {
+		// Workshop renders the ordered document directly. Avoid generating and
+		// sending another copy of the same text and signed image URLs as HTML.
+		response.Header().Set("Preference-Applied", catalogSourceDocumentPreference)
+		return ""
+	}
+	return renderCatalogOrderedSource(document, images)
 }
 
 func catalogSourceURL(vehicleID, articleID string) string {

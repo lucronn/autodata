@@ -15,6 +15,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -410,33 +411,91 @@ func TestPaidCatalogMediaHTTPAndHistoricalSourceProjection(t *testing.T) {
 }
 
 func TestPaidCatalogSourceProjectsPinnedHTMLJSONWithoutMutation(t *testing.T) {
-	for _, accept := range []string{"application/json", "text/html"} {
-		t.Run(accept, func(t *testing.T) {
+	const preference = "workshop-source-document"
+	for _, tc := range []struct {
+		name, accept, prefer string
+		documentOnly         bool
+	}{
+		{name: "ordinary JSON", accept: "application/json"},
+		{name: "document-only JSON", accept: "application/json", prefer: preference, documentOnly: true},
+		{name: "inexact preference", accept: "application/json", prefer: preference + ", return=representation"},
+		{name: "ordinary HTML", accept: "text/html"},
+		{name: "HTML ignores preference", accept: "text/html", prefer: preference},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
 			s, c, _, _, p, ref := paidMediaFixture()
 			c.view.Article.SourceRevisionID = c.identity.CurrentSourceRevisionID
+			c.source.SnapshotID = "source-snapshot"
+			c.source.Version = "provider-revision"
+			c.source.ContentSHA256 = strings.Repeat("c", 64)
+			c.source.ViewRevision = stringPointer("source-view")
 			original := c.source.Images[0].URL
-			request := httptest.NewRequest("GET", "/v1/catalog/vehicles/"+ref.ConfigurationID+"/articles/"+ref.CanonicalArticleID+"/source?source_revision_id="+ref.SelectedSourceRevisionID, nil)
-			request.SetPathValue("vehicle_id", ref.ConfigurationID)
-			request.SetPathValue("article_id", ref.CanonicalArticleID)
-			request.Header.Set("Accept", accept)
-			w := httptest.NewRecorder()
-			s.serveCatalogSource(w, request, p)
-			if w.Code != 200 {
-				t.Fatalf("status=%d %s", w.Code, w.Body.String())
+			path := catalogPinnedSourceURL(ref.ConfigurationID, ref.CanonicalArticleID, c.source.SourceRevisionID)
+			read := func(accept, prefer string) *httptest.ResponseRecorder {
+				t.Helper()
+				request := httptest.NewRequest(http.MethodGet, path, nil)
+				request.SetPathValue("vehicle_id", ref.ConfigurationID)
+				request.SetPathValue("article_id", ref.CanonicalArticleID)
+				request.Header.Set("Accept", accept)
+				if prefer != "" {
+					request.Header.Set("Prefer", prefer)
+				}
+				w := httptest.NewRecorder()
+				s.serveCatalogSource(w, request, p)
+				if w.Code != http.StatusOK || w.Header().Get("Cache-Control") != "private, no-store" {
+					t.Fatalf("status=%d cache=%q", w.Code, w.Header().Get("Cache-Control"))
+				}
+				return w
+			}
+			w := read(tc.accept, tc.prefer)
+			var applied string
+			if tc.documentOnly {
+				applied = preference
+			}
+			if got := w.Header().Get("Preference-Applied"); got != applied {
+				t.Fatalf("Preference-Applied=%q, want %q", got, applied)
 			}
 			if c.source.Images[0].URL != original {
 				t.Fatal("stored source images mutated")
 			}
 			var token string
-			if accept == "application/json" {
+			if tc.accept == "application/json" {
 				var body CatalogSourceContentResponse
 				if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
 					t.Fatal(err)
 				}
-				if len(body.Images) != 1 || !strings.Contains(body.Content, "/v1/catalog/images/v2.") {
-					t.Fatal("source JSON did not project image", w.Body.String())
+				wantSource := CatalogSourceReview{Available: true, SnapshotID: c.source.SnapshotID, Version: c.source.Version,
+					ContentSHA256: c.source.ContentSHA256, Format: "html", URL: path}
+				if body.Version != "v1" || body.Source != wantSource || !samePaidCatalogID(body.ViewRevision, c.source.ViewRevision) ||
+					body.Document == nil || len(body.Document.Blocks) != 1 || len(body.Images) != 1 {
+					t.Fatal("source JSON did not retain the pinned v1 document and metadata")
 				}
 				token = strings.TrimPrefix(body.Images[0].URL, "/v1/catalog/images/")
+				if tc.documentOnly {
+					var fields map[string]json.RawMessage
+					if err := json.Unmarshal(w.Body.Bytes(), &fields); err != nil || string(fields["content"]) != `""` {
+						t.Fatal("document-only JSON needs an explicit empty content string")
+					}
+					full := read("application/json", "")
+					var recovered CatalogSourceContentResponse
+					if err := json.Unmarshal(full.Body.Bytes(), &recovered); err != nil || len(recovered.Images) != 1 ||
+						!strings.Contains(recovered.Content, "<img") {
+						t.Fatal("ordinary JSON did not include rendered HTML")
+					}
+					saved := full.Body.Len() - w.Body.Len()
+					if saved < len(recovered.Content) {
+						t.Fatalf("document-only response saved %d bytes, smaller than omitted HTML", saved)
+					}
+					t.Logf("document-only JSON saved %d of %d response bytes", saved, full.Body.Len())
+					// New capabilities are randomized for each response.
+					body.Images[0].URL = ""
+					recovered.Content, recovered.Images[0].URL = "", ""
+					if !reflect.DeepEqual(body, recovered) {
+						t.Fatal("document-only JSON changed fields other than the rendered content")
+					}
+				} else if !strings.Contains(body.Content, `<img src="`+body.Images[0].URL+`"`) {
+					t.Fatal("ordinary JSON did not include the approved image in rendered HTML")
+				}
 			} else {
 				prefix := `src="/v1/catalog/images/`
 				_, after, found := strings.Cut(w.Body.String(), prefix)
@@ -469,21 +528,73 @@ func TestPaidCatalogSourceDeniedBeforeReadAndRawSanitizerOmission(t *testing.T) 
 	request := httptest.NewRequest("GET", "/source", nil)
 	request.SetPathValue("vehicle_id", ref.ConfigurationID)
 	request.SetPathValue("article_id", ref.CanonicalArticleID)
+	request.Header.Set("Accept", "application/json")
+	request.Header.Set("Prefer", "workshop-source-document")
 	w := httptest.NewRecorder()
 	s.serveCatalogSource(w, request, p)
-	if w.Code != 403 || c.identityCalls.Load() != 0 || c.viewCalls.Load() != 0 || c.sourceCalls.Load() != 0 {
+	if w.Code != 403 || w.Header().Get("Preference-Applied") != "" || c.identityCalls.Load() != 0 || c.viewCalls.Load() != 0 || c.sourceCalls.Load() != 0 {
 		t.Fatalf("denial=%d identity/view/source=%d/%d/%d", w.Code, c.identityCalls.Load(), c.viewCalls.Load(), c.sourceCalls.Load())
 	}
 	s, c, _, _, p, ref = paidMediaFixture()
 	c.source.Document = nil
 	c.source.Original = json.RawMessage(`{"_embedded":{"data":{"article":{"content":"<p>Body</p><img src=\"https://private-provider/image.png\"><img src=\"/v1/catalog/images/legacy\">"}}}}`)
-	request = httptest.NewRequest("GET", "/source?source_revision_id="+ref.SelectedSourceRevisionID, nil)
-	request.SetPathValue("vehicle_id", ref.ConfigurationID)
-	request.SetPathValue("article_id", ref.CanonicalArticleID)
-	w = httptest.NewRecorder()
-	s.serveCatalogSource(w, request, p)
-	if w.Code != 200 || strings.Contains(w.Body.String(), "private-provider") || strings.Contains(w.Body.String(), "images/legacy") || strings.Contains(w.Body.String(), "<img") {
-		t.Fatal("raw source image authorized from untrusted URL", w.Code, w.Body.String())
+	for _, accept := range []string{"text/html", "application/json"} {
+		t.Run(accept, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, "/source?source_revision_id="+ref.SelectedSourceRevisionID, nil)
+			request.SetPathValue("vehicle_id", ref.ConfigurationID)
+			request.SetPathValue("article_id", ref.CanonicalArticleID)
+			request.Header.Set("Accept", accept)
+			request.Header.Set("Prefer", "workshop-source-document")
+			w := httptest.NewRecorder()
+			s.serveCatalogSource(w, request, p)
+			content := w.Body.String()
+			if accept == "application/json" {
+				var body CatalogSourceContentResponse
+				if json.Unmarshal(w.Body.Bytes(), &body) != nil || body.Document != nil {
+					t.Fatal("unexpected structured document for raw source fallback")
+				}
+				content = body.Content
+			}
+			if w.Code != http.StatusOK || w.Header().Get("Preference-Applied") != "" || !strings.Contains(content, "<p>Body</p>") ||
+				strings.Contains(content, "private-provider") || strings.Contains(content, "images/legacy") || strings.Contains(content, "<img") {
+				t.Fatal("raw source fallback was lost or authorized an untrusted image", w.Code)
+			}
+		})
+	}
+}
+
+func TestPaidCatalogSourcePreferenceRequiresNonemptyPinnedDocument(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		revision   string
+		status     int
+		sourceRead int32
+	}{
+		{name: "empty structured document", status: http.StatusOK, sourceRead: 1},
+		{name: "unbound source revision", revision: "99999999-9999-4999-8999-999999999999", status: http.StatusNotFound, sourceRead: 1},
+		{name: "malformed source revision", revision: "invalid-revision", status: http.StatusNotFound},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, c, _, _, p, ref := paidMediaFixture()
+			c.source.Document.Blocks = nil
+			revision := tc.revision
+			if revision == "" {
+				revision = ref.SelectedSourceRevisionID
+			}
+			request := httptest.NewRequest(http.MethodGet, catalogPinnedSourceURL(ref.ConfigurationID, ref.CanonicalArticleID, &revision), nil)
+			request.SetPathValue("vehicle_id", ref.ConfigurationID)
+			request.SetPathValue("article_id", ref.CanonicalArticleID)
+			request.Header.Set("Accept", "application/json")
+			request.Header.Set("Prefer", "workshop-source-document")
+			w := httptest.NewRecorder()
+			s.serveCatalogSource(w, request, p)
+			if w.Code != tc.status || w.Header().Get("Preference-Applied") != "" || c.sourceCalls.Load() != tc.sourceRead {
+				t.Fatalf("status=%d preference=%q source reads=%d", w.Code, w.Header().Get("Preference-Applied"), c.sourceCalls.Load())
+			}
+			if tc.sourceRead > 0 && c.lastSource != revision {
+				t.Fatal("preference changed selected source revision")
+			}
+		})
 	}
 }
 
@@ -600,9 +711,10 @@ func TestPaidCatalogSourceDoesNotExposeUnreviewedRawJSON(t *testing.T) {
 	request.SetPathValue("vehicle_id", ref.ConfigurationID)
 	request.SetPathValue("article_id", ref.CanonicalArticleID)
 	request.Header.Set("Accept", "application/json")
+	request.Header.Set("Prefer", "workshop-source-document")
 	w := httptest.NewRecorder()
 	s.serveCatalogSource(w, request, p)
-	if w.Code != 503 || strings.Contains(w.Body.String(), "private-provider") || strings.Contains(w.Body.String(), "procedure-images/") {
+	if w.Code != 503 || w.Header().Get("Preference-Applied") != "" || strings.Contains(w.Body.String(), "private-provider") || strings.Contains(w.Body.String(), "procedure-images/") {
 		t.Fatal("paid source exposes unreviewed raw JSON; status", w.Code)
 	}
 }
