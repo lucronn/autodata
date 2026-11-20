@@ -1,15 +1,20 @@
 """Reapply a bound published rewrite to a verified figure placement correction."""
 
 from collections import Counter
+from copy import deepcopy
 from dataclasses import dataclass
 from functools import partial
 
 from .article_document import project_ordered_document
 from .article_lifecycle_types import ValidationResult, digest_json
+from .procedure_rewrite import _set_path, editable_slots, validate_article_rewrite
 from .procedure_rewrite_auto import PROFILE, render_auto, validate_auto
 from .procedure_rewrite_full import PROFILE as REVIEW_PROFILE
 from .procedure_rewrite_full import _source_valid, prose_slots, render_full, validate_full
+from .procedure_rewrite_v2 import PROFILE as TECHNICAL_V2
+from .procedure_rewrite_v2 import _selection, plan_v2, render_v2
 
+TECHNICAL_V1 = "technical-prose-v1"
 _SUPPORTED_PROMPTS = frozenset(f"full-prose-auto-prompt-v{version}" for version in range(1, 8))
 _POSITION_KEYS = frozenset({"block_id", "source_order"})
 _IMAGE_KEYS = _POSITION_KEYS | {"type"}
@@ -73,6 +78,67 @@ def _image_hash(image):
     return digest_json({key: value for key, value in image.items() if key not in _IMAGE_KEYS})
 
 
+def _render_technical_v1(source, response):
+    """Rebuild the v1 reply exactly as the original worker applied it."""
+    if set(response) != {"replacements"} or not isinstance(response["replacements"], list):
+        raise ValueError("REWRITE_RESPONSE_INVALID")
+    slots = editable_slots(source, profile_version=TECHNICAL_V1)
+    rows = response["replacements"]
+    if len(rows) != len(slots):
+        raise ValueError("REWRITE_SLOT_MISMATCH")
+    candidate = deepcopy(source)
+    for slot, row in zip(slots, rows, strict=True):
+        if (
+            not isinstance(row, dict) or set(row) != {"block_id", "path", "text"}
+            or row["block_id"] != slot["block_id"] or row["path"] != slot["path"]
+            or not isinstance(row["text"], str) or not row["text"].strip()
+        ):
+            raise ValueError("REWRITE_SLOT_MISMATCH")
+        _set_path(candidate, slot["path"], row["text"])
+    return candidate
+
+
+def _validate_technical(source, candidate, *, response, profile, render):
+    if digest_json(render(source, response)) != digest_json(candidate):
+        raise ValueError("REWRITE_RESPONSE_MISMATCH")
+    return validate_article_rewrite(source, candidate, profile_version=profile)
+
+
+def _remap_replacements(old_source, repaired_source, response, slots):
+    old_slots = slots(old_source)
+    new_slots = slots(repaired_source)
+    if [slot["text"] for slot in old_slots] != [slot["text"] for slot in new_slots]:
+        raise ValueError("PUBLISHED_MEDIA_REPAIR_SLOT_DRIFT")
+    return {
+        **response,
+        "replacements": [
+            {**replacement, "block_id": slot["block_id"], "path": slot["path"]}
+            for replacement, slot in zip(response["replacements"], new_slots, strict=True)
+        ],
+    }
+
+
+def _remap_v2_operations(old_source, repaired_source):
+    old_plan = plan_v2(old_source)
+    new_plan = plan_v2(repaired_source)
+    if not old_plan["eligible"] or not new_plan["eligible"]:
+        raise ValueError("PUBLISHED_MEDIA_REPAIR_SLOT_DRIFT")
+
+    positional_keys = {"block_id", "path", "source_hash", "operation_id"}
+
+    def semantics(plan, field):
+        return [
+            {key: value for key, value in row.items() if key not in positional_keys}
+            for row in plan[field]
+        ]
+
+    if any(semantics(old_plan, field) != semantics(new_plan, field) for field in ("operations", "classifications")):
+        raise ValueError("PUBLISHED_MEDIA_REPAIR_SLOT_DRIFT")
+    # The v2 response selects the complete plan. Its operation IDs bind the
+    # repaired source hash and cannot be carried over from the original reply.
+    return _selection(new_plan)
+
+
 def repair_published_media(
     old_source, published, repaired_source, *, response, prompt_version=None, profile=PROFILE,
 ) -> PublishedMediaRepair:
@@ -81,26 +147,33 @@ def repair_published_media(
     The caller supplies a validated immutable publication, its authorized
     response, and a source reconstructed from verified retained bytes. Resolve
     the original automatic prompt version from its stored prompt hash. For a
-    reviewed publication, supply its approved effective response and omit the
-    automatic prompt version.
+    reviewed publication, supply its approved effective response. Reviewed
+    and technical publications do not use an automatic prompt version.
     """
     if profile == PROFILE:
         if not isinstance(prompt_version, str) or prompt_version not in _SUPPORTED_PROMPTS:
             raise ValueError("PUBLISHED_MEDIA_REPAIR_PROMPT_UNSUPPORTED")
         render = partial(render_auto, prompt_version=prompt_version)
         validate = partial(validate_auto, prompt_version=prompt_version)
-    elif profile == REVIEW_PROFILE:
+    elif profile in (REVIEW_PROFILE, TECHNICAL_V1, TECHNICAL_V2):
         if prompt_version is not None:
             raise ValueError("PUBLISHED_MEDIA_REPAIR_PROMPT_UNSUPPORTED")
-        render, validate = render_full, validate_full
+        if profile == REVIEW_PROFILE:
+            render, validate = render_full, validate_full
+        else:
+            render = _render_technical_v1 if profile == TECHNICAL_V1 else render_v2
+            validate = partial(_validate_technical, profile=profile, render=render)
     else:
         raise ValueError("PUBLISHED_MEDIA_REPAIR_PROFILE_UNSUPPORTED")
     if not all(_source_valid(doc) for doc in (old_source, published, repaired_source)):
         raise ValueError("PUBLISHED_MEDIA_REPAIR_DOCUMENT_INVALID")
-    if (
-        not isinstance(response, dict)
-        or not validate(old_source, published, response=response).passed
-    ):
+    if not isinstance(response, dict):
+        raise ValueError("PUBLISHED_MEDIA_REPAIR_PUBLISHED_BINDING_MISMATCH")
+    try:
+        previous_validation = validate(old_source, published, response=response)
+    except ValueError:
+        raise ValueError("PUBLISHED_MEDIA_REPAIR_PUBLISHED_BINDING_MISMATCH") from None
+    if not previous_validation.passed:
         raise ValueError("PUBLISHED_MEDIA_REPAIR_PUBLISHED_BINDING_MISMATCH")
     if _without_media(old_source) != _without_media(repaired_source):
         raise ValueError("PUBLISHED_MEDIA_REPAIR_SOURCE_TEXT_DRIFT")
@@ -112,22 +185,16 @@ def repair_published_media(
     if old_positions == repaired_positions:
         raise ValueError("PUBLISHED_MEDIA_REPAIR_UNCHANGED")
 
-    new_slots = prose_slots(repaired_source)
-    old_slots = prose_slots(old_source)
-    if [slot["text"] for slot in old_slots] != [slot["text"] for slot in new_slots]:
-        raise ValueError("PUBLISHED_MEDIA_REPAIR_SLOT_DRIFT")
-    new_response = {
-        "introduction": response["introduction"],
-        "replacements": [
-            {**replacement, "block_id": slot["block_id"], "path": slot["path"]}
-            for replacement, slot in zip(response["replacements"], new_slots, strict=True)
-        ],
-    }
+    if profile == TECHNICAL_V2:
+        new_response = _remap_v2_operations(old_source, repaired_source)
+    else:
+        slots = partial(editable_slots, profile_version=TECHNICAL_V1) if profile == TECHNICAL_V1 else prose_slots
+        new_response = _remap_replacements(old_source, repaired_source, response, slots)
     try:
         document = render(repaired_source, new_response)
+        validation = validate(repaired_source, document, response=new_response)
     except ValueError:
         raise ValueError("PUBLISHED_MEDIA_REPAIR_REWRITE_INVALID") from None
-    validation = validate(repaired_source, document, response=new_response)
     if not validation.passed:
         raise ValueError("PUBLISHED_MEDIA_REPAIR_REWRITE_INVALID")
     published_prose = _without_media(published)
