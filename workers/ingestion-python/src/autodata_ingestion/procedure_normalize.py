@@ -282,20 +282,24 @@ def _content_status_for(article: Mapping[str, Any]) -> str:
     return CONTENT_STATUS_LIST_ONLY
 
 
+def _has_positioned_media(value: Any) -> bool:
+    if isinstance(value, Mapping):
+        return bool(value.get("images")) or value.get("type") == "image" or any(
+            _has_positioned_media(child) for child in value.values()
+        )
+    if isinstance(value, list):
+        return any(_has_positioned_media(child) for child in value)
+    return False
+
+
 def _undersegmented_article(article: Mapping[str, Any]) -> bool:
     """True when stored content is one blob that should be re-split for display."""
 
     body = str(article.get("body") or "").strip()
     document = article.get("normalized_document")
     blocks = document.get("blocks") if isinstance(document, Mapping) else None
-    if isinstance(blocks, list) and blocks:
-        if len(blocks) > 1:
-            return False
-        block = blocks[0]
-        if isinstance(block, Mapping) and (
-            block.get("type") != "paragraph" or block.get("images")
-        ):
-            return False
+    if isinstance(blocks, list) and (len(blocks) >= 4 or _has_positioned_media(blocks)):
+        return False
     if body and (
         "\n" in body
         or re.search(
