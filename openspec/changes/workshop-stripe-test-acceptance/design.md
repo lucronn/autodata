@@ -25,6 +25,29 @@ the real Stripe and provider integrations.
   denial for unowned or refunded scopes. Direct provider checkout probes
   are useful diagnostics but do not cover the Workshop browser path.
 
+## TEST run setup
+
+1. Use a disposable database, object storage, and an approved tester. On
+   loopback use the exact configured origin. External staging requires HTTPS
+   and the restricted Firebase tester configuration.
+2. Set `AUTODATA_COMMERCE_MODE=stripe_test` for Go, private commerce, and
+   the reconciler. Configure `AUTODATA_PUBLIC_ORIGIN` consistently and
+   deliver the private service token through the runtime's secret mechanism.
+   Use Firebase for the Go customer session. The normal development Compose
+   defaults use local auth and do not enable the TEST checkout banner.
+3. In private commerce and the reconciler, configure
+   `AUTODATA_STRIPE_SECRET_KEY`, `AUTODATA_STRIPE_WEBHOOK_SECRET`,
+   `AUTODATA_STRIPE_ACCOUNT_ID`, and `AUTODATA_STRIPE_PRICE_ID`.
+   For a loopback run, forward TEST events with the Stripe CLI to
+   `/v1/payments/stripe/webhook` and use that listener's signing secret.
+   Start with purchases paused if the merchant, price, or signing setup is
+   incomplete. Set the seven purchase notice fields for the test origin.
+4. Confirm the TEST banner and quote before clicking Buy. Complete hosted
+   payment with a Stripe test card in an interactive browser. Confirm
+   order status, payment event, and the matching persisted grant before
+   treating the Library or article read as paid acceptance. Repeat the
+   entitlement check after a signed TEST refund.
+
 ## Risks and rollback
 
 Stop the isolated test services and discard their disposable state when a
