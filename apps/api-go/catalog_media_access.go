@@ -123,6 +123,23 @@ func (s *Server) rewritePaidCatalogImages(images []CatalogImage, source CatalogS
 		image.URL = "/v1/catalog/images/" + token
 	}
 }
+
+func (s *Server) paidCatalogSourceImages(ctx context.Context, p Principal, configuration, article, revision string) ([]CatalogImage, error) {
+	if store, ok := s.catalog.(interface {
+		paidCatalogSourceImages(context.Context, string, string, string) ([]CatalogImage, error)
+	}); ok {
+		return store.paidCatalogSourceImages(ctx, configuration, article, revision)
+	}
+	source, err := s.catalog.ArticleSourceRevision(ctx, p, configuration, article, revision)
+	if err != nil {
+		return nil, err
+	}
+	if source.SourceRevisionID == nil || *source.SourceRevisionID != revision {
+		return nil, ErrCatalogNotFound
+	}
+	return source.Images, nil
+}
+
 func (s *Server) rewritePaidCatalogArticleImages(ctx context.Context, p Principal, configuration CatalogConfiguration, identity PaidArticleIdentity, view *CatalogArticleView) error {
 	if view == nil {
 		return ErrCatalogNotFound
@@ -145,13 +162,11 @@ func (s *Server) rewritePaidCatalogArticleImages(ctx context.Context, p Principa
 	if !commerceUUID(selected) || !commerceUUID(*identity.CurrentSourceRevisionID) {
 		return nil
 	}
-	source, err := s.catalog.ArticleSourceRevision(ctx, p, configuration.ID, identity.CanonicalArticleID, selected)
+	sourceImages, err := s.paidCatalogSourceImages(ctx, p, configuration.ID, identity.CanonicalArticleID, selected)
 	if err != nil {
 		return err
 	}
-	if source.SourceRevisionID == nil || *source.SourceRevisionID != selected {
-		return ErrCatalogNotFound
-	}
+	source := CatalogSourceContent{Images: sourceImages}
 	now := time.Now()
 	ref := paidCatalogProjectionReference(p, configuration, identity, *view, selected, "article", now)
 	s.rewritePaidCatalogImages(view.Article.Images, source, ref, now)
@@ -205,12 +220,12 @@ func (s *Server) servePaidCatalogImage(w http.ResponseWriter, r *http.Request, p
 		s.writePaidCatalogError(w, r, ErrCatalogNotFound)
 		return
 	}
-	source, err := s.catalog.ArticleSourceRevision(ctx, p, configuration.ID, identity.CanonicalArticleID, ref.SelectedSourceRevisionID)
+	sourceImages, err := s.paidCatalogSourceImages(ctx, p, configuration.ID, identity.CanonicalArticleID, ref.SelectedSourceRevisionID)
 	if err != nil {
 		s.writePaidCatalogError(w, r, err)
 		return
 	}
-	if source.SourceRevisionID == nil || *source.SourceRevisionID != ref.SelectedSourceRevisionID || !paidCatalogHasAsset(source.Images, ref.AssetID, ref.ObjectKey) || (ref.Projection == "article" && !paidCatalogArticleHasAsset(view.Article, ref.AssetID, ref.ObjectKey)) {
+	if !paidCatalogHasAsset(sourceImages, ref.AssetID, ref.ObjectKey) || (ref.Projection == "article" && !paidCatalogArticleHasAsset(view.Article, ref.AssetID, ref.ObjectKey)) {
 		s.writePaidCatalogError(w, r, ErrCatalogNotFound)
 		return
 	}

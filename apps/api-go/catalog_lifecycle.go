@@ -354,6 +354,45 @@ func (s *postgresCatalogStore) Articles(ctx context.Context, p Principal, v stri
 func (s *postgresCatalogStore) ArticleSource(ctx context.Context, p Principal, v, id string) (CatalogSourceContent, error) {
 	return s.ArticleSourceRevision(ctx, p, v, id, "")
 }
+
+// Selected revisions, including historical revisions, cannot expose any of their
+// retained resources while the body or a resource in the manifest is blocked.
+const catalogSourceRevisionEligibleSQL = `NOT EXISTS(SELECT 1 FROM source_snapshots blocked WHERE (blocked.takedown_status<>'active' OR EXISTS(SELECT 1 FROM source_review_items quarantine WHERE quarantine.item_kind='quarantine' AND quarantine.status<>'approved' AND quarantine.source_snapshot_ids ? blocked.source_snapshot_id::text)) AND (blocked.source_snapshot_id=sr.body_source_snapshot_id OR EXISTS(SELECT 1 FROM jsonb_array_elements(sr.resource_manifest) asset WHERE asset->>'sha256'=blocked.content_sha256::text)))`
+
+func (s *postgresCatalogStore) paidCatalogSourceImages(ctx context.Context, configuration, article, revision string) ([]CatalogImage, error) {
+	var takedown string
+	var raw []byte
+	// Read current eligibility and selected revision rights together. The current
+	// projection still governs access even when the token pins a historical source.
+	err := s.pool.QueryRow(ctx, `SELECT view_row.takedown_status, selected.source_images
+		FROM catalog_article_current view_row JOIN canonical_articles a USING(canonical_article_id)
+		LEFT JOIN LATERAL (
+			SELECT sr.source_images FROM canonical_article_source_revisions sr
+			JOIN source_snapshots snap ON snap.source_snapshot_id=sr.body_source_snapshot_id
+			WHERE sr.canonical_article_id=a.canonical_article_id AND sr.source_revision_id=$3::uuid
+			AND `+catalogSourceRevisionEligibleSQL+`
+		) selected ON view_row.takedown_status='active'
+		WHERE a.vehicle_configuration_id=$1::uuid AND a.canonical_article_id=$2::uuid AND `+lifecycleEligibleSQL,
+		configuration, article, revision).Scan(&takedown, &raw)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrCatalogNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if takedown != "active" {
+		return nil, ErrCatalogWithdrawn
+	}
+	if raw == nil {
+		return nil, ErrCatalogNotFound
+	}
+	var images []CatalogImage
+	if err = json.Unmarshal(raw, &images); err != nil {
+		return nil, err
+	}
+	return images, nil
+}
+
 func (s *postgresCatalogStore) ArticleSourceRevision(ctx context.Context, p Principal, v, id, revision string) (CatalogSourceContent, error) {
 	view, err := s.ArticleView(ctx, p, v, id)
 	if err != nil {
@@ -375,7 +414,7 @@ func (s *postgresCatalogStore) ArticleSourceRevision(ctx context.Context, p Prin
 	var steps []byte
 	// Requested revision must belong to this authorized identity. Any resource
 	// takedown suppresses the immutable revision, including historical review.
-	err = s.pool.QueryRow(ctx, `SELECT sr.source_revision_id::text,sr.body_source_snapshot_id::text,snap.content_sha256::text,COALESCE((SELECT observation.body_provider_revision FROM canonical_article_source_observations observation WHERE observation.source_revision_id=sr.source_revision_id AND observation.canonical_article_id=sr.canonical_article_id ORDER BY observation.request_generation DESC,observation.captured_at DESC,observation.source_observation_id DESC LIMIT 1),snap.source_version,''),sr.source_document,sr.source_images,sr.source_body,sr.source_steps FROM canonical_article_source_revisions sr JOIN source_snapshots snap ON snap.source_snapshot_id=sr.body_source_snapshot_id WHERE sr.canonical_article_id::text=$1 AND sr.source_revision_id::text=COALESCE(NULLIF($2,''),$3) AND NOT EXISTS(SELECT 1 FROM source_snapshots blocked WHERE (blocked.takedown_status<>'active' OR EXISTS(SELECT 1 FROM source_review_items quarantine WHERE quarantine.item_kind='quarantine' AND quarantine.status<>'approved' AND quarantine.source_snapshot_ids ? blocked.source_snapshot_id::text)) AND (blocked.source_snapshot_id=sr.body_source_snapshot_id OR EXISTS(SELECT 1 FROM jsonb_array_elements(sr.resource_manifest) asset WHERE asset->>'sha256'=blocked.content_sha256::text)))`, *view.Article.CanonicalArticleID, revision, view.Article.SourceRevisionID).Scan(&sourceID, &result.SnapshotID, &result.ContentSHA256, &result.Version, &doc, &images, &body, &steps)
+	err = s.pool.QueryRow(ctx, `SELECT sr.source_revision_id::text,sr.body_source_snapshot_id::text,snap.content_sha256::text,COALESCE((SELECT observation.body_provider_revision FROM canonical_article_source_observations observation WHERE observation.source_revision_id=sr.source_revision_id AND observation.canonical_article_id=sr.canonical_article_id ORDER BY observation.request_generation DESC,observation.captured_at DESC,observation.source_observation_id DESC LIMIT 1),snap.source_version,''),sr.source_document,sr.source_images,sr.source_body,sr.source_steps FROM canonical_article_source_revisions sr JOIN source_snapshots snap ON snap.source_snapshot_id=sr.body_source_snapshot_id WHERE sr.canonical_article_id::text=$1 AND sr.source_revision_id::text=COALESCE(NULLIF($2,''),$3) AND `+catalogSourceRevisionEligibleSQL, *view.Article.CanonicalArticleID, revision, view.Article.SourceRevisionID).Scan(&sourceID, &result.SnapshotID, &result.ContentSHA256, &result.Version, &doc, &images, &body, &steps)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return CatalogSourceContent{}, ErrCatalogNotFound
 	}
