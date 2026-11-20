@@ -359,6 +359,78 @@ def test_json_steps_keep_attached_figures(capture_fixture, provider, available):
         assert captured.projection_status == "partial"
 
 
+@pytest.mark.parametrize("provider", ["bankone", "banktwo"])
+@pytest.mark.parametrize("wrap_hal", [False, True])
+def test_html_list_keeps_nested_table_figures_and_tail(capture_fixture, provider, wrap_hal):
+    import json
+
+    from autodata_ingestion.article_document import has_structured_list_items, validate_ordered_document
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    html = (
+        '<ol><li>Remove the pump.'
+        '<ul><li>Do not reuse the seal.<ol><li>Inspect the seat.</li></ol>Check the flange.</li></ul>'
+        '<p>Inspect the seal first.</p>'
+        '<table><tr><th>Part</th><th>Torque</th></tr><tr><td>Cover</td>'
+        '<td>40 Nm<img src="torque" alt="Torque diagram"></td></tr></table>'
+        '<p>Check the fitting.</p>'
+        '<figure><img data-resource-ref="orientation" alt="Orientation">'
+        '<figcaption>Top view.</figcaption></figure>Wipe the flange.'
+        '<script>excluded-script</script><style>excluded-style</style>'
+        ' <a href="https://upstream.invalid/private">Verify the seat.</a>'
+        '</li><li>Install the replacement.</li></ol>'
+        '<img data-resource-ref="outside" alt="Summary diagram">'
+    )
+    if wrap_hal:
+        raw = json.dumps({"_embedded": {"data": {"article": {"content": html}}}}).encode()
+        mime = "application/hal+json"
+    else:
+        raw, mime = html.encode(), "text/html"
+    capture_fixture.body(provider, raw, mime, assets=["torque"])
+    for ref in ("torque", "orientation", "outside"):
+        capture_fixture.body(provider, ref.encode(), "image/png", ref=ref, kind="asset")
+
+    captured = capture_source_article(
+        capture_fixture.context(provider), registry=capture_fixture.registry,
+        object_store=capture_fixture.objects,
+    )
+
+    assert has_structured_list_items(captured.source_document)
+    assert validate_ordered_document(captured.source_document, strict=True) == []
+    ordered, outside = captured.source_document["blocks"]
+    assert ordered["type"] == "ordered_list"
+    assert outside["alt"] == "Summary diagram"
+    first, second = ordered["items"]
+    assert first["text"] == "Remove the pump."
+    assert second == "Install the replacement."
+    children = first["blocks"]
+    assert [child["type"] for child in children] == [
+        "unordered_list", "paragraph", "table", "paragraph", "image", "paragraph", "paragraph",
+    ]
+    alert, = children[0]["items"]
+    assert alert["text"] == "Do not reuse the seal."
+    assert alert["blocks"][0]["type"] == "ordered_list"
+    assert alert["blocks"][0]["items"] == ["Inspect the seat."]
+    assert alert["blocks"][1]["text"] == "Check the flange."
+    torque = children[2]["rows"][1][1]
+    assert torque["text"] == "40 Nm"
+    assert torque["images"][0]["alt"] == "Torque diagram"
+    assert children[4]["alt"] == "Orientation"
+    assert captured.source_body.splitlines() == [
+        "Remove the pump.", "Do not reuse the seal.", "Inspect the seat.", "Check the flange.",
+        "Inspect the seal first.", "Part", "Torque", "Cover", "40 Nm", "Check the fitting.",
+        "Top view.", "Wipe the flange. Verify the seat.", "Install the replacement.",
+    ]
+    assert [image["alt"] for image in captured.source_images] == [
+        "Torque diagram", "Orientation", "Summary diagram",
+    ]
+    assert all(image["status"] == "available" for image in captured.source_images)
+    assert all(capture_fixture.resource_calls(provider, ref) == 1 for ref in ("torque", "orientation", "outside"))
+    assert "upstream.invalid" not in str(captured.source_document)
+    assert "excluded" not in captured.source_body
+    assert capture_fixture.objects.data[captured.resources[0]["object_key"]][0] == raw
+
+
 def test_fixture_pdf_uses_real_adapter_and_keeps_original_bytes(capture_fixture):
     from io import BytesIO
     from reportlab.pdfgen import canvas

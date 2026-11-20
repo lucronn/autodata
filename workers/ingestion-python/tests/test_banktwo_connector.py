@@ -83,6 +83,58 @@ class ConnectorTests(unittest.TestCase):
         self.assertEqual(parser.blocks[1]["text"], "Torque: 8.8 Nm")
         self.assertNotIn("bad()", str(parser.blocks))
 
+    def test_flat_lists_keep_legacy_shape_and_top_level_figure_order(self):
+        parser = ArticleParser()
+        parser.feed(
+            '<ol><li>Remove pump.</li><li>Check gasket.</li></ol>'
+            '<img data-resource-ref="guide"><ol><li>Install pump.</li></ol>'
+        )
+        parser.close()
+        parser.flush()
+        first, image, second = parser.blocks
+        self.assertEqual(first, {"kind": "ordered_list", "items": ["Remove pump.", "Check gasket."], "start": 1})
+        self.assertEqual(image["asset_resource_ref"], "guide")
+        self.assertEqual(second, {"kind": "ordered_list", "items": ["Install pump."], "start": 3})
+
+    def test_nested_lists_accept_omitted_item_end_tags_and_keep_parent_tail(self):
+        parser = ArticleParser()
+        parser.feed("<ol><li>Inspect the pump.<ul><li>Inspect the seal.</ul>Check the fitting.<li>Replace the pump.</ol>")
+        parser.close()
+        parser.flush()
+        first, second = parser.blocks[0]["items"]
+        self.assertEqual(first["text"], "Inspect the pump.")
+        self.assertEqual(first["blocks"], [
+            {"kind": "unordered_list", "items": ["Inspect the seal."]},
+            {"kind": "text", "text": "Check the fitting."},
+        ])
+        self.assertEqual(second, "Replace the pump.")
+
+    def test_legacy_facade_projects_structured_list_text_and_localizes_nested_image(self):
+        html = (
+            '<ol><li>Remove pump.<img src="/bound" alt="Alignment marks">'
+            '<ul><li>Check gasket.</li></ul> Wipe flange.</li><li>Install pump.</li></ol>'
+        )
+
+        def opener(request, timeout):
+            body = envelope(
+                kind="article", media_type="text/html", content=html,
+                sha256=sha256(html.encode()).hexdigest(), asset_resource_refs=["figure"],
+                asset_bindings=[{"source_url": "/bound", "resource_ref": "figure"}],
+            )
+            return FixtureResponse(json.dumps(body).encode(), url=request.full_url,
+                                   headers={"Content-Type": "application/json"})
+
+        client = SourceConnectorClient("https://banktwo.cars.tk", provider="banktwo", opener=opener)
+        article = BanktwoConnector(source_client=client).article_by_descriptor(
+            "vehicle", {"opaque_ref": "article", "resource_ref": "body"},
+        )
+        self.assertEqual(article["body"].splitlines()[::2], [
+            "Remove pump.", "Check gasket.", "Wipe flange.", "Install pump.",
+        ])
+        image, = article["images"]
+        self.assertEqual(image["asset_resource_ref"], "figure")
+        self.assertNotIn("url", image)
+
     def test_unbound_images_do_not_consume_refs_by_ordinal(self):
         html = '<p>Remove pump.</p><img src="/unknown"><img src="/bound"><img src="/bound">'
 
