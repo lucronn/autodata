@@ -1,0 +1,28 @@
+services:
+  postgres:
+    volumes:
+      - type: tmpfs
+        target: /var/lib/postgresql/data
+        tmpfs:
+          size: 536870912
+    healthcheck:
+      test: [CMD, pg_isready, -h, 127.0.0.1, -U, lifecycle_test, -d, lifecycle_fixture]
+  minio:
+    command: [mini, "-dir=/data", "-s3.port=9000", "-volume.max=4"]
+    volumes:
+      - type: tmpfs
+        target: /data
+        tmpfs:
+          size: 536870912
+    healthcheck:
+      test: [CMD, nc, -z, 127.0.0.1, "9000"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  go-test-runner:
+    init: true
+    shm_size: 256m
+    environment:
+      AUTODATA_REQUIRE_WORKSHOP_BROWSER_INTEGRATION: "1"
+      AUTODATA_R3_CANDIDATE_SHA: ${AUTODATA_R3_CANDIDATE_SHA:?set candidate SHA}
+      AUTODATA_API21_SOURCE_TREE: ${AUTODATA_API21_SOURCE_TREE:?set candidate tree}

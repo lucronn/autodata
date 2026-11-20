@@ -15,6 +15,15 @@ RUN cd /opt/prefetch/apps/api-go && go mod download && go version | grep 'go1.26
 FROM lifecycle-runtime AS browser-runtime
 COPY scripts/dev/requirements-workshop-browser.txt /tmp/requirements-workshop-browser.txt
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/autodata-playwright
-RUN python -m pip install --no-cache-dir -r /tmp/requirements-workshop-browser.txt && python -m playwright install --with-deps chromium firefox webkit
+# Firefox 157 needs NSS 3.126 or newer. Use Debian's newer NSS packages
+# without switching the browser fixture's base distribution.
+RUN echo 'deb https://deb.debian.org/debian forky main' > /etc/apt/sources.list.d/browser-nss.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends libnss3/forky libnspr4/forky \
+    && rm /etc/apt/sources.list.d/browser-nss.list \
+    && apt-get install -y --no-install-recommends glib-networking \
+    && python -m pip install --no-cache-dir -r /tmp/requirements-workshop-browser.txt \
+    && python -m playwright install --with-deps chromium firefox webkit \
+    && rm -rf /var/lib/apt/lists/*
 
 FROM lifecycle-runtime AS default-runtime
