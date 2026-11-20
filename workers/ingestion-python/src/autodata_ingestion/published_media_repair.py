@@ -75,7 +75,11 @@ def _image_positions(document):
 
 
 def _image_hash(image):
-    return digest_json({key: value for key, value in image.items() if key not in _IMAGE_KEYS})
+    identity = {key: value for key, value in image.items() if key not in _IMAGE_KEYS}
+    if image.get("status") == "available" and image.get("unavailable_reason") is None:
+        # Available figures use the same render when older projections omit this null.
+        identity.pop("unavailable_reason", None)
+    return digest_json(identity)
 
 
 def _render_technical_v1(source, response):

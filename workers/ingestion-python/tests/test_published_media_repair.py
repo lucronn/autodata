@@ -369,3 +369,18 @@ def test_repair_rejects_unrecognized_original_prompt_version(prompt_version):
     old, published, repaired, response = _fixture()
     with pytest.raises(ValueError, match="^PUBLISHED_MEDIA_REPAIR_PROMPT_UNSUPPORTED$"):
         repair_published_media(old, published, repaired, response=response, prompt_version=prompt_version)
+
+
+def test_available_figure_accepts_a_missing_historical_null_reason():
+    old, _, repaired, response = _fixture()
+    old["blocks"][-1].pop("unavailable_reason", None)
+    repaired["blocks"][1]["unavailable_reason"] = None
+    prompt = "full-prose-auto-prompt-v8"
+    published = render_auto(old, response, prompt_version=prompt)
+    result = repair_published_media(old, published, repaired, response=response, prompt_version=prompt)
+    assert result.validation.passed
+    assert result.document["blocks"][2]["unavailable_reason"] is None
+
+    repaired["blocks"][1]["unavailable_reason"] = "a changed reason"
+    with pytest.raises(ValueError, match="MEDIA_DRIFT"):
+        repair_published_media(old, published, repaired, response=response, prompt_version=prompt)
