@@ -3,6 +3,7 @@
 from copy import deepcopy
 from dataclasses import dataclass, replace
 from uuid import UUID, uuid4
+from .article_document import has_structured_list_items
 from .article_lifecycle_types import SOURCE_PROJECTION_VERSIONS, transformation_key
 from .source_job_persistence import lock_live_lease, LeaseLost
 
@@ -145,19 +146,30 @@ def _store_captured_source(cur, lease, captured):
     job = lock_live_lease(cur, lease)
     source_only = job["checkpoint"].get("source_only_reprojection") is True
     article_query = """
-        SELECT a.*, s.projection_version AS current_projection_version
+        SELECT a.*, s.projection_version AS current_projection_version,
+                    s.source_fingerprint AS current_source_fingerprint
         FROM canonical_articles a
         LEFT JOIN canonical_article_source_revisions s ON s.source_revision_id=a.current_source_revision_id
         WHERE a.canonical_article_id=%s
     """
     article_params = (lease.canonical_article_id,)
 
-    def effective_projection(current_version):
-        # The live parser already emits corrected placement. Keep v3 for repaired
-        # articles so their next normal refresh can reuse a matching projection.
-        if (not source_only and captured.projection_version == "source-projection-v2"
-                and current_version == "source-projection-v3"):
-            return current_version
+    use_live_projection = not source_only and captured.projection_version == "source-projection-v2"
+    structured_lists = use_live_projection and has_structured_list_items(captured.source_document)
+
+    def effective_projection(article):
+        if use_live_projection:
+            # Reuse repaired projections on normal refresh. Keep a currently
+            # published revision of identical raw bytes visible until replaced.
+            current = article["current_projection_version"]
+            published_same_bytes = (
+                article["current_canonical_revision_id"] is not None
+                and article["current_source_fingerprint"] == captured.source_fingerprint
+            )
+            if current == "source-projection-v3":
+                return current
+            if structured_lists:
+                return current if published_same_bytes else "source-projection-v3"
         return captured.projection_version
 
     # A full review owner may be adopted below. Lock it before the article,
@@ -166,7 +178,7 @@ def _store_captured_source(cur, lease, captured):
     review_projection = None
     if job["rewrite_profile_version"] == "full-prose-review-v1" and not source_only:
         before_lock = cur.execute(article_query, article_params).fetchone()
-        review_projection = effective_projection(before_lock["current_projection_version"])
+        review_projection = effective_projection(before_lock)
         review_key = transformation_key(
             lease.canonical_article_id, captured.source_fingerprint,
             job["normalization_version"], job["rewrite_profile_version"],
@@ -182,7 +194,7 @@ def _store_captured_source(cur, lease, captured):
     ):
         raise LeaseLost("article generation changed")
     current_version = article["current_projection_version"]
-    projection = effective_projection(current_version)
+    projection = effective_projection(article)
     if review_projection is not None and review_projection != projection:
         raise LeaseLost("article source projection changed")
     if current_version and SOURCE_PROJECTION_VERSIONS.index(projection) < SOURCE_PROJECTION_VERSIONS.index(current_version):

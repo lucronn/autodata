@@ -1402,6 +1402,15 @@ async def api_case(browser,origin,name,output,observations=None):
             await expect(figure).to_have_count(1)
             await expect(page.locator('#article-content figure:has(img[alt="Alignment marks"]) figcaption')).to_have_text('Pump alignment marks')
             assert await figure.evaluate("node => node.previousElementSibling.textContent.includes('Inspect the alignment marks')")
+            nested_item = article_content.locator("ol > li").filter(has_text="Alignment reference")
+            await expect(nested_item.locator("p").first).to_have_text("Remove the pump.")
+            nested_figure = nested_item.locator('table td figure:has(img[alt="Drive alignment"])')
+            await expect(nested_figure).to_have_count(1)
+            await expect(nested_figure.locator("figcaption")).to_have_text("Drive alignment reference")
+            await expect(nested_item.locator("aside")).to_contain_text("Keep the drive seal in place.")
+            await page.wait_for_function(
+                "Array.from(document.querySelectorAll('#article-content td img')).some(img => img.complete && img.naturalWidth > 0)"
+            )
             await page.wait_for_function("Array.from(document.querySelectorAll('#article-content img')).some(img => img.complete && img.naturalWidth > 0)")
             image_url=await page.locator('#article-content img').first.get_attribute('src')
             assert urlsplit(image_url).path.startswith('/v1/catalog/images/v2.')
@@ -1409,6 +1418,8 @@ async def api_case(browser,origin,name,output,observations=None):
             if observations:observations.phase='source-review-http'
             await page.locator('#article-reference summary').click();await page.locator('#source-review-load').click()
             await expect(page.locator('#source-review-frame')).to_contain_text('Remove the pump.')
+            stored_figure = page.locator('#source-review-frame ol > li table td figure img[alt="Drive alignment"]')
+            await expect(stored_figure).to_have_count(1)
             source_path=await page.locator('#source-review-link').get_attribute('href')
             assert parse_qs(urlsplit(source_path).query).get('source_revision_id')
             assertions['paid_source_and_actual_s3_image']=True
@@ -1423,6 +1434,9 @@ async def api_case(browser,origin,name,output,observations=None):
             await expect(figure).to_have_count(1)
             await expect(page.locator('#article-content figure:has(img[alt="Alignment marks"]) figcaption')).to_have_text('Pump alignment marks')
             assert await figure.evaluate("node => node.previousElementSibling?.textContent.includes('Check the pump alignment marks')")
+            await expect(nested_item.locator("p").first).to_have_text("Take off the pump.")
+            await expect(nested_figure.locator("figcaption")).to_have_text("Drive alignment reference")
+            await expect(nested_item.locator("aside")).to_contain_text("Keep the drive seal in place.")
             await expect(page.locator('#article-content .source-reference').first).to_be_visible()
             warm_before=await api_snapshot(context,origin,'warm-before-snapshot')
             reader_before=(await api_measure(context,origin,'reader-before-measurement'))['image_reads']
