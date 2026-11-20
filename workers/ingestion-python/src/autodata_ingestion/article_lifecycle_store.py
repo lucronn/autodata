@@ -1,9 +1,9 @@
 """Transactional identity/source store; all connections belong to their caller."""
 
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from uuid import UUID, uuid4
-from .article_lifecycle_types import transformation_key
+from .article_lifecycle_types import SOURCE_PROJECTION_VERSIONS, transformation_key
 from .source_job_persistence import lock_live_lease, LeaseLost
 
 from psycopg.rows import dict_row
@@ -133,7 +133,7 @@ def store_captured_source(repo, lease, captured):
 
 def _store_captured_source(cur, lease, captured):
     """Use the caller's transaction, including exact source-only job creation."""
-    if captured.projection_version not in ("source-projection-v1", "source-projection-v2"):
+    if captured.projection_version not in SOURCE_PROJECTION_VERSIONS:
         raise ValueError("unsupported source projection version")
     context = captured.context
     if (
@@ -143,27 +143,52 @@ def _store_captured_source(cur, lease, captured):
     ):
         raise ValueError("captured article identity/body mismatch")
     job = lock_live_lease(cur, lease)
+    source_only = job["checkpoint"].get("source_only_reprojection") is True
+    article_query = """
+        SELECT a.*, s.projection_version AS current_projection_version
+        FROM canonical_articles a
+        LEFT JOIN canonical_article_source_revisions s ON s.source_revision_id=a.current_source_revision_id
+        WHERE a.canonical_article_id=%s
+    """
+    article_params = (lease.canonical_article_id,)
+
+    def effective_projection(current_version):
+        # The live parser already emits corrected placement. Keep v3 for repaired
+        # articles so their next normal refresh can reuse a matching projection.
+        if (not source_only and captured.projection_version == "source-projection-v2"
+                and current_version == "source-projection-v3"):
+            return current_version
+        return captured.projection_version
+
     # A full review owner may be adopted below. Lock it before the article,
     # matching review/publication's job -> article order even during refresh.
     review_owner = None
-    if job["rewrite_profile_version"] == "full-prose-review-v1" and not job["checkpoint"].get("source_only_reprojection"):
-        review_key = transformation_key(lease.canonical_article_id,captured.source_fingerprint,
-            job["normalization_version"],job["rewrite_profile_version"],projection_version=captured.projection_version)
-        review_owner = cur.execute("SELECT * FROM source_fetch_jobs WHERE transformation_key=%s FOR UPDATE",(review_key,)).fetchone()
-    article = cur.execute(
-        "SELECT * FROM canonical_articles WHERE canonical_article_id=%s FOR UPDATE",
-        (lease.canonical_article_id,),
-    ).fetchone()
+    review_projection = None
+    if job["rewrite_profile_version"] == "full-prose-review-v1" and not source_only:
+        before_lock = cur.execute(article_query, article_params).fetchone()
+        review_projection = effective_projection(before_lock["current_projection_version"])
+        review_key = transformation_key(
+            lease.canonical_article_id, captured.source_fingerprint,
+            job["normalization_version"], job["rewrite_profile_version"],
+            projection_version=review_projection,
+        )
+        review_owner = cur.execute(
+            "SELECT * FROM source_fetch_jobs WHERE transformation_key=%s FOR UPDATE", (review_key,)
+        ).fetchone()
+    article = cur.execute(article_query + " FOR UPDATE OF a", article_params).fetchone()
     if (
         article["request_generation"] != job["request_generation"]
         or article["current_job_id"] != lease.job_id
     ):
         raise LeaseLost("article generation changed")
-    if captured.projection_version == "source-projection-v1" and article["current_source_revision_id"]:
-        current = cur.execute("SELECT projection_version FROM canonical_article_source_revisions WHERE source_revision_id=%s",
-                              (article["current_source_revision_id"],)).fetchone()
-        if current["projection_version"] == "source-projection-v2":
-            raise ValueError("source projection downgrade is not supported")
+    current_version = article["current_projection_version"]
+    projection = effective_projection(current_version)
+    if review_projection is not None and review_projection != projection:
+        raise LeaseLost("article source projection changed")
+    if current_version and SOURCE_PROJECTION_VERSIONS.index(projection) < SOURCE_PROJECTION_VERSIONS.index(current_version):
+        raise ValueError("source projection downgrade is not supported")
+    if captured.projection_version != projection:
+        captured = replace(captured, projection_version=projection)
     observed = cur.execute(
         "SELECT source_revision_id FROM canonical_article_source_observations WHERE source_fetch_job_id=%s",
         (lease.job_id,),
@@ -202,9 +227,12 @@ def _store_captured_source(cur, lease, captured):
     ).fetchone()
     if row is None:
         row = cur.execute(
-            "SELECT source_revision_id FROM canonical_article_source_revisions WHERE canonical_article_id=%s AND source_fingerprint=%s AND projection_version=%s",
+            """SELECT source_revision_id, source_document FROM canonical_article_source_revisions
+            WHERE canonical_article_id=%s AND source_fingerprint=%s AND projection_version=%s""",
             (lease.canonical_article_id, captured.source_fingerprint, captured.projection_version),
         ).fetchone()
+        if source_only and projection == "source-projection-v3" and row["source_document"] != captured.source_document:
+            raise ValueError("SOURCE_MEDIA_REPLAY_PROJECTION_CONFLICT")
     revision_id = row["source_revision_id"]
     provenance = _remap_snapshot_references(captured.resource_provenance, snapshots)
     body_resource = next(r for r in captured.resources if r["role"] == "body")
@@ -238,7 +266,7 @@ def _store_captured_source(cur, lease, captured):
             captured.captured_at,
         ),
     )
-    if job["checkpoint"].get("source_only_reprojection") is True:
+    if source_only:
         cur.execute("""UPDATE source_fetch_jobs SET source_revision_id=%s,transformation_key=NULL,
             status='needs_review',phase='completed',error_code='SOURCE_ONLY_REPROJECTION',retryable=false,
             next_attempt_at=NULL,lease_owner=NULL,lease_expires_at=NULL,heartbeat_at=NULL,

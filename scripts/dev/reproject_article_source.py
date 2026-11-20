@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Preview one bounded retained body projection; apply requires preview hash bindings."""
+"""Preview or apply one verified projection from a retained article source."""
 import argparse
 import json
 import os
@@ -17,6 +17,7 @@ def main(argv=None, *, repo=None, object_store=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--article-id", type=UUID, required=True)
     parser.add_argument("--source-revision-id", type=UUID, required=True)
+    parser.add_argument("--retained-media", action="store_true", help="Replay retained article figures")
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--dry-run", action="store_true")
     modes.add_argument("--apply", action="store_true")
@@ -24,9 +25,13 @@ def main(argv=None, *, repo=None, object_store=None):
     parser.add_argument("--reason")
     parser.add_argument("--expected-fingerprint")
     parser.add_argument("--expected-body-sha256")
+    parser.add_argument("--expected-observation-id", type=UUID)
+    parser.add_argument("--expected-document-sha256")
     args = parser.parse_args(argv)
     if args.apply and not all((args.actor, args.reason, args.expected_fingerprint, args.expected_body_sha256)):
         parser.error("--apply requires --actor, --reason, --expected-fingerprint and --expected-body-sha256")
+    if args.apply and args.retained_media and not (args.expected_observation_id and args.expected_document_sha256):
+        parser.error("--apply --retained-media requires --expected-observation-id and --expected-document-sha256")
     if repo is None or object_store is None:
         from autodata_ingestion.worker import ArticleRepository, ArticleObjectStore
         if repo is None: repo = ArticleRepository()
@@ -36,6 +41,11 @@ def main(argv=None, *, repo=None, object_store=None):
             object_store = ArticleObjectStore(endpoint=parsed.netloc, secure=parsed.scheme == "https",
                 access_key=os.environ["AUTODATA_S3_ACCESS_KEY"], secret_key=os.environ["AUTODATA_S3_SECRET_KEY"],
                 bucket=os.environ["AUTODATA_SOURCE_BUCKET"])
+    if args.retained_media:
+        result = replay_media(args, repo, object_store)
+        print(json.dumps(result, sort_keys=True))
+        return 0
+
     captured = reproject_stored_source(repo, args.source_revision_id, object_store=object_store)
     if article_id(captured.context.key) != args.article_id:
         raise ValueError("SOURCE_REPLAY_ARTICLE_MISMATCH")
@@ -52,6 +62,39 @@ def main(argv=None, *, repo=None, object_store=None):
                                                actor=args.actor, reason=args.reason))
     print(json.dumps(result, sort_keys=True))
     return 0
+
+
+def replay_media(args, repo, object_store):
+    from autodata_ingestion.source_media_replay import media_replay_document_hash, preview_media_replay
+    from autodata_ingestion.source_revision_reprojection import apply_media_reprojection
+
+    result = {"article_id": str(args.article_id), "original_source_revision_id": str(args.source_revision_id)}
+    if args.apply:
+        result.update(apply_media_reprojection(
+            repo, args.article_id, args.source_revision_id, object_store=object_store,
+            expected_observation_id=args.expected_observation_id,
+            expected_fingerprint=args.expected_fingerprint,
+            expected_body_sha256=args.expected_body_sha256,
+            expected_document_sha256=args.expected_document_sha256,
+            actor=args.actor, reason=args.reason,
+        ))
+        return result
+
+    binding, captured = preview_media_replay(repo, args.source_revision_id, object_store=object_store)
+    if binding.canonical_article_id != args.article_id:
+        raise ValueError("SOURCE_REPLAY_ARTICLE_MISMATCH")
+    return {
+        **result,
+        "status": "preview",
+        "source_observation_id": str(binding.source_observation_id),
+        "source_fingerprint": binding.source_fingerprint,
+        "body_sha256": binding.body_sha256,
+        "document_sha256": media_replay_document_hash(captured),
+        "projection_version": captured.projection_version,
+        "resource_count": len(captured.resource_manifest),
+        "block_count": len(captured.source_document["blocks"]),
+        "image_count": len(captured.source_images),
+    }
 
 
 if __name__ == "__main__":
