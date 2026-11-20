@@ -305,6 +305,8 @@ func (s *Server) getCatalogArticle(response http.ResponseWriter, request *http.R
 	s.respondCatalogArticleView(response, request, principal, view)
 }
 
+const shortSourceCheckPreference = "workshop-short-source-check"
+
 func (s *Server) respondCatalogArticleView(response http.ResponseWriter, request *http.Request, principal Principal, view CatalogArticleView) {
 	if view.Withdrawn {
 		s.writePaidCatalogError(response, request, ErrCatalogWithdrawn)
@@ -349,6 +351,16 @@ func (s *Server) respondCatalogArticleView(response http.ResponseWriter, request
 		article = view.Article
 	} else {
 		rewriteCatalogImageURLs(&article, s.catalogImageKey)
+	}
+	if status == http.StatusAccepted && article.Processing.allowShortSourceCheck &&
+		request.Header.Get("Prefer") == shortSourceCheckPreference {
+		// The opting-in reader can check this active capture once before its
+		// normal first read. Explicit retry delays never grant this preference.
+		processing := *article.Processing
+		processing.RetryAfterSeconds = nil
+		article.Processing = &processing
+		response.Header().Del("Retry-After")
+		response.Header().Set("Preference-Applied", shortSourceCheckPreference)
 	}
 	article.SourceReview = sourceReviewForArticle(article, vehicleID, article.ID)
 	writeJSON(response, status, CatalogArticleResponse{Version: "v1", Article: article})

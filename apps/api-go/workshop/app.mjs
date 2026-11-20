@@ -934,6 +934,7 @@ async function loadArticle(id, g) {
     : await requestArticleJSON(`${articlePath(id)}/prepare`, {
         method: "POST",
         body: {},
+        preferShortSourceCheck: true,
         headers: { "X-CSRF-Token": session.state.csrf },
         signal: g.signal,
       });

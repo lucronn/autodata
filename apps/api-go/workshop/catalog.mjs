@@ -278,11 +278,13 @@ function safeRequestMessage(status) {
   if (status === 409) return 'This article needs review before it can be opened.';
   return 'AutoData is temporarily unavailable. Try again.';
 }
-export async function requestArticleJSON(path, { signal, timeout = 10000, fetcher = fetch, method = 'GET', body, headers = {} } = {}) {
+const shortSourceCheckPreference = 'workshop-short-source-check';
+
+export async function requestArticleJSON(path, { signal, timeout = 10000, fetcher = fetch, method = 'GET', body, headers = {}, preferShortSourceCheck = false } = {}) {
   const timeoutSignal = AbortSignal.timeout(Math.max(1, Math.min(10000, timeout)));
   const combined = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
   try {
-    const response = await fetcher(path, { method, signal: combined, credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json', ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...headers }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+    const response = await fetcher(path, { method, signal: combined, credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json', ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...(preferShortSourceCheck ? { Prefer: shortSourceCheckPreference } : {}), ...headers }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
     const data = response.status === 204 ? null : await response.json().catch(() => null);
     signal?.throwIfAborted();
     timeoutSignal.throwIfAborted();
@@ -290,7 +292,8 @@ export async function requestArticleJSON(path, { signal, timeout = 10000, fetche
     const retryAfterSeconds = retry && /^\d+$/.test(retry) ? Number(retry) : retry ? Math.max(0, Math.ceil((Date.parse(retry) - Date.now()) / 1000)) || 0 : 0;
     if (!response.ok) throw new CatalogRequestError(safeRequestMessage(response.status), { status: response.status, code: typeof data?.error?.code === 'string' ? data.error.code : 'HTTP_ERROR', retryable: data?.error?.retryable === true, retryAfterSeconds, requestId: typeof data?.error?.request_id === 'string' ? data.error.request_id : '' });
     if (response.status !== 204 && (!data || typeof data !== 'object' || Array.isArray(data))) throw new CatalogRequestError('The catalog returned an unreadable response. Try again.', { code: 'INVALID_RESPONSE' });
-    return { status: response.status, data, retryAfterSeconds };
+    const shortSourceCheck = preferShortSourceCheck && response.headers.get('Preference-Applied') === shortSourceCheckPreference;
+    return { status: response.status, data, retryAfterSeconds, shortSourceCheck };
   } catch (error) {
     signal?.throwIfAborted();
     if (error instanceof CatalogRequestError) throw error;

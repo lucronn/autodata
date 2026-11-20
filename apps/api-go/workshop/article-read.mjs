@@ -47,19 +47,23 @@ export async function readArticle(
 ) {
   const deadline = now() + Math.min(120000, Math.max(0, budgetMs));
   let latest, earlyConfirmationJob;
+  let firstReadAt = 0;
   let sourceConfirmationAt = 0;
   let sawFastSource = false;
   let attempt = 0;
   while (now() < deadline) {
     signal?.throwIfAborted();
-    let retryAfter = 0, fastPendingJob, fastSource = false;
+    let retryAfter = 0, fastPendingJob, fastSource = false, readable = false;
+    let shortSourceCheck = false;
     const startedAt = now();
+    if (firstReadAt <= startedAt) firstReadAt = 0;
     if (sourceConfirmationAt <= startedAt) sourceConfirmationAt = 0;
-    const readDeadline = Math.min(deadline, sourceConfirmationAt || deadline);
+    const readDeadline = Math.min(deadline, firstReadAt || deadline, sourceConfirmationAt || deadline);
     try {
       latest = await read({
         signal,
         timeout: Math.max(1, Math.floor(Math.min(10000, readDeadline - startedAt))),
+        preferShortSourceCheck: Boolean(firstReadAt),
       });
       signal?.throwIfAborted();
       if (!latest?.data?.article || typeof latest.data.article !== "object")
@@ -72,8 +76,11 @@ export async function readArticle(
       const article = latest.data.article;
       if (!processingArticle(article))
         return { ...latest, timedOut: false };
+      readable = readableArticle(article);
+      shortSourceCheck = latest.shortSourceCheck === true && retryAfter === 0 &&
+        latest.status === 202 && !readable &&
+        ["queued", "fetching_source"].includes(article.processing.state);
       if (retryAfter === 1 && article.processing.state !== "failed") {
-        const readable = readableArticle(article);
         if (latest.status === 202 && !readable) {
           fastPendingJob = article.processing.job_id;
         }
@@ -93,8 +100,21 @@ export async function readArticle(
     }
     const remaining = deadline - now();
     if (remaining <= 0) break;
+    if (firstReadAt) {
+      const regularWait = Math.max(0, firstReadAt - now());
+      firstReadAt = 0;
+      if (!readable) {
+        // An unanswered probe must leave time for the regular first read.
+        await wait(Math.min(remaining, Math.max(regularWait, retryAfter * 1000)), signal);
+        continue;
+      }
+    }
     let backoff = [1000, 2000, 4000, 8000, 10000][Math.min(attempt++, 4)];
-    if (attempt === 1 && fastPendingJob) {
+    if (attempt === 1 && shortSourceCheck) {
+      earlyConfirmationJob = latest.data.article.processing.job_id;
+      firstReadAt = now() + backoff;
+      backoff = 500;
+    } else if (attempt === 1 && fastPendingJob) {
       // Add an early check for newly retained source. If this check misses,
       // keep the normal two-second check before resuming the usual backoff.
       earlyConfirmationJob = fastPendingJob;

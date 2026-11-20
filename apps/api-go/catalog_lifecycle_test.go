@@ -78,6 +78,49 @@ func TestCatalogArticleActiveReadRetryAfter(t *testing.T) {
 	}
 }
 
+func TestCatalogPrepareShortSourceCheckPreference(t *testing.T) {
+	one, nine := 1, 9
+	for _, tc := range []struct {
+		name, method, state string
+		prefer              bool
+		delay               *int
+		want                string
+	}{
+		{"queued prepare", http.MethodPost, "queued", true, nil, ""},
+		{"fetching prepare", http.MethodPost, "fetching_source", true, nil, ""},
+		{"older client", http.MethodPost, "queued", false, nil, "1"},
+		{"short detail check", http.MethodGet, "queued", true, nil, ""},
+		{"normal detail retrieval", http.MethodGet, "queued", false, nil, "1"},
+		{"explicit short delay", http.MethodPost, "queued", true, &one, "1"},
+		{"explicit failure delay", http.MethodPost, "failed", true, &nine, "9"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			article := lifecycleArticle(CatalogArticle{
+				ID: "article", Availability: "pending", Processing: &CatalogProcessing{
+					JobID: "job", State: tc.state, Retryable: tc.state == "failed", RetryAfterSeconds: tc.delay,
+				},
+			})
+			request := httptest.NewRequest(tc.method, "/v1/catalog/vehicles/v/articles/article", nil)
+			if tc.prefer {
+				request.Header.Set("Prefer", shortSourceCheckPreference)
+			}
+			response := httptest.NewRecorder()
+			catalogServer(newMemoryCatalogStore()).respondCatalogArticleView(response, request, Principal{}, CatalogArticleView{Article: article})
+			if response.Code != http.StatusAccepted || response.Header().Get("Retry-After") != tc.want {
+				t.Fatalf("accepted response had status %d and retry %q, want retry %q", response.Code, response.Header().Get("Retry-After"), tc.want)
+			}
+			var result CatalogArticleResponse
+			if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil || result.Article.Processing == nil {
+				t.Fatalf("unreadable processing response: %v", err)
+			}
+			applied := response.Header().Get("Preference-Applied") == shortSourceCheckPreference
+			if applied != (tc.want == "") || (result.Article.Processing.RetryAfterSeconds == nil) != applied {
+				t.Fatal("preference acknowledgment and retry delay disagree")
+			}
+		})
+	}
+}
+
 func TestCatalogLifecycleReadableSourceIgnoresWorkerOutage(t *testing.T) {
 	for _, state := range []string{"rewriting", "failed", "needs_review"} {
 		t.Run(state, func(t *testing.T) {

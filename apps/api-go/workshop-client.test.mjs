@@ -308,6 +308,40 @@ test('reader offers one early cold confirmation and keeps the regular second che
     assert.equal(result.data.article.body, 'Published procedure', name);
   }
 });
+test('reader probes negotiated cold source once before the normal first read', async () => {
+  const { readArticle } = await import('./workshop/article-read.mjs');
+  const prepare = { status: 202, shortSourceCheck: true, data: {
+    article: { processing: { job_id: 'job', state: 'queued' } },
+  } };
+  const pending = { status: 202, retryAfterSeconds: 1, data: prepare.data };
+  const stored = { status: 200, retryAfterSeconds: 1, data: { article: {
+    body: 'Stored procedure', content_origin: 'source', processing: { job_id: 'job', state: 'rewriting' },
+  } } };
+  const complete = { status: 200, data: { article: { body: 'Published procedure' } } };
+  const overload = Object.assign(new Error('Busy'), { status: 429, retryable: true, retryAfterSeconds: 5 });
+
+  for (const [label, responses, expectedStarts] of [
+    ['source ready at probe', [prepare, stored, complete], [0, 500, 1500]],
+    ['pending at probe', [prepare, prepare, pending, stored, complete], [0, 500, 1000, 2000, 3000]],
+    ['retry hint at probe', [prepare, pending, pending, stored, complete], [0, 500, 1500, 2500, 3500]],
+    ['network failure at probe', [prepare, new TypeError('Network failed'), pending, complete], [0, 500, 1000, 2000]],
+    ['overload applies to subsequent reads', [prepare, overload, pending, complete], [0, 500, 5500, 6500]],
+    ['explicit wait overrides the preference', [{ ...prepare, retryAfterSeconds: 4 }, complete], [0, 4000]],
+  ]) {
+    let now = 0;
+    const actual = [];
+    const result = await readArticle(async ({ timeout, preferShortSourceCheck }) => {
+      actual.push(now);
+      assert.equal(preferShortSourceCheck, now === 500, label);
+      if (now === 500) assert.equal(timeout, 500, label);
+      const next = responses.shift();
+      if (next instanceof Error) throw next;
+      return next;
+    }, { now: () => now, wait: async ms => { now += ms; } });
+    assert.deepEqual(actual, expectedStarts, label);
+    assert.equal(result.data.article.body, 'Published procedure', label);
+  }
+});
 test('reader confirms newly visible source once before resuming publication backoff', async () => {
   const { readArticle } = await import('./workshop/article-read.mjs');
   const pending = { status: 202, retryAfterSeconds: 1, data: {
