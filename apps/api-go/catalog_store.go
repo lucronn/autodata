@@ -713,6 +713,7 @@ func (s *postgresCatalogStore) CatalogScopeComplete(ctx context.Context, _ Princ
 }
 
 func (s *postgresCatalogStore) CatalogArticleProgress(ctx context.Context, _ Principal, vehicleID string) (*CatalogArticleProgress, error) {
+	// The scope check constraint binds each key to the corresponding vehicle or exact configuration.
 	var total, completed, active, failed, retryable int
 	err := s.pool.QueryRow(ctx, `
   SELECT count(*),
@@ -724,7 +725,7 @@ func (s *postgresCatalogStore) CatalogArticleProgress(ctx context.Context, _ Pri
       AND job.retry_count < job.max_attempts)
   FROM catalog_article_provider_scopes scope
   LEFT JOIN source_fetch_jobs job ON job.source_fetch_job_id=scope.current_job_id
-  WHERE (scope.vehicle_id::text=$1 AND scope.vehicle_configuration_id IS NULL OR scope.vehicle_configuration_id::text=$1)
+  WHERE scope.scope_key IN ('vehicle:'||$1, 'configuration:'||$1)
     AND scope.provider_slug IN ('bankone','banktwo')`, vehicleID).Scan(&total, &completed, &active, &failed, &retryable)
 	if err != nil {
 		return nil, err
@@ -741,6 +742,9 @@ func (s *postgresCatalogStore) CatalogArticleProgress(ctx context.Context, _ Pri
 }
 
 func (s *postgresCatalogStore) ConfigurationByVehicle(ctx context.Context, _ Principal, vehicleID string) (CatalogConfiguration, error) {
+	if !commerceUUID(vehicleID) {
+		return CatalogConfiguration{}, ErrCatalogNotFound
+	}
 	var record CatalogConfiguration
 	err := s.pool.QueryRow(ctx, `
 		SELECT vc.vehicle_configuration_id::text, vc.vehicle_id::text,
@@ -749,7 +753,7 @@ func (s *postgresCatalogStore) ConfigurationByVehicle(ctx context.Context, _ Pri
 		       vib.reviewer_state <> 'rejected' AND vc.reviewer_state <> 'rejected'
 		FROM vehicle_configurations vc
 		JOIN vehicle_identity_bases vib ON vib.vehicle_identity_base_id = vc.vehicle_identity_base_id
-		WHERE (vc.vehicle_id::text = $1 OR vc.vehicle_configuration_id::text = $1)
+		WHERE (vc.vehicle_id = $1::uuid OR vc.vehicle_configuration_id = $1::uuid)
 		  AND vib.reviewer_state <> 'rejected' AND vc.reviewer_state <> 'rejected'
 		ORDER BY vc.vehicle_configuration_id LIMIT 1`, vehicleID).
 		Scan(&record.ID, &record.VehicleID, &record.Year, &record.Make, &record.Model, &record.Region, &record.Trim, &record.Engine, &record.Complete)

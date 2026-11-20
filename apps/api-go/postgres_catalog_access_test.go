@@ -558,6 +558,17 @@ func TestPostgresPaidCatalogExactScopeAndOwnerIsolation(t *testing.T) {
 	if json.Unmarshal(f.expect(0, "GET", f.path(""), "", 200), &descriptors) != nil {
 		t.Fatal("exact-scope descriptor JSON invalid")
 	}
+	if descriptors.Configuration == nil || descriptors.Configuration.ID != f.configuration || descriptors.Configuration.Region != "US" ||
+		!descriptors.Complete || descriptors.Hydrating || descriptors.Progress == nil || descriptors.Progress.Status != "completed" || descriptors.Progress.Processed != 2 {
+		t.Fatal("paid index lost exact vehicle context or provider completion")
+	}
+	firstArticle := f.article
+	if f.provider == "banktwo" {
+		firstArticle = f.other
+	}
+	if len(descriptors.Items) != 2 || descriptors.Items[0].ID != firstArticle {
+		t.Fatal("paid index must keep Bank One first")
+	}
 	ids := map[string]bool{}
 	for _, article := range descriptors.Items {
 		ids[article.ID] = true
@@ -853,6 +864,17 @@ func TestPostgresPaidCatalogHistoricalSourceAndRights(t *testing.T) {
 		f.expect(0, "GET", f.path("/"+f.article), "", 404)
 		f.expect(0, "GET", sourcePath, "", 404)
 		f.image(0, fresh.Images[0].URL, 404)
+		var index CatalogArticlesResponse
+		if err := json.Unmarshal(f.expect(0, "GET", f.path(""), "", 200), &index); err != nil {
+			t.Fatal(err)
+		}
+		for _, result := range [][]CatalogArticle{index.Items, f.contentSearch(0, "refreshed pump").Items} {
+			for _, descriptor := range result {
+				if descriptor.ID == f.article {
+					t.Fatal("quarantined article exposed by paid index or search")
+				}
+			}
+		}
 		f.exec(`UPDATE source_review_items SET status='approved' WHERE source_review_item_id::text=$1`, review)
 	}
 	f.exec(`UPDATE canonical_articles SET membership_status='retired' WHERE canonical_article_id=$1::uuid`, f.article)

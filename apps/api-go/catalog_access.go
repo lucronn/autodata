@@ -98,13 +98,27 @@ func (s *Server) writePaidCatalogError(w http.ResponseWriter, r *http.Request, e
 	writeAPIError(w, r, status, code, message, retryable)
 }
 
-// Paid descriptors use one metadata-only query, including descriptor rights.
-// Do not call the legacy union or load documents/individual article projections.
+// The scope key and provider are constrained by the canonical article schema.
+// Together they let PostgreSQL select a configuration's articles by index.
+const paidArticleScopeSQL = `a.scope_key='configuration:'||$1 AND a.provider_slug IN ('bankone','banktwo')`
+
+// The current view has one row per canonical article. The lateral limit keeps
+// PostgreSQL from evaluating the view across unrelated configurations.
+const paidArticleCurrentJoinSQL = `JOIN LATERAL (
+	SELECT * FROM catalog_article_current WHERE canonical_article_id=a.canonical_article_id LIMIT 1
+) c ON true`
+
+// Paid descriptors use a single metadata-only query, including descriptor rights.
 func (s *postgresCatalogStore) PaidArticleDescriptors(ctx context.Context, _ Principal, configurationID string) ([]CatalogArticle, error) {
 	if !commerceUUID(configurationID) {
 		return nil, ErrCatalogNotFound
 	}
-	rows, err := s.pool.Query(ctx, `SELECT a.canonical_article_id::text,COALESCE(a.title,''),COALESCE(a.kind,''),COALESCE(a.component,''),c.source_revision_id::text,c.canonical_revision_id::text,c.content_origin,c.availability,c.review_status FROM canonical_articles a JOIN catalog_article_current c USING(canonical_article_id) JOIN source_snapshots descriptor ON descriptor.source_snapshot_id=a.descriptor_source_snapshot_id WHERE a.vehicle_configuration_id::text=$1 AND `+lifecycleEligibleSQL+` AND c.takedown_status='active' AND descriptor.takedown_status='active' ORDER BY CASE a.provider_slug WHEN 'bankone' THEN 0 ELSE 1 END,a.source_sort_order NULLS LAST,a.canonical_article_id`, configurationID)
+	rows, err := s.pool.Query(ctx, `SELECT a.canonical_article_id::text,COALESCE(a.title,''),COALESCE(a.kind,''),COALESCE(a.component,''),
+		c.source_revision_id::text,c.canonical_revision_id::text,c.content_origin,c.availability,c.review_status
+		FROM canonical_articles a `+paidArticleCurrentJoinSQL+`
+		JOIN source_snapshots descriptor ON descriptor.source_snapshot_id=a.descriptor_source_snapshot_id
+		WHERE `+paidArticleScopeSQL+` AND `+lifecycleEligibleSQL+` AND c.takedown_status='active' AND descriptor.takedown_status='active'
+		ORDER BY CASE a.provider_slug WHEN 'bankone' THEN 0 ELSE 1 END,a.source_sort_order NULLS LAST,a.canonical_article_id`, configurationID)
 	if err != nil {
 		return nil, err
 	}
@@ -134,7 +148,14 @@ func (s *postgresCatalogStore) PaidArticleSearchDescriptors(ctx context.Context,
 	if !commerceUUID(configurationID) {
 		return nil, ErrCatalogNotFound
 	}
-	rows, err := s.pool.Query(ctx, `SELECT a.canonical_article_id::text,COALESCE(a.title,''),COALESCE(a.kind,''),COALESCE(a.component,''),c.source_revision_id::text,c.canonical_revision_id::text,c.content_origin,c.availability,c.review_status,c.document,COALESCE(c.body,''),c.steps,c.images,source.source_images FROM canonical_articles a JOIN catalog_article_current c USING(canonical_article_id) JOIN source_snapshots descriptor ON descriptor.source_snapshot_id=a.descriptor_source_snapshot_id LEFT JOIN canonical_article_source_revisions source ON source.source_revision_id=c.source_revision_id WHERE a.vehicle_configuration_id::text=$1 AND `+lifecycleEligibleSQL+` AND c.availability='available' AND c.takedown_status='active' AND descriptor.takedown_status='active' ORDER BY CASE a.provider_slug WHEN 'bankone' THEN 0 ELSE 1 END,a.source_sort_order NULLS LAST,a.canonical_article_id`, configurationID)
+	rows, err := s.pool.Query(ctx, `SELECT a.canonical_article_id::text,COALESCE(a.title,''),COALESCE(a.kind,''),COALESCE(a.component,''),
+		c.source_revision_id::text,c.canonical_revision_id::text,c.content_origin,c.availability,c.review_status,
+		c.document,COALESCE(c.body,''),c.steps,c.images,source.source_images
+		FROM canonical_articles a `+paidArticleCurrentJoinSQL+`
+		JOIN source_snapshots descriptor ON descriptor.source_snapshot_id=a.descriptor_source_snapshot_id
+		LEFT JOIN canonical_article_source_revisions source ON source.source_revision_id=c.source_revision_id
+		WHERE `+paidArticleScopeSQL+` AND `+lifecycleEligibleSQL+` AND c.availability='available' AND c.takedown_status='active' AND descriptor.takedown_status='active'
+		ORDER BY CASE a.provider_slug WHEN 'bankone' THEN 0 ELSE 1 END,a.source_sort_order NULLS LAST,a.canonical_article_id`, configurationID)
 	if err != nil {
 		return nil, err
 	}
