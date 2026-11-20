@@ -31,7 +31,16 @@ class _Cursor:
         return self.row
 
     def fetchall(self):
-        return self.snapshots
+        sql, (ids,) = self.queries[-1]
+        if "FROM source_artifacts" in sql:
+            return [{
+                "source_snapshot_id": row["source_snapshot_id"],
+                "content_sha256": row["artifact_digest"],
+                "object_key": row["artifact_key"],
+                "media_type": row["media_type"],
+                "extraction_status": row["extraction_status"],
+            } for row in self.snapshots if row["source_snapshot_id"] in ids]
+        return [row for row in self.snapshots if row["source_snapshot_id"] in ids]
 
     def __enter__(self):
         return self
@@ -182,6 +191,7 @@ def _retained_fixture(client, *, move_image):
         "content_sha256": resource["sha256"], "object_key": resource["object_key"],
         "takedown_status": "active", "artifact_digest": resource["sha256"],
         "artifact_key": resource["object_key"], "media_type": resource["media_type"],
+        "extraction_status": "candidate_ready",
     } for resource in provenance]
     for id_value in (context.descriptor_snapshot_id, context.resolution_snapshot_id):
         snapshots.append({
@@ -234,10 +244,24 @@ def test_apply_binding_shares_locks_for_all_observed_snapshot_ids():
     cursor, _ = _fixture("bankone")
     preview = replay.load_media_replay_binding(cursor, cursor.row["source_revision_id"])
     locked = replay.load_media_replay_binding(cursor, cursor.row["source_revision_id"], lock=True)
-    query, (ids,) = cursor.queries[-1]
-    assert "FOR SHARE OF s" in query
-    assert ids == sorted(row["source_snapshot_id"] for row in cursor.snapshots)
+    snapshot_query, (snapshot_ids,) = cursor.queries[-2]
+    artifact_query, (artifact_ids,) = cursor.queries[-1]
+    assert "FOR SHARE OF s" in snapshot_query
+    assert snapshot_ids == sorted(row["source_snapshot_id"] for row in cursor.snapshots)
+    assert "FOR SHARE OF a" in artifact_query
+    assert artifact_ids == sorted(row["source_snapshot_id"] for row in cursor.snapshots[:2])
     assert preview == locked
+
+
+@pytest.mark.parametrize("index", [0, 1])
+def test_quarantined_resource_is_denied_before_read_and_at_apply(index):
+    cursor, objects = _fixture("bankone")
+    cursor.snapshots[index]["extraction_status"] = "quarantined"
+    with pytest.raises(ValueError, match="^SOURCE_MEDIA_REPLAY_QUARANTINED$"):
+        replay.preview_media_replay(cursor, cursor.row["source_revision_id"], object_store=objects)
+    with pytest.raises(ValueError, match="^SOURCE_MEDIA_REPLAY_QUARANTINED$"):
+        replay.load_media_replay_binding(cursor, cursor.row["source_revision_id"], lock=True)
+    assert not objects.reads
 
 
 @pytest.mark.parametrize("field,value,code", [

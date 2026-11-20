@@ -56,6 +56,7 @@ class _Snapshot:
     artifact_digest: str | None
     artifact_key: str | None
     media_type: str | None
+    extraction_status: str | None
 
 
 @dataclass(frozen=True)
@@ -211,28 +212,42 @@ def _resource_binding(row, context, manifest, provenance):
     return snapshots
 
 
-def _load_snapshots(cur, ids, *, lock):
-    sql = """
-        SELECT s.source_snapshot_id, s.content_sha256, s.object_key, s.takedown_status,
-               a.content_sha256 AS artifact_digest, a.object_key AS artifact_key, a.media_type
+def _load_snapshots(cur, ids, *, resource_ids, lock):
+    snapshot_sql = """
+        SELECT s.source_snapshot_id, s.content_sha256, s.object_key, s.takedown_status
         FROM source_snapshots s
-        LEFT JOIN source_artifacts a USING (source_snapshot_id)
         WHERE s.source_snapshot_id = ANY(%s)
         ORDER BY s.source_snapshot_id"""
     if lock:
-        sql += " FOR SHARE OF s"
-    snapshots = tuple(
-        _Snapshot(
-            row["source_snapshot_id"], row["content_sha256"], row["object_key"],
-            row["takedown_status"], row["artifact_digest"], row["artifact_key"], row["media_type"],
-        )
-        for row in cur.execute(sql, (sorted(ids),)).fetchall()
-    )
+        snapshot_sql += " FOR SHARE OF s"
+    rows = cur.execute(snapshot_sql, (sorted(ids),)).fetchall()
+    artifact_sql = """
+        SELECT a.source_snapshot_id, a.content_sha256, a.object_key, a.media_type, a.extraction_status
+        FROM source_artifacts a
+        WHERE a.source_snapshot_id = ANY(%s)
+        ORDER BY a.source_snapshot_id"""
+    if lock:
+        artifact_sql += " FOR SHARE OF a"
+    artifacts = {
+        row["source_snapshot_id"]: row
+        for row in cur.execute(artifact_sql, (sorted(resource_ids),)).fetchall()
+    }
+    snapshots = []
+    for row in rows:
+        snapshot = row["source_snapshot_id"]
+        artifact = artifacts.get(snapshot, {})
+        snapshots.append(_Snapshot(
+            snapshot, row["content_sha256"], row["object_key"], row["takedown_status"],
+            artifact.get("content_sha256"), artifact.get("object_key"), artifact.get("media_type"),
+            artifact.get("extraction_status"),
+        ))
     if len(snapshots) != len(ids) or {snapshot.id for snapshot in snapshots} != ids:
         raise ValueError("SOURCE_MEDIA_REPLAY_BINDING_MISMATCH")
     if any(snapshot.takedown_status != "active" for snapshot in snapshots):
         raise ValueError("SOURCE_MEDIA_REPLAY_WITHDRAWN")
-    return snapshots
+    if any(snapshot.extraction_status == "quarantined" for snapshot in snapshots):
+        raise ValueError("SOURCE_MEDIA_REPLAY_QUARANTINED")
+    return tuple(snapshots)
 
 
 def _asset_inventory(images, provenance):
@@ -327,7 +342,8 @@ def load_media_replay_binding(cur, source_revision_id, *, lock=False) -> MediaRe
     ):
         raise ValueError("SOURCE_MEDIA_REPLAY_BINDING_MISMATCH")
     snapshots = _load_snapshots(
-        cur, snapshot_ids | {context.descriptor_snapshot_id, context.resolution_snapshot_id}, lock=lock,
+        cur, snapshot_ids | {context.descriptor_snapshot_id, context.resolution_snapshot_id},
+        resource_ids=snapshot_ids, lock=lock,
     )
     snapshots_by_id = {snapshot.id: snapshot for snapshot in snapshots}
     for resource in provenance:
