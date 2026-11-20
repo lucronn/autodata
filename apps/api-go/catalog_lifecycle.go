@@ -93,9 +93,10 @@ func lifecycleArticle(article CatalogArticle) CatalogArticle {
 		active := article.Processing.State != "completed" && article.Processing.State != "needs_review" && article.Processing.State != "failed"
 		if active && article.Processing.RetryAfterSeconds == nil {
 			seconds := 2
-			if !readable && article.Processing.State != "failed" {
-				// Let the first read discover newly captured source sooner.
-				// The client increases later waits and honors explicit delays.
+			if !readable || (article.ContentOrigin != nil && *article.ContentOrigin == "source") {
+				// Give the reader an earlier check for retained source or its
+				// first publication. Explicit delays and canonical refreshes
+				// keep their normal cadence.
 				seconds = 1
 			}
 			article.Processing.RetryAfterSeconds = &seconds

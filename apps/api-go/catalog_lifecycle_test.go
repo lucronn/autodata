@@ -39,16 +39,18 @@ func TestCatalogArticleActiveReadRetryAfter(t *testing.T) {
 	retryDelay := 9
 	for _, test := range []struct {
 		name, state string
-		readable    bool
+		origin      string
 		delay       *int
 		status      int
 		header      string
 	}{
-		{"cold queued", "queued", false, nil, 202, "1"},
-		{"cold fetch", "fetching_source", false, nil, 202, "1"},
-		{"warm rewrite", "rewriting", true, nil, 200, "2"},
-		{"explicit failed retry", "failed", false, &retryDelay, 202, "9"},
-		{"review required", "needs_review", true, nil, 200, ""},
+		{"cold queued", "queued", "", nil, 202, "1"},
+		{"cold fetch", "fetching_source", "", nil, 202, "1"},
+		{"stored source awaiting first publication", "rewriting", "source", nil, 200, "1"},
+		{"published article during refresh", "rewriting", "canonical", nil, 200, "2"},
+		{"explicit source delay", "rewriting", "source", &retryDelay, 200, "9"},
+		{"explicit failed retry", "failed", "", &retryDelay, 202, "9"},
+		{"review required", "needs_review", "source", nil, 200, ""},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			store := newMemoryCatalogStore()
@@ -58,9 +60,9 @@ func TestCatalogArticleActiveReadRetryAfter(t *testing.T) {
 					JobID: "job", State: test.state, RetryAfterSeconds: test.delay, Retryable: test.state == "failed",
 				},
 			}
-			if test.readable {
+			if test.origin != "" {
 				article.Availability = "available"
-				article.ContentOrigin = stringPointer("source")
+				article.ContentOrigin = stringPointer(test.origin)
 				article.Document = &CatalogDocument{
 					SchemaVersion: 1, NormalizationVersion: "ordered-article-v1",
 					Blocks: []CatalogDocumentBlock{{Type: "paragraph", Text: "Remove pump."}},

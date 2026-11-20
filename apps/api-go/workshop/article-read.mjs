@@ -47,14 +47,19 @@ export async function readArticle(
 ) {
   const deadline = now() + Math.min(120000, Math.max(0, budgetMs));
   let latest, earlyConfirmationJob;
+  let sourceConfirmationAt = 0;
+  let sawFastSource = false;
   let attempt = 0;
   while (now() < deadline) {
     signal?.throwIfAborted();
-    let retryAfter = 0, fastPendingJob;
+    let retryAfter = 0, fastPendingJob, fastSource = false;
+    const startedAt = now();
+    if (sourceConfirmationAt <= startedAt) sourceConfirmationAt = 0;
+    const readDeadline = Math.min(deadline, sourceConfirmationAt || deadline);
     try {
       latest = await read({
         signal,
-        timeout: Math.min(10000, Math.max(1, deadline - now())),
+        timeout: Math.max(1, Math.floor(Math.min(10000, readDeadline - startedAt))),
       });
       signal?.throwIfAborted();
       if (!latest?.data?.article || typeof latest.data.article !== "object")
@@ -67,13 +72,12 @@ export async function readArticle(
       const article = latest.data.article;
       if (!processingArticle(article))
         return { ...latest, timedOut: false };
-      if (
-        latest.status === 202 &&
-        retryAfter === 1 &&
-        !readableArticle(article) &&
-        article.processing.state !== "failed"
-      ) {
-        fastPendingJob = article.processing.job_id;
+      if (retryAfter === 1 && article.processing.state !== "failed") {
+        const readable = readableArticle(article);
+        if (latest.status === 202 && !readable) {
+          fastPendingJob = article.processing.job_id;
+        }
+        fastSource = latest.status === 200 && readable && article.content_origin === "source";
       }
     } catch (error) {
       signal?.throwIfAborted();
@@ -100,6 +104,19 @@ export async function readArticle(
         attempt--;
       }
       earlyConfirmationJob = undefined;
+    }
+    // Check once for the rewrite shortly after stored source appears.
+    // A miss rejoins the normal backoff and still honors Retry-After.
+    if (sourceConfirmationAt) {
+      backoff = Math.max(0, sourceConfirmationAt - now());
+      sourceConfirmationAt = 0;
+      attempt--;
+    } else if (fastSource && !sawFastSource) {
+      sawFastSource = true;
+      if (backoff > 1000) {
+        sourceConfirmationAt = now() + backoff;
+        backoff = 1000;
+      }
     }
     await wait(
       Math.min(remaining, Math.max(backoff, retryAfter * 1000)),

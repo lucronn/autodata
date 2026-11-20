@@ -308,6 +308,77 @@ test('reader offers one early cold confirmation and keeps the regular second che
     assert.equal(result.data.article.body, 'Published procedure', name);
   }
 });
+test('reader confirms newly visible source once before resuming publication backoff', async () => {
+  const { readArticle } = await import('./workshop/article-read.mjs');
+  const pending = { status: 202, retryAfterSeconds: 1, data: {
+    article: { processing: { job_id: 'job', state: 'fetching_source' } },
+  } };
+  const stored = { status: 200, data: { article: {
+    content_origin: 'source', body: 'Stored source',
+    processing: { job_id: 'job', state: 'rewriting', retry_after_seconds: 1 },
+  } } };
+  const refresh = { status: 200, retryAfterSeconds: 2, data: { article: {
+    ...stored.data.article, content_origin: 'canonical',
+    processing: { job_id: 'job', state: 'rewriting' },
+  } } };
+  const complete = { status: 200, data: { article: { content_origin: 'canonical', body: 'Ready' } } };
+  const overloaded = Object.assign(new Error('busy'), { status: 503, retryable: true, retryAfterSeconds: 7 });
+  for (const [label, responsePrefix, expectedWaits] of [
+    ['finish at the earlier probe', [pending, stored], [1000, 1000]],
+    ['resume the regular second and third waits', [pending, stored, stored, stored], [1000, 1000, 1000, 4000]],
+    ['one early probe even after several cold reads', [pending, pending, stored, stored, stored], [1000, 1000, 1000, 1000, 4000]],
+    ['initially readable source needs no extra probe', [stored, stored, stored], [1000, 2000, 4000]],
+    ['published refresh preserves its backoff', [refresh, refresh], [2000, 2000]],
+    ['a longer HTTP hint takes precedence', [pending, { ...stored, retryAfterSeconds: 6 }], [1000, 6000]],
+    ['overload on the early read honors the hint', [pending, stored, overloaded], [1000, 1000, 7000]],
+    ['a transient error on the early read still makes the regular check', [pending, stored, new TypeError('network')], [1000, 1000, 1000]],
+  ]) {
+    let now = 0;
+    const responses = [...responsePrefix, complete];
+    const waits = [];
+    const result = await readArticle(async () => {
+      const next = responses.shift();
+      if (next instanceof Error) throw next;
+      return next;
+    }, { now: () => now, wait: async ms => { waits.push(ms); now += ms; } });
+    assert.deepEqual(waits, expectedWaits, label);
+    assert.equal(result.data.article.body, 'Ready', label);
+    assert.equal(result.timedOut, false, label);
+  }
+
+  // The early confirmation cannot consume time reserved for the regular read.
+  let now = 0;
+  const starts = [];
+  const responses = [pending, stored, overloaded, complete];
+  await readArticle(async ({ timeout }) => {
+    starts.push(now);
+    const next = responses.shift();
+    if (next === overloaded) {
+      assert.equal(timeout, 1000);
+      now += timeout;
+      throw new TypeError('network');
+    }
+    return next;
+  }, { now: () => now, wait: async ms => { now += ms; } });
+  assert.deepEqual(starts, [0, 1000, 2000, 3000]);
+});
+
+test('an article body interrupted by its deadline remains retryable', async () => {
+  const { requestArticleJSON } = await import('./workshop/catalog.mjs');
+  await assert.rejects(requestArticleJSON('/article', {
+    timeout: 10,
+    fetcher: async (_url, { signal }) => ({
+      status: 200, ok: true, headers: new Headers(),
+      json: () => new Promise((_resolve, reject) => {
+        const guard = setTimeout(() => reject(new Error('test timeout')), 500);
+        signal.addEventListener('abort', () => {
+          clearTimeout(guard);
+          reject(signal.reason);
+        }, { once: true });
+      }),
+    }),
+  }), { code: 'NETWORK_UNAVAILABLE', retryable: true });
+});
 test('reader retries failed jobs until canonical without losing source', async () => {
   const { readArticle, processingArticle, readableArticle } = await import('./workshop/article-read.mjs');
   let now = 0, reads = 0, inFlight = 0, maxInFlight = 0;
