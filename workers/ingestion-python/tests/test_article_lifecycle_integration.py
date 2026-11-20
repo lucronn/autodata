@@ -937,7 +937,7 @@ def test_automatic_ignition_condition_controls_publication(runtime, provider, pr
     runtime.model.mode = "condition_preserved" if preserved else "condition_inverted"
     job = ensure().job_id
     runtime.start_workers(1)
-    runtime.wait_for(lambda: runtime.read_current()["processing_state"] in ("completed", "needs_review"))
+    runtime.wait_for(lambda: runtime.read_current()["processing_state"] in ("completed", "failed", "needs_review"))
     runtime.stop_workers()
 
     state = runtime.read_current()

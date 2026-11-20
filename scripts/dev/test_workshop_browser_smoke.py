@@ -1397,7 +1397,13 @@ class API21FakeLocator:
     async def evaluate_all(self, expression):
         assert self.selector.endswith(" :scope > :is(p, figure)")
         assert "tagName" in expression
+        if 'td:has(img[alt="Alignment marks"])' in self.selector:
+            return "P,FIGURE,P"
         return "P,FIGURE,P,FIGURE,P"
+    def get_by_role(self, role, *, name):
+        assert role == 'img' and name == 'Alignment marks'
+        assert self.selector.endswith('td:has(img[alt="Alignment marks"])')
+        return self.locator('img')
     async def press(self, key):
         assert key == 'Enter' and self.selector.endswith('table td figure + .source-reference')
         self.page.emit(
