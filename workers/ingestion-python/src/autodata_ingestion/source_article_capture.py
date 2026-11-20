@@ -186,6 +186,7 @@ def _replace_pdf_embeds(value, documents):
 def capture_source_article(
     context, *, registry, object_store, deadline_seconds=30.0,
     keep_embedded_pdf=False, keep_html_headings=False, keep_bound_pdf_iframes=False,
+    keep_pdf_figure_order=False,
 ):
     if not 0 < deadline_seconds <= 30:
         raise ValueError("capture deadline must be within 30 seconds")
@@ -259,6 +260,7 @@ def capture_source_article(
             adapt_bound_article, body.to_source_resource(), context,
             keep_embedded_pdf=keep_embedded_pdf, keep_html_headings=keep_html_headings,
             keep_bound_pdf_iframes=keep_bound_pdf_iframes,
+            keep_pdf_figure_order=keep_pdf_figure_order,
         )
         article = parsing.result(timeout=remaining())
     except (ValueError, TypeError, KeyError, UnicodeError) as error:
@@ -333,7 +335,9 @@ def capture_source_article(
                     return ref, role, None, "UNSUPPORTED_DOCUMENT_MEDIA", originals, None
                 resource = upload_resource(envelope, ref, role, bounded_objects)
                 try:
-                    blocks = bound_pdf_embed_blocks(payload, require_complete_ocr=True)
+                    blocks = bound_pdf_embed_blocks(
+                        payload, require_complete_ocr=True, keep_pdf_figure_order=keep_pdf_figure_order,
+                    )
                 except ValueError:
                     blocks = []
                 if not blocks:
