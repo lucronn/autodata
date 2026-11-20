@@ -50,7 +50,10 @@ class _ListFrame:
 class ArticleParser(HTMLParser):
     """Keep ordered text, figures and component links without executable HTML."""
 
-    def __init__(self, *, asset_bindings=(), preserve_legacy_list_starts=True, keep_html_headings=False):
+    def __init__(
+        self, *, asset_bindings=(), preserve_legacy_list_starts=True, keep_html_headings=False,
+        keep_bound_pdf_iframes=False,
+    ):
         super().__init__(convert_charrefs=True)
         self._asset_bindings = {item["source_url"]: item["resource_ref"] for item in asset_bindings}
         self.blocks = []
@@ -63,6 +66,8 @@ class ArticleParser(HTMLParser):
         self._list_continuation_pending = False
         self._preserve_legacy_list_starts = preserve_legacy_list_starts
         self._keep_html_headings = keep_html_headings
+        self._keep_bound_pdf_iframes = keep_bound_pdf_iframes
+        self._hidden_embed_tags: list[str] = []
         self._heading: dict[str, Any] | None = None
         self._table_rows = None
         self._table_row = None
@@ -184,11 +189,44 @@ class ArticleParser(HTMLParser):
         if rows:
             self._append_block({"kind": "table", "rows": rows})
 
+    def _append_inline_media(self, block):
+        self.flush()
+        if self._table_cell is not None:
+            self._table_cell.append(block)
+            return
+        if self._lists and self._lists[-1].item is None:
+            # Emit media between sibling <li> tags in the enclosing item.
+            frame = self._lists.pop()
+            frame.start, frame.authored_start = self._emit_list(frame, top_level=not self._lists)
+            frame.items = []
+            self._append_block(block)
+            self._lists.append(frame)
+        else:
+            self._append_block(block)
+
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
+        if self._hidden_embed_tags:
+            if tag in {"iframe", "object"}:
+                self._hidden_embed_tags.append(tag)
+            return
         if tag in {"script", "style"}:
             self._skip += 1
         if self._skip:
+            return
+        if self._keep_bound_pdf_iframes and (
+            tag == "iframe"
+            or (
+                tag in {"object", "embed"}
+                and (attrs.get("type") or "").strip().casefold() == "application/pdf"
+            )
+        ):
+            locator = attrs.get("data" if tag == "object" else "src")
+            ref = self._asset_bindings.get(locator)
+            if ref and not (tag == "iframe" and "srcdoc" in attrs):
+                self._append_inline_media({"kind": "document_embed", "asset_resource_ref": ref})
+            if tag != "embed":
+                self._hidden_embed_tags.append(tag)
             return
         if self._list_continuation_pending and tag not in {"ol", "ul", "li", "a", "img"}:
             self._list_start = 1
@@ -267,21 +305,13 @@ class ArticleParser(HTMLParser):
             if self._heading is not None:
                 self._heading.setdefault("images", []).append(image)
                 return
-            self.flush()
-            if self._table_cell is not None:
-                self._table_cell.append(image)
-                return
-            if self._lists and self._lists[-1].item is None:
-                # Emit a figure between sibling <li> tags in the enclosing item.
-                frame = self._lists.pop()
-                frame.start, frame.authored_start = self._emit_list(frame, top_level=not self._lists)
-                frame.items = []
-                self._append_block(image)
-                self._lists.append(frame)
-            else:
-                self._append_block(image)
+            self._append_inline_media(image)
 
     def handle_endtag(self, tag):
+        if self._hidden_embed_tags:
+            if self._hidden_embed_tags[-1] == tag:
+                self._hidden_embed_tags.pop()
+            return
         if self._skip:
             if tag in {"script", "style"}:
                 self._skip -= 1
@@ -318,7 +348,7 @@ class ArticleParser(HTMLParser):
             self.flush()
 
     def handle_data(self, data):
-        if not self._skip and not self._image_link:
+        if not self._skip and not self._image_link and not self._hidden_embed_tags:
             self._text.append(data)
 
 

@@ -174,6 +174,101 @@ class ConnectorTests(unittest.TestCase):
             {"blocks": [{"kind": "text", "text": "Seal"}]},
         ]]})
 
+    def test_bound_pdf_embeds_keep_exact_order_without_markup_or_fallback(self):
+        parser = ArticleParser(
+            keep_bound_pdf_iframes=True,
+            asset_bindings=[
+                {"source_url": "/fixture/diagram?a=1&b=2", "resource_ref": "iframe-ref"},
+                {"source_url": "/fixture/object", "resource_ref": "object-ref"},
+                {"source_url": "/fixture/embed", "resource_ref": "embed-ref"},
+            ],
+        )
+        parser.feed(
+            'Before<iframe src="/fixture/diagram?a=1&amp;b=2" title="Private title">'
+            '<img src="/fixture/embed"><a href="/hidden">Hidden iframe text</a></iframe>'
+            'Between<object data="/fixture/object" type=" Application/PDF ">'
+            '<object data="/nested" type="image/svg+xml">Hidden nested object</object>'
+            '<a href="/hidden">Hidden object text</a></object>'
+            'After object<embed src="/fixture/embed" type="application/pdf">After embed'
+        )
+        parser.close()
+        parser.flush()
+        self.assertEqual(parser.blocks, [
+            {"kind": "text", "text": "Before"},
+            {"kind": "document_embed", "asset_resource_ref": "iframe-ref"},
+            {"kind": "text", "text": "Between"},
+            {"kind": "document_embed", "asset_resource_ref": "object-ref"},
+            {"kind": "text", "text": "After object"},
+            {"kind": "document_embed", "asset_resource_ref": "embed-ref"},
+            {"kind": "text", "text": "After embed"},
+        ])
+        self.assertEqual(parser.links, [])
+
+    def test_bound_pdf_embeds_require_exact_binding_and_reject_override(self):
+        parser = ArticleParser(
+            keep_bound_pdf_iframes=True,
+            asset_bindings=[{"source_url": "/bound?q=1", "resource_ref": "legitimate"}],
+        )
+        parser.feed(
+            'Keep <iframe src="/bound?q=2" data-resource-ref="legitimate">Hidden</iframe>'
+            '<iframe data-resource-ref="legitimate" /><iframe src="/bound?q=1" srcdoc="Hidden"></iframe>'
+            '<object data="/unbound" type="application/pdf" data-resource-ref="legitimate">Hidden</object>'
+            '<object data="/bound?q=1" type="text/html"></object>'
+            '<embed src="/bound?q=1" type="image/png">'
+            '<script><embed src="/bound?q=1" type="application/pdf"></script>this text.'
+        )
+        parser.close()
+        parser.flush()
+        self.assertEqual(parser.blocks, [{"kind": "text", "text": "Keep this text."}])
+
+    def test_bound_pdf_embed_stays_in_list_item_and_table_cell(self):
+        parser = ArticleParser(
+            keep_bound_pdf_iframes=True, preserve_legacy_list_starts=False,
+            asset_bindings=[
+                {"source_url": "/bound/list", "resource_ref": "list-ref"},
+                {"source_url": "/bound/cell", "resource_ref": "cell-ref"},
+            ],
+        )
+        overlap = {"kind": "document_embed", "asset_resource_ref": "list-ref"}
+        cell = {"kind": "document_embed", "asset_resource_ref": "cell-ref"}
+        parser.feed(
+            '<ol start="4"><li>Open cover.<ol start="7"><li>Inspect seal.</li>'
+            '<iframe src="/bound/list" /><li>Inspect seat.</li></ol>'
+            '<table><tr><td>Wiring<embed src="/bound/cell" type="application/pdf">'
+            'route</td></tr></table>Clean flange.</li><li value="9">Install cover.</li></ol>'
+        )
+        parser.close()
+        parser.flush()
+        self.assertEqual(parser.blocks, [{
+            "kind": "ordered_list", "start": 4, "items": [
+                {"text": "Open cover.", "blocks": [
+                    {"kind": "ordered_list", "start": 7, "items": ["Inspect seal."]},
+                    overlap,
+                    {"kind": "ordered_list", "start": 8, "items": ["Inspect seat."]},
+                    {"kind": "table", "rows": [[{"blocks": [
+                        {"kind": "text", "text": "Wiring"}, cell, {"kind": "text", "text": "route"},
+                    ]}]]},
+                    {"kind": "text", "text": "Clean flange."},
+                ]},
+                {"text": "Install cover.", "number": 9},
+            ],
+        }])
+
+    def test_default_bound_pdf_embed_mode_preserves_previous_parser_output(self):
+        parser = ArticleParser(asset_bindings=[{"source_url": "/bound", "resource_ref": "ref"}])
+        parser.feed(
+            '<p>Keep text.</p><iframe src="/bound"></iframe>'
+            '<object data="/bound" type="application/pdf"><p>Legacy fallback.</p></object>'
+            '<embed src="/bound" type="application/pdf"><p>Keep tail.</p>'
+        )
+        parser.close()
+        parser.flush()
+        self.assertEqual(parser.blocks, [
+            {"kind": "text", "text": "Keep text."},
+            {"kind": "text", "text": "Legacy fallback."},
+            {"kind": "text", "text": "Keep tail."},
+        ])
+
     def test_flat_lists_keep_legacy_shape_and_top_level_figure_order(self):
         parser = ArticleParser()
         parser.feed(
