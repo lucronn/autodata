@@ -521,25 +521,34 @@ def test_retained_figure_apply_fences_writes(runtime, monkeypatch, blocker):
 
 
 @pytest.mark.parametrize("published", [False, True])
-def test_nested_list_capture_uses_new_projection_without_replacing_published_prose(runtime, monkeypatch, published):
+@pytest.mark.parametrize("numbered", [False, True], ids=["nested", "authored-ordinals"])
+def test_list_capture_uses_new_projection_without_replacing_published_prose(runtime, monkeypatch, published, numbered):
     from autodata_ingestion import source_article_capture as capture_module
     from autodata_ingestion.article_lifecycle import _capture_context, run_article_worker_once
     from autodata_ingestion.article_lifecycle_store import load_source_revision, store_captured_source
     from autodata_ingestion.mercury2 import Mercury2Client
     from autodata_ingestion.source_job_persistence import claim_source_job
 
-    runtime.servers[runtime.provider].body(json.dumps({"blocks": [
-        {"type": "ordered_list", "items": [{"text": "Remove the pump.", "blocks": [
-            {"type": "callout", "label": "Warning", "text": "Do not run the pump dry."},
-        ]}]},
-    ]}).encode(), "application/json")
+    warning = {"type": "callout", "label": "Warning", "text": "Do not run the pump dry."}
+    first_item = {"text": "Remove the pump.", "blocks": [warning]}
+    procedure = {"type": "ordered_list", "items": [first_item]}
+    if numbered:
+        procedure["start"] = 4
+        procedure["items"].extend([
+            {"text": "Inspect the pump.", "number": 9},
+            "Refit the pump.",
+        ])
+    runtime.servers[runtime.provider].body(json.dumps({"blocks": [procedure]}).encode(), "application/json")
 
     build_capture = capture_module.capture_source_article
 
     def flattened(*args, **kwargs):
         captured = build_capture(*args, **kwargs)
         document = deepcopy(captured.source_document)
+        document["blocks"][0].pop("start", None)
         document["blocks"][0]["items"] = ["Remove the pump."]
+        if numbered:
+            document["blocks"][0]["items"].extend(["Inspect the pump.", "Refit the pump."])
         body, steps, images = capture_module.project_document(document)
         return replace(captured, source_document=document, source_body=body, source_steps=steps, source_images=images)
 
@@ -568,5 +577,11 @@ def test_nested_list_capture_uses_new_projection_without_replacing_published_pro
     else:
         assert selected != revision.source_revision_id and state["source_revision_id"] == selected
         fixed = load_source_revision(runtime.repo, selected)
-        assert fixed.projection_version == "source-projection-v3"
-        assert fixed.source_document["blocks"][0]["items"][0]["blocks"][0]["text"] == "Do not run the pump dry."
+        expected = "source-projection-v4" if numbered else "source-projection-v3"
+        assert fixed.projection_version == expected
+        fixed_list = fixed.source_document["blocks"][0]
+        assert fixed_list["items"][0]["blocks"][0]["text"] == "Do not run the pump dry."
+        if numbered:
+            assert fixed_list["start"] == 4
+            assert fixed_list["items"][1]["number"] == 9
+            assert [step["number"] for step in fixed.source_steps] == [4, 9, 10]
