@@ -424,7 +424,7 @@ func publicCatalogDocument(document *CatalogDocument) *CatalogDocument {
 			out := map[string]any{}
 			for key, child := range node {
 				switch key {
-				case "schema_version", "normalization_version", "blocks", "block_id", "source_order", "type", "level", "number", "text", "label", "caption", "columns", "rows", "items", "images", "alt", "status", "unavailable_reason", "evidence_ids", "source_locator":
+				case "schema_version", "normalization_version", "blocks", "block_id", "source_order", "type", "level", "number", "text", "label", "caption", "columns", "rows", "cells", "items", "images", "alt", "status", "unavailable_reason", "evidence_ids", "source_locator":
 					out[key] = project(child)
 				case "asset_id", "image_id":
 					if text, ok := child.(string); ok {

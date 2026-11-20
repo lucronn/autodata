@@ -59,7 +59,8 @@ def prose_slots(document):
                     if isinstance(item, str):
                         slots.append({"block_id": block["block_id"], "path": item_path, "text": item})
                     else:
-                        slots.append({"block_id": block["block_id"], "path": item_path + "/text", "text": item["text"]})
+                        if item["text"].strip():
+                            slots.append({"block_id": block["block_id"], "path": item_path + "/text", "text": item["text"]})
                         if "blocks" in item:
                             visit(item["blocks"], item_path + "/blocks")
     visit(document["blocks"], "/blocks")

@@ -132,12 +132,7 @@ def _reproject_stored_source(repo, source_revision_id, *, object_store, deadline
 
 def apply_source_reprojection(repo, canonical_article_id, expected_source_revision_id, captured, *, actor, reason):
     """Append one source-only correction with exact identity, job and pointer fences."""
-    from .article_lifecycle_store import _store_captured_source
-    from .source_job_persistence import claim_source_only_job
-    if not isinstance(actor, str) or not actor.strip() or not isinstance(reason, str) or not reason.strip():
-        raise ValueError("SOURCE_REPLAY_ACTOR_REASON_REQUIRED")
-    if len(actor) > 256 or len(reason) > 2048:
-        raise ValueError("SOURCE_REPLAY_ACTOR_REASON_INVALID")
+    _validate_actor_reason(actor, reason)
     if captured.projection_version != "source-projection-v2" or article_id(captured.context.key) != canonical_article_id:
         raise ValueError("SOURCE_REPLAY_IDENTITY_MISMATCH")
     original = load_source_revision(repo, expected_source_revision_id)
@@ -174,26 +169,106 @@ def apply_source_reprojection(repo, canonical_article_id, expected_source_revisi
                     "job_id": str(current["source_fetch_job_id"])}
         if article["current_source_revision_id"] != expected_source_revision_id:
             raise ValueError("SOURCE_REPLAY_CURRENT_SOURCE_CHANGED")
-        active = cur.execute("""SELECT source_fetch_job_id FROM source_fetch_jobs
-            WHERE canonical_article_id=%s AND status IN ('pending','processing','failed')
-              AND NOT (checkpoint @> '{"source_only_reprojection":true}'::jsonb) LIMIT 1""",
-            (canonical_article_id,)).fetchone()
-        if active: raise ValueError("SOURCE_REPLAY_ACTIVE_NORMAL_JOB")
-        generation = article["request_generation"] + 1
-        job_id = uuid4()
+        _require_no_active_normal_job(cur, canonical_article_id)
         checkpoint = {"source_only_reprojection": True, "original_source_revision_id": str(expected_source_revision_id),
             "actor": actor, "reason": reason, "expected_fingerprint": captured.source_fingerprint,
             "projection_document_hash": digest_json(captured.source_document)}
-        cur.execute("""INSERT INTO source_fetch_jobs(source_fetch_job_id,provider_slug,canonical_vehicle_id,
-            source_vehicle_ref,source_article_ref,source_version,connector_name,idempotency_key,status,job_kind,
-            canonical_article_id,request_generation,normalization_version,rewrite_profile_version,checkpoint)
-            VALUES (%s,%s,%s,%s,%s,'source-only-reprojection-v2',%s,%s,'pending','article',%s,%s,%s,%s,%s)""",
-            (job_id, article["provider_slug"], article["vehicle_id"], article["source_vehicle_ref"],
-             article["source_article_ref"], article["provider_slug"], f"source-only:{canonical_article_id}:{generation}",
-             canonical_article_id, generation, article["target_normalization_version"],
-             article["target_rewrite_profile_version"], Jsonb(checkpoint)))
-        cur.execute("UPDATE canonical_articles SET request_generation=%s,current_job_id=%s WHERE canonical_article_id=%s",
-                    (generation, job_id, canonical_article_id))
-        lease = claim_source_only_job(cur, job_id, canonical_article_id, worker_id=uuid4())
-        revision = _store_captured_source(cur, lease, captured)
-        return {"status": "applied", "source_revision_id": str(revision), "job_id": str(job_id)}
+        return _apply_source_only(cur, article, captured, checkpoint)
+
+
+def _validate_actor_reason(actor, reason):
+    if not isinstance(actor, str) or not actor.strip() or not isinstance(reason, str) or not reason.strip():
+        raise ValueError("SOURCE_REPLAY_ACTOR_REASON_REQUIRED")
+    if len(actor) > 256 or len(reason) > 2048:
+        raise ValueError("SOURCE_REPLAY_ACTOR_REASON_INVALID")
+
+
+def _require_no_active_normal_job(cur, canonical_article_id):
+    active = cur.execute("""SELECT source_fetch_job_id FROM source_fetch_jobs
+        WHERE canonical_article_id=%s AND status IN ('pending','processing','failed')
+          AND NOT (checkpoint @> '{"source_only_reprojection":true}'::jsonb) LIMIT 1""",
+        (canonical_article_id,)).fetchone()
+    if active: raise ValueError("SOURCE_REPLAY_ACTIVE_NORMAL_JOB")
+
+
+def _apply_source_only(cur, article, captured, checkpoint):
+    from .article_lifecycle_store import _store_captured_source
+    from .source_job_persistence import claim_source_only_job
+
+    canonical_article_id = article["canonical_article_id"]
+    generation = article["request_generation"] + 1
+    job_id = uuid4()
+    cur.execute("""INSERT INTO source_fetch_jobs(source_fetch_job_id,provider_slug,canonical_vehicle_id,
+        source_vehicle_ref,source_article_ref,source_version,connector_name,idempotency_key,status,job_kind,
+        canonical_article_id,request_generation,normalization_version,rewrite_profile_version,checkpoint)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'pending','article',%s,%s,%s,%s,%s)""",
+        (job_id, article["provider_slug"], article["vehicle_id"], article["source_vehicle_ref"],
+         article["source_article_ref"],
+         "source-only-reprojection-" + captured.projection_version.rsplit("-", 1)[1], article["provider_slug"], f"source-only:{canonical_article_id}:{generation}",
+         canonical_article_id, generation, article["target_normalization_version"],
+         article["target_rewrite_profile_version"], Jsonb(checkpoint)))
+    cur.execute("UPDATE canonical_articles SET request_generation=%s,current_job_id=%s WHERE canonical_article_id=%s",
+                (generation, job_id, canonical_article_id))
+    lease = claim_source_only_job(cur, job_id, canonical_article_id, worker_id=uuid4())
+    revision = _store_captured_source(cur, lease, captured)
+    return {"status": "applied", "source_revision_id": str(revision), "job_id": str(job_id)}
+
+
+def apply_media_reprojection(repo, canonical_article_id, expected_source_revision_id, *, object_store,
+                             expected_observation_id, expected_fingerprint, expected_body_sha256,
+                             expected_document_sha256, actor, reason):
+    """Replay again and install a verified media correction on a source-only article."""
+    from .source_media_replay import (
+        MEDIA_REPLAY_PROJECTION_VERSION, load_media_replay_binding, media_replay_document_hash,
+        preview_media_replay, validate_media_replay_result,
+    )
+
+    _validate_actor_reason(actor, reason)
+    binding, captured = preview_media_replay(repo, expected_source_revision_id, object_store=object_store)
+    if (binding.canonical_article_id != canonical_article_id
+        or binding.source_observation_id != expected_observation_id
+        or binding.source_fingerprint != expected_fingerprint
+        or binding.body_sha256 != expected_body_sha256
+        or media_replay_document_hash(captured) != expected_document_sha256):
+        raise ValueError("SOURCE_MEDIA_REPLAY_PREVIEW_BINDING_MISMATCH")
+    checkpoint = {
+        "source_only_reprojection": True,
+        "original_source_revision_id": str(expected_source_revision_id),
+        "original_source_observation_id": str(expected_observation_id),
+        "actor": actor,
+        "reason": reason,
+        "expected_fingerprint": expected_fingerprint,
+        "expected_body_sha256": expected_body_sha256,
+        "projection_document_hash": expected_document_sha256,
+    }
+    with repo.connect() as conn, conn.cursor(row_factory=dict_row) as cur:
+        article = cur.execute(
+            "SELECT * FROM canonical_articles WHERE canonical_article_id=%s FOR UPDATE",
+            (canonical_article_id,),
+        ).fetchone()
+        if article is None:
+            raise KeyError("SOURCE_REPLAY_ARTICLE_NOT_FOUND")
+        locked_binding = load_media_replay_binding(cur, expected_source_revision_id, lock=True)
+        if locked_binding != binding:
+            raise ValueError("SOURCE_MEDIA_REPLAY_PREVIEW_BINDING_MISMATCH")
+        validate_media_replay_result(locked_binding, captured)
+        if article["current_canonical_revision_id"] is not None:
+            raise ValueError("SOURCE_MEDIA_REPLAY_PUBLISHED_REVISION")
+        current = cur.execute("""
+            SELECT j.source_fetch_job_id, j.status, j.error_code, j.checkpoint, j.request_generation,
+                   s.source_revision_id, s.source_document, s.projection_version
+            FROM source_fetch_jobs j JOIN canonical_article_source_revisions s USING(source_revision_id)
+            WHERE j.source_fetch_job_id=%s AND s.source_revision_id=%s
+        """, (article["current_job_id"], article["current_source_revision_id"])).fetchone()
+        if (current and current["status"] == "needs_review"
+            and current["error_code"] == "SOURCE_ONLY_REPROJECTION"
+            and current["checkpoint"] == checkpoint
+            and current["request_generation"] == article["request_generation"]
+            and current["projection_version"] == MEDIA_REPLAY_PROJECTION_VERSION
+            and digest_json(current["source_document"]) == expected_document_sha256):
+            return {"status": "already_applied", "source_revision_id": str(current["source_revision_id"]),
+                    "job_id": str(current["source_fetch_job_id"])}
+        if article["current_source_revision_id"] != expected_source_revision_id:
+            raise ValueError("SOURCE_REPLAY_CURRENT_SOURCE_CHANGED")
+        _require_no_active_normal_job(cur, canonical_article_id)
+        return _apply_source_only(cur, article, captured, checkpoint)

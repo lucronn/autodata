@@ -384,80 +384,115 @@ func catalogPinnedSourceURL(vehicleID, articleID string, revision *string) strin
 	return result
 }
 
-// Ordered text is escaped at every leaf, including structured table cells.
+// Ordered source uses only assets localized in the selected revision.
 func renderCatalogOrderedSource(document *CatalogDocument, images []CatalogImage) string {
 	var output strings.Builder
 	assets := map[string]CatalogImage{}
 	for _, image := range images {
-		assets[image.ID] = image
-		assets[image.ImageID] = image
-		if image.AssetID != "" {
-			assets[image.AssetID] = image
-		}
-	}
-	var cell func(any) string
-	imageHTML := func(id, alt string) string {
-		image, ok := assets[id]
-		if !ok || image.URL == "" {
-			return "<span>Image unavailable</span>"
-		}
-		return `<img src="` + stdhtml.EscapeString(image.URL) + `" alt="` + stdhtml.EscapeString(alt) + `">`
-	}
-	cell = func(value any) string {
-		switch v := value.(type) {
-		case string:
-			return stdhtml.EscapeString(v)
-		case map[string]any:
-			result := ""
-			if text, ok := v["text"].(string); ok {
-				result = stdhtml.EscapeString(text)
+		for _, id := range []string{image.ID, image.ImageID, image.AssetID} {
+			if id != "" {
+				assets[id] = image
 			}
-			if id, ok := v["asset_id"].(string); ok {
-				result += imageHTML(id, "")
+		}
+	}
+	imageKey := func(ref CatalogImage) string {
+		if id := catalogImageRefID(ref); id != "" {
+			return id
+		}
+		return ref.ID
+	}
+	writeImage := func(ref CatalogImage, placed map[string]bool, skipPlaced bool) {
+		id := imageKey(ref)
+		image, ok := assets[id]
+		if !ok || ref.Status == "unavailable" || image.Status == "unavailable" || image.URL == "" {
+			output.WriteString("<span>Image unavailable</span>")
+			return
+		}
+		key := imageKey(image)
+		if skipPlaced && placed[key] {
+			return
+		}
+		if placed != nil {
+			placed[key] = true
+		}
+		alt := ref.Alt
+		if alt == "" {
+			alt = image.Alt
+		}
+		if alt == "" {
+			alt = ref.Caption
+		}
+		if alt == "" {
+			alt = "Article illustration"
+		}
+		output.WriteString("<figure><img src=\"" + stdhtml.EscapeString(image.URL) + "\" alt=\"" + stdhtml.EscapeString(alt) + "\">")
+		if ref.Caption != "" {
+			output.WriteString("<figcaption>" + stdhtml.EscapeString(ref.Caption) + "</figcaption>")
+		}
+		output.WriteString("</figure>")
+	}
+
+	var writeBlock func(CatalogDocumentBlock, map[string]bool)
+	var writeInline func(any, map[string]bool)
+	writeInline = func(value any, placed map[string]bool) {
+		switch v := value.(type) {
+		case nil:
+		case string:
+			output.WriteString(stdhtml.EscapeString(v))
+		case map[string]any:
+			field := func(key string) string {
+				text, _ := v[key].(string)
+				return text
+			}
+			output.WriteString(stdhtml.EscapeString(field("text")))
+			ref := CatalogImage{
+				AssetID: field("asset_id"), ImageID: field("image_id"),
+				Alt: field("alt"), Caption: field("caption"), Status: field("status"),
+			}
+			if imageKey(ref) != "" || ref.Status == "unavailable" {
+				writeImage(ref, placed, false)
 			}
 			if nested, ok := v["images"].([]any); ok {
-				for _, img := range nested {
-					result += cell(img)
+				for _, image := range nested {
+					writeInline(image, placed)
 				}
 			}
-			if blocks, ok := v["blocks"].([]any); ok {
-				for _, block := range blocks {
-					result += cell(block)
-				}
+			for _, nested := range catalogNestedBlocks(v["blocks"]) {
+				writeBlock(nested, placed)
 			}
-			return result
-		case []any:
-			result := ""
-			for _, item := range v {
-				result += cell(item)
-			}
-			return result
 		default:
 			encoded, _ := json.Marshal(v)
-			return stdhtml.EscapeString(string(encoded))
+			output.WriteString(stdhtml.EscapeString(string(encoded)))
 		}
 	}
-	for _, block := range document.Blocks {
-		output.WriteString(`<section id="` + stdhtml.EscapeString(block.BlockID) + `">`)
+
+	writeBlock = func(block CatalogDocumentBlock, placed map[string]bool) {
+		output.WriteString("<section id=\"" + stdhtml.EscapeString(block.BlockID) + "\">")
+		text := stdhtml.EscapeString(block.Text)
+		label := block.Label
+		if label == "" {
+			label = block.Caption
+		}
 		switch block.Type {
 		case "step":
-			number := block.Number
-			if number < 1 {
-				number = 1
-			}
-			output.WriteString(`<ol start="` + strconv.Itoa(number) + `"><li>` + stdhtml.EscapeString(block.Text) + `</li></ol>`)
+			output.WriteString("<ol start=\"" + strconv.Itoa(max(1, block.Number)) + "\"><li>" + text + "</li></ol>")
 		case "image":
-			id := block.AssetID
-			if id == "" {
-				id = block.ImageID
-			}
-			output.WriteString(imageHTML(id, block.Alt))
+			writeImage(CatalogImage{
+				AssetID: block.AssetID, ImageID: block.ImageID, Alt: block.Alt,
+				Caption: block.Caption, Status: block.Status,
+			}, placed, false)
 		case "table":
+			cellImages := map[string]bool{}
 			output.WriteString("<table>")
+			if label != "" {
+				output.WriteString("<caption>" + stdhtml.EscapeString(label) + "</caption>")
+			}
 			if len(block.Columns) > 0 {
 				output.WriteString("<thead><tr>")
 				for _, column := range block.Columns {
-					output.WriteString("<th>" + stdhtml.EscapeString(column) + "</th>")
+					output.WriteString("<th scope=\"col\">")
+					writeInline(column, cellImages)
+					output.WriteString("</th>")
 				}
 				output.WriteString("</tr></thead>")
 			}
@@ -465,35 +500,58 @@ func renderCatalogOrderedSource(document *CatalogDocument, images []CatalogImage
 			for _, row := range block.Rows {
 				output.WriteString("<tr>")
 				for _, value := range row {
-					output.WriteString("<td>" + cell(value) + "</td>")
+					output.WriteString("<td>")
+					writeInline(value, cellImages)
+					output.WriteString("</td>")
 				}
 				output.WriteString("</tr>")
 			}
 			output.WriteString("</tbody></table>")
-		default:
-			if block.Label != "" {
-				output.WriteString("<strong>" + stdhtml.EscapeString(block.Label) + "</strong>")
+			for _, image := range block.Images {
+				writeImage(image, cellImages, true)
 			}
-			output.WriteString("<p>" + stdhtml.EscapeString(block.Text) + "</p>")
-			if len(block.Items) > 0 {
-				output.WriteString("<ol>")
-				for _, item := range block.Items {
-					output.WriteString("<li>" + stdhtml.EscapeString(item) + "</li>")
+			for key := range cellImages {
+				if placed != nil {
+					placed[key] = true
 				}
-				output.WriteString("</ol>")
 			}
+		case "ordered_list", "unordered_list":
+			if label != "" {
+				output.WriteString("<strong>" + stdhtml.EscapeString(label) + "</strong>")
+			}
+			if text != "" {
+				output.WriteString("<p>" + text + "</p>")
+			}
+			tag := "ul"
+			if block.Type == "ordered_list" {
+				tag = "ol"
+			}
+			output.WriteString("<" + tag + ">")
+			for _, item := range block.Items {
+				output.WriteString("<li>")
+				writeInline(item, placed)
+				output.WriteString("</li>")
+			}
+			output.WriteString("</" + tag + ">")
+		default:
+			if label != "" {
+				output.WriteString("<strong>" + stdhtml.EscapeString(label) + "</strong>")
+			}
+			if text == "" {
+				text = stdhtml.EscapeString(block.UnavailableReason)
+			}
+			output.WriteString("<p>" + text + "</p>")
 		}
-		for _, image := range block.Images {
-			id := image.ID
-			if id == "" {
-				id = image.ImageID
+		if block.Type != "table" {
+			for _, image := range block.Images {
+				writeImage(image, placed, false)
 			}
-			if id == "" {
-				id = image.AssetID
-			}
-			output.WriteString(imageHTML(id, image.Alt))
 		}
 		output.WriteString("</section>")
+	}
+
+	for _, block := range document.Blocks {
+		writeBlock(block, nil)
 	}
 	return output.String()
 }

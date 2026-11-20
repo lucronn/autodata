@@ -112,9 +112,9 @@ type CatalogDocumentBlock struct {
 	Text              string         `json:"text,omitempty"`
 	Label             string         `json:"label,omitempty"`
 	Href              string         `json:"href,omitempty"`
-	Columns           []string       `json:"columns,omitempty"`
+	Columns           []any          `json:"columns,omitempty"`
 	Rows              [][]any        `json:"rows,omitempty"`
-	Items             []string       `json:"items,omitempty"`
+	Items             []any          `json:"items,omitempty"`
 	AssetID           string         `json:"asset_id,omitempty"`
 	ImageID           string         `json:"image_id,omitempty"`
 	Alt               string         `json:"alt,omitempty"`
@@ -122,6 +122,54 @@ type CatalogDocumentBlock struct {
 	UnavailableReason string         `json:"unavailable_reason,omitempty"`
 	EvidenceIDs       []string       `json:"evidence_ids,omitempty"`
 	SourceLocator     string         `json:"source_locator,omitempty"`
+}
+
+// Table rows in stored documents may be arrays or objects containing cells.
+// Keep the established array projection for top-level rows.
+func (block *CatalogDocumentBlock) UnmarshalJSON(data []byte) error {
+	type plain CatalogDocumentBlock
+	var decoded struct {
+		plain
+		Rows []json.RawMessage `json:"rows"`
+	}
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	if decoded.Rows != nil {
+		decoded.plain.Rows = make([][]any, 0, len(decoded.Rows))
+	}
+	for _, raw := range decoded.Rows {
+		var cells []any
+		if bytes.HasPrefix(bytes.TrimSpace(raw), []byte("{")) {
+			var row struct {
+				Cells []any `json:"cells"`
+			}
+			if err := json.Unmarshal(raw, &row); err != nil {
+				return err
+			}
+			cells = row.Cells
+		} else if err := json.Unmarshal(raw, &cells); err != nil {
+			return err
+		}
+		decoded.plain.Rows = append(decoded.plain.Rows, cells)
+	}
+	*block = CatalogDocumentBlock(decoded.plain)
+	return nil
+}
+
+func catalogNestedBlocks(value any) []CatalogDocumentBlock {
+	if value == nil {
+		return nil
+	}
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return nil
+	}
+	var blocks []CatalogDocumentBlock
+	if err := json.Unmarshal(raw, &blocks); err != nil {
+		return nil
+	}
+	return blocks
 }
 
 type CatalogArticle struct {

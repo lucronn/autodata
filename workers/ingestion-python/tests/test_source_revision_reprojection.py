@@ -362,3 +362,207 @@ def test_repeat_apply_of_v2_current_source_is_idempotent(runtime, monkeypatch):
                                                actor="fixture", reason="v2 replay")
     assert first["source_revision_id"] == second["source_revision_id"] == str(current_id)
     assert second["status"] == "already_applied" and all_rows(runtime.repo) == before
+
+
+def seed_historical_figure(runtime, monkeypatch, provider, *, version="source-projection-v2", publish=False):
+    from io import BytesIO
+    from PIL import Image
+    from autodata_ingestion import source_article_capture as capture_module
+    from autodata_ingestion.article_lifecycle import run_article_worker_once
+
+    runtime.article_id = runtime.articles[provider]
+    server = runtime.servers[provider]
+    server.body(b'<p>Remove the pump.</p><img data-resource-ref="figure" alt="Pump alignment">'
+                b'<p>Install the replacement.</p>', assets=["figure"])
+    figure = BytesIO()
+    Image.new("RGB", (24, 24), "green").save(figure, format="PNG")
+    server.body(figure.getvalue(), "image/png", ref="figure", kind="asset")
+    original = capture_module.capture_source_article
+
+    def historical(*args, **kwargs):
+        captured = original(*args, **kwargs)
+        document = deepcopy(captured.source_document)
+        blocks = document["blocks"]
+        first, image, last = blocks
+        assert image["type"] == "image"
+        blocks[:] = [first, last, image]
+        prefix = first["block_id"].rsplit(":", 1)[0]
+        for order, block in enumerate(blocks, 1):
+            block.update(source_order=order, block_id=f"{prefix}:{order:04d}")
+        body, steps, images = capture_module.project_document(document)
+        return replace(captured, source_document=document, source_body=body, source_steps=steps,
+                       source_images=images, projection_version=version)
+
+    model = None
+    if publish:
+        from autodata_ingestion.mercury2 import Mercury2Client
+        with monkeypatch.context() as env:
+            for name, value in runtime.env.items():
+                env.setenv(name, value)
+            model = Mercury2Client.from_environment()
+    with monkeypatch.context() as legacy:
+        legacy.setattr(capture_module, "capture_source_article", historical)
+        runtime.ensure()
+        assert run_article_worker_once(runtime.repo, worker_id=uuid4(), registry=runtime.registry,
+                                       object_store=runtime.objects, model_client=model)
+    state = runtime.read_current()
+    assert bool(state["canonical_revision_id"]) == publish
+    assert [block["type"] for block in state["document"]["blocks"]] == ["paragraph", "paragraph", "image"]
+    runtime.reset_counters()
+    return state["source_revision_id"]
+
+
+def media_preview_args(runtime, old_id):
+    from autodata_ingestion.source_media_replay import media_replay_document_hash, preview_media_replay
+    binding, captured = preview_media_replay(runtime.repo, old_id, object_store=runtime.objects)
+    return {
+        "object_store": runtime.objects,
+        "expected_observation_id": binding.source_observation_id,
+        "expected_fingerprint": binding.source_fingerprint,
+        "expected_body_sha256": binding.body_sha256,
+        "expected_document_sha256": media_replay_document_hash(captured),
+        "actor": "fixture",
+        "reason": "restore figure before installation",
+    }
+
+
+@pytest.mark.parametrize(("provider", "version"), [("bankone", "source-projection-v1"),
+                                                ("banktwo", "source-projection-v2")])
+def test_retained_figure_apply_and_next_refresh(runtime, monkeypatch, reprojection_cli, capsys, provider, version):
+    import psycopg
+    from autodata_ingestion.article_lifecycle import _capture_context
+    from autodata_ingestion.article_lifecycle_store import load_source_revision, store_captured_source
+    from autodata_ingestion.article_lifecycle_types import transformation_key
+    from autodata_ingestion.source_job_persistence import claim_source_job
+
+    old_id = seed_historical_figure(runtime, monkeypatch, provider, version=version)
+    before = all_rows(runtime.repo)
+    argv = ["--article-id", str(runtime.article_id), "--source-revision-id", str(old_id), "--retained-media"]
+    cli = lambda args: reprojection_cli.main(args, repo=runtime.repo, object_store=runtime.objects)
+    assert cli(argv) == 0
+    preview = json.loads(capsys.readouterr().out)
+    assert preview["status"] == "preview" and preview["image_count"] == 1
+    assert all_rows(runtime.repo) == before
+    apply = [*argv, "--apply", "--actor", "fixture", "--reason", "restore position",
+             "--expected-fingerprint", preview["source_fingerprint"], "--expected-body-sha256", preview["body_sha256"],
+             "--expected-observation-id", preview["source_observation_id"],
+             "--expected-document-sha256", preview["document_sha256"]]
+    with pytest.raises(ValueError, match="PREVIEW_BINDING"):
+        cli([*apply[:-1], "0" * 64])
+    with pytest.raises(SystemExit):
+        cli(apply[:-2])
+    capsys.readouterr()
+    assert all_rows(runtime.repo) == before
+    assert cli(apply) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "applied"
+    current = runtime.read_current()
+    new_id = current["source_revision_id"]
+    assert str(new_id) == result["source_revision_id"]
+    assert current["processing_state"] == "needs_review" and current["content_origin"] == "source"
+    assert current["canonical_revision_id"] is None
+    assert [block["type"] for block in current["document"]["blocks"]] == ["paragraph", "image", "paragraph"]
+    assert current["document"]["blocks"][1]["alt"] == "Pump alignment"
+    original = load_source_revision(runtime.repo, old_id)
+    fixed = load_source_revision(runtime.repo, new_id)
+    assert fixed.projection_version == "source-projection-v3"
+    for name in ("source_fingerprint", "body_source_snapshot_id", "resource_manifest", "evidence_manifest", "source_body"):
+        assert getattr(original, name) == getattr(fixed, name)
+
+    after = all_rows(runtime.repo)
+    assert cli(apply) == 0
+    assert json.loads(capsys.readouterr().out)["status"] == "already_applied"
+    assert all_rows(runtime.repo) == after
+    for table in ("source_snapshots", "source_artifacts", "canonical_article_revisions", "publication_events"):
+        assert before[table] == after[table]
+    assert runtime.counters() == {"source": 0, "asset": 0, "model": 0, "schedule": 1}
+    with pytest.raises(psycopg.errors.CheckViolation, match="projection downgrade"), runtime.repo.connect() as conn:
+        conn.execute("UPDATE canonical_articles SET current_source_revision_id=%s WHERE canonical_article_id=%s",
+                     (old_id, runtime.article_id))
+
+    runtime.refresh()
+    lease = claim_source_job(runtime.repo, worker_id=uuid4())
+    normal = capture_source_article(_capture_context(runtime.repo, lease), registry=runtime.registry, object_store=runtime.objects)
+    assert normal.projection_version == "source-projection-v2"
+    assert store_captured_source(runtime.repo, lease, normal) == new_id
+    with runtime.repo.connect() as conn:
+        job = conn.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s", (lease.job_id,)).fetchone()
+    assert job["transformation_key"] == transformation_key(
+        runtime.article_id, normal.source_fingerprint, lease.normalization_version, lease.rewrite_profile_version,
+        projection_version="source-projection-v3",
+    )
+
+
+@pytest.mark.parametrize("blocker", ["active_job", "withdrawn_asset", "published"])
+def test_retained_figure_apply_fences_writes(runtime, monkeypatch, blocker):
+    from autodata_ingestion.source_revision_reprojection import apply_media_reprojection
+
+    old_id = seed_historical_figure(runtime, monkeypatch, "bankone", publish=blocker == "published")
+    args = media_preview_args(runtime, old_id)
+    if blocker == "active_job":
+        runtime.refresh()
+        expected = "ACTIVE_NORMAL_JOB"
+    elif blocker == "withdrawn_asset":
+        with runtime.repo.connect() as conn:
+            conn.execute("""UPDATE source_snapshots SET takedown_status='takedown'
+                WHERE content_sha256=(SELECT resource_manifest->1->>'sha256'
+                FROM canonical_article_source_revisions WHERE source_revision_id=%s)""", (old_id,))
+        expected = "WITHDRAWN"
+    else:
+        expected = "PUBLISHED_REVISION"
+    before = all_rows(runtime.repo)
+    with pytest.raises(ValueError, match=expected):
+        apply_media_reprojection(runtime.repo, runtime.article_id, old_id, **args)
+    assert all_rows(runtime.repo) == before
+
+
+@pytest.mark.parametrize("published", [False, True])
+def test_nested_list_capture_uses_new_projection_without_replacing_published_prose(runtime, monkeypatch, published):
+    from autodata_ingestion import source_article_capture as capture_module
+    from autodata_ingestion.article_lifecycle import _capture_context, run_article_worker_once
+    from autodata_ingestion.article_lifecycle_store import load_source_revision, store_captured_source
+    from autodata_ingestion.mercury2 import Mercury2Client
+    from autodata_ingestion.source_job_persistence import claim_source_job
+
+    runtime.servers[runtime.provider].body(json.dumps({"blocks": [
+        {"type": "ordered_list", "items": [{"text": "Remove the pump.", "blocks": [
+            {"type": "callout", "label": "Warning", "text": "Do not run the pump dry."},
+        ]}]},
+    ]}).encode(), "application/json")
+
+    build_capture = capture_module.capture_source_article
+
+    def flattened(*args, **kwargs):
+        captured = build_capture(*args, **kwargs)
+        document = deepcopy(captured.source_document)
+        document["blocks"][0]["items"] = ["Remove the pump."]
+        body, steps, images = capture_module.project_document(document)
+        return replace(captured, source_document=document, source_body=body, source_steps=steps, source_images=images)
+
+    with monkeypatch.context() as legacy:
+        legacy.setattr(capture_module, "capture_source_article", flattened)
+        for key, value in runtime.env.items():
+            legacy.setenv(key, value)
+        runtime.ensure()
+        run_article_worker_once(runtime.repo, worker_id=uuid4(), registry=runtime.registry, object_store=runtime.objects,
+                                model_client=Mercury2Client.from_environment() if published else None)
+    old = runtime.read_current()
+    assert (old["canonical_revision_id"] is not None) == published
+    revision = load_source_revision(runtime.repo, old["source_revision_id"])
+    assert revision.projection_version == "source-projection-v2"
+    assert "Do not run" not in revision.source_body
+
+    runtime.refresh()
+    lease = claim_source_job(runtime.repo, worker_id=uuid4())
+    updated = build_capture(_capture_context(runtime.repo, lease), registry=runtime.registry, object_store=runtime.objects)
+    assert updated.source_fingerprint == revision.source_fingerprint
+    selected = store_captured_source(runtime.repo, lease, updated)
+    state = runtime.read_current()
+    if published:
+        assert selected == revision.source_revision_id
+        assert state["canonical_revision_id"] == old["canonical_revision_id"]
+    else:
+        assert selected != revision.source_revision_id and state["source_revision_id"] == selected
+        fixed = load_source_revision(runtime.repo, selected)
+        assert fixed.projection_version == "source-projection-v3"
+        assert fixed.source_document["blocks"][0]["items"][0]["blocks"][0]["text"] == "Do not run the pump dry."

@@ -155,6 +155,17 @@ def _image_identities(image: Mapping[str, Any]) -> set[str]:
     return {str(k).strip() for k in keys if k and str(k).strip()}
 
 
+def _nested_image_keys(value, *, image=False):
+    if isinstance(value, Mapping):
+        if image or str(value.get("type") or value.get("kind") or "").casefold() == "image":
+            yield from _image_identities(value)
+        for key, child in value.items():
+            yield from _nested_image_keys(child, image=key == "images")
+    elif isinstance(value, list):
+        for child in value:
+            yield from _nested_image_keys(child, image=image)
+
+
 def build_ordered_document(
     article: Mapping[str, Any],
     blocks: Any = None,
@@ -194,11 +205,9 @@ def build_ordered_document(
                                 if isinstance(child, Mapping) and str(child.get("kind") or child.get("type") or "").casefold() == "image":
                                     seen_image_keys.update(_image_identities(child))
             elif bkind in {"ordered_list", "unordered_list", "list"}:
-                for item in block.get("items") or block.get("values") or []:
+                for item in _list_values(block):
                     if isinstance(item, Mapping):
-                        for item_img in item.get("images") or []:
-                            if isinstance(item_img, Mapping):
-                                seen_image_keys.update(_image_identities(item_img))
+                        seen_image_keys.update(_nested_image_keys(item))
             for block_img in block.get("images") or []:
                 if isinstance(block_img, Mapping):
                     seen_image_keys.update(_image_identities(block_img))
@@ -326,16 +335,41 @@ def build_ordered_document(
         seen_image_keys.update(_image_identities(fig))
         output.append(_image_block(article, len(output) + 1, fig, []))
 
-    # Source order / block ids must stay contiguous after figure insertion.
-    for order, block in enumerate(output, start=1):
-        block["source_order"] = order
-        block["block_id"] = f"{article.get('article_id') or 'article'}:block:{order:04d}"
+    # Source order and block IDs stay contiguous after figure insertion.
+    _number_blocks(output, str(article.get("article_id") or "article"))
 
     return {
         "schema_version": SCHEMA_VERSION,
         "normalization_version": NORMALIZATION_VERSION,
         "blocks": output,
     }
+
+
+def _number_blocks(blocks, parent_id):
+    for order, block in enumerate(blocks, start=1):
+        block_id = f"{parent_id}:block:{order:04d}"
+        block.update(source_order=order, block_id=block_id)
+        if block["type"] in {"ordered_list", "unordered_list"}:
+            for item_number, item in enumerate(block.get("items", []), start=1):
+                if isinstance(item, dict) and item.get("blocks"):
+                    _number_blocks(item["blocks"], f"{block_id}:item:{item_number:04d}")
+
+
+def has_structured_list_items(document: Mapping[str, Any]) -> bool:
+    """Identify ordered documents that retain list item media or children."""
+    def visit(value):
+        if isinstance(value, Mapping):
+            if value.get("type") in ("ordered_list", "unordered_list") and any(
+                isinstance(item, Mapping) and (item.get("images") or item.get("blocks"))
+                for item in value.get("items", [])
+            ):
+                return True
+            return any(visit(child) for child in value.values())
+        if isinstance(value, list):
+            return any(visit(child) for child in value)
+        return False
+
+    return visit(document.get("blocks", []))
 
 
 def document_from_steps(article: Mapping[str, Any]) -> dict[str, Any]:
@@ -499,11 +533,18 @@ def _validate_recursive_blocks(blocks, seen=None):
                     if isinstance(item,str):
                         if not item.strip():errors.append("empty list item")
                         continue
-                    if not isinstance(item, dict) or not isinstance(item.get("text"), str) or not item["text"].strip():
+                    if not isinstance(item, dict) or not isinstance(item.get("text"), str):
                         errors.append("invalid list item")
-                    elif "blocks" in item:
-                        if not isinstance(item["blocks"], list): errors.append("invalid item blocks")
-                        else: errors.extend(_validate_recursive_blocks(item["blocks"], seen))
+                        continue
+                    if not item["text"].strip() and not (item.get("images") or item.get("blocks")):
+                        errors.append("empty list item")
+                    if "images" in item and not isinstance(item["images"], list):
+                        errors.append("invalid item images")
+                    if "blocks" in item:
+                        if not isinstance(item["blocks"], list):
+                            errors.append("invalid item blocks")
+                        else:
+                            errors.extend(_validate_recursive_blocks(item["blocks"], seen))
     return errors
 
 
@@ -720,58 +761,49 @@ def _table_cell(value: Any) -> Any:
     return combined_text
 
 
-def _list_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str, Any], evidence_ids: list[str], kind: str) -> dict[str, Any]:
+def _list_values(raw):
     values = raw.get("items") or raw.get("values") or []
-    if not isinstance(values, list):
-        values = [values]
-    clean_items: list[str] = []
-    item_images: list[dict[str, Any]] = []
-    for value in values:
-        if isinstance(value, Mapping):
-            item_text = _clean_text(
-                value.get("text")
-                or value.get("value")
-                or value.get("label")
-                or value.get("content")
-                or value.get("body")
-                or value.get("message")
-            )
-            for img in value.get("images") or []:
-                if isinstance(img, Mapping):
-                    item_images.append(_normalize_cell_image(img))
-        else:
-            item_text = _clean_text(value)
-        if item_text:
-            clean_items.append(item_text)
-    images_raw = raw.get("images")
-    clean_images: list[dict[str, Any]] = []
-    if isinstance(images_raw, list):
-        clean_images.extend(
-            _normalize_cell_image(image) for image in images_raw if isinstance(image, Mapping)
+    return values if isinstance(values, list) else [values]
+
+
+def _list_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str, Any], evidence_ids: list[str], kind: str) -> dict[str, Any]:
+    clean_items: list[str | dict[str, Any]] = []
+    for value in _list_values(raw):
+        if not isinstance(value, Mapping):
+            text = _clean_text(value)
+            if text:
+                clean_items.append(text)
+            continue
+        text = _clean_text(
+            value.get("text") or value.get("value") or value.get("label")
+            or value.get("content") or value.get("body") or value.get("message")
         )
-    clean_images.extend(item_images)
-    extra_fields: dict[str, Any] = {}
-    if clean_images:
-        seen_keys: set[str] = set()
-        deduped_images: list[dict[str, Any]] = []
-        for img in clean_images:
-            keys = _image_identities(img)
-            if keys and keys & seen_keys:
-                continue
-            seen_keys.update(keys)
-            deduped_images.append(img)
-        if deduped_images:
-            extra_fields["images"] = deduped_images
-    label = _clean_text(raw.get("label") or raw.get("title") or raw.get("heading"))
-    if label:
-        extra_fields["label"] = label
+        item_images = value.get("images")
+        images = [
+            _normalize_cell_image(image) for image in item_images if isinstance(image, Mapping)
+        ] if isinstance(item_images, list) else []
+        child_blocks = value.get("blocks")
+        children = []
+        if isinstance(child_blocks, list) and child_blocks:
+            item_evidence = _evidence_ids(value, {"evidence_ids": evidence_ids})
+            children = build_ordered_document({"evidence_ids": item_evidence}, child_blocks)["blocks"]
+        if children or images:
+            item: dict[str, Any] = {"text": text}
+            if images:
+                item["images"] = images
+            if children:
+                item["blocks"] = children
+            clean_items.append(item)
+        elif text:
+            clean_items.append(text)
     return _base_block(
         article,
         source_order,
         "ordered_list" if kind == "ordered_list" else "unordered_list",
         items=clean_items,
+        label=_clean_text(raw.get("label") or raw.get("title") or raw.get("heading")),
+        images=_text_block_images(raw),
         evidence_ids=evidence_ids,
-        **extra_fields,
     )
 
 
@@ -1115,6 +1147,7 @@ __all__ = [
     "build_ordered_document",
     "document_from_steps",
     "empty_document",
+    "has_structured_list_items",
     "segment_plain_article_text",
     "validate_ordered_document",
 ]
@@ -1145,16 +1178,28 @@ def project_ordered_document(document):
                     current["instructions"].append(text)
             if kind == "image":
                 images.append(deepcopy(block))
-            images.extend(deepcopy(block.get("images", [])))
+            if kind not in {"ordered_list", "unordered_list"}:
+                images.extend(deepcopy(block.get("images", [])))
             if kind in {"ordered_list", "unordered_list"}:
                 for item in block.get("items", []):
-                    if isinstance(item,str):item={"text":item}
-                    if isinstance(item.get("text"), str):
-                        texts.append(item["text"])
+                    if isinstance(item, str):
+                        item = {"text": item}
+                    item_text = item.get("text")
+                    previous_step = current
+                    current = None
+                    if isinstance(item_text, str) and item_text.strip():
+                        texts.append(item_text)
                         if allow_steps:
-                            steps.append({"action":item["text"],"instructions":[],"images":deepcopy(item.get("images",[])),"evidence_ids":deepcopy(block.get("evidence_ids",[]))})
-                    images.extend(deepcopy(item.get("images",[])))
-                    visit(item.get("blocks",[]),allow_steps)
+                            current = {
+                                "action": item_text, "instructions": [],
+                                "images": deepcopy(item.get("images", [])),
+                                "evidence_ids": deepcopy(block.get("evidence_ids", [])),
+                            }
+                            steps.append(current)
+                    images.extend(deepcopy(item.get("images", [])))
+                    visit(item.get("blocks", []), allow_steps)
+                    current = previous_step
+                images.extend(deepcopy(block.get("images", [])))
             if kind == "table":
                 for column in block.get("columns",[]):
                     if isinstance(column,str):texts.append(column)

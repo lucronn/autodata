@@ -31,7 +31,7 @@ def test_explicit_v2_has_distinct_transformation_key_and_v1_remains_default():
     assert v1 != v2
 
 
-def test_projection_key_preserves_historical_digest_and_separates_v2():
+def test_projection_key_preserves_historical_digests_and_separates_v3():
     from uuid import UUID
     from autodata_ingestion.article_lifecycle_types import transformation_key
 
@@ -43,8 +43,10 @@ def test_projection_key_preserves_historical_digest_and_separates_v2():
     assert transformation_key(*args, projection_version='source-projection-v2') == (
         '20d541e2bc559477341d9695042bd0bcebf7f734eb2e3670d04a7209518c6535'
     )
+    v3 = transformation_key(*args, projection_version='source-projection-v3')
+    assert v3 not in (historical, transformation_key(*args, projection_version='source-projection-v2'))
     with pytest.raises(ValueError, match='projection'):
-        transformation_key(*args, projection_version='source-projection-v3')
+        transformation_key(*args, projection_version='source-projection-v4')
 
 
 def test_captured_source_retains_legacy_constructor_default_and_explicit_v2():

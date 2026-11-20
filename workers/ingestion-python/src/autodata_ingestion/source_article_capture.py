@@ -88,6 +88,14 @@ def _image_nodes(value, *, image_container=False):
             or str(value.get("type") or value.get("kind") or "").casefold() == "image"
         ):
             yield value
+        items = value.get("items")
+        if value.get("type") in ("ordered_list", "unordered_list") and isinstance(items, list):
+            for item in items:
+                if isinstance(item, dict):
+                    yield from _image_nodes(item.get("images", []), image_container=True)
+                    yield from _image_nodes(item.get("blocks", []))
+            yield from _image_nodes(value.get("images", []), image_container=True)
+            return
         for key, child in list(value.items()):
             yield from _image_nodes(child, image_container=key == "images")
     elif isinstance(value, list):
@@ -110,7 +118,7 @@ def project_document(document):
                 visit(child, strings=strings)
         elif isinstance(value, dict):
             node = value
-            if isinstance(node.get("text"), str):
+            if isinstance(node.get("text"), str) and node["text"]:
                 texts.append(node["text"])
             if node.get("type") == "step" and isinstance(node.get("text"), str):
                 steps.append(
@@ -120,18 +128,20 @@ def project_document(document):
                         "evidence_ids": node.get("evidence_ids", []),
                     }
                 )
-            if node.get("type") == "ordered_list":
+            ordered_list = node.get("type") == "ordered_list"
+            if ordered_list:
                 for item in node.get("items", []):
-                    if isinstance(item, str):
-                        steps.append(
-                            {
-                                "number": len(steps) + 1,
-                                "text": item,
-                                "evidence_ids": node.get("evidence_ids", []),
-                            }
-                        )
+                    text = item.get("text") if isinstance(item, dict) else item
+                    if isinstance(text, str) and text.strip():
+                        steps.append({
+                            "number": len(steps) + 1, "text": text,
+                            "evidence_ids": node.get("evidence_ids", []),
+                        })
+                    visit(item, strings=True)
             for key, child in node.items():
-                if key not in ("text", "images") and isinstance(child, (dict, list)):
+                if key in ("text", "images") or (key == "items" and ordered_list):
+                    continue
+                if isinstance(child, (dict, list)):
                     visit(child, strings=key in ("columns", "rows", "items"))
 
     visit(document.get("blocks", []))

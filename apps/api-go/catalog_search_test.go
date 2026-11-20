@@ -13,7 +13,7 @@ func TestCatalogArticleSearchUsesRenderedDocumentNotHiddenCompatibilityFields(t 
 			{Type: "step", Text: "Inspect ground strap.", Label: "HiddenStepLabelMarker"},
 			{Type: "paragraph", Text: "Use approved fastener.", Images: []CatalogImage{{Alt: "HiddenParagraphImageMarker"}}},
 			{Type: "callout", Label: "Warning", Text: "Disconnect battery.", Images: []CatalogImage{{AssetID: "table-distinct", Alt: "VisibleAltMarker", Caption: "HiddenCaptionMarker"}}},
-			{Type: "table", Label: "Torque values", Columns: []string{"Fastener"}, Rows: [][]any{{map[string]any{"text": "VisibleCellMarker", "label": "HiddenCellLabelMarker", "images": []any{map[string]any{"asset_id": "cell-duplicate", "alt": "VisibleCellAltMarker"}}}, float64(12)}}, Images: []CatalogImage{{AssetID: "table-distinct", Alt: "TableFigureMarker"}, {AssetID: "cell-duplicate", Alt: "HiddenDuplicateAltMarker"}}},
+			{Type: "table", Label: "Torque values", Columns: []any{"Fastener"}, Rows: [][]any{{map[string]any{"text": "VisibleCellMarker", "label": "HiddenCellLabelMarker", "images": []any{map[string]any{"asset_id": "cell-duplicate", "alt": "VisibleCellAltMarker"}}}, float64(12)}}, Images: []CatalogImage{{AssetID: "table-distinct", Alt: "TableFigureMarker"}, {AssetID: "cell-duplicate", Alt: "HiddenDuplicateAltMarker"}}},
 		}},
 	}
 	for _, query := range []string{"ground strap", "Warning", "VisibleAltMarker", "VisibleCellMarker", "VisibleCellAltMarker", "TableFigureMarker", "12"} {

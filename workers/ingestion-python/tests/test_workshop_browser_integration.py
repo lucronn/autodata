@@ -1,6 +1,7 @@
 """Exactly 21 required browser cases over actual PG/auth/commerce/catalog/S3 HTTP."""
 from contextlib import ExitStack
 from datetime import datetime
+from io import BytesIO
 import json
 import hashlib
 import re
@@ -399,6 +400,10 @@ def _child(root_name,engine,provider,directory,monkeypatch):
                         ("2.0", scope["configuration"]),
                     )
             if not google:
+                from PIL import Image
+
+                diagram = BytesIO()
+                Image.new("RGB", (24, 24), "green").save(diagram, format="PNG")
                 for server in runtime.servers.values():
                     body = {
                         "blocks": [
@@ -407,9 +412,21 @@ def _child(root_name,engine,provider,directory,monkeypatch):
                                          "caption": "Pump alignment marks"}]},
                             {"type": "callout", "label": "Warning", "text": "Do not run the pump dry."},
                             {"type": "step", "number": 1, "text": "Remove the pump."},
+                            {"type": "ordered_list", "items": [
+                                {"text": "Remove the pump.", "blocks": [
+                                    {"type": "table", "label": "Alignment reference", "rows": [[
+                                        {"text": "Reference marks", "images": [{
+                                            "asset_resource_ref": "table-figure", "alt": "Drive alignment",
+                                            "caption": "Drive alignment reference",
+                                        }]},
+                                    ]]},
+                                    {"type": "callout", "label": "Note", "text": "Keep the drive seal in place."},
+                                ]},
+                            ]},
                         ],
                     }
-                    server.body(json.dumps(body).encode(), "application/json", assets=["figure"])
+                    server.body(diagram.getvalue(), "image/png", ref="table-figure", kind="asset")
+                    server.body(json.dumps(body).encode(), "application/json", assets=["figure", "table-figure"])
             bridge=BrowserBridge(runtime)
             model=stack.enter_context(serve(bridge.model_handler()))
             runtime.env['INCEPTION_API_BASE_URL']=model+'/v1';runtime.env['INCEPTION_API_TIMEOUT_SECONDS']='35'

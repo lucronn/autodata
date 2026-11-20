@@ -9,6 +9,7 @@ import json
 
 NORMALIZATION_VERSION = "ordered-article-v1"
 REWRITE_PROFILE_VERSION = "technical-prose-v1"
+SOURCE_PROJECTION_VERSIONS = ("source-projection-v1", "source-projection-v2", "source-projection-v3")
 
 
 def validate_ref(value: str, limit: int = 2048) -> None:
@@ -89,7 +90,7 @@ def transformation_key(
     *,
     projection_version="source-projection-v1",
 ):
-    if projection_version not in ("source-projection-v1", "source-projection-v2"):
+    if projection_version not in SOURCE_PROJECTION_VERSIONS:
         raise ValueError("unsupported source projection version")
     payload = {
         "canonical_article_id": str(canonical_article_id),
@@ -98,10 +99,10 @@ def transformation_key(
         "rewrite_profile_version": rewrite_profile_version,
     }
     # Historical v1 keys are persisted identities: preserve their exact payload.
-    if projection_version == "source-projection-v2":
+    if projection_version != "source-projection-v1":
         payload.update(
             projection_version=projection_version,
-            domain="autodata:article-transformation:v2",
+            domain="autodata:article-transformation:" + projection_version.rsplit("-", 1)[1],
         )
     return digest_json(payload)
 

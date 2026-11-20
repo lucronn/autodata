@@ -1,11 +1,13 @@
 """Automatic full-prose rewriting with permanent, mechanically checked output.
 
 Checks preserve structure and literal technical tokens. Current prose drafts
-also preserve recognizable inline warnings and reject near-verbatim wording.
-Semantic equivalence still requires comparison with the source procedure.
+also preserve recognizable safety prerequisites, check common action verbs
+and reject near-verbatim wording. Semantic equivalence still requires
+comparison with the source procedure.
 """
 from collections import Counter
 from hashlib import sha256
+from itertools import groupby
 import json
 import re
 
@@ -13,12 +15,95 @@ from . import procedure_rewrite_full as full
 from .article_lifecycle_types import ValidationResult
 
 PROFILE = "full-prose-auto-v1"
-_PROSE_PROMPT_VERSION = "full-prose-auto-prompt-v4"
+_PROSE_PROMPT_V4 = "full-prose-auto-prompt-v4"
+_PROSE_PROMPT_VERSION = "full-prose-auto-prompt-v5"
 _WORDS = re.compile(r"\w+")
 _INLINE_WARNING = re.compile(
     r"(?:^|[.!?]\s+|\n)[ \t]*(?:warnings?|caution|danger|notice|important)\s*[:!–—-]"
     r"|\b(?:(?:do|must|should|shall|can|may)\s+not|do\s*-\s*not|"
     r"(?:don|mustn|shouldn|can)['’]t|cannot|never)\b",
+    re.IGNORECASE,
+)
+
+
+# Preserve these clauses literally because even the prerequisite's subject
+# or polarity may change without moving a numeric token or a block.
+_PREREQUISITE = re.compile(
+    r"\b(?:avoid(?:s|ed|ing)?|prohibit(?:s|ed|ing)?|unless|"
+    r"(?:only\s+(?:if|after|before|when)|if\s+equipped|not\s+until)|"
+    r"(?:must|shall|should|needs?\s+to|has\s+to)\s+(?:remain|stay)|"
+    r"(?:remain|stay)\b[^.!?;]{1,60}\buntil)\b",
+    re.IGNORECASE,
+)
+
+# Protect the complete leaf when it assigns a recognized measurement to a
+# component or explicitly states or compares the units of a measurement.
+# This deliberately excludes the shared token grammar's "word after a number"
+# fallback, which also treats counts such as "2 guides" as technical tokens.
+_SPELLED_UNIT = (
+    r"(?:kilo|mega)?pascals?|pounds?\s+per\s+square\s+inch|"
+    r"newton[-\s]+met(?:er|re)s?|(?:foot|inch)[-\s]+pounds?|"
+    r"revolutions?\s+per\s+minute|(?:milli|centi|kilo|micro)?met(?:er|re)s?|"
+    r"inches|feet|(?:kilo|milli)?grams?|pounds?|ounces?|"
+    r"(?:milli)?lit(?:er|re)s?|quarts?|gallons?|volts?|amperes?|amps?|"
+    r"ohms?|watts?|hertz|degrees?\s+(?:Celsius|Fahrenheit)"
+)
+_MEASUREMENT_VALUE = re.compile(
+    r"(?<![\w./-])(?:" + full._SIGN + r")?" + full._NUMBER
+    + r"(?:[ \t]*[–—−~…-][ \t]*[+−-]?" + full._NUMBER + r")?\s*(?:"
+    + "|".join(unit for unit in full._UNITS if len(unit) > 1)
+    + r"|[VALΩ%°]|in\.(?=\s|$)|(?i:" + _SPELLED_UNIT + r"))(?![\w/-]|\.\w)"
+)
+_UNIT_PHRASE = r"(?i:" + _SPELLED_UNIT + r")"
+_MEASUREMENT_UNITS = re.compile(
+    r"(?i:\bunits\s+of\s+)" + _UNIT_PHRASE + r"\b"
+    r"|\b" + _UNIT_PHRASE + r"\s+(?i:rather\s+than|instead\s+of|versus|vs\.?)\s+"
+    + _UNIT_PHRASE + r"\b"
+    r"|(?i:\b(?:read(?:ing)?|measur(?:e|ed)|display(?:ed)?|report(?:ed)?|record(?:ed)?|"
+    r"express(?:ed)?|specif(?:y|ied)|calibrat(?:e|ed)|convert(?:ed)?)\b[^,;.!?\n]{0,60}"
+    r"\b(?:in|to|using)\s+)"
+    r"(?:" + _UNIT_PHRASE + r"|kPa|MPa|psi|rpm|mm|cm|Nm|bar|°C|°F)\b"
+)
+
+
+def _spec_scope(text):
+    return bool(_MEASUREMENT_VALUE.search(text) or _MEASUREMENT_UNITS.search(text))
+
+
+# Ordered groups of familiar directives and a few common paraphrases.
+# Keep opposite actions in separate groups. The matcher does not infer
+# the component governed by a verb or interpret arbitrary language.
+_ACTIONS = re.compile(
+    r"\b(?:"
+    r"(?P<disconnect>disconnect(?:s|ed|ing)?|detach(?:es|ed|ing)?|isolat(?:e[sd]?|ing))|"
+    r"(?P<connect>(?:re)?connect(?:s|ed|ing)?|(?:re)?attach(?:es|ed|ing)?)|"
+    r"(?P<remove>remov(?:e[sd]?|ing|al)|(?:tak(?:e[sn]?|ing)|took|lift(?:s|ed|ing)?)"
+    r"\s+(?:[^,.;!?]{1,72}?\s+)?off)|"
+    r"(?P<install>install(?:s|ed|ing|ation)?|(?:fit|seat)(?=\s+(?:the|a|an)\b)|"
+    r"fitt(?:ed|ing)|seat(?:ed|ing))|"
+    r"(?P<tighten>tighten(?:s|ed|ing)?|torque(?=\s+(?:the|each)\b)|"
+    r"set\s+[^,.;!?]{1,72}?\s+torque|bring\s+[^,.;!?]{1,72}?\s+up\s+to\s+"
+    r"[-+−]?\d+(?:[.,]\d+)?\s*(?:N[·. ]?m|lb[·-](?:ft|in)))|"
+    r"(?P<loosen>loosen(?:s|ed|ing)?)|"
+    r"(?P<open>open(?:s|ed|ing)?)|(?P<close>clos(?:e[sd]?|ing))|"
+    r"(?P<start>start(?:s|ed|ing)?|switch\s+on|turn\s+on)|"
+    r"(?P<stop>stop(?:s|ped|ping)?|shut\s+(?:down|off)|switch\s+off|turn\s+off)|"
+    r"(?P<inspect>inspect(?:s|ed|ing|ion)?|check(?:s|ed|ing)?)"
+    r")\b",
+    re.IGNORECASE,
+)
+_TIMING = re.compile(r"\b(before|after|once|ahead of)\b", re.IGNORECASE)
+_SENTENCES = re.compile(r"(?<=[.!?])\s+|\n+")
+_STATE_CLAUSE = re.compile(r"\b(?:that|whether)\b[^,;.!?]*$", re.IGNORECASE)
+_ACTION_BOUNDARY = re.compile(r"[,;.!?]|\b(?:and|then|but)\b", re.IGNORECASE)
+_INTRO_DIRECTIVE = re.compile(
+    r"(?:^|[.!?,;]\s+)\s*(?:(?:first|next|then|please)\s*,?\s+)*"
+    r"(?:(?:you\s+)?(?:must|should|need to)\s+|you\s+will\s+need to\s+)?"
+    r"(?:attach|check|close|connect|detach|disconnect|discard|fit|inspect|install|isolate|"
+    r"lift|loosen|open|reconnect|remove|replace|seat|shut|start|stop|switch|take|tighten|"
+    r"torque|turn|use|wait|wear)\b"
+    r"|\b(?:must|shall|should|needs?\s+to)\s+be\s+"
+    r"(?:attached|connected|detached|disconnected|installed|removed|started|stopped|tightened)\b",
     re.IGNORECASE,
 )
 
@@ -58,10 +143,10 @@ def _build_auto_prompt_v2(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def build_auto_prompt(document, *, context):
+def _build_auto_prompt_v4(document, *, context):
     payload = json.loads(_build_auto_prompt_v2(document, context=context))
     if payload["slots"]:
-        payload["prompt_version"] = _PROSE_PROMPT_VERSION
+        payload["prompt_version"] = _PROSE_PROMPT_V4
         for slot in payload["slots"]:
             if _INLINE_WARNING.search(slot["text"]):
                 slot["required_action"] = "retain"
@@ -99,9 +184,28 @@ def build_auto_prompt(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
+def build_auto_prompt(document, *, context):
+    previous = _build_auto_prompt_v4(document, context=context)
+    payload = json.loads(previous)
+    if not payload["slots"]:
+        return previous
+    payload["prompt_version"] = _PROSE_PROMPT_VERSION
+    for slot in payload["slots"]:
+        if _PREREQUISITE.search(slot["text"]) or (
+                slot["required_action"] == "rewrite" and _spec_scope(slot["text"])):
+            slot["required_action"] = "retain"
+    payload["rules"].append(
+        "Keep each slot's action, polarity and execution order. Preserve the original wording of "
+        "conditions, prohibitions and specifications marked retain. Keep each measurement with "
+        "its original component, units and conditions. The introduction must describe the source "
+        "without adding directions or specifications."
+    )
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
 def _auto_prompt_version(document, *, context, prompt_hash):
     """Identify the rules bound to the saved model attempt."""
-    for builder in (build_auto_prompt, _build_auto_prompt_v2, _build_auto_prompt_v1):
+    for builder in (build_auto_prompt, _build_auto_prompt_v4, _build_auto_prompt_v2, _build_auto_prompt_v1):
         payload = builder(document, context=context)
         if sha256(payload.encode()).hexdigest() == prompt_hash:
             return json.loads(payload)["prompt_version"]
@@ -129,8 +233,47 @@ def _near_copy(original, replacement):
     return 2 * copied > min(len(original_words), len(replacement_words)) - 4
 
 
+def _actions(text):
+    actions = []
+    previous_end = 0
+    inspecting_state = False
+    for match in _ACTIONS.finditer(text):
+        between = text[previous_end:match.start()]
+        previous_end = match.end()
+        boundaries = _ACTION_BOUNDARY.split(between)
+        if len(boundaries) > 1:
+            inspecting_state = False
+        # "Check that the plug is attached" verifies a state.
+        if actions and actions[-1] == "inspect" and _STATE_CLAUSE.search(boundaries[-1]):
+            inspecting_state = True
+        if not inspecting_state:
+            actions.append(match.lastgroup)
+    return actions
+
+
+def _execution_order(text):
+    """Normalize simple before/after clauses to chronological action order."""
+    actions = []
+    for sentence in _SENTENCES.split(text.strip()):
+        timing = _TIMING.search(sentence)
+        if timing is None:
+            actions.extend(_actions(sentence))
+            continue
+        earlier_first = timing[1].casefold() in {"before", "ahead of"}
+        if timing.start() == 0 and "," in sentence:
+            first, second = sentence.split(",", 1)
+            pieces = (second, first) if earlier_first else (first, second)
+        else:
+            first, second = sentence[:timing.start()], sentence[timing.end():]
+            pieces = (first, second) if earlier_first else (second, first)
+        for piece in pieces:
+            actions.extend(_actions(piece))
+    # One instruction can say "inspect ... to check".
+    return tuple(action for action, _ in groupby(actions))
+
+
 def _uses_prose_guards(prompt_version, slot_count):
-    return bool(slot_count) and prompt_version in (None, _PROSE_PROMPT_VERSION)
+    return bool(slot_count) and prompt_version in (None, _PROSE_PROMPT_V4, _PROSE_PROMPT_VERSION)
 
 
 def _require_changes(source, candidate, *, prompt_version):
@@ -138,23 +281,38 @@ def _require_changes(source, candidate, *, prompt_version):
     restored = {"blocks": candidate["blocks"][1:]}
     slots = full.prose_slots(source)
     guard_prose = _uses_prose_guards(prompt_version, len(slots))
-    if guard_prose and _INLINE_WARNING.search(candidate["blocks"][0]["text"]):
+    guard_actions = guard_prose and prompt_version != _PROSE_PROMPT_V4
+    introduction = candidate["blocks"][0].get("text", "")
+    if guard_prose and (_INLINE_WARNING.search(introduction) or (guard_actions and _PREREQUISITE.search(introduction))):
         raise ValueError("REWRITE_SAFETY_MUTATION")
+    if guard_actions and _INTRO_DIRECTIVE.search(introduction):
+        raise ValueError("REWRITE_INTRODUCTION_INSTRUCTION")
+    if guard_actions and _spec_scope(introduction):
+        raise ValueError("REWRITE_SPEC_SCOPE_MUTATION")
     for slot in slots:
         original = slot["text"]
         replacement = full._get(restored, slot["path"])
-        if guard_prose and (_INLINE_WARNING.search(original) or _INLINE_WARNING.search(replacement)):
+        if guard_prose and any(_INLINE_WARNING.search(text) or (guard_actions and _PREREQUISITE.search(text))
+                               for text in (original, replacement)):
             if original != replacement:
                 raise ValueError("REWRITE_SAFETY_MUTATION")
             continue
         technical_only = _technical_only(original)
+        if guard_prose and not technical_only and _technical_only(replacement):
+            raise ValueError("REWRITE_PROSE_MISSING")
+        if guard_actions and not technical_only and (_spec_scope(original) or _spec_scope(replacement)):
+            if original != replacement:
+                raise ValueError("REWRITE_SPEC_SCOPE_MUTATION")
+            continue
         if (_WORDS.findall(replacement.casefold()) == _WORDS.findall(original.casefold())
                 and not technical_only):
             raise ValueError("REWRITE_UNCHANGED")
-        if guard_prose and not technical_only and _technical_only(replacement):
-            raise ValueError("REWRITE_PROSE_MISSING")
         if guard_prose and not technical_only and _near_copy(original, replacement):
             raise ValueError("REWRITE_PROSE_TOO_SIMILAR")
+        if guard_actions and not technical_only:
+            original_actions = _execution_order(original)
+            if original_actions and original_actions != _execution_order(replacement):
+                raise ValueError("REWRITE_ACTION_MUTATION")
 
 
 def render_auto(source, response, *, prompt_version=None):
@@ -174,8 +332,10 @@ def validate_auto(source, candidate, *, response=None, prompt_version=None):
     report = dict(validation.report)
     errors = sorted(set(errors))
     guard_prose = _uses_prose_guards(prompt_version, report["prose_slots"])
-    report.update(validator_version="full-prose-auto-validator-v2" if guard_prose else "full-prose-auto-validator-v1",
-        profile_version=PROFILE,
+    validator_version = "full-prose-auto-validator-v1"
+    if guard_prose:
+        validator_version = "full-prose-auto-validator-v2" if prompt_version == _PROSE_PROMPT_V4 else "full-prose-auto-validator-v3"
+    report.update(validator_version=validator_version, profile_version=PROFILE,
         publication_mode="automatic", content_acceptance_required=False,
         complete_rewrite=False, passed=not errors, error_codes=errors)
     return ValidationResult(not errors, tuple(errors), report)
