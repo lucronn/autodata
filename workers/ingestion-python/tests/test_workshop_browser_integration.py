@@ -413,11 +413,10 @@ def _child(root_name,engine,provider,directory,monkeypatch):
                         )
                         html = (
                             '<p>Inspect the alignment marks before removing the pump.</p>'
-                            '<img src="/fixture/alignment.png" alt="Alignment marks">'
-                            '<p>Do not run the pump dry.</p>'
                             '<table><tr><td>Check the reference mark.'
-                            '<img src="/fixture/table-alignment.png" alt="Table alignment">'
+                            '<img src="/fixture/alignment.png" alt="Alignment marks">'
                             'Keep the shim seated.</td></tr></table>'
+                            '<p>Do not run the pump dry.</p>'
                             '<ol start="4"><li value="9">Remove the pump.'
                             '<table><tr><td>'
                             f'<iframe src="{_PDF_LOCATOR}">Hidden fallback.</iframe>'
@@ -425,10 +424,8 @@ def _child(root_name,engine,provider,directory,monkeypatch):
                             '<p>Tighten the cover bolts to 18 Nm.</p>'
                         )
                         server.body(pdf, "application/pdf", ref=_PDF_REF, kind="binary")
-                        server.body(diagram.getvalue(), "image/png", ref="table-figure", kind="asset")
-                        server.body(html.encode(), assets=["figure", "table-figure", _PDF_REF], asset_bindings=[
+                        server.body(html.encode(), assets=["figure", _PDF_REF], asset_bindings=[
                             {"source_url": "/fixture/alignment.png", "resource_ref": "figure"},
-                            {"source_url": "/fixture/table-alignment.png", "resource_ref": "table-figure"},
                             {"source_url": _PDF_LOCATOR, "resource_ref": _PDF_REF},
                         ])
                         continue

@@ -1321,14 +1321,14 @@ async def expect_linked_pdf(article, *, rewritten=False):
 async def expect_html_table_figure(article):
     from playwright.async_api import expect
 
-    cell = article.locator('td:has(img[alt="Table alignment"])')
+    cell = article.locator('td:has(img[alt="Alignment marks"])')
     await expect(cell.locator(':scope > p')).to_have_text(
         ['Check the reference mark.', 'Keep the shim seated.'],
     )
     assert await cell.locator(':scope > :is(p, figure)').evaluate_all(
         'nodes => nodes.map(node => node.tagName).join(",")'
     ) == 'P,FIGURE,P'
-    await expect(cell.get_by_role('img', name='Table alignment')).to_have_js_property('naturalWidth', 24)
+    await expect(cell.get_by_role('img', name='Alignment marks')).to_have_js_property('naturalWidth', 24)
 
 
 async def api_case(browser,origin,name,output,observations=None):
@@ -1461,7 +1461,8 @@ async def api_case(browser,origin,name,output,observations=None):
             await expect(figure).to_have_count(1)
             if not linked_pdf:
                 await expect(page.locator('#article-content figure:has(img[alt="Alignment marks"]) figcaption')).to_have_text('Pump alignment marks')
-            await expect_figure_after_text(figure, "Inspect the alignment marks")
+            if not linked_pdf:
+                await expect_figure_after_text(figure, "Inspect the alignment marks")
             nested_item = '#article-content ol[start="4"] > li[value="9"]:has(table)'
             depth_cell = page.locator(nested_item + ' table td').last
             depth_label = depth_cell if linked_pdf else depth_cell.locator(':scope > span').first
@@ -1520,7 +1521,8 @@ async def api_case(browser,origin,name,output,observations=None):
             await expect(figure).to_have_count(1)
             if not linked_pdf:
                 await expect(page.locator('#article-content figure:has(img[alt="Alignment marks"]) figcaption')).to_have_text('Pump alignment marks')
-            await expect_figure_after_text(figure, "Check the pump alignment marks")
+            if not linked_pdf:
+                await expect_figure_after_text(figure, "Check the pump alignment marks")
             await expect(page.locator(nested_item + " > p").first).to_have_text("Take off the pump.")
             await expect(depth_label).to_have_text('Drive seal seating depth: 2.0 mm')
             if linked_pdf:

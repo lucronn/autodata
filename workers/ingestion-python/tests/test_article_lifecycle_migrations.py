@@ -13,13 +13,11 @@ from lifecycle_support import (ROOT, fresh_database, apply_migration, seed_vehic
                                read_imported_job_invariants)
 
 
-def run_driver(repo, directory=None, check=True):
+def run_driver(repo, directory=None, check=True, **extra):
     args = ['sh', str(ROOT / 'scripts/dev/migrate_sql.sh')]
     if directory is not None:
         args += ['--migrations-dir', str(directory)]
-    result = subprocess.run(args, env={**os.environ, 'PGHOST': 'postgres',
-        'PGUSER': 'lifecycle_test', 'PGPASSWORD': 'lifecycle_test_only',
-        'PGDATABASE': repo.database_name}, capture_output=True, text=True)
+    result = subprocess.run(args, env=driver_env(repo, **extra), capture_output=True, text=True)
     if check:
         assert result.returncode == 0, result.stdout + result.stderr
     return result
@@ -221,22 +219,26 @@ def test_two_full_runners_serialize_and_apply_each_version_once(fresh_database, 
     directory = fixture_prefix(tmp_path, 39)
     number = 33 if upgrade else 1
     path = next(directory.glob(f'{number:03d}_*.sql'))
-    path.write_text(path.read_text() + '\nSELECT pg_sleep(1);\n')
-    # One explicit fixture pauses inside the pending migration transaction.
-    # Both complete drivers still use the same production lock/check path.
-    with concurrent.futures.ThreadPoolExecutor(2) as pool:
-        first = pool.submit(run_driver, repo, directory)
-        time.sleep(.1)
-        second = pool.submit(run_driver, repo)
-        deadline = time.monotonic() + .8
-        waiting = False
+    path.write_text(path.read_text() + '\nSELECT pg_sleep(4);\n')
+
+    def wait_for_driver(name, event, timeout):
+        deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             with repo.connect() as conn:
-                waiting = conn.execute("SELECT EXISTS(SELECT FROM pg_stat_activity WHERE datname=%s AND wait_event='advisory') AS waiting", (repo.database_name,)).fetchone()['waiting']
-            if waiting:
-                break
-            time.sleep(.01)
-        assert waiting, 'second full driver never waited on the session advisory lock'
+                observed = conn.execute(
+                    'SELECT 1 FROM pg_stat_activity WHERE datname=%s AND application_name=%s AND wait_event=%s',
+                    (repo.database_name, name, event),
+                ).fetchone()
+            if observed:
+                return
+            time.sleep(.02)
+        pytest.fail(f'{name} did not reach {event}')
+
+    with concurrent.futures.ThreadPoolExecutor(2) as pool:
+        first = pool.submit(run_driver, repo, directory, PGAPPNAME='workshop-migration-first')
+        wait_for_driver('workshop-migration-first', 'PgSleep', 10)
+        second = pool.submit(run_driver, repo, PGAPPNAME='workshop-migration-second')
+        wait_for_driver('workshop-migration-second', 'advisory', 4)
         results = [first.result(), second.result()]
     all_applied = sum((applied(r) for r in results), [])
     expected = ['033_catalog_scope_coverage.sql', '037_article_source_lifecycle.sql', '038_article_transform_publication.sql', '039_production_identity_sessions.sql', '040_workshop_commerce.sql', '041_article_source_projection_v2.sql', '042_catalog_selector_rows.sql', '043_article_source_projection_v3.sql', '044_article_source_projection_v4.sql', '045_article_source_projection_v5.sql', '046_article_source_projection_v6.sql', '047_article_source_projection_v7.sql', '048_article_source_projection_v8.sql', '049_article_source_projection_v9.sql'] if upgrade else [p.name for p in sorted((ROOT/'db/migrations').glob('*.sql'))]
