@@ -1911,12 +1911,16 @@ def adapt_bound_article(
     raise ValueError("unsupported article media")
 
 
-def bound_pdf_embed_blocks(resource: SourceResource) -> list[dict[str, Any]]:
+def bound_pdf_embed_blocks(
+    resource: SourceResource, *, require_complete_ocr: bool = False,
+) -> list[dict[str, Any]]:
     if (resource.media_type != "application/pdf"
             or len(resource.payload) > _MAX_BOUND_EMBEDDED_PDF_BYTES
             or not resource.payload.startswith(b"%PDF-")):
         raise ValueError("invalid embedded PDF")
     artifact = _adapt_pdf_resource(resource, resource.metadata, max_pages=_MAX_BOUND_EMBEDDED_PDF_PAGES)
+    if require_complete_ocr and artifact.metadata.get("rasterization_status") == "unavailable":
+        raise ValueError("linked PDF has pages requiring unavailable OCR")
     return _bound_pdf_blocks(artifact)
 
 

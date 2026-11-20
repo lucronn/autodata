@@ -333,7 +333,7 @@ def capture_source_article(
                     return ref, role, None, "UNSUPPORTED_DOCUMENT_MEDIA", originals, None
                 resource = upload_resource(envelope, ref, role, bounded_objects)
                 try:
-                    blocks = bound_pdf_embed_blocks(payload)
+                    blocks = bound_pdf_embed_blocks(payload, require_complete_ocr=True)
                 except ValueError:
                     blocks = []
                 if not blocks:

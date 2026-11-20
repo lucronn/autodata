@@ -1800,9 +1800,33 @@ def test_bound_pdf_embed_keeps_table_cell_order_and_refuses_unbound_markup(captu
 @pytest.mark.parametrize(("mime", "payload", "reason"), [
     ("image/png", b"not permitted", "UNSUPPORTED_DOCUMENT_MEDIA"),
     ("application/pdf", b"not a PDF", "DOCUMENT_EXTRACTION_UNAVAILABLE"),
+    ("application/pdf", None, "DOCUMENT_EXTRACTION_UNAVAILABLE"),
 ])
-def test_bound_embed_validation_keeps_surrounding_procedure(capture_fixture, mime, payload, reason):
+def test_bound_embed_validation_keeps_surrounding_procedure(capture_fixture, monkeypatch, mime, payload, reason):
     from autodata_ingestion.source_article_capture import capture_source_article
+
+    if payload is None:
+        from io import BytesIO
+
+        from reportlab.pdfgen import canvas
+
+        from autodata_ingestion import source_adapters
+        from autodata_ingestion.ocr import OCRUnavailable
+
+        stream = BytesIO()
+        pdf = canvas.Canvas(stream)
+        pdf.drawString(72, 718, "Readable first page.")
+        pdf.showPage()
+        pdf.line(72, 718, 200, 700)
+        pdf.showPage()
+        pdf.save()
+        payload = stream.getvalue()
+
+        def unavailable(_digest, _payload, native_pages):
+            assert native_pages == {1}
+            raise OCRUnavailable("Fixture second page could not be recognized")
+
+        monkeypatch.setattr(source_adapters, "extract_scanned_pdf_text", unavailable)
 
     fixture = capture_fixture
     fixture.body("banktwo", (
@@ -1823,3 +1847,7 @@ def test_bound_embed_validation_keeps_surrounding_procedure(capture_fixture, mim
     assert captured.resource_manifest[-1] == {
         "role": "document_asset", "opaque_ref": "drive", "failure_code": reason,
     }
+    if mime == "application/pdf":
+        [retained] = [entry for entry in captured.resources if entry["role"] == "document_asset"]
+        assert captured.resource_manifest[-2]["sha256"] == sha256(payload).hexdigest()
+        assert fixture.objects.data[retained["object_key"]] == (payload, mime)
