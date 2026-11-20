@@ -5,7 +5,7 @@ import pytest
 from autodata_ingestion.article_document import build_ordered_document
 from autodata_ingestion.article_lifecycle_types import digest_json
 from autodata_ingestion.procedure_rewrite_auto import render_auto
-from autodata_ingestion.procedure_rewrite_full import prose_slots
+from autodata_ingestion.procedure_rewrite_full import prose_slots, render_full
 from autodata_ingestion.published_media_repair import repair_published_media
 
 _CURRENT_PROMPT = "full-prose-auto-prompt-v6"
@@ -133,6 +133,40 @@ def test_historical_model_output_uses_original_prompt_rules():
 
     assert result.document["blocks"][1]["text"] == "Take the pump out."
     assert result.provenance["original_prompt_version"] == _HISTORICAL_PROMPT
+
+
+def test_reviewed_repair_preserves_approved_effective_response():
+    old, _, repaired, _ = _fixture()
+    corrected_response = _response(old, ["Take the pump off.", "Fit the cover in place."])
+    corrected_response["introduction"] = "This procedure describes pump and cover service."
+    published = render_full(old, corrected_response)
+
+    result = repair_published_media(
+        old, published, repaired, response=corrected_response, profile="full-prose-review-v1",
+    )
+
+    assert result.validation.passed
+    assert result.validation.report["content_acceptance_required"]
+    assert result.provenance["profile_version"] == "full-prose-review-v1"
+    assert result.provenance["original_prompt_version"] is None
+    assert result.document["blocks"][0]["text"] == corrected_response["introduction"]
+    assert result.document["blocks"][4]["rows"][0][1] == "40 Nm"
+    assert result.document["blocks"][-1]["text"] == "Fit the cover in place."
+
+
+def test_reviewed_repair_rejects_original_response_after_correction():
+    old, _, repaired, original = _fixture()
+    corrected = deepcopy(original)
+    corrected["introduction"] = "This procedure describes pump and cover service."
+    published = render_full(old, corrected)
+    with pytest.raises(ValueError, match="^PUBLISHED_MEDIA_REPAIR_PUBLISHED_BINDING_MISMATCH$"):
+        repair_published_media(old, published, repaired, response=original, profile="full-prose-review-v1")
+
+
+def test_other_rewrite_profiles_are_outside_the_repair_contract():
+    old, published, repaired, response = _fixture()
+    with pytest.raises(ValueError, match="^PUBLISHED_MEDIA_REPAIR_PROFILE_UNSUPPORTED$"):
+        repair_published_media(old, published, repaired, response=response, profile="technical-prose-v2")
 
 
 @pytest.mark.parametrize("mutation", ["text", "warning", "torque", "evidence", "order", "inserted"])

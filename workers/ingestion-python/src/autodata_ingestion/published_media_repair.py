@@ -2,11 +2,13 @@
 
 from collections import Counter
 from dataclasses import dataclass
+from functools import partial
 
 from .article_document import project_ordered_document
 from .article_lifecycle_types import ValidationResult, digest_json
 from .procedure_rewrite_auto import PROFILE, render_auto, validate_auto
-from .procedure_rewrite_full import _source_valid, prose_slots
+from .procedure_rewrite_full import PROFILE as REVIEW_PROFILE
+from .procedure_rewrite_full import _source_valid, prose_slots, render_full, validate_full
 
 _SUPPORTED_PROMPTS = frozenset(f"full-prose-auto-prompt-v{version}" for version in range(1, 7))
 _POSITION_KEYS = frozenset({"block_id", "source_order"})
@@ -72,21 +74,32 @@ def _image_hash(image):
 
 
 def repair_published_media(
-    old_source, published, repaired_source, *, response, prompt_version,
+    old_source, published, repaired_source, *, response, prompt_version=None, profile=PROFILE,
 ) -> PublishedMediaRepair:
     """Reposition equivalent figures without generating or editing published prose.
 
-    The caller supplies a validated immutable publication and its saved model
-    response, along with a source reconstructed from verified retained bytes.
-    The prompt version must come from the original stored prompt hash.
+    The caller supplies a validated immutable publication, its authorized
+    response, and a source reconstructed from verified retained bytes. Resolve
+    the original automatic prompt version from its stored prompt hash. For a
+    reviewed publication, supply its approved effective response and omit the
+    automatic prompt version.
     """
-    if not isinstance(prompt_version, str) or prompt_version not in _SUPPORTED_PROMPTS:
-        raise ValueError("PUBLISHED_MEDIA_REPAIR_PROMPT_UNSUPPORTED")
+    if profile == PROFILE:
+        if not isinstance(prompt_version, str) or prompt_version not in _SUPPORTED_PROMPTS:
+            raise ValueError("PUBLISHED_MEDIA_REPAIR_PROMPT_UNSUPPORTED")
+        render = partial(render_auto, prompt_version=prompt_version)
+        validate = partial(validate_auto, prompt_version=prompt_version)
+    elif profile == REVIEW_PROFILE:
+        if prompt_version is not None:
+            raise ValueError("PUBLISHED_MEDIA_REPAIR_PROMPT_UNSUPPORTED")
+        render, validate = render_full, validate_full
+    else:
+        raise ValueError("PUBLISHED_MEDIA_REPAIR_PROFILE_UNSUPPORTED")
     if not all(_source_valid(doc) for doc in (old_source, published, repaired_source)):
         raise ValueError("PUBLISHED_MEDIA_REPAIR_DOCUMENT_INVALID")
     if (
         not isinstance(response, dict)
-        or not validate_auto(old_source, published, response=response, prompt_version=prompt_version).passed
+        or not validate(old_source, published, response=response).passed
     ):
         raise ValueError("PUBLISHED_MEDIA_REPAIR_PUBLISHED_BINDING_MISMATCH")
     if _without_media(old_source) != _without_media(repaired_source):
@@ -111,12 +124,10 @@ def repair_published_media(
         ],
     }
     try:
-        document = render_auto(repaired_source, new_response, prompt_version=prompt_version)
+        document = render(repaired_source, new_response)
     except ValueError:
         raise ValueError("PUBLISHED_MEDIA_REPAIR_REWRITE_INVALID") from None
-    validation = validate_auto(
-        repaired_source, document, response=new_response, prompt_version=prompt_version,
-    )
+    validation = validate(repaired_source, document, response=new_response)
     if not validation.passed:
         raise ValueError("PUBLISHED_MEDIA_REPAIR_REWRITE_INVALID")
     published_prose = _without_media(published)
@@ -130,7 +141,7 @@ def repair_published_media(
         validation=validation,
         provenance={
             "transformation_method": _METHOD,
-            "profile_version": PROFILE,
+            "profile_version": profile,
             "model_calls": 0,
             "model_dispatch_count": 0,
             "original_prompt_version": prompt_version,
