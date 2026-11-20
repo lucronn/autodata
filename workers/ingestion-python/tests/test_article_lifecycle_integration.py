@@ -24,6 +24,30 @@ def test_twenty_ensures_two_processes_one_source_model_revision_event(runtime):
             assert conn.execute("SELECT count(*) AS n FROM "+table).fetchone()["n"]==1
 
 
+def test_queued_article_wakes_idle_worker(runtime):
+    from time import monotonic, sleep
+
+    runtime.ensure()
+    runtime.start_workers(1, poll_seconds=8)
+    runtime.await_publication()
+    # Let the worker settle after publication before scheduling the other article.
+    # The worker's eight-second fallback poll should not be needed.
+    sleep(0.25)
+    runtime.article_id = runtime.articles["banktwo"]
+    started = monotonic()
+    runtime.ensure()
+    deadline = started + 3
+    while monotonic() < deadline:
+        if runtime.read_current()["source_revision_id"] is not None:
+            break
+        sleep(0.02)
+    else:
+        pytest.fail("second source was not retained ahead of the idle poll")
+    print(f"source_job_wake_ms={round((monotonic() - started) * 1000)}")
+    runtime.await_publication()
+    assert runtime.counters() == {"source": 2, "asset": 0, "model": 2, "schedule": 2}
+
+
 def test_warm_restart_is_provider_and_model_free(runtime):
     first=runtime.ingest_to_publication("bankone")
     runtime.restart_workers();runtime.reset_counters()
