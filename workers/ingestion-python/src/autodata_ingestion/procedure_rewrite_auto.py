@@ -21,8 +21,9 @@ _PROSE_PROMPT_V6 = "full-prose-auto-prompt-v6"
 _PROSE_PROMPT_V7 = "full-prose-auto-prompt-v7"
 _PROSE_PROMPT_V8 = "full-prose-auto-prompt-v8"
 _PROSE_PROMPT_V9 = "full-prose-auto-prompt-v9"
-_PROSE_PROMPT_VERSION = "full-prose-auto-prompt-v10"
-_CELL_PROSE_PROMPT = "full-prose-auto-prompt-v11"
+_PROSE_PROMPT_V10 = "full-prose-auto-prompt-v10"
+_CELL_PROSE_PROMPT_V11 = "full-prose-auto-prompt-v11"
+_PROSE_PROMPT_VERSION = "full-prose-auto-prompt-v12"
 _WORDS = re.compile(r"\w+")
 _INLINE_WARNING = re.compile(
     r"(?:^|[.!?]\s+|\n)[ \t]*(?:warnings?|caution|danger|notice|important)\s*[:!–—-]"
@@ -218,6 +219,16 @@ _CONDITION_PREDICATE = (
 _GIVEN_CONDITION = re.compile(
     r"\b(?P<marker>if|when|once|before|after)\s+" + _CONDITION_PREDICATE, re.IGNORECASE,
 )
+# A short power or surface condition can be expressed as "while X is off"
+# or "with X off". The delimiter bounds the state to the qualifier.
+_SIMULTANEOUS_CONDITION = re.compile(
+    r"\b(?:(?P<while>while)|with)\s+(?:the\s+)?"
+    r"(?P<subject>" + _TARGET_WORD + r"(?:\s+" + _TARGET_WORD + r"){0,3}?)\s+"
+    r"(?P<copula>(?:is|are)\s+)?(?:"
+    r"(?P<power>(?:(?:switched|turned)\s+)?(?:off|on))|(?P<surface>dry|wet))"
+    r"(?=\s*(?:,|$))", re.IGNORECASE,
+)
+_WHILE_MARKER = re.compile(r"\bwhile\b", re.IGNORECASE)
 _CONTINUED_PREDICATE = re.compile(_CONDITION_PREDICATE, re.IGNORECASE)
 _CONTINUED_STATE = re.compile(r"(" + _CONDITION_STATE + r")(?=[,.\s]|$)", re.IGNORECASE)
 _SWITCH_IGNITION = re.compile(r"\b(before|after|once)\s+switching\s+(?:the\s+)?ignition\s+(on|off)\b", re.IGNORECASE)
@@ -423,7 +434,7 @@ def _build_auto_prompt_v9(document, *, context):
 def _auto_prompt_payload_v10(document, *, context, include_cell_blocks=False):
     payload = _auto_prompt_payload_v9(document, context=context, include_cell_blocks=include_cell_blocks)
     if payload["slots"]:
-        payload["prompt_version"] = _PROSE_PROMPT_VERSION
+        payload["prompt_version"] = _PROSE_PROMPT_V10
         for slot in payload["slots"]:
             if _EXCEPTION_CONDITION.search(slot["text"]):
                 slot["required_action"] = "retain"
@@ -440,10 +451,10 @@ def _build_auto_prompt_v10(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def build_auto_prompt(document, *, context):
+def _auto_prompt_payload_v11(document, *, context):
     payload = _auto_prompt_payload_v10(document, context=context, include_cell_blocks=True)
     if any("/rows/" in slot["path"] for slot in payload["slots"]):
-        payload["prompt_version"] = _CELL_PROSE_PROMPT
+        payload["prompt_version"] = _CELL_PROSE_PROMPT_V11
         payload["rules"] = [
             "Rewrite only specified prose slots, including specified blocks inside cells. Preserve "
             "table labels, scalar values, media, evidence, and all structure."
@@ -451,15 +462,32 @@ def build_auto_prompt(document, *, context):
             else rule
             for rule in payload["rules"]
         ]
+    return payload
+
+
+def _build_auto_prompt_v11(document, *, context):
+    payload = _auto_prompt_payload_v11(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def build_auto_prompt(document, *, context):
+    payload = _auto_prompt_payload_v11(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_VERSION
+        payload["rules"].append(
+            "Keep any state required while performing an instruction, such as the ignition being "
+            "off or a surface being dry. Preserve the condition's subject and state. A condition "
+            "that must hold during the task must not become an earlier step."
+        )
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
 def _auto_prompt_version(document, *, context, prompt_hash):
     """Identify the rules bound to the saved model attempt."""
     for builder in (
-        build_auto_prompt, _build_auto_prompt_v10, _build_auto_prompt_v9, _build_auto_prompt_v8, _build_auto_prompt_v7,
-        _build_auto_prompt_v6, _build_auto_prompt_v5, _build_auto_prompt_v4,
-        _build_auto_prompt_v2, _build_auto_prompt_v1,
+        build_auto_prompt, _build_auto_prompt_v11, _build_auto_prompt_v10, _build_auto_prompt_v9,
+        _build_auto_prompt_v8, _build_auto_prompt_v7, _build_auto_prompt_v6, _build_auto_prompt_v5,
+        _build_auto_prompt_v4, _build_auto_prompt_v2, _build_auto_prompt_v1,
     ):
         payload = builder(document, context=context)
         if sha256(payload.encode()).hexdigest() == prompt_hash:
@@ -793,6 +821,17 @@ def _condition_predicate(subject, verb, state):
     return words, {"dried": "dry", "cooled": "cool"}.get(state, state)
 
 
+def _simultaneous_state(text):
+    for match in _SIMULTANEOUS_CONDITION.finditer(text):
+        if match["while"] and not match["copula"]:
+            continue
+        words = tuple(_WORDS.findall(match["subject"]))
+        if set(words).isdisjoint(_TARGET_DELIMITERS):
+            state = match["surface"] or match["power"].split()[-1]
+            return match, ("condition", "while", words, state)
+    return None
+
+
 def _logical_condition(text, condition, predicate, relation):
     """Bound a flat conjunction or disjunction of explicit states."""
     end = condition.end()
@@ -838,12 +877,15 @@ def _part_target(target, *, extended):
     return subject, states
 
 
-def _qualifier_task(text, *, extended=False):
+def _qualifier_task(text, *, extended=False, simultaneous=False):
     """Recognize one imperative with a literal target and bounded qualifiers."""
     text = text.casefold().strip().rstrip(".!")
     facts = []
     condition_end = None
-    if condition := _GIVEN_CONDITION.search(text):
+    if simultaneous and (state := _simultaneous_state(text)):
+        qualifier, fact = state
+        facts.append(fact)
+    elif condition := _GIVEN_CONDITION.search(text):
         marker, subject, verb, state = condition.group("marker", "subject", "verb", "state")
         predicate = _condition_predicate(subject, verb, state)
         if predicate is None:
@@ -914,17 +956,19 @@ def _qualifier_task(text, *, extended=False):
     return task, frozenset(facts)
 
 
-def _qualifier_changed(original, replacement, *, extended=False):
+def _qualifier_changed(original, replacement, *, extended=False, simultaneous=False):
     if not any(
-        _QUALIFIER_MARKER.search(text) or (extended and _PART_QUALITY_MARKER.search(text))
+        _QUALIFIER_MARKER.search(text)
+        or (extended and _PART_QUALITY_MARKER.search(text))
+        or (simultaneous and _WHILE_MARKER.search(text))
         for text in (original, replacement)
     ):
         return False
-    source = _qualifier_task(original, extended=extended)
+    source = _qualifier_task(original, extended=extended, simultaneous=simultaneous)
     if source is None:
         return False
     source_action, source_facts = source
-    draft = _qualifier_task(replacement, extended=extended)
+    draft = _qualifier_task(replacement, extended=extended, simultaneous=simultaneous)
     if draft is None:
         return False
     draft_action, draft_facts = draft
@@ -940,12 +984,13 @@ def _qualifier_changed(original, replacement, *, extended=False):
 def _uses_prose_guards(prompt_version, slot_count):
     return bool(slot_count) and prompt_version in (
         None, _PROSE_PROMPT_V4, _PROSE_PROMPT_V5, _PROSE_PROMPT_V6, _PROSE_PROMPT_V7,
-        _PROSE_PROMPT_V8, _PROSE_PROMPT_V9, _PROSE_PROMPT_VERSION, _CELL_PROSE_PROMPT,
+        _PROSE_PROMPT_V8, _PROSE_PROMPT_V9, _PROSE_PROMPT_V10, _CELL_PROSE_PROMPT_V11,
+        _PROSE_PROMPT_VERSION,
     )
 
 
 def _include_cell_blocks(prompt_version):
-    return prompt_version in (None, _CELL_PROSE_PROMPT)
+    return prompt_version in (None, _CELL_PROSE_PROMPT_V11, _PROSE_PROMPT_VERSION)
 
 
 def _require_changes(source, candidate, *, prompt_version):
@@ -959,6 +1004,7 @@ def _require_changes(source, candidate, *, prompt_version):
     guard_clauses = guard_claims and prompt_version != _PROSE_PROMPT_V7
     guard_qualifiers = guard_clauses and prompt_version != _PROSE_PROMPT_V8
     guard_scope = guard_qualifiers and prompt_version != _PROSE_PROMPT_V9
+    guard_simultaneous = guard_scope and prompt_version in (None, _PROSE_PROMPT_VERSION)
     introduction = candidate["blocks"][0].get("text", "")
     if guard_prose and (
         _INLINE_WARNING.search(introduction)
@@ -1009,7 +1055,9 @@ def _require_changes(source, candidate, *, prompt_version):
             raise ValueError("REWRITE_CLAUSE_MUTATION")
         if guard_scope and _exception_changed(original, replacement):
             raise ValueError("REWRITE_QUALIFIER_MUTATION")
-        if guard_qualifiers and _qualifier_changed(original, replacement, extended=guard_scope):
+        if guard_qualifiers and _qualifier_changed(
+            original, replacement, extended=guard_scope, simultaneous=guard_simultaneous,
+        ):
             raise ValueError("REWRITE_QUALIFIER_MUTATION")
     if guard_claims:
         _check_target_swaps(slots, restored)
@@ -1046,12 +1094,9 @@ def validate_auto(source, candidate, *, response=None, prompt_version=None):
             _PROSE_PROMPT_V7: "full-prose-auto-validator-v5",
             _PROSE_PROMPT_V8: "full-prose-auto-validator-v6",
             _PROSE_PROMPT_V9: "full-prose-auto-validator-v7",
-            _CELL_PROSE_PROMPT: "full-prose-auto-validator-v9",
-        }.get(
-            prompt_version, "full-prose-auto-validator-v9"
-            if any("/rows/" in path for path in report["changed_prose_slots"] + report["retained_paths"])
-            else "full-prose-auto-validator-v8",
-        )
+            _PROSE_PROMPT_V10: "full-prose-auto-validator-v8",
+            _CELL_PROSE_PROMPT_V11: "full-prose-auto-validator-v9",
+        }.get(prompt_version, "full-prose-auto-validator-v10")
     report.update(validator_version=validator_version, profile_version=PROFILE,
         publication_mode="automatic", content_acceptance_required=False,
         complete_rewrite=False, passed=not errors, error_codes=errors)
