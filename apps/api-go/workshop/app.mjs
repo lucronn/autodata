@@ -59,7 +59,7 @@ let vehicle = null,
   currentArticle = null,
   renderedRevision = "",
   sourceURL = "",
-  sourceRevision = "",
+  sourceRevision = 0,
   sourceData = null;
 let quote = null,
   merchant = null,
@@ -142,7 +142,7 @@ function clearProtected() {
   renderedRevision = "";
   sourceData = null;
   sourceURL = "";
-  sourceRevision = "";
+  sourceRevision = 0;
   renewalUsed = false;
   renewal = null;
   for (const id of [
@@ -658,12 +658,13 @@ function addImage(parent, image, caption, g, alt = caption) {
   if (url && id) {
     const img = element("img");
     img.dataset.assetId = id;
-    img.src = url;
     img.alt = alt || image.alt || caption || "Article illustration";
+    img.decoding = "async";
     img.referrerPolicy = "no-referrer";
     img.addEventListener("error", () => {
       if (g.current()) void renewMedia(g, img);
     });
+    img.src = url;
     figure.append(img);
     if (caption) figure.append(element("figcaption", caption));
   } else
@@ -865,6 +866,9 @@ function renderArticle(article, g) {
     renderedRevision = revision;
     renewalUsed = false;
     sourceData = null;
+    sourceURL = "";
+    ++sourceRevision;
+    $("source-review-load").disabled = false;
     $("source-review-frame").replaceChildren();
     $("source-review-frame").hidden = true;
   } else reconcileImages($("article-content"), imageMap(article), g);
@@ -981,7 +985,6 @@ async function loadSource(value, g) {
   const requested = validSourceURL(value);
   if (!requested) throw new Error("This source reference is unavailable.");
   const selected = ++sourceRevision;
-  sourceURL = demoPath(requested.href);
   $("source-review-load").disabled = true;
   try {
     const data = await requestJSON(demoPath(requested.pathname + requested.search), {
@@ -1005,8 +1008,11 @@ async function loadSource(value, g) {
     $("source-review-frame").replaceChildren(fragment);
     $("source-review-frame").hidden = false;
     sourceData = data;
+    sourceURL = demoPath(requested.href);
     $("article-reference").open = true;
     $("source-review-meta").textContent = "Stored source loaded.";
+  } catch (error) {
+    if (g.current() && selected === sourceRevision) throw error;
   } finally {
     if (g.current() && selected === sourceRevision)
       $("source-review-load").disabled = false;
@@ -1049,9 +1055,19 @@ async function renewMedia(g, failed) {
       }
       renderArticle(response.data.article, g);
       if (sourceData && sourceURL) {
-        const data = await requestJSON(sourceURL, { signal: g.signal });
-        if (!g.current()) return;
-        const requested = validSourceURL(sourceURL),
+        const selectedSourceURL = sourceURL;
+        const sourceSelection = sourceRevision;
+        const stillSelected = () =>
+          g.current() && sourceSelection === sourceRevision && selectedSourceURL === sourceURL;
+        let data;
+        try {
+          data = await requestJSON(selectedSourceURL, { signal: g.signal });
+        } catch (error) {
+          if (stillSelected()) throw error;
+          return;
+        }
+        if (!stillSelected()) return;
+        const requested = validSourceURL(selectedSourceURL),
           returned = validSourceURL(data.source?.url);
         if (
           !returned ||

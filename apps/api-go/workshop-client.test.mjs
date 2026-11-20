@@ -3550,3 +3550,60 @@ test('source and canonical viewers retain nested list and table cell content', (
     assert.equal(mediaDescendants(parent, 'a').length, 0);
   }
 });
+
+test('a late stored-source response cannot reopen the panel after the article revision changes', async () => {
+  const pending = deferredAuthOperation();
+  const h = articleMediaHarness({ requestJSON: () => pending.promise });
+  h.render(mediaArticle([{ type: 'paragraph', text: 'Source displayed' }]));
+  const load = h.context.loadSource(mediaSourceURL, h.g);
+  assert.equal(h.nodes.get('source-review-load').disabled, true);
+  h.render(mediaArticle([{ type: 'paragraph', text: 'Workshop revision' }], [], {
+    view_revision: 'view-2', content_origin: 'canonical',
+  }));
+  pending.resolve({
+    source: { url: mediaSourceURL },
+    document: { blocks: [{ type: 'paragraph', text: 'Old source' }] },
+  });
+  await load;
+  assert.equal(h.nodes.get('source-review-frame').hidden, true);
+  assert.equal(h.nodes.get('source-review-frame').textContent, '');
+  assert.equal(h.nodes.get('source-review-load').disabled, false);
+  assert.equal(h.context.sourceURL, '');
+});
+
+test('a stale media renewal cannot clear a newly opened pinned source', async () => {
+  const pending = deferredAuthOperation(), renewalRequested = deferredAuthOperation();
+  const newerURL = mediaSourceURL.replace('11111111-', '22222222-');
+  const calls = [];
+  const source = (url, label) => ({
+    source: { url },
+    document: { blocks: [{ type: 'callout', text: label, images: [{ asset_id: 'stored' }] }] },
+    images: [{ id: 'stored', url: mediaURL(label) }],
+  });
+  const h = articleMediaHarness({
+    requestArticleJSON: async () => renewedArticle(),
+    requestJSON: async url => {
+      calls.push(url);
+      if (calls.length === 2) {
+        renewalRequested.resolve();
+        return pending.promise;
+      }
+      return url === newerURL ? source(newerURL, 'new-source') : source(mediaSourceURL, 'old-source');
+    },
+  });
+  h.render(renewalFixture());
+  await h.context.loadSource(mediaSourceURL, h.g);
+  const frame = h.nodes.get('source-review-frame');
+  mediaDescendants(frame, 'img')[0].dispatch('error');
+  const renewal = h.context.renewal;
+  await renewalRequested.promise;
+  assert.equal(calls.length, 2);
+  await h.context.loadSource(newerURL, h.g);
+  pending.reject(Object.assign(new Error('Expired source'), { status: 403 }));
+  await renewal;
+  assert.match(frame.textContent, /new-source/);
+  assert.equal(mediaDescendants(frame, 'img')[0].src, 'https://cars.example/v1/catalog/images/v2.new-source');
+  assert.equal(h.context.sourceURL, 'https://cars.example' + newerURL);
+  assert.equal(h.g.current(), true);
+  assert.deepEqual(h.shows, []);
+});
