@@ -281,6 +281,100 @@ def test_introduction_cannot_reassign_an_exact_source_specification():
     assert result.document == source
 
 
+@pytest.mark.parametrize("source_text,draft", [
+    ("Remove the left rear splash shield for access.",
+     "Take off the splash shield from the right rear to gain access."),
+    ("Inspect the left front harness connector.",
+     "Check the harness connector at the left rear."),
+    ("Disconnect the left sensor and remove the right cover.",
+     "Detach the right sensor, then take off the left cover."),
+    ("Remove the left-hand wheel-arch liner.",
+     "Take off the liner from the wheel arch."),
+    ("Open the LH engine bay access panel.",
+     "Swing the RH access panel open in the engine bay."),
+    ("Inspect the inboard pad and remove the outboard shim.",
+     "Check the outboard pad, then take the inboard shim off."),
+    ("Remove the left cover first, then remove the right cover.",
+     "Take off the right cover before lifting off the left cover."),
+    ("Inspect the upper guide and remove the lower bracket.",
+     "Check the lower guide, then take off the upper bracket."),
+])
+def test_automatic_rewrite_rejects_changed_direction_for_each_recognized_action(source_text, draft):
+    source = document(source_text)
+    result = run(source, response(draft))
+    assert result.error_code == "REWRITE_DIRECTION_MUTATION"
+    assert result.document == source
+
+
+@pytest.mark.parametrize("source_text,draft", [
+    ("Remove the left rear splash shield for access.",
+     "Take off the splash shield from the left rear to gain access."),
+    ("Remove the left-hand wheel-arch liner.",
+     "Take the liner off the LH wheel arch."),
+    ("Inspect the left front harness connector.",
+     "Check the front-left connector for the harness."),
+    ("Inspect the cover for debris left behind by the gasket.",
+     "Check the cover for any debris that remained by the gasket."),
+    ("Inspect the rubber pad on the inside face of the door.",
+     "Check the pad on the inner face of the door."),
+    ("Remove the left cover first, then remove the right cover.",
+     "Take off the right cover after lifting off the left cover."),
+    ("Disconnect the right harness before removing the left sensor.",
+     "Once the right harness is detached, take off the left sensor."),
+    ("The guard is on the right side of the housing.",
+     "The housing's right-hand side carries the guard."),
+    ("Remove the lifting hook after the hoist has left the bay.",
+     "Take off the lifting hook once the hoist has departed."),
+    ("Lower the spare tire to the ground.", "Bring the spare tire down to the ground."),
+])
+def test_automatic_rewrite_accepts_equivalent_direction_and_ordinary_prose(source_text, draft):
+    result = run(document(source_text), response(draft))
+    assert result.error_code is None
+
+
+@pytest.mark.parametrize("source_text,draft", [
+    ("If the seal is not flush, inspect the connector.",
+     "Check the connector once the seal is flush."),
+    ("Inspect the harness if no moisture is visible.",
+     "Check the harness when moisture can be seen."),
+    ("For vehicles without an auxiliary battery, inspect the starter connection.",
+     "Check the starter connection on vehicles with an auxiliary battery."),
+    ("Reconnection is forbidden while the connector is damp.",
+     "Restore the electrical connection while the connector is still damp."),
+    ("Remove the cover without lifting the cable guide.",
+     "Take the cover off after lifting the cable guide."),
+    ("Inspect only the connector shell for corrosion.",
+     "Check the entire harness for corrosion."),
+])
+def test_automatic_rewrite_protects_negative_applicability_and_restrictions(source_text, draft):
+    source = document(source_text, "Inspect the cover.")
+    payload = response(draft, "Check the cover for wear.")
+    result = run(source, payload)
+    assert result.error_code == "REWRITE_SAFETY_MUTATION"
+    assert result.document == source
+
+    payload["replacements"][0].update(action="retain", text=source_text, reason="Keep the full restriction.")
+    model = Draft(payload)
+    result = rewrite.rewrite_ordered_document(source, client=model, context={}, profile_version=PROFILE)
+    assert model.prompt["slots"][0]["required_action"] == "retain"
+    assert result.error_code is None
+    assert result.document["blocks"][1]["text"] == source_text
+    assert result.document["blocks"][2]["text"] == "Check the cover for wear."
+
+
+@pytest.mark.parametrize("source_text,draft", [
+    ("The connector cover is supplied without a gasket.",
+     "The gasket and connector cover are supplied separately."),
+    ("Only the connector shell is supplied with the kit.",
+     "The kit contains the connector shell by itself."),
+])
+def test_automatic_rewrite_keeps_nonprocedural_negative_phrasing_editable(source_text, draft):
+    model = Draft(response(draft))
+    result = rewrite.rewrite_ordered_document(document(source_text), client=model, context={}, profile_version=PROFILE)
+    assert model.prompt["slots"][0]["required_action"] == "rewrite"
+    assert result.error_code is None
+
+
 def test_technical_only_retention_is_explicit_and_table_stays_exact():
     source = document("25 Nm", "Remove the cover.")
     source["blocks"].append({"block_id":"table", "source_order":3,"type":"table",
@@ -328,12 +422,12 @@ def test_prompt_asks_for_automatic_full_prose_without_human_review_obligations()
     assert prompt["slots"][0]["text"] == "Remove the cover."
 
 
-def test_prompt_v5_declares_complete_response_rows_and_server_required_actions():
+def test_prompt_v6_declares_complete_response_rows_and_server_required_actions():
     source = document("Remove the cover.", "25 Nm", "Never start the motor.",
                       "Fit the cover only after the seal sits flush.")
     before = deepcopy(source)
     prompt = json.loads(rewrite.build_rewrite_prompt(source, context={}, profile_version=PROFILE))
-    assert prompt["prompt_version"] == "full-prose-auto-prompt-v5"
+    assert prompt["prompt_version"] == "full-prose-auto-prompt-v6"
     assert prompt["response_shape"] == {"introduction": "string", "replacements": [
         {"block_id": "string", "path": "string", "action": "rewrite|retain", "text": "string", "reason": "string"}]}
     assert [slot["required_action"] for slot in prompt["slots"]] == ["rewrite", "rewrite_or_retain", "retain", "retain"]
@@ -370,18 +464,41 @@ def test_historical_v4_prompt_digest_and_validation_report_remain_stable():
     assert historical.passed and historical.report["validator_version"] == "full-prose-auto-validator-v2"
     current = validate_auto(source, candidate, response=payload)
     assert current.error_codes == ("REWRITE_ACTION_MUTATION",)
-    assert current.report["validator_version"] == "full-prose-auto-validator-v3"
+    assert current.report["validator_version"] == "full-prose-auto-validator-v4"
+
+
+def test_historical_v5_prompt_digest_and_validation_report_remain_stable():
+    from autodata_ingestion import procedure_rewrite_auto as auto
+    from hashlib import sha256
+
+    source = document("Remove the left-hand wheel-arch liner.")
+    context = {"vehicle": "routing-only"}
+    prompt = auto._build_auto_prompt_v5(source, context=context)
+    prompt_hash = sha256(prompt.encode()).hexdigest()
+    assert prompt_hash == "096c23f47e4a38e3a48175b377e3f49cf1f5ca24204e59837e5f3a916365b3f9"
+    version = auto._auto_prompt_version(source, context=context, prompt_hash=prompt_hash)
+    assert version == "full-prose-auto-prompt-v5"
+
+    payload = response("Take off the liner from the right-hand wheel arch.")
+    candidate = auto.render_auto(source, payload, prompt_version=version)
+    historical = auto.validate_auto(source, candidate, response=payload, prompt_version=version)
+    assert historical.passed and historical.report["validator_version"] == "full-prose-auto-validator-v3"
+    current = auto.validate_auto(source, candidate, response=payload)
+    assert current.error_codes == ("REWRITE_DIRECTION_MUTATION",)
+    assert current.report["validator_version"] == "full-prose-auto-validator-v4"
 
 
 def test_auto_prompt_hash_accepts_only_exact_server_reconstructions():
     from hashlib import sha256
     from autodata_ingestion.procedure_rewrite_auto import (
-        _build_auto_prompt_v1, _build_auto_prompt_v2, _build_auto_prompt_v4, _auto_prompt_version, build_auto_prompt,
+        _auto_prompt_version, _build_auto_prompt_v1, _build_auto_prompt_v2,
+        _build_auto_prompt_v4, _build_auto_prompt_v5, build_auto_prompt,
     )
     source = document("Remove the cover.")
     context = {"vehicle": "routing-only"}
     prompts = [builder(source, context=context) for builder in
-               (_build_auto_prompt_v1, _build_auto_prompt_v2, _build_auto_prompt_v4, build_auto_prompt)]
+               (_build_auto_prompt_v1, _build_auto_prompt_v2, _build_auto_prompt_v4, _build_auto_prompt_v5,
+                build_auto_prompt)]
     for prompt in prompts:
         digest = sha256(prompt.encode()).hexdigest()
         assert _auto_prompt_version(source, context=context, prompt_hash=digest) == json.loads(prompt)["prompt_version"]
@@ -397,7 +514,7 @@ def test_auto_prompt_hash_accepts_only_exact_server_reconstructions():
     assert not _auto_prompt_version(source, context=context, prompt_hash="0" * 64)
 
 
-def test_prompt_v5_response_example_satisfies_strict_renderer():
+def test_prompt_v6_response_example_satisfies_strict_renderer():
     source = document("Remove the cover.", "25 Nm")
     prompt = json.loads(rewrite.build_rewrite_prompt(source, context={}, profile_version=PROFILE))
     payload = {"introduction": "The procedure covers removal of the cover.", "replacements": []}

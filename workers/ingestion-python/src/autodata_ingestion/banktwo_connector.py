@@ -1,6 +1,7 @@
 """Read-only, vehicle-scoped access to Banktwo repair content."""
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from hashlib import sha256
 from html.parser import HTMLParser
 import re
@@ -16,6 +17,24 @@ from .source_connector_client import (
 )
 
 
+_LIST_TAGS = {"ol": "ordered_list", "ul": "unordered_list"}
+_MAX_LIST_DEPTH = 32
+
+
+@dataclass
+class _ListItem:
+    lead: list[str] = field(default_factory=list)
+    blocks: list[dict[str, Any]] = field(default_factory=list)
+
+
+@dataclass
+class _ListFrame:
+    tag: str
+    start: int
+    items: list[str | dict[str, Any]] = field(default_factory=list)
+    item: _ListItem | None = None
+
+
 class ArticleParser(HTMLParser):
     """Keep ordered paragraphs, figures and component links without executable HTML."""
     def __init__(self, *, asset_bindings=()):
@@ -26,10 +45,7 @@ class ArticleParser(HTMLParser):
         self._text = []
         self._skip = 0
         self._image_link = 0
-        self._list_kind = None
-        self._list_items = []
-        self._list_item_open = False
-        self._list_item_parts = []
+        self._lists: list[_ListFrame] = []
         self._list_start = 1
         self._list_continuation_pending = False
         self._table_rows = None
@@ -40,41 +56,69 @@ class ArticleParser(HTMLParser):
     def _in_table(self):
         return self._table_rows is not None
 
+    def _current_list_item(self):
+        return self._lists[-1].item if self._lists else None
+
     def flush(self):
         value = re.sub(r"\s+", " ", "".join(self._text)).strip()
         self._text = []
-        if value:
-            if self._table_cell is not None:
-                self._table_cell.append({"kind": "text", "text": value})
-            elif self._list_kind and self._list_item_open:
-                self._list_item_parts.append(value)
-            else:
-                self.blocks.append({"kind": "text", "text": value})
-                self._list_start = 1
-                self._list_continuation_pending = False
+        if not value:
+            return
+        item = self._current_list_item()
+        block = {"kind": "text", "text": value}
+        if self._table_cell is not None:
+            self._table_cell.append(block)
+        elif item is None:
+            self.blocks.append(block)
+            self._list_start = 1
+            self._list_continuation_pending = False
+        elif item.blocks:
+            item.blocks.append(block)
+        else:
+            item.lead.append(value)
+
+    def _append_block(self, block):
+        item = self._current_list_item()
+        if item is None:
+            self.blocks.append(block)
+        else:
+            item.blocks.append(block)
 
     def _finish_list_item(self):
-        if not self._list_kind or not self._list_item_open:
+        frame = self._lists[-1]
+        item = frame.item
+        if item is None:
             return
         self.flush()
-        value = re.sub(r"\s+", " ", " ".join(self._list_item_parts)).strip()
-        if value:
-            self._list_items.append(value)
-        self._list_item_parts = []
-        self._list_item_open = False
+        text = " ".join(item.lead)
+        if item.blocks:
+            frame.items.append({"text": text, "blocks": item.blocks})
+        elif text:
+            frame.items.append(text)
+        frame.item = None
 
-    def _flush_list(self):
-        if not self._list_kind:
+    def _emit_list(self, frame, *, top_level):
+        if not frame.items:
             return
-        self._finish_list_item()
-        if self._list_items:
-            block = {"kind": self._list_kind, "items": list(self._list_items)}
-            if self._list_kind == "ordered_list":
-                block["start"] = self._list_start
-            self.blocks.append(block)
-            self._list_start += len(self._list_items)
+        block = {"kind": _LIST_TAGS[frame.tag], "items": frame.items}
+        if frame.tag == "ol":
+            block["start"] = frame.start
+        self._append_block(block)
+        if top_level:
+            self._list_start = frame.start + len(frame.items)
             self._list_continuation_pending = True
-        self._list_items = []
+
+    def _finish_list(self):
+        self._finish_list_item()
+        frame = self._lists.pop()
+        self._emit_list(frame, top_level=not self._lists)
+
+    def close(self):
+        super().close()
+        if self._in_table:
+            self._finish_table()
+        while self._lists:
+            self._finish_list()
 
     def _flush_cell(self):
         self.flush()
@@ -88,6 +132,13 @@ class ArticleParser(HTMLParser):
             if self._table_row:
                 self._table_rows.append(self._table_row)
         self._table_row = None
+
+    def _finish_table(self):
+        self._flush_row()
+        rows = self._table_rows
+        self._table_rows = None
+        if rows:
+            self._append_block({"kind": "table", "rows": rows})
 
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
@@ -120,23 +171,23 @@ class ArticleParser(HTMLParser):
             if tag == "br":
                 self.flush()
                 return
-        if tag in {"ol", "ul"} and not self._in_table:
+        if tag in _LIST_TAGS and not self._in_table:
             self.flush()
-            if self._list_kind:
-                self._flush_list()
-            self._list_kind = "ordered_list" if tag == "ol" else "unordered_list"
-            self._list_items = []
-            self._list_item_open = False
-            self._list_item_parts = []
-            if not self._list_continuation_pending:
-                self._list_start = 1
+            if len(self._lists) >= _MAX_LIST_DEPTH:
+                raise ValueError("HTML list nesting exceeds its limit")
+            if self._lists and self._lists[-1].item is None:
+                self._lists[-1].item = _ListItem()
+            start = self._list_start if not self._lists and self._list_continuation_pending else 1
+            self._lists.append(_ListFrame(tag, start))
             self._list_continuation_pending = False
             return
-        if tag == "li" and self._list_kind and not self._in_table:
+        if tag == "li" and self._lists and not self._in_table:
             self._finish_list_item()
-            self._list_item_open = True
+            self._lists[-1].item = _ListItem()
             return
-        if tag in {"br", "p", "div", "li", "tr", "h1", "h2", "h3"}:
+        if tag in {"br", "p", "div", "li", "tr", "h1", "h2", "h3"} or (
+            tag in {"figure", "figcaption"} and self._current_list_item() is not None
+        ):
             self.flush()
         if tag == "a":
             if attrs.get("class") == "image":
@@ -156,24 +207,25 @@ class ArticleParser(HTMLParser):
                 image["asset_resource_ref"] = ref
             if self._table_cell is not None:
                 self._table_cell.append(image)
-            elif self._list_kind:
-                self._finish_list_item()
-                self._flush_list()
-                self.blocks.append(image)
+                return
+            if self._lists and self._lists[-1].item is None:
+                # Emit a figure between sibling <li> tags in the enclosing item.
+                frame = self._lists.pop()
+                self._emit_list(frame, top_level=not self._lists)
+                frame.start += len(frame.items)
+                frame.items = []
+                self._append_block(image)
+                self._lists.append(frame)
             else:
-                self.blocks.append(image)
+                self._append_block(image)
 
     def handle_endtag(self, tag):
-        if tag in {"script", "style"} and self._skip:
-            self._skip -= 1
+        if self._skip:
+            if tag in {"script", "style"}:
+                self._skip -= 1
+            return
         if tag == "table" and self._in_table:
-            self._flush_row()
-            rows = self._table_rows or []
-            self._table_rows = None
-            self._table_row = None
-            self._table_cell = None
-            if rows:
-                self.blocks.append({"kind": "table", "rows": rows})
+            self._finish_table()
             return
         if self._in_table:
             if tag in {"td", "th"}:
@@ -185,18 +237,19 @@ class ArticleParser(HTMLParser):
             if tag in {"br", "div", "p"}:
                 self.flush()
                 return
-        if tag == "li" and self._list_kind and not self._in_table:
-            self._finish_list_item()
-            return
-        if tag in {"ol", "ul"} and self._list_kind and not self._in_table:
-            self._flush_list()
-            self._list_kind = None
-            self._list_item_open = False
-            self._list_item_parts = []
-            return
+        if self._lists and not self._in_table:
+            if tag == "li":
+                self._finish_list_item()
+                return
+            if tag in _LIST_TAGS:
+                if self._lists[-1].tag == tag:
+                    self._finish_list()
+                return
         if tag == "a":
             self._image_link = 0
-        if tag in {"p", "div", "li", "tr"}:
+        if tag in {"p", "div", "li", "tr"} or (
+            tag in {"figure", "figcaption"} and self._current_list_item() is not None
+        ):
             self.flush()
 
     def handle_data(self, data):
@@ -332,6 +385,7 @@ class BanktwoConnector:
         evidence_id = f"{article_id}:{digest}"
         parser = ArticleParser(asset_bindings=resource.metadata.get("asset_bindings", []))
         parser.feed(html)
+        parser.close()
         parser.flush()
         asset_refs = []
         for value in (descriptor.get("asset_resource_refs"), envelope.body.get("asset_resource_refs")):
@@ -357,6 +411,11 @@ class BanktwoConnector:
                     block["image_id"] = sha256(ref.encode()).hexdigest()
                     image_blocks.append(block)
                 return
+            if block.get("kind") in _LIST_TAGS.values():
+                for item_index, item in enumerate(block["items"]):
+                    if isinstance(item, dict):
+                        for child_index, child in enumerate(item.get("blocks", [])):
+                            annotate(child, (*index, item_index, child_index))
             if block.get("kind") == "table":
                 for row_index, row in enumerate(block.get("rows") or []):
                     cells = row.get("blocks") if isinstance(row, dict) else row
@@ -476,14 +535,23 @@ def _source_failure_reason(error: BaseException) -> str:
     return "request failed"
 
 
-def _article_text_blocks(blocks: Any):
-    """Yield readable text from top-level and table-cell source blocks."""
+def _article_text_blocks(blocks: Any, *, include_flat_lists=False):
+    """Yield readable text from structured HTML content."""
 
     for block in blocks or []:
         if not isinstance(block, Mapping):
             continue
         if block.get("kind") == "text" and str(block.get("text") or "").strip():
             yield str(block["text"]).strip()
+        elif block.get("kind") in _LIST_TAGS.values():
+            items = block.get("items") or []
+            if include_flat_lists or any(isinstance(item, Mapping) for item in items):
+                for item in items:
+                    text = item.get("text") if isinstance(item, Mapping) else item
+                    if isinstance(text, str) and text:
+                        yield text
+                    if isinstance(item, Mapping):
+                        yield from _article_text_blocks(item.get("blocks"), include_flat_lists=True)
         elif block.get("kind") == "table":
             for row in block.get("rows") or []:
                 cells = row.get("blocks") if isinstance(row, Mapping) else row
