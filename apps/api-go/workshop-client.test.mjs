@@ -1182,7 +1182,7 @@ test('My vehicles activation clears the previous vehicle search and selector opt
   Object.assign(h.context, {
     location, URLSearchParams, validLibrary, element: makeElement,
     history: { pushState(_state, _title, url) { location.search = new URL(url, 'https://workshop.example').search; } },
-    currentOrder: '', libraryItems: [], libraryCursor: null, clearReader() {},
+    currentOrder: '', libraryPageRequest: null, libraryCursor: null, clearReader() {},
     session: { state: { authenticated: true } },
     async requestJSON() { return { version: 'v1', next_cursor: null, items: [{
       configuration_id: routeConfiguration, region: 'US', library_item_id: routeOrder,
@@ -2050,7 +2050,7 @@ function articleIndexHarness(responses, { wait = async () => {}, openDemo = fals
     navigation, quote: null, vehicle: { id: 'B', region: 'US' }, articles: [], indexComplete: false, indexFailed: false, access: '', retryAction: null, filterArticles,
     searchNavigation, searchItems: null, searchQuery: '', searchPending: false, searchComplete: false, searchError: false, searchTimer: null,
     currentArticle: null, renderedRevision: '', sourceURL: '', sourceRevision: 0, displayedSourceRevision: 0,
-    articleImageRefresh: null, sourceImageRefresh: null, libraryItems: [], libraryCursor: null,
+    articleImageRefresh: null, sourceImageRefresh: null, libraryPageRequest: null, libraryCursor: null,
     currentOrder: '', paidOrder: null, unconfirmedOrder: null, viewGeneration: null,
     clearOrderRoute(id) { clearedOrders.push(id); },
     session: { clear() {}, async bootstrap() {} },
@@ -2745,7 +2745,8 @@ function articleMediaHarness(overrides = {}) {
   const ids = ['articles', 'article-content', 'source-review-frame', 'reference-data', 'library-items',
     'article-title', 'catalog-count', 'article-note', 'source-review-meta', 'source-review', 'source-review-title', 'print',
     'welcome', 'reader', 'catalog', 'library', 'source-review-link', 'reader-vehicle', 'reader-engine', 'purchase-selection',
-    'article-kind', 'article-reference', 'source-review-load', 'check-order'];
+    'article-kind', 'article-reference', 'source-review-load', 'check-order',
+    'library-more', 'library-message', 'library-title'];
   for (const id of ids) { const node = new ArticleMediaNode('div'); nodes.set(id, node); body.append(node); }
   const navigation = new NavigationGeneration(), searchNavigation = new NavigationGeneration(), g = navigation.next();
   const shows = [], statuses = [];
@@ -2759,7 +2760,8 @@ function articleMediaHarness(overrides = {}) {
     navigation, searchNavigation, searchItems: null, searchQuery: '', searchPending: false,
     searchComplete: false, searchError: false, searchTimer: null, clearTimeout() {},
     currentArticle: null, renderedRevision: '', sourceURL: '', sourceRevision: 0, displayedSourceRevision: 0,
-    articleImageRefresh: null, sourceImageRefresh: null, articles: [], libraryItems: [], libraryCursor: null,
+    articleImageRefresh: null, sourceImageRefresh: null, articles: [],
+    libraryCursor: null, libraryPageRequest: null,
     currentOrder: '',
     access: 'granted', quote: { configuration_label: '2005 Toyota' }, vehicle: { region: 'US' },
     articlePath: id => `/v1/catalog/vehicles/v/articles/${id}`,
@@ -2779,6 +2781,59 @@ function articleMediaHarness(overrides = {}) {
     content(article) { const parent = new ArticleMediaNode('div'); body.append(parent); context.renderContent(parent, article, g); return parent; },
   };
 }
+
+test('Library Load more makes one cursor request and keeps prior cards mounted', async () => {
+  const page = (items, next_cursor) => ({ version: 'v1', items, next_cursor });
+  const row = (configuration_id, library_item_id, label, access_state = 'viewable') => ({
+    configuration_id, library_item_id, label, access_state, region: 'US',
+    granted_at: access_state === 'revoked' ? null : '2026-11-16T00:00:00Z',
+  });
+  const first = row(routeConfiguration, routeOrder, 'Vehicle on page one');
+  const second = row('22222222-2222-4222-8222-222222222222',
+    '33333333-3333-4333-8333-333333333333', 'Vehicle on page two', 'revoked');
+  const pending = deferredAuthOperation(), calls = [];
+  const h = articleMediaHarness({
+    session: { state: { authenticated: true } }, validLibrary, clearReader() {},
+    requestJSON(path) {
+      calls.push(path);
+      return calls.length === 1 ? Promise.resolve(page([first], 'page/2')) : pending.promise;
+    },
+  });
+  runInNewContext(appSection('async function library(', 'function clearReader('), h.context);
+  const list = h.nodes.get('library-items'), more = h.nodes.get('library-more');
+  await h.context.library(h.g);
+  const originalCard = list.children[0];
+  h.context.document.activeElement = more;
+  const next = h.context.library(h.g, true);
+  const duplicate = h.context.library(h.g, true);
+  const busy = more.getAttribute('aria-disabled');
+  pending.resolve(page([second], null));
+  await Promise.all([next, duplicate]);
+  assert.deepEqual(calls, ['/v1/workshop/library?limit=20', '/v1/workshop/library?limit=20&cursor=page%2F2']);
+  assert.equal(busy, 'true');
+  assert.equal(list.children[0], originalCard);
+  assert.equal(list.children[1].children[0].focusCalls, 1);
+  assert.match(list.children[1].textContent, /Vehicle on page two.*Access revoked/);
+  assert.equal(mediaDescendants(list.children[1], 'button').length, 0);
+  assert.equal(more.hidden, true);
+  assert.equal(more.getAttribute('aria-disabled'), null);
+});
+
+test('clearing protected state also clears an earlier Library message and Load more cursor', () => {
+  const h = articleMediaHarness();
+  const more = h.nodes.get('library-more'), message = h.nodes.get('library-message');
+  more.hidden = false;
+  more.setAttribute('aria-disabled', 'true');
+  message.textContent = 'No vehicles purchased yet.';
+  h.context.libraryCursor = 'old-page';
+  h.context.libraryPageRequest = Promise.resolve();
+  h.context.clearProtected();
+  assert.equal(h.context.libraryCursor, null);
+  assert.equal(h.context.libraryPageRequest, null);
+  assert.equal(more.hidden, true);
+  assert.equal(more.getAttribute('aria-disabled'), null);
+  assert.equal(message.textContent, '');
+});
 
 test('heading and paragraph illustrations keep their order, alt text, and caption', () => {
   const h = articleMediaHarness();

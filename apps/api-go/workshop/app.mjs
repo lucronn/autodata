@@ -66,7 +66,7 @@ let quote = null,
   merchantRequest = null,
   access = "unknown",
   libraryCursor = null,
-  libraryItems = [],
+  libraryPageRequest = null,
   currentOrder = "",
   paidOrder = null,
   unconfirmedOrder = null,
@@ -145,8 +145,11 @@ function clearProtected() {
   $("catalog-count").textContent = "";
   $("reader").hidden = true;
   $("catalog").hidden = true;
-  libraryItems = [];
   libraryCursor = null;
+  libraryPageRequest = null;
+  $("library-more").hidden = true;
+  $("library-more").removeAttribute("aria-disabled");
+  $("library-message").textContent = "";
   access = "unknown";
 }
 function resetSourceReview() {
@@ -1131,29 +1134,45 @@ async function renewMedia(g, failed) {
   if (!retryImage(failed, images)) showUnavailableImage(failed);
 }
 async function library(g, append = false) {
-  clearReader();
+  if (append && (!libraryCursor || libraryPageRequest)) return;
+  if (!append) clearReader();
   if (!session.state.authenticated) {
     show("welcome");
     status("Sign in to open My vehicles.");
     return;
   }
   show("library");
-  status("Opening My vehicles…", { busy: true });
+  status(append ? "Loading more vehicles…" : "Opening My vehicles…", { busy: true });
   const cursor = append ? libraryCursor : null;
-  const data = await requestJSON(
+  const more = $("library-more");
+  const request = requestJSON(
     `/v1/workshop/library?limit=20${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
     { signal: g.signal },
   );
+  libraryPageRequest = request;
+  if (append) more.setAttribute("aria-disabled", "true");
+  let data;
+  try {
+    data = await request;
+  } finally {
+    if (libraryPageRequest === request) {
+      libraryPageRequest = null;
+      if (append) more.removeAttribute("aria-disabled");
+    }
+  }
   if (!g.current()) return;
   if (!validLibrary(data))
     throw new Error("My vehicles is temporarily unavailable.");
-  libraryItems = append ? [...libraryItems, ...data.items] : data.items;
   libraryCursor = data.next_cursor || null;
-  $("library-items").replaceChildren();
-  for (const item of libraryItems) {
+  const list = $("library-items");
+  if (!append) list.replaceChildren();
+  let firstHeading;
+  for (const item of data.items) {
     const li = element("li");
+    const heading = element("h3", `${item.label} / ${item.region}`);
+    firstHeading ??= heading;
     li.append(
-      element("h3", `${item.label} / ${item.region}`),
+      heading,
       element(
         "p",
         {
@@ -1183,13 +1202,25 @@ async function library(g, append = false) {
       });
       li.append(button);
     }
-    $("library-items").append(li);
+    list.append(li);
   }
-  $("library-more").hidden = !libraryCursor;
-  $("library-message").textContent = libraryItems.length
+  const moveFocus = append && document.activeElement === more;
+  more.hidden = !libraryCursor;
+  if (moveFocus) {
+    const target = firstHeading || (more.hidden ? $("library-title") : null);
+    if (target) {
+      target.setAttribute("tabindex", "-1");
+      target.focus();
+    }
+  }
+  $("library-message").textContent = list.children.length
     ? ""
     : "No vehicles purchased yet. Browse to choose a vehicle.";
   status("My vehicles ready.", { complete: true });
+}
+function loadMoreLibrary() {
+  if (!libraryCursor || libraryPageRequest) return;
+  return operation((g) => library(g, true), loadMoreLibrary);
 }
 function clearReader() {
   resetReaderContent();
@@ -1514,9 +1545,7 @@ $("my-vehicles").addEventListener("click", () => {
     () => operation((g) => library(g)),
   );
 });
-$("library-more").addEventListener("click", () =>
-  operation((g) => library(g, true)),
-);
+$("library-more").addEventListener("click", loadMoreLibrary);
 $("purchase-action").addEventListener("click", () => void purchase());
 $("check-order").addEventListener("click", () => {
   if (currentOrder) operation((g) => checkOrder(g, currentOrder));

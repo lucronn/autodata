@@ -53,6 +53,7 @@ button {
   cursor: pointer;
 }
 button:disabled,
+#library-more[aria-disabled="true"],
 select:disabled {
   cursor: not-allowed;
 }
