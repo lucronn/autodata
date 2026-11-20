@@ -50,11 +50,11 @@ The repository is a modular monorepo:
 - `packages/contracts` — versioned API, event, and payment contracts.
 - `db/migrations` — forward-only PostgreSQL and pgvector schema migrations.
 - `infra/compose` and `infra/k8s` — local and Kubernetes-compatible topology.
-- `docs/architecture` — canonical system, lifecycle, contract, and operations
-  documentation.
+- `docs/architecture` — system design reference and compatibility contracts.
 - `docs/github` — repository and Project operating model.
-- `docs/agents/pre-implementation-gate.md` — mandatory, agent-agnostic planning
-  and GitHub/repository synchronization gate for implementation work.
+- [`AGENTS.md`](AGENTS.md) — direct Workshop development and release guidance.
+- [Autonomous run planning](docs/agents/pre-implementation-gate.md) — planning
+  contract for tasks submitted to the opt-in runner or orchestrator.
 
 For a guided introduction, start with the [GitHub Wiki](https://github.com/lucronn/autodata/wiki).
 For the authoritative technical details, use the linked documents under

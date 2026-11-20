@@ -1,5 +1,9 @@
 # AutoData Autonomous Development System
 
+This page describes the opt-in controller used by `scripts/autonomy/`.
+For ordinary Workshop development and release preparation, follow
+[`AGENTS.md`](../../AGENTS.md).
+
 ## Purpose and authority
 
 This system coordinates specialized agents to take a repository task from Issue to verified merge and ephemeral/dev deployment without a person approving intermediate steps. Its safety comes from deterministic checks, independent review agents, immutable evidence, and explicit failure states.
@@ -41,25 +45,16 @@ Issue / Project item / scheduled maintenance
 
 The orchestrator owns state and evidence, not code correctness. Builders own implementation changes in isolated worktrees. Verifiers are read-only against the implementation branch except for test fixtures or reports in their own branches. For controller-managed runs, the release controller is the only agent allowed to merge, and it can do so only when the machine gate expression in [data-integrity-gates.md](data-integrity-gates.md) evaluates to pass. The provider-neutral boundary for invoking these prompts is documented in [runner-interface.md](runner-interface.md).
 
-That release-controller authority applies to controller-managed runs; it is not
-a claim that every Codex-managed Workshop PR has an eight-gate run manifest.
-For a bounded Codex-managed Workshop app or documentation PR, the repository
-[operating model](../github/operating-model.md#single-maintainer-workshop-review)
-accepts a separate read-only AI review at the exact head and the configured
-GitHub checks. The coordinating Codex task can make the routine integration
-decision after verifying those facts and any live branch-protection approvals;
-it must not forge a GitHub review, bypass a failed gate, or call a local review
-an autonomous release-controller decision. A waiting PR does not prevent work
-on the next safe, independently tracked Workshop app task.
+Branch protection and the [repository operating model](../github/operating-model.md#single-maintainer-workshop-review) apply to direct PRs.
 
-Normative documentation has one repository home: `docs/`. The GitHub Project is the synchronized roadmap and navigation index, not a second document store. Agents must link Project items and task contracts to the canonical document path and may not create parallel README, design, or infrastructure-document trees. The runner enforces this rule as a critical path-scope gate; see [autonomy-tooling.md](autonomy-tooling.md) and the [documentation source-of-truth policy](../github/operating-model.md#documentation-source-of-truth).
+In controller-managed runs, link the Project item and task contract to the relevant document under `docs/`. The runner enforces this rule as a critical path-scope gate; see [autonomy-tooling.md](autonomy-tooling.md) and the [documentation source-of-truth policy](../github/operating-model.md#documentation-source-of-truth).
 
 ## Agent roster
 
 | Agent | Primary responsibility | Write scope | Gate role |
 | --- | --- | --- | --- |
 | `autodata-orchestrator` | Decompose tasks, coordinate runs, collect evidence | Run metadata and task state | Controls transitions |
-| `autodata-architect` | Produce contracts, ADRs, acceptance criteria | Design/contract branch | Blocks ambiguous design |
+| `autodata-architect` | Review the supplied task contract | Read only | Blocks an unsuitable contract |
 | `autodata-go-builder` | Implement Go API/auth/projection behavior | Isolated implementation branch | None |
 | `autodata-python-builder` | Implement ingestion/enrichment workers | Isolated implementation branch | None |
 | `autodata-schema-agent` | Validate migrations and relational invariants | Schema branch/reports | Schema gate |
@@ -76,7 +71,8 @@ Normative documentation has one repository home: `docs/`. The GitHub Project is 
 ## Run lifecycle
 
 1. The orchestrator claims an Issue or scheduled task using a unique `run_id`.
-2. The architect emits a task contract with affected bounded contexts, interfaces, acceptance tests, and forbidden scope.
+2. The architect checks the frozen task contract's scope, interfaces,
+   acceptance tests, and compatibility.
 3. The orchestrator creates isolated implementation work and assigns one or more builders.
 4. Builders implement only the task contract and record commands, changed paths, and outputs.
 5. Contract, schema, source/provenance, data-quality, test, security, reliability, and independent-review agents run in parallel when their inputs are available.
