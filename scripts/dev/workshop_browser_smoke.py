@@ -1402,7 +1402,7 @@ async def api_case(browser,origin,name,output,observations=None):
             await expect(figure).to_have_count(1)
             await expect(page.locator('#article-content figure:has(img[alt="Alignment marks"]) figcaption')).to_have_text('Pump alignment marks')
             assert await figure.evaluate("node => node.previousElementSibling.textContent.includes('Inspect the alignment marks')")
-            nested_item = "#article-content ol > li:has(table)"
+            nested_item = '#article-content ol[start="4"] > li[value="9"]:has(table)'
             nested_figure = nested_item + ' table td figure:has(img[alt="Drive alignment"])'
             await expect(page.locator(nested_item + " > p").first).to_have_text("Remove the pump.")
             await expect(page.locator(nested_item + " table caption")).to_have_text("Alignment reference")
@@ -1419,7 +1419,9 @@ async def api_case(browser,origin,name,output,observations=None):
             if observations:observations.phase='source-review-http'
             await page.locator('#article-reference summary').click();await page.locator('#source-review-load').click()
             await expect(page.locator('#source-review-frame')).to_contain_text('Remove the pump.')
-            stored_figure = page.locator('#source-review-frame ol > li table td figure img[alt="Drive alignment"]')
+            stored_figure = page.locator(
+                '#source-review-frame ol[start="4"] > li[value="9"] table td figure img[alt="Drive alignment"]'
+            )
             await expect(stored_figure).to_have_count(1)
             source_path=await page.locator('#source-review-link').get_attribute('href')
             assert parse_qs(urlsplit(source_path).query).get('source_revision_id')
@@ -1442,6 +1444,7 @@ async def api_case(browser,origin,name,output,observations=None):
             warm_before=await api_snapshot(context,origin,'warm-before-snapshot')
             reader_before=(await api_measure(context,origin,'reader-before-measurement'))['image_reads']
             await page.reload();await expect(page.locator('#article-kind')).to_have_text('Workshop article')
+            await expect(page.locator(nested_item + " > p").first).to_have_text("Take off the pump.")
             # The page can render a warm article from the prepare response.
             # Capture the actual read endpoint separately after the GUI reload.
             warm_detail=await api21_get(context,origin+f'/v1/catalog/vehicles/{configuration}/articles/{article_id}',
