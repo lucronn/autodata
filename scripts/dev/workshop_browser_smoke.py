@@ -927,7 +927,9 @@ class APIObservations:
         if phase.startswith('owner-library-'):return safe=='/v1/workshop/library'
         if phase=='checkout-http':return not self.route_owns_checkout and safe=='/v1/workshop/checkout-sessions'
         source='/v1/catalog/vehicles/{configuration}/articles/{article}'
-        if phase=='source-page-http':return safe==source
+        if phase=='source-page-http':
+            # Later reads in this window are the normal article status poll.
+            return safe==source and self.started_counts.get(phase, 0)==0
         if phase=='source-review-http':return safe==source+'/source'
         return False
     def page_request(self,request):
@@ -1431,6 +1433,7 @@ async def api_case(browser,origin,name,output,observations=None):
             await expect(article_content).to_contain_text('This procedure covers pump removal.')
             await expect(page.locator('#article-note')).to_contain_text('has not been reviewed')
             await expect(page.locator('#reader-vehicle')).to_contain_text('2.0 L')
+            await expect(page.locator('#reader-engine')).to_have_text('US')
             await expect(article_content).to_contain_text('Take off the pump.')
             await expect(article_content).to_contain_text('Do not run the pump dry.')
             await expect(article_content).not_to_contain_text('Remove the pump.')

@@ -1649,6 +1649,24 @@ class API21ObservationsTests(unittest.IsolatedAsyncioTestCase):
         buffer.page_response(response);await buffer.drain()
         self.assertEqual([e['phase'] for e in buffer.events],['source-page-http'])
 
+    async def test_source_observation_keeps_initial_read_during_progress_polls(self):
+        article = 'https://local/v1/catalog/vehicles/' + smoke.CONFIG + '/articles/' + smoke.ARTICLE
+        buffer = self.buffer()
+        buffer.phase = 'source-page-http'
+        initial = API21FakeResponse(article, {'content': 'source'})
+        buffer.page_request(initial.request)
+        buffer.page_response(initial)
+        await buffer.drain()
+
+        update = API21FakeResponse(article, {'content': 'source', 'status': 'rewriting'})
+        buffer.page_request(update.request)
+        buffer.page_response(update)
+        await buffer.drain()
+
+        self.assertIsNone(buffer.primary)
+        self.assertEqual([event['phase'] for event in buffer.events], ['source-page-http'])
+        self.assertEqual(buffer.events[0]['payload']['response']['parsed'], {'content': 'source'})
+
     async def test_source_window_without_actual_response_cannot_pass(self):
         buffer=self.buffer();browser=API21FakeBrowser(smoke.API_CASES[1],missing='source-page-http')
         with TemporaryDirectory() as temp,patch.dict(sys.modules,{'playwright.async_api':SimpleNamespace(expect=lambda value:value)}):
