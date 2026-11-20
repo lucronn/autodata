@@ -1478,7 +1478,9 @@ async def api_case(browser,origin,name,output,observations=None):
                     assert not other_transport.unexpected and not other_transport.errors
                 finally:await other.close()
                 assertions['account_and_exact_scope_isolation']=True
-                await page.locator('#signout').click();await expect(page.locator('#article-content')).to_be_empty()
+                await page.locator('#signout').click()
+                await expect(page.locator('#article-content')).to_be_empty()
+                await expect(page.locator('#account-status')).to_have_text('Signed out.')
                 assert (await api21_get(context,image_url,phase='logout-image-denial',actor='logged-out')).status==401
                 await page.evaluate('window.dispatchEvent(new PageTransitionEvent("pageshow",{persisted:true}))');await expect(page.locator('#article-content')).to_be_empty()
                 await api_signin(page);await page.goto(route+'&article='+article_id);await expect(page.locator('#article-kind')).to_have_text('Workshop article')
