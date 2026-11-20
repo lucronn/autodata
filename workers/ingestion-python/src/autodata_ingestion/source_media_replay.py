@@ -23,7 +23,12 @@ from .article_lifecycle_types import (
     digest_json,
     validate_ref,
 )
-from .source_article_capture import capture_source_article, project_document, snapshot_id
+from .source_article_capture import (
+    DISPLAYABLE_RASTER_MEDIA,
+    capture_source_article,
+    project_document,
+    snapshot_id,
+)
 from .source_connector_client import (
     SourceConnectorError,
     SourceEnvelopeV1,
@@ -38,7 +43,6 @@ _MAX_OBJECT_BYTES = 1024 * 1024  # ArticleObjectStore.get_object's retained-obje
 _MAX_TOTAL_BYTES = 8 * _MAX_OBJECT_BYTES
 _MAX_RESOURCES = 32
 _BODY_MEDIA = frozenset({"text/html", "application/json", "application/hal+json", "application/pdf"})
-_RASTER_MEDIA = frozenset({"image/png", "image/jpeg", "image/gif", "image/webp"})
 _MANIFEST_FIELDS = frozenset({"role", "opaque_ref", "sha256", "media_type"})
 _PROVENANCE_FIELDS = _MANIFEST_FIELDS | {
     "provider", "object_key", "source_snapshot_id", "source_revision",
@@ -147,7 +151,7 @@ def _resource_binding(row, context, manifest, provenance):
         if index == 0:
             supported = role == "body" and isinstance(mime, str) and mime in _BODY_MEDIA
         else:
-            supported = role in ("asset", "embedded_asset") and isinstance(mime, str) and mime in _RASTER_MEDIA
+            supported = role in ("asset", "embedded_asset") and isinstance(mime, str) and mime in DISPLAYABLE_RASTER_MEDIA
         if not supported or set(entry) != _MANIFEST_FIELDS:
             raise ValueError("SOURCE_MEDIA_REPLAY_UNSUPPORTED")
         owner_fields = set(owner)
@@ -280,11 +284,19 @@ def _block_inventory(document, body_media):
             ]
         if not isinstance(value, dict):
             return value
-        cleaned = {
-            key: without_media(child) for key, child in value.items()
-            if key not in ("images", "block_id", "source_order")
-        }
-        # A table cell with only text uses the scalar compatibility shape.
+        cleaned = {}
+        for key, child in value.items():
+            if key in ("images", "block_id", "source_order"):
+                continue
+            protected = without_media(child)
+            if (
+                key == "blocks" and isinstance(child, list) and child and not protected
+                and "type" not in value and isinstance(value.get("text"), str)
+            ):
+                # An item may wrap text solely to position a child figure.
+                continue
+            cleaned[key] = protected
+        # List items and table cells with only text use the scalar shape.
         if cleaned.keys() == {"text"}:
             return cleaned["text"]
         return cleaned
@@ -433,7 +445,7 @@ def _read_objects(binding, object_store, remaining):
         remaining()
         if (not isinstance(data, bytes) or not 0 < len(data) <= limit
                 or sha256(data).hexdigest() != resource["sha256"]
-                or (mime in _RASTER_MEDIA and not _raster_matches(mime, data))):
+                or (mime in DISPLAYABLE_RASTER_MEDIA and not _raster_matches(mime, data))):
             raise ValueError("SOURCE_MEDIA_REPLAY_OBJECT_MISMATCH")
         total += len(data)
         verified[key] = (data, mime)

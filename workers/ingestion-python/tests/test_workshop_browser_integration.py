@@ -412,8 +412,8 @@ def _child(root_name,engine,provider,directory,monkeypatch):
                                          "caption": "Pump alignment marks"}]},
                             {"type": "callout", "label": "Warning", "text": "Do not run the pump dry."},
                             {"type": "step", "number": 1, "text": "Remove the pump."},
-                            {"type": "ordered_list", "items": [
-                                {"text": "Remove the pump.", "blocks": [
+                            {"type": "ordered_list", "start": 4, "items": [
+                                {"text": "Remove the pump.", "number": 9, "blocks": [
                                     {"type": "table", "label": "Alignment reference", "rows": [[
                                         {"text": "Reference marks", "images": [{
                                             "asset_resource_ref": "table-figure", "alt": "Drive alignment",

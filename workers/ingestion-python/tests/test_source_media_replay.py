@@ -230,6 +230,74 @@ def test_retained_replay_keeps_verified_media_and_provenance(provider, variant):
     assert objects.writes == writes_before
 
 
+@pytest.mark.parametrize("provider", ["bankone", "banktwo"])
+def test_replay_and_published_repair_move_detached_figure_into_existing_item(provider):
+    from autodata_ingestion.procedure_rewrite_auto import render_auto
+    from autodata_ingestion.procedure_rewrite_full import prose_slots
+    from autodata_ingestion.published_media_repair import repair_published_media
+
+    buffer = BytesIO()
+    Image.new("RGB", (24, 24), "green").save(buffer, format="PNG")
+    raw = (
+        b'<ol><li>Remove the pump.<img data-resource-ref="figure"></li>'
+        b'<li>Install the cover.</li></ol>'
+    )
+    client = _Connector(provider, raw, buffer.getvalue())
+    cursor, objects = _retained_fixture(client, move_image=False)
+    old_document = cursor.row["source_document"]
+    [old_list] = old_document["blocks"]
+    first, second = old_list["items"]
+    [figure] = first["blocks"]
+    old_list["items"] = [first["text"], second]
+    figure.update(block_id=old_list["block_id"].removesuffix("0001") + "0002", source_order=2)
+    old_document["blocks"].append(figure)
+    _, _, cursor.row["source_images"] = project_document(old_document)
+    before = deepcopy((cursor.row, objects.data, objects.writes))
+    prompt_version = "full-prose-auto-prompt-v7"
+    response = {
+        "introduction": "This procedure covers pump and cover service.",
+        "replacements": [
+            {**slot, "action": "rewrite", "reason": "", "text": text}
+            for slot, text in zip(
+                prose_slots(old_document), ["Take the pump off.", "Fit the cover in place."], strict=True,
+            )
+        ],
+    }
+    published = render_auto(old_document, response, prompt_version=prompt_version)
+
+    binding, captured = replay.preview_media_replay(cursor, cursor.row["source_revision_id"], object_store=objects)
+    repaired = repair_published_media(
+        old_document, published, captured.source_document, response=response, prompt_version=prompt_version,
+    )
+
+    first_after, second_after = repaired.document["blocks"][1]["items"]
+    assert first_after["text"] == "Take the pump off."
+    assert second_after == "Fit the cover in place."
+    [placed] = first_after["blocks"]
+    assert placed["content_sha256"] == figure["content_sha256"]
+    assert placed["evidence_ids"] == figure["evidence_ids"]
+    assert repaired.validation.passed
+    assert captured.source_fingerprint == binding.source_fingerprint
+    assert (cursor.row, objects.data, objects.writes) == before
+
+    old_list["items"].reverse()
+    with pytest.raises(ValueError, match="^SOURCE_MEDIA_REPLAY_TEXT_DRIFT$"):
+        replay.preview_media_replay(cursor, cursor.row["source_revision_id"], object_store=objects)
+
+
+@pytest.mark.parametrize("kind,field", [("ordered_list", "items"), ("table", "rows"), ("table", "columns")])
+def test_block_inventory_keeps_empty_protected_containers(kind, field):
+    base = {"blocks": [{"type": kind}]}
+    with_empty = {"blocks": [{"type": kind, field: []}]}
+    assert replay._block_inventory(base, "text/html") != replay._block_inventory(with_empty, "text/html")
+
+
+def test_block_inventory_keeps_intentional_empty_item_blocks():
+    flat = {"blocks": [{"type": "ordered_list", "items": ["Remove the pump."]}]}
+    empty = {"blocks": [{"type": "ordered_list", "items": [{"text": "Remove the pump.", "blocks": []}]}]}
+    assert replay._block_inventory(flat, "text/html") != replay._block_inventory(empty, "text/html")
+
+
 @pytest.mark.parametrize("status", ["expired", "takedown"])
 @pytest.mark.parametrize("snapshot_index", [0, 1, 2, 3])
 def test_withdrawn_snapshot_is_denied_before_object_reads(status, snapshot_index):

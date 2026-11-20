@@ -431,6 +431,151 @@ def test_html_list_keeps_nested_table_figures_and_tail(capture_fixture, provider
     assert capture_fixture.objects.data[captured.resources[0]["object_key"]][0] == raw
 
 
+@pytest.mark.parametrize("provider", ["bankone", "banktwo"])
+@pytest.mark.parametrize("embedded", [False, True])
+@pytest.mark.parametrize("file_format,mime,available", [
+    ("JPEG", "image/jpeg", True),
+    ("GIF", "image/gif", True),
+    ("WEBP", "image/webp", True),
+    ("BMP", "image/bmp", False),
+    ("TIFF", "image/tiff", False),
+])
+def test_capture_raster_availability_matches_paid_media(
+    capture_fixture, provider, embedded, file_format, mime, available,
+):
+    from base64 import b64encode
+    from io import BytesIO
+
+    from PIL import Image
+
+    from autodata_ingestion.article_document import validate_ordered_document
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    stream = BytesIO()
+    Image.new("RGB", (24, 18), "green").save(stream, format=file_format)
+    original = stream.getvalue()
+    if embedded:
+        figure = f'<img src="data:{mime};base64,{b64encode(original).decode()}" alt="Alignment marks">'
+    else:
+        figure = '<img data-resource-ref="figure" alt="Alignment marks">'
+        capture_fixture.body(provider, original, mime, ref="figure", kind="asset")
+    raw = f"<p>Inspect the seal.</p>{figure}<p>Install the replacement.</p>".encode()
+    capture_fixture.body(provider, raw)
+    captured = capture_source_article(
+        capture_fixture.context(provider),
+        registry=capture_fixture.registry,
+        object_store=capture_fixture.objects,
+    )
+
+    assert validate_ordered_document(captured.source_document, strict=True) == []
+    assert [block["type"] for block in captured.source_document["blocks"]] == [
+        "paragraph", "image", "paragraph",
+    ]
+    [image] = captured.source_images
+    assert image["alt"] == "Alignment marks"
+    assert image["status"] == ("available" if available else "unavailable")
+    assert captured.projection_status == ("readable" if available else "partial")
+    _, retained = captured.resources
+    assert retained["sha256"] == sha256(original).hexdigest()
+    assert capture_fixture.objects.data[retained["object_key"]] == (original, mime)
+    assert retained in captured.resource_provenance
+    assert "data:" not in str(captured.source_document)
+    if available:
+        assert retained["role"] == ("embedded_asset" if embedded else "asset")
+        assert image["storage_key"] == retained["object_key"]
+        assert image["content_sha256"] == retained["sha256"]
+        assert image["media_type"] == mime
+    else:
+        assert retained["role"] == "asset_original"
+        assert captured.resource_manifest[1]["role"] == "asset_original"
+        assert image["unavailable_reason"] == "UNSUPPORTED_ASSET_MEDIA"
+        assert "storage_key" not in image
+        assert "content_sha256" not in image
+        assert retained["object_key"] not in str(captured.source_document)
+        if not embedded:
+            assert captured.resource_manifest[-1] == {
+                "role": "asset", "opaque_ref": "figure", "failure_code": "UNSUPPORTED_ASSET_MEDIA",
+            }
+
+
+@pytest.mark.parametrize("provider", ["bankone", "banktwo"])
+@pytest.mark.parametrize("wrap_hal", [False, True])
+def test_capture_preserves_authored_ordinals_through_normalization_and_rewrite(capture_fixture, provider, wrap_hal):
+    import json
+
+    from autodata_ingestion.article_document import project_ordered_document, validate_ordered_document
+    from autodata_ingestion.procedure_normalize import normalize_procedure_article
+    from autodata_ingestion.procedure_rewrite_auto import render_auto, validate_auto
+    from autodata_ingestion.procedure_rewrite_full import prose_slots
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    html = (
+        '<ol start="4"><li>Remove the cover.</li><li value="9">Inspect the seal.</li>'
+        '<li>Install the plate.</li></ol>'
+    )
+    if wrap_hal:
+        body = json.dumps({"_embedded": {"data": {"article": {"content": html}}}}).encode()
+        media_type = "application/hal+json"
+    else:
+        body, media_type = html.encode(), "text/html"
+    capture_fixture.body(provider, body, media_type)
+    captured = capture_source_article(
+        capture_fixture.context(provider), registry=capture_fixture.registry,
+        object_store=capture_fixture.objects,
+    )
+    source = captured.source_document
+    assert validate_ordered_document(source, strict=True) == []
+    ordered, = source["blocks"]
+    assert ordered["start"] == 4
+    assert ordered["items"] == ["Remove the cover.", {"text": "Inspect the seal.", "number": 9}, "Install the plate."]
+    assert [step["number"] for step in captured.source_steps] == [4, 9, 10]
+    normalized = normalize_procedure_article({
+        "normalized_document": source, "body": captured.source_body, "steps": captured.source_steps,
+    })
+    assert normalized["normalized_document"] == source
+    assert [step["number"] for step in normalized["steps"]] == [4, 9, 10]
+
+    rewritten_text = ["Take off the cover.", "Check the seal.", "Fit the plate into place."]
+    response = {
+        "introduction": "This article describes cover service.",
+        "replacements": [
+            {**slot, "action": "rewrite", "reason": "", "text": draft}
+            for slot, draft in zip(prose_slots(source), rewritten_text, strict=True)
+        ],
+    }
+    canonical = render_auto(source, response)
+    assert validate_auto(source, canonical, response=response).passed
+    rewritten_list = canonical["blocks"][1]
+    assert rewritten_list["start"] == 4
+    assert rewritten_list["items"] == [rewritten_text[0], {"text": rewritten_text[1], "number": 9}, rewritten_text[2]]
+    assert [step["number"] for step in project_ordered_document(canonical)["steps"]] == [4, 9, 10]
+
+    for obj, key, number in (
+        (rewritten_list, "start", 5),
+        (rewritten_list["items"][1], "number", 8),
+    ):
+        old = obj[key]
+        obj[key] = number
+        assert not validate_auto(source, canonical, response=response).passed
+        obj[key] = old
+
+
+def test_legacy_flat_html_keeps_original_unnumbered_document_shape(capture_fixture):
+    from autodata_ingestion.article_document import has_ordered_list_numbering
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    capture_fixture.body("bankone", b"<ol><li>Remove the cover.</li><li>Inspect the seal.</li></ol>", "text/html")
+    captured = capture_source_article(
+        capture_fixture.context("bankone"), registry=capture_fixture.registry,
+        object_store=capture_fixture.objects,
+    )
+    ordered, = captured.source_document["blocks"]
+    assert ordered["items"] == ["Remove the cover.", "Inspect the seal."]
+    assert "start" not in ordered
+    assert has_ordered_list_numbering(captured.source_document) is False
+    assert [step["number"] for step in captured.source_steps] == [1, 2]
+
+
 def test_fixture_pdf_uses_real_adapter_and_keeps_original_bytes(capture_fixture):
     from io import BytesIO
     from reportlab.pdfgen import canvas

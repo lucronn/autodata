@@ -465,6 +465,108 @@ def test_intro_component_can_be_grounded_in_protected_source_text():
     assert run(source, payload).error_code is None
 
 
+@pytest.mark.parametrize("source_text,draft", [
+    pytest.param("Remove the inlet cover first, then remove the cable shield.",
+                 "Take the cable shield off before lifting off the inlet cover.",
+                 id="same-action-reversal-explicit-then"),
+    pytest.param("Remove the inlet cover. Then remove the cable shield.",
+                 "Take the cable shield off first. Lift off the inlet cover next.",
+                 id="same-action-reversal-across-sentences"),
+    pytest.param("Disconnect the pump lead and remove the inlet cover.",
+                 "Detach the inlet cover, then take off the pump lead.",
+                 id="verbs-assigned-to-opposite-targets"),
+    pytest.param("Inspect the guide bracket and remove the harness shield.",
+                 "Check the harness shield, then take the guide bracket off.",
+                 id="parallel-distinct-assignments-reversed-with-grammatical-order-unchanged"),
+    pytest.param("Inspect the cover after removing the connector.",
+                 "After taking off the cover, check the connector.",
+                 id="conditional-mixup-retains-both-verb-and-object-words"),
+])
+def test_automatic_rewrite_rejects_proven_within_leaf_clause_mutation(source_text, draft):
+    source = document(source_text)
+    result = run(source, response(draft))
+    assert result.error_code == "REWRITE_CLAUSE_MUTATION"
+    assert result.document == source
+
+
+@pytest.mark.parametrize("source_text,draft", [
+    (
+        "Remove the inlet cover first, then remove the cable shield.",
+        "Lift off the cable shield and take the inlet cover off.",
+    ),
+    (
+        "Inspect the connector shell, then inspect the retaining clip.",
+        "Check the connector shell for damage.",
+    ),
+    (
+        "Inspect the connector and seal, then remove the cable shield.",
+        "Check the shield before taking off the connector and seal.",
+    ),
+])
+def test_within_leaf_guard_abstains_without_two_exact_bound_targets(source_text, draft):
+    from autodata_ingestion import procedure_rewrite_auto as auto
+
+    assert auto._clause_assignment_changed(source_text, draft) is False
+
+
+@pytest.mark.parametrize("source_text,draft", [
+    pytest.param("Remove the inlet cover first, then remove the cable shield.",
+                 "Take the cable shield off after lifting off the inlet cover.",
+                 id="same-action-reversal-with-matching-valid-before-after-paraphrase"),
+    pytest.param("Remove the inlet cover, reinstall the cover temporarily, then remove the inlet cover again.",
+                 "Take off the inlet cover. Fit the cover temporarily, then lift off the inlet cover a second time.",
+                 id="same-action-repeated-identical-object-remains-legitimate"),
+    pytest.param("Inspect the connector. Inspect the connector again.",
+                 "Check the connector, then inspect it a second time.",
+                 id="same-action-repeat-across-simple-sentences"),
+    pytest.param("Disconnect the pump lead and remove the inlet cover.",
+                 "Detach the lead from the pump before taking the cover off the inlet.",
+                 id="distinct-different-verb-objects-paraphrased-by-noun-complement"),
+    pytest.param("Inspect the connector shell and cover for visible wear.",
+                 "Check the cover and connector shell for signs of wear.",
+                 id="unordered-shared-verb-noun-phrase"),
+    pytest.param("Disconnect the pump lead before removing the inlet cover.",
+                 "Once the pump lead is detached, lift off the inlet cover.",
+                 id="different-clauses-rendered-via-conditional-grammar"),
+    pytest.param("Inspect the inlet cover and the cable shield.",
+                 "Check the cable shield and the inlet cover.",
+                 id="coordinated-shared-verb-objects-reordered"),
+    pytest.param("Inspect the cover for rust and confirm the guide is attached.",
+                 "Check the cover for corrosion and inspect the guide for secure attachment.",
+                 id="one-directive-paraphrased-with-duplicate-synonym"),
+    pytest.param("Inspect the cable shield and inspect the inlet cover.",
+                 "Check the inlet cover and check the cable shield.",
+                 id="bare-conjunction-does-not-state-an-order-for-inspection"),
+    pytest.param("Inspect the cable shield; inspect the inlet cover.",
+                 "Check the inlet cover. Also check the cable shield.",
+                 id="semicolon-without-explicit-timing-leaves-prose-order-ambiguous"),
+    pytest.param("Disconnect the pump lead before removing the inlet cover.",
+                 "After detaching the pump lead, lift off the inlet cover.",
+                 id="different-grammar-preserves-explicit-before-after-with-exact-targets"),
+    pytest.param("Remove the inlet cover, then remove the inlet cover.",
+                 "Take off the inlet cover before lifting off the inlet cover.",
+                 id="same-action-on-one-component-intentionally-repeated"),
+    pytest.param("Disconnect the pump lead and remove the inlet cover.",
+                 "Lift off the inlet cover and detach the pump lead.",
+                 id="parallel-distinct-actions-with-the-same-assignment-in-opposite-syntax"),
+])
+def test_within_leaf_guard_keeps_repeat_parallel_and_qualified_controls(source_text, draft):
+    from autodata_ingestion import procedure_rewrite_auto as auto
+
+    assert auto._clause_assignment_changed(source_text, draft) is False
+    source = document(source_text)
+    payload = response(draft)
+    current = run(source, payload)
+    try:
+        auto.render_auto(source, payload, prompt_version="full-prose-auto-prompt-v7")
+    except ValueError as error:
+        # Recognized v7 limitations stay visible. The new check does not
+        # reinterpret installer synonyms or parallel action grammar.
+        assert current.error_code == str(error) == "REWRITE_ACTION_MUTATION"
+    else:
+        assert current.error_code is None
+
+
 def test_technical_only_retention_is_explicit_and_table_stays_exact():
     source = document("25 Nm", "Remove the cover.")
     source["blocks"].append({"block_id":"table", "source_order":3,"type":"table",
@@ -512,12 +614,12 @@ def test_prompt_asks_for_automatic_full_prose_without_human_review_obligations()
     assert prompt["slots"][0]["text"] == "Remove the cover."
 
 
-def test_prompt_v7_declares_complete_response_rows_and_server_required_actions():
+def test_prompt_v8_declares_complete_response_rows_and_server_required_actions():
     source = document("Remove the cover.", "25 Nm", "Never start the motor.",
                       "Fit the cover only after the seal sits flush.")
     before = deepcopy(source)
     prompt = json.loads(rewrite.build_rewrite_prompt(source, context={}, profile_version=PROFILE))
-    assert prompt["prompt_version"] == "full-prose-auto-prompt-v7"
+    assert prompt["prompt_version"] == "full-prose-auto-prompt-v8"
     assert prompt["response_shape"] == {"introduction": "string", "replacements": [
         {"block_id": "string", "path": "string", "action": "rewrite|retain", "text": "string", "reason": "string"}]}
     assert [slot["required_action"] for slot in prompt["slots"]] == ["rewrite", "rewrite_or_retain", "retain", "retain"]
@@ -554,7 +656,7 @@ def test_historical_v4_prompt_digest_and_validation_report_remain_stable():
     assert historical.passed and historical.report["validator_version"] == "full-prose-auto-validator-v2"
     current = validate_auto(source, candidate, response=payload)
     assert current.error_codes == ("REWRITE_ACTION_MUTATION",)
-    assert current.report["validator_version"] == "full-prose-auto-validator-v5"
+    assert current.report["validator_version"] == "full-prose-auto-validator-v6"
 
 
 def test_historical_v5_prompt_digest_and_validation_report_remain_stable():
@@ -575,7 +677,7 @@ def test_historical_v5_prompt_digest_and_validation_report_remain_stable():
     assert historical.passed and historical.report["validator_version"] == "full-prose-auto-validator-v3"
     current = auto.validate_auto(source, candidate, response=payload)
     assert current.error_codes == ("REWRITE_DIRECTION_MUTATION",)
-    assert current.report["validator_version"] == "full-prose-auto-validator-v5"
+    assert current.report["validator_version"] == "full-prose-auto-validator-v6"
 
 
 def test_historical_v6_prompt_digest_and_validation_report_remain_stable():
@@ -595,20 +697,49 @@ def test_historical_v6_prompt_digest_and_validation_report_remain_stable():
     assert historical.passed and historical.report["validator_version"] == "full-prose-auto-validator-v4"
     current = auto.validate_auto(source, candidate, response=payload)
     assert current.error_codes == ("REWRITE_COMPONENT_SWAP",)
-    assert current.report["validator_version"] == "full-prose-auto-validator-v5"
+    assert current.report["validator_version"] == "full-prose-auto-validator-v6"
+
+
+def test_historical_v7_prompt_candidate_and_validation_hashes_remain_stable():
+    from hashlib import sha256
+    from autodata_ingestion import procedure_rewrite_auto as auto
+
+    source = document("Remove the inlet cover first, then remove the cable shield.")
+    payload = response("Take the cable shield off before lifting off the inlet cover.")
+    context = {"vehicle": "routing-only"}
+    prompt = auto._build_auto_prompt_v7(source, context=context)
+    prompt_hash = sha256(prompt.encode()).hexdigest()
+    assert prompt_hash == "d17f83f22c979878e4e5f11dc3f47e33c8c7affb0decc511047e323842432857"
+    version = auto._auto_prompt_version(source, context=context, prompt_hash=prompt_hash)
+    assert version == "full-prose-auto-prompt-v7"
+
+    candidate = auto.render_auto(source, payload, prompt_version=version)
+    validation = auto.validate_auto(source, candidate, response=payload, prompt_version=version)
+    assert validation.passed is True
+    assert validation.report["content_acceptance_required"] is False
+    assert validation.report["complete_rewrite"] is False
+    assert digest_json(candidate) == "8597df2a50095d2a843c0b87b571d590831babc8416bee23977d08d166ceb487"
+    assert digest_json(validation.report) == "96d1fb4a3d6efe7135794fd5ba9fdce64c4efbc2bd481b1dd48b773b16522d66"
+
+    current = auto.validate_auto(source, candidate, response=payload)
+    assert current.passed is False
+    assert current.report["passed"] is False
+    assert current.report["validator_version"] == "full-prose-auto-validator-v6"
+    assert current.error_codes == ("REWRITE_CLAUSE_MUTATION",)
 
 
 def test_auto_prompt_hash_accepts_only_exact_server_reconstructions():
     from hashlib import sha256
     from autodata_ingestion.procedure_rewrite_auto import (
         _auto_prompt_version, _build_auto_prompt_v1, _build_auto_prompt_v2,
-        _build_auto_prompt_v4, _build_auto_prompt_v5, _build_auto_prompt_v6, build_auto_prompt,
+        _build_auto_prompt_v4, _build_auto_prompt_v5, _build_auto_prompt_v6, _build_auto_prompt_v7,
+        build_auto_prompt,
     )
     source = document("Remove the cover.")
     context = {"vehicle": "routing-only"}
     prompts = [builder(source, context=context) for builder in
                (_build_auto_prompt_v1, _build_auto_prompt_v2, _build_auto_prompt_v4, _build_auto_prompt_v5,
-                _build_auto_prompt_v6, build_auto_prompt)]
+                _build_auto_prompt_v6, _build_auto_prompt_v7, build_auto_prompt)]
     for prompt in prompts:
         digest = sha256(prompt.encode()).hexdigest()
         assert _auto_prompt_version(source, context=context, prompt_hash=digest) == json.loads(prompt)["prompt_version"]
@@ -624,7 +755,7 @@ def test_auto_prompt_hash_accepts_only_exact_server_reconstructions():
     assert not _auto_prompt_version(source, context=context, prompt_hash="0" * 64)
 
 
-def test_prompt_v7_response_example_satisfies_strict_renderer():
+def test_prompt_v8_response_example_satisfies_strict_renderer():
     source = document("Remove the cover.", "25 Nm")
     prompt = json.loads(rewrite.build_rewrite_prompt(source, context={}, profile_version=PROFILE))
     payload = {"introduction": "The procedure covers removal of the cover.", "replacements": []}

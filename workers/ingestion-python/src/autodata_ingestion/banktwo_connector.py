@@ -8,6 +8,7 @@ import re
 import os
 from typing import Any, Mapping
 
+from .article_document import list_number
 from .source_connector_client import (
     SourceConnectorClient,
     SourceConnectorError,
@@ -19,10 +20,19 @@ from .source_connector_client import (
 
 _LIST_TAGS = {"ol": "ordered_list", "ul": "unordered_list"}
 _MAX_LIST_DEPTH = 32
+_HTML_LIST_NUMBER = re.compile(r"([+-]?)0*([0-9]{1,10})")
+
+
+def _html_list_number(value):
+    if not isinstance(value, str):
+        return None
+    match = _HTML_LIST_NUMBER.fullmatch(value.strip())
+    return list_number(int(match[1] + match[2])) if match else None
 
 
 @dataclass
 class _ListItem:
+    number: int | None = None
     lead: list[str] = field(default_factory=list)
     blocks: list[dict[str, Any]] = field(default_factory=list)
 
@@ -31,13 +41,14 @@ class _ListItem:
 class _ListFrame:
     tag: str
     start: int
+    authored_start: bool = False
     items: list[str | dict[str, Any]] = field(default_factory=list)
     item: _ListItem | None = None
 
 
 class ArticleParser(HTMLParser):
     """Keep ordered paragraphs, figures and component links without executable HTML."""
-    def __init__(self, *, asset_bindings=()):
+    def __init__(self, *, asset_bindings=(), preserve_legacy_list_starts=True):
         super().__init__(convert_charrefs=True)
         self._asset_bindings = {item["source_url"]: item["resource_ref"] for item in asset_bindings}
         self.blocks = []
@@ -48,6 +59,7 @@ class ArticleParser(HTMLParser):
         self._lists: list[_ListFrame] = []
         self._list_start = 1
         self._list_continuation_pending = False
+        self._preserve_legacy_list_starts = preserve_legacy_list_starts
         self._table_rows = None
         self._table_row = None
         self._table_cell = None
@@ -91,22 +103,40 @@ class ArticleParser(HTMLParser):
             return
         self.flush()
         text = " ".join(item.lead)
-        if item.blocks:
-            frame.items.append({"text": text, "blocks": item.blocks})
+        if item.blocks or item.number is not None:
+            entry = {"text": text}
+            if item.number is not None:
+                entry["number"] = item.number
+            if item.blocks:
+                entry["blocks"] = item.blocks
+            frame.items.append(entry)
         elif text:
             frame.items.append(text)
         frame.item = None
 
     def _emit_list(self, frame, *, top_level):
+        next_number = frame.start
+        has_numbering = frame.authored_start
         if not frame.items:
-            return
+            return next_number, has_numbering
         block = {"kind": _LIST_TAGS[frame.tag], "items": frame.items}
         if frame.tag == "ol":
-            block["start"] = frame.start
+            # The legacy facade still uses inferred starts to flatten HTML.
+            # Bound capture stores only source-authored numbering or its continuation.
+            if self._preserve_legacy_list_starts or frame.authored_start:
+                block["start"] = frame.start
+            for item in frame.items:
+                if isinstance(item, dict) and "number" in item:
+                    next_number = item["number"]
+                    has_numbering = True
+                next_number += 1
+        else:
+            next_number += len(frame.items)
         self._append_block(block)
         if top_level:
-            self._list_start = frame.start + len(frame.items)
+            self._list_start = next_number
             self._list_continuation_pending = True
+        return next_number, has_numbering
 
     def _finish_list(self):
         self._finish_list_item()
@@ -177,13 +207,21 @@ class ArticleParser(HTMLParser):
                 raise ValueError("HTML list nesting exceeds its limit")
             if self._lists and self._lists[-1].item is None:
                 self._lists[-1].item = _ListItem()
-            start = self._list_start if not self._lists and self._list_continuation_pending else 1
-            self._lists.append(_ListFrame(tag, start))
+            # Separate <ol> elements have independent browser counters.
+            # Only the compatibility facade reuses implicit top-level starts.
+            continues = self._preserve_legacy_list_starts and not self._lists and self._list_continuation_pending
+            start = self._list_start if continues else 1
+            explicit = _html_list_number(attrs.get("start")) if tag == "ol" else None
+            if explicit is not None:
+                start = explicit
+            self._lists.append(_ListFrame(tag, start, authored_start=explicit is not None))
             self._list_continuation_pending = False
             return
         if tag == "li" and self._lists and not self._in_table:
             self._finish_list_item()
-            self._lists[-1].item = _ListItem()
+            frame = self._lists[-1]
+            number = _html_list_number(attrs.get("value")) if frame.tag == "ol" else None
+            frame.item = _ListItem(number=number)
             return
         if tag in {"br", "p", "div", "li", "tr", "h1", "h2", "h3"} or (
             tag in {"figure", "figcaption"} and self._current_list_item() is not None
@@ -211,8 +249,7 @@ class ArticleParser(HTMLParser):
             if self._lists and self._lists[-1].item is None:
                 # Emit a figure between sibling <li> tags in the enclosing item.
                 frame = self._lists.pop()
-                self._emit_list(frame, top_level=not self._lists)
-                frame.start += len(frame.items)
+                frame.start, frame.authored_start = self._emit_list(frame, top_level=not self._lists)
                 frame.items = []
                 self._append_block(image)
                 self._lists.append(frame)

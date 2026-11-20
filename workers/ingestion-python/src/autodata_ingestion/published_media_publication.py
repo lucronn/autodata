@@ -1,6 +1,7 @@
 """Preview and atomically publish an approved retained-figure correction."""
 
 from dataclasses import dataclass
+from hashlib import sha256
 import json
 from uuid import UUID, uuid4
 
@@ -9,6 +10,7 @@ from psycopg.types.json import Jsonb
 
 from .article_content_review import (
     _fixture_allowed,
+    _source_evidence,
     _substantive,
     authorize_reviewer,
     correction_authors,
@@ -20,6 +22,7 @@ from .article_document import project_ordered_document
 from .article_lifecycle_store import _latest_content_review, _persist_article_capture, automatic_candidate_validation
 from .article_lifecycle_types import digest_json, transformation_key
 from .procedure_normalize import normalize_procedure_article
+from .procedure_rewrite import build_rewrite_prompt, validate_article_rewrite
 from .procedure_rewrite_auto import (
     PROFILE as AUTO_PROFILE,
     SOURCE_PRESERVING_METHOD,
@@ -27,7 +30,7 @@ from .procedure_rewrite_auto import (
     build_source_preserving_candidate,
 )
 from .procedure_rewrite_full import PROFILE as REVIEW_PROFILE, validate_full
-from .published_media_repair import PublishedMediaRepair, repair_published_media
+from .published_media_repair import TECHNICAL_V1, TECHNICAL_V2, PublishedMediaRepair, repair_published_media
 from .source_media_replay import (
     load_media_replay_binding,
     media_replay_document_hash,
@@ -62,6 +65,29 @@ def _normalize(captured, canonical_article_id):
     })["normalized_document"]
 
 
+def _saved_attempt(cur, revision_id, job_id):
+    return cur.execute("""
+        SELECT * FROM canonical_article_rewrite_attempts
+        WHERE canonical_article_revision_id=%s AND source_fetch_job_id=%s AND status='succeeded'
+        """, (revision_id, job_id)).fetchone()
+
+
+def _validate_technical_evidence(cur, job, row, attempt):
+    profile = row["rewrite_profile_version"]
+    source = row["normalized_source_document"]
+    context = _source_evidence(cur, job, row)
+    prompt_hash = sha256(build_rewrite_prompt(source, context=context, profile_version=profile).encode()).hexdigest()
+    if (attempt is None or not isinstance(attempt["response"], dict)
+        or attempt["profile_version"] != profile or job["rewrite_profile_version"] != profile
+        or attempt["input_hash"] != row["normalized_source_hash"]
+        or attempt["response_hash"] != digest_json(attempt["response"])
+        or attempt["prompt_hash"] != prompt_hash or row["model_metadata"].get("prompt_hash") != prompt_hash
+        or attempt["model"] != row["model_metadata"].get("model")
+        or profile != row["model_metadata"].get("profile_version")):
+        raise ValueError("PUBLISHED_MEDIA_REPAIR_ATTEMPT_REQUIRED")
+    return validate_article_rewrite(source, row["canonical_document"], profile_version=profile)
+
+
 def _publication_evidence(cur, article, binding, *, fixture_mode, lock):
     article_id = article["canonical_article_id"]
     revision_id = article["current_canonical_revision_id"]
@@ -73,7 +99,7 @@ def _publication_evidence(cur, article, binding, *, fixture_mode, lock):
         raise ValueError("PUBLISHED_MEDIA_REPAIR_CURRENT_REVISION_REQUIRED")
 
     profile = row["rewrite_profile_version"]
-    if (profile not in (AUTO_PROFILE, REVIEW_PROFILE)
+    if (profile not in (AUTO_PROFILE, REVIEW_PROFILE, TECHNICAL_V1, TECHNICAL_V2)
         or profile != article["target_rewrite_profile_version"]
         or row["normalization_version"] != article["target_normalization_version"]):
         raise ValueError("PUBLISHED_MEDIA_REPAIR_PROFILE_UNSUPPORTED")
@@ -111,12 +137,9 @@ def _publication_evidence(cur, article, binding, *, fixture_mode, lock):
             authors.add(correction["actor"])
         if set(reason["retention_reviews"]) != set(validation.report.get("retained_paths", [])):
             raise ValueError("PUBLISHED_MEDIA_REPAIR_REVIEW_REQUIRED")
-    else:
+    elif profile == AUTO_PROFILE:
         validation = automatic_candidate_validation(cur, job, row)
-        attempt = cur.execute("""
-            SELECT * FROM canonical_article_rewrite_attempts
-            WHERE canonical_article_revision_id=%s AND source_fetch_job_id=%s AND status='succeeded'
-            """, (revision_id, job["source_fetch_job_id"])).fetchone()
+        attempt = _saved_attempt(cur, revision_id, job["source_fetch_job_id"])
         if row["model_metadata"].get("transformation_method") == SOURCE_PRESERVING_METHOD:
             # Automatic validation above has independently rebuilt the exact
             # source-heading introduction and proved there was no model attempt.
@@ -130,6 +153,10 @@ def _publication_evidence(cur, article, binding, *, fixture_mode, lock):
             )
         else:
             raise ValueError("PUBLISHED_MEDIA_REPAIR_ATTEMPT_REQUIRED")
+    else:
+        attempt = _saved_attempt(cur, revision_id, job["source_fetch_job_id"])
+        validation = _validate_technical_evidence(cur, job, row, attempt)
+        response = attempt["response"]
     if (not validation.passed or validation.report != row["validation_report"]
         or digest_json(validation.report) != row["validation_hash"]):
         raise ValueError("PUBLISHED_MEDIA_REPAIR_VALIDATION_MISMATCH")

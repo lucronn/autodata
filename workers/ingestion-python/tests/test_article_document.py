@@ -330,6 +330,62 @@ def test_image_block_preserves_asset_resource_ref_and_attributes():
     assert block["image_id"] == "fig-res-1"
 
 
+def test_list_numbering_is_exact_signed_integer_metadata():
+    from autodata_ingestion.article_document import has_ordered_list_numbering, project_ordered_document
+    from autodata_ingestion.source_article_capture import project_document
+
+    raw = [
+        {"kind": "ordered_list", "start": 4, "items": [
+            {"text": "Open the cover.", "blocks": [{"kind": "ordered_list", "start": -2, "items": [
+                "Inspect the gasket.", {"text": "Check the seal.", "number": 0}, "Wipe the flange.",
+            ]}]},
+            {"text": "Fit the replacement.", "number": 9}, "Close the cover.",
+        ]},
+        {"kind": "unordered_list", "start": 7, "items": [{"text": "Check the harness.", "number": 8}]},
+    ]
+    document = build_ordered_document({"evidence_ids": ["fixture-evidence"]}, raw)
+    assert validate_ordered_document(document, strict=True) == []
+    assert has_ordered_list_numbering(document)
+    outer, unordered = document["blocks"]
+    assert outer["start"] == 4
+    assert outer["items"][0]["blocks"][0]["start"] == -2
+    assert unordered["items"] == ["Check the harness."]
+    assert "start" not in unordered
+    assert [step["number"] for step in project_document(document)[1]] == [4, -2, 0, 1, 9, 10]
+    assert [step.get("number") for step in project_ordered_document(document)["steps"]] == [4, -2, 0, 1, 9, 10, None]
+    assert has_ordered_list_numbering({"blocks": [unordered]}) is False
+
+
+def test_empty_authored_number_override_still_advances_sibling_counter():
+    from autodata_ingestion.article_document import project_ordered_document
+    from autodata_ingestion.source_article_capture import project_document
+
+    document = build_ordered_document({"evidence_ids": ["fixture-evidence"]}, [
+        {"kind": "ordered_list", "start": 4, "items": [
+            "Open the cover.", {"text": "", "number": 9}, "Close the cover.",
+        ]},
+    ])
+    assert validate_ordered_document(document, strict=True) == []
+    assert document["blocks"][0]["items"][1] == {"text": "", "number": 9}
+    assert [step["number"] for step in project_document(document)[1]] == [4, 10]
+    assert [step["number"] for step in project_ordered_document(document)["steps"]] == [4, 10]
+
+
+def test_invalid_persisted_list_numbering_fails_strict_validation():
+    document = build_ordered_document({"evidence_ids": ["fixture-evidence"]}, [
+        {"kind": "ordered_list", "start": 0, "items": [{"text": "Inspect the cover.", "number": -2147483648}]},
+    ])
+    assert validate_ordered_document(document, strict=True) == []
+    block = document["blocks"][0]
+    item = block["items"][0]
+    for bad_value in (True, None, "2", 2.0, 2147483648, -2147483649):
+        block["start"] = bad_value
+        item["number"] = bad_value
+        errors = validate_ordered_document(document, strict=True)
+        assert "invalid list start" in errors
+        assert "invalid list item number" in errors
+
+
 def test_list_block_extracts_clean_text_from_dictionary_items():
     from autodata_ingestion.article_document import has_structured_list_items
 

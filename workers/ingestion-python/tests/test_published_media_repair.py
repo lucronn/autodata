@@ -4,8 +4,10 @@ import pytest
 
 from autodata_ingestion.article_document import build_ordered_document
 from autodata_ingestion.article_lifecycle_types import digest_json
+from autodata_ingestion.procedure_rewrite import editable_slots, rewrite_ordered_document
 from autodata_ingestion.procedure_rewrite_auto import render_auto
 from autodata_ingestion.procedure_rewrite_full import prose_slots, render_full
+from autodata_ingestion.procedure_rewrite_v2 import plan_v2, render_v2
 from autodata_ingestion.published_media_repair import repair_published_media
 
 _CURRENT_PROMPT = "full-prose-auto-prompt-v6"
@@ -163,10 +165,123 @@ def test_reviewed_repair_rejects_original_response_after_correction():
         repair_published_media(old, published, repaired, response=original, profile="full-prose-review-v1")
 
 
+def _technical_sources():
+    remove = {"kind": "step", "number": 1, "text": "Remove the pump."}
+    warning = {"kind": "warning", "text": "Do not reuse the seal."}
+    specification = {"kind": "step", "number": 2, "text": "Tighten the bolts to 40 Nm."}
+    install = {"kind": "step", "number": 3, "text": "Install the cover."}
+    image = _image()
+    return (
+        _document([remove, warning, specification, install, image]),
+        _document([remove, warning, image, specification, install]),
+    )
+
+
+def _v1_reply(document):
+    saved = {"Remove the pump.": "Take off the pump.", "Install the cover.": "Fit the cover."}
+    return {
+        "replacements": [{**slot, "text": saved[slot["text"]]} for slot in editable_slots(document)],
+    }
+
+
+def _v2_reply(document):
+    return {"operations": [
+        {key: operation[key] for key in ("block_id", "path", "operation_id")}
+        for operation in plan_v2(document)["operations"]
+    ]}
+
+
+def test_technical_v1_keeps_original_saved_prose_under_exact_remapped_paths():
+    old, repaired = _technical_sources()
+    saved = _v1_reply(old)
+
+    class SavedResponse:
+        def complete_json(self, _prompt):
+            return saved
+
+    original = rewrite_ordered_document(
+        old, client=SavedResponse(), context={}, profile_version="technical-prose-v1",
+    )
+    assert original.error_code is None
+    result = repair_published_media(
+        old, original.document, repaired, response=saved, profile="technical-prose-v1",
+    )
+
+    assert result.remapped_response == _v1_reply(repaired)
+    assert set(result.remapped_response) == {"replacements"}
+    assert all(set(row) == {"block_id", "path", "text"} for row in result.remapped_response["replacements"])
+    assert [row["path"] for row in result.remapped_response["replacements"]] == ["/blocks/0/text", "/blocks/4/text"]
+    first, warning, figure, specification, last = result.document["blocks"]
+    assert (first["text"], warning["text"], specification["text"], last["text"]) == (
+        "Take off the pump.", "Do not reuse the seal.", "Tighten the bolts to 40 Nm.", "Fit the cover.",
+    )
+    assert figure == repaired["blocks"][2]
+    assert result.validation.report["validator_version"] == "technical-prose-validator-v1"
+    assert result.provenance["model_calls"] == 0
+
+
+def test_technical_v1_rejects_valid_but_different_words_from_the_bound_reply():
+    old, repaired = _technical_sources()
+    saved = _v1_reply(old)
+
+    class SavedResponse:
+        def complete_json(self, _prompt):
+            return saved
+
+    original = rewrite_ordered_document(old, client=SavedResponse(), context={})
+    assert original.error_code is None
+    different = deepcopy(saved)
+    different["replacements"][0]["text"] = "Lift off the pump."
+    with pytest.raises(ValueError, match="^PUBLISHED_MEDIA_REPAIR_PUBLISHED_BINDING_MISMATCH$"):
+        repair_published_media(
+            old, original.document, repaired, response=different, profile="technical-prose-v1",
+        )
+
+
+def test_technical_v2_rebinds_all_operation_ids_and_preserves_exact_rendered_text():
+    old, repaired = _technical_sources()
+    saved = _v2_reply(old)
+    original = render_v2(old, saved)
+    result = repair_published_media(
+        old, original, repaired, response=saved, profile="technical-prose-v2",
+    )
+
+    assert result.remapped_response == _v2_reply(repaired)
+    assert all(
+        previous["operation_id"] != following["operation_id"]
+        for previous, following in zip(saved["operations"], result.remapped_response["operations"], strict=True)
+    )
+    assert all(set(row) == {"block_id", "path", "operation_id"} for row in result.remapped_response["operations"])
+    assert [block["text"] for block in result.document["blocks"] if "text" in block] == [
+        "The pump is to be removed.", "Do not reuse the seal.",
+        "The bolts are to be tightened to 40 Nm.", "The cover is to be installed.",
+    ]
+    assert result.document["blocks"][2] == repaired["blocks"][2]
+    assert result.validation.report["validator_version"] == "technical-prose-validator-v2"
+    assert result.provenance["model_calls"] == 0
+
+
+@pytest.mark.parametrize("mutation", ["incomplete", "reordered", "prose", "new_source"])
+def test_technical_v2_rejects_an_unbound_or_ambiguous_selector(mutation):
+    old, repaired = _technical_sources()
+    saved = _v2_reply(old)
+    published = render_v2(old, saved)
+    if mutation == "incomplete":
+        saved["operations"].pop()
+    elif mutation == "reordered":
+        saved["operations"].reverse()
+    elif mutation == "prose":
+        saved["operations"][0]["text"] = "Remove the pump."
+    else:
+        saved = _v2_reply(repaired)
+    with pytest.raises(ValueError, match="^PUBLISHED_MEDIA_REPAIR_PUBLISHED_BINDING_MISMATCH$"):
+        repair_published_media(old, published, repaired, response=saved, profile="technical-prose-v2")
+
+
 def test_other_rewrite_profiles_are_outside_the_repair_contract():
     old, published, repaired, response = _fixture()
     with pytest.raises(ValueError, match="^PUBLISHED_MEDIA_REPAIR_PROFILE_UNSUPPORTED$"):
-        repair_published_media(old, published, repaired, response=response, profile="technical-prose-v2")
+        repair_published_media(old, published, repaired, response=response, profile="technical-prose-v3")
 
 
 @pytest.mark.parametrize("mutation", ["text", "warning", "torque", "evidence", "order", "inserted"])
@@ -254,3 +369,18 @@ def test_repair_rejects_unrecognized_original_prompt_version(prompt_version):
     old, published, repaired, response = _fixture()
     with pytest.raises(ValueError, match="^PUBLISHED_MEDIA_REPAIR_PROMPT_UNSUPPORTED$"):
         repair_published_media(old, published, repaired, response=response, prompt_version=prompt_version)
+
+
+def test_available_figure_accepts_a_missing_historical_null_reason():
+    old, _, repaired, response = _fixture()
+    old["blocks"][-1].pop("unavailable_reason", None)
+    repaired["blocks"][1]["unavailable_reason"] = None
+    prompt = "full-prose-auto-prompt-v8"
+    published = render_auto(old, response, prompt_version=prompt)
+    result = repair_published_media(old, published, repaired, response=response, prompt_version=prompt)
+    assert result.validation.passed
+    assert result.document["blocks"][2]["unavailable_reason"] is None
+
+    repaired["blocks"][1]["unavailable_reason"] = "a changed reason"
+    with pytest.raises(ValueError, match="MEDIA_DRIFT"):
+        repair_published_media(old, published, repaired, response=response, prompt_version=prompt)

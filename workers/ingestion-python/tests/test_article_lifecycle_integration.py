@@ -840,17 +840,18 @@ def test_automatic_real_runtime_source_first_publication_and_zero_call_restart(r
 
 
 @pytest.mark.parametrize("point", ["after_model_result_commit", "inside_publication"])
-@pytest.mark.parametrize("prompt_version", ["v1", "v2", "v4", "v5", "v6", "v7"])
+@pytest.mark.parametrize("prompt_version", ["v1", "v2", "v4", "v5", "v6", "v7", "v8"])
 def test_automatic_real_process_death_reuses_saved_response(runtime, point, prompt_version):
     ensure = automatic_runtime(runtime,"bankone")
     ensure();runtime.pause(point);runtime.start_workers(1);runtime.await_barrier()
     job = runtime.current_job_id();runtime.kill_worker();runtime.expire_lease(job)
-    if prompt_version != "v7":
+    if prompt_version != "v8":
         from hashlib import sha256
         from psycopg.types.json import Jsonb
         from autodata_ingestion.article_lifecycle_types import digest_json
         from autodata_ingestion.procedure_rewrite_auto import (
-            _build_auto_prompt_v1, _build_auto_prompt_v2, _build_auto_prompt_v4, _build_auto_prompt_v5, _build_auto_prompt_v6, validate_auto,
+            _build_auto_prompt_v1, _build_auto_prompt_v2, _build_auto_prompt_v4,
+            _build_auto_prompt_v5, _build_auto_prompt_v6, _build_auto_prompt_v7, validate_auto,
         )
         build_prompt = {
             "v1": _build_auto_prompt_v1,
@@ -858,6 +859,7 @@ def test_automatic_real_process_death_reuses_saved_response(runtime, point, prom
             "v4": _build_auto_prompt_v4,
             "v5": _build_auto_prompt_v5,
             "v6": _build_auto_prompt_v6,
+            "v7": _build_auto_prompt_v7,
         }[prompt_version]
         with runtime.repo.connect() as conn:
             candidate = conn.execute("SELECT r.* FROM canonical_article_revisions r JOIN source_fetch_jobs j USING(transformation_key) WHERE j.source_fetch_job_id=%s", (job,)).fetchone()

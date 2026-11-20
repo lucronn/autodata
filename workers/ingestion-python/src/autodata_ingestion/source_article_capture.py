@@ -15,8 +15,12 @@ from .article_lifecycle_types import (
 )
 from .source_adapters import adapt_bound_article
 from .source_connector_client import SourceConnectorError
-from .article_document import build_ordered_document
+from .article_document import build_ordered_document, walk_ordered_list_items
 from .svg_rasterization import rasterize_svg, SVGUnavailable, RASTERIZER_VERSION
+
+
+# Keep in sync with the raster types accepted by the catalog image endpoint.
+DISPLAYABLE_RASTER_MEDIA = frozenset({"image/png", "image/jpeg", "image/gif", "image/webp"})
 
 
 def snapshot_id(digest):
@@ -130,11 +134,11 @@ def project_document(document):
                 )
             ordered_list = node.get("type") == "ordered_list"
             if ordered_list:
-                for item in node.get("items", []):
+                for item, ordinal in walk_ordered_list_items(node):
                     text = item.get("text") if isinstance(item, dict) else item
                     if isinstance(text, str) and text.strip():
                         steps.append({
-                            "number": len(steps) + 1, "text": text,
+                            "number": len(steps) + 1 if ordinal is None else ordinal, "text": text,
                             "evidence_ids": node.get("evidence_ids", []),
                         })
                     visit(item, strings=True)
@@ -286,7 +290,9 @@ def capture_source_article(context, *, registry, object_store, deadline_seconds=
                     "derived_from_sha256": original["sha256"],
                     "derivation_version": RASTERIZER_VERSION,
                 }
-            if role == "asset" and not resource["media_type"].startswith("image/"):
+            if role == "asset" and resource["media_type"] not in DISPLAYABLE_RASTER_MEDIA:
+                if resource["media_type"].startswith("image/"):
+                    originals.append({**resource, "role": "asset_original"})
                 return ref, role, None, "UNSUPPORTED_ASSET_MEDIA", originals
             return ref, role, resource, None, originals
         except SVGUnavailable as error:
@@ -339,7 +345,7 @@ def capture_source_article(context, *, registry, object_store, deadline_seconds=
         ):
             try:
                 header, encoded = uri.split(",", 1)
-                media = header[5:].split(";", 1)[0]
+                media = header[5:].split(";", 1)[0].strip().lower()
                 if ";base64" not in header or media == "image/svg+xml":
                     raise ValueError("unsupported embedded figure")
                 payload = base64.b64decode(encoded, validate=True)
@@ -347,10 +353,11 @@ def capture_source_article(context, *, registry, object_store, deadline_seconds=
                 key = "sources/" + digest[:16] + "/" + digest
                 bounded_objects.put_object(key, payload, media)
                 ref = "embedded:" + resources[0]["sha256"] + ":" + digest
+                displayable = media in DISPLAYABLE_RASTER_MEDIA
                 local = {
                     "provider": provider,
                     "opaque_ref": ref,
-                    "role": "embedded_asset",
+                    "role": "embedded_asset" if displayable else "asset_original",
                     "media_type": media,
                     "sha256": digest,
                     "object_key": key,
@@ -360,7 +367,10 @@ def capture_source_article(context, *, registry, object_store, deadline_seconds=
                     "fetched_at": body.fetched_at,
                     "locator": resources[0]["locator"],
                 }
-                localized[ref] = local
+                if displayable:
+                    localized[ref] = local
+                else:
+                    node["reason"] = "UNSUPPORTED_ASSET_MEDIA"
                 resources.append(local)
                 provenance.append(deepcopy(local))
                 manifest.append(

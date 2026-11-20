@@ -2832,6 +2832,36 @@ for (const type of ['ordered_list', 'unordered_list', 'callout']) {
   }
 }
 
+test('ordered article lists retain authored starts and item numbers as native attributes', () => {
+  const h = articleMediaHarness();
+  const parent = h.content(mediaArticle([
+    { type: 'ordered_list', start: 0, items: [
+      'Remove',
+      { text: 'Inspect', number: -3, blocks: [
+        { type: 'ordered_list', start: -2147483648, items: [{ text: 'Nested', number: 2147483647 }] },
+      ] },
+      'Fit',
+      { text: 'Zero', number: 0 },
+      { text: 'Fraction', number: 1.5 },
+      { text: 'Out of range', number: 2147483648 },
+      { text: 'String ordinal', number: '9' },
+    ] },
+    { type: 'ordered_list', items: ['Legacy sequence'] },
+    { type: 'unordered_list', start: 6, items: [{ text: 'Bullet', number: 8 }] },
+    { type: 'ordered_list', start: 2147483648, items: ['Invalid start'] },
+  ]));
+  assert.deepEqual(mediaTags(parent), ['ol', 'ol', 'ul', 'ol']);
+  const [ordered, legacy, bullet, invalid] = parent.children;
+  assert.equal(ordered.getAttribute('start'), '0');
+  assert.deepEqual(ordered.children.map(item => item.getAttribute('value')), [null, '-3', null, '0', null, null, null]);
+  const [nested] = mediaDescendants(ordered, 'ol');
+  assert.equal(nested.getAttribute('start'), '-2147483648');
+  assert.equal(nested.children[0].getAttribute('value'), '2147483647');
+  assert.deepEqual([legacy, bullet, invalid].map(list => list.getAttribute('start')), [null, null, null]);
+  assert.deepEqual([legacy, bullet, invalid].map(list => list.children[0].getAttribute('value')), [null, null, null]);
+  assert.equal(legacy.textContent, 'Legacy sequence');
+});
+
 test('article block media object list item retains its own image alongside block sibling', () => {
   const h = articleMediaHarness(), parent = h.content(mediaArticle([
     { type: 'ordered_list', items: [{ text: 'Check', images: [{ asset_id: 'item' }] }], images: [{ asset_id: 'block' }] },

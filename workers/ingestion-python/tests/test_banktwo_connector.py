@@ -127,6 +127,48 @@ class ConnectorTests(unittest.TestCase):
         self.assertEqual(tail, {"kind": "text", "text": "Clean flange."})
         self.assertEqual(second, "Install cover.")
 
+    def test_authored_nested_numbers_and_figure_continuation_are_independent(self):
+        parser = ArticleParser()
+        parser.feed(
+            '<ol start="000000000004"><li>Open cover.<ol start="-3"><li>Inspect seal.</li>'
+            '<li value="+0">Inspect seat.</li><img data-resource-ref="guide">'
+            '<li>Clean flange.</li></ol></li><li value="9">Check cable.</li>'
+            '<li>Install cover.</li></ol>'
+        )
+        parser.close()
+        outer, = parser.blocks
+        first, override, last = outer["items"]
+        self.assertEqual(outer["start"], 4)
+        self.assertEqual(override, {"text": "Check cable.", "number": 9})
+        self.assertEqual(last, "Install cover.")
+        before, guide, after = first["blocks"]
+        self.assertEqual(before["start"], -3)
+        self.assertEqual(before["items"], ["Inspect seal.", {"text": "Inspect seat.", "number": 0}])
+        self.assertEqual(guide["asset_resource_ref"], "guide")
+        self.assertEqual(after["start"], 1)
+        self.assertEqual(after["items"], ["Clean flange."])
+
+    def test_bound_html_keeps_fresh_ordered_lists_independent_after_numbered_lists(self):
+        parser = ArticleParser(preserve_legacy_list_starts=False)
+        parser.feed('<ol start="4"><li>Open cover.</li></ol><ol><li>Inspect seal.</li></ol>')
+        parser.close()
+        first, second = parser.blocks
+        self.assertEqual(first["start"], 4)
+        self.assertEqual(second, {"kind": "ordered_list", "items": ["Inspect seal."]})
+
+    def test_invalid_html_numbering_is_ignored_and_unordered_values_are_ignored(self):
+        parser = ArticleParser()
+        parser.feed(
+            '<ol start="2147483648"><li value="-2147483649">Open cover.</li>'
+            '<li value="2.5">Check cable.</li><li value="xyz">Install cover.</li></ol>'
+            '<p>Other procedure.</p><ul start="8"><li value="4">Note the seal.</li></ul>'
+        )
+        parser.close()
+        ordered, _, unordered = parser.blocks
+        self.assertEqual(ordered, {"kind": "ordered_list", "start": 1,
+                                  "items": ["Open cover.", "Check cable.", "Install cover."]})
+        self.assertEqual(unordered, {"kind": "unordered_list", "items": ["Note the seal."]})
+
     def test_legacy_facade_projects_structured_list_text_and_localizes_nested_image(self):
         html = (
             '<ol><li>Remove pump.<img src="/bound" alt="Alignment marks">'

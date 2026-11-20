@@ -16,6 +16,8 @@ from typing import Any, Mapping
 
 SCHEMA_VERSION = 1
 NORMALIZATION_VERSION = "ordered-article-v1"
+_MIN_LIST_NUMBER = -(2**31)
+_MAX_LIST_NUMBER = 2**31 - 1
 DOCUMENT_TYPES = frozenset(
     {
         "heading",
@@ -355,13 +357,60 @@ def _number_blocks(blocks, parent_id):
                     _number_blocks(item["blocks"], f"{block_id}:item:{item_number:04d}")
 
 
-def has_structured_list_items(document: Mapping[str, Any]) -> bool:
-    """Identify ordered documents that retain list item media or children."""
+def list_number(value: Any) -> int | None:
+    """Return an exact signed 32-bit list ordinal, excluding Boolean values."""
+    return value if type(value) is int and _MIN_LIST_NUMBER <= value <= _MAX_LIST_NUMBER else None
+
+
+def _has_list_numbering(block: Mapping[str, Any]) -> bool:
+    if block.get("type") != "ordered_list":
+        return False
+    if list_number(block.get("start")) is not None:
+        return True
+    items = block.get("items")
+    return isinstance(items, list) and any(
+        isinstance(item, Mapping) and list_number(item.get("number")) is not None for item in items
+    )
+
+
+def walk_ordered_list_items(block: Mapping[str, Any]):
+    """Yield each item and its ordinal for a list with explicit numbering."""
+    items = block.get("items", [])
+    if not _has_list_numbering(block):
+        for item in items:
+            yield item, None
+        return
+    start = list_number(block.get("start"))
+    ordinal = 1 if start is None else start
+    for item in items:
+        override = list_number(item.get("number")) if isinstance(item, Mapping) else None
+        if override is not None:
+            ordinal = override
+        yield item, ordinal
+        ordinal += 1
+
+
+def has_ordered_list_numbering(document: Mapping[str, Any]) -> bool:
+    """Detect persisted list ordinals, including lists nested inside items."""
     def visit(value):
         if isinstance(value, Mapping):
-            if value.get("type") in ("ordered_list", "unordered_list") and any(
-                isinstance(item, Mapping) and (item.get("images") or item.get("blocks"))
-                for item in value.get("items", [])
+            return _has_list_numbering(value) or any(visit(child) for child in value.values())
+        if isinstance(value, list):
+            return any(visit(child) for child in value)
+        return False
+
+    return visit(document.get("blocks", []))
+
+
+def has_structured_list_items(document: Mapping[str, Any]) -> bool:
+    """Identify ordered documents that retain list item structure or numbering."""
+    def visit(value):
+        if isinstance(value, Mapping):
+            if value.get("type") in ("ordered_list", "unordered_list") and (
+                _has_list_numbering(value) or any(
+                    isinstance(item, Mapping) and (item.get("images") or item.get("blocks"))
+                    for item in value.get("items", [])
+                )
             ):
                 return True
             return any(visit(child) for child in value.values())
@@ -526,6 +575,8 @@ def _validate_recursive_blocks(blocks, seen=None):
                             if not isinstance(cell["blocks"], list): errors.append("invalid cell blocks")
                             else: errors.extend(_validate_recursive_blocks(cell["blocks"], seen))
         if kind in {"ordered_list", "unordered_list"}:
+            if "start" in block and (kind != "ordered_list" or list_number(block["start"]) is None):
+                errors.append("invalid list start")
             items = block.get("items")
             if not isinstance(items, list) or not items: errors.append("empty list")
             else:
@@ -536,7 +587,10 @@ def _validate_recursive_blocks(blocks, seen=None):
                     if not isinstance(item, dict) or not isinstance(item.get("text"), str):
                         errors.append("invalid list item")
                         continue
-                    if not item["text"].strip() and not (item.get("images") or item.get("blocks")):
+                    number = list_number(item.get("number")) if kind == "ordered_list" else None
+                    if "number" in item and number is None:
+                        errors.append("invalid list item number")
+                    if not item["text"].strip() and number is None and not (item.get("images") or item.get("blocks")):
                         errors.append("empty list item")
                     if "images" in item and not isinstance(item["images"], list):
                         errors.append("invalid item images")
@@ -767,6 +821,8 @@ def _list_values(raw):
 
 
 def _list_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str, Any], evidence_ids: list[str], kind: str) -> dict[str, Any]:
+    ordered = kind == "ordered_list"
+    start = list_number(raw.get("start")) if ordered else None
     clean_items: list[str | dict[str, Any]] = []
     for value in _list_values(raw):
         if not isinstance(value, Mapping):
@@ -787,8 +843,11 @@ def _list_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str,
         if isinstance(child_blocks, list) and child_blocks:
             item_evidence = _evidence_ids(value, {"evidence_ids": evidence_ids})
             children = build_ordered_document({"evidence_ids": item_evidence}, child_blocks)["blocks"]
-        if children or images:
+        number = list_number(value.get("number")) if ordered else None
+        if children or images or number is not None:
             item: dict[str, Any] = {"text": text}
+            if number is not None:
+                item["number"] = number
             if images:
                 item["images"] = images
             if children:
@@ -799,7 +858,8 @@ def _list_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str,
     return _base_block(
         article,
         source_order,
-        "ordered_list" if kind == "ordered_list" else "unordered_list",
+        "ordered_list" if ordered else "unordered_list",
+        start=start,
         items=clean_items,
         label=_clean_text(raw.get("label") or raw.get("title") or raw.get("heading")),
         images=_text_block_images(raw),
@@ -1147,6 +1207,7 @@ __all__ = [
     "build_ordered_document",
     "document_from_steps",
     "empty_document",
+    "has_ordered_list_numbering",
     "has_structured_list_items",
     "segment_plain_article_text",
     "validate_ordered_document",
@@ -1181,7 +1242,7 @@ def project_ordered_document(document):
             if kind not in {"ordered_list", "unordered_list"}:
                 images.extend(deepcopy(block.get("images", [])))
             if kind in {"ordered_list", "unordered_list"}:
-                for item in block.get("items", []):
+                for item, ordinal in walk_ordered_list_items(block):
                     if isinstance(item, str):
                         item = {"text": item}
                     item_text = item.get("text")
@@ -1195,6 +1256,8 @@ def project_ordered_document(document):
                                 "images": deepcopy(item.get("images", [])),
                                 "evidence_ids": deepcopy(block.get("evidence_ids", [])),
                             }
+                            if ordinal is not None:
+                                current["number"] = ordinal
                             steps.append(current)
                     images.extend(deepcopy(item.get("images", [])))
                     visit(item.get("blocks", []), allow_steps)
