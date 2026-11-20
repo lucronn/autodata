@@ -145,6 +145,7 @@ function clearProtected() {
   sourceRevision = 0;
   renewalUsed = false;
   renewal = null;
+  renewalFailures = new Set();
   for (const id of [
     "articles",
     "article-content",
@@ -848,13 +849,15 @@ function renderContent(parent, article, g) {
     }
   else parent.append(element("p", "No readable content is available yet."));
 }
-function reconcileImages(parent, images, g) {
+function retryFailedImages(parent, images, failures, g) {
+  if (!g.current()) return;
   for (const img of parent.querySelectorAll("img[data-asset-id]")) {
+    if (!failures.has(img) || img.dataset.replacement === "1") continue;
     const found = images.find(
       (image) => assetID(image) === img.dataset.assetId,
     );
     const url = localImageURL(found?.url, location.origin, { authMode: session.state.mode });
-    if (url && img.src !== url && g.current()) {
+    if (url && img.src !== url) {
       img.dataset.replacement = "1";
       img.src = url;
     }
@@ -872,13 +875,15 @@ function renderArticle(article, g) {
     $("article-content").replaceChildren(fragment);
     renderedRevision = revision;
     renewalUsed = false;
+    renewal = null;
+    renewalFailures = new Set();
     sourceData = null;
     sourceURL = "";
     ++sourceRevision;
     $("source-review-load").disabled = false;
     $("source-review-frame").replaceChildren();
     $("source-review-frame").hidden = true;
-  } else reconcileImages($("article-content"), imageMap(article), g);
+  }
   currentArticle = article;
   $("article-title").textContent = article.title || "Article";
   $("article-kind").textContent =
@@ -920,6 +925,8 @@ async function loadArticle(id, g) {
   renderedRevision = "";
   sourceURL = "";
   renewalUsed = false;
+  renewal = null;
+  renewalFailures = new Set();
   stage("article");
   status("Opening article…", { busy: true });
   const first = openDemo || session.state.mode === "local"
@@ -1048,24 +1055,28 @@ async function renewMedia(g, failed) {
   renewalFailures.add(failed);
   if (renewal) return renewal;
   renewalUsed = true;
-  const revision = renderedRevision;
+  const failures = renewalFailures;
+  const current = () => g.current() && renewalFailures === failures;
+  let articleImages;
   renewal = (async () => {
     try {
       const response = await requestArticleJSON(
         demoPath(articlePath(currentArticle.id)),
         { signal: g.signal },
       );
-      if (!g.current()) return;
-      if (response.data?.article?.view_revision !== revision) {
-        renderArticle(response.data.article, g);
-        return;
-      }
+      if (!current()) return;
       renderArticle(response.data.article, g);
-      if (sourceData && sourceURL) {
+      if (!current()) return;
+      articleImages = imageMap(response.data.article);
+      const frame = $("source-review-frame");
+      if (sourceData && sourceURL &&
+          [...frame.querySelectorAll("img[data-asset-id]")].some((img) => failures.has(img))) {
+        // Do not hold the article's figures while fetching the pinned source.
+        retryFailedImages($("article-content"), articleImages, failures, g);
         const selectedSourceURL = sourceURL;
         const sourceSelection = sourceRevision;
         const stillSelected = () =>
-          g.current() && sourceSelection === sourceRevision && selectedSourceURL === sourceURL;
+          current() && sourceSelection === sourceRevision && selectedSourceURL === sourceURL;
         let data;
         try {
           data = await requestJSON(selectedSourceURL, { signal: g.signal });
@@ -1082,26 +1093,21 @@ async function renewMedia(g, failed) {
             requested?.searchParams.get("source_revision_id")
         )
           throw new Error("The stored source changed.");
-        reconcileImages($("source-review-frame"), data.images || [], g);
+        retryFailedImages(frame, data.images || [], failures, g);
         sourceData = data;
       }
     } catch (error) {
-      if (!g.current()) return;
+      if (!current()) return;
       if ([401, 403, 410].includes(error.status)) {
         invalidate();
         show("welcome");
         status(error.message, { error: true });
-      } else
-        failed.replaceWith(
-          element(
-            "p",
-            "Illustration unavailable. Refresh this article to try again.",
-            "image-missing",
-          ),
-        );
+      }
     } finally {
-      if (g.current()) {
-        for (const image of renewalFailures) {
+      if (current()) {
+        if (articleImages)
+          retryFailedImages($("article-content"), articleImages, failures, g);
+        for (const image of failures) {
           if (image.isConnected && image.dataset.replacement !== "1")
             image.replaceWith(
               element(
@@ -1111,7 +1117,7 @@ async function renewMedia(g, failed) {
               ),
             );
         }
-        renewalFailures.clear();
+        failures.clear();
         renewal = null;
       }
     }

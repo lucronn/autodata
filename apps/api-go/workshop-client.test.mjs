@@ -3025,6 +3025,30 @@ const renewedArticle = () => ({ data: { article: { ...renewalFixture(), images: 
   { id: 'list', url: mediaURL('new-list') }, { id: 'callout', url: mediaURL('new-callout') },
 ] } } });
 
+test('unchanged article polls keep decoded and in-flight figures on their current requests', () => {
+  const h = articleMediaHarness();
+  const parent = h.render(renewalFixture());
+  const [loaded, pending] = mediaDescendants(parent, 'img');
+  Object.assign(loaded, { complete: true, naturalWidth: 24 });
+  Object.assign(pending, { complete: false, naturalWidth: 0 });
+  const originals = [loaded.src, pending.src];
+  const incoming = renewedArticle().data.article;
+  h.render({ ...incoming, processing: { job_id: 'workshop-reader', state: 'rewriting' } });
+  assert.deepEqual(mediaDescendants(parent, 'img'), [loaded, pending]);
+  assert.deepEqual([loaded.src, pending.src], originals);
+  assert.deepEqual([loaded.dataset.replacement, pending.dataset.replacement], [undefined, undefined]);
+  assert.match(h.nodes.get('article-note').textContent, /Preparing articles/);
+
+  h.render({ ...incoming, view_revision: 'published-view' });
+  const [nextLoaded, nextPending] = mediaDescendants(parent, 'img');
+  assert.notEqual(nextLoaded, loaded);
+  assert.notEqual(nextPending, pending);
+  assert.deepEqual([nextLoaded.src, nextPending.src], [
+    'https://cars.example/v1/catalog/images/v2.new-list',
+    'https://cars.example/v1/catalog/images/v2.new-callout',
+  ]);
+});
+
 test('article block media actual renewal shares one request and reconciles both shapes once per revision', async () => {
   const pending = deferredAuthOperation(), calls = [];
   const h = articleMediaHarness({ requestArticleJSON: (path, options) => { calls.push({ path, options }); return pending.promise; } });
@@ -3044,6 +3068,62 @@ test('article block media actual renewal shares one request and reconciles both 
   assert.deepEqual(mediaIDs(parent), []);
   assert.equal(mediaDescendants(parent, 'figure')[0].textContent, 'Illustration unavailable. Refresh this article to try again.');
 });
+test('same-navigation publication prevents an outstanding media renewal from restoring the old revision', async () => {
+  const pending = deferredAuthOperation();
+  const h = articleMediaHarness({ requestArticleJSON: () => pending.promise });
+  const parent = h.render(renewalFixture());
+  const first = mediaDescendants(parent, 'img')[0];
+  first.dispatch('error');
+  const renewal = h.context.renewal;
+  const published = { ...renewedArticle().data.article, content_origin: 'canonical', view_revision: 'publication' };
+  h.render(published);
+  const next = mediaDescendants(parent, 'img')[0];
+  assert.notEqual(next, first);
+  pending.resolve({ data: { article: renewalFixture() } });
+  await renewal;
+  assert.equal(h.context.currentArticle.view_revision, 'publication');
+  assert.equal(mediaDescendants(parent, 'img')[0], next);
+  assert.equal(h.context.renewal, null);
+  assert.equal(h.context.renewalFailures.size, 0);
+});
+
+test('media renewal replaces failed figures within their scoped responses only', async () => {
+  const pending = deferredAuthOperation(), calls = [];
+  const h = articleMediaHarness({
+    requestArticleJSON: () => pending.promise,
+    requestJSON: async url => {
+      calls.push(url);
+      return { source: { url: mediaSourceURL }, images: [
+        { id: 'list', url: mediaURL('new-stored-list') },
+        { id: 'callout', url: mediaURL('new-stored-callout') },
+      ] };
+    },
+  });
+  const article = h.render(renewalFixture());
+  const frame = h.nodes.get('source-review-frame');
+  const [failedArticle, healthyArticle] = mediaDescendants(article, 'img');
+  h.context.renderBlocks(frame, renewalFixture().document.blocks, [
+    { id: 'list', url: mediaURL('old-stored-list') },
+    { id: 'callout', url: mediaURL('old-stored-callout') },
+  ], null, h.g);
+  const [healthySource, failedSource] = mediaDescendants(frame, 'img');
+  h.context.sourceData = { source: { url: mediaSourceURL } };
+  h.context.sourceURL = 'https://cars.example' + mediaSourceURL;
+  failedArticle.dispatch('error');
+  failedSource.dispatch('error');
+  pending.resolve(renewedArticle());
+  await h.context.renewal;
+  assert.deepEqual(calls, ['https://cars.example' + mediaSourceURL]);
+  assert.deepEqual([failedArticle, healthyArticle, healthySource, failedSource].map(img => img.src), [
+    'https://cars.example/v1/catalog/images/v2.new-list',
+    'https://cars.example/v1/catalog/images/v2.old-callout',
+    'https://cars.example/v1/catalog/images/v2.old-stored-list',
+    'https://cars.example/v1/catalog/images/v2.new-stored-callout',
+  ]);
+  assert.deepEqual([failedArticle, healthyArticle, healthySource, failedSource].map(img => img.dataset.replacement),
+    ['1', undefined, undefined, '1']);
+});
+
 for (const changed of [false, true]) {
   test(`article block media actual renewal ${changed ? 'rejects changed' : 'reconciles matching'} stored-source revision`, async () => {
     const calls = [];
@@ -3582,7 +3662,7 @@ test('local opaque image URLs require explicit local mode and retain strict URL 
   }
 });
 
-test('local referenced step images render and reconcile with opaque tokens without broad compatibility', () => {
+test('local referenced step images render and retry with opaque tokens without broad compatibility', () => {
   const image = { id: 'local-image', url: localOpaqueImagePath(localOpaqueImageToken), alt: 'Stored diagram' };
   const article = mediaArticle([], [image], { steps: [{ number: 1, action: 'Inspect', instructions: ['Inspect the stored diagram.'], image_ids: ['local-image'] }] });
   for (const mode of ['local', 'firebase', undefined]) {
@@ -3594,10 +3674,11 @@ test('local referenced step images render and reconcile with opaque tokens witho
       assert.equal(images[0].src, 'https://cars.example' + image.url);
       assert.equal(images[0].referrerPolicy, 'no-referrer');
       const replacement = localOpaqueImagePath('ZyXw9876_-'.repeat(15));
-      h.context.reconcileImages(parent, [{ ...image, url: replacement }], h.g);
+      const failures = new Set(images);
+      h.context.retryFailedImages(parent, [{ ...image, url: replacement }], failures, h.g);
       assert.equal(images[0].src, 'https://cars.example' + replacement);
       h.navigation.clear();
-      h.context.reconcileImages(parent, [image], h.g);
+      h.context.retryFailedImages(parent, [image], failures, h.g);
       assert.equal(images[0].src, 'https://cars.example' + replacement);
     }
   }
