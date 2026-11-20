@@ -40,6 +40,7 @@ jobs:
           name: workshop-browser-junit
           path: |
             ${{ runner.temp }}/autodata-workshop-browser.*/workshop-browser-api.xml
+            ${{ runner.temp }}/autodata-workshop-browser.*/workshop-published-media-http.xml
             ${{ runner.temp }}/autodata-workshop-browser.*/workshop-browser/*/*/parent-process.json
             ${{ runner.temp }}/autodata-workshop-browser.*/workshop-browser/*/*/child-processes.json
             ${{ runner.temp }}/autodata-workshop-browser.*/workshop-browser/*/*/browser/evidence.json

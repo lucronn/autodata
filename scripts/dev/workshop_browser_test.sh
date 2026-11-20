@@ -64,4 +64,7 @@ fi
 compose run --rm -T --no-deps --pull never --user "$(id -u):$(id -g)" go-test-runner \
     sh -ec 'mkdir -p "$GOCACHE" "$GOTMPDIR"
         go -C apps/api-go test -run "^$" .
+        AUTODATA_REQUIRE_PUBLISHED_MEDIA_HTTP=1 python -m pytest -v -p no:cacheprovider \
+            --junitxml=/artifacts/workshop-published-media-http.xml \
+            workers/ingestion-python/tests/test_published_media_http.py
         exec "$@"' workshop-browser "$@"

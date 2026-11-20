@@ -6,6 +6,8 @@ from pathlib import Path
 import os
 import subprocess
 
+import pytest
+
 from autodata_ingestion import article_content_review
 from autodata_ingestion.published_media_publication import publish_retained_media_repair
 from lifecycle_support import fresh_database, runtime
@@ -15,6 +17,10 @@ from test_published_media_publication import _allowlist, _preview, _seed
 
 ROOT = Path(__file__).resolve().parents[3]
 CASE = "TestPostgresPaidCatalogRetainedMediaPublication"
+pytestmark = pytest.mark.skipif(
+    os.environ.get("AUTODATA_REQUIRE_PUBLISHED_MEDIA_HTTP") != "1",
+    reason="requires the isolated paid HTTP runner",
+)
 
 
 def test_published_retained_media_actual_http(runtime, monkeypatch, tmp_path, capsys):
@@ -79,7 +85,10 @@ def test_published_retained_media_actual_http(runtime, monkeypatch, tmp_path, ca
         control = stack.enter_context(serve(bridge.control_handler()))
         allowed = ("PATH", "GOTOOLCHAIN", "GOPROXY", "GOFLAGS", "CGO_ENABLED", "GOMODCACHE", "GOCACHE", "GOTMPDIR")
         env = {key: os.environ[key] for key in allowed if key in os.environ}
+        go_home = tmp_path / "go-home"
+        go_home.mkdir(mode=0o700)
         env.update(
+            HOME=str(go_home),
             AUTODATA_REQUIRE_PAID_CATALOG_INTEGRATION="1",
             AUTODATA_CATALOG_INTEGRATION_REQUIRED="1",
             AUTODATA_LIFECYCLE_TEST="1",
