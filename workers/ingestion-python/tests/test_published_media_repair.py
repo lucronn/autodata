@@ -139,6 +139,7 @@ def test_historical_model_output_uses_original_prompt_rules():
 
 @pytest.mark.parametrize("prompt_version", [
     "full-prose-auto-prompt-v11", "full-prose-auto-prompt-v12", "full-prose-auto-prompt-v13",
+    "full-prose-auto-prompt-v14",
 ])
 def test_repair_replays_cell_prose_with_original_prompt_version(prompt_version):
     text = "Remove the cover while the ignition is off."

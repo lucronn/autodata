@@ -24,7 +24,8 @@ _PROSE_PROMPT_V9 = "full-prose-auto-prompt-v9"
 _PROSE_PROMPT_V10 = "full-prose-auto-prompt-v10"
 _CELL_PROSE_PROMPT_V11 = "full-prose-auto-prompt-v11"
 _PROSE_PROMPT_V12 = "full-prose-auto-prompt-v12"
-_PROSE_PROMPT_VERSION = "full-prose-auto-prompt-v13"
+_PROSE_PROMPT_V13 = "full-prose-auto-prompt-v13"
+_PROSE_PROMPT_VERSION = "full-prose-auto-prompt-v14"
 _WORDS = re.compile(r"\w+")
 _INLINE_WARNING = re.compile(
     r"(?:^|[.!?]\s+|\n)[ \t]*(?:warnings?|caution|danger|notice|important)\s*[:!–—-]"
@@ -212,11 +213,23 @@ _INSPECTION_FOCUS = re.compile(
     r"\s+for\s+(?:signs\s+of\s+)?(wear|damage|corrosion|leaks?|cracks?)$",
     re.IGNORECASE,
 )
+_IDENTIFIED_TARGET = r"(?:the\s+)?(?P<target>[a-z0-9./-]+(?:\s+[a-z0-9./-]+){1,5})"
+_INSPECTION_DEFECT = r"wear|damage|corrosion|leaks?|leakage|cracks?|cracking"
 _IDENTIFIED_INSPECTION = re.compile(
-    r"(?:inspect|check)\s+(?:the\s+)?(?P<target>[a-z0-9./-]+(?:\s+[a-z0-9./-]+){1,5})\s+for\s+"
-    r"(?:(?:signs|indications)\s+of\s+)?"
-    r"(?P<focus>wear|damage|corrosion|leaks?|leakage|cracks?|cracking)", re.IGNORECASE,
+    r"(?:inspect|check)\s+" + _IDENTIFIED_TARGET + r"\s+for\s+"
+    r"(?:(?:signs|indications)\s+of\s+)?(?P<focus>" + _INSPECTION_DEFECT + r")", re.IGNORECASE,
 )
+_INSPECTION_DEFECT_LIST = r"(?P<focus>[a-z,\s]{1,144})"
+_IDENTIFIED_INSPECTION_LIST = re.compile(
+    r"(?:inspect|check)\s+" + _IDENTIFIED_TARGET + r"\s+for\s+" + _INSPECTION_DEFECT_LIST,
+    re.IGNORECASE,
+)
+_IDENTIFIED_INSPECTION_FOCUS_FIRST = re.compile(
+    r"(?:inspect|check)\s+for\s+" + _INSPECTION_DEFECT_LIST + r"\s+(?:on|in)\s+" + _IDENTIFIED_TARGET,
+    re.IGNORECASE,
+)
+_DEFECT_TERM = re.compile(r"(?:(?:signs|indications|evidence)\s+of\s+)?(" + _INSPECTION_DEFECT + r")")
+_DEFECT_SEPARATOR = re.compile(r"(\s*,\s*(?:(?:and|or)\s+)?|\s+(?:and|or)\s+)")
 _INSPECTION_MARKER = re.compile(r"\b(?:inspect|check)\b", re.IGNORECASE)
 _COMPONENT_DESCRIPTOR = re.compile(_TARGET_WORD, re.IGNORECASE)
 _COMPONENT_ID = re.compile(full._IDENTIFIER)
@@ -499,13 +512,29 @@ def _build_auto_prompt_v12(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def build_auto_prompt(document, *, context):
+def _auto_prompt_payload_v13(document, *, context):
     payload = _auto_prompt_payload_v12(document, context=context)
     if payload["slots"]:
-        payload["prompt_version"] = _PROSE_PROMPT_VERSION
+        payload["prompt_version"] = _PROSE_PROMPT_V13
         payload["rules"].append(
             "When inspecting an identified component, keep its exact identifier and what the "
             "inspection checks for with that component."
+        )
+    return payload
+
+
+def _build_auto_prompt_v13(document, *, context):
+    payload = _auto_prompt_payload_v13(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def build_auto_prompt(document, *, context):
+    payload = _auto_prompt_payload_v13(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_VERSION
+        payload["rules"].append(
+            "If an inspection names several defects on an identified component, keep every "
+            "defect and preserve whether the source joins them with and or with or."
         )
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
@@ -513,8 +542,9 @@ def build_auto_prompt(document, *, context):
 def _auto_prompt_version(document, *, context, prompt_hash):
     """Identify the rules bound to the saved model attempt."""
     for builder in (
-        build_auto_prompt, _build_auto_prompt_v12, _build_auto_prompt_v11, _build_auto_prompt_v10,
-        _build_auto_prompt_v9, _build_auto_prompt_v8, _build_auto_prompt_v7, _build_auto_prompt_v6, _build_auto_prompt_v5,
+        build_auto_prompt, _build_auto_prompt_v13, _build_auto_prompt_v12, _build_auto_prompt_v11,
+        _build_auto_prompt_v10, _build_auto_prompt_v9, _build_auto_prompt_v8, _build_auto_prompt_v7,
+        _build_auto_prompt_v6, _build_auto_prompt_v5,
         _build_auto_prompt_v4, _build_auto_prompt_v2, _build_auto_prompt_v1,
     ):
         payload = builder(document, context=context)
@@ -853,8 +883,39 @@ def _proof_text(text):
     return text.casefold().strip().rstrip(".!")
 
 
-def _identified_inspection(text):
-    match = _IDENTIFIED_INSPECTION.fullmatch(text.strip().rstrip(".!"))
+def _inspection_defects(text):
+    """Recognize one defect or a flat list with a consistent connective."""
+    text = text.casefold()
+    words = text.split(maxsplit=1)
+    if not words:
+        return None
+    expected = {"both": "and", "either": "or"}.get(words[0])
+    if expected:
+        if len(words) != 2:
+            return None
+        text = words[1]
+    pieces = _DEFECT_SEPARATOR.split(text)
+    separators = [piece.strip(" ,\t\n") for piece in pieces[1::2]]
+    connective = separators[-1] if separators else "single"
+    if (not connective or (expected and expected != connective)
+            or any(item and item != connective for item in separators)):
+        return None
+    defects = []
+    for piece in pieces[::2]:
+        term = _DEFECT_TERM.fullmatch(piece.strip())
+        if term is None:
+            return None
+        defect = term[1]
+        defects.append(_INSPECTION_FOCUS_ALIASES.get(defect, defect))
+    return connective, frozenset(defects)
+
+
+def _identified_inspection(text, *, compound=False):
+    text = text.strip().rstrip(".!")
+    if compound:
+        match = _IDENTIFIED_INSPECTION_LIST.fullmatch(text) or _IDENTIFIED_INSPECTION_FOCUS_FIRST.fullmatch(text)
+    else:
+        match = _IDENTIFIED_INSPECTION.fullmatch(text)
     if match is None:
         return None
     words = match["target"].split()
@@ -866,6 +927,9 @@ def _identified_inspection(text):
     if (not descriptors or not set(descriptors).isdisjoint(_TARGET_DELIMITERS)
             or not all(_COMPONENT_DESCRIPTOR.fullmatch(word) for word in descriptors)):
         return None
+    if compound:
+        defects = _inspection_defects(match["focus"])
+        return (identifier, descriptors, defects) if defects is not None else None
     focus = match["focus"].casefold()
     return identifier, descriptors, _INSPECTION_FOCUS_ALIASES.get(focus, focus)
 
@@ -1044,12 +1108,12 @@ def _uses_prose_guards(prompt_version, slot_count):
     return bool(slot_count) and prompt_version in (
         None, _PROSE_PROMPT_V4, _PROSE_PROMPT_V5, _PROSE_PROMPT_V6, _PROSE_PROMPT_V7,
         _PROSE_PROMPT_V8, _PROSE_PROMPT_V9, _PROSE_PROMPT_V10, _CELL_PROSE_PROMPT_V11,
-        _PROSE_PROMPT_V12, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V12, _PROSE_PROMPT_V13, _PROSE_PROMPT_VERSION,
     )
 
 
 def _include_cell_blocks(prompt_version):
-    return prompt_version in (None, _CELL_PROSE_PROMPT_V11, _PROSE_PROMPT_V12, _PROSE_PROMPT_VERSION)
+    return prompt_version in (None, _CELL_PROSE_PROMPT_V11, _PROSE_PROMPT_V12, _PROSE_PROMPT_V13, _PROSE_PROMPT_VERSION)
 
 
 def _require_changes(source, candidate, *, prompt_version):
@@ -1063,8 +1127,9 @@ def _require_changes(source, candidate, *, prompt_version):
     guard_clauses = guard_claims and prompt_version != _PROSE_PROMPT_V7
     guard_qualifiers = guard_clauses and prompt_version != _PROSE_PROMPT_V8
     guard_scope = guard_qualifiers and prompt_version != _PROSE_PROMPT_V9
-    guard_simultaneous = guard_scope and prompt_version in (None, _PROSE_PROMPT_V12, _PROSE_PROMPT_VERSION)
+    guard_simultaneous = guard_scope and prompt_version in (None, _PROSE_PROMPT_V12, _PROSE_PROMPT_V13, _PROSE_PROMPT_VERSION)
     guard_identified_inspection = guard_simultaneous and prompt_version != _PROSE_PROMPT_V12
+    guard_compound_inspection = guard_identified_inspection and prompt_version != _PROSE_PROMPT_V13
     introduction = candidate["blocks"][0].get("text", "")
     if guard_prose and (
         _INLINE_WARNING.search(introduction)
@@ -1118,8 +1183,10 @@ def _require_changes(source, candidate, *, prompt_version):
         if guard_scope and _exception_changed(original, replacement):
             raise ValueError("REWRITE_QUALIFIER_MUTATION")
         if guard_identified_inspection and _INSPECTION_MARKER.match(original.lstrip()):
-            inspection = _identified_inspection(original)
-            if inspection is not None and inspection != _identified_inspection(replacement):
+            inspection = _identified_inspection(original, compound=guard_compound_inspection)
+            if inspection is not None and inspection != _identified_inspection(
+                replacement, compound=guard_compound_inspection,
+            ):
                 raise ValueError("REWRITE_QUALIFIER_MUTATION")
         if guard_qualifiers and _qualifier_changed(
             original, replacement, extended=guard_scope, simultaneous=guard_simultaneous,
@@ -1163,7 +1230,8 @@ def validate_auto(source, candidate, *, response=None, prompt_version=None):
             _PROSE_PROMPT_V10: "full-prose-auto-validator-v8",
             _CELL_PROSE_PROMPT_V11: "full-prose-auto-validator-v9",
             _PROSE_PROMPT_V12: "full-prose-auto-validator-v10",
-        }.get(prompt_version, "full-prose-auto-validator-v11")
+            _PROSE_PROMPT_V13: "full-prose-auto-validator-v11",
+        }.get(prompt_version, "full-prose-auto-validator-v12")
     report.update(validator_version=validator_version, profile_version=PROFILE,
         publication_mode="automatic", content_acceptance_required=False,
         complete_rewrite=False, passed=not errors, error_codes=errors)
