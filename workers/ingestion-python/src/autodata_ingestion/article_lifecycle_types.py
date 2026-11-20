@@ -9,7 +9,12 @@ import json
 
 NORMALIZATION_VERSION = "ordered-article-v1"
 REWRITE_PROFILE_VERSION = "technical-prose-v1"
-SOURCE_PROJECTION_VERSIONS = ("source-projection-v1", "source-projection-v2", "source-projection-v3")
+SOURCE_PROJECTION_VERSIONS = (
+    "source-projection-v1",
+    "source-projection-v2",
+    "source-projection-v3",
+    "source-projection-v4",
+)
 
 
 def validate_ref(value: str, limit: int = 2048) -> None:

@@ -222,3 +222,31 @@ def test_populated_projection_upgrade_preserves_history_and_version_constraints(
     with repo.connect() as conn:
         conn.execute("UPDATE canonical_articles SET title='updated',current_source_revision_id=%s WHERE canonical_article_id=%s", (v2, article))
         assert conn.execute('SELECT current_source_revision_id FROM canonical_articles WHERE canonical_article_id=%s', (article,)).fetchone()['current_source_revision_id'] == v2
+
+
+def test_numbered_list_projection_upgrade_preserves_published_history(fresh_database):
+    repo = fresh_database(through=43)
+    article, v1 = seed_v1_publication(repo)
+    v2 = append_projection(repo, v1, 'source-projection-v2')
+    v3 = append_projection(repo, v1, 'source-projection-v3')
+    with repo.connect() as conn:
+        conn.execute("""UPDATE canonical_articles SET current_source_revision_id=%s,
+            current_canonical_revision_id=NULL WHERE canonical_article_id=%s""", (v3, article))
+    before = lifecycle_history(repo)
+    with pytest.raises(psycopg.errors.CheckViolation):
+        append_projection(repo, v1, 'source-projection-v4')
+
+    apply_migration(repo, 44)
+    assert lifecycle_history(repo) == before
+
+    v4 = append_projection(repo, v1, 'source-projection-v4')
+    with repo.connect() as conn:
+        conn.execute('UPDATE canonical_articles SET current_source_revision_id=%s WHERE canonical_article_id=%s',
+                     (v4, article))
+    for target in (None, v1, v2, v3):
+        with pytest.raises(psycopg.errors.CheckViolation), repo.connect() as conn:
+            conn.execute('UPDATE canonical_articles SET current_source_revision_id=%s WHERE canonical_article_id=%s',
+                         (target, article))
+    with repo.connect() as conn:
+        assert conn.execute('SELECT current_source_revision_id FROM canonical_articles WHERE canonical_article_id=%s',
+                            (article,)).fetchone()['current_source_revision_id'] == v4
