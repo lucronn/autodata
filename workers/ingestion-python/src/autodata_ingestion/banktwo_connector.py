@@ -19,6 +19,7 @@ from .source_connector_client import (
 
 
 _LIST_TAGS = {"ol": "ordered_list", "ul": "unordered_list"}
+_HEADING_LEVELS = {f"h{level}": level for level in range(1, 7)}
 _MAX_LIST_DEPTH = 32
 _HTML_LIST_NUMBER = re.compile(r"([+-]?)0*([0-9]{1,10})")
 
@@ -47,8 +48,9 @@ class _ListFrame:
 
 
 class ArticleParser(HTMLParser):
-    """Keep ordered paragraphs, figures and component links without executable HTML."""
-    def __init__(self, *, asset_bindings=(), preserve_legacy_list_starts=True):
+    """Keep ordered text, figures and component links without executable HTML."""
+
+    def __init__(self, *, asset_bindings=(), preserve_legacy_list_starts=True, keep_html_headings=False):
         super().__init__(convert_charrefs=True)
         self._asset_bindings = {item["source_url"]: item["resource_ref"] for item in asset_bindings}
         self.blocks = []
@@ -60,6 +62,8 @@ class ArticleParser(HTMLParser):
         self._list_start = 1
         self._list_continuation_pending = False
         self._preserve_legacy_list_starts = preserve_legacy_list_starts
+        self._keep_html_headings = keep_html_headings
+        self._heading: dict[str, Any] | None = None
         self._table_rows = None
         self._table_row = None
         self._table_cell = None
@@ -74,6 +78,16 @@ class ArticleParser(HTMLParser):
     def flush(self):
         value = re.sub(r"\s+", " ", "".join(self._text)).strip()
         self._text = []
+        if self._heading is not None:
+            heading = self._heading
+            self._heading = None
+            if value:
+                heading["text"] = value
+                self._append_block(heading)
+            else:
+                for image in heading.get("images", []):
+                    self._append_block(image)
+            return
         if not value:
             return
         item = self._current_list_item()
@@ -179,6 +193,14 @@ class ArticleParser(HTMLParser):
         if self._list_continuation_pending and tag not in {"ol", "ul", "li", "a", "img"}:
             self._list_start = 1
             self._list_continuation_pending = False
+        # Table cells normalize to text and images, including any heading text.
+        if self._keep_html_headings and tag in _HEADING_LEVELS and not self._in_table:
+            self.flush()
+            self._heading = {"kind": "heading", "level": _HEADING_LEVELS[tag]}
+            return
+        if tag == "br" and self._heading is not None:
+            self._text.append(" ")
+            return
         if tag == "table":
             self.flush()
             self._list_start = 1
@@ -237,12 +259,15 @@ class ArticleParser(HTMLParser):
             ref = self._asset_bindings.get(src) or attrs.get("data-resource-ref") or attrs.get("asset_resource_ref")
             if not src and not ref:
                 return
-            self.flush()
             image = {"kind": "image", "alt": attrs.get("alt", ""), "name": attrs.get("img_name", "")}
             if src:
                 image["url"] = src
             if ref:
                 image["asset_resource_ref"] = ref
+            if self._heading is not None:
+                self._heading.setdefault("images", []).append(image)
+                return
+            self.flush()
             if self._table_cell is not None:
                 self._table_cell.append(image)
                 return
@@ -260,6 +285,9 @@ class ArticleParser(HTMLParser):
         if self._skip:
             if tag in {"script", "style"}:
                 self._skip -= 1
+            return
+        if self._heading is not None and tag in _HEADING_LEVELS:
+            self.flush()
             return
         if tag == "table" and self._in_table:
             self._finish_table()
