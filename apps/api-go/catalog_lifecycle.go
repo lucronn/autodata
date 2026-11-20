@@ -379,40 +379,76 @@ func (s *postgresCatalogStore) ArticleSource(ctx context.Context, p Principal, v
 
 // Selected revisions, including historical revisions, cannot expose any of their
 // retained resources while the body or a resource in the manifest is blocked.
-const catalogSourceRevisionEligibleSQL = `NOT EXISTS(SELECT 1 FROM source_snapshots blocked WHERE (blocked.takedown_status<>'active' OR EXISTS(SELECT 1 FROM source_review_items quarantine WHERE quarantine.item_kind='quarantine' AND quarantine.status<>'approved' AND quarantine.source_snapshot_ids ? blocked.source_snapshot_id::text)) AND (blocked.source_snapshot_id=sr.body_source_snapshot_id OR EXISTS(SELECT 1 FROM jsonb_array_elements(sr.resource_manifest) asset WHERE asset->>'sha256'=blocked.content_sha256::text)))`
+const catalogSourceRevisionEligibleSQL = `NOT EXISTS (
+	SELECT 1 FROM (
+		SELECT source_snapshot_id,takedown_status FROM source_snapshots WHERE source_snapshot_id=sr.body_source_snapshot_id
+		UNION ALL
+		SELECT asset.source_snapshot_id,asset.takedown_status
+		FROM jsonb_array_elements(sr.resource_manifest) entry JOIN source_snapshots asset
+		ON asset.content_sha256=(entry->>'sha256')::bpchar AND asset.content_sha256::text=entry->>'sha256'
+	) retained
+	WHERE retained.takedown_status<>'active' OR EXISTS (
+		SELECT 1 FROM source_review_items quarantine
+		WHERE quarantine.item_kind='quarantine' AND quarantine.status<>'approved'
+		AND quarantine.source_snapshot_ids ? retained.source_snapshot_id::text
+	)
+)`
 
 func (s *postgresCatalogStore) paidCatalogSourceImages(ctx context.Context, configuration, article, revision string) ([]CatalogImage, error) {
+	_, images, err := s.paidCatalogImageView(ctx, configuration, article, revision, false)
+	return images, err
+}
+
+// Read current anchors and selected revision rights in one database snapshot.
+// The image route only needs the image records, including those nested in steps.
+func (s *postgresCatalogStore) paidCatalogImageView(ctx context.Context, configuration, article, revision string, includeArticleImages bool) (CatalogArticleView, []CatalogImage, error) {
+	view := CatalogArticleView{Article: CatalogArticle{ID: article, CanonicalArticleID: &article}}
 	var takedown string
-	var raw []byte
-	// Read current eligibility and selected revision rights together. The current
-	// projection still governs access even when the token pins a historical source.
-	err := s.pool.QueryRow(ctx, `SELECT view_row.takedown_status, selected.source_images
-		FROM catalog_article_current view_row JOIN canonical_articles a USING(canonical_article_id)
+	var rawArticleImages, rawSourceImages []byte
+	err := s.pool.QueryRow(ctx, `SELECT
+		CASE WHEN descriptor.takedown_status<>'active' THEN descriptor.takedown_status ELSE view_row.takedown_status END,
+		view_row.source_revision_id::text,view_row.canonical_revision_id::text,
+		CASE WHEN $4 THEN COALESCE(view_row.images,'[]'::jsonb) || COALESCE((
+			SELECT jsonb_agg(image.value) FROM jsonb_array_elements(view_row.steps) step
+			CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(step.value->'images')='array' THEN step.value->'images' ELSE '[]'::jsonb END) image
+		),'[]'::jsonb) END,
+		selected.source_images
+		FROM canonical_articles a
+		JOIN source_snapshots descriptor ON descriptor.source_snapshot_id=a.descriptor_source_snapshot_id
+		CROSS JOIN LATERAL (
+			SELECT takedown_status,source_revision_id,canonical_revision_id,images,steps FROM catalog_article_current
+			WHERE canonical_article_id=a.canonical_article_id LIMIT 1
+		) view_row
 		LEFT JOIN LATERAL (
 			SELECT sr.source_images FROM canonical_article_source_revisions sr
 			JOIN source_snapshots snap ON snap.source_snapshot_id=sr.body_source_snapshot_id
 			WHERE sr.canonical_article_id=a.canonical_article_id AND sr.source_revision_id=$3::uuid
 			AND `+catalogSourceRevisionEligibleSQL+`
-		) selected ON view_row.takedown_status='active'
+		) selected ON view_row.takedown_status='active' AND descriptor.takedown_status='active'
 		WHERE a.vehicle_configuration_id=$1::uuid AND a.canonical_article_id=$2::uuid AND `+lifecycleEligibleSQL,
-		configuration, article, revision).Scan(&takedown, &raw)
+		configuration, article, revision, includeArticleImages).Scan(&takedown, &view.Article.SourceRevisionID, &view.Article.CanonicalRevisionID, &rawArticleImages, &rawSourceImages)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, ErrCatalogNotFound
+		return CatalogArticleView{}, nil, ErrCatalogNotFound
 	}
 	if err != nil {
-		return nil, err
+		return CatalogArticleView{}, nil, err
 	}
 	if takedown != "active" {
-		return nil, ErrCatalogWithdrawn
+		return CatalogArticleView{}, nil, ErrCatalogWithdrawn
 	}
-	if raw == nil {
-		return nil, ErrCatalogNotFound
+	if rawSourceImages == nil {
+		return CatalogArticleView{}, nil, ErrCatalogNotFound
 	}
-	var images []CatalogImage
-	if err = json.Unmarshal(raw, &images); err != nil {
-		return nil, err
+	if includeArticleImages {
+		if err = json.Unmarshal(rawArticleImages, &view.Article.Images); err != nil {
+			return CatalogArticleView{}, nil, err
+		}
 	}
-	return images, nil
+	var sourceImages []CatalogImage
+	if err = json.Unmarshal(rawSourceImages, &sourceImages); err != nil {
+		return CatalogArticleView{}, nil, err
+	}
+	return view, sourceImages, nil
 }
 
 func (s *postgresCatalogStore) ArticleSourceRevision(ctx context.Context, p Principal, v, id, revision string) (CatalogSourceContent, error) {

@@ -222,6 +222,7 @@ func (r *paidMediaReader) ReadImage(ctx context.Context, key string) ([]byte, st
 
 func paidMediaFixture() (*Server, *paidMediaCatalog, *paidMediaGrant, *paidMediaReader, Principal, paidCatalogImageReference) {
 	ref := paidMediaTestReference(time.Now())
+	ref.AnchorSourceRevisionID = ref.SelectedSourceRevisionID
 	p := Principal{CustomerAccountID: ref.CustomerAccountID, OrganizationID: "77777777-7777-4777-8777-777777777777"}
 	image := CatalogImage{ID: ref.AssetID, AssetID: ref.AssetID, ImageID: ref.AssetID, StorageKey: ref.ObjectKey, URL: "https://private-provider.example/original"}
 	nested := []CatalogImage{image}
@@ -308,8 +309,8 @@ func TestPaidCatalogMediaRevalidatesBeforeObjectRead(t *testing.T) {
 		{"canonical-anchor", 404, func(c *paidMediaCatalog, _ *paidMediaGrant, _ *paidMediaReader, _ *Principal, _ *paidCatalogImageReference) {
 			c.view.Article.CanonicalRevisionID = nil
 		}},
-		{"selected-source", 404, func(c *paidMediaCatalog, _ *paidMediaGrant, _ *paidMediaReader, _ *Principal, _ *paidCatalogImageReference) {
-			c.view.Article.SourceRevisionID = c.identity.CurrentSourceRevisionID
+		{"selected-source", 404, func(_ *paidMediaCatalog, _ *paidMediaGrant, _ *paidMediaReader, _ *Principal, r *paidCatalogImageReference) {
+			r.SelectedSourceRevisionID = "99999999-9999-4999-8999-999999999999"
 		}},
 		{"asset", 404, func(_ *paidMediaCatalog, _ *paidMediaGrant, _ *paidMediaReader, _ *Principal, r *paidCatalogImageReference) {
 			r.AssetID = "other"
@@ -383,6 +384,8 @@ func TestPaidCatalogMediaRevalidatesBeforeObjectRead(t *testing.T) {
 func TestPaidCatalogMediaHTTPAndHistoricalSourceProjection(t *testing.T) {
 	s, c, g, r, p, ref := paidMediaFixture()
 	ref.Projection = "source"
+	ref.AnchorSourceRevisionID = "99999999-9999-4999-8999-999999999999"
+	c.identity.CurrentSourceRevisionID = &ref.AnchorSourceRevisionID
 	c.view.Article.SourceRevisionID = c.identity.CurrentSourceRevisionID
 	c.view.Article.Images = nil
 	c.view.Article.Steps = nil
@@ -407,6 +410,22 @@ func TestPaidCatalogMediaHTTPAndHistoricalSourceProjection(t *testing.T) {
 		if response.Header.Get(header) == "" {
 			t.Fatal("missing header", header)
 		}
+	}
+}
+
+func TestPaidCatalogHistoricalImageRejectsChangedCurrentSource(t *testing.T) {
+	s, c, _, reader, p, ref := paidMediaFixture()
+	ref.Projection = "source"
+	ref.AnchorCanonicalRevisionID = nil
+	c.view.Article.CanonicalRevisionID = nil
+	// The source changed between reading identity and reading the current view.
+	c.view.Article.SourceRevisionID = stringPointer("99999999-9999-4999-8999-999999999999")
+	token, err := sealPaidCatalogImageReference(ref, s.catalogImageKey, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response := paidMediaRequest(s, p, token); response.Code != http.StatusNotFound || reader.calls.Load() != 0 {
+		t.Fatalf("stale historical image status=%d, object reads=%d", response.Code, reader.calls.Load())
 	}
 }
 

@@ -207,7 +207,17 @@ func (s *Server) servePaidCatalogImage(w http.ResponseWriter, r *http.Request, p
 		s.writePaidCatalogError(w, r, ErrCatalogNotFound)
 		return
 	}
-	view, err := s.catalog.ArticleView(ctx, p, configuration.ID, identity.CanonicalArticleID)
+	store, narrow := s.catalog.(interface {
+		paidCatalogImageView(context.Context, string, string, string, bool) (CatalogArticleView, []CatalogImage, error)
+	})
+	articleProjection := ref.Projection == "article"
+	var view CatalogArticleView
+	var sourceImages []CatalogImage
+	if narrow {
+		view, sourceImages, err = store.paidCatalogImageView(ctx, configuration.ID, identity.CanonicalArticleID, ref.SelectedSourceRevisionID, articleProjection)
+	} else {
+		view, err = s.catalog.ArticleView(ctx, p, configuration.ID, identity.CanonicalArticleID)
+	}
 	if err != nil {
 		s.writePaidCatalogError(w, r, err)
 		return
@@ -216,16 +226,20 @@ func (s *Server) servePaidCatalogImage(w http.ResponseWriter, r *http.Request, p
 		s.writePaidCatalogError(w, r, ErrCatalogWithdrawn)
 		return
 	}
-	if !paidCatalogViewMatches(view, identity) || !samePaidCatalogID(view.Article.CanonicalRevisionID, ref.AnchorCanonicalRevisionID) || (ref.Projection == "article" && (view.Article.SourceRevisionID == nil || *view.Article.SourceRevisionID != ref.SelectedSourceRevisionID)) {
+	if !paidCatalogViewMatches(view, identity) || !samePaidCatalogID(view.Article.CanonicalRevisionID, ref.AnchorCanonicalRevisionID) ||
+		view.Article.SourceRevisionID == nil || *view.Article.SourceRevisionID != ref.AnchorSourceRevisionID ||
+		(articleProjection && *view.Article.SourceRevisionID != ref.SelectedSourceRevisionID) {
 		s.writePaidCatalogError(w, r, ErrCatalogNotFound)
 		return
 	}
-	sourceImages, err := s.paidCatalogSourceImages(ctx, p, configuration.ID, identity.CanonicalArticleID, ref.SelectedSourceRevisionID)
-	if err != nil {
-		s.writePaidCatalogError(w, r, err)
-		return
+	if !narrow {
+		sourceImages, err = s.paidCatalogSourceImages(ctx, p, configuration.ID, identity.CanonicalArticleID, ref.SelectedSourceRevisionID)
+		if err != nil {
+			s.writePaidCatalogError(w, r, err)
+			return
+		}
 	}
-	if !paidCatalogHasAsset(sourceImages, ref.AssetID, ref.ObjectKey) || (ref.Projection == "article" && !paidCatalogArticleHasAsset(view.Article, ref.AssetID, ref.ObjectKey)) {
+	if !paidCatalogHasAsset(sourceImages, ref.AssetID, ref.ObjectKey) || (articleProjection && !paidCatalogArticleHasAsset(view.Article, ref.AssetID, ref.ObjectKey)) {
 		s.writePaidCatalogError(w, r, ErrCatalogNotFound)
 		return
 	}
