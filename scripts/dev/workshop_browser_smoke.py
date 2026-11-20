@@ -1301,12 +1301,12 @@ async def expect_figure_after_text(figure, text):
 async def expect_linked_pdf(article, *, rewritten=False):
     from playwright.async_api import expect
 
-    cell = article.locator('ol[start="4"] > li[value="9"] table td')
+    cell = article.locator('ol[start="4"] > li[value="9"] table td').first
     figure = cell.locator('figure:has(img[alt="Figure from page 1"])')
     await expect(figure).to_have_count(1)
     await expect(cell.locator(':scope > p')).to_have_text(
-        ['Check the seal.', 'Fit the replacement unit.'] if rewritten
-        else ['Inspect the seal.', 'Install the replacement.']
+        ['Check the seal.', 'After the flange has dried, fit the replacement oil seal into place.'] if rewritten
+        else ['Inspect the seal.', 'Install a new oil seal after the flange is dry.']
     )
     assert await cell.locator(':scope > :is(p, figure)').evaluate_all(
         "nodes => nodes.map(node => node.tagName).join(',')"
@@ -1440,6 +1440,8 @@ async def api_case(browser,origin,name,output,observations=None):
             await expect(article_content).to_contain_text('Inspect the alignment marks before removing the pump.')
             await expect(article_content).to_contain_text('Remove the pump.')
             await expect(article_content).to_contain_text('Do not run the pump dry.')
+            await expect(article_content).to_contain_text('Install a new oil seal after the flange is dry.')
+            await expect(article_content).to_contain_text('Tighten the cover bolts to 18 Nm.')
             await expect(page.locator('#print')).to_be_enabled()
             figure = page.locator('#article-content figure:has(img[alt="Alignment marks"])')
             await expect(figure).to_have_count(1)
@@ -1447,7 +1449,10 @@ async def api_case(browser,origin,name,output,observations=None):
                 await expect(page.locator('#article-content figure:has(img[alt="Alignment marks"]) figcaption')).to_have_text('Pump alignment marks')
             await expect_figure_after_text(figure, "Inspect the alignment marks")
             nested_item = '#article-content ol[start="4"] > li[value="9"]:has(table)'
+            depth_cell = page.locator(nested_item + ' table td').last
+            depth_label = depth_cell if linked_pdf else depth_cell.locator(':scope > span').first
             await expect(page.locator(nested_item + " > p").first).to_have_text("Remove the pump.")
+            await expect(depth_label).to_have_text('Drive seal seating depth: 2.0 mm')
             if linked_pdf:
                 await expect_linked_pdf(article_content)
             else:
@@ -1467,6 +1472,7 @@ async def api_case(browser,origin,name,output,observations=None):
             if observations:observations.phase='source-review-http'
             await page.locator('#article-reference summary').click();await page.locator('#source-review-load').click()
             await expect(page.locator('#source-review-frame')).to_contain_text('Remove the pump.')
+            await expect(page.locator('#source-review-frame')).to_contain_text('Install a new oil seal after the flange is dry.')
             if linked_pdf:
                 await expect_linked_pdf(page.locator('#source-review-frame'))
             else:
@@ -1486,11 +1492,15 @@ async def api_case(browser,origin,name,output,observations=None):
             await expect(article_content).to_contain_text('Take off the pump.')
             await expect(article_content).to_contain_text('Do not run the pump dry.')
             await expect(article_content).not_to_contain_text('Remove the pump.')
+            await expect(article_content).to_contain_text('After the flange has dried, fit the replacement oil seal into place.')
+            await expect(article_content).not_to_contain_text('Install a new oil seal after the flange is dry.')
+            await expect(article_content).to_contain_text('Tighten the cover bolts to 18 Nm.')
             await expect(figure).to_have_count(1)
             if not linked_pdf:
                 await expect(page.locator('#article-content figure:has(img[alt="Alignment marks"]) figcaption')).to_have_text('Pump alignment marks')
             await expect_figure_after_text(figure, "Check the pump alignment marks")
             await expect(page.locator(nested_item + " > p").first).to_have_text("Take off the pump.")
+            await expect(depth_label).to_have_text('Drive seal seating depth: 2.0 mm')
             if linked_pdf:
                 await expect_linked_pdf(article_content, rewritten=True)
             else:

@@ -171,6 +171,7 @@ def serve_model():
                         "Remove the pump.": "Take off the pump.",
                         "Inspect the seal.": "Check the seal.",
                         "Install the replacement.": "Fit the replacement unit.",
+                        "Install a new oil seal after the flange is dry.": "After the flange has dried, fit the replacement oil seal into place.",
                     }.get(text, text)
                     return {
                         "block_id": slot["block_id"],

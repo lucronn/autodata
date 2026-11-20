@@ -1382,7 +1382,7 @@ class API21FakePage:
 
 
 class API21FakeLocator:
-    def __init__(self,page,selector):self.page,self.selector=page,selector;self.first=self
+    def __init__(self,page,selector):self.page,self.selector=page,selector;self.first=self.last=self
 
     def locator(self, selector):
         return API21FakeLocator(self.page, self.selector + " " + selector)
