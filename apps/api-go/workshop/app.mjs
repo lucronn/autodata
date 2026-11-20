@@ -1398,12 +1398,15 @@ async function bootstrap() {
     ? requestJSON("/v1/catalog/years").catch(() => null)
     : null;
   if (!openDemo) {
-    merchantRequest = requestJSON("/workshop/purchase-config.json")
+    const configRequest = requestJSON("/workshop/purchase-config.json")
       .catch(() => null)
       .then((config) => {
+        if (merchantRequest !== configRequest) return;
         merchant = config;
         merchantRequest = null;
       });
+    merchant = null;
+    merchantRequest = configRequest;
     await session.bootstrap();
   }
   sessionEstablished = true;

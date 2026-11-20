@@ -3638,6 +3638,31 @@ test('startup restores an authenticated route before purchase configuration sett
   assert.equal(context.merchant, config);
 });
 
+test('a late purchase configuration response cannot overwrite a newer refresh', async () => {
+  const replies = [];
+  const context = {
+    URLSearchParams, location: { search: '?view=library' }, openDemo: false,
+    merchant: null, merchantRequest: null, sessionEstablished: false,
+    session: { async bootstrap() {} }, invalidate() {}, async restoreRoute() {},
+    requestJSON(path) {
+      assert.equal(path, '/workshop/purchase-config.json');
+      return new Promise(resolve => replies.push(resolve));
+    },
+  };
+  runInNewContext(appSection('async function bootstrap()', 'async function restoreRoute('), context);
+  await context.bootstrap();
+  const first = context.merchantRequest;
+  await context.bootstrap();
+  const latest = context.merchantRequest;
+  const disabled = { enabled: false };
+  replies[1](disabled);
+  await latest;
+  replies[0]({ enabled: true });
+  await first;
+  assert.equal(context.merchant, disabled);
+  assert.equal(context.merchantRequest, null);
+});
+
 test('owned articles can open before the purchase settings and scoped quote arrive', async () => {
   let finishMerchant;
   const h = selectionQuoteHarness(null);
