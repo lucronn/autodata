@@ -514,3 +514,55 @@ def test_retained_figure_apply_fences_writes(runtime, monkeypatch, blocker):
     with pytest.raises(ValueError, match=expected):
         apply_media_reprojection(runtime.repo, runtime.article_id, old_id, **args)
     assert all_rows(runtime.repo) == before
+
+
+@pytest.mark.parametrize("published", [False, True])
+def test_nested_list_capture_uses_new_projection_without_replacing_published_prose(runtime, monkeypatch, published):
+    from autodata_ingestion import source_article_capture as capture_module
+    from autodata_ingestion.article_lifecycle import _capture_context, run_article_worker_once
+    from autodata_ingestion.article_lifecycle_store import load_source_revision, store_captured_source
+    from autodata_ingestion.mercury2 import Mercury2Client
+    from autodata_ingestion.source_job_persistence import claim_source_job
+
+    runtime.servers[runtime.provider].body(json.dumps({"blocks": [
+        {"type": "ordered_list", "items": [{"text": "Remove the pump.", "blocks": [
+            {"type": "callout", "label": "Warning", "text": "Do not run the pump dry."},
+        ]}]},
+    ]}).encode(), "application/json")
+
+    build_capture = capture_module.capture_source_article
+
+    def flattened(*args, **kwargs):
+        captured = build_capture(*args, **kwargs)
+        document = deepcopy(captured.source_document)
+        document["blocks"][0]["items"] = ["Remove the pump."]
+        body, steps, images = capture_module.project_document(document)
+        return replace(captured, source_document=document, source_body=body, source_steps=steps, source_images=images)
+
+    with monkeypatch.context() as legacy:
+        legacy.setattr(capture_module, "capture_source_article", flattened)
+        for key, value in runtime.env.items():
+            legacy.setenv(key, value)
+        runtime.ensure()
+        run_article_worker_once(runtime.repo, worker_id=uuid4(), registry=runtime.registry, object_store=runtime.objects,
+                                model_client=Mercury2Client.from_environment() if published else None)
+    old = runtime.read_current()
+    assert (old["canonical_revision_id"] is not None) == published
+    revision = load_source_revision(runtime.repo, old["source_revision_id"])
+    assert revision.projection_version == "source-projection-v2"
+    assert "Do not run" not in revision.source_body
+
+    runtime.refresh()
+    lease = claim_source_job(runtime.repo, worker_id=uuid4())
+    updated = build_capture(_capture_context(runtime.repo, lease), registry=runtime.registry, object_store=runtime.objects)
+    assert updated.source_fingerprint == revision.source_fingerprint
+    selected = store_captured_source(runtime.repo, lease, updated)
+    state = runtime.read_current()
+    if published:
+        assert selected == revision.source_revision_id
+        assert state["canonical_revision_id"] == old["canonical_revision_id"]
+    else:
+        assert selected != revision.source_revision_id and state["source_revision_id"] == selected
+        fixed = load_source_revision(runtime.repo, selected)
+        assert fixed.projection_version == "source-projection-v3"
+        assert fixed.source_document["blocks"][0]["items"][0]["blocks"][0]["text"] == "Do not run the pump dry."
