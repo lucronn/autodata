@@ -1418,7 +1418,7 @@ async def api_case(browser,origin,name,output,observations=None):
             await expect(figure).to_have_count(1)
             await expect(page.locator('#article-content figure:has(img[alt="Alignment marks"]) figcaption')).to_have_text('Pump alignment marks')
             assert await figure.evaluate("node => node.previousElementSibling?.textContent.includes('Check the pump alignment marks')")
-            await expect(article_content.locator('.source-reference').first).to_be_visible()
+            await expect(page.locator('#article-content .source-reference').first).to_be_visible()
             warm_before=await api_snapshot(context,origin,'warm-before-snapshot')
             reader_before=(await api_measure(context,origin,'reader-before-measurement'))['image_reads']
             await page.reload();await expect(page.locator('#article-kind')).to_have_text('Workshop article')
