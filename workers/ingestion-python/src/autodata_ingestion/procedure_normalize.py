@@ -288,8 +288,14 @@ def _undersegmented_article(article: Mapping[str, Any]) -> bool:
     body = str(article.get("body") or "").strip()
     document = article.get("normalized_document")
     blocks = document.get("blocks") if isinstance(document, Mapping) else None
-    if isinstance(blocks, list) and len(blocks) >= 4:
-        return False
+    if isinstance(blocks, list) and blocks:
+        if len(blocks) > 1:
+            return False
+        block = blocks[0]
+        if isinstance(block, Mapping) and (
+            block.get("type") != "paragraph" or block.get("images")
+        ):
+            return False
     if body and (
         "\n" in body
         or re.search(

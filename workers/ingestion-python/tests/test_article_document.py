@@ -132,6 +132,23 @@ def test_collapsed_tsb_pdf_text_is_segmented_for_workshop_display():
     assert len(article["normalized_document"]["blocks"]) >= 6
 
 
+def test_normalization_still_splits_legacy_multiline_paragraph():
+    body = "Remove the pump.\nInspect the seal."
+    legacy = {
+        "schema_version": 1,
+        "normalization_version": NORMALIZATION_VERSION,
+        "blocks": [{
+            "type": "paragraph", "text": body, "block_id": "legacy:1", "source_order": 1,
+        }],
+    }
+    normalized = normalize_procedure_article({
+        "article_id": "legacy", "body": body, "normalized_document": legacy,
+    })
+    assert [block["text"] for block in normalized["normalized_document"]["blocks"]] == [
+        "Remove the pump.", "Inspect the seal.",
+    ]
+
+
 def test_document_figure_queue_does_not_duplicate_existing_image_blocks():
     article = {
         "article_id": "test-article",

@@ -658,6 +658,98 @@ def test_nested_article_applicability_must_match_scope(
 
 
 @pytest.mark.parametrize("provider", ["bankone", "banktwo"])
+@pytest.mark.parametrize("placement", ["single_paragraph", "paragraph", "step", "table", "standalone"])
+def test_short_captured_document_keeps_media_for_auto_rewrite(capture_fixture, provider, placement):
+    import json
+
+    from autodata_ingestion.article_document import build_ordered_document, validate_ordered_document
+    from autodata_ingestion.article_lifecycle_store import StoredSource
+    from autodata_ingestion.procedure_normalize import normalize_procedure_article
+    from autodata_ingestion.procedure_rewrite_auto import render_auto, validate_auto
+    from autodata_ingestion.procedure_rewrite_full import prose_slots
+    from autodata_ingestion.source_article_capture import _image_nodes, capture_source_article
+
+    figures = [
+        {"asset_resource_ref": "available", "alt": "Installation marks"},
+        {"asset_resource_ref": "missing", "alt": "Seal orientation"},
+    ]
+    if placement == "table":
+        positioned = [{"kind": "table", "rows": [[{"text": "Pump seal", "images": figures}]]}]
+    elif placement == "standalone":
+        positioned = [{"kind": "image", **figure} for figure in figures]
+    else:
+        positioned = [{"kind": placement, "text": "Inspect the seal.", "images": figures}]
+    opening = {"kind": "paragraph", "text": "Remove the pump."}
+    if placement == "single_paragraph":
+        opening.update(text="Service the pump.", images=figures)
+        positioned = []
+    payload = {"blocks": [opening, *positioned]}
+    capture_fixture.body(provider, json.dumps(payload).encode(), "application/json")
+    capture_fixture.body(provider, b"localized", "image/png", ref="available", kind="asset")
+    captured = capture_source_article(
+        replace(capture_fixture.context(provider), evidence_ids=()),
+        registry=capture_fixture.registry,
+        object_store=capture_fixture.objects,
+    )
+    assert validate_ordered_document(captured.source_document, strict=True) == []
+    source = StoredSource(
+        source_revision_id=uuid.uuid4(),
+        context=captured.context,
+        source_document=captured.source_document,
+        source_images=captured.source_images,
+        source_body=captured.source_body,
+        source_steps=captured.source_steps,
+        source_fingerprint=captured.source_fingerprint,
+        evidence_manifest=captured.evidence_manifest,
+        body_source_snapshot_id=captured.body_source_snapshot_id,
+        resource_manifest=captured.resource_manifest,
+        projection_status=captured.projection_status,
+        captured_at=captured.captured_at,
+        projection_version=captured.projection_version,
+    )
+    article = source.as_article()
+    normalized = normalize_procedure_article(article)["normalized_document"]
+    assert normalized == captured.source_document
+
+    rebuilt = build_ordered_document(article, article["blocks"])
+    assert validate_ordered_document(rebuilt, strict=True) == []
+    localized, unavailable = list(_image_nodes(rebuilt["blocks"]))
+    assert localized["status"] == "available"
+    assert localized["media_type"] == "image/png"
+    assert localized["storage_key"] == captured.source_images[0]["storage_key"]
+    assert localized["content_sha256"] == sha256(b"localized").hexdigest()
+    assert unavailable["status"] == "unavailable"
+    assert unavailable["unavailable_reason"] == "SOURCE_NOT_FOUND"
+    assert "storage_key" not in unavailable
+    assert localized["evidence_ids"] == unavailable["evidence_ids"] == [
+        "source:" + str(captured.body_source_snapshot_id)
+    ]
+
+    rewrite = {
+        "introduction": "This procedure covers pump removal.",
+        "replacements": [
+            {**slot, "action": "rewrite", "reason": "", "text": {
+                "Remove the pump.": "Take the pump out.",
+                "Service the pump.": "Perform the pump service.",
+                "Inspect the seal.": "Check the seal.",
+            }[slot["text"]]}
+            for slot in prose_slots(normalized)
+        ],
+    }
+    candidate = render_auto(normalized, rewrite)
+    assert validate_auto(normalized, candidate, response=rewrite).passed
+    rewritten_figures = list(_image_nodes(candidate["blocks"]))
+    if placement == "standalone":
+        # Auto rewrite inserts an introduction before the protected original blocks.
+        assert [figure["source_order"] for figure in rewritten_figures] == [3, 4]
+        rewritten_figures = [
+            {**figure, "source_order": figure["source_order"] - 1}
+            for figure in rewritten_figures
+        ]
+    assert rewritten_figures == captured.source_images
+
+
+@pytest.mark.parametrize("provider", ["bankone", "banktwo"])
 @pytest.mark.parametrize("localized", [False, True])
 @pytest.mark.parametrize("context_evidence", [False, True])
 @pytest.mark.parametrize("location", ["step", "instruction", "table", "list", "callout"])

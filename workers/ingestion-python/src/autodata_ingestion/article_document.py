@@ -526,7 +526,9 @@ def _image_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str
     uri = _clean_text(raw.get("uri"))
     path = _clean_text(raw.get("path"))
     asset_id = storage_key or image_id or asset_resource_ref or uri or path or (sha256(source_url.encode()).hexdigest() if source_url else "")
-    is_available = bool(source_url or storage_key or asset_resource_ref or uri or path)
+    is_available = raw.get("status") != "unavailable" and bool(
+        source_url or storage_key or asset_resource_ref or uri or path
+    )
     fields: dict[str, Any] = {
         "asset_id": asset_id or None,
         "image_id": image_id or asset_id or None,
@@ -539,7 +541,10 @@ def _image_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str
             or raw.get("title")
         ),
         "status": "available" if is_available else "unavailable",
-        "unavailable_reason": None if is_available else "source image reference is missing",
+        "unavailable_reason": None if is_available else (
+            _clean_text(raw.get("unavailable_reason")) or "source image reference is missing"
+        ),
+        "media_type": _clean_text(raw.get("media_type")),
     }
     content_sha256 = _clean_text(raw.get("content_sha256"))
     if content_sha256:
@@ -619,12 +624,24 @@ def _normalize_cell_image(raw: Mapping[str, Any]) -> dict[str, Any]:
     uri = _clean_text(raw.get("uri"))
     path = _clean_text(raw.get("path"))
     asset_id = storage_key or image_id or asset_resource_ref or uri or path or (sha256(source_url.encode()).hexdigest() if source_url else "")
+    is_available = raw.get("status") != "unavailable" and bool(
+        source_url or storage_key or asset_resource_ref or uri or path
+    )
     out: dict[str, Any] = {
         "asset_id": asset_id or None,
         "image_id": image_id or asset_id or None,
         "alt": _clean_text(raw.get("alt") or raw.get("title") or raw.get("description") or raw.get("legend")) or "Article illustration",
-        "status": "available" if (source_url or storage_key or asset_resource_ref or uri or path) else "unavailable",
+        "status": "available" if is_available else "unavailable",
     }
+    reason = _clean_text(raw.get("unavailable_reason"))
+    if not is_available and reason:
+        out["unavailable_reason"] = reason
+    media_type = _clean_text(raw.get("media_type"))
+    if media_type:
+        out["media_type"] = media_type
+    evidence_ids = _evidence_ids(raw, {})
+    if evidence_ids:
+        out["evidence_ids"] = evidence_ids
     content_sha256 = _clean_text(raw.get("content_sha256"))
     if content_sha256:
         out["content_sha256"] = content_sha256
