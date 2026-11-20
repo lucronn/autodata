@@ -109,6 +109,24 @@ class ConnectorTests(unittest.TestCase):
         ])
         self.assertEqual(second, "Replace the pump.")
 
+    def test_inline_figure_between_nested_items_stays_with_the_parent_item(self):
+        parser = ArticleParser()
+        parser.feed(
+            '<ol><li>Open cover.<ol><li>Inspect seal.</li><img data-resource-ref="alignment">'
+            '<li>Inspect seat.</li></ol> Clean flange.</li><li>Install cover.</li></ol>'
+        )
+        parser.close()
+        parser.flush()
+        outer, = parser.blocks
+        first, second = outer["items"]
+        self.assertEqual(first["text"], "Open cover.")
+        before, figure, after, tail = first["blocks"]
+        self.assertEqual(before, {"kind": "ordered_list", "items": ["Inspect seal."], "start": 1})
+        self.assertEqual(figure["asset_resource_ref"], "alignment")
+        self.assertEqual(after, {"kind": "ordered_list", "items": ["Inspect seat."], "start": 2})
+        self.assertEqual(tail, {"kind": "text", "text": "Clean flange."})
+        self.assertEqual(second, "Install cover.")
+
     def test_legacy_facade_projects_structured_list_text_and_localizes_nested_image(self):
         html = (
             '<ol><li>Remove pump.<img src="/bound" alt="Alignment marks">'

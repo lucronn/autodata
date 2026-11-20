@@ -209,12 +209,15 @@ class ArticleParser(HTMLParser):
                 self._table_cell.append(image)
                 return
             if self._lists and self._lists[-1].item is None:
-                frame = self._lists[-1]
-                # Some legacy articles put an illustration between sibling <li> tags.
-                self._emit_list(frame, top_level=len(self._lists) == 1)
+                # Emit a figure between sibling <li> tags in the enclosing item.
+                frame = self._lists.pop()
+                self._emit_list(frame, top_level=not self._lists)
                 frame.start += len(frame.items)
                 frame.items = []
-            self._append_block(image)
+                self._append_block(image)
+                self._lists.append(frame)
+            else:
+                self._append_block(image)
 
     def handle_endtag(self, tag):
         if self._skip:
