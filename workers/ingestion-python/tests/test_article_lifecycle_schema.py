@@ -11,6 +11,7 @@ from lifecycle_support import (
     seed_legacy_jobs_and_read_invariants,
     read_imported_job_invariants,
 )
+from test_source_article_capture import capture_fixture
 
 
 def test_provider_identity_is_unique_without_cross_bank_merging(fresh_database):
@@ -334,3 +335,54 @@ def test_pdf_figure_projection_upgrade_preserves_v6_before_advancing(fresh_datab
     with repo.connect() as conn:
         assert conn.execute('SELECT current_source_revision_id FROM canonical_articles WHERE canonical_article_id=%s',
                             (article,)).fetchone()['current_source_revision_id'] == v7
+
+
+def test_multi_figure_upgrade_preserves_same_byte_v7_publication(fresh_database, capture_fixture):
+    from autodata_ingestion import article_lifecycle_store as store
+    from autodata_ingestion.article_lifecycle import run_article_job
+    from autodata_ingestion.source_job_persistence import claim_source_job, refresh_article_job
+    from test_article_source_persistence import prepare
+    from test_article_transform import Model
+
+    repo = fresh_database(through=47)
+    _, lease, captured = prepare(repo, capture_fixture)
+    article = lease.canonical_article_id
+    v7 = store.store_captured_source(repo, lease, dataclasses.replace(
+        captured, projection_version="source-projection-v7",
+    ))
+    run_article_job(
+        repo, lease, registry=capture_fixture.registry, object_store=capture_fixture.objects,
+        model_client=Model(),
+    )
+    published = store.load_article_state(repo, article)
+    assert published["source_revision_id"] == v7
+    assert published["canonical_revision_id"] is not None
+    assert published["content_origin"] == "canonical"
+    with pytest.raises(psycopg.errors.CheckViolation):
+        append_projection(repo, v7, "source-projection-v8")
+
+    before = lifecycle_history(repo)
+    apply_migration(repo, 48)
+    assert lifecycle_history(repo) == before
+
+    refresh = refresh_article_job(repo, article, actor="fixture", reason="recapture identical source bytes")
+    refreshed_lease = claim_source_job(repo, worker_id=uuid.uuid4(), job_id=refresh.job_id)
+    assert store.store_captured_source(repo, refreshed_lease, dataclasses.replace(
+        captured, projection_version="source-projection-v8",
+    )) == v7
+    refreshed = store.load_article_state(repo, article)
+    for field in ("source_revision_id", "canonical_revision_id", "content_origin", "document", "body"):
+        assert refreshed[field] == published[field]
+    after = lifecycle_history(repo)
+    for table in ("canonical_article_source_revisions", "canonical_article_revisions", "publication_events"):
+        assert after[table] == before[table]
+
+    v8 = append_projection(repo, v7, "source-projection-v8")
+    with repo.connect() as conn:
+        conn.execute("""UPDATE canonical_articles SET current_source_revision_id=%s,
+            current_canonical_revision_id=NULL WHERE canonical_article_id=%s""", (v8, article))
+    for target in (None, v7):
+        with pytest.raises(psycopg.errors.CheckViolation, match="source projection downgrade"), repo.connect() as conn:
+            conn.execute("UPDATE canonical_articles SET current_source_revision_id=%s WHERE canonical_article_id=%s",
+                         (target, article))
+    assert store.load_article_state(repo, article)["source_revision_id"] == v8

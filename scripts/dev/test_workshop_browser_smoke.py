@@ -1397,7 +1397,7 @@ class API21FakeLocator:
     async def evaluate_all(self, expression):
         assert self.selector.endswith(" :scope > :is(p, figure)")
         assert "tagName" in expression
-        return "P,FIGURE,P"
+        return "P,FIGURE,P,FIGURE,P"
     async def click(self,**kwargs):
         context=self.page.context;browser=context.browser
         if self.selector=='#signin':context.signed=True

@@ -170,7 +170,7 @@ def _replace_pdf_embeds(value, documents):
             if isinstance(node, dict) and node.get("kind") == "document_embed":
                 ref = node.get("asset_resource_ref")
                 if ref in documents:
-                    blocks, evidence = documents[ref]
+                    blocks, evidence, _ = documents[ref]
                     expanded.extend({**deepcopy(block), "evidence_ids": evidence} for block in blocks)
                 else:
                     expanded.append({
@@ -186,7 +186,7 @@ def _replace_pdf_embeds(value, documents):
 def capture_source_article(
     context, *, registry, object_store, deadline_seconds=30.0,
     keep_embedded_pdf=False, keep_html_headings=False, keep_bound_pdf_iframes=False,
-    keep_pdf_figure_order=False,
+    keep_pdf_figure_order=False, keep_multiple_pdf_figures=False,
 ):
     if not 0 < deadline_seconds <= 30:
         raise ValueError("capture deadline must be within 30 seconds")
@@ -261,6 +261,7 @@ def capture_source_article(
             keep_embedded_pdf=keep_embedded_pdf, keep_html_headings=keep_html_headings,
             keep_bound_pdf_iframes=keep_bound_pdf_iframes,
             keep_pdf_figure_order=keep_pdf_figure_order,
+            keep_multiple_pdf_figures=keep_multiple_pdf_figures,
         )
         article = parsing.result(timeout=remaining())
     except (ValueError, TypeError, KeyError, UnicodeError) as error:
@@ -277,6 +278,7 @@ def capture_source_article(
     blocks = deepcopy(article["blocks"])
     handled_pdf_embeds = article.get("handled_pdf_embeds") is True
     positioned_pdf_figures = article.get("positioned_pdf_figures") is True
+    pdf_asset_order = article.get("pdf_legacy_asset_order", [])
     new_structure = article.get("embedded_pdf") or (
         article.get("authored_html_headings") and any(block.get("kind") == "heading" for block in _walk(blocks))
     )
@@ -338,6 +340,7 @@ def capture_source_article(
                 try:
                     adapted = adapt_bound_pdf_embed(
                         payload, require_complete_ocr=True, keep_pdf_figure_order=keep_pdf_figure_order,
+                        keep_multiple_pdf_figures=keep_multiple_pdf_figures,
                     )
                 except ValueError:
                     adapted = None
@@ -387,7 +390,8 @@ def capture_source_article(
         else:
             _, _, resource, failure, originals, adapted = future.result()
             if adapted is not None:
-                documents[ref] = (adapted["blocks"], ["source:" + resource["source_snapshot_id"]])
+                documents[ref] = (adapted["blocks"], ["source:" + resource["source_snapshot_id"]],
+                                  adapted.get("pdf_legacy_asset_order", []))
                 positioned_pdf_figures |= adapted.get("positioned_pdf_figures") is True
             for original in originals:
                 resources.append(original)
@@ -421,59 +425,83 @@ def capture_source_article(
         "source:" + resource["source_snapshot_id"]: resource
         for resource in resources if resource["role"] == "document_asset"
     }
-    for node in _walk(blocks):
-        uri = node.get("url", "")
-        if (
-            (node.get("kind") or node.get("type")) == "image"
-            and not node.get("asset_resource_ref")
-            and uri.startswith("data:image/")
-        ):
-            try:
-                header, encoded = uri.split(",", 1)
-                media = header[5:].split(";", 1)[0].strip().lower()
-                if ";base64" not in header or media == "image/svg+xml":
-                    raise ValueError("unsupported embedded figure")
-                payload = base64.b64decode(encoded, validate=True)
-                digest = sha256(payload).hexdigest()
-                key = "sources/" + digest[:16] + "/" + digest
-                bounded_objects.put_object(key, payload, media)
-                evidence = node.get("evidence_ids")
-                parent = next(
-                    (evidence_sources[item] for item in evidence if isinstance(item, str) and item in evidence_sources),
-                    resources[0],
-                ) if isinstance(evidence, list) else resources[0]
-                ref = "embedded:" + parent["sha256"] + ":" + digest
-                displayable = media in DISPLAYABLE_RASTER_MEDIA
-                local = {
-                    "provider": provider,
-                    "opaque_ref": ref,
-                    "role": "embedded_asset" if displayable else "asset_original",
-                    "media_type": media,
-                    "sha256": digest,
-                    "object_key": key,
-                    "source_snapshot_id": str(snapshot_id(digest)),
-                    "source_revision": parent["source_revision"],
-                    "request_id": parent["request_id"],
-                    "fetched_at": parent["fetched_at"],
-                    "locator": parent["locator"],
+    embedded_nodes = [
+        node for node in _walk(blocks)
+        if (node.get("kind") or node.get("type")) == "image"
+        and not node.get("asset_resource_ref") and node.get("url", "").startswith("data:image/")
+    ]
+    pdf_asset_orders = {(): pdf_asset_order} if pdf_asset_order else {}
+    pdf_asset_orders.update({tuple(evidence): order for _, evidence, order in documents.values() if order})
+    if pdf_asset_orders:
+        # Reorder only each PDF figure's upload slots. Display order must not
+        # change the manifest and fingerprint of the same retained source.
+        ranks = {
+            evidence: {image_id: (group, rank)
+                       for group, order in enumerate(orders) for rank, image_id in enumerate(order)}
+            for evidence, orders in pdf_asset_orders.items()
+        }
+        pending_groups = {}
+        for position, node in enumerate(embedded_nodes):
+            evidence = node.get("evidence_ids")
+            evidence = tuple(evidence) if isinstance(evidence, list) and all(isinstance(e, str) for e in evidence) else ()
+            rank = ranks.get(evidence, {}).get(node.get("image_id"))
+            if rank is None:
+                continue
+            group = (evidence, rank[0])
+            pending = pending_groups.setdefault(group, [])
+            pending.append((position, rank[1], node))
+            if len(pending) == len(pdf_asset_orders[evidence][rank[0]]):
+                for slot, assigned in zip(pending, sorted(pending, key=lambda entry: entry[1])):
+                    embedded_nodes[slot[0]] = assigned[2]
+                del pending_groups[group]
+    for node in embedded_nodes:
+        uri = node["url"]
+        try:
+            header, encoded = uri.split(",", 1)
+            media = header[5:].split(";", 1)[0].strip().lower()
+            if ";base64" not in header or media == "image/svg+xml":
+                raise ValueError("unsupported embedded figure")
+            payload = base64.b64decode(encoded, validate=True)
+            digest = sha256(payload).hexdigest()
+            key = "sources/" + digest[:16] + "/" + digest
+            bounded_objects.put_object(key, payload, media)
+            evidence = node.get("evidence_ids")
+            parent = next(
+                (evidence_sources[item] for item in evidence if isinstance(item, str) and item in evidence_sources),
+                resources[0],
+            ) if isinstance(evidence, list) else resources[0]
+            ref = "embedded:" + parent["sha256"] + ":" + digest
+            displayable = media in DISPLAYABLE_RASTER_MEDIA
+            local = {
+                "provider": provider,
+                "opaque_ref": ref,
+                "role": "embedded_asset" if displayable else "asset_original",
+                "media_type": media,
+                "sha256": digest,
+                "object_key": key,
+                "source_snapshot_id": str(snapshot_id(digest)),
+                "source_revision": parent["source_revision"],
+                "request_id": parent["request_id"],
+                "fetched_at": parent["fetched_at"],
+                "locator": parent["locator"],
+            }
+            if displayable:
+                localized[ref] = local
+            else:
+                node["reason"] = "UNSUPPORTED_ASSET_MEDIA"
+            resources.append(local)
+            provenance.append(deepcopy(local))
+            manifest.append(
+                {
+                    k: local[k]
+                    for k in ("role", "opaque_ref", "sha256", "media_type")
                 }
-                if displayable:
-                    localized[ref] = local
-                else:
-                    node["reason"] = "UNSUPPORTED_ASSET_MEDIA"
-                resources.append(local)
-                provenance.append(deepcopy(local))
-                manifest.append(
-                    {
-                        k: local[k]
-                        for k in ("role", "opaque_ref", "sha256", "media_type")
-                    }
-                )
-                node["asset_resource_ref"] = ref
-            except (ValueError, TypeError):
-                node["reason"] = "INVALID_EMBEDDED_IMAGE"
-            except SourceConnectorError as error:
-                node["reason"] = error.code
+            )
+            node["asset_resource_ref"] = ref
+        except (ValueError, TypeError):
+            node["reason"] = "INVALID_EMBEDDED_IMAGE"
+        except SourceConnectorError as error:
+            node["reason"] = error.code
     positioned = set()
     image_records = {}
     for node in _walk(blocks):
@@ -620,7 +648,8 @@ def capture_source_article(
         ),
         datetime.now(timezone.utc),
         projection_version=(
-            "source-projection-v7" if positioned_pdf_figures
+            "source-projection-v8" if pdf_asset_orders
+            else "source-projection-v7" if positioned_pdf_figures
             else "source-projection-v6" if handled_pdf_embeds
             else "source-projection-v5" if new_structure
             else "source-projection-v2"

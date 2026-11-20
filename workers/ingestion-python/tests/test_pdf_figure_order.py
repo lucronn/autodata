@@ -2,6 +2,7 @@
 
 import base64
 from io import BytesIO
+from hashlib import sha256
 import json
 from random import Random
 
@@ -57,6 +58,19 @@ def _pdf(layout="clear", *, mixed=False):
         pdf.showPage()
         pdf.drawString(72, 720, "Check the fitting.")
         pdf.showPage()
+    pdf.save()
+    return buffer.getvalue()
+
+
+def _multi_figure_pdf(*, same_gap=False, overlap=False):
+    buffer = BytesIO()
+    pdf = canvas.Canvas(buffer, invariant=True, pagesize=(612, 792))
+    pdf.drawString(72, 750, "Open the pump cover.")
+    # Resource and paint order are deliberately different from visual order.
+    pdf.drawImage(_image(14), 72, 638 if overlap else 628 if same_gap else 450, width=96, height=18 if same_gap or overlap else 100)
+    pdf.drawString(72, 600, "Check the seal.")
+    pdf.drawImage(_image(7), 72, 650, width=96, height=70)
+    pdf.drawString(72, 400, "Install the seal.")
     pdf.save()
     return buffer.getvalue()
 
@@ -189,3 +203,58 @@ def test_only_repositions_native_page_on_a_mixed_pdf(monkeypatch):
         ("text", "Check the fitting."),
     ]
     assert positioned["blocks"][3:] == legacy["blocks"][3:]
+
+
+@pytest.mark.parametrize("embedded_count", [0, 1, 2])
+@pytest.mark.parametrize("same_gap", [False, True])
+def test_multi_figure_capture_preserves_original_and_manifest_order(capture_fixture, embedded_count, same_gap):
+    provider = "banktwo"
+    payload = _multi_figure_pdf(same_gap=same_gap)
+    context = capture_fixture.context(provider)
+    if embedded_count:
+        capture_fixture.body(
+            provider, b'<iframe src="/fixture/diagrams"></iframe>' * embedded_count,
+            assets=["addendum"], asset_bindings=[{"source_url": "/fixture/diagrams", "resource_ref": "addendum"}],
+        )
+        capture_fixture.body(provider, payload, "application/pdf", kind="binary", ref="addendum")
+    else:
+        capture_fixture.body(provider, payload, "application/pdf", kind="binary")
+    opts = dict(registry=capture_fixture.registry, object_store=capture_fixture.objects,
+                keep_bound_pdf_iframes=True, keep_pdf_figure_order=True)
+    before = capture_source_article(context, **opts)
+    after = capture_source_article(context, **opts, keep_multiple_pdf_figures=True)
+    assert before.projection_version == ("source-projection-v6" if embedded_count else "source-projection-v2")
+    assert after.projection_version == "source-projection-v8"
+    assert before.source_fingerprint == after.source_fingerprint
+    assert before.resource_manifest == after.resource_manifest
+    assert before.evidence_manifest == after.evidence_manifest
+    for key in ("resources", "resource_provenance"):
+        def identity(records):
+            return [{k: v for k, v in row.items() if k not in ("request_id", "fetched_at")}
+                    for row in records]
+
+        assert identity(getattr(before, key)) == identity(getattr(after, key))
+    assert before.source_body == after.source_body and before.source_steps == after.source_steps
+    assert after.source_document != before.source_document
+    digest = sha256(payload).hexdigest()
+    assert capture_fixture.objects.data[f"sources/{digest[:16]}/{digest}"] == (payload, "application/pdf")
+    first = ("paragraph", "Open the pump cover.")
+    second = ("paragraph", "Check the seal.")
+    third = ("paragraph", "Install the seal.")
+    figure = ("image", "Figure from page 1")
+    expected = [first, figure, figure, second, third] if same_gap else [first, figure, second, figure, third]
+    assert _layout(after.source_document["blocks"]) == expected * max(embedded_count, 1)
+    pixels = []
+    for image in after.source_images:
+        data, media = capture_fixture.objects.data[image["storage_key"]]
+        assert media == "image/png"
+        with Image.open(BytesIO(data)) as raster:
+            pixels.append(raster.tobytes())
+    assert pixels == [Random(seed).randbytes(96 * 96 * 3) for seed in [7, 14] * max(embedded_count, 1)]
+
+
+def test_overlapping_multiple_figures_keep_legacy_order():
+    resource = SourceResource.from_bytes("fixture:placement", "fixture", _multi_figure_pdf(overlap=True), "application/pdf")
+    legacy = adapt_bound_article(resource, None)
+    assert sum(block["kind"] == "image" for block in legacy["blocks"]) == 2
+    assert adapt_bound_article(resource, None, keep_pdf_figure_order=True, keep_multiple_pdf_figures=True) == legacy

@@ -1,4 +1,4 @@
-"""Find a visible gap for a directly drawn figure on a simple native PDF page."""
+"""Find visible gaps for directly drawn figures on a simple native PDF page."""
 
 import math
 import re
@@ -16,23 +16,28 @@ def _upright_matrix(matrix):
     )
 
 
-def figure_text_gap(page, text, segments):
-    """Find an insertion slot without changing the existing native text blocks."""
+def figure_text_gaps(page, text, segments, page_image_keys):
+    """Find insertion slots in visual order without changing the native text."""
     lines = text.splitlines()
-    if len(lines) < 2 or lines != [block.get("text") for block in segments]:
-        return None
+    if (len(lines) < 2 or lines != [block.get("text") for block in segments]
+            or not page_image_keys or any(not isinstance(key, str) for key in page_image_keys)):
+        return {}
 
-    bounds = []
+    extracted_keys = set(page_image_keys)
+    bounds = {}
     text_boxes = []
 
     def visit_operand(operator, operands, matrix, _text_matrix):
         if operator in _AMBIGUOUS_OPERATORS:
             raise ValueError("ambiguous painted content")
         if operator == b"Do":
-            if bounds or operands != [image_key] or not _upright_matrix(matrix):
+            if len(operands) != 1 or operands[0] not in extracted_keys or not _upright_matrix(matrix):
                 raise ValueError("ambiguous figure placement")
+            image_key = operands[0]
+            if image_key in bounds:
+                raise ValueError("figure drawn more than once")
             width, _, _, height, x, y = matrix
-            bounds.append((x, y, x + width, y + height))
+            bounds[image_key] = (x, y, x + width, y + height)
 
     def visit_text(value, matrix, text_matrix, _font, font_size):
         line = re.sub(r"[ \t]+", " ", value).strip()
@@ -52,41 +57,40 @@ def figure_text_gap(page, text, segments):
         text_boxes.append((x, y, height))
 
     try:
-        image_keys = page.images.keys()
-        if (
-            page.rotation != 0 or page.get("/Annots")
-            or len(image_keys) != 1 or not isinstance(image_keys[0], str)
-        ):
-            return None
-        image_key = image_keys[0]
-        image = page["/Resources"]["/XObject"][image_key]
-        if image.get("/Subtype") != "/Image" or any(key in image for key in ("/Mask", "/SMask", "/OC")):
-            return None
+        if page.rotation != 0 or page.get("/Annots"):
+            return {}
+        for image_key in page_image_keys:
+            image = page["/Resources"]["/XObject"][image_key]
+            if image.get("/Subtype") != "/Image" or any(key in image for key in ("/Mask", "/SMask", "/OC")):
+                return {}
         crop_left, crop_bottom, crop_right, crop_top = map(float, page.cropbox)
         page.extract_text(visitor_operand_before=visit_operand, visitor_text=visit_text)
     except Exception:
         # This optional layout pass must never replace usable text or images.
-        return None
+        return {}
 
-    if not bounds or len(text_boxes) != len(lines):
-        return None
-    [(left, bottom, right, top)] = bounds
-    if not (crop_left <= left < right <= crop_right and crop_bottom <= bottom < top <= crop_top):
-        return None
+    if bounds.keys() != extracted_keys or len(text_boxes) != len(lines):
+        return {}
     column_left = text_boxes[0][0]
     if any(
-        not (abs(x - column_left) <= 2 and crop_left <= x and left - 2 <= x < right
-             and crop_bottom <= y - height and y + height <= crop_top)
+        not (abs(x - column_left) <= 2 and crop_left <= x and crop_bottom <= y - height and y + height <= crop_top)
         for x, y, height in text_boxes
     ):
-        return None
+        return {}
     if any(first[1] <= second[1] for first, second in zip(text_boxes, text_boxes[1:])):
         # Drawing order is not reading order. Keep the original text order.
-        return None
-    for index, (_, y, height) in enumerate(text_boxes):
-        if y - height > top:
-            continue
-        if index and all(y + height < bottom for _, y, height in text_boxes[index:]):
-            return index
-        break
-    return None
+        return {}
+    ordered = sorted(bounds.items(), key=lambda item: item[1][3], reverse=True)
+    if any(upper[1][1] <= lower[1][3] for upper, lower in zip(ordered, ordered[1:])):
+        return {}
+    gaps = {}
+    for key, (left, bottom, right, top) in ordered:
+        if not (crop_left <= left < right <= crop_right and crop_bottom <= bottom < top <= crop_top):
+            return {}
+        if any(not left - 2 <= x < right for x, _, _ in text_boxes):
+            return {}
+        gap = next((i for i, (_, y, height) in enumerate(text_boxes) if y - height <= top), len(text_boxes))
+        if not 0 < gap < len(text_boxes) or any(y + height >= bottom for _, y, height in text_boxes[gap:]):
+            return {}
+        gaps[key] = gap
+    return gaps

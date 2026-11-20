@@ -408,7 +408,9 @@ def _child(root_name,engine,provider,directory,monkeypatch):
                     if provider == "banktwo" and root_name == "test_browser_owned_source_canonical_and_media_real_api":
                         from test_workshop_linked_pdf import _PDF_LOCATOR, _PDF_REF, _pdf_with_fixture_figure
 
-                        pdf, _ = _pdf_with_fixture_figure(trailing_text="Install a new oil seal after the flange is dry.")
+                        pdf, _ = _pdf_with_fixture_figure(
+                            trailing_text="Install a new oil seal after the flange is dry.", second_figure=True,
+                        )
                         html = (
                             '<p>Inspect the alignment marks before removing the pump.</p>'
                             '<img src="/fixture/alignment.png" alt="Alignment marks">'

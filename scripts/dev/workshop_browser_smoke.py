@@ -1302,19 +1302,20 @@ async def expect_linked_pdf(article, *, rewritten=False):
     from playwright.async_api import expect
 
     cell = article.locator('ol[start="4"] > li[value="9"] table td').first
-    figure = cell.locator('figure:has(img[alt="Figure from page 1"])')
-    await expect(figure).to_have_count(1)
+    figures = cell.locator('figure:has(img[alt="Figure from page 1"])')
+    await expect(figures).to_have_count(2)
     await expect(cell.locator(':scope > p')).to_have_text(
-        ['Check the seal.', 'After the flange has dried, fit the replacement oil seal into place.'] if rewritten
-        else ['Inspect the seal.', 'Install a new oil seal after the flange is dry.']
+        ['Check the seal.', 'Check the gasket.', 'After the flange has dried, fit the replacement oil seal into place.']
+        if rewritten else ['Inspect the seal.', 'Inspect the gasket.', 'Install a new oil seal after the flange is dry.']
     )
     assert await cell.locator(':scope > :is(p, figure)').evaluate_all(
         "nodes => nodes.map(node => node.tagName).join(',')"
-    ) == "P,FIGURE,P"
+    ) == "P,FIGURE,P,FIGURE,P"
     assert await article.locator('iframe, object, embed').count() == 0
     await expect(article).not_to_contain_text('Hidden fallback.')
     assert "/provider-private/" not in await article.inner_html()
-    await expect(figure.locator('img')).to_have_js_property('naturalWidth', 96)
+    await expect(figures.first.locator('img')).to_have_js_property('naturalWidth', 96)
+    await expect(figures.last.locator('img')).to_have_js_property('naturalWidth', 128)
 
 
 async def api_case(browser,origin,name,output,observations=None):

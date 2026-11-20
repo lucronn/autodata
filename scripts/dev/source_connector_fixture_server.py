@@ -170,6 +170,7 @@ def serve_model():
                         "Inspect the alignment marks before removing the pump.": "Check the pump alignment marks before removal.",
                         "Remove the pump.": "Take off the pump.",
                         "Inspect the seal.": "Check the seal.",
+                        "Inspect the gasket.": "Check the gasket.",
                         "Install the replacement.": "Fit the replacement unit.",
                         "Install a new oil seal after the flange is dry.": "After the flange has dried, fit the replacement oil seal into place.",
                     }.get(text, text)

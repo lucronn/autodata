@@ -48,12 +48,20 @@ class FixtureDraft:
         }
 
 
-def _pdf_with_fixture_figure(*, trailing_text=None):
+def _pdf_with_fixture_figure(*, trailing_text=None, second_figure=False):
     pixels = Random(7).randbytes(96 * 96 * 3)
     with Image.frombytes("RGB", (96, 96), pixels) as figure, BytesIO() as output:
         document = canvas.Canvas(output)
         document.drawString(72, 720, "Inspect the seal.")
-        document.drawImage(ImageReader(figure), 72, 500, width=96, height=96)
+        if second_figure:
+            # Draw the lower figure first to exercise resource-to-layout identity.
+            lower_pixels = Random(9).randbytes(128 * 96 * 3)
+            lower = Image.frombytes("RGB", (128, 96), lower_pixels)
+            document.drawImage(ImageReader(lower), 72, 520, width=128, height=70)
+            document.drawString(72, 620, "Inspect the gasket.")
+            document.drawImage(ImageReader(figure), 72, 648, width=96, height=48)
+        else:
+            document.drawImage(ImageReader(figure), 72, 500, width=96, height=96)
         if trailing_text:
             document.drawString(72, 450, trailing_text)
         document.showPage()
