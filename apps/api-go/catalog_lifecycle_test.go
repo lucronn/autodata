@@ -81,7 +81,7 @@ func TestCatalogLifecycleViewRevisionIgnoresProcessingAndURLs(t *testing.T) {
 	}
 }
 func TestCatalogSourceOrderedTablesWarningsAndUnavailableMedia(t *testing.T) {
-	doc := &CatalogDocument{SchemaVersion: 1, NormalizationVersion: "ordered-article-v1", Blocks: []CatalogDocumentBlock{{BlockID: "warning", Type: "warning", Label: "Warning", Text: "Disconnect <battery>."}, {BlockID: "table", Type: "table", Columns: []string{"Torque", "Diagram"}, Rows: [][]any{{"10 N·m", map[string]any{"text": "Pump", "asset_id": "missing"}}}}, {BlockID: "unknown", Type: "unknown", Text: "Retained unknown block"}}}
+	doc := &CatalogDocument{SchemaVersion: 1, NormalizationVersion: "ordered-article-v1", Blocks: []CatalogDocumentBlock{{BlockID: "warning", Type: "warning", Label: "Warning", Text: "Disconnect <battery>."}, {BlockID: "table", Type: "table", Columns: []any{"Torque", "Diagram"}, Rows: [][]any{{"10 N·m", map[string]any{"text": "Pump", "asset_id": "missing"}}}}, {BlockID: "unknown", Type: "unknown", Text: "Retained unknown block"}}}
 	rendered := renderCatalogOrderedSource(doc, nil)
 	for _, text := range []string{"Warning", "Disconnect &lt;battery&gt;.", "<table>", "10 N·m", "Image unavailable", "Retained unknown block"} {
 		if !strings.Contains(rendered, text) {
@@ -319,5 +319,48 @@ func TestCatalogCanonicalStepImageURLsDoNotChangeViewRevision(t *testing.T) {
 	changed := lifecycleArticle(article)
 	if *changed.ViewRevision == *first.ViewRevision {
 		t.Fatal("step image content did not change view identity")
+	}
+}
+
+func TestCatalogOrderedSourceKeepsStructuredListsAndTableCells(t *testing.T) {
+	raw := []byte(`{
+		"schema_version":1,"normalization_version":"ordered-article-v1","blocks":[
+			{"type":"unordered_list","items":["Legacy item",{"text":"Inspect before proceeding",
+				"images":[{"asset_id":"list-diagram","alt":"Inspect","caption":"List detail"}],
+				"blocks":[{"type":"ordered_list","items":["Nested operation"]}]}]},
+			{"type":"table","caption":"Table title","columns":[{"text":"Diagram"}],
+				"rows":[{"cells":[{"text":"Cell detail","blocks":[{"type":"image","asset_id":"cell-diagram","alt":"View","caption":"Cell view"},
+					{"type":"paragraph","text":"Nested cell instruction"}]}]}],
+				"images":[{"asset_id":"cell-diagram"}]},
+			{"type":"link","text":"Related manual","href":"https://provider.invalid/private.pdf"}
+		]}`)
+	var doc CatalogDocument
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatalf("could not decode a valid structured article: %v", err)
+	}
+	doc = *publicCatalogDocument(&doc)
+	encoded, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "provider.invalid") || !strings.Contains(string(encoded), "Nested cell instruction") {
+		t.Fatalf("public document must retain nested content and omit private URLs: %s", encoded)
+	}
+	html := renderCatalogOrderedSource(&doc, []CatalogImage{
+		{ID: "list-diagram", URL: "/v1/catalog/images/v2.list"},
+		{ID: "cell-diagram", URL: "/v1/catalog/images/v2.cell"},
+	})
+	for _, part := range []string{
+		"<ul><li>Legacy item</li>", "<ol><li>Nested operation</li></ol>",
+		"<figcaption>List detail</figcaption>", "<caption>Table title</caption>",
+		"<th scope=\"col\">Diagram</th>", "<figcaption>Cell view</figcaption>",
+		"<p>Nested cell instruction</p>", "Related manual",
+	} {
+		if !strings.Contains(html, part) {
+			t.Errorf("stored source is missing %q: %s", part, html)
+		}
+	}
+	if strings.Count(html, "/v1/catalog/images/v2.cell") != 1 || strings.Contains(html, "provider.invalid") || strings.Contains(html, "href=") {
+		t.Fatalf("cell media must remain in place and provider link stay inert: %s", html)
 	}
 }

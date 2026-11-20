@@ -202,14 +202,18 @@ func catalogBlockSearchText(block CatalogDocumentBlock, images []CatalogImage) s
 	case "step":
 		parts = append(parts, block.Text)
 	case "ordered_list", "unordered_list":
-		parts = append(parts, block.Items...)
+		for _, item := range block.Items {
+			parts = append(parts, catalogTableCellSearchText(item, images))
+		}
 	case "table":
 		if block.Label != "" {
 			parts = append(parts, block.Label)
 		} else {
 			parts = append(parts, block.Caption)
 		}
-		parts = append(parts, block.Columns...)
+		for _, column := range block.Columns {
+			parts = append(parts, catalogTableCellSearchText(column, images))
+		}
 		cellImageIDs := map[string]bool{}
 		for _, row := range block.Rows {
 			for _, cell := range row {
@@ -329,6 +333,9 @@ func catalogTableCellSearchText(cell any, images []CatalogImage) string {
 					}
 				}
 			}
+		}
+		for _, nested := range catalogNestedBlocks(value["blocks"]) {
+			parts = append(parts, catalogBlockSearchText(nested, images))
 		}
 		return strings.Join(parts, " ")
 	default:

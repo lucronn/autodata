@@ -3524,3 +3524,29 @@ for (const fixture of searchRendererFixtures) test(`search renderer fixture: ${f
   for (const query of fixture.hidden_queries) assert.ok(!lower.includes(query.toLowerCase()), `${query} remains hidden`);
   for (const phrase of fixture.once) assert.equal(rendered.split(phrase).length - 1, 1, `${phrase} renders once`);
 });
+
+test('source and canonical viewers retain nested list and table cell content', () => {
+  for (const origin of ['source', 'canonical']) {
+    const h = articleMediaHarness();
+    const parent = h.render(mediaArticle([
+      { type: 'unordered_list', items: ['Legacy item', { text: 'Inspect', blocks: [
+        { type: 'ordered_list', items: ['Nested operation'] },
+        { type: 'image', asset_id: 'list', alt: 'Inspect', caption: 'List detail' },
+      ] }] },
+      { type: 'table', caption: 'Table title', columns: [{ text: 'Diagram' }],
+        rows: [{ cells: [{ text: 'Cell detail', blocks: [
+          { type: 'image', asset_id: 'cell', alt: 'View', caption: 'Cell view' },
+          { type: 'paragraph', text: 'Nested cell instruction' },
+        ] }] }], images: [{ asset_id: 'cell' }] },
+      { type: 'link', text: 'Related manual', href: 'https://provider.invalid/private.pdf' },
+    ], ['cell', 'list'].map(id => ({ id, url: mediaURL(id) })), { content_origin: origin }));
+    assert.deepEqual(mediaIDs(parent), ['list', 'cell']);
+    assert.deepEqual(mediaIDs(mediaDescendants(parent, 'td')[0]), ['cell']);
+    assert.equal(mediaDescendants(parent, 'ol')[0].textContent, 'Nested operation');
+    assert.deepEqual(mediaDescendants(parent, 'figcaption').map(node => node.textContent), ['List detail', 'Cell view']);
+    assert.equal(mediaDescendants(parent, 'th')[0].textContent, 'Diagram');
+    assert.match(parent.textContent, /Nested cell instruction/);
+    assert.match(parent.textContent, /Related manual/);
+    assert.equal(mediaDescendants(parent, 'a').length, 0);
+  }
+});

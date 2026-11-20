@@ -683,12 +683,26 @@ function appendSource(parent, block, review, g) {
   parent.append(link);
 }
 function renderBlocks(parent, blocks, images, review, g) {
-  const find = (ref) =>
-    images.find((image) =>
-      [image.id, image.image_id, image.asset_id].includes(
-        ref?.asset_id || ref?.image_id,
-      ),
-    );
+  const find = (ref) => {
+    const id = ref?.asset_id || ref?.image_id || ref?.id;
+    return id && ref.status !== "unavailable"
+      ? images.find((image) => image.status !== "unavailable" &&
+          [image.id, image.image_id, image.asset_id].includes(id))
+      : undefined;
+  };
+  const addReference = (target, ref) =>
+    addImage(target, find(ref), ref?.caption || ref?.alt, g, ref?.alt);
+  const renderInline = (target, value, textTag) => {
+    if (!value || typeof value !== "object") {
+      target.textContent = String(value ?? "");
+      return;
+    }
+    if (value.text != null) target.append(element(textTag, value.text));
+    if (value.asset_id || value.image_id || value.status === "unavailable")
+      addReference(target, value);
+    for (const ref of value.images || []) addReference(target, ref);
+    if (Array.isArray(value.blocks)) renderBlocks(target, value.blocks, images, review, g);
+  };
   for (const block of blocks || []) {
     if (!block || typeof block !== "object") continue;
     const type = block.type;
@@ -703,12 +717,11 @@ function renderBlocks(parent, blocks, images, review, g) {
       const aside = element("aside", undefined, "article-callout");
       const content = element("div");
       content.append(element("span", block.text ?? ""));
-      for (const ref of block.images || [])
-        addImage(content, (ref?.asset_id || ref?.image_id) ? find(ref) : undefined, ref.alt, g);
+      for (const ref of block.images || []) addReference(content, ref);
       aside.append(element("strong", block.label ?? "Note"), content);
       parent.append(aside);
     } else if (type === "image")
-      addImage(parent, find(block), block.alt || block.caption, g);
+      addReference(parent, block);
     else if (type === "step") {
       const section = element("section", undefined, "procedure-step");
       if (Number.isInteger(block.number))
@@ -717,34 +730,34 @@ function renderBlocks(parent, blocks, images, review, g) {
       if (block.action) section.append(element("h3", block.action));
       for (const text of block.instructions || [])
         section.append(element("p", text));
-      for (const ref of block.images || [])
-        addImage(section, find(ref), ref.alt, g);
+      for (const ref of block.images || []) addReference(section, ref);
       parent.append(section);
     } else if (type === "ordered_list" || type === "unordered_list") {
       const list = element(type === "ordered_list" ? "ol" : "ul");
       for (const item of block.items || []) {
         const li = element("li");
-        if (typeof item === "object") {
-          li.append(element("p", item.text ?? ""));
-          for (const ref of item.images || [])
-            addImage(li, find(ref), ref.alt, g);
-        } else li.textContent = String(item ?? "");
+        renderInline(li, item, "p");
         list.append(li);
       }
       parent.append(list);
-      for (const ref of block.images || [])
-        addImage(parent, (ref?.asset_id || ref?.image_id) ? find(ref) : undefined, ref.alt, g);
+      for (const ref of block.images || []) addReference(parent, ref);
     } else if (type === "table") {
       const table = element("table", undefined, "article-table");
       const cellImageIDs = new Set();
+      const trackCellImages = (cell) => {
+        for (const img of cell.querySelectorAll("img[data-asset-id]"))
+          cellImageIDs.add(img.dataset.assetId);
+      };
       if (block.label || block.caption)
         table.append(element("caption", block.label || block.caption));
       if (block.columns?.length) {
         const row = element("tr"),
           head = element("thead");
         for (const c of block.columns) {
-          const th = element("th", typeof c === "object" ? (c.text ?? "") : c);
+          const th = element("th");
           th.scope = "col";
+          renderInline(th, c, "span");
+          trackCellImages(th);
           row.append(th);
         }
         head.append(row);
@@ -752,17 +765,13 @@ function renderBlocks(parent, blocks, images, review, g) {
       }
       const body = element("tbody");
       for (const values of block.rows || []) {
+        const cells = Array.isArray(values) ? values : values?.cells;
+        if (!Array.isArray(cells)) continue;
         const row = element("tr");
-        for (const v of values || []) {
+        for (const value of cells) {
           const cell = element("td");
-          if (v !== null && typeof v === "object") {
-            cell.append(element("span", v.text ?? ""));
-            for (const ref of v.images || []) {
-              const image = (ref?.asset_id || ref?.image_id) ? find(ref) : undefined;
-              if (image) cellImageIDs.add(assetID(image));
-              addImage(cell, image, ref.alt, g);
-            }
-          } else cell.textContent = String(v ?? "");
+          renderInline(cell, value, "span");
+          trackCellImages(cell);
           row.append(cell);
         }
         body.append(row);
@@ -772,9 +781,9 @@ function renderBlocks(parent, blocks, images, review, g) {
       wrap.append(table);
       parent.append(wrap);
       for (const ref of block.images || []) {
-        const image = (ref?.asset_id || ref?.image_id) ? find(ref) : undefined;
+        const image = find(ref);
         if (image && cellImageIDs.has(assetID(image))) continue;
-        addImage(parent, image, ref.alt, g);
+        addReference(parent, ref);
       }
     } else if (type === "break") parent.append(element("hr"));
     else
