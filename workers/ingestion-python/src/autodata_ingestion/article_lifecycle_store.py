@@ -154,7 +154,9 @@ def _store_captured_source(cur, lease, captured):
     """
     article_params = (lease.canonical_article_id,)
 
-    structural_versions = ("source-projection-v5", "source-projection-v6")
+    structural_versions = (
+        "source-projection-v5", "source-projection-v6", "source-projection-v7",
+    )
     new_structure = captured.projection_version in structural_versions
     live_capture = not source_only and (captured.projection_version == "source-projection-v2" or new_structure)
     numbered_lists = live_capture and not new_structure and has_ordered_list_numbering(captured.source_document)
@@ -171,12 +173,12 @@ def _store_captured_source(cur, lease, captured):
         # A new projection never replaces a same-byte publication in place.
         if published_same_bytes and (new_structure or structured_lists):
             return current
-        if current == "source-projection-v6":
+        if current in structural_versions:
+            if new_structure:
+                return max(current, captured.projection_version, key=SOURCE_PROJECTION_VERSIONS.index)
             return current
         if new_structure:
             return captured.projection_version
-        if current == "source-projection-v5":
-            return current
         if numbered_lists or current == "source-projection-v4":
             return "source-projection-v4"
         if structured_lists or current == "source-projection-v3":

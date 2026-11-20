@@ -16,6 +16,7 @@ SOURCE_PROJECTION_VERSIONS = (
     "source-projection-v4",
     "source-projection-v5",
     "source-projection-v6",
+    "source-projection-v7",
 )
 
 

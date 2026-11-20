@@ -171,7 +171,7 @@ def test_genuine_036_upgrade_preserves_jobs_and_matches_fresh_schema(fresh_datab
     old_versions = versions(legacy)
     assert applied(run_driver(legacy)) == ['033_catalog_scope_coverage.sql',
         '037_article_source_lifecycle.sql', '038_article_transform_publication.sql',
-        '039_production_identity_sessions.sql', '040_workshop_commerce.sql', '041_article_source_projection_v2.sql', '042_catalog_selector_rows.sql', '043_article_source_projection_v3.sql', '044_article_source_projection_v4.sql', '045_article_source_projection_v5.sql', '046_article_source_projection_v6.sql']
+        '039_production_identity_sessions.sql', '040_workshop_commerce.sql', '041_article_source_projection_v2.sql', '042_catalog_selector_rows.sql', '043_article_source_projection_v3.sql', '044_article_source_projection_v4.sql', '045_article_source_projection_v5.sql', '046_article_source_projection_v6.sql', '047_article_source_projection_v7.sql']
     assert read_imported_job_invariants(legacy) == jobs
     assert [r for r in versions(legacy) if r['version'] in {v['version'] for v in old_versions}] == old_versions
     assert snapshot(legacy) == snapshot(fresh_database())
@@ -239,7 +239,7 @@ def test_two_full_runners_serialize_and_apply_each_version_once(fresh_database, 
         assert waiting, 'second full driver never waited on the session advisory lock'
         results = [first.result(), second.result()]
     all_applied = sum((applied(r) for r in results), [])
-    expected = ['033_catalog_scope_coverage.sql', '037_article_source_lifecycle.sql', '038_article_transform_publication.sql', '039_production_identity_sessions.sql', '040_workshop_commerce.sql', '041_article_source_projection_v2.sql', '042_catalog_selector_rows.sql', '043_article_source_projection_v3.sql', '044_article_source_projection_v4.sql', '045_article_source_projection_v5.sql', '046_article_source_projection_v6.sql'] if upgrade else [p.name for p in sorted((ROOT/'db/migrations').glob('*.sql'))]
+    expected = ['033_catalog_scope_coverage.sql', '037_article_source_lifecycle.sql', '038_article_transform_publication.sql', '039_production_identity_sessions.sql', '040_workshop_commerce.sql', '041_article_source_projection_v2.sql', '042_catalog_selector_rows.sql', '043_article_source_projection_v3.sql', '044_article_source_projection_v4.sql', '045_article_source_projection_v5.sql', '046_article_source_projection_v6.sql', '047_article_source_projection_v7.sql'] if upgrade else [p.name for p in sorted((ROOT/'db/migrations').glob('*.sql'))]
     assert sorted(all_applied) == sorted(expected)
     assert len(versions(repo)) == 46
     assert applied(run_driver(repo)) == []
@@ -281,7 +281,7 @@ def test_connection_death_releases_lock_and_rolls_back_active_file(fresh_databas
 def test_restart_after_committed_037_only_applies_038_and_039(fresh_database):
     repo = fresh_database(through=37)
     old_versions = versions(repo)
-    assert applied(run_driver(repo)) == ['038_article_transform_publication.sql', '039_production_identity_sessions.sql', '040_workshop_commerce.sql', '041_article_source_projection_v2.sql', '042_catalog_selector_rows.sql', '043_article_source_projection_v3.sql', '044_article_source_projection_v4.sql', '045_article_source_projection_v5.sql', '046_article_source_projection_v6.sql']
+    assert applied(run_driver(repo)) == ['038_article_transform_publication.sql', '039_production_identity_sessions.sql', '040_workshop_commerce.sql', '041_article_source_projection_v2.sql', '042_catalog_selector_rows.sql', '043_article_source_projection_v3.sql', '044_article_source_projection_v4.sql', '045_article_source_projection_v5.sql', '046_article_source_projection_v6.sql', '047_article_source_projection_v7.sql']
     assert versions(repo)[:37] == old_versions
     assert applied(run_driver(repo)) == []
 
@@ -360,7 +360,7 @@ def test_populated_038_upgrade_only_adds_identity_schema(fresh_database, tmp_pat
         assert conn.execute("SELECT to_regclass('customer_accounts') AS name").fetchone()['name']
         assert conn.execute("SELECT to_regclass('auth_sessions') AS name").fetchone()['name']
     assert snapshot(repo) == snapshot(fresh_database(through=39))
-    assert applied(run_driver(repo)) == ['040_workshop_commerce.sql', '041_article_source_projection_v2.sql', '042_catalog_selector_rows.sql', '043_article_source_projection_v3.sql', '044_article_source_projection_v4.sql', '045_article_source_projection_v5.sql', '046_article_source_projection_v6.sql']
+    assert applied(run_driver(repo)) == ['040_workshop_commerce.sql', '041_article_source_projection_v2.sql', '042_catalog_selector_rows.sql', '043_article_source_projection_v3.sql', '044_article_source_projection_v4.sql', '045_article_source_projection_v5.sql', '046_article_source_projection_v6.sql', '047_article_source_projection_v7.sql']
     assert snapshot(repo) == snapshot(fresh_database())
     assert applied(run_driver(repo)) == []
 
@@ -388,7 +388,7 @@ def test_populated_040_projection_upgrade_and_restart_preserve_rows(fresh_databa
     repo = fresh_database(through=40)
     _, source = seed_v1_publication(repo)
     before, ledger = lifecycle_history(repo), versions(repo)
-    assert applied(run_driver(repo)) == ['041_article_source_projection_v2.sql', '042_catalog_selector_rows.sql', '043_article_source_projection_v3.sql', '044_article_source_projection_v4.sql', '045_article_source_projection_v5.sql', '046_article_source_projection_v6.sql']
+    assert applied(run_driver(repo)) == ['041_article_source_projection_v2.sql', '042_catalog_selector_rows.sql', '043_article_source_projection_v3.sql', '044_article_source_projection_v4.sql', '045_article_source_projection_v5.sql', '046_article_source_projection_v6.sql', '047_article_source_projection_v7.sql']
     assert lifecycle_history(repo) == before
     assert versions(repo)[:40] == ledger
     append_projection(repo, source, 'source-projection-v2')

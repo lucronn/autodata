@@ -306,3 +306,31 @@ def test_linked_document_projection_upgrade_preserves_v5_before_advancing(fresh_
     with repo.connect() as conn:
         assert conn.execute('SELECT current_source_revision_id FROM canonical_articles WHERE canonical_article_id=%s',
                             (article,)).fetchone()['current_source_revision_id'] == v6
+
+
+def test_pdf_figure_projection_upgrade_preserves_v6_before_advancing(fresh_database):
+    repo = fresh_database(through=46)
+    article, v1 = seed_v1_publication(repo)
+    v2 = append_projection(repo, v1, 'source-projection-v2')
+    v6 = append_projection(repo, v1, 'source-projection-v6')
+    with repo.connect() as conn:
+        conn.execute("""UPDATE canonical_articles SET current_source_revision_id=%s,
+            current_canonical_revision_id=NULL WHERE canonical_article_id=%s""", (v6, article))
+    before = lifecycle_history(repo)
+    with pytest.raises(psycopg.errors.CheckViolation):
+        append_projection(repo, v1, 'source-projection-v7')
+
+    apply_migration(repo, 47)
+    assert lifecycle_history(repo) == before
+
+    v7 = append_projection(repo, v1, 'source-projection-v7')
+    with repo.connect() as conn:
+        conn.execute('UPDATE canonical_articles SET current_source_revision_id=%s WHERE canonical_article_id=%s',
+                     (v7, article))
+    for target in (None, v1, v2, v6):
+        with pytest.raises(psycopg.errors.CheckViolation), repo.connect() as conn:
+            conn.execute('UPDATE canonical_articles SET current_source_revision_id=%s WHERE canonical_article_id=%s',
+                         (target, article))
+    with repo.connect() as conn:
+        assert conn.execute('SELECT current_source_revision_id FROM canonical_articles WHERE canonical_article_id=%s',
+                            (article,)).fetchone()['current_source_revision_id'] == v7
