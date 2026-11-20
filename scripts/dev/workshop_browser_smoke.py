@@ -18,6 +18,7 @@ import re
 import ssl
 import subprocess
 import time
+import traceback
 from urllib.parse import parse_qs, urlsplit
 from urllib.request import urlopen
 
@@ -1753,6 +1754,11 @@ async def run(args):
             failure=APIObservationError('publication_failed')
     if failure is not None:
         if isinstance(failure,asyncio.CancelledError):raise asyncio.CancelledError(observations.primary) from None
+        # Preserve the failing test location without logging provider data or exception text.
+        for frame in reversed(traceback.extract_tb(failure.__traceback__)):
+            if frame.filename == __file__:
+                print(f"Workshop browser failure at {Path(__file__).name}:{frame.lineno}", file=sys.stderr)
+                break
         raise APIObservationError(observations.primary or 'internal_error') from None
     validate_results(rows,[(engines[0],name)])
     return evidence

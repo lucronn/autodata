@@ -26,6 +26,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Run Workshop through sign-in, purchase, Library, and article access
         env:
           TMPDIR: ${{ runner.temp }}
@@ -35,5 +37,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: workshop-browser-junit
-          path: ${{ runner.temp }}/autodata-workshop-browser.*/workshop-browser-api.xml
+          path: |
+            ${{ runner.temp }}/autodata-workshop-browser.*/workshop-browser-api.xml
+            ${{ runner.temp }}/autodata-workshop-browser.*/workshop-browser/*/*/parent-process.json
+            ${{ runner.temp }}/autodata-workshop-browser.*/workshop-browser/*/*/child-processes.json
+            ${{ runner.temp }}/autodata-workshop-browser.*/workshop-browser/*/*/browser/evidence.json
           retention-days: 14

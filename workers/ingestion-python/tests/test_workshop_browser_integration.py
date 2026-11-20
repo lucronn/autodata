@@ -572,7 +572,16 @@ def _case(root_name,engine,provider,fresh_database,monkeypatch):
             failure=failure or ('over_limit' if isinstance(exc,ValueError) and exc.args==('over_limit',) else 'read_failed')
             receipt.update(status='failed',primary_failure=failure)
         if not _safe_publish(directory,'parent-process.json',receipt,65536,reserve=publication_reserve):failure=failure or 'publication_failed'
-    if failure:raise AssertionError('API21 '+failure) from None
+    if failure:
+        detail = ""
+        try:
+            browser_log = _read_original(directory / "browser.stderr.log", 262144)
+            match = re.search(rb"^Workshop browser failure at workshop_browser_smoke\.py:[0-9]+$", browser_log, re.MULTILINE)
+            if match:
+                detail = " (" + match.group().decode("ascii") + ")"
+        except (OSError, ValueError):
+            pass
+        raise AssertionError("API21 " + failure + detail) from None
 
 
 @pytest.mark.parametrize('engine',ENGINES)
