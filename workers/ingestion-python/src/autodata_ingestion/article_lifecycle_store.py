@@ -154,25 +154,28 @@ def _store_captured_source(cur, lease, captured):
     """
     article_params = (lease.canonical_article_id,)
 
-    use_live_projection = not source_only and captured.projection_version == "source-projection-v2"
-    numbered_lists = use_live_projection and has_ordered_list_numbering(captured.source_document)
-    structured_lists = use_live_projection and (numbered_lists or has_structured_list_items(captured.source_document))
+    live_capture = not source_only and captured.projection_version in ("source-projection-v2", "source-projection-v5")
+    new_structure = captured.projection_version == "source-projection-v5"
+    numbered_lists = live_capture and not new_structure and has_ordered_list_numbering(captured.source_document)
+    structured_lists = live_capture and not new_structure and (numbered_lists or has_structured_list_items(captured.source_document))
 
     def effective_projection(article):
-        if use_live_projection:
-            # Reuse repaired projections on normal refresh. Keep a currently
-            # published revision of identical raw bytes visible until replaced.
-            current = article["current_projection_version"]
-            published_same_bytes = (
-                article["current_canonical_revision_id"] is not None
-                and article["current_source_fingerprint"] == captured.source_fingerprint
-            )
-            if current == "source-projection-v4" or (structured_lists and published_same_bytes):
-                return current
-            if numbered_lists:
-                return "source-projection-v4"
-            if current == "source-projection-v3" or structured_lists:
-                return "source-projection-v3"
+        if not live_capture:
+            return captured.projection_version
+        current = article["current_projection_version"]
+        published_same_bytes = (
+            article["current_canonical_revision_id"] is not None
+            and article["current_source_fingerprint"] == captured.source_fingerprint
+        )
+        # A new projection never replaces a same-byte publication in place.
+        if published_same_bytes and (new_structure or structured_lists):
+            return current
+        if new_structure or current == "source-projection-v5":
+            return "source-projection-v5"
+        if numbered_lists or current == "source-projection-v4":
+            return "source-projection-v4"
+        if structured_lists or current == "source-projection-v3":
+            return "source-projection-v3"
         return captured.projection_version
 
     # A full review owner may be adopted below. Lock it before the article,

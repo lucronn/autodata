@@ -83,6 +83,97 @@ class ConnectorTests(unittest.TestCase):
         self.assertEqual(parser.blocks[1]["text"], "Torque: 8.8 Nm")
         self.assertNotIn("bad()", str(parser.blocks))
 
+    def test_opt_in_preserves_heading_levels_and_ends_each_heading(self):
+        parser = ArticleParser(keep_html_headings=True)
+        parser.feed(
+            'Read first. <h1>Repair &amp; Service</h1>'
+            '<h2>Service <em>procedure</em></h2>Remove the cover.'
+            '<h3>Before you begin</h3><h4>Inspection</h4>Inspect the seal.'
+            '<h5>Fitting<br/>details</h5>'
+            '<h6>Press <script>untrusted()</script><a href="/guide">guide</a></h6>'
+            '<h4> </h4>Clean the flange.'
+        )
+        parser.close()
+        parser.flush()
+        self.assertEqual(parser.blocks, [
+            {"kind": "text", "text": "Read first."},
+            {"kind": "heading", "level": 1, "text": "Repair & Service"},
+            {"kind": "heading", "level": 2, "text": "Service procedure"},
+            {"kind": "text", "text": "Remove the cover."},
+            {"kind": "heading", "level": 3, "text": "Before you begin"},
+            {"kind": "heading", "level": 4, "text": "Inspection"},
+            {"kind": "text", "text": "Inspect the seal."},
+            {"kind": "heading", "level": 5, "text": "Fitting details"},
+            {"kind": "heading", "level": 6, "text": "Press guide"},
+            {"kind": "text", "text": "Clean the flange."},
+        ])
+        self.assertEqual(parser.links, ["/guide"])
+
+    def test_default_and_explicitly_disabled_heading_modes_keep_legacy_blocks(self):
+        html = (
+            'Intro. <h2>Service <em>procedure</em></h2>Remove the cover.'
+            '<h3>Before you begin</h3><p>Read the label.</p><h4>Refit</h4>Inspect the seal.'
+        )
+        for options in ({}, {"keep_html_headings": False}):
+            with self.subTest(options=options):
+                parser = ArticleParser(preserve_legacy_list_starts=False, **options)
+                parser.feed(html)
+                parser.close()
+                parser.flush()
+                self.assertEqual(parser.blocks, [
+                    {"kind": "text", "text": "Intro."},
+                    {"kind": "text", "text": "Service procedureRemove the cover."},
+                    {"kind": "text", "text": "Before you begin"},
+                    {"kind": "text", "text": "Read the label."},
+                    {"kind": "text", "text": "RefitInspect the seal."},
+                ])
+
+    def test_opt_in_keeps_nested_heading_inside_its_list_item(self):
+        parser = ArticleParser(keep_html_headings=True, preserve_legacy_list_starts=False)
+        parser.feed(
+            '<ol start="4"><li><h3>Guide adjustment</h3>Remove the cover.'
+            '<p>Inspect the seal.</p><ul><li><h5>Seal details</h5>Clean the flange.</li>'
+            '</ul></li><li value="9">Install the cover.</li></ol>'
+        )
+        parser.close()
+        outer, = parser.blocks
+        self.assertEqual(outer["start"], 4)
+        first, second = outer["items"]
+        self.assertEqual(first["text"], "")
+        adjustment, remove, inspect, details = first["blocks"]
+        self.assertEqual(adjustment, {"kind": "heading", "level": 3, "text": "Guide adjustment"})
+        self.assertEqual(remove, {"kind": "text", "text": "Remove the cover."})
+        self.assertEqual(inspect, {"kind": "text", "text": "Inspect the seal."})
+        self.assertEqual(details, {
+            "kind": "unordered_list",
+            "items": [{"text": "", "blocks": [
+                {"kind": "heading", "level": 5, "text": "Seal details"},
+                {"kind": "text", "text": "Clean the flange."},
+            ]}],
+        })
+        self.assertEqual(second, {"number": 9, "text": "Install the cover."})
+
+    def test_opt_in_keeps_heading_images_and_table_cell_text(self):
+        parser = ArticleParser(keep_html_headings=True)
+        parser.feed(
+            '<h2>Seal <img data-resource-ref="guide" alt="Seal marks"> adjustment</h2>'
+            '<h3><img data-resource-ref="only-media"></h3>'
+            '<table><tr><td><h2>Limit</h2> 8 Nm</td><td>Seal</td></tr></table>'
+        )
+        parser.close()
+        heading, image, table = parser.blocks
+        self.assertEqual(heading, {
+            "kind": "heading", "level": 2, "text": "Seal adjustment",
+            "images": [{"kind": "image", "alt": "Seal marks", "name": "", "asset_resource_ref": "guide"}],
+        })
+        self.assertEqual(image, {
+            "kind": "image", "alt": "", "name": "", "asset_resource_ref": "only-media",
+        })
+        self.assertEqual(table, {"kind": "table", "rows": [[
+            {"blocks": [{"kind": "text", "text": "Limit 8 Nm"}]},
+            {"blocks": [{"kind": "text", "text": "Seal"}]},
+        ]]})
+
     def test_flat_lists_keep_legacy_shape_and_top_level_figure_order(self):
         parser = ArticleParser()
         parser.feed(

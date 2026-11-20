@@ -679,9 +679,16 @@ def test_pdf_embedded_figure_is_localized_and_retained(capture_fixture):
     )
 
 
+@pytest.mark.parametrize(("provider", "wrapper"), [
+    ("banktwo", None),
+    ("bankone", "root"),
+    ("banktwo", "body"),
+])
 def test_mixed_pdf_keeps_ocr_text_and_embedded_figure_in_page_order(
-    capture_fixture, monkeypatch
+    capture_fixture, monkeypatch, provider, wrapper,
 ):
+    import base64
+    import json
     import random
     from io import BytesIO
 
@@ -715,12 +722,45 @@ def test_mixed_pdf_keeps_ocr_text_and_embedded_figure_in_page_order(
         )
 
     monkeypatch.setattr(source_adapters, "extract_scanned_pdf_text", read_scanned_page)
-    capture_fixture.body("banktwo", buf.getvalue(), "application/pdf", kind="binary")
-    captured = capture_source_article(
-        capture_fixture.context("banktwo"),
-        registry=capture_fixture.registry,
-        object_store=capture_fixture.objects,
+    pdf_payload = buf.getvalue()
+    if wrapper is None:
+        body_payload, body_media = pdf_payload, "application/pdf"
+    else:
+        encoded = base64.b64encode(pdf_payload).decode()
+        if wrapper == "body":
+            wrapped_pdf = {"body": {"documentId": 42, "pdf": "data:application/pdf;base64," + encoded}}
+        else:
+            wrapped_pdf = {"pdf": encoded}
+        body_payload, body_media = json.dumps(wrapped_pdf).encode(), "application/json"
+    capture_fixture.body(
+        provider, body_payload, body_media, kind="binary" if wrapper is None else "article",
     )
+    context = capture_fixture.context(provider)
+    captured = capture_source_article(
+        context, registry=capture_fixture.registry, object_store=capture_fixture.objects,
+        keep_embedded_pdf=wrapper is not None,
+    )
+    assert captured.projection_version == ("source-projection-v5" if wrapper else "source-projection-v2")
+
+    body_resource, figure_resource = captured.resource_provenance
+    assert body_resource["sha256"] == sha256(body_payload).hexdigest()
+    assert capture_fixture.objects.data[body_resource["object_key"]] == (body_payload, body_media)
+    assert figure_resource["role"] == "embedded_asset"
+    assert figure_resource["opaque_ref"].startswith("embedded:" + body_resource["sha256"] + ":")
+    assert capture_fixture.resource_calls(provider, "body") == 1
+    assert not any("/resources/" in call and not call.endswith("/body") for call in capture_fixture.calls(provider))
+    assert not capture_fixture.calls("banktwo" if provider == "bankone" else "bankone")
+    assert [(resource["role"], resource["media_type"]) for resource in captured.resource_manifest] == [
+        ("body", body_media), ("embedded_asset", "image/png"),
+    ]
+    assert all(
+        entry["body_source_snapshot_id"] == body_resource["source_snapshot_id"]
+        for entry in captured.evidence_manifest
+    )
+    if wrapper is not None:
+        assert len(capture_fixture.objects.data) == 2
+        assert encoded not in captured.source_body
+        assert encoded not in str(captured.source_document)
 
     contents = [
         (block["type"], block.get("text") or block.get("alt"))
@@ -744,6 +784,94 @@ def test_mixed_pdf_keeps_ocr_text_and_embedded_figure_in_page_order(
     assert media_type == "image/png"
     with Image.open(BytesIO(payload)) as stored:
         assert stored.tobytes() == image.tobytes()
+
+
+@pytest.mark.parametrize("payload", [
+    {"pdf": "invalid base64"},
+    {"body": {"pdf": "Tm90IGEgUERGLg=="}},
+    {"body": {"pdf": ["not-a-string"]}},
+])
+def test_invalid_embedded_pdf_is_not_projected_as_article_text(capture_fixture, payload):
+    import json
+
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    capture_fixture.body("bankone", json.dumps(payload).encode(), "application/json")
+    with pytest.raises(SourceConnectorError) as raised:
+        capture_source_article(
+            capture_fixture.context("bankone"), registry=capture_fixture.registry,
+            object_store=capture_fixture.objects, keep_embedded_pdf=True,
+        )
+    assert raised.value.code == "INVALID_ARTICLE_BODY"
+
+
+@pytest.mark.parametrize("limit", ["bytes", "pages"])
+def test_embedded_pdf_bounds_apply_before_extraction_and_ocr(capture_fixture, monkeypatch, limit):
+    import base64
+    import json
+    from io import BytesIO
+
+    from reportlab.pdfgen import canvas
+
+    from autodata_ingestion import source_adapters
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    def unexpected_extraction(*_):
+        pytest.fail("PDF exceeds the bound before extraction or OCR")
+
+    monkeypatch.setattr(source_adapters, "_extract_pdf_page_images", unexpected_extraction)
+    monkeypatch.setattr(source_adapters, "extract_scanned_pdf_text", unexpected_extraction)
+    if limit == "bytes":
+        monkeypatch.setattr(source_adapters, "_MAX_BOUND_EMBEDDED_PDF_BYTES", 8)
+    else:
+        monkeypatch.setattr(source_adapters, "_MAX_BOUND_EMBEDDED_PDF_PAGES", 1)
+    stream = BytesIO()
+    document = canvas.Canvas(stream)
+    for _ in range(2):
+        document.drawString(72, 720, "Check the cover.")
+        document.showPage()
+    document.save()
+    encoded = base64.b64encode(stream.getvalue()).decode()
+    capture_fixture.body("bankone", json.dumps({"pdf": encoded}).encode(), "application/json")
+    with pytest.raises(SourceConnectorError) as raised:
+        capture_source_article(
+            capture_fixture.context("bankone"), registry=capture_fixture.registry,
+            object_store=capture_fixture.objects, keep_embedded_pdf=True,
+        )
+    assert raised.value.code == "INVALID_ARTICLE_BODY"
+
+
+@pytest.mark.parametrize("article", [
+    {"body": {"pdf": "unused"}, "text": "Inspect the pump."},
+    {"pdf": "unused", "steps": ["Inspect the pump."]},
+    {"pdf": "unused", "blocks": [{"type": "paragraph", "text": "Inspect the pump."}]},
+])
+def test_embedded_pdf_does_not_override_explicit_article_content(capture_fixture, article):
+    import json
+
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    capture_fixture.body("bankone", json.dumps(article).encode(), "application/json")
+    captured = capture_source_article(
+        capture_fixture.context("bankone"), registry=capture_fixture.registry,
+        object_store=capture_fixture.objects, keep_embedded_pdf=True,
+    )
+    assert captured.source_body == "Inspect the pump."
+    assert captured.source_images == []
+
+
+def test_retained_wrapper_keeps_legacy_adapter_default(capture_fixture):
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    capture_fixture.body(
+        "bankone", b'{"body":{"documentId":"synthetic","pdf":"legacy-fixture"}}', "application/json",
+    )
+    captured = capture_source_article(
+        capture_fixture.context("bankone"), registry=capture_fixture.registry,
+        object_store=capture_fixture.objects,
+    )
+    assert captured.source_body == "{'documentId': 'synthetic', 'pdf': 'legacy-fixture'}"
+    assert captured.projection_version == "source-projection-v2"
 
 
 @pytest.mark.parametrize("metadata", [
@@ -1591,3 +1719,40 @@ def test_capture_explicitly_versions_corrected_projection(capture_fixture):
     assert historical.source_fingerprint == captured.source_fingerprint
     assert historical.body_source_snapshot_id == captured.body_source_snapshot_id
     assert historical.resources == captured.resources
+
+
+@pytest.mark.parametrize("provider", ["bankone", "banktwo"])
+@pytest.mark.parametrize("wrap_hal", [False, True])
+def test_authored_headings_keep_metadata_and_instruction_boundaries(capture_fixture, provider, wrap_hal):
+    import json
+
+    from autodata_ingestion.procedure_normalize import normalize_procedure_article
+    from autodata_ingestion.procedure_rewrite_full import prose_slots
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    markup = "<h2>Pump <em>removal</em></h2>Remove the pump.<h4>Inspection</h4><p>Inspect the cover.</p>"
+    if wrap_hal:
+        body = json.dumps({"_embedded": {"data": {"article": {"content": markup}}}}).encode()
+        media = "application/hal+json"
+    else:
+        body, media = markup.encode(), "text/html"
+    capture_fixture.body(provider, body, media)
+    args = dict(registry=capture_fixture.registry, object_store=capture_fixture.objects)
+    legacy = capture_source_article(capture_fixture.context(provider), **args)
+    new = capture_source_article(capture_fixture.context(provider), keep_html_headings=True, **args)
+    assert legacy.projection_version == "source-projection-v2"
+    assert new.projection_version == "source-projection-v5"
+    assert legacy.source_fingerprint == new.source_fingerprint
+    assert legacy.resource_manifest == new.resource_manifest
+    assert "Pump removalRemove the pump." in legacy.source_body
+    document = normalize_procedure_article({
+        "normalized_document": new.source_document, "blocks": new.source_document["blocks"],
+        "body": new.source_body, "steps": new.source_steps,
+    })["normalized_document"]
+    assert [(block["type"], block.get("level"), block["text"]) for block in document["blocks"]] == [
+        ("heading", 2, "Pump removal"),
+        ("paragraph", None, "Remove the pump."),
+        ("heading", 4, "Inspection"),
+        ("paragraph", None, "Inspect the cover."),
+    ]
+    assert [slot["text"] for slot in prose_slots(document)] == ["Remove the pump.", "Inspect the cover."]

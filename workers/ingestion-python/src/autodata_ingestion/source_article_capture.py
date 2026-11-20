@@ -152,7 +152,9 @@ def project_document(document):
     return "\n".join(texts), steps, images
 
 
-def capture_source_article(context, *, registry, object_store, deadline_seconds=30.0):
+def capture_source_article(
+    context, *, registry, object_store, deadline_seconds=30.0, keep_embedded_pdf=False, keep_html_headings=False,
+):
     if not 0 < deadline_seconds <= 30:
         raise ValueError("capture deadline must be within 30 seconds")
     provider = context.key.provider
@@ -222,7 +224,8 @@ def capture_source_article(context, *, registry, object_store, deadline_seconds=
     parser_pool = ThreadPoolExecutor(max_workers=1)
     try:
         parsing = parser_pool.submit(
-            adapt_bound_article, body.to_source_resource(), context
+            adapt_bound_article, body.to_source_resource(), context,
+            keep_embedded_pdf=keep_embedded_pdf, keep_html_headings=keep_html_headings,
         )
         article = parsing.result(timeout=remaining())
     except (ValueError, TypeError, KeyError, UnicodeError) as error:
@@ -237,6 +240,9 @@ def capture_source_article(context, *, registry, object_store, deadline_seconds=
     finally:
         parser_pool.shutdown(wait=False, cancel_futures=True)
     blocks = deepcopy(article["blocks"])
+    new_structure = article.get("embedded_pdf") or (
+        article.get("authored_html_headings") and any(block.get("kind") == "heading" for block in _walk(blocks))
+    )
     for node in _image_nodes(blocks):
         node["kind"] = node["type"] = "image"
     refs = (
@@ -522,5 +528,5 @@ def capture_source_article(context, *, registry, object_store, deadline_seconds=
             else "readable"
         ),
         datetime.now(timezone.utc),
-        projection_version="source-projection-v2",
+        projection_version="source-projection-v5" if new_structure else "source-projection-v2",
     )

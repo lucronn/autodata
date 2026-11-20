@@ -37,6 +37,8 @@ _DOCUMENT_TYPES = {"text/html", "application/pdf", "text/plain"}
 _DIAGRAM_TYPES = {"image/svg+xml"}
 _IMAGE_TYPES = {"image/bmp", "image/jpeg", "image/png", "image/tiff", "image/webp"}
 _GENERIC_MEDIA_TYPES = {"application/octet-stream", "binary/octet-stream", "text/plain"}
+_MAX_BOUND_EMBEDDED_PDF_BYTES = 6 * 1024 * 1024
+_MAX_BOUND_EMBEDDED_PDF_PAGES = 24
 
 
 class SourceConnector(Protocol):
@@ -505,14 +507,21 @@ def _adapt_embedded_json_resources(
     }
 
 
-def _decode_embedded_pdf(encoded_pdf: str) -> bytes:
+def _decode_embedded_pdf(encoded_pdf: str, *, max_bytes: int | None = None) -> bytes:
+    if not isinstance(encoded_pdf, str):
+        raise ValueError("embedded PDF is not valid base64")
     value = encoded_pdf.strip()
     if value.lower().startswith("data:application/pdf;base64,"):
         value = value.split(",", 1)[1]
+    value = re.sub(r"\s+", "", value)
+    if max_bytes is not None and len(value) > ((max_bytes + 2) // 3) * 4:
+        raise ValueError("embedded PDF exceeds its byte limit")
     try:
-        payload = base64.b64decode(re.sub(r"\s+", "", value), validate=True)
+        payload = base64.b64decode(value, validate=True)
     except (ValueError, base64.binascii.Error) as error:
         raise ValueError("embedded PDF is not valid base64") from error
+    if max_bytes is not None and len(payload) > max_bytes:
+        raise ValueError("embedded PDF exceeds its byte limit")
     if not payload.startswith(b"%PDF-"):
         raise ValueError("embedded PDF does not contain a PDF signature")
     return payload
@@ -777,6 +786,8 @@ def _browser_safe_image_payload(payload: bytes) -> tuple[str, bytes] | None:
 def _adapt_pdf_resource(
     resource: SourceResource,
     metadata: dict[str, Any],
+    *,
+    max_pages: int | None = None,
 ) -> SourceArtifact:
     """Extract native PDF text and OCR pages that contain no native text."""
 
@@ -796,10 +807,13 @@ def _adapt_pdf_resource(
     else:
         try:
             reader = PdfReader(io.BytesIO(resource.payload))
-            pages = list(reader.pages)
+            if max_pages is None or 0 < len(reader.pages) <= max_pages:
+                pages = list(reader.pages)
         except Exception as error:
             text_extractor_status = "failed"
             warnings.append(f"PDF text extraction could not read the document: {error}")
+    if max_pages is not None and not pages:
+        raise ValueError("embedded PDF has no readable pages within its page limit")
 
     page_errors: list[dict[str, str]] = []
     page_texts: list[tuple[int, str]] = []
@@ -1703,7 +1717,9 @@ def _maintenance_xml_blocks(text: str) -> list[dict[str, Any]]:
     return blocks
 
 
-def adapt_bound_article(resource: SourceResource, context) -> dict[str, Any]:
+def adapt_bound_article(
+    resource: SourceResource, context, *, keep_embedded_pdf: bool = False, keep_html_headings: bool = False,
+) -> dict[str, Any]:
     """Adapt fetched bytes under proven connector scope, without weakening URL intake."""
     from .banktwo_connector import ArticleParser
     from .article_document import segment_plain_article_text
@@ -1732,6 +1748,22 @@ def adapt_bound_article(resource: SourceResource, context) -> dict[str, Any]:
             raise ValueError("invalid article document")
         if article is not value:
             identity_layers.append(article)
+        blocks = article.get("blocks")
+        needs_blocks = not isinstance(blocks, list) or not blocks
+        embedded_pdf = None
+        embedded_text = ""
+        if keep_embedded_pdf and needs_blocks and not article.get("steps"):
+            nested_body = article.get("body")
+            if isinstance(nested_body, dict) and "pdf" in nested_body:
+                embedded_pdf = nested_body
+                identity_layers.append(nested_body)
+            elif "pdf" in article:
+                embedded_pdf = article
+            if embedded_pdf is not None:
+                embedded_text = next((
+                    article[field] for field in ("body", "text", "content")
+                    if isinstance(article.get(field), str) and article[field].strip()
+                ), "")
         aliases = {
             "model_year": "year",
             "vehicle_id": "vehicle_id",
@@ -1763,8 +1795,7 @@ def adapt_bound_article(resource: SourceResource, context) -> dict[str, Any]:
             ):
                 if field in layer and str(layer[field]) != str(expected[field]):
                     raise ValueError("wrong applicability")
-        blocks = article.get("blocks")
-        if not isinstance(blocks, list) or not blocks:
+        if needs_blocks:
             if article.get("steps"):
                 blocks = [
                     {
@@ -1778,8 +1809,21 @@ def adapt_bound_article(resource: SourceResource, context) -> dict[str, Any]:
                     }
                     for i, s in enumerate(article["steps"], 1)
                 ]
+            elif embedded_pdf is not None and not embedded_text:
+                payload = _decode_embedded_pdf(embedded_pdf["pdf"], max_bytes=_MAX_BOUND_EMBEDDED_PDF_BYTES)
+                nested = SourceResource.from_bytes(
+                    resource.source_uri, resource.source_version, payload, "application/pdf",
+                    locator="body.pdf",
+                    metadata={"embedded_in_content_sha256": resource.content_sha256},
+                )
+                artifact = _adapt_pdf_resource(nested, nested.metadata, max_pages=_MAX_BOUND_EMBEDDED_PDF_PAGES)
+                return {
+                    "blocks": _bound_pdf_blocks(artifact),
+                    "asset_resource_refs": article.get("asset_resource_refs", []),
+                    "embedded_pdf": True,
+                }
             else:
-                text = str(
+                text = embedded_text or str(
                     article.get("body")
                     or article.get("text")
                     or article.get("content")
@@ -1801,7 +1845,7 @@ def adapt_bound_article(resource: SourceResource, context) -> dict[str, Any]:
                         resource.locator,
                         resource.metadata,
                     )
-                    return adapt_bound_article(nested, context)
+                    return adapt_bound_article(nested, context, keep_html_headings=keep_html_headings)
                 blocks = segment_plain_article_text(text)
         return {
             "blocks": blocks,
@@ -1817,6 +1861,7 @@ def adapt_bound_article(resource: SourceResource, context) -> dict[str, Any]:
         parser = ArticleParser(
             asset_bindings=resource.metadata.get("asset_bindings", []),
             preserve_legacy_list_starts=False,
+            keep_html_headings=keep_html_headings,
         )
         parser.feed(html)
         parser.close()
@@ -1846,41 +1891,50 @@ def adapt_bound_article(resource: SourceResource, context) -> dict[str, Any]:
                         and str(candidate.data[field]) != str(context.vehicle[field])
                     ):
                         raise ValueError("wrong applicability")
-        return {"blocks": parser.blocks, "asset_resource_refs": []}
+        return {
+            "blocks": parser.blocks,
+            "asset_resource_refs": [],
+            **({"authored_html_headings": True} if keep_html_headings else {}),
+        }
     if media == "text/plain":
         return {
             "blocks": segment_plain_article_text(resource.payload.decode("utf-8-sig")),
             "asset_resource_refs": [],
         }
     if media == "application/pdf":
-        artifact = adapt_source_resource(resource)
-        text_candidates = [
-            c
-            for c in artifact.candidates
-            if c.kind in ("document_text", "ocr_text", "image_text")
-        ]
-        pages: dict[int, list[dict[str, Any]]] = {}
-        unplaced = []
-        images = {}
-        # Native text and OCR candidates are produced in separate passes.
-        for candidate in text_candidates:
-            segments = segment_plain_article_text(candidate.data.get("text", ""))
-            page = re.match(r"^page:(\d+)(?:$|:)", candidate.locator)
-            if page:
-                pages.setdefault(int(page[1]), []).extend(segments)
-            else:
-                unplaced.extend(segments)
-            for image in candidate.data.get("images", []):
-                images.setdefault(image["image_id"], image)
-        # Add figures after all text regions from their own page.
-        for image in images.values():
-            figure = {"kind": "image", **image}
-            page_number = image.get("page")
-            if isinstance(page_number, int):
-                pages.setdefault(page_number, []).append(figure)
-            else:
-                unplaced.append(figure)
-        blocks = [block for page in sorted(pages) for block in pages[page]]
-        blocks.extend(unplaced)
-        return {"blocks": blocks, "asset_resource_refs": []}
+        return {"blocks": _bound_pdf_blocks(adapt_source_resource(resource)), "asset_resource_refs": []}
     raise ValueError("unsupported article media")
+
+
+def _bound_pdf_blocks(artifact: SourceArtifact) -> list[dict[str, Any]]:
+    from .article_document import segment_plain_article_text
+
+    text_candidates = [
+        c
+        for c in artifact.candidates
+        if c.kind in ("document_text", "ocr_text", "image_text")
+    ]
+    pages: dict[int, list[dict[str, Any]]] = {}
+    unplaced = []
+    images = {}
+    # Native text and OCR candidates are produced in separate passes.
+    for candidate in text_candidates:
+        segments = segment_plain_article_text(candidate.data.get("text", ""))
+        page = re.match(r"^page:(\d+)(?:$|:)", candidate.locator)
+        if page:
+            pages.setdefault(int(page[1]), []).extend(segments)
+        else:
+            unplaced.extend(segments)
+        for image in candidate.data.get("images", []):
+            images.setdefault(image["image_id"], image)
+    # Add figures after all text regions from their own page.
+    for image in images.values():
+        figure = {"kind": "image", **image}
+        page_number = image.get("page")
+        if isinstance(page_number, int):
+            pages.setdefault(page_number, []).append(figure)
+        else:
+            unplaced.append(figure)
+    blocks = [block for page in sorted(pages) for block in pages[page]]
+    blocks.extend(unplaced)
+    return blocks

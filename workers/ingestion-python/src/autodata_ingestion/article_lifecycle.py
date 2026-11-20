@@ -85,7 +85,10 @@ def run_article_job(repo,lease,*,registry,object_store,model_client,hooks=None):
                 context=_capture_context(repo,lease)
                 if context.key.provider not in registry:raise ValueError("SOURCE_NOT_CONFIGURED")
                 _hook(hooks,"before_source_request")
-                captured=capture_source_article(context,registry=registry,object_store=object_store)
+                captured = capture_source_article(
+                    context, registry=registry, object_store=object_store,
+                    keep_embedded_pdf=True, keep_html_headings=True,
+                )
                 if lost.is_set():raise LeaseLost("heartbeat lost during source IO")
                 _hook(hooks,"before_source_commit")
                 store.store_captured_source(repo,lease,captured)
