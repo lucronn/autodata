@@ -92,8 +92,13 @@ func lifecycleArticle(article CatalogArticle) CatalogArticle {
 	if article.Processing != nil {
 		active := article.Processing.State != "completed" && article.Processing.State != "needs_review" && article.Processing.State != "failed"
 		if active && article.Processing.RetryAfterSeconds == nil {
-			n := 2
-			article.Processing.RetryAfterSeconds = &n
+			seconds := 2
+			if !readable && article.Processing.State != "failed" {
+				// Let the first read discover newly captured source sooner.
+				// The client increases later waits and honors explicit delays.
+				seconds = 1
+			}
+			article.Processing.RetryAfterSeconds = &seconds
 		}
 		if article.Processing.RetryAfterSeconds != nil && *article.Processing.RetryAfterSeconds < 1 {
 			n := 1
