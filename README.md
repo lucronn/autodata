@@ -140,6 +140,23 @@ intended domain defaults do not prove live DNS or service availability.
 Runtime source access uses the shared Source Connector v1 contract and does
 not require a bank service to be built into the AutoData stack.
 
+## Test Workshop in a browser
+
+From the repository root, run the purchase and article flow in Chromium,
+Firefox, and WebKit with Docker Compose v2:
+
+```sh
+scripts/dev/workshop_browser_test.sh
+scripts/dev/workshop_browser_test.sh chromium
+```
+
+The suite runs the real Workshop API and article workers with disposable
+PostgreSQL and object storage. It simulates Google sign-in and Stripe Checkout,
+delivers signed fixture payment events to the webhook, and verifies Library
+persistence, article and image access, and refund revocation. It needs no
+provider credentials. The command prints the results directory, including the
+JUnit report, and removes the disposable services when it exits.
+
 ## Validate a heterogeneous source drop
 
 The source normalizer accepts mixed JSON/API envelopes, XML, CSV, HTML, plain

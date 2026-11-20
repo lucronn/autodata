@@ -1,0 +1,39 @@
+name: Workshop browser integration
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/workshop-browser.yml"
+      - "apps/api-go/**"
+      - "db/migrations/**"
+      - "packages/contracts/**"
+      - "infra/compose/article-lifecycle-test.Dockerfile*"
+      - "infra/compose/compose.article-lifecycle-test.yaml"
+      - "infra/compose/compose.workshop-browser-test.yaml"
+      - "scripts/dev/requirements-workshop-browser.txt"
+      - "scripts/dev/workshop_browser_smoke.py"
+      - "scripts/dev/workshop_browser_test.sh"
+      - "scripts/dev/fixtures/workshop_customer/**"
+      - "workers/ingestion-python/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  workshop-browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Workshop through sign-in, purchase, Library, and article access
+        env:
+          TMPDIR: ${{ runner.temp }}
+        run: scripts/dev/workshop_browser_test.sh
+      - name: Keep the browser test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: workshop-browser-junit
+          path: ${{ runner.temp }}/autodata-workshop-browser.*/workshop-browser-api.xml
+          retention-days: 14
