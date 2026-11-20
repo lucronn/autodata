@@ -78,6 +78,7 @@ type CatalogStep struct {
 	Heading      string          `json:"heading,omitempty"`
 	Instructions []string        `json:"instructions"`
 	ImageIDs     []string        `json:"image_ids,omitempty"`
+	explicitZero bool
 }
 
 // R2 source steps retain text; canonical steps retain action and following
@@ -85,15 +86,33 @@ type CatalogStep struct {
 // optional image slice distinguishes absent images from an explicit empty list.
 func (step *CatalogStep) UnmarshalJSON(data []byte) error {
 	type plain CatalogStep
-	var value plain
+	var value struct {
+		plain
+		Number *int `json:"number"`
+	}
 	if err := json.Unmarshal(data, &value); err != nil {
 		return err
 	}
-	*step = CatalogStep(value)
+	*step = CatalogStep(value.plain)
+	if value.Number != nil {
+		step.Number = *value.Number
+		step.explicitZero = step.Number == 0
+	}
 	if step.Action == "" && len(step.Instructions) == 0 && step.Text != "" {
 		step.Instructions = []string{step.Text}
 	}
 	return nil
+}
+
+func (step CatalogStep) MarshalJSON() ([]byte, error) {
+	type plain CatalogStep
+	if step.Number != 0 || !step.explicitZero {
+		return json.Marshal(plain(step))
+	}
+	return json.Marshal(struct {
+		plain
+		Number int `json:"number"`
+	}{plain: plain(step), Number: step.Number})
 }
 
 type CatalogDocument struct {

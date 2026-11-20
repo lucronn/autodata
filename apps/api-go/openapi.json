@@ -3004,8 +3004,7 @@
               "properties": {
                 "number": {
                   "type": "integer",
-                  "minimum": 1,
-                  "description": "Explicit source step number, when present. Canonical document traversal does not fabricate numbers."
+                  "description": "Explicit source or authored list ordinal, when present."
                 },
                 "heading": {
                   "type": "string"
@@ -3261,6 +3260,11 @@
                 "number": {
                   "type": "integer"
                 },
+                "start": {
+                  "type": "integer",
+                  "minimum": -2147483648,
+                  "maximum": 2147483647
+                },
                 "columns": {
                   "type": "array",
                   "items": {
@@ -3270,7 +3274,40 @@
                 "items": {
                   "type": "array",
                   "items": {
-                    "type": "string"
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "text"
+                        ],
+                        "properties": {
+                          "text": {
+                            "type": "string"
+                          },
+                          "number": {
+                            "type": "integer",
+                            "minimum": -2147483648,
+                            "maximum": 2147483647
+                          },
+                          "blocks": {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/CatalogDocument/properties/blocks/items"
+                            }
+                          },
+                          "images": {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/CatalogImage"
+                            }
+                          }
+                        }
+                      }
+                    ]
                   }
                 },
                 "evidence_ids": {
@@ -3323,6 +3360,12 @@
                               "type": "array",
                               "items": {
                                 "$ref": "#/components/schemas/CatalogImage"
+                              }
+                            },
+                            "blocks": {
+                              "type": "array",
+                              "items": {
+                                "$ref": "#/components/schemas/CatalogDocument/properties/blocks/items"
                               }
                             }
                           }

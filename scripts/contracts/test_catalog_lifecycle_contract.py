@@ -29,12 +29,33 @@ class CatalogLifecycleContract(unittest.TestCase):
         article['article']['steps'] = [{'action': 'Take off the pump.', 'instructions': [],
                                        'images': [], 'evidence_ids': ['e1', 'e2']}]
         self.assertEqual(list(validator.iter_errors(article)), [])
-        article['article']['steps'][0]['number'] = 0
-        self.assertTrue(list(validator.iter_errors(article)))
+        for number in (0, -2):
+            article['article']['steps'][0]['number'] = number
+            self.assertEqual(list(validator.iter_errors(article)), [])
         article['article']['steps'][0]['number'] = 3
         article['article']['steps'][0]['images'] = [{'image_id': 'image-1', 'alt': 'Seal', 'status': 'available'}]
         self.assertEqual(list(validator.iter_errors(article)), [])
         article['article']['steps'][0]['images'][0]['storage_key'] = 'sources/private'
+        self.assertTrue(list(validator.iter_errors(article)))
+
+    def test_authored_list_ordinals_and_nested_content(self):
+        schema = json.loads((CATALOG / 'article-lifecycle.schema.json').read_text())
+        validator = jsonschema.Draft202012Validator(schema)
+        article = json.loads((CATALOG / 'fixtures/canonical-completed.json').read_text())
+        picture = {'image_id': 'figure-1', 'alt': 'Seal', 'status': 'available'}
+        table = {'type': 'table', 'rows': [[{'text': 'Check alignment', 'blocks': [
+            {'type': 'image', **picture},
+        ]}]]}
+        item = {'text': 'Check the seal.', 'number': 0, 'images': [picture], 'blocks': [table]}
+        block = {'type': 'ordered_list', 'start': -2, 'items': ['Take off the pump.', item]}
+        article['article']['document']['blocks'] = [block]
+        self.assertEqual(list(validator.iter_errors(article)), [])
+        for number in (True, '4', 2**31, -2**31 - 1):
+            item['number'] = number
+            with self.subTest(number=number):
+                self.assertTrue(list(validator.iter_errors(article)))
+        item['number'] = 0
+        table['rows'][0][0]['blocks'][0]['storage_key'] = 'sources/private'
         self.assertTrue(list(validator.iter_errors(article)))
 
     def test_openapi_catalog_cascade_and_lifecycle(self):

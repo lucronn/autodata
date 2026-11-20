@@ -252,6 +252,8 @@ func TestCatalogCanonicalR2StepPreservesActualCompatibilityShape(t *testing.T) {
 	for _, raw := range []string{
 		`{"action":"Take off the pump.","instructions":[],"images":[],"evidence_ids":["e1","e2"]}`,
 		`{"action":"Take off the pump.","instructions":[],"evidence_ids":["e1"]}`,
+		`{"number":0,"action":"Take off the pump.","instructions":[],"evidence_ids":["e1"]}`,
+		`{"number":-2,"action":"Take off the pump.","instructions":[],"evidence_ids":["e1"]}`,
 		`{"action":"Take off the pump.","text":"Additional source context.","instructions":[],"images":[],"evidence_ids":["e1"]}`,
 		`{"number":7,"action":"Take off the pump.","instructions":["Keep the seal.","Inspect the bracket."],"images":[],"evidence_ids":["e2","e1"]}`,
 	} {
