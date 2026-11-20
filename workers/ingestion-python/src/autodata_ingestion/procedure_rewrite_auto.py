@@ -26,7 +26,8 @@ _CELL_PROSE_PROMPT_V11 = "full-prose-auto-prompt-v11"
 _PROSE_PROMPT_V12 = "full-prose-auto-prompt-v12"
 _PROSE_PROMPT_V13 = "full-prose-auto-prompt-v13"
 _PROSE_PROMPT_V14 = "full-prose-auto-prompt-v14"
-_PROSE_PROMPT_VERSION = "full-prose-auto-prompt-v15"
+_PROSE_PROMPT_V15 = "full-prose-auto-prompt-v15"
+_PROSE_PROMPT_VERSION = "full-prose-auto-prompt-v16"
 _WORDS = re.compile(r"\w+")
 _INLINE_WARNING = re.compile(
     r"(?:^|[.!?]\s+|\n)[ \t]*(?:warnings?|caution|danger|notice|important)\s*[:!–—-]"
@@ -160,6 +161,7 @@ _CLAUSE_PREFIX_TIMING = re.compile(r"^(before|after)\s+([^,;.!?]+),\s+(.+)$", re
 _CLAUSE_TIMING = re.compile(r"\s+(before|after)\s+", re.IGNORECASE)
 _CLAUSE_THEN = re.compile(r"(?:[.,;]\s*|\s+)(?:and\s+)?then[,\s]+", re.IGNORECASE)
 _CLAUSE_PARALLEL = re.compile(r"\s+and\s+|[.;]\s*", re.IGNORECASE)
+_COMMA_AND = re.compile(r",\s*and\s+", re.IGNORECASE)
 _FIRST_MARKER = re.compile(r"^first[,\s]+|,?\s+first$", re.IGNORECASE)
 _NEXT_MARKER = re.compile(r"^next[,\s]+|,?\s+next$", re.IGNORECASE)
 _CLAUSE_GERUNDS = {
@@ -545,13 +547,30 @@ def _build_auto_prompt_v14(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def build_auto_prompt(document, *, context):
+def _auto_prompt_payload_v15(document, *, context):
     payload = _auto_prompt_payload_v14(document, context=context)
     if payload["slots"]:
-        payload["prompt_version"] = _PROSE_PROMPT_VERSION
+        payload["prompt_version"] = _PROSE_PROMPT_V15
         payload["rules"].append(
             "Keep each source alternative with its original action and component. You may "
             "reorder the alternatives and rephrase how they are offered. Keep every option as a choice."
+        )
+    return payload
+
+
+def _build_auto_prompt_v15(document, *, context):
+    payload = _auto_prompt_payload_v15(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def build_auto_prompt(document, *, context):
+    payload = _auto_prompt_payload_v15(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_VERSION
+        payload["rules"].append(
+            "When the source specifies which instruction must happen first, preserve that "
+            "order. Use before, after, then, or consecutive instructions in the original "
+            "execution order. Keep a sequence explicit when joining the instructions."
         )
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
@@ -559,9 +578,9 @@ def build_auto_prompt(document, *, context):
 def _auto_prompt_version(document, *, context, prompt_hash):
     """Identify the rules bound to the saved model attempt."""
     for builder in (
-        build_auto_prompt, _build_auto_prompt_v14, _build_auto_prompt_v13, _build_auto_prompt_v12,
-        _build_auto_prompt_v11, _build_auto_prompt_v10, _build_auto_prompt_v9, _build_auto_prompt_v8,
-        _build_auto_prompt_v7, _build_auto_prompt_v6, _build_auto_prompt_v5,
+        build_auto_prompt, _build_auto_prompt_v15, _build_auto_prompt_v14, _build_auto_prompt_v13,
+        _build_auto_prompt_v12, _build_auto_prompt_v11, _build_auto_prompt_v10, _build_auto_prompt_v9,
+        _build_auto_prompt_v8, _build_auto_prompt_v7, _build_auto_prompt_v6, _build_auto_prompt_v5,
         _build_auto_prompt_v4, _build_auto_prompt_v2, _build_auto_prompt_v1,
     ):
         payload = builder(document, context=context)
@@ -722,7 +741,7 @@ def _clause_pair(text):
     return tuple(clauses), ordered
 
 
-def _clause_assignment_changed(original, replacement):
+def _clause_assignment_changed(original, replacement, *, preserve_order=False):
     # Unrecognized, repeated, and unmatched targets are inconclusive. An
     # unordered conjunction supplies no timing constraint by itself.
     source = _clause_pair(original)
@@ -732,15 +751,23 @@ def _clause_assignment_changed(original, replacement):
     source_targets = {target for _, target in source_clauses}
     if len(source_targets) != 2:
         return False
+    if preserve_order and source_ordered:
+        replacement = _COMMA_AND.sub(" and ", replacement)
     draft = _clause_pair(replacement)
     if draft is None:
         return False
     draft_clauses, draft_ordered = draft
     if source_targets != {target for _, target in draft_clauses}:
         return False
-    return set(source_clauses) != set(draft_clauses) or (
-        source_ordered and draft_ordered and source_clauses != draft_clauses
-    )
+    if set(source_clauses) != set(draft_clauses):
+        return True
+    if preserve_order and source_ordered and not draft_ordered:
+        # A bare conjunction removes precedence. Separate imperatives can
+        # still express the original sequence through their written order.
+        separator = _CLAUSE_PARALLEL.search(replacement)
+        if separator is not None and separator[0].strip().casefold() == "and":
+            return True
+    return source_ordered and (draft_ordered or preserve_order) and source_clauses != draft_clauses
 
 
 def _alternative_pair(text):
@@ -1125,14 +1152,14 @@ def _uses_prose_guards(prompt_version, slot_count):
     return bool(slot_count) and prompt_version in (
         None, _PROSE_PROMPT_V4, _PROSE_PROMPT_V5, _PROSE_PROMPT_V6, _PROSE_PROMPT_V7,
         _PROSE_PROMPT_V8, _PROSE_PROMPT_V9, _PROSE_PROMPT_V10, _CELL_PROSE_PROMPT_V11,
-        _PROSE_PROMPT_V12, _PROSE_PROMPT_V13, _PROSE_PROMPT_V14, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V12, _PROSE_PROMPT_V13, _PROSE_PROMPT_V14, _PROSE_PROMPT_V15, _PROSE_PROMPT_VERSION,
     )
 
 
 def _include_cell_blocks(prompt_version):
     return prompt_version in (
         None, _CELL_PROSE_PROMPT_V11, _PROSE_PROMPT_V12, _PROSE_PROMPT_V13,
-        _PROSE_PROMPT_V14, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V14, _PROSE_PROMPT_V15, _PROSE_PROMPT_VERSION,
     )
 
 
@@ -1148,11 +1175,12 @@ def _require_changes(source, candidate, *, prompt_version):
     guard_qualifiers = guard_clauses and prompt_version != _PROSE_PROMPT_V8
     guard_scope = guard_qualifiers and prompt_version != _PROSE_PROMPT_V9
     guard_simultaneous = guard_scope and prompt_version in (
-        None, _PROSE_PROMPT_V12, _PROSE_PROMPT_V13, _PROSE_PROMPT_V14, _PROSE_PROMPT_VERSION,
+        None, _PROSE_PROMPT_V12, _PROSE_PROMPT_V13, _PROSE_PROMPT_V14, _PROSE_PROMPT_V15, _PROSE_PROMPT_VERSION,
     )
     guard_identified_inspection = guard_simultaneous and prompt_version != _PROSE_PROMPT_V12
     guard_compound_inspection = guard_identified_inspection and prompt_version != _PROSE_PROMPT_V13
-    guard_bound_alternatives = guard_scope and prompt_version in (None, _PROSE_PROMPT_VERSION)
+    guard_bound_alternatives = guard_scope and prompt_version in (None, _PROSE_PROMPT_V15, _PROSE_PROMPT_VERSION)
+    guard_bound_order = guard_clauses and prompt_version in (None, _PROSE_PROMPT_VERSION)
     introduction = candidate["blocks"][0].get("text", "")
     if guard_prose and (
         _INLINE_WARNING.search(introduction)
@@ -1207,7 +1235,7 @@ def _require_changes(source, candidate, *, prompt_version):
             original_actions = _execution_order(original)
             if original_actions and original_actions != _execution_order(replacement):
                 raise ValueError("REWRITE_ACTION_MUTATION")
-        if guard_clauses and _clause_assignment_changed(original, replacement):
+        if guard_clauses and _clause_assignment_changed(original, replacement, preserve_order=guard_bound_order):
             raise ValueError("REWRITE_CLAUSE_MUTATION")
         if guard_scope and not bound_alternatives and _alternative_changed(original, replacement):
             raise ValueError("REWRITE_CLAUSE_MUTATION")
@@ -1263,7 +1291,8 @@ def validate_auto(source, candidate, *, response=None, prompt_version=None):
             _PROSE_PROMPT_V12: "full-prose-auto-validator-v10",
             _PROSE_PROMPT_V13: "full-prose-auto-validator-v11",
             _PROSE_PROMPT_V14: "full-prose-auto-validator-v12",
-        }.get(prompt_version, "full-prose-auto-validator-v13")
+            _PROSE_PROMPT_V15: "full-prose-auto-validator-v13",
+        }.get(prompt_version, "full-prose-auto-validator-v14")
     report.update(validator_version=validator_version, profile_version=PROFILE,
         publication_mode="automatic", content_acceptance_required=False,
         complete_rewrite=False, passed=not errors, error_codes=errors)
