@@ -1,5 +1,6 @@
 """Exactly 21 required browser cases over actual PG/auth/commerce/catalog/S3 HTTP."""
 from contextlib import ExitStack
+from datetime import datetime
 import json
 import hashlib
 import re
@@ -10,6 +11,7 @@ import signal
 import stat
 import subprocess
 import sys
+import tempfile
 import time
 from urllib.parse import parse_qs, urlsplit
 from urllib.request import Request, urlopen
@@ -43,6 +45,14 @@ _INPUTS=('scripts/dev/workshop_browser_smoke.py','scripts/dev/fixtures/workshop_
 
 def _canonical(value):
     return (json.dumps(value,sort_keys=True,separators=(',',':'),ensure_ascii=False,allow_nan=False)+'\n').encode('utf-8')
+
+
+def _snapshot_json_value(value):
+    if isinstance(value, uuid.UUID):
+        return str(value)
+    if isinstance(value, datetime):
+        return value.isoformat()
+    raise TypeError(f"Unsupported snapshot value: {type(value).__name__}")
 
 
 def _strict_json(raw):
@@ -375,9 +385,21 @@ def _child(root_name,engine,provider,directory,monkeypatch):
     try:
         assert binding['binding_state']=='complete','API21 source binding unavailable'
         with ExitStack() as stack:
+            # The Stripe SDK resolves a home directory even with its mock HTTP
+            # transport. A container UID may have no passwd entry.
+            fixture_home = stack.enter_context(tempfile.TemporaryDirectory(prefix="workshop-fixture-home-"))
+            monkeypatch.setenv("HOME", fixture_home)
             repo=Repository(os.environ['AUTODATA_WORKSHOP_BROWSER_DATABASE']);result['fixture_database']=repo.database_name
             runtime=LifecycleRuntime(repo,stack)
             scope=configure_scoped_runtime(runtime,provider)
+            # Newly scoped articles are created after LifecycleRuntime sets up
+            # the legacy mock model, which only supports technical-prose-v1.
+            with repo.connect() as conn:
+                conn.execute(
+                    "UPDATE canonical_articles SET target_rewrite_profile_version = %s "
+                    "WHERE vehicle_configuration_id = %s",
+                    ("technical-prose-v1", scope["configuration"]),
+                )
             bridge=BrowserBridge(runtime)
             model=stack.enter_context(serve(bridge.model_handler()))
             runtime.env['INCEPTION_API_BASE_URL']=model+'/v1';runtime.env['INCEPTION_API_TIMEOUT_SECONDS']='35'
@@ -437,7 +459,7 @@ def _child(root_name,engine,provider,directory,monkeypatch):
                 observed=row['observations']
                 assert observed['binding']==expected_binding and observed['status']=='passed' and observed['primary_failure'] is None and observed['publication']=='written'
                 final=bridge.snapshot();assert not final['proxy']['errors'] and final['ensure']['active']==0
-                result['final_snapshot']=final
+                result['final_snapshot']=json.loads(json.dumps(final, default=_snapshot_json_value, allow_nan=False))
                 with urlopen(Request(metadata['origin']+'/__fixture/stop',method='POST'),context=ssl._create_unverified_context(),timeout=2) as response:assert response.status==204
                 _lifecycle(sidecar,'fixture-stop','completed',elapsed_us=go.elapsed())
                 assert go.wait(3)==0,'API21 fixture stop failed';process=None
@@ -555,7 +577,16 @@ def _case(root_name,engine,provider,fresh_database,monkeypatch):
             failure=failure or ('over_limit' if isinstance(exc,ValueError) and exc.args==('over_limit',) else 'read_failed')
             receipt.update(status='failed',primary_failure=failure)
         if not _safe_publish(directory,'parent-process.json',receipt,65536,reserve=publication_reserve):failure=failure or 'publication_failed'
-    if failure:raise AssertionError('API21 '+failure) from None
+    if failure:
+        detail = ""
+        try:
+            browser_log = _read_original(directory / "browser.stderr.log", 262144)
+            match = re.search(rb"^Workshop browser failure at workshop_browser_smoke\.py:[0-9]+$", browser_log, re.MULTILINE)
+            if match:
+                detail = " (" + match.group().decode("ascii") + ")"
+        except (OSError, ValueError):
+            pass
+        raise AssertionError("API21 " + failure + detail) from None
 
 
 @pytest.mark.parametrize('engine',ENGINES)

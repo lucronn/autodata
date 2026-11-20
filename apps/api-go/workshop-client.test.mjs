@@ -1203,6 +1203,29 @@ function paidPurchaseLifecycleHarness(selectionErrors, { realArticleIndex = fals
     checkoutStarts: () => checkoutStarts, orderReads: () => orderReads };
 }
 
+test('loopback TEST notices allow Buy and a deliberate retry after cancellation', async () => {
+  const canceled = {
+    version: 'v1', order_id: orderID, ...scope, state: 'canceled',
+    retry_disposition: 'new_key',
+  };
+  const h = paidPurchaseLifecycleHarness([], { orderResponses: [canceled, canceled] });
+  h.location.origin = 'http://localhost:3013';
+  h.$('test-banner').hidden = false;
+  for (const key of ['terms_url', 'privacy_url', 'refund_url', 'contact_url'])
+    h.context.merchant[key] = `${h.location.origin}/workshop/test-notices/${key.slice(0, -4)}`;
+
+  h.context.renderPurchase();
+  assert.equal(h.$('purchase-action').disabled, false);
+  await h.context.purchase();
+  assert.equal(h.checkoutStarts(), 1);
+  assert.equal(h.orderReads(), 1);
+  assert.equal(h.$('purchase-action').disabled, false);
+  assert.match(h.statuses.at(-1).message, /Choose Buy again/);
+  await h.context.purchase();
+  assert.equal(h.checkoutStarts(), 2);
+  assert.equal(h.orderReads(), 2);
+});
+
 test('paid catalog withdrawal through purchase never invites repayment or a no-op purchase retry', async () => {
   const withdrawn = Object.assign(new Error('Catalog withdrawn'), { status: 410, code: 'CATALOG_WITHDRAWN' });
   const h = paidPurchaseLifecycleHarness([withdrawn]);
