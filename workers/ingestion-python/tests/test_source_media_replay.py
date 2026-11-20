@@ -323,3 +323,21 @@ def test_apply_revalidates_media_and_projections():
         replay.validate_media_replay_result(binding, replace(captured, source_images=wrong_images))
     with pytest.raises(ValueError, match="^SOURCE_MEDIA_REPLAY_BINDING_MISMATCH$"):
         replay.validate_media_replay_result(binding, replace(captured, resources=()))
+
+
+@pytest.mark.parametrize("deadline", [0, 31, float("nan"), float("inf"), True, "5"])
+def test_replay_rejects_invalid_deadline_without_work(deadline):
+    cursor, objects = _fixture("bankone")
+    with pytest.raises(ValueError, match="^SOURCE_MEDIA_REPLAY_DEADLINE_INVALID$"):
+        replay.preview_media_replay(
+            cursor, cursor.row["source_revision_id"], object_store=objects, deadline_seconds=deadline,
+        )
+    assert not cursor.queries and not objects.reads
+
+
+def test_replay_rejects_reordered_html_text():
+    cursor, objects = _fixture("bankone")
+    blocks = cursor.row["source_document"]["blocks"]
+    blocks[0]["text"], blocks[1]["text"] = blocks[1]["text"], blocks[0]["text"]
+    with pytest.raises(ValueError, match="^SOURCE_MEDIA_REPLAY_TEXT_DRIFT$"):
+        replay.preview_media_replay(cursor, cursor.row["source_revision_id"], object_store=objects)

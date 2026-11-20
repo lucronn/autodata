@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from datetime import datetime
 from hashlib import sha256
+import math
 import re
 from time import monotonic
 from uuid import UUID
@@ -73,7 +74,7 @@ class MediaReplayBinding:
     resource_provenance: tuple[dict, ...]
     evidence_manifest: tuple[dict, ...]
     source_document_hash: str
-    _source_blocks: Counter
+    _source_blocks: tuple[str, ...]
     _source_assets: Counter
     captured_at: datetime
     snapshots: tuple[_Snapshot, ...]
@@ -227,7 +228,7 @@ def _load_snapshots(cur, ids, *, lock):
         )
         for row in cur.execute(sql, (sorted(ids),)).fetchall()
     )
-    if {snapshot.id for snapshot in snapshots} != ids:
+    if len(snapshots) != len(ids) or {snapshot.id for snapshot in snapshots} != ids:
         raise ValueError("SOURCE_MEDIA_REPLAY_BINDING_MISMATCH")
     if any(snapshot.takedown_status != "active" for snapshot in snapshots):
         raise ValueError("SOURCE_MEDIA_REPLAY_WITHDRAWN")
@@ -254,7 +255,7 @@ def _asset_inventory(images, provenance):
     return counter
 
 
-def _block_inventory(document):
+def _block_inventory(document, body_media):
     """Compare protected text and structure independently of image/page order."""
     def without_media(value):
         if isinstance(value, list):
@@ -273,9 +274,17 @@ def _block_inventory(document):
             return cleaned["text"]
         return cleaned
 
-    if not isinstance(document, dict) or not isinstance(document.get("blocks"), list):
+    if (
+        not isinstance(document, dict)
+        or not isinstance(document.get("blocks"), list)
+        or any(not isinstance(block, dict) for block in document["blocks"])
+    ):
         raise ValueError("SOURCE_MEDIA_REPLAY_DOCUMENT_INVALID")
-    return Counter(digest_json(block) for block in without_media(document["blocks"]))
+    blocks = without_media(document["blocks"])
+    if body_media == "application/pdf":
+        # Ordered capture previously placed OCR pages after native pages.
+        return tuple(sorted(digest_json(block) for block in blocks))
+    return tuple(digest_json(block) for block in blocks)
 
 
 def load_media_replay_binding(cur, source_revision_id, *, lock=False) -> MediaReplayBinding:
@@ -341,7 +350,7 @@ def load_media_replay_binding(cur, source_revision_id, *, lock=False) -> MediaRe
         resource_provenance=provenance,
         evidence_manifest=evidence,
         source_document_hash=digest_json(row["source_document"]),
-        _source_blocks=_block_inventory(row["source_document"]),
+        _source_blocks=_block_inventory(row["source_document"], manifest[0]["media_type"]),
         _source_assets=_asset_inventory(row["source_images"], provenance),
         captured_at=row["captured_at"],
         snapshots=snapshots,
@@ -365,7 +374,7 @@ def validate_media_replay_result(binding: MediaReplayBinding, captured: Captured
         raise ValueError("SOURCE_MEDIA_REPLAY_BINDING_MISMATCH")
     if validate_ordered_document(captured.source_document, strict=True):
         raise ValueError("SOURCE_MEDIA_REPLAY_DOCUMENT_INVALID")
-    if _block_inventory(captured.source_document) != binding._source_blocks:
+    if _block_inventory(captured.source_document, binding.resource_manifest[0]["media_type"]) != binding._source_blocks:
         raise ValueError("SOURCE_MEDIA_REPLAY_TEXT_DRIFT")
     if _asset_inventory(captured.source_images, binding.resource_provenance) != binding._source_assets:
         raise ValueError("SOURCE_MEDIA_REPLAY_ASSET_DRIFT")
@@ -489,7 +498,8 @@ def _replay(repo, source_revision_id, object_store, deadline):
 
 def preview_media_replay(repo, source_revision_id, *, object_store, deadline_seconds=30):
     """Read one eligible retained source and produce a changed v3 projection."""
-    if not 0 < deadline_seconds <= 30:
+    if (isinstance(deadline_seconds, bool) or not isinstance(deadline_seconds, (int, float))
+            or not math.isfinite(deadline_seconds) or not 0 < deadline_seconds <= 30):
         raise ValueError("SOURCE_MEDIA_REPLAY_DEADLINE_INVALID")
     deadline = monotonic() + deadline_seconds
     pool = ThreadPoolExecutor(max_workers=1)
