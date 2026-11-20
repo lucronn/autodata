@@ -35,6 +35,47 @@ func TestCatalogDetailLifecycle(t *testing.T) {
 	}
 }
 
+func TestCatalogArticleActiveReadRetryAfter(t *testing.T) {
+	retryDelay := 9
+	for _, test := range []struct {
+		name, state string
+		readable    bool
+		delay       *int
+		status      int
+		header      string
+	}{
+		{"cold queued", "queued", false, nil, 202, "1"},
+		{"cold fetch", "fetching_source", false, nil, 202, "1"},
+		{"warm rewrite", "rewriting", true, nil, 200, "2"},
+		{"explicit failed retry", "failed", false, &retryDelay, 202, "9"},
+		{"review required", "needs_review", true, nil, 200, ""},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			store := newMemoryCatalogStore()
+			article := CatalogArticle{
+				ID: "a", VehicleID: "v", CanonicalArticleID: stringPointer("a"), Title: "Pump",
+				Availability: "pending", Processing: &CatalogProcessing{
+					JobID: "job", State: test.state, RetryAfterSeconds: test.delay, Retryable: test.state == "failed",
+				},
+			}
+			if test.readable {
+				article.Availability = "available"
+				article.ContentOrigin = stringPointer("source")
+				article.Document = &CatalogDocument{
+					SchemaVersion: 1, NormalizationVersion: "ordered-article-v1",
+					Blocks: []CatalogDocumentBlock{{Type: "paragraph", Text: "Remove pump."}},
+				}
+			}
+			store.PutArticle(article)
+			response := catalogRequest(catalogServer(store), "/v1/catalog/vehicles/v/articles/a")
+			if response.Code != test.status || response.Header().Get("Retry-After") != test.header {
+				t.Fatalf("status=%d retry=%q, want status=%d retry=%q",
+					response.Code, response.Header().Get("Retry-After"), test.status, test.header)
+			}
+		})
+	}
+}
+
 func TestCatalogLifecycleReadableSourceIgnoresWorkerOutage(t *testing.T) {
 	for _, state := range []string{"rewriting", "failed", "needs_review"} {
 		t.Run(state, func(t *testing.T) {
