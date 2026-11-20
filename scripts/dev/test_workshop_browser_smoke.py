@@ -1383,6 +1383,21 @@ class API21FakePage:
 
 class API21FakeLocator:
     def __init__(self,page,selector):self.page,self.selector=page,selector;self.first=self
+
+    def locator(self, selector):
+        return API21FakeLocator(self.page, self.selector + " " + selector)
+
+    async def count(self):
+        assert self.selector.endswith(" iframe, object, embed")
+        return 0
+
+    async def inner_html(self):
+        return "<p>Captured fixture.</p>"
+
+    async def evaluate_all(self, expression):
+        assert self.selector.endswith(" :scope > :is(p, figure)")
+        assert "tagName" in expression
+        return "P,FIGURE,P"
     async def click(self,**kwargs):
         context=self.page.context;browser=context.browser
         if self.selector=='#signin':context.signed=True
