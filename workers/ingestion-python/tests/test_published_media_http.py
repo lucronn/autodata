@@ -1,12 +1,15 @@
 """Exercise a retained media publication through the actual paid Go HTTP API."""
 
 from contextlib import ExitStack
+from hashlib import sha256
+from io import BytesIO
 import json
 from pathlib import Path
 import os
 import subprocess
 
 import pytest
+from PIL import Image
 
 from autodata_ingestion import article_content_review
 from autodata_ingestion.published_media_publication import publish_retained_media_repair
@@ -23,7 +26,13 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def test_published_retained_media_actual_http(runtime, monkeypatch, tmp_path, capsys):
+@pytest.mark.parametrize(("file_format", "media_type"), [
+    ("PNG", "image/png"),
+    ("JPEG", "image/jpeg"),
+    ("GIF", "image/gif"),
+    ("WEBP", "image/webp"),
+])
+def test_published_retained_media_actual_http(runtime, monkeypatch, tmp_path, capsys, file_format, media_type):
     provider = "banktwo"
     allowlist = _allowlist(tmp_path)
     scope = configure_scoped_runtime(runtime, provider)
@@ -33,7 +42,22 @@ def test_published_retained_media_actual_http(runtime, monkeypatch, tmp_path, ca
             "UPDATE canonical_articles SET target_rewrite_profile_version=%s WHERE canonical_article_id=%s",
             ("technical-prose-v1", runtime.article_id),
         )
-    original, model = _seed(runtime, monkeypatch, provider, article_content_review.PROFILE, allowlist)
+    stream = BytesIO()
+    Image.new("RGB", (24, 24), "green").save(stream, format=file_format)
+    figure = stream.getvalue()
+    figure_sha256 = sha256(figure).hexdigest()
+    server = runtime.servers[provider]
+    register_resource = server.body
+
+    def register_with_fixture_figure(payload, mime="text/html", *, ref="body", kind="article", assets=()):
+        if ref == "figure" and kind == "asset":
+            payload, mime = figure, media_type
+        return register_resource(payload, mime, ref=ref, kind=kind, assets=assets)
+
+    # Use the same historical placement and content review with each provider asset.
+    with monkeypatch.context() as fixture:
+        fixture.setattr(server, "body", register_with_fixture_figure)
+        original, model = _seed(runtime, monkeypatch, provider, article_content_review.PROFILE, allowlist)
     assert original["review_status"] == "APPROVED"
     _, manifest = _preview(runtime, original, tmp_path, capsys)
     calls_before = runtime.counters()
@@ -77,8 +101,8 @@ def test_published_retained_media_actual_http(runtime, monkeypatch, tmp_path, ca
             return Handler
 
     bridge = RepairBridge(runtime)
-    artifact = Path("/artifacts")
-    case_dir = artifact / "published-media-http"
+    case_dir = Path("/artifacts") / "published-media-http" / file_format.lower()
+    case_dir.parent.mkdir(mode=0o700, exist_ok=True)
     case_dir.mkdir(mode=0o700)
     with ExitStack() as stack:
         ensure = stack.enter_context(serve(bridge.ensure_handler()))
@@ -102,6 +126,8 @@ def test_published_retained_media_actual_http(runtime, monkeypatch, tmp_path, ca
             AUTODATA_CATALOG_TEST_PROVIDER=provider,
             AUTODATA_CATALOG_TEST_CANDIDATE_SHA=os.environ["AUTODATA_R3_CANDIDATE_SHA"],
             AUTODATA_CATALOG_TEST_CASE_DIR=str(case_dir),
+            AUTODATA_PAID_TEST_FIGURE_MEDIA_TYPE=media_type,
+            AUTODATA_PAID_TEST_FIGURE_SHA256=figure_sha256,
             AUTODATA_PAID_TEST_CONFIGURATION_ID=scope["configuration"],
             AUTODATA_PAID_TEST_ADJACENT_CONFIGURATION_ID=scope["adjacent"],
             AUTODATA_PAID_TEST_REGION_CONFIGURATION_ID=scope["other_region"],
@@ -120,5 +146,17 @@ def test_published_retained_media_actual_http(runtime, monkeypatch, tmp_path, ca
     assert not errors and len(publications) == 1 and model.calls == 1
     assert runtime.counters() == {**calls_before, "schedule": calls_before["schedule"] + 1}
     receipt = json.loads((case_dir / "go-measurement.json").read_text())
-    assert len(receipt["assertion_results"]) == 7 and all(receipt["assertion_results"].values())
+    assert len(receipt["assertion_results"]) == 8 and all(receipt["assertion_results"].values())
     assert receipt["reader_calls"] == 4
+    image_requests = [
+        request for request in receipt["http_observations"]
+        if request["path"].startswith("/v1/catalog/images/")
+    ]
+    assert [request["status"] for request in image_requests] == [200, 200, 404, 404, 200, 200, 404, 404, 403, 403]
+    for request in image_requests:
+        if request["status"] == 200:
+            assert request["headers"]["Content-Type"] == media_type
+            assert request["body_sha256"] == figure_sha256
+            assert request["reader_after"] == request["reader_before"] + 1
+        else:
+            assert request["reader_after"] == request["reader_before"]
