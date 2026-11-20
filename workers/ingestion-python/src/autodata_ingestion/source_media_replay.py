@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from datetime import datetime
 from hashlib import sha256
+import json
 import math
 import re
 from time import monotonic
@@ -13,7 +14,7 @@ from uuid import UUID
 
 from psycopg.rows import dict_row
 
-from .article_document import validate_ordered_document
+from .article_document import has_only_list_ordinal_additions, validate_ordered_document
 from .article_lifecycle_store import _remap_snapshot_references
 from .article_lifecycle_types import (
     ArticleKey,
@@ -38,11 +39,13 @@ from .source_connector_client import (
 
 MEDIA_REPLAY_SOURCE_VERSIONS = frozenset({"source-projection-v1", "source-projection-v2"})
 MEDIA_REPLAY_PROJECTION_VERSION = "source-projection-v3"
+ORDINAL_REPLAY_PROJECTION_VERSION = "source-projection-v4"
 
 _MAX_OBJECT_BYTES = 1024 * 1024  # ArticleObjectStore.get_object's retained-object bound.
 _MAX_TOTAL_BYTES = 8 * _MAX_OBJECT_BYTES
 _MAX_RESOURCES = 32
 _BODY_MEDIA = frozenset({"text/html", "application/json", "application/hal+json", "application/pdf"})
+_REVERSED_HTML_LIST = re.compile(r"<ol\b[^>]*\breversed\b", re.IGNORECASE)
 _MANIFEST_FIELDS = frozenset({"role", "opaque_ref", "sha256", "media_type"})
 _PROVENANCE_FIELDS = _MANIFEST_FIELDS | {
     "provider", "object_key", "source_snapshot_id", "source_revision",
@@ -79,7 +82,7 @@ class MediaReplayBinding:
     resource_provenance: tuple[dict, ...]
     evidence_manifest: tuple[dict, ...]
     source_document_hash: str
-    _source_blocks: tuple[str, ...]
+    source_document: dict
     _source_assets: Counter
     captured_at: datetime
     snapshots: tuple[_Snapshot, ...]
@@ -136,8 +139,9 @@ def _context(row) -> SourceArticleContext:
     )
 
 
-def _resource_binding(row, context, manifest, provenance):
-    if row["projection_status"] != "readable" or not 1 < len(manifest) <= _MAX_RESOURCES:
+def _resource_binding(row, context, manifest, provenance, *, ordinals):
+    minimum_resources = 1 if ordinals else 2
+    if row["projection_status"] != "readable" or not minimum_resources <= len(manifest) <= _MAX_RESOURCES:
         raise ValueError("SOURCE_MEDIA_REPLAY_UNSUPPORTED")
     if len(provenance) != len(manifest):
         raise ValueError("SOURCE_MEDIA_REPLAY_BINDING_MISMATCH")
@@ -255,7 +259,7 @@ def _load_snapshots(cur, ids, *, resource_ids, lock):
 
 
 def _asset_inventory(images, provenance):
-    if not isinstance(images, (tuple, list)) or not images:
+    if not isinstance(images, (tuple, list)):
         raise ValueError("SOURCE_MEDIA_REPLAY_ASSET_DRIFT")
     allowed = {
         (row["sha256"], row["object_key"], row["media_type"])
@@ -314,7 +318,7 @@ def _block_inventory(document, body_media):
     return tuple(digest_json(block) for block in blocks)
 
 
-def load_media_replay_binding(cur, source_revision_id, *, lock=False) -> MediaReplayBinding:
+def load_media_replay_binding(cur, source_revision_id, *, lock=False, ordinals=False) -> MediaReplayBinding:
     """Select one immutable source observation and all its current snapshot rights."""
     row = cur.execute("""
         SELECT s.source_revision_id, s.canonical_article_id, s.source_fingerprint,
@@ -337,7 +341,10 @@ def load_media_replay_binding(cur, source_revision_id, *, lock=False) -> MediaRe
         """, (source_revision_id,)).fetchone()
     if row is None:
         raise ValueError("SOURCE_MEDIA_REPLAY_SOURCE_NOT_FOUND")
-    if row["projection_version"] not in MEDIA_REPLAY_SOURCE_VERSIONS:
+    versions = MEDIA_REPLAY_SOURCE_VERSIONS
+    if ordinals:
+        versions = versions | {MEDIA_REPLAY_PROJECTION_VERSION}
+    if row["projection_version"] not in versions:
         raise ValueError("SOURCE_MEDIA_REPLAY_UNSUPPORTED")
     if row["membership_status"] != "active" or row["takedown_status"] != "active":
         raise ValueError("SOURCE_MEDIA_REPLAY_WITHDRAWN")
@@ -346,7 +353,9 @@ def load_media_replay_binding(cur, source_revision_id, *, lock=False) -> MediaRe
     manifest = _rows(row["resource_manifest"])
     provenance = _rows(row["resource_provenance"])
     evidence = _rows(row["evidence_manifest"])
-    snapshot_ids = _resource_binding(row, context, manifest, provenance)
+    snapshot_ids = _resource_binding(row, context, manifest, provenance, ordinals=ordinals)
+    if ordinals and manifest[0]["media_type"] == "application/pdf":
+        raise ValueError("SOURCE_MEDIA_REPLAY_UNSUPPORTED")
     expected_evidence = context.evidence_ids or ("source:" + str(snapshot_id(manifest[0]["sha256"])),)
     if evidence != tuple(
         {"evidence_id": item, "body_source_snapshot_id": str(row["body_source_snapshot_id"])}
@@ -378,17 +387,18 @@ def load_media_replay_binding(cur, source_revision_id, *, lock=False) -> MediaRe
         resource_provenance=provenance,
         evidence_manifest=evidence,
         source_document_hash=digest_json(row["source_document"]),
-        _source_blocks=_block_inventory(row["source_document"], manifest[0]["media_type"]),
+        source_document=row["source_document"],
         _source_assets=_asset_inventory(row["source_images"], provenance),
         captured_at=row["captured_at"],
         snapshots=snapshots,
     )
 
 
-def validate_media_replay_result(binding: MediaReplayBinding, captured: CapturedSource) -> None:
+def validate_media_replay_result(binding: MediaReplayBinding, captured: CapturedSource, *, ordinals=False) -> None:
     """Revalidate an offline replay against the exact retained observation."""
+    target = ORDINAL_REPLAY_PROJECTION_VERSION if ordinals else MEDIA_REPLAY_PROJECTION_VERSION
     if (
-        captured.projection_version != MEDIA_REPLAY_PROJECTION_VERSION
+        captured.projection_version != target
         or captured.context != binding.context
         or captured.body_source_snapshot_id != binding.body_source_snapshot_id
         or captured.captured_at != binding.captured_at
@@ -402,8 +412,13 @@ def validate_media_replay_result(binding: MediaReplayBinding, captured: Captured
         raise ValueError("SOURCE_MEDIA_REPLAY_BINDING_MISMATCH")
     if validate_ordered_document(captured.source_document, strict=True):
         raise ValueError("SOURCE_MEDIA_REPLAY_DOCUMENT_INVALID")
-    if _block_inventory(captured.source_document, binding.resource_manifest[0]["media_type"]) != binding._source_blocks:
-        raise ValueError("SOURCE_MEDIA_REPLAY_TEXT_DRIFT")
+    if ordinals:
+        if not has_only_list_ordinal_additions(binding.source_document, captured.source_document):
+            raise ValueError("SOURCE_MEDIA_REPLAY_ORDINAL_DRIFT")
+    else:
+        media = binding.resource_manifest[0]["media_type"]
+        if _block_inventory(captured.source_document, media) != _block_inventory(binding.source_document, media):
+            raise ValueError("SOURCE_MEDIA_REPLAY_TEXT_DRIFT")
     if _asset_inventory(captured.source_images, binding.resource_provenance) != binding._source_assets:
         raise ValueError("SOURCE_MEDIA_REPLAY_ASSET_DRIFT")
     if project_document(captured.source_document) != (
@@ -488,7 +503,7 @@ class _VerifyOnlySink:
             raise ValueError("SOURCE_MEDIA_REPLAY_OBJECT_MISMATCH")
 
 
-def _replay(repo, source_revision_id, object_store, deadline):
+def _replay(repo, source_revision_id, object_store, deadline, *, ordinals):
     def remaining():
         seconds = deadline - monotonic()
         if seconds <= 0:
@@ -496,8 +511,13 @@ def _replay(repo, source_revision_id, object_store, deadline):
         return seconds
 
     with repo.connect() as conn, conn.cursor(row_factory=dict_row) as cur:
-        binding = load_media_replay_binding(cur, source_revision_id)
+        binding = load_media_replay_binding(cur, source_revision_id, ordinals=ordinals)
     verified = _read_objects(binding, object_store, remaining)
+    if ordinals:
+        raw, mime = verified[binding.resource_provenance[0]["object_key"]]
+        markup = raw.decode("utf-8-sig") if mime == "text/html" else json.dumps(json.loads(raw))
+        if _REVERSED_HTML_LIST.search(markup):
+            raise ValueError("SOURCE_MEDIA_REPLAY_UNSUPPORTED")
     client = _OfflineConnector(binding.context.key.provider, binding.resource_provenance, verified)
     try:
         replayed = capture_source_article(
@@ -513,26 +533,26 @@ def _replay(repo, source_revision_id, object_store, deadline):
         for resource in binding.resource_provenance
     }
     captured = replace(
-        replayed, projection_version=MEDIA_REPLAY_PROJECTION_VERSION,
+        replayed, projection_version=ORDINAL_REPLAY_PROJECTION_VERSION if ordinals else MEDIA_REPLAY_PROJECTION_VERSION,
         captured_at=binding.captured_at, body_source_snapshot_id=binding.body_source_snapshot_id,
         resources=tuple(_remap_snapshot_references(resource, snapshot_ids) for resource in replayed.resources),
         resource_provenance=_remap_snapshot_references(replayed.resource_provenance, snapshot_ids),
         evidence_manifest=_remap_snapshot_references(replayed.evidence_manifest, snapshot_ids),
     )
-    validate_media_replay_result(binding, captured)
+    validate_media_replay_result(binding, captured, ordinals=ordinals)
     remaining()
     return binding, captured
 
 
-def preview_media_replay(repo, source_revision_id, *, object_store, deadline_seconds=30):
-    """Read one eligible retained source and produce a changed v3 projection."""
+def preview_media_replay(repo, source_revision_id, *, object_store, deadline_seconds=30, ordinals=False):
+    """Reparse retained source bytes for a media or authored-ordinal correction."""
     if (isinstance(deadline_seconds, bool) or not isinstance(deadline_seconds, (int, float))
             or not math.isfinite(deadline_seconds) or not 0 < deadline_seconds <= 30):
         raise ValueError("SOURCE_MEDIA_REPLAY_DEADLINE_INVALID")
     deadline = monotonic() + deadline_seconds
     pool = ThreadPoolExecutor(max_workers=1)
     try:
-        return pool.submit(_replay, repo, source_revision_id, object_store, deadline).result(
+        return pool.submit(_replay, repo, source_revision_id, object_store, deadline, ordinals=ordinals).result(
             timeout=deadline_seconds,
         )
     except TimeoutError:

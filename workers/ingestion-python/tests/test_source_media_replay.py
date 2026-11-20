@@ -433,3 +433,64 @@ def test_replay_rejects_reordered_html_text():
     blocks[0]["text"], blocks[1]["text"] = blocks[1]["text"], blocks[0]["text"]
     with pytest.raises(ValueError, match="^SOURCE_MEDIA_REPLAY_TEXT_DRIFT$"):
         replay.preview_media_replay(cursor, cursor.row["source_revision_id"], object_store=objects)
+
+
+def _retained_numbered_list(provider, *, reversed_list=False):
+    start = b'<ol reversed start="4">' if reversed_list else b'<ol start="4">'
+    cursor, objects = _retained_fixture(_Connector(provider, start + (
+        b'<li>Remove the pump.</li><li value="9">Inspect the cover.</li>'
+        b'<li>Install the cover.</li></ol>'
+    )), move_image=False)
+    block, = cursor.row["source_document"]["blocks"]
+    block.pop("start")
+    block["items"][1] = block["items"][1]["text"]
+    return cursor, objects
+
+
+@pytest.mark.parametrize(("provider", "version"), [
+    ("bankone", "source-projection-v2"),
+    ("banktwo", "source-projection-v3"),
+])
+def test_retained_numbered_list_replays_without_image_or_writes(provider, version):
+    cursor, objects = _retained_numbered_list(provider)
+    cursor.row["projection_version"] = version
+    before = deepcopy(cursor.row)
+    writes = objects.writes
+    with pytest.raises(ValueError, match="SOURCE_MEDIA_REPLAY_UNSUPPORTED"):
+        replay.preview_media_replay(cursor, before["source_revision_id"], object_store=objects)
+    binding, captured = replay.preview_media_replay(
+        cursor, before["source_revision_id"], object_store=objects, ordinals=True,
+    )
+    assert captured.projection_version == "source-projection-v4"
+    assert [step["number"] for step in captured.source_steps] == [4, 9, 10]
+    assert binding.source_fingerprint == captured.source_fingerprint == before["source_fingerprint"]
+    assert captured.source_images == []
+    assert len(objects.reads) == 1 and objects.writes == writes and cursor.row == before
+
+
+@pytest.mark.parametrize("mutation", ["text", "order", "existing_ordinal", "warning", "step_number"])
+def test_retained_numbered_list_refuses_other_changes(mutation):
+    cursor, objects = _retained_numbered_list("banktwo")
+    block, = cursor.row["source_document"]["blocks"]
+    if mutation == "text":
+        block["items"][0] = "Remove the fuel pump."
+    elif mutation == "order":
+        block["items"][0], block["items"][1] = block["items"][1], block["items"][0]
+    elif mutation == "existing_ordinal":
+        block["items"][1] = {"text": block["items"][1], "number": 8}
+    elif mutation == "warning":
+        block["items"][0] = {"text": block["items"][0], "blocks": [{
+            "type": "callout", "label": "Warning", "text": "Depressurize the line first.",
+        }]}
+    elif mutation == "step_number":
+        block["items"][0] = {"text": block["items"][0], "blocks": [{
+            "type": "step", "number": 2, "text": "Isolate the system.",
+        }]}
+    with pytest.raises(ValueError, match="SOURCE_MEDIA_REPLAY_ORDINAL_DRIFT"):
+        replay.preview_media_replay(cursor, cursor.row["source_revision_id"], object_store=objects, ordinals=True)
+
+
+def test_retained_numbered_list_refuses_reversed_markup():
+    cursor, objects = _retained_numbered_list("banktwo", reversed_list=True)
+    with pytest.raises(ValueError, match="SOURCE_MEDIA_REPLAY_UNSUPPORTED"):
+        replay.preview_media_replay(cursor, cursor.row["source_revision_id"], object_store=objects, ordinals=True)

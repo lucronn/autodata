@@ -1,4 +1,4 @@
-"""Preview and atomically publish an approved retained-figure correction."""
+"""Preview and atomically publish an approved retained article correction."""
 
 from dataclasses import dataclass
 from hashlib import sha256
@@ -30,7 +30,9 @@ from .procedure_rewrite_auto import (
     build_source_preserving_candidate,
 )
 from .procedure_rewrite_full import PROFILE as REVIEW_PROFILE, validate_full
-from .published_media_repair import TECHNICAL_V1, TECHNICAL_V2, PublishedMediaRepair, repair_published_media
+from .published_media_repair import (
+    MEDIA_METHOD, ORDINAL_METHOD, TECHNICAL_V1, TECHNICAL_V2, PublishedMediaRepair, repair_published_media,
+)
 from .source_media_replay import (
     load_media_replay_binding,
     media_replay_document_hash,
@@ -40,6 +42,7 @@ from .source_media_replay import (
 from .source_revision_reprojection import _require_no_active_normal_job
 
 SCHEMA = "autodata:published-media-repair:v1"
+ORDINAL_SCHEMA = "autodata:published-list-ordinals:v1"
 
 
 @dataclass(frozen=True)
@@ -97,6 +100,9 @@ def _publication_evidence(cur, article, binding, *, fixture_mode, lock):
         """ + (" FOR UPDATE" if lock else ""), (revision_id, article_id, binding.source_revision_id)).fetchone()
     if row is None:
         raise ValueError("PUBLISHED_MEDIA_REPAIR_CURRENT_REVISION_REQUIRED")
+
+    if row["model_metadata"].get("transformation_method") in (MEDIA_METHOD, ORDINAL_METHOD):
+        raise ValueError("PUBLISHED_MEDIA_REPAIR_PRIOR_REPAIR_UNSUPPORTED")
 
     profile = row["rewrite_profile_version"]
     if (profile not in (AUTO_PROFILE, REVIEW_PROFILE, TECHNICAL_V1, TECHNICAL_V2)
@@ -169,7 +175,7 @@ def _publication_evidence(cur, article, binding, *, fixture_mode, lock):
     return row, latest, decision, attempt, response, prompt_version, tuple(sorted(authors))
 
 
-def _plan(cur, article, binding, captured, *, fixture_mode, lock=False):
+def _plan(cur, article, binding, captured, *, fixture_mode, lock=False, ordinals=False):
     if article["current_source_revision_id"] != binding.source_revision_id:
         raise ValueError("PUBLISHED_MEDIA_REPAIR_STALE")
     row, review, decision, attempt, response, prompt_version, authors = _publication_evidence(
@@ -178,14 +184,14 @@ def _plan(cur, article, binding, captured, *, fixture_mode, lock=False):
     normalized = _normalize(captured, binding.canonical_article_id)
     repair = repair_published_media(
         row["normalized_source_document"], row["canonical_document"], normalized,
-        response=response, prompt_version=prompt_version, profile=row["rewrite_profile_version"],
+        response=response, prompt_version=prompt_version, profile=row["rewrite_profile_version"], ordinals=ordinals,
     )
     if attempt is None:
         preserving_document, _ = build_source_preserving_candidate(normalized)
         if digest_json(preserving_document) != digest_json(repair.document):
             raise ValueError("PUBLISHED_MEDIA_REPAIR_SOURCE_HEADING_CHANGED")
     manifest = {
-        "schema": SCHEMA,
+        "schema": ORDINAL_SCHEMA if ordinals else SCHEMA,
         "article_id": str(binding.canonical_article_id),
         "source_revision_id": str(binding.source_revision_id),
         "source_observation_id": str(binding.source_observation_id),
@@ -209,9 +215,10 @@ def _plan(cur, article, binding, captured, *, fixture_mode, lock=False):
     return _RepairPlan(manifest, row, normalized, repair, decision, authors)
 
 
-def preview_published_media_repair(repo, article_id, source_revision_id, *, object_store, destination, fixture_mode=False):
-    """Export both layouts and exact approval bindings to a private directory."""
-    binding, captured = preview_media_replay(repo, source_revision_id, object_store=object_store)
+def preview_published_media_repair(repo, article_id, source_revision_id, *, object_store, destination,
+                                   fixture_mode=False, ordinals=False):
+    """Export both documents and exact approval bindings to a private directory."""
+    binding, captured = preview_media_replay(repo, source_revision_id, object_store=object_store, ordinals=ordinals)
     if binding.canonical_article_id != article_id:
         raise ValueError("PUBLISHED_MEDIA_REPAIR_ARTICLE_MISMATCH")
     with repo.connect() as conn, conn.cursor(row_factory=dict_row) as cur:
@@ -219,7 +226,7 @@ def preview_published_media_repair(repo, article_id, source_revision_id, *, obje
         article = cur.execute("SELECT * FROM canonical_articles WHERE canonical_article_id=%s", (article_id,)).fetchone()
         if article is None:
             raise ValueError("PUBLISHED_MEDIA_REPAIR_ARTICLE_MISMATCH")
-        plan = _plan(cur, article, binding, captured, fixture_mode=fixture_mode)
+        plan = _plan(cur, article, binding, captured, fixture_mode=fixture_mode, ordinals=ordinals)
     write_private_export(destination, {
         "manifest": plan.manifest,
         "source": {"before": plan.previous["normalized_source_document"], "after": plan.normalized},
@@ -260,13 +267,14 @@ def _already_published(cur, article, key, expected, reviewer_id, rationale, *, a
 
 def publish_retained_media_repair(repo, *, expected, object_store, reviewer_id, allowlist, rationale,
                                   fixture_mode=False, hooks=None):
-    """Rebuild the reviewed layout under owner/source rights locks, then publish."""
-    if (not isinstance(expected, dict) or expected.get("schema") != SCHEMA
+    """Rebuild the reviewed correction under owner/source rights locks, then publish."""
+    if (not isinstance(expected, dict) or expected.get("schema") not in (SCHEMA, ORDINAL_SCHEMA)
         or type(expected.get("request_generation")) is not int or not _substantive(rationale)):
         raise ValueError("PUBLISHED_MEDIA_REPAIR_APPROVAL_INVALID")
     article_id = UUID(expected["article_id"])
     source_revision_id = UUID(expected["source_revision_id"])
-    binding, captured = preview_media_replay(repo, source_revision_id, object_store=object_store)
+    ordinals = expected["schema"] == ORDINAL_SCHEMA
+    binding, captured = preview_media_replay(repo, source_revision_id, object_store=object_store, ordinals=ordinals)
     if binding.canonical_article_id != article_id:
         raise ValueError("PUBLISHED_MEDIA_REPAIR_ARTICLE_MISMATCH")
     with repo.connect() as conn, conn.cursor(row_factory=dict_row) as cur:
@@ -274,10 +282,10 @@ def publish_retained_media_repair(repo, *, expected, object_store, reviewer_id, 
         article = cur.execute("SELECT * FROM canonical_articles WHERE canonical_article_id=%s FOR UPDATE", (article_id,)).fetchone()
         if article is None:
             raise ValueError("PUBLISHED_MEDIA_REPAIR_ARTICLE_MISMATCH")
-        locked = load_media_replay_binding(cur, source_revision_id, lock=True)
+        locked = load_media_replay_binding(cur, source_revision_id, lock=True, ordinals=ordinals)
         if binding != locked:
             raise ValueError("PUBLISHED_MEDIA_REPAIR_SOURCE_CHANGED")
-        validate_media_replay_result(locked, captured)
+        validate_media_replay_result(locked, captured, ordinals=ordinals)
         key = transformation_key(
             article_id, locked.source_fingerprint, article["target_normalization_version"],
             article["target_rewrite_profile_version"], projection_version=captured.projection_version,
@@ -288,7 +296,7 @@ def publish_retained_media_repair(repo, *, expected, object_store, reviewer_id, 
         if repeated is not None:
             return repeated
         _require_no_active_normal_job(cur, article_id)
-        plan = _plan(cur, article, locked, captured, fixture_mode=fixture_mode, lock=True)
+        plan = _plan(cur, article, locked, captured, fixture_mode=fixture_mode, lock=True, ordinals=ordinals)
         if digest_json(plan.manifest) != digest_json(expected):
             raise ValueError("PUBLISHED_MEDIA_REPAIR_STALE")
         reviewer_kind = authorize_reviewer(
@@ -302,6 +310,7 @@ def _publish(cur, article, captured, key, plan, approval, *, hooks):
     article_id = article["canonical_article_id"]
     generation = article["request_generation"] + 1
     job_id, revision_id = uuid4(), uuid4()
+    method = plan.repair.provenance["transformation_method"]
     if cur.execute("""
         SELECT 1 FROM canonical_article_source_revisions
         WHERE canonical_article_id=%s AND source_fingerprint=%s AND projection_version=%s
@@ -312,10 +321,10 @@ def _publish(cur, article, captured, key, plan, approval, *, hooks):
             source_vehicle_ref,source_article_ref,source_version,connector_name,idempotency_key,
             status,phase,job_kind,canonical_article_id,request_generation,normalization_version,
             rewrite_profile_version,checkpoint)
-        VALUES (%s,%s,%s,%s,%s,'published-media-placement-v1',%s,%s,'completed','completed','article',%s,%s,%s,%s,%s)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'completed','completed','article',%s,%s,%s,%s,%s)
         RETURNING correlation_id
         """, (job_id, article["provider_slug"], article["vehicle_id"], article["source_vehicle_ref"],
-              article["source_article_ref"], article["provider_slug"], "published-media:" + key,
+              article["source_article_ref"], method, article["provider_slug"], "published-media:" + key,
               article_id, generation, plan.previous["normalization_version"], plan.previous["rewrite_profile_version"],
               Jsonb({"media_repair": approval}))).fetchone()
     source_id = _persist_article_capture(cur, article_id, job_id, generation, captured, verify_existing=True)
@@ -341,7 +350,7 @@ def _publish(cur, article, captured, key, plan, approval, *, hooks):
               Jsonb(repair.projection["steps"]), Jsonb(repair.projection["images"]), Jsonb(repair.validation.report),
               digest_json(repair.validation.report), digest_json(repair.document), Jsonb(metadata)))
     if plan.review_status == "APPROVED":
-        reason = {"schema": SCHEMA, "approval": approval, "source_revision_id": str(source_id)}
+        reason = {"schema": plan.manifest["schema"], "approval": approval, "source_revision_id": str(source_id)}
         cur.execute("""
             INSERT INTO canonical_article_reviews(canonical_article_review_id,canonical_article_revision_id,
                 authorized_reviewer_id,decision,reason) VALUES (%s,%s,%s,'APPROVED',%s)

@@ -390,6 +390,55 @@ def walk_ordered_list_items(block: Mapping[str, Any]):
         ordinal += 1
 
 
+def has_only_list_ordinal_additions(before, after) -> bool:
+    """Allow only source-authored ordinal additions to the same ordered document."""
+    added = False
+
+    def equivalent(old, new):
+        if isinstance(old, dict) and isinstance(new, dict):
+            if old.get("type") == new.get("type") == "ordered_list":
+                return equivalent_list(old, new)
+            return equivalent_fields(old, new)
+        if isinstance(old, list) and isinstance(new, list):
+            return len(old) == len(new) and all(equivalent(a, b) for a, b in zip(old, new, strict=True))
+        return type(old) is type(new) and old == new
+
+    def equivalent_fields(old, new, *, ignored=()):
+        keys = old.keys() - set(ignored)
+        return keys == new.keys() - set(ignored) and all(equivalent(old[key], new[key]) for key in keys)
+
+    def equivalent_list(old, new):
+        old_items, new_items = old.get("items"), new.get("items")
+        if not (isinstance(old_items, list) and isinstance(new_items, list)
+                and len(old_items) == len(new_items)
+                and ordinal(old, new, "start")
+                and equivalent_fields(old, new, ignored=("start", "items"))):
+            return False
+        for old_item, new_item in zip(old_items, new_items, strict=True):
+            if isinstance(new_item, dict) and "number" in new_item:
+                old_item = {"text": old_item} if isinstance(old_item, str) else old_item
+                if (not isinstance(old_item, dict) or not ordinal(old_item, new_item, "number")
+                        or not equivalent_fields(old_item, new_item, ignored=("number",))):
+                    return False
+            elif not equivalent(old_item, new_item):
+                return False
+        return True
+
+    def ordinal(old, new, key):
+        nonlocal added
+        if key in old:
+            return list_number(new.get(key)) is not None and type(old[key]) is int and old[key] == new[key]
+        if key not in new:
+            return True
+        if list_number(new[key]) is None:
+            return False
+        added = True
+        return True
+
+    same_content = equivalent(before, after)
+    return same_content and added
+
+
 def has_ordered_list_numbering(document: Mapping[str, Any]) -> bool:
     """Detect persisted list ordinals, including lists nested inside items."""
     def visit(value):

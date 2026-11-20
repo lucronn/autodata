@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Privileged local preview and publication of a retained figure correction."""
+"""Privileged local preview and publication of a retained article correction."""
 import argparse
 import json
 from pathlib import Path
@@ -21,6 +21,8 @@ def main(argv=None, *, repo=None, object_store=None):
     preview.add_argument("--article-id", type=UUID, required=True)
     preview.add_argument("--source-revision-id", type=UUID, required=True)
     preview.add_argument("--output", type=Path, required=True)
+    preview.add_argument("--ordinals", action="store_true",
+                         help="Recover authored ordered-list numbers from the retained source")
     publish = commands.add_parser("publish")
     publish.add_argument("--expected", type=Path, required=True, help="Private manifest.json from preview")
     publish.add_argument("--reviewer", required=True)
@@ -33,7 +35,7 @@ def main(argv=None, *, repo=None, object_store=None):
     if args.command == "preview":
         result = preview_published_media_repair(
             repo, args.article_id, args.source_revision_id, object_store=object_store,
-            destination=args.output, fixture_mode=args.fixture_mode,
+            destination=args.output, fixture_mode=args.fixture_mode, ordinals=args.ordinals,
         )
     else:
         result = publish_retained_media_repair(
