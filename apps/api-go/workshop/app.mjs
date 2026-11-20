@@ -361,10 +361,7 @@ function renderPurchase() {
     return;
   }
   const priced = validQuote(quote, scope()),
-    configured = purchaseConfiguration(merchant, quote, {
-      testCheckout: !$('test-banner').hidden,
-      origin: globalThis.location?.origin,
-    });
+    configured = purchaseConfigured();
   $("purchase-price").textContent = priced
     ? "$20 USD · one-time"
     : "Price is currently unavailable.";
@@ -414,6 +411,12 @@ function renderPurchase() {
       $("policy-links").append(link, document.createTextNode(" · "));
     }
   $("tax-notice").textContent = configured ? merchant.tax_notice : "";
+}
+function purchaseConfigured() {
+  return purchaseConfiguration(merchant, quote, {
+    testCheckout: !$("test-banner").hidden,
+    origin: globalThis.location?.origin,
+  });
 }
 async function selectVehicle(g, articleID = "") {
   clearProtected();
@@ -1228,7 +1231,7 @@ async function checkOrder(g, id) {
     const readyToBuy =
       access === "missing" &&
       validQuote(quote, scope()) &&
-      purchaseConfiguration(merchant, quote);
+      purchaseConfigured();
     status(
       readyToBuy
         ? "The previous payment attempt ended. Choose Buy again only when you are ready."
@@ -1259,7 +1262,7 @@ async function purchase() {
   }
   if (
     !validQuote(quote, scope()) ||
-    !purchaseConfiguration(merchant, quote) ||
+    !purchaseConfigured() ||
     access !== "missing" ||
     (unconfirmedOrder?.id === currentOrder &&
       vehicle?.id === unconfirmedOrder.configuration_id &&
