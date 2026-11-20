@@ -1,6 +1,8 @@
 // Pure catalog helpers are shared by the browser and the regression suite.
 export function configurationLabel(item) {
-  return [item.engine, item.trim].filter(Boolean).join(' / ') || 'Base configuration';
+  const displacement = typeof item.engine === 'string' && /^\d+(?:\.\d+)?$/.test(item.engine);
+  const engine = displacement ? `${item.engine} L` : item.engine;
+  return [engine, item.trim].filter(Boolean).join(' / ') || 'Base configuration';
 }
 
 export function filterArticles(items, query) {

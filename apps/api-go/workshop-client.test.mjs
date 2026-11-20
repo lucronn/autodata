@@ -132,7 +132,10 @@ test('search matches all words without changing catalog order or IDs', () => {
   const articles = [{ id: 'one', title: 'Oil Pump Removal', kind: 'procedure' }, { id: 'two', title: 'Water Pump' }, { id: 'three', title: 'Oil Pump Installation' }];
   assert.deepEqual(filterArticles(articles, ' PUMP oil ').map(a => a.id), ['one', 'three']);
   assert.deepEqual(filterArticles(articles, ''), articles);
-  assert.equal(configurationLabel({ engine: '2.0', trim: 'Base' }), '2.0 / Base');
+  assert.equal(configurationLabel({ engine: '2.0', trim: 'Base' }), '2.0 L / Base');
+  assert.equal(configurationLabel({ engine: '2.0 L', trim: 'Sport' }), '2.0 L / Sport');
+  assert.equal(configurationLabel({ engine: 'Hybrid' }), 'Hybrid');
+  assert.equal(configurationLabel({}), 'Base configuration');
 });
 
 const scope = { configuration_id: '11111111-1111-4111-8111-111111111111', region: 'US' };
