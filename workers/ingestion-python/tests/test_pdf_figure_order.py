@@ -102,7 +102,12 @@ def test_capture_places_pdf_figure_without_changing_text_or_retained_bytes(captu
     assert positioned.source_fingerprint == legacy.source_fingerprint
     assert positioned.resource_manifest == legacy.resource_manifest
     assert positioned.evidence_manifest == legacy.evidence_manifest
-    assert positioned.projection_version == legacy.projection_version
+    assert legacy.projection_version == {
+        "pdf": "source-projection-v2",
+        "wrapper": "source-projection-v5",
+        "linked": "source-projection-v6",
+    }[container]
+    assert positioned.projection_version == "source-projection-v7"
     assert capture_fixture.objects.data == retained_bytes
     [before], [after] = legacy.source_images, positioned.source_images
     assert {key: value for key, value in before.items() if key not in ("source_order", "block_id")} == {

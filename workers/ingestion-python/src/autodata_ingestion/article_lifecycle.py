@@ -88,6 +88,7 @@ def run_article_job(repo,lease,*,registry,object_store,model_client,hooks=None):
                 captured = capture_source_article(
                     context, registry=registry, object_store=object_store,
                     keep_embedded_pdf=True, keep_html_headings=True, keep_bound_pdf_iframes=True,
+                    keep_pdf_figure_order=True,
                 )
                 if lost.is_set():raise LeaseLost("heartbeat lost during source IO")
                 _hook(hooks,"before_source_commit")

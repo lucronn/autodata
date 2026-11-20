@@ -57,7 +57,7 @@ def test_full_chain_restart_preserves_every_marker_and_schema(fresh_database):
     before = versions(repo)
     schema = snapshot(repo)
     result = run_driver(repo)
-    assert result.stdout.count('AUTODATA_SKIPPED ') == 46
+    assert result.stdout.count('AUTODATA_SKIPPED ') == 47
     assert 'AUTODATA_APPLIED ' not in result.stdout
     assert versions(repo) == before
     assert snapshot(repo) == schema
@@ -92,8 +92,8 @@ def test_empty_bootstrap_and_untracked_application_rejection(fresh_database, emp
     if empty_ledger:
         with repo.connect() as conn:
             conn.execute('CREATE TABLE schema_migrations(version text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())')
-    assert len(applied(run_driver(repo))) == 46
-    assert len(versions(repo)) == 46
+    assert len(applied(run_driver(repo))) == 47
+    assert len(versions(repo)) == 47
     for table in ('vehicles', 'canonical_article_revisions', 'customer_accounts', 'auth_sessions', 'workshop_orders', 'workshop_checkout_requests'):
         untracked = fresh_database(through=0)
         with untracked.connect() as conn:
@@ -179,7 +179,7 @@ def test_genuine_036_upgrade_preserves_jobs_and_matches_fresh_schema(fresh_datab
     assert read_imported_job_invariants(legacy) == jobs
 
 
-@pytest.mark.parametrize('number', [2, 33, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46])
+@pytest.mark.parametrize('number', [2, 33, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47])
 def test_migration_failure_rolls_back_only_active_file_then_retry(fresh_database, tmp_path, number):
     repo = fresh_database(through=number - 1)
     directory = fixture_prefix(tmp_path, number)
@@ -210,7 +210,7 @@ def test_recorded_001_and_partial_unmarked_next_file_remain_retryable(fresh_data
     with repo.connect() as conn:
         conn.execute(body[:body.index(';') + 1])
     assert len(applied(run_driver(repo))) == 45
-    assert len(versions(repo)) == 46
+    assert len(versions(repo)) == 47
 
 
 @pytest.mark.parametrize('upgrade', [False, True])
@@ -241,7 +241,7 @@ def test_two_full_runners_serialize_and_apply_each_version_once(fresh_database, 
     all_applied = sum((applied(r) for r in results), [])
     expected = ['033_catalog_scope_coverage.sql', '037_article_source_lifecycle.sql', '038_article_transform_publication.sql', '039_production_identity_sessions.sql', '040_workshop_commerce.sql', '041_article_source_projection_v2.sql', '042_catalog_selector_rows.sql', '043_article_source_projection_v3.sql', '044_article_source_projection_v4.sql', '045_article_source_projection_v5.sql', '046_article_source_projection_v6.sql', '047_article_source_projection_v7.sql'] if upgrade else [p.name for p in sorted((ROOT/'db/migrations').glob('*.sql'))]
     assert sorted(all_applied) == sorted(expected)
-    assert len(versions(repo)) == 46
+    assert len(versions(repo)) == 47
     assert applied(run_driver(repo)) == []
 
 
@@ -294,7 +294,7 @@ def test_native_python_adapter_applies_then_skips_in_one_session(fresh_database)
     from unittest.mock import patch
     with patch.dict(os.environ, {'AUTODATA_POSTGRES_USER':'lifecycle_test',
          'AUTODATA_POSTGRES_PASSWORD':'lifecycle_test_only', 'AUTODATA_POSTGRES_DB':repo.database_name}):
-        assert len(apply_migrations(ROOT, 'postgres:5432')) == 46
+        assert len(apply_migrations(ROOT, 'postgres:5432')) == 47
         old_versions, schema = versions(repo), snapshot(repo)
         assert apply_migrations(ROOT, 'postgres:5432') == []
     assert versions(repo) == old_versions
@@ -396,7 +396,7 @@ def test_populated_040_projection_upgrade_and_restart_preserve_rows(fresh_databa
     populated, upgraded_schema, upgraded_ledger = lifecycle_history(repo), snapshot(repo), versions(repo)
     result = run_driver(repo)
     assert applied(result) == []
-    assert result.stdout.count('AUTODATA_SKIPPED ') == 46
+    assert result.stdout.count('AUTODATA_SKIPPED ') == 47
     assert lifecycle_history(repo) == populated
     assert snapshot(repo) == upgraded_schema
     assert versions(repo) == upgraded_ledger

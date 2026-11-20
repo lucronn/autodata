@@ -13,7 +13,7 @@ from .article_lifecycle_types import (
     article_id,
     digest_json,
 )
-from .source_adapters import adapt_bound_article, bound_pdf_embed_blocks
+from .source_adapters import adapt_bound_article, adapt_bound_pdf_embed
 from .source_connector_client import SourceConnectorError
 from .article_document import build_ordered_document, walk_ordered_list_items
 from .svg_rasterization import rasterize_svg, SVGUnavailable, RASTERIZER_VERSION
@@ -276,6 +276,7 @@ def capture_source_article(
         parser_pool.shutdown(wait=False, cancel_futures=True)
     blocks = deepcopy(article["blocks"])
     handled_pdf_embeds = article.get("handled_pdf_embeds") is True
+    positioned_pdf_figures = article.get("positioned_pdf_figures") is True
     new_structure = article.get("embedded_pdf") or (
         article.get("authored_html_headings") and any(block.get("kind") == "heading" for block in _walk(blocks))
     )
@@ -335,14 +336,14 @@ def capture_source_article(
                     return ref, role, None, "UNSUPPORTED_DOCUMENT_MEDIA", originals, None
                 resource = upload_resource(envelope, ref, role, bounded_objects)
                 try:
-                    blocks = bound_pdf_embed_blocks(
+                    adapted = adapt_bound_pdf_embed(
                         payload, require_complete_ocr=True, keep_pdf_figure_order=keep_pdf_figure_order,
                     )
                 except ValueError:
-                    blocks = []
-                if not blocks:
+                    adapted = None
+                if not adapted or not adapted["blocks"]:
                     return ref, role, None, "DOCUMENT_EXTRACTION_UNAVAILABLE", [resource], None
-                return ref, role, resource, None, originals, blocks
+                return ref, role, resource, None, originals, adapted
             resource = upload_resource(envelope, ref, role, bounded_objects)
             if role == "asset" and resource["media_type"] == "image/svg+xml":
                 original = {**resource, "role": "asset_original"}
@@ -384,9 +385,10 @@ def capture_source_article(
             resource = None
             failure = "CAPTURE_DEADLINE"
         else:
-            _, _, resource, failure, originals, document_blocks = future.result()
-            if document_blocks is not None:
-                documents[ref] = (document_blocks, ["source:" + resource["source_snapshot_id"]])
+            _, _, resource, failure, originals, adapted = future.result()
+            if adapted is not None:
+                documents[ref] = (adapted["blocks"], ["source:" + resource["source_snapshot_id"]])
+                positioned_pdf_figures |= adapted.get("positioned_pdf_figures") is True
             for original in originals:
                 resources.append(original)
                 provenance.append(deepcopy(original))
@@ -618,7 +620,9 @@ def capture_source_article(
         ),
         datetime.now(timezone.utc),
         projection_version=(
-            "source-projection-v6" if handled_pdf_embeds
-            else "source-projection-v5" if new_structure else "source-projection-v2"
+            "source-projection-v7" if positioned_pdf_figures
+            else "source-projection-v6" if handled_pdf_embeds
+            else "source-projection-v5" if new_structure
+            else "source-projection-v2"
         ),
     )

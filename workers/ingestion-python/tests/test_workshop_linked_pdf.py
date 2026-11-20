@@ -48,12 +48,14 @@ class FixtureDraft:
         }
 
 
-def _pdf_with_fixture_figure():
+def _pdf_with_fixture_figure(*, trailing_text=None):
     pixels = Random(7).randbytes(96 * 96 * 3)
     with Image.frombytes("RGB", (96, 96), pixels) as figure, BytesIO() as output:
         document = canvas.Canvas(output)
         document.drawString(72, 720, "Inspect the seal.")
         document.drawImage(ImageReader(figure), 72, 500, width=96, height=96)
+        if trailing_text:
+            document.drawString(72, 450, trailing_text)
         document.showPage()
         document.save()
         return output.getvalue(), pixels
@@ -67,11 +69,10 @@ def test_linked_pdf_publishes_in_order_and_private_original_controls_visibility(
     provider = "banktwo"
     runtime.article_id = runtime.articles[provider]
     connector = runtime.servers[provider]
-    raw_pdf, figure_pixels = _pdf_with_fixture_figure()
+    raw_pdf, figure_pixels = _pdf_with_fixture_figure(trailing_text="Install the replacement.")
     body = (
         '<p>Remove the pump.</p>'
         f'<iframe src="{_PDF_LOCATOR}" title="Private provider title">Hidden fallback.</iframe>'
-        '<p>Install the replacement.</p>'
     ).encode()
     connector.body(
         body, assets=[_PDF_REF],
@@ -112,7 +113,7 @@ def test_linked_pdf_publishes_in_order_and_private_original_controls_visibility(
                WHERE source_revision_id=%s AND source_fetch_job_id=%s""",
             (published["source_revision_id"], job.job_id),
         ).fetchone()
-    assert source["projection_version"] == "source-projection-v6"
+    assert source["projection_version"] == "source-projection-v7"
     assert source["projection_status"] == "readable"
     assert _layout(source["source_document"]) == [
         ("paragraph", "Remove the pump."),
@@ -141,8 +142,10 @@ def test_linked_pdf_publishes_in_order_and_private_original_controls_visibility(
     ]
     assert pdf_evidence in source["source_document"]["blocks"][1]["evidence_ids"]
     assert pdf_evidence in source["source_document"]["blocks"][2]["evidence_ids"]
+    assert pdf_evidence in source["source_document"]["blocks"][3]["evidence_ids"]
     assert pdf_evidence in published["document"]["blocks"][2]["evidence_ids"]
     assert pdf_evidence in published["document"]["blocks"][3]["evidence_ids"]
+    assert pdf_evidence in published["document"]["blocks"][4]["evidence_ids"]
     assert runtime.counters()["source"] == runtime.counters()["asset"] == 1
 
     assert runtime.objects.get_object(body_resource["object_key"], max_bytes=1024 * 1024) == body
