@@ -1718,7 +1718,7 @@ def _maintenance_xml_blocks(text: str) -> list[dict[str, Any]]:
 
 
 def adapt_bound_article(
-    resource: SourceResource, context, *, keep_embedded_pdf: bool = False,
+    resource: SourceResource, context, *, keep_embedded_pdf: bool = False, keep_html_headings: bool = False,
 ) -> dict[str, Any]:
     """Adapt fetched bytes under proven connector scope, without weakening URL intake."""
     from .banktwo_connector import ArticleParser
@@ -1845,7 +1845,7 @@ def adapt_bound_article(
                         resource.locator,
                         resource.metadata,
                     )
-                    return adapt_bound_article(nested, context)
+                    return adapt_bound_article(nested, context, keep_html_headings=keep_html_headings)
                 blocks = segment_plain_article_text(text)
         return {
             "blocks": blocks,
@@ -1861,6 +1861,7 @@ def adapt_bound_article(
         parser = ArticleParser(
             asset_bindings=resource.metadata.get("asset_bindings", []),
             preserve_legacy_list_starts=False,
+            keep_html_headings=keep_html_headings,
         )
         parser.feed(html)
         parser.close()
@@ -1890,7 +1891,11 @@ def adapt_bound_article(
                         and str(candidate.data[field]) != str(context.vehicle[field])
                     ):
                         raise ValueError("wrong applicability")
-        return {"blocks": parser.blocks, "asset_resource_refs": []}
+        return {
+            "blocks": parser.blocks,
+            "asset_resource_refs": [],
+            **({"authored_html_headings": True} if keep_html_headings else {}),
+        }
     if media == "text/plain":
         return {
             "blocks": segment_plain_article_text(resource.payload.decode("utf-8-sig")),

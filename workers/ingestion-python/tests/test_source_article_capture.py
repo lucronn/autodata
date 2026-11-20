@@ -740,6 +740,7 @@ def test_mixed_pdf_keeps_ocr_text_and_embedded_figure_in_page_order(
         context, registry=capture_fixture.registry, object_store=capture_fixture.objects,
         keep_embedded_pdf=wrapper is not None,
     )
+    assert captured.projection_version == ("source-projection-v5" if wrapper else "source-projection-v2")
 
     body_resource, figure_resource = captured.resource_provenance
     assert body_resource["sha256"] == sha256(body_payload).hexdigest()
@@ -1718,3 +1719,40 @@ def test_capture_explicitly_versions_corrected_projection(capture_fixture):
     assert historical.source_fingerprint == captured.source_fingerprint
     assert historical.body_source_snapshot_id == captured.body_source_snapshot_id
     assert historical.resources == captured.resources
+
+
+@pytest.mark.parametrize("provider", ["bankone", "banktwo"])
+@pytest.mark.parametrize("wrap_hal", [False, True])
+def test_authored_headings_keep_metadata_and_instruction_boundaries(capture_fixture, provider, wrap_hal):
+    import json
+
+    from autodata_ingestion.procedure_normalize import normalize_procedure_article
+    from autodata_ingestion.procedure_rewrite_full import prose_slots
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    markup = "<h2>Pump <em>removal</em></h2>Remove the pump.<h4>Inspection</h4><p>Inspect the cover.</p>"
+    if wrap_hal:
+        body = json.dumps({"_embedded": {"data": {"article": {"content": markup}}}}).encode()
+        media = "application/hal+json"
+    else:
+        body, media = markup.encode(), "text/html"
+    capture_fixture.body(provider, body, media)
+    args = dict(registry=capture_fixture.registry, object_store=capture_fixture.objects)
+    legacy = capture_source_article(capture_fixture.context(provider), **args)
+    new = capture_source_article(capture_fixture.context(provider), keep_html_headings=True, **args)
+    assert legacy.projection_version == "source-projection-v2"
+    assert new.projection_version == "source-projection-v5"
+    assert legacy.source_fingerprint == new.source_fingerprint
+    assert legacy.resource_manifest == new.resource_manifest
+    assert "Pump removalRemove the pump." in legacy.source_body
+    document = normalize_procedure_article({
+        "normalized_document": new.source_document, "blocks": new.source_document["blocks"],
+        "body": new.source_body, "steps": new.source_steps,
+    })["normalized_document"]
+    assert [(block["type"], block.get("level"), block["text"]) for block in document["blocks"]] == [
+        ("heading", 2, "Pump removal"),
+        ("paragraph", None, "Remove the pump."),
+        ("heading", 4, "Inspection"),
+        ("paragraph", None, "Inspect the cover."),
+    ]
+    assert [slot["text"] for slot in prose_slots(document)] == ["Remove the pump.", "Inspect the cover."]

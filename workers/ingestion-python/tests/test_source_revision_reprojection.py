@@ -585,3 +585,48 @@ def test_list_capture_uses_new_projection_without_replacing_published_prose(runt
             assert fixed_list["start"] == 4
             assert fixed_list["items"][1]["number"] == 9
             assert [step["number"] for step in fixed.source_steps] == [4, 9, 10]
+
+
+@pytest.mark.parametrize("published", [False, True])
+def test_apply_authored_heading_projection_preserves_existing_publication(runtime, monkeypatch, published):
+    from autodata_ingestion import source_article_capture as capture
+    from autodata_ingestion.article_lifecycle import _capture_context, run_article_worker_once
+    from autodata_ingestion.article_lifecycle_store import load_source_revision, store_captured_source
+    from autodata_ingestion.mercury2 import Mercury2Client
+    from autodata_ingestion.source_job_persistence import claim_source_job
+
+    runtime.servers[runtime.provider].body(
+        b"<h2>Pump service</h2><p>Remove the pump.</p><h3>Inspection</h3>", "text/html",
+    )
+    capture_current = capture.capture_source_article
+
+    def historical(*args, **kwargs):
+        return capture_current(*args, **{**kwargs, "keep_html_headings": False})
+
+    with monkeypatch.context() as legacy:
+        legacy.setattr(capture, "capture_source_article", historical)
+        for key, value in runtime.env.items():
+            legacy.setenv(key, value)
+        runtime.ensure()
+        run_article_worker_once(runtime.repo, worker_id=uuid4(), registry=runtime.registry, object_store=runtime.objects,
+                                model_client=Mercury2Client.from_environment() if published else None)
+    old = runtime.read_current()
+    assert (old["canonical_revision_id"] is not None) == published
+    before = load_source_revision(runtime.repo, old["source_revision_id"])
+    assert before.projection_version == "source-projection-v2"
+
+    runtime.refresh()
+    lease = claim_source_job(runtime.repo, worker_id=uuid4())
+    captured = capture_current(_capture_context(runtime.repo, lease), registry=runtime.registry,
+                               object_store=runtime.objects, keep_html_headings=True)
+    assert captured.projection_version == "source-projection-v5"
+    assert captured.source_fingerprint == before.source_fingerprint
+    selected = store_captured_source(runtime.repo, lease, captured)
+    state = runtime.read_current()
+    if published:
+        assert selected == before.source_revision_id
+        assert state["canonical_revision_id"] == old["canonical_revision_id"]
+    else:
+        revision = load_source_revision(runtime.repo, selected)
+        assert revision.projection_version == "source-projection-v5"
+        assert [block["type"] for block in revision.source_document["blocks"]] == ["heading", "paragraph", "heading"]
