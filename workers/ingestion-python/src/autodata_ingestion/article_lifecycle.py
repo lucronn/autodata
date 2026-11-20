@@ -109,7 +109,7 @@ def run_article_job(repo,lease,*,registry,object_store,model_client,hooks=None):
                 store.save_normalized_input(repo,lease,normalized)
                 document=normalized["normalized_document"]
                 from .procedure_rewrite_full import prose_slots
-                if lease.rewrite_profile_version == "full-prose-auto-v1" and not prose_slots(document):
+                if lease.rewrite_profile_version == "full-prose-auto-v1" and not prose_slots(document, include_cell_blocks=True):
                     store.store_source_preserving_candidate(repo,lease)
                     _hook(hooks,"after_source_preserving_candidate_commit")
                 else:

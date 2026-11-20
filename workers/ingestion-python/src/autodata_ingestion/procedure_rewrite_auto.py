@@ -22,6 +22,7 @@ _PROSE_PROMPT_V7 = "full-prose-auto-prompt-v7"
 _PROSE_PROMPT_V8 = "full-prose-auto-prompt-v8"
 _PROSE_PROMPT_V9 = "full-prose-auto-prompt-v9"
 _PROSE_PROMPT_VERSION = "full-prose-auto-prompt-v10"
+_CELL_PROSE_PROMPT = "full-prose-auto-prompt-v11"
 _WORDS = re.compile(r"\w+")
 _INLINE_WARNING = re.compile(
     r"(?:^|[.!?]\s+|\n)[ \t]*(?:warnings?|caution|danger|notice|important)\s*[:!–—-]"
@@ -259,8 +260,8 @@ def _technical_only(text):
     return not any(char.isalpha() for char in full._TOKENS.sub("", text))
 
 
-def _build_auto_prompt_v1(document, *, context):
-    payload = json.loads(full.build_full_prompt(document, context=context))
+def _build_auto_prompt_v1(document, *, context, include_cell_blocks=False):
+    payload = json.loads(full.build_full_prompt(document, context=context, include_cell_blocks=include_cell_blocks))
     payload.update(profile_version=PROFILE, prompt_version="full-prose-auto-prompt-v1")
     payload["rules"] = [rule for rule in payload["rules"] if "human" not in rule.lower()
         and not rule.startswith("Preserve ambiguous numeric notation")
@@ -273,8 +274,8 @@ def _build_auto_prompt_v1(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def _build_auto_prompt_v2(document, *, context):
-    payload = json.loads(_build_auto_prompt_v1(document, context=context))
+def _build_auto_prompt_v2(document, *, context, include_cell_blocks=False):
+    payload = json.loads(_build_auto_prompt_v1(document, context=context, include_cell_blocks=include_cell_blocks))
     payload["prompt_version"] = "full-prose-auto-prompt-v2"
     payload["response_shape"] = {"introduction": "string", "replacements": [
         {"block_id": "string", "path": "string", "action": "rewrite|retain", "text": "string", "reason": "string"}]}
@@ -289,8 +290,8 @@ def _build_auto_prompt_v2(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def _build_auto_prompt_v4(document, *, context):
-    payload = json.loads(_build_auto_prompt_v2(document, context=context))
+def _build_auto_prompt_v4(document, *, context, include_cell_blocks=False):
+    payload = json.loads(_build_auto_prompt_v2(document, context=context, include_cell_blocks=include_cell_blocks))
     if payload["slots"]:
         payload["prompt_version"] = _PROSE_PROMPT_V4
         for slot in payload["slots"]:
@@ -330,8 +331,8 @@ def _build_auto_prompt_v4(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def _build_auto_prompt_v5(document, *, context):
-    previous = _build_auto_prompt_v4(document, context=context)
+def _build_auto_prompt_v5(document, *, context, include_cell_blocks=False):
+    previous = _build_auto_prompt_v4(document, context=context, include_cell_blocks=include_cell_blocks)
     payload = json.loads(previous)
     if not payload["slots"]:
         return previous
@@ -349,8 +350,8 @@ def _build_auto_prompt_v5(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def _auto_prompt_payload_v6(document, *, context):
-    previous = _build_auto_prompt_v5(document, context=context)
+def _auto_prompt_payload_v6(document, *, context, include_cell_blocks=False):
+    previous = _build_auto_prompt_v5(document, context=context, include_cell_blocks=include_cell_blocks)
     payload = json.loads(previous)
     if not payload["slots"]:
         return payload
@@ -371,8 +372,8 @@ def _build_auto_prompt_v6(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def _auto_prompt_payload_v7(document, *, context):
-    payload = _auto_prompt_payload_v6(document, context=context)
+def _auto_prompt_payload_v7(document, *, context, include_cell_blocks=False):
+    payload = _auto_prompt_payload_v6(document, context=context, include_cell_blocks=include_cell_blocks)
     if payload["slots"]:
         payload["prompt_version"] = _PROSE_PROMPT_V7
         payload["rules"].append(
@@ -387,8 +388,8 @@ def _build_auto_prompt_v7(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def _auto_prompt_payload_v8(document, *, context):
-    payload = _auto_prompt_payload_v7(document, context=context)
+def _auto_prompt_payload_v8(document, *, context, include_cell_blocks=False):
+    payload = _auto_prompt_payload_v7(document, context=context, include_cell_blocks=include_cell_blocks)
     if payload["slots"]:
         payload["prompt_version"] = _PROSE_PROMPT_V8
         payload["rules"].append(
@@ -403,8 +404,8 @@ def _build_auto_prompt_v8(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def _auto_prompt_payload_v9(document, *, context):
-    payload = _auto_prompt_payload_v8(document, context=context)
+def _auto_prompt_payload_v9(document, *, context, include_cell_blocks=False):
+    payload = _auto_prompt_payload_v8(document, context=context, include_cell_blocks=include_cell_blocks)
     if payload["slots"]:
         payload["prompt_version"] = _PROSE_PROMPT_V9
         payload["rules"].append(
@@ -419,8 +420,8 @@ def _build_auto_prompt_v9(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def build_auto_prompt(document, *, context):
-    payload = _auto_prompt_payload_v9(document, context=context)
+def _auto_prompt_payload_v10(document, *, context, include_cell_blocks=False):
+    payload = _auto_prompt_payload_v9(document, context=context, include_cell_blocks=include_cell_blocks)
     if payload["slots"]:
         payload["prompt_version"] = _PROSE_PROMPT_VERSION
         for slot in payload["slots"]:
@@ -431,13 +432,32 @@ def build_auto_prompt(document, *, context):
             "paired directives are alternatives or both required, and whether conditions require "
             "all or any of their predicates. Keep each state with its original component."
         )
+    return payload
+
+
+def _build_auto_prompt_v10(document, *, context):
+    payload = _auto_prompt_payload_v10(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def build_auto_prompt(document, *, context):
+    payload = _auto_prompt_payload_v10(document, context=context, include_cell_blocks=True)
+    if any("/rows/" in slot["path"] for slot in payload["slots"]):
+        payload["prompt_version"] = _CELL_PROSE_PROMPT
+        payload["rules"] = [
+            "Rewrite only specified prose slots, including specified blocks inside cells. Preserve "
+            "table labels, scalar values, media, evidence, and all structure."
+            if rule.startswith("Do not supply structure or change headings, tables,")
+            else rule
+            for rule in payload["rules"]
+        ]
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
 def _auto_prompt_version(document, *, context, prompt_hash):
     """Identify the rules bound to the saved model attempt."""
     for builder in (
-        build_auto_prompt, _build_auto_prompt_v9, _build_auto_prompt_v8, _build_auto_prompt_v7,
+        build_auto_prompt, _build_auto_prompt_v10, _build_auto_prompt_v9, _build_auto_prompt_v8, _build_auto_prompt_v7,
         _build_auto_prompt_v6, _build_auto_prompt_v5, _build_auto_prompt_v4,
         _build_auto_prompt_v2, _build_auto_prompt_v1,
     ):
@@ -920,14 +940,18 @@ def _qualifier_changed(original, replacement, *, extended=False):
 def _uses_prose_guards(prompt_version, slot_count):
     return bool(slot_count) and prompt_version in (
         None, _PROSE_PROMPT_V4, _PROSE_PROMPT_V5, _PROSE_PROMPT_V6, _PROSE_PROMPT_V7,
-        _PROSE_PROMPT_V8, _PROSE_PROMPT_V9, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V8, _PROSE_PROMPT_V9, _PROSE_PROMPT_VERSION, _CELL_PROSE_PROMPT,
     )
+
+
+def _include_cell_blocks(prompt_version):
+    return prompt_version in (None, _CELL_PROSE_PROMPT)
 
 
 def _require_changes(source, candidate, *, prompt_version):
     # The introduced first block is the only offset in source paths.
     restored = {"blocks": candidate["blocks"][1:]}
-    slots = full.prose_slots(source)
+    slots = full.prose_slots(source, include_cell_blocks=_include_cell_blocks(prompt_version))
     guard_prose = _uses_prose_guards(prompt_version, len(slots))
     guard_actions = guard_prose and prompt_version != _PROSE_PROMPT_V4
     guard_direction = guard_prose and prompt_version not in (_PROSE_PROMPT_V4, _PROSE_PROMPT_V5)
@@ -992,13 +1016,18 @@ def _require_changes(source, candidate, *, prompt_version):
 
 
 def render_auto(source, response, *, prompt_version=None):
-    candidate = full.render_full(source, response, profile_version=PROFILE)
+    candidate = full.render_full(
+        source, response, profile_version=PROFILE, include_cell_blocks=_include_cell_blocks(prompt_version),
+    )
     _require_changes(source, candidate, prompt_version=prompt_version)
     return candidate
 
 
 def validate_auto(source, candidate, *, response=None, prompt_version=None):
-    validation = full.validate_full(source, candidate, response=response, profile_version=PROFILE)
+    validation = full.validate_full(
+        source, candidate, response=response, profile_version=PROFILE,
+        include_cell_blocks=_include_cell_blocks(prompt_version),
+    )
     errors = list(validation.error_codes)
     if validation.passed:
         try:
@@ -1017,7 +1046,12 @@ def validate_auto(source, candidate, *, response=None, prompt_version=None):
             _PROSE_PROMPT_V7: "full-prose-auto-validator-v5",
             _PROSE_PROMPT_V8: "full-prose-auto-validator-v6",
             _PROSE_PROMPT_V9: "full-prose-auto-validator-v7",
-        }.get(prompt_version, "full-prose-auto-validator-v8")
+            _CELL_PROSE_PROMPT: "full-prose-auto-validator-v9",
+        }.get(
+            prompt_version, "full-prose-auto-validator-v9"
+            if any("/rows/" in path for path in report["changed_prose_slots"] + report["retained_paths"])
+            else "full-prose-auto-validator-v8",
+        )
     report.update(validator_version=validator_version, profile_version=PROFILE,
         publication_mode="automatic", content_acceptance_required=False,
         complete_rewrite=False, passed=not errors, error_codes=errors)
@@ -1039,8 +1073,10 @@ def build_source_preserving_candidate(source):
         if len(json.dumps(response, ensure_ascii=False).encode()) > 1024 * 1024:
             continue
         try:
-            candidate = render_auto(source, response)
-            validation = validate_auto(source, candidate, response=response)
+            candidate = render_auto(source, response, prompt_version="full-prose-auto-prompt-v3")
+            validation = validate_auto(
+                source, candidate, response=response, prompt_version="full-prose-auto-prompt-v3",
+            )
         except ValueError:
             continue
         if validation.passed:
@@ -1058,7 +1094,9 @@ def validate_source_preserving_candidate(source, candidate, metadata):
     if digest_json(candidate) != digest_json(expected) or digest_json(metadata) != digest_json(provenance):
         raise ValueError("SOURCE_PRESERVING_BINDING_INVALID")
     response = {"introduction": expected["blocks"][0]["text"], "replacements": []}
-    validation = validate_auto(source, candidate, response=response)
+    validation = validate_auto(
+        source, candidate, response=response, prompt_version="full-prose-auto-prompt-v3",
+    )
     report = dict(validation.report, transformation_method=SOURCE_PRESERVING_METHOD,
         introduction_origin="source_heading", drafting_actor="server", model_calls=0, model_dispatch_count=0)
     return ValidationResult(validation.passed, validation.error_codes, report)

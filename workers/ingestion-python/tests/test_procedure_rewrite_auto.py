@@ -1116,3 +1116,72 @@ def test_server_zero_slot_revalidation_rejects_tampered_candidate_or_provenance(
     elif mutation == 'extra': metadata['prompt_hash'] = '0'*64
     else: metadata['model_calls'] = False
     with pytest.raises(ValueError): auto.validate_source_preserving_candidate(source, candidate, metadata)
+
+
+
+@pytest.mark.parametrize("wrapped_row", [False, True])
+def test_auto_rewrites_nested_table_prose_and_preserves_saved_v10(wrapped_row):
+    from hashlib import sha256
+
+    from autodata_ingestion import procedure_rewrite_auto as auto
+
+    context = {"vehicle": "routing-only"}
+    source = document("Remove the pump.", "Inspect the seal.", "Never reuse the seal.")
+    lead, inspection, warning = source["blocks"]
+    inspection["source_order"], warning["source_order"] = 1, 2
+    cell = {"text": "Service addendum", "blocks": [inspection, warning]}
+    row = [cell, "25 Nm"]
+    table = {
+        "block_id": "table", "type": "table", "source_order": 2,
+        "evidence_ids": ["source:linked"], "columns": ["Service instruction", "Torque"],
+        "rows": [{"cells": row} if wrapped_row else row],
+    }
+    source["blocks"] = [lead, table]
+
+    def draft(prompt):
+        outputs = {"Remove the pump.": "Take off the pump.", "Inspect the seal.": "Check the seal."}
+        return {
+            "introduction": "This procedure covers pump removal.",
+            "replacements": [
+                {"block_id": slot["block_id"], "path": slot["path"],
+                 "action": "retain" if slot["required_action"] == "retain" else "rewrite",
+                 "text": outputs.get(slot["text"], slot["text"]),
+                 "reason": "Preserve the original safety instruction." if slot["required_action"] == "retain" else ""}
+                for slot in json.loads(prompt)["slots"]
+            ],
+        }
+
+    historical_version = "full-prose-auto-prompt-v10"
+    historical_prompt = auto._build_auto_prompt_v10(source, context=context)
+    historical_draft = draft(historical_prompt)
+    assert len(historical_draft["replacements"]) == 1
+    assert auto._auto_prompt_version(
+        source, context=context, prompt_hash=sha256(historical_prompt.encode()).hexdigest(),
+    ) == historical_version
+    historical = auto.render_auto(source, historical_draft, prompt_version=historical_version)
+    assert auto.validate_auto(source, historical, response=historical_draft, prompt_version=historical_version).passed
+
+    prompt = auto.build_auto_prompt(source, context=context)
+    version = "full-prose-auto-prompt-v11"
+    assert json.loads(prompt)["prompt_version"] == version
+    assert auto._auto_prompt_version(source, context=context, prompt_hash=sha256(prompt.encode()).hexdigest()) == version
+    paths = [slot["path"] for slot in json.loads(prompt)["slots"]]
+    base = "/blocks/1/rows/0" + ("/cells" if wrapped_row else "") + "/0/blocks"
+    assert paths == ["/blocks/0/text", base + "/0/text", base + "/1/text"]
+    payload = draft(prompt)
+    result = run(source, payload)
+    assert result.error_code is None
+    revised = result.document["blocks"][2]["rows"][0]
+    revised = revised["cells"] if wrapped_row else revised
+    assert revised == [
+        {"text": "Service addendum", "blocks": [{**inspection, "text": "Check the seal."}, warning]},
+        "25 Nm",
+    ]
+    checked = auto.validate_auto(source, result.document, response=payload, prompt_version=version)
+    assert checked.passed
+    assert checked.report["changed_prose_slots"] == paths[:2]
+    assert checked.report["retained_paths"] == paths[2:]
+    changed = deepcopy(result.document)
+    changed_row = changed["blocks"][2]["rows"][0]
+    (changed_row["cells"] if wrapped_row else changed_row)[1] = "35 Nm"
+    assert "REWRITE_PROTECTED_MUTATION" in auto.validate_auto(source, changed, prompt_version=version).error_codes
