@@ -135,7 +135,7 @@ class BrowserEnvironmentTests(unittest.TestCase):
 
         def runtime_start(repo, stack):
             record('runtime', repo)
-            return SimpleNamespace(env={}, vehicle='vehicle', article_id='article',
+            return SimpleNamespace(env={}, vehicle='vehicle', article_id='article', servers={},
                 articles={'bankone': 'one', 'banktwo': 'two'}, bucket='fixture',
                 workers=[], logs=[], barrier=None, close=lambda: record('close', ()),
                 stop_workers=lambda: record('stop_workers', ()))

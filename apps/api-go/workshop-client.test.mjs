@@ -2854,6 +2854,19 @@ for (const [origin, state, retryable, note] of [
   });
 }
 
+test('unreviewed Workshop prose shows a source check notice in the paid reader', () => {
+  const h = articleMediaHarness();
+  h.render(mediaArticle([{ type: 'paragraph', text: 'Draft steps.' }], [], {
+    content_origin: 'canonical', review_status: 'UNREVIEWED',
+  }));
+  assert.equal(h.nodes.get('article-note').hidden, false);
+  assert.match(h.nodes.get('article-note').textContent, /has not been reviewed/);
+  h.render(mediaArticle([{ type: 'paragraph', text: 'Reviewed steps.' }], [], {
+    content_origin: 'canonical', review_status: 'APPROVED',
+  }));
+  assert.equal(h.nodes.get('article-note').hidden, true);
+});
+
 test('article block media actual loadSource renders retained shapes and rejects changed or invalid references', async () => {
   const calls = [];
   let response = { source: { url: mediaSourceURL, format: 'json' }, document: { blocks: [

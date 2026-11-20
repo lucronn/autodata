@@ -392,6 +392,12 @@ def _child(root_name,engine,provider,directory,monkeypatch):
             repo=Repository(os.environ['AUTODATA_WORKSHOP_BROWSER_DATABASE']);result['fixture_database']=repo.database_name
             runtime=LifecycleRuntime(repo,stack)
             scope=configure_scoped_runtime(runtime,provider)
+            if runtime.servers:
+                with repo.connect() as conn:
+                    conn.execute(
+                        "UPDATE vehicle_configurations SET engine_displacement_l = %s WHERE vehicle_configuration_id = %s",
+                        ("2.0", scope["configuration"]),
+                    )
             if not google:
                 for server in runtime.servers.values():
                     body = {

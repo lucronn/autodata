@@ -870,10 +870,10 @@ function renderArticle(article, g) {
   $("reader-vehicle").textContent =
     quote?.configuration_label || $("purchase-selection").textContent;
   $("reader-engine").textContent = vehicle.region;
-  $("article-note").hidden = !processingArticle(article) && !(openDemo && article.review_status === 'UNREVIEWED');
+  $("article-note").hidden = !processingArticle(article) && article.review_status !== 'UNREVIEWED';
   $("article-note").textContent = processingArticle(article)
     ? "Preparing articles. Available source remains readable."
-    : openDemo && article.review_status === 'UNREVIEWED'
+    : article.review_status === 'UNREVIEWED'
       ? "Draft content has not been reviewed. Check the stored source before using this procedure."
       : "";
   $("print").disabled = !readableArticle(article);

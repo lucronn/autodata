@@ -1310,6 +1310,8 @@ async def api_case(browser,origin,name,output,observations=None):
         assertions['official_sdk_cookie_and_pg_session']=True
         await expect(page.locator('#purchase-action')).to_be_enabled()
         await expect(page.locator('#purchase-message')).to_contain_text('purchase')
+        await expect(page.locator('#purchase-selection')).to_have_text('2024 Example Car Paid selected 2.0 L')
+        await expect(page.locator('#purchase-price')).to_have_text('$20 USD · one-time')
         await page.locator('#agreement').check()
         if observations:observations.phase='checkout-first-http' if name==API_CASES[0] else 'checkout-http'
         await page.locator('#purchase-action').click(click_count=2,delay=0)
@@ -1352,6 +1354,7 @@ async def api_case(browser,origin,name,output,observations=None):
             await expect(page.locator('#library-items > li')).to_have_count(1)
             await observations.drain();observations.require_window('owner-library-initial-http')
         await expect(page.locator('#library-items > li')).to_have_count(1)
+        await expect(page.locator('#library-items h3')).to_have_text('2024 Example Car Paid selected 2.0 L / US')
         if observations:observations.phase='owner-library-reload-http'
         await page.reload()
         if observations:
@@ -1412,6 +1415,8 @@ async def api_case(browser,origin,name,output,observations=None):
             await api_control(context,origin,'control/release-model','release-model-control')
             await expect(page.locator('#article-kind')).to_have_text('Workshop article',timeout=15000)
             await expect(article_content).to_contain_text('This procedure covers pump removal.')
+            await expect(page.locator('#article-note')).to_contain_text('has not been reviewed')
+            await expect(page.locator('#reader-vehicle')).to_contain_text('2.0 L')
             await expect(article_content).to_contain_text('Take off the pump.')
             await expect(article_content).to_contain_text('Do not run the pump dry.')
             await expect(article_content).not_to_contain_text('Remove the pump.')
