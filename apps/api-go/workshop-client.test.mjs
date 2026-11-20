@@ -308,7 +308,7 @@ test('reader offers one early cold confirmation and keeps the regular second che
     assert.equal(result.data.article.body, 'Published procedure', name);
   }
 });
-test('reader probes negotiated cold source once before the normal first read', async () => {
+test('reader checks negotiated cold source early and preserves the half-second check on a miss', async () => {
   const { readArticle } = await import('./workshop/article-read.mjs');
   const prepare = { status: 202, shortSourceCheck: true, data: {
     article: { processing: { job_id: 'job', state: 'queued' } },
@@ -319,22 +319,35 @@ test('reader probes negotiated cold source once before the normal first read', a
   } } };
   const complete = { status: 200, data: { article: { body: 'Published procedure' } } };
   const overload = Object.assign(new Error('Busy'), { status: 429, retryable: true, retryAfterSeconds: 5 });
+  const unhintedOverload = Object.assign(new Error('Busy'), { status: 503, retryable: true });
+  const networkFailure = new TypeError('Network failed');
+  const timedOut = Symbol('timed out');
 
   for (const [label, responses, expectedStarts] of [
-    ['source ready at probe', [prepare, stored, complete], [0, 500, 1500]],
-    ['pending at probe', [prepare, prepare, pending, stored, complete], [0, 500, 1000, 2000, 3000]],
-    ['retry hint at probe', [prepare, pending, pending, stored, complete], [0, 500, 1500, 2500, 3500]],
-    ['network failure at probe', [prepare, new TypeError('Network failed'), pending, complete], [0, 500, 1000, 2000]],
-    ['overload applies to subsequent reads', [prepare, overload, pending, complete], [0, 500, 5500, 6500]],
+    ['source ready at first probe', [prepare, stored, complete], [0, 250, 1250]],
+    ['source ready at second probe', [prepare, prepare, stored, complete], [0, 250, 500, 1500]],
+    ['pending at both probes', [prepare, prepare, prepare, pending, stored, complete], [0, 250, 500, 1000, 2000, 3000]],
+    ['retry hint at first probe', [prepare, pending, pending, stored, complete], [0, 250, 1250, 2250, 3250]],
+    ['retry hint at second probe', [prepare, prepare, pending, complete], [0, 250, 500, 1500]],
+    ['network failure at first probe', [prepare, networkFailure, stored, complete], [0, 250, 500, 1500]],
+    ['first probe cannot delay second probe', [prepare, timedOut, stored, complete], [0, 250, 500, 1500]],
+    ['overload applies to subsequent reads', [prepare, overload, pending, complete], [0, 250, 5250, 6250]],
+    ['overload without a hint skips the second probe', [prepare, unhintedOverload, complete], [0, 250, 1000]],
+    ['a replacement job rejoins the regular check', [prepare, { ...prepare, data: { article: { processing: { job_id: 'next-job', state: 'queued' } } } }, complete], [0, 250, 1000]],
     ['explicit wait overrides the preference', [{ ...prepare, retryAfterSeconds: 4 }, complete], [0, 4000]],
   ]) {
     let now = 0;
     const actual = [];
     const result = await readArticle(async ({ timeout, preferShortSourceCheck }) => {
       actual.push(now);
-      assert.equal(preferShortSourceCheck, now === 500, label);
+      assert.equal(preferShortSourceCheck, now === 250 || now === 500, label);
+      if (now === 250) assert.equal(timeout, 250, label);
       if (now === 500) assert.equal(timeout, 500, label);
       const next = responses.shift();
+      if (next === timedOut) {
+        now += timeout;
+        throw networkFailure;
+      }
       if (next instanceof Error) throw next;
       return next;
     }, { now: () => now, wait: async ms => { now += ms; } });
@@ -410,8 +423,8 @@ test('reader checks for first publication early and preserves the regular read o
   const busy = Object.assign(new Error('Busy'), { status: 503, retryable: true, retryAfterSeconds: 7 });
 
   for (const [label, responses, expected] of [
-    ['publication already ready for the probe', [pending, source, ready], [0, 500, 1000]],
-    ['regular read preserved', [pending, source, source, timed, ready], [0, 500, 1000, 1500, 2500]],
+    ['publication already ready for the probe', [pending, source, ready], [0, 250, 750]],
+    ['regular read preserved', [pending, source, source, timed, ready], [0, 250, 750, 1250, 2250]],
     ['initially readable article', [source, source, timed, ready], [0, 500, 1000, 3000]],
     ['network failure rejoins regular read', [source, new TypeError('Network failed'), ready], [0, 500, 1000]],
     ['overload wins over the regular read', [source, busy, ready], [0, 500, 7500]],

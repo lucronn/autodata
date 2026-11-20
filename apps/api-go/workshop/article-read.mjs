@@ -48,6 +48,7 @@ export async function readArticle(
   const deadline = now() + Math.min(120000, Math.max(0, budgetMs));
   let latest, earlyConfirmationJob;
   let firstReadAt = 0;
+  let nextSourceProbeAt = 0;
   let sourceConfirmationAt = 0;
   let publicationReadAt = 0;
   let sawFastSource = false;
@@ -55,13 +56,15 @@ export async function readArticle(
   while (now() < deadline) {
     signal?.throwIfAborted();
     let retryAfter = 0, fastPendingJob, fastSource = false, readable = false;
-    let shortSourceCheck = false, shortPublicationCheck = false;
+    let shortSourceCheck = false, shortPublicationCheck = false, sourceProbeFailed = false;
     const startedAt = now();
     if (firstReadAt <= startedAt) firstReadAt = 0;
+    if (nextSourceProbeAt <= startedAt) nextSourceProbeAt = 0;
     if (sourceConfirmationAt <= startedAt) sourceConfirmationAt = 0;
     if (publicationReadAt <= startedAt) publicationReadAt = 0;
     const readDeadline = Math.min(
-      deadline, firstReadAt || deadline, sourceConfirmationAt || deadline, publicationReadAt || deadline,
+      deadline, firstReadAt || deadline, nextSourceProbeAt || deadline,
+      sourceConfirmationAt || deadline, publicationReadAt || deadline,
     );
     try {
       latest = await read({
@@ -96,21 +99,23 @@ export async function readArticle(
       }
     } catch (error) {
       signal?.throwIfAborted();
-      if (
-        !(
-          error instanceof TypeError ||
-          error.code === "NETWORK_UNAVAILABLE" ||
-          ([429, 503].includes(error.status) && error.retryable)
-        )
-      )
-        throw error;
+      sourceProbeFailed = error instanceof TypeError || error.code === "NETWORK_UNAVAILABLE";
+      if (!sourceProbeFailed && !([429, 503].includes(error.status) && error.retryable)) throw error;
       retryAfter = Number(error.retryAfterSeconds) || 0;
     }
     const remaining = deadline - now();
     if (remaining <= 0) break;
     if (firstReadAt) {
+      const samePendingSource = shortSourceCheck && latest.data.article.processing.job_id === earlyConfirmationJob;
+      if (nextSourceProbeAt && retryAfter === 0 && (samePendingSource || sourceProbeFailed)) {
+        const probeWait = Math.max(0, nextSourceProbeAt - now());
+        nextSourceProbeAt = 0;
+        await wait(Math.min(remaining, probeWait), signal);
+        continue;
+      }
       const regularWait = Math.max(0, firstReadAt - now());
       firstReadAt = 0;
+      nextSourceProbeAt = 0;
       if (!readable) {
         // An unanswered probe must leave time for the regular first read.
         await wait(Math.min(remaining, Math.max(regularWait, retryAfter * 1000)), signal);
@@ -127,8 +132,12 @@ export async function readArticle(
     let backoff = [1000, 2000, 4000, 8000, 10000][Math.min(attempt++, 4)];
     if (attempt === 1 && shortSourceCheck) {
       earlyConfirmationJob = latest.data.article.processing.job_id;
-      firstReadAt = now() + backoff;
-      backoff = 500;
+      const scheduledAt = now();
+      firstReadAt = scheduledAt + backoff;
+      // An early hit can show cheap captures sooner. Keep the half-second
+      // check for a source that is still pending or an early transport miss.
+      nextSourceProbeAt = scheduledAt + 500;
+      backoff = 250;
     } else if (attempt === 1 && fastPendingJob) {
       // Add an early check for newly retained source. If this check misses,
       // keep the normal two-second check before resuming the usual backoff.
