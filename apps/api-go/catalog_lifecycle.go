@@ -426,6 +426,10 @@ func publicCatalogDocument(document *CatalogDocument) *CatalogDocument {
 				switch key {
 				case "schema_version", "normalization_version", "blocks", "block_id", "source_order", "type", "level", "number", "text", "label", "caption", "columns", "rows", "cells", "items", "images", "alt", "status", "unavailable_reason", "evidence_ids", "source_locator":
 					out[key] = project(child)
+				case "start":
+					if _, ok := catalogJSONListNumber(child); ok && node["type"] == "ordered_list" {
+						out[key] = child
+					}
 				case "asset_id", "image_id":
 					if text, ok := child.(string); ok {
 						out[key] = publicCatalogAssetID(text)

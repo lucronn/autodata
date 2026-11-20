@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -109,6 +110,7 @@ type CatalogDocumentBlock struct {
 	Type              string         `json:"type"`
 	Level             int            `json:"level,omitempty"`
 	Number            int            `json:"number,omitempty"`
+	Start             *int32         `json:"start,omitempty"`
 	Text              string         `json:"text,omitempty"`
 	Label             string         `json:"label,omitempty"`
 	Href              string         `json:"href,omitempty"`
@@ -130,10 +132,14 @@ func (block *CatalogDocumentBlock) UnmarshalJSON(data []byte) error {
 	type plain CatalogDocumentBlock
 	var decoded struct {
 		plain
-		Rows []json.RawMessage `json:"rows"`
+		Rows  []json.RawMessage `json:"rows"`
+		Start any               `json:"start"`
 	}
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		return err
+	}
+	if number, ok := catalogJSONListNumber(decoded.Start); ok && decoded.plain.Type == "ordered_list" {
+		decoded.plain.Start = &number
 	}
 	if decoded.Rows != nil {
 		decoded.plain.Rows = make([][]any, 0, len(decoded.Rows))
@@ -155,6 +161,16 @@ func (block *CatalogDocumentBlock) UnmarshalJSON(data []byte) error {
 	}
 	*block = CatalogDocumentBlock(decoded.plain)
 	return nil
+}
+
+// Numbers in untyped JSON list items and nested blocks decode as float64.
+func catalogJSONListNumber(value any) (int32, bool) {
+	number, ok := value.(float64)
+	if !ok || number < math.MinInt32 || number > math.MaxInt32 {
+		return 0, false
+	}
+	integer := int32(number)
+	return integer, float64(integer) == number
 }
 
 func catalogNestedBlocks(value any) []CatalogDocumentBlock {

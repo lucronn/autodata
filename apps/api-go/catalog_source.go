@@ -523,12 +523,23 @@ func renderCatalogOrderedSource(document *CatalogDocument, images []CatalogImage
 				output.WriteString("<p>" + text + "</p>")
 			}
 			tag := "ul"
-			if block.Type == "ordered_list" {
+			ordered := block.Type == "ordered_list"
+			if ordered {
 				tag = "ol"
 			}
-			output.WriteString("<" + tag + ">")
+			output.WriteString("<" + tag)
+			if ordered && block.Start != nil {
+				output.WriteString(" start=\"" + strconv.Itoa(int(*block.Start)) + "\"")
+			}
+			output.WriteString(">")
 			for _, item := range block.Items {
-				output.WriteString("<li>")
+				output.WriteString("<li")
+				if fields, ok := item.(map[string]any); ordered && ok {
+					if number, ok := catalogJSONListNumber(fields["number"]); ok {
+						output.WriteString(" value=\"" + strconv.Itoa(int(number)) + "\"")
+					}
+				}
+				output.WriteString(">")
 				writeInline(item, placed)
 				output.WriteString("</li>")
 			}

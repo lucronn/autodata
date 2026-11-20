@@ -684,6 +684,8 @@ function appendSource(parent, block, review, g) {
   parent.append(link);
 }
 function renderBlocks(parent, blocks, images, review, g) {
+  const isListNumber = value =>
+    Number.isInteger(value) && value >= -2147483648 && value <= 2147483647;
   const find = (ref) => {
     const id = ref?.asset_id || ref?.image_id || ref?.id;
     return id && ref.status !== "unavailable"
@@ -734,9 +736,14 @@ function renderBlocks(parent, blocks, images, review, g) {
       for (const ref of block.images || []) addReference(section, ref);
       parent.append(section);
     } else if (type === "ordered_list" || type === "unordered_list") {
-      const list = element(type === "ordered_list" ? "ol" : "ul");
+      const ordered = type === "ordered_list";
+      const list = element(ordered ? "ol" : "ul");
+      if (ordered && isListNumber(block.start))
+        list.setAttribute("start", String(block.start));
       for (const item of block.items || []) {
         const li = element("li");
+        if (ordered && isListNumber(item?.number))
+          li.setAttribute("value", String(item.number));
         renderInline(li, item, "p");
         list.append(li);
       }

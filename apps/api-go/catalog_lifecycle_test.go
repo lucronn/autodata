@@ -322,6 +322,46 @@ func TestCatalogCanonicalStepImageURLsDoNotChangeViewRevision(t *testing.T) {
 	}
 }
 
+func TestCatalogOrderedListsKeepNumberingInPaidDocumentAndHTML(t *testing.T) {
+	raw := []byte(`{"schema_version":1,"normalization_version":"ordered-article-v1","blocks":[
+		{"type":"ordered_list","start":0,"items":["Remove",{"text":"Inspect","number":-3,
+			"blocks":[{"type":"ordered_list","start":-2147483648,"items":[{"text":"Nested","number":2147483647}]}]},
+			"Fit",{"text":"Zero","number":0},{"text":"Fraction","number":1.5},
+			{"text":"Out of range","number":2147483648},{"text":"String ordinal","number":"9"}]},
+		{"type":"ordered_list","items":["Legacy sequence"]},
+		{"type":"unordered_list","start":6,"items":[{"text":"Bullet","number":8}]},
+		{"type":"ordered_list","start":2147483648,"items":["Invalid start"]}
+	]}`)
+	var stored CatalogDocument
+	if err := json.Unmarshal(raw, &stored); err != nil {
+		t.Fatal(err)
+	}
+	public := publicCatalogDocument(&stored)
+	if public == nil {
+		t.Fatal("public document is missing")
+	}
+	dto, err := json.Marshal(public)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{`"start":0`, `"number":0`, `"number":-3`, `"start":-2147483648`, `"number":2147483647`} {
+		if !strings.Contains(string(dto), field) {
+			t.Errorf("public document missing %s: %s", field, dto)
+		}
+	}
+	html := renderCatalogOrderedSource(public, nil)
+	for _, part := range []string{
+		`<ol start="0"><li>Remove</li><li value="-3">Inspect`,
+		`<ol start="-2147483648"><li value="2147483647">Nested</li></ol>`,
+		`<li>Fit</li><li value="0">Zero</li><li>Fraction</li><li>Out of range</li><li>String ordinal</li>`,
+		`<ol><li>Legacy sequence</li></ol>`, `<ul><li>Bullet</li></ul>`, `<ol><li>Invalid start</li></ol>`,
+	} {
+		if !strings.Contains(html, part) {
+			t.Errorf("source HTML missing %s: %s", part, html)
+		}
+	}
+}
+
 func TestCatalogOrderedSourceKeepsStructuredListsAndTableCells(t *testing.T) {
 	raw := []byte(`{
 		"schema_version":1,"normalization_version":"ordered-article-v1","blocks":[
