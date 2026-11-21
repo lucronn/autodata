@@ -136,6 +136,67 @@ def test_captured_rotation_retains_the_component_and_direction_when_rewritten(ca
 
 
 @pytest.mark.parametrize("provider", ["bankone", "banktwo"])
+def test_captured_battery_terminal_rewrite_keeps_instruction_and_figure_bound(capture_fixture, provider):
+    from io import BytesIO
+    import json
+    from PIL import Image
+
+    from autodata_ingestion.article_document import project_ordered_document
+    from autodata_ingestion.procedure_rewrite import build_rewrite_prompt, rewrite_ordered_document
+    from autodata_ingestion.source_article_capture import capture_source_article
+    from test_procedure_rewrite_full import Draft
+
+    instruction = "Disconnect negative battery terminal."
+    illustration = {"asset_resource_ref": "figure", "alt": "Battery terminal"}
+    if provider == "bankone":
+        payload = {"blocks": [{"type": "paragraph", "text": f"1. {instruction}", "images": [illustration]}]}
+        capture_fixture.body(provider, json.dumps(payload).encode(), "application/json", assets=["figure"])
+    else:
+        html = (
+            f'<p>1. {instruction}'
+            '<img data-resource-ref="figure" src="/fixture/terminal.png" alt="Battery terminal"></p>'
+        )
+        capture_fixture.body(provider, html.encode(), assets=["figure"])
+    diagram = BytesIO()
+    Image.new("RGB", (4, 4), "red").save(diagram, format="PNG")
+    capture_fixture.body(provider, diagram.getvalue(), "image/png", ref="figure", kind="asset")
+    captured = capture_source_article(
+        capture_fixture.context(provider), registry=capture_fixture.registry, object_store=capture_fixture.objects,
+    )
+    source = captured.source_document
+    source_step, = [block for block in source["blocks"] if block["type"] == "step"]
+    before = project_ordered_document(source)
+    image, = before["images"]
+    assert source_step["type"] == "step" and source_step["number"] == 1
+    assert source_step["text"] == instruction
+    assert image["alt"] == "Battery terminal" and image["status"] == "available"
+    assert image["content_sha256"] == sha256(diagram.getvalue()).hexdigest()
+
+    profile = "full-prose-auto-v1"
+    prompt = json.loads(build_rewrite_prompt(source, context={}, profile_version=profile))
+    slot, = prompt["slots"]
+    assert slot["text"] == instruction and slot["required_action"] == "rewrite"
+    replacement = {"block_id": slot["block_id"], "path": slot["path"], "action": "rewrite", "reason": "",
+                   "text": "Detach the positive battery terminal."}
+    payload = {"introduction": "This procedure describes a battery connection.", "replacements": [replacement]}
+    rejected = rewrite_ordered_document(source, client=Draft(payload), context={}, profile_version=profile)
+    assert rejected.error_code == "REWRITE_QUALIFIER_MUTATION" and rejected.document == source
+
+    replacement["text"] = "Detach the minus terminal from the battery."
+    accepted = rewrite_ordered_document(source, client=Draft(payload), context={}, profile_version=profile)
+    assert accepted.error_code is None
+    expected = [{**block, "source_order": block["source_order"] + 1} for block in source["blocks"]]
+    expected[0]["text"] = replacement["text"]
+    assert accepted.document["blocks"][1:] == expected
+    projection = project_ordered_document(accepted.document)
+    assert projection["body"].splitlines() == [payload["introduction"], replacement["text"]]
+    assert projection["steps"] == [{**before["steps"][0], "action": replacement["text"]}]
+    if "source_order" in image:
+        image = {**image, "source_order": image["source_order"] + 1}
+    assert projection["images"] == [image]
+
+
+@pytest.mark.parametrize("provider", ["bankone", "banktwo"])
 def test_same_asset_ref_never_crosses_provider(capture_fixture, provider):
     from autodata_ingestion.source_article_capture import capture_source_article
 
