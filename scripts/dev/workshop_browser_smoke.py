@@ -1378,7 +1378,45 @@ async def expect_paid_table_caption_search(page, origin, configuration, article_
     await expect_html_table_figure(page.locator('#article-content'))
 
 
-async def api_case(browser,origin,name,output,observations=None):
+async def expect_paid_reader_refocus(page, configuration, article_id):
+    from playwright.async_api import expect
+
+    reader = page.locator('#reader')
+    source = page.locator('#source-review-frame')
+    await page.locator('#article-reference summary').click()
+    await page.locator('#source-review-load').click()
+    await expect(source).to_contain_text('Remove the pump.')
+    await page.locator('#source-review-load').focus()
+    detail = f'/v1/catalog/vehicles/{configuration}/articles/{article_id}'
+    checks = []
+
+    def record(request):
+        url = urlsplit(request.url)
+        if url.path in ('/auth/config', '/auth/session', '/workshop/purchase-config.json',
+                        detail, detail + '/prepare', detail + '/source'):
+            checks.append((request.method, url.path))
+
+    page.on('request', record)
+    try:
+        assert await page.evaluate("""() => {
+            const view = document.querySelector('#article-content').firstElementChild;
+            const source = document.querySelector('#source-review-frame').firstElementChild;
+            window.checkedWorkshopView = () =>
+                view === document.querySelector('#article-content').firstElementChild &&
+                source === document.querySelector('#source-review-frame').firstElementChild;
+            window.dispatchEvent(new Event('focus'));
+            return document.querySelector('#reader').hidden && document.body.dataset.printable === 'false';
+        }""")
+        await expect(reader).to_be_visible()
+        await expect(source).to_be_visible()
+        await expect(page.locator('#source-review-load')).to_be_focused()
+        assert await page.evaluate('window.checkedWorkshopView()')
+        assert sorted(checks) == sorted([('GET', '/auth/session'), ('GET', detail), ('GET', detail + '/source')])
+    finally:
+        page.remove_listener('request', record)
+
+
+async def api_case(browser,origin,name,output,observations=None,*,verify_reader_refocus=False):
     from playwright.async_api import expect
     context=page=None;failure=None;result=None
     transport=APIFixture(origin,name,observations=observations)
@@ -1649,6 +1687,9 @@ async def api_case(browser,origin,name,output,observations=None):
             warm_receipt={'before':warm_before,'after':warm_after,'reader_before':reader_before,'reader_after':reader_after}
             assertions['source_to_canonical_and_warm_reuse']=True
             assertions['warm_raw_runtime_unchanged_with_approved_s3_delivery']=True
+            if verify_reader_refocus and name == API_CASES[1] and scope['provider'] == 'bankone':
+                if observations:observations.phase='setup'
+                await expect_paid_reader_refocus(page, configuration, article_id)
             if linked_pdf:
                 await page.locator('#back').click()
                 await expect(page.locator('#catalog')).to_be_visible()
@@ -1945,7 +1986,9 @@ async def run(args):
             observations.note_lifecycle('setup','browser-launch','completed')
             stage='case';start=time.monotonic()
             try:
-                result=await asyncio.wait_for(api_case(browser,args.base_url,name,output/engines[0],observations=observations),timeout=65)
+                result=await asyncio.wait_for(api_case(
+                    browser,args.base_url,name,output/engines[0],observations=observations,verify_reader_refocus=True,
+                ),timeout=65)
                 rows.append(dict(browser=engines[0],scenario=name,elapsed_seconds=round(time.monotonic()-start,3),**result))
                 evidence['browser_versions']={engines[0]:browser.version}
             except BaseException as error:
