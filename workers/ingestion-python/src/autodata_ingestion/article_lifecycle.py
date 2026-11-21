@@ -160,6 +160,7 @@ def run_article_job(repo,lease,*,registry,object_store,model_client,hooks=None):
                     keep_compact_pdf_figures=True,
                     keep_single_line_pdf_figures=True,
                     skip_blank_linked_pdf_pages=True,
+                    keep_wordless_linked_pdf_figures=True,
                     keep_html_figure_captions=True,
                     keep_html_flow_figure_captions=True,
                     keep_html_multiline_figure_captions=True,

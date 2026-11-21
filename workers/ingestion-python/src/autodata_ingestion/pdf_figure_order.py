@@ -8,11 +8,60 @@ _AMBIGUOUS_OPERATORS = frozenset({
     b"W", b"W*", b"gs", b"Tr", b"Ts", b"BDC", b"INLINE IMAGE",
 })
 
+_WORDLESS_TEXT_SETUP = frozenset({b"Tf", b"TL"})
+
 
 def _upright_matrix(matrix):
     return (
         len(matrix) == 6 and all(math.isfinite(value) for value in matrix)
         and matrix[0] > 0 and matrix[3] > 0 and matrix[1] == matrix[2] == 0
+    )
+
+
+def is_single_wordless_figure(page, image_key):
+    """Prove one direct image is the only painted content on the page."""
+    if not isinstance(image_key, str):
+        return False
+    bounds = None
+    text_open = False
+    saved_states = 0
+
+    def visit_operand(operator, operands, matrix, _text_matrix):
+        nonlocal bounds, text_open, saved_states
+        if (operator == b"BT" and not text_open) or (operator == b"ET" and text_open):
+            text_open = not text_open
+            return
+        if text_open and operator in _WORDLESS_TEXT_SETUP:
+            return
+        if not text_open and operator in (b"q", b"Q", b"cm"):
+            saved_states += int(operator == b"q") - int(operator == b"Q")
+            if saved_states < 0:
+                raise ValueError("invalid wordless PDF graphics state")
+            return
+        if (text_open or operator != b"Do" or bounds is not None or list(operands) != [image_key]
+                or not _upright_matrix(matrix)):
+            raise ValueError("ambiguous wordless PDF figure")
+        width, _, _, height, left, bottom = matrix
+        bounds = (left, bottom, width, height)
+
+    try:
+        if page.rotation != 0 or page.get("/Annots") or page.get("/Group"):
+            return False
+        image = page["/Resources"]["/XObject"][image_key]
+        if image.get("/Subtype") != "/Image" or any(key in image for key in ("/Mask", "/SMask", "/ImageMask", "/OC")):
+            return False
+        if page.extract_text(visitor_operand_before=visit_operand).strip() or bounds is None or text_open or saved_states:
+            return False
+        crop = tuple(map(float, page.cropbox))
+        media = tuple(map(float, page.mediabox))
+    except Exception:
+        return False
+
+    left, bottom, width, height = bounds
+    return width >= 64 and height >= 64 and all(
+        all(map(math.isfinite, (x0, y0, x1, y1)))
+        and x0 <= left and left + width <= x1 and y0 <= bottom and bottom + height <= y1
+        for x0, y0, x1, y1 in (crop, media)
     )
 
 

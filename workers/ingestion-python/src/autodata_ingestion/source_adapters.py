@@ -818,12 +818,13 @@ def _adapt_pdf_resource(
     keep_compact_pdf_figures: bool = False,
     skip_blank_pages: bool = False,
     keep_single_line_compact_figures: bool = False,
+    keep_wordless_pdf_figures: bool = False,
 ) -> SourceArtifact:
     """Extract native PDF text and OCR pages that contain no native text."""
 
     from .ocr import build_ocr_candidates
     from .article_document import segment_plain_article_text
-    from .pdf_figure_order import figure_text_gaps
+    from .pdf_figure_order import figure_text_gaps, is_single_wordless_figure
 
     pages: list[Any] = []
     native_text_pages: set[int] = set()
@@ -858,6 +859,7 @@ def _adapt_pdf_resource(
     margin_pages: dict[str, set[int]] = {}
     compact_figures: list[dict[str, Any]] = []
     compact_positions: dict[str, tuple[int, int, int]] = {}
+    wordless_candidates: list[dict[str, Any]] = []
     for index, page in enumerate(pages, start=1):
         try:
             # Keep line breaks so TSB/PDF text can be segmented into headings,
@@ -874,17 +876,23 @@ def _adapt_pdf_resource(
         single_line = bool(text) and "\n" not in text and keep_single_line_compact_figures
         extracted_images, page_image_keys = _extract_pdf_page_images(
             page, page_number=index,
-            allow_compact_figure=bool(text) and figure_gaps is not None and (keep_compact_pdf_figures or single_line),
+            allow_compact_figure=(
+                bool(text) and figure_gaps is not None and (keep_compact_pdf_figures or single_line)
+                or not text and keep_wordless_pdf_figures
+            ),
         )
         if extracted_images and extracted_images[0].get("_compact_pdf_figure") is True:
             [figure] = extracted_images
-            segments = segment_plain_article_text(text)
-            gaps = figure_text_gaps(page, text, segments, page_image_keys, allow_single_line_figure=single_line)
-            if figure["pdf_key"] in gaps:
-                if single_line:
-                    figure["_single_line_pdf_figure"] = True
-                compact_figures.append(figure)
-                compact_positions[figure["image_id"]] = (gaps[figure["pdf_key"]], len(segments), 0)
+            if text:
+                segments = segment_plain_article_text(text)
+                gaps = figure_text_gaps(page, text, segments, page_image_keys, allow_single_line_figure=single_line)
+                if figure["pdf_key"] in gaps:
+                    if single_line:
+                        figure["_single_line_pdf_figure"] = True
+                    compact_figures.append(figure)
+                    compact_positions[figure["image_id"]] = (gaps[figure["pdf_key"]], len(segments), 0)
+            elif is_single_wordless_figure(page, figure["pdf_key"]):
+                wordless_candidates.append(figure)
             # Compact candidates must not alter legacy image or OCR fallback.
             extracted_images = []
         for extracted in extracted_images:
@@ -978,6 +986,27 @@ def _adapt_pdf_resource(
             repeated_ids.update(
                 image["image_id"] for image in kept_images if counts[image["content_sha256"]] > 1
             )
+    covered_pages = native_text_pages | blank_pages
+    missing_pages = set(range(1, len(pages) + 1)) - covered_pages if pages else set()
+    should_rasterize = bool(missing_pages) or not pages
+    rasterization_status = "not_needed"
+    extraction_mode = "text_pdf"
+    ocr_candidates = []
+    wordless_figures = []
+    if should_rasterize:
+        try:
+            scanned_blocks = extract_scanned_pdf_text(resource.content_sha256, resource.payload, covered_pages)
+            ocr_candidates = list(build_ocr_candidates(resource.content_sha256, scanned_blocks))
+            rasterization_status = "complete"
+            extraction_mode = "mixed_pdf_ocr" if native_text_pages else "scanned_pdf_ocr"
+            if wordless_candidates:
+                recognized_pages = {candidate.data["page_number"] for candidate in ocr_candidates}
+                wordless_figures = [figure for figure in wordless_candidates if figure["page"] not in recognized_pages]
+                kept_images.extend(wordless_figures)
+        except Exception as error:
+            rasterization_status = "unavailable"
+            warnings.append(str(error))
+            extraction_mode = "mixed_pdf_ocr" if native_text_pages else "unavailable"
     figure_records = [
         {
             "url": image["url"],
@@ -1016,26 +1045,7 @@ def _adapt_pdf_resource(
             )
         )
 
-    covered_pages = native_text_pages | blank_pages
-    missing_pages = set(range(1, len(pages) + 1)) - covered_pages if pages else set()
-    should_rasterize = bool(missing_pages) or not pages
-    rasterization_status = "not_needed"
-    extraction_mode = "text_pdf"
-    if should_rasterize:
-        try:
-            scanned_blocks = extract_scanned_pdf_text(
-                resource.content_sha256,
-                resource.payload,
-                covered_pages,
-            )
-            ocr_candidates = list(build_ocr_candidates(resource.content_sha256, scanned_blocks))
-            candidates.extend(ocr_candidates)
-            rasterization_status = "complete"
-            extraction_mode = "mixed_pdf_ocr" if native_text_pages else "scanned_pdf_ocr"
-        except Exception as error:
-            rasterization_status = "unavailable"
-            warnings.append(str(error))
-            extraction_mode = "mixed_pdf_ocr" if native_text_pages else "unavailable"
+    candidates.extend(ocr_candidates)
 
     extraction_metadata: dict[str, Any] = {
         **metadata,
@@ -1052,6 +1062,7 @@ def _adapt_pdf_resource(
         "extraction_mode": extraction_mode,
         "extraction_status": "candidate_ready" if candidates else "needs_review",
         **({"skipped_blank_pages": True} if blank_pages else {}),
+        **({"retained_wordless_pdf_figures": True} if wordless_figures else {}),
     }
     if page_errors:
         extraction_metadata["page_errors"] = page_errors
@@ -2118,6 +2129,7 @@ def adapt_bound_pdf_embed(
     keep_compact_pdf_figures: bool = False,
     skip_blank_pages: bool = False,
     keep_single_line_compact_figures: bool = False,
+    keep_wordless_pdf_figures: bool = False,
 ) -> dict[str, Any]:
     return _adapt_bound_pdf(
         resource, embedded=True, require_complete_ocr=require_complete_ocr,
@@ -2128,13 +2140,14 @@ def adapt_bound_pdf_embed(
         keep_compact_pdf_figures=keep_compact_pdf_figures,
         skip_blank_pages=skip_blank_pages,
         keep_single_line_compact_figures=keep_single_line_compact_figures,
+        keep_wordless_pdf_figures=keep_wordless_pdf_figures,
     )
 
 
 def _adapt_bound_pdf(resource, *, embedded=False, require_complete_ocr=False, keep_pdf_figure_order=False,
                      keep_multiple_pdf_figures=False, keep_repeated_pdf_figures=False,
                      keep_pdf_figures_with_margins=False, keep_compact_pdf_figures=False, skip_blank_pages=False,
-                     keep_single_line_compact_figures=False):
+                     keep_single_line_compact_figures=False, keep_wordless_pdf_figures=False):
     if embedded and (resource.media_type != "application/pdf"
             or len(resource.payload) > _MAX_BOUND_EMBEDDED_PDF_BYTES
             or not resource.payload.startswith(b"%PDF-")):
@@ -2150,6 +2163,7 @@ def _adapt_bound_pdf(resource, *, embedded=False, require_complete_ocr=False, ke
             keep_compact_pdf_figures=keep_compact_pdf_figures,
             skip_blank_pages=skip_blank_pages,
             keep_single_line_compact_figures=keep_single_line_compact_figures,
+            keep_wordless_pdf_figures=keep_wordless_pdf_figures,
         )
     else:
         artifact = adapt_source_resource(resource)
@@ -2158,6 +2172,8 @@ def _adapt_bound_pdf(resource, *, embedded=False, require_complete_ocr=False, ke
     result = _bound_pdf_blocks(artifact, figure_gaps or {})
     if artifact.metadata.get("skipped_blank_pages") is True:
         result["skipped_blank_pages"] = True
+    if artifact.metadata.get("retained_wordless_pdf_figures") is True:
+        result["retained_wordless_pdf_figures"] = True
     return result
 
 

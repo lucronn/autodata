@@ -18,6 +18,7 @@ from .article_lifecycle_types import (
     PDF_LEGACY_FIGURE_LAYOUT,
     PDF_REPEAT_MARGIN_LAYOUT,
     PDF_SINGLE_LINE_FIGURE_LAYOUT,
+    PDF_WORDLESS_FIGURE_LAYOUT,
     STRUCTURED_TABLE_CELL_ORDER_LAYOUT,
     STRUCTURED_TABLE_COLUMNS_LAYOUT,
     ResourceRef,
@@ -262,6 +263,7 @@ def capture_source_article(
     keep_html_figure_captions=False, keep_html_table_captions=False, keep_html_flow_figure_captions=False,
     keep_html_multiline_figure_captions=False,
     skip_blank_linked_pdf_pages=False,
+    keep_wordless_linked_pdf_figures=False,
     keep_single_line_pdf_figures=False,
     keep_structured_table_columns=False,
     keep_structured_table_cell_order=False,
@@ -490,6 +492,7 @@ def capture_source_article(
                         keep_pdf_figures_with_margins=retain_repeats_with_margins(payload.content_sha256),
                         keep_compact_pdf_figures=retain_compact_figures(payload.content_sha256),
                         keep_single_line_compact_figures=keep_single_line_pdf_figures,
+                        keep_wordless_pdf_figures=keep_wordless_linked_pdf_figures,
                         skip_blank_pages=(
                             skip_blank_linked_pdf_pages
                             and payload.content_sha256 not in context.legacy_published_pdf_blank_roots
@@ -555,6 +558,8 @@ def capture_source_article(
                     resource["pdf_single_line_figure_layout"] = PDF_SINGLE_LINE_FIGURE_LAYOUT
                 if adapted.get("skipped_blank_pages") is True:
                     resource["pdf_blank_page_layout"] = PDF_BLANK_PAGE_LAYOUT
+                if adapted.get("retained_wordless_pdf_figures") is True:
+                    resource["pdf_wordless_figure_layout"] = PDF_WORDLESS_FIGURE_LAYOUT
             for original in originals:
                 resources.append(original)
                 provenance.append(deepcopy(original))
@@ -566,6 +571,7 @@ def capture_source_article(
                 {key: resource[key] for key in (
                     "role", "opaque_ref", "sha256", "media_type", "derived_from_sha256", "derivation_version",
                     "pdf_figure_layout", "pdf_compact_figure_layout", "pdf_blank_page_layout", "pdf_single_line_figure_layout",
+                    "pdf_wordless_figure_layout",
                 ) if key in resource}
             )
             if role == "asset":
