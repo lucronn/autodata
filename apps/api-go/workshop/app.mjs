@@ -222,6 +222,7 @@ async function operation(work, retry = null) {
     const confirmedPaid = paidOrder?.id === currentOrder &&
       vehicle?.id === paidOrder.configuration_id &&
       vehicle?.region === paidOrder.region;
+    if (confirmedPaid && error.code !== "ENTITLEMENT_REVOKED") rememberOrderRoute(currentOrder);
     if ([401, 403, 410].includes(error.status)) {
       clearProtected();
       show("welcome");
@@ -286,15 +287,19 @@ function updateURL({ article = "", replace = false, library = false } = {}) {
   if (article) p.set("article", article);
   if ($("search").value) p.set("q", $("search").value);
   if (library) p.set("view", "library");
-  if (currentOrder) p.set("order", currentOrder);
+  if (!article && currentOrder && new URLSearchParams(location.search).get("order") === currentOrder)
+    p.set("order", currentOrder);
   const url = `${location.pathname}${p.size ? `?${p}` : ""}`;
   if (url !== location.pathname + location.search)
     history[replace ? "replaceState" : "pushState"](null, "", url);
 }
 function rememberOrderRoute(id) {
   const params = new URLSearchParams(location.search);
+  params.delete("article");
   params.set("order", id);
-  history.replaceState(null, "", `${location.pathname}?${params}`);
+  const query = `?${params}`;
+  if (query !== location.search) history.replaceState(null, "", location.pathname + query);
+  $("check-order").hidden = false;
 }
 function clearOrderRoute(id, keepVehicle = false) {
   const params = new URLSearchParams(location.search);
@@ -467,7 +472,7 @@ function purchaseConfigured() {
     origin: globalThis.location?.origin,
   });
 }
-async function selectVehicle(g, articleID = "", { quoteMode = "eager", savedLink = false, reuseQuote = false } = {}) {
+async function selectVehicle(g, articleID = "", { quoteMode = "eager", savedLink = false, reuseQuote = false, paidOrderID = "" } = {}) {
   if (!g.current()) return;
   // Keep the exact public price visible while paid access and purchase
   // availability are checked together for this same selection.
@@ -525,7 +530,7 @@ async function selectVehicle(g, articleID = "", { quoteMode = "eager", savedLink
     if (directArticle && await loadArticle(articleID, g, { savedLink: true })) return;
     if (savedQuery && await loadSavedSearch(g, savedQuery)) return;
     if (!g.current()) return;
-    await loadArticles(g, articleID, { includePurchaseQuote: Boolean(retainedQuote) });
+    await loadArticles(g, articleID, { includePurchaseQuote: Boolean(retainedQuote), paidOrderID });
   } catch (error) {
     // When a purchase is required, present the price or its unavailable state
     // with the access result so the UI does not announce a false checkout failure.
@@ -568,7 +573,7 @@ async function loadSavedSearch(g, query) {
   return true;
 }
 
-async function loadArticles(g, articleID = "", { focusOnShow = false, includePurchaseQuote = false } = {}) {
+async function loadArticles(g, articleID = "", { focusOnShow = false, includePurchaseQuote = false, paidOrderID = "" } = {}) {
   if (!g.current()) return;
   $("completion-status").textContent = "";
   stage("articles");
@@ -597,6 +602,10 @@ async function loadArticles(g, articleID = "", { focusOnShow = false, includePur
           result.progress?.status === "failed" &&
           result.progress?.retryable !== true;
         access = "owned";
+        if (paidOrderID && articles.length) {
+          clearOrderRoute(paidOrderID, true);
+          $("check-order").hidden = true;
+        }
         renderPurchase();
         show("catalog");
         const query = $("search").value.trim();
@@ -1212,6 +1221,9 @@ async function loadArticle(id, g, { savedLink = false } = {}) {
         if (!g.current()) return;
         const article = response.data.article;
         renderArticle(article, g);
+        if (paidOrder && article.id === id && readableArticle(article) &&
+            paidOrder.configuration_id === selected.id && paidOrder.region === selected.region)
+          completePaidOrder(paidOrder.id);
         if (!processingArticle(article)) return;
         const ready = readableArticle(article)
           ? article.content_origin === "source" ? "Stored source is ready." : "Article is readable."
@@ -1559,6 +1571,7 @@ async function checkOrder(g, id, { earlyCheckoutCheck = false } = {}) {
   }).catch((error) => {
     if (g.current() && error.status === 404) {
       if (paidOrder?.id === id) {
+        rememberOrderRoute(id);
         clearProtected();
         access = "pending";
         renderPurchase();
@@ -1632,10 +1645,10 @@ async function openPaidOrder(g, order) {
   currentOrder = id;
   paidOrder = { id, configuration_id: order.configuration_id, region: order.region };
   unconfirmedOrder = null;
-  $("check-order").hidden = false;
+  rememberOrderRoute(id);
   selectOrderVehicle(order);
   try {
-    await selectVehicle(g, "", { quoteMode: "skip" });
+    await selectVehicle(g, "", { quoteMode: "skip", paidOrderID: id });
   } catch (error) {
     if (!g.current()) return;
     if (error.code === "ENTITLEMENT_REVOKED") {
@@ -1646,6 +1659,7 @@ async function openPaidOrder(g, order) {
       throw error;
     }
     if (error.status === 401) throw error;
+    rememberOrderRoute(id);
     clearProtected();
     access = "pending";
     renderPurchase();
@@ -1657,7 +1671,10 @@ async function openPaidOrder(g, order) {
     });
     return;
   }
-  if (!g.current()) return;
+  if (g.current()) completePaidOrder(id);
+}
+function completePaidOrder(id) {
+  if (currentOrder !== id || paidOrder?.id !== id) return;
   currentOrder = "";
   paidOrder = null;
   $("check-order").hidden = true;
@@ -1701,7 +1718,6 @@ async function purchase() {
       if (!g.current()) return;
       if (result.state === "checkout") location.assign(result.checkout_url);
       else if (result.state === "owned") {
-        rememberOrderRoute(result.order_id);
         await openPaidOrder(g, { ...result, configuration_label: purchaseLabel });
       } else {
         unconfirmedOrder = {

@@ -14,6 +14,7 @@ function runInNewContext(code, context) {
   context.demoPath ??= path => path;
   context.requestInitialYears ??= params => requestInitialYears(params, context.requestJSON);
   context.sourceDocumentRequest ??= null;
+  context.paidOrder ??= null;
   return runVM(code, context);
 }
 
@@ -1646,6 +1647,8 @@ function orderStatusHarness(response, { selectionError = null } = {}) {
   const statuses = [];
   const context = {
     currentOrder: '', paidOrder: '', unconfirmedOrder: null, vehicle: null, quote: null, merchant: null, access: 'missing',
+    URLSearchParams, location: { pathname: '/workshop/', search: `?order=${orderID}` },
+    history: { replaceState() { assert.fail('the known order route should not need rewriting'); } },
     $: id => nodes[id],
     validScope, scope: () => ({ configuration_id: context.vehicle?.id, region: context.vehicle?.region }),
     validQuote: () => false, purchaseConfiguration: () => false,
@@ -1665,6 +1668,7 @@ function orderStatusHarness(response, { selectionError = null } = {}) {
   };
   runInNewContext(
     appSection('function invalidate(', 'async function operation(') +
+    appSection('function rememberOrderRoute(', 'function clearOrderRoute(') +
     appSection('async function checkOrder(', 'async function purchase()'),
     context,
   );
@@ -1911,6 +1915,43 @@ test('search during a partial paid index keeps its order resume route after with
   assert.equal(h.context.access, 'pending');
   assert.equal(h.context.currentOrder, orderID);
   assert.doesNotMatch(h.$('purchase-action').textContent, /Buy/);
+});
+
+test('a useful partial paid index can save and restore the exact reader before hydration finishes', async () => {
+  let partialReads = 0;
+  const restored = [];
+  const h = paidPurchaseLifecycleHarness([], {
+    realArticleIndex: true,
+    articleReadResponses: [
+      { items: [], hydrating: true, complete: false },
+      { items: [{ id: routeArticle, title: 'Private article' }], hydrating: true, complete: false },
+    ],
+    async afterPartial(context) {
+      const params = new URLSearchParams(h.location.search);
+      if (++partialReads === 1) {
+        assert.equal(params.get('order'), orderID);
+        return;
+      }
+      assert.equal(params.has('order'), false);
+      assert.equal(params.get('configuration'), scope.configuration_id);
+      assert.equal(params.get('region'), scope.region);
+      assert.equal(context.paidOrder?.id, orderID);
+      context.updateURL({ article: routeArticle });
+      assert.equal(new URLSearchParams(h.location.search).has('order'), false);
+      await context.restoreRoute();
+    },
+  });
+  h.location.search = `?order=${orderID}`;
+  h.context.session.state.mode = 'firebase';
+  h.context.loadArticle = async (id, _g, options) => {
+    restored.push({ id, configuration: h.context.vehicle.id, region: h.context.vehicle.region, savedLink: options.savedLink });
+    return true;
+  };
+  await h.context.restoreRoute();
+  assert.equal(partialReads, 2);
+  assert.equal(h.orderReads(), 1);
+  assert.equal(h.checkoutStarts(), 0);
+  assert.deepEqual(restored, [{ id: routeArticle, configuration: scope.configuration_id, region: scope.region, savedLink: true }]);
 });
 
 test('opening a partial paid article cannot turn its entitlement error into Buy', async () => {
