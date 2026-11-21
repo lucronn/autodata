@@ -448,7 +448,7 @@ function purchaseConfigured() {
     origin: globalThis.location?.origin,
   });
 }
-async function selectVehicle(g, articleID = "", { quoteMode = "eager" } = {}) {
+async function selectVehicle(g, articleID = "", { quoteMode = "eager", savedLink = false } = {}) {
   if (!g.current()) return;
   clearProtected();
   quote = null;
@@ -456,6 +456,8 @@ async function selectVehicle(g, articleID = "", { quoteMode = "eager" } = {}) {
   renderPurchase();
   if (!validScope(scope())) return;
   const selected = scope();
+  const directArticle = savedLink && !openDemo && session.state.authenticated &&
+    session.state.mode === "firebase" && uuid(articleID);
   const loadQuote = async () => {
     if (openDemo) return;
     if (merchantRequest) await merchantRequest;
@@ -482,7 +484,7 @@ async function selectVehicle(g, articleID = "", { quoteMode = "eager" } = {}) {
       if (g.current()) renderPurchase();
     }
   };
-  const quoteRequest = quoteMode === "eager" ? loadQuote() : null;
+  const quoteRequest = quoteMode === "eager" && !directArticle ? loadQuote() : null;
   if (!openDemo && !session.state.authenticated) {
     if (quoteMode !== "skip") await (quoteRequest ?? loadQuote());
     if (!g.current()) return;
@@ -491,6 +493,8 @@ async function selectVehicle(g, articleID = "", { quoteMode = "eager" } = {}) {
     return;
   }
   try {
+    if (directArticle && await loadArticle(articleID, g, { savedLink: true })) return;
+    if (!g.current()) return;
     await loadArticles(g, articleID);
   } catch (error) {
     // When a purchase is required, present the price or its unavailable state
@@ -963,7 +967,7 @@ function renderArticle(article, g) {
   }
   document.title = `${article.title || "Article"} | AutoData`;
 }
-async function loadArticle(id, g) {
+async function loadArticle(id, g, { savedLink = false } = {}) {
   if ((!openDemo && !session.state.authenticated) || !g.current()) return;
   const sameArticle = currentArticle?.id === id;
   resetReaderContent();
@@ -975,17 +979,27 @@ async function loadArticle(id, g) {
   $("article-title").focus();
   stage("article");
   status("Opening article…", { busy: true });
-  const first = openDemo || session.state.mode === "local"
-    ? await requestArticleJSON(articleRequestPath(id), { signal: g.signal, preferShortPublicationCheck: true })
-    : await requestArticleJSON(articleRequestPath(id, "/prepare"), {
+  const first = await (openDemo || session.state.mode === "local"
+    ? requestArticleJSON(articleRequestPath(id), { signal: g.signal, preferShortPublicationCheck: true })
+    : requestArticleJSON(articleRequestPath(id, "/prepare"), {
         method: "POST",
         body: {},
         preferShortSourceCheck: true,
         preferShortPublicationCheck: true,
         headers: { "X-CSRF-Token": session.state.csrf },
         signal: g.signal,
+      })).catch((error) => {
+        if (savedLink && error.status === 404) return null;
+        throw error;
       });
   if (!g.current()) return;
+  if (savedLink) {
+    const configuration = first?.data?.configuration;
+    if (configuration?.id !== vehicle.id || configuration?.region !== vehicle.region) return false;
+    vehicle = configuration;
+    access = "owned";
+    renderPurchase();
+  }
   let initial = first;
   let readingStatus = "";
   const result = await readArticle(
@@ -1033,6 +1047,7 @@ async function loadArticle(id, g) {
             : "No readable content is available.",
     { retry: result.timedOut || !readable ? () => openArticle(id) : null, complete: readable },
   );
+  return true;
 }
 function openArticle(id) {
   updateURL({ article: id });
@@ -1511,7 +1526,7 @@ async function restoreRoute(initialYears = null) {
       if (uuid(exact.configuration_id) &&
           (!params.get("year") || (uuid(articleID) && validScope(exact)))) {
         vehicle = { id: exact.configuration_id, region: exact.region };
-        await selectVehicle(g, articleID);
+        await selectVehicle(g, articleID, { savedLink: true });
         return;
       }
       for (const name of names) {
@@ -1610,6 +1625,14 @@ $("back").addEventListener("click", () => {
   navigation.clear();
   clearReader();
   updateURL();
+  if (!articles.length && !indexComplete) {
+    const readIndex = async (g) => {
+      await loadArticles(g);
+      if (g.current() && !$("catalog").hidden) $("catalog-title").focus();
+    };
+    void operation(readIndex, () => operation(readIndex));
+    return;
+  }
   show("catalog");
   renderArticles();
   $("catalog-title").focus();

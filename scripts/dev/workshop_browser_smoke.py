@@ -1563,7 +1563,18 @@ async def api_case(browser,origin,name,output,observations=None):
                 await expect_linked_pdf(source_frame)
             warm_before=await api_snapshot(context,origin,'warm-before-snapshot')
             reader_before=(await api_measure(context,origin,'reader-before-measurement'))['image_reads']
+            index_before_reader = []
+            def record_index(request):
+                if request.method == 'GET' and urlsplit(request.url).path.endswith('/articles'):
+                    index_before_reader.append(True)
+            if linked_pdf:
+                page.on('request', record_index)
             await page.reload();await expect(page.locator('#article-kind')).to_have_text('Workshop article')
+            if linked_pdf:
+                page.remove_listener('request', record_index)
+                assert not index_before_reader, 'saved reader requested the article index before rendering'
+                await expect(page.locator('#reader-vehicle')).to_contain_text('2.0 L')
+                await expect(page.locator('#reader-engine')).to_have_text('US')
             await expect(page.locator(nested_item + " > p").first).to_have_text("Take off the pump.")
             if linked_pdf:
                 await expect_html_table_figure(article_content)
@@ -1587,6 +1598,11 @@ async def api_case(browser,origin,name,output,observations=None):
             warm_receipt={'before':warm_before,'after':warm_after,'reader_before':reader_before,'reader_after':reader_after}
             assertions['source_to_canonical_and_warm_reuse']=True
             assertions['warm_raw_runtime_unchanged_with_approved_s3_delivery']=True
+            if linked_pdf:
+                await page.locator('#back').click()
+                await expect(page.locator('#catalog')).to_be_visible()
+                await expect(page.locator(f'#articles a[href*="article={article_id}"]')).to_be_visible()
+                await expect(page.locator('#catalog-title')).to_be_focused()
             if name==API_CASES[2]:
                 for denial_phase,denied in zip(('adjacent-denial','other-region-denial','unscoped-article-denial','legacy-vehicle-denial'),(f'/v1/catalog/vehicles/{scope["adjacent"]}/articles',f'/v1/catalog/vehicles/{scope["other_region"]}/articles',f'/v1/catalog/vehicles/{configuration}/articles/{scope["unscoped"]}',f'/v1/catalog/vehicles/{scope["vehicle"]}/articles')):
                     denied_response=await api21_get(context,origin+denied,phase=denial_phase)

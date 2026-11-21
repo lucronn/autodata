@@ -48,8 +48,9 @@ type CatalogArticlesResponse struct {
 	Configuration *CatalogConfiguration   `json:"configuration,omitempty"`
 }
 type CatalogArticleResponse struct {
-	Version string         `json:"version"`
-	Article CatalogArticle `json:"article"`
+	Version       string                `json:"version"`
+	Article       CatalogArticle        `json:"article"`
+	Configuration *CatalogConfiguration `json:"configuration,omitempty"`
 }
 
 func (s *Server) listCatalogYears(response http.ResponseWriter, request *http.Request, principal Principal) {
@@ -317,6 +318,7 @@ func (s *Server) respondCatalogArticleView(response http.ResponseWriter, request
 	}
 	vehicleID := request.PathValue("vehicle_id")
 	article := view.Article
+	var configuration *CatalogConfiguration
 	if article.Processing != nil && article.Processing.RetryAfterSeconds != nil {
 		response.Header().Set("Retry-After", strconv.Itoa(*article.Processing.RetryAfterSeconds))
 	}
@@ -350,6 +352,9 @@ func (s *Server) respondCatalogArticleView(response http.ResponseWriter, request
 				s.writePaidCatalogError(response, request, err)
 				return
 			}
+			if request.Method == http.MethodPost {
+				configuration = &scope.configuration
+			}
 		}
 		article = view.Article
 	} else {
@@ -375,7 +380,7 @@ func (s *Server) respondCatalogArticleView(response http.ResponseWriter, request
 		}
 	}
 	article.SourceReview = sourceReviewForArticle(article, vehicleID, article.ID)
-	writeJSON(response, status, CatalogArticleResponse{Version: "v1", Article: article})
+	writeJSON(response, status, CatalogArticleResponse{Version: "v1", Article: article, Configuration: configuration})
 }
 
 const catalogImageMaxBytes = 12 << 20

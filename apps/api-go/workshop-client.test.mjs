@@ -3947,7 +3947,7 @@ const scopedQuoteFixture = () => ({
 function selectionQuoteHarness(merchant, { authenticated = true, openDemo = false, request = async () => scopedQuoteFixture() } = {}) {
   const navigation = new NavigationGeneration(), generation = navigation.next(), calls = [], opened = [], nodes = new Map();
   const context = {
-    merchant, merchantRequest: null, openDemo, quote: null, access: "unknown", validScope, validQuote, scope: () => scope,
+    merchant, merchantRequest: null, openDemo, quote: null, access: "unknown", validScope, validQuote, uuid, scope: () => scope,
     session: { state: { authenticated } }, clearProtected() {}, renderPurchase() {}, show() {}, status() {},
     $: id => { if (!nodes.has(id)) nodes.set(id, {}); return nodes.get(id); },
     requestJSON: async (path, options) => { calls.push({ path, options }); return request(path, options); },
@@ -3968,6 +3968,28 @@ test('known-owned handoffs skip the quote and Library fetches a price only if ac
     h.context.loadArticles = async () => { throw required; };
     await assert.rejects(h.context.selectVehicle(h.generation, '', { quoteMode }), required);
     assert.equal(h.calls.length, quoteMode === 'if-needed' ? 1 : 0);
+  }
+});
+
+test('saved exact Firebase links try the article before fetching index or quote', async () => {
+  for (const [mode, openDemo, supported, index] of [
+    ['firebase', false, true, false], ['firebase', false, false, true],
+    ['local', false, true, true], ['firebase', true, true, true],
+  ]) {
+    const h = selectionQuoteHarness({ enabled: true }, { openDemo });
+    h.context.session.state.mode = mode;
+    const direct = [];
+    h.context.loadArticle = async (id, generation, options) => {
+      assert.equal(id, routeArticle);
+      assert.equal(generation, h.generation);
+      assert.equal(options.savedLink, true);
+      direct.push(id);
+      return supported;
+    };
+    await h.context.selectVehicle(h.generation, routeArticle, { savedLink: true });
+    assert.equal(h.opened.length, Number(index));
+    assert.equal(direct.length, Number(mode === 'firebase' && !openDemo));
+    assert.equal(h.calls.length, Number(mode === 'local'));
   }
 });
 
@@ -4139,6 +4161,32 @@ function articleRouteHarness(mode, request, authenticated = true, openDemo = fal
   runInNewContext(appSection('async function loadArticle(', 'function openArticle('), h.context);
   return h;
 }
+
+test('the saved reader uses the authorized configuration and can fall back on an older response', async () => {
+  const article = mediaArticle([{ type: 'paragraph', text: 'Stored procedure.' }]);
+  const configuration = { id: routeConfiguration, region: 'US', make: 'Example', model: 'Car', engine: '2.0 L' };
+  for (const [scopeFromResponse, rendered] of [[configuration, true], [undefined, false],
+    [{ ...configuration, region: 'CA' }, false]]) {
+    const h = articleRouteHarness('firebase', async () => ({ data: { article, configuration: scopeFromResponse } }));
+    h.context.vehicle = { id: routeConfiguration, region: 'US' };
+    h.context.quote = null;
+    h.context.access = 'unknown';
+    h.context.renderPurchase = () => { h.nodes.get('purchase-selection').textContent = h.context.vehicle.engine; };
+    assert.equal(await h.context.loadArticle('a', h.g, { savedLink: true }), rendered);
+    assert.equal(h.context.currentArticle, rendered ? article : null);
+    assert.equal(h.context.access, rendered ? 'owned' : 'unknown');
+    if (rendered) assert.equal(h.nodes.get('reader-vehicle').textContent, '2.0 L');
+  }
+  for (const status of [404, 403]) {
+    const error = Object.assign(new Error('Unavailable'), { status });
+    const h = articleRouteHarness('firebase', async () => { throw error; });
+    h.context.vehicle = { id: routeConfiguration, region: 'US' };
+    const direct = h.context.loadArticle('a', h.g, { savedLink: true });
+    if (status === 404) assert.equal(await direct, false);
+    else await assert.rejects(direct, error);
+    assert.equal(h.context.currentArticle, null);
+  }
+});
 
 test('open demo reads an article with GET and no session or checkout', async () => {
   const calls = [], article = mediaArticle([{ type: 'paragraph', text: 'Stored procedure.' }]);

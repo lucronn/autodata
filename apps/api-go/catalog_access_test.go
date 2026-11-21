@@ -460,6 +460,40 @@ func TestPaidCatalogPrepareBodyOriginAndNoAcknowledgement(t *testing.T) {
 			t.Fatal(tc.body, w.Code, w.Body.String())
 		}
 	}
+	for _, tc := range []struct {
+		method, availability string
+		want                 int
+	}{
+		{http.MethodPost, "available", http.StatusOK},
+		{http.MethodPost, "pending", http.StatusAccepted},
+		{http.MethodGet, "available", http.StatusOK},
+	} {
+		c.view.CanSchedule = false
+		c.view.Article.Availability = tc.availability
+		c.view.Article.Processing = &CatalogProcessing{JobID: "fixture", State: "queued"}
+		path := "/v1/catalog/vehicles/" + paidTestConfiguration + "/articles/" + id
+		if tc.method == http.MethodPost {
+			path += "/prepare"
+		}
+		r := httptest.NewRequest(tc.method, path+"?region=CA", strings.NewReader("{}"))
+		r.AddCookie(customerSessionCookie(token, now.Add(time.Hour), now))
+		r.Header.Set("Origin", "https://cars.example")
+		r.Header.Set("X-CSRF-Token", customerCSRF(token))
+		r.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		s.Handler().ServeHTTP(w, r)
+		var response CatalogArticleResponse
+		if w.Code != tc.want || json.Unmarshal(w.Body.Bytes(), &response) != nil {
+			t.Fatalf("%s %s status=%d body=%s", tc.method, tc.availability, w.Code, w.Body.String())
+		}
+		if tc.method == http.MethodPost {
+			if response.Configuration == nil || response.Configuration.ID != paidTestConfiguration || response.Configuration.Region != "CA" {
+				t.Fatal("prepare omitted the authorized configuration", response.Configuration)
+			}
+		} else if response.Configuration != nil {
+			t.Fatal("ordinary reads unexpectedly returned configuration data")
+		}
+	}
 }
 func TestPaidCatalogProductionDependenciesFailClosed(t *testing.T) {
 	s, _, _ := paidHTTPServer()
