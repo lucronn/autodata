@@ -2,6 +2,7 @@ import { delay } from "./catalog.mjs";
 
 const sourceProbeIntervalMs = 250;
 const publicationProbeIntervalMs = 500;
+const maxArticleRequestMs = 10000;
 
 export class NavigationGeneration {
   #controller;
@@ -88,12 +89,14 @@ export async function readArticle(
     const sourceBodyDeadline = firstReadAt
       ? firstReadAt + (nextSourceProbeAt ? 0 : sourceProbeIntervalMs)
       : regularSourceReadAt && regularSourceReadAt + sourceProbeIntervalMs;
+    // A confirmed publication can use the ordinary body deadline even
+    // when the probe had a short deadline for its headers.
     const bodyDeadline = sourceBodyDeadline ||
-      (publicationReadAt && publicationReadAt + publicationProbeIntervalMs);
+      (publicationReadAt && startedAt + maxArticleRequestMs);
     try {
       const response = await read({
         signal,
-        timeout: Math.max(1, Math.floor(Math.min(10000, readDeadline - startedAt))),
+        timeout: Math.max(1, Math.floor(Math.min(maxArticleRequestMs, readDeadline - startedAt))),
         readableBodyTimeout: bodyDeadline ? Math.floor(Math.min(deadline, bodyDeadline) - startedAt) : undefined,
         finishPublishedBody: Boolean(publicationReadAt),
         preferShortSourceCheck: Boolean(firstReadAt || regularSourceReadAt || firstScheduledSourceRead),

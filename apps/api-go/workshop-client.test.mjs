@@ -638,7 +638,7 @@ test('reader checks for first publication early and preserves the regular read o
       qualifiers.push(preferShortPublicationCheck);
       if (label === 'initially readable article') {
         assert.equal(Boolean(finishPublishedBody), now === 500 || now === 750);
-        assert.equal(readableBodyTimeout, now === 500 ? 1000 : now === 750 ? 750 : undefined);
+        assert.equal(readableBodyTimeout, now === 500 || now === 750 ? 10000 : undefined);
       }
       const next = responses.shift();
       if (label === 'network failure rejoins regular read' && next instanceof TypeError) {
@@ -658,6 +658,27 @@ test('reader checks for first publication early and preserves the regular read o
     if (label === 'initially readable article') assert.deepEqual(qualifiers, [true, true, true, false, false]);
     assert.equal(result.data.article.body, 'Published', label);
   }
+});
+
+test('a ready body gets the ordinary read time within the remaining reader budget', async () => {
+  const { readArticle } = await import('./workshop/article-read.mjs');
+  let now = 0;
+  let reads = 0;
+  const result = await readArticle(async (options) => {
+    if (++reads === 1) {
+      return { status: 200, shortPublicationCheck: true, data: {
+        article: { body: 'Stored', content_origin: 'source', processing: { job_id: 'job', state: 'rewriting' } },
+      } };
+    }
+    assert.equal(now, 500);
+    assert.equal(options.timeout, 500);
+    assert.equal(options.finishPublishedBody, true);
+    assert.equal(options.readableBodyTimeout, 1500);
+    now += 1200;
+    return { status: 200, data: { article: { body: 'Published', content_origin: 'canonical' } } };
+  }, { now: () => now, wait: async ms => { now += ms; }, budgetMs: 2000 });
+  assert.equal(reads, 2);
+  assert.equal(result.data.article.body, 'Published');
 });
 
 test('only a confirmed published response can finish streaming past the early header deadline', async (t) => {
