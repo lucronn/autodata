@@ -398,6 +398,9 @@ def _number_blocks(blocks, parent_id):
                 if isinstance(item, dict) and item.get("blocks"):
                     _number_blocks(item["blocks"], f"{block_id}:item:{item_number:04d}")
         elif block["type"] == "table":
+            for column_number, column in enumerate(block.get("columns", []), start=1):
+                if isinstance(column, dict) and column.get("blocks"):
+                    _number_blocks(column["blocks"], f"{block_id}:column:{column_number:04d}")
             for row_number, row in enumerate(block.get("rows", []), start=1):
                 for column_number, cell in enumerate(row, start=1):
                     if isinstance(cell, dict) and cell.get("blocks"):

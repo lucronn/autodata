@@ -24,6 +24,7 @@ from .article_lifecycle_types import (
     PDF_WORDLESS_FIGURE_LAYOUT,
     STRUCTURED_HEADING_IMAGE_LAYOUT,
     STRUCTURED_TABLE_CELL_ORDER_LAYOUT,
+    STRUCTURED_TABLE_COLUMN_ORDER_LAYOUT,
     STRUCTURED_TABLE_COLUMNS_LAYOUT,
     ResourceRef,
     article_id,
@@ -148,33 +149,40 @@ def _attach_figure_captions(blocks, key):
     blocks[:] = ordered
 
 
-def _mark_json_table_cells(blocks):
-    """Keep an authored cell sequence when a figure precedes procedure text."""
+def _mark_json_table_cells(blocks, *, keep_rows, keep_columns):
+    """Keep authored table content when a figure precedes procedure text."""
     textual = {"text", "paragraph", "callout", "warning", "caution", "note", "hint", "important"}
-    ordered = []
+
+    def has_ordered_media(cell):
+        children = cell.get("blocks") if isinstance(cell, dict) else None
+        if not isinstance(children, list) or any(not isinstance(child, dict) for child in children):
+            return False
+        kinds = [str(child.get("type") or child.get("kind") or "text").casefold() for child in children]
+        return ("image" in kinds and all(kind == "image" or kind in textual for kind in kinds)
+                and any(kind in textual for kind in kinds[kinds.index("image") + 1:]))
+
+    ordered_rows = []
+    ordered_columns = []
     for node in _walk(blocks):
         # The connector document supplies the content, never private layout flags.
         for private in ("_ordered_html_table_cell", "_ordered_json_table_cell", "_preserve_cell_block_order"):
             node.pop(private, None)
+        if str(node.get("type") or node.get("kind") or "").casefold() not in ("table", "grid"):
+            continue
+        columns = node.get("columns")
+        if keep_columns and isinstance(columns, list):
+            ordered_columns.extend(cell for cell in columns if has_ordered_media(cell))
         rows = node.get("rows")
-        if not isinstance(rows, list) or str(node.get("type") or node.get("kind") or "").casefold() not in ("table", "grid"):
+        if not keep_rows or not isinstance(rows, list):
             continue
         for row in rows:
             if isinstance(row, dict):
                 row = row.get("cells") or row.get("values") or row.get("blocks")
-            if not isinstance(row, list):
-                continue
-            for cell in row:
-                children = cell.get("blocks") if isinstance(cell, dict) else None
-                if not isinstance(children, list) or any(not isinstance(child, dict) for child in children):
-                    continue
-                kinds = [str(child.get("type") or child.get("kind") or "text").casefold() for child in children]
-                if ("image" in kinds and all(kind == "image" or kind in textual for kind in kinds)
-                        and any(kind in textual for kind in kinds[kinds.index("image") + 1:])):
-                    ordered.append(cell)
-    for cell in ordered:
+            if isinstance(row, list):
+                ordered_rows.extend(cell for cell in row if has_ordered_media(cell))
+    for cell in ordered_rows + ordered_columns:
         cell["_ordered_json_table_cell"] = True
-    return bool(ordered)
+    return bool(ordered_rows), bool(ordered_columns)
 
 
 def project_document(
@@ -273,6 +281,7 @@ def capture_source_article(
     keep_single_line_pdf_figures=False,
     keep_structured_table_columns=False,
     keep_structured_table_cell_order=False,
+    keep_structured_table_column_order=False,
     keep_image_only_headings=False,
     keep_ordered_step_instructions=False,
     keep_image_only_step_instructions=False,
@@ -384,7 +393,9 @@ def capture_source_article(
                 keep_html_multiline_figure_captions
                 and body.body["sha256"] != context.legacy_published_html_multiline_figure_body
             ),
-            keep_structured_table_cell_order=keep_structured_table_cell_order,
+            keep_structured_table_cell_order=keep_structured_table_cell_order or (
+                keep_structured_table_columns and keep_structured_table_column_order
+            ),
             keep_image_only_headings=keep_image_only_headings,
             keep_ordered_step_instructions=keep_ordered_step_instructions,
             keep_image_only_step_instructions=keep_image_only_step_instructions,
@@ -414,7 +425,12 @@ def capture_source_article(
     positioned_pdf_figures = article.get("positioned_pdf_figures") is True
     retained_pdf_repeats = article.get("retained_repeated_pdf_figures") is True
     pdf_asset_order = article.get("pdf_legacy_asset_order", [])
-    structured_table_cell_order = article.get("authored_json_blocks") is True and _mark_json_table_cells(blocks)
+    structured_table_cell_order = structured_table_column_order = False
+    if article.get("authored_json_blocks") is True:
+        structured_table_cell_order, structured_table_column_order = _mark_json_table_cells(
+            blocks, keep_rows=keep_structured_table_cell_order,
+            keep_columns=keep_structured_table_columns and keep_structured_table_column_order,
+        )
     image_only_headings = article.get("image_only_headings") is True
     step_layout = article.get("ordered_step_instructions_layout")
     structured_table_columns = keep_structured_table_columns and any(
@@ -487,6 +503,8 @@ def capture_source_article(
         resources[0]["structured_table_columns_layout"] = manifest[0]["structured_table_columns_layout"] = STRUCTURED_TABLE_COLUMNS_LAYOUT
     if structured_table_cell_order:
         resources[0]["structured_table_cell_order_layout"] = manifest[0]["structured_table_cell_order_layout"] = STRUCTURED_TABLE_CELL_ORDER_LAYOUT
+    if structured_table_column_order:
+        resources[0]["structured_table_column_order_layout"] = manifest[0]["structured_table_column_order_layout"] = STRUCTURED_TABLE_COLUMN_ORDER_LAYOUT
     if image_only_headings:
         resources[0]["structured_heading_image_layout"] = manifest[0]["structured_heading_image_layout"] = STRUCTURED_HEADING_IMAGE_LAYOUT
     if step_layout:
@@ -827,7 +845,8 @@ def capture_source_article(
     doc = build_ordered_document(
         {"article_id": str(article_id(context.key)), "evidence_ids": evidence_ids},
         blocks,
-        preserve_marked_cells=handled_pdf_embeds or positioned_html_table_images or structured_table_cell_order or html_nested_tables,
+        preserve_marked_cells=(handled_pdf_embeds or positioned_html_table_images or structured_table_cell_order
+                               or structured_table_column_order or html_nested_tables),
         preserve_structured_columns=structured_table_columns,
         step_parser=step_parser,
     )

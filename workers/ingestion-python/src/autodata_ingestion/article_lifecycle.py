@@ -169,6 +169,7 @@ def run_article_job(repo,lease,*,registry,object_store,model_client,hooks=None):
                     keep_html_nested_tables=True,
                     keep_structured_table_columns=True,
                     keep_structured_table_cell_order=True,
+                    keep_structured_table_column_order=True,
                     keep_image_only_headings=True,
                     keep_ordered_step_instructions=True,
                     keep_image_only_step_instructions=True,
