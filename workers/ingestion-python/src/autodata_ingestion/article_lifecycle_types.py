@@ -11,6 +11,7 @@ NORMALIZATION_VERSION = "ordered-article-v1"
 REWRITE_PROFILE_VERSION = "technical-prose-v1"
 HTML_FIGURE_CAPTION_LAYOUT = "html-figure-caption-v1"
 HTML_FLOW_FIGURE_CAPTION_LAYOUT = "html-flow-figure-caption-v1"
+HTML_MULTILINE_FIGURE_CAPTION_LAYOUT = "html-multiline-figure-caption-v1"
 HTML_TABLE_CAPTION_LAYOUT = "html-table-caption-v1"
 PDF_COMPACT_FIGURE_LAYOUT = "compact-pdf-figures-v1"
 PDF_LEGACY_FIGURE_LAYOUT = "legacy-pdf-figures-v1"
@@ -149,6 +150,7 @@ class SourceArticleContext:
     legacy_published_pdf_compact_roots: frozenset[str] = frozenset()
     legacy_published_html_figure_body: str | None = None
     legacy_published_html_flow_figure_body: str | None = None
+    legacy_published_html_multiline_figure_body: str | None = None
     legacy_published_html_table_caption_body: str | None = None
 
 

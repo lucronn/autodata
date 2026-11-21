@@ -100,6 +100,20 @@ class ConnectorTests(unittest.TestCase):
                 self.assertEqual(new.blocks, old.blocks)
                 self.assertFalse(new.html_table_captions)
 
+    def test_multiline_figure_caption_leaves_mixed_media_in_the_authored_flow(self):
+        html = (
+            '<figure><img src="/pressure.png"><figcaption>Pressure chart<br>'
+            '<img src="/legend.png">Readings at idle</figcaption></figure>Check the seal.'
+        )
+        old = ArticleParser(keep_html_flow_figure_captions=True)
+        new = ArticleParser(keep_html_flow_figure_captions=True, keep_html_multiline_figure_captions=True)
+        for parser in (old, new):
+            parser.feed(html)
+            parser.close()
+            parser.flush()
+        self.assertEqual(new.blocks, old.blocks)
+        self.assertFalse(new.html_multiline_figure_captions)
+
     def test_opt_in_preserves_heading_levels_and_ends_each_heading(self):
         parser = ArticleParser(keep_html_headings=True)
         parser.feed(

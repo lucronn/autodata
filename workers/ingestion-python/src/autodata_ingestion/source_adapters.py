@@ -1834,6 +1834,7 @@ def adapt_bound_article(
     keep_html_figure_captions: bool = False,
     keep_html_table_captions: bool = False,
     keep_html_flow_figure_captions: bool = False,
+    keep_html_multiline_figure_captions: bool = False,
 ) -> dict[str, Any]:
     """Adapt fetched bytes under proven connector scope, without weakening URL intake."""
     from .banktwo_connector import ArticleParser
@@ -1978,6 +1979,7 @@ def adapt_bound_article(
                         keep_html_figure_captions=keep_html_figure_captions,
                         keep_html_table_captions=keep_html_table_captions,
                         keep_html_flow_figure_captions=keep_html_flow_figure_captions,
+                        keep_html_multiline_figure_captions=keep_html_multiline_figure_captions,
                     )
                 blocks = segment_plain_article_text(text)
         return {
@@ -2000,6 +2002,7 @@ def adapt_bound_article(
             keep_html_figure_captions=keep_html_figure_captions,
             keep_html_table_captions=keep_html_table_captions,
             keep_html_flow_figure_captions=keep_html_flow_figure_captions,
+            keep_html_multiline_figure_captions=keep_html_multiline_figure_captions,
         )
         parser.feed(html)
         parser.close()
@@ -2037,6 +2040,7 @@ def adapt_bound_article(
             **({"positioned_html_table_images": True} if parser.positioned_html_table_images else {}),
             **({"html_figure_captions": True} if parser.html_figure_captions else {}),
             **({"html_flow_figure_captions": True} if parser.html_flow_figure_captions else {}),
+            **({"html_multiline_figure_captions": True} if parser.html_multiline_figure_captions else {}),
             **({"html_table_captions": True} if parser.html_table_captions else {}),
         }
     if media == "text/plain":

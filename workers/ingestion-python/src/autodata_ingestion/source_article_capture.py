@@ -11,6 +11,7 @@ from .article_lifecycle_types import (
     CapturedSource,
     HTML_FIGURE_CAPTION_LAYOUT,
     HTML_FLOW_FIGURE_CAPTION_LAYOUT,
+    HTML_MULTILINE_FIGURE_CAPTION_LAYOUT,
     HTML_TABLE_CAPTION_LAYOUT,
     PDF_COMPACT_FIGURE_LAYOUT,
     PDF_LEGACY_FIGURE_LAYOUT,
@@ -117,13 +118,24 @@ def _image_nodes(value, *, image_container=False):
 
 def _attach_figure_captions(blocks, key):
     ordered = []
-    for block in blocks:
-        caption = ordered[-1].pop(key, None) if ordered else None
-        if (caption is not None and block.pop("_html_figure_caption_text", False)
-                and block.get("text") == caption and ordered[-1].get("status") == "available"):
-            ordered[-1]["caption"] = caption
-        else:
-            ordered.append(block)
+    resume = 0
+    for index, block in enumerate(blocks):
+        if index < resume:
+            continue
+        caption = block.pop(key, None)
+        if isinstance(caption, str):
+            caption = [caption]
+        if isinstance(caption, list) and caption and block.get("status") == "available":
+            end = index + 1 + len(caption)
+            parts = blocks[index + 1:end]
+            if len(parts) == len(caption) and all(
+                part.get("_html_figure_caption_text") is True and part.get("text") == text
+                for part, text in zip(parts, caption, strict=True)
+            ):
+                block["caption"] = " ".join(caption)
+                resume = end
+        block.pop("_html_figure_caption_text", None)
+        ordered.append(block)
     blocks[:] = ordered
 
 
@@ -215,6 +227,7 @@ def capture_source_article(
     keep_pdf_figure_order=False, keep_multiple_pdf_figures=False, keep_html_table_image_order=False,
     keep_repeated_pdf_figures=False, keep_pdf_figures_with_margins=False, keep_compact_pdf_figures=False,
     keep_html_figure_captions=False, keep_html_table_captions=False, keep_html_flow_figure_captions=False,
+    keep_html_multiline_figure_captions=False,
 ):
     if not 0 < deadline_seconds <= 30:
         raise ValueError("capture deadline must be within 30 seconds")
@@ -315,6 +328,10 @@ def capture_source_article(
             keep_html_flow_figure_captions=(
                 keep_html_flow_figure_captions and body.body["sha256"] != context.legacy_published_html_flow_figure_body
             ),
+            keep_html_multiline_figure_captions=(
+                keep_html_multiline_figure_captions
+                and body.body["sha256"] != context.legacy_published_html_multiline_figure_body
+            ),
         )
         article = parsing.result(timeout=remaining())
     except (ValueError, TypeError, KeyError, UnicodeError) as error:
@@ -331,6 +348,7 @@ def capture_source_article(
     blocks = deepcopy(article["blocks"])
     html_figure_captions = article.get("html_figure_captions") is True
     html_flow_figure_captions = article.get("html_flow_figure_captions") is True
+    html_multiline_figure_captions = article.get("html_multiline_figure_captions") is True
     html_table_captions = article.get("html_table_captions") is True
     handled_pdf_embeds = article.get("handled_pdf_embeds") is True
     positioned_html_table_images = article.get("positioned_html_table_images") is True
@@ -387,6 +405,8 @@ def capture_source_article(
         resources[0]["html_figure_caption_layout"] = manifest[0]["html_figure_caption_layout"] = HTML_FIGURE_CAPTION_LAYOUT
     if html_flow_figure_captions:
         resources[0]["html_flow_figure_caption_layout"] = manifest[0]["html_flow_figure_caption_layout"] = HTML_FLOW_FIGURE_CAPTION_LAYOUT
+    if html_multiline_figure_captions:
+        resources[0]["html_multiline_figure_caption_layout"] = manifest[0]["html_multiline_figure_caption_layout"] = HTML_MULTILINE_FIGURE_CAPTION_LAYOUT
     if html_table_captions:
         resources[0]["html_table_caption_layout"] = manifest[0]["html_table_caption_layout"] = HTML_TABLE_CAPTION_LAYOUT
     provenance = [deepcopy(resources[0])]

@@ -2116,6 +2116,85 @@ def test_authored_html_table_caption_stays_with_table_through_rewrite(capture_fi
     assert canonical["blocks"][2] == {**table, "source_order": 3}
 
 
+@pytest.mark.parametrize("provider,in_table,available", [
+    ("bankone", False, True), ("banktwo", False, True),
+    ("bankone", True, True), ("banktwo", True, True), ("banktwo", False, False),
+])
+def test_multiline_html_chart_caption_stays_with_retained_png(capture_fixture, provider, in_table, available):
+    import json
+    from io import BytesIO
+
+    from PIL import Image
+    from autodata_ingestion.article_document import validate_ordered_document
+    from autodata_ingestion.article_lifecycle_types import HTML_MULTILINE_FIGURE_CAPTION_LAYOUT
+    from autodata_ingestion.procedure_normalize import normalize_procedure_article
+    from autodata_ingestion.procedure_rewrite_auto import render_auto, validate_auto
+    from autodata_ingestion.procedure_rewrite_full import prose_slots
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    caption = ["Fuel supply pressure", "Engine speed: 2,000 rpm"]
+    figure = ('<figure><img src="/fixture/chart.png" alt="Fuel-pressure chart">'
+              f'<figcaption>{caption[0]}<br>{caption[1]}</figcaption></figure>')
+    follow = "Remove the cover while the ignition is off."
+    chart = f'<table><tr><td>{figure}Keep the shim seated.</td></tr></table>' if in_table else figure
+    markup = f'<p>Remove the pump.</p>{chart}<p>{follow}</p>'
+    raw, media = markup.encode(), "text/html"
+    if provider == "banktwo":
+        raw = json.dumps({"_embedded": {"data": {"article": {"content": markup}}}}).encode()
+        media = "application/hal+json"
+    capture_fixture.body(provider, raw, media, assets=["chart"], asset_bindings=[
+        {"source_url": "/fixture/chart.png", "resource_ref": "chart"},
+    ])
+    if available:
+        raster = BytesIO()
+        Image.new("RGB", (96, 48), "navy").save(raster, format="PNG")
+        capture_fixture.body(provider, raster.getvalue(), "image/png", ref="chart", kind="asset")
+
+    context = capture_fixture.context(provider)
+    options = dict(registry=capture_fixture.registry, object_store=capture_fixture.objects,
+                   keep_html_figure_captions=True, keep_html_flow_figure_captions=True, keep_html_table_image_order=True)
+    original = capture_source_article(context, **options)
+    guarded = capture_source_article(replace(context, legacy_published_html_multiline_figure_body=sha256(raw).hexdigest()),
+                                     keep_html_multiline_figure_captions=True, **options)
+    assert (guarded.source_document, guarded.source_fingerprint) == (original.source_document, original.source_fingerprint)
+    captured = capture_source_article(context, keep_html_multiline_figure_captions=True, **options)
+    assert captured.resource_manifest[0]["html_multiline_figure_caption_layout"] == HTML_MULTILINE_FIGURE_CAPTION_LAYOUT
+    assert captured.resource_manifest[1:] == original.resource_manifest[1:]
+    assert captured.evidence_manifest == original.evidence_manifest
+    assert captured.source_images[0]["image_id"] == original.source_images[0]["image_id"]
+    assert not validate_ordered_document(captured.source_document, strict=True)
+
+    def chart_blocks(document, index):
+        if in_table:
+            return document["blocks"][index]["rows"][0][0]["blocks"]
+        return document["blocks"][index:-1]
+
+    old_image, *old_caption = chart_blocks(original.source_document, 1)
+    assert old_image.get("caption") is None and [part["text"] for part in old_caption[:2]] == caption
+    blocks = chart_blocks(captured.source_document, 1)
+    assert blocks[0].get("caption") == (" ".join(caption) if available else None)
+    expected_text = ([] if available else caption) + (["Keep the shim seated."] if in_table else [])
+    assert [paragraph["text"] for paragraph in blocks[1:]] == expected_text
+    if not available:
+        assert captured.projection_status == "partial"
+        return
+
+    assert capture_fixture.objects.data[blocks[0]["storage_key"]] == (raster.getvalue(), "image/png")
+    normalized = normalize_procedure_article({
+        "normalized_document": captured.source_document, "body": captured.source_body, "steps": captured.source_steps,
+    }, resource_manifest=captured.resource_manifest)["normalized_document"]
+    slots = prose_slots(normalized, include_cell_blocks=True)
+    assert [slot["text"] for slot in slots] == ["Remove the pump.", follow]
+    response = {"introduction": "This procedure covers pump removal.", "replacements": [
+        {**slot, "action": "rewrite", "text": text, "reason": ""}
+        for slot, text in zip(slots, ("Take off the pump.", "With the ignition off, take the cover off."), strict=True)
+    ]}
+    canonical = render_auto(normalized, response)
+    assert validate_auto(normalized, canonical, response=response).passed
+    canonical_image = chart_blocks(canonical, 2)[0]
+    assert canonical_image == {**blocks[0], "source_order": canonical_image["source_order"]}
+
+
 def test_bound_pdf_embed_keeps_table_cell_order_and_refuses_unbound_markup(capture_fixture):
     from io import BytesIO
 

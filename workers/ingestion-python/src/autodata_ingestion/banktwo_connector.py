@@ -53,7 +53,7 @@ class _FigureFrame:
     blocks: list[dict[str, Any]] | None
     in_table: bool = False
     image: dict[str, Any] | None = None
-    caption: dict[str, Any] | None = None
+    caption: list[dict[str, Any]] | None = None
     open_caption: int | None = None
     invalid: bool = False
 
@@ -73,6 +73,7 @@ class ArticleParser(HTMLParser):
         self, *, asset_bindings=(), preserve_legacy_list_starts=True, keep_html_headings=False,
         keep_bound_pdf_iframes=False, keep_html_table_image_order=False, keep_html_figure_captions=False,
         keep_html_table_captions=False, keep_html_flow_figure_captions=False,
+        keep_html_multiline_figure_captions=False,
     ):
         super().__init__(convert_charrefs=True)
         self._asset_bindings = {item["source_url"]: item["resource_ref"] for item in asset_bindings}
@@ -91,10 +92,12 @@ class ArticleParser(HTMLParser):
         self._keep_html_figure_captions = keep_html_figure_captions
         self._keep_html_table_captions = keep_html_table_captions
         self._keep_html_flow_figure_captions = keep_html_flow_figure_captions
+        self._keep_html_multiline_figure_captions = keep_html_multiline_figure_captions
         self.handled_pdf_embeds = False
         self.positioned_html_table_images = False
         self.html_figure_captions = False
         self.html_flow_figure_captions = False
+        self.html_multiline_figure_captions = False
         self.html_table_captions = False
         self._figures: list[_FigureFrame] = []
         self._hidden_embed_tags: list[str] = []
@@ -318,12 +321,14 @@ class ArticleParser(HTMLParser):
             return
         offset = frame.open_caption
         frame.open_caption = None
-        # Only one trailing text block immediately following the figure is a
-        # safe semantic caption. Other content stays in the authored flow.
+        # Only trailing text following this exact image is a safe caption.
+        # Other content stays in the authored flow.
         blocks = frame.blocks
-        if (blocks is not None and offset > 0 and len(blocks) == offset + 1
-                and blocks[offset - 1] is frame.image and blocks[offset].get("kind") == "text"):
-            frame.caption = blocks[offset]
+        caption = blocks[offset:] if blocks is not None else []
+        if (blocks is not None and offset > 0 and caption and blocks[offset - 1] is frame.image
+                and (len(caption) == 1 or self._keep_html_multiline_figure_captions)
+                and all(part.get("kind") == "text" for part in caption)):
+            frame.caption = caption
         else:
             frame.invalid = True
 
@@ -467,8 +472,12 @@ class ArticleParser(HTMLParser):
             frame = self._figures.pop()
             if frame.image is not None and frame.caption is not None and not frame.invalid:
                 key = "_html_figure_caption" if frame.in_table else "_html_flow_figure_caption"
-                frame.image[key] = frame.caption["text"]
-                frame.caption["_html_figure_caption_text"] = True
+                text_parts = [part["text"] for part in frame.caption]
+                frame.image[key] = text_parts[0] if len(text_parts) == 1 else text_parts
+                for part in frame.caption:
+                    part["_html_figure_caption_text"] = True
+                if len(text_parts) > 1:
+                    self.html_multiline_figure_captions = True
         if self._heading is not None and tag in _HEADING_LEVELS:
             self.flush()
             return
