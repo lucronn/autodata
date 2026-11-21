@@ -14,12 +14,13 @@ import pytest
 from autodata_ingestion.article_lifecycle import run_article_worker_once
 from autodata_ingestion.article_lifecycle_types import (
     PDF_BLANK_PAGE_LAYOUT, PDF_COMPACT_FIGURE_LAYOUT, PDF_LEGACY_FIGURE_LAYOUT, PDF_REPEAT_MARGIN_LAYOUT,
-    PDF_SINGLE_LINE_FIGURE_LAYOUT,
+    PDF_SINGLE_LINE_FIGURE_LAYOUT, PDF_WORDLESS_FIGURE_LAYOUT,
 )
 from autodata_ingestion.procedure_rewrite_auto import PROFILE as AUTO_PROFILE
 from autodata_ingestion.source_job_persistence import refresh_article_job
 
 from lifecycle_support import fresh_database, runtime
+from test_linked_wordless_pdf_figures import _linked_pdf
 from test_pdf_figure_order import _compact_figure, _pdf_with_logo, _single_line_compact_pdf
 
 
@@ -209,6 +210,88 @@ def test_compact_linked_pdf_preserves_legacy_pins_and_publishes_changed_bytes(ru
     repeated, repeated_source = refresh()
     assert repeated["canonical_revision_id"] == revised["canonical_revision_id"]
     assert repeated_source == source and len(draft.requests) == 2
+
+
+@pytest.mark.parametrize("provider", ["bankone", "banktwo"])
+def test_wordless_linked_pdf_refresh_preserves_pinned_source(runtime, monkeypatch, provider):
+    from autodata_ingestion import source_adapters, source_article_capture as capture_module
+
+    runtime.article_id = runtime.articles[provider]
+    connector = runtime.servers[provider]
+    pdf, figure = _linked_pdf("middle")
+    connector.body(
+        (f'<p>Remove the pump.</p><iframe src="{_PDF_LOCATOR}"></iframe>'
+         '<p>Install the replacement.</p>').encode(),
+        assets=[_PDF_REF], asset_bindings=[{"source_url": _PDF_LOCATOR, "resource_ref": _PDF_REF}],
+    )
+    connector.body(pdf, "application/pdf", ref=_PDF_REF, kind="binary")
+
+    def no_text(digest, payload, covered):
+        assert payload == pdf and digest == sha256(pdf).hexdigest()
+        assert covered == {1, 3}
+        return ()
+
+    monkeypatch.setattr(source_adapters, "extract_scanned_pdf_text", no_text)
+    draft = FixtureDraft(paraphrases={
+        **_PARAPHRASES,
+        "Inspect the harness connector.": "Check the harness connector.",
+        "Seat the terminal in the connector.": "Fit the terminal into the connector.",
+    })
+
+    def refresh():
+        job = refresh_article_job(
+            runtime.repo, runtime.article_id, actor="fixture", reason="verify wordless PDF diagram",
+            rewrite_profile_version=AUTO_PROFILE,
+        )
+        assert run_article_worker_once(
+            runtime.repo, worker_id=uuid4(), registry=runtime.registry, object_store=runtime.objects,
+            model_client=draft, job_id=job.job_id,
+        )
+        result = runtime.read_current()
+        assert result["content_origin"] == "canonical", runtime.diagnostics()
+        return result
+
+    def source(row):
+        with runtime.repo.connect() as conn:
+            return conn.execute(
+                "SELECT * FROM canonical_article_source_revisions WHERE source_revision_id = %s",
+                (row["source_revision_id"],),
+            ).fetchone()
+
+    capture = capture_module.capture_source_article
+    with monkeypatch.context() as patch:
+        patch.setattr(capture_module, "capture_source_article", lambda *args, **kwargs: capture(
+            *args, **{**kwargs, "keep_wordless_linked_pdf_figures": False},
+        ))
+        prior = refresh()
+    prior_source = source(prior)
+    assert not prior["images"]
+
+    corrected = refresh()
+    assert corrected["canonical_revision_id"] != prior["canonical_revision_id"]
+    assert corrected["source_revision_id"] != prior["source_revision_id"]
+    corrected_source = source(corrected)
+    assert source(prior) == prior_source
+    old_pdf, new_pdf = (
+        next(r for r in row["resource_manifest"] if r["role"] == "document_asset")
+        for row in (prior_source, corrected_source)
+    )
+    assert new_pdf["sha256"] == old_pdf["sha256"] == sha256(pdf).hexdigest()
+    assert corrected_source["body_source_snapshot_id"] == prior_source["body_source_snapshot_id"]
+    assert new_pdf["pdf_wordless_figure_layout"] == PDF_WORDLESS_FIGURE_LAYOUT
+    assert _layout(corrected_source["source_document"])[1:4] == [
+        ("paragraph", "Inspect the harness connector."), ("image", None),
+        ("paragraph", "Seat the terminal in the connector."),
+    ]
+    assert _layout(corrected["document"])[2:5] == [
+        ("paragraph", "Check the harness connector."), ("image", None),
+        ("paragraph", "Fit the terminal into the connector."),
+    ]
+    [image] = corrected["images"]
+    with Image.open(BytesIO(runtime.objects.get_object(image["storage_key"], max_bytes=1_048_576))) as stored:
+        assert stored.size == figure.size and stored.convert("RGB").tobytes() == figure.tobytes()
+    assert refresh()["canonical_revision_id"] == corrected["canonical_revision_id"]
+    assert len(draft.requests) == 2
 
 
 def test_linked_pdf_repeated_layout_survives_same_byte_refresh_and_changed_pdf(runtime):
