@@ -414,6 +414,7 @@ test('reader checks negotiated cold source early and preserves the half-second c
     article: { processing: { job_id: 'job', state: 'queued' } },
   } };
   const pending = { status: 202, retryAfterSeconds: 1, data: prepare.data };
+  const fetching = { ...prepare, data: { article: { processing: { job_id: 'job', state: 'fetching_source' } } } };
   const stored = { status: 200, retryAfterSeconds: 1, data: { article: {
     body: 'Stored procedure', content_origin: 'source', processing: { job_id: 'job', state: 'rewriting' },
   } } };
@@ -422,32 +423,44 @@ test('reader checks negotiated cold source early and preserves the half-second c
   const unhintedOverload = Object.assign(new Error('Busy'), { status: 503, retryable: true });
   const networkFailure = new TypeError('Network failed');
   const timedOut = Symbol('timed out');
+  const delayedFetching = Symbol('fetching response after the third probe slot');
 
   for (const [label, responses, expectedStarts] of [
     ['source ready at first probe', [prepare, stored, complete], [0, 250, 1250]],
     ['source ready at second probe', [prepare, prepare, stored, complete], [0, 250, 500, 1500]],
+    ['source ready at third probe', [prepare, prepare, fetching, stored, complete], [0, 250, 500, 750, 1750]],
     ['pending at both probes', [prepare, prepare, prepare, pending, stored, complete], [0, 250, 500, 1000, 2000, 3000]],
+    ['third miss retains the ordinary read', [prepare, prepare, fetching, fetching, complete], [0, 250, 500, 750, 1000]],
+    ['a slow second response rejoins the ordinary read', [prepare, prepare, delayedFetching, complete], [0, 250, 500, 1000]],
+    ['third probe honors overload', [prepare, prepare, fetching, overload, complete], [0, 250, 500, 750, 5750]],
     ['retry hint at first probe', [prepare, pending, pending, stored, complete], [0, 250, 1250, 2250, 3250]],
     ['retry hint at second probe', [prepare, prepare, pending, complete], [0, 250, 500, 1500]],
     ['network failure at first probe', [prepare, networkFailure, stored, complete], [0, 250, 500, 1500]],
+    ['network failure at first probe prevents a third', [prepare, networkFailure, fetching, complete], [0, 250, 500, 1000]],
+    ['network failure at second probe prevents a third', [prepare, prepare, networkFailure, complete], [0, 250, 500, 1000]],
     ['first probe cannot delay second probe', [prepare, timedOut, stored, complete], [0, 250, 500, 1500]],
     ['overload applies to subsequent reads', [prepare, overload, pending, complete], [0, 250, 5250, 6250]],
     ['overload without a hint skips the second probe', [prepare, unhintedOverload, complete], [0, 250, 1000]],
     ['a replacement job rejoins the regular check', [prepare, { ...prepare, data: { article: { processing: { job_id: 'next-job', state: 'queued' } } } }, complete], [0, 250, 1000]],
+    ['a replacement job at the second probe prevents a third', [prepare, prepare, { ...prepare, data: { article: { processing: { job_id: 'next-job', state: 'fetching_source' } } } }, complete], [0, 250, 500, 1000]],
     ['explicit wait overrides the preference', [{ ...prepare, retryAfterSeconds: 4 }, complete], [0, 4000]],
   ]) {
     let now = 0;
     const actual = [];
     const result = await readArticle(async ({ timeout, readableBodyTimeout, preferShortSourceCheck }) => {
       actual.push(now);
-      assert.equal(preferShortSourceCheck, now === 250 || now === 500, label);
-      if (now === 250) assert.equal(timeout, 250, label);
+      assert.equal(preferShortSourceCheck, now === 250 || now === 500 || now === 750, label);
+      if (now === 250 || now === 750) assert.equal(timeout, 250, label);
       if (now === 500) assert.equal(timeout, 500, label);
       assert.equal(readableBodyTimeout, now === 250 ? 750 : undefined, label);
       const next = responses.shift();
       if (next === timedOut) {
         now += timeout;
         throw networkFailure;
+      }
+      if (next === delayedFetching) {
+        now += 300;
+        return fetching;
       }
       if (next instanceof Error) throw next;
       return next;

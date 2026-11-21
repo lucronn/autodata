@@ -49,6 +49,7 @@ export async function readArticle(
   let latest, earlyConfirmationJob;
   let firstReadAt = 0;
   let nextSourceProbeAt = 0;
+  let firstSourceProbePending = false;
   let sourceConfirmationAt = 0;
   let publicationReadAt = 0;
   let sawFastSource = false;
@@ -113,12 +114,22 @@ export async function readArticle(
       if (nextSourceProbeAt && retryAfter === 0 && (samePendingSource || sourceProbeFailed)) {
         const probeWait = Math.max(0, nextSourceProbeAt - now());
         nextSourceProbeAt = 0;
+        firstSourceProbePending = samePendingSource;
         await wait(Math.min(remaining, probeWait), signal);
+        continue;
+      }
+      // Spend one more read only when both short probes confirmed the same capture.
+      const finalProbeWait = firstReadAt - 250 - now();
+      if (firstSourceProbePending && finalProbeWait > 0 && samePendingSource &&
+          latest.data.article.processing.state === "fetching_source") {
+        firstSourceProbePending = false;
+        await wait(Math.min(remaining, finalProbeWait), signal);
         continue;
       }
       const regularWait = Math.max(0, firstReadAt - now());
       firstReadAt = 0;
       nextSourceProbeAt = 0;
+      firstSourceProbePending = false;
       if (!readable) {
         // An unanswered probe must leave time for the regular first read.
         await wait(Math.min(remaining, Math.max(regularWait, retryAfter * 1000)), signal);
