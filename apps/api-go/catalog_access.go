@@ -161,8 +161,9 @@ func (s *postgresCatalogStore) PaidArticleSearchDescriptors(ctx context.Context,
 	}
 	defer rows.Close()
 	result := []CatalogArticle{}
+	words := strings.Fields(strings.ToLower(query))
 	for rows.Next() {
-		article, matched, err := scanPaidArticleSearchRow(rows, configurationID, query)
+		article, matched, err := scanPaidArticleSearchRow(rows, configurationID, words)
 		if err != nil {
 			return nil, err
 		}
@@ -173,58 +174,18 @@ func (s *postgresCatalogStore) PaidArticleSearchDescriptors(ctx context.Context,
 	return result, rows.Err()
 }
 
-// Scan all selected content only into a private comparison projection. The
-// returned descriptor remains metadata-only even when an image alt matches.
-func scanPaidArticleSearchRow(row interface{ Scan(...any) error }, configurationID, query string) (CatalogArticle, bool, error) {
+// The returned descriptor remains metadata-only even when its content matched.
+func scanPaidArticleSearchRow(row interface{ Scan(...any) error }, configurationID string, words []string) (CatalogArticle, bool, error) {
 	var article CatalogArticle
-	var document, steps, images, sourceImagesRaw []byte
-	var body string
-	if err := row.Scan(&article.ID, &article.Title, &article.Kind, &article.Component, &article.SourceRevisionID, &article.CanonicalRevisionID, &article.ContentOrigin, &article.Availability, &article.ReviewStatus, &document, &body, &steps, &images, &sourceImagesRaw); err != nil {
+	var projection paidSearchProjection
+	if err := row.Scan(&article.ID, &article.Title, &article.Kind, &article.Component, &article.SourceRevisionID, &article.CanonicalRevisionID, &article.ContentOrigin, &article.Availability, &article.ReviewStatus, &projection.document, &projection.body, &projection.steps, &projection.images, &projection.sourceImages); err != nil {
 		return CatalogArticle{}, false, err
 	}
-	searchable := CatalogArticle{Title: article.Title, Kind: article.Kind, Component: article.Component, Body: body}
-	if len(document) > 0 {
-		var parsed CatalogDocument
-		if err := json.Unmarshal(document, &parsed); err != nil {
+	if !catalogSearchWordsMatch(strings.Join([]string{article.Title, article.Component, article.Kind}, " "), words) {
+		matched, err := projection.matchesContent(article, words)
+		if err != nil || !matched {
 			return CatalogArticle{}, false, err
 		}
-		searchable.Document = &parsed
-	}
-	if len(steps) > 0 {
-		if err := json.Unmarshal(steps, &searchable.Steps); err != nil {
-			return CatalogArticle{}, false, err
-		}
-	}
-	if len(images) > 0 {
-		if err := json.Unmarshal(images, &searchable.Images); err != nil {
-			return CatalogArticle{}, false, err
-		}
-	}
-	var sourceImages []CatalogImage
-	if len(sourceImagesRaw) > 0 {
-		if err := json.Unmarshal(sourceImagesRaw, &sourceImages); err != nil {
-			return CatalogArticle{}, false, err
-		}
-	}
-	// A paid detail only mints media URLs for assets still present in the
-	// selected source. Preserve that boundary while comparing text privately.
-	for i := range searchable.Images {
-		if !paidSearchImageInSource(searchable.Images[i], sourceImages) {
-			searchable.Images[i].Status = "unavailable"
-		}
-	}
-	for i := range searchable.Steps {
-		if searchable.Steps[i].Images != nil {
-			for j := range *searchable.Steps[i].Images {
-				image := &(*searchable.Steps[i].Images)[j]
-				if !paidSearchImageInSource(*image, sourceImages) {
-					image.Status = "unavailable"
-				}
-			}
-		}
-	}
-	if len(filterCatalogArticleSearch([]CatalogArticle{searchable}, query)) == 0 {
-		return CatalogArticle{}, false, nil
 	}
 	article.CanonicalArticleID = stringPointer(article.ID)
 	article.VehicleID = configurationID
@@ -237,11 +198,80 @@ func scanPaidArticleSearchRow(row interface{ Scan(...any) error }, configuration
 	return article, true, nil
 }
 
-func paidSearchImageInSource(image CatalogImage, sourceImages []CatalogImage) bool {
-	asset := paidCatalogImageAssetID(image)
-	return paidCatalogAssetPattern.MatchString(asset) &&
-		localCatalogImageKeyPattern.MatchString(image.StorageKey) &&
-		paidCatalogHasAsset(sourceImages, asset, image.StorageKey)
+type paidSearchProjection struct {
+	document, steps, images, sourceImages []byte
+	body                                  string
+}
+
+func (projection paidSearchProjection) matchesContent(searchable CatalogArticle, words []string) (bool, error) {
+	if len(projection.document) > 0 {
+		var parsed CatalogDocument
+		if err := json.Unmarshal(projection.document, &parsed); err != nil {
+			return false, err
+		}
+		searchable.Document = &parsed
+	}
+	if len(projection.images) > 0 {
+		if err := json.Unmarshal(projection.images, &searchable.Images); err != nil {
+			return false, err
+		}
+	}
+	if searchable.Document != nil && len(searchable.Document.Blocks) > 0 {
+		// Ordered documents still resolve figures stored on compatibility steps.
+		// Their legacy action, body and evidence fields are hidden in this view.
+		if len(projection.steps) > 0 {
+			var steps []struct {
+				Images []CatalogImage `json:"images"`
+			}
+			if err := json.Unmarshal(projection.steps, &steps); err != nil {
+				return false, err
+			}
+			for _, step := range steps {
+				searchable.Images = append(searchable.Images, step.Images...)
+			}
+		}
+	} else {
+		searchable.Body = projection.body
+		if len(projection.steps) > 0 {
+			if err := json.Unmarshal(projection.steps, &searchable.Steps); err != nil {
+				return false, err
+			}
+		}
+	}
+	if err := projection.scopeImages(&searchable); err != nil {
+		return false, err
+	}
+	return catalogSearchWordsMatch(catalogArticleSearchText(searchable), words), nil
+}
+
+func (projection paidSearchProjection) scopeImages(article *CatalogArticle) error {
+	var sourceImages []CatalogImage
+	if len(projection.sourceImages) > 0 {
+		if err := json.Unmarshal(projection.sourceImages, &sourceImages); err != nil {
+			return err
+		}
+	}
+	assets := paidCatalogAssetURLs(sourceImages)
+	// A paid detail only mints media URLs for assets still present in the
+	// selected source. Preserve that boundary while comparing text privately.
+	clearUnproven := func(images []CatalogImage) {
+		for i := range images {
+			image := &images[i]
+			asset := paidCatalogImageAssetID(*image)
+			_, present := assets[paidCatalogAssetKey{asset, image.StorageKey}]
+			image.URL = ""
+			if !present || !paidCatalogAssetPattern.MatchString(asset) || !localCatalogImageKeyPattern.MatchString(image.StorageKey) {
+				image.StorageKey = ""
+			}
+		}
+	}
+	clearUnproven(article.Images)
+	for _, step := range article.Steps {
+		if step.Images != nil {
+			clearUnproven(*step.Images)
+		}
+	}
+	return nil
 }
 
 func (s *postgresCatalogStore) PaidArticleIdentity(ctx context.Context, configurationID, articleID string) (PaidArticleIdentity, error) {

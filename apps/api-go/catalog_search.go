@@ -20,19 +20,21 @@ func filterCatalogArticleSearch(items []CatalogArticle, query string) []CatalogA
 	}
 	matches := make([]CatalogArticle, 0)
 	for _, article := range items {
-		text := strings.ToLower(catalogArticleSearchText(article))
-		all := true
-		for _, word := range words {
-			if !strings.Contains(text, word) {
-				all = false
-				break
-			}
-		}
-		if all {
+		if catalogSearchWordsMatch(catalogArticleSearchText(article), words) {
 			matches = append(matches, article)
 		}
 	}
 	return matches
+}
+
+func catalogSearchWordsMatch(text string, words []string) bool {
+	text = strings.ToLower(text)
+	for _, word := range words {
+		if !strings.Contains(text, word) {
+			return false
+		}
+	}
+	return true
 }
 
 func catalogArticleSearchText(article CatalogArticle) string {
