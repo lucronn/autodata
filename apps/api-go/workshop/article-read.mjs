@@ -126,8 +126,17 @@ export async function readArticle(
       const samePendingSource = shortSourceCheck && latest.data.article.processing.job_id === earlyConfirmationJob;
       if (nextSourceProbeAt && retryAfter === 0 && (samePendingSource || sourceProbeFailed)) {
         const probeWait = Math.max(0, nextSourceProbeAt - now());
+        // A confirmed fetch can finish before the next scheduled read. Give
+        // this check the time left before that read and keep it on a miss.
+        const activeCaptureWait = probeWait - sourceProbeIntervalMs / 2;
+        if (!firstSourceProbePending && activeCaptureWait > 0 && samePendingSource &&
+            latest.data.article.processing.state === "fetching_source") {
+          firstSourceProbePending = true;
+          await wait(Math.min(remaining, activeCaptureWait), signal);
+          continue;
+        }
         nextSourceProbeAt = 0;
-        firstSourceProbePending = samePendingSource;
+        firstSourceProbePending ||= samePendingSource;
         await wait(Math.min(remaining, probeWait), signal);
         continue;
       }

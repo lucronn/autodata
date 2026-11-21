@@ -434,6 +434,14 @@ test('reader checks negotiated cold source early and preserves the half-second c
   for (const [label, responses, expectedStarts] of [
     ['source ready at first probe', [prepare, stored, complete], [0, 250, 1250]],
     ['source ready at second probe', [prepare, prepare, stored, complete], [0, 250, 500, 1500]],
+    ['active capture can finish before the half-second slot', [prepare, fetching, stored, complete], [0, 250, 375, 1375]],
+    ['active capture still pending at the extra check', [prepare, fetching, fetching, fetching, stored, complete], [0, 250, 375, 500, 750, 1750]],
+    ['extra check timeout preserves the remaining reads', [prepare, fetching, timedOut, fetching, stored, complete], [0, 250, 375, 500, 750, 1750]],
+    ['extra check honors server retry hint', [prepare, fetching, pending, complete], [0, 250, 375, 1375]],
+    ['extra check honors overload', [prepare, fetching, overload, complete], [0, 250, 375, 5375]],
+    ['a replacement job at the extra check rejoins the regular cadence',
+      [prepare, fetching, { ...fetching, data: { article: { processing: { job_id: 'next-job', state: 'fetching_source' } } } }, complete],
+      [0, 250, 375, 1000]],
     ['source ready at third probe', [prepare, prepare, fetching, stored, complete], [0, 250, 500, 750, 1750]],
     ['pending at both probes', [prepare, prepare, prepare, pending, stored, complete], [0, 250, 500, 1000, 2000, 3000]],
     ['third miss retains the ordinary read', [prepare, prepare, fetching, fetching, complete], [0, 250, 500, 750, 1000]],
@@ -455,10 +463,10 @@ test('reader checks negotiated cold source early and preserves the half-second c
     const actual = [];
     const result = await readArticle(async ({ timeout, readableBodyTimeout, preferShortSourceCheck }) => {
       actual.push(now);
-      assert.equal(preferShortSourceCheck, now === 250 || now === 500 || now === 750, label);
-      if (now === 250 || now === 750) assert.equal(timeout, 250, label);
-      if (now === 500) assert.equal(timeout, 500, label);
-      const bodyBudget = { 250: 750, 500: 750, 750: 500 };
+      const headerBudget = { 250: 250, 375: 125, 500: 500, 750: 250 };
+      const bodyBudget = { 250: 750, 375: 625, 500: 750, 750: 500 };
+      assert.equal(preferShortSourceCheck, now in headerBudget, label);
+      if (now in headerBudget) assert.equal(timeout, headerBudget[now], label);
       assert.equal(readableBodyTimeout, bodyBudget[now], label);
       const next = responses.shift();
       if (next === timedOut) {
