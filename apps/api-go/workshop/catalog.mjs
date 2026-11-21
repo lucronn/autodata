@@ -282,16 +282,25 @@ function safeRequestMessage(status) {
 const shortSourceCheckPreference = 'workshop-short-source-check';
 const shortPublicationCheckPreference = 'workshop-short-publication-check';
 const finishPublishedBodyPreference = 'workshop-finish-published-body';
+const publicationStatusPreference = 'workshop-publication-status';
 
 export async function requestArticleJSON(path, {
   signal, timeout = 10000, readableBodyTimeout = 0, fetcher = fetch, method = 'GET', body, headers = {},
   preferShortSourceCheck = false, preferShortPublicationCheck = false,
-  finishPublishedBody = false, reportBodyNetworkError = false,
+  finishPublishedBody = false, reportBodyNetworkError = false, publicationCheck,
 } = {}) {
   const preferences = [];
   if (preferShortSourceCheck) preferences.push(shortSourceCheckPreference);
   if (preferShortPublicationCheck) preferences.push(shortPublicationCheckPreference);
   if (finishPublishedBody) preferences.push(finishPublishedBodyPreference);
+  if (publicationCheck) {
+    preferences.push(publicationStatusPreference);
+    headers = {
+      ...headers,
+      'X-Workshop-Publication-Job': publicationCheck.jobId,
+      'X-Workshop-Source-Revision': publicationCheck.sourceRevisionId,
+    };
+  }
   const readTimeout = Math.max(1, Math.min(10000, timeout));
   const bodyTimeout = Math.min(10000, readableBodyTimeout);
   const earlyTimeout = bodyTimeout > readTimeout ? AbortSignal.timeout(readTimeout) : null;
@@ -332,7 +341,12 @@ export async function requestArticleJSON(path, {
     if (response.status !== 204 && (!data || typeof data !== 'object' || Array.isArray(data))) throw new CatalogRequestError('The catalog returned an unreadable response. Try again.', { code: 'INVALID_RESPONSE' });
     const shortSourceCheck = preferShortSourceCheck && applied === shortSourceCheckPreference;
     const shortPublicationCheck = preferShortPublicationCheck && applied === shortPublicationCheckPreference;
-    return { status: response.status, data, retryAfterSeconds, shortSourceCheck, shortPublicationCheck };
+    const publicationStatus = Boolean(publicationCheck && applied === publicationStatusPreference);
+    const publicationCheckSupported = response.headers.get('Workshop-Publication-Check') === 'supported';
+    return { status: response.status, data, retryAfterSeconds, shortSourceCheck, shortPublicationCheck,
+      ...(publicationStatus ? { publicationStatus } : {}),
+      ...(publicationCheckSupported ? { publicationCheckSupported } : {}),
+    };
   } catch (error) {
     signal?.throwIfAborted();
     if (error instanceof CatalogRequestError) throw error;

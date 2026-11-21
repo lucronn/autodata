@@ -682,6 +682,86 @@ test('a ready body gets the ordinary read time within the remaining reader budge
   assert.equal(result.data.article.body, 'Published');
 });
 
+test('one negotiated publication check can open a ready article while keeping the ordinary deadline on a miss', async () => {
+  const { readArticle } = await import('./workshop/article-read.mjs');
+  const source = {
+    status: 200, publicationCheckSupported: true, data: { article: {
+      id: 'article', content_origin: 'source', source_revision_id: 'source', body: 'Stored',
+      processing: { job_id: 'job', state: 'rewriting' },
+    } },
+  };
+  const ready = { status: 200, data: { article: { body: 'Published' } } };
+  const compact = { status: 200, publicationStatus: true, data: {
+    version: 'v1', article_id: 'article', job_id: 'job', source_revision_id: 'source', state: 'validating',
+  } };
+  const denied = Object.assign(new Error('Denied'), { status: 403 });
+  const badJSON = Object.assign(new Error('Incomplete'), { code: 'INVALID_RESPONSE' });
+  for (const [label, response, lastAt, expectedProbe] of [
+    ['ready', ready, 5000, true],
+    ['miss checks once despite a later long wait', compact, 15000, true],
+    ['retry hint', { ...compact, data: { ...compact.data, retry_after_seconds: 6 } }, 11000, true],
+    ['mismatched anchor cannot supply a body retry hint', { ...compact, data: { ...compact.data, job_id: 'other', retry_after_seconds: 6 } }, 7000, true],
+    ['network loss', new TypeError('Disconnected'), 7000, true],
+    ['incomplete response', badJSON, 7000, true],
+    ['full response fallback', source, 7000, true],
+    ['access revoked', denied, 5000, true],
+    ['old server', null, 7000, false],
+    ['explicit source wait', 6, 9000, false],
+  ]) {
+    let now = 0;
+    const starts = [], probes = [], shown = [];
+    const result = readArticle(async (options) => {
+      starts.push(now);
+      if (options.publicationCheck) {
+        probes.push(now);
+        assert.deepEqual(options.publicationCheck, { articleId: 'article', sourceRevisionId: 'source', jobId: 'job' });
+        assert.equal(options.timeout, 2000);
+        assert.equal(options.readableBodyTimeout, 10000);
+        assert.equal(options.finishPublishedBody, true);
+        if (response instanceof Error) throw response;
+        return response;
+      }
+      if (now === lastAt) return ready;
+      if (response === null) return { ...source, publicationCheckSupported: false };
+      if (response === 6 && now === 3000) return { ...source, retryAfterSeconds: 6 };
+      if (now === 0 || response === ready && now === 3000) return { ...source, retryAfterSeconds: 1 };
+      return source;
+    }, { now: () => now, wait: async ms => { now += ms; }, onUpdate: ({ data }) => shown.push(data.article.body) });
+    if (response === denied) await assert.rejects(result, error => error === denied);
+    else assert.equal((await result).data.article.body, 'Published');
+    assert.deepEqual(probes, expectedProbe ? [5000] : [], label);
+    assert.equal(starts.at(-1), lastAt, label);
+    assert.equal(shown.filter(item => item === 'Stored').length,
+      label === 'miss checks once despite a later long wait' || label === 'full response fallback' ? 4 : 3, label);
+  }
+});
+
+test('article transport negotiates publication status with exact retained source and job headers', async () => {
+  const { requestArticleJSON } = await import('./workshop/catalog.mjs');
+  const checked = await requestArticleJSON('/article', {
+    publicationCheck: { jobId: 'job', sourceRevisionId: 'source' },
+    finishPublishedBody: true,
+    fetcher: async (url, { method, headers }) => {
+      assert.equal(url, '/article');
+      assert.equal(method, 'GET');
+      assert.equal(headers.Prefer, 'workshop-finish-published-body, workshop-publication-status');
+      assert.equal(headers['X-Workshop-Publication-Job'], 'job');
+      assert.equal(headers['X-Workshop-Source-Revision'], 'source');
+      return new Response(JSON.stringify({ version: 'v1', job_id: 'job' }), {
+        headers: { 'Preference-Applied': 'workshop-publication-status', 'Retry-After': '4' },
+      });
+    },
+  });
+  assert.equal(checked.publicationStatus, true);
+  assert.equal(checked.retryAfterSeconds, 4);
+  const offered = await requestArticleJSON('/article', {
+    fetcher: async () => new Response(JSON.stringify({ article: {} }), {
+      headers: { 'Workshop-Publication-Check': 'supported' },
+    }),
+  });
+  assert.equal(offered.publicationCheckSupported, true);
+});
+
 test('only a confirmed published response can finish streaming past the early header deadline', async (t) => {
   const { requestArticleJSON } = await import('./workshop/catalog.mjs');
   const preference = 'workshop-finish-published-body';

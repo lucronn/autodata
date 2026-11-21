@@ -3,6 +3,8 @@ import { delay } from "./catalog.mjs";
 const sourceProbeIntervalMs = 250;
 const publicationProbeIntervalMs = 500;
 const maxArticleRequestMs = 10000;
+const publicationStatusProbeDelayMs = 2000;
+const publicationStates = ["normalizing", "rewriting", "validating", "publishing"];
 
 export class NavigationGeneration {
   #controller;
@@ -45,6 +47,21 @@ function articleRetryAfter(response) {
     Number(response?.data?.article?.processing?.retry_after_seconds) || 0,
   );
 }
+function publicationAnchor(response) {
+  const article = response?.data?.article;
+  if (response?.publicationCheckSupported && response.status === 200 &&
+      article?.content_origin === "source" && publicationStates.includes(article.processing?.state) &&
+      article.id && article.source_revision_id && article.processing.job_id) {
+    return { articleId: article.id, sourceRevisionId: article.source_revision_id, jobId: article.processing.job_id };
+  }
+}
+function publicationStatusRetryAfter(response, anchor) {
+  const status = response.data;
+  const matching = response.publicationStatus && response.status === 200 && status?.version === "v1" &&
+    status.article_id === anchor.articleId && status.job_id === anchor.jobId &&
+    status.source_revision_id === anchor.sourceRevisionId && publicationStates.includes(status.state);
+  return Math.max(articleRetryAfter(response), matching ? Number(status.retry_after_seconds) || 0 : 0);
+}
 export async function readArticle(
   read,
   {
@@ -66,6 +83,8 @@ export async function readArticle(
   let sourceConfirmationAt = 0;
   let publicationReadAt = 0;
   let publicationProbeJob;
+  let scheduledPublicationCheck;
+  const checkedPublicationJobs = new Set();
   let sawFastSource = false;
   let attempt = 0;
   while (now() < deadline) {
@@ -74,6 +93,8 @@ export async function readArticle(
     let shortSourceCheck = false, sourceProbeFailed = false;
     let shortPublicationJob;
     const startedAt = now();
+    const statusProbe = scheduledPublicationCheck?.regularReadAt > startedAt ? scheduledPublicationCheck : undefined;
+    scheduledPublicationCheck = undefined;
     if (firstReadAt <= startedAt) firstReadAt = 0;
     if (nextSourceProbeAt <= startedAt) nextSourceProbeAt = 0;
     if (regularSourceReadAt <= startedAt) regularSourceReadAt = 0;
@@ -82,6 +103,7 @@ export async function readArticle(
     const readDeadline = Math.min(
       deadline, firstReadAt || deadline, nextSourceProbeAt || deadline,
       regularSourceReadAt || deadline, sourceConfirmationAt || deadline, publicationReadAt || deadline,
+      statusProbe?.regularReadAt || deadline,
     );
     const firstScheduledSourceRead = !firstReadAt && confirmedSourceCapture && earlyConfirmationJob !== undefined;
     // Keep the header deadline for a short read. Give a successful body on
@@ -92,49 +114,60 @@ export async function readArticle(
     // A confirmed publication can use the ordinary body deadline even
     // when the probe had a short deadline for its headers.
     const bodyDeadline = sourceBodyDeadline ||
-      (publicationReadAt && startedAt + maxArticleRequestMs);
+      ((publicationReadAt || statusProbe) && startedAt + maxArticleRequestMs);
     try {
       const response = await read({
         signal,
         timeout: Math.max(1, Math.floor(Math.min(maxArticleRequestMs, readDeadline - startedAt))),
         readableBodyTimeout: bodyDeadline ? Math.floor(Math.min(deadline, bodyDeadline) - startedAt) : undefined,
-        finishPublishedBody: Boolean(publicationReadAt),
+        finishPublishedBody: Boolean(publicationReadAt || statusProbe),
         preferShortSourceCheck: Boolean(firstReadAt || regularSourceReadAt || firstScheduledSourceRead),
         preferShortPublicationCheck: !sawFastSource || Boolean(publicationReadAt),
+        publicationCheck: statusProbe?.anchor,
       });
       signal?.throwIfAborted();
-      latest = selectResponse(response);
-      if (!latest?.data?.article || typeof latest.data.article !== "object")
-        throw new Error("The article response is unreadable.");
-      onUpdate(latest);
-      retryAfter = articleRetryAfter(latest);
-      if (response !== latest) retryAfter = Math.max(retryAfter, articleRetryAfter(response));
-      const article = latest.data.article;
-      if (!processingArticle(article))
-        return { ...latest, timedOut: false };
-      readable = readableArticle(article);
-      shortSourceCheck = latest.shortSourceCheck === true && retryAfter === 0 &&
-        latest.status === 202 && !readable &&
-        ["queued", "fetching_source"].includes(article.processing.state);
-      const readableSource = latest.status === 200 && readable && article.content_origin === "source";
-      if (latest.shortPublicationCheck === true && retryAfter === 0 &&
-          readableSource && ["normalizing", "rewriting", "validating", "publishing"].includes(article.processing.state)) {
-        shortPublicationJob = article.processing.job_id;
-      }
-      if (retryAfter === 1 && article.processing.state !== "failed") {
-        if (latest.status === 202 && !readable) {
-          fastPendingJob = article.processing.job_id;
+      if (statusProbe && (response.publicationStatus || !response.data?.article)) {
+        retryAfter = publicationStatusRetryAfter(response, statusProbe.anchor);
+      } else {
+        latest = selectResponse(response);
+        if (!latest?.data?.article || typeof latest.data.article !== "object")
+          throw new Error("The article response is unreadable.");
+        onUpdate(latest);
+        retryAfter = articleRetryAfter(latest);
+        if (response !== latest) retryAfter = Math.max(retryAfter, articleRetryAfter(response));
+        const article = latest.data.article;
+        if (!processingArticle(article))
+          return { ...latest, timedOut: false };
+        readable = readableArticle(article);
+        shortSourceCheck = latest.shortSourceCheck === true && retryAfter === 0 &&
+          latest.status === 202 && !readable &&
+          ["queued", "fetching_source"].includes(article.processing.state);
+        const readableSource = latest.status === 200 && readable && article.content_origin === "source";
+        if (latest.shortPublicationCheck === true && retryAfter === 0 &&
+            readableSource && publicationStates.includes(article.processing.state)) {
+          shortPublicationJob = article.processing.job_id;
         }
-        fastSource = readableSource;
+        if (retryAfter === 1 && article.processing.state !== "failed") {
+          if (latest.status === 202 && !readable) {
+            fastPendingJob = article.processing.job_id;
+          }
+          fastSource = readableSource;
+        }
       }
     } catch (error) {
       signal?.throwIfAborted();
-      sourceProbeFailed = error instanceof TypeError || error.code === "NETWORK_UNAVAILABLE";
+      sourceProbeFailed = error instanceof TypeError || error.code === "NETWORK_UNAVAILABLE" ||
+        Boolean(statusProbe && error.code === "INVALID_RESPONSE");
       if (!sourceProbeFailed && !([429, 503].includes(error.status) && error.retryable)) throw error;
       retryAfter = Number(error.retryAfterSeconds) || 0;
     }
     const remaining = deadline - now();
     if (remaining <= 0) break;
+    if (statusProbe) {
+      const regularWait = Math.max(0, statusProbe.regularReadAt - now());
+      await wait(Math.min(remaining, Math.max(regularWait, retryAfter * 1000)), signal);
+      continue;
+    }
     if (firstReadAt) {
       const samePendingSource = shortSourceCheck && latest.data.article.processing.job_id === earlyConfirmationJob;
       confirmedSourceCapture = (firstSourceProbePending || confirmedSourceCapture) && samePendingSource &&
@@ -242,6 +275,14 @@ export async function readArticle(
         publicationProbeJob = shortPublicationJob;
         backoff = publicationProbeIntervalMs;
       }
+    }
+    // Keep the regular read time while allowing one smaller check after any server hint.
+    const anchor = readable && retryAfter * 1000 <= publicationStatusProbeDelayMs &&
+      backoff >= 2 * publicationStatusProbeDelayMs && publicationAnchor(latest);
+    if (anchor && remaining > publicationStatusProbeDelayMs && !checkedPublicationJobs.has(anchor.jobId)) {
+      checkedPublicationJobs.add(anchor.jobId);
+      scheduledPublicationCheck = { anchor, regularReadAt: now() + backoff };
+      backoff = publicationStatusProbeDelayMs;
     }
     await wait(
       Math.min(remaining, Math.max(backoff, retryAfter * 1000)),
