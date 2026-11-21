@@ -1637,6 +1637,7 @@ async function purchase() {
   await operation(
     async (g) => {
       $("purchase-action").disabled = true;
+      const purchaseLabel = quote.configuration_label;
       const result = await checkout.start(scope(), session.state.csrf, {
         signal: g.signal,
       });
@@ -1644,7 +1645,7 @@ async function purchase() {
       if (result.state === "checkout") location.assign(result.checkout_url);
       else if (result.state === "owned") {
         rememberOrderRoute(result.order_id);
-        await openPaidOrder(g, result);
+        await openPaidOrder(g, { ...result, configuration_label: purchaseLabel });
       } else {
         unconfirmedOrder = {
           id: result.order_id,

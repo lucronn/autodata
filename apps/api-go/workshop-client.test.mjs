@@ -2391,12 +2391,16 @@ test('an owned checkout keeps the confirmed payment on scoped index failures and
   for (const [status, code] of [[503, 'CATALOG_UNAVAILABLE'], [403, 'ENTITLEMENT_REQUIRED']]) {
     const error = Object.assign(new Error('Index unavailable'), { status, code });
     const h = await ownedCheckoutHarness([error, checkoutReadyIndex], { orderResponses: [checkoutPaidOrder] });
+    h.context.vehicle = { id: scope.configuration_id, region: scope.region };
+    const purchaseLabel = '2005 Toyota / 2.4 L';
+    h.context.quote = { ...h.context.quote, configuration_label: purchaseLabel };
     await h.context.purchase();
     assert.deepEqual(h.requests, [checkoutPost, checkoutIndexGet]);
     assert.equal(h.context.access, 'pending');
     assert.equal(h.context.paidOrder?.id, orderID);
     assert.equal(new URLSearchParams(h.location.search).get('order'), orderID);
     assert.equal(h.$('purchase-action').disabled, true);
+    assert.equal(h.$('purchase-selection').textContent, `${purchaseLabel} / ${scope.region}`);
     assert.equal(h.$('check-order').hidden, false);
     assert.match(h.statuses.at(-1).message, /Payment received.*do not pay again/);
     assert.equal(h.statuses.at(-1).options.retry, undefined);
