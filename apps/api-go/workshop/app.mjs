@@ -1418,7 +1418,7 @@ async function renewMedia(g, failed) {
   }
   if (!retryImage(failed, images)) showUnavailableImage(failed);
 }
-async function library(g, append = false) {
+async function library(g, append = false, { focusOnShow = false } = {}) {
   if (sessionRequest) {
     status("Checking your account…", { busy: true });
     await sessionRequest;
@@ -1517,6 +1517,11 @@ async function library(g, append = false) {
   $("library-message").textContent = list.children.length
     ? ""
     : "No vehicles purchased yet. Browse to choose a vehicle.";
+  if (!append && focusOnShow) {
+    const title = $("library-title");
+    title.focus({ preventScroll: true });
+    title.scrollIntoView({ behavior: "instant", block: "start" });
+  }
   status("My vehicles ready.", { complete: true });
 }
 function loadMoreLibrary() {
@@ -1925,10 +1930,8 @@ $("browse").addEventListener("click", () => {
 $("my-vehicles").addEventListener("click", () => {
   invalidate();
   updateURL({ library: true });
-  operation(
-    (g) => library(g),
-    () => operation((g) => library(g)),
-  );
+  const openLibrary = (g) => library(g, false, { focusOnShow: true });
+  operation(openLibrary, () => operation(openLibrary));
 });
 $("library-more").addEventListener("click", loadMoreLibrary);
 $("purchase-action").addEventListener("click", () => void purchase());

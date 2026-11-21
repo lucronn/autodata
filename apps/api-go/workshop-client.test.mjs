@@ -3951,6 +3951,29 @@ test('Library Load more makes one cursor request and keeps prior cards mounted',
   assert.equal(more.getAttribute('aria-disabled'), null);
 });
 
+test('an explicit Library open focuses and scrolls to the authorized cards after they render', async () => {
+  const item = { configuration_id: routeConfiguration, library_item_id: routeOrder, label: 'Purchased engine',
+    access_state: 'viewable', region: 'US', granted_at: '2026-11-16T00:00:00Z' };
+  const h = articleMediaHarness({
+    session: { state: { authenticated: true } }, validLibrary, clearReader() {},
+    requestJSON: async () => ({ version: 'v1', next_cursor: null, items: [item] }),
+  });
+  const title = new ArticleMediaNode('h2');
+  const scrolls = [];
+  title.scrollIntoView = options => {
+    assert.equal(h.nodes.get('library-items').children.length, 1);
+    scrolls.push([options.behavior, options.block]);
+  };
+  h.nodes.set('library-title', title);
+  runInNewContext(appSection('async function library(', 'function clearReader('), h.context);
+  await h.context.library(h.g);
+  assert.equal(title.focusCalls ?? 0, 0);
+  assert.deepEqual(scrolls, []);
+  await h.context.library(h.navigation.next(), false, { focusOnShow: true });
+  assert.equal(title.focusCalls, 1);
+  assert.deepEqual(scrolls, [['instant', 'start']]);
+});
+
 test('a Library card retries the same exact vehicle and focuses its first article index', async () => {
   const item = { configuration_id: routeConfiguration, library_item_id: routeOrder, label: 'Purchased engine',
     access_state: 'viewable', region: 'CA', granted_at: '2026-11-16T00:00:00Z' };
