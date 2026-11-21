@@ -992,6 +992,12 @@ function appSection(start, end) {
   return source.slice(first, last);
 }
 
+function installArticleRequestPath(context) {
+  context.URLSearchParams = URLSearchParams;
+  context.demoPath ??= (path) => path;
+  runInNewContext(appSection('function articleRequestPath(', 'function status('), context);
+}
+
 function sourceReviewHarness() {
   const navigation = new NavigationGeneration();
   const first = navigation.next();
@@ -1096,7 +1102,7 @@ function loginRouteHarness(search, { authenticate = true, signInError = null, lo
     vehicle: { id: previousConfiguration, region: 'US' }, quote: null,
     names: ['year', 'make', 'model', 'configuration'],
     rows: { configuration: [configuration] }, $: element,
-    checkout: { clear() { calls.checkoutClears++; }, start() { calls.checkouts++; } },
+    checkout: { read: () => null, clear() { calls.checkoutClears++; }, start() { calls.checkouts++; } },
     session: { state: { authenticated: false }, async signIn() {
       calls.signIns++;
       if (login) await login();
@@ -1135,6 +1141,26 @@ function loginRouteHarness(search, { authenticate = true, signInError = null, lo
   );
   return { context, calls, element };
 }
+
+test('checkout return checks sooner only for the matching, unexpired checkout', async () => {
+  const future = new Date(Date.now() + 60_000).toISOString();
+  const past = new Date(Date.now() - 60_000).toISOString();
+  for (const [attempt, expected] of [
+    [{ order_id: routeOrder, provider_expires_at: future }, true],
+    [{ order_id: routeOrder, provider_expires_at: past }, false],
+    [{ order_id: routeOrder }, false],
+    [{ order_id: previousConfiguration, provider_expires_at: future }, false],
+    [null, false],
+  ]) {
+    const h = loginRouteHarness(`?order=${routeOrder}`);
+    h.context.session.state.authenticated = true;
+    h.context.checkout.read = () => attempt;
+    const checks = [];
+    h.context.checkOrder = async (_g, id, { earlyCheckoutCheck }) => checks.push([id, earlyCheckoutCheck]);
+    await h.context.restoreRoute();
+    assert.deepEqual(checks, [[routeOrder, expected]]);
+  }
+});
 
 const loginRoutes = [
   { name: 'My vehicles instead of a prior selected configuration', query: '?view=library',
@@ -1534,7 +1560,7 @@ function paidPurchaseLifecycleHarness(selectionErrors, { realArticleIndex = fals
         context.renderPurchase();
       } },
     scope: () => ({ configuration_id: context.vehicle?.id, region: context.vehicle?.region }),
-    checkout: { async start() {
+    checkout: { read: () => null, async start() {
       checkoutStarts++;
       return { version: 'v1', ...scope, order_id: orderID, state: 'processing' };
     }, clear() {} },
@@ -1576,6 +1602,7 @@ function paidPurchaseLifecycleHarness(selectionErrors, { realArticleIndex = fals
       return merchantFixture();
     },
   };
+  installArticleRequestPath(context);
   runInNewContext(
     (realArticleIndex ? appSection('function show(', 'function clearProtected()') : '') +
     (realArticleIndex ? appSection('function clearProtected()', 'function invalidate()') : '') +
@@ -2192,6 +2219,7 @@ function articleIndexHarness(responses, { wait = async () => {}, openDemo = fals
     openArticle: id => opened.push({ id }),
     recordStatus: (text, options) => statuses.push({ text, ...options }),
   };
+  installArticleRequestPath(context);
   runInNewContext(
     appSection('function status(', 'function stage(') +
     appSection('function clearProtected()', 'function updateURL(') +
@@ -2213,7 +2241,7 @@ test('open demo requests the real index and shows only readable articles', async
     { id: 'waiting', title: 'Index only', availability: 'unavailable' },
   ] })], { openDemo: true });
   await h.load();
-  assert.equal(h.requests[0].path, '/v1/catalog/vehicles/B/articles?demo=1');
+  assert.equal(h.requests[0].path, '/v1/catalog/vehicles/B/articles?region=US&demo=1');
   assert.equal(h.$('articles').children[0].children.length, 1);
   assert.match(h.$('catalog-count').textContent, /1 available articles · 2 indexed/);
 });
@@ -2364,7 +2392,7 @@ test('Workshop input searches owned article content through protected index quer
   h.$('search').events.input();
   await new Promise(resolve => setImmediate(resolve));
 
-  assert.equal(h.requests[1].path, '/v1/catalog/vehicles/B/articles?q=ground%20strap');
+  assert.equal(h.requests[1].path, '/v1/catalog/vehicles/B/articles?q=ground+strap&region=US');
   const list = h.$('articles').children[0];
   assert.deepEqual(list.children.map(row => row.children[0].children[0].textContent), ['Service notes']);
   assert.equal(new URL(list.children[0].children[0].href, 'https://cars.example').searchParams.get('article'), 'content-hit');
@@ -2386,7 +2414,7 @@ test('open demo content search keeps its access marker and excludes unreadable h
   h.$('search').value = 'ground strap';
   h.$('search').events.input();
   await new Promise(resolve => setImmediate(resolve));
-  assert.equal(h.requests[1].path, '/v1/catalog/vehicles/B/articles?q=ground%20strap&demo=1');
+  assert.equal(h.requests[1].path, '/v1/catalog/vehicles/B/articles?q=ground+strap&region=US&demo=1');
   assert.equal(h.$('articles').children[0].children.length, 1);
 });
 
@@ -2883,6 +2911,7 @@ function articleMediaHarness(overrides = {}) {
     show: id => shows.push(id), status: (message, options) => statuses.push({ message, options }),
     ...overrides,
   };
+  installArticleRequestPath(context);
   runInNewContext([
     appSection('const element =', 'const session ='),
     appSection('function clearProtected(', 'async function operation('),
@@ -3026,6 +3055,41 @@ test('article navigation focuses its visible heading once before preparation and
   assert.equal(h.nodes.get('print').focusCalls, 1);
 });
 
+test('readable source ends the opening progress while the rewrite continues', async () => {
+  const source = mediaArticle([{ type: 'paragraph', text: 'Original procedure.' }], [], {
+    processing: { job_id: 'rewrite', state: 'rewriting' },
+  });
+  const canonical = mediaArticle([{ type: 'paragraph', text: 'Rewritten procedure.' }], [], {
+    content_origin: 'canonical', view_revision: 'published', review_status: 'UNREVIEWED',
+  });
+  const available = deferredAuthOperation(), published = deferredAuthOperation();
+  const h = articleMediaHarness({
+    session: { state: { authenticated: true, csrf: 'csrf' } }, stage() {}, openDemo: false,
+    requestArticleJSON: async () => ({ data: { article: source } }),
+    async readArticle(read, { onUpdate }) {
+      onUpdate(await read());
+      onUpdate({ data: { article: source } });
+      available.resolve();
+      await published.promise;
+      const response = { data: { article: canonical } };
+      onUpdate(response);
+      return response;
+    },
+  });
+  runInNewContext(appSection('async function loadArticle(', 'function openArticle('), h.context);
+  const opening = h.context.loadArticle('a', h.g);
+  await available.promise;
+  assert.deepEqual(h.statuses.map(({ message }) => message), ['Opening article…', 'Stored source is ready.']);
+  assert.equal(h.statuses.at(-1).options.busy, undefined);
+  assert.equal(h.statuses.at(-1).options.cancelable, true);
+  assert.equal(h.nodes.get('print').disabled, false);
+  assert.equal(h.nodes.get('article-note').textContent, 'Preparing the Workshop rewrite.');
+  published.resolve();
+  await opening;
+  assert.equal(h.statuses.at(-1).message, 'Article ready.');
+  assert.match(h.nodes.get('article-note').textContent, /has not been reviewed/);
+});
+
 test('obsolete article navigation leaves current heading and focus alone', async () => {
   const h = articleMediaHarness({ session: { state: { authenticated: true } } });
   runInNewContext(appSection('async function loadArticle(', 'function openArticle('), h.context);
@@ -3060,7 +3124,7 @@ test('retrying a visible article keeps its tab title while preparation fails', a
 test('opening another article removes the previous source and disables printing until it loads', async () => {
   let resolvePrepare;
   const h = articleRouteHarness('firebase', path => {
-    assert.equal(path, '/v1/catalog/vehicles/v/articles/b/prepare');
+    assert.equal(path, '/v1/catalog/vehicles/v/articles/b/prepare?region=US');
     return new Promise(resolve => { resolvePrepare = resolve; });
   });
   const previousArticle = mediaArticle([{ type: 'paragraph', text: 'Old procedure.' }], [], {
@@ -3368,7 +3432,7 @@ for (const [origin, state, retryable, note] of [
     assert.equal(parent.textContent.includes('Conflicting'), false);
     assert.equal(h.nodes.get('article-kind').textContent, origin === 'canonical' ? 'Workshop article' : 'Stored source');
     assert.equal(h.nodes.get('article-note').hidden, !note);
-    assert.equal(h.nodes.get('article-note').textContent, note ? 'Preparing articles. Available source remains readable.' : '');
+    assert.equal(h.nodes.get('article-note').textContent, note ? 'An update is in progress.' : '');
     assert.equal(h.nodes.get('print').disabled, false);
     assert.equal(h.context.document.body.dataset.printable, 'true');
     assert.equal(h.nodes.get('source-review').hidden, false);
@@ -3497,7 +3561,7 @@ test('unchanged article polls keep decoded and in-flight figures on their curren
   assert.deepEqual(mediaDescendants(parent, 'img'), [loaded, pending]);
   assert.deepEqual([loaded.src, pending.src], originals);
   assert.deepEqual([loaded.dataset.replacement, pending.dataset.replacement], [undefined, undefined]);
-  assert.match(h.nodes.get('article-note').textContent, /Preparing articles/);
+  assert.match(h.nodes.get('article-note').textContent, /Preparing the Workshop rewrite/);
 
   h.render({ ...incoming, view_revision: 'published-view' });
   const [nextLoaded, nextPending] = mediaDescendants(parent, 'img');
@@ -3516,7 +3580,7 @@ test('article block media actual renewal shares one request and reconciles both 
   assert.equal(images.length, 2);
   const renewal = Promise.all(images.map(img => h.context.renewMedia(h.g, img)));
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].path, '/v1/catalog/vehicles/v/articles/a'); assert.equal(calls[0].options.signal, h.g.signal);
+  assert.equal(calls[0].path, '/v1/catalog/vehicles/v/articles/a?region=US'); assert.equal(calls[0].options.signal, h.g.signal);
   pending.resolve(renewedArticle()); await renewal;
   assert.deepEqual(mediaDescendants(parent, 'img'), images, 'stable revision retains image nodes');
   assert.deepEqual(images.map(n => n.src), ['https://cars.example/v1/catalog/images/v2.new-list', 'https://cars.example/v1/catalog/images/v2.new-callout']);
@@ -3846,6 +3910,20 @@ function selectionQuoteHarness(merchant, { authenticated = true, openDemo = fals
   return { context, navigation, generation, calls, opened };
 }
 
+test('known-owned handoffs skip the quote and Library fetches a price only if access is missing', async () => {
+  for (const quoteMode of ['skip', 'if-needed']) {
+    const h = selectionQuoteHarness({ enabled: true });
+    await h.context.selectVehicle(h.generation, '', { quoteMode });
+    assert.equal(h.opened.length, 1);
+    assert.equal(h.calls.length, 0);
+
+    const required = Object.assign(new Error('Access required'), { code: 'ENTITLEMENT_REQUIRED' });
+    h.context.loadArticles = async () => { throw required; };
+    await assert.rejects(h.context.selectVehicle(h.generation, '', { quoteMode }), required);
+    assert.equal(h.calls.length, quoteMode === 'if-needed' ? 1 : 0);
+  }
+});
+
 test('open demo selects a vehicle without login, quote, or purchase', async () => {
   const h = selectionQuoteHarness({ enabled: true }, {
     authenticated: false, openDemo: true,
@@ -4010,7 +4088,7 @@ function articleRouteHarness(mode, request, authenticated = true, openDemo = fal
     },
   });
   h.context.openDemo = openDemo;
-  h.context.demoPath = path => openDemo ? `${path}?demo=1` : path;
+  h.context.demoPath = path => openDemo ? `${path}${path.includes('?') ? '&' : '?'}demo=1` : path;
   runInNewContext(appSection('async function loadArticle(', 'function openArticle('), h.context);
   return h;
 }
@@ -4023,7 +4101,7 @@ test('open demo reads an article with GET and no session or checkout', async () 
   }, false, true);
   await h.context.loadArticle('a', h.g);
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].path, '/v1/catalog/vehicles/v/articles/a?demo=1');
+  assert.equal(calls[0].path, '/v1/catalog/vehicles/v/articles/a?region=US&demo=1');
   assert.equal(calls[0].options.method, undefined);
 });
 
@@ -4033,7 +4111,7 @@ for (const mode of ['local', 'firebase', undefined, null, 'LOCAL', 'other']) {
     const h = articleRouteHarness(mode, async (path, options) => { calls.push({ path, options }); return { data: { article } }; });
     await h.context.loadArticle('a', h.g);
     assert.equal(calls.length, 1);
-    assert.equal(calls[0].path, mode === 'local' ? '/v1/catalog/vehicles/v/articles/a' : '/v1/catalog/vehicles/v/articles/a/prepare');
+    assert.equal(calls[0].path, mode === 'local' ? '/v1/catalog/vehicles/v/articles/a?region=US' : '/v1/catalog/vehicles/v/articles/a/prepare?region=US');
     assert.equal(calls[0].options.method || 'GET', mode === 'local' ? 'GET' : 'POST');
     assert.equal(calls[0].options.signal, h.g.signal);
     if (mode === 'local') {
@@ -4056,7 +4134,7 @@ test('local mode preserves actual GET polling responses and session authorizatio
   });
   await h.context.loadArticle('a', h.g);
   assert.equal(calls.length, 2);
-  assert.ok(calls.every(c => c.path === '/v1/catalog/vehicles/v/articles/a' && !c.options.method));
+  assert.ok(calls.every(c => c.path === '/v1/catalog/vehicles/v/articles/a?region=US' && !c.options.method));
   assert.equal(h.context.currentArticle, ready);
   const signedOut = articleRouteHarness('local', () => assert.fail('local mode does not grant a session'), false);
   await signedOut.context.loadArticle('a', signedOut.g);

@@ -202,7 +202,11 @@ export function createCheckout({
           (data.state === "owned" && data.library_item_id !== data.order_id)
         )
           throw new Error("Purchase status is unavailable.");
-        save({ ...attempt, order_id: data.order_id });
+        save({
+          ...attempt,
+          order_id: data.order_id,
+          provider_expires_at: data.state === "checkout" ? data.provider_expires_at : undefined,
+        });
         return data;
       })
       .finally(() => {

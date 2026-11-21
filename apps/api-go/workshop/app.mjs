@@ -100,15 +100,20 @@ const scope = () => ({
 });
 const articlePath = (id) =>
   `/v1/catalog/vehicles/${encodeURIComponent(vehicle.id)}/articles${id ? `/${encodeURIComponent(id)}` : ""}`;
+function articleRequestPath(id, suffix = "", query) {
+  const params = new URLSearchParams(query);
+  params.set("region", vehicle.region);
+  return demoPath(`${articlePath(id)}${suffix}?${params}`);
+}
 function status(
   text,
-  { error = false, busy = false, retry = null, complete = false } = {},
+  { error = false, busy = false, retry = null, complete = false, cancelable = busy } = {},
 ) {
   $("activity-text").textContent = text;
   $("activity").dataset.tone = error ? "error" : busy ? "loading" : "ready";
   $("critical-error").textContent = error ? text : "";
   if (complete) $("completion-status").textContent = text;
-  $("cancel").hidden = !busy;
+  $("cancel").hidden = !cancelable;
   $("retry").hidden = !retry;
   retryAction = retry;
   $("loading-progress").hidden = !busy;
@@ -439,7 +444,7 @@ function purchaseConfigured() {
     origin: globalThis.location?.origin,
   });
 }
-async function selectVehicle(g, articleID = "") {
+async function selectVehicle(g, articleID = "", { quoteMode = "eager" } = {}) {
   if (!g.current()) return;
   clearProtected();
   quote = null;
@@ -447,7 +452,7 @@ async function selectVehicle(g, articleID = "") {
   renderPurchase();
   if (!validScope(scope())) return;
   const selected = scope();
-  const quoteRequest = (async () => {
+  const loadQuote = async () => {
     if (openDemo) return;
     if (merchantRequest) await merchantRequest;
     if (!g.current()) return;
@@ -472,9 +477,10 @@ async function selectVehicle(g, articleID = "") {
       // The quote is optional for owned articles. Its absence keeps Buy disabled.
       if (g.current()) renderPurchase();
     }
-  })();
+  };
+  const quoteRequest = quoteMode === "eager" ? loadQuote() : null;
   if (!openDemo && !session.state.authenticated) {
-    await quoteRequest;
+    if (quoteMode !== "skip") await (quoteRequest ?? loadQuote());
     if (!g.current()) return;
     show("welcome");
     status("Sign in to check access to your selected vehicle.");
@@ -485,7 +491,9 @@ async function selectVehicle(g, articleID = "") {
   } catch (error) {
     // When a purchase is required, present the price or its unavailable state
     // with the access result so the UI does not announce a false checkout failure.
-    if (error.code === "ENTITLEMENT_REQUIRED") await quoteRequest;
+    if (error.code === "ENTITLEMENT_REQUIRED" && quoteMode !== "skip") {
+      await (quoteRequest ?? loadQuote());
+    }
     throw error;
   }
 }
@@ -495,7 +503,7 @@ async function loadArticles(g, articleID = "") {
   stage("articles");
   status("Opening your article index…", { busy: true });
   const data = await readCollection(
-    () => requestJSON(demoPath(articlePath()), { signal: g.signal }),
+    () => requestJSON(articleRequestPath(), { signal: g.signal }),
     {
       signal: g.signal,
       desired: articleID,
@@ -569,7 +577,7 @@ function scheduleArticleSearch() {
   const vehicleID = vehicle.id;
   searchTimer = setTimeout(() => {
     searchTimer = null;
-    void requestJSON(demoPath(`${articlePath()}?q=${encodeURIComponent(query)}`), {
+    void requestJSON(articleRequestPath(undefined, "", { q: query }), {
       signal: generation.signal,
     }).then((result) => {
       if (!generation.current() || vehicle?.id !== vehicleID || $("search").value.trim() !== query) return;
@@ -926,14 +934,21 @@ function renderArticle(article, g) {
   $("reader-vehicle").textContent =
     quote?.configuration_label || $("purchase-selection").textContent;
   $("reader-engine").textContent = vehicle.region;
-  $("article-note").hidden = !processingArticle(article) && article.review_status !== 'UNREVIEWED';
-  $("article-note").textContent = processingArticle(article)
-    ? "Preparing articles. Available source remains readable."
-    : article.review_status === 'UNREVIEWED'
-      ? "Draft content has not been reviewed. Check the stored source before using this procedure."
-      : "";
-  $("print").disabled = !readableArticle(article);
-  document.body.dataset.printable = String(readableArticle(article));
+  const readable = readableArticle(article);
+  const processing = processingArticle(article);
+  const notes = [];
+  if (readable && processing) {
+    const rewriting = article.content_origin === "source" &&
+      ["normalizing", "rewriting", "validating", "publishing"].includes(article.processing.state);
+    notes.push(rewriting ? "Preparing the Workshop rewrite." : "An update is in progress.");
+  }
+  if (readable && article.review_status === "UNREVIEWED" && (!processing || article.content_origin === "canonical")) {
+    notes.push("Draft content has not been reviewed. Check the stored source before using this procedure.");
+  }
+  $("article-note").hidden = !notes.length;
+  $("article-note").textContent = notes.join(" ");
+  $("print").disabled = !readable;
+  document.body.dataset.printable = String(readable);
   $("article-reference").hidden = false;
   $("source-review").hidden = !review?.available;
   if (review?.available) {
@@ -957,8 +972,8 @@ async function loadArticle(id, g) {
   stage("article");
   status("Opening article…", { busy: true });
   const first = openDemo || session.state.mode === "local"
-    ? await requestArticleJSON(demoPath(articlePath(id)), { signal: g.signal, preferShortPublicationCheck: true })
-    : await requestArticleJSON(`${articlePath(id)}/prepare`, {
+    ? await requestArticleJSON(articleRequestPath(id), { signal: g.signal, preferShortPublicationCheck: true })
+    : await requestArticleJSON(articleRequestPath(id, "/prepare"), {
         method: "POST",
         body: {},
         preferShortSourceCheck: true,
@@ -967,8 +982,8 @@ async function loadArticle(id, g) {
         signal: g.signal,
       });
   if (!g.current()) return;
-  if (first.data?.article) renderArticle(first.data.article, g);
   let initial = first;
+  let readingStatus = "";
   const result = await readArticle(
     (options) => {
       if (initial) {
@@ -976,12 +991,22 @@ async function loadArticle(id, g) {
         initial = null;
         return value;
       }
-      return requestArticleJSON(demoPath(articlePath(id)), options);
+      return requestArticleJSON(articleRequestPath(id), options);
     },
     {
       signal: g.signal,
       onUpdate(response) {
-        if (g.current()) renderArticle(response.data.article, g);
+        if (!g.current()) return;
+        const article = response.data.article;
+        renderArticle(article, g);
+        if (!processingArticle(article)) return;
+        const ready = readableArticle(article)
+          ? article.content_origin === "source" ? "Stored source is ready." : "Article is readable."
+          : "";
+        if (ready === readingStatus) return;
+        readingStatus = ready;
+        if (ready) status(ready, { complete: true, cancelable: true });
+        else status("Opening article…", { busy: true });
       },
     },
   );
@@ -990,7 +1015,7 @@ async function loadArticle(id, g) {
   const readable = readableArticle(article);
   status(
     result.timedOut
-      ? "Preparation is taking longer. You can check again."
+      ? readable ? "Article is readable. You can check for an update again." : "Preparation is taking longer. You can check again."
       : article?.processing?.state === "needs_review"
         ? readable
           ? article.content_origin === "source"
@@ -998,7 +1023,7 @@ async function loadArticle(id, g) {
             : "Article is readable. An update needs review."
           : "This article needs review."
         : article?.processing?.state === "failed"
-          ? "Preparation could not finish. Available source can still be read."
+          ? readable ? "Preparation could not finish. The available article is still readable." : "Article preparation could not finish."
           : readable
             ? "Article ready."
             : "No readable content is available.",
@@ -1107,7 +1132,7 @@ async function renewMedia(g, failed) {
           throw new Error("The stored source changed.");
         return data.images || [];
       }
-      const response = await requestArticleJSON(demoPath(articlePath(currentArticle.id)), { signal: g.signal });
+      const response = await requestArticleJSON(articleRequestPath(currentArticle.id), { signal: g.signal });
       if (!current()) return [];
       renderArticle(response.data.article, g);
       return imageMap(response.data.article);
@@ -1198,7 +1223,7 @@ async function library(g, append = false) {
         };
         quote = null;
         updateURL();
-        operation((g) => selectVehicle(g));
+        operation((g) => selectVehicle(g, "", { quoteMode: "if-needed" }));
       });
       li.append(button);
     }
@@ -1226,7 +1251,7 @@ function clearReader() {
   resetReaderContent();
   $("reader").hidden = true;
 }
-async function checkOrder(g, id) {
+async function checkOrder(g, id, { earlyCheckoutCheck = false } = {}) {
   if (paidOrder?.id !== id) paidOrder = null;
   if (unconfirmedOrder?.id !== id) unconfirmedOrder = null;
   currentOrder = id;
@@ -1250,6 +1275,7 @@ async function checkOrder(g, id) {
   };
   const result = await pollOrder(id, {
     signal: g.signal,
+    earlyCheckoutCheck,
     onUpdate(order) {
       if (g.current()) {
         rememberUnconfirmed(order);
@@ -1293,7 +1319,7 @@ async function checkOrder(g, id) {
     paidOrder = { id, configuration_id: result.configuration_id, region: result.region };
     vehicle = { id: result.configuration_id, region: result.region };
     try {
-      await selectVehicle(g);
+      await selectVehicle(g, "", { quoteMode: "skip" });
     } catch (error) {
       if (!g.current()) return;
       if (error.code === "ENTITLEMENT_REVOKED") {
@@ -1388,7 +1414,7 @@ async function purchase() {
           region: result.region,
         };
         rememberOrderRoute(result.order_id);
-        await checkOrder(g, result.order_id);
+        await checkOrder(g, result.order_id, { earlyCheckoutCheck: true });
       }
     },
     () => purchase(),
@@ -1460,8 +1486,12 @@ async function restoreRoute(initialYears = null) {
     async (g) => {
       const order = params.get("order");
       if (!openDemo && uuid(order)) {
-        if (session.state.authenticated) await checkOrder(g, order);
-        else status("Sign in to check this payment.");
+        if (session.state.authenticated) {
+          const attempt = checkout.read();
+          const earlyCheckoutCheck = attempt?.order_id === order &&
+            Date.parse(attempt.provider_expires_at) > Date.now() + 1000;
+          await checkOrder(g, order, { earlyCheckoutCheck });
+        } else status("Sign in to check this payment.");
         return;
       }
       if (!openDemo && params.get("view") === "library") {

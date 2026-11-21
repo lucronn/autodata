@@ -1404,8 +1404,8 @@ async def api_case(browser,origin,name,output,observations=None):
         if observations:
             observations.owner_scope=(configuration,order)
             observations.phase='owner-library-initial-http'
-        await page.goto(route)
-        await expect(page.locator('#articles a')).not_to_have_count(0)
+        # Let the real return page observe the signed settlement and open the index.
+        await page.wait_for_function("!document.getElementById('catalog').hidden && document.querySelector('#articles a') && !new URL(location.href).searchParams.has('order')")
         await page.locator('#my-vehicles').click()
         if observations:
             await expect(page.locator('#library-items > li')).to_have_count(1)
@@ -1443,6 +1443,23 @@ async def api_case(browser,origin,name,output,observations=None):
         assert {key:restart_before[key] for key in durable}=={key:restart_after[key] for key in durable}
         restart_receipt={'runtime_before':runtime_before,'runtime_after':runtime_after,'before':restart_before,'after':restart_after}
         assertions['permanent_owner_library_server_restart']=True
+        if name==API_CASES[2]:
+            if observations:observations.phase='setup'
+            unexpected_quotes=[]
+            def record_quote(request):
+                if urlsplit(request.url).path == '/v1/workshop/quote':
+                    unexpected_quotes.append(True)
+            page.on('request', record_quote)
+            await page.get_by_role('button', name='Open articles', exact=True).click()
+            await expect(page.locator('#articles a')).not_to_have_count(0)
+            page.remove_listener('request', record_quote)
+            assert not unexpected_quotes, 'opening an owned Library vehicle requested a quote'
+            wrong_region = route.replace('&region=US', '&region=CA')
+            async with page.expect_response(lambda response: urlsplit(response.url).path.endswith('/articles') and 'region=CA' in urlsplit(response.url).query) as requested:
+                await page.goto(wrong_region)
+            assert (await requested.value).status == 404
+            await expect(page.locator('#critical-error')).not_to_be_empty()
+            await expect(page.locator('#articles a')).to_have_count(0)
         if name==API_CASES[0]:
             assert await page.evaluate('Object.keys(localStorage).filter(k=>/firebase:authUser|token|csrf/i.test(k))')==[]
         else:
@@ -1450,6 +1467,9 @@ async def api_case(browser,origin,name,output,observations=None):
             if observations:observations.phase='source-page-http'
             await page.goto(route+'&article='+article_id)
             await expect(page.locator('#article-kind')).to_have_text('Stored source',timeout=15000)
+            await expect(page.locator('#activity-text')).to_have_text('Stored source is ready.')
+            await expect(page.locator('#loading-progress')).to_be_hidden()
+            await expect(page.locator('#article-note')).to_have_text('Preparing the Workshop rewrite.')
             article_content = page.locator('#article-content')
             await expect(article_content).to_contain_text('Inspect the alignment marks before removing the pump.')
             await expect(article_content).to_contain_text('Remove the pump.')
