@@ -396,6 +396,9 @@ function renderPurchase() {
   const confirming = unconfirmedOrder?.id === currentOrder &&
     vehicle?.id === unconfirmedOrder.configuration_id &&
     vehicle?.region === unconfirmedOrder.region;
+  const paymentReceived = session.state.authenticated && (access === "pending" ||
+    (access === "unknown" && paidOrder !== null && paidOrder.id === currentOrder &&
+      vehicle?.id === paidOrder.configuration_id && vehicle?.region === paidOrder.region));
   const priced = validQuote(quote, scope());
   const quotedLabel = priced ? `${quote.configuration_label} / ${quote.region}` : "";
   $("purchase").hidden = !validScope(scope());
@@ -417,7 +420,7 @@ function renderPurchase() {
   }
   const configured = purchaseConfigured();
   const price = $("purchase-price");
-  price.hidden = access === "owned";
+  price.hidden = access === "owned" || paymentReceived;
   price.textContent = price.hidden ? "" : priced
     ? "$20 USD · one-time"
     : "Price is currently unavailable.";
@@ -427,7 +430,7 @@ function renderPurchase() {
       ? "Access revoked. Contact the published support address."
       : access === "owned"
         ? "Owned. Open your articles without another purchase."
-        : access === "pending" && session.state.authenticated
+        : paymentReceived
           ? "Payment received. Article access is still being checked. Use Check payment status; do not pay again."
           : confirming && session.state.authenticated
             ? "Payment confirmation is pending. Use Check payment status; do not pay again."
@@ -444,7 +447,7 @@ function renderPurchase() {
     ? "Sign in with Google"
     : access === "owned"
       ? "Open articles"
-      : access === "pending"
+      : paymentReceived
         ? "Payment received"
         : confirming
           ? "Payment pending"

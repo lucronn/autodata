@@ -2025,6 +2025,30 @@ test('paid catalog withdrawal through purchase never invites repayment or a no-o
   assert.equal(h.statuses.at(-1).options.retry, undefined);
 });
 
+test('paid return preserves confirmed payment while the entitled index is still opening', async () => {
+  const index = deferredAuthOperation();
+  const h = paidPurchaseLifecycleHarness([], { realArticleIndex: true, articleReadResponses: [index.promise] });
+  h.location.search = `?order=${orderID}`;
+  const opening = h.context.restoreRoute();
+  await new Promise(setImmediate);
+  assert.equal(h.context.access, 'unknown', 'payment confirmation does not grant article access');
+  assert.equal(h.$('purchase-action').textContent, 'Payment received');
+  assert.equal(h.$('purchase-action').disabled, true);
+  assert.equal(h.$('purchase-price').hidden, true);
+  assert.match(h.$('purchase-message').textContent, /Payment received.*do not pay again/);
+  assert.equal(h.$('check-order').hidden, false);
+  assert.equal(new URLSearchParams(h.location.search).get('order'), orderID);
+  assert.equal(h.$('articles').children.length, 0);
+
+  index.resolve({ items: [{ id: routeArticle, title: 'Private article' }], complete: true, hydrating: false });
+  await opening;
+  assert.equal(h.context.access, 'owned');
+  assert.equal(h.$('purchase-action').textContent, 'Open articles');
+  assert.equal(h.$('check-order').hidden, true);
+  assert.equal(new URLSearchParams(h.location.search).has('order'), false);
+  assert.equal(h.checkoutStarts(), 0);
+});
+
 test('paid partial article index is cleared when a later poll withdraws the catalog', async () => {
   const withdrawn = Object.assign(new Error('Catalog withdrawn'), { status: 410, code: 'CATALOG_WITHDRAWN' });
   const h = paidPurchaseLifecycleHarness([withdrawn], { realArticleIndex: true });
@@ -2508,6 +2532,25 @@ test('confirmed paid marker for another vehicle does not mask missing access', a
   h.context.vehicle = { id: previousConfiguration, region: scope.region };
   await h.context.operation(async () => { throw required; });
   assert.equal(h.context.access, 'missing');
+});
+
+test('a confirmed payment marker cannot describe another scope, a signed-out viewer, or revoked access', () => {
+  const h = paidPurchaseLifecycleHarness([]);
+  h.context.currentOrder = orderID;
+  h.context.paidOrder = { id: orderID, ...scope };
+  for (const [vehicle, authenticated, access] of [
+    [{ id: previousConfiguration, region: scope.region }, true, 'unknown'],
+    [{ id: scope.configuration_id, region: 'CA' }, true, 'unknown'],
+    [{ id: scope.configuration_id, region: scope.region }, false, 'unknown'],
+    [{ id: scope.configuration_id, region: scope.region }, true, 'revoked'],
+  ]) {
+    h.context.vehicle = vehicle;
+    h.context.session.state.authenticated = authenticated;
+    h.context.access = access;
+    h.context.renderPurchase();
+    assert.doesNotMatch(h.$('purchase-message').textContent, /Payment received/);
+    if (access === 'revoked') assert.match(h.$('purchase-message').textContent, /Access revoked/);
+  }
 });
 
 test('paid processing checkout survives focus recheck without a second Buy invitation', async () => {
