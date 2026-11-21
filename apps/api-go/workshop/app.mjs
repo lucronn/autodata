@@ -48,6 +48,7 @@ const checkout = createCheckout({
 });
 let vehicle = null,
   articles = [],
+  indexLoaded = false,
   indexComplete = false,
   indexFailed = false,
   searchItems = null,
@@ -144,6 +145,7 @@ function clearProtected() {
   searchError = false;
   searchTimer = null;
   articles = [];
+  indexLoaded = false;
   indexComplete = false;
   indexFailed = false;
   resetReaderContent();
@@ -469,8 +471,10 @@ async function selectVehicle(g, articleID = "", { quoteMode = "eager", savedLink
     if (!g.current()) return;
   }
   const selected = scope();
-  const directArticle = savedLink && !openDemo && session.state.authenticated &&
-    session.state.mode === "firebase" && uuid(articleID);
+  const authorizedLink = savedLink && !openDemo && session.state.authenticated &&
+    session.state.mode === "firebase";
+  const directArticle = authorizedLink && uuid(articleID);
+  const savedQuery = authorizedLink && !articleID ? $("search").value.trim() : "";
   const loadQuote = async () => {
     if (openDemo) return;
     if (merchantRequest) await merchantRequest;
@@ -497,7 +501,7 @@ async function selectVehicle(g, articleID = "", { quoteMode = "eager", savedLink
       if (g.current()) renderPurchase();
     }
   };
-  const quoteRequest = quoteMode === "eager" && !directArticle ? loadQuote() : null;
+  const quoteRequest = quoteMode === "eager" && !directArticle && !savedQuery ? loadQuote() : null;
   if (!openDemo && !session.state.authenticated) {
     if (quoteMode !== "skip") await (quoteRequest ?? loadQuote());
     if (!g.current()) return;
@@ -507,6 +511,7 @@ async function selectVehicle(g, articleID = "", { quoteMode = "eager", savedLink
   }
   try {
     if (directArticle && await loadArticle(articleID, g, { savedLink: true })) return;
+    if (savedQuery && await loadSavedSearch(g, savedQuery)) return;
     if (!g.current()) return;
     await loadArticles(g, articleID);
   } catch (error) {
@@ -518,6 +523,33 @@ async function selectVehicle(g, articleID = "", { quoteMode = "eager", savedLink
     throw error;
   }
 }
+async function loadSavedSearch(g, query) {
+  $("completion-status").textContent = "";
+  stage("articles");
+  status("Searching your articles…", { busy: true });
+  const result = await requestJSON(articleRequestPath(undefined, "", { q: query }), { signal: g.signal })
+    .catch((error) => {
+      if ([401, 403, 410].includes(error.status)) throw error;
+      // Let the ordinary index remain usable if standalone search is unavailable.
+      return null;
+    });
+  if (!g.current()) return true;
+  if (result?.configuration?.id !== vehicle.id || result.configuration.region !== vehicle.region ||
+      !Array.isArray(result.items)) return false;
+  vehicle = result.configuration;
+  searchQuery = query;
+  searchItems = result.items;
+  searchComplete = result.complete === true;
+  indexComplete = searchComplete;
+  access = "owned";
+  renderPurchase();
+  show("catalog");
+  renderArticles();
+  if (searchComplete) status("Article search ready.", { complete: true });
+  else await loadArticles(g);
+  return true;
+}
+
 async function loadArticles(g, articleID = "") {
   if (!g.current()) return;
   $("completion-status").textContent = "";
@@ -537,6 +569,7 @@ async function loadArticles(g, articleID = "") {
           result.items.some((item, index) => !sameArticleDescriptor(item, articles[index]));
         const completenessChanged = indexComplete !== (result.complete === true);
         articles = result.items;
+        indexLoaded = true;
         indexComplete = result.complete === true;
         indexFailed =
           result.progress?.status === "failed" &&
@@ -631,6 +664,7 @@ function scheduleArticleSearch({ fromIndex = false } = {}) {
       // A newer index may retire or replace results from the older search.
       searchItems = searchRefreshPending ? searchHitsOnCurrentIndex(items) : items;
       searchComplete = result.complete === true;
+      if (!indexLoaded) indexComplete = searchComplete;
       searchPending = false;
       if (searchRefreshPending) scheduleArticleSearch({ fromIndex: true });
       else renderArticles();
@@ -720,7 +754,7 @@ function renderArticles() {
           ? "This article index could not be prepared. Check the status above."
           : !resultsComplete
             ? "This article index is still being prepared. Check again shortly."
-            : query && articles.length > 0
+            : query && (articles.length > 0 || !indexLoaded)
               ? "No articles match this search. Try a component name or a shorter phrase."
               : "No articles are currently available for this vehicle.";
   $("no-results").hidden = items.length > 0;
@@ -1608,8 +1642,17 @@ async function restoreRoute(initialYears = null) {
       }
       const articleID = params.get("article") || "";
       const exact = { configuration_id: params.get("configuration"), region: params.get("region") };
+      const hasHierarchy = Boolean(params.get("year"));
+      const savedQuery = hasHierarchy && !openDemo && !articleID && validScope(exact) &&
+        params.get("q")?.trim();
+      if (savedQuery && sessionRequest) {
+        status("Checking your account…", { busy: true });
+        await sessionRequest;
+        if (!g.current()) return;
+      }
+      const scopedSearch = savedQuery && session.state.authenticated && session.state.mode === "firebase";
       if (uuid(exact.configuration_id) &&
-          (!params.get("year") || (uuid(articleID) && validScope(exact)))) {
+          (!hasHierarchy || scopedSearch || (uuid(articleID) && validScope(exact)))) {
         vehicle = { id: exact.configuration_id, region: exact.region };
         await selectVehicle(g, articleID, { savedLink: true });
         return;
@@ -1690,7 +1733,10 @@ $("check-order").addEventListener("click", () => {
 });
 $("search").addEventListener("input", () => {
   updateURL({ replace: true });
+  const loadFullIndex = !$("search").value.trim() && !indexLoaded && access === "owned";
+  if (loadFullIndex) indexComplete = false;
   scheduleArticleSearch();
+  if (loadFullIndex) void operation((g) => loadArticles(g), () => restoreRoute());
 });
 $("retry").addEventListener("click", () => retryAction?.());
 $("cancel").addEventListener("click", () => {
@@ -1710,7 +1756,7 @@ $("back").addEventListener("click", () => {
   navigation.clear();
   clearReader();
   updateURL();
-  if (!articles.length && !indexComplete) {
+  if (!articles.length && !indexComplete && !searchItems) {
     const readIndex = async (g) => {
       await loadArticles(g);
       if (g.current() && !$("catalog").hidden) $("catalog-title").focus();

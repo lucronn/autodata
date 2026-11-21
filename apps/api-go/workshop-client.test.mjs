@@ -1177,6 +1177,17 @@ test('checkout return waits for the initial account check and drops a canceled n
   }
 });
 
+test('an owned Firebase saved search can restore its exact scope without the selector hierarchy', async () => {
+  const query = `?year=2020&make=toyota&model=rav4&configuration=${routeConfiguration}&region=US&q=oil+pump`;
+  const h = loginRouteHarness(query);
+  h.context.session.state.authenticated = true;
+  h.context.session.state.mode = 'firebase';
+  await h.context.restoreRoute();
+  assert.equal(h.element('search').value, 'oil pump');
+  assert.deepEqual(h.calls.options, []);
+  assert.deepEqual(h.calls.selections, [{ configuration: routeConfiguration, region: 'US', article: '' }]);
+});
+
 const loginRoutes = [
   { name: 'My vehicles instead of a prior selected configuration', query: '?view=library',
     libraries: 1, orders: [], selections: [], options: [] },
@@ -2204,7 +2215,7 @@ function articleIndexHarness(responses, { wait = async () => {}, openDemo = fals
     $, element, URL, openDemo, demoPath: path => openDemo ? `${path}${path.includes('?') ? '&' : '?'}demo=1` : path,
     location: { href: `https://cars.example/workshop?vehicle=B${openDemo ? '&demo=1' : ''}` },
     document: { title: '', body: { dataset: {} } },
-    navigation, quote: null, vehicle: { id: 'B', region: 'US' }, articles: [], indexComplete: false, indexFailed: false, access: '', retryAction: null, filterArticles,
+    navigation, quote: null, vehicle: { id: 'B', region: 'US' }, articles: [], indexLoaded: false, indexComplete: false, indexFailed: false, access: '', retryAction: null, filterArticles,
     searchNavigation, searchItems: null, searchQuery: '', searchPending: false, searchComplete: false, searchError: false, searchTimer: null,
     currentArticle: null, renderedRevision: '', sourceURL: '', sourceRevision: 0, displayedSourceRevision: 0,
     articleImageRefresh: null, sourceImageRefresh: null, libraryPageRequest: null, libraryCursor: null,
@@ -2240,7 +2251,7 @@ function articleIndexHarness(responses, { wait = async () => {}, openDemo = fals
   runInNewContext(
     appSection('function status(', 'function stage(') +
     appSection('function clearProtected()', 'function updateURL(') +
-    appSection('async function loadArticles(', 'const assetID =') +
+    appSection('async function loadSavedSearch(', 'const assetID =') +
     appSection('$("search").addEventListener("input"', '$("retry").addEventListener') +
     '\nconst actualStatus = status; status = (text, options = {}) => { recordStatus(text, options); actualStatus(text, options); };',
     context,
@@ -2251,6 +2262,93 @@ function articleIndexHarness(responses, { wait = async () => {}, openDemo = fals
 
 const indexResponse = (status, { complete = false, retryable = false, hydrating = false, items = [] } = {}) =>
   ({ items, complete, hydrating, progress: status ? { status, retryable } : null });
+
+test('complete saved search uses its scoped response and loads the full index only when cleared', async () => {
+  const configuration = { id: 'B', region: 'US', year: 2024, make: 'Fixture', model: 'Touring' };
+  const hit = { id: 'only-match', title: 'Oil pump repair' };
+  const h = articleIndexHarness([
+    { ...indexResponse('completed', { complete: true, items: [hit] }), configuration },
+    { ...indexResponse('completed', { complete: true, items: [hit, { id: 'different', title: 'Brake pads' }] }), configuration },
+  ]);
+  h.$('search').value = 'pump';
+  assert.equal(await h.context.loadSavedSearch(h.navigation.next(), 'pump'), true);
+  assert.deepEqual(h.requests.map(({ path }) => path), ['/v1/catalog/vehicles/B/articles?q=pump&region=US']);
+  assert.equal(h.context.vehicle.model, 'Touring');
+  assert.equal(h.context.indexLoaded, false);
+  assert.equal(h.context.access, 'owned');
+  assert.equal(h.$('catalog-count').textContent, '1 articles');
+  assert.equal(h.$('articles').children[0].children.length, 1);
+  assert.match(h.$('completion-status').textContent, /search ready/i);
+
+  h.$('search').value = '';
+  h.$('search').events.input();
+  await new Promise(setImmediate);
+  assert.deepEqual(h.requests.map(({ path }) => path), [
+    '/v1/catalog/vehicles/B/articles?q=pump&region=US', '/v1/catalog/vehicles/B/articles?region=US',
+  ]);
+  assert.equal(h.context.indexLoaded, true);
+  assert.equal(h.$('articles').children[0].children.length, 2);
+});
+
+test('saved search only shows results from a current exact-scope response', async () => {
+  for (const configuration of [null, { id: 'B', region: 'CA' }, { id: 'C', region: 'US' }]) {
+    const h = articleIndexHarness([{ ...indexResponse('completed', { complete: true }), configuration }]);
+    assert.equal(await h.context.loadSavedSearch(h.navigation.next(), 'pump'), false);
+    assert.equal(h.context.access, '');
+    assert.deepEqual(h.shown, []);
+  }
+  const response = deferredAuthOperation();
+  const h = articleIndexHarness([() => response.promise]);
+  const opening = h.context.loadSavedSearch(h.navigation.next(), 'pump');
+  h.navigation.clear();
+  response.resolve({ ...indexResponse('completed', { complete: true }), configuration: { id: 'B', region: 'US' } });
+  assert.equal(await opening, true);
+  assert.equal(h.context.searchItems, null);
+  assert.deepEqual(h.shown, []);
+});
+
+test('saved search still treats a grant denial as an authorization error', async () => {
+  const denial = Object.assign(new Error('Access required'), { status: 403, code: 'ENTITLEMENT_REQUIRED' });
+  const h = articleIndexHarness([() => Promise.reject(denial)]);
+  await assert.rejects(h.context.loadSavedSearch(h.navigation.next(), 'pump'), denial);
+  assert.deepEqual(h.shown, []);
+});
+
+test('complete saved search can show an exact no-match result before the full index', async () => {
+  const h = articleIndexHarness([{
+    ...indexResponse('completed', { complete: true }), configuration: { id: 'B', region: 'US' },
+  }]);
+  h.$('search').value = 'alternator';
+  assert.equal(await h.context.loadSavedSearch(h.navigation.next(), 'alternator'), true);
+  assert.match(h.$('no-results').textContent, /no articles match this search/i);
+  assert.equal(h.requests.length, 1);
+});
+
+test('partial saved search displays matches while waiting for the full index', async () => {
+  const configuration = { id: 'B', region: 'US' };
+  const hit = { id: 'a', title: 'Pump repair', availability: 'available', source_revision_id: 'first' };
+  const full = deferredAuthOperation();
+  const response = { ...indexResponse('completed', { complete: true, items: [hit] }), configuration };
+  const h = articleIndexHarness([
+    { ...indexResponse('running', { hydrating: true, items: [hit] }), configuration },
+    () => full.promise,
+    response,
+  ]);
+  h.$('search').value = 'pump';
+  const opening = h.context.loadSavedSearch(h.navigation.next(), 'pump');
+  await new Promise(setImmediate);
+  assert.equal(h.$('articles').children[0].children.length, 1);
+  assert.match(h.$('catalog-count').textContent, /1 articles so far/);
+  assert.equal(h.context.indexLoaded, false);
+  full.resolve(response);
+  assert.equal(await opening, true);
+  assert.equal(h.context.indexLoaded, true);
+  assert.deepEqual(h.requests.map(({ path }) => path), [
+    '/v1/catalog/vehicles/B/articles?q=pump&region=US',
+    '/v1/catalog/vehicles/B/articles?region=US',
+    '/v1/catalog/vehicles/B/articles?q=pump&region=US',
+  ]);
+});
 
 test('open demo requests the real index and shows only readable articles', async () => {
   const h = articleIndexHarness([indexResponse('completed', { complete: true, items: [
