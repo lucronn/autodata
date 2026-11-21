@@ -9,6 +9,7 @@ import json
 
 NORMALIZATION_VERSION = "ordered-article-v1"
 REWRITE_PROFILE_VERSION = "technical-prose-v1"
+PDF_LEGACY_FIGURE_LAYOUT = "legacy-pdf-figures-v1"
 PDF_REPEAT_MARGIN_LAYOUT = "repeated-pdf-margins-v1"
 SOURCE_PROJECTION_VERSIONS = (
     "source-projection-v1",
@@ -140,6 +141,7 @@ class SourceArticleContext:
     evidence_ids: tuple[str, ...]
     legacy_published_pdf_roots: frozenset[str] = frozenset()
     legacy_published_pdf_margin_roots: frozenset[str] = frozenset()
+    published_legacy_pdf_layout_roots: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)

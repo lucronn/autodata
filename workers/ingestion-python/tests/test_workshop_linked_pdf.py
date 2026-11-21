@@ -9,9 +9,10 @@ from uuid import uuid4
 from PIL import Image
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
+import pytest
 
 from autodata_ingestion.article_lifecycle import run_article_worker_once
-from autodata_ingestion.article_lifecycle_types import PDF_REPEAT_MARGIN_LAYOUT
+from autodata_ingestion.article_lifecycle_types import PDF_LEGACY_FIGURE_LAYOUT, PDF_REPEAT_MARGIN_LAYOUT
 from autodata_ingestion.procedure_rewrite_auto import PROFILE as AUTO_PROFILE
 from autodata_ingestion.source_job_persistence import refresh_article_job
 
@@ -139,6 +140,104 @@ def test_linked_pdf_repeated_layout_survives_same_byte_refresh_and_changed_pdf(r
         assert len(draft.requests) == 1 + int(changed)
         assert repeated["canonical_revision_id"] == current["canonical_revision_id"]
         assert same_source == source
+
+
+@pytest.mark.parametrize("layout", ["bare", "header"])
+def test_v10_promotion_preserves_an_unchanged_sibling_pdf_across_refreshes(runtime, monkeypatch, layout):
+    from autodata_ingestion import source_article_capture as capture_module
+
+    runtime.article_id = runtime.articles["banktwo"]
+    connector = runtime.servers["banktwo"]
+    sibling_ref = "fixture-sibling-pdf"
+    sibling_locator = "/provider-private/related.pdf"
+    connector.body(
+        (f'<p>Remove the pump.</p><iframe src="{_PDF_LOCATOR}"></iframe>'
+         f'<iframe src="{sibling_locator}"></iframe>').encode(),
+        assets=[_PDF_REF, sibling_ref], asset_bindings=[
+            {"source_url": _PDF_LOCATOR, "resource_ref": _PDF_REF},
+            {"source_url": sibling_locator, "resource_ref": sibling_ref},
+        ],
+    )
+    sibling_pdf = _pdf_with_logo("bare", diagram_seed=9, unique_tail=True)
+    original_pdf, _ = _pdf_with_fixture_figure(trailing_text="Install the replacement.")
+    connector.body(sibling_pdf, "application/pdf", ref=sibling_ref, kind="binary")
+    connector.body(original_pdf, "application/pdf", ref=_PDF_REF, kind="binary")
+    paraphrases = dict(_PARAPHRASES)
+    for page in (1, 2, 3):
+        paraphrases[f"Inspect the seal on page {page}."] = f"Check the seal on page {page}."
+        paraphrases[f"Check the seal on page {page}."] = f"Inspect the seal on page {page}."
+        paraphrases[f"Clean the flange on page {page}."] = f"Wipe the flange clean on page {page}."
+    draft = FixtureDraft(paraphrases=paraphrases, introduction="This guide covers pump removal and seal inspection.")
+
+    def refresh():
+        job = refresh_article_job(
+            runtime.repo, runtime.article_id, actor="fixture", reason="inspect both PDF roots",
+            rewrite_profile_version=AUTO_PROFILE,
+        )
+        assert run_article_worker_once(
+            runtime.repo, worker_id=uuid4(), registry=runtime.registry, object_store=runtime.objects,
+            model_client=draft, job_id=job.job_id,
+        )
+        current = runtime.read_current()
+        assert current["content_origin"] == "canonical", runtime.diagnostics()
+        with runtime.repo.connect() as conn:
+            source = conn.execute(
+                "SELECT * FROM canonical_article_source_revisions WHERE source_revision_id=%s",
+                (current["source_revision_id"],),
+            ).fetchone()
+        return current, source
+
+    capture = capture_module.capture_source_article
+
+    def capture_before_v10(*args, **options):
+        options.update(keep_repeated_pdf_figures=False, keep_pdf_figures_with_margins=False)
+        return capture(*args, **options)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(capture_module, "capture_source_article", capture_before_v10)
+        original, pinned_source = refresh()
+    assert pinned_source["projection_version"] == "source-projection-v7"
+    assert len(original["images"]) == 2
+
+    new_pdf = _pdf_with_logo(layout, changed=True)
+    connector.body(new_pdf, "application/pdf", ref=_PDF_REF, kind="binary")
+    promoted, promoted_source = refresh()
+    assert promoted_source["projection_version"] == "source-projection-v10"
+    assert len(promoted["images"]) == 3
+    assert len(draft.requests) == 2
+
+    repeated, same_source = refresh()
+    assert len(draft.requests) == 2, "same-byte refresh drafted the previously pinned sibling PDF again"
+    assert repeated["canonical_revision_id"] == promoted["canonical_revision_id"]
+    assert same_source == promoted_source
+    assert len(repeated["images"]) == 3
+    linked = {entry["opaque_ref"]: entry for entry in same_source["resource_manifest"] if entry["role"] == "document_asset"}
+    assert linked[sibling_ref]["sha256"] == sha256(sibling_pdf).hexdigest()
+    assert linked[sibling_ref]["pdf_figure_layout"] == PDF_LEGACY_FIGURE_LAYOUT
+    assert linked[_PDF_REF].get("pdf_figure_layout") == (PDF_REPEAT_MARGIN_LAYOUT if layout == "header" else None)
+    with runtime.repo.connect() as conn:
+        observation = conn.execute(
+            """SELECT resource_provenance FROM canonical_article_source_observations WHERE source_revision_id=%s
+               ORDER BY request_generation DESC LIMIT 1""",
+            (repeated["source_revision_id"],),
+        ).fetchone()
+        assert conn.execute(
+            "SELECT * FROM canonical_article_source_revisions WHERE source_revision_id=%s",
+            (original["source_revision_id"],),
+        ).fetchone() == pinned_source
+    [sibling_provenance] = [entry for entry in observation["resource_provenance"] if entry["opaque_ref"] == sibling_ref]
+    assert sibling_provenance["pdf_figure_layout"] == PDF_LEGACY_FIGURE_LAYOUT
+
+    connector.body(
+        _pdf_with_logo("bare", changed=True, diagram_seed=9, unique_tail=True),
+        "application/pdf", ref=sibling_ref, kind="binary",
+    )
+    updated, updated_source = refresh()
+    assert updated_source["projection_version"] == "source-projection-v10"
+    assert updated["canonical_revision_id"] != promoted["canonical_revision_id"]
+    assert len(draft.requests) == 3
+    assert len(updated["images"]) == 5
+    assert all(entry.get("pdf_figure_layout") != PDF_LEGACY_FIGURE_LAYOUT for entry in updated_source["resource_manifest"])
 
 
 def test_linked_pdf_publishes_in_order_and_private_original_controls_visibility(runtime):

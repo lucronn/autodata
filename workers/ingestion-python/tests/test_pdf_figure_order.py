@@ -92,20 +92,20 @@ def _repeated_pdf(*, margin=False, changed=False):
     return buffer.getvalue()
 
 
-def _pdf_with_logo(layout="header", *, changed=False):
+def _pdf_with_logo(layout="header", *, changed=False, diagram_seed=7, unique_tail=False):
     stream = BytesIO()
     pdf = canvas.Canvas(stream, invariant=True, pagesize=(612, 792))
-    diagram, logo = _image(7), _image(8)
+    diagram, logo = _image(diagram_seed), _image(8)
     first = "Check the seal" if changed else "Inspect the seal"
-    for page in range(1, 3):
+    for page in range(1, 4 if unique_tail else 3):
         pdf.drawString(72, 722, f"{first} on page {page}.")
-        pdf.drawImage(diagram, 72, 553, width=96, height=96)
+        pdf.drawImage(_image(diagram_seed + 1) if page == 3 else diagram, 72, 553, width=96, height=96)
         if layout == "reuse-on-first-page" and page == 1:
             pdf.drawImage(diagram, 190, 752, width=70, height=30)
         left, bottom = (72, 615) if layout == "overlap-on-first-page" and page == 1 else (
             190, 91 if layout == "footer" else 752
         )
-        if layout != "mixed-with-classic" or page == 1:
+        if layout != "bare" and (layout != "mixed-with-classic" or page == 1):
             pdf.drawImage(logo, left, bottom, width=70, height=30)
         pdf.drawString(72, 452, f"Clean the flange on page {page}.")
         pdf.showPage()

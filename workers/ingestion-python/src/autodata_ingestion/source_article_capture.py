@@ -9,6 +9,7 @@ import base64
 from uuid import NAMESPACE_URL, uuid5
 from .article_lifecycle_types import (
     CapturedSource,
+    PDF_LEGACY_FIGURE_LAYOUT,
     PDF_REPEAT_MARGIN_LAYOUT,
     ResourceRef,
     article_id,
@@ -256,8 +257,11 @@ def capture_source_article(
         raise
     finally:
         body_pool.shutdown(wait=False, cancel_futures=True)
+
+    legacy_pdf_roots = context.legacy_published_pdf_roots | context.published_legacy_pdf_layout_roots
+
     def retain_repeats(digest):
-        return keep_repeated_pdf_figures and digest not in context.legacy_published_pdf_roots
+        return keep_repeated_pdf_figures and digest not in legacy_pdf_roots
 
     def retain_repeats_with_margins(digest):
         return keep_pdf_figures_with_margins and digest not in context.legacy_published_pdf_margin_roots
@@ -437,6 +441,19 @@ def capture_source_article(
             failures[ref] = failure["failure_code"]
             manifest.append(failure)
             provenance.append({"provider": provider, **failure})
+
+    # Keep the older per-root fence when another PDF promotes the article to
+    # v10. After promotion, continue recording the fence for the same bytes.
+    fenced_roots = legacy_pdf_roots if retained_pdf_repeats else context.published_legacy_pdf_layout_roots
+    if keep_repeated_pdf_figures and fenced_roots:
+        body_is_pdf = resources[0]["media_type"] == "application/pdf" or article.get("embedded_pdf") is True
+        for records in (resources, manifest, provenance):
+            for record in records:
+                if record.get("sha256") not in fenced_roots:
+                    continue
+                role = record["role"]
+                if (role == "body" and body_is_pdf) or (role == "document_asset" and record["media_type"] == "application/pdf"):
+                    record["pdf_figure_layout"] = PDF_LEGACY_FIGURE_LAYOUT
     if handled_pdf_embeds:
         _replace_pdf_embeds(blocks, documents)
 

@@ -7,7 +7,10 @@ from psycopg.rows import dict_row
 from . import article_lifecycle_store as store
 from .source_job_persistence import (claim_source_job, heartbeat_source_job, lock_live_lease,
                                      fail_source_job, park_automatic_for_model, LeaseLost)
-from .article_lifecycle_types import ArticleKey, PDF_REPEAT_MARGIN_LAYOUT, SourceArticleContext, SOURCE_PROJECTION_VERSIONS
+from .article_lifecycle_types import (
+    ArticleKey, PDF_LEGACY_FIGURE_LAYOUT, PDF_REPEAT_MARGIN_LAYOUT,
+    SourceArticleContext, SOURCE_PROJECTION_VERSIONS,
+)
 from .procedure_rewrite import (rewrite_ordered_document, validate_article_rewrite,
                                 build_rewrite_prompt, editable_slots)
 from .source_connector_client import SourceConnectorError
@@ -78,6 +81,7 @@ def _capture_context(repo,lease):
         previous_body = row["prior_published_body"]
         previous_pdf_roots = {previous_body} if previous_body is not None else set()
         margin_layout_roots = set()
+        legacy_layout_roots = set()
         for resource in row["prior_published_resources"] or []:
             if not isinstance(resource, dict) or not isinstance(resource.get("sha256"), str):
                 continue
@@ -85,10 +89,12 @@ def _capture_context(repo,lease):
             is_pdf = resource.get("role") == "document_asset" and resource.get("media_type") == "application/pdf"
             if is_pdf:
                 previous_pdf_roots.add(digest)
-            if (is_pdf or (resource.get("role") == "body" and digest == previous_body)) and (
-                resource.get("pdf_figure_layout") == PDF_REPEAT_MARGIN_LAYOUT
-            ):
-                margin_layout_roots.add(digest)
+            if is_pdf or (resource.get("role") == "body" and digest == previous_body):
+                layout = resource.get("pdf_figure_layout")
+                if layout == PDF_REPEAT_MARGIN_LAYOUT:
+                    margin_layout_roots.add(digest)
+                elif layout == PDF_LEGACY_FIGURE_LAYOUT:
+                    legacy_layout_roots.add(digest)
         previous_has_repeats = row["prior_projection_version"] == pdf_repeats_version
         # The manifest records the selected algorithm per root, so a refresh
         # preserves the earlier v10 layout of unchanged PDFs in mixed articles.
@@ -99,6 +105,7 @@ def _capture_context(repo,lease):
             legacy_published_pdf_margin_roots=(
                 frozenset(previous_pdf_roots - margin_layout_roots) if previous_has_repeats else frozenset()
             ),
+            published_legacy_pdf_layout_roots=frozenset(legacy_layout_roots) if previous_has_repeats else frozenset(),
         )
 
 
