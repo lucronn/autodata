@@ -2195,6 +2195,26 @@ test('processing order alone does not claim confirmed paid access on an entitlem
   assert.equal(h.context.access, 'missing');
 });
 
+test('the authorized owned vehicle shows its article action without purchase pricing', () => {
+  const { context, $ } = paidPurchaseLifecycleHarness([]);
+  for (const availableQuote of [null, quote]) {
+    context.quote = availableQuote;
+    context.access = 'owned';
+    context.renderPurchase();
+    assert.equal($('purchase-price').hidden, true);
+    assert.equal($('purchase-price').textContent, '');
+    assert.equal($('purchase-action').textContent, 'Open articles');
+    assert.equal($('purchase-action').disabled, false);
+    assert.match($('purchase-message').textContent, /Owned/);
+
+    context.access = 'missing';
+    context.renderPurchase();
+    assert.equal($('purchase-price').hidden, false);
+    assert.equal($('purchase-price').textContent, availableQuote ? '$20 USD · one-time' : 'Price is currently unavailable.');
+    assert.equal($('purchase-action').disabled, !availableQuote);
+  }
+});
+
 test('purchase availability status reports unavailable without a quote', async () => {
   const required = Object.assign(new Error('Access not ready'), { status: 403, code: 'ENTITLEMENT_REQUIRED' });
   const h = paidPurchaseLifecycleHarness([]);

@@ -414,7 +414,9 @@ function renderPurchase() {
     return;
   }
   const configured = purchaseConfigured();
-  $("purchase-price").textContent = priced
+  const price = $("purchase-price");
+  price.hidden = access === "owned";
+  price.textContent = price.hidden ? "" : priced
     ? "$20 USD · one-time"
     : "Price is currently unavailable.";
   $("purchase-terms").hidden = !configured;
