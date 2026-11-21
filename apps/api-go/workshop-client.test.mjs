@@ -2298,7 +2298,7 @@ function articleIndexHarness(responses, { wait = async () => {}, openDemo = fals
     $, element, URL, openDemo, demoPath: path => openDemo ? `${path}${path.includes('?') ? '&' : '?'}demo=1` : path,
     location: { href: `https://cars.example/workshop?vehicle=B${openDemo ? '&demo=1' : ''}` },
     document,
-    navigation, quote: null, vehicle: { id: 'B', region: 'US' }, articles: [], indexLoaded: false, indexComplete: false, indexFailed: false, access: '', retryAction: null, filterArticles,
+    navigation, quote: null, vehicle: { id: 'B', region: 'US' }, articles: [], indexLoaded: false, indexComplete: false, indexHydrating: false, indexFailed: false, access: '', retryAction: null, filterArticles,
     searchNavigation, searchItems: null, searchQuery: '', searchPending: false, searchComplete: false, searchError: false, searchTimer: null,
     currentArticle: null, renderedRevision: '', sourceURL: '', sourceRevision: 0, displayedSourceRevision: 0,
     articleImageRefresh: null, sourceImageRefresh: null, libraryPageRequest: null, libraryCursor: null,
@@ -2335,7 +2335,9 @@ function articleIndexHarness(responses, { wait = async () => {}, openDemo = fals
     appSection('function status(', 'function stage(') +
     appSection('function clearProtected()', 'function updateURL(') +
     appSection('async function loadSavedSearch(', 'const assetID =') +
+    appSection('function clearReader()', 'async function checkOrder(') +
     appSection('$("search").addEventListener("input"', '$("retry").addEventListener') +
+    appSection('function returnToArticleIndex()', '$("print").addEventListener') +
     '\nconst actualStatus = status; status = (text, options = {}) => { recordStatus(text, options); actualStatus(text, options); };',
     context,
   );
@@ -2345,6 +2347,51 @@ function articleIndexHarness(responses, { wait = async () => {}, openDemo = fals
 
 const indexResponse = (status, { complete = false, retryable = false, hydrating = false, items = [] } = {}) =>
   ({ items, complete, hydrating, progress: status ? { status, retryable } : null });
+
+test('returning from a direct reader focuses the first partial index without moving focus at completion', async () => {
+  const article = { id: 'first', title: 'First procedure' };
+  const completion = deferredAuthOperation();
+  const h = articleIndexHarness([
+    indexResponse('running', { hydrating: true, items: [article] }),
+    () => completion.promise,
+  ]);
+  const returned = h.$('back').events.click();
+  await new Promise(setImmediate);
+  assert.equal(h.context.document.activeElement, h.$('catalog-title'));
+  assert.equal(h.updates[0].count, 1);
+  h.$('search').focus();
+  completion.resolve(indexResponse('completed', { complete: true, items: [article, { id: 'added' }] }));
+  await returned;
+  assert.equal(h.context.document.activeElement, h.$('search'));
+  assert.equal(h.updates.at(-1).count, 2);
+});
+
+test('returning to an interrupted partial index reuses the rows and resumes the scoped read', async () => {
+  const article = { id: 'first', title: 'First procedure' };
+  const nextPoll = deferredAuthOperation();
+  const completion = deferredAuthOperation();
+  const h = articleIndexHarness([
+    indexResponse('running', { hydrating: true, items: [article] }),
+    () => completion.promise,
+  ], { wait: () => nextPoll.promise });
+  const loading = h.load();
+  await new Promise(setImmediate);
+  h.navigation.next();
+  nextPoll.resolve();
+  await assert.rejects(loading, { name: 'AbortError' });
+
+  const returned = h.$('back').events.click();
+  assert.equal(h.context.document.activeElement, h.$('catalog-title'));
+  assert.equal(h.$('articles').firstElementChild.children.length, 1);
+  assert.deepEqual(h.requests.map(request => request.path), [
+    '/v1/catalog/vehicles/B/articles?region=US', '/v1/catalog/vehicles/B/articles?region=US',
+  ]);
+  assert.notEqual(h.requests[1].signal, h.requests[0].signal);
+  completion.resolve(indexResponse('completed', { complete: true, items: [article, { id: 'added' }] }));
+  await returned;
+  assert.equal(h.updates.at(-1).count, 2);
+  assert.equal(h.statuses.at(-1).text, 'Article index ready.');
+});
 
 test('complete saved search uses its scoped response and loads the full index only when cleared', async () => {
   const configuration = { id: 'B', region: 'US', year: 2024, make: 'Fixture', model: 'Touring' };

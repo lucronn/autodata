@@ -50,6 +50,7 @@ let vehicle = null,
   articles = [],
   indexLoaded = false,
   indexComplete = false,
+  indexHydrating = false,
   indexFailed = false,
   searchItems = null,
   searchQuery = "",
@@ -147,6 +148,7 @@ function clearProtected() {
   articles = [];
   indexLoaded = false;
   indexComplete = false;
+  indexHydrating = false;
   indexFailed = false;
   resetReaderContent();
   for (const id of ["articles", "reference-data"])
@@ -541,6 +543,7 @@ async function loadSavedSearch(g, query) {
   searchItems = result.items;
   searchComplete = result.complete === true;
   indexComplete = searchComplete;
+  indexHydrating = !searchComplete;
   access = "owned";
   renderPurchase();
   show("catalog");
@@ -550,12 +553,12 @@ async function loadSavedSearch(g, query) {
   return true;
 }
 
-async function loadArticles(g, articleID = "") {
+async function loadArticles(g, articleID = "", { focusOnShow = false } = {}) {
   if (!g.current()) return;
   $("completion-status").textContent = "";
   stage("articles");
   status("Opening your article index…", { busy: true });
-  const data = await readCollection(
+  await readCollection(
     () => requestJSON(articleRequestPath(), { signal: g.signal }),
     {
       signal: g.signal,
@@ -571,6 +574,7 @@ async function loadArticles(g, articleID = "") {
         articles = result.items;
         indexLoaded = true;
         indexComplete = result.complete === true;
+        indexHydrating = !indexComplete && result.hydrating === true;
         indexFailed =
           result.progress?.status === "failed" &&
           result.progress?.retryable !== true;
@@ -587,6 +591,10 @@ async function loadArticles(g, articleID = "") {
           scheduleArticleSearch({ fromIndex: true });
         }
         else renderArticles();
+        if (focusOnShow) {
+          focusOnShow = false;
+          $("catalog-title").focus();
+        }
       },
     },
   );
@@ -596,12 +604,20 @@ async function loadArticles(g, articleID = "") {
     status('This article is indexed but not readable yet. Choose an available article.', { error: true });
   } else if (articleID && requestedArticle) {
     await loadArticle(articleID, g);
-  } else if (articleID && data.complete === true) {
+  } else if (articleID && indexComplete) {
     throw new Error("This article is unavailable for the selected vehicle.");
-  } else if (data.complete === true) {
-    status(data.items.length ? "Article index ready." :
-      "Article index ready. No articles are currently available.", { complete: true });
-  } else if (data.progress?.status === "failed" && data.progress?.retryable !== true) {
+  } else {
+    indexHydrating = false;
+    showArticleIndexStatus(articleID);
+  }
+}
+
+function showArticleIndexStatus(articleID = "") {
+  if (indexComplete) {
+    const ready = !indexLoaded && searchItems ? "Article search ready." :
+      articles.length ? "Article index ready." : "Article index ready. No articles are currently available.";
+    status(ready, { complete: true });
+  } else if (indexFailed) {
     status("Your article index could not be prepared. Available articles can still be opened.", {
       complete: false,
     });
@@ -1801,22 +1817,24 @@ $("source-review-load").addEventListener("click", () => {
       (error) => handleSourceError(error, g),
     );
 });
-$("back").addEventListener("click", () => {
+function returnToArticleIndex() {
   navigation.clear();
   clearReader();
   updateURL();
-  if (!articles.length && !indexComplete && !searchItems) {
-    const readIndex = async (g) => {
-      await loadArticles(g);
-      if (g.current() && !$("catalog").hidden) $("catalog-title").focus();
-    };
-    void operation(readIndex, () => operation(readIndex));
-    return;
-  }
+  $("completion-status").textContent = "";
+  const needsIndex = !articles.length && !indexComplete && !searchItems;
+  const refreshIndex = () => operation(
+    (g) => loadArticles(g, "", { focusOnShow: needsIndex }), refreshIndex,
+  );
+  if (needsIndex) return refreshIndex();
   show("catalog");
   renderArticles();
   $("catalog-title").focus();
-});
+  if (indexHydrating) return refreshIndex();
+  stage("articles");
+  showArticleIndexStatus();
+}
+$("back").addEventListener("click", returnToArticleIndex);
 $("print").addEventListener("click", () => {
   if (readableArticle(currentArticle) && (openDemo || session.state.authenticated))
     window.print();
