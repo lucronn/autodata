@@ -5,10 +5,12 @@ import json
 import importlib.util
 import unittest
 import sys
+from contextlib import asynccontextmanager
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.parse import urlencode
 
 spec = importlib.util.spec_from_file_location('workshop_browser_smoke', Path(__file__).with_name('workshop_browser_smoke.py'))
 smoke = importlib.util.module_from_spec(spec)
@@ -1287,6 +1289,7 @@ class API21FakeResponse:
         self.request=request or SimpleNamespace(method='GET',url=url)
     async def body(self):return self.data if isinstance(self.data,bytes) else json.dumps(self.data).encode()
     async def json(self):return self.data
+    async def text(self):return (await self.body()).decode()
 
 
 class API21FakeBrowser:
@@ -1331,6 +1334,8 @@ class API21FakeContext:
         elif path=='/__fixture/measurement':data=browser.measurement(self)
         elif path=='/__fixture/snapshot':data=browser.snapshot()
         elif path=='/__fixture/runtime':data={'application_generation':browser.generation}
+        elif path.endswith('/articles') and kwargs.get('params', {}).get('region') == 'CA':
+            status=404;data={'error':'denied'}
         elif 'denial' in phase:
             status=404 if phase in ('other-image-denial','adjacent-denial','other-region-denial','unscoped-article-denial','legacy-vehicle-denial') else 401 if phase in ('logout-image-denial','disabled-image-denial') else 403
             data={'error':'denied'}
@@ -1353,7 +1358,18 @@ class API21FakeContext:
 
 
 class API21FakePage:
-    def __init__(self,context):self.context=context;self.handlers={};self.url='about:blank'
+    def __init__(self,context):
+        self.context=context;self.request=context.request;self.handlers={};self.url='about:blank'
+        self.response_expectation=None
+    @asynccontextmanager
+    async def expect_response(self,predicate):
+        response=asyncio.get_running_loop().create_future()
+        self.response_expectation=(predicate,response)
+        try:
+            yield SimpleNamespace(value=response)
+            assert response.done(), 'fixture search response did not match'
+        finally:
+            self.response_expectation=None
     def on(self,event,callback):self.handlers[event]=callback
     async def wait_for_function(self, expression):
         assert 'naturalWidth > 0' in expression
@@ -1363,6 +1379,9 @@ class API21FakePage:
         if observations and observations.phase==self.context.browser.missing:return
         callback=self.handlers.get('response')
         response=API21FakeResponse(url,data,request=request)
+        if self.response_expectation is not None:
+            predicate,expected=self.response_expectation
+            if not expected.done() and predicate(response):expected.set_result(response)
         started=self.handlers.get('request')
         if started:started(response.request)
         if callback:callback(response)
@@ -1427,6 +1446,13 @@ class API21FakeLocator:
                 assert route.forwarded_response is route.fetched_response
             if browser.name!=smoke.API_CASES[0] or self.selector=='#retry':self.page.url=route.fetched_response.data['checkout_url']
     async def check(self):pass
+    async def fill(self,query):
+        assert self.selector == '#search'
+        scope=self.page.context.browser.scope
+        url=f'https://127.0.0.1:32001/v1/catalog/vehicles/{scope["configuration"]}/articles'
+        self.page.emit(url+'?'+urlencode({'q':query}), {'items':[
+            {'id':scope['article'],'content_origin':'canonical'},
+        ]})
     async def get_attribute(self,name):
         if name=='src':return 'https://127.0.0.1:32001/v1/catalog/images/v2.fake-capability'
         return '/v1/catalog/vehicles/'+smoke.CONFIG+'/articles/'+smoke.ARTICLE+'/source?source_revision_id='+smoke.REVISION
@@ -1637,6 +1663,20 @@ class API21ObservationsTests(unittest.IsolatedAsyncioTestCase):
                         self.assertEqual(phases,matrix[name])
                         self.assertTrue(all(c.closed for c in browser.contexts));count+=1
         self.assertEqual(count,21)
+
+    async def test_paid_caption_search_keeps_existing_observations(self):
+        browser=API21FakeBrowser(smoke.API_CASES[1],'banktwo')
+        context=await browser.new_context()
+        buffer=self.buffer()
+        buffer.phase='reader-after-measurement'
+        context._api21=buffer
+        page=await context.new_page()
+        page.on('request',buffer.page_request)
+        page.on('response',buffer.page_response)
+        with patch.dict(sys.modules,{'playwright.async_api':SimpleNamespace(expect=lambda value:value)}):
+            await smoke.expect_paid_table_caption_search(page,'https://127.0.0.1:32001',smoke.CONFIG,smoke.ARTICLE)
+        self.assertEqual(buffer.events,[])
+        self.assertIsNone(buffer.primary)
 
     async def test_actual_source_cases_allow_automatic_unowned_image_responses(self):
         original=API21FakePage.emit

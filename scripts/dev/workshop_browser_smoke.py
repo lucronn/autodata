@@ -1335,6 +1335,38 @@ async def expect_html_table_figure(article):
     await expect(cell.get_by_role('img', name='Alignment marks')).to_have_js_property('naturalWidth', 1)
 
 
+async def expect_paid_table_caption_search(page, origin, configuration, article_id):
+    from playwright.async_api import expect
+
+    path = f'/v1/catalog/vehicles/{configuration}/articles'
+    caption = 'Alignment service data'
+    search = page.locator('#search')
+    links = page.locator('#articles a')
+    for query in (f'{caption} witness marks', caption):
+        def matches_search(response):
+            url = urlsplit(response.url)
+            return (response.request.method == 'GET' and url.path == path
+                    and parse_qs(url.query).get('q') == [query])
+
+        async with page.expect_response(matches_search) as requested:
+            await search.fill(query)
+        response = await requested.value
+        assert response.status == 200
+        [descriptor] = (await response.json())['items']
+        assert descriptor['id'] == article_id and descriptor['content_origin'] == 'canonical'
+        assert all(not descriptor.get(field) for field in ('body', 'document', 'steps', 'images', 'source_review'))
+        await expect(links).to_have_count(1)
+        await expect(links).to_have_attribute('href', re.compile(f'[?&]article={article_id}(?:&|$)'))
+
+    denied = await page.request.get(origin + path, params={'q': caption, 'region': 'CA'})
+    assert denied.status == 404
+    denial = await denied.text()
+    assert caption not in denial and article_id not in denial
+    await links.click()
+    await expect(page.locator('#article-kind')).to_have_text('Workshop article')
+    await expect_html_table_figure(page.locator('#article-content'))
+
+
 async def api_case(browser,origin,name,output,observations=None):
     from playwright.async_api import expect
     context=page=None;failure=None;result=None
@@ -1608,6 +1640,7 @@ async def api_case(browser,origin,name,output,observations=None):
                 await expect(page.locator('#catalog')).to_be_visible()
                 await expect(page.locator(f'#articles a[href*="article={article_id}"]')).to_be_visible()
                 await expect(page.locator('#catalog-title')).to_be_focused()
+                await expect_paid_table_caption_search(page, origin, configuration, article_id)
             if name==API_CASES[2]:
                 for denial_phase,denied in zip(('adjacent-denial','other-region-denial','unscoped-article-denial','legacy-vehicle-denial'),(f'/v1/catalog/vehicles/{scope["adjacent"]}/articles',f'/v1/catalog/vehicles/{scope["other_region"]}/articles',f'/v1/catalog/vehicles/{configuration}/articles/{scope["unscoped"]}',f'/v1/catalog/vehicles/{scope["vehicle"]}/articles')):
                     denied_response=await api21_get(context,origin+denied,phase=denial_phase)
