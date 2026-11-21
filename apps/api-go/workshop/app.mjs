@@ -800,8 +800,7 @@ function renderArticles() {
   const items = openDemo ? results.filter((item) => item.availability === 'available') : results;
   if (items.length && access === "owned" && paidOrder?.id === currentOrder &&
       vehicle?.id === paidOrder.configuration_id && vehicle?.region === paidOrder.region) {
-    clearOrderRoute(currentOrder, true);
-    $("check-order").hidden = true;
+    clearPaidOrderAction(currentOrder);
   }
   renderArticleLinks(items);
   const resultsComplete = searching ? searchComplete && indexComplete : indexComplete;
@@ -1706,6 +1705,22 @@ async function checkOrder(g, id, { earlyCheckoutCheck = false, returnedCheckout 
     });
   }
 }
+function checkPaymentStatus() {
+  const button = $("check-order");
+  const id = currentOrder;
+  if (!id || button.getAttribute("aria-disabled") === "true") return;
+  return operation(async (g) => {
+    const enable = () => button.removeAttribute("aria-disabled");
+    button.setAttribute("aria-disabled", "true");
+    g.signal.addEventListener("abort", enable, { once: true });
+    try {
+      await checkOrder(g, id);
+    } finally {
+      g.signal.removeEventListener("abort", enable);
+      if (g.current()) enable();
+    }
+  });
+}
 function selectOrderVehicle(order) {
   if (vehicle?.id !== order.configuration_id || vehicle?.region !== order.region) {
     clearProtected();
@@ -1750,12 +1765,17 @@ async function openPaidOrder(g, order) {
   }
   if (g.current()) completePaidOrder(id);
 }
+function clearPaidOrderAction(id) {
+  const button = $("check-order");
+  if (document.activeElement === button && !$("catalog").hidden) $("catalog-title").focus();
+  button.hidden = true;
+  clearOrderRoute(id, true);
+}
 function completePaidOrder(id) {
   if (currentOrder !== id || paidOrder?.id !== id) return;
   currentOrder = "";
   paidOrder = null;
-  $("check-order").hidden = true;
-  clearOrderRoute(id, true);
+  clearPaidOrderAction(id);
 }
 async function purchase() {
   if (openDemo) return;
@@ -1999,9 +2019,7 @@ $("my-vehicles").addEventListener("click", () => {
 });
 $("library-more").addEventListener("click", loadMoreLibrary);
 $("purchase-action").addEventListener("click", () => void purchase());
-$("check-order").addEventListener("click", () => {
-  if (currentOrder) operation((g) => checkOrder(g, currentOrder));
-});
+$("check-order").addEventListener("click", checkPaymentStatus);
 $("search").addEventListener("input", () => {
   updateURL({ replace: true });
   const loadFullIndex = !$("search").value.trim() && !indexLoaded && access === "owned";

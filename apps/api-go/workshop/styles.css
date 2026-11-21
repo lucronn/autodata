@@ -54,6 +54,7 @@ button {
   cursor: pointer;
 }
 button:disabled,
+#check-order[aria-disabled="true"],
 #library-more[aria-disabled="true"],
 select:disabled {
   cursor: not-allowed;
@@ -1119,7 +1120,8 @@ footer {
   background: var(--paper);
   border-radius: 2px;
 }
-.purchase button:disabled {
+.purchase button:disabled,
+#check-order[aria-disabled="true"] {
   color: var(--quiet);
   border-color: var(--rule);
 }

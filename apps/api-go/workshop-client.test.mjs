@@ -1790,6 +1790,7 @@ function orderStatusHarness(response, { selectionError = null } = {}) {
   let selectionCalls = 0;
   const statuses = [];
   const context = {
+    document: {},
     currentOrder: '', paidOrder: '', unconfirmedOrder: null, vehicle: null, quote: null, merchant: null, access: 'missing',
     URLSearchParams, location: { pathname: '/workshop/', search: `?order=${orderID}` },
     history: { replaceState() { assert.fail('the known order route should not need rewriting'); } },
@@ -1885,12 +1886,22 @@ function paidPurchaseLifecycleHarness(selectionErrors, { realArticleIndex = fals
   const searchNavigation = new NavigationGeneration();
   const nodes = new Map();
   const $ = id => {
-    if (!nodes.has(id)) nodes.set(id, {
-      hidden: false, disabled: false, checked: id === 'agreement', value: '',
-      textContent: '', dataset: {}, children: [],
-      replaceChildren(...children) { this.children = children; this.value = ''; },
-      append(...children) { this.children.push(...children); }, removeAttribute() {},
-    });
+    if (!nodes.has(id)) {
+      const attributes = new Map();
+      const listeners = new Map();
+      nodes.set(id, {
+        hidden: false, disabled: false, checked: id === 'agreement', value: '',
+        textContent: '', dataset: {}, children: [],
+        replaceChildren(...children) { this.children = children; this.value = ''; },
+        append(...children) { this.children.push(...children); },
+        setAttribute(name, value) { attributes.set(name, value); },
+        getAttribute(name) { return attributes.get(name) ?? null; },
+        removeAttribute(name) { attributes.delete(name); },
+        addEventListener(type, listener) { listeners.set(type, listener); },
+        click() { return listeners.get('click')(); },
+        focus() { context.document.activeElement = this; },
+      });
+    }
     return nodes.get(id);
   };
   const location = {
@@ -1979,6 +1990,7 @@ function paidPurchaseLifecycleHarness(selectionErrors, { realArticleIndex = fals
     (realArticleIndex ? appSection('function renderArticles(', 'const assetID =') : '') +
     (articleOpenError ? appSection('function openArticle(', 'function validSourceURL(') : '') +
     appSection('async function checkOrder(', 'async function signIn()') +
+    appSection('$("check-order").addEventListener', '$("search").addEventListener') +
     appSection('async function bootstrap(', 'for (const [index, name] of names.entries())') +
     appSection('let lifecycleCheck = null;', 'window.addEventListener("pageshow"'),
     context,
@@ -2590,6 +2602,58 @@ const checkoutReadyIndex = { items: [{ id: routeArticle, title: 'Purchased artic
 const checkoutPost = ['POST', '/v1/workshop/checkout-sessions'];
 const checkoutOrderGet = ['GET', `/v1/workshop/orders/${orderID}`];
 const checkoutIndexGet = ['GET', `/v1/catalog/vehicles/${scope.configuration_id}/articles?region=${scope.region}`];
+
+test('an explicit payment check ignores repeat clicks and focuses the recovered index', async () => {
+  const unavailable = Object.assign(new Error('Index unavailable'), { status: 503 });
+  const h = paidPurchaseLifecycleHarness([], {
+    realArticleIndex: true, articleReadResponses: [unavailable, checkoutReadyIndex],
+  });
+  h.location.search = `?order=${orderID}`;
+  await h.context.restoreRoute();
+  const response = deferredAuthOperation();
+  let checks = 0;
+  h.context.pollOrder = () => { checks++; return response.promise; };
+  const button = h.$('check-order');
+  button.focus();
+  button.click();
+  button.click();
+  assert.equal(checks, 1);
+  assert.equal(button.getAttribute('aria-disabled'), 'true');
+  assert.equal(h.context.document.activeElement, button);
+  response.resolve(checkoutPaidOrder);
+  await new Promise(setImmediate);
+  assert.equal(button.hidden, true);
+  assert.equal(button.getAttribute('aria-disabled'), null);
+  assert.equal(h.context.document.activeElement, h.$('catalog-title'));
+  assert.equal(h.location.search, `?configuration=${scope.configuration_id}&region=${scope.region}`);
+  assert.equal(h.checkoutStarts(), 0);
+});
+
+test('navigation unlocks an explicit status check and stale completion cannot unlock a newer check', async () => {
+  const unavailable = Object.assign(new Error('Index unavailable'), { status: 503 });
+  const h = paidPurchaseLifecycleHarness([unavailable]);
+  h.location.search = `?order=${orderID}`;
+  await h.context.restoreRoute();
+  const oldResponse = deferredAuthOperation();
+  const newResponse = deferredAuthOperation();
+  const pendingChecks = [oldResponse, newResponse];
+  h.context.pollOrder = () => pendingChecks.shift().promise;
+  const button = h.$('check-order');
+  button.click();
+  assert.equal(button.getAttribute('aria-disabled'), 'true');
+  h.context.navigation.clear();
+  assert.equal(button.getAttribute('aria-disabled'), null);
+  button.click();
+  h.$('my-vehicles').focus();
+  oldResponse.resolve(checkoutPaidOrder);
+  await new Promise(setImmediate);
+  assert.equal(button.getAttribute('aria-disabled'), 'true');
+  newResponse.resolve(checkoutPaidOrder);
+  await new Promise(setImmediate);
+  assert.equal(button.hidden, true);
+  assert.equal(button.getAttribute('aria-disabled'), null);
+  assert.equal(h.context.document.activeElement, h.$('my-vehicles'));
+});
 
 async function ownedCheckoutHarness(indexResponses, { checkoutResponse = ownedCheckout, orderResponses = [] } = {}) {
   const { createCheckout } = await import('./workshop/commerce.mjs');
@@ -3667,7 +3731,11 @@ test('search can share an exact paid reader before the unfiltered index has arti
   context.history = { replaceState(_state, _unused, url) { context.location.href = new URL(url, context.location).href; } };
   context.currentOrder = orderID;
   context.paidOrder = { id: orderID, ...scope };
-  runInNewContext(appSection('function clearOrderRoute(', 'function populate('), context);
+  runInNewContext(
+    appSection('function clearOrderRoute(', 'function populate(') +
+    appSection('function clearPaidOrderAction(', 'function completePaidOrder('),
+    context,
+  );
   const loading = h.load();
   try {
     await new Promise(setImmediate);
