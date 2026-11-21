@@ -879,13 +879,13 @@ def test_automatic_real_runtime_source_first_publication_and_zero_call_restart(r
 @pytest.mark.parametrize(
     "prompt_version",
     ["v1", "v2", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v12", "v13", "v14", "v15", "v16", "v17", "v18",
-     "v19", "v20", "v21", "v22", "v23"],
+     "v19", "v20", "v21", "v22", "v23", "v24"],
 )
 def test_automatic_real_process_death_reuses_saved_response(runtime, point, prompt_version):
     ensure = automatic_runtime(runtime,"bankone")
     ensure();runtime.pause(point);runtime.start_workers(1);runtime.await_barrier()
     job = runtime.current_job_id();runtime.kill_worker();runtime.expire_lease(job)
-    if prompt_version != "v23":
+    if prompt_version != "v24":
         from hashlib import sha256
         from psycopg.types.json import Jsonb
         from autodata_ingestion.article_lifecycle_types import digest_json
@@ -895,7 +895,7 @@ def test_automatic_real_process_death_reuses_saved_response(runtime, point, prom
             _build_auto_prompt_v9, _build_auto_prompt_v10, _build_auto_prompt_v12, _build_auto_prompt_v13,
             _build_auto_prompt_v14, _build_auto_prompt_v15, _build_auto_prompt_v16, _build_auto_prompt_v17,
             _build_auto_prompt_v18, _build_auto_prompt_v19, _build_auto_prompt_v20, _build_auto_prompt_v21,
-            _build_auto_prompt_v22, validate_auto,
+            _build_auto_prompt_v22, _build_auto_prompt_v23, validate_auto,
         )
         build_prompt = {
             "v1": _build_auto_prompt_v1,
@@ -918,6 +918,7 @@ def test_automatic_real_process_death_reuses_saved_response(runtime, point, prom
             "v20": _build_auto_prompt_v20,
             "v21": _build_auto_prompt_v21,
             "v22": _build_auto_prompt_v22,
+            "v23": _build_auto_prompt_v23,
         }[prompt_version]
         with runtime.repo.connect() as conn:
             candidate = conn.execute("SELECT r.* FROM canonical_article_revisions r JOIN source_fetch_jobs j USING(transformation_key) WHERE j.source_fetch_job_id=%s", (job,)).fetchone()
@@ -1043,33 +1044,40 @@ def test_automatic_qualifier_controls_publication(runtime, provider, preserved, 
 
 @pytest.mark.parametrize("provider", ["bankone", "banktwo"])
 @pytest.mark.parametrize("preserved", [True, False])
-@pytest.mark.parametrize(("original", "invalid"), [
+@pytest.mark.parametrize(("original", "invalid", "expected_code"), [
     pytest.param(
         "Tighten the cover bolts to 18 N-m and the bracket bolts to 25 N-m.",
-        "Torque the bracket bolts to 18 N-m and the cover bolts to 25 N-m.", id="torque",
+        "Torque the bracket bolts to 18 N-m and the cover bolts to 25 N-m.", "REWRITE_SPEC_SCOPE_MUTATION", id="torque",
     ),
     pytest.param(
         "Hold the reset button for 5 seconds and the mode button for 10 seconds.",
-        "Press and hold the mode button for 5 seconds and the reset button for 10 seconds.", id="duration",
+        "Press and hold the mode button for 5 seconds and the reset button for 10 seconds.",
+        "REWRITE_SPEC_SCOPE_MUTATION", id="duration",
     ),
     pytest.param(
         "Apply 5 VDC to the sensor signal pin and 12 VDC to the supply pin.",
-        "Feed the supply pin with 5 VDC and the sensor signal pin with 12 VDC.", id="electrical",
+        "Feed the supply pin with 5 VDC and the sensor signal pin with 12 VDC.", "REWRITE_SPEC_SCOPE_MUTATION", id="electrical",
     ),
     pytest.param(
         "Set the inlet pressure to 18 PSI and the outlet pressure to 25 PSI.",
-        "Adjust the outlet pressure to 18 PSI and the inlet pressure to 25 PSI.", id="pressure",
+        "Adjust the outlet pressure to 18 PSI and the inlet pressure to 25 PSI.", "REWRITE_SPEC_SCOPE_MUTATION", id="pressure",
     ),
     pytest.param(
         "Set the intake sensor to 18 deg C and the outlet sensor to 25 deg C.",
-        "Use 18 deg C as the outlet sensor setting and 25 deg C as the intake sensor setting.", id="temperature",
+        "Use 18 deg C as the outlet sensor setting and 25 deg C as the intake sensor setting.",
+        "REWRITE_SPEC_SCOPE_MUTATION", id="temperature",
     ),
     pytest.param(
         "The heater winding resistance is 3 to 5 kOhms and the sensor winding resistance is 8 to 12 kOhms.",
-        "Use 3 to 5 kOhms as the sensor winding range and 8 to 12 kOhms as the heater winding range.", id="resistance",
+        "Use 3 to 5 kOhms as the sensor winding range and 8 to 12 kOhms as the heater winding range.",
+        "REWRITE_SPEC_SCOPE_MUTATION", id="resistance",
+    ),
+    pytest.param(
+        "Keep your hands clear of the moving fan.",
+        "Keep your hands close to the moving fan.", "REWRITE_SAFETY_MUTATION", id="clearance-warning",
     ),
 ])
-def test_automatic_specification_units_control_publication(runtime, provider, preserved, original, invalid):
+def test_automatic_specification_units_control_publication(runtime, provider, preserved, original, invalid, expected_code):
     ensure = automatic_runtime(runtime, provider)
     runtime.change_fixture_body(f"<p>Remove the pump.</p><p>{original}</p>".encode())
     runtime.model.mode = "explicit_specification"
@@ -1095,7 +1103,7 @@ def test_automatic_specification_units_control_publication(runtime, provider, pr
     else:
         assert state["content_origin"] == "source"
         assert state["canonical_revision_id"] is None
-        assert attempt == {"status": "failed", "error_code": "REWRITE_SPEC_SCOPE_MUTATION"}
+        assert attempt == {"status": "failed", "error_code": expected_code}
         assert events == 0
     assert runtime.counters() == {"source": 1, "asset": 0, "model": 1, "schedule": 1}
 
