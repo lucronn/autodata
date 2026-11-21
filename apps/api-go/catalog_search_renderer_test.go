@@ -37,7 +37,7 @@ func TestCatalogSearchCurrentRendererParity(t *testing.T) {
 					t.Errorf("hidden term %q matched", query)
 				}
 			}
-			text := catalogArticleSearchText(item.Article)
+			text := catalogArticleSearchText(item.Article, false)
 			for _, phrase := range item.Once {
 				if n := strings.Count(text, phrase); n != 1 {
 					t.Errorf("displayed phrase %q appeared %d times, want once", phrase, n)

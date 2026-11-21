@@ -20,7 +20,7 @@ func filterCatalogArticleSearch(items []CatalogArticle, query string) []CatalogA
 	}
 	matches := make([]CatalogArticle, 0)
 	for _, article := range items {
-		if catalogSearchWordsMatch(catalogArticleSearchText(article), words) {
+		if catalogSearchWordsMatch(catalogArticleSearchText(article, false), words) {
 			matches = append(matches, article)
 		}
 	}
@@ -37,7 +37,7 @@ func catalogSearchWordsMatch(text string, words []string) bool {
 	return true
 }
 
-func catalogArticleSearchText(article CatalogArticle) string {
+func catalogArticleSearchText(article CatalogArticle, storedImageRefs bool) string {
 	parts := []string{article.Title, article.Component, article.Kind}
 	images := append([]CatalogImage(nil), article.Images...)
 	for _, step := range article.Steps {
@@ -46,7 +46,7 @@ func catalogArticleSearchText(article CatalogArticle) string {
 		}
 	}
 	if article.Document != nil && len(article.Document.Blocks) > 0 {
-		indexedImages := indexCatalogSearchImages(images)
+		indexedImages := indexCatalogSearchImages(images, storedImageRefs)
 		for _, block := range article.Document.Blocks {
 			parts = append(parts, catalogBlockSearchText(block, indexedImages, nil))
 		}
@@ -246,13 +246,17 @@ func catalogImageRefID(image CatalogImage) string {
 	return image.ImageID
 }
 
-type catalogSearchImages map[string]*CatalogImage
+type catalogSearchImages struct {
+	byID            map[string]*CatalogImage
+	storedImageRefs bool
+}
 
-func indexCatalogSearchImages(images []CatalogImage) catalogSearchImages {
+func indexCatalogSearchImages(images []CatalogImage, storedImageRefs bool) catalogSearchImages {
+	indexed := catalogSearchImages{storedImageRefs: storedImageRefs}
 	if len(images) == 0 {
-		return nil
+		return indexed
 	}
-	indexed := make(catalogSearchImages, len(images))
+	indexed.byID = make(map[string]*CatalogImage, len(images))
 	for i := range images {
 		image := &images[i]
 		if image.Status == "unavailable" {
@@ -264,8 +268,8 @@ func indexCatalogSearchImages(images []CatalogImage) catalogSearchImages {
 		}
 		for _, id := range []string{image.ID, image.ImageID, image.AssetID} {
 			// A first matching asset without a usable address still owns its alias.
-			if _, exists := indexed[id]; id != "" && !exists {
-				indexed[id] = renderable
+			if _, exists := indexed.byID[id]; id != "" && !exists {
+				indexed.byID[id] = renderable
 			}
 		}
 	}
@@ -277,10 +281,15 @@ func (images catalogSearchImages) resolve(ref CatalogImage) *CatalogImage {
 		return nil
 	}
 	id := catalogImageRefID(ref)
+	if images.storedImageRefs {
+		// The paid reader projects image_id over a stored asset_id, which can
+		// be a private object key. Match the same authorized public image.
+		id = paidCatalogImageAssetID(ref)
+	}
 	if id == "" {
 		id = ref.ID
 	}
-	return images[id]
+	return images.byID[id]
 }
 
 func catalogSearchImageDisplayID(image CatalogImage) string {

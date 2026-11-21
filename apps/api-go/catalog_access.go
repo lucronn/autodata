@@ -241,7 +241,7 @@ func (projection paidSearchProjection) matchesContent(searchable CatalogArticle,
 	if err := projection.scopeImages(&searchable); err != nil {
 		return false, err
 	}
-	return catalogSearchWordsMatch(catalogArticleSearchText(searchable), words), nil
+	return catalogSearchWordsMatch(catalogArticleSearchText(searchable, true), words), nil
 }
 
 func (projection paidSearchProjection) scopeImages(article *CatalogArticle) error {

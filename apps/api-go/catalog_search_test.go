@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"fmt"
+	"strings"
+	"testing"
+)
 
 func TestCatalogArticleSearchUsesRenderedDocumentNotHiddenCompatibilityFields(t *testing.T) {
 	article := CatalogArticle{
@@ -25,6 +29,44 @@ func TestCatalogArticleSearchUsesRenderedDocumentNotHiddenCompatibilityFields(t 
 		if len(filterCatalogArticleSearch([]CatalogArticle{article}, query)) != 0 {
 			t.Fatalf("hidden query %q matched", query)
 		}
+	}
+}
+
+func TestPaidCatalogArticleSearchUsesReaderIdentityForStoredFigureCaption(t *testing.T) {
+	const digest = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	const key = "sources/0123456789abcdef/" + digest
+	// HTML capture places the private asset_id and public image_id beside an
+	// authored figcaption in the ordered table-cell document.
+	document := []byte(fmt.Sprintf(`{"blocks":[{"type":"table","label":"Alignment service data","rows":[[{"blocks":[
+		{"type":"image","asset_id":%q,"image_id":%q,"alt":"Gaugeface diagram","caption":"Alignment witness marks","status":"available"}
+	]}]]}]}`, key, digest))
+	images := []byte(fmt.Sprintf(`[{"asset_id":%q,"image_id":%q,"storage_key":%q,"status":"available"}]`, key, digest, key))
+	for _, test := range []struct {
+		name         string
+		sourceImages []byte
+		figure       bool
+	}{
+		{name: "retained figure", sourceImages: images, figure: true},
+		{name: "unproven figure"},
+		{name: "unavailable figure", sourceImages: []byte(fmt.Sprintf(`[{"image_id":%q,"storage_key":%q,"status":"unavailable"}]`, digest, key))},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			projection := paidSearchProjection{document: document, images: images, sourceImages: test.sourceImages}
+			for _, query := range []struct {
+				text  string
+				match bool
+			}{
+				{text: "Alignment service data", match: true},
+				{text: "Alignment service data witness marks", match: test.figure},
+				{text: "Gaugeface diagram", match: test.figure},
+				{text: key, match: false},
+			} {
+				matched, err := projection.matchesContent(CatalogArticle{Title: "Pump removal"}, strings.Fields(strings.ToLower(query.text)))
+				if err != nil || matched != query.match {
+					t.Fatalf("query %q matched %v, want %v (error %v)", query.text, matched, query.match, err)
+				}
+			}
+		})
 	}
 }
 
