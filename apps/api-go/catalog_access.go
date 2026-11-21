@@ -81,6 +81,10 @@ func (s *Server) checkPaidCatalogGrant(ctx context.Context, p Principal, configu
 	return nil
 }
 func (s *Server) writePaidCatalogError(w http.ResponseWriter, r *http.Request, err error) {
+	s.writePaidCatalogErrorDetails(w, r, err, nil)
+}
+
+func (s *Server) writePaidCatalogErrorDetails(w http.ResponseWriter, r *http.Request, err error, details map[string]any) {
 	w.Header().Set("Cache-Control", "private, no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	status, code, message, retryable := 503, "CATALOG_UNAVAILABLE", "Catalog is temporarily unavailable.", true
@@ -95,7 +99,7 @@ func (s *Server) writePaidCatalogError(w http.ResponseWriter, r *http.Request, e
 		status, code, message, retryable = 410, "CATALOG_WITHDRAWN", "Catalog content is withdrawn.", false
 	}
 	// Do not send raw paths/errors to catalog logging: media paths contain tokens.
-	writeAPIError(w, r, status, code, message, retryable)
+	writeAPIErrorDetails(w, r, status, code, message, retryable, details)
 }
 
 // The scope key and provider are constrained by the canonical article schema.
@@ -297,6 +301,44 @@ type paidCatalogContext struct {
 	openDemo      bool
 }
 
+const (
+	catalogArticleIndexPattern = "GET /v1/catalog/vehicles/{vehicle_id}/articles"
+	purchaseQuotePreference    = "workshop-purchase-quote"
+)
+
+func wantsCatalogPurchaseQuote(r *http.Request, configuration CatalogConfiguration) bool {
+	if r.Method != http.MethodGet || r.Pattern != catalogArticleIndexPattern {
+		return false
+	}
+	query, ok := commerceQuery(r, "region")
+	if !ok || !commerceRegion(configuration.Region) || query.Get("region") != configuration.Region {
+		return false
+	}
+	for _, requested := range strings.Split(strings.Join(r.Header.Values("Prefer"), ","), ",") {
+		if strings.TrimSpace(requested) == purchaseQuotePreference {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Server) catalogPurchaseQuote(ctx context.Context, configuration CatalogConfiguration) *commerceQuote {
+	input := map[string]any{"configuration_id": configuration.ID, "region": configuration.Region}
+	status, body, err := s.doCommerce(ctx, "quote", input, nil, "")
+	if err != nil {
+		return nil
+	}
+	public, ok := commercePublicResult("quote", status, body, input, s.commerceClient)
+	if !ok {
+		return nil
+	}
+	quote, ok := public.(commerceQuote)
+	if !ok || !quote.Purchasable {
+		return nil
+	}
+	return &quote
+}
+
 func (s *Server) catalogSelector(next authenticatedHandler) http.Handler {
 	if !s.paidCatalogEnabled() {
 		return s.requireRole("dataset_viewer", next)
@@ -315,10 +357,23 @@ func (s *Server) catalogProtected(next authenticatedHandler, article bool) http.
 			s.writePaidCatalogError(w, r, ErrCatalogNotFound)
 			return
 		}
-		configuration, err := s.resolveCatalogScope(r.Context(), p, r.PathValue("vehicle_id"), r.URL.Query().Get("region"), !openDemo)
+		configuration, err := s.resolveCatalogScope(r.Context(), p, r.PathValue("vehicle_id"), r.URL.Query().Get("region"), false)
 		if err != nil {
 			s.writePaidCatalogError(w, r, err)
 			return
+		}
+		if !openDemo {
+			if err := s.checkPaidCatalogGrant(r.Context(), p, configuration); err != nil {
+				if errors.Is(err, ErrVehicleGrantRequired) && wantsCatalogPurchaseQuote(r, configuration) {
+					w.Header().Set("Preference-Applied", purchaseQuotePreference)
+					s.writePaidCatalogErrorDetails(w, r, err, map[string]any{
+						"purchase_quote": s.catalogPurchaseQuote(r.Context(), configuration),
+					})
+					return
+				}
+				s.writePaidCatalogError(w, r, err)
+				return
+			}
 		}
 		scope := paidCatalogContext{configuration: configuration, openDemo: openDemo}
 		if article {

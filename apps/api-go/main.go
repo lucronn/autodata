@@ -255,7 +255,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /v1/catalog/years/{year}/makes", s.catalogSelector(s.listCatalogMakes))
 	mux.Handle("GET /v1/catalog/years/{year}/makes/{make}/models", s.catalogSelector(s.listCatalogModels))
 	mux.Handle("GET /v1/catalog/years/{year}/makes/{make}/models/{model}/configurations", s.catalogSelector(s.listCatalogConfigurations))
-	mux.Handle("GET /v1/catalog/vehicles/{vehicle_id}/articles", s.catalogProtected(s.listCatalogArticles, false))
+	mux.Handle(catalogArticleIndexPattern, s.catalogProtected(s.listCatalogArticles, false))
 	mux.Handle("GET /v1/catalog/vehicles/{vehicle_id}/articles/{article_id}/source", s.catalogProtected(s.serveCatalogSource, false))
 	mux.Handle("GET /v1/catalog/vehicles/{vehicle_id}/articles/{article_id}", s.catalogProtected(s.getCatalogArticle, true))
 	if s.paidCatalogEnabled() {
@@ -588,14 +588,21 @@ func (s *Server) writeProjectionError(response http.ResponseWriter, request *htt
 }
 
 func writeAPIError(response http.ResponseWriter, request *http.Request, status int, code, message string, retryable bool) {
+	writeAPIErrorDetails(response, request, status, code, message, retryable, nil)
+}
+
+func writeAPIErrorDetails(response http.ResponseWriter, request *http.Request, status int, code, message string, retryable bool, details map[string]any) {
 	requestID := requestIDFrom(request)
+	if details == nil {
+		details = map[string]any{}
+	}
 	writeJSON(response, status, map[string]any{
 		"error": map[string]any{
 			"code":       code,
 			"message":    message,
 			"request_id": requestID,
 			"retryable":  retryable,
-			"details":    map[string]any{},
+			"details":    details,
 		},
 	})
 }
