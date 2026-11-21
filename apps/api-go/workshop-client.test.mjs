@@ -1524,12 +1524,26 @@ test('My vehicles activation clears the previous vehicle search and selector opt
     async requestJSON() { return { version: 'v1', next_cursor: null, items: [{
       configuration_id: routeConfiguration, region: 'US', library_item_id: routeOrder,
       label: 'Purchased vehicle', access_state: 'viewable', granted_at: '2026-11-16T00:00:00Z',
+    }, {
+      configuration_id: '44444444-4444-4444-8444-444444444444', region: 'CA',
+      library_item_id: '55555555-5555-4555-8555-555555555555', label: 'Other purchased vehicle',
+      access_state: 'paid', granted_at: '2026-11-16T00:00:00Z', catalog_available: false,
+    }, {
+      configuration_id: '66666666-6666-4666-8666-666666666666', region: 'US',
+      library_item_id: '77777777-7777-4777-8777-777777777777', label: 'Revoked vehicle',
+      access_state: 'revoked', granted_at: null,
     }] }; },
   });
   runInNewContext(appSection('function updateURL(', 'function rememberOrderRoute(') +
     appSection('function clearLibrary(', 'function resetSourceReview(') +
     appSection('async function library(', 'function clearReader('), h.context);
   await h.context.library({ signal: new AbortController().signal, current: () => true });
+  assert.equal(list.children[0].children[1].textContent, 'Articles available');
+  assert.equal(list.children[1].children[0].textContent, 'Other purchased vehicle / CA');
+  assert.equal(list.children[1].children[1].textContent, 'Owned. Service information is currently unavailable.');
+  assert.equal(list.children[1].children.length, 2);
+  assert.equal(list.children[2].children[1].textContent, 'Access revoked. Contact support.');
+  assert.equal(list.children[2].children.length, 2);
   list.children[0].children[2].events.click();
   assert.equal(h.element('search').value, '');
   const route = new URLSearchParams(location.search);

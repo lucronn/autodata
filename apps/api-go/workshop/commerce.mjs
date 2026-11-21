@@ -86,6 +86,8 @@ export function validLibrary(data) {
           ["paid", "preparing", "viewable", "revoked"].includes(
             item.access_state,
           ) &&
+          (!Object.hasOwn(item, "catalog_available") ||
+            (item.catalog_available === false && item.access_state === "paid")) &&
           (item.granted_at === null
             ? item.access_state === "revoked"
             : validTime(item.granted_at)),

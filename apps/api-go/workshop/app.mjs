@@ -1398,13 +1398,16 @@ async function library(g, append = false) {
     const li = element("li");
     const heading = element("h3", `${item.label} / ${item.region}`);
     firstHeading ??= heading;
+    const catalogUnavailable = item.catalog_available === false;
     let summary = {
       paid: "Owned, ready to open",
       preparing: "Preparing articles",
       viewable: "Articles available",
       revoked: "Access revoked. Contact support.",
     }[item.access_state];
-    if (item.access_state === "preparing") {
+    if (catalogUnavailable) {
+      summary = "Owned. Service information is currently unavailable.";
+    } else if (item.access_state === "preparing") {
       if (item.content_error_code === "CATALOG_PREPARATION_REVIEW") {
         summary = "Article preparation needs review.";
       } else if (["CATALOG_PREPARATION_UNAVAILABLE", "CATALOG_SOURCE_UNAVAILABLE"].includes(item.content_error_code)) {
@@ -1412,7 +1415,7 @@ async function library(g, append = false) {
       }
     }
     li.append(heading, element("p", summary));
-    if (item.access_state !== "revoked") {
+    if (item.access_state !== "revoked" && !catalogUnavailable) {
       const button = element("button", "Open articles");
       button.type = "button";
       button.addEventListener("click", () => {
