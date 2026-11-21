@@ -37,7 +37,8 @@ _PROSE_PROMPT_V22 = "full-prose-auto-prompt-v22"
 _PROSE_PROMPT_V23 = "full-prose-auto-prompt-v23"
 _PROSE_PROMPT_V24 = "full-prose-auto-prompt-v24"
 _PROSE_PROMPT_V25 = "full-prose-auto-prompt-v25"
-_PROSE_PROMPT_VERSION = "full-prose-auto-prompt-v26"
+_PROSE_PROMPT_V26 = "full-prose-auto-prompt-v26"
+_PROSE_PROMPT_VERSION = "full-prose-auto-prompt-v27"
 _WORDS = re.compile(r"\w+")
 _INLINE_WARNING = re.compile(
     r"(?:^|[.!?]\s+|\n)[ \t]*(?:warnings?|caution|danger|notice|important)\s*[:!–—-]"
@@ -380,12 +381,13 @@ _GIVEN_CONDITION = re.compile(
 # A short power or surface condition can be expressed as "while X is off"
 # or "with X off". The delimiter bounds the state to the qualifier.
 _SIMULTANEOUS_MARKER = r"\b(?:(?P<while>while)|with)\s+"
-_SIMULTANEOUS_PREDICATE = (
+_SIMULTANEOUS_SUBJECT = (
     r"(?:the\s+)?"
     r"(?P<subject>" + _TARGET_WORD + r"(?:\s+" + _TARGET_WORD + r"){0,3}?)\s+"
-    r"(?P<copula>(?:is|are)\s+)?(?:"
-    r"(?P<power>(?:(?:switched|turned)\s+)?(?:off|on))|(?P<surface>dry|wet))"
+    r"(?P<copula>(?:is|are)\s+)?"
 )
+_SIMULTANEOUS_STATE = r"(?P<power>(?:(?:switched|turned)\s+)?(?:off|on))|(?P<surface>dry|wet)"
+_SIMULTANEOUS_PREDICATE = _SIMULTANEOUS_SUBJECT + r"(?:" + _SIMULTANEOUS_STATE + r")"
 _SIMULTANEOUS_END = r"(?=\s*(?:,|$))"
 _SIMULTANEOUS_CONDITION = re.compile(
     _SIMULTANEOUS_MARKER + _SIMULTANEOUS_PREDICATE + _SIMULTANEOUS_END, re.IGNORECASE,
@@ -396,6 +398,19 @@ _SIMULTANEOUS_CONJUNCTION = re.compile(
 _SIMULTANEOUS_CONJUNCT = re.compile(
     r"\s+and\s+" + _SIMULTANEOUS_PREDICATE + _SIMULTANEOUS_END, re.IGNORECASE,
 )
+_PRESSURE_STATE = r"(?:de)?pressuri[sz]ed"
+_PRESSURE_STATE_MARKER = re.compile(r"\b" + _PRESSURE_STATE + r"\b", re.IGNORECASE)
+_PRESSURE_SIMULTANEOUS = (
+    _SIMULTANEOUS_SUBJECT + r"(?:" + _SIMULTANEOUS_STATE + r"|(?P<pressure>" + _PRESSURE_STATE + r"))"
+)
+_PRESSURE_SIMULTANEOUS_CONDITION = re.compile(_SIMULTANEOUS_MARKER + _PRESSURE_SIMULTANEOUS + _SIMULTANEOUS_END)
+_PRESSURE_SIMULTANEOUS_CONJUNCTION = re.compile(_SIMULTANEOUS_MARKER + _PRESSURE_SIMULTANEOUS + r"(?=\s+and\s+)")
+_PRESSURE_SIMULTANEOUS_CONJUNCT = re.compile(r"\s+and\s+" + _PRESSURE_SIMULTANEOUS + _SIMULTANEOUS_END)
+_PRESSURE_TEMPORAL_CONDITION = re.compile(
+    r"\b(?P<marker>if|when|once|before|after)\s+" + _SIMULTANEOUS_SUBJECT
+    + r"(?P<pressure>" + _PRESSURE_STATE + r")" + _SIMULTANEOUS_END,
+)
+_PRESSURE_OPEN_CLOSE = re.compile(r"(?P<verb>open|close)\s+" + _SIMPLE_TARGET)
 _WHILE_MARKER = re.compile(r"\bwhile\b", re.IGNORECASE)
 _CONTINUED_PREDICATE = re.compile(_CONDITION_PREDICATE, re.IGNORECASE)
 _CONTINUED_STATE = re.compile(r"(" + _CONDITION_STATE + r")(?=[,.\s]|$)", re.IGNORECASE)
@@ -888,13 +903,29 @@ def _build_auto_prompt_v25(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def build_auto_prompt(document, *, context):
+def _auto_prompt_payload_v26(document, *, context):
     payload = _auto_prompt_payload_v25(document, context=context)
     if payload["slots"]:
-        payload["prompt_version"] = _PROSE_PROMPT_VERSION
+        payload["prompt_version"] = _PROSE_PROMPT_V26
         payload["rules"].append(
             "If an instruction requires two simultaneous states, keep both states, the original "
             "subjects, and the action they qualify. Both conditions must still hold."
+        )
+    return payload
+
+
+def _build_auto_prompt_v26(document, *, context):
+    payload = _auto_prompt_payload_v26(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def build_auto_prompt(document, *, context):
+    payload = _auto_prompt_payload_v26(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_VERSION
+        payload["rules"].append(
+            "Keep explicit pressurized or depressurized prerequisites attached to the original "
+            "system and action. Preserve whether the state is required before, after, or during the action."
         )
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
@@ -902,8 +933,8 @@ def build_auto_prompt(document, *, context):
 def _auto_prompt_version(document, *, context, prompt_hash):
     """Identify the rules bound to the saved model attempt."""
     for builder in (
-        build_auto_prompt, _build_auto_prompt_v25, _build_auto_prompt_v24, _build_auto_prompt_v23,
-        _build_auto_prompt_v22, _build_auto_prompt_v21, _build_auto_prompt_v20, _build_auto_prompt_v19,
+        build_auto_prompt, _build_auto_prompt_v26, _build_auto_prompt_v25, _build_auto_prompt_v24,
+        _build_auto_prompt_v23, _build_auto_prompt_v22, _build_auto_prompt_v21, _build_auto_prompt_v20, _build_auto_prompt_v19,
         _build_auto_prompt_v18, _build_auto_prompt_v17, _build_auto_prompt_v16, _build_auto_prompt_v15,
         _build_auto_prompt_v14, _build_auto_prompt_v13,
         _build_auto_prompt_v12, _build_auto_prompt_v11,
@@ -1311,14 +1342,18 @@ def _identified_inspection(text, *, compound=False):
 def _simultaneous_predicate(match):
     words = tuple(_WORDS.findall(match["subject"]))
     if set(words).isdisjoint(_TARGET_DELIMITERS):
+        if "pressure" in match.re.groupindex and match["pressure"]:
+            return words, match["pressure"].replace("ised", "ized")
         return words, match["surface"] or match["power"].split()[-1]
     return None
 
 
-def _conjunctive_simultaneous_state(text):
+def _conjunctive_simultaneous_state(text, *, pressure=False):
     # Bind two explicit predicates without interpreting nested conditions.
-    for first in _SIMULTANEOUS_CONJUNCTION.finditer(text):
-        second = _SIMULTANEOUS_CONJUNCT.match(text, first.end())
+    first_pattern = _PRESSURE_SIMULTANEOUS_CONJUNCTION if pressure else _SIMULTANEOUS_CONJUNCTION
+    second_pattern = _PRESSURE_SIMULTANEOUS_CONJUNCT if pressure else _SIMULTANEOUS_CONJUNCT
+    for first in first_pattern.finditer(text):
+        second = second_pattern.match(text, first.end())
         if second is None or (first["while"] and not (first["copula"] and second["copula"])):
             continue
         predicates = _simultaneous_predicate(first), _simultaneous_predicate(second)
@@ -1327,14 +1362,31 @@ def _conjunctive_simultaneous_state(text):
     return None
 
 
-def _simultaneous_state(text, *, conjunctive=False):
-    if conjunctive and (state := _conjunctive_simultaneous_state(text)):
+def _simultaneous_state(text, *, conjunctive=False, pressure=False):
+    if conjunctive and (state := _conjunctive_simultaneous_state(text, pressure=pressure)):
         return state
-    for match in _SIMULTANEOUS_CONDITION.finditer(text):
+    pattern = _PRESSURE_SIMULTANEOUS_CONDITION if pressure else _SIMULTANEOUS_CONDITION
+    for match in pattern.finditer(text):
         if match["while"] and not match["copula"]:
             continue
         if predicate := _simultaneous_predicate(match):
             return match, ("condition", "while", *predicate), match.end()
+    return None
+
+
+def _pressure_condition(text):
+    if not _PRESSURE_STATE_MARKER.search(text):
+        return None
+    for match in _PRESSURE_TEMPORAL_CONDITION.finditer(text):
+        if match["copula"] and (predicate := _simultaneous_predicate(match)):
+            marker = match["marker"]
+            relation = {"if": "condition", "when": "condition", "once": "after"}.get(marker, marker)
+            return match, ("condition", relation, *predicate), match.end()
+    if parsed := _simultaneous_state(text, conjunctive=True, pressure=True):
+        _, fact, _ = parsed
+        states = (state for _, state in fact[3]) if fact[2] == "and" else (fact[-1],)
+        if any(state in ("pressurized", "depressurized") for state in states):
+            return parsed
     return None
 
 
@@ -1497,13 +1549,32 @@ def _qualifier_changed(original, replacement, *, extended=False, simultaneous=Fa
     return any(fact[0] != "inspection" for fact in draft_facts - source_facts)
 
 
+def _pressure_qualified_task(text):
+    text = _proof_text(text)
+    condition = _pressure_condition(text)
+    if condition is None:
+        return None
+    marker, fact, end = condition
+    action = _split_qualifier(text, marker, end=end)
+    if action is None:
+        return None
+    if task := _qualifier_task(action, extended=True):
+        return task, fact
+    if match := _PRESSURE_OPEN_CLOSE.fullmatch(action):
+        target = tuple(_WORDS.findall(match["object"]))
+        if set(target).isdisjoint(_TARGET_DELIMITERS):
+            return ((match["verb"], target), frozenset()), fact
+    return None
+
+
 def _uses_prose_guards(prompt_version, slot_count):
     return bool(slot_count) and prompt_version in (
         None, _PROSE_PROMPT_V4, _PROSE_PROMPT_V5, _PROSE_PROMPT_V6, _PROSE_PROMPT_V7,
         _PROSE_PROMPT_V8, _PROSE_PROMPT_V9, _PROSE_PROMPT_V10, _CELL_PROSE_PROMPT_V11,
         _PROSE_PROMPT_V12, _PROSE_PROMPT_V13, _PROSE_PROMPT_V14, _PROSE_PROMPT_V15, _PROSE_PROMPT_V16,
         _PROSE_PROMPT_V17, _PROSE_PROMPT_V18, _PROSE_PROMPT_V19, _PROSE_PROMPT_V20, _PROSE_PROMPT_V21,
-        _PROSE_PROMPT_V22, _PROSE_PROMPT_V23, _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V22, _PROSE_PROMPT_V23, _PROSE_PROMPT_V24,
+        _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_VERSION,
     )
 
 
@@ -1512,7 +1583,7 @@ def _include_cell_blocks(prompt_version):
         None, _CELL_PROSE_PROMPT_V11, _PROSE_PROMPT_V12, _PROSE_PROMPT_V13,
         _PROSE_PROMPT_V14, _PROSE_PROMPT_V15, _PROSE_PROMPT_V16, _PROSE_PROMPT_V17, _PROSE_PROMPT_V18,
         _PROSE_PROMPT_V19, _PROSE_PROMPT_V20, _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23,
-        _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_VERSION,
     )
 
 
@@ -1531,50 +1602,55 @@ def _require_changes(source, candidate, *, prompt_version):
         None, _PROSE_PROMPT_V12, _PROSE_PROMPT_V13, _PROSE_PROMPT_V14, _PROSE_PROMPT_V15,
         _PROSE_PROMPT_V16, _PROSE_PROMPT_V17, _PROSE_PROMPT_V18, _PROSE_PROMPT_V19, _PROSE_PROMPT_V20,
         _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23, _PROSE_PROMPT_V24,
-        _PROSE_PROMPT_V25, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_VERSION,
     )
     guard_identified_inspection = guard_simultaneous and prompt_version != _PROSE_PROMPT_V12
     guard_compound_inspection = guard_identified_inspection and prompt_version != _PROSE_PROMPT_V13
     guard_bound_alternatives = guard_scope and prompt_version in (
         None, _PROSE_PROMPT_V15, _PROSE_PROMPT_V16, _PROSE_PROMPT_V17, _PROSE_PROMPT_V18,
         _PROSE_PROMPT_V19, _PROSE_PROMPT_V20, _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23,
-        _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_VERSION,
     )
     guard_bound_order = guard_clauses and prompt_version in (
         None, _PROSE_PROMPT_V16, _PROSE_PROMPT_V17, _PROSE_PROMPT_V18, _PROSE_PROMPT_V19,
         _PROSE_PROMPT_V20, _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23,
-        _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_VERSION,
     )
     guard_bound_steps = prompt_version in (
-        None, _PROSE_PROMPT_V23, _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_VERSION,
+        None, _PROSE_PROMPT_V23, _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_VERSION,
     )
     guard_torque_aliases = prompt_version in (
         None, _PROSE_PROMPT_V17, _PROSE_PROMPT_V18, _PROSE_PROMPT_V19, _PROSE_PROMPT_V20,
         _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23, _PROSE_PROMPT_V24,
-        _PROSE_PROMPT_V25, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_VERSION,
     )
     guard_duration_values = prompt_version in (
         None, _PROSE_PROMPT_V18, _PROSE_PROMPT_V19, _PROSE_PROMPT_V20, _PROSE_PROMPT_V21,
-        _PROSE_PROMPT_V22, _PROSE_PROMPT_V23, _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V22, _PROSE_PROMPT_V23, _PROSE_PROMPT_V24,
+        _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_VERSION,
     )
     guard_electrical_values = prompt_version in (
         None, _PROSE_PROMPT_V19, _PROSE_PROMPT_V20, _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23,
-        _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_VERSION,
     )
     guard_pressure_values = prompt_version in (
         None, _PROSE_PROMPT_V20, _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23,
-        _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_VERSION,
     )
     guard_temperature_values = prompt_version in (
         None, _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23, _PROSE_PROMPT_V24,
-        _PROSE_PROMPT_V25, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_VERSION,
     )
     guard_resistance_values = prompt_version in (
-        None, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23, _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_VERSION,
+        None, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23, _PROSE_PROMPT_V24,
+        _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_VERSION,
     )
-    guard_clearance_warnings = prompt_version in (None, _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_VERSION)
-    guard_rotation_values = prompt_version in (None, _PROSE_PROMPT_V25, _PROSE_PROMPT_VERSION)
-    guard_conjunctive = guard_simultaneous and prompt_version in (None, _PROSE_PROMPT_VERSION)
+    guard_clearance_warnings = prompt_version in (
+        None, _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_VERSION,
+    )
+    guard_rotation_values = prompt_version in (None, _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_VERSION)
+    guard_conjunctive = guard_simultaneous and prompt_version in (None, _PROSE_PROMPT_V26, _PROSE_PROMPT_VERSION)
+    guard_pressure_conditions = prompt_version in (None, _PROSE_PROMPT_VERSION)
     introduction = candidate["blocks"][0].get("text", "")
     if guard_prose and (
         _INLINE_WARNING.search(introduction)
@@ -1592,7 +1668,8 @@ def _require_changes(source, candidate, *, prompt_version):
         rotation_values=guard_rotation_values,
     ):
         raise ValueError("REWRITE_SPEC_SCOPE_MUTATION")
-    if guard_simultaneous and _simultaneous_state(_proof_text(introduction), conjunctive=guard_conjunctive):
+    if ((guard_simultaneous and _simultaneous_state(_proof_text(introduction), conjunctive=guard_conjunctive))
+            or (guard_pressure_conditions and _pressure_condition(_proof_text(introduction)))):
         raise ValueError("REWRITE_INTRODUCTION_UNSUPPORTED_CLAIM")
     if guard_claims:
         _check_intro_claims(source, slots, introduction)
@@ -1663,6 +1740,8 @@ def _require_changes(source, candidate, *, prompt_version):
                 replacement, compound=guard_compound_inspection,
             ):
                 raise ValueError("REWRITE_QUALIFIER_MUTATION")
+        if guard_pressure_conditions and _pressure_qualified_task(original) != _pressure_qualified_task(replacement):
+            raise ValueError("REWRITE_QUALIFIER_MUTATION")
         if guard_qualifiers and _qualifier_changed(
             original, replacement, extended=guard_scope, simultaneous=guard_simultaneous,
             conjunctive=guard_conjunctive,
@@ -1719,7 +1798,8 @@ def validate_auto(source, candidate, *, response=None, prompt_version=None):
             _PROSE_PROMPT_V23: "full-prose-auto-validator-v21",
             _PROSE_PROMPT_V24: "full-prose-auto-validator-v22",
             _PROSE_PROMPT_V25: "full-prose-auto-validator-v23",
-        }.get(prompt_version, "full-prose-auto-validator-v24")
+            _PROSE_PROMPT_V26: "full-prose-auto-validator-v24",
+        }.get(prompt_version, "full-prose-auto-validator-v25")
     report.update(validator_version=validator_version, profile_version=PROFILE,
         publication_mode="automatic", content_acceptance_required=False,
         complete_rewrite=False, passed=not errors, error_codes=errors)
