@@ -144,18 +144,22 @@ function clearProtected() {
   indexComplete = false;
   indexFailed = false;
   resetReaderContent();
-  for (const id of ["articles", "reference-data", "library-items"])
+  for (const id of ["articles", "reference-data"])
     $(id).replaceChildren();
   $("article-title").textContent = "";
   $("catalog-count").textContent = "";
   $("reader").hidden = true;
   $("catalog").hidden = true;
+  clearLibrary();
+  access = "unknown";
+}
+function clearLibrary() {
+  $("library-items").replaceChildren();
   libraryCursor = null;
   libraryPageRequest = null;
   $("library-more").hidden = true;
   $("library-more").removeAttribute("aria-disabled");
   $("library-message").textContent = "";
-  access = "unknown";
 }
 function resetSourceReview() {
   sourceImageRefresh = null;
@@ -1160,7 +1164,10 @@ async function renewMedia(g, failed) {
 }
 async function library(g, append = false) {
   if (append && (!libraryCursor || libraryPageRequest)) return;
-  if (!append) clearReader();
+  if (!append) {
+    clearReader();
+    clearLibrary();
+  }
   if (!session.state.authenticated) {
     show("welcome");
     status("Sign in to open My vehicles.");
@@ -1190,24 +1197,25 @@ async function library(g, append = false) {
     throw new Error("My vehicles is temporarily unavailable.");
   libraryCursor = data.next_cursor || null;
   const list = $("library-items");
-  if (!append) list.replaceChildren();
   let firstHeading;
   for (const item of data.items) {
     const li = element("li");
     const heading = element("h3", `${item.label} / ${item.region}`);
     firstHeading ??= heading;
-    li.append(
-      heading,
-      element(
-        "p",
-        {
-          paid: "Owned, ready to open",
-          preparing: "Preparing articles",
-          viewable: "Open articles",
-          revoked: "Access revoked. Contact support.",
-        }[item.access_state],
-      ),
-    );
+    let summary = {
+      paid: "Owned, ready to open",
+      preparing: "Preparing articles",
+      viewable: "Articles available",
+      revoked: "Access revoked. Contact support.",
+    }[item.access_state];
+    if (item.access_state === "preparing") {
+      if (item.content_error_code === "CATALOG_PREPARATION_REVIEW") {
+        summary = "Article preparation needs review.";
+      } else if (["CATALOG_PREPARATION_UNAVAILABLE", "CATALOG_SOURCE_UNAVAILABLE"].includes(item.content_error_code)) {
+        summary = "Articles are temporarily unavailable.";
+      }
+    }
+    li.append(heading, element("p", summary));
     if (item.access_state !== "revoked") {
       const button = element("button", "Open articles");
       button.type = "button";

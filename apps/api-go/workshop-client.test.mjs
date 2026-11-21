@@ -1317,6 +1317,7 @@ test('My vehicles activation clears the previous vehicle search and selector opt
   const list = makeElement('ul');
   list.replaceChildren = () => { list.children = []; };
   const get = h.context.$;
+  get('library-more').removeAttribute = () => {};
   h.context.$ = id => id === 'library-items' ? list : get(id);
   Object.assign(h.context, {
     location, URLSearchParams, validLibrary, element: makeElement,
@@ -1329,6 +1330,7 @@ test('My vehicles activation clears the previous vehicle search and selector opt
     }] }; },
   });
   runInNewContext(appSection('function updateURL(', 'function rememberOrderRoute(') +
+    appSection('function clearLibrary(', 'function resetSourceReview(') +
     appSection('async function library(', 'function clearReader('), h.context);
   await h.context.library({ signal: new AbortController().signal, current: () => true });
   list.children[0].children[2].events.click();
@@ -2959,6 +2961,51 @@ test('Library Load more makes one cursor request and keeps prior cards mounted',
   assert.equal(mediaDescendants(list.children[1], 'button').length, 0);
   assert.equal(more.hidden, true);
   assert.equal(more.getAttribute('aria-disabled'), null);
+});
+
+test('Library cards distinguish preparation review, temporary failure, and readable articles', async () => {
+  const summaries = [
+    ['preparing', 'CATALOG_PREPARATION_REVIEW', 'Article preparation needs review.'],
+    ['preparing', 'CATALOG_PREPARATION_UNAVAILABLE', 'Articles are temporarily unavailable.'],
+    ['preparing', 'CATALOG_SOURCE_UNAVAILABLE', 'Articles are temporarily unavailable.'],
+    ['preparing', '', 'Preparing articles'],
+    ['viewable', 'CATALOG_PREPARATION_REVIEW', 'Articles available'],
+    ['revoked', 'CATALOG_PREPARATION_UNAVAILABLE', 'Access revoked. Contact support.'],
+  ];
+  const h = articleMediaHarness({
+    session: { state: { authenticated: true } }, validLibrary, clearReader() {},
+    requestJSON: async () => ({ version: 'v1', next_cursor: '', items: summaries.map(([access_state, content_error_code], i) => ({
+      configuration_id: routeConfiguration,
+      library_item_id: String(i + 1) + '1111111-1111-4111-8111-111111111111',
+      label: 'Fixture vehicle', region: 'US', access_state, content_error_code,
+      granted_at: '2026-11-16T00:00:00Z',
+    })) }),
+  });
+  runInNewContext(appSection('async function library(', 'function clearReader('), h.context);
+  await h.context.library(h.g);
+  const cards = h.nodes.get('library-items').children;
+  assert.deepEqual(cards.map(card => card.children[1].textContent), summaries.map(row => row[2]));
+  assert.deepEqual(cards.map(card => mediaDescendants(card, 'button').length), [1, 1, 1, 1, 1, 0]);
+});
+
+test('opening Library again clears the last empty result while waiting for a fresh page', async () => {
+  const pending = deferredAuthOperation();
+  const empty = { version: 'v1', next_cursor: '', items: [] };
+  let reads = 0;
+  const h = articleMediaHarness({
+    session: { state: { authenticated: true } }, validLibrary, clearReader() {},
+    requestJSON: () => ++reads === 1 ? Promise.resolve(empty) : pending.promise,
+  });
+  runInNewContext(appSection('async function library(', 'function clearReader('), h.context);
+  await h.context.library(h.g);
+  assert.match(h.nodes.get('library-message').textContent, /No vehicles purchased/);
+  const reloading = h.context.library(h.navigation.next());
+  assert.equal(h.nodes.get('library-message').textContent, '');
+  const card = { library_item_id: routeOrder, configuration_id: routeConfiguration, region: 'US', label: 'New purchase',
+    access_state: 'preparing', granted_at: '2026-11-16T00:00:00Z' };
+  pending.resolve({ ...empty, items: [card] });
+  await reloading;
+  assert.match(h.nodes.get('library-items').textContent, /New purchase/);
 });
 
 test('clearing protected state also clears an earlier Library message and Load more cursor', () => {
