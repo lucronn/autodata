@@ -4493,6 +4493,129 @@ test('article block media actual renewal shares one request and reconciles both 
   assert.equal(mediaDescendants(parent, 'figure')[0].textContent, 'Illustration unavailable. Refresh this article to try again.');
 });
 
+for (const race of ['same revision metadata', 'canonical publication', 'withdrawal', 'detail not found']) {
+  test(`concurrent article detail responses preserve ${race}`, async () => {
+    const { requestArticleJSON } = await import('./workshop/catalog.mjs');
+    const { readArticle } = await import('./workshop/article-read.mjs');
+    const id = '33333333-3333-4333-8333-333333333333';
+    const vehicle = { id: '11111111-1111-4111-8111-111111111111', region: 'US' };
+    const detail = `/v1/catalog/vehicles/${vehicle.id}/articles/${id}`;
+    const source = mediaArticle([
+      { type: 'paragraph', text: 'Synthetic retained procedure' },
+      { type: 'image', asset_id: 'figure' },
+    ], [{ id: 'figure', url: mediaURL('fixture-expired') }], {
+      id, view_revision: 'fixture-source-view',
+      processing: { job_id: 'fixture-job', state: 'rewriting' },
+    });
+    const needsReview = { ...source, processing: { job_id: 'fixture-job', state: 'needs_review' } };
+    const renewal = { ...source, images: [{ id: 'figure', url: mediaURL('fixture-fresh') }] };
+    const published = { ...renewal, view_revision: 'fixture-canonical-view', content_origin: 'canonical',
+      document: { blocks: [{ type: 'paragraph', text: 'Synthetic published procedure' }, { type: 'image', asset_id: 'figure' }] },
+      processing: { job_id: 'fixture-job', state: 'completed' } };
+    const wire = article => new Response(JSON.stringify({ version: 'v1', configuration: vehicle, article }));
+    const firstWait = deferredAuthOperation(), allowPoll = deferredAuthOperation();
+    const secondStarted = deferredAuthOperation(), older = deferredAuthOperation();
+    const requests = [];
+    let clock = 0;
+    const h = articleMediaHarness({
+      session: { state: { authenticated: true, mode: 'firebase', csrf: 'fixture' } },
+      vehicle, articlePath: () => detail, stage() {},
+      requestArticleJSON: (path, options) => requestArticleJSON(path, {
+        ...options, fetcher: async (_url, { method }) => {
+          requests.push([method, path]);
+          assert.equal(options.signal, h.g.signal);
+          if (requests.length === 1) return wire(source);
+          if (requests.length === 2) {
+            secondStarted.resolve();
+            return older.promise;
+          }
+          if (requests.length === 3) return wire(race === 'same revision metadata' ? needsReview : published);
+          assert.equal(race, 'canonical publication');
+          assert.equal(requests.length, 4);
+          return wire(needsReview);
+        },
+      }),
+      readArticle: (read, options) => readArticle(read, {
+        ...options, now: () => clock,
+        async wait(ms) { clock += ms; firstWait.resolve(); await allowPoll.promise; },
+      }),
+    });
+    runInNewContext(appSection('async function loadArticle(', 'function openArticle('), h.context);
+    const opening = h.context.loadArticle(id, h.g);
+    await firstWait.promise;
+    const body = h.nodes.get('article-content');
+    const failed = mediaDescendants(body, 'img')[0];
+    const expected = [['POST', detail + '/prepare?region=US'], ['GET', detail + '?region=US'], ['GET', detail + '?region=US']];
+    if (race === 'canonical publication' || race === 'detail not found') {
+      allowPoll.resolve();
+      await secondStarted.promise;
+      await h.context.renewMedia(h.g, failed);
+      assert.equal(body.textContent, 'Synthetic published procedure');
+      if (race === 'detail not found') {
+        older.resolve(new Response(JSON.stringify({ error: { code: 'CATALOG_NOT_FOUND' } }), { status: 404 }));
+        await assert.rejects(opening, { status: 404, code: 'CATALOG_NOT_FOUND' });
+        assert.equal(body.textContent, '');
+        assert.equal(h.nodes.get('print').disabled, true);
+        assert.equal(h.nodes.get('article-title').textContent, 'Article unavailable');
+      } else {
+        older.resolve(wire(needsReview));
+        await opening;
+        assert.equal(body.textContent, 'Synthetic published procedure');
+        assert.equal(h.context.currentArticle.processing.state, 'completed');
+        assert.equal(h.statuses.at(-1).message, 'Article ready.');
+        assert.deepEqual(requests, expected);
+
+        await h.context.renewMedia(h.g, mediaDescendants(body, 'img')[0]);
+        assert.equal(body.textContent, 'Synthetic retained procedure');
+        assert.equal(h.context.currentArticle.processing.state, 'needs_review');
+        expected.push(['GET', detail + '?region=US']);
+      }
+    } else {
+      const refreshing = h.context.renewMedia(h.g, failed);
+      await secondStarted.promise;
+      allowPoll.resolve();
+      await opening;
+      if (race === 'same revision metadata') {
+        assert.equal(h.context.currentArticle.processing.state, 'needs_review');
+        older.resolve(wire(renewal));
+        await refreshing;
+        assert.equal(h.context.currentArticle.processing.state, 'needs_review');
+        assert.equal(h.nodes.get('article-note').textContent, '');
+        assert.match(h.statuses.at(-1).message, /preparation needs review/);
+        assert.equal(failed.src, 'https://cars.example/v1/catalog/images/v2.fixture-fresh');
+      } else {
+        assert.equal(body.textContent, 'Synthetic published procedure');
+        older.resolve(new Response(JSON.stringify({ error: { code: 'CATALOG_WITHDRAWN' } }), { status: 410 }));
+        await refreshing;
+        assert.equal(body.textContent, '');
+        assert.equal(h.nodes.get('print').disabled, true);
+        assert.equal(h.g.current(), false);
+        assert.equal(h.shows.at(-1), 'welcome');
+      }
+    }
+    assert.deepEqual(requests, expected);
+  });
+}
+
+test('a superseded article response still contributes its retry delay to an active read', async () => {
+  const { readArticle } = await import('./workshop/article-read.mjs');
+  const current = { status: 200, data: { article: mediaArticle([], [], {
+    processing: { job_id: 'fixture-job', state: 'rewriting' },
+  }) } };
+  const older = { ...current, retryAfterSeconds: 4 };
+  const finished = { data: { article: mediaArticle([{ type: 'paragraph', text: 'Ready' }]) } };
+  const responses = [older, finished], updates = [], waits = [];
+  let clock = 0;
+  await readArticle(async () => responses.shift(), {
+    now: () => clock,
+    async wait(ms) { waits.push(ms); clock += ms; },
+    selectResponse: response => response === older ? current : response,
+    onUpdate: response => updates.push(response),
+  });
+  assert.deepEqual(updates, [current, finished]);
+  assert.deepEqual(waits, [4000]);
+});
+
 test('a figure that fails later reuses the refreshed article links', async () => {
   let requests = 0;
   const h = articleMediaHarness({ requestArticleJSON: async () => { requests++; return renewedArticle(); } });

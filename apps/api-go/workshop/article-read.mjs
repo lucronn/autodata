@@ -37,11 +37,18 @@ export function processingArticle(article) {
       (processing.state !== "failed" || processing.retryable === true),
   );
 }
+function articleRetryAfter(response) {
+  return Math.max(
+    Number(response?.retryAfterSeconds) || 0,
+    Number(response?.data?.article?.processing?.retry_after_seconds) || 0,
+  );
+}
 export async function readArticle(
   read,
   {
     signal,
     onUpdate = () => {},
+    selectResponse = (response) => response,
     wait = delay,
     now = () => performance.now(),
     budgetMs = 120000,
@@ -74,7 +81,7 @@ export async function readArticle(
     const bodyDeadline = firstReadAt && nextSourceProbeAt ? firstReadAt :
       publicationReadAt ? publicationReadAt + publicationProbeIntervalMs : 0;
     try {
-      latest = await read({
+      const response = await read({
         signal,
         timeout: Math.max(1, Math.floor(Math.min(10000, readDeadline - startedAt))),
         readableBodyTimeout: bodyDeadline ? Math.floor(Math.min(deadline, bodyDeadline) - startedAt) : undefined,
@@ -83,13 +90,12 @@ export async function readArticle(
         preferShortPublicationCheck: !sawFastSource || Boolean(publicationReadAt),
       });
       signal?.throwIfAborted();
+      latest = selectResponse(response);
       if (!latest?.data?.article || typeof latest.data.article !== "object")
         throw new Error("The article response is unreadable.");
       onUpdate(latest);
-      retryAfter = Math.max(
-        Number(latest.retryAfterSeconds) || 0,
-        Number(latest.data.article.processing?.retry_after_seconds) || 0,
-      );
+      retryAfter = articleRetryAfter(latest);
+      if (response !== latest) retryAfter = Math.max(retryAfter, articleRetryAfter(response));
       const article = latest.data.article;
       if (!processingArticle(article))
         return { ...latest, timedOut: false };

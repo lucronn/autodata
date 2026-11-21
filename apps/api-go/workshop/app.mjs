@@ -1048,11 +1048,35 @@ function showUnavailableImage(img) {
     "image-missing",
   ));
 }
+const articleDetailOrders = new WeakMap();
+const articleDetailSequence = Symbol();
+function articleDetailOrder(g, id) {
+  const current = articleDetailOrders.get(g.signal);
+  if (current?.id === id) return current;
+  const order = { id, issued: 0, accepted: null };
+  articleDetailOrders.set(g.signal, order);
+  return order;
+}
+async function requestArticleDetail(order, path, options) {
+  const sequence = ++order.issued;
+  const response = await requestArticleJSON(path, options);
+  return { ...response, [articleDetailSequence]: sequence };
+}
+function acceptArticleDetail(order, response) {
+  if (!response?.data?.article || typeof response.data.article !== "object") return response;
+  // Overlapping detail reads can arrive in either order. A late success can
+  // use the newer accepted view without replaying an earlier snapshot.
+  if (order.accepted?.[articleDetailSequence] > response[articleDetailSequence]) return order.accepted;
+  order.accepted = response;
+  return response;
+}
+function articleViewRevision(article) {
+  return article.view_revision ||
+    `${article.content_origin || "legacy"}:${article.source_revision_id || ""}:${article.canonical_revision_id || ""}`;
+}
 function renderArticle(article, g) {
   if (!g.current()) return;
-  const revision =
-    article.view_revision ||
-    `${article.content_origin || "legacy"}:${article.source_revision_id || ""}:${article.canonical_revision_id || ""}`;
+  const revision = articleViewRevision(article);
   const review = article.source_review;
   const previousReview = currentArticle?.source_review;
   const reviewURL = review?.available ? review.url : "";
@@ -1131,10 +1155,11 @@ async function loadArticle(id, g, { savedLink = false } = {}) {
   const selected = vehicle;
   const matchesConfiguration = (configuration) =>
     configuration?.id === selected.id && configuration?.region === selected.region;
+  const order = articleDetailOrder(g, id);
   const detailPath = articleRequestPath(id);
   const readOptions = { signal: g.signal, preferShortPublicationCheck: true };
   const first = await (paid
-    ? requestArticleJSON(articleRequestPath(id, "/prepare"), {
+    ? requestArticleDetail(order, articleRequestPath(id, "/prepare"), {
         ...readOptions,
         method: "POST",
         body: {},
@@ -1142,10 +1167,10 @@ async function loadArticle(id, g, { savedLink = false } = {}) {
         reportBodyNetworkError: true,
         headers: { "X-CSRF-Token": session.state.csrf },
       })
-    : requestArticleJSON(detailPath, readOptions)).catch(async (error) => {
+    : requestArticleDetail(order, detailPath, readOptions)).catch(async (error) => {
         if (paid && g.current() && error.status === 0 && error.code === "NETWORK_UNAVAILABLE") {
           // Prepare may have committed before the browser lost the response.
-          const recovered = await requestArticleJSON(detailPath, { ...readOptions, preferShortSourceCheck: true })
+          const recovered = await requestArticleDetail(order, detailPath, { ...readOptions, preferShortSourceCheck: true })
             .catch((detailError) => {
               g.signal.throwIfAborted();
               if ([401, 403, 404, 410].includes(detailError.status)) return handleReadError(detailError);
@@ -1178,10 +1203,11 @@ async function loadArticle(id, g, { savedLink = false } = {}) {
         initial = null;
         return value;
       }
-      return requestArticleJSON(detailPath, options);
+      return requestArticleDetail(order, detailPath, options);
     },
     {
       signal: g.signal,
+      selectResponse: (response) => acceptArticleDetail(order, response),
       onUpdate(response) {
         if (!g.current()) return;
         const article = response.data.article;
@@ -1316,7 +1342,10 @@ async function renewMedia(g, failed) {
   const revision = renderedRevision;
   const sourceSelection = displayedSourceRevision;
   const selectedSourceURL = sourceURL;
-  const visible = () => g.current() && failed.isConnected &&
+  const id = currentArticle.id;
+  const detailPath = articleRequestPath(id);
+  const sameArticle = () => g.current() && currentArticle?.id === id && articleRequestPath(id) === detailPath;
+  const visible = () => sameArticle() && failed.isConnected &&
     (!stored || displayedSourceRevision === sourceSelection);
   const current = () => visible() && renderedRevision === revision;
   const refresh = async () => {
@@ -1335,12 +1364,18 @@ async function renewMedia(g, failed) {
           throw new Error("The stored source changed.");
         return data.images || [];
       }
-      const response = await requestArticleJSON(articleRequestPath(currentArticle.id), { signal: g.signal });
+      const order = articleDetailOrder(g, id);
+      const response = await requestArticleDetail(order, detailPath, { signal: g.signal });
       if (!current()) return [];
-      renderArticle(response.data.article, g);
-      return imageMap(response.data.article);
+      const article = response.data.article;
+      if (acceptArticleDetail(order, response) === response) {
+        renderArticle(article, g);
+        return imageMap(article);
+      }
+      // An earlier response can renew the same projection's capabilities.
+      return imageMap(article.id === id && articleViewRevision(article) === renderedRevision ? article : currentArticle);
     } catch (error) {
-      if (!current()) return [];
+      if (stored ? !current() : !sameArticle()) return [];
       if ([401, 403, 410].includes(error.status)) {
         handleSourceError(error, g);
       } else if (error.status === 404 && error.code === "CATALOG_NOT_FOUND") {
