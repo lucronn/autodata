@@ -12,7 +12,9 @@ from reportlab.pdfgen import canvas
 import pytest
 
 from autodata_ingestion.article_lifecycle import run_article_worker_once
-from autodata_ingestion.article_lifecycle_types import PDF_COMPACT_FIGURE_LAYOUT, PDF_LEGACY_FIGURE_LAYOUT, PDF_REPEAT_MARGIN_LAYOUT
+from autodata_ingestion.article_lifecycle_types import (
+    PDF_BLANK_PAGE_LAYOUT, PDF_COMPACT_FIGURE_LAYOUT, PDF_LEGACY_FIGURE_LAYOUT, PDF_REPEAT_MARGIN_LAYOUT,
+)
 from autodata_ingestion.procedure_rewrite_auto import PROFILE as AUTO_PROFILE
 from autodata_ingestion.source_job_persistence import refresh_article_job
 
@@ -53,7 +55,7 @@ class FixtureDraft:
         }
 
 
-def _pdf_with_fixture_figure(*, trailing_text=None, second_figure=False, compact=False, title=None):
+def _pdf_with_fixture_figure(*, trailing_text=None, second_figure=False, compact=False, title=None, blank_page=False):
     raster = _compact_figure() if compact else Image.frombytes("RGB", (96, 96), Random(7).randbytes(96 * 96 * 3))
     with raster as figure, BytesIO() as output:
         pixels = figure.tobytes()
@@ -73,6 +75,8 @@ def _pdf_with_fixture_figure(*, trailing_text=None, second_figure=False, compact
         if trailing_text:
             document.drawString(72, 450, trailing_text)
         document.showPage()
+        if blank_page:
+            document.showPage()
         document.save()
         return output.getvalue(), pixels
 
@@ -313,11 +317,18 @@ def test_v10_promotion_preserves_an_unchanged_sibling_pdf_across_refreshes(runti
     assert all(entry.get("pdf_figure_layout") != PDF_LEGACY_FIGURE_LAYOUT for entry in updated_source["resource_manifest"])
 
 
-def test_linked_pdf_publishes_in_order_and_private_original_controls_visibility(runtime):
+def test_linked_pdf_publishes_in_order_and_private_original_controls_visibility(runtime, monkeypatch):
+    from autodata_ingestion import source_adapters
+    from autodata_ingestion.ocr import OCRUnavailable
+
+    def unavailable_ocr(*_):
+        raise OCRUnavailable("Fixture OCR unavailable")
+
+    monkeypatch.setattr(source_adapters, "extract_scanned_pdf_text", unavailable_ocr)
     provider = "banktwo"
     runtime.article_id = runtime.articles[provider]
     connector = runtime.servers[provider]
-    raw_pdf, figure_pixels = _pdf_with_fixture_figure(trailing_text="Install the replacement.")
+    raw_pdf, figure_pixels = _pdf_with_fixture_figure(trailing_text="Install the replacement.", blank_page=True)
     body = (
         '<p>Remove the pump.</p>'
         f'<iframe src="{_PDF_LOCATOR}" title="Private provider title">Hidden fallback.</iframe>'
@@ -380,6 +391,7 @@ def test_linked_pdf_publishes_in_order_and_private_original_controls_visibility(
     assert [(entry["role"], entry["media_type"]) for entry in source["resource_manifest"]] == [
         ("body", "text/html"), ("document_asset", "application/pdf"), ("embedded_asset", "image/png"),
     ]
+    assert source["resource_manifest"][1]["pdf_blank_page_layout"] == PDF_BLANK_PAGE_LAYOUT
     assert body_resource["sha256"] == sha256(body).hexdigest()
     assert pdf_resource["sha256"] == sha256(raw_pdf).hexdigest()
     assert pdf_resource["opaque_ref"] == _PDF_REF

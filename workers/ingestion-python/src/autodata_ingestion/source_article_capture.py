@@ -13,6 +13,7 @@ from .article_lifecycle_types import (
     HTML_FLOW_FIGURE_CAPTION_LAYOUT,
     HTML_MULTILINE_FIGURE_CAPTION_LAYOUT,
     HTML_TABLE_CAPTION_LAYOUT,
+    PDF_BLANK_PAGE_LAYOUT,
     PDF_COMPACT_FIGURE_LAYOUT,
     PDF_LEGACY_FIGURE_LAYOUT,
     PDF_REPEAT_MARGIN_LAYOUT,
@@ -228,6 +229,7 @@ def capture_source_article(
     keep_repeated_pdf_figures=False, keep_pdf_figures_with_margins=False, keep_compact_pdf_figures=False,
     keep_html_figure_captions=False, keep_html_table_captions=False, keep_html_flow_figure_captions=False,
     keep_html_multiline_figure_captions=False,
+    skip_blank_linked_pdf_pages=False,
 ):
     if not 0 < deadline_seconds <= 30:
         raise ValueError("capture deadline must be within 30 seconds")
@@ -432,6 +434,10 @@ def capture_source_article(
                         keep_repeated_pdf_figures=retain_repeats(payload.content_sha256),
                         keep_pdf_figures_with_margins=retain_repeats_with_margins(payload.content_sha256),
                         keep_compact_pdf_figures=retain_compact_figures(payload.content_sha256),
+                        skip_blank_pages=(
+                            skip_blank_linked_pdf_pages
+                            and payload.content_sha256 not in context.legacy_published_pdf_blank_roots
+                        ),
                     )
                 except ValueError:
                     adapted = None
@@ -489,6 +495,8 @@ def capture_source_article(
                     resource["pdf_figure_layout"] = PDF_REPEAT_MARGIN_LAYOUT
                 if adapted.get("positioned_compact_pdf_figures") is True:
                     resource["pdf_compact_figure_layout"] = PDF_COMPACT_FIGURE_LAYOUT
+                if adapted.get("skipped_blank_pages") is True:
+                    resource["pdf_blank_page_layout"] = PDF_BLANK_PAGE_LAYOUT
             for original in originals:
                 resources.append(original)
                 provenance.append(deepcopy(original))
@@ -497,7 +505,7 @@ def capture_source_article(
             resources.append(resource)
             provenance.append(deepcopy(resource))
             manifest.append(
-                {k: resource[k] for k in ("role", "opaque_ref", "sha256", "media_type", "derived_from_sha256", "derivation_version", "pdf_figure_layout", "pdf_compact_figure_layout") if k in resource}
+                {k: resource[k] for k in ("role", "opaque_ref", "sha256", "media_type", "derived_from_sha256", "derivation_version", "pdf_figure_layout", "pdf_compact_figure_layout", "pdf_blank_page_layout") if k in resource}
             )
             if role == "asset":
                 localized[ref] = resource

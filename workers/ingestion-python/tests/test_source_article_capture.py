@@ -2246,6 +2246,72 @@ def test_bound_pdf_embed_keeps_table_cell_order_and_refuses_unbound_markup(captu
     assert fixture.resource_calls("bankone", "unbound") == 0
 
 
+@pytest.mark.parametrize("provider,contents", [("bankone", "absent"), ("banktwo", "setup")])
+def test_linked_pdf_blank_page_keeps_native_procedure_without_ocr(capture_fixture, monkeypatch, provider, contents):
+    import json
+    from io import BytesIO
+
+    from pypdf import PdfReader, PdfWriter
+
+    from autodata_ingestion import source_adapters
+    from autodata_ingestion.article_lifecycle_types import PDF_BLANK_PAGE_LAYOUT
+    from autodata_ingestion.ocr import OCRUnavailable
+    from autodata_ingestion.source_article_capture import capture_source_article
+    from test_workshop_linked_pdf import _pdf_with_fixture_figure
+
+    pdf, _ = _pdf_with_fixture_figure(trailing_text="Install the replacement.", blank_page=contents == "setup")
+    if contents == "absent":
+        writer = PdfWriter()
+        writer.add_page(PdfReader(BytesIO(pdf)).pages[0])
+        writer.add_blank_page(width=612, height=792)
+        stream = BytesIO()
+        writer.write(stream)
+        pdf = stream.getvalue()
+
+    calls = []
+
+    def unavailable_ocr(_digest, _payload, covered):
+        calls.append(covered)
+        raise OCRUnavailable("Fixture OCR unavailable")
+
+    monkeypatch.setattr(source_adapters, "extract_scanned_pdf_text", unavailable_ocr)
+    html = '<p>Remove the pump.</p><iframe src="/docs/linked"></iframe>'
+    raw, media = html.encode(), "text/html"
+    if provider == "banktwo":
+        raw = json.dumps({"_embedded": {"data": {"article": {"content": html}}}}).encode()
+        media = "application/hal+json"
+    capture_fixture.body(provider, raw, media, assets=["addendum"], asset_bindings=[
+        {"source_url": "/docs/linked", "resource_ref": "addendum"},
+    ])
+    capture_fixture.body(provider, pdf, "application/pdf", ref="addendum", kind="binary")
+    context = capture_fixture.context(provider)
+    options = dict(registry=capture_fixture.registry, object_store=capture_fixture.objects,
+                   keep_bound_pdf_iframes=True, keep_pdf_figure_order=True)
+    legacy = capture_source_article(context, **options)
+    compatibility = capture_source_article(
+        replace(context, legacy_published_pdf_blank_roots=frozenset({sha256(pdf).hexdigest()})),
+        skip_blank_linked_pdf_pages=True, **options,
+    )
+    assert calls == [{1}, {1}]
+    assert compatibility.source_fingerprint == legacy.source_fingerprint
+    assert compatibility.source_document == legacy.source_document
+    assert legacy.projection_status == "partial" and legacy.source_images == []
+    assert legacy.resource_manifest[-1]["failure_code"] == "DOCUMENT_EXTRACTION_UNAVAILABLE"
+
+    corrected = capture_source_article(context, skip_blank_linked_pdf_pages=True, **options)
+    assert calls == [{1}, {1}]
+    assert corrected.projection_status == "readable"
+    assert [(b["type"], b.get("text")) for b in corrected.source_document["blocks"]] == [
+        ("paragraph", "Remove the pump."), ("paragraph", "Inspect the seal."),
+        ("image", None), ("paragraph", "Install the replacement."),
+    ]
+    _, retained_pdf, image = corrected.resource_manifest
+    assert retained_pdf["sha256"] == sha256(pdf).hexdigest()
+    assert retained_pdf["pdf_blank_page_layout"] == PDF_BLANK_PAGE_LAYOUT
+    assert image["role"] == "embedded_asset" and image["media_type"] == "image/png"
+    assert capture_fixture.objects.data[corrected.resources[1]["object_key"]] == (pdf, "application/pdf")
+
+
 @pytest.mark.parametrize(("mime", "payload", "reason"), [
     ("image/png", b"not permitted", "UNSUPPORTED_DOCUMENT_MEDIA"),
     ("application/pdf", b"not a PDF", "DOCUMENT_EXTRACTION_UNAVAILABLE"),
@@ -2285,7 +2351,7 @@ def test_bound_embed_validation_keeps_surrounding_procedure(capture_fixture, mon
     fixture.body("banktwo", payload, mime, ref="drive", kind="asset")
     captured = capture_source_article(
         fixture.context("banktwo"), registry=fixture.registry, object_store=fixture.objects,
-        keep_bound_pdf_iframes=True,
+        keep_bound_pdf_iframes=True, skip_blank_linked_pdf_pages=True,
     )
     assert captured.projection_version == "source-projection-v6"
     assert captured.projection_status == "partial"

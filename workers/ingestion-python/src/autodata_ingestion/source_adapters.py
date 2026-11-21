@@ -791,6 +791,21 @@ def _browser_safe_image_payload(payload: bytes) -> tuple[str, bytes] | None:
     return "image/png", buffer.getvalue()
 
 
+def _is_blank_pdf_page(page: Any) -> bool:
+    """Recognize empty pages and the harmless setup used by PDF generators."""
+    try:
+        if page.get("/Annots"):
+            return False
+        contents = page.get_contents()
+        return contents is None or all(
+            operator in {b"cm", b"q", b"Q", b"BT", b"ET", b"Tf", b"TL"}
+            for _, operator in contents.operations
+        )
+    except Exception:
+        # Leave uncertain pages on the existing OCR path.
+        return False
+
+
 def _adapt_pdf_resource(
     resource: SourceResource,
     metadata: dict[str, Any],
@@ -801,6 +816,7 @@ def _adapt_pdf_resource(
     keep_repeated_pdf_figures: bool = False,
     keep_pdf_figures_with_margins: bool = False,
     keep_compact_pdf_figures: bool = False,
+    skip_blank_pages: bool = False,
 ) -> SourceArtifact:
     """Extract native PDF text and OCR pages that contain no native text."""
 
@@ -810,6 +826,7 @@ def _adapt_pdf_resource(
 
     pages: list[Any] = []
     native_text_pages: set[int] = set()
+    blank_pages: set[int] = set()
     candidates: list[NormalizationCandidate] = []
     warnings: list[str] = []
     text_extractor_status = "available"
@@ -849,6 +866,9 @@ def _adapt_pdf_resource(
             text = "\n".join(line for line in lines if line)
         except Exception as error:
             page_errors.append({"locator": f"page:{index}", "error": str(error)})
+            continue
+        if skip_blank_pages and not text and _is_blank_pdf_page(page):
+            blank_pages.add(index)
             continue
         extracted_images, page_image_keys = _extract_pdf_page_images(
             page, page_number=index,
@@ -991,7 +1011,8 @@ def _adapt_pdf_resource(
             )
         )
 
-    missing_pages = set(range(1, len(pages) + 1)) - native_text_pages if pages else set()
+    covered_pages = native_text_pages | blank_pages
+    missing_pages = set(range(1, len(pages) + 1)) - covered_pages if pages else set()
     should_rasterize = bool(missing_pages) or not pages
     rasterization_status = "not_needed"
     extraction_mode = "text_pdf"
@@ -1000,7 +1021,7 @@ def _adapt_pdf_resource(
             scanned_blocks = extract_scanned_pdf_text(
                 resource.content_sha256,
                 resource.payload,
-                native_text_pages,
+                covered_pages,
             )
             ocr_candidates = list(build_ocr_candidates(resource.content_sha256, scanned_blocks))
             candidates.extend(ocr_candidates)
@@ -1025,6 +1046,7 @@ def _adapt_pdf_resource(
         "rasterization_status": rasterization_status,
         "extraction_mode": extraction_mode,
         "extraction_status": "candidate_ready" if candidates else "needs_review",
+        **({"skipped_blank_pages": True} if blank_pages else {}),
     }
     if page_errors:
         extraction_metadata["page_errors"] = page_errors
@@ -2073,6 +2095,7 @@ def adapt_bound_pdf_embed(
     keep_multiple_pdf_figures: bool = False, keep_repeated_pdf_figures: bool = False,
     keep_pdf_figures_with_margins: bool = False,
     keep_compact_pdf_figures: bool = False,
+    skip_blank_pages: bool = False,
 ) -> dict[str, Any]:
     return _adapt_bound_pdf(
         resource, embedded=True, require_complete_ocr=require_complete_ocr,
@@ -2081,12 +2104,13 @@ def adapt_bound_pdf_embed(
         keep_repeated_pdf_figures=keep_repeated_pdf_figures,
         keep_pdf_figures_with_margins=keep_pdf_figures_with_margins,
         keep_compact_pdf_figures=keep_compact_pdf_figures,
+        skip_blank_pages=skip_blank_pages,
     )
 
 
 def _adapt_bound_pdf(resource, *, embedded=False, require_complete_ocr=False, keep_pdf_figure_order=False,
                      keep_multiple_pdf_figures=False, keep_repeated_pdf_figures=False,
-                     keep_pdf_figures_with_margins=False, keep_compact_pdf_figures=False):
+                     keep_pdf_figures_with_margins=False, keep_compact_pdf_figures=False, skip_blank_pages=False):
     if embedded and (resource.media_type != "application/pdf"
             or len(resource.payload) > _MAX_BOUND_EMBEDDED_PDF_BYTES
             or not resource.payload.startswith(b"%PDF-")):
@@ -2100,12 +2124,16 @@ def _adapt_bound_pdf(resource, *, embedded=False, require_complete_ocr=False, ke
             keep_repeated_pdf_figures=keep_repeated_pdf_figures,
             keep_pdf_figures_with_margins=keep_pdf_figures_with_margins,
             keep_compact_pdf_figures=keep_compact_pdf_figures,
+            skip_blank_pages=skip_blank_pages,
         )
     else:
         artifact = adapt_source_resource(resource)
     if require_complete_ocr and artifact.metadata.get("rasterization_status") == "unavailable":
         raise ValueError("linked PDF has pages requiring unavailable OCR")
-    return _bound_pdf_blocks(artifact, figure_gaps or {})
+    result = _bound_pdf_blocks(artifact, figure_gaps or {})
+    if artifact.metadata.get("skipped_blank_pages") is True:
+        result["skipped_blank_pages"] = True
+    return result
 
 
 def _bound_pdf_blocks(artifact: SourceArtifact, figure_gaps: dict[str, tuple[int, int, int]]) -> dict[str, Any]:
