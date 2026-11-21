@@ -1041,31 +1041,37 @@ def _step_number_hint(raw):
     return next((raw[field] for field in ("number", "step_number", "index") if raw.get(field) is not None), None)
 
 
-def ordered_numbered_step(raw):
+def ordered_numbered_step(raw, *, keep_image_only=False):
     """Represent a numbered provider step and its nested instructions in order."""
     if not isinstance(raw, Mapping) or str(raw.get("type") or raw.get("kind") or "").casefold() not in {"step", "instruction"}:
-        return raw
+        return raw, False
     number = list_number(_step_number_hint(raw))
     instructions = raw.get("instructions")
     if not number or number < 1 or not isinstance(instructions, list) or not instructions:
-        return raw
+        return raw, False
     children = []
+    has_image_only = False
     for instruction in instructions:
         if not isinstance(instruction, (str, Mapping)):
-            return raw
+            return raw, False
         text = _step_instruction_text(instruction, strings_only=True)
-        if not text:
-            return raw
-        children.append({"kind": "paragraph", "text": text})
         references = instruction.get("images") if isinstance(instruction, Mapping) else None
-        if isinstance(references, list):
-            children.extend({**image, "kind": "image", "type": "image"} for image in references if isinstance(image, Mapping))
+        images = [
+            {**image, "kind": "image", "type": "image"} for image in references if isinstance(image, Mapping)
+        ] if isinstance(references, list) else []
+        if text:
+            children.append({"kind": "paragraph", "text": text})
+        elif keep_image_only and images:
+            has_image_only = True
+        else:
+            return raw, False
+        children.extend(images)
 
     lead = _step_instruction_text(raw, strings_only=True)
-    if not lead:
+    if not lead and children[0]["kind"] == "paragraph":
         lead = children.pop(0)["text"]
     if not children:
-        return raw
+        return raw, False
     label = _clean_text(raw.get("label") or raw.get("title") or raw.get("heading") or raw.get("action"))
     item = {"text": lead, "blocks": children}
     if isinstance(raw.get("images"), list):
@@ -1073,7 +1079,7 @@ def ordered_numbered_step(raw):
     return {
         "kind": "ordered_list", "start": number, "items": [item],
         **({"label": label} if label and label != lead else {}),
-    }
+    }, has_image_only
 
 
 def _step_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str, Any], evidence_ids: list[str]) -> dict[str, Any]:

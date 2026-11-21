@@ -10,7 +10,7 @@ import pytest
 from autodata_ingestion import source_article_capture
 from autodata_ingestion.article_document import validate_ordered_document
 from autodata_ingestion.article_lifecycle import run_article_worker_once
-from autodata_ingestion.article_lifecycle_types import ORDERED_STEP_INSTRUCTIONS_LAYOUT
+from autodata_ingestion.article_lifecycle_types import ORDERED_STEP_IMAGE_ONLY_LAYOUT, ORDERED_STEP_INSTRUCTIONS_LAYOUT
 from autodata_ingestion.procedure_normalize import normalize_procedure_article
 from autodata_ingestion.procedure_rewrite_auto import PROFILE, render_auto, validate_auto
 from autodata_ingestion.procedure_rewrite_full import prose_slots
@@ -23,6 +23,7 @@ from test_workshop_linked_pdf import FixtureDraft, _INTRODUCTION, _PARAPHRASES
 
 _NEW_PROSE = {
     **_PARAPHRASES,
+    "Loosen the pump bolts.": "Loosen the bolts on the pump.",
     "Inspect the gasket.": "Check the gasket.",
     "Remove the cover while the ignition is off.": "With the ignition off, take the cover off.",
 }
@@ -48,6 +49,20 @@ def _fixture_png():
     buffer = BytesIO()
     Image.new("RGB", (96, 48), "navy").save(buffer, format="PNG")
     return buffer.getvalue()
+
+
+def _image_only_supplier_body(provider, *, leading=False):
+    raw, media = _supplier_body(provider)
+    container = json.loads(raw)
+    article = container["_embedded"]["data"]["article"] if provider == "banktwo" else container
+    first, target, _ = article["steps"]
+    first["instructions"] = ["Loosen the pump bolts."]
+    prose, last = target["instructions"]
+    media_item = {"images": prose.pop("images")}
+    if leading:
+        del target["text"]
+    target["instructions"] = [media_item, prose, last] if leading else [prose, media_item, last]
+    return json.dumps(container).encode(), media
 
 
 @pytest.mark.parametrize("provider,with_media,available,explicit,with_lead", [
@@ -115,10 +130,69 @@ def test_numbered_step_keeps_nested_instruction_order_through_rewrite(
         assert canonical_step["items"][0]["blocks"][1] == image
 
 
-def test_step_instruction_refresh_preserves_old_immutable_revision(runtime, monkeypatch):
+@pytest.mark.parametrize("provider", ["bankone", "banktwo"])
+@pytest.mark.parametrize("leading,available", [(False, True), (True, True), (False, False)])
+def test_image_only_instruction_keeps_source_order_and_provenance(capture_fixture, provider, leading, available):
+    raw, media = _image_only_supplier_body(provider, leading=leading)
+    figure = _fixture_png()
+    capture_fixture.body(provider, raw, media, assets=["figure"])
+    if available:
+        capture_fixture.body(provider, figure, "image/png", kind="asset", ref="figure")
+    context = capture_fixture.context(provider)
+    options = dict(registry=capture_fixture.registry, object_store=capture_fixture.objects,
+                   keep_ordered_step_instructions=True)
+    v1 = source_article_capture.capture_source_article(context, **options)
+    v2 = source_article_capture.capture_source_article(context, keep_image_only_step_instructions=True, **options)
+    assert v1.source_document["blocks"][1]["type"] == "step"
+    assert v1.source_document["blocks"][0] == v2.source_document["blocks"][0]
+    assert v1.resource_manifest[0]["ordered_step_instructions_layout"] == ORDERED_STEP_INSTRUCTIONS_LAYOUT
+    assert v2.resource_manifest[0]["ordered_step_instructions_layout"] == ORDERED_STEP_IMAGE_ONLY_LAYOUT
+    assert v1.source_fingerprint != v2.source_fingerprint
+    assert v1.body_source_snapshot_id == v2.body_source_snapshot_id
+    assert v1.resource_manifest[1:] == v2.resource_manifest[1:]
+    assert v1.evidence_manifest == v2.evidence_manifest
+    assert not validate_ordered_document(v2.source_document, strict=True)
+    step = v2.source_document["blocks"][1]
+    assert step["type"] == "ordered_list" and step["start"] == 2
+    [item] = step["items"]
+    [image] = v2.source_images
+    assert image["image_id"] == v1.source_images[0]["image_id"]
+    assert image["caption"] == "Gasket orientation"
+    if available:
+        assert capture_fixture.objects.data[image["storage_key"]] == (figure, "image/png")
+    else:
+        assert image["status"] == "unavailable" and image["unavailable_reason"] == "SOURCE_NOT_FOUND"
+    assert item["text"] == ("" if leading else "Inspect the seal.")
+    order = ["image", "paragraph", "paragraph"] if leading else ["paragraph", "image", "paragraph"]
+    assert [child["type"] for child in item["blocks"]] == order
+    figure_at = order.index("image")
+    assert item["blocks"][figure_at] == image
+
+    source = normalize_procedure_article({
+        "normalized_document": v2.source_document, "body": v2.source_body, "steps": v2.source_steps,
+    }, resource_manifest=v2.resource_manifest)["normalized_document"]
+    slots = prose_slots(source, include_cell_blocks=True)
+    expected = ["Remove the pump.", "Loosen the pump bolts."]
+    if not leading:
+        expected.append("Inspect the seal.")
+    expected.extend(["Inspect the gasket.", "Remove the cover while the ignition is off.", "Install the replacement."])
+    assert [slot["text"] for slot in slots] == expected
+    model = {"introduction": _INTRODUCTION, "replacements": [
+        {**slot, "action": "rewrite", "text": _NEW_PROSE[slot["text"]], "reason": ""} for slot in slots
+    ]}
+    canonical = render_auto(source, model)
+    assert validate_auto(source, canonical, response=model).passed
+    edited = canonical["blocks"][2]["items"][0]["blocks"]
+    assert [child["type"] for child in edited] == order
+    assert edited[figure_at] == image
+    assert edited[-1]["text"] == "With the ignition off, take the cover off."
+
+
+@pytest.mark.parametrize("image_only", [False, True])
+def test_step_instruction_refresh_preserves_old_immutable_revision(runtime, monkeypatch, image_only):
     provider = "banktwo"
     runtime.article_id = runtime.articles[provider]
-    raw, media = _supplier_body(provider)
+    raw, media = (_image_only_supplier_body if image_only else _supplier_body)(provider)
     figure = _fixture_png()
     connector = runtime.servers[provider]
     connector.body(raw, media, assets=["figure"])
@@ -127,7 +201,8 @@ def test_step_instruction_refresh_preserves_old_immutable_revision(runtime, monk
     draft = FixtureDraft(paraphrases=_NEW_PROSE)
 
     def legacy_capture(*args, **kwargs):
-        return capture(*args, **{**kwargs, "keep_ordered_step_instructions": False})
+        return capture(*args, **{**kwargs, "keep_ordered_step_instructions": image_only,
+                                 "keep_image_only_step_instructions": False})
 
     def source(revision):
         with runtime.repo.connect() as conn:
@@ -151,6 +226,9 @@ def test_step_instruction_refresh_preserves_old_immutable_revision(runtime, monk
     after = refresh()
     current = source(after["source_revision_id"])
     assert after["canonical_revision_id"] != before["canonical_revision_id"]
+    if image_only:
+        assert old["resource_manifest"][0]["ordered_step_instructions_layout"] == ORDERED_STEP_INSTRUCTIONS_LAYOUT
+        assert current["resource_manifest"][0]["ordered_step_instructions_layout"] == ORDERED_STEP_IMAGE_ONLY_LAYOUT
     assert current["body_source_snapshot_id"] == old["body_source_snapshot_id"]
     assert current["resource_manifest"][1:] == old["resource_manifest"][1:]
     assert source(before["source_revision_id"]) == old
