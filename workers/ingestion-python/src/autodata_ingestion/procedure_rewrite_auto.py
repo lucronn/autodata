@@ -40,7 +40,8 @@ _PROSE_PROMPT_V25 = "full-prose-auto-prompt-v25"
 _PROSE_PROMPT_V26 = "full-prose-auto-prompt-v26"
 _PROSE_PROMPT_V27 = "full-prose-auto-prompt-v27"
 _PROSE_PROMPT_V28 = "full-prose-auto-prompt-v28"
-_PROSE_PROMPT_VERSION = "full-prose-auto-prompt-v29"
+_PROSE_PROMPT_V29 = "full-prose-auto-prompt-v29"
+_PROSE_PROMPT_VERSION = "full-prose-auto-prompt-v30"
 _WORDS = re.compile(r"\w+")
 _INLINE_WARNING = re.compile(
     r"(?:^|[.!?]\s+|\n)[ \t]*(?:warnings?|caution|danger|notice|important)\s*[:!–—-]"
@@ -443,6 +444,23 @@ _BATTERY_TERMINAL_TARGETS = tuple(re.compile(pattern) for pattern in (
     r"(?:the\s+)?battery['’]s\s+" + _TERMINAL_POLARITY_WORD + r"\s+terminal",
     r"(?:the\s+)?" + _TERMINAL_POLARITY_WORD + r"\s+terminal\s+(?P<relation>from|on|of|to)\s+(?:the\s+)?battery",
     r"(?:the\s+)?battery\s+at\s+(?:(?:the|its)\s+)?" + _TERMINAL_POLARITY_WORD + r"\s+terminal",
+))
+_VEHICLE_LIFT = r"(?:raise|lift)"
+_VEHICLE_TARGET = r"(?:the\s+)?vehicle"
+_VEHICLE_OR_IT = rf"(?:{_VEHICLE_TARGET}|it)"
+_VEHICLE_SUPPORT = r"(?:securely\s+)?support"
+_SUPPORT_MANNER = r"(?:\s+securely)?"
+_VEHICLE_LIFT_COMPLETED = r"has\s+been\s+(?:raised|lifted)"
+_VEHICLE_LIFT_AND_SUPPORT = tuple(re.compile(pattern) for pattern in (
+    rf"{_VEHICLE_LIFT}\s+and\s+{_VEHICLE_SUPPORT}\s+{_VEHICLE_TARGET}{_SUPPORT_MANNER}",
+    rf"{_VEHICLE_LIFT}\s+{_VEHICLE_TARGET}(?:,?\s+then|,?\s+and(?:\s+then)?|[.;]\s*then)\s+"
+    rf"{_VEHICLE_SUPPORT}\s+{_VEHICLE_OR_IT}{_SUPPORT_MANNER}",
+    rf"(?:after\s+(?:raising|lifting)\s+{_VEHICLE_TARGET}|"
+    rf"(?:after|once)\s+{_VEHICLE_TARGET}\s+{_VEHICLE_LIFT_COMPLETED}),\s+"
+    rf"{_VEHICLE_SUPPORT}\s+{_VEHICLE_OR_IT}{_SUPPORT_MANNER}",
+    rf"{_VEHICLE_SUPPORT}\s+{_VEHICLE_TARGET}{_SUPPORT_MANNER}\s+"
+    rf"(?:after\s+(?:raising|lifting)\s+{_VEHICLE_OR_IT}|"
+    rf"(?:after|once)\s+{_VEHICLE_OR_IT}\s+{_VEHICLE_LIFT_COMPLETED})",
 ))
 _STATE_GRAMMAR = {
     "is": frozenset({"dry", "cool", "damaged", "off", "on", "closed", "open"}),
@@ -973,13 +991,29 @@ def _build_auto_prompt_v28(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def build_auto_prompt(document, *, context):
+def _auto_prompt_payload_v29(document, *, context):
     payload = _auto_prompt_payload_v28(document, context=context)
     if payload["slots"]:
-        payload["prompt_version"] = _PROSE_PROMPT_VERSION
+        payload["prompt_version"] = _PROSE_PROMPT_V29
         payload["rules"].append(
             "Keep explicit polarity and the original action in battery-terminal instructions. "
             "Do not substitute the other terminal or omit its polarity."
+        )
+    return payload
+
+
+def _build_auto_prompt_v29(document, *, context):
+    payload = _auto_prompt_payload_v29(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def build_auto_prompt(document, *, context):
+    payload = _auto_prompt_payload_v29(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_VERSION
+        payload["rules"].append(
+            "Preserve both raising and supporting the same vehicle when both are required. "
+            "Raising alone does not satisfy the instruction to support it."
         )
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
@@ -987,7 +1021,7 @@ def build_auto_prompt(document, *, context):
 def _auto_prompt_version(document, *, context, prompt_hash):
     """Identify the rules bound to the saved model attempt."""
     for builder in (
-        build_auto_prompt, _build_auto_prompt_v28, _build_auto_prompt_v27,
+        build_auto_prompt, _build_auto_prompt_v29, _build_auto_prompt_v28, _build_auto_prompt_v27,
         _build_auto_prompt_v26, _build_auto_prompt_v25, _build_auto_prompt_v24,
         _build_auto_prompt_v23, _build_auto_prompt_v22, _build_auto_prompt_v21, _build_auto_prompt_v20, _build_auto_prompt_v19,
         _build_auto_prompt_v18, _build_auto_prompt_v17, _build_auto_prompt_v16, _build_auto_prompt_v15,
@@ -1663,6 +1697,15 @@ def _battery_terminal_action(text):
     return None
 
 
+def _vehicle_support(text):
+    text = _proof_text(text)
+    if "vehicle" not in text or "support" not in text:
+        return None
+    if any(pattern.fullmatch(text) for pattern in _VEHICLE_LIFT_AND_SUPPORT):
+        return "securely" in text
+    return None
+
+
 def _uses_prose_guards(prompt_version, slot_count):
     return bool(slot_count) and prompt_version in (
         None, _PROSE_PROMPT_V4, _PROSE_PROMPT_V5, _PROSE_PROMPT_V6, _PROSE_PROMPT_V7,
@@ -1670,7 +1713,7 @@ def _uses_prose_guards(prompt_version, slot_count):
         _PROSE_PROMPT_V12, _PROSE_PROMPT_V13, _PROSE_PROMPT_V14, _PROSE_PROMPT_V15, _PROSE_PROMPT_V16,
         _PROSE_PROMPT_V17, _PROSE_PROMPT_V18, _PROSE_PROMPT_V19, _PROSE_PROMPT_V20, _PROSE_PROMPT_V21,
         _PROSE_PROMPT_V22, _PROSE_PROMPT_V23, _PROSE_PROMPT_V24,
-        _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_V29, _PROSE_PROMPT_VERSION,
     )
 
 
@@ -1679,7 +1722,7 @@ def _include_cell_blocks(prompt_version):
         None, _CELL_PROSE_PROMPT_V11, _PROSE_PROMPT_V12, _PROSE_PROMPT_V13,
         _PROSE_PROMPT_V14, _PROSE_PROMPT_V15, _PROSE_PROMPT_V16, _PROSE_PROMPT_V17, _PROSE_PROMPT_V18,
         _PROSE_PROMPT_V19, _PROSE_PROMPT_V20, _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23,
-        _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_V29, _PROSE_PROMPT_VERSION,
     )
 
 
@@ -1698,62 +1741,63 @@ def _require_changes(source, candidate, *, prompt_version):
         None, _PROSE_PROMPT_V12, _PROSE_PROMPT_V13, _PROSE_PROMPT_V14, _PROSE_PROMPT_V15,
         _PROSE_PROMPT_V16, _PROSE_PROMPT_V17, _PROSE_PROMPT_V18, _PROSE_PROMPT_V19, _PROSE_PROMPT_V20,
         _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23, _PROSE_PROMPT_V24,
-        _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_V29, _PROSE_PROMPT_VERSION,
     )
     guard_identified_inspection = guard_simultaneous and prompt_version != _PROSE_PROMPT_V12
     guard_compound_inspection = guard_identified_inspection and prompt_version != _PROSE_PROMPT_V13
     guard_bound_alternatives = guard_scope and prompt_version in (
         None, _PROSE_PROMPT_V15, _PROSE_PROMPT_V16, _PROSE_PROMPT_V17, _PROSE_PROMPT_V18,
         _PROSE_PROMPT_V19, _PROSE_PROMPT_V20, _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23,
-        _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_V29, _PROSE_PROMPT_VERSION,
     )
     guard_bound_order = guard_clauses and prompt_version in (
         None, _PROSE_PROMPT_V16, _PROSE_PROMPT_V17, _PROSE_PROMPT_V18, _PROSE_PROMPT_V19,
         _PROSE_PROMPT_V20, _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23,
-        _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_V29, _PROSE_PROMPT_VERSION,
     )
     guard_bound_steps = prompt_version in (
         None, _PROSE_PROMPT_V23, _PROSE_PROMPT_V24, _PROSE_PROMPT_V25,
-        _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_V29, _PROSE_PROMPT_VERSION,
     )
     guard_torque_aliases = prompt_version in (
         None, _PROSE_PROMPT_V17, _PROSE_PROMPT_V18, _PROSE_PROMPT_V19, _PROSE_PROMPT_V20,
         _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23, _PROSE_PROMPT_V24,
-        _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_V29, _PROSE_PROMPT_VERSION,
     )
     guard_duration_values = prompt_version in (
         None, _PROSE_PROMPT_V18, _PROSE_PROMPT_V19, _PROSE_PROMPT_V20, _PROSE_PROMPT_V21,
         _PROSE_PROMPT_V22, _PROSE_PROMPT_V23, _PROSE_PROMPT_V24,
-        _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_V29, _PROSE_PROMPT_VERSION,
     )
     guard_electrical_values = prompt_version in (
         None, _PROSE_PROMPT_V19, _PROSE_PROMPT_V20, _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23,
-        _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_V29, _PROSE_PROMPT_VERSION,
     )
     guard_pressure_values = prompt_version in (
         None, _PROSE_PROMPT_V20, _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23,
-        _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_V29, _PROSE_PROMPT_VERSION,
     )
     guard_temperature_values = prompt_version in (
         None, _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23, _PROSE_PROMPT_V24,
-        _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_V29, _PROSE_PROMPT_VERSION,
     )
     guard_resistance_values = prompt_version in (
         None, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23, _PROSE_PROMPT_V24,
-        _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_V29, _PROSE_PROMPT_VERSION,
     )
     guard_clearance_warnings = prompt_version in (
-        None, _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_VERSION,
+        None, _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_V29, _PROSE_PROMPT_VERSION,
     )
     guard_rotation_values = prompt_version in (
-        None, _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_VERSION,
+        None, _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_V29, _PROSE_PROMPT_VERSION,
     )
     guard_conjunctive = guard_simultaneous and prompt_version in (
-        None, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_VERSION,
+        None, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_V29, _PROSE_PROMPT_VERSION,
     )
-    guard_pressure_conditions = prompt_version in (None, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_VERSION)
-    guard_pressure_order = prompt_version in (None, _PROSE_PROMPT_V28, _PROSE_PROMPT_VERSION)
-    guard_battery_terminal = prompt_version in (None, _PROSE_PROMPT_VERSION)
+    guard_pressure_conditions = prompt_version in (None, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_V29, _PROSE_PROMPT_VERSION)
+    guard_pressure_order = prompt_version in (None, _PROSE_PROMPT_V28, _PROSE_PROMPT_V29, _PROSE_PROMPT_VERSION)
+    guard_battery_terminal = prompt_version in (None, _PROSE_PROMPT_V29, _PROSE_PROMPT_VERSION)
+    guard_vehicle_support = prompt_version in (None, _PROSE_PROMPT_VERSION)
     introduction = candidate["blocks"][0].get("text", "")
     if guard_prose and (
         _INLINE_WARNING.search(introduction)
@@ -1762,7 +1806,8 @@ def _require_changes(source, candidate, *, prompt_version):
         or (guard_clearance_warnings and _CLEARANCE_WARNING.search(introduction))
     ):
         raise ValueError("REWRITE_SAFETY_MUTATION")
-    if guard_actions and _INTRO_DIRECTIVE.search(introduction):
+    if guard_actions and (_INTRO_DIRECTIVE.search(introduction)
+                          or (guard_vehicle_support and _vehicle_support(introduction) is not None)):
         raise ValueError("REWRITE_INTRODUCTION_INSTRUCTION")
     if guard_actions and _spec_scope(
         introduction, torque_aliases=guard_torque_aliases, duration_values=guard_duration_values,
@@ -1843,6 +1888,10 @@ def _require_changes(source, candidate, *, prompt_version):
                 replacement, compound=guard_compound_inspection,
             ):
                 raise ValueError("REWRITE_QUALIFIER_MUTATION")
+        if guard_vehicle_support and (secure := _vehicle_support(original)) is not None:
+            draft_support = _vehicle_support(replacement)
+            if draft_support is None or (secure and not draft_support):
+                raise ValueError("REWRITE_CLAUSE_MUTATION")
         if guard_battery_terminal and _battery_terminal_action(original) != _battery_terminal_action(replacement):
             raise ValueError("REWRITE_QUALIFIER_MUTATION")
         if guard_pressure_order and (ordered_pressure := _pressure_release_order(original)):
@@ -1909,7 +1958,8 @@ def validate_auto(source, candidate, *, response=None, prompt_version=None):
             _PROSE_PROMPT_V26: "full-prose-auto-validator-v24",
             _PROSE_PROMPT_V27: "full-prose-auto-validator-v25",
             _PROSE_PROMPT_V28: "full-prose-auto-validator-v26",
-        }.get(prompt_version, "full-prose-auto-validator-v27")
+            _PROSE_PROMPT_V29: "full-prose-auto-validator-v27",
+        }.get(prompt_version, "full-prose-auto-validator-v28")
     report.update(validator_version=validator_version, profile_version=PROFILE,
         publication_mode="automatic", content_acceptance_required=False,
         complete_rewrite=False, passed=not errors, error_codes=errors)
