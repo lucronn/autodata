@@ -687,6 +687,60 @@ function scheduleArticleSearch({ fromIndex = false } = {}) {
   else searchTimer = setTimeout(startSearch, 300);
 }
 
+function renderArticleLinks(items) {
+  const container = $("articles");
+  let list = container.firstElementChild;
+  if (!list) {
+    list = element("ul", undefined, "article-list");
+    list.setAttribute("role", "list");
+    container.append(list);
+  }
+  const active = document.activeElement;
+  const focused = list.contains(active) ? active : null;
+  const previous = new Map(Array.from(list.children, (row) => [row.dataset.articleId, row]));
+  const url = new URL(location.href);
+  const rows = items.map((item) => {
+    let row = previous.get(item.id);
+    if (!row) {
+      row = element("li");
+      row.dataset.articleId = item.id;
+      const link = element("a");
+      link.append(element("span"), element("span", undefined, "article-type"));
+      link.addEventListener("click", (event) => {
+        if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        event.preventDefault();
+        openArticle(item.id);
+      });
+      row.append(link);
+    }
+    previous.delete(item.id);
+    const link = row.firstElementChild;
+    const kind = typeof item.kind === "string"
+      ? item.kind.trim().replace(/[_-]+/g, " ").replace(/\s+/g, " ")
+      : "";
+    const title = item.title || "Untitled article";
+    const label = kind ? kind[0].toUpperCase() + kind.slice(1) : "Article";
+    if (link.children[0].textContent !== title) link.children[0].textContent = title;
+    if (link.children[1].textContent !== label) link.children[1].textContent = label;
+    url.searchParams.set("article", item.id);
+    const href = url.pathname + url.search;
+    if (link.getAttribute("href") !== href) link.href = href;
+    return row;
+  });
+  const retained = new Set(rows);
+  for (const row of [...list.children]) if (!retained.has(row)) row.remove();
+  for (const [index, row] of rows.entries()) {
+    const previousRow = list.children[index] || null;
+    if (row !== previousRow) list.insertBefore(row, previousRow);
+  }
+  // Moving a focused link can blur it. A removed result returns focus to the
+  // index heading instead of activating an unrelated row at the same position.
+  if (focused && focused !== document.activeElement) {
+    const target = list.contains(focused) ? focused : $("catalog-title");
+    target.focus({ preventScroll: true });
+  }
+}
+
 function renderArticles() {
   $("vehicle-caption").textContent =
     quote?.configuration_label || $("purchase-selection").textContent;
@@ -695,41 +749,7 @@ function renderArticles() {
   const visible = openDemo ? articles.filter((item) => item.availability === 'available') : articles;
   const results = searching ? (searchItems || []) : filterArticles(visible, query);
   const items = openDemo ? results.filter((item) => item.availability === 'available') : results;
-  const list = element("ul", undefined, "article-list");
-  list.setAttribute("role", "list");
-  for (const item of items) {
-    const li = element("li"),
-      link = element("a");
-    const kind = typeof item.kind === "string"
-      ? item.kind.trim().replace(/[_-]+/g, " ").replace(/\s+/g, " ")
-      : "";
-    link.append(
-      element("span", item.title || "Untitled article"),
-      element(
-        "span",
-        kind ? kind[0].toUpperCase() + kind.slice(1) : "Article",
-        "article-type",
-      ),
-    );
-    const url = new URL(location.href);
-    url.searchParams.set("article", item.id);
-    link.href = url.pathname + url.search;
-    link.addEventListener("click", (event) => {
-      if (
-        event.button ||
-        event.metaKey ||
-        event.ctrlKey ||
-        event.shiftKey ||
-        event.altKey
-      )
-        return;
-      event.preventDefault();
-      openArticle(item.id);
-    });
-    li.append(link);
-    list.append(li);
-  }
-  $("articles").replaceChildren(list);
+  renderArticleLinks(items);
   const resultsComplete = searching ? searchComplete && indexComplete : indexComplete;
   const countText = searching && searchPending
     ? "Searching articles…"

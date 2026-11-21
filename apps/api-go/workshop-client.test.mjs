@@ -2197,12 +2197,31 @@ function articleIndexHarness(responses, { wait = async () => {}, openDemo = fals
   const navigation = new NavigationGeneration();
   const searchNavigation = new NavigationGeneration();
   const nodes = new Map();
+  const document = { title: '', body: { dataset: {} }, activeElement: null };
   function element(tag, text = '', className = '') {
-    return { tag, textContent: text, className, hidden: false, value: '', dataset: {}, attributes: {}, children: [], events: {},
-      append(...children) { this.children.push(...children); },
-      replaceChildren(...children) { this.children = children; },
+    return { tag, textContent: text, className, hidden: false, value: '', dataset: {}, attributes: {}, children: [], events: {}, parent: null,
+      get firstElementChild() { return this.children[0] || null; },
+      contains(node) { return node === this || this.children.some(child => child.contains(node)); },
+      remove() {
+        if (!this.parent) return;
+        if (this.contains(document.activeElement)) document.activeElement = document.body;
+        this.parent.children.splice(this.parent.children.indexOf(this), 1);
+        this.parent = null;
+      },
+      insertBefore(child, reference) {
+        child.remove();
+        this.children.splice(reference ? this.children.indexOf(reference) : this.children.length, 0, child);
+        child.parent = this;
+      },
+      append(...children) { for (const child of children) this.insertBefore(child, null); },
+      replaceChildren(...children) {
+        for (const child of [...this.children]) child.remove();
+        this.append(...children);
+      },
+      focus() { document.activeElement = this; },
       addEventListener(name, callback) { this.events[name] = callback; },
       setAttribute(name, value) { this.attributes[name] = String(value); },
+      getAttribute(name) { return this.attributes[name] ?? this[name] ?? null; },
       removeAttribute() {},
     };
   }
@@ -2214,7 +2233,7 @@ function articleIndexHarness(responses, { wait = async () => {}, openDemo = fals
   const context = {
     $, element, URL, openDemo, demoPath: path => openDemo ? `${path}${path.includes('?') ? '&' : '?'}demo=1` : path,
     location: { href: `https://cars.example/workshop?vehicle=B${openDemo ? '&demo=1' : ''}` },
-    document: { title: '', body: { dataset: {} } },
+    document,
     navigation, quote: null, vehicle: { id: 'B', region: 'US' }, articles: [], indexLoaded: false, indexComplete: false, indexFailed: false, access: '', retryAction: null, filterArticles,
     searchNavigation, searchItems: null, searchQuery: '', searchPending: false, searchComplete: false, searchError: false, searchTimer: null,
     currentArticle: null, renderedRevision: '', sourceURL: '', sourceRevision: 0, displayedSourceRevision: 0,
@@ -2456,6 +2475,48 @@ test('nonempty explicit completed article index is ready after one read', async 
   await h.load();
   assert.equal(h.requests.length, 1);
   assert.equal(h.$('completion-status').textContent, 'Article index ready.');
+});
+
+test('hydration reuses article rows and keeps keyboard focus on the same article ID', async () => {
+  const polls = [deferredAuthOperation(), deferredAuthOperation()];
+  const releases = [...polls];
+  const first = { id: 'first/article', title: 'Pump service', kind: 'procedure' };
+  const second = { ...first, id: 'second/article' };
+  const added = { ...first, id: 'added/article' };
+  const initial = indexResponse('running', { hydrating: true, items: [second, first] });
+  const h = articleIndexHarness([initial, initial,
+    indexResponse('completed', { complete: true, items: [first, second, added] })],
+  { wait: () => polls.shift().promise });
+  const loading = h.load();
+  await new Promise(setImmediate);
+  const list = h.$('articles').firstElementChild;
+  const oldRows = [...list.children];
+  const focused = oldRows[1].firstElementChild;
+  focused.focus();
+  releases[0].resolve();
+  await new Promise(setImmediate);
+  assert.equal(h.$('articles').firstElementChild, list);
+  assert.equal(list.children[1].firstElementChild, focused);
+  assert.equal(h.context.document.activeElement, focused);
+  releases[1].resolve();
+  await loading;
+  assert.equal(h.$('articles').firstElementChild, list);
+  assert.equal(list.children[0], oldRows[1]);
+  assert.equal(list.children[1], oldRows[0]);
+  assert.equal(h.context.document.activeElement, focused);
+  assert.equal(new URL(focused.href, 'https://cars.example').searchParams.get('article'), first.id);
+  for (const flags of [{button:1}, {ctrlKey:true}, {metaKey:true}, {altKey:true}, {shiftKey:true}]) {
+    focused.events.click({ ...flags, preventDefault: () => assert.fail('modified click must stay native') });
+  }
+  assert.deepEqual(h.opened, []);
+  focused.events.click({ preventDefault() {} });
+  assert.deepEqual(h.opened, [{ id: first.id }]);
+
+  h.context.articles = [second, added];
+  h.context.renderArticles();
+  assert.equal(focused.parent.parent, null);
+  assert.equal(h.context.document.activeElement, h.$('catalog-title'));
+  assert.equal(h.$('articles').firstElementChild.children[0], oldRows[0]);
 });
 
 test('article index type labels show readable kinds beside titles without changing links', async () => {
