@@ -4405,6 +4405,7 @@ test('reader refocus reauthorizes account, exact detail and pinned source togeth
   h.context.document.visibilityState = 'visible';
   h.render(article);
   h.context.sourceURL = article.source_review.url;
+  h.nodes.get('article-reference').open = true;
   h.nodes.get('source-review-frame').append(new ArticleMediaNode('p', 'Pinned source'));
   const held = h.nodes.get('source-review-frame').firstElementChild;
   const focusTarget = h.nodes.get('source-review-load');
@@ -4426,6 +4427,48 @@ test('reader refocus reauthorizes account, exact detail and pinned source togeth
   assert.equal(h.context.document.body.dataset.printable, 'true');
   assert.equal(h.nodes.get('source-review-frame').firstElementChild, held);
   assert.equal(focusTarget.focusCalls, 1);
+});
+
+test('reader refocus discards a folded source so only the current account and article delay the reader', async () => {
+  const configuration = { id: routeConfiguration, region: 'US' };
+  const article = mediaArticle([{ type: 'paragraph', text: 'Authorized article' }], [], {
+    id: routeArticle,
+    content_origin: 'canonical',
+    source_review: { available: true, url: `/v1/catalog/vehicles/v/articles/${routeArticle}/source?source_revision_id=${routeOrder}` },
+  });
+  const detail = deferredAuthOperation();
+  const calls = [];
+  const h = articleMediaHarness({
+    vehicle: configuration,
+    scope: () => ({ configuration_id: configuration.id, region: configuration.region }),
+    session: { state: { authenticated: true, mode: 'firebase' }, async matchesCurrentSession() {
+      calls.push('session'); return true;
+    } },
+    requestArticleJSON() { calls.push('article'); return detail.promise; },
+    async requestJSON() { calls.push('source'); },
+    renderPurchase() {},
+    show(id) { h.nodes.get('reader').hidden = id !== 'reader'; },
+  });
+  h.render(article);
+  h.context.sourceURL = article.source_review.url;
+  h.nodes.get('article-reference').open = false;
+  const frame = h.nodes.get('source-review-frame');
+  frame.append(new ArticleMediaNode('p', 'Previously loaded source'));
+  frame.hidden = false;
+  runInNewContext(appSection('let lifecycleCheck = null;', 'window.addEventListener("pageshow"'), h.context);
+  const checked = h.context.recheckReader(h.g);
+  assert.deepEqual(calls, ['session', 'article']);
+  assert.equal(frame.hidden, true);
+  assert.equal(frame.textContent, '');
+  assert.equal(h.nodes.get('reader').hidden, true);
+  assert.equal(h.context.document.body.dataset.printable, 'false');
+  detail.resolve({ status: 200, data: { configuration, article } });
+  await checked;
+  assert.equal(h.nodes.get('reader').hidden, false);
+  assert.equal(h.context.document.body.dataset.printable, 'true');
+  assert.equal(h.nodes.get('article-reference').open, false);
+  assert.equal(h.nodes.get('source-review').hidden, false);
+  assert.equal(h.context.sourceURL, '');
 });
 
 test('opening My vehicles hides the previous purchase panel while Library is loading', async () => {

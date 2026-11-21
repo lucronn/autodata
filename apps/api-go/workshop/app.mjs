@@ -2179,6 +2179,8 @@ async function recheckReader(g) {
     configuration?.id === selected.configuration_id && configuration?.region === selected.region;
   const reader = $("reader");
   const focused = document.activeElement;
+  // Reopening a folded source will request a fresh authorized copy.
+  if (sourceURL && !$("article-reference").open) resetSourceReview();
   const pinned = sourceURL && validSourceURL(sourceURL);
   const order = articleDetailOrder(g, opened.id);
   const { signal } = g;
