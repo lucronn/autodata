@@ -1370,21 +1370,32 @@ class API21FakePage:
             assert response.done(), 'fixture search response did not match'
         finally:
             self.response_expectation=None
-    def on(self,event,callback):self.handlers[event]=callback
+    def on(self,event,callback):self.handlers.setdefault(event,[]).append(callback)
+    def remove_listener(self,event,callback):self.handlers[event].remove(callback)
+    def dispatch(self,event,value):
+        for callback in tuple(self.handlers.get(event,())):
+            callback(value)
     async def wait_for_function(self, expression):
+        if "document.getElementById('catalog').hidden" in expression:
+            assert self.context.browser.paid and not self.context.browser.revoked
+            assert "!new URL(location.href).searchParams.has('order')" in expression
+            return
         assert 'naturalWidth > 0' in expression
     def locator(self,selector):return API21FakeLocator(self,selector)
+    def get_by_role(self,role,*,name,exact):
+        assert (role,name,exact)==('button','Open articles',True)
+        return self.locator('#library-items button')
     def emit(self,url,data,request=None):
         observations=getattr(self.context,'_api21',None)
         if observations and observations.phase==self.context.browser.missing:return
-        callback=self.handlers.get('response')
-        response=API21FakeResponse(url,data,request=request)
+        path=smoke.urlsplit(url).path
+        status=404 if path.endswith('/articles') and 'region=CA' in smoke.urlsplit(url).query else 200
+        response=API21FakeResponse(url,data,status=status,request=request)
         if self.response_expectation is not None:
             predicate,expected=self.response_expectation
             if not expected.done() and predicate(response):expected.set_result(response)
-        started=self.handlers.get('request')
-        if started:started(response.request)
-        if callback:callback(response)
+        self.dispatch('request',response.request)
+        self.dispatch('response',response)
     def library(self):
         self.emit('https://127.0.0.1:32001/v1/workshop/library?limit=20',dict(items=[dict(
             library_item_id=smoke.ORDER,configuration_id=smoke.CONFIG,region='US',access_state='paid')]))
@@ -1392,6 +1403,8 @@ class API21FakePage:
         self.url=url
         if 'article=' in url:
             self.emit('https://127.0.0.1:32001/v1/catalog/vehicles/'+smoke.CONFIG+'/articles/'+smoke.ARTICLE,{'content':'source'})
+        elif 'region=CA' in url:
+            self.emit('https://127.0.0.1:32001/v1/catalog/vehicles/'+smoke.CONFIG+'/articles?region=CA',{'error':'denied'})
     async def reload(self):
         phase=getattr(getattr(self.context,'_api21',None),'phase','')
         if phase.startswith('owner-library-'):self.library()
@@ -1842,22 +1855,22 @@ class API21ObservationsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(buffer.primary,'cancelled');self.assertFalse(buffer.pending)
 
     async def test_terminal_case_closes_context_and_retains_pending_request_without_headers(self):
-        original=API21FakePage.goto
+        original=API21FakeLocator.click
         for failure_type in (TimeoutError,asyncio.CancelledError):
             with self.subTest(failure_type=failure_type):
                 buffer=self.buffer();browser=API21FakeBrowser(smoke.API_CASES[0]);started=asyncio.Event();never=asyncio.Event();prefix=[]
-                async def goto(page,url):
-                    if buffer.phase=='owner-library-initial-http':
+                async def click(locator,**kwargs):
+                    if locator.selector=='#my-vehicles' and buffer.phase=='owner-library-initial-http':
                         request=SimpleNamespace(method='GET',url='https://local/v1/workshop/library')
-                        page.handlers['request'](request);prefix.extend(copy.deepcopy(buffer.events));started.set()
+                        locator.page.dispatch('request',request);prefix.extend(copy.deepcopy(buffer.events));started.set()
                         if failure_type is TimeoutError:raise TimeoutError('safe fake navigation failure')
                         await never.wait()
-                    return await original(page,url)
-                with TemporaryDirectory() as temp,patch.dict(sys.modules,{'playwright.async_api':SimpleNamespace(expect=lambda value:value)}),patch.object(API21FakePage,'goto',goto):
+                    return await original(locator,**kwargs)
+                with TemporaryDirectory() as temp,patch.dict(sys.modules,{'playwright.async_api':SimpleNamespace(expect=lambda value:value)}),patch.object(API21FakeLocator,'click',click):
                     task=asyncio.create_task(smoke.api_case(browser,'https://127.0.0.1:32001',smoke.API_CASES[0],Path(temp),observations=buffer))
-                    await started.wait()
-                    if failure_type is asyncio.CancelledError:task.cancel()
                     try:
+                        await asyncio.wait_for(started.wait(),timeout=2)
+                        if failure_type is asyncio.CancelledError:task.cancel()
                         for _ in range(20):await asyncio.sleep(0)
                         self.assertTrue(task.done(),'terminal cleanup waited for response headers')
                         self.assertTrue(browser.contexts[0].closed)
@@ -1915,10 +1928,10 @@ class API21ObservationsTests(unittest.IsolatedAsyncioTestCase):
             if buffer.phase=='owner-library-initial-http':
                 response=API21FakeResponse('https://local/v1/workshop/library',{'items':[{
                     'library_item_id':smoke.ORDER,'configuration_id':smoke.CONFIG,'region':'US','access_state':'paid'}]})
-                page.handlers['request'](response.request)
+                page.dispatch('request',response.request)
                 # Headers arrive only after the action yielded; drain must see
                 # the pending request before allowing a new action window.
-                asyncio.get_running_loop().call_soon(page.handlers['response'],response)
+                asyncio.get_running_loop().call_soon(page.dispatch,'response',response)
         async def reload(page):
             if buffer.phase!='owner-library-reload-http':await original_reload(page)
         original_reload=API21FakePage.reload
