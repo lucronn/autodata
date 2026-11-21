@@ -682,6 +682,67 @@ test('a ready body gets the ordinary read time within the remaining reader budge
   assert.equal(result.data.article.body, 'Published');
 });
 
+test('early publication reads keep the displayed source with a negotiated pending reply', async () => {
+  const { readArticle } = await import('./workshop/article-read.mjs');
+  const article = {
+    id: 'article', content_origin: 'source', source_revision_id: 'source', body: 'Stored',
+    processing: { job_id: 'job', state: 'rewriting' },
+  };
+  const source = { status: 200, shortPublicationCheck: true, publicationCheckSupported: true, data: { article } };
+  const ready = { status: 200, data: { article: { body: 'Published' } } };
+  const pending = { status: 200, publicationStatus: true, data: {
+    version: 'v1', article_id: 'article', job_id: 'job', source_revision_id: 'source', state: 'validating',
+  } };
+  const wrongSource = { ...pending, data: { ...pending.data, source_revision_id: 'other', retry_after_seconds: 6 } };
+  const serverDelay = { ...pending, retryAfterSeconds: 6 };
+  const changed = { ...source, shortPublicationCheck: false, data: {
+    article: { ...article, body: 'New source', source_revision_id: 'new', processing: { job_id: 'new-job', state: 'validating' } },
+  } };
+  for (const [label, responses, expectedTimes, expectedUpdates] of [
+    ['ready on second check', [source, pending, ready], [0, 500, 750], ['Stored', 'Published']],
+    ['still processing', [source, pending, pending, ready], [0, 500, 750, 1000], ['Stored', 'Published']],
+    ['mismatched compact reply', [source, wrongSource, ready], [0, 500, 1000], ['Stored', 'Published']],
+    ['real server delay', [source, serverDelay, ready], [0, 500, 6500], ['Stored', 'Published']],
+    ['changed source renders the full response', [source, changed, ready], [0, 500, 1000], ['Stored', 'New source', 'Published']],
+  ]) {
+    let now = 0;
+    const starts = [], selected = [], rendered = [];
+    const result = await readArticle(async (options) => {
+      starts.push(now);
+      if (now === 500 || now === 750) {
+        assert.deepEqual(options.publicationCheck, { articleId: 'article', sourceRevisionId: 'source', jobId: 'job' }, label);
+        assert.equal(options.finishPublishedBody, true, label);
+        assert.equal(options.timeout, 1000 - now, label);
+      } else {
+        assert.equal(options.publicationCheck, undefined, label);
+      }
+      return responses.shift();
+    }, {
+      now: () => now, wait: async ms => { now += ms; },
+      selectResponse(response) { selected.push(response.data.article.body); return response; },
+      onUpdate(response) { rendered.push(response.data.article.body); },
+    });
+    assert.deepEqual(starts, expectedTimes, label);
+    assert.deepEqual(selected, expectedUpdates, label);
+    assert.deepEqual(rendered, expectedUpdates, label);
+    assert.equal(result.data.article.body, 'Published', label);
+  }
+  const captureQueued = { status: 202, shortSourceCheck: true, data: {
+    article: { processing: { job_id: 'job', state: 'queued' } },
+  } };
+  const responses = [captureQueued, source, pending, pending, pending, ready];
+  let now = 0;
+  const optionsByRead = [];
+  const result = await readArticle(async (options) => {
+    optionsByRead.push({ time: now, check: options.publicationCheck, timeout: options.timeout });
+    return responses.shift();
+  }, { now: () => now, wait: async ms => { now += ms; } });
+  assert.deepEqual(optionsByRead.map(({ time }) => time), [0, 250, 750, 1000, 1250, 2250]);
+  assert.deepEqual(optionsByRead.filter(({ check }) => check).map(({ time, timeout }) => [time, timeout]),
+    [[750, 500], [1000, 250], [1250, 1000]]);
+  assert.equal(result.data.article.body, 'Published');
+});
+
 test('one negotiated publication check can open a ready article while keeping the ordinary deadline on a miss', async () => {
   const { readArticle } = await import('./workshop/article-read.mjs');
   const source = {

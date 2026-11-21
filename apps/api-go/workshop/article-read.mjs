@@ -55,12 +55,13 @@ function publicationAnchor(response) {
     return { articleId: article.id, sourceRevisionId: article.source_revision_id, jobId: article.processing.job_id };
   }
 }
-function publicationStatusRetryAfter(response, anchor) {
+function matchingPublicationStatus(response, anchor) {
   const status = response.data;
-  const matching = response.publicationStatus && response.status === 200 && status?.version === "v1" &&
-    status.article_id === anchor.articleId && status.job_id === anchor.jobId &&
-    status.source_revision_id === anchor.sourceRevisionId && publicationStates.includes(status.state);
-  return Math.max(articleRetryAfter(response), matching ? Number(status.retry_after_seconds) || 0 : 0);
+  if (response.publicationStatus && response.status === 200 && status?.version === "v1" &&
+      status.article_id === anchor.articleId && status.job_id === anchor.jobId &&
+      status.source_revision_id === anchor.sourceRevisionId && publicationStates.includes(status.state)) {
+    return status;
+  }
 }
 export async function readArticle(
   read,
@@ -100,6 +101,9 @@ export async function readArticle(
     if (regularSourceReadAt <= startedAt) regularSourceReadAt = 0;
     if (sourceConfirmationAt <= startedAt) sourceConfirmationAt = 0;
     if (publicationReadAt <= startedAt) publicationReadAt = 0;
+    const publicationCheck = statusProbe?.anchor ??
+      (publicationReadAt || sourceConfirmationAt ? publicationAnchor(latest) : undefined);
+    const finishPublishedBody = Boolean(publicationReadAt || publicationCheck);
     const readDeadline = Math.min(
       deadline, firstReadAt || deadline, nextSourceProbeAt || deadline,
       regularSourceReadAt || deadline, sourceConfirmationAt || deadline, publicationReadAt || deadline,
@@ -114,20 +118,22 @@ export async function readArticle(
     // A confirmed publication can use the ordinary body deadline even
     // when the probe had a short deadline for its headers.
     const bodyDeadline = sourceBodyDeadline ||
-      ((publicationReadAt || statusProbe) && startedAt + maxArticleRequestMs);
+      (finishPublishedBody && startedAt + maxArticleRequestMs);
     try {
       const response = await read({
         signal,
         timeout: Math.max(1, Math.floor(Math.min(maxArticleRequestMs, readDeadline - startedAt))),
         readableBodyTimeout: bodyDeadline ? Math.floor(Math.min(deadline, bodyDeadline) - startedAt) : undefined,
-        finishPublishedBody: Boolean(publicationReadAt || statusProbe),
+        finishPublishedBody,
         preferShortSourceCheck: Boolean(firstReadAt || regularSourceReadAt || firstScheduledSourceRead),
         preferShortPublicationCheck: !sawFastSource || Boolean(publicationReadAt),
-        publicationCheck: statusProbe?.anchor,
+        publicationCheck,
       });
       signal?.throwIfAborted();
-      if (statusProbe && (response.publicationStatus || !response.data?.article)) {
-        retryAfter = publicationStatusRetryAfter(response, statusProbe.anchor);
+      if (publicationCheck && (response.publicationStatus || !response.data?.article)) {
+        const pending = matchingPublicationStatus(response, publicationCheck);
+        retryAfter = Math.max(articleRetryAfter(response), Number(pending?.retry_after_seconds) || 0);
+        if (pending && retryAfter === 0) shortPublicationJob = pending.job_id;
       } else {
         latest = selectResponse(response);
         if (!latest?.data?.article || typeof latest.data.article !== "object")
@@ -157,7 +163,7 @@ export async function readArticle(
     } catch (error) {
       signal?.throwIfAborted();
       sourceProbeFailed = error instanceof TypeError || error.code === "NETWORK_UNAVAILABLE" ||
-        Boolean(statusProbe && error.code === "INVALID_RESPONSE");
+        Boolean(publicationCheck && error.code === "INVALID_RESPONSE");
       if (!sourceProbeFailed && !([429, 503].includes(error.status) && error.retryable)) throw error;
       retryAfter = Number(error.retryAfterSeconds) || 0;
     }
