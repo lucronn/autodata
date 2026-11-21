@@ -70,6 +70,43 @@ func TestPaidCatalogArticleSearchUsesReaderIdentityForStoredFigureCaption(t *tes
 	}
 }
 
+func TestPaidCatalogArticleSearchResolvesPathOnlyFigure(t *testing.T) {
+	// A valid storage key: sources/<16 hex>/<64 hex> — matches localCatalogImageKeyPattern.
+	const key = "sources/0123456789abcdef/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	// PDF/HTML capture stores a private storage path as asset_id only, with no
+	// image_id. The paid resolve path hashes asset_id via publicCatalogAssetID;
+	// the index must also key the image by that hash so the lookup succeeds.
+	document := []byte(fmt.Sprintf(`{"blocks":[{"type":"callout","label":"Note","text":"Check clearance.","images":[{"asset_id":%q,"alt":"Clearance diagram","caption":"Measured gap","status":"available"}]}]}`, key))
+	images := []byte(fmt.Sprintf(`[{"asset_id":%q,"storage_key":%q,"status":"available"}]`, key, key))
+	sourceImages := images
+	for _, test := range []struct {
+		name         string
+		sourceImages []byte
+		figure       bool
+	}{
+		{name: "retained path-only figure", sourceImages: sourceImages, figure: true},
+		{name: "unproven path-only figure"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			projection := paidSearchProjection{document: document, images: images, sourceImages: test.sourceImages}
+			for _, query := range []struct {
+				text  string
+				match bool
+			}{
+				{text: "Check clearance", match: true},
+				{text: "Measured gap", match: test.figure},
+				{text: "Clearance diagram", match: test.figure},
+				{text: key, match: false},
+			} {
+				matched, err := projection.matchesContent(CatalogArticle{Title: "Suspension check"}, strings.Fields(strings.ToLower(query.text)))
+				if err != nil || matched != query.match {
+					t.Fatalf("query %q matched %v, want %v (error %v)", query.text, matched, query.match, err)
+				}
+			}
+		})
+	}
+}
+
 func TestCatalogArticleSearchMatchesRenderedLegacyIntroductionAndSteps(t *testing.T) {
 	article := CatalogArticle{
 		Title: "Maintenance guide", Kind: "procedure", Body: "Check coolant level.",

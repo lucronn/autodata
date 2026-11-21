@@ -272,6 +272,16 @@ func indexCatalogSearchImages(images []CatalogImage, storedImageRefs bool) catal
 				indexed.byID[id] = renderable
 			}
 		}
+		if storedImageRefs {
+			// The paid resolve path uses paidCatalogImageAssetID, which hashes
+			// any storage-path asset_id. Index by that key so path-only figures
+			// are found even when no image_id is present.
+			if paidID := paidCatalogImageAssetID(*image); paidID != "" {
+				if _, exists := indexed.byID[paidID]; !exists {
+					indexed.byID[paidID] = renderable
+				}
+			}
+		}
 	}
 	return indexed
 }
