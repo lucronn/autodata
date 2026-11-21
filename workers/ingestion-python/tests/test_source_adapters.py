@@ -395,7 +395,7 @@ class SourceAdapterTests(unittest.TestCase):
         ):
             artifact = adapt_source_resource(pdf)
 
-        extract_scanned.assert_called_once_with(pdf.content_sha256, pdf.payload, {2})
+        extract_scanned.assert_called_once_with(pdf.content_sha256, pdf.payload, {2}, page_range=(1, 1))
         self.assertEqual(artifact.metadata["extraction_mode"], "mixed_pdf_ocr")
         self.assertEqual(artifact.metadata["rasterized_page_count"], 1)
         self.assertEqual(artifact.metadata["extracted_region_count"], 1)

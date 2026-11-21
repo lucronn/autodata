@@ -3,7 +3,7 @@ import types
 import unittest
 from io import BytesIO
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 
 ROOT = Path(__file__).parents[3]
@@ -63,6 +63,27 @@ class PDFOCRTests(unittest.TestCase):
 
         self.assertEqual([block.page_number for block in blocks], [1])
         extract_image.assert_called_once_with("b" * 64, b"page1", "image/png")
+
+    def test_scanned_pdf_ocr_keeps_original_page_numbers_in_shorter_window(self):
+        class RenderedPage:
+            def save(self, stream, format):
+                stream.write(b"page7")
+
+        converter = types.SimpleNamespace(convert_from_bytes=Mock(return_value=[RenderedPage()]))
+        with (
+            patch.dict(sys.modules, {"pdf2image": converter}),
+            patch(
+                "autodata_ingestion.pdf_ocr.extract_image_text",
+                return_value=(OCRTextBlock("Check the connector.", 0.9, (1, 2, 3, 4)),),
+            ) as extract_image,
+        ):
+            blocks = extract_scanned_pdf_text("b" * 64, b"pdf", range(1, 7), page_range=(7, 7))
+
+        converter.convert_from_bytes.assert_called_once_with(
+            b"pdf", dpi=200, fmt="png", thread_count=1, first_page=7, last_page=7,
+        )
+        extract_image.assert_called_once_with("b" * 64, b"page7", "image/png")
+        self.assertEqual(blocks, (OCRTextBlock("Check the connector.", 0.9, (1, 2, 3, 4), page_number=7),))
 
 
 if __name__ == "__main__":

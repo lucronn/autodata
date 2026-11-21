@@ -226,9 +226,10 @@ def test_wordless_linked_pdf_refresh_preserves_pinned_source(runtime, monkeypatc
     )
     connector.body(pdf, "application/pdf", ref=_PDF_REF, kind="binary")
 
-    def no_text(digest, payload, covered):
+    def no_text(digest, payload, covered, *, page_range):
         assert payload == pdf and digest == sha256(pdf).hexdigest()
         assert covered == {1, 3}
+        assert page_range == (2, 2)
         return ()
 
     monkeypatch.setattr(source_adapters, "extract_scanned_pdf_text", no_text)
@@ -460,7 +461,7 @@ def test_linked_pdf_publishes_in_order_and_private_original_controls_visibility(
     from autodata_ingestion import source_adapters
     from autodata_ingestion.ocr import OCRUnavailable
 
-    def unavailable_ocr(*_):
+    def unavailable_ocr(*_, **__):
         raise OCRUnavailable("Fixture OCR unavailable")
 
     monkeypatch.setattr(source_adapters, "extract_scanned_pdf_text", unavailable_ocr)

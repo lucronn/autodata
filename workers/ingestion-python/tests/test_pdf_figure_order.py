@@ -250,8 +250,9 @@ def test_places_figure_by_visible_gap_even_when_it_is_drawn_last():
 
 
 def test_only_repositions_native_page_on_a_mixed_pdf(monkeypatch):
-    def scanned_text(_digest, _payload, native):
+    def scanned_text(_digest, _payload, native, *, page_range):
         assert native == {1, 3}
+        assert page_range == (2, 2)
         return (
             OCRTextBlock("Read the warning.", 0.98, (72, 140, 180, 30), page_number=2),
             OCRTextBlock("Check the bracket.", 0.98, (72, 740, 180, 30), page_number=2),

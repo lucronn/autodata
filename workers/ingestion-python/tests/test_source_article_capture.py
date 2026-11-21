@@ -820,8 +820,9 @@ def test_mixed_pdf_keeps_ocr_text_and_embedded_figure_in_page_order(
     pdf.showPage()
     pdf.save()
 
-    def read_scanned_page(_digest, _payload, native_pages):
+    def read_scanned_page(_digest, _payload, native_pages, *, page_range):
         assert native_pages == {1, 3}
+        assert page_range == (2, 2)
         return (
             OCRTextBlock("Check the seal.", 0.96, (72, 96, 180, 30), page_number=2),
             OCRTextBlock("Wipe the flange.", 0.96, (72, 140, 180, 30), page_number=2),
@@ -922,7 +923,7 @@ def test_embedded_pdf_bounds_apply_before_extraction_and_ocr(capture_fixture, mo
     from autodata_ingestion import source_adapters
     from autodata_ingestion.source_article_capture import capture_source_article
 
-    def unexpected_extraction(*_):
+    def unexpected_extraction(*_, **__):
         pytest.fail("PDF exceeds the bound before extraction or OCR")
 
     monkeypatch.setattr(source_adapters, "_extract_pdf_page_images", unexpected_extraction)
@@ -2331,7 +2332,7 @@ def test_linked_pdf_blank_page_keeps_native_procedure_without_ocr(capture_fixtur
 
     calls = []
 
-    def unavailable_ocr(_digest, _payload, covered):
+    def unavailable_ocr(_digest, _payload, covered, *, page_range):
         calls.append(covered)
         raise OCRUnavailable("Fixture OCR unavailable")
 
@@ -2398,8 +2399,9 @@ def test_bound_embed_validation_keeps_surrounding_procedure(capture_fixture, mon
         pdf.save()
         payload = stream.getvalue()
 
-        def unavailable(_digest, _payload, native_pages):
+        def unavailable(_digest, _payload, native_pages, *, page_range):
             assert native_pages == {1}
+            assert page_range == (2, 2)
             raise OCRUnavailable("Fixture second page could not be recognized")
 
         monkeypatch.setattr(source_adapters, "extract_scanned_pdf_text", unavailable)

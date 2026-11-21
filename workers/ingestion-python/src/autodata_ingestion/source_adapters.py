@@ -994,8 +994,12 @@ def _adapt_pdf_resource(
     ocr_candidates = []
     wordless_figures = []
     if should_rasterize:
+        # Native or known blank pages outside this range never need pixels.
+        page_range = (min(missing_pages), max(missing_pages)) if covered_pages and missing_pages else None
         try:
-            scanned_blocks = extract_scanned_pdf_text(resource.content_sha256, resource.payload, covered_pages)
+            scanned_blocks = extract_scanned_pdf_text(
+                resource.content_sha256, resource.payload, covered_pages, page_range=page_range,
+            )
             ocr_candidates = list(build_ocr_candidates(resource.content_sha256, scanned_blocks))
             rasterization_status = "complete"
             extraction_mode = "mixed_pdf_ocr" if native_text_pages else "scanned_pdf_ocr"
@@ -1153,12 +1157,14 @@ def extract_scanned_pdf_text(
     content_sha256: str,
     payload: bytes,
     native_text_pages: Iterable[int] = (),
+    *,
+    page_range: tuple[int, int] | None = None,
 ) -> Iterable[Any]:
     """Load the optional PDF rasterizer/OCR provider lazily for testable intake."""
 
     from .pdf_ocr import extract_scanned_pdf_text as extract
 
-    return extract(content_sha256, payload, native_text_pages)
+    return extract(content_sha256, payload, native_text_pages, page_range=page_range)
 
 
 def _adapt_image_resource(

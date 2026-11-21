@@ -13,7 +13,9 @@ class PDFRasterizationUnavailable(OCRUnavailable):
     """The optional PDF rasterizer is not available or cannot read the PDF."""
 
 
-def rasterize_pdf_pages(payload: bytes, *, dpi: int = 200) -> tuple[bytes, ...]:
+def rasterize_pdf_pages(
+    payload: bytes, *, dpi: int = 200, page_range: tuple[int, int] | None = None,
+) -> tuple[bytes, ...]:
     """Render PDF pages to PNG bytes with a deterministic, single-threaded boundary."""
 
     try:
@@ -22,11 +24,13 @@ def rasterize_pdf_pages(payload: bytes, *, dpi: int = 200) -> tuple[bytes, ...]:
         raise PDFRasterizationUnavailable("PDF rasterizer is not installed") from error
 
     try:
+        bounds = {"first_page": page_range[0], "last_page": page_range[1]} if page_range else {}
         rendered_pages = convert_from_bytes(
             payload,
             dpi=dpi,
             fmt="png",
             thread_count=1,
+            **bounds,
         )
         page_payloads: list[bytes] = []
         for page in rendered_pages:
@@ -38,6 +42,8 @@ def rasterize_pdf_pages(payload: bytes, *, dpi: int = 200) -> tuple[bytes, ...]:
 
     if not page_payloads:
         raise PDFRasterizationUnavailable("PDF rasterizer returned no pages")
+    if page_range is not None and len(page_payloads) != page_range[1] - page_range[0] + 1:
+        raise PDFRasterizationUnavailable("PDF rasterizer did not return the requested pages")
     return tuple(page_payloads)
 
 
@@ -45,12 +51,15 @@ def extract_scanned_pdf_text(
     content_sha256: str,
     payload: bytes,
     native_text_pages: Iterable[int] = (),
+    *,
+    page_range: tuple[int, int] | None = None,
 ) -> tuple[OCRTextBlock, ...]:
     """Rasterize only pages without native text and return page-numbered OCR blocks."""
 
     native_pages = {int(page_number) for page_number in native_text_pages}
     blocks: list[OCRTextBlock] = []
-    for page_number, page_payload in enumerate(rasterize_pdf_pages(payload), start=1):
+    first_page = page_range[0] if page_range is not None else 1
+    for page_number, page_payload in enumerate(rasterize_pdf_pages(payload, page_range=page_range), start=first_page):
         if page_number in native_pages:
             continue
         try:

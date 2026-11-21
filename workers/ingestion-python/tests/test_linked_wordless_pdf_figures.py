@@ -54,9 +54,10 @@ def test_linked_pdf_keeps_proven_compact_diagram(capture_fixture, monkeypatch, p
 
     ocr_calls = []
 
-    def ocr(digest, payload, native_pages):
+    def ocr(digest, payload, native_pages, *, page_range):
         assert payload == pdf and digest == sha256(pdf).hexdigest()
         assert native_pages == ({1, 3} if variant == "middle" else set())
+        assert page_range == ((2, 2) if variant == "middle" else None)
         ocr_calls.append(variant)
         if variant == "ocr_failure":
             raise OCRUnavailable("Synthetic OCR failure")
