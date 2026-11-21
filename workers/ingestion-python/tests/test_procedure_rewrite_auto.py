@@ -747,7 +747,7 @@ def test_automatic_rewrite_v12_rejects_changed_simultaneous_conditions(in_cell, 
     candidate = render_full(source, payload, profile_version=PROFILE, include_cell_blocks=in_cell)
     validation = auto.validate_auto(source, candidate, response=payload, prompt_version=json.loads(prompt)["prompt_version"])
     assert validation.error_codes == ("REWRITE_QUALIFIER_MUTATION",)
-    assert validation.report["validator_version"] == "full-prose-auto-validator-v16"
+    assert validation.report["validator_version"] == "full-prose-auto-validator-v17"
 
 
 @pytest.mark.parametrize("in_cell", [False, True], ids=["article", "table-cell"])
@@ -768,10 +768,10 @@ def test_automatic_rewrite_v12_preserves_same_state_and_existing_aliases(in_cell
     result = run(source, payload)
     assert result.error_code is None
     version = json.loads(prompt)["prompt_version"]
-    assert version == "full-prose-auto-prompt-v18"
+    assert version == "full-prose-auto-prompt-v19"
     validation = auto.validate_auto(source, result.document, response=payload, prompt_version=version)
     assert validation.passed
-    assert validation.report["validator_version"] == "full-prose-auto-validator-v16"
+    assert validation.report["validator_version"] == "full-prose-auto-validator-v17"
 
 
 def test_automatic_rewrite_v12_rejects_added_condition_in_the_introduction():
@@ -849,10 +849,10 @@ def test_automatic_rewrite_accepts_identified_inspection_aliases(in_cell, source
     result = run(source, payload)
     assert result.error_code is None
     version = json.loads(prompt)["prompt_version"]
-    assert version == "full-prose-auto-prompt-v18"
+    assert version == "full-prose-auto-prompt-v19"
     checked = auto.validate_auto(source, result.document, response=payload, prompt_version=version)
     assert checked.passed
-    assert checked.report["validator_version"] == "full-prose-auto-validator-v16"
+    assert checked.report["validator_version"] == "full-prose-auto-validator-v17"
 
 
 @pytest.mark.parametrize("in_cell,prompt_hash,candidate_hash,report_hash", [
@@ -993,7 +993,7 @@ def test_automatic_rewrite_preserves_bound_alternative_actions(in_cell, source_t
     candidate = render_full(source, payload, profile_version=PROFILE, include_cell_blocks=in_cell)
     checked = auto.validate_auto(source, candidate, response=payload, prompt_version=json.loads(prompt)["prompt_version"])
     assert checked.error_codes == ((expected,) if expected else ())
-    assert checked.report["validator_version"] == "full-prose-auto-validator-v16"
+    assert checked.report["validator_version"] == "full-prose-auto-validator-v17"
 
 
 @pytest.mark.parametrize("in_cell,prompt_hash,candidate_hash,report_hash", [
@@ -1067,7 +1067,7 @@ def test_automatic_rewrite_preserves_bound_instruction_order(in_cell, source_tex
     candidate = render_full(source, payload, profile_version=PROFILE, include_cell_blocks=in_cell)
     checked = auto.validate_auto(source, candidate, response=payload, prompt_version=json.loads(prompt)["prompt_version"])
     assert checked.error_codes == ((expected,) if expected else ())
-    assert checked.report["validator_version"] == "full-prose-auto-validator-v16"
+    assert checked.report["validator_version"] == "full-prose-auto-validator-v17"
 
 
 @pytest.mark.parametrize("in_cell,prompt_hash,candidate_hash,report_hash", [
@@ -1114,7 +1114,7 @@ def test_automatic_rewrite_keeps_torque_assignments_across_unit_spellings(in_cel
     assert result.error_code == "REWRITE_SPEC_SCOPE_MUTATION"
     assert result.document == source
     changed = render_full(source, payload, profile_version=PROFILE, include_cell_blocks=in_cell)
-    checked = auto.validate_auto(source, changed, response=payload, prompt_version="full-prose-auto-prompt-v18")
+    checked = auto.validate_auto(source, changed, response=payload, prompt_version="full-prose-auto-prompt-v19")
     assert checked.error_codes == ("REWRITE_SPEC_SCOPE_MUTATION",)
 
     payload["replacements"][-1].update(action="retain", text=source_text, reason="Preserve the exact torque values.")
@@ -1193,7 +1193,7 @@ def test_automatic_rewrite_keeps_measured_duration_assignments(in_cell, unit):
     source = _scoped_prose_source(source_text, in_cell=in_cell)
     prompt = auto.build_auto_prompt(source, context={})
     version = json.loads(prompt)["prompt_version"]
-    assert version == "full-prose-auto-prompt-v18"
+    assert version == "full-prose-auto-prompt-v19"
     assert json.loads(prompt)["slots"][-1]["required_action"] == "retain"
     payload = _scoped_prose_response(prompt, draft)
     result = run(source, payload)
@@ -1278,6 +1278,96 @@ def test_automatic_reopens_v17_with_original_validation_bytes(in_cell, prompt_ha
     assert auto.validate_auto(source, candidate, response=payload).error_codes == ("REWRITE_SPEC_SCOPE_MUTATION",)
 
 
+@pytest.mark.parametrize("in_cell", [False, True], ids=["article", "table-cell"])
+@pytest.mark.parametrize("unit", ["VDC", "VAC", "Vdc", "V-DC", "V.D.C.", "mVDC", "ADC", "mA", "mV", "µA", "μA", "kV"])
+def test_automatic_rewrite_keeps_labelled_voltage_and_current_values(in_cell, unit):
+    from autodata_ingestion import procedure_rewrite_auto as auto
+    from autodata_ingestion.procedure_rewrite_full import render_full
+
+    source_text = f"Apply 5 {unit} to the sensor signal pin and 12 {unit} to the supply pin."
+    end = "" if unit.endswith(".") else "."
+    draft = f"Feed the supply pin with 5 {unit} and the sensor signal pin with 12 {unit}{end}"
+    source = _scoped_prose_source(source_text, in_cell=in_cell)
+    prompt = auto.build_auto_prompt(source, context={})
+    version = json.loads(prompt)["prompt_version"]
+    assert version == "full-prose-auto-prompt-v19"
+    assert json.loads(prompt)["slots"][-1]["required_action"] == "retain"
+    payload = _scoped_prose_response(prompt, draft)
+    result = run(source, payload)
+    assert result.error_code == "REWRITE_SPEC_SCOPE_MUTATION"
+    assert result.document == source
+    candidate = render_full(source, payload, profile_version=PROFILE, include_cell_blocks=in_cell)
+    checked = auto.validate_auto(source, candidate, response=payload, prompt_version=version)
+    assert checked.error_codes == ("REWRITE_SPEC_SCOPE_MUTATION",)
+
+    payload["replacements"][-1].update(action="retain", text=source_text, reason="Preserve both electrical values.")
+    retained = run(source, payload)
+    assert retained.error_code is None
+    checked = auto.validate_auto(source, retained.document, response=payload)
+    assert checked.passed
+    assert checked.report["changed_prose_slots"] == ["/blocks/0/text"]
+    assert checked.report["retained_paths"] == [payload["replacements"][-1]["path"]]
+
+
+@pytest.mark.parametrize("original,draft", [
+    ("The sensor signal must be below 5 VDC.", "The signal from the sensor must be above 5 VDC."),
+    ("The signal voltage is 5 VDC maximum.", "The sensor signal is rated at 5 VDC minimum."),
+    ("Apply 5 V.D.C. to the sensor pin.", "Feed the sensor pin with 5 V.A.C."),
+    ("Connect the 12 VDC supply to the motor and the 5 VDC supply to the controller.",
+     "Attach the 12 VDC supply to the controller and the 5 VDC supply to the motor."),
+    ("Apply at least 5 VDC nominal at the sensor signal pin.", "Feed the power pin at least 5 VDC nominal."),
+])
+def test_automatic_rewrite_keeps_electrical_limits_modes_and_supply_targets(original, draft):
+    source = document(original)
+    result = run(source, response(draft))
+    assert result.error_code == "REWRITE_SPEC_SCOPE_MUTATION"
+    assert result.document == source
+
+
+@pytest.mark.parametrize("original,draft", [
+    ("Install the 2 VDC modules.", "Fit the 2 VDC modules into place."),
+    ("Install the 5 ADC channels.", "Fit the 5 ADC channels into place."),
+    ("Inspect connector VDC-17.", "Check connector VDC-17 for wear."),
+    ("The adapter has 12 A-series clips.", "There are 12 A-series clips on the adapter."),
+])
+def test_automatic_rewrite_keeps_component_names_and_counts_editable(original, draft):
+    from autodata_ingestion import procedure_rewrite_auto as auto
+
+    source = document(original)
+    prompt = json.loads(auto.build_auto_prompt(source, context={}))
+    assert prompt["slots"][0]["required_action"] == "rewrite"
+    assert run(source, response(draft)).error_code is None
+
+
+@pytest.mark.parametrize("in_cell,prompt_hash,candidate_hash,report_hash", [
+    (False, "e5e0d3bec0b239270a47911a50a60a09728842a9d6acfb0d543f3fd5d948a48c",
+     "cffb80b5c1d16f6ab9e31c8abcc3d227c4778f674e49a11570942bb902bc1833",
+     "1200ef71b7bb1fb001a80ce1a18cc1833d4267c783105ef9f1f3b92242e639e7"),
+    (True, "77bedb5982f8326b0b8f07dc7f3830d61a64df44bd6d87597d6f4c9450bed6a2",
+     "5444000220eb78bef8c286d0bcbd9df850c9249318bf31e147359e9691c67b34",
+     "6c9f8594187dbb8845e5e514014580935b474dabea7ac95a5eaaa703082397b7"),
+])
+def test_automatic_reopens_v18_with_original_validation_bytes(in_cell, prompt_hash, candidate_hash, report_hash):
+    from hashlib import sha256
+    from autodata_ingestion import procedure_rewrite_auto as auto
+
+    context = {"make": "Fixture"}
+    original = "Apply 5 VDC to the sensor signal pin and 12 VDC to the supply pin."
+    draft = "Feed the supply pin with 5 VDC and the sensor signal pin with 12 VDC."
+    source = _scoped_prose_source(original, in_cell=in_cell)
+    prompt = auto._build_auto_prompt_v18(source, context=context)
+    assert sha256(prompt.encode()).hexdigest() == prompt_hash
+    version = auto._auto_prompt_version(source, context=context, prompt_hash=prompt_hash)
+    assert version == "full-prose-auto-prompt-v18"
+    payload = _scoped_prose_response(prompt, draft)
+    candidate = auto.render_auto(source, payload, prompt_version=version)
+    historical = auto.validate_auto(source, candidate, response=payload, prompt_version=version)
+    assert historical.passed
+    assert digest_json(candidate) == candidate_hash
+    assert digest_json(historical.report) == report_hash
+    assert auto.validate_auto(source, candidate, response=payload).error_codes == ("REWRITE_SPEC_SCOPE_MUTATION",)
+
+
 def test_technical_only_retention_is_explicit_and_table_stays_exact():
     source = document("25 Nm", "Remove the cover.")
     source["blocks"].append({"block_id":"table", "source_order":3,"type":"table",
@@ -1325,13 +1415,13 @@ def test_prompt_asks_for_automatic_full_prose_without_human_review_obligations()
     assert prompt["slots"][0]["text"] == "Remove the cover."
 
 
-def test_prompt_v18_declares_complete_response_rows_and_server_required_actions():
+def test_prompt_v19_declares_complete_response_rows_and_server_required_actions():
     source = document("Remove the cover.", "25 Nm", "Never start the motor.",
                       "Fit the cover only after the seal sits flush.",
                       "Except if the seal is dry, inspect the housing.")
     before = deepcopy(source)
     prompt = json.loads(rewrite.build_rewrite_prompt(source, context={}, profile_version=PROFILE))
-    assert prompt["prompt_version"] == "full-prose-auto-prompt-v18"
+    assert prompt["prompt_version"] == "full-prose-auto-prompt-v19"
     assert prompt["response_shape"] == {"introduction": "string", "replacements": [
         {"block_id": "string", "path": "string", "action": "rewrite|retain", "text": "string", "reason": "string"}]}
     assert [slot["required_action"] for slot in prompt["slots"]] == ["rewrite", "rewrite_or_retain", "retain", "retain", "retain"]
@@ -1368,7 +1458,7 @@ def test_historical_v4_prompt_digest_and_validation_report_remain_stable():
     assert historical.passed and historical.report["validator_version"] == "full-prose-auto-validator-v2"
     current = validate_auto(source, candidate, response=payload)
     assert current.error_codes == ("REWRITE_ACTION_MUTATION",)
-    assert current.report["validator_version"] == "full-prose-auto-validator-v16"
+    assert current.report["validator_version"] == "full-prose-auto-validator-v17"
 
 
 def test_historical_v5_prompt_digest_and_validation_report_remain_stable():
@@ -1389,7 +1479,7 @@ def test_historical_v5_prompt_digest_and_validation_report_remain_stable():
     assert historical.passed and historical.report["validator_version"] == "full-prose-auto-validator-v3"
     current = auto.validate_auto(source, candidate, response=payload)
     assert current.error_codes == ("REWRITE_DIRECTION_MUTATION",)
-    assert current.report["validator_version"] == "full-prose-auto-validator-v16"
+    assert current.report["validator_version"] == "full-prose-auto-validator-v17"
 
 
 def test_historical_v6_prompt_digest_and_validation_report_remain_stable():
@@ -1409,7 +1499,7 @@ def test_historical_v6_prompt_digest_and_validation_report_remain_stable():
     assert historical.passed and historical.report["validator_version"] == "full-prose-auto-validator-v4"
     current = auto.validate_auto(source, candidate, response=payload)
     assert current.error_codes == ("REWRITE_COMPONENT_SWAP",)
-    assert current.report["validator_version"] == "full-prose-auto-validator-v16"
+    assert current.report["validator_version"] == "full-prose-auto-validator-v17"
 
 
 def test_historical_v7_prompt_candidate_and_validation_hashes_remain_stable():
@@ -1436,7 +1526,7 @@ def test_historical_v7_prompt_candidate_and_validation_hashes_remain_stable():
     current = auto.validate_auto(source, candidate, response=payload)
     assert current.passed is False
     assert current.report["passed"] is False
-    assert current.report["validator_version"] == "full-prose-auto-validator-v16"
+    assert current.report["validator_version"] == "full-prose-auto-validator-v17"
     assert current.error_codes == ("REWRITE_CLAUSE_MUTATION",)
 
 
@@ -1488,7 +1578,7 @@ def test_historical_v9_prompt_candidate_and_validation_hashes_remain_stable():
 
     current = auto.validate_auto(source, candidate, response=payload)
     assert current.error_codes == ("REWRITE_QUALIFIER_MUTATION",)
-    assert current.report["validator_version"] == "full-prose-auto-validator-v16"
+    assert current.report["validator_version"] == "full-prose-auto-validator-v17"
 
 
 def test_auto_prompt_hash_accepts_only_exact_server_reconstructions():
@@ -1497,7 +1587,7 @@ def test_auto_prompt_hash_accepts_only_exact_server_reconstructions():
         _auto_prompt_version, _build_auto_prompt_v1, _build_auto_prompt_v2,
         _build_auto_prompt_v4, _build_auto_prompt_v5, _build_auto_prompt_v6, _build_auto_prompt_v7,
         _build_auto_prompt_v8, _build_auto_prompt_v9, _build_auto_prompt_v10,
-        _build_auto_prompt_v11, _build_auto_prompt_v12, _build_auto_prompt_v13, _build_auto_prompt_v14, _build_auto_prompt_v15, _build_auto_prompt_v16, _build_auto_prompt_v17, build_auto_prompt,
+        _build_auto_prompt_v11, _build_auto_prompt_v12, _build_auto_prompt_v13, _build_auto_prompt_v14, _build_auto_prompt_v15, _build_auto_prompt_v16, _build_auto_prompt_v17, _build_auto_prompt_v18, build_auto_prompt,
     )
     source = document("Remove the cover.")
     context = {"vehicle": "routing-only"}
@@ -1746,7 +1836,7 @@ def test_auto_rewrites_nested_table_prose_and_preserves_saved_v10(wrapped_row):
     assert auto.validate_auto(source, historical, response=historical_draft, prompt_version=historical_version).passed
 
     prompt = auto.build_auto_prompt(source, context=context)
-    version = "full-prose-auto-prompt-v18"
+    version = "full-prose-auto-prompt-v19"
     assert json.loads(prompt)["prompt_version"] == version
     assert auto._auto_prompt_version(source, context=context, prompt_hash=sha256(prompt.encode()).hexdigest()) == version
     paths = [slot["path"] for slot in json.loads(prompt)["slots"]]
