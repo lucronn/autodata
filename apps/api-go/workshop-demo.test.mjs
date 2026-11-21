@@ -23,8 +23,8 @@ test('real demo uses the ordinary app only in test mode; sample stays separate',
     ['?demo=1', true, ['./app.mjs'], true, 1],
     ['?demo=1', false, [], false, 1],
     ['?demo=1&sample=1', false, [], false, 1],
-    ['?order=22222222-2222-4222-8222-222222222222', true, ['./app.mjs'], true, 1],
-    ['', false, ['./app.mjs'], false, 1],
+    ['?order=22222222-2222-4222-8222-222222222222', true, ['./catalog.mjs', './app.mjs'], true, 1],
+    ['', false, ['./catalog.mjs', './app.mjs'], false, 1],
   ];
   for (const [search, ready, expected, banner, fetchCount] of scenarios) {
     const loaded = [];
@@ -45,7 +45,10 @@ test('real demo uses the ordinary app only in test mode; sample stays separate',
         calls.push({ path, preload: preload.slice(), imports: loaded.slice() });
         return { ok: true, json: async () => ({ enabled: ready }) };
       },
-      loadModule: async path => loaded.push(path),
+      loadModule: async path => {
+        loaded.push(path);
+        return { requestInitialYears: () => null, bootstrap() {} };
+      },
     });
     assert.deepEqual(loaded, expected);
     assert.equal(nodes.get('test-banner').hidden, !banner);
@@ -85,6 +88,44 @@ test('real demo request fails closed on unavailable or malformed mode signal', a
     assert.equal(main.hidden, true);
   }
 });
+test('regular startup fetches the public years while checkout mode is pending', async () => {
+  const code = source('bootstrap.mjs').replaceAll('import(', 'loadModule(');
+  let releaseMode;
+  const result = Promise.resolve({ items: [{ year: 2024 }] });
+  const events = [];
+  const banner = { hidden: true };
+  const started = runInNewContext(`(async () => { ${code} })()`, {
+    URLSearchParams, location: { search: '' }, document: {
+      documentElement: { dataset: {} },
+      createElement: () => ({}), head: { append() {} },
+      getElementById: id => id === 'test-banner' ? banner : {},
+    },
+    fetch(path) {
+      assert.equal(path, '/workshop/demo-mode.json');
+      events.push('mode requested');
+      return new Promise(resolve => { releaseMode = resolve; });
+    },
+    async loadModule(path) {
+      if (path === './catalog.mjs') {
+        return { requestInitialYears(params) {
+          assert.equal(params.toString(), '');
+          events.push('years requested');
+          return result;
+        } };
+      }
+      return { bootstrap(years) {
+        assert.equal(banner.hidden, false);
+        assert.equal(years, result);
+        events.push('app bootstrapped');
+      } };
+    },
+  });
+  await new Promise(setImmediate);
+  assert.deepEqual(events, ['mode requested', 'years requested']);
+  releaseMode({ ok: true, json: async () => ({ enabled: true }) });
+  await started;
+  assert.deepEqual(events, ['mode requested', 'years requested', 'app bootstrapped']);
+});
 test('open demo handshake loads the real app without test checkout UI', async () => {
   const code = source('bootstrap.mjs').replaceAll('import(', 'loadModule(');
   const loaded = [];
@@ -95,7 +136,10 @@ test('open demo handshake loads the real app without test checkout UI', async ()
     location: { search: '?demo=1' },
     document: { documentElement: root, getElementById: id => nodes.get(id), querySelector: () => ({ hidden: false }) },
     fetch: async () => ({ ok: true, json: async () => ({ enabled: true, access: 'open' }) }),
-    loadModule: async path => loaded.push(path),
+    loadModule: async path => {
+      loaded.push(path);
+      return { bootstrap() {} };
+    },
   });
   assert.deepEqual(loaded, ['./app.mjs']);
   assert.equal(root.dataset.workshopMode, 'open-demo');

@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext as runVM } from 'node:vm';
 import { NavigationGeneration, processingArticle, readableArticle } from './workshop/article-read.mjs';
 import { pollOrder, purchaseConfiguration, uuid, validQuote, validScope, validLibrary } from './workshop/commerce.mjs';
-import { articlePresentation, configurationLabel, filterArticles, hasSourceReference, legacyArticleBlocks, localImageURL, readCollection, requestJSON, sourceReferenceURL } from './workshop/catalog.mjs';
+import { articlePresentation, configurationLabel, filterArticles, hasSourceReference, legacyArticleBlocks, localImageURL, readCollection, requestInitialYears, requestJSON, sourceReferenceURL } from './workshop/catalog.mjs';
 import { LOAD_STAGES, loadingProgress } from './workshop/progress.mjs';
 
 // The app sections below run without the module bootstrap. Model the ordinary
@@ -12,6 +12,7 @@ import { LOAD_STAGES, loadingProgress } from './workshop/progress.mjs';
 function runInNewContext(code, context) {
   context.openDemo ??= false;
   context.demoPath ??= path => path;
+  context.requestInitialYears ??= params => requestInitialYears(params, context.requestJSON);
   return runVM(code, context);
 }
 
@@ -1266,7 +1267,7 @@ function loginRouteHarness(search, { authenticate = true, signInError = null, lo
   };
   runInNewContext(
     appSection('function populate(', 'async function loadOptions(') +
-    appSection('async function signIn() {', 'async function bootstrap() {') +
+    appSection('async function signIn() {', 'export async function bootstrap(initialYears) {') +
     appSection('async function restoreRoute(', 'for (const [index, name] of names.entries())'),
     context,
   );
@@ -1810,7 +1811,7 @@ function paidPurchaseLifecycleHarness(selectionErrors, { realArticleIndex = fals
     (realArticleIndex ? appSection('async function selectVehicle(', 'function renderArticles(') : '') +
     (articleOpenError ? appSection('function openArticle(', 'function validSourceURL(') : '') +
     appSection('async function checkOrder(', 'async function signIn()') +
-    appSection('async function bootstrap()', 'for (const [index, name] of names.entries())') +
+    appSection('async function bootstrap(initialYears)', 'for (const [index, name] of names.entries())') +
     appSection('let lifecycleCheck = null;', 'window.addEventListener("pageshow"'),
     context,
   );
@@ -4733,7 +4734,7 @@ test('startup restores an authenticated route before purchase configuration sett
     },
     async restoreRoute() { opened.push('library'); },
   };
-  runInNewContext(appSection('async function bootstrap()', 'async function restoreRoute('), context);
+  runInNewContext(appSection('async function bootstrap(initialYears)', 'async function restoreRoute('), context);
   const booted = context.bootstrap();
   await new Promise(resolve => setImmediate(resolve));
   assert.deepEqual(opened, ['library']);
@@ -4759,7 +4760,7 @@ test('cold startup exposes the prefetched public years during the account check'
     },
     async restoreRoute(initialYears) { routes.push(await initialYears); },
   };
-  runInNewContext(appSection('async function bootstrap()', 'async function restoreRoute('), context);
+  runInNewContext(appSection('async function bootstrap(initialYears)', 'async function restoreRoute('), context);
   const booted = context.bootstrap();
   await new Promise(resolve => setImmediate(resolve));
   assert.deepEqual(routes, [years]);
@@ -4783,7 +4784,7 @@ test('a late purchase configuration response cannot overwrite a newer refresh', 
       return new Promise(resolve => replies.push(resolve));
     },
   };
-  runInNewContext(appSection('async function bootstrap()', 'async function restoreRoute('), context);
+  runInNewContext(appSection('async function bootstrap(initialYears)', 'async function restoreRoute('), context);
   await context.bootstrap();
   const first = context.merchantRequest;
   await context.bootstrap();

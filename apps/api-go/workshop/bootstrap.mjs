@@ -14,8 +14,17 @@ if (params.get('sample') === '1' && !wantsDemo) {
   }
   let testCheckoutReady = false;
   let openDemoReady = false;
+  let preview = null;
   try {
-    const response = await fetch('/workshop/demo-mode.json', { cache: 'no-store', credentials: 'same-origin' });
+    const modeRequest = fetch('/workshop/demo-mode.json', { cache: 'no-store', credentials: 'same-origin' });
+    if (!wantsDemo) {
+      // The public years do not depend on checkout mode. Keep the result for
+      // the first route without waiting for it to initialize the rest of the app.
+      preview = import('./catalog.mjs')
+        .then(({ requestInitialYears }) => ({ years: requestInitialYears(params) }))
+        .catch(() => null);
+    }
+    const response = await modeRequest;
     if (response.ok) {
       const status = await response.json();
       testCheckoutReady = status?.enabled === true && Object.keys(status).length === 1;
@@ -32,6 +41,7 @@ if (params.get('sample') === '1' && !wantsDemo) {
     document.getElementById('test-banner').hidden = !testCheckoutReady;
     document.getElementById('open-demo-banner').hidden = !(wantsDemo && openDemoReady);
     document.documentElement.dataset.workshopMode = wantsDemo && openDemoReady ? 'open-demo' : 'regular';
-    await import('./app.mjs');
+    const { bootstrap } = await import('./app.mjs');
+    await bootstrap((await preview)?.years);
   }
 }

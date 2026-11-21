@@ -6,6 +6,7 @@ import {
   readCollection,
   requestJSON,
   requestArticleJSON,
+  requestInitialYears,
   sourceReferenceURL,
 } from "./catalog.mjs";
 import { loadingProgress } from "./progress.mjs";
@@ -1660,13 +1661,10 @@ async function signIn() {
   }
   await restoreRoute();
 }
-async function bootstrap() {
+export async function bootstrap(initialYears) {
   invalidate();
   const params = new URLSearchParams(location.search);
-  const years = !params.has("year") && !params.has("configuration") &&
-    !params.has("order") && params.get("view") !== "library"
-    ? requestJSON("/v1/catalog/years").catch(() => null)
-    : null;
+  const years = initialYears ?? requestInitialYears(params);
   if (openDemo) return restoreRoute(years);
   const configRequest = requestJSON("/workshop/purchase-config.json")
     .catch(() => null)
@@ -1903,4 +1901,3 @@ channel?.addEventListener("message", (event) => {
     void recheck();
   }
 });
-void bootstrap();
