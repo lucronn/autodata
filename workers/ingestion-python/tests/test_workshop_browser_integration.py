@@ -414,7 +414,8 @@ def _child(root_name,engine,provider,directory,monkeypatch):
                         html = (
                             '<p>Inspect the alignment marks before removing the pump.</p>'
                             '<table><tr><td>Check the reference mark.'
-                            '<img src="/fixture/alignment.png" alt="Alignment marks">'
+                            '<figure><img src="/fixture/alignment.png" alt="Alignment marks">'
+                            '<figcaption>Alignment witness marks</figcaption></figure>'
                             'Keep the shim seated.</td></tr></table>'
                             '<p>Do not run the pump dry.</p>'
                             '<p>Remove the cover while the ignition is off.</p>'

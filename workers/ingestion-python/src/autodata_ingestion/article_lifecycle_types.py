@@ -9,6 +9,7 @@ import json
 
 NORMALIZATION_VERSION = "ordered-article-v1"
 REWRITE_PROFILE_VERSION = "technical-prose-v1"
+HTML_FIGURE_CAPTION_LAYOUT = "html-figure-caption-v1"
 PDF_COMPACT_FIGURE_LAYOUT = "compact-pdf-figures-v1"
 PDF_LEGACY_FIGURE_LAYOUT = "legacy-pdf-figures-v1"
 PDF_REPEAT_MARGIN_LAYOUT = "repeated-pdf-margins-v1"
@@ -144,6 +145,7 @@ class SourceArticleContext:
     legacy_published_pdf_margin_roots: frozenset[str] = frozenset()
     published_legacy_pdf_layout_roots: frozenset[str] = frozenset()
     legacy_published_pdf_compact_roots: frozenset[str] = frozenset()
+    legacy_published_html_figure_body: str | None = None
 
 
 @dataclass(frozen=True)

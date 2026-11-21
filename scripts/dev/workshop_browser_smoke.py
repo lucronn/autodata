@@ -1328,6 +1328,7 @@ async def expect_html_table_figure(article):
     assert await cell.locator(':scope > :is(p, figure)').evaluate_all(
         'nodes => nodes.map(node => node.tagName).join(",")'
     ) == 'P,FIGURE,P'
+    await expect(cell.locator('figure figcaption')).to_have_text('Alignment witness marks')
     await expect(cell.get_by_role('img', name='Alignment marks')).to_have_js_property('naturalWidth', 1)
 
 

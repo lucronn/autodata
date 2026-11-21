@@ -9,6 +9,7 @@ import base64
 from uuid import NAMESPACE_URL, uuid5
 from .article_lifecycle_types import (
     CapturedSource,
+    HTML_FIGURE_CAPTION_LAYOUT,
     PDF_COMPACT_FIGURE_LAYOUT,
     PDF_LEGACY_FIGURE_LAYOUT,
     PDF_REPEAT_MARGIN_LAYOUT,
@@ -112,23 +113,25 @@ def _image_nodes(value, *, image_container=False):
             yield from _image_nodes(child, image_container=image_container)
 
 
-def project_document(document):
+def project_document(document, *, include_cell_figure_captions=False):
     """Compatibility fields derived only from the authoritative ordered document."""
     texts = []
     steps = []
     images = [deepcopy(node) for node in _image_nodes(document.get("blocks", []))]
 
-    def visit(value, *, strings=False):
+    def visit(value, *, strings=False, cell=False):
         if isinstance(value, str):
             if strings:
                 texts.append(value)
         elif isinstance(value, list):
             for child in value:
-                visit(child, strings=strings)
+                visit(child, strings=strings, cell=cell)
         elif isinstance(value, dict):
             node = value
             if isinstance(node.get("text"), str) and node["text"]:
                 texts.append(node["text"])
+            if include_cell_figure_captions and cell and node.get("type") == "image" and node.get("caption"):
+                texts.append(node["caption"])
             if node.get("type") == "step" and isinstance(node.get("text"), str):
                 steps.append(
                     {
@@ -151,7 +154,8 @@ def project_document(document):
                 if key in ("text", "images") or (key == "items" and ordered_list):
                     continue
                 if isinstance(child, (dict, list)):
-                    visit(child, strings=key in ("columns", "rows", "items"))
+                    visit(child, strings=key in ("columns", "rows", "items"),
+                          cell=cell or (node.get("type") == "table" and key == "rows"))
 
     visit(document.get("blocks", []))
     return "\n".join(texts), steps, images
@@ -191,6 +195,7 @@ def capture_source_article(
     keep_embedded_pdf=False, keep_html_headings=False, keep_bound_pdf_iframes=False,
     keep_pdf_figure_order=False, keep_multiple_pdf_figures=False, keep_html_table_image_order=False,
     keep_repeated_pdf_figures=False, keep_pdf_figures_with_margins=False, keep_compact_pdf_figures=False,
+    keep_html_figure_captions=False,
 ):
     if not 0 < deadline_seconds <= 30:
         raise ValueError("capture deadline must be within 30 seconds")
@@ -282,6 +287,9 @@ def capture_source_article(
             keep_repeated_pdf_figures=retain_repeats(body.body["sha256"]),
             keep_pdf_figures_with_margins=retain_repeats_with_margins(body.body["sha256"]),
             keep_compact_pdf_figures=retain_compact_figures(body.body["sha256"]),
+            keep_html_figure_captions=(
+                keep_html_figure_captions and body.body["sha256"] != context.legacy_published_html_figure_body
+            ),
         )
         article = parsing.result(timeout=remaining())
     except (ValueError, TypeError, KeyError, UnicodeError) as error:
@@ -296,6 +304,7 @@ def capture_source_article(
     finally:
         parser_pool.shutdown(wait=False, cancel_futures=True)
     blocks = deepcopy(article["blocks"])
+    html_figure_captions = article.get("html_figure_captions") is True
     handled_pdf_embeds = article.get("handled_pdf_embeds") is True
     positioned_html_table_images = article.get("positioned_html_table_images") is True
     positioned_pdf_figures = article.get("positioned_pdf_figures") is True
@@ -347,6 +356,8 @@ def capture_source_article(
         resources[0]["pdf_figure_layout"] = manifest[0]["pdf_figure_layout"] = PDF_REPEAT_MARGIN_LAYOUT
     if article.get("positioned_compact_pdf_figures") is True:
         resources[0]["pdf_compact_figure_layout"] = manifest[0]["pdf_compact_figure_layout"] = PDF_COMPACT_FIGURE_LAYOUT
+    if html_figure_captions:
+        resources[0]["html_figure_caption_layout"] = manifest[0]["html_figure_caption_layout"] = HTML_FIGURE_CAPTION_LAYOUT
     provenance = [deepcopy(resources[0])]
     failures = {}
     localized = {}
@@ -642,6 +653,20 @@ def capture_source_article(
     evidence_ids = list(context.evidence_ids) or [
         "source:" + resources[0]["source_snapshot_id"]
     ]
+    if html_figure_captions:
+        for node in _walk(blocks):
+            if not node.get("_ordered_html_table_cell") and not node.get("_preserve_cell_block_order"):
+                continue
+            children = node.get("blocks", [])
+            ordered = []
+            for child in children:
+                caption = ordered[-1].pop("_html_figure_caption", None) if ordered else None
+                if (caption is not None and child.pop("_html_figure_caption_text", False)
+                        and child.get("text") == caption and ordered[-1].get("status") == "available"):
+                    ordered[-1]["caption"] = caption
+                else:
+                    ordered.append(child)
+            children[:] = ordered
     doc = build_ordered_document(
         {"article_id": str(article_id(context.key)), "evidence_ids": evidence_ids},
         blocks,
@@ -658,7 +683,7 @@ def capture_source_article(
             node["unavailable_reason"] = (
                 local.get("reason") if local["status"] == "unavailable" else None
             )
-    body_text, steps, images = project_document(doc)
+    body_text, steps, images = project_document(doc, include_cell_figure_captions=html_figure_captions)
     if (
         not body_text.strip()
         or body_text.strip() == str(context.descriptor.get("title", "")).strip()

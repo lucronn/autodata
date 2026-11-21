@@ -21,6 +21,7 @@ from .source_connector_client import (
 _LIST_TAGS = {"ol": "ordered_list", "ul": "unordered_list"}
 _HEADING_LEVELS = {f"h{level}": level for level in range(1, 7)}
 _MAX_LIST_DEPTH = 32
+_MAX_FIGURE_DEPTH = 32
 _HTML_LIST_NUMBER = re.compile(r"([+-]?)0*([0-9]{1,10})")
 
 
@@ -47,12 +48,20 @@ class _ListFrame:
     item: _ListItem | None = None
 
 
+@dataclass
+class _FigureFrame:
+    image: dict[str, Any] | None = None
+    caption: dict[str, Any] | None = None
+    open_caption: int | None = None
+    invalid: bool = False
+
+
 class ArticleParser(HTMLParser):
     """Keep ordered text, figures and component links without executable HTML."""
 
     def __init__(
         self, *, asset_bindings=(), preserve_legacy_list_starts=True, keep_html_headings=False,
-        keep_bound_pdf_iframes=False, keep_html_table_image_order=False,
+        keep_bound_pdf_iframes=False, keep_html_table_image_order=False, keep_html_figure_captions=False,
     ):
         super().__init__(convert_charrefs=True)
         self._asset_bindings = {item["source_url"]: item["resource_ref"] for item in asset_bindings}
@@ -68,8 +77,11 @@ class ArticleParser(HTMLParser):
         self._keep_html_headings = keep_html_headings
         self._keep_bound_pdf_iframes = keep_bound_pdf_iframes
         self._keep_html_table_image_order = keep_html_table_image_order
+        self._keep_html_figure_captions = keep_html_figure_captions
         self.handled_pdf_embeds = False
         self.positioned_html_table_images = False
+        self.html_figure_captions = False
+        self._figures: list[_FigureFrame] = []
         self._hidden_embed_tags: list[str] = []
         self._heading: dict[str, Any] | None = None
         self._table_rows = None
@@ -174,6 +186,7 @@ class ArticleParser(HTMLParser):
 
     def _flush_cell(self):
         self.flush()
+        self._figures.clear()
         if self._table_cell is not None and self._table_row is not None:
             cell = {"blocks": self._table_cell}
             if self._keep_html_table_image_order:
@@ -215,6 +228,30 @@ class ArticleParser(HTMLParser):
         else:
             self._append_block(block)
 
+    def _start_figure_caption(self):
+        self.flush()
+        frame = self._figures[-1]
+        self.html_figure_captions = True
+        if frame.open_caption is not None or frame.caption is not None:
+            frame.invalid = True
+        frame.open_caption = len(self._table_cell)
+
+    def _finish_figure_caption(self):
+        self.flush()
+        frame = self._figures[-1]
+        if frame.open_caption is None:
+            return
+        offset = frame.open_caption
+        frame.open_caption = None
+        # Only one trailing text block immediately following the figure is a
+        # safe semantic caption. Other content stays in the authored flow.
+        blocks = self._table_cell
+        if (blocks is not None and offset > 0 and len(blocks) == offset + 1
+                and blocks[offset - 1] is frame.image and blocks[offset].get("kind") == "text"):
+            frame.caption = blocks[offset]
+        else:
+            frame.invalid = True
+
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
         if self._hidden_embed_tags:
@@ -224,6 +261,15 @@ class ArticleParser(HTMLParser):
         if tag in {"script", "style"}:
             self._skip += 1
         if self._skip:
+            return
+        if self._keep_html_figure_captions and tag == "figure" and self._table_cell is not None:
+            if self._figures:
+                self._figures[-1].invalid = True
+            if len(self._figures) >= _MAX_FIGURE_DEPTH:
+                raise ValueError("HTML figure nesting exceeds its limit")
+            self._figures.append(_FigureFrame())
+        if tag == "figcaption" and self._figures and self._table_cell is not None:
+            self._start_figure_caption()
             return
         if self._keep_bound_pdf_iframes and (
             tag == "iframe"
@@ -314,6 +360,11 @@ class ArticleParser(HTMLParser):
                 image["url"] = src
             if ref:
                 image["asset_resource_ref"] = ref
+            if self._figures:
+                frame = self._figures[-1]
+                if frame.image is not None or frame.open_caption is not None:
+                    frame.invalid = True
+                frame.image = image
             if self._heading is not None:
                 self._heading.setdefault("images", []).append(image)
                 return
@@ -328,6 +379,14 @@ class ArticleParser(HTMLParser):
             if tag in {"script", "style"}:
                 self._skip -= 1
             return
+        if tag == "figcaption" and self._figures and self._table_cell is not None:
+            self._finish_figure_caption()
+            return
+        if tag == "figure" and self._figures:
+            frame = self._figures.pop()
+            if frame.image is not None and frame.caption is not None and not frame.invalid:
+                frame.image["_html_figure_caption"] = frame.caption["text"]
+                frame.caption["_html_figure_caption_text"] = True
         if self._heading is not None and tag in _HEADING_LEVELS:
             self.flush()
             return

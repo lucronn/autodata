@@ -1886,6 +1886,88 @@ def test_html_table_cell_preserves_png_position_without_rewriting_cell_text(
     assert fixture.resource_calls(provider, "figure") == 2
 
 
+@pytest.mark.parametrize("provider,available", [
+    ("bankone", True), ("banktwo", True), ("banktwo", False),
+])
+def test_authored_table_figure_caption_and_following_instruction_are_distinct(capture_fixture, provider, available):
+    import json
+    from io import BytesIO
+
+    from PIL import Image
+    from autodata_ingestion.article_document import validate_ordered_document
+    from autodata_ingestion.article_lifecycle_types import HTML_FIGURE_CAPTION_LAYOUT
+    from autodata_ingestion.procedure_normalize import normalize_procedure_article
+    from autodata_ingestion.procedure_rewrite_auto import render_auto, validate_auto
+    from autodata_ingestion.procedure_rewrite_full import prose_slots
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    markup = (
+        '<p>Remove the pump.</p><table><tr><td>Check the reference mark.'
+        '<figure><img src="/fixture/diagram" alt="Alignment marks">'
+        '<figcaption>Alignment <em>witness</em> marks<script>Hidden script</script></figcaption>'
+        '</figure>Keep the shim seated.</td></tr></table>'
+    )
+    raw, media = markup.encode(), "text/html"
+    if provider == "banktwo":
+        raw = json.dumps({"_embedded": {"data": {"article": {"content": markup}}}}).encode()
+        media = "application/hal+json"
+    capture_fixture.body(provider, raw, media, assets=["figure"], asset_bindings=[
+        {"source_url": "/fixture/diagram", "resource_ref": "figure"},
+    ])
+    if available:
+        raster = BytesIO()
+        Image.new("RGB", (24, 24), "green").save(raster, format="PNG")
+        capture_fixture.body(provider, raster.getvalue(), "image/png", ref="figure", kind="asset")
+
+    context = capture_fixture.context(provider)
+    options = dict(registry=capture_fixture.registry, object_store=capture_fixture.objects,
+                   keep_bound_pdf_iframes=True, keep_html_table_image_order=True)
+    previous = capture_source_article(context, **options)
+    previous_cell = previous.source_document["blocks"][1]["rows"][0][0]
+    assert previous_cell["blocks"][-1]["text"] == "Alignment witness marksKeep the shim seated."
+
+    guarded = capture_source_article(
+        replace(context, legacy_published_html_figure_body=sha256(raw).hexdigest()),
+        keep_html_figure_captions=True, **options,
+    )
+    assert guarded.source_document == previous.source_document
+    assert guarded.source_fingerprint == previous.source_fingerprint
+
+    captured = capture_source_article(context, keep_html_figure_captions=True, **options)
+    assert captured.source_body.splitlines() == [
+        "Remove the pump.", "Check the reference mark.", "Alignment witness marks", "Keep the shim seated.",
+    ]
+    assert captured.evidence_manifest == previous.evidence_manifest
+    assert captured.resource_manifest[0]["html_figure_caption_layout"] == HTML_FIGURE_CAPTION_LAYOUT
+    assert captured.resource_manifest[1:] == previous.resource_manifest[1:]
+    assert captured.projection_status == ("readable" if available else "partial")
+    assert not validate_ordered_document(captured.source_document, strict=True)
+    cell = captured.source_document["blocks"][1]["rows"][0][0]
+    blocks = cell["blocks"]
+    assert [(block["type"], block.get("text")) for block in blocks] == [
+        ("paragraph", "Check the reference mark."), ("image", None),
+        *([] if available else [("paragraph", "Alignment witness marks")]),
+        ("paragraph", "Keep the shim seated."),
+    ]
+    assert blocks[1].get("caption") == ("Alignment witness marks" if available else None)
+    assert blocks[1]["image_id"] == previous.source_images[0]["image_id"]
+    assert "Hidden script" not in repr(captured.source_document) and "/fixture/diagram" not in repr(captured.source_document)
+    if available:
+        assert capture_fixture.objects.data[blocks[1]["storage_key"]] == (raster.getvalue(), "image/png")
+
+    normalized = normalize_procedure_article({
+        "normalized_document": captured.source_document, "body": captured.source_body, "steps": captured.source_steps,
+    })["normalized_document"]
+    [slot] = prose_slots(normalized, include_cell_blocks=True)
+    assert slot["text"] == "Remove the pump."
+    response = {"introduction": "This procedure covers pump removal.", "replacements": [
+        {**slot, "action": "rewrite", "text": "Take off the pump.", "reason": ""},
+    ]}
+    canonical = render_auto(normalized, response)
+    assert validate_auto(normalized, canonical, response=response).passed
+    assert canonical["blocks"][2]["rows"][0][0] == cell
+
+
 def test_bound_pdf_embed_keeps_table_cell_order_and_refuses_unbound_markup(capture_fixture):
     from io import BytesIO
 
