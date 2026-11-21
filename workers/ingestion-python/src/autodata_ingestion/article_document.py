@@ -186,6 +186,26 @@ def _nested_image_keys(value, *, image=False):
             yield from _nested_image_keys(child, image=image)
 
 
+_HEADING_KINDS = frozenset({"heading", "title", "section"})
+
+
+def _heading_text(raw: Mapping[str, Any]) -> str:
+    return _clean_text(
+        raw.get("text") or raw.get("label") or raw.get("title")
+        or raw.get("heading") or raw.get("value") or raw.get("content")
+    )
+
+
+def image_only_heading_figures(raw: Any) -> list[dict[str, Any]]:
+    """Return the figures of a structured heading with no title text."""
+    if not isinstance(raw, Mapping) or str(raw.get("type") or raw.get("kind") or "").casefold() not in _HEADING_KINDS:
+        return []
+    images = raw.get("images")
+    if not isinstance(images, list) or _heading_text(raw):
+        return []
+    return [{**image, "kind": "image", "type": "image"} for image in images if isinstance(image, Mapping)]
+
+
 def build_ordered_document(
     article: Mapping[str, Any],
     blocks: Any = None,
@@ -284,15 +304,8 @@ def build_ordered_document(
 
         images = _text_block_images(raw)
         extra_fields = {"images": images} if images else {}
-        if kind in {"heading", "title", "section"}:
-            text = _clean_text(
-                raw.get("text")
-                or raw.get("label")
-                or raw.get("title")
-                or raw.get("heading")
-                or raw.get("value")
-                or raw.get("content")
-            )
+        if kind in _HEADING_KINDS:
+            text = _heading_text(raw)
             if text:
                 output.append(_base_block(article, source_index, "heading", text=text, level=_level(raw), evidence_ids=evidence_ids, **extra_fields))
             continue

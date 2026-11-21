@@ -22,6 +22,7 @@ from .article_lifecycle_types import (
     PDF_REPEAT_MARGIN_LAYOUT,
     PDF_SINGLE_LINE_FIGURE_LAYOUT,
     PDF_WORDLESS_FIGURE_LAYOUT,
+    STRUCTURED_HEADING_IMAGE_LAYOUT,
     STRUCTURED_TABLE_CELL_ORDER_LAYOUT,
     STRUCTURED_TABLE_COLUMNS_LAYOUT,
     ResourceRef,
@@ -272,6 +273,7 @@ def capture_source_article(
     keep_single_line_pdf_figures=False,
     keep_structured_table_columns=False,
     keep_structured_table_cell_order=False,
+    keep_image_only_headings=False,
     keep_ordered_step_instructions=False,
     keep_image_only_step_instructions=False,
     keep_leading_decimals=False,
@@ -383,6 +385,7 @@ def capture_source_article(
                 and body.body["sha256"] != context.legacy_published_html_multiline_figure_body
             ),
             keep_structured_table_cell_order=keep_structured_table_cell_order,
+            keep_image_only_headings=keep_image_only_headings,
             keep_ordered_step_instructions=keep_ordered_step_instructions,
             keep_image_only_step_instructions=keep_image_only_step_instructions,
             step_parser=step_parser,
@@ -412,6 +415,7 @@ def capture_source_article(
     retained_pdf_repeats = article.get("retained_repeated_pdf_figures") is True
     pdf_asset_order = article.get("pdf_legacy_asset_order", [])
     structured_table_cell_order = article.get("authored_json_blocks") is True and _mark_json_table_cells(blocks)
+    image_only_headings = article.get("image_only_headings") is True
     step_layout = article.get("ordered_step_instructions_layout")
     structured_table_columns = keep_structured_table_columns and any(
         str(node.get("type") or node.get("kind") or "").casefold() in {"table", "grid"}
@@ -420,7 +424,7 @@ def capture_source_article(
     )
     new_structure = (
         structured_table_columns or structured_table_cell_order or step_layout or html_table_captions or html_flow_figure_captions
-        or html_table_spans or html_nested_tables
+        or html_table_spans or html_nested_tables or image_only_headings
         or article.get("embedded_pdf")
         or (article.get("authored_html_headings") and any(block.get("kind") == "heading" for block in _walk(blocks)))
     )
@@ -483,6 +487,8 @@ def capture_source_article(
         resources[0]["structured_table_columns_layout"] = manifest[0]["structured_table_columns_layout"] = STRUCTURED_TABLE_COLUMNS_LAYOUT
     if structured_table_cell_order:
         resources[0]["structured_table_cell_order_layout"] = manifest[0]["structured_table_cell_order_layout"] = STRUCTURED_TABLE_CELL_ORDER_LAYOUT
+    if image_only_headings:
+        resources[0]["structured_heading_image_layout"] = manifest[0]["structured_heading_image_layout"] = STRUCTURED_HEADING_IMAGE_LAYOUT
     if step_layout:
         resources[0]["ordered_step_instructions_layout"] = manifest[0]["ordered_step_instructions_layout"] = step_layout
     provenance = [deepcopy(resources[0])]

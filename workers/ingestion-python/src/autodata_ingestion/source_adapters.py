@@ -1883,13 +1883,14 @@ def adapt_bound_article(
     keep_html_flow_figure_captions: bool = False,
     keep_html_multiline_figure_captions: bool = False,
     keep_structured_table_cell_order: bool = False,
+    keep_image_only_headings: bool = False,
     keep_ordered_step_instructions: bool = False,
     keep_image_only_step_instructions: bool = False,
     step_parser=None,
 ) -> dict[str, Any]:
     """Adapt fetched bytes under proven connector scope, without weakening URL intake."""
     from .banktwo_connector import ArticleParser
-    from .article_document import ordered_numbered_step, segment_plain_article_text
+    from .article_document import image_only_heading_figures, ordered_numbered_step, segment_plain_article_text
     from .article_lifecycle_types import ORDERED_STEP_IMAGE_ONLY_LAYOUT, ORDERED_STEP_INSTRUCTIONS_LAYOUT
 
     media = resource.media_type.split(";", 1)[0]
@@ -2038,6 +2039,17 @@ def adapt_bound_article(
                         step_parser=step_parser,
                     )
                 blocks = segment_plain_article_text(text, step_parser=step_parser)
+        image_only_headings = False
+        if keep_image_only_headings and not needs_blocks:
+            placed = []
+            for block in blocks:
+                figures = image_only_heading_figures(block)
+                if figures:
+                    placed.extend(figures)
+                    image_only_headings = True
+                else:
+                    placed.append(block)
+            blocks = placed
         ordered_steps = False
         has_image_only_steps = False
         if keep_ordered_step_instructions:
@@ -2051,6 +2063,7 @@ def adapt_bound_article(
         return {
             "blocks": blocks,
             "asset_resource_refs": article.get("asset_resource_refs", []),
+            **({"image_only_headings": True} if image_only_headings else {}),
             **({"authored_json_blocks": True} if keep_structured_table_cell_order and not needs_blocks else {}),
             **({"ordered_step_instructions_layout": step_layout} if ordered_steps else {}),
         }

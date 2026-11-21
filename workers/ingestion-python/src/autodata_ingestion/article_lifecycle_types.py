@@ -24,6 +24,7 @@ PDF_SINGLE_LINE_FIGURE_LAYOUT = "single-line-pdf-figure-v1"
 PDF_WORDLESS_FIGURE_LAYOUT = "wordless-pdf-figure-v1"
 ORDERED_STEP_INSTRUCTIONS_LAYOUT = "ordered-step-instructions-v1"
 ORDERED_STEP_IMAGE_ONLY_LAYOUT = "ordered-step-instructions-v2"
+STRUCTURED_HEADING_IMAGE_LAYOUT = "structured-image-only-heading-v1"
 STRUCTURED_TABLE_COLUMNS_LAYOUT = "structured-table-columns-v1"
 STRUCTURED_TABLE_CELL_ORDER_LAYOUT = "structured-table-cell-order-v1"
 SOURCE_PROJECTION_VERSIONS = (
