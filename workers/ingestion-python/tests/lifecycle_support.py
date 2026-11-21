@@ -222,7 +222,7 @@ class LifecycleRuntime:
             self.env[provider.upper()+"_BASE_URL"]=server.url;self.env[provider.upper()+"_API_TOKEN"]=server.token
         self.reset_counters()
 
-    def start_workers(self,count=2):
+    def start_workers(self,count=2,*,poll_seconds=0.05):
         import subprocess,sys,multiprocessing
         for _ in range(count):
             if self.barrier:
@@ -231,7 +231,7 @@ class LifecycleRuntime:
                 worker.start()
             else:
                 log=open("/artifacts/worker-"+uuid.uuid4().hex+".log","w");self.logs.append(log)
-                worker=subprocess.Popen([sys.executable,str(ROOT/"scripts/dev/article_worker.py"),"--poll-seconds","0.05"],cwd=ROOT,env=self.env,stdout=log,stderr=log)
+                worker=subprocess.Popen([sys.executable,str(ROOT/"scripts/dev/article_worker.py"),"--poll-seconds",str(poll_seconds)],cwd=ROOT,env=self.env,stdout=log,stderr=log)
             self.workers.append(worker)
 
     def stop_workers(self):

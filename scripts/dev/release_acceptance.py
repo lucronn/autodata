@@ -259,6 +259,7 @@ DTO_REQUEST_ROUTES = {
     ('GET', '/workshop/commerce.mjs'): (),
     ('GET', '/workshop/firebase-web.mjs'): (),
     ('GET', '/workshop/fonts/InstrumentSans.ttf'): (),
+    ('GET', '/workshop/fonts/InstrumentSans.woff2'): (),
     ('GET', '/workshop/progress.mjs'): (),
     ('GET', '/workshop/purchase-config.json'): (),
     ('GET', '/workshop/styles.css'): (),
@@ -2163,6 +2164,7 @@ def _api21_evidence(evidence, ready, engine, root, *, passed):
     _api21_elapsed(row['elapsed_seconds']); _paid_assertions(row['assertions'],API21_ASSERTIONS[root])
     requests=row['requests']; array(requests); require(len(requests) <= 8192, 'api21_request_limit')
     get_paths={'/workshop/','/workshop/purchase-config.json','/workshop/fonts/InstrumentSans.ttf',
+               '/workshop/fonts/InstrumentSans.woff2',
                '/auth/config','/auth/session','/v1/catalog/years','/v1/workshop/quote','/v1/workshop/library'}
     get_paths.update('/workshop/'+name for name in API21_SOURCE_ASSETS)
     get_patterns=(r'/v1/workshop/orders/\{uuid\}',
@@ -3113,6 +3115,7 @@ def _api21_v2_evidence(evidence,ready,case):
         if row['status']=='passed':require(all(assertions.values()),'api21_v2_assertions')
         requests=row['requests']; array(requests); require(len(requests) <= 8192, 'api21_request_limit')
         get_paths={'/workshop/','/workshop/purchase-config.json','/workshop/fonts/InstrumentSans.ttf',
+                   '/workshop/fonts/InstrumentSans.woff2',
                    '/auth/config','/auth/session','/v1/catalog/years','/v1/workshop/quote','/v1/workshop/library'}
         get_paths.update('/workshop/'+name for name in API21_V2_SOURCE_ASSETS)
         get_patterns=(r'/v1/workshop/orders/\{uuid\}',

@@ -165,14 +165,7 @@ func TestWorkshopBrowserFixtureHTTP(t *testing.T) {
 			http.Error(w, "actual fixture required", 400)
 			return
 		}
-		w.WriteHeader(204)
-		if flush, ok := w.(http.Flusher); ok {
-			flush.Flush()
-		}
-		select {
-		case restart <- struct{}{}:
-		default:
-		}
+		requestWorkshopTLSFixtureRestart(w, tlsServer, restart)
 	})
 	mux.HandleFunc("GET /__fixture/policy/{kind}", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
@@ -187,7 +180,16 @@ func TestWorkshopBrowserFixtureHTTP(t *testing.T) {
 	}
 	application := server.Handler()
 	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { application.ServeHTTP(w, r) }))
-	tlsServer = httptest.NewTLSServer(mux)
+	listener, err := net.ListenTCP("tcp4", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	tlsServer, err = newWorkshopTLSFixture(listener, mux, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tlsServer.StartTLS()
 	defer func() { tlsServer.Close() }()
 	if customer != nil {
 		customer.config.Origin = tlsServer.URL
@@ -232,11 +234,12 @@ func TestWorkshopBrowserFixtureHTTP(t *testing.T) {
 			server, customer = newWorkshopBrowserApplication(t, paid, firebase, origin)
 			application = server.Handler()
 			generation++
-			var err error
-			tlsServer, err = restartWorkshopTLSFixture(tlsServer, mux)
+			next, err := newWorkshopTLSFixture(listener, mux, tlsServer.TLS)
 			if err != nil {
 				t.Fatal(err)
 			}
+			tlsServer = next
+			tlsServer.StartTLS()
 		}
 	}
 }
@@ -472,34 +475,93 @@ func TestWorkshopBrowserOfficialIdentityAccounts(t *testing.T) {
 }
 
 func TestWorkshopBrowserRestartPreservesOriginAndReplacesHandler(t *testing.T) {
-	first := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, "first application") }))
+	listener, err := net.ListenTCP("tcp4", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	restart := make(chan struct{}, 1)
+	firstMux := http.NewServeMux()
+	firstMux.HandleFunc("GET /__fixture/runtime", func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, `{"application_generation":1}`)
+	})
+	var first *httptest.Server
+	firstMux.HandleFunc("POST /__fixture/restart", func(w http.ResponseWriter, r *http.Request) {
+		requestWorkshopTLSFixtureRestart(w, first, restart)
+	})
+	first, err = newWorkshopTLSFixture(listener, firstMux, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first.StartTLS()
 	defer first.Close()
 	origin := first.URL
-	response, err := first.Client().Get(origin)
+	runtime := origin + "/__fixture/runtime"
+	client := *first.Client()
+	client.Timeout = 5 * time.Second
+	response, err := client.Get(runtime)
 	if err != nil {
 		t.Fatal(err)
 	}
 	body, _ := io.ReadAll(response.Body)
 	response.Body.Close()
-	if string(body) != "first application" {
+	if response.StatusCode != http.StatusOK || string(body) != `{"application_generation":1}` {
 		t.Fatal("initial application missing")
 	}
-	second, err := restartWorkshopTLSFixture(first, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, "fresh application") }))
+	response, err = client.Post(origin+"/__fixture/restart", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer second.Close()
-	if second.URL != origin {
-		t.Fatal("restart changed cookie origin")
+	response.Body.Close()
+	if response.StatusCode != http.StatusNoContent || !response.Close {
+		t.Fatal("restart did not acknowledge and retire its connection")
 	}
-	response, err = second.Client().Get(origin)
+	select {
+	case <-restart:
+	case <-time.After(time.Second):
+		t.Fatal("restart was not requested")
+	}
+
+	// Dial after the restart reply but before shutdown/replacement is allowed.
+	// The connection must queue for the replacement, regardless of its timing.
+	connection, err := net.DialTimeout("tcp", listener.Addr().String(), time.Second)
+	if err != nil {
+		t.Fatalf("readiness connection during restart: %v", err)
+	}
+	defer connection.Close()
+	transport := client.Transport.(*http.Transport).Clone()
+	defer transport.CloseIdleConnections()
+	dial := make(chan net.Conn, 1)
+	dial <- connection
+	transport.DialContext = func(ctx context.Context, _, _ string) (net.Conn, error) {
+		select {
+		case conn := <-dial:
+			return conn, nil
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	client.Transport = transport
+	first.Close()
+	second, err := newWorkshopTLSFixture(listener, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, `{"application_generation":2}`)
+	}), first.TLS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second.StartTLS()
+	defer second.Close()
+	if second.URL != origin || !bytes.Equal(second.Certificate().Raw, first.Certificate().Raw) {
+		t.Fatal("restart changed TLS origin or certificate")
+	}
+	response, err = client.Get(runtime)
 	if err != nil {
 		t.Fatal(err)
 	}
 	body, _ = io.ReadAll(response.Body)
 	response.Body.Close()
-	if string(body) != "fresh application" {
-		t.Fatal("restart retained old handler")
+	if response.StatusCode != http.StatusOK || string(body) != `{"application_generation":2}` {
+		t.Fatal("queued connection did not reach fresh handler")
 	}
 }
 
@@ -526,19 +588,41 @@ func newWorkshopBrowserApplication(t *testing.T, paid *paidFixture, firebase *fi
 	return server, customer
 }
 
-// Rebind the exact HTTPS origin after terminating the prior HTTP server. The
-// caller constructs fresh production application/store/auth instances over PG.
-func restartWorkshopTLSFixture(previous *httptest.Server, handler http.Handler) (*httptest.Server, error) {
-	address := previous.Listener.Addr().String()
-	previous.Close()
-	listener, err := net.Listen("tcp", address)
+func requestWorkshopTLSFixtureRestart(w http.ResponseWriter, server *httptest.Server, restart chan<- struct{}) {
+	// The readiness read cannot reuse this connection or be accepted by the
+	// retiring server. The fixture-owned socket remains bound for the successor.
+	w.Header().Set("Connection", "close")
+	if err := server.Listener.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+		http.Error(w, "fixture listener retirement failed", http.StatusInternalServerError)
+		return
+	}
+	server.Config.SetKeepAlivesEnabled(false)
+	w.WriteHeader(http.StatusNoContent)
+	if flush, ok := w.(http.Flusher); ok {
+		flush.Flush()
+	}
+	select {
+	case restart <- struct{}{}:
+	default:
+	}
+}
+
+// Each HTTP/TLS server owns its listener descriptor. The fixture retains the
+// original socket so new connections can queue while the old server closes and
+// the caller rebuilds the production application, store and auth instances.
+func newWorkshopTLSFixture(listener *net.TCPListener, handler http.Handler, config *tls.Config) (*httptest.Server, error) {
+	file, err := listener.File()
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	owned, err := net.FileListener(file)
 	if err != nil {
 		return nil, err
 	}
 	next := httptest.NewUnstartedServer(handler)
 	next.Listener.Close()
-	next.Listener = listener
-	next.TLS = previous.TLS.Clone()
-	next.StartTLS()
+	next.Listener = owned
+	next.TLS = config // StartTLS clones the supplied configuration.
 	return next, nil
 }

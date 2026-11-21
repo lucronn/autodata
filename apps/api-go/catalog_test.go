@@ -144,6 +144,9 @@ func TestCatalogArticleDetailKeepsSourceOrderAndHidesOriginal(t *testing.T) {
 	if body.Version != "v1" || len(body.Article.Steps) != 2 || body.Article.Steps[0].Number != 1 || body.Article.Steps[1].Number != 2 {
 		t.Fatalf("article = %#v", body.Article)
 	}
+	if body.Configuration != nil {
+		t.Fatal("local detail returned paid configuration metadata")
+	}
 	if len(body.Article.Images) != 2 || body.Article.Images[0].Alt != "Filter location" {
 		t.Fatalf("images = %#v, want the article illustrations", body.Article.Images)
 	}

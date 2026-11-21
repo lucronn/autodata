@@ -24,6 +24,8 @@ type CatalogSourceContentResponse struct {
 	ViewRevision *string             `json:"view_revision,omitempty"`
 }
 
+const catalogSourceDocumentPreference = "workshop-source-document"
+
 var unsafeCatalogSourceStyle = regexp.MustCompile(`(?i)(?:url\s*\([^)]*\)|expression\s*\(|behavior\s*:|-moz-binding\s*:)`)
 
 func (s *Server) serveCatalogSource(response http.ResponseWriter, request *http.Request, principal Principal) {
@@ -45,7 +47,7 @@ func (s *Server) serveCatalogSource(response http.ResponseWriter, request *http.
 		rewriteCatalogImageURLs(&article, s.catalogImageKey)
 		stored.Images = article.Images
 		format = "html"
-		content = renderCatalogOrderedSource(stored.Document, stored.Images)
+		content = renderCatalogSourceContent(response, request, stored.Document, stored.Images)
 	} else {
 		format, content, err = renderStoredCatalogSource(stored.Original, stored.SourceURI, s.catalogImageKey)
 	}
@@ -68,31 +70,32 @@ func (s *Server) serveCatalogSource(response http.ResponseWriter, request *http.
 	writeCatalogSourceHTML(response, review, content, request.URL.Query().Get("evidence_id"), request.URL.Query().Get("source_locator"))
 }
 
-// Paid source review loads current anchors separately from a pinned historical
-// revision. A historical asset is never silently replaced by the newest source.
+// Paid source review issues media capabilities for a selected immutable revision
+// while binding them to the current article anchors.
 func (s *Server) servePaidCatalogSource(w http.ResponseWriter, r *http.Request, p Principal) {
 	w.Header().Set("Cache-Control", "private, no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	r = r.WithContext(ctx)
-	openDemo := s.workshopOpenDemoRequest(r)
-	configuration, err := s.resolveCatalogScope(ctx, p, r.PathValue("vehicle_id"), r.URL.Query().Get("region"), !openDemo)
-	if err != nil {
-		s.writePaidCatalogError(w, r, err)
-		return
+	scope, ok := ctx.Value(paidCatalogContextKey{}).(paidCatalogContext)
+	if !ok {
+		openDemo := s.workshopOpenDemoRequest(r)
+		configuration, err := s.resolveCatalogScope(ctx, p, r.PathValue("vehicle_id"), r.URL.Query().Get("region"), !openDemo)
+		if err != nil {
+			s.writePaidCatalogError(w, r, err)
+			return
+		}
+		scope = paidCatalogContext{configuration: configuration, openDemo: openDemo}
 	}
+	configuration := scope.configuration
 	articleID := r.PathValue("article_id")
 	if !commerceUUID(articleID) {
 		s.writePaidCatalogError(w, r, ErrCatalogNotFound)
 		return
 	}
-	identity, err := s.paidMediaIdentity(ctx, configuration, articleID)
-	if err != nil {
-		s.writePaidCatalogError(w, r, err)
-		return
-	}
-	view, err := s.catalog.ArticleView(ctx, p, configuration.ID, articleID)
+	selected := r.URL.Query().Get("source_revision_id")
+	identity, view, stored, err := s.readPaidCatalogSource(ctx, p, configuration, articleID, selected)
 	if err != nil {
 		s.writePaidCatalogError(w, r, err)
 		return
@@ -101,11 +104,10 @@ func (s *Server) servePaidCatalogSource(w http.ResponseWriter, r *http.Request, 
 		s.writePaidCatalogError(w, r, ErrCatalogWithdrawn)
 		return
 	}
-	if !paidCatalogViewMatches(view, identity) {
+	if !validPaidCatalogIdentity(identity, configuration, articleID) || !paidCatalogViewMatches(view, identity) {
 		s.writePaidCatalogError(w, r, ErrCatalogNotFound)
 		return
 	}
-	selected := r.URL.Query().Get("source_revision_id")
 	if selected == "" {
 		if view.Article.SourceRevisionID == nil {
 			s.writePaidCatalogError(w, r, ErrVehicleGrantUnavailable)
@@ -113,25 +115,19 @@ func (s *Server) servePaidCatalogSource(w http.ResponseWriter, r *http.Request, 
 		}
 		selected = *view.Article.SourceRevisionID
 	}
-	if !commerceUUID(selected) {
-		s.writePaidCatalogError(w, r, ErrCatalogNotFound)
-		return
-	}
-	stored, err := s.catalog.ArticleSourceRevision(ctx, p, configuration.ID, articleID, selected)
-	if err != nil {
-		s.writePaidCatalogError(w, r, err)
-		return
-	}
-	if stored.SourceRevisionID == nil || *stored.SourceRevisionID != selected {
+	if !commerceUUID(selected) || stored.SourceRevisionID == nil || *stored.SourceRevisionID != selected {
 		s.writePaidCatalogError(w, r, ErrCatalogNotFound)
 		return
 	}
 	stored.Images = append([]CatalogImage{}, stored.Images...)
-	stored.Document = publicCatalogDocument(stored.Document)
-	now := time.Now()
-	if !openDemo {
+	if !scope.openDemo {
+		if err = s.checkPaidCatalogGrant(ctx, p, configuration); err != nil {
+			s.writePaidCatalogError(w, r, err)
+			return
+		}
+		now := time.Now()
 		ref := paidCatalogProjectionReference(p, configuration, identity, view, selected, "source", now)
-		s.rewritePaidCatalogImages(stored.Images, stored, ref, now)
+		s.rewritePaidCatalogImages(stored.Images, paidCatalogAssetURLs(stored.Images), ref, now)
 	} else {
 		for i := range stored.Images {
 			stored.Images[i].URL = ""
@@ -139,7 +135,7 @@ func (s *Server) servePaidCatalogSource(w http.ResponseWriter, r *http.Request, 
 	}
 	var format, content string
 	if stored.Document != nil {
-		format, content = "html", renderCatalogOrderedSource(stored.Document, stored.Images)
+		format, content = "html", renderCatalogSourceContent(w, r, stored.Document, stored.Images)
 	} else {
 		format, content, err = renderStoredCatalogSource(stored.Original, stored.SourceURI, s.catalogImageKey)
 		// Paid review exposes ordered projections or sanitized HTML, never a
@@ -158,6 +154,38 @@ func (s *Server) servePaidCatalogSource(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	writeCatalogSourceHTML(w, review, content, r.URL.Query().Get("evidence_id"), r.URL.Query().Get("source_locator"))
+}
+
+func (s *Server) readPaidCatalogSource(ctx context.Context, p Principal, configuration CatalogConfiguration, article, revision string) (PaidArticleIdentity, CatalogArticleView, CatalogSourceContent, error) {
+	if store, ok := s.catalog.(paidCatalogSourceViewStore); ok {
+		return store.paidCatalogSourceView(ctx, configuration.ID, article, revision)
+	}
+	identity, err := s.paidMediaIdentity(ctx, configuration, article)
+	if err != nil {
+		return PaidArticleIdentity{}, CatalogArticleView{}, CatalogSourceContent{}, err
+	}
+	view, err := s.catalog.ArticleView(ctx, p, configuration.ID, article)
+	if err != nil {
+		return PaidArticleIdentity{}, CatalogArticleView{}, CatalogSourceContent{}, err
+	}
+	if view.Withdrawn {
+		return PaidArticleIdentity{}, CatalogArticleView{}, CatalogSourceContent{}, ErrCatalogWithdrawn
+	}
+	if !paidCatalogViewMatches(view, identity) {
+		return PaidArticleIdentity{}, CatalogArticleView{}, CatalogSourceContent{}, ErrCatalogNotFound
+	}
+	if revision == "" {
+		if view.Article.SourceRevisionID == nil {
+			return PaidArticleIdentity{}, CatalogArticleView{}, CatalogSourceContent{}, ErrVehicleGrantUnavailable
+		}
+		revision = *view.Article.SourceRevisionID
+	}
+	if !commerceUUID(revision) {
+		return PaidArticleIdentity{}, CatalogArticleView{}, CatalogSourceContent{}, ErrCatalogNotFound
+	}
+	stored, err := s.catalog.ArticleSourceRevision(ctx, p, configuration.ID, article, revision)
+	stored.Document = publicCatalogDocument(stored.Document)
+	return identity, view, stored, err
 }
 
 func sourceReviewForArticle(article CatalogArticle, vehicleID, articleID string) *CatalogSourceReview {
@@ -192,6 +220,16 @@ func catalogSourceFormat(raw json.RawMessage) string {
 func acceptsJSON(request *http.Request) bool {
 	accept := strings.ToLower(request.Header.Get("Accept"))
 	return strings.Contains(accept, "application/json") && !strings.Contains(accept, "text/html")
+}
+
+func renderCatalogSourceContent(response http.ResponseWriter, request *http.Request, document *CatalogDocument, images []CatalogImage) string {
+	if len(document.Blocks) > 0 && acceptsJSON(request) && request.Header.Get("Prefer") == catalogSourceDocumentPreference {
+		// Workshop renders the ordered document directly. Avoid generating and
+		// sending another copy of the same text and signed image URLs as HTML.
+		response.Header().Set("Preference-Applied", catalogSourceDocumentPreference)
+		return ""
+	}
+	return renderCatalogOrderedSource(document, images)
 }
 
 func catalogSourceURL(vehicleID, articleID string) string {
@@ -483,6 +521,22 @@ func renderCatalogOrderedSource(document *CatalogDocument, images []CatalogImage
 			}, placed, false)
 		case "table":
 			cellImages := map[string]bool{}
+			writeCell := func(tag string, value any) {
+				output.WriteString("<" + tag)
+				if tag == "th" {
+					output.WriteString(" scope=\"col\"")
+				}
+				if fields, ok := value.(map[string]any); ok {
+					for _, attribute := range [...]string{"rowspan", "colspan"} {
+						if span, valid := catalogJSONTableSpan(attribute, fields[attribute]); valid {
+							output.WriteString(" " + attribute + "=\"" + strconv.Itoa(int(span)) + "\"")
+						}
+					}
+				}
+				output.WriteString(">")
+				writeInline(value, cellImages)
+				output.WriteString("</" + tag + ">")
+			}
 			output.WriteString("<table>")
 			if label != "" {
 				output.WriteString("<caption>" + stdhtml.EscapeString(label) + "</caption>")
@@ -490,9 +544,7 @@ func renderCatalogOrderedSource(document *CatalogDocument, images []CatalogImage
 			if len(block.Columns) > 0 {
 				output.WriteString("<thead><tr>")
 				for _, column := range block.Columns {
-					output.WriteString("<th scope=\"col\">")
-					writeInline(column, cellImages)
-					output.WriteString("</th>")
+					writeCell("th", column)
 				}
 				output.WriteString("</tr></thead>")
 			}
@@ -500,9 +552,7 @@ func renderCatalogOrderedSource(document *CatalogDocument, images []CatalogImage
 			for _, row := range block.Rows {
 				output.WriteString("<tr>")
 				for _, value := range row {
-					output.WriteString("<td>")
-					writeInline(value, cellImages)
-					output.WriteString("</td>")
+					writeCell("td", value)
 				}
 				output.WriteString("</tr>")
 			}

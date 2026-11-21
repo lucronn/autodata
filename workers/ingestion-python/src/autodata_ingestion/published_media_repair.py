@@ -8,14 +8,14 @@ from functools import partial
 from .article_document import has_only_list_ordinal_additions, project_ordered_document
 from .article_lifecycle_types import ValidationResult, digest_json
 from .procedure_rewrite import _set_path, editable_slots, validate_article_rewrite
-from .procedure_rewrite_auto import PROFILE, render_auto, validate_auto
+from .procedure_rewrite_auto import PROFILE, _include_cell_blocks, render_auto, validate_auto
 from .procedure_rewrite_full import PROFILE as REVIEW_PROFILE
 from .procedure_rewrite_full import _source_valid, prose_slots, render_full, validate_full
 from .procedure_rewrite_v2 import PROFILE as TECHNICAL_V2
 from .procedure_rewrite_v2 import _selection, plan_v2, render_v2
 
 TECHNICAL_V1 = "technical-prose-v1"
-_SUPPORTED_PROMPTS = frozenset(f"full-prose-auto-prompt-v{version}" for version in range(1, 10))
+_SUPPORTED_PROMPTS = frozenset(f"full-prose-auto-prompt-v{version}" for version in range(1, 47))
 _POSITION_KEYS = frozenset({"block_id", "source_order"})
 _IMAGE_KEYS = _POSITION_KEYS | {"type"}
 MEDIA_METHOD = "published-media-placement-v1"
@@ -160,14 +160,17 @@ def repair_published_media(
             raise ValueError("PUBLISHED_MEDIA_REPAIR_PROMPT_UNSUPPORTED")
         render = partial(render_auto, prompt_version=prompt_version)
         validate = partial(validate_auto, prompt_version=prompt_version)
+        slots = partial(prose_slots, include_cell_blocks=_include_cell_blocks(prompt_version))
     elif profile in (REVIEW_PROFILE, TECHNICAL_V1, TECHNICAL_V2):
         if prompt_version is not None:
             raise ValueError("PUBLISHED_MEDIA_REPAIR_PROMPT_UNSUPPORTED")
         if profile == REVIEW_PROFILE:
             render, validate = render_full, validate_full
+            slots = prose_slots
         else:
             render = _render_technical_v1 if profile == TECHNICAL_V1 else render_v2
             validate = partial(_validate_technical, profile=profile, render=render)
+            slots = partial(editable_slots, profile_version=TECHNICAL_V1)
     else:
         raise ValueError("PUBLISHED_MEDIA_REPAIR_PROFILE_UNSUPPORTED")
     if not all(_source_valid(doc) for doc in (old_source, published, repaired_source)):
@@ -196,7 +199,6 @@ def repair_published_media(
     if profile == TECHNICAL_V2:
         new_response = _remap_v2_operations(old_source, repaired_source)
     else:
-        slots = partial(editable_slots, profile_version=TECHNICAL_V1) if profile == TECHNICAL_V1 else prose_slots
         new_response = _remap_replacements(old_source, repaired_source, response, slots)
     try:
         document = render(repaired_source, new_response)

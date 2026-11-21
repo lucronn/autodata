@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from hashlib import sha256
 from html.parser import HTMLParser
+from itertools import accumulate, pairwise
 import re
 import os
 from typing import Any, Mapping
@@ -21,6 +22,9 @@ from .source_connector_client import (
 _LIST_TAGS = {"ol": "ordered_list", "ul": "unordered_list"}
 _HEADING_LEVELS = {f"h{level}": level for level in range(1, 7)}
 _MAX_LIST_DEPTH = 32
+_MAX_FIGURE_DEPTH = 32
+_MAX_TABLE_DEPTH = 8
+_TABLE_ROW_GROUPS = frozenset({"thead", "tbody", "tfoot"})
 _HTML_LIST_NUMBER = re.compile(r"([+-]?)0*([0-9]{1,10})")
 
 
@@ -29,6 +33,37 @@ def _html_list_number(value):
         return None
     match = _HTML_LIST_NUMBER.fullmatch(value.strip())
     return list_number(int(match[1] + match[2])) if match else None
+
+
+def _table_spans(attrs):
+    rowspan = _html_list_number(attrs.get("rowspan"))
+    colspan = _html_list_number(attrs.get("colspan"))
+    spans = {}
+    if rowspan is not None and (rowspan == 0 or rowspan > 1):
+        spans["rowspan"] = min(rowspan, 65_534)
+    if colspan is not None and colspan > 1:
+        spans["colspan"] = min(colspan, 1_000)
+    return spans
+
+
+def _resolve_table_rowspans(rows, boundaries):
+    """Use finite spans scoped to the authored group and retained rows."""
+    retained_rows = list(accumulate(map(bool, rows), initial=0))
+    has_spans = False
+    for start, stop in pairwise(boundaries):
+        for index in range(start, stop):
+            for cell in rows[index]:
+                spans = cell.get("_html_table_cell_spans")
+                if spans is None:
+                    continue
+                rowspan = spans.pop("rowspan", None)
+                if rowspan is not None:
+                    end = stop if rowspan == 0 else min(stop, index + rowspan)
+                    length = retained_rows[end] - retained_rows[index]
+                    if length > 1:
+                        spans["rowspan"] = min(length, 65_534)
+                has_spans |= bool(spans)
+    return has_spans
 
 
 @dataclass
@@ -47,10 +82,47 @@ class _ListFrame:
     item: _ListItem | None = None
 
 
+@dataclass
+class _FigureFrame:
+    blocks: list[dict[str, Any]] | None
+    in_table: bool = False
+    image: dict[str, Any] | None = None
+    caption: list[dict[str, Any]] | None = None
+    open_caption: int | None = None
+    invalid: bool = False
+
+
+@dataclass
+class _TableCaption:
+    text: str
+    source: list[Any]
+    start: int
+    stop: int
+
+
+@dataclass
+class _EnclosingTable:
+    rows: list
+    row: list
+    cell: list
+    cell_spans: dict | None
+    row_group_boundaries: list[int]
+    has_candidate_spans: bool
+    caption: _TableCaption | None
+    figures: list[_FigureFrame]
+
+
 class ArticleParser(HTMLParser):
     """Keep ordered text, figures and component links without executable HTML."""
 
-    def __init__(self, *, asset_bindings=(), preserve_legacy_list_starts=True, keep_html_headings=False):
+    def __init__(
+        self, *, asset_bindings=(), preserve_legacy_list_starts=True, keep_html_headings=False,
+        keep_bound_pdf_iframes=False, keep_html_table_image_order=False, keep_html_figure_captions=False,
+        keep_html_table_captions=False, keep_html_flow_figure_captions=False,
+        keep_html_multiline_figure_captions=False,
+        keep_html_table_spans=False,
+        keep_html_nested_tables=False,
+    ):
         super().__init__(convert_charrefs=True)
         self._asset_bindings = {item["source_url"]: item["resource_ref"] for item in asset_bindings}
         self.blocks = []
@@ -63,10 +135,34 @@ class ArticleParser(HTMLParser):
         self._list_continuation_pending = False
         self._preserve_legacy_list_starts = preserve_legacy_list_starts
         self._keep_html_headings = keep_html_headings
+        self._keep_bound_pdf_iframes = keep_bound_pdf_iframes
+        self._keep_html_table_image_order = keep_html_table_image_order
+        self._keep_html_figure_captions = keep_html_figure_captions
+        self._keep_html_table_captions = keep_html_table_captions
+        self._keep_html_flow_figure_captions = keep_html_flow_figure_captions
+        self._keep_html_multiline_figure_captions = keep_html_multiline_figure_captions
+        self._keep_html_table_spans = keep_html_table_spans
+        self._keep_html_nested_tables = keep_html_nested_tables
+        self.handled_pdf_embeds = False
+        self.positioned_html_table_images = False
+        self.html_figure_captions = False
+        self.html_flow_figure_captions = False
+        self.html_multiline_figure_captions = False
+        self.html_table_captions = False
+        self.html_table_spans = False
+        self.html_nested_tables = False
+        self._figures: list[_FigureFrame] = []
+        self._hidden_embed_tags: list[str] = []
         self._heading: dict[str, Any] | None = None
         self._table_rows = None
         self._table_row = None
         self._table_cell = None
+        self._table_cell_spans = None
+        self._table_row_group_boundaries = [0]
+        self._table_has_candidate_spans = False
+        self._table_caption_blocks: list[dict[str, Any]] | None = None
+        self._table_caption: _TableCaption | None = None
+        self._enclosing_tables: list[_EnclosingTable] = []
 
     @property
     def _in_table(self):
@@ -92,7 +188,9 @@ class ArticleParser(HTMLParser):
             return
         item = self._current_list_item()
         block = {"kind": "text", "text": value}
-        if self._table_cell is not None:
+        if self._table_caption_blocks is not None:
+            self._table_caption_blocks.append(block)
+        elif self._table_cell is not None:
             self._table_cell.append(block)
         elif item is None:
             self.blocks.append(block)
@@ -116,6 +214,8 @@ class ArticleParser(HTMLParser):
         if item is None:
             return
         self.flush()
+        if self._figures:
+            self._figures[:] = [frame for frame in self._figures if frame.blocks is not item.blocks]
         text = " ".join(item.lead)
         if item.blocks or item.number is not None:
             entry = {"text": text}
@@ -159,36 +259,223 @@ class ArticleParser(HTMLParser):
 
     def close(self):
         super().close()
-        if self._in_table:
+        while self._in_table:
             self._finish_table()
         while self._lists:
             self._finish_list()
 
     def _flush_cell(self):
         self.flush()
+        if self._figures:
+            self._figures[:] = [frame for frame in self._figures if not frame.in_table]
         if self._table_cell is not None and self._table_row is not None:
-            self._table_row.append({"blocks": self._table_cell})
+            cell = {"blocks": self._table_cell}
+            if self._table_cell_spans:
+                cell["_html_table_cell_spans"] = self._table_cell_spans
+                self._table_has_candidate_spans = True
+            if self._keep_html_table_image_order or self.html_nested_tables:
+                kinds = [block["kind"] for block in self._table_cell]
+                has_nested_table = self.html_nested_tables and "table" in kinds
+                if has_nested_table:
+                    cell["_preserve_cell_block_order"] = True
+                if self._enclosing_tables or has_nested_table:
+                    for block in self._table_cell:
+                        if block["kind"] == "text":
+                            block["_html_literal_table_text"] = True
+                # Cells with a linked document already have ordered blocks.
+                if (self._keep_html_table_image_order and "document_embed" not in kinds and "image" in kinds
+                        and "text" in kinds[kinds.index("image") + 1:]):
+                    cell["_ordered_html_table_cell"] = True
+                    self.positioned_html_table_images = True
+            self._table_row.append(cell)
         self._table_cell = None
+        self._table_cell_spans = None
 
     def _flush_row(self):
         self._flush_cell()
         if self._table_row is not None and self._table_rows is not None:
-            if self._table_row:
+            if self._table_row or self._keep_html_table_spans:
                 self._table_rows.append(self._table_row)
         self._table_row = None
 
+    def _mark_table_row_group_boundary(self):
+        row_count = len(self._table_rows) + int(self._table_row is not None)
+        if self._table_row_group_boundaries[-1] != row_count:
+            self._table_row_group_boundaries.append(row_count)
+
+    def _suspend_enclosing_table(self):
+        if len(self._enclosing_tables) + 1 >= _MAX_TABLE_DEPTH:
+            raise ValueError("HTML table nesting exceeds its limit")
+        self._enclosing_tables.append(_EnclosingTable(
+            rows=self._table_rows,
+            row=self._table_row,
+            cell=self._table_cell,
+            cell_spans=self._table_cell_spans,
+            row_group_boundaries=self._table_row_group_boundaries,
+            has_candidate_spans=self._table_has_candidate_spans,
+            caption=self._table_caption,
+            figures=self._figures,
+        ))
+        self._figures = []
+        self.html_nested_tables = True
+
+    def _resume_enclosing_table(self):
+        parent = self._enclosing_tables.pop()
+        self._table_rows = parent.rows
+        self._table_row = parent.row
+        self._table_cell = parent.cell
+        self._table_cell_spans = parent.cell_spans
+        self._table_row_group_boundaries = parent.row_group_boundaries
+        self._table_has_candidate_spans = parent.has_candidate_spans
+        self._table_caption = parent.caption
+        self._figures = parent.figures
+
     def _finish_table(self):
+        self._finish_table_caption(closed=False)
         self._flush_row()
         rows = self._table_rows
+        if rows and self._keep_html_table_spans:
+            if self._table_has_candidate_spans:
+                self._mark_table_row_group_boundary()
+                self.html_table_spans |= _resolve_table_rowspans(rows, self._table_row_group_boundaries)
+            rows = [row for row in rows if row]
         self._table_rows = None
+        table = None
         if rows:
-            self._append_block({"kind": "table", "rows": rows})
+            table = {"kind": "table", "rows": rows}
+            caption = self._table_caption
+            if caption is not None:
+                del caption.source[caption.start:caption.stop]
+                table["label"] = caption.text
+                self.html_table_captions = True
+        self._table_caption = None
+        if self._enclosing_tables:
+            self._resume_enclosing_table()
+            if table is not None:
+                self._table_cell.append(table)
+        elif table is not None:
+            self._append_block(table)
+
+    def _finish_table_caption(self, *, closed):
+        if self._table_caption_blocks is None:
+            return
+        self.flush()
+        blocks, self._table_caption_blocks = self._table_caption_blocks, None
+        # Keep the literal flow until a table with cells is ready. Mixed media,
+        # malformed captions and empty tables retain their existing content.
+        if self._enclosing_tables:
+            source = self._enclosing_tables[-1].cell
+            start = len(source)
+            source.extend(blocks)
+        else:
+            item = self._current_list_item()
+            source = self.blocks if item is None else (item.blocks if item.blocks else item.lead)
+            start = len(source)
+            for block in blocks:
+                if block["kind"] == "text":
+                    self._text.append(block["text"])
+                    self.flush()
+                else:
+                    self._append_inline_media(block)
+        if closed and blocks and all(block["kind"] == "text" for block in blocks):
+            self._table_caption = _TableCaption(
+                " ".join(block["text"] for block in blocks), source, start, len(source),
+            )
+
+    def _append_inline_media(self, block):
+        self.flush()
+        if self._table_caption_blocks is not None:
+            self._table_caption_blocks.append(block)
+            return
+        if self._table_cell is not None:
+            self._table_cell.append(block)
+            return
+        if self._lists and self._lists[-1].item is None:
+            # Emit media between sibling <li> tags in the enclosing item.
+            frame = self._lists.pop()
+            frame.start, frame.authored_start = self._emit_list(frame, top_level=not self._lists)
+            frame.items = []
+            self._append_block(block)
+            self._lists.append(frame)
+        else:
+            self._append_block(block)
+
+    def _start_figure(self):
+        cell = self._table_cell is not None and self._keep_html_figure_captions
+        item = self._current_list_item()
+        blocks = None
+        if cell:
+            blocks = self._table_cell
+        elif self._keep_html_flow_figure_captions and not self._in_table and (not self._lists or item is not None):
+            blocks = item.blocks if item is not None else self.blocks
+        if blocks is None and not self._figures:
+            return
+        if self._figures:
+            self._figures[-1].invalid = True
+        if len(self._figures) >= _MAX_FIGURE_DEPTH:
+            raise ValueError("HTML figure nesting exceeds its limit")
+        self._figures.append(_FigureFrame(blocks, in_table=self._in_table))
+
+    def _start_figure_caption(self):
+        self.flush()
+        frame = self._figures[-1]
+        if frame.in_table:
+            self.html_figure_captions = True
+        else:
+            self.html_flow_figure_captions = True
+        if frame.open_caption is not None or frame.caption is not None:
+            frame.invalid = True
+        blocks = frame.blocks
+        if blocks is not None:
+            frame.open_caption = len(blocks)
+
+    def _finish_figure_caption(self):
+        self.flush()
+        frame = self._figures[-1]
+        if frame.open_caption is None:
+            return
+        offset = frame.open_caption
+        frame.open_caption = None
+        # Only trailing text following this exact image is a safe caption.
+        # Other content stays in the authored flow.
+        blocks = frame.blocks
+        caption = blocks[offset:] if blocks is not None else []
+        if (blocks is not None and offset > 0 and caption and blocks[offset - 1] is frame.image
+                and (len(caption) == 1 or self._keep_html_multiline_figure_captions)
+                and all(part.get("kind") == "text" for part in caption)):
+            frame.caption = caption
+        else:
+            frame.invalid = True
 
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
+        if self._hidden_embed_tags:
+            if tag in {"iframe", "object"}:
+                self._hidden_embed_tags.append(tag)
+            return
         if tag in {"script", "style"}:
             self._skip += 1
         if self._skip:
+            return
+        if tag == "figure" and (self._keep_html_figure_captions or self._keep_html_flow_figure_captions):
+            self._start_figure()
+        if tag == "figcaption" and self._figures and self._figures[-1].blocks is not None:
+            self._start_figure_caption()
+            return
+        if self._keep_bound_pdf_iframes and (
+            tag == "iframe"
+            or (
+                tag in {"object", "embed"}
+                and (attrs.get("type") or "").strip().casefold() == "application/pdf"
+            )
+        ):
+            self.handled_pdf_embeds = True
+            locator = attrs.get("data" if tag == "object" else "src")
+            ref = self._asset_bindings.get(locator)
+            if ref and not (tag == "iframe" and "srcdoc" in attrs):
+                self._append_inline_media({"kind": "document_embed", "asset_resource_ref": ref})
+            if tag != "embed":
+                self._hidden_embed_tags.append(tag)
             return
         if self._list_continuation_pending and tag not in {"ol", "ul", "li", "a", "img"}:
             self._list_start = 1
@@ -202,23 +489,43 @@ class ArticleParser(HTMLParser):
             self._text.append(" ")
             return
         if tag == "table":
+            self._finish_table_caption(closed=False)
             self.flush()
+            if self._keep_html_nested_tables and self._table_cell is not None:
+                self._suspend_enclosing_table()
             self._list_start = 1
             self._list_continuation_pending = False
             self._table_rows = []
             self._table_row = None
             self._table_cell = None
+            self._table_cell_spans = None
+            self._table_row_group_boundaries = [0]
+            self._table_has_candidate_spans = False
+            self._table_caption = None
             return
         if self._in_table:
+            if self._keep_html_table_spans and tag in _TABLE_ROW_GROUPS:
+                self._mark_table_row_group_boundary()
+                return
+            if (tag == "caption" and self._keep_html_table_captions
+                    and not self._table_caption and self._table_caption_blocks is None
+                    and not self._table_rows and self._table_row is None):
+                self.flush()
+                self._table_caption_blocks = []
+                return
             if tag == "tr":
+                self._finish_table_caption(closed=False)
                 self._flush_row()
                 self._table_row = []
                 return
             if tag in {"td", "th"}:
+                self._finish_table_caption(closed=False)
                 self._flush_cell()
                 if self._table_row is None:
                     self._table_row = []
                 self._table_cell = []
+                if self._keep_html_table_spans:
+                    self._table_cell_spans = _table_spans(attrs)
                 return
             if tag == "br":
                 self.flush()
@@ -264,28 +571,38 @@ class ArticleParser(HTMLParser):
                 image["url"] = src
             if ref:
                 image["asset_resource_ref"] = ref
+            if self._figures:
+                frame = self._figures[-1]
+                if frame.image is not None or frame.open_caption is not None:
+                    frame.invalid = True
+                frame.image = image
             if self._heading is not None:
                 self._heading.setdefault("images", []).append(image)
                 return
-            self.flush()
-            if self._table_cell is not None:
-                self._table_cell.append(image)
-                return
-            if self._lists and self._lists[-1].item is None:
-                # Emit a figure between sibling <li> tags in the enclosing item.
-                frame = self._lists.pop()
-                frame.start, frame.authored_start = self._emit_list(frame, top_level=not self._lists)
-                frame.items = []
-                self._append_block(image)
-                self._lists.append(frame)
-            else:
-                self._append_block(image)
+            self._append_inline_media(image)
 
     def handle_endtag(self, tag):
+        if self._hidden_embed_tags:
+            if self._hidden_embed_tags[-1] == tag:
+                self._hidden_embed_tags.pop()
+            return
         if self._skip:
             if tag in {"script", "style"}:
                 self._skip -= 1
             return
+        if tag == "figcaption" and self._figures and self._figures[-1].blocks is not None:
+            self._finish_figure_caption()
+            return
+        if tag == "figure" and self._figures:
+            frame = self._figures.pop()
+            if frame.image is not None and frame.caption is not None and not frame.invalid:
+                key = "_html_figure_caption" if frame.in_table else "_html_flow_figure_caption"
+                text_parts = [part["text"] for part in frame.caption]
+                frame.image[key] = text_parts[0] if len(text_parts) == 1 else text_parts
+                for part in frame.caption:
+                    part["_html_figure_caption_text"] = True
+                if len(text_parts) > 1:
+                    self.html_multiline_figure_captions = True
         if self._heading is not None and tag in _HEADING_LEVELS:
             self.flush()
             return
@@ -293,6 +610,12 @@ class ArticleParser(HTMLParser):
             self._finish_table()
             return
         if self._in_table:
+            if self._keep_html_table_spans and tag in _TABLE_ROW_GROUPS:
+                self._mark_table_row_group_boundary()
+                return
+            if tag == "caption" and self._table_caption_blocks is not None:
+                self._finish_table_caption(closed=True)
+                return
             if tag in {"td", "th"}:
                 self._flush_cell()
                 return
@@ -318,7 +641,7 @@ class ArticleParser(HTMLParser):
             self.flush()
 
     def handle_data(self, data):
-        if not self._skip and not self._image_link:
+        if not self._skip and not self._image_link and not self._hidden_embed_tags:
             self._text.append(data)
 
 

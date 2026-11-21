@@ -18,6 +18,7 @@ SCHEMA_VERSION = 1
 NORMALIZATION_VERSION = "ordered-article-v1"
 _MIN_LIST_NUMBER = -(2**31)
 _MAX_LIST_NUMBER = 2**31 - 1
+_LEADING_DECIMAL = re.compile(r"^\s*-?\d+\.\d")
 DOCUMENT_TYPES = frozenset(
     {
         "heading",
@@ -90,7 +91,20 @@ def empty_document() -> dict[str, Any]:
     }
 
 
-def segment_plain_article_text(text: str) -> list[dict[str, Any]]:
+class LeadingDecimalStepParser:
+    """Preserve a leading decimal and record when capture changed its interpretation."""
+
+    def __init__(self):
+        self.preserved = False
+
+    def __call__(self, text):
+        if _LEADING_DECIMAL.match(text):
+            self.preserved = True
+            return None
+        return _numbered_text(text)
+
+
+def segment_plain_article_text(text: str, *, step_parser=None) -> list[dict[str, Any]]:
     """Split PDF/TSB plain text into workshop-readable source blocks.
 
     Bankone bulletin PDFs often arrive as one whitespace-collapsed string.
@@ -116,7 +130,11 @@ def segment_plain_article_text(text: str) -> list[dict[str, Any]]:
 
     segments: list[dict[str, Any]] = []
     for raw_line in cleaned.splitlines():
-        line = re.sub(r"[ \t]+", " ", raw_line).strip(" -\t")
+        line = re.sub(r"[ \t]+", " ", raw_line)
+        if step_parser is not None and line.lstrip(" \t").startswith("-") and _LEADING_DECIMAL.match(line):
+            line = line.lstrip().rstrip(" -\t")
+        else:
+            line = line.strip(" -\t")
         if not line or _is_plain_boilerplate(line):
             continue
         note = re.match(r"^Note:\s*(.+)$", line, re.IGNORECASE)
@@ -129,7 +147,7 @@ def segment_plain_article_text(text: str) -> list[dict[str, Any]]:
         if _looks_like_heading(line):
             segments.append({"kind": "heading", "text": line, "level": 2})
             continue
-        numbered = _numbered_text(line)
+        numbered = (step_parser or _numbered_text)(line)
         if numbered is not None:
             number, step_text = numbered
             segments.append({"kind": "text", "text": f"{number}. {step_text}"})
@@ -168,9 +186,33 @@ def _nested_image_keys(value, *, image=False):
             yield from _nested_image_keys(child, image=image)
 
 
+_HEADING_KINDS = frozenset({"heading", "title", "section"})
+
+
+def _heading_text(raw: Mapping[str, Any]) -> str:
+    return _clean_text(
+        raw.get("text") or raw.get("label") or raw.get("title")
+        or raw.get("heading") or raw.get("value") or raw.get("content")
+    )
+
+
+def image_only_heading_figures(raw: Any) -> list[dict[str, Any]]:
+    """Return the figures of a structured heading with no title text."""
+    if not isinstance(raw, Mapping) or str(raw.get("type") or raw.get("kind") or "").casefold() not in _HEADING_KINDS:
+        return []
+    images = raw.get("images")
+    if not isinstance(images, list) or _heading_text(raw):
+        return []
+    return [{**image, "kind": "image", "type": "image"} for image in images if isinstance(image, Mapping)]
+
+
 def build_ordered_document(
     article: Mapping[str, Any],
     blocks: Any = None,
+    *,
+    preserve_marked_cells: bool = False,
+    preserve_structured_columns: bool = False,
+    step_parser=None,
 ) -> dict[str, Any]:
     """Convert adapter blocks into a deterministic, source-order document."""
 
@@ -181,9 +223,11 @@ def build_ordered_document(
         source_blocks = _blocks_from_steps(article.get("steps"))
     if not isinstance(source_blocks, list) or not source_blocks:
         body = str(article.get("body") or "").strip()
-        source_blocks = segment_plain_article_text(body) if body else []
+        source_blocks = segment_plain_article_text(body, step_parser=step_parser) if body else []
     else:
-        source_blocks = _expand_plain_source_blocks(source_blocks)
+        source_blocks = _expand_plain_source_blocks(
+            source_blocks, preserve_marked_cells=preserve_marked_cells, step_parser=step_parser,
+        )
 
     seen_image_keys: set[str] = set()
     for block in source_blocks:
@@ -192,6 +236,8 @@ def build_ordered_document(
             if bkind == "image":
                 seen_image_keys.update(_image_identities(block))
             elif bkind in {"table", "grid"}:
+                if preserve_structured_columns:
+                    seen_image_keys.update(_nested_image_keys(block.get("columns")))
                 for row in block.get("rows") or []:
                     if isinstance(row, Mapping):
                         for row_img in row.get("images") or []:
@@ -239,16 +285,18 @@ def build_ordered_document(
             output.append(_image_block(article, source_index, raw, evidence_ids))
             continue
         if kind in {"table", "grid"}:
-            output.append(_table_block(article, source_index, raw, evidence_ids))
+            output.append(_table_block(article, source_index, raw, evidence_ids, preserve_marked_cells,
+                                       preserve_structured_columns, step_parser))
             continue
         if kind in {"ordered_list", "unordered_list", "list"}:
-            output.append(_list_block(article, source_index, raw, evidence_ids, kind))
+            output.append(_list_block(article, source_index, raw, evidence_ids, kind, preserve_marked_cells,
+                                      preserve_structured_columns, step_parser))
             continue
         if kind in {"callout", "note", "warning", "caution", "hint", "important"}:
             output.append(_callout_block(article, source_index, raw, evidence_ids, kind))
             continue
         if kind in {"step", "instruction"}:
-            output.append(_step_block(article, source_index, raw, evidence_ids))
+            output.append(_step_block(article, source_index, raw, evidence_ids, step_parser))
             continue
         if kind in {"break", "hr", "separator"}:
             output.append(_base_block(article, source_index, "break", evidence_ids=evidence_ids))
@@ -256,15 +304,8 @@ def build_ordered_document(
 
         images = _text_block_images(raw)
         extra_fields = {"images": images} if images else {}
-        if kind in {"heading", "title", "section"}:
-            text = _clean_text(
-                raw.get("text")
-                or raw.get("label")
-                or raw.get("title")
-                or raw.get("heading")
-                or raw.get("value")
-                or raw.get("content")
-            )
+        if kind in _HEADING_KINDS:
+            text = _heading_text(raw)
             if text:
                 output.append(_base_block(article, source_index, "heading", text=text, level=_level(raw), evidence_ids=evidence_ids, **extra_fields))
             continue
@@ -306,7 +347,8 @@ def build_ordered_document(
         if not text:
             output.append(_unknown_block(article, source_index, raw))
             continue
-        explicit_number = _numbered_text(text)
+        literal_cell_text = preserve_marked_cells and raw.get("_html_literal_table_text") is True
+        explicit_number = None if literal_cell_text else (step_parser or _numbered_text)(text)
         if explicit_number is not None:
             number, text = explicit_number
             output.append(
@@ -320,7 +362,7 @@ def build_ordered_document(
                     **extra_fields,
                 )
             )
-        elif _looks_like_heading(text):
+        elif not literal_cell_text and _looks_like_heading(text):
             output.append(_base_block(article, source_index, "heading", text=text, level=2, evidence_ids=evidence_ids, **extra_fields))
         else:
             output.append(_base_block(article, source_index, "paragraph", text=text, evidence_ids=evidence_ids, **extra_fields))
@@ -355,6 +397,11 @@ def _number_blocks(blocks, parent_id):
             for item_number, item in enumerate(block.get("items", []), start=1):
                 if isinstance(item, dict) and item.get("blocks"):
                     _number_blocks(item["blocks"], f"{block_id}:item:{item_number:04d}")
+        elif block["type"] == "table":
+            for row_number, row in enumerate(block.get("rows", []), start=1):
+                for column_number, cell in enumerate(row, start=1):
+                    if isinstance(cell, dict) and cell.get("blocks"):
+                        _number_blocks(cell["blocks"], f"{block_id}:row:{row_number:04d}:cell:{column_number:04d}")
 
 
 def list_number(value: Any) -> int | None:
@@ -706,7 +753,10 @@ def _image_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str
     return _base_block(article, source_order, "image", evidence_ids=evidence_ids, **fields)
 
 
-def _table_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str, Any], evidence_ids: list[str]) -> dict[str, Any]:
+def _table_block(
+    article: Mapping[str, Any], source_order: int, raw: Mapping[str, Any],
+    evidence_ids: list[str], preserve_marked_cells: bool, preserve_structured_columns: bool, step_parser,
+) -> dict[str, Any]:
     rows = raw.get("rows")
     if not isinstance(rows, list):
         rows = []
@@ -722,8 +772,18 @@ def _table_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str
             values = row
         if not isinstance(values, list):
             values = [values]
-        clean_rows.append([_table_cell(value) for value in values])
+        clean_rows.append([_table_cell(
+            value, evidence_ids=evidence_ids, preserve_marked_cells=preserve_marked_cells,
+            preserve_structured_columns=preserve_structured_columns, step_parser=step_parser,
+        ) for value in values])
     columns = raw.get("columns") if isinstance(raw.get("columns"), list) else []
+    if preserve_structured_columns:
+        clean_columns = [_table_cell(
+            value, evidence_ids=evidence_ids, preserve_marked_cells=preserve_marked_cells,
+            preserve_structured_columns=preserve_structured_columns, step_parser=step_parser,
+        ) for value in columns]
+    else:
+        clean_columns = [_clean_text(value) for value in columns]
     images_raw = raw.get("images")
     clean_images: list[dict[str, Any]] = []
     if isinstance(images_raw, list):
@@ -753,7 +813,7 @@ def _table_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str
             or raw.get("title")
             or raw.get("heading")
         ),
-        columns=[_clean_text(value) for value in columns],
+        columns=clean_columns,
         rows=clean_rows,
         evidence_ids=evidence_ids,
         **extra_fields,
@@ -823,9 +883,18 @@ def _text_block_images(raw: Mapping[str, Any]) -> list[dict[str, Any]]:
     return output
 
 
-def _table_cell(value: Any) -> Any:
+def _table_cell(
+    value: Any, *, evidence_ids: list[str], preserve_marked_cells: bool, preserve_structured_columns: bool, step_parser,
+) -> Any:
     if not isinstance(value, Mapping):
         return _clean_text(value)
+    spans = value.get("_html_table_cell_spans")
+    layout = {}
+    if isinstance(spans, Mapping):
+        for name, maximum in (("rowspan", 65_534), ("colspan", 1_000)):
+            span = spans.get(name)
+            if type(span) is int and 1 < span <= maximum:
+                layout[name] = span
     text_parts: list[str] = []
     direct_text = _clean_text(
         value.get("text")
@@ -841,6 +910,20 @@ def _table_cell(value: Any) -> Any:
         if isinstance(direct_img, Mapping):
             images.append(_normalize_cell_image(direct_img))
     nested = value.get("blocks")
+    ordered_source_cell = value.get("_ordered_html_table_cell") is True or value.get("_ordered_json_table_cell") is True
+    if preserve_marked_cells and isinstance(nested, list) and (
+        ordered_source_cell or value.get("_preserve_cell_block_order") is True
+    ):
+        return {
+            "text": direct_text,
+            "blocks": build_ordered_document(
+                {"evidence_ids": evidence_ids}, nested, preserve_marked_cells=preserve_marked_cells,
+                preserve_structured_columns=preserve_structured_columns, step_parser=step_parser,
+            )["blocks"],
+            **({"protected_text": True} if ordered_source_cell else {}),
+            **({"images": images} if images else {}),
+            **layout,
+        }
     if isinstance(nested, list):
         for child in nested:
             if not isinstance(child, Mapping):
@@ -859,8 +942,8 @@ def _table_cell(value: Any) -> Any:
                 if text:
                     text_parts.append(text)
     combined_text = " ".join(part for part in text_parts if part).strip()
-    if images:
-        return {"text": combined_text, "images": images}
+    if images or layout:
+        return {"text": combined_text, **({"images": images} if images else {}), **layout}
     return combined_text
 
 
@@ -869,7 +952,10 @@ def _list_values(raw):
     return values if isinstance(values, list) else [values]
 
 
-def _list_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str, Any], evidence_ids: list[str], kind: str) -> dict[str, Any]:
+def _list_block(
+    article: Mapping[str, Any], source_order: int, raw: Mapping[str, Any],
+    evidence_ids: list[str], kind: str, preserve_marked_cells: bool, preserve_structured_columns: bool, step_parser,
+) -> dict[str, Any]:
     ordered = kind == "ordered_list"
     start = list_number(raw.get("start")) if ordered else None
     clean_items: list[str | dict[str, Any]] = []
@@ -891,7 +977,10 @@ def _list_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str,
         children = []
         if isinstance(child_blocks, list) and child_blocks:
             item_evidence = _evidence_ids(value, {"evidence_ids": evidence_ids})
-            children = build_ordered_document({"evidence_ids": item_evidence}, child_blocks)["blocks"]
+            children = build_ordered_document(
+                {"evidence_ids": item_evidence}, child_blocks, preserve_marked_cells=preserve_marked_cells,
+                preserve_structured_columns=preserve_structured_columns, step_parser=step_parser,
+            )["blocks"]
         number = list_number(value.get("number")) if ordered else None
         if children or images or number is not None:
             item: dict[str, Any] = {"text": text}
@@ -978,36 +1067,79 @@ def _callout_block(article: Mapping[str, Any], source_order: int, raw: Mapping[s
     return _base_block(article, source_order, "callout", label=label, text=text, evidence_ids=evidence_ids, **extra_fields)
 
 
-def _step_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str, Any], evidence_ids: list[str]) -> dict[str, Any]:
-    text_candidates = [
-        raw.get("text"),
-        raw.get("action"),
-        raw.get("instruction"),
-        raw.get("value"),
-        raw.get("content"),
-        raw.get("body"),
-    ]
+_STEP_TEXT_FIELDS = ("text", "action", "instruction", "value", "content", "body")
+
+
+def _step_instruction_text(item, *, strings_only=False):
+    if not isinstance(item, Mapping):
+        return _clean_text(item)
+    for field in (*_STEP_TEXT_FIELDS, "description"):
+        value = item.get(field)
+        if not strings_only or isinstance(value, str):
+            text = _clean_text(value)
+            if text:
+                return text
+    return ""
+
+
+def _step_number_hint(raw):
+    return next((raw[field] for field in ("number", "step_number", "index") if raw.get(field) is not None), None)
+
+
+def ordered_numbered_step(raw, *, keep_image_only=False):
+    """Represent a numbered provider step and its nested instructions in order."""
+    if not isinstance(raw, Mapping) or str(raw.get("type") or raw.get("kind") or "").casefold() not in {"step", "instruction"}:
+        return raw, False
+    number = list_number(_step_number_hint(raw))
+    instructions = raw.get("instructions")
+    if not number or number < 1 or not isinstance(instructions, list) or not instructions:
+        return raw, False
+    children = []
+    has_image_only = False
+    for instruction in instructions:
+        if not isinstance(instruction, (str, Mapping)):
+            return raw, False
+        text = _step_instruction_text(instruction, strings_only=True)
+        references = instruction.get("images") if isinstance(instruction, Mapping) else None
+        images = [
+            {**image, "kind": "image", "type": "image"} for image in references if isinstance(image, Mapping)
+        ] if isinstance(references, list) else []
+        if text:
+            children.append({"kind": "paragraph", "text": text})
+        elif keep_image_only and images:
+            has_image_only = True
+        else:
+            return raw, False
+        children.extend(images)
+
+    lead = _step_instruction_text(raw, strings_only=True)
+    if not lead and children[0]["kind"] == "paragraph":
+        lead = children.pop(0)["text"]
+    if not children:
+        return raw, False
+    label = _clean_text(raw.get("label") or raw.get("title") or raw.get("heading") or raw.get("action"))
+    item = {"text": lead, "blocks": children}
+    if isinstance(raw.get("images"), list):
+        item["images"] = raw["images"]
+    return {
+        "kind": "ordered_list", "start": number, "items": [item],
+        **({"label": label} if label and label != lead else {}),
+    }, has_image_only
+
+
+def _step_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str, Any], evidence_ids: list[str], step_parser) -> dict[str, Any]:
+    text_candidates = [raw.get(field) for field in _STEP_TEXT_FIELDS]
     instruction_images: list[dict[str, Any]] = []
     instruction_text = ""
     instructions = raw.get("instructions")
     if isinstance(instructions, list):
         cleaned_instructions: list[str] = []
         for item in instructions:
+            item_text = _step_instruction_text(item)
             if isinstance(item, Mapping):
-                item_text = ""
-                for candidate in (
-                    item.get("text"), item.get("action"), item.get("instruction"),
-                    item.get("value"), item.get("content"), item.get("body"),
-                    item.get("description"),
-                ):
-                    item_text = _clean_text(candidate)
-                    if item_text:
-                        break
                 for img in item.get("images") or []:
                     if isinstance(img, Mapping):
                         instruction_images.append(_normalize_cell_image(img))
-            else:
-                item_text = _clean_text(item)
             if item_text:
                 cleaned_instructions.append(item_text)
         if cleaned_instructions:
@@ -1022,7 +1154,7 @@ def _step_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str,
             break
 
     number = None
-    raw_number = raw.get("number") if raw.get("number") is not None else raw.get("step_number") if raw.get("step_number") is not None else raw.get("index")
+    raw_number = _step_number_hint(raw)
     if raw_number is not None:
         try:
             number = int(raw_number)
@@ -1030,7 +1162,7 @@ def _step_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str,
             number = None
 
     if number is None and text:
-        parsed_num = _numbered_text(text)
+        parsed_num = (step_parser or _numbered_text)(text)
         if parsed_num is not None:
             number, text = parsed_num
 
@@ -1172,7 +1304,7 @@ def _level(raw: Mapping[str, Any]) -> int:
         return 2
 
 
-def _expand_plain_source_blocks(source_blocks: list[Any]) -> list[Any]:
+def _expand_plain_source_blocks(source_blocks: list[Any], *, preserve_marked_cells: bool, step_parser) -> list[Any]:
     expanded: list[Any] = []
     for raw in source_blocks:
         if isinstance(raw, str):
@@ -1181,14 +1313,14 @@ def _expand_plain_source_blocks(source_blocks: list[Any]) -> list[Any]:
             expanded.append(raw)
             continue
         kind = str(raw.get("type") or raw.get("kind") or "text").casefold()
-        if kind not in {"text", "paragraph"}:
+        if kind not in {"text", "paragraph"} or preserve_marked_cells and raw.get("_html_literal_table_text") is True:
             expanded.append(raw)
             continue
         text = str(raw.get("text") or raw.get("value") or "")
         if not text.strip() or not _needs_plain_segmentation(text):
             expanded.append(raw)
             continue
-        segments = segment_plain_article_text(text)
+        segments = segment_plain_article_text(text, step_parser=step_parser)
         if len(segments) <= 1:
             expanded.append(raw)
             continue
@@ -1315,7 +1447,10 @@ def project_ordered_document(document):
             if kind == "table":
                 for column in block.get("columns",[]):
                     if isinstance(column,str):texts.append(column)
-                    elif isinstance(column,dict) and isinstance(column.get("text"),str):texts.append(column["text"])
+                    elif isinstance(column,dict):
+                        if isinstance(column.get("text"),str):texts.append(column["text"])
+                        images.extend(deepcopy(column.get("images",[])))
+                        visit(column.get("blocks",[]),False)
                 for row in block.get("rows",[]):
                     cells=row if isinstance(row,list) else row.get("cells",[])
                     for cell in cells:

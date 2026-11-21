@@ -7,7 +7,12 @@ from psycopg.rows import dict_row
 from . import article_lifecycle_store as store
 from .source_job_persistence import (claim_source_job, heartbeat_source_job, lock_live_lease,
                                      fail_source_job, park_automatic_for_model, LeaseLost)
-from .article_lifecycle_types import ArticleKey, SourceArticleContext
+from .article_lifecycle_types import (
+    ArticleKey, HTML_FIGURE_CAPTION_LAYOUT, HTML_FLOW_FIGURE_CAPTION_LAYOUT,
+    HTML_MULTILINE_FIGURE_CAPTION_LAYOUT, HTML_TABLE_CAPTION_LAYOUT,
+    PDF_BLANK_PAGE_LAYOUT, PDF_COMPACT_FIGURE_LAYOUT,
+    PDF_LEGACY_FIGURE_LAYOUT, PDF_REPEAT_MARGIN_LAYOUT, SourceArticleContext, SOURCE_PROJECTION_VERSIONS,
+)
 from .procedure_rewrite import (rewrite_ordered_document, validate_article_rewrite,
                                 build_rewrite_prompt, editable_slots)
 from .source_connector_client import SourceConnectorError
@@ -37,12 +42,20 @@ def _live(repo,lease):
 
 
 def _capture_context(repo,lease):
+    pdf_repeats_version = "source-projection-v10"
+    guarded_pdf_versions = SOURCE_PROJECTION_VERSIONS[:SOURCE_PROJECTION_VERSIONS.index(pdf_repeats_version) + 1]
     with repo.connect() as conn,conn.cursor(row_factory=dict_row) as cur:
         job=lock_live_lease(cur,lease)
         row=cur.execute("""SELECT a.*,v.make,v.model,v.model_year,v.region,
+            prior.projection_version AS prior_projection_version,
+            prior.resource_manifest AS prior_published_resources, prior_body.content_sha256 AS prior_published_body,
             COALESCE(s.resolution_source_snapshot_id,(SELECT o.resolution_source_snapshot_id FROM canonical_article_source_observations o WHERE o.canonical_article_id=a.canonical_article_id ORDER BY o.request_generation DESC LIMIT 1)) AS resolution_source_snapshot_id FROM canonical_articles a JOIN vehicles v USING(vehicle_id)
             LEFT JOIN catalog_article_provider_scopes s ON s.scope_key=a.scope_key AND s.provider_slug=a.provider_slug
-              AND s.source_vehicle_ref=a.source_vehicle_ref WHERE a.canonical_article_id=%s""",(lease.canonical_article_id,)).fetchone()
+              AND s.source_vehicle_ref=a.source_vehicle_ref
+            LEFT JOIN canonical_article_source_revisions prior ON prior.source_revision_id=a.current_source_revision_id
+              AND a.current_canonical_revision_id IS NOT NULL AND prior.projection_version=ANY(%s)
+            LEFT JOIN source_snapshots prior_body ON prior_body.source_snapshot_id=prior.body_source_snapshot_id
+            WHERE a.canonical_article_id=%s""", (list(guarded_pdf_versions), lease.canonical_article_id)).fetchone()
         if row is None or row["current_job_id"]!=lease.job_id or row["request_generation"]!=lease.generation:
             raise LeaseLost("source capture generation changed")
         if row["resolution_source_snapshot_id"] is None:raise ValueError("SOURCE_BINDING_REVIEW_REQUIRED")
@@ -67,7 +80,60 @@ def _capture_context(repo,lease):
             if label:vehicle["configuration"]=label
             evidence.extend(str(configuration[name]) for name in ("source_snapshot_id","extraction_evidence_id","base_snapshot_id","base_evidence_id"))
         key=ArticleKey(row["provider_slug"],row["vehicle_id"],row["vehicle_configuration_id"],row["source_vehicle_ref"],row["source_article_ref"])
-        return SourceArticleContext(key,vehicle,row["descriptor"],row["descriptor_source_snapshot_id"],row["resolution_source_snapshot_id"],tuple(dict.fromkeys(evidence)))
+        previous_body = row["prior_published_body"]
+        legacy_figure_body = previous_body
+        legacy_flow_figure_body = previous_body
+        legacy_multiline_figure_body = previous_body
+        legacy_table_caption_body = previous_body
+        previous_pdf_roots = {previous_body} if previous_body is not None else set()
+        legacy_blank_pdf_roots = set()
+        compact_layout_roots = set()
+        margin_layout_roots = set()
+        legacy_layout_roots = set()
+        for resource in row["prior_published_resources"] or []:
+            if not isinstance(resource, dict) or not isinstance(resource.get("sha256"), str):
+                continue
+            digest = resource["sha256"]
+            if resource.get("role") == "body" and digest == previous_body:
+                if resource.get("html_figure_caption_layout") == HTML_FIGURE_CAPTION_LAYOUT:
+                    legacy_figure_body = None
+                if resource.get("html_flow_figure_caption_layout") == HTML_FLOW_FIGURE_CAPTION_LAYOUT:
+                    legacy_flow_figure_body = None
+                if resource.get("html_multiline_figure_caption_layout") == HTML_MULTILINE_FIGURE_CAPTION_LAYOUT:
+                    legacy_multiline_figure_body = None
+                if resource.get("html_table_caption_layout") == HTML_TABLE_CAPTION_LAYOUT:
+                    legacy_table_caption_body = None
+            is_pdf = resource.get("role") == "document_asset" and resource.get("media_type") == "application/pdf"
+            if is_pdf:
+                previous_pdf_roots.add(digest)
+                if resource.get("pdf_blank_page_layout") != PDF_BLANK_PAGE_LAYOUT:
+                    legacy_blank_pdf_roots.add(digest)
+            if is_pdf or (resource.get("role") == "body" and digest == previous_body):
+                if resource.get("pdf_compact_figure_layout") == PDF_COMPACT_FIGURE_LAYOUT:
+                    compact_layout_roots.add(digest)
+                layout = resource.get("pdf_figure_layout")
+                if layout == PDF_REPEAT_MARGIN_LAYOUT:
+                    margin_layout_roots.add(digest)
+                elif layout == PDF_LEGACY_FIGURE_LAYOUT:
+                    legacy_layout_roots.add(digest)
+        previous_has_repeats = row["prior_projection_version"] == pdf_repeats_version
+        # The manifest records the selected algorithm per root, so a refresh
+        # preserves the earlier v10 layout of unchanged PDFs in mixed articles.
+        return SourceArticleContext(
+            key, vehicle, row["descriptor"], row["descriptor_source_snapshot_id"],
+            row["resolution_source_snapshot_id"], tuple(dict.fromkeys(evidence)),
+            legacy_published_pdf_roots=frozenset() if previous_has_repeats else frozenset(previous_pdf_roots),
+            legacy_published_pdf_margin_roots=(
+                frozenset(previous_pdf_roots - margin_layout_roots) if previous_has_repeats else frozenset()
+            ),
+            published_legacy_pdf_layout_roots=frozenset(legacy_layout_roots) if previous_has_repeats else frozenset(),
+            legacy_published_pdf_compact_roots=frozenset(previous_pdf_roots - compact_layout_roots),
+            legacy_published_pdf_blank_roots=frozenset(legacy_blank_pdf_roots),
+            legacy_published_html_figure_body=legacy_figure_body,
+            legacy_published_html_flow_figure_body=legacy_flow_figure_body,
+            legacy_published_html_multiline_figure_body=legacy_multiline_figure_body,
+            legacy_published_html_table_caption_body=legacy_table_caption_body,
+        )
 
 
 def _hook(hooks,point):
@@ -87,7 +153,26 @@ def run_article_job(repo,lease,*,registry,object_store,model_client,hooks=None):
                 _hook(hooks,"before_source_request")
                 captured = capture_source_article(
                     context, registry=registry, object_store=object_store,
-                    keep_embedded_pdf=True, keep_html_headings=True,
+                    keep_embedded_pdf=True, keep_html_headings=True, keep_bound_pdf_iframes=True,
+                    keep_pdf_figure_order=True, keep_multiple_pdf_figures=True,
+                    keep_html_table_image_order=True, keep_repeated_pdf_figures=True,
+                    keep_pdf_figures_with_margins=True,
+                    keep_compact_pdf_figures=True,
+                    keep_single_line_pdf_figures=True,
+                    skip_blank_linked_pdf_pages=True,
+                    keep_wordless_linked_pdf_figures=True,
+                    keep_html_figure_captions=True,
+                    keep_html_flow_figure_captions=True,
+                    keep_html_multiline_figure_captions=True,
+                    keep_html_table_captions=True,
+                    keep_html_table_spans=True,
+                    keep_html_nested_tables=True,
+                    keep_structured_table_columns=True,
+                    keep_structured_table_cell_order=True,
+                    keep_image_only_headings=True,
+                    keep_ordered_step_instructions=True,
+                    keep_image_only_step_instructions=True,
+                    keep_leading_decimals=True,
                 )
                 if lost.is_set():raise LeaseLost("heartbeat lost during source IO")
                 _hook(hooks,"before_source_commit")
@@ -105,11 +190,11 @@ def run_article_job(repo,lease,*,registry,object_store,model_client,hooks=None):
             candidate=store.load_candidate(repo,lease)
             if candidate is None:
                 from .procedure_normalize import normalize_procedure_article
-                normalized=normalize_procedure_article(source.as_article())
+                normalized=normalize_procedure_article(source.as_article(), resource_manifest=source.resource_manifest)
                 store.save_normalized_input(repo,lease,normalized)
                 document=normalized["normalized_document"]
                 from .procedure_rewrite_full import prose_slots
-                if lease.rewrite_profile_version == "full-prose-auto-v1" and not prose_slots(document):
+                if lease.rewrite_profile_version == "full-prose-auto-v1" and not prose_slots(document, include_cell_blocks=True):
                     store.store_source_preserving_candidate(repo,lease)
                     _hook(hooks,"after_source_preserving_candidate_commit")
                 else:

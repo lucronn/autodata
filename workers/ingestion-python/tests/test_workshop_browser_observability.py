@@ -197,8 +197,14 @@ def fake_child_dependencies(producer,monkeypatch,tmp_path,browser_code=0,stale=F
     runtime.servers = {}
     monkeypatch.setattr(producer,'LifecycleRuntime',lambda repo,stack:runtime)
     monkeypatch.setattr(producer,'configure_scoped_runtime',lambda *a:{key:key for key in ('configuration','adjacent','other_region','unscoped')})
+    published = {
+        'status': 'published', 'rewrite_profile_version': 'full-prose-auto-v1',
+        'validation_report': {'passed': True, 'changed_prose_slots': ['/blocks/0/text']},
+    }
     bridge=types.SimpleNamespace(token='never-retain-token',model_handler=lambda:None,ensure_handler=lambda:None,control_handler=lambda:None,
-        snapshot=lambda:{'proxy':{'errors':[]},'ensure':{'active':0}},stop=lambda:[],release_model=threading.Event())
+        snapshot=lambda:{'proxy':{'errors':[]},'ensure':{'active':0},
+                         'immutable_rows':{'canonical_article_revisions':[published]}},
+        stop=lambda:[],release_model=threading.Event())
     monkeypatch.setattr(producer,'BrowserBridge',lambda runtime:bridge)
     monkeypatch.setattr(producer,'serve',lambda handler:contextlib.nullcontext('https://127.0.0.1:1234'))
     def popen(command,**kwargs):

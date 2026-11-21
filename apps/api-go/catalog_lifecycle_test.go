@@ -39,16 +39,18 @@ func TestCatalogArticleActiveReadRetryAfter(t *testing.T) {
 	retryDelay := 9
 	for _, test := range []struct {
 		name, state string
-		readable    bool
+		origin      string
 		delay       *int
 		status      int
 		header      string
 	}{
-		{"cold queued", "queued", false, nil, 202, "1"},
-		{"cold fetch", "fetching_source", false, nil, 202, "1"},
-		{"warm rewrite", "rewriting", true, nil, 200, "2"},
-		{"explicit failed retry", "failed", false, &retryDelay, 202, "9"},
-		{"review required", "needs_review", true, nil, 200, ""},
+		{"cold queued", "queued", "", nil, 202, "1"},
+		{"cold fetch", "fetching_source", "", nil, 202, "1"},
+		{"stored source awaiting first publication", "rewriting", "source", nil, 200, "1"},
+		{"published article during refresh", "rewriting", "canonical", nil, 200, "2"},
+		{"explicit source delay", "rewriting", "source", &retryDelay, 200, "9"},
+		{"explicit failed retry", "failed", "", &retryDelay, 202, "9"},
+		{"review required", "needs_review", "source", nil, 200, ""},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			store := newMemoryCatalogStore()
@@ -58,9 +60,9 @@ func TestCatalogArticleActiveReadRetryAfter(t *testing.T) {
 					JobID: "job", State: test.state, RetryAfterSeconds: test.delay, Retryable: test.state == "failed",
 				},
 			}
-			if test.readable {
+			if test.origin != "" {
 				article.Availability = "available"
-				article.ContentOrigin = stringPointer("source")
+				article.ContentOrigin = stringPointer(test.origin)
 				article.Document = &CatalogDocument{
 					SchemaVersion: 1, NormalizationVersion: "ordered-article-v1",
 					Blocks: []CatalogDocumentBlock{{Type: "paragraph", Text: "Remove pump."}},
@@ -71,6 +73,92 @@ func TestCatalogArticleActiveReadRetryAfter(t *testing.T) {
 			if response.Code != test.status || response.Header().Get("Retry-After") != test.header {
 				t.Fatalf("status=%d retry=%q, want status=%d retry=%q",
 					response.Code, response.Header().Get("Retry-After"), test.status, test.header)
+			}
+		})
+	}
+}
+
+func TestCatalogPrepareShortSourceCheckPreference(t *testing.T) {
+	one, nine := 1, 9
+	for _, tc := range []struct {
+		name, method, state string
+		prefer              bool
+		delay               *int
+		want                string
+	}{
+		{"queued prepare", http.MethodPost, "queued", true, nil, ""},
+		{"fetching prepare", http.MethodPost, "fetching_source", true, nil, ""},
+		{"older client", http.MethodPost, "queued", false, nil, "1"},
+		{"short detail check", http.MethodGet, "queued", true, nil, ""},
+		{"normal detail retrieval", http.MethodGet, "queued", false, nil, "1"},
+		{"explicit short delay", http.MethodPost, "queued", true, &one, "1"},
+		{"explicit failure delay", http.MethodPost, "failed", true, &nine, "9"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			article := lifecycleArticle(CatalogArticle{
+				ID: "article", Availability: "pending", Processing: &CatalogProcessing{
+					JobID: "job", State: tc.state, Retryable: tc.state == "failed", RetryAfterSeconds: tc.delay,
+				},
+			})
+			request := httptest.NewRequest(tc.method, "/v1/catalog/vehicles/v/articles/article", nil)
+			if tc.prefer {
+				request.Header.Set("Prefer", shortSourceCheckPreference)
+			}
+			response := httptest.NewRecorder()
+			catalogServer(newMemoryCatalogStore()).respondCatalogArticleView(response, request, Principal{}, CatalogArticleView{Article: article})
+			if response.Code != http.StatusAccepted || response.Header().Get("Retry-After") != tc.want {
+				t.Fatalf("accepted response had status %d and retry %q, want retry %q", response.Code, response.Header().Get("Retry-After"), tc.want)
+			}
+			var result CatalogArticleResponse
+			if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil || result.Article.Processing == nil {
+				t.Fatalf("unreadable processing response: %v", err)
+			}
+			applied := response.Header().Get("Preference-Applied") == shortSourceCheckPreference
+			if applied != (tc.want == "") || (result.Article.Processing.RetryAfterSeconds == nil) != applied {
+				t.Fatal("preference acknowledgment and retry delay disagree")
+			}
+		})
+	}
+}
+
+func TestCatalogShortPublicationCheckPreference(t *testing.T) {
+	explicit := 1
+	for _, tc := range []struct {
+		name, origin, state, preference string
+		delay                           *int
+		wantRetry, wantApplied          string
+	}{
+		{"normalizing", "source", "normalizing", shortPublicationCheckPreference, nil, "", shortPublicationCheckPreference},
+		{"rewriting", "source", "rewriting", shortSourceCheckPreference + ", " + shortPublicationCheckPreference, nil, "", shortPublicationCheckPreference},
+		{"publishing", "source", "publishing", shortPublicationCheckPreference, nil, "", shortPublicationCheckPreference},
+		{"older reader", "source", "rewriting", shortSourceCheckPreference, nil, "1", ""},
+		{"explicit delay", "source", "rewriting", shortPublicationCheckPreference, &explicit, "1", ""},
+		{"refresh", "canonical", "rewriting", shortPublicationCheckPreference, nil, "2", ""},
+		{"waiting in queue", "source", "queued", shortPublicationCheckPreference, nil, "1", ""},
+		{"review", "source", "needs_review", shortPublicationCheckPreference, nil, "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			article := lifecycleArticle(CatalogArticle{
+				ID: "article", CanonicalArticleID: stringPointer("article"), Availability: "available",
+				ContentOrigin: stringPointer(tc.origin),
+				Document:      &CatalogDocument{Blocks: []CatalogDocumentBlock{{Type: "paragraph", Text: "Remove pump."}}},
+				Processing:    &CatalogProcessing{JobID: "job", State: tc.state, RetryAfterSeconds: tc.delay},
+			})
+			request := httptest.NewRequest(http.MethodGet, "/v1/catalog/vehicles/v/articles/article", nil)
+			request.Header.Set("Prefer", tc.preference)
+			response := httptest.NewRecorder()
+			catalogServer(newMemoryCatalogStore()).respondCatalogArticleView(response, request, Principal{}, CatalogArticleView{Article: article})
+			retry := response.Header().Get("Retry-After")
+			applied := response.Header().Get("Preference-Applied")
+			if response.Code != http.StatusOK || retry != tc.wantRetry || applied != tc.wantApplied {
+				t.Fatalf("status=%d retry=%q applied=%q", response.Code, retry, applied)
+			}
+			var result CatalogArticleResponse
+			if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil || result.Article.Processing == nil {
+				t.Fatalf("unreadable processing response: %v", err)
+			}
+			if delay := result.Article.Processing.RetryAfterSeconds; (delay != nil) != (retry != "") {
+				t.Fatalf("Retry-After and article processing disagree: %q / %v", retry, delay)
 			}
 		})
 	}

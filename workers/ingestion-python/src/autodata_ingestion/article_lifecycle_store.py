@@ -154,8 +154,12 @@ def _store_captured_source(cur, lease, captured):
     """
     article_params = (lease.canonical_article_id,)
 
-    live_capture = not source_only and captured.projection_version in ("source-projection-v2", "source-projection-v5")
-    new_structure = captured.projection_version == "source-projection-v5"
+    structural_versions = (
+        "source-projection-v5", "source-projection-v6", "source-projection-v7", "source-projection-v8",
+        "source-projection-v9", "source-projection-v10",
+    )
+    new_structure = captured.projection_version in structural_versions
+    live_capture = not source_only and (captured.projection_version == "source-projection-v2" or new_structure)
     numbered_lists = live_capture and not new_structure and has_ordered_list_numbering(captured.source_document)
     structured_lists = live_capture and not new_structure and (numbered_lists or has_structured_list_items(captured.source_document))
 
@@ -170,8 +174,12 @@ def _store_captured_source(cur, lease, captured):
         # A new projection never replaces a same-byte publication in place.
         if published_same_bytes and (new_structure or structured_lists):
             return current
-        if new_structure or current == "source-projection-v5":
-            return "source-projection-v5"
+        if current in structural_versions:
+            if new_structure:
+                return max(current, captured.projection_version, key=SOURCE_PROJECTION_VERSIONS.index)
+            return current
+        if new_structure:
+            return captured.projection_version
         if numbered_lists or current == "source-projection-v4":
             return "source-projection-v4"
         if structured_lists or current == "source-projection-v3":
@@ -629,7 +637,7 @@ def automatic_candidate_validation(cur, job, candidate):
         "blocks":captured["source_document"]["blocks"],"images":captured["source_images"],
         "body":captured["source_body"],"steps":captured["source_steps"],
         "evidence_ids":context["evidence_ids"],"title":context["descriptor"].get("title"),
-        "article_id":str(job["canonical_article_id"])})["normalized_document"]
+        "article_id":str(job["canonical_article_id"])}, resource_manifest=captured["resource_manifest"])["normalized_document"]
     from .procedure_rewrite_auto import SOURCE_PRESERVING_METHOD, validate_source_preserving_candidate
     if candidate["model_metadata"].get("transformation_method") == SOURCE_PRESERVING_METHOD:
         if (normalized != source or candidate["normalized_source_hash"] != digest_json(source)

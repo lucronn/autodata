@@ -192,6 +192,15 @@ func catalogJSONListNumber(value any) (int32, bool) {
 	return integer, float64(integer) == number
 }
 
+func catalogJSONTableSpan(attribute string, value any) (int32, bool) {
+	number, ok := catalogJSONListNumber(value)
+	limit := int32(1000)
+	if attribute == "rowspan" {
+		limit = 65534
+	}
+	return number, ok && number > 1 && number <= limit
+}
+
 func catalogNestedBlocks(value any) []CatalogDocumentBlock {
 	if value == nil {
 		return nil
@@ -713,6 +722,7 @@ func (s *postgresCatalogStore) CatalogScopeComplete(ctx context.Context, _ Princ
 }
 
 func (s *postgresCatalogStore) CatalogArticleProgress(ctx context.Context, _ Principal, vehicleID string) (*CatalogArticleProgress, error) {
+	// The scope check constraint binds each key to the corresponding vehicle or exact configuration.
 	var total, completed, active, failed, retryable int
 	err := s.pool.QueryRow(ctx, `
   SELECT count(*),
@@ -724,7 +734,7 @@ func (s *postgresCatalogStore) CatalogArticleProgress(ctx context.Context, _ Pri
       AND job.retry_count < job.max_attempts)
   FROM catalog_article_provider_scopes scope
   LEFT JOIN source_fetch_jobs job ON job.source_fetch_job_id=scope.current_job_id
-  WHERE (scope.vehicle_id::text=$1 AND scope.vehicle_configuration_id IS NULL OR scope.vehicle_configuration_id::text=$1)
+  WHERE scope.scope_key IN ('vehicle:'||$1, 'configuration:'||$1)
     AND scope.provider_slug IN ('bankone','banktwo')`, vehicleID).Scan(&total, &completed, &active, &failed, &retryable)
 	if err != nil {
 		return nil, err
@@ -741,6 +751,9 @@ func (s *postgresCatalogStore) CatalogArticleProgress(ctx context.Context, _ Pri
 }
 
 func (s *postgresCatalogStore) ConfigurationByVehicle(ctx context.Context, _ Principal, vehicleID string) (CatalogConfiguration, error) {
+	if !commerceUUID(vehicleID) {
+		return CatalogConfiguration{}, ErrCatalogNotFound
+	}
 	var record CatalogConfiguration
 	err := s.pool.QueryRow(ctx, `
 		SELECT vc.vehicle_configuration_id::text, vc.vehicle_id::text,
@@ -749,7 +762,7 @@ func (s *postgresCatalogStore) ConfigurationByVehicle(ctx context.Context, _ Pri
 		       vib.reviewer_state <> 'rejected' AND vc.reviewer_state <> 'rejected'
 		FROM vehicle_configurations vc
 		JOIN vehicle_identity_bases vib ON vib.vehicle_identity_base_id = vc.vehicle_identity_base_id
-		WHERE (vc.vehicle_id::text = $1 OR vc.vehicle_configuration_id::text = $1)
+		WHERE (vc.vehicle_id = $1::uuid OR vc.vehicle_configuration_id = $1::uuid)
 		  AND vib.reviewer_state <> 'rejected' AND vc.reviewer_state <> 'rejected'
 		ORDER BY vc.vehicle_configuration_id LIMIT 1`, vehicleID).
 		Scan(&record.ID, &record.VehicleID, &record.Year, &record.Make, &record.Model, &record.Region, &record.Trim, &record.Engine, &record.Complete)
@@ -776,7 +789,7 @@ func (s *postgresCatalogStore) legacyArticle(ctx context.Context, _ Principal, v
 		FROM catalog_articles ca
 		JOIN source_snapshots ss ON ss.source_snapshot_id = ca.source_snapshot_id
 		WHERE (ca.vehicle_id::text=$1 AND ca.vehicle_configuration_id IS NULL OR ca.vehicle_configuration_id::text=$1 AND EXISTS(SELECT 1 FROM vehicle_configurations vc JOIN vehicle_identity_bases vb USING(vehicle_identity_base_id) WHERE vc.vehicle_configuration_id=ca.vehicle_configuration_id AND vc.reviewer_state<>'rejected' AND vb.reviewer_state<>'rejected'))
-		  AND ca.catalog_article_id::text = $2 AND NOT EXISTS (SELECT 1 FROM canonical_article_aliases x JOIN canonical_articles owner ON owner.canonical_article_id=x.canonical_article_id WHERE x.catalog_article_id=ca.catalog_article_id AND owner.vehicle_id=ca.vehicle_id AND owner.vehicle_configuration_id IS NOT DISTINCT FROM ca.vehicle_configuration_id) AND ss.takedown_status='active' AND NOT EXISTS (SELECT 1 FROM source_review_items review WHERE review.item_kind='quarantine' AND review.status<>'approved' AND review.source_snapshot_ids ? ca.source_snapshot_id::text)
+		  AND ca.catalog_article_id = $2::uuid AND NOT EXISTS (SELECT 1 FROM canonical_article_aliases x JOIN canonical_articles owner ON owner.canonical_article_id=x.canonical_article_id WHERE x.catalog_article_id=ca.catalog_article_id AND owner.vehicle_id=ca.vehicle_id AND owner.vehicle_configuration_id IS NOT DISTINCT FROM ca.vehicle_configuration_id) AND ss.takedown_status='active' AND NOT EXISTS (SELECT 1 FROM source_review_items review WHERE review.item_kind='quarantine' AND review.status<>'approved' AND review.source_snapshot_ids ? ca.source_snapshot_id::text)
 		ORDER BY (ca.content_status = 'content_complete') DESC,
 		         ca.created_at DESC LIMIT 1`, vehicleID, articleID).
 		Scan(&record.ID, &sourceArticleID, &record.Title, &record.Kind, &record.Component, &record.ContentStatus, &record.Body, &rawSteps, &rawDocument, &rawImages, &rawOriginal, &sourceID, &sourceVersion, &sourceContentSHA256, &sourceURI)
@@ -821,7 +834,7 @@ func (s *postgresCatalogStore) legacyArticleSource(ctx context.Context, _ Princi
 		FROM catalog_articles ca
 		JOIN source_snapshots ss ON ss.source_snapshot_id = ca.source_snapshot_id
 		WHERE (ca.vehicle_id::text=$1 AND ca.vehicle_configuration_id IS NULL OR ca.vehicle_configuration_id::text=$1 AND EXISTS(SELECT 1 FROM vehicle_configurations vc JOIN vehicle_identity_bases vb USING(vehicle_identity_base_id) WHERE vc.vehicle_configuration_id=ca.vehicle_configuration_id AND vc.reviewer_state<>'rejected' AND vb.reviewer_state<>'rejected'))
-		  AND ca.catalog_article_id::text = $2 AND NOT EXISTS (SELECT 1 FROM canonical_article_aliases x JOIN canonical_articles owner ON owner.canonical_article_id=x.canonical_article_id WHERE x.catalog_article_id=ca.catalog_article_id AND owner.vehicle_id=ca.vehicle_id AND owner.vehicle_configuration_id IS NOT DISTINCT FROM ca.vehicle_configuration_id) AND ss.takedown_status='active' AND NOT EXISTS (SELECT 1 FROM source_review_items review WHERE review.item_kind='quarantine' AND review.status<>'approved' AND review.source_snapshot_ids ? ca.source_snapshot_id::text)
+		  AND ca.catalog_article_id = $2::uuid AND NOT EXISTS (SELECT 1 FROM canonical_article_aliases x JOIN canonical_articles owner ON owner.canonical_article_id=x.canonical_article_id WHERE x.catalog_article_id=ca.catalog_article_id AND owner.vehicle_id=ca.vehicle_id AND owner.vehicle_configuration_id IS NOT DISTINCT FROM ca.vehicle_configuration_id) AND ss.takedown_status='active' AND NOT EXISTS (SELECT 1 FROM source_review_items review WHERE review.item_kind='quarantine' AND review.status<>'approved' AND review.source_snapshot_ids ? ca.source_snapshot_id::text)
 		  AND jsonb_typeof(ca.source_original) = 'object'
 		  AND ca.source_original <> '{}'::jsonb
 		ORDER BY (ca.content_status = 'content_complete') DESC,

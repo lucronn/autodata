@@ -215,25 +215,26 @@ func (s *Server) commerceWebhookHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	s.commerceCall(w, r, "stripe/webhook", nil, b, sig)
 }
-func (s *Server) commerceCall(w http.ResponseWriter, r *http.Request, operation string, input map[string]any, raw []byte, signature string) {
-	w.Header().Set("Cache-Control", "no-store")
-	unavailable := func() { writeAPIError(w, r, 503, "COMMERCE_UNAVAILABLE", "Commerce is temporarily unavailable.", true) }
+func (s *Server) doCommerce(ctx context.Context, operation string, input map[string]any, body []byte, signature string) (int, []byte, error) {
 	if s.commerceClient == nil {
-		unavailable()
-		return
+		return 0, nil, errors.New("commerce client unavailable")
 	}
-	body := raw
 	if body == nil {
 		var err error
 		body, err = json.Marshal(input)
 		if err != nil {
-			unavailable()
-			return
+			return 0, nil, err
 		}
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), commerceTimeout(operation))
+	ctx, cancel := context.WithTimeout(ctx, commerceTimeout(operation))
 	defer cancel()
-	status, result, err := s.commerceClient.Do(ctx, operation, body, signature)
+	return s.commerceClient.Do(ctx, operation, body, signature)
+}
+
+func (s *Server) commerceCall(w http.ResponseWriter, r *http.Request, operation string, input map[string]any, raw []byte, signature string) {
+	w.Header().Set("Cache-Control", "no-store")
+	unavailable := func() { writeAPIError(w, r, 503, "COMMERCE_UNAVAILABLE", "Commerce is temporarily unavailable.", true) }
+	status, result, err := s.doCommerce(r.Context(), operation, input, raw, signature)
 	if err != nil {
 		unavailable()
 		return

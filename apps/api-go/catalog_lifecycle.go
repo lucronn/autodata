@@ -18,12 +18,13 @@ import (
 var ErrCatalogWithdrawn = errors.New("catalog article withdrawn")
 
 type CatalogProcessing struct {
-	JobID             string  `json:"job_id"`
-	State             string  `json:"state"`
-	Retryable         bool    `json:"retryable"`
-	RetryAfterSeconds *int    `json:"retry_after_seconds"`
-	ErrorCode         *string `json:"error_code"`
-	UpdatedAt         string  `json:"updated_at"`
+	JobID               string  `json:"job_id"`
+	State               string  `json:"state"`
+	Retryable           bool    `json:"retryable"`
+	RetryAfterSeconds   *int    `json:"retry_after_seconds"`
+	ErrorCode           *string `json:"error_code"`
+	UpdatedAt           string  `json:"updated_at"`
+	shortReadPreference string
 }
 type CatalogArticleView struct {
 	Article     CatalogArticle
@@ -90,15 +91,26 @@ func lifecycleArticle(article CatalogArticle) CatalogArticle {
 		article.ViewRevision = stringPointer(fmt.Sprintf("view-%x", sum[:]))
 	}
 	if article.Processing != nil {
+		processing := *article.Processing
+		article.Processing = &processing
 		active := article.Processing.State != "completed" && article.Processing.State != "needs_review" && article.Processing.State != "failed"
 		if active && article.Processing.RetryAfterSeconds == nil {
 			seconds := 2
-			if !readable && article.Processing.State != "failed" {
-				// Let the first read discover newly captured source sooner.
-				// The client increases later waits and honors explicit delays.
+			if !readable || (article.ContentOrigin != nil && *article.ContentOrigin == "source") {
+				// Give the reader an earlier check for retained source or its
+				// first publication. Explicit delays and canonical refreshes
+				// keep their normal cadence.
 				seconds = 1
 			}
-			article.Processing.RetryAfterSeconds = &seconds
+			state := processing.State
+			switch {
+			case !readable && (state == "queued" || state == "fetching_source"):
+				processing.shortReadPreference = shortSourceCheckPreference
+			case readable && article.Availability == "available" && article.ContentOrigin != nil && *article.ContentOrigin == "source" &&
+				(state == "normalizing" || state == "rewriting" || state == "validating" || state == "publishing"):
+				processing.shortReadPreference = shortPublicationCheckPreference
+			}
+			processing.RetryAfterSeconds = &seconds
 		}
 		if article.Processing.RetryAfterSeconds != nil && *article.Processing.RetryAfterSeconds < 1 {
 			n := 1
@@ -133,14 +145,30 @@ const lifecycleScopeSQL = `(a.vehicle_id::text=$1 AND a.vehicle_configuration_id
 const lifecycleEligibleSQL = `a.membership_status='active' AND NOT EXISTS(SELECT 1 FROM source_review_items quarantine WHERE quarantine.item_kind='quarantine' AND quarantine.status<>'approved' AND (quarantine.source_snapshot_ids ? a.descriptor_source_snapshot_id::text OR EXISTS(SELECT 1 FROM canonical_article_source_revisions source WHERE source.source_revision_id=a.current_source_revision_id AND (quarantine.source_snapshot_ids ? source.body_source_snapshot_id::text OR EXISTS(SELECT 1 FROM jsonb_array_elements(source.resource_manifest) resource JOIN source_snapshots asset ON asset.content_sha256::text=resource->>'sha256' WHERE quarantine.source_snapshot_ids ? asset.source_snapshot_id::text))))) AND (a.vehicle_configuration_id IS NULL OR EXISTS (SELECT 1 FROM vehicle_configurations vc JOIN vehicle_identity_bases vb USING(vehicle_identity_base_id) WHERE vc.vehicle_configuration_id=a.vehicle_configuration_id AND vc.reviewer_state<>'rejected' AND vb.reviewer_state<>'rejected'))`
 
 func (s *postgresCatalogStore) ArticleView(ctx context.Context, p Principal, v, id string) (CatalogArticleView, error) {
+	if !commerceUUID(id) {
+		return CatalogArticleView{}, ErrCatalogNotFound
+	}
 	var raw []byte
-	err := s.pool.QueryRow(ctx, `SELECT to_jsonb(view_row) FROM catalog_article_current view_row JOIN canonical_articles a USING(canonical_article_id) WHERE `+lifecycleScopeSQL+` AND `+lifecycleEligibleSQL+` AND (a.canonical_article_id::text=$2 OR EXISTS (SELECT 1 FROM canonical_article_aliases alias JOIN catalog_articles legacy USING(catalog_article_id) WHERE alias.canonical_article_id=a.canonical_article_id AND alias.catalog_article_id::text=$2 AND legacy.vehicle_id=a.vehicle_id AND legacy.vehicle_configuration_id IS NOT DISTINCT FROM a.vehicle_configuration_id))`, v, id).Scan(&raw)
+	// Resolve the direct ID and at most one proven alias before evaluating the
+	// effective article view. Direct IDs take precedence within the same scope.
+	err := s.pool.QueryRow(ctx, `SELECT to_jsonb(view_row) FROM canonical_articles a
+		JOIN LATERAL (
+			SELECT * FROM catalog_article_current WHERE canonical_article_id=a.canonical_article_id LIMIT 1
+		) view_row ON true
+		WHERE a.canonical_article_id IN ($2::uuid, (
+			SELECT alias.canonical_article_id FROM canonical_article_aliases alias
+			JOIN catalog_articles legacy USING(catalog_article_id)
+			JOIN canonical_articles owner ON owner.canonical_article_id=alias.canonical_article_id
+			WHERE alias.catalog_article_id=$2::uuid AND legacy.vehicle_id=owner.vehicle_id
+			AND legacy.vehicle_configuration_id IS NOT DISTINCT FROM owner.vehicle_configuration_id
+		)) AND `+lifecycleScopeSQL+` AND `+lifecycleEligibleSQL+`
+		ORDER BY (a.canonical_article_id=$2::uuid) DESC LIMIT 1`, v, id).Scan(&raw)
 	if errors.Is(err, pgx.ErrNoRows) {
 		legacy, e := s.legacyArticle(ctx, p, v, id)
 		if e != nil {
 			if errors.Is(e, ErrCatalogNotFound) {
 				var withdrawn bool
-				probeErr := s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_articles ca JOIN source_snapshots ss USING(source_snapshot_id) WHERE ca.catalog_article_id::text=$2 AND (ca.vehicle_id::text=$1 AND ca.vehicle_configuration_id IS NULL OR ca.vehicle_configuration_id::text=$1) AND ss.takedown_status<>'active')`, v, id).Scan(&withdrawn)
+				probeErr := s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_articles ca JOIN source_snapshots ss USING(source_snapshot_id) WHERE ca.catalog_article_id=$2::uuid AND (ca.vehicle_id::text=$1 AND ca.vehicle_configuration_id IS NULL OR ca.vehicle_configuration_id::text=$1) AND ss.takedown_status<>'active')`, v, id).Scan(&withdrawn)
 				if probeErr != nil {
 					return CatalogArticleView{}, probeErr
 				}
@@ -348,6 +376,81 @@ func (s *postgresCatalogStore) Articles(ctx context.Context, p Principal, v stri
 func (s *postgresCatalogStore) ArticleSource(ctx context.Context, p Principal, v, id string) (CatalogSourceContent, error) {
 	return s.ArticleSourceRevision(ctx, p, v, id, "")
 }
+
+// Selected revisions, including historical revisions, cannot expose any of their
+// retained resources while the body or a resource in the manifest is blocked.
+const catalogSourceRevisionEligibleSQL = `NOT EXISTS (
+	SELECT 1 FROM (
+		SELECT source_snapshot_id,takedown_status FROM source_snapshots WHERE source_snapshot_id=sr.body_source_snapshot_id
+		UNION ALL
+		SELECT asset.source_snapshot_id,asset.takedown_status
+		FROM jsonb_array_elements(sr.resource_manifest) entry JOIN source_snapshots asset
+		ON asset.content_sha256=(entry->>'sha256')::bpchar AND asset.content_sha256::text=entry->>'sha256'
+	) retained
+	WHERE retained.takedown_status<>'active' OR EXISTS (
+		SELECT 1 FROM source_review_items quarantine
+		WHERE quarantine.item_kind='quarantine' AND quarantine.status<>'approved'
+		AND quarantine.source_snapshot_ids ? retained.source_snapshot_id::text
+	)
+)`
+
+func (s *postgresCatalogStore) paidCatalogSourceImages(ctx context.Context, configuration, article, revision string) ([]CatalogImage, error) {
+	_, images, err := s.paidCatalogImageView(ctx, configuration, article, revision, false)
+	return images, err
+}
+
+// Read current anchors and selected revision rights in one database snapshot.
+// The image route only needs the image records, including those nested in steps.
+func (s *postgresCatalogStore) paidCatalogImageView(ctx context.Context, configuration, article, revision string, includeArticleImages bool) (CatalogArticleView, []CatalogImage, error) {
+	view := CatalogArticleView{Article: CatalogArticle{ID: article, CanonicalArticleID: &article}}
+	var takedown string
+	var rawArticleImages, rawSourceImages []byte
+	err := s.pool.QueryRow(ctx, `SELECT
+		CASE WHEN descriptor.takedown_status<>'active' THEN descriptor.takedown_status ELSE view_row.takedown_status END,
+		view_row.source_revision_id::text,view_row.canonical_revision_id::text,
+		CASE WHEN $4 THEN COALESCE(view_row.images,'[]'::jsonb) || COALESCE((
+			SELECT jsonb_agg(image.value) FROM jsonb_array_elements(view_row.steps) step
+			CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(step.value->'images')='array' THEN step.value->'images' ELSE '[]'::jsonb END) image
+		),'[]'::jsonb) END,
+		selected.source_images
+		FROM canonical_articles a
+		JOIN source_snapshots descriptor ON descriptor.source_snapshot_id=a.descriptor_source_snapshot_id
+		CROSS JOIN LATERAL (
+			SELECT takedown_status,source_revision_id,canonical_revision_id,images,steps FROM catalog_article_current
+			WHERE canonical_article_id=a.canonical_article_id LIMIT 1
+		) view_row
+		LEFT JOIN LATERAL (
+			SELECT sr.source_images FROM canonical_article_source_revisions sr
+			JOIN source_snapshots snap ON snap.source_snapshot_id=sr.body_source_snapshot_id
+			WHERE sr.canonical_article_id=a.canonical_article_id AND sr.source_revision_id=$3::uuid
+			AND `+catalogSourceRevisionEligibleSQL+`
+		) selected ON view_row.takedown_status='active' AND descriptor.takedown_status='active'
+		WHERE a.vehicle_configuration_id=$1::uuid AND a.canonical_article_id=$2::uuid AND `+lifecycleEligibleSQL,
+		configuration, article, revision, includeArticleImages).Scan(&takedown, &view.Article.SourceRevisionID, &view.Article.CanonicalRevisionID, &rawArticleImages, &rawSourceImages)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return CatalogArticleView{}, nil, ErrCatalogNotFound
+	}
+	if err != nil {
+		return CatalogArticleView{}, nil, err
+	}
+	if takedown != "active" {
+		return CatalogArticleView{}, nil, ErrCatalogWithdrawn
+	}
+	if rawSourceImages == nil {
+		return CatalogArticleView{}, nil, ErrCatalogNotFound
+	}
+	if includeArticleImages {
+		if err = json.Unmarshal(rawArticleImages, &view.Article.Images); err != nil {
+			return CatalogArticleView{}, nil, err
+		}
+	}
+	var sourceImages []CatalogImage
+	if err = json.Unmarshal(rawSourceImages, &sourceImages); err != nil {
+		return CatalogArticleView{}, nil, err
+	}
+	return view, sourceImages, nil
+}
+
 func (s *postgresCatalogStore) ArticleSourceRevision(ctx context.Context, p Principal, v, id, revision string) (CatalogSourceContent, error) {
 	view, err := s.ArticleView(ctx, p, v, id)
 	if err != nil {
@@ -362,6 +465,12 @@ func (s *postgresCatalogStore) ArticleSourceRevision(ctx context.Context, p Prin
 		}
 		return s.legacyArticleSource(ctx, p, v, id)
 	}
+	if revision == "" && view.Article.SourceRevisionID != nil {
+		revision = *view.Article.SourceRevisionID
+	}
+	if !commerceUUID(revision) {
+		return CatalogSourceContent{}, ErrCatalogNotFound
+	}
 	var result CatalogSourceContent
 	var doc, images []byte
 	var sourceID string
@@ -369,25 +478,29 @@ func (s *postgresCatalogStore) ArticleSourceRevision(ctx context.Context, p Prin
 	var steps []byte
 	// Requested revision must belong to this authorized identity. Any resource
 	// takedown suppresses the immutable revision, including historical review.
-	err = s.pool.QueryRow(ctx, `SELECT sr.source_revision_id::text,sr.body_source_snapshot_id::text,snap.content_sha256::text,COALESCE((SELECT observation.body_provider_revision FROM canonical_article_source_observations observation WHERE observation.source_revision_id=sr.source_revision_id AND observation.canonical_article_id=sr.canonical_article_id ORDER BY observation.request_generation DESC,observation.captured_at DESC,observation.source_observation_id DESC LIMIT 1),snap.source_version,''),sr.source_document,sr.source_images,sr.source_body,sr.source_steps FROM canonical_article_source_revisions sr JOIN source_snapshots snap ON snap.source_snapshot_id=sr.body_source_snapshot_id WHERE sr.canonical_article_id::text=$1 AND sr.source_revision_id::text=COALESCE(NULLIF($2,''),$3) AND NOT EXISTS(SELECT 1 FROM source_snapshots blocked WHERE (blocked.takedown_status<>'active' OR EXISTS(SELECT 1 FROM source_review_items quarantine WHERE quarantine.item_kind='quarantine' AND quarantine.status<>'approved' AND quarantine.source_snapshot_ids ? blocked.source_snapshot_id::text)) AND (blocked.source_snapshot_id=sr.body_source_snapshot_id OR EXISTS(SELECT 1 FROM jsonb_array_elements(sr.resource_manifest) asset WHERE asset->>'sha256'=blocked.content_sha256::text)))`, *view.Article.CanonicalArticleID, revision, view.Article.SourceRevisionID).Scan(&sourceID, &result.SnapshotID, &result.ContentSHA256, &result.Version, &doc, &images, &body, &steps)
+	err = s.pool.QueryRow(ctx, `SELECT sr.source_revision_id::text,sr.body_source_snapshot_id::text,snap.content_sha256::text,`+catalogSourceObservationVersionSQL+`,sr.source_document,sr.source_images,sr.source_body,sr.source_steps FROM canonical_article_source_revisions sr JOIN source_snapshots snap ON snap.source_snapshot_id=sr.body_source_snapshot_id WHERE sr.canonical_article_id=$1::uuid AND sr.source_revision_id=$2::uuid AND `+catalogSourceRevisionEligibleSQL, *view.Article.CanonicalArticleID, revision).Scan(&sourceID, &result.SnapshotID, &result.ContentSHA256, &result.Version, &doc, &images, &body, &steps)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return CatalogSourceContent{}, ErrCatalogNotFound
 	}
 	if err != nil {
 		return CatalogSourceContent{}, err
 	}
-	result.Document = &CatalogDocument{}
-	if err = json.Unmarshal(doc, result.Document); err != nil {
-		return CatalogSourceContent{}, err
-	}
-	if err = json.Unmarshal(images, &result.Images); err != nil {
-		return CatalogSourceContent{}, err
-	}
-	result.Document = publicCatalogDocument(result.Document)
 	result.SourceRevisionID = &sourceID
-	article := CatalogArticle{SourceRevisionID: &sourceID, ContentOrigin: stringPointer("source"), Document: result.Document, Images: result.Images, Body: body}
-	json.Unmarshal(steps, &article.Steps)
+	return decodeCatalogSourceProjection(result, doc, images, body, steps)
+}
+
+func decodeCatalogSourceProjection(result CatalogSourceContent, doc, images []byte, body string, steps []byte) (CatalogSourceContent, error) {
+	var document CatalogDocument
+	if err := json.Unmarshal(doc, &document); err != nil {
+		return CatalogSourceContent{}, err
+	}
+	if err := json.Unmarshal(images, &result.Images); err != nil {
+		return CatalogSourceContent{}, err
+	}
+	article := CatalogArticle{SourceRevisionID: result.SourceRevisionID, ContentOrigin: stringPointer("source"), Document: &document, Images: result.Images, Body: body}
+	_ = json.Unmarshal(steps, &article.Steps)
 	article = lifecycleArticle(article)
+	result.Document = article.Document
 	result.ViewRevision = article.ViewRevision
 	return result, nil
 }
@@ -433,6 +546,10 @@ func publicCatalogDocument(document *CatalogDocument) *CatalogDocument {
 					out[key] = project(child)
 				case "start":
 					if _, ok := catalogJSONListNumber(child); ok && node["type"] == "ordered_list" {
+						out[key] = child
+					}
+				case "rowspan", "colspan":
+					if _, ok := catalogJSONTableSpan(key, child); ok {
 						out[key] = child
 					}
 				case "asset_id", "image_id":

@@ -16,6 +16,7 @@ class ProfileRefreshRequired(ValueError):
 
 
 ACTIVE = ("pending", "processing", "failed")
+ARTICLE_JOB_CHANNEL = "autodata_article_job"
 
 
 def _cursor(conn):
@@ -84,6 +85,8 @@ def _ensure_locked(cur, article, *, force_new=False):
         "UPDATE canonical_articles SET current_job_id=%s,updated_at=clock_timestamp() WHERE canonical_article_id=%s",
         (job_id, article["canonical_article_id"]),
     )
+    # PostgreSQL delivers this empty wake-up only after the job commits.
+    cur.execute("SELECT pg_notify(%s, '')", (ARTICLE_JOB_CHANNEL,))
     return _result(cur, article, job, True)
 
 

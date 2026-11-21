@@ -61,12 +61,13 @@ type commerceCheckout struct {
 	LibraryItemID     string `json:"library_item_id,omitempty"`
 }
 type commerceOrder struct {
-	Version          string `json:"version"`
-	OrderID          string `json:"order_id"`
-	ConfigurationID  string `json:"configuration_id"`
-	Region           string `json:"region"`
-	State            string `json:"state"`
-	RetryDisposition string `json:"retry_disposition"`
+	Version            string `json:"version"`
+	OrderID            string `json:"order_id"`
+	ConfigurationID    string `json:"configuration_id"`
+	Region             string `json:"region"`
+	ConfigurationLabel string `json:"configuration_label,omitempty"`
+	State              string `json:"state"`
+	RetryDisposition   string `json:"retry_disposition"`
 }
 type commerceLibraryItem struct {
 	LibraryItemID    string  `json:"library_item_id"`
@@ -74,6 +75,7 @@ type commerceLibraryItem struct {
 	Region           string  `json:"region"`
 	Label            string  `json:"label"`
 	AccessState      string  `json:"access_state"`
+	CatalogAvailable *bool   `json:"catalog_available,omitempty"`
 	GrantedAt        *string `json:"granted_at"`
 	RevokedAt        string  `json:"revoked_at,omitempty"`
 	DatasetID        string  `json:"dataset_id,omitempty"`
@@ -169,6 +171,9 @@ func commercePublicResult(operation string, status int, body []byte, input map[s
 		if status != 200 || json.Unmarshal(body, &v) != nil || v.Version != "v1" || v.OrderID != input["order_id"] || !commerceUUID(v.OrderID) || !scopeMatches(v.ConfigurationID, v.Region) {
 			return nil, false
 		}
+		if len(v.ConfigurationLabel) > 1024 {
+			v.ConfigurationLabel = ""
+		}
 		switch v.State {
 		case "expired", "canceled":
 			return v, v.RetryDisposition == "new_key"
@@ -190,6 +195,10 @@ func commercePublicResult(operation string, status int, body []byte, input map[s
 		}
 		for index, item := range v.Items {
 			if len(fields.Items[index]["granted_at"]) == 0 {
+				return nil, false
+			}
+			if _, present := fields.Items[index]["catalog_available"]; present &&
+				(item.CatalogAvailable == nil || *item.CatalogAvailable || item.AccessState != "paid") {
 				return nil, false
 			}
 			if !commerceUUID(item.LibraryItemID) || !commerceScopeValid(item.ConfigurationID, item.Region) || len(item.Label) > 1024 || (item.GrantedAt == nil && item.AccessState != "revoked") || (item.GrantedAt != nil && !commerceTime(*item.GrantedAt)) || (item.RevokedAt != "" && !commerceTime(item.RevokedAt)) || (item.DatasetID != "" && !commerceUUID(item.DatasetID)) {

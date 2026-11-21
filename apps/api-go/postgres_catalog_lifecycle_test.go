@@ -712,6 +712,18 @@ func (f *r3Fixture) verifyScopeAndLegacyDescriptors() {
 	if view, e := store.ArticleView(ctx, p, f.vehicle, mapped); e != nil || view.Article.ID != f.article {
 		t.Fatal("proven alias failed", e)
 	}
+	legacySource, e := store.ArticleSource(ctx, p, f.vehicle, unmapped)
+	if e != nil || !bytes.Contains(legacySource.Original, []byte("Legacy pump source")) {
+		t.Fatal("unmapped legacy source did not remain readable", e)
+	}
+	var collidingAlias string
+	if e := f.pool.QueryRow(ctx, `INSERT INTO catalog_articles(catalog_article_id,vehicle_id,article_id,title,source_snapshot_id,evidence_locator,evidence_confidence) SELECT $1::uuid,vehicle_id,gen_random_uuid()::text,'Mixed rollout alias',descriptor_source_snapshot_id,'fixture',1 FROM canonical_articles WHERE canonical_article_id=$1::uuid RETURNING catalog_article_id::text`, f.other).Scan(&collidingAlias); e != nil {
+		t.Fatal(e)
+	}
+	exec(`INSERT INTO canonical_article_aliases(catalog_article_id,canonical_article_id,proof) VALUES($1::uuid,$2::uuid,'{"identity":"fixture"}')`, collidingAlias, f.article)
+	if view, e := store.ArticleView(ctx, p, f.vehicle, collidingAlias); e != nil || view.Article.ID != f.other {
+		t.Fatal("canonical UUID did not take priority within its own scope", e)
+	}
 	for _, id := range []string{blocked, foreign} {
 		if _, e := store.ArticleView(ctx, p, f.vehicle, id); !errors.Is(e, ErrCatalogNotFound) {
 			t.Fatal("quarantine or wrong-vehicle alias leak", id, e)
@@ -724,6 +736,11 @@ func (f *r3Fixture) verifyScopeAndLegacyDescriptors() {
 	if ownView, e := store.ArticleView(ctx, p, wrongVehicle, foreign); e != nil || ownView.Article.CanonicalArticleID != nil || ownView.Article.ID != foreign {
 		t.Fatal("foreign alias did not remain unmanaged in its own scope", e)
 	}
+	exec(`UPDATE source_snapshots SET takedown_status='takedown' WHERE source_snapshot_id=$1::uuid`, blockedSnapshot)
+	if _, e := store.ArticleView(ctx, p, f.vehicle, blocked); !errors.Is(e, ErrCatalogWithdrawn) {
+		t.Fatal("legacy withdrawal lost in fallback", e)
+	}
+	exec(`UPDATE source_snapshots SET takedown_status='active' WHERE source_snapshot_id=$1::uuid`, blockedSnapshot)
 	exec(`UPDATE canonical_articles SET takedown_status='takedown' WHERE canonical_article_id::text=$1`, f.other)
 	items, err = store.Articles(ctx, p, f.vehicle)
 	if err != nil || len(items) != 2 {

@@ -20,12 +20,56 @@ _PROSE_PROMPT_V5 = "full-prose-auto-prompt-v5"
 _PROSE_PROMPT_V6 = "full-prose-auto-prompt-v6"
 _PROSE_PROMPT_V7 = "full-prose-auto-prompt-v7"
 _PROSE_PROMPT_V8 = "full-prose-auto-prompt-v8"
-_PROSE_PROMPT_VERSION = "full-prose-auto-prompt-v9"
+_PROSE_PROMPT_V9 = "full-prose-auto-prompt-v9"
+_PROSE_PROMPT_V10 = "full-prose-auto-prompt-v10"
+_CELL_PROSE_PROMPT_V11 = "full-prose-auto-prompt-v11"
+_PROSE_PROMPT_V12 = "full-prose-auto-prompt-v12"
+_PROSE_PROMPT_V13 = "full-prose-auto-prompt-v13"
+_PROSE_PROMPT_V14 = "full-prose-auto-prompt-v14"
+_PROSE_PROMPT_V15 = "full-prose-auto-prompt-v15"
+_PROSE_PROMPT_V16 = "full-prose-auto-prompt-v16"
+_PROSE_PROMPT_V17 = "full-prose-auto-prompt-v17"
+_PROSE_PROMPT_V18 = "full-prose-auto-prompt-v18"
+_PROSE_PROMPT_V19 = "full-prose-auto-prompt-v19"
+_PROSE_PROMPT_V20 = "full-prose-auto-prompt-v20"
+_PROSE_PROMPT_V21 = "full-prose-auto-prompt-v21"
+_PROSE_PROMPT_V22 = "full-prose-auto-prompt-v22"
+_PROSE_PROMPT_V23 = "full-prose-auto-prompt-v23"
+_PROSE_PROMPT_V24 = "full-prose-auto-prompt-v24"
+_PROSE_PROMPT_V25 = "full-prose-auto-prompt-v25"
+_PROSE_PROMPT_V26 = "full-prose-auto-prompt-v26"
+_PROSE_PROMPT_V27 = "full-prose-auto-prompt-v27"
+_PROSE_PROMPT_V28 = "full-prose-auto-prompt-v28"
+_PROSE_PROMPT_V29 = "full-prose-auto-prompt-v29"
+_PROSE_PROMPT_V30 = "full-prose-auto-prompt-v30"
+_PROSE_PROMPT_V31 = "full-prose-auto-prompt-v31"
+_PROSE_PROMPT_V32 = "full-prose-auto-prompt-v32"
+_PROSE_PROMPT_V33 = "full-prose-auto-prompt-v33"
+_PROSE_PROMPT_V34 = "full-prose-auto-prompt-v34"
+_PROSE_PROMPT_V35 = "full-prose-auto-prompt-v35"
+_PROSE_PROMPT_V36 = "full-prose-auto-prompt-v36"
+_PROSE_PROMPT_V37 = "full-prose-auto-prompt-v37"
+_PROSE_PROMPT_V38 = "full-prose-auto-prompt-v38"
+_PROSE_PROMPT_V39 = "full-prose-auto-prompt-v39"
+_PROSE_PROMPT_V40 = "full-prose-auto-prompt-v40"
+_PROSE_PROMPT_V41 = "full-prose-auto-prompt-v41"
+_PROSE_PROMPT_V42 = "full-prose-auto-prompt-v42"
+_PROSE_PROMPT_V43 = "full-prose-auto-prompt-v43"
+_PROSE_PROMPT_V44 = "full-prose-auto-prompt-v44"
+_PROSE_PROMPT_V45 = "full-prose-auto-prompt-v45"
+_PROSE_PROMPT_VERSION = "full-prose-auto-prompt-v46"
 _WORDS = re.compile(r"\w+")
+_MIN_COPIED_SENTENCE_WORDS = 6
 _INLINE_WARNING = re.compile(
     r"(?:^|[.!?]\s+|\n)[ \t]*(?:warnings?|caution|danger|notice|important)\s*[:!–—-]"
     r"|\b(?:(?:do|must|should|shall|can|may)\s+not|do\s*-\s*not|"
     r"(?:don|mustn|shouldn|can)['’]t|cannot|never)\b",
+    re.IGNORECASE,
+)
+# Explicit clearance imperatives protect the relationship with the hazard,
+# even when the provider supplies plain prose with no warning label.
+_CLEARANCE_WARNING = re.compile(
+    r"(?:^|[.!?;]\s+|\n)\s*(?:keep\s+(?:[\w'-]+\s+){0,7}|stay\s+)(?:clear\s+of|away\s+from)\s+\w",
     re.IGNORECASE,
 )
 
@@ -52,9 +96,12 @@ _SPELLED_UNIT = (
     r"(?:milli)?lit(?:er|re)s?|quarts?|gallons?|volts?|amperes?|amps?|"
     r"ohms?|watts?|hertz|degrees?\s+(?:Celsius|Fahrenheit)"
 )
-_MEASUREMENT_VALUE = re.compile(
+_MEASUREMENT_AMOUNT = (
     r"(?<![\w./-])(?:" + full._SIGN + r")?" + full._NUMBER
-    + r"(?:[ \t]*[–—−~…-][ \t]*[+−-]?" + full._NUMBER + r")?\s*(?:"
+    + r"(?:[ \t]*[–—−~…-][ \t]*[+−-]?" + full._NUMBER + r")?\s*"
+)
+_MEASUREMENT_VALUE = re.compile(
+    _MEASUREMENT_AMOUNT + r"(?:"
     + "|".join(unit for unit in full._UNITS if len(unit) > 1)
     + r"|[VALΩ%°]|in\.(?=\s|$)|(?i:" + _SPELLED_UNIT + r"))(?![\w/-]|\.\w)"
 )
@@ -70,8 +117,119 @@ _MEASUREMENT_UNITS = re.compile(
 )
 
 
-def _spec_scope(text):
-    return bool(_MEASUREMENT_VALUE.search(text) or _MEASUREMENT_UNITS.search(text))
+_TORQUE_PRODUCT = r"(?:[ \t]+|[ \t]*[·⋅.\-/–—−][ \t]*)"
+_TORQUE_UNITS = (
+    r"n" + _TORQUE_PRODUCT + r"m"
+    r"|(?:ft|in)\.?" + _TORQUE_PRODUCT + r"lb(?:f|s)?\.?"
+    r"|lb(?:f|s)?\.?" + _TORQUE_PRODUCT + r"(?:ft|in)\.?"
+)
+_TORQUE_UNIT_END = r"(?![\w/·⋅-]|\.\w)"
+_ALTERNATE_TORQUE_VALUE = re.compile(
+    _MEASUREMENT_AMOUNT + r"(?i:" + _TORQUE_UNITS + r")" + _TORQUE_UNIT_END,
+)
+_CASELESS_NM_VALUE = re.compile(_MEASUREMENT_AMOUNT + r"(?i:nm)" + _TORQUE_UNIT_END)
+_TORQUE_WORDING = re.compile(r"\b(?:torque|tighten(?:ed|ing|s)?)\b", re.IGNORECASE)
+_DURATION_VALUE = re.compile(
+    _MEASUREMENT_AMOUNT + r"(?:(?i:(?:milli)?seconds?|m?secs?|minutes?|mins?|hours?|hrs?)"
+    r"|ms|(?P<short>[sh]))(?![\w/·⋅^-]|\.\w)",
+)
+_DURATION_WORDING = re.compile(
+    r"\b(?:allow(?:ed|ing|s)?|delay(?:ed|ing|s)?|dwell|elapsed|hold(?:ing|s)?|held|intervals?|"
+    r"pause(?:d|s)?|pulses?|run(?:ning|s)?|tim(?:e|ed|es|ing)|timeout|wait(?:ed|ing|s)?)\b",
+    re.IGNORECASE,
+)
+# Preserve SI case and distinguish attached AC/DC units from counted items
+# named with the same abbreviation, such as "2 VDC modules".
+_ELECTRICAL_VALUE = re.compile(
+    _MEASUREMENT_AMOUNT + r"(?:[kmµμ][VA]|[kmµμ]?[VA][ \t]*[.-]?[ \t]*(?i:[ad]\.?c\.?)"
+    r"(?=\s*(?:$|[.,;:!?)]|(?i:across|and|at|for|from|max(?:imum)?|min(?:imum)?|nominal|"
+    r"on|or|supply|through|to|with)\b)))"
+    r"(?![\w/·⋅^-]|\.\w)",
+)
+_PRESSURE_VALUE = re.compile(
+    _MEASUREMENT_AMOUNT + r"(?i:psi[ag]?|p\.s\.i\.?|(?:in|mm)Hg|lb/in2|[hkm]?Pa|m?bar)"
+    r"(?![\w/·⋅^-]|\.\w)",
+)
+_PRESSURE_WORDING = re.compile(r"\b(?:pressures?|vacuum)\b", re.IGNORECASE)
+_PRESSURE_UNIT_END = re.compile(
+    r"\s*(?:$|[.,;:!?)]|(?:across|and|at|for|from|max(?:imum)?|min(?:imum)?|nominal|"
+    r"on|or|through|to|with)\b)", re.IGNORECASE,
+)
+# Some source spellings name the temperature scale without the usual degree
+# sign. Match a numeric value and an explicit scale, leaving bare F/C and
+# angular degrees to their existing rules.
+_TEMPERATURE_VALUE = re.compile(
+    _MEASUREMENT_AMOUNT + r"(?i:℃|℉|Celsius|Fahrenheit|"
+    r"(?:deg\.[ \t]*|deg[ \t]+|degrees?[ \t]+|degrees?[ \t]*-[ \t]*)[CF])"
+    r"(?![\w/·⋅^-]|\.\w)",
+)
+# An ohm sign or written ohm unit disambiguates the measurement from unrelated
+# numbers and identifiers. Prefix spelling and case stay literal in retained text.
+_RESISTANCE_VALUE = re.compile(
+    _MEASUREMENT_AMOUNT
+    + r"(?:[kmMµμ]?[ΩΩ]|[kmMµμ][ \t]*(?i:ohms?)|(?i:(?:micro|milli|kilo|mega?)[ -]?ohms?))"
+    r"(?![\w/·⋅^-]|\.\w)",
+)
+_ROTATION_VALUE = re.compile(_MEASUREMENT_AMOUNT + r"(?i:turns?|degrees?)(?![\w/·⋅^-]|\.\w)")
+_ROTATION_WORDING = re.compile(
+    r"\b(?:clockwise|(?:anti|counter)[ -]?clockwise|rotat(?:e[sd]?|ing|ion)|"
+    r"turn(?:ed|ing)?\s+(?:the|each|an?|this|that))\b",
+    re.IGNORECASE,
+)
+
+
+def _alternate_torque_scope(text):
+    # Joined lowercase nm also denotes nanometres. A tightening/torque
+    # instruction establishes the context for retaining that spelling.
+    return bool(_ALTERNATE_TORQUE_VALUE.search(text) or (
+        _CASELESS_NM_VALUE.search(text) and _TORQUE_WORDING.search(text)
+    ))
+
+
+def _duration_scope(text):
+    # Use timing context for short forms and keep ms distinct from mS.
+    matches = _DURATION_VALUE.finditer(text)
+    first = next(matches, None)
+    return first is not None and (
+        not first["short"] or _DURATION_WORDING.search(text) is not None
+        or any(not match["short"] for match in matches)
+    )
+
+
+def _pressure_scope(text):
+    matches = _PRESSURE_VALUE.finditer(text)
+    first = next(matches, None)
+    return first is not None and (
+        _PRESSURE_WORDING.search(text) is not None
+        or _PRESSURE_UNIT_END.match(text, first.end()) is not None
+        or any(_PRESSURE_UNIT_END.match(text, match.end()) for match in matches)
+    )
+
+
+def _rotation_scope(text):
+    # A turn can be a feature of a route and degrees can describe temperature.
+    # Keep the component, limit, and direction when a rotation is specified.
+    if not _ROTATION_WORDING.search(text):
+        return False
+    return any(
+        _ROTATION_VALUE.search(sentence) and _ROTATION_WORDING.search(sentence)
+        for sentence in _SENTENCES.split(text)
+    )
+
+
+def _spec_scope(text, *, torque_aliases=False, duration_values=False, electrical_values=False,
+                pressure_values=False, temperature_values=False, resistance_values=False,
+                rotation_values=False):
+    return bool(
+        _MEASUREMENT_VALUE.search(text) or _MEASUREMENT_UNITS.search(text)
+        or (torque_aliases and _alternate_torque_scope(text))
+        or (duration_values and _duration_scope(text))
+        or (electrical_values and _ELECTRICAL_VALUE.search(text))
+        or (pressure_values and _pressure_scope(text))
+        or (temperature_values and _TEMPERATURE_VALUE.search(text))
+        or (resistance_values and _RESISTANCE_VALUE.search(text))
+        or (rotation_values and _rotation_scope(text))
+    )
 
 
 # Ordered groups of familiar directives and a few common paraphrases.
@@ -154,6 +312,7 @@ _CLAUSE_PREFIX_TIMING = re.compile(r"^(before|after)\s+([^,;.!?]+),\s+(.+)$", re
 _CLAUSE_TIMING = re.compile(r"\s+(before|after)\s+", re.IGNORECASE)
 _CLAUSE_THEN = re.compile(r"(?:[.,;]\s*|\s+)(?:and\s+)?then[,\s]+", re.IGNORECASE)
 _CLAUSE_PARALLEL = re.compile(r"\s+and\s+|[.;]\s*", re.IGNORECASE)
+_COMMA_AND = re.compile(r",\s*and\s+", re.IGNORECASE)
 _FIRST_MARKER = re.compile(r"^first[,\s]+|,?\s+first$", re.IGNORECASE)
 _NEXT_MARKER = re.compile(r"^next[,\s]+|,?\s+next$", re.IGNORECASE)
 _CLAUSE_GERUNDS = {
@@ -162,7 +321,34 @@ _CLAUSE_GERUNDS = {
     "inspecting": "inspect", "checking": "check",
 }
 _CLAUSE_GERUND = re.compile(r"^(" + "|".join(_CLAUSE_GERUNDS) + r")(?=\s)", re.IGNORECASE)
+_SERVICE_PHASE = r"(?:servicing|(?:the\s+)?service|(?:carrying\s+out|performing)\s+(?:(?:the|any)\s+)?service)"
+_BEFORE_SERVICE = rf"(?:before|ahead\s+of|prior\s+to)\s+{_SERVICE_PHASE}"
+_INSPECT_BRAKE_CONNECTOR = r"(?:inspect|check)\s+(?:the\s+)?brake\s+connector"
+_BRAKE_CONNECTOR_BEFORE_SERVICE = re.compile(
+    rf"{_INSPECT_BRAKE_CONNECTOR}\s+{_BEFORE_SERVICE}|{_BEFORE_SERVICE},\s*{_INSPECT_BRAKE_CONNECTOR}",
+)
+_DISCONNECT_BEFORE_SERVICE = tuple(re.compile(pattern) for pattern in (
+    rf"(?P<disconnect>(?:disconnect|detach)\s+.+?)\s+{_BEFORE_SERVICE}",
+    rf"{_BEFORE_SERVICE},\s*(?P<disconnect>(?:disconnect|detach)\s+.+)",
+    r"(?:carry\s+out|perform)\s+(?:the\s+)?service\s+after\s+"
+    r"(?P<disconnect>(?:disconnecting|detaching)\s+.+)",
+))
+_FROM_ELECTRICAL_SYSTEM = re.compile(r"\s+from\s+(?:the\s+)?electrical\s+system$")
 
+# These selectors describe the literal target of a simple directive.
+_EXCEPTION_SELECTOR = re.compile(
+    r"\s+(except(?:\s+for)?|other\s+than|excluding|including|as\s+well\s+as)\s+", re.IGNORECASE,
+)
+_EXCEPTION_CONDITION = re.compile(r"\bexcept\s+(?:if|when)\b", re.IGNORECASE)
+_EXCEPTION_NOUN = re.compile(
+    r"(?:the\s+|an?\s+)?(" + _TARGET_WORD + r"(?:\s+" + _TARGET_WORD + r"){0,5})", re.IGNORECASE,
+)
+_ALTERNATIVE = re.compile(r"(?:\s*,\s*|\s+)or\s+", re.IGNORECASE)
+_EITHER = re.compile(r"^either\s+|\s+instead$", re.IGNORECASE)
+_SHARED_ALTERNATIVE = re.compile(
+    r"(?P<verb>" + _SIMPLE_ACTION + r")\s+either\s+(?P<first>.+)", re.IGNORECASE,
+)
+_LOGICAL_SEPARATOR = re.compile(r"\s+(and|or)\s+", re.IGNORECASE)
 
 _PART_STATE = {
     "new": "replacement", "replacement": "replacement", "old": "original",
@@ -175,6 +361,17 @@ _PART_QUALIFIER = (
 )
 _PART_TARGET = re.compile(_PART_QUALIFIER, re.IGNORECASE)
 _PART_REMOVAL = re.compile(r"(?:take|lift)\s+" + _PART_QUALIFIER + r"\s+off", re.IGNORECASE)
+_PART_QUALITY = {
+    **_PART_STATE, "damaged": "damaged", "undamaged": "undamaged",
+}
+_DESCRIBED_PART = (
+    r"(?:the|this|that|a|an)\s+(?P<modifiers>(?:" + _TARGET_WORD + r"\s+){0,4})"
+    r"(?P<part>" + _PARTS + r")"
+)
+_DESCRIBED_PART_TARGET = re.compile(_DESCRIBED_PART, re.IGNORECASE)
+_DESCRIBED_PART_REMOVAL = re.compile(
+    r"(?:take|lift)\s+" + _DESCRIBED_PART + r"\s+off", re.IGNORECASE,
+)
 _IMPERATIVE_START = re.compile(
     r"^(?:" + _SIMPLE_ACTION + r"|take|lift)\s", re.IGNORECASE,
 )
@@ -183,12 +380,83 @@ _INSPECTION_FOCUS = re.compile(
     r"\s+for\s+(?:signs\s+of\s+)?(wear|damage|corrosion|leaks?|cracks?)$",
     re.IGNORECASE,
 )
-_GIVEN_CONDITION = re.compile(
-    r"\b(?P<marker>if|when|once|before|after)\s+(?:the\s+)?"
-    r"(?P<subject>" + _TARGET_WORD + r"(?:\s+" + _TARGET_WORD + r"){0,3})\s+"
-    r"(?P<verb>is|are|has|have)\s+(?P<state>dry|dried|cool|cooled|damaged|off|on|closed|open)"
-    r"(?=[,.\s]|$)", re.IGNORECASE,
+_IDENTIFIED_TARGET = r"(?:the\s+)?(?P<target>[a-z0-9./-]+(?:\s+[a-z0-9./-]+){1,5})"
+_INSPECTION_DEFECT = r"wear|damage|corrosion|leaks?|leakage|cracks?|cracking"
+_IDENTIFIED_INSPECTION = re.compile(
+    r"(?:inspect|check)\s+" + _IDENTIFIED_TARGET + r"\s+for\s+"
+    r"(?:(?:signs|indications)\s+of\s+)?(?P<focus>" + _INSPECTION_DEFECT + r")", re.IGNORECASE,
 )
+_INSPECTION_DEFECT_LIST = r"(?P<focus>[a-z,\s]{1,144})"
+_IDENTIFIED_INSPECTION_LIST = re.compile(
+    r"(?:inspect|check)\s+" + _IDENTIFIED_TARGET + r"\s+for\s+" + _INSPECTION_DEFECT_LIST,
+    re.IGNORECASE,
+)
+_IDENTIFIED_INSPECTION_FOCUS_FIRST = re.compile(
+    r"(?:inspect|check)\s+for\s+" + _INSPECTION_DEFECT_LIST + r"\s+(?:on|in)\s+" + _IDENTIFIED_TARGET,
+    re.IGNORECASE,
+)
+_DEFECT_TERM = re.compile(r"(?:(?:signs|indications|evidence)\s+of\s+)?(" + _INSPECTION_DEFECT + r")")
+_DEFECT_SEPARATOR = re.compile(r"(\s*,\s*(?:(?:and|or)\s+)?|\s+(?:and|or)\s+)")
+_INSPECTION_MARKER = re.compile(r"\b(?:inspect|check)\b", re.IGNORECASE)
+_COMPONENT_DESCRIPTOR = re.compile(_TARGET_WORD, re.IGNORECASE)
+_COMPONENT_ID = re.compile(full._IDENTIFIER)
+_INSPECTION_FOCUS_ALIASES = {
+    "leaks": "leak", "leakage": "leak", "cracks": "crack", "cracking": "crack",
+}
+_CONDITION_STATE = r"dry|dried|cool|cooled|damaged|off|on|closed|open"
+_CONDITION_PREDICATE = (
+    r"(?:the\s+)?(?P<subject>" + _TARGET_WORD + r"(?:\s+" + _TARGET_WORD + r"){0,3})\s+"
+    r"(?P<verb>is|are|has|have)\s+(?P<state>" + _CONDITION_STATE + r")(?=[,.\s]|$)"
+)
+_GIVEN_CONDITION = re.compile(
+    r"\b(?P<marker>if|when|once|before|after)\s+" + _CONDITION_PREDICATE, re.IGNORECASE,
+)
+# A short power or surface condition can be expressed as "while X is off"
+# or "with X off". The delimiter bounds the state to the qualifier.
+_SIMULTANEOUS_MARKER = r"\b(?:(?P<while>while)|with)\s+"
+_SIMULTANEOUS_SUBJECT = (
+    r"(?:the\s+)?"
+    r"(?P<subject>" + _TARGET_WORD + r"(?:\s+" + _TARGET_WORD + r"){0,3}?)\s+"
+    r"(?P<copula>(?:is|are)\s+)?"
+)
+_SIMULTANEOUS_STATE = r"(?P<power>(?:(?:switched|turned)\s+)?(?:off|on))|(?P<surface>dry|wet)"
+_SIMULTANEOUS_PREDICATE = _SIMULTANEOUS_SUBJECT + r"(?:" + _SIMULTANEOUS_STATE + r")"
+_SIMULTANEOUS_END = r"(?=\s*(?:,|$))"
+_SIMULTANEOUS_CONDITION = re.compile(
+    _SIMULTANEOUS_MARKER + _SIMULTANEOUS_PREDICATE + _SIMULTANEOUS_END, re.IGNORECASE,
+)
+_SIMULTANEOUS_CONJUNCTION = re.compile(
+    _SIMULTANEOUS_MARKER + _SIMULTANEOUS_PREDICATE + r"(?=\s+and\s+)", re.IGNORECASE,
+)
+_SIMULTANEOUS_CONJUNCT = re.compile(
+    r"\s+and\s+" + _SIMULTANEOUS_PREDICATE + _SIMULTANEOUS_END, re.IGNORECASE,
+)
+_PRESSURE_STATE = r"(?:de)?pressuri[sz]ed"
+_PRESSURE_STATE_MARKER = re.compile(r"\b" + _PRESSURE_STATE + r"\b", re.IGNORECASE)
+_PRESSURE_SIMULTANEOUS = (
+    _SIMULTANEOUS_SUBJECT + r"(?:" + _SIMULTANEOUS_STATE + r"|(?P<pressure>" + _PRESSURE_STATE + r"))"
+)
+_PRESSURE_SIMULTANEOUS_CONDITION = re.compile(_SIMULTANEOUS_MARKER + _PRESSURE_SIMULTANEOUS + _SIMULTANEOUS_END)
+_PRESSURE_SIMULTANEOUS_CONJUNCTION = re.compile(_SIMULTANEOUS_MARKER + _PRESSURE_SIMULTANEOUS + r"(?=\s+and\s+)")
+_PRESSURE_SIMULTANEOUS_CONJUNCT = re.compile(r"\s+and\s+" + _PRESSURE_SIMULTANEOUS + _SIMULTANEOUS_END)
+_PRESSURE_TEMPORAL_CONDITION = re.compile(
+    r"\b(?P<marker>if|when|once|before|after)\s+" + _SIMULTANEOUS_SUBJECT
+    + r"(?P<pressure>" + _PRESSURE_STATE + r")" + _SIMULTANEOUS_END,
+)
+_PRESSURE_OPEN_CLOSE = re.compile(r"(?P<verb>open|close)\s+" + _SIMPLE_TARGET)
+_PRESSURE_RELEASE_MARKER = re.compile(r"\b(?:depressuri[sz](?:e|ing)|pressure)\b", re.IGNORECASE)
+_PRESSURE_RELEASE_DIRECTIVE = re.compile(
+    r"(?:depressuri[sz](?:e|ing)\s+|"
+    r"(?:(?:releas(?:e|ing)|reliev(?:e|ing))\s+(?:the\s+)?pressure|"
+    r"(?:the\s+)?pressure\s+has\s+been\s+(?:released|relieved))\s+(?:from|in)\s+)"
+    + _SIMPLE_TARGET, re.IGNORECASE,
+)
+_PRESSURE_ORDER_OPEN = re.compile(r"open(?:ing)?\s+" + _SIMPLE_TARGET, re.IGNORECASE)
+_PRESSURE_ORDER_PREFIX = re.compile(r"^(before|after|once)\s+([^,;.!?]+),\s+(.+)$", re.IGNORECASE)
+_PRESSURE_ORDER_TIMING = re.compile(r"\s+(before|after|once)\s+", re.IGNORECASE)
+_WHILE_MARKER = re.compile(r"\bwhile\b", re.IGNORECASE)
+_CONTINUED_PREDICATE = re.compile(_CONDITION_PREDICATE, re.IGNORECASE)
+_CONTINUED_STATE = re.compile(r"(" + _CONDITION_STATE + r")(?=[,.\s]|$)", re.IGNORECASE)
 _SWITCH_IGNITION = re.compile(r"\b(before|after|once)\s+switching\s+(?:the\s+)?ignition\s+(on|off)\b", re.IGNORECASE)
 _OPTIONAL_TASK = re.compile(r"\bif\s+(?:desired|wanted)\b", re.IGNORECASE)
 _TASK_APPLICABILITY = re.compile(
@@ -197,6 +465,166 @@ _TASK_APPLICABILITY = re.compile(
 )
 _TOOL_LIST = r"(?:pry bar|heat gun|screwdriver|pliers|ratchet|socket wrench|torque wrench|puller)"
 _TASK_TOOL = re.compile(r"\b(?:with|using)\s+(?:(?:the|a|an|some)\s+)?(" + _TOOL_LIST + r")(?=[,.\s]|$)", re.IGNORECASE)
+_TERMINAL_POLARITY = {
+    "negative": "negative", "minus": "negative", "positive": "positive", "plus": "positive",
+}
+_TERMINAL_POLARITY_WORD = r"(?P<polarity>" + "|".join(_TERMINAL_POLARITY) + r")"
+_BATTERY_TERMINAL_TARGETS = tuple(re.compile(pattern) for pattern in (
+    r"(?:the\s+)?" + _TERMINAL_POLARITY_WORD + r"\s+battery\s+terminal",
+    r"(?:the\s+)?battery['’]s\s+" + _TERMINAL_POLARITY_WORD + r"\s+terminal",
+    r"(?:the\s+)?" + _TERMINAL_POLARITY_WORD + r"\s+terminal\s+(?P<relation>from|on|of|to)\s+(?:the\s+)?battery",
+    r"(?:the\s+)?battery\s+at\s+(?:(?:the|its)\s+)?" + _TERMINAL_POLARITY_WORD + r"\s+terminal",
+))
+_VEHICLE_LIFT = r"(?:raise|lift)"
+_VEHICLE_TARGET = r"(?:the\s+)?vehicle"
+_VEHICLE_OR_IT = rf"(?:{_VEHICLE_TARGET}|it)"
+_VEHICLE_SUPPORT = r"(?:securely\s+)?support"
+_SUPPORT_MANNER = r"(?:\s+securely)?"
+_VEHICLE_LIFT_COMPLETED = r"has\s+been\s+(?:raised|lifted)"
+_VEHICLE_LIFT_AND_SUPPORT = tuple(re.compile(pattern) for pattern in (
+    rf"{_VEHICLE_LIFT}\s+and\s+{_VEHICLE_SUPPORT}\s+{_VEHICLE_TARGET}{_SUPPORT_MANNER}",
+    rf"{_VEHICLE_LIFT}\s+{_VEHICLE_TARGET}(?:,?\s+then|,?\s+and(?:\s+then)?|[.;]\s*then)\s+"
+    rf"{_VEHICLE_SUPPORT}\s+{_VEHICLE_OR_IT}{_SUPPORT_MANNER}",
+    rf"(?:after\s+(?:raising|lifting)\s+{_VEHICLE_TARGET}|"
+    rf"(?:after|once)\s+{_VEHICLE_TARGET}\s+{_VEHICLE_LIFT_COMPLETED}),\s+"
+    rf"{_VEHICLE_SUPPORT}\s+{_VEHICLE_OR_IT}{_SUPPORT_MANNER}",
+    rf"{_VEHICLE_SUPPORT}\s+{_VEHICLE_TARGET}{_SUPPORT_MANNER}\s+"
+    rf"(?:after\s+(?:raising|lifting)\s+{_VEHICLE_OR_IT}|"
+    rf"(?:after|once)\s+{_VEHICLE_OR_IT}\s+{_VEHICLE_LIFT_COMPLETED})",
+))
+_BRAKE_SYSTEM = r"(?:the\s+)?brake\s+system"
+_BLEED_BRAKES = (
+    rf"(?:bleed\s+(?:the\s+)?(?:brake\s+system|brakes)|purge\s+air\s+from\s+{_BRAKE_SYSTEM})"
+)
+_BRAKE_LEAK_CHECK = (
+    rf"(?:check|inspect)\s+(?:(?:{_BRAKE_SYSTEM}|it|the\s+system)\s+)?for\s+"
+    r"(?:(?:any\s+)?(?:signs?|evidence)\s+of\s+)?(?:leaks?|leakage)"
+)
+_BRAKE_BLEED_AND_CHECK = re.compile(rf"{_BLEED_BRAKES}\s+and\s+{_BRAKE_LEAK_CHECK}")
+_BRAKE_BLEED_THEN_CHECK = re.compile(
+    rf"{_BLEED_BRAKES}(?:,?\s+(?:and\s+)?then|[.;]\s*then)\s+{_BRAKE_LEAK_CHECK}"
+    rf"|after\s+(?:bleeding\s+(?:the\s+)?(?:brake\s+system|brakes)|"
+    rf"purging\s+air\s+from\s+{_BRAKE_SYSTEM}),\s+{_BRAKE_LEAK_CHECK}",
+)
+_WIRING_HARNESS_PLUG = r"(?:the\s+)?(?:wiring\s+harness\s+plug|plug\s+on\s+(?:the\s+)?wiring\s+harness)"
+_FIRM_HARNESS_PULL = re.compile(
+    rf"firmly\s+pull\s+(?:on\s+)?{_WIRING_HARNESS_PLUG}"
+    rf"|pull\s+(?:on\s+)?{_WIRING_HARNESS_PLUG}\s+firmly"
+    rf"|give\s+{_WIRING_HARNESS_PLUG}\s+a\s+firm\s+pull",
+)
+_PULL_FORCE_AMOUNT = rf"{full._NUMBER}\s*(?:n|newtons?)"
+_PULL_FORCE_COMPARISON = r"(?P<bound>no\s+more\s+than|at\s+most|no\s+less\s+than|at\s+least)"
+_PULL_FORCE_BOUNDS = {
+    "maximum": "maximum", "no more than": "maximum", "at most": "maximum",
+    "minimum": "minimum", "no less than": "minimum", "at least": "minimum",
+}
+_HARNESS_PULL_FORCE_LIMITS = tuple(re.compile(pattern) for pattern in (
+    rf"pull\s+{_WIRING_HARNESS_PLUG}\s+with\s+(?:a\s+)?(?P<bound>maximum|minimum)\s+force\s+of\s+{_PULL_FORCE_AMOUNT}",
+    rf"use\s+(?:a\s+)?force\s+of\s+{_PULL_FORCE_COMPARISON}\s+{_PULL_FORCE_AMOUNT}\s+to\s+pull\s+{_WIRING_HARNESS_PLUG}",
+    rf"apply\s+{_PULL_FORCE_COMPARISON}\s+{_PULL_FORCE_AMOUNT}\s+of\s+force\s+when\s+pulling\s+{_WIRING_HARNESS_PLUG}",
+    rf"when\s+pulling\s+{_WIRING_HARNESS_PLUG},\s*limit\s+(?:the\s+)?(?:applied\s+)?force\s+to\s+{_PULL_FORCE_AMOUNT}",
+))
+_HARNESS_PULL_SEPARATOR = re.compile(r"[.;]\s*(?:then\s+)?|,?\s+(?:and\s+)?then\s+")
+_ALIGNMENT_COMPONENT = rf"{_TARGET_WORD}(?:\s+{_TARGET_WORD}){{0,3}}"
+_ALIGNMENT_CHECK = r"(?:check(?:ing)?|inspect(?:ing)?)\s+(?:the\s+)?"
+_ALIGNMENT_MARK_INSPECTION = re.compile(
+    rf"{_ALIGNMENT_CHECK}(?:(?P<component>{_ALIGNMENT_COMPONENT})\s+)?alignment\s+marks",
+)
+_ALIGNMENT_FOCUSED_INSPECTION = re.compile(
+    rf"{_ALIGNMENT_CHECK}marks\s+for\s+(?:the\s+)?(?P<component>{_ALIGNMENT_COMPONENT})\s+alignment",
+)
+_ALIGNMENT_NOMINAL_REMOVAL = re.compile(
+    rf"(?:(?:the\s+)?(?P<component>{_ALIGNMENT_COMPONENT})\s+)?removal",
+)
+_ALIGNMENT_REMOVAL_GERUNDS = {"removing": "remove", "taking": "take", "lifting": "lift"}
+_ALIGNMENT_REMOVAL_GERUND = re.compile(r"^(removing|taking|lifting)\b")
+_PUMP_DRAIN = re.compile(
+    r"(?:drain\s+(?:the\s+)?fluid\s+(?:from|out\s+of)"
+    r"|(?:let\s+(?:the\s+)?fluid|allow\s+(?:the\s+)?fluid\s+to)\s+drain\s+(?:from|out\s+of)"
+    r"|drain|empty(?:\s+out)?)\s+"
+    + _SIMPLE_TARGET,
+)
+_FITTING_CLEANING = r"(?:clean\s+(?:the\s+)?fittings|wipe\s+(?:the\s+)?fittings\s+clean)"
+_FITTING_INSTALLATION = (
+    r"(?:before\s+(?:installation|(?:fitting|installing)\s+(?:the\s+)?replacement)"
+    r"|prior\s+to\s+installation)"
+)
+_LINE_FITTING_SOURCE = re.compile(
+    rf"(?P<removal>.+?)\s+and\s+{_FITTING_CLEANING}\s+{_FITTING_INSTALLATION}",
+)
+_FITTINGS_CLEAN = re.compile(_FITTING_CLEANING)
+_FITTING_INSTALLATION_PREFIX = re.compile(rf"^{_FITTING_INSTALLATION},\s*")
+_TIMED_FITTING_CLEANING = re.compile(
+    rf"{_FITTING_CLEANING}\s+{_FITTING_INSTALLATION}|{_FITTING_INSTALLATION},\s*{_FITTING_CLEANING}",
+)
+_STRAINER_CLEANING = re.compile(r"clean\s+(?:the\s+)?strainer")
+_BEFORE_PUMP_RELEASE = r"(?:before|ahead\s+of)\s+releasing\s+(?:the\s+)?pump\s+body"
+_OIL_PUMP_PREPARATION = re.compile(
+    rf"(?P<removal>.+?)\s+and\s+{_STRAINER_CLEANING.pattern}\s+{_BEFORE_PUMP_RELEASE}",
+)
+_PUMP_RELEASE_PREFIX = re.compile(rf"^{_BEFORE_PUMP_RELEASE},\s*")
+_TIMED_STRAINER_CLEANING = re.compile(
+    rf"{_STRAINER_CLEANING.pattern}\s+{_BEFORE_PUMP_RELEASE}"
+    rf"|{_BEFORE_PUMP_RELEASE},\s*{_STRAINER_CLEANING.pattern}",
+)
+_REQUIRED_TASK_SEPARATOR = re.compile(r"[.;]\s*(?:then\s+)?|,?\s+and(?:\s+then)?\s+|,?\s+then\s+")
+_COMBINED_PREPARATION_SEPARATOR = re.compile(
+    r"[.,;]\s*(?:(?:and\s+)?then\s+|next[,\s]+|and\s+)?|\s+(?:and(?:\s+then)?|then)\s+",
+)
+_TWO_REPLACEMENT_COMPONENTS = r"(?:both|the\s+two)\s+components"
+_BEFORE_TWO_REPLACEMENTS = rf"(?:before|ahead\s+of)\s+replacing\s+{_TWO_REPLACEMENT_COMPONENTS}"
+_PRE_REPLACEMENT_INSPECTION = tuple(re.compile(pattern) for pattern in (
+    rf"(?P<inspection>.+?)\s+{_BEFORE_TWO_REPLACEMENTS}",
+    rf"{_BEFORE_TWO_REPLACEMENTS},\s*(?P<inspection>.+)",
+    rf"replace\s+{_TWO_REPLACEMENT_COMPONENTS}\s+after\s+(?P<inspection>(?:checking|inspecting)\s+.+)",
+))
+_BRAKE_LINES = r"(?:the\s+)?brake\s+lines"
+_REPLACEMENT_NECESSITY = r"(?:needed|required|necessary)"
+_CONDITIONAL_BRAKE_LINE_REPLACEMENT = re.compile(
+    rf"(?:(?:visually\s+(?:inspect|check)|look\s+over)\s+{_BRAKE_LINES}"
+    rf"|(?:inspect|check)\s+{_BRAKE_LINES}\s+(?:visually|by\s+sight)"
+    rf"|give\s+{_BRAKE_LINES}\s+a\s+visual\s+(?:check|inspection))"
+    rf"(?:{_REQUIRED_TASK_SEPARATOR.pattern})"
+    rf"(?:replace|renew)\s+(?:(?:(?:them|{_BRAKE_LINES})\s+)?"
+    rf"(?:(?:as|if)\s+{_REPLACEMENT_NECESSITY}"
+    rf"|if\s+(?:the\s+)?inspection\s+(?:shows|indicates)\s+replacement\s+is\s+{_REPLACEMENT_NECESSITY})"
+    r"|any\s+that\s+(?:need|require)\s+(?:replacing|replacement))",
+)
+_TERMINAL_REFERENCE = r"(?:the\s+)?(?P<terminal>terminal(?:\s+[a-z0-9./-]+)?|[a-z0-9./-]+\s+terminal)"
+_CONDITIONAL_TERMINAL_REPLACEMENTS = tuple(re.compile(pattern) for pattern in (
+    rf"(?:replace|renew)\s+{_TERMINAL_REFERENCE}\s+if\s+"
+    r"(?:(?:(?:it|the\s+terminal)\s+is\s+)?damaged|it\s+shows\s+damage|damage\s+is\s+present)",
+    rf"if\s+{_TERMINAL_REFERENCE}\s+is\s+damaged,\s*(?:replace|renew)\s+it",
+))
+_EYE_PROTECTION = r"(?:the\s+)?(?:eye\s+protection|protective\s+eyewear)"
+_WEAR_EYE_PROTECTION = rf"(?:wear|put\s+on|don)\s+{_EYE_PROTECTION}"
+_START_TARGET = rf"(?:\s+{_SIMPLE_TARGET})?"
+_BEFORE_STARTING = rf"(?:before|ahead\s+of)\s+(?:starting|(?:you\s+)?start){_START_TARGET}"
+_PRESTART_EYE_PROTECTION = tuple(re.compile(pattern) for pattern in (
+    rf"{_WEAR_EYE_PROTECTION}\s+{_BEFORE_STARTING}",
+    rf"{_BEFORE_STARTING},\s*{_WEAR_EYE_PROTECTION}",
+    rf"before\s+{_SIMPLE_TARGET}\s+starts,\s*{_WEAR_EYE_PROTECTION}",
+    rf"start{_START_TARGET}\s+after\s+(?:putting\s+on|donning)\s+{_EYE_PROTECTION}",
+))
+_CRISSCROSS_PATTERN = (
+    r"(?:a|an)\s+(?:criss[-\s]?cross|cross(?:wise)?|alternating\s+diagonal)\s+(?:pattern|sequence|order)"
+)
+_HAND_TIGHTENING = r"(?:hand[-\s]+tighten|(?:by\s+hand|using\s+your\s+hands),\s*tighten)"
+_CRISSCROSS_TIGHTENING = rf"use\s+{_CRISSCROSS_PATTERN}\s+(?:to\s+tighten|when\s+tightening)"
+_TIGHTENED_FASTENERS = frozenset("bolt bolts fastener fasteners nut nuts screw screws stud studs".split())
+_TIGHTENING_METHODS = tuple((method, re.compile(pattern)) for method, pattern in (
+    ("hand", rf"tighten\s+{_SIMPLE_TARGET}\s+by\s+hand"),
+    ("hand", rf"{_HAND_TIGHTENING}\s+{_SIMPLE_TARGET}"),
+    ("crisscross", rf"tighten\s+{_SIMPLE_TARGET}\s+in\s+{_CRISSCROSS_PATTERN}"),
+    ("crisscross", rf"{_CRISSCROSS_TIGHTENING}\s+{_SIMPLE_TARGET}"),
+))
+_TIGHTENING_METHODS_V39 = _TIGHTENING_METHODS + tuple(("hand and crisscross", re.compile(pattern)) for pattern in (
+    rf"tighten\s+{_SIMPLE_TARGET}\s+(?:by\s+hand\s+in\s+{_CRISSCROSS_PATTERN}"
+    rf"|in\s+{_CRISSCROSS_PATTERN}\s+by\s+hand)",
+    rf"{_HAND_TIGHTENING}\s+{_SIMPLE_TARGET}\s+in\s+{_CRISSCROSS_PATTERN}",
+    rf"{_CRISSCROSS_TIGHTENING}\s+{_SIMPLE_TARGET}\s+by\s+hand",
+    rf"in\s+{_CRISSCROSS_PATTERN},\s*{_HAND_TIGHTENING}\s+{_SIMPLE_TARGET}",
+))
 _STATE_GRAMMAR = {
     "is": frozenset({"dry", "cool", "damaged", "off", "on", "closed", "open"}),
     "has": frozenset({"dried", "cooled"}),
@@ -205,6 +633,7 @@ _QUALIFIER_MARKER = re.compile(
     r"\b(if|when|once|before|after|wear|damage|corrosion|leaks?|cracks?|"
     r"new|replacement|old|original|used|existing|with|using)\b", re.IGNORECASE,
 )
+_PART_QUALITY_MARKER = re.compile(r"\b(?:damaged|undamaged)\b", re.IGNORECASE)
 
 
 _INTRO_RISK_CLAIM = re.compile(
@@ -228,8 +657,8 @@ def _technical_only(text):
     return not any(char.isalpha() for char in full._TOKENS.sub("", text))
 
 
-def _build_auto_prompt_v1(document, *, context):
-    payload = json.loads(full.build_full_prompt(document, context=context))
+def _build_auto_prompt_v1(document, *, context, include_cell_blocks=False):
+    payload = json.loads(full.build_full_prompt(document, context=context, include_cell_blocks=include_cell_blocks))
     payload.update(profile_version=PROFILE, prompt_version="full-prose-auto-prompt-v1")
     payload["rules"] = [rule for rule in payload["rules"] if "human" not in rule.lower()
         and not rule.startswith("Preserve ambiguous numeric notation")
@@ -242,8 +671,8 @@ def _build_auto_prompt_v1(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def _build_auto_prompt_v2(document, *, context):
-    payload = json.loads(_build_auto_prompt_v1(document, context=context))
+def _build_auto_prompt_v2(document, *, context, include_cell_blocks=False):
+    payload = json.loads(_build_auto_prompt_v1(document, context=context, include_cell_blocks=include_cell_blocks))
     payload["prompt_version"] = "full-prose-auto-prompt-v2"
     payload["response_shape"] = {"introduction": "string", "replacements": [
         {"block_id": "string", "path": "string", "action": "rewrite|retain", "text": "string", "reason": "string"}]}
@@ -258,8 +687,8 @@ def _build_auto_prompt_v2(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def _build_auto_prompt_v4(document, *, context):
-    payload = json.loads(_build_auto_prompt_v2(document, context=context))
+def _build_auto_prompt_v4(document, *, context, include_cell_blocks=False):
+    payload = json.loads(_build_auto_prompt_v2(document, context=context, include_cell_blocks=include_cell_blocks))
     if payload["slots"]:
         payload["prompt_version"] = _PROSE_PROMPT_V4
         for slot in payload["slots"]:
@@ -299,8 +728,8 @@ def _build_auto_prompt_v4(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def _build_auto_prompt_v5(document, *, context):
-    previous = _build_auto_prompt_v4(document, context=context)
+def _build_auto_prompt_v5(document, *, context, include_cell_blocks=False):
+    previous = _build_auto_prompt_v4(document, context=context, include_cell_blocks=include_cell_blocks)
     payload = json.loads(previous)
     if not payload["slots"]:
         return previous
@@ -318,8 +747,8 @@ def _build_auto_prompt_v5(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def _auto_prompt_payload_v6(document, *, context):
-    previous = _build_auto_prompt_v5(document, context=context)
+def _auto_prompt_payload_v6(document, *, context, include_cell_blocks=False):
+    previous = _build_auto_prompt_v5(document, context=context, include_cell_blocks=include_cell_blocks)
     payload = json.loads(previous)
     if not payload["slots"]:
         return payload
@@ -340,8 +769,8 @@ def _build_auto_prompt_v6(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def _auto_prompt_payload_v7(document, *, context):
-    payload = _auto_prompt_payload_v6(document, context=context)
+def _auto_prompt_payload_v7(document, *, context, include_cell_blocks=False):
+    payload = _auto_prompt_payload_v6(document, context=context, include_cell_blocks=include_cell_blocks)
     if payload["slots"]:
         payload["prompt_version"] = _PROSE_PROMPT_V7
         payload["rules"].append(
@@ -356,8 +785,8 @@ def _build_auto_prompt_v7(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def _auto_prompt_payload_v8(document, *, context):
-    payload = _auto_prompt_payload_v7(document, context=context)
+def _auto_prompt_payload_v8(document, *, context, include_cell_blocks=False):
+    payload = _auto_prompt_payload_v7(document, context=context, include_cell_blocks=include_cell_blocks)
     if payload["slots"]:
         payload["prompt_version"] = _PROSE_PROMPT_V8
         payload["rules"].append(
@@ -372,21 +801,669 @@ def _build_auto_prompt_v8(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def build_auto_prompt(document, *, context):
-    payload = _auto_prompt_payload_v8(document, context=context)
+def _auto_prompt_payload_v9(document, *, context, include_cell_blocks=False):
+    payload = _auto_prompt_payload_v8(document, context=context, include_cell_blocks=include_cell_blocks)
     if payload["slots"]:
-        payload["prompt_version"] = _PROSE_PROMPT_VERSION
+        payload["prompt_version"] = _PROSE_PROMPT_V9
         payload["rules"].append(
             "Keep the original conditions, vehicle applicability, component state, specified tool, "
             "and scope of inspection. Do not add qualifiers unsupported by the original slot."
+        )
+    return payload
+
+
+def _build_auto_prompt_v9(document, *, context):
+    payload = _auto_prompt_payload_v9(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def _auto_prompt_payload_v10(document, *, context, include_cell_blocks=False):
+    payload = _auto_prompt_payload_v9(document, context=context, include_cell_blocks=include_cell_blocks)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_V10
+        for slot in payload["slots"]:
+            if _EXCEPTION_CONDITION.search(slot["text"]):
+                slot["required_action"] = "retain"
+        payload["rules"].append(
+            "Keep each exception with its original task and excluded component. Preserve whether "
+            "paired directives are alternatives or both required, and whether conditions require "
+            "all or any of their predicates. Keep each state with its original component."
+        )
+    return payload
+
+
+def _build_auto_prompt_v10(document, *, context):
+    payload = _auto_prompt_payload_v10(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def _auto_prompt_payload_v11(document, *, context):
+    payload = _auto_prompt_payload_v10(document, context=context, include_cell_blocks=True)
+    if any("/rows/" in slot["path"] for slot in payload["slots"]):
+        payload["prompt_version"] = _CELL_PROSE_PROMPT_V11
+        payload["rules"] = [
+            "Rewrite only specified prose slots, including specified blocks inside cells. Preserve "
+            "table labels, scalar values, media, evidence, and all structure."
+            if rule.startswith("Do not supply structure or change headings, tables,")
+            else rule
+            for rule in payload["rules"]
+        ]
+    return payload
+
+
+def _build_auto_prompt_v11(document, *, context):
+    payload = _auto_prompt_payload_v11(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def _auto_prompt_payload_v12(document, *, context):
+    payload = _auto_prompt_payload_v11(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_V12
+        payload["rules"].append(
+            "Keep any state required while performing an instruction, such as the ignition being "
+            "off or a surface being dry. Preserve the condition's subject and state. A condition "
+            "that must hold during the task must not become an earlier step."
+        )
+    return payload
+
+
+def _build_auto_prompt_v12(document, *, context):
+    payload = _auto_prompt_payload_v12(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def _auto_prompt_payload_v13(document, *, context):
+    payload = _auto_prompt_payload_v12(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_V13
+        payload["rules"].append(
+            "When inspecting an identified component, keep its exact identifier and what the "
+            "inspection checks for with that component."
+        )
+    return payload
+
+
+def _build_auto_prompt_v13(document, *, context):
+    payload = _auto_prompt_payload_v13(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def _auto_prompt_payload_v14(document, *, context):
+    payload = _auto_prompt_payload_v13(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_V14
+        payload["rules"].append(
+            "If an inspection names several defects on an identified component, keep every "
+            "defect and preserve whether the source joins them with and or with or."
+        )
+    return payload
+
+
+def _build_auto_prompt_v14(document, *, context):
+    payload = _auto_prompt_payload_v14(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def _auto_prompt_payload_v15(document, *, context):
+    payload = _auto_prompt_payload_v14(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_V15
+        payload["rules"].append(
+            "Keep each source alternative with its original action and component. You may "
+            "reorder the alternatives and rephrase how they are offered. Keep every option as a choice."
+        )
+    return payload
+
+
+def _build_auto_prompt_v15(document, *, context):
+    payload = _auto_prompt_payload_v15(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def _auto_prompt_payload_v16(document, *, context):
+    payload = _auto_prompt_payload_v15(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_V16
+        payload["rules"].append(
+            "When the source specifies which instruction must happen first, preserve that "
+            "order. Use before, after, then, or consecutive instructions in the original "
+            "execution order. Keep a sequence explicit when joining the instructions."
+        )
+    return payload
+
+
+def _build_auto_prompt_v16(document, *, context):
+    payload = _auto_prompt_payload_v16(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def _auto_prompt_payload_v17(document, *, context):
+    payload = _auto_prompt_payload_v16(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_V17
+        for slot in payload["slots"]:
+            if slot["required_action"] == "rewrite" and _alternate_torque_scope(slot["text"]):
+                slot["required_action"] = "retain"
+        payload["rules"].append(
+            "Keep the complete wording of torque specifications marked retain, including "
+            "component names, units, limits, and any alternate spelling of the torque unit."
+        )
+    return payload
+
+
+def _build_auto_prompt_v17(document, *, context):
+    payload = _auto_prompt_payload_v17(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def _auto_prompt_payload_v18(document, *, context):
+    payload = _auto_prompt_payload_v17(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_V18
+        for slot in payload["slots"]:
+            if slot["required_action"] == "rewrite" and _duration_scope(slot["text"]):
+                slot["required_action"] = "retain"
+        payload["rules"].append(
+            "Keep the complete wording of measured durations marked retain, including the original "
+            "action or component associated with each value and any limits on the duration."
+        )
+    return payload
+
+
+def _build_auto_prompt_v18(document, *, context):
+    payload = _auto_prompt_payload_v18(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def _auto_prompt_payload_v19(document, *, context):
+    payload = _auto_prompt_payload_v18(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_V19
+        for slot in payload["slots"]:
+            if slot["required_action"] == "rewrite" and _ELECTRICAL_VALUE.search(slot["text"]):
+                slot["required_action"] = "retain"
+        payload["rules"].append(
+            "Keep the complete wording of voltage and current specifications marked retain, "
+            "including electrical mode, limits, and the original circuit or pin for each value."
+        )
+    return payload
+
+
+def _build_auto_prompt_v19(document, *, context):
+    payload = _auto_prompt_payload_v19(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def _auto_prompt_payload_v20(document, *, context):
+    payload = _auto_prompt_payload_v19(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_V20
+        for slot in payload["slots"]:
+            if slot["required_action"] == "rewrite" and _pressure_scope(slot["text"]):
+                slot["required_action"] = "retain"
+        payload["rules"].append(
+            "Keep the complete wording of pressure specifications marked retain, including limits, "
+            "gauge or absolute units, and the original port, line or component for each value."
+        )
+    return payload
+
+
+def _build_auto_prompt_v20(document, *, context):
+    payload = _auto_prompt_payload_v20(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def _auto_prompt_payload_v21(document, *, context):
+    payload = _auto_prompt_payload_v20(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_V21
+        for slot in payload["slots"]:
+            if slot["required_action"] == "rewrite" and _TEMPERATURE_VALUE.search(slot["text"]):
+                slot["required_action"] = "retain"
+        payload["rules"].append(
+            "Keep the complete wording of temperature specifications marked retain, including "
+            "the original scale, range or limit, and the component or sensor for each value."
+        )
+    return payload
+
+
+def _build_auto_prompt_v21(document, *, context):
+    payload = _auto_prompt_payload_v21(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def _auto_prompt_payload_v22(document, *, context):
+    payload = _auto_prompt_payload_v21(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_V22
+        for slot in payload["slots"]:
+            if slot["required_action"] == "rewrite" and _RESISTANCE_VALUE.search(slot["text"]):
+                slot["required_action"] = "retain"
+        payload["rules"].append(
+            "Keep the complete wording of resistance specifications marked retain, including "
+            "the original unit prefix, range or limit, and winding, circuit or component."
+        )
+    return payload
+
+
+def _build_auto_prompt_v22(document, *, context):
+    payload = _auto_prompt_payload_v22(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def _auto_prompt_payload_v23(document, *, context):
+    payload = _auto_prompt_payload_v22(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_V23
+        payload["rules"].append(
+            "Keep every action and its own component in an ordered instruction. If the same "
+            "verb applies to two different components, both actions must remain in the rewrite."
+        )
+    return payload
+
+
+def _build_auto_prompt_v23(document, *, context):
+    payload = _auto_prompt_payload_v23(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def _auto_prompt_payload_v24(document, *, context):
+    payload = _auto_prompt_payload_v23(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_V24
+        for slot in payload["slots"]:
+            if slot["required_action"] == "rewrite" and _CLEARANCE_WARNING.search(slot["text"]):
+                slot["required_action"] = "retain"
+        payload["rules"].append(
+            "Preserve the full original wording of clearance warnings marked retain, including "
+            "what must stay clear and the object it must stay away from."
+        )
+    return payload
+
+
+def _build_auto_prompt_v24(document, *, context):
+    payload = _auto_prompt_payload_v24(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def _auto_prompt_payload_v25(document, *, context):
+    payload = _auto_prompt_payload_v24(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_V25
+        for slot in payload["slots"]:
+            if slot["required_action"] == "rewrite" and _rotation_scope(slot["text"]):
+                slot["required_action"] = "retain"
+        payload["rules"].append(
+            "Keep the complete wording of measured rotation specifications marked retain, "
+            "including the original component, direction, amount, and any limit."
+        )
+    return payload
+
+
+def _build_auto_prompt_v25(document, *, context):
+    payload = _auto_prompt_payload_v25(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def _auto_prompt_payload_v26(document, *, context):
+    payload = _auto_prompt_payload_v25(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_V26
+        payload["rules"].append(
+            "If an instruction requires two simultaneous states, keep both states, the original "
+            "subjects, and the action they qualify. Both conditions must still hold."
+        )
+    return payload
+
+
+def _build_auto_prompt_v26(document, *, context):
+    payload = _auto_prompt_payload_v26(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def _auto_prompt_payload_v27(document, *, context):
+    payload = _auto_prompt_payload_v26(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_V27
+        payload["rules"].append(
+            "Keep explicit pressurized or depressurized prerequisites attached to the original "
+            "system and action. Preserve whether the state is required before, after, or during the action."
+        )
+    return payload
+
+
+def _build_auto_prompt_v27(document, *, context):
+    payload = _auto_prompt_payload_v27(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def _auto_prompt_payload_v28(document, *, context):
+    payload = _auto_prompt_payload_v27(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_V28
+        payload["rules"].append(
+            "When an instruction explicitly orders pressure release and opening, keep both actions, "
+            "their original targets, and the explicit order. A bare conjunction does not express precedence."
+        )
+    return payload
+
+
+def _build_auto_prompt_v28(document, *, context):
+    payload = _auto_prompt_payload_v28(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def _auto_prompt_payload_v29(document, *, context):
+    payload = _auto_prompt_payload_v28(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_V29
+        payload["rules"].append(
+            "Keep explicit polarity and the original action in battery-terminal instructions. "
+            "Do not substitute the other terminal or omit its polarity."
+        )
+    return payload
+
+
+def _build_auto_prompt_v29(document, *, context):
+    payload = _auto_prompt_payload_v29(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def _auto_prompt_payload_v30(document, *, context):
+    payload = _auto_prompt_payload_v29(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_V30
+        payload["rules"].append(
+            "Preserve both raising and supporting the same vehicle when both are required. "
+            "Raising alone does not satisfy the instruction to support it."
+        )
+    return payload
+
+
+def _build_auto_prompt_v30(document, *, context):
+    payload = _auto_prompt_payload_v30(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def _auto_prompt_payload_v31(document, *, context):
+    payload = _auto_prompt_payload_v30(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_V31
+        payload["rules"].append(
+            "When an instruction requires bleeding the brake system and checking for leaks, "
+            "keep both actions on the brake system and keep any explicit order."
+        )
+    return payload
+
+
+def _build_auto_prompt_v31(document, *, context):
+    payload = _auto_prompt_payload_v31(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def _auto_prompt_payload_v32(document, *, context):
+    payload = _auto_prompt_payload_v31(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_V32
+        payload["rules"].append(
+            "Keep an explicit firm pull on the wiring harness plug. When the instruction also "
+            "removes the retaining clip first, keep that step before the pull."
+        )
+    return payload
+
+
+def _build_auto_prompt_v32(document, *, context):
+    payload = _auto_prompt_payload_v32(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def _auto_prompt_payload_v33(document, *, context):
+    payload = _auto_prompt_payload_v32(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_V33
+        payload["rules"].append(
+            "When an instruction checks alignment marks before removing a component, keep the "
+            "alignment marks, their stated component, the component being removed, and the order."
+        )
+    return payload
+
+
+def _build_auto_prompt_v33(document, *, context):
+    payload = _auto_prompt_payload_v33(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def _auto_prompt_payload_v34(document, *, context):
+    payload = _auto_prompt_payload_v33(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_V34
+        payload["rules"].append(
+            "When installing a replacement part after a surface is dry, keep the exact part, "
+            "its replacement status, and the requirement to wait for that surface to dry."
+        )
+    return payload
+
+
+def _build_auto_prompt_v34(document, *, context):
+    payload = _auto_prompt_payload_v34(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def _auto_prompt_payload_v35(document, *, context):
+    payload = _auto_prompt_payload_v34(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_V35
+        payload["rules"].append(
+            "When an instruction drains or empties a pump, preserve that action and the exact pump."
+        )
+    return payload
+
+
+def _build_auto_prompt_v35(document, *, context):
+    payload = _auto_prompt_payload_v35(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def _auto_prompt_payload_v36(document, *, context):
+    payload = _auto_prompt_payload_v35(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_V36
+        payload["rules"].append(
+            "When an instruction removes a line and cleans the fittings before installation, "
+            "keep both required actions, the same line and fittings, and the cleaning deadline."
+        )
+    return payload
+
+
+def _build_auto_prompt_v36(document, *, context):
+    payload = _auto_prompt_payload_v36(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def _auto_prompt_payload_v37(document, *, context):
+    payload = _auto_prompt_payload_v36(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_V37
+        payload["rules"].append(
+            "Preserve a visual brake line inspection and conditional replacement of those same "
+            "lines. State that replacement is as needed when the source does."
+        )
+    return payload
+
+
+def _build_auto_prompt_v37(document, *, context):
+    payload = _auto_prompt_payload_v37(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def _auto_prompt_payload_v38(document, *, context):
+    payload = _auto_prompt_payload_v37(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_V38
+        payload["rules"].append(
+            "Preserve a hand-tightening method or a crisscross tightening sequence and its exact fastener target."
+        )
+    return payload
+
+
+def _build_auto_prompt_v38(document, *, context):
+    payload = _auto_prompt_payload_v38(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def _auto_prompt_payload_v39(document, *, context):
+    payload = _auto_prompt_payload_v38(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_V39
+        payload["rules"].append(
+            "When hand tightening and crisscross order apply to the same fasteners, preserve both requirements together."
+        )
+    return payload
+
+
+def _build_auto_prompt_v39(document, *, context):
+    payload = _auto_prompt_payload_v39(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def _auto_prompt_payload_v40(document, *, context):
+    payload = _auto_prompt_payload_v39(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_V40
+        payload["rules"].append(
+            "When an instruction removes a retaining clip and replaces a terminal if damaged, keep clip removal "
+            "required and make the replacement depend on damage to the same terminal."
+        )
+    return payload
+
+
+def _build_auto_prompt_v40(document, *, context):
+    payload = _auto_prompt_payload_v40(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def _auto_prompt_payload_v41(document, *, context):
+    payload = _auto_prompt_payload_v40(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_V41
+        payload["rules"].append(
+            "Keep eye protection required before starting. Preserve the same equipment being started "
+            "when the source names it."
+        )
+    return payload
+
+
+def _build_auto_prompt_v41(document, *, context):
+    payload = _auto_prompt_payload_v41(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def _auto_prompt_payload_v42(document, *, context):
+    payload = _auto_prompt_payload_v41(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_V42
+        payload["rules"].append(
+            "When a force limit applies to pulling the wiring harness plug, keep the amount, "
+            "unit, pull target, and whether the limit is a maximum or a minimum."
+        )
+    return payload
+
+
+def _build_auto_prompt_v42(document, *, context):
+    payload = _auto_prompt_payload_v42(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def _auto_prompt_payload_v43(document, *, context):
+    payload = _auto_prompt_payload_v42(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_V43
+        payload["rules"].append(
+            "Preserve the named disconnection target and its precedence when the source "
+            "requires disconnection before service."
+        )
+    return payload
+
+
+def _build_auto_prompt_v43(document, *, context):
+    payload = _auto_prompt_payload_v43(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def _auto_prompt_payload_v44(document, *, context):
+    payload = _auto_prompt_payload_v43(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_V44
+        payload["rules"].append(
+            "When an instruction removes the oil pan and cleans the strainer before releasing the pump body, "
+            "keep oil pan removal before strainer cleaning and cleaning before that release."
+        )
+    return payload
+
+
+def _build_auto_prompt_v44(document, *, context):
+    payload = _auto_prompt_payload_v44(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def _auto_prompt_payload_v45(document, *, context):
+    payload = _auto_prompt_payload_v44(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_V45
+        payload["rules"].append(
+            "Rephrase each ordinary prose sentence in a multi-sentence rewrite slot. Preserve its meaning "
+            "and technical terms when splitting or combining sentences."
+        )
+        payload["rules"].append(
+            "When a brake connector inspection precedes clip removal and conditional terminal replacement, "
+            "keep replacement dependent on damage to the same terminal."
+        )
+    return payload
+
+
+def _build_auto_prompt_v45(document, *, context):
+    payload = _auto_prompt_payload_v45(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def build_auto_prompt(document, *, context):
+    payload = _auto_prompt_payload_v45(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_VERSION
+        payload["rules"].append(
+            "When disconnection, removal and inspection prepare for replacing both components, "
+            "keep the same targets and the requirement to inspect before replacing both."
         )
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
 def _auto_prompt_version(document, *, context, prompt_hash):
     """Identify the rules bound to the saved model attempt."""
-    for builder in (build_auto_prompt, _build_auto_prompt_v8, _build_auto_prompt_v7, _build_auto_prompt_v6,
-                    _build_auto_prompt_v5, _build_auto_prompt_v4, _build_auto_prompt_v2, _build_auto_prompt_v1):
+    for builder in (
+        build_auto_prompt, _build_auto_prompt_v45, _build_auto_prompt_v44, _build_auto_prompt_v43,
+        _build_auto_prompt_v42,
+        _build_auto_prompt_v41,
+        _build_auto_prompt_v40,
+        _build_auto_prompt_v39,
+        _build_auto_prompt_v38,
+        _build_auto_prompt_v37,
+        _build_auto_prompt_v36,
+        _build_auto_prompt_v35,
+        _build_auto_prompt_v34, _build_auto_prompt_v33,
+        _build_auto_prompt_v32,
+        _build_auto_prompt_v31, _build_auto_prompt_v30,
+        _build_auto_prompt_v29,
+        _build_auto_prompt_v28, _build_auto_prompt_v27,
+        _build_auto_prompt_v26, _build_auto_prompt_v25, _build_auto_prompt_v24,
+        _build_auto_prompt_v23, _build_auto_prompt_v22, _build_auto_prompt_v21, _build_auto_prompt_v20, _build_auto_prompt_v19,
+        _build_auto_prompt_v18, _build_auto_prompt_v17, _build_auto_prompt_v16, _build_auto_prompt_v15,
+        _build_auto_prompt_v14, _build_auto_prompt_v13,
+        _build_auto_prompt_v12, _build_auto_prompt_v11,
+        _build_auto_prompt_v10, _build_auto_prompt_v9,
+        _build_auto_prompt_v8, _build_auto_prompt_v7, _build_auto_prompt_v6, _build_auto_prompt_v5,
+        _build_auto_prompt_v4, _build_auto_prompt_v2, _build_auto_prompt_v1,
+    ):
         payload = builder(document, context=context)
         if sha256(payload.encode()).hexdigest() == prompt_hash:
             return json.loads(payload)["prompt_version"]
@@ -397,15 +1474,27 @@ def _phrase_counts(words):
     return Counter(tuple(words[offset:offset + 5]) for offset in range(len(words) - 4))
 
 
-def _near_copy(original, replacement):
+def _ordinary_prose_words(text):
     # Units, numeric values and reference tokens must remain exact. Their
     # mandatory overlap is excluded from the ordinary prose comparison.
-    original_words, replacement_words = [
-        _WORDS.findall(full._TOKENS.sub(" ", text).casefold()) for text in (original, replacement)
-    ]
+    return _WORDS.findall(full._TOKENS.sub(" ", text).casefold())
+
+
+def _near_copy(original, replacement, *, check_sentences=False):
+    original_words, replacement_words = map(_ordinary_prose_words, (original, replacement))
     shorter, longer = sorted((original_words, replacement_words), key=len)
     if shorter and f" {' '.join(shorter)} " in f" {' '.join(longer)} ":
         return True
+    if check_sentences and len(original_words) > _MIN_COPIED_SENTENCE_WORDS:
+        sentences = _SENTENCES.split(original)
+        if len(sentences) > 1:
+            # A copied sentence can survive the whole-slot overlap threshold.
+            # Check contiguous ordinary words even when the draft adds a lead-in.
+            draft_text = f" {' '.join(replacement_words)} "
+            for sentence in sentences:
+                words = _ordinary_prose_words(sentence)
+                if len(words) >= _MIN_COPIED_SENTENCE_WORDS and f" {' '.join(words)} " in draft_text:
+                    return True
     if len(original_words) < 12 or len(replacement_words) < 5:
         return False
     # A majority of shared five-word phrases flags long copied prose,
@@ -511,17 +1600,32 @@ def _simple_directive(text):
     return action, target
 
 
-def _clause_pair(text):
+def _pressure_order_directive(text):
+    action = "pressure_release"
+    match = _PRESSURE_RELEASE_DIRECTIVE.fullmatch(text)
+    if match is None:
+        action = "open"
+        match = _PRESSURE_ORDER_OPEN.fullmatch(text)
+    if match:
+        target = tuple(_WORDS.findall(match["object"].casefold()))
+        if set(target).isdisjoint(_TARGET_DELIMITERS):
+            return action, target
+    return None
+
+
+def _clause_pair(text, *, pressure_order=False):
     """Recognize two complete directives with literal single-component targets."""
     text = text.strip().rstrip(".!")
-    if prefix := _CLAUSE_PREFIX_TIMING.fullmatch(text):
+    prefix_pattern = _PRESSURE_ORDER_PREFIX if pressure_order else _CLAUSE_PREFIX_TIMING
+    timing_pattern = _PRESSURE_ORDER_TIMING if pressure_order else _CLAUSE_TIMING
+    if prefix := prefix_pattern.fullmatch(text):
         first, second = prefix[2], prefix[3]
         if prefix[1].casefold() == "before":
             first, second = second, first
         ordered = True
-    elif timing := _CLAUSE_TIMING.search(text):
+    elif timing := timing_pattern.search(text):
         first, second = text[:timing.start()], text[timing.end():]
-        if timing[1].casefold() == "after":
+        if timing[1].casefold() in ("after", "once"):
             first, second = second, first
         ordered = True
     elif then := _CLAUSE_THEN.search(text):
@@ -538,14 +1642,23 @@ def _clause_pair(text):
     for clause in (first, second):
         clause = _NEXT_MARKER.sub("", _FIRST_MARKER.sub("", clause.strip())).strip()
         clause = _CLAUSE_GERUND.sub(lambda match: _CLAUSE_GERUNDS[match[1].casefold()], clause, count=1)
-        directive = _simple_directive(clause)
+        directive = _pressure_order_directive(clause) if pressure_order else _simple_directive(clause)
         if directive is None:
             return None
         clauses.append(directive)
     return tuple(clauses), ordered
 
 
-def _clause_assignment_changed(original, replacement):
+def _pressure_release_order(text):
+    if not _PRESSURE_RELEASE_MARKER.search(text):
+        return None
+    pair = _clause_pair(text, pressure_order=True)
+    if pair and pair[1] and {action for action, _ in pair[0]} == {"pressure_release", "open"}:
+        return pair[0]
+    return None
+
+
+def _clause_assignment_changed(original, replacement, *, preserve_order=False, preserve_steps=False):
     # Unrecognized, repeated, and unmatched targets are inconclusive. An
     # unordered conjunction supplies no timing constraint by itself.
     source = _clause_pair(original)
@@ -555,15 +1668,92 @@ def _clause_assignment_changed(original, replacement):
     source_targets = {target for _, target in source_clauses}
     if len(source_targets) != 2:
         return False
+    if preserve_order and source_ordered:
+        replacement = _COMMA_AND.sub(" and ", replacement)
     draft = _clause_pair(replacement)
     if draft is None:
-        return False
+        # A complete single directive matching one source action is evidence
+        # of omission. Unparsed compound or passive wording is inconclusive.
+        return preserve_steps and source_ordered and _simple_directive(replacement) in source_clauses
     draft_clauses, draft_ordered = draft
     if source_targets != {target for _, target in draft_clauses}:
         return False
-    return set(source_clauses) != set(draft_clauses) or (
-        source_ordered and draft_ordered and source_clauses != draft_clauses
-    )
+    if set(source_clauses) != set(draft_clauses):
+        return True
+    if preserve_order and source_ordered and not draft_ordered:
+        # A bare conjunction removes precedence. Separate imperatives can
+        # still express the original sequence through their written order.
+        separator = _CLAUSE_PARALLEL.search(replacement)
+        if separator is not None and separator[0].strip().casefold() == "and":
+            return True
+    return source_ordered and (draft_ordered or preserve_order) and source_clauses != draft_clauses
+
+
+def _alternative_pair(text):
+    text = text.strip().rstrip(".!")
+    pair = _ALTERNATIVE.split(text)
+    if len(pair) != 2:
+        return None
+    left, right = (_EITHER.sub("", clause.strip()) for clause in pair)
+    first, second = _simple_directive(left), _simple_directive(right)
+    if second is None and (shared := _SHARED_ALTERNATIVE.fullmatch(left)):
+        verb = shared["verb"]
+        first = _simple_directive(f"{verb} {shared['first']}")
+        second = _simple_directive(f"{verb} {right}")
+    return Counter((first, second)) if first is not None and second is not None else None
+
+
+def _alternative_changed(original, replacement):
+    if not (_ALTERNATIVE.search(original) or _ALTERNATIVE.search(replacement)):
+        return False
+    source, draft = _alternative_pair(original), _alternative_pair(replacement)
+    if (source is None) == (draft is None):
+        return False
+    alternative, other = (source, replacement) if source is not None else (draft, original)
+    pair = _clause_pair(other)
+    return pair is not None and alternative == Counter(pair[0])
+
+
+def _quantified_target(words):
+    # Equal universal quantifiers permit ordinary regular noun inflection.
+    if len(words) > 1 and words[0] in {"all", "every"}:
+        noun = words[-1]
+        if words[0] == "all" and noun.endswith("s") and not noun.endswith(("ss", "us")):
+            noun = noun.removesuffix("s")
+        return ("all", *words[1:-1], noun)
+    return words
+
+
+def _exception_target(text):
+    text = text.strip().rstrip(".!")
+    selector = _EXCEPTION_SELECTOR.search(text)
+    action = _simple_directive(text[:selector.start()].rstrip(" ,") if selector else text)
+    if action is None:
+        return None
+    verb, target = action
+    target = _quantified_target(target)
+    if selector is None:
+        return verb, target, None, ()
+    included = selector[1].casefold() in {"including", "as well as"}
+    named = _EXCEPTION_NOUN.fullmatch(text[selector.end():].strip())
+    words = tuple(_WORDS.findall(named[1].casefold())) if named else ()
+    if not words or not set(words).isdisjoint(_TARGET_DELIMITERS):
+        return None
+    return verb, target, included, words
+
+
+def _exception_changed(original, replacement):
+    if not (_EXCEPTION_SELECTOR.search(original) or _EXCEPTION_SELECTOR.search(replacement)):
+        return False
+    source, draft = _exception_target(original), _exception_target(replacement)
+    if source is None or draft is None or source[0] != draft[0]:
+        return False
+    if source[2] is not False and draft[2] is not False:
+        return False
+    if source[1] == draft[1]:
+        return source[2:] != draft[2:]
+    exclusion, other = (source, draft) if source[2] is False else (draft, source)
+    return other[2] is True and other[1] == exclusion[3] and other[3] == ("other", *exclusion[1])
 
 
 def _check_target_swaps(slots, restored):
@@ -637,27 +1827,194 @@ def _check_intro_claims(source, slots, introduction):
     raise ValueError("REWRITE_INTRODUCTION_UNSUPPORTED_CLAIM")
 
 
-def _split_qualifier(text, match):
+def _split_qualifier(text, match, *, end=None):
     """Remove one complete leading or trailing qualifier."""
     prefix = text[:match.start()].strip(" ,")
-    suffix = text[match.end():].strip(" ,")
+    suffix = text[match.end() if end is None else end:].strip(" ,")
     return (prefix or suffix) if bool(prefix) != bool(suffix) else None
 
 
-def _qualifier_task(text):
+def _condition_predicate(subject, verb, state):
+    words = tuple(_WORDS.findall(subject))
+    mode = "has" if verb in {"has", "have"} else "is"
+    if state not in _STATE_GRAMMAR[mode] or not set(words).isdisjoint(_TARGET_DELIMITERS):
+        return None
+    return words, {"dried": "dry", "cooled": "cool"}.get(state, state)
+
+
+def _proof_text(text):
+    return text.casefold().strip().rstrip(".!")
+
+
+def _inspection_defects(text):
+    """Recognize one defect or a flat list with a consistent connective."""
+    text = text.casefold()
+    words = text.split(maxsplit=1)
+    if not words:
+        return None
+    expected = {"both": "and", "either": "or"}.get(words[0])
+    if expected:
+        if len(words) != 2:
+            return None
+        text = words[1]
+    pieces = _DEFECT_SEPARATOR.split(text)
+    separators = [piece.strip(" ,\t\n") for piece in pieces[1::2]]
+    connective = separators[-1] if separators else "single"
+    if (not connective or (expected and expected != connective)
+            or any(item and item != connective for item in separators)):
+        return None
+    defects = []
+    for piece in pieces[::2]:
+        term = _DEFECT_TERM.fullmatch(piece.strip())
+        if term is None:
+            return None
+        defect = term[1]
+        defects.append(_INSPECTION_FOCUS_ALIASES.get(defect, defect))
+    return connective, frozenset(defects)
+
+
+def _identified_inspection(text, *, compound=False):
+    text = text.strip().rstrip(".!")
+    if compound:
+        match = _IDENTIFIED_INSPECTION_LIST.fullmatch(text) or _IDENTIFIED_INSPECTION_FOCUS_FIRST.fullmatch(text)
+    else:
+        match = _IDENTIFIED_INSPECTION.fullmatch(text)
+    if match is None:
+        return None
+    words = match["target"].split()
+    identifiers = [word for word in words if _COMPONENT_ID.fullmatch(word)]
+    if len(identifiers) != 1:
+        return None
+    identifier = identifiers[0]
+    descriptors = tuple(word.casefold() for word in words if word != identifier)
+    if (not descriptors or not set(descriptors).isdisjoint(_TARGET_DELIMITERS)
+            or not all(_COMPONENT_DESCRIPTOR.fullmatch(word) for word in descriptors)):
+        return None
+    if compound:
+        defects = _inspection_defects(match["focus"])
+        return (identifier, descriptors, defects) if defects is not None else None
+    focus = match["focus"].casefold()
+    return identifier, descriptors, _INSPECTION_FOCUS_ALIASES.get(focus, focus)
+
+
+def _simultaneous_predicate(match):
+    words = tuple(_WORDS.findall(match["subject"]))
+    if set(words).isdisjoint(_TARGET_DELIMITERS):
+        if "pressure" in match.re.groupindex and match["pressure"]:
+            return words, match["pressure"].replace("ised", "ized")
+        return words, match["surface"] or match["power"].split()[-1]
+    return None
+
+
+def _conjunctive_simultaneous_state(text, *, pressure=False):
+    # Bind two explicit predicates without interpreting nested conditions.
+    first_pattern = _PRESSURE_SIMULTANEOUS_CONJUNCTION if pressure else _SIMULTANEOUS_CONJUNCTION
+    second_pattern = _PRESSURE_SIMULTANEOUS_CONJUNCT if pressure else _SIMULTANEOUS_CONJUNCT
+    for first in first_pattern.finditer(text):
+        second = second_pattern.match(text, first.end())
+        if second is None or (first["while"] and not (first["copula"] and second["copula"])):
+            continue
+        predicates = _simultaneous_predicate(first), _simultaneous_predicate(second)
+        if None not in predicates:
+            return first, ("condition", "while", "and", frozenset(predicates)), second.end()
+    return None
+
+
+def _simultaneous_state(text, *, conjunctive=False, pressure=False):
+    if conjunctive and (state := _conjunctive_simultaneous_state(text, pressure=pressure)):
+        return state
+    pattern = _PRESSURE_SIMULTANEOUS_CONDITION if pressure else _SIMULTANEOUS_CONDITION
+    for match in pattern.finditer(text):
+        if match["while"] and not match["copula"]:
+            continue
+        if predicate := _simultaneous_predicate(match):
+            return match, ("condition", "while", *predicate), match.end()
+    return None
+
+
+def _pressure_condition(text):
+    if not _PRESSURE_STATE_MARKER.search(text):
+        return None
+    for match in _PRESSURE_TEMPORAL_CONDITION.finditer(text):
+        if match["copula"] and (predicate := _simultaneous_predicate(match)):
+            marker = match["marker"]
+            relation = {"if": "condition", "when": "condition", "once": "after"}.get(marker, marker)
+            return match, ("condition", relation, *predicate), match.end()
+    if parsed := _simultaneous_state(text, conjunctive=True, pressure=True):
+        _, fact, _ = parsed
+        states = (state for _, state in fact[3]) if fact[2] == "and" else (fact[-1],)
+        if any(state in ("pressurized", "depressurized") for state in states):
+            return parsed
+    return None
+
+
+def _logical_condition(text, condition, predicate, relation):
+    """Bound a flat conjunction or disjunction of explicit states."""
+    end = condition.end()
+    subject, verb = condition.group("subject", "verb")
+    predicates = [predicate]
+    operator = None
+    while separator := _LOGICAL_SEPARATOR.match(text, end):
+        if len(predicates) >= 4 or operator not in (None, separator[1]):
+            return None
+        operator = separator[1]
+        position = separator.end()
+        if next_predicate := _CONTINUED_PREDICATE.match(text, position):
+            subject, verb, state = next_predicate.group("subject", "verb", "state")
+            end = next_predicate.end()
+        elif next_state := _CONTINUED_STATE.match(text, position):
+            state = next_state[1]
+            end = next_state.end()
+        else:
+            return None
+        parsed = _condition_predicate(subject, verb, state)
+        if parsed is None:
+            return None
+        predicates.append(parsed)
+    if operator is None:
+        return ("condition", relation, *predicate), end
+    distinct = frozenset(predicates)
+    if len(distinct) == 1:
+        return ("condition", relation, *predicate), end
+    return ("condition", relation, operator, distinct), end
+
+
+def _part_target(target, *, extended):
+    if not extended:
+        return target["part"], (_PART_STATE[target["state"]],) if target["state"] else ()
+    modifiers = target["modifiers"].split()
+    if not set(modifiers).isdisjoint(_TARGET_DELIMITERS):
+        return None
+    if sum(word in _PART_STATE for word in modifiers) > 1:
+        return None
+    states = tuple(_PART_QUALITY[word] for word in modifiers if word in _PART_QUALITY)
+    descriptors = [word for word in modifiers if word not in _PART_QUALITY]
+    subject = " ".join([*descriptors, target["part"]])
+    return subject, states
+
+
+def _qualifier_task(text, *, extended=False, simultaneous=False, conjunctive=False):
     """Recognize one imperative with a literal target and bounded qualifiers."""
-    text = text.casefold().strip().rstrip(".!")
+    text = _proof_text(text)
     facts = []
-    if condition := _GIVEN_CONDITION.search(text):
+    condition_end = None
+    if simultaneous and (state := _simultaneous_state(text, conjunctive=conjunctive)):
+        qualifier, fact, condition_end = state
+        facts.append(fact)
+    elif condition := _GIVEN_CONDITION.search(text):
         marker, subject, verb, state = condition.group("marker", "subject", "verb", "state")
-        verb = "has" if verb in {"has", "have"} else "is"
-        if state not in _STATE_GRAMMAR[verb]:
+        predicate = _condition_predicate(subject, verb, state)
+        if predicate is None:
             return None
         relation = {"if": "condition", "when": "condition", "once": "after"}.get(marker, marker)
-        state = {"dried": "dry", "cooled": "cool"}.get(state, state)
-        if not set(_WORDS.findall(subject)).isdisjoint(_TARGET_DELIMITERS):
-            return None
-        facts.append(("condition", relation, tuple(_WORDS.findall(subject)), state))
+        if extended:
+            logical = _logical_condition(text, condition, predicate, relation)
+            if logical is None:
+                return None
+            fact, condition_end = logical
+        else:
+            fact = ("condition", relation, *predicate)
+        facts.append(fact)
         qualifier = condition
     elif switch := _SWITCH_IGNITION.search(text):
         relation = "before" if switch[1] == "before" else "after"
@@ -676,9 +2033,12 @@ def _qualifier_task(text):
         qualifier = None
 
     if qualifier is not None:
-        text = _split_qualifier(text, qualifier)
+        text = _split_qualifier(text, qualifier, end=condition_end)
         if text is None:
             return None
+
+    if simultaneous and qualifier is not None:
+        text = text.removesuffix(" for access")
 
     if tool := _TASK_TOOL.search(text):
         text = _split_qualifier(text, tool)
@@ -697,14 +2057,17 @@ def _qualifier_task(text):
         target_text = text[opening.end():]
         if opening[0].strip() in {"fit", "install"}:
             target_text = target_text.removesuffix(" into place")
-        if target := _PART_TARGET.fullmatch(target_text):
-            if target["state"]:
-                facts.append(("part-state", _PART_STATE[target["state"]]))
-            text = f"{opening[0]}the {target['part']}"
-        elif removal := _PART_REMOVAL.fullmatch(text):
-            if removal["state"]:
-                facts.append(("part-state", _PART_STATE[removal["state"]]))
-            text = f"remove the {removal['part']}"
+        subject_pattern = _DESCRIBED_PART_TARGET if extended else _PART_TARGET
+        removal_pattern = _DESCRIBED_PART_REMOVAL if extended else _PART_REMOVAL
+        target = subject_pattern.fullmatch(target_text)
+        removal = removal_pattern.fullmatch(text) if target is None else None
+        if target or removal:
+            part = _part_target(target or removal, extended=extended)
+            if part is None:
+                return None
+            subject, states = part
+            facts.extend(("part-state", state) for state in states)
+            text = f"{'remove ' if removal else opening[0]}the {subject}"
 
     task = _simple_directive(text)
     if task is None:
@@ -712,19 +2075,37 @@ def _qualifier_task(text):
     return task, frozenset(facts)
 
 
-def _qualifier_changed(original, replacement):
-    if not (_QUALIFIER_MARKER.search(original) or _QUALIFIER_MARKER.search(replacement)):
+def _qualifier_changed(original, replacement, *, extended=False, simultaneous=False, conjunctive=False,
+                       bind_dry_replacement=False):
+    if not any(
+        _QUALIFIER_MARKER.search(text)
+        or (extended and _PART_QUALITY_MARKER.search(text))
+        or (simultaneous and _WHILE_MARKER.search(text))
+        for text in (original, replacement)
+    ):
         return False
-    source = _qualifier_task(original)
+    source = _qualifier_task(original, extended=extended, simultaneous=simultaneous, conjunctive=conjunctive)
     if source is None:
         return False
     source_action, source_facts = source
-    draft = _qualifier_task(replacement)
+    requires_state = simultaneous and any(fact[:2] == ("condition", "while") for fact in source_facts)
+    if bind_dry_replacement and source_action[0] == "install" and ("part-state", "replacement") in source_facts:
+        requires_state = requires_state or any(
+            len(fact) == 4 and fact[:2] == ("condition", "after") and fact[-1] == "dry"
+            for fact in source_facts
+        )
+    draft = _qualifier_task(replacement, extended=extended, simultaneous=simultaneous, conjunctive=conjunctive)
     if draft is None:
-        return False
+        # An unrecognized draft cannot drop a required source condition or
+        # add a new, explicit power or surface condition.
+        return requires_state or (
+            simultaneous and _simultaneous_state(_proof_text(replacement), conjunctive=conjunctive) is not None
+        )
     draft_action, draft_facts = draft
     if source_action != draft_action:
-        return False
+        return requires_state or (
+            simultaneous and any(fact[:2] == ("condition", "while") for fact in draft_facts)
+        )
     if source_facts - draft_facts:
         return True
     # A generic inspection can be paraphrased with an illustrative focus.
@@ -732,30 +2113,411 @@ def _qualifier_changed(original, replacement):
     return any(fact[0] != "inspection" for fact in draft_facts - source_facts)
 
 
+def _pressure_qualified_task(text):
+    text = _proof_text(text)
+    condition = _pressure_condition(text)
+    if condition is None:
+        return None
+    marker, fact, end = condition
+    action = _split_qualifier(text, marker, end=end)
+    if action is None:
+        return None
+    if task := _qualifier_task(action, extended=True):
+        return task, fact
+    if match := _PRESSURE_OPEN_CLOSE.fullmatch(action):
+        target = tuple(_WORDS.findall(match["object"]))
+        if set(target).isdisjoint(_TARGET_DELIMITERS):
+            return ((match["verb"], target), frozenset()), fact
+    return None
+
+
+def _battery_terminal_action(text):
+    text = _proof_text(text)
+    if "battery" not in text or "terminal" not in text:
+        return None
+    action = _ACTIONS.match(text)
+    if action is None or action.lastgroup not in ("connect", "disconnect"):
+        return None
+    target = text[action.end():].strip()
+    for pattern in _BATTERY_TERMINAL_TARGETS:
+        if match := pattern.fullmatch(target):
+            relation = match.groupdict().get("relation")
+            if (action.lastgroup, relation) in {("connect", "from"), ("disconnect", "to")}:
+                return None
+            return action.lastgroup, _TERMINAL_POLARITY[match["polarity"]]
+    return None
+
+
+def _vehicle_support(text):
+    text = _proof_text(text)
+    if "vehicle" not in text or "support" not in text:
+        return None
+    if any(pattern.fullmatch(text) for pattern in _VEHICLE_LIFT_AND_SUPPORT):
+        return "securely" in text
+    return None
+
+
+def _brake_bleed_and_check_order(text):
+    text = _proof_text(text)
+    if "brake" not in text or "leak" not in text:
+        return None
+    if _BRAKE_BLEED_THEN_CHECK.fullmatch(text):
+        return True
+    if _BRAKE_BLEED_AND_CHECK.fullmatch(text):
+        return False
+    return None
+
+
+def _firm_harness_pull_scope(text):
+    text = _proof_text(text)
+    if "harness" not in text or "firm" not in text:
+        return None
+    if _FIRM_HARNESS_PULL.fullmatch(text):
+        return "pull"
+    if (prefix := _CLAUSE_PREFIX_TIMING.fullmatch(text)) and prefix[1] == "after":
+        clip = _CLAUSE_GERUND.sub(lambda match: _CLAUSE_GERUNDS[match[1]], prefix[2], count=1)
+        pull = prefix[3]
+    elif separator := _HARNESS_PULL_SEPARATOR.search(text):
+        clip, pull = text[:separator.start()], text[separator.end():]
+    else:
+        return None
+    if _simple_directive(clip) == ("remove", ("retaining", "clip")) and _FIRM_HARNESS_PULL.fullmatch(pull):
+        return "pull_after_clip_removal"
+    return None
+
+
+def _alignment_before_removal(text):
+    text = _proof_text(text)
+    if "alignment" not in text or "marks" not in text:
+        return None
+    if prefix := _CLAUSE_PREFIX_TIMING.fullmatch(text):
+        inspection, removal = (prefix[3], prefix[2]) if prefix[1] == "before" else (prefix[2], prefix[3])
+    elif timing := _CLAUSE_TIMING.search(text):
+        left, right = text[:timing.start()], text[timing.end():]
+        inspection, removal = (left, right) if timing[1] == "before" else (right, left)
+    else:
+        return None
+
+    marks = _ALIGNMENT_MARK_INSPECTION.fullmatch(inspection) or _ALIGNMENT_FOCUSED_INSPECTION.fullmatch(inspection)
+    if marks is None:
+        return None
+    owner = tuple(_WORDS.findall(marks["component"] or ""))
+    if not set(owner).isdisjoint(_TARGET_DELIMITERS):
+        return None
+
+    if noun := _ALIGNMENT_NOMINAL_REMOVAL.fullmatch(removal):
+        target = tuple(_WORDS.findall(noun["component"] or "")) or owner
+        if target and set(target).isdisjoint(_TARGET_DELIMITERS):
+            return owner, target
+        return None
+    if gerund := _ALIGNMENT_REMOVAL_GERUND.match(removal):
+        removal = _ALIGNMENT_REMOVAL_GERUNDS[gerund[1]] + removal[gerund.end():]
+    if (directive := _simple_directive(removal)) and directive[0] == "remove":
+        return owner, directive[1]
+    return None
+
+
+def _alignment_scope_changed(original, replacement):
+    scope = _alignment_before_removal(original)
+    if scope is None:
+        return False
+    owner, target = scope
+    draft = _alignment_before_removal(replacement)
+    # An explicit owner must survive. The existing supplier fixture also
+    # names the part being removed when its source simply says alignment marks.
+    allowed_owners = (owner,) if owner else ((), target)
+    return draft is None or draft[1] != target or draft[0] not in allowed_owners
+
+
+def _pump_to_drain(text):
+    text = _proof_text(text)
+    if not text.endswith("pump"):
+        return None
+    if match := _PUMP_DRAIN.fullmatch(text):
+        target = tuple(_WORDS.findall(match["object"]))
+        if target[-1] == "pump" and set(target).isdisjoint(_TARGET_DELIMITERS):
+            return target
+    return None
+
+
+def _matches_timed_cleaning(text, removal, *, cleaning, timed_cleaning, timing_prefix, removal_first=False):
+    draft = _proof_text(text)
+    separator = _REQUIRED_TASK_SEPARATOR.search(draft)
+    if separator is None:
+        return False
+    first, second = draft[:separator.start()], draft[separator.end():]
+    task_pairs = ((first, second),) if removal_first else ((first, second), (second, first))
+    for task, cleaning_text in task_pairs:
+        if timed_cleaning.fullmatch(cleaning_text) and _simple_directive(task) == removal:
+            return True
+    # A timing clause before a conjunction can govern both tasks in the same sentence.
+    if not separator[0].startswith((".", ";")) and (prefix := timing_prefix.match(first)):
+        if cleaning.fullmatch(second) and _simple_directive(first[prefix.end():]) == removal:
+            return True
+    return False
+
+
+def _line_fitting_preparation_changed(original, replacement):
+    original = original.casefold()
+    if "fittings" not in original:
+        return False
+    source = _LINE_FITTING_SOURCE.fullmatch(_proof_text(original))
+    if source is None:
+        return False
+    removal = _simple_directive(source["removal"])
+    if removal is None or removal[0] != "remove" or removal[1][-1] != "line":
+        return False
+    return not _matches_timed_cleaning(
+        replacement, removal, cleaning=_FITTINGS_CLEAN,
+        timed_cleaning=_TIMED_FITTING_CLEANING, timing_prefix=_FITTING_INSTALLATION_PREFIX,
+    )
+
+
+def _oil_pump_preparation_changed(original, replacement):
+    original = _proof_text(original)
+    if "strainer" not in original:
+        return False
+    source = _OIL_PUMP_PREPARATION.fullmatch(original)
+    removal = ("remove", ("oil", "pan"))
+    if source is None or _simple_directive(source["removal"]) != removal:
+        return False
+    return not _matches_timed_cleaning(
+        replacement, removal, cleaning=_STRAINER_CLEANING,
+        timed_cleaning=_TIMED_STRAINER_CLEANING, timing_prefix=_PUMP_RELEASE_PREFIX, removal_first=True,
+    )
+
+
+def _tightening_method_scope(text, *, compound=False):
+    text = _proof_text(text)
+    if "tighten" not in text:
+        return None
+    methods = _TIGHTENING_METHODS_V39 if compound else _TIGHTENING_METHODS
+    for method, wording in methods:
+        if match := wording.fullmatch(text):
+            target = tuple(_WORDS.findall(match["object"]))
+            if target[-1] in _TIGHTENED_FASTENERS and set(target).isdisjoint(_TARGET_DELIMITERS):
+                return method, target
+    return None
+
+
+def _conditional_terminal_replacement_scope(text):
+    text = _proof_text(text)
+    if "terminal" not in text or "damage" not in text:
+        return None
+    clauses = _REQUIRED_TASK_SEPARATOR.split(text, maxsplit=1)
+    if len(clauses) != 2 or _simple_directive(clauses[0]) != ("remove", ("retaining", "clip")):
+        return None
+    for wording in _CONDITIONAL_TERMINAL_REPLACEMENTS:
+        if match := wording.fullmatch(clauses[1]):
+            target = tuple(sorted(match["terminal"].split()))
+            if len(target) == 1 or any(_COMPONENT_ID.fullmatch(word) for word in target):
+                return target
+    return None
+
+
+def _brake_connector_terminal_service_scope(text):
+    text = _proof_text(text)
+    if "brake" not in text or "terminal" not in text:
+        return None
+    separator = _REQUIRED_TASK_SEPARATOR.search(text)
+    if separator and _BRAKE_CONNECTOR_BEFORE_SERVICE.fullmatch(text[:separator.start()]):
+        return _conditional_terminal_replacement_scope(text[separator.end():])
+    return None
+
+
+def _prestart_eye_protection_target(text):
+    text = _proof_text(text)
+    if "eye" not in text or "start" not in text:
+        return None
+    for wording in _PRESTART_EYE_PROTECTION:
+        if match := wording.fullmatch(text):
+            target = tuple(_WORDS.findall(match["object"] or ""))
+            if set(target).isdisjoint(_TARGET_DELIMITERS):
+                return target
+    return None
+
+
+def _harness_pull_force_bound(text):
+    text = _proof_text(text)
+    if "force" not in text or "harness" not in text:
+        return None
+    # The anchored wording binds the bound to this pull. The full validator
+    # already preserves the literal amount and unit.
+    for wording in _HARNESS_PULL_FORCE_LIMITS:
+        if match := wording.fullmatch(text):
+            bound = " ".join(match.groupdict().get("bound", "maximum").split())
+            return _PULL_FORCE_BOUNDS[bound]
+    return None
+
+
+def _disconnect_before_service_target(text):
+    text = _proof_text(text)
+    if "servic" not in text:
+        return None
+    for wording in _DISCONNECT_BEFORE_SERVICE:
+        if match := wording.fullmatch(text):
+            disconnect = _FROM_ELECTRICAL_SYSTEM.sub("", match["disconnect"])
+            disconnect = _CLAUSE_GERUND.sub(lambda gerund: _CLAUSE_GERUNDS[gerund[1]], disconnect, count=1)
+            directive = _simple_directive(disconnect)
+            if directive and directive[0] == "disconnect":
+                return directive[1]
+    return None
+
+
+def _combined_replacement_preparation_targets(text):
+    text = _proof_text(text)
+    if "replac" not in text or "component" not in text:
+        return None
+    tasks = _COMBINED_PREPARATION_SEPARATOR.split(text, maxsplit=2)
+    if len(tasks) != 3:
+        return None
+    disconnect = _simple_directive(_FIRST_MARKER.sub("", tasks[0]))
+    removal = _simple_directive(tasks[1])
+    if not disconnect or disconnect[0] != "disconnect" or not removal or removal[0] != "remove":
+        return None
+    for wording in _PRE_REPLACEMENT_INSPECTION:
+        if match := wording.fullmatch(tasks[2]):
+            inspection = _CLAUSE_GERUND.sub(
+                lambda gerund: _CLAUSE_GERUNDS[gerund[1]], match["inspection"], count=1,
+            )
+            directive = _simple_directive(inspection)
+            if directive and directive[0] == "inspect":
+                return disconnect[1], removal[1], directive[1]
+    return None
+
+
 def _uses_prose_guards(prompt_version, slot_count):
     return bool(slot_count) and prompt_version in (
         None, _PROSE_PROMPT_V4, _PROSE_PROMPT_V5, _PROSE_PROMPT_V6, _PROSE_PROMPT_V7,
-        _PROSE_PROMPT_V8, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V8, _PROSE_PROMPT_V9, _PROSE_PROMPT_V10, _CELL_PROSE_PROMPT_V11,
+        _PROSE_PROMPT_V12, _PROSE_PROMPT_V13, _PROSE_PROMPT_V14, _PROSE_PROMPT_V15, _PROSE_PROMPT_V16,
+        _PROSE_PROMPT_V17, _PROSE_PROMPT_V18, _PROSE_PROMPT_V19, _PROSE_PROMPT_V20, _PROSE_PROMPT_V21,
+        _PROSE_PROMPT_V22, _PROSE_PROMPT_V23, _PROSE_PROMPT_V24,
+        _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_V29, _PROSE_PROMPT_V30, _PROSE_PROMPT_V31, _PROSE_PROMPT_V32, _PROSE_PROMPT_V33, _PROSE_PROMPT_V34, _PROSE_PROMPT_V35, _PROSE_PROMPT_V36, _PROSE_PROMPT_V37, _PROSE_PROMPT_V38, _PROSE_PROMPT_V39, _PROSE_PROMPT_V40, _PROSE_PROMPT_V41, _PROSE_PROMPT_V42, _PROSE_PROMPT_V43, _PROSE_PROMPT_V44, _PROSE_PROMPT_V45, _PROSE_PROMPT_VERSION,
+    )
+
+
+def _include_cell_blocks(prompt_version):
+    return prompt_version in (
+        None, _CELL_PROSE_PROMPT_V11, _PROSE_PROMPT_V12, _PROSE_PROMPT_V13,
+        _PROSE_PROMPT_V14, _PROSE_PROMPT_V15, _PROSE_PROMPT_V16, _PROSE_PROMPT_V17, _PROSE_PROMPT_V18,
+        _PROSE_PROMPT_V19, _PROSE_PROMPT_V20, _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23,
+        _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_V29, _PROSE_PROMPT_V30, _PROSE_PROMPT_V31, _PROSE_PROMPT_V32, _PROSE_PROMPT_V33, _PROSE_PROMPT_V34, _PROSE_PROMPT_V35, _PROSE_PROMPT_V36, _PROSE_PROMPT_V37, _PROSE_PROMPT_V38, _PROSE_PROMPT_V39, _PROSE_PROMPT_V40, _PROSE_PROMPT_V41, _PROSE_PROMPT_V42, _PROSE_PROMPT_V43, _PROSE_PROMPT_V44, _PROSE_PROMPT_V45, _PROSE_PROMPT_VERSION,
     )
 
 
 def _require_changes(source, candidate, *, prompt_version):
     # The introduced first block is the only offset in source paths.
     restored = {"blocks": candidate["blocks"][1:]}
-    slots = full.prose_slots(source)
+    slots = full.prose_slots(source, include_cell_blocks=_include_cell_blocks(prompt_version))
     guard_prose = _uses_prose_guards(prompt_version, len(slots))
     guard_actions = guard_prose and prompt_version != _PROSE_PROMPT_V4
     guard_direction = guard_prose and prompt_version not in (_PROSE_PROMPT_V4, _PROSE_PROMPT_V5)
     guard_claims = guard_direction and prompt_version != _PROSE_PROMPT_V6
     guard_clauses = guard_claims and prompt_version != _PROSE_PROMPT_V7
     guard_qualifiers = guard_clauses and prompt_version != _PROSE_PROMPT_V8
+    guard_scope = guard_qualifiers and prompt_version != _PROSE_PROMPT_V9
+    guard_simultaneous = guard_scope and prompt_version in (
+        None, _PROSE_PROMPT_V12, _PROSE_PROMPT_V13, _PROSE_PROMPT_V14, _PROSE_PROMPT_V15,
+        _PROSE_PROMPT_V16, _PROSE_PROMPT_V17, _PROSE_PROMPT_V18, _PROSE_PROMPT_V19, _PROSE_PROMPT_V20,
+        _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23, _PROSE_PROMPT_V24,
+        _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_V29, _PROSE_PROMPT_V30, _PROSE_PROMPT_V31, _PROSE_PROMPT_V32, _PROSE_PROMPT_V33, _PROSE_PROMPT_V34, _PROSE_PROMPT_V35, _PROSE_PROMPT_V36, _PROSE_PROMPT_V37, _PROSE_PROMPT_V38, _PROSE_PROMPT_V39, _PROSE_PROMPT_V40, _PROSE_PROMPT_V41, _PROSE_PROMPT_V42, _PROSE_PROMPT_V43, _PROSE_PROMPT_V44, _PROSE_PROMPT_V45, _PROSE_PROMPT_VERSION,
+    )
+    guard_identified_inspection = guard_simultaneous and prompt_version != _PROSE_PROMPT_V12
+    guard_compound_inspection = guard_identified_inspection and prompt_version != _PROSE_PROMPT_V13
+    guard_bound_alternatives = guard_scope and prompt_version in (
+        None, _PROSE_PROMPT_V15, _PROSE_PROMPT_V16, _PROSE_PROMPT_V17, _PROSE_PROMPT_V18,
+        _PROSE_PROMPT_V19, _PROSE_PROMPT_V20, _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23,
+        _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_V29, _PROSE_PROMPT_V30, _PROSE_PROMPT_V31, _PROSE_PROMPT_V32, _PROSE_PROMPT_V33, _PROSE_PROMPT_V34, _PROSE_PROMPT_V35, _PROSE_PROMPT_V36, _PROSE_PROMPT_V37, _PROSE_PROMPT_V38, _PROSE_PROMPT_V39, _PROSE_PROMPT_V40, _PROSE_PROMPT_V41, _PROSE_PROMPT_V42, _PROSE_PROMPT_V43, _PROSE_PROMPT_V44, _PROSE_PROMPT_V45, _PROSE_PROMPT_VERSION,
+    )
+    guard_bound_order = guard_clauses and prompt_version in (
+        None, _PROSE_PROMPT_V16, _PROSE_PROMPT_V17, _PROSE_PROMPT_V18, _PROSE_PROMPT_V19,
+        _PROSE_PROMPT_V20, _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23,
+        _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_V29, _PROSE_PROMPT_V30, _PROSE_PROMPT_V31, _PROSE_PROMPT_V32, _PROSE_PROMPT_V33, _PROSE_PROMPT_V34, _PROSE_PROMPT_V35, _PROSE_PROMPT_V36, _PROSE_PROMPT_V37, _PROSE_PROMPT_V38, _PROSE_PROMPT_V39, _PROSE_PROMPT_V40, _PROSE_PROMPT_V41, _PROSE_PROMPT_V42, _PROSE_PROMPT_V43, _PROSE_PROMPT_V44, _PROSE_PROMPT_V45, _PROSE_PROMPT_VERSION,
+    )
+    guard_bound_steps = prompt_version in (
+        None, _PROSE_PROMPT_V23, _PROSE_PROMPT_V24, _PROSE_PROMPT_V25,
+        _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_V29, _PROSE_PROMPT_V30, _PROSE_PROMPT_V31, _PROSE_PROMPT_V32, _PROSE_PROMPT_V33, _PROSE_PROMPT_V34, _PROSE_PROMPT_V35, _PROSE_PROMPT_V36, _PROSE_PROMPT_V37, _PROSE_PROMPT_V38, _PROSE_PROMPT_V39, _PROSE_PROMPT_V40, _PROSE_PROMPT_V41, _PROSE_PROMPT_V42, _PROSE_PROMPT_V43, _PROSE_PROMPT_V44, _PROSE_PROMPT_V45, _PROSE_PROMPT_VERSION,
+    )
+    guard_torque_aliases = prompt_version in (
+        None, _PROSE_PROMPT_V17, _PROSE_PROMPT_V18, _PROSE_PROMPT_V19, _PROSE_PROMPT_V20,
+        _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23, _PROSE_PROMPT_V24,
+        _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_V29, _PROSE_PROMPT_V30, _PROSE_PROMPT_V31, _PROSE_PROMPT_V32, _PROSE_PROMPT_V33, _PROSE_PROMPT_V34, _PROSE_PROMPT_V35, _PROSE_PROMPT_V36, _PROSE_PROMPT_V37, _PROSE_PROMPT_V38, _PROSE_PROMPT_V39, _PROSE_PROMPT_V40, _PROSE_PROMPT_V41, _PROSE_PROMPT_V42, _PROSE_PROMPT_V43, _PROSE_PROMPT_V44, _PROSE_PROMPT_V45, _PROSE_PROMPT_VERSION,
+    )
+    guard_duration_values = prompt_version in (
+        None, _PROSE_PROMPT_V18, _PROSE_PROMPT_V19, _PROSE_PROMPT_V20, _PROSE_PROMPT_V21,
+        _PROSE_PROMPT_V22, _PROSE_PROMPT_V23, _PROSE_PROMPT_V24,
+        _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_V29, _PROSE_PROMPT_V30, _PROSE_PROMPT_V31, _PROSE_PROMPT_V32, _PROSE_PROMPT_V33, _PROSE_PROMPT_V34, _PROSE_PROMPT_V35, _PROSE_PROMPT_V36, _PROSE_PROMPT_V37, _PROSE_PROMPT_V38, _PROSE_PROMPT_V39, _PROSE_PROMPT_V40, _PROSE_PROMPT_V41, _PROSE_PROMPT_V42, _PROSE_PROMPT_V43, _PROSE_PROMPT_V44, _PROSE_PROMPT_V45, _PROSE_PROMPT_VERSION,
+    )
+    guard_electrical_values = prompt_version in (
+        None, _PROSE_PROMPT_V19, _PROSE_PROMPT_V20, _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23,
+        _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_V29, _PROSE_PROMPT_V30, _PROSE_PROMPT_V31, _PROSE_PROMPT_V32, _PROSE_PROMPT_V33, _PROSE_PROMPT_V34, _PROSE_PROMPT_V35, _PROSE_PROMPT_V36, _PROSE_PROMPT_V37, _PROSE_PROMPT_V38, _PROSE_PROMPT_V39, _PROSE_PROMPT_V40, _PROSE_PROMPT_V41, _PROSE_PROMPT_V42, _PROSE_PROMPT_V43, _PROSE_PROMPT_V44, _PROSE_PROMPT_V45, _PROSE_PROMPT_VERSION,
+    )
+    guard_pressure_values = prompt_version in (
+        None, _PROSE_PROMPT_V20, _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23,
+        _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_V29, _PROSE_PROMPT_V30, _PROSE_PROMPT_V31, _PROSE_PROMPT_V32, _PROSE_PROMPT_V33, _PROSE_PROMPT_V34, _PROSE_PROMPT_V35, _PROSE_PROMPT_V36, _PROSE_PROMPT_V37, _PROSE_PROMPT_V38, _PROSE_PROMPT_V39, _PROSE_PROMPT_V40, _PROSE_PROMPT_V41, _PROSE_PROMPT_V42, _PROSE_PROMPT_V43, _PROSE_PROMPT_V44, _PROSE_PROMPT_V45, _PROSE_PROMPT_VERSION,
+    )
+    guard_temperature_values = prompt_version in (
+        None, _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23, _PROSE_PROMPT_V24,
+        _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_V29, _PROSE_PROMPT_V30, _PROSE_PROMPT_V31, _PROSE_PROMPT_V32, _PROSE_PROMPT_V33, _PROSE_PROMPT_V34, _PROSE_PROMPT_V35, _PROSE_PROMPT_V36, _PROSE_PROMPT_V37, _PROSE_PROMPT_V38, _PROSE_PROMPT_V39, _PROSE_PROMPT_V40, _PROSE_PROMPT_V41, _PROSE_PROMPT_V42, _PROSE_PROMPT_V43, _PROSE_PROMPT_V44, _PROSE_PROMPT_V45, _PROSE_PROMPT_VERSION,
+    )
+    guard_resistance_values = prompt_version in (
+        None, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23, _PROSE_PROMPT_V24,
+        _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_V29, _PROSE_PROMPT_V30, _PROSE_PROMPT_V31, _PROSE_PROMPT_V32, _PROSE_PROMPT_V33, _PROSE_PROMPT_V34, _PROSE_PROMPT_V35, _PROSE_PROMPT_V36, _PROSE_PROMPT_V37, _PROSE_PROMPT_V38, _PROSE_PROMPT_V39, _PROSE_PROMPT_V40, _PROSE_PROMPT_V41, _PROSE_PROMPT_V42, _PROSE_PROMPT_V43, _PROSE_PROMPT_V44, _PROSE_PROMPT_V45, _PROSE_PROMPT_VERSION,
+    )
+    guard_clearance_warnings = prompt_version in (
+        None, _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_V29, _PROSE_PROMPT_V30, _PROSE_PROMPT_V31, _PROSE_PROMPT_V32, _PROSE_PROMPT_V33, _PROSE_PROMPT_V34, _PROSE_PROMPT_V35, _PROSE_PROMPT_V36, _PROSE_PROMPT_V37, _PROSE_PROMPT_V38, _PROSE_PROMPT_V39, _PROSE_PROMPT_V40, _PROSE_PROMPT_V41, _PROSE_PROMPT_V42, _PROSE_PROMPT_V43, _PROSE_PROMPT_V44, _PROSE_PROMPT_V45, _PROSE_PROMPT_VERSION,
+    )
+    guard_rotation_values = prompt_version in (
+        None, _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_V29, _PROSE_PROMPT_V30, _PROSE_PROMPT_V31, _PROSE_PROMPT_V32, _PROSE_PROMPT_V33, _PROSE_PROMPT_V34, _PROSE_PROMPT_V35, _PROSE_PROMPT_V36, _PROSE_PROMPT_V37, _PROSE_PROMPT_V38, _PROSE_PROMPT_V39, _PROSE_PROMPT_V40, _PROSE_PROMPT_V41, _PROSE_PROMPT_V42, _PROSE_PROMPT_V43, _PROSE_PROMPT_V44, _PROSE_PROMPT_V45, _PROSE_PROMPT_VERSION,
+    )
+    guard_conjunctive = guard_simultaneous and prompt_version in (
+        None, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_V29, _PROSE_PROMPT_V30, _PROSE_PROMPT_V31, _PROSE_PROMPT_V32, _PROSE_PROMPT_V33, _PROSE_PROMPT_V34, _PROSE_PROMPT_V35, _PROSE_PROMPT_V36, _PROSE_PROMPT_V37, _PROSE_PROMPT_V38, _PROSE_PROMPT_V39, _PROSE_PROMPT_V40, _PROSE_PROMPT_V41, _PROSE_PROMPT_V42, _PROSE_PROMPT_V43, _PROSE_PROMPT_V44, _PROSE_PROMPT_V45, _PROSE_PROMPT_VERSION,
+    )
+    guard_pressure_conditions = prompt_version in (
+        None, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_V29, _PROSE_PROMPT_V30, _PROSE_PROMPT_V31, _PROSE_PROMPT_V32, _PROSE_PROMPT_V33, _PROSE_PROMPT_V34, _PROSE_PROMPT_V35, _PROSE_PROMPT_V36, _PROSE_PROMPT_V37, _PROSE_PROMPT_V38, _PROSE_PROMPT_V39, _PROSE_PROMPT_V40, _PROSE_PROMPT_V41, _PROSE_PROMPT_V42, _PROSE_PROMPT_V43, _PROSE_PROMPT_V44, _PROSE_PROMPT_V45, _PROSE_PROMPT_VERSION,
+    )
+    guard_pressure_order = prompt_version in (None, _PROSE_PROMPT_V28, _PROSE_PROMPT_V29, _PROSE_PROMPT_V30, _PROSE_PROMPT_V31, _PROSE_PROMPT_V32, _PROSE_PROMPT_V33, _PROSE_PROMPT_V34, _PROSE_PROMPT_V35, _PROSE_PROMPT_V36, _PROSE_PROMPT_V37, _PROSE_PROMPT_V38, _PROSE_PROMPT_V39, _PROSE_PROMPT_V40, _PROSE_PROMPT_V41, _PROSE_PROMPT_V42, _PROSE_PROMPT_V43, _PROSE_PROMPT_V44, _PROSE_PROMPT_V45, _PROSE_PROMPT_VERSION)
+    guard_battery_terminal = prompt_version in (None, _PROSE_PROMPT_V29, _PROSE_PROMPT_V30, _PROSE_PROMPT_V31, _PROSE_PROMPT_V32, _PROSE_PROMPT_V33, _PROSE_PROMPT_V34, _PROSE_PROMPT_V35, _PROSE_PROMPT_V36, _PROSE_PROMPT_V37, _PROSE_PROMPT_V38, _PROSE_PROMPT_V39, _PROSE_PROMPT_V40, _PROSE_PROMPT_V41, _PROSE_PROMPT_V42, _PROSE_PROMPT_V43, _PROSE_PROMPT_V44, _PROSE_PROMPT_V45, _PROSE_PROMPT_VERSION)
+    guard_vehicle_support = prompt_version in (None, _PROSE_PROMPT_V30, _PROSE_PROMPT_V31, _PROSE_PROMPT_V32, _PROSE_PROMPT_V33, _PROSE_PROMPT_V34, _PROSE_PROMPT_V35, _PROSE_PROMPT_V36, _PROSE_PROMPT_V37, _PROSE_PROMPT_V38, _PROSE_PROMPT_V39, _PROSE_PROMPT_V40, _PROSE_PROMPT_V41, _PROSE_PROMPT_V42, _PROSE_PROMPT_V43, _PROSE_PROMPT_V44, _PROSE_PROMPT_V45, _PROSE_PROMPT_VERSION)
+    guard_brake_bleed_and_check = prompt_version in (None, _PROSE_PROMPT_V31, _PROSE_PROMPT_V32, _PROSE_PROMPT_V33, _PROSE_PROMPT_V34, _PROSE_PROMPT_V35, _PROSE_PROMPT_V36, _PROSE_PROMPT_V37, _PROSE_PROMPT_V38, _PROSE_PROMPT_V39, _PROSE_PROMPT_V40, _PROSE_PROMPT_V41, _PROSE_PROMPT_V42, _PROSE_PROMPT_V43, _PROSE_PROMPT_V44, _PROSE_PROMPT_V45, _PROSE_PROMPT_VERSION)
+    guard_harness_pull = prompt_version in (None, _PROSE_PROMPT_V32, _PROSE_PROMPT_V33, _PROSE_PROMPT_V34, _PROSE_PROMPT_V35, _PROSE_PROMPT_V36, _PROSE_PROMPT_V37, _PROSE_PROMPT_V38, _PROSE_PROMPT_V39, _PROSE_PROMPT_V40, _PROSE_PROMPT_V41, _PROSE_PROMPT_V42, _PROSE_PROMPT_V43, _PROSE_PROMPT_V44, _PROSE_PROMPT_V45, _PROSE_PROMPT_VERSION)
+    guard_alignment_scope = prompt_version in (None, _PROSE_PROMPT_V33, _PROSE_PROMPT_V34, _PROSE_PROMPT_V35, _PROSE_PROMPT_V36, _PROSE_PROMPT_V37, _PROSE_PROMPT_V38, _PROSE_PROMPT_V39, _PROSE_PROMPT_V40, _PROSE_PROMPT_V41, _PROSE_PROMPT_V42, _PROSE_PROMPT_V43, _PROSE_PROMPT_V44, _PROSE_PROMPT_V45, _PROSE_PROMPT_VERSION)
+    guard_dry_replacement = prompt_version in (None, _PROSE_PROMPT_V34, _PROSE_PROMPT_V35, _PROSE_PROMPT_V36, _PROSE_PROMPT_V37, _PROSE_PROMPT_V38, _PROSE_PROMPT_V39, _PROSE_PROMPT_V40, _PROSE_PROMPT_V41, _PROSE_PROMPT_V42, _PROSE_PROMPT_V43, _PROSE_PROMPT_V44, _PROSE_PROMPT_V45, _PROSE_PROMPT_VERSION)
+    guard_pump_drain = prompt_version in (None, _PROSE_PROMPT_V35, _PROSE_PROMPT_V36, _PROSE_PROMPT_V37, _PROSE_PROMPT_V38, _PROSE_PROMPT_V39, _PROSE_PROMPT_V40, _PROSE_PROMPT_V41, _PROSE_PROMPT_V42, _PROSE_PROMPT_V43, _PROSE_PROMPT_V44, _PROSE_PROMPT_V45, _PROSE_PROMPT_VERSION)
+    guard_line_fitting_preparation = prompt_version in (None, _PROSE_PROMPT_V36, _PROSE_PROMPT_V37, _PROSE_PROMPT_V38, _PROSE_PROMPT_V39, _PROSE_PROMPT_V40, _PROSE_PROMPT_V41, _PROSE_PROMPT_V42, _PROSE_PROMPT_V43, _PROSE_PROMPT_V44, _PROSE_PROMPT_V45, _PROSE_PROMPT_VERSION)
+    guard_conditional_brake_line_replacement = prompt_version in (None, _PROSE_PROMPT_V37, _PROSE_PROMPT_V38, _PROSE_PROMPT_V39, _PROSE_PROMPT_V40, _PROSE_PROMPT_V41, _PROSE_PROMPT_V42, _PROSE_PROMPT_V43, _PROSE_PROMPT_V44, _PROSE_PROMPT_V45, _PROSE_PROMPT_VERSION)
+    guard_tightening_method = prompt_version in (None, _PROSE_PROMPT_V38, _PROSE_PROMPT_V39, _PROSE_PROMPT_V40, _PROSE_PROMPT_V41, _PROSE_PROMPT_V42, _PROSE_PROMPT_V43, _PROSE_PROMPT_V44, _PROSE_PROMPT_V45, _PROSE_PROMPT_VERSION)
+    guard_compound_tightening = prompt_version in (None, _PROSE_PROMPT_V39, _PROSE_PROMPT_V40, _PROSE_PROMPT_V41, _PROSE_PROMPT_V42, _PROSE_PROMPT_V43, _PROSE_PROMPT_V44, _PROSE_PROMPT_V45, _PROSE_PROMPT_VERSION)
+    guard_conditional_terminal_replacement = prompt_version in (None, _PROSE_PROMPT_V40, _PROSE_PROMPT_V41, _PROSE_PROMPT_V42, _PROSE_PROMPT_V43, _PROSE_PROMPT_V44, _PROSE_PROMPT_V45, _PROSE_PROMPT_VERSION)
+    guard_prestart_eye_protection = prompt_version in (None, _PROSE_PROMPT_V41, _PROSE_PROMPT_V42, _PROSE_PROMPT_V43, _PROSE_PROMPT_V44, _PROSE_PROMPT_V45, _PROSE_PROMPT_VERSION)
+    guard_harness_pull_force_bound = prompt_version in (None, _PROSE_PROMPT_V42, _PROSE_PROMPT_V43, _PROSE_PROMPT_V44, _PROSE_PROMPT_V45, _PROSE_PROMPT_VERSION)
+    guard_disconnect_before_service = prompt_version in (None, _PROSE_PROMPT_V43, _PROSE_PROMPT_V44, _PROSE_PROMPT_V45, _PROSE_PROMPT_VERSION)
+    guard_oil_pump_preparation = prompt_version in (None, _PROSE_PROMPT_V44, _PROSE_PROMPT_V45, _PROSE_PROMPT_VERSION)
+    guard_copied_sentences = prompt_version in (None, _PROSE_PROMPT_V45, _PROSE_PROMPT_VERSION)
+    guard_embedded_terminal_condition = prompt_version in (None, _PROSE_PROMPT_V45, _PROSE_PROMPT_VERSION)
+    guard_combined_replacement_preparation = prompt_version in (None, _PROSE_PROMPT_VERSION)
     introduction = candidate["blocks"][0].get("text", "")
-    if guard_prose and (_INLINE_WARNING.search(introduction) or (guard_actions and _PREREQUISITE.search(introduction))):
+    if guard_prose and (
+        _INLINE_WARNING.search(introduction)
+        or (guard_actions and _PREREQUISITE.search(introduction))
+        or (guard_scope and _EXCEPTION_CONDITION.search(introduction))
+        or (guard_clearance_warnings and _CLEARANCE_WARNING.search(introduction))
+    ):
         raise ValueError("REWRITE_SAFETY_MUTATION")
-    if guard_actions and _INTRO_DIRECTIVE.search(introduction):
+    if guard_actions and (_INTRO_DIRECTIVE.search(introduction)
+                          or (guard_vehicle_support and _vehicle_support(introduction) is not None)):
         raise ValueError("REWRITE_INTRODUCTION_INSTRUCTION")
-    if guard_actions and _spec_scope(introduction):
+    if guard_actions and _spec_scope(
+        introduction, torque_aliases=guard_torque_aliases, duration_values=guard_duration_values,
+        electrical_values=guard_electrical_values, pressure_values=guard_pressure_values,
+        temperature_values=guard_temperature_values, resistance_values=guard_resistance_values,
+        rotation_values=guard_rotation_values,
+    ):
         raise ValueError("REWRITE_SPEC_SCOPE_MUTATION")
+    if ((guard_simultaneous and _simultaneous_state(_proof_text(introduction), conjunctive=guard_conjunctive))
+            or (guard_pressure_conditions and _pressure_condition(_proof_text(introduction)))):
+        raise ValueError("REWRITE_INTRODUCTION_UNSUPPORTED_CLAIM")
     if guard_claims:
         _check_intro_claims(source, slots, introduction)
     for slot in slots:
@@ -765,6 +2527,8 @@ def _require_changes(source, candidate, *, prompt_version):
             _INLINE_WARNING.search(text)
             or (guard_actions and _PREREQUISITE.search(text))
             or (guard_direction and _negative_scope(text))
+            or (guard_scope and _EXCEPTION_CONDITION.search(text))
+            or (guard_clearance_warnings and _CLEARANCE_WARNING.search(text))
             for text in (original, replacement)
         ):
             if original != replacement:
@@ -773,37 +2537,137 @@ def _require_changes(source, candidate, *, prompt_version):
         technical_only = _technical_only(original)
         if guard_prose and not technical_only and _technical_only(replacement):
             raise ValueError("REWRITE_PROSE_MISSING")
-        if guard_actions and not technical_only and (_spec_scope(original) or _spec_scope(replacement)):
+        if guard_actions and not technical_only and (
+            _spec_scope(
+                original, torque_aliases=guard_torque_aliases, duration_values=guard_duration_values,
+                electrical_values=guard_electrical_values, pressure_values=guard_pressure_values,
+                temperature_values=guard_temperature_values, resistance_values=guard_resistance_values,
+                rotation_values=guard_rotation_values,
+            )
+            or _spec_scope(
+                replacement, torque_aliases=guard_torque_aliases, duration_values=guard_duration_values,
+                electrical_values=guard_electrical_values, pressure_values=guard_pressure_values,
+                temperature_values=guard_temperature_values, resistance_values=guard_resistance_values,
+                rotation_values=guard_rotation_values,
+            )
+        ):
             if original != replacement:
                 raise ValueError("REWRITE_SPEC_SCOPE_MUTATION")
             continue
         if (_WORDS.findall(replacement.casefold()) == _WORDS.findall(original.casefold())
                 and not technical_only):
             raise ValueError("REWRITE_UNCHANGED")
-        if guard_prose and not technical_only and _near_copy(original, replacement):
+        if guard_prose and not technical_only and _near_copy(
+            original, replacement, check_sentences=guard_copied_sentences,
+        ):
             raise ValueError("REWRITE_PROSE_TOO_SIMILAR")
-        if guard_direction and _direction_scope(original) != _direction_scope(replacement):
+        bound_alternatives = False
+        if guard_bound_alternatives and _ALTERNATIVE.search(original):
+            choices = _alternative_pair(original)
+            if choices is not None and len(choices) == 2:
+                bound_alternatives = True
+                if choices != _alternative_pair(replacement):
+                    raise ValueError("REWRITE_CLAUSE_MUTATION")
+        # Proven alternative actions and literal targets have no execution order.
+        if guard_direction and not bound_alternatives and _direction_scope(original) != _direction_scope(replacement):
             raise ValueError("REWRITE_DIRECTION_MUTATION")
-        if guard_actions and not technical_only:
+        if guard_actions and not technical_only and not bound_alternatives:
             original_actions = _execution_order(original)
             if original_actions and original_actions != _execution_order(replacement):
                 raise ValueError("REWRITE_ACTION_MUTATION")
-        if guard_clauses and _clause_assignment_changed(original, replacement):
+        if guard_clauses and _clause_assignment_changed(
+            original, replacement, preserve_order=guard_bound_order, preserve_steps=guard_bound_steps,
+        ):
             raise ValueError("REWRITE_CLAUSE_MUTATION")
-        if guard_qualifiers and _qualifier_changed(original, replacement):
+        if guard_scope and not bound_alternatives and _alternative_changed(original, replacement):
+            raise ValueError("REWRITE_CLAUSE_MUTATION")
+        if guard_scope and _exception_changed(original, replacement):
+            raise ValueError("REWRITE_QUALIFIER_MUTATION")
+        if guard_identified_inspection and _INSPECTION_MARKER.match(original.lstrip()):
+            inspection = _identified_inspection(original, compound=guard_compound_inspection)
+            if inspection is not None and inspection != _identified_inspection(
+                replacement, compound=guard_compound_inspection,
+            ):
+                raise ValueError("REWRITE_QUALIFIER_MUTATION")
+        if guard_pump_drain and (pump := _pump_to_drain(original)) and pump != _pump_to_drain(replacement):
+            raise ValueError("REWRITE_ACTION_MUTATION")
+        if guard_line_fitting_preparation and _line_fitting_preparation_changed(original, replacement):
+            raise ValueError("REWRITE_CLAUSE_MUTATION")
+        if (guard_conditional_brake_line_replacement and "brake" in original.casefold()
+                and _CONDITIONAL_BRAKE_LINE_REPLACEMENT.fullmatch(_proof_text(original))
+                and not _CONDITIONAL_BRAKE_LINE_REPLACEMENT.fullmatch(_proof_text(replacement))):
+            raise ValueError("REWRITE_QUALIFIER_MUTATION")
+        if guard_tightening_method:
+            method = _tightening_method_scope(original, compound=guard_compound_tightening)
+            if method and method != _tightening_method_scope(replacement, compound=guard_compound_tightening):
+                raise ValueError("REWRITE_QUALIFIER_MUTATION")
+        if guard_conditional_terminal_replacement and (
+            terminal := _conditional_terminal_replacement_scope(original)
+        ):
+            if terminal != _conditional_terminal_replacement_scope(replacement):
+                raise ValueError("REWRITE_QUALIFIER_MUTATION")
+        if guard_embedded_terminal_condition and (terminal := _brake_connector_terminal_service_scope(original)):
+            if terminal != _brake_connector_terminal_service_scope(replacement):
+                raise ValueError("REWRITE_QUALIFIER_MUTATION")
+        if guard_prestart_eye_protection:
+            target = _prestart_eye_protection_target(original)
+            if target is not None and target != _prestart_eye_protection_target(replacement):
+                raise ValueError("REWRITE_QUALIFIER_MUTATION")
+        if guard_harness_pull_force_bound and (bound := _harness_pull_force_bound(original)):
+            if bound != _harness_pull_force_bound(replacement):
+                raise ValueError("REWRITE_SPEC_SCOPE_MUTATION")
+        if guard_disconnect_before_service and (target := _disconnect_before_service_target(original)):
+            if target != _disconnect_before_service_target(replacement):
+                raise ValueError("REWRITE_CLAUSE_MUTATION")
+        if guard_oil_pump_preparation and _oil_pump_preparation_changed(original, replacement):
+            raise ValueError("REWRITE_CLAUSE_MUTATION")
+        if guard_combined_replacement_preparation and (
+            targets := _combined_replacement_preparation_targets(original)
+        ):
+            if targets != _combined_replacement_preparation_targets(replacement):
+                raise ValueError("REWRITE_CLAUSE_MUTATION")
+        if guard_alignment_scope and _alignment_scope_changed(original, replacement):
+            raise ValueError("REWRITE_CLAUSE_MUTATION")
+        if guard_harness_pull and (pull := _firm_harness_pull_scope(original)):
+            if pull != _firm_harness_pull_scope(replacement):
+                raise ValueError("REWRITE_CLAUSE_MUTATION")
+        if guard_brake_bleed_and_check and (ordered := _brake_bleed_and_check_order(original)) is not None:
+            draft_order = _brake_bleed_and_check_order(replacement)
+            if draft_order is None or (ordered and not draft_order):
+                raise ValueError("REWRITE_CLAUSE_MUTATION")
+        if guard_vehicle_support and (secure := _vehicle_support(original)) is not None:
+            draft_support = _vehicle_support(replacement)
+            if draft_support is None or (secure and not draft_support):
+                raise ValueError("REWRITE_CLAUSE_MUTATION")
+        if guard_battery_terminal and _battery_terminal_action(original) != _battery_terminal_action(replacement):
+            raise ValueError("REWRITE_QUALIFIER_MUTATION")
+        if guard_pressure_order and (ordered_pressure := _pressure_release_order(original)):
+            if ordered_pressure != _pressure_release_order(replacement):
+                raise ValueError("REWRITE_CLAUSE_MUTATION")
+        if guard_pressure_conditions and _pressure_qualified_task(original) != _pressure_qualified_task(replacement):
+            raise ValueError("REWRITE_QUALIFIER_MUTATION")
+        if guard_qualifiers and _qualifier_changed(
+            original, replacement, extended=guard_scope, simultaneous=guard_simultaneous,
+            conjunctive=guard_conjunctive, bind_dry_replacement=guard_dry_replacement,
+        ):
             raise ValueError("REWRITE_QUALIFIER_MUTATION")
     if guard_claims:
         _check_target_swaps(slots, restored)
 
 
 def render_auto(source, response, *, prompt_version=None):
-    candidate = full.render_full(source, response, profile_version=PROFILE)
+    candidate = full.render_full(
+        source, response, profile_version=PROFILE, include_cell_blocks=_include_cell_blocks(prompt_version),
+    )
     _require_changes(source, candidate, prompt_version=prompt_version)
     return candidate
 
 
 def validate_auto(source, candidate, *, response=None, prompt_version=None):
-    validation = full.validate_full(source, candidate, response=response, profile_version=PROFILE)
+    validation = full.validate_full(
+        source, candidate, response=response, profile_version=PROFILE,
+        include_cell_blocks=_include_cell_blocks(prompt_version),
+    )
     errors = list(validation.error_codes)
     if validation.passed:
         try:
@@ -821,7 +2685,44 @@ def validate_auto(source, candidate, *, response=None, prompt_version=None):
             _PROSE_PROMPT_V6: "full-prose-auto-validator-v4",
             _PROSE_PROMPT_V7: "full-prose-auto-validator-v5",
             _PROSE_PROMPT_V8: "full-prose-auto-validator-v6",
-        }.get(prompt_version, "full-prose-auto-validator-v7")
+            _PROSE_PROMPT_V9: "full-prose-auto-validator-v7",
+            _PROSE_PROMPT_V10: "full-prose-auto-validator-v8",
+            _CELL_PROSE_PROMPT_V11: "full-prose-auto-validator-v9",
+            _PROSE_PROMPT_V12: "full-prose-auto-validator-v10",
+            _PROSE_PROMPT_V13: "full-prose-auto-validator-v11",
+            _PROSE_PROMPT_V14: "full-prose-auto-validator-v12",
+            _PROSE_PROMPT_V15: "full-prose-auto-validator-v13",
+            _PROSE_PROMPT_V16: "full-prose-auto-validator-v14",
+            _PROSE_PROMPT_V17: "full-prose-auto-validator-v15",
+            _PROSE_PROMPT_V18: "full-prose-auto-validator-v16",
+            _PROSE_PROMPT_V19: "full-prose-auto-validator-v17",
+            _PROSE_PROMPT_V20: "full-prose-auto-validator-v18",
+            _PROSE_PROMPT_V21: "full-prose-auto-validator-v19",
+            _PROSE_PROMPT_V22: "full-prose-auto-validator-v20",
+            _PROSE_PROMPT_V23: "full-prose-auto-validator-v21",
+            _PROSE_PROMPT_V24: "full-prose-auto-validator-v22",
+            _PROSE_PROMPT_V25: "full-prose-auto-validator-v23",
+            _PROSE_PROMPT_V26: "full-prose-auto-validator-v24",
+            _PROSE_PROMPT_V27: "full-prose-auto-validator-v25",
+            _PROSE_PROMPT_V28: "full-prose-auto-validator-v26",
+            _PROSE_PROMPT_V29: "full-prose-auto-validator-v27",
+            _PROSE_PROMPT_V30: "full-prose-auto-validator-v28",
+            _PROSE_PROMPT_V31: "full-prose-auto-validator-v29",
+            _PROSE_PROMPT_V32: "full-prose-auto-validator-v30",
+            _PROSE_PROMPT_V33: "full-prose-auto-validator-v31",
+            _PROSE_PROMPT_V34: "full-prose-auto-validator-v32",
+            _PROSE_PROMPT_V35: "full-prose-auto-validator-v33",
+            _PROSE_PROMPT_V36: "full-prose-auto-validator-v34",
+            _PROSE_PROMPT_V37: "full-prose-auto-validator-v35",
+            _PROSE_PROMPT_V38: "full-prose-auto-validator-v36",
+            _PROSE_PROMPT_V39: "full-prose-auto-validator-v37",
+            _PROSE_PROMPT_V40: "full-prose-auto-validator-v38",
+            _PROSE_PROMPT_V41: "full-prose-auto-validator-v39",
+            _PROSE_PROMPT_V42: "full-prose-auto-validator-v40",
+            _PROSE_PROMPT_V43: "full-prose-auto-validator-v41",
+            _PROSE_PROMPT_V44: "full-prose-auto-validator-v42",
+            _PROSE_PROMPT_V45: "full-prose-auto-validator-v43",
+        }.get(prompt_version, "full-prose-auto-validator-v44")
     report.update(validator_version=validator_version, profile_version=PROFILE,
         publication_mode="automatic", content_acceptance_required=False,
         complete_rewrite=False, passed=not errors, error_codes=errors)
@@ -843,8 +2744,10 @@ def build_source_preserving_candidate(source):
         if len(json.dumps(response, ensure_ascii=False).encode()) > 1024 * 1024:
             continue
         try:
-            candidate = render_auto(source, response)
-            validation = validate_auto(source, candidate, response=response)
+            candidate = render_auto(source, response, prompt_version="full-prose-auto-prompt-v3")
+            validation = validate_auto(
+                source, candidate, response=response, prompt_version="full-prose-auto-prompt-v3",
+            )
         except ValueError:
             continue
         if validation.passed:
@@ -862,7 +2765,9 @@ def validate_source_preserving_candidate(source, candidate, metadata):
     if digest_json(candidate) != digest_json(expected) or digest_json(metadata) != digest_json(provenance):
         raise ValueError("SOURCE_PRESERVING_BINDING_INVALID")
     response = {"introduction": expected["blocks"][0]["text"], "replacements": []}
-    validation = validate_auto(source, candidate, response=response)
+    validation = validate_auto(
+        source, candidate, response=response, prompt_version="full-prose-auto-prompt-v3",
+    )
     report = dict(validation.report, transformation_method=SOURCE_PRESERVING_METHOD,
         introduction_origin="source_heading", drafting_actor="server", model_calls=0, model_dispatch_count=0)
     return ValidationResult(validation.passed, validation.error_codes, report)

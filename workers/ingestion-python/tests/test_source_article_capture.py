@@ -91,6 +91,112 @@ def test_banktwo_plain_html_uses_resolved_descriptor_context(capture_fixture):
 
 
 @pytest.mark.parametrize("provider", ["bankone", "banktwo"])
+def test_captured_rotation_retains_the_component_and_direction_when_rewritten(capture_fixture, provider):
+    import json
+
+    from autodata_ingestion.article_document import project_ordered_document
+    from autodata_ingestion.procedure_rewrite import build_rewrite_prompt, rewrite_ordered_document
+    from autodata_ingestion.source_article_capture import capture_source_article
+    from test_procedure_rewrite_full import Draft
+
+    opening = "Remove the retaining clip."
+    instruction = "Turn the adjuster 1.5 turns clockwise."
+    if provider == "bankone":
+        payload = {"blocks": [{"type": "paragraph", "text": text} for text in (opening, instruction)]}
+        capture_fixture.body(provider, json.dumps(payload).encode(), "application/json")
+    else:
+        capture_fixture.body(provider, f"<p>{opening}</p><p>{instruction}</p>".encode())
+
+    captured = capture_source_article(
+        capture_fixture.context(provider), registry=capture_fixture.registry, object_store=capture_fixture.objects,
+    )
+    assert captured.source_body.splitlines() == [opening, instruction]
+    source = captured.source_document
+    profile = "full-prose-auto-v1"
+    prompt = json.loads(build_rewrite_prompt(source, context={}, profile_version=profile))
+    assert [slot["required_action"] for slot in prompt["slots"]] == ["rewrite", "retain"]
+    replacements = ("Take the retaining clip off.", "Give the locknut 1.5 turns counterclockwise.")
+    response = {
+        "introduction": "This procedure describes component access.",
+        "replacements": [
+            {"block_id": slot["block_id"], "path": slot["path"], "action": "rewrite", "reason": "", "text": text}
+            for slot, text in zip(prompt["slots"], replacements, strict=True)
+        ],
+    }
+    rejected = rewrite_ordered_document(source, client=Draft(response), context={}, profile_version=profile)
+    assert rejected.error_code == "REWRITE_SPEC_SCOPE_MUTATION"
+    assert rejected.document == source
+
+    response["replacements"][1].update(action="retain", text=instruction, reason="Exact rotation specification.")
+    retained = rewrite_ordered_document(source, client=Draft(response), context={}, profile_version=profile)
+    assert retained.error_code is None
+    assert project_ordered_document(retained.document)["body"].splitlines() == [
+        response["introduction"], "Take the retaining clip off.", instruction,
+    ]
+
+
+@pytest.mark.parametrize("provider", ["bankone", "banktwo"])
+def test_captured_battery_terminal_rewrite_keeps_instruction_and_figure_bound(capture_fixture, provider):
+    from io import BytesIO
+    import json
+    from PIL import Image
+
+    from autodata_ingestion.article_document import project_ordered_document
+    from autodata_ingestion.procedure_rewrite import build_rewrite_prompt, rewrite_ordered_document
+    from autodata_ingestion.source_article_capture import capture_source_article
+    from test_procedure_rewrite_full import Draft
+
+    instruction = "Disconnect negative battery terminal."
+    illustration = {"asset_resource_ref": "figure", "alt": "Battery terminal"}
+    if provider == "bankone":
+        payload = {"blocks": [{"type": "paragraph", "text": f"1. {instruction}", "images": [illustration]}]}
+        capture_fixture.body(provider, json.dumps(payload).encode(), "application/json", assets=["figure"])
+    else:
+        html = (
+            f'<p>1. {instruction}'
+            '<img data-resource-ref="figure" src="/fixture/terminal.png" alt="Battery terminal"></p>'
+        )
+        capture_fixture.body(provider, html.encode(), assets=["figure"])
+    diagram = BytesIO()
+    Image.new("RGB", (4, 4), "red").save(diagram, format="PNG")
+    capture_fixture.body(provider, diagram.getvalue(), "image/png", ref="figure", kind="asset")
+    captured = capture_source_article(
+        capture_fixture.context(provider), registry=capture_fixture.registry, object_store=capture_fixture.objects,
+    )
+    source = captured.source_document
+    source_step, = [block for block in source["blocks"] if block["type"] == "step"]
+    before = project_ordered_document(source)
+    image, = before["images"]
+    assert source_step["type"] == "step" and source_step["number"] == 1
+    assert source_step["text"] == instruction
+    assert image["alt"] == "Battery terminal" and image["status"] == "available"
+    assert image["content_sha256"] == sha256(diagram.getvalue()).hexdigest()
+
+    profile = "full-prose-auto-v1"
+    prompt = json.loads(build_rewrite_prompt(source, context={}, profile_version=profile))
+    slot, = prompt["slots"]
+    assert slot["text"] == instruction and slot["required_action"] == "rewrite"
+    replacement = {"block_id": slot["block_id"], "path": slot["path"], "action": "rewrite", "reason": "",
+                   "text": "Detach the positive battery terminal."}
+    payload = {"introduction": "This procedure describes a battery connection.", "replacements": [replacement]}
+    rejected = rewrite_ordered_document(source, client=Draft(payload), context={}, profile_version=profile)
+    assert rejected.error_code == "REWRITE_QUALIFIER_MUTATION" and rejected.document == source
+
+    replacement["text"] = "Detach the minus terminal from the battery."
+    accepted = rewrite_ordered_document(source, client=Draft(payload), context={}, profile_version=profile)
+    assert accepted.error_code is None
+    expected = [{**block, "source_order": block["source_order"] + 1} for block in source["blocks"]]
+    expected[0]["text"] = replacement["text"]
+    assert accepted.document["blocks"][1:] == expected
+    projection = project_ordered_document(accepted.document)
+    assert projection["body"].splitlines() == [payload["introduction"], replacement["text"]]
+    assert projection["steps"] == [{**before["steps"][0], "action": replacement["text"]}]
+    if "source_order" in image:
+        image = {**image, "source_order": image["source_order"] + 1}
+    assert projection["images"] == [image]
+
+
+@pytest.mark.parametrize("provider", ["bankone", "banktwo"])
 def test_same_asset_ref_never_crosses_provider(capture_fixture, provider):
     from autodata_ingestion.source_article_capture import capture_source_article
 
@@ -714,8 +820,9 @@ def test_mixed_pdf_keeps_ocr_text_and_embedded_figure_in_page_order(
     pdf.showPage()
     pdf.save()
 
-    def read_scanned_page(_digest, _payload, native_pages):
+    def read_scanned_page(_digest, _payload, native_pages, *, page_range):
         assert native_pages == {1, 3}
+        assert page_range == (2, 2)
         return (
             OCRTextBlock("Check the seal.", 0.96, (72, 96, 180, 30), page_number=2),
             OCRTextBlock("Wipe the flange.", 0.96, (72, 140, 180, 30), page_number=2),
@@ -816,7 +923,7 @@ def test_embedded_pdf_bounds_apply_before_extraction_and_ocr(capture_fixture, mo
     from autodata_ingestion import source_adapters
     from autodata_ingestion.source_article_capture import capture_source_article
 
-    def unexpected_extraction(*_):
+    def unexpected_extraction(*_, **__):
         pytest.fail("PDF exceeds the bound before extraction or OCR")
 
     monkeypatch.setattr(source_adapters, "_extract_pdf_page_images", unexpected_extraction)
@@ -1756,3 +1863,569 @@ def test_authored_headings_keep_metadata_and_instruction_boundaries(capture_fixt
         ("paragraph", None, "Inspect the cover."),
     ]
     assert [slot["text"] for slot in prose_slots(document)] == ["Remove the pump.", "Inspect the cover."]
+
+
+@pytest.mark.parametrize("provider", ["bankone", "banktwo"])
+@pytest.mark.parametrize("position", ["before", "between", "after"])
+def test_html_table_cell_preserves_png_position_without_rewriting_cell_text(
+    capture_fixture, provider, position,
+):
+    import json
+    from io import BytesIO
+
+    from PIL import Image
+    from autodata_ingestion.article_document import validate_ordered_document
+    from autodata_ingestion.procedure_normalize import normalize_procedure_article
+    from autodata_ingestion.procedure_rewrite_auto import render_auto, validate_auto
+    from autodata_ingestion.procedure_rewrite_full import prose_slots
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    png = BytesIO()
+    Image.new("RGB", (20, 20), "green").save(png, format="PNG")
+    image = '<img src="/diagram" alt="Alignment marks">'
+    before, after = "Before turning.", "After fitting."
+    cell_markup = {
+        "before": image + before + " " + after,
+        "between": before + image + after,
+        "after": before + " " + after + image,
+    }[position]
+    markup = f"<p>Remove the pump.</p><table><tr><td>{cell_markup}</td></tr></table>"
+    body, media = markup.encode(), "text/html"
+    if provider == "banktwo":
+        body = json.dumps({"_embedded": {"data": {"article": {"content": markup}}}}).encode()
+        media = "application/hal+json"
+    fixture = capture_fixture
+    fixture.body(provider, body, media, assets=["figure"],
+                 asset_bindings=[{"source_url": "/diagram", "resource_ref": "figure"}])
+    fixture.body(provider, png.getvalue(), "image/png", ref="figure", kind="asset")
+    context = fixture.context(provider)
+    options = {"registry": fixture.registry, "object_store": fixture.objects, "keep_bound_pdf_iframes": True}
+    legacy = capture_source_article(context, **options)
+    corrected = capture_source_article(context, keep_html_table_image_order=True, **options)
+    historic_cell = legacy.source_document["blocks"][1]["rows"][0][0]
+    cell = corrected.source_document["blocks"][1]["rows"][0][0]
+    assert historic_cell["text"] == f"{before} {after}"
+    assert historic_cell["images"][0]["alt"] == "Alignment marks"
+    assert legacy.projection_version == "source-projection-v2"
+    assert corrected.source_fingerprint == legacy.source_fingerprint
+    assert corrected.resource_manifest == legacy.resource_manifest
+    assert corrected.evidence_manifest == legacy.evidence_manifest
+    assert corrected.source_body.split() == legacy.source_body.split()
+    assert corrected.source_steps == legacy.source_steps
+    assert corrected.projection_status == "readable"
+    assert not validate_ordered_document(corrected.source_document, strict=True)
+    assert "/diagram" not in repr(corrected.source_document)
+
+    if position == "after":
+        assert corrected.projection_version == legacy.projection_version
+        assert corrected.source_document == legacy.source_document
+    else:
+        assert corrected.projection_version == "source-projection-v9"
+        assert cell["protected_text"] is True
+        assert [(block["type"], block.get("text")) for block in cell["blocks"]] == (
+            [("image", None), ("paragraph", f"{before} {after}")]
+            if position == "before" else [("paragraph", before), ("image", None), ("paragraph", after)]
+        )
+        normalized = normalize_procedure_article({
+            "normalized_document": corrected.source_document,
+            "body": corrected.source_body, "steps": corrected.source_steps,
+        })["normalized_document"]
+        assert normalized == corrected.source_document
+        slots = prose_slots(normalized, include_cell_blocks=True)
+        assert [slot["text"] for slot in slots] == ["Remove the pump."]
+        response = {
+            "introduction": "This procedure covers pump removal.",
+            "replacements": [{**slots[0], "action": "rewrite", "text": "Take off the pump.", "reason": ""}],
+        }
+        canonical = render_auto(normalized, response)
+        assert validate_auto(normalized, canonical, response=response).passed
+        assert canonical["blocks"][2]["rows"][0][0] == cell
+
+    [old_image], [new_image] = legacy.source_images, corrected.source_images
+    for field in ("asset_id", "image_id", "storage_key", "content_sha256", "evidence_ids", "status", "media_type"):
+        assert new_image[field] == old_image[field]
+    assert fixture.objects.data[new_image["storage_key"]] == (png.getvalue(), "image/png")
+    assert fixture.resource_calls(provider, "figure") == 2
+
+
+@pytest.mark.parametrize("provider,available", [
+    ("bankone", True), ("banktwo", True), ("banktwo", False),
+])
+def test_authored_table_figure_caption_and_following_instruction_are_distinct(capture_fixture, provider, available):
+    import json
+    from io import BytesIO
+
+    from PIL import Image
+    from autodata_ingestion.article_document import validate_ordered_document
+    from autodata_ingestion.article_lifecycle_types import HTML_FIGURE_CAPTION_LAYOUT
+    from autodata_ingestion.procedure_normalize import normalize_procedure_article
+    from autodata_ingestion.procedure_rewrite_auto import render_auto, validate_auto
+    from autodata_ingestion.procedure_rewrite_full import prose_slots
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    markup = (
+        '<p>Remove the pump.</p><table><tr><td>Check the reference mark.'
+        '<figure><img src="/fixture/diagram" alt="Alignment marks">'
+        '<figcaption>Alignment <em>witness</em> marks<script>Hidden script</script></figcaption>'
+        '</figure>Keep the shim seated.</td></tr></table>'
+    )
+    raw, media = markup.encode(), "text/html"
+    if provider == "banktwo":
+        raw = json.dumps({"_embedded": {"data": {"article": {"content": markup}}}}).encode()
+        media = "application/hal+json"
+    capture_fixture.body(provider, raw, media, assets=["figure"], asset_bindings=[
+        {"source_url": "/fixture/diagram", "resource_ref": "figure"},
+    ])
+    if available:
+        raster = BytesIO()
+        Image.new("RGB", (24, 24), "green").save(raster, format="PNG")
+        capture_fixture.body(provider, raster.getvalue(), "image/png", ref="figure", kind="asset")
+
+    context = capture_fixture.context(provider)
+    options = dict(registry=capture_fixture.registry, object_store=capture_fixture.objects,
+                   keep_bound_pdf_iframes=True, keep_html_table_image_order=True)
+    previous = capture_source_article(context, **options)
+    previous_cell = previous.source_document["blocks"][1]["rows"][0][0]
+    assert previous_cell["blocks"][-1]["text"] == "Alignment witness marksKeep the shim seated."
+
+    guarded = capture_source_article(
+        replace(context, legacy_published_html_figure_body=sha256(raw).hexdigest()),
+        keep_html_figure_captions=True, **options,
+    )
+    assert guarded.source_document == previous.source_document
+    assert guarded.source_fingerprint == previous.source_fingerprint
+
+    captured = capture_source_article(context, keep_html_figure_captions=True, **options)
+    assert captured.source_body.splitlines() == [
+        "Remove the pump.", "Check the reference mark.", "Alignment witness marks", "Keep the shim seated.",
+    ]
+    assert captured.evidence_manifest == previous.evidence_manifest
+    assert captured.resource_manifest[0]["html_figure_caption_layout"] == HTML_FIGURE_CAPTION_LAYOUT
+    assert captured.resource_manifest[1:] == previous.resource_manifest[1:]
+    assert captured.projection_status == ("readable" if available else "partial")
+    assert not validate_ordered_document(captured.source_document, strict=True)
+    cell = captured.source_document["blocks"][1]["rows"][0][0]
+    blocks = cell["blocks"]
+    assert [(block["type"], block.get("text")) for block in blocks] == [
+        ("paragraph", "Check the reference mark."), ("image", None),
+        *([] if available else [("paragraph", "Alignment witness marks")]),
+        ("paragraph", "Keep the shim seated."),
+    ]
+    assert blocks[1].get("caption") == ("Alignment witness marks" if available else None)
+    assert blocks[1]["image_id"] == previous.source_images[0]["image_id"]
+    assert "Hidden script" not in repr(captured.source_document) and "/fixture/diagram" not in repr(captured.source_document)
+    if available:
+        assert capture_fixture.objects.data[blocks[1]["storage_key"]] == (raster.getvalue(), "image/png")
+
+    normalized = normalize_procedure_article({
+        "normalized_document": captured.source_document, "body": captured.source_body, "steps": captured.source_steps,
+    })["normalized_document"]
+    [slot] = prose_slots(normalized, include_cell_blocks=True)
+    assert slot["text"] == "Remove the pump."
+    response = {"introduction": "This procedure covers pump removal.", "replacements": [
+        {**slot, "action": "rewrite", "text": "Take off the pump.", "reason": ""},
+    ]}
+    canonical = render_auto(normalized, response)
+    assert validate_auto(normalized, canonical, response=response).passed
+    assert canonical["blocks"][2]["rows"][0][0] == cell
+
+
+@pytest.mark.parametrize("provider,location,available", [
+    ("bankone", "article", True), ("banktwo", "article", True),
+    ("bankone", "list", True), ("banktwo", "list", True), ("banktwo", "article", False),
+])
+def test_html_flow_figure_caption_stays_with_available_figure(capture_fixture, provider, location, available):
+    import json
+    from io import BytesIO
+
+    from PIL import Image
+    from autodata_ingestion.article_lifecycle_types import HTML_FLOW_FIGURE_CAPTION_LAYOUT
+    from autodata_ingestion.procedure_normalize import normalize_procedure_article
+    from autodata_ingestion.procedure_rewrite_auto import render_auto, validate_auto
+    from autodata_ingestion.procedure_rewrite_full import prose_slots
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    opening, caption, following = "Remove the pump.", "Stamped witness marks", "Remove the cover while the ignition is off."
+    rewritten_following = "With the ignition off, take the cover off."
+    figure = ('<figure><img src="/fixture/bench" alt="Bench diagram">'
+              f'<figcaption>{caption}</figcaption></figure>')
+    markup = (f'<p>{opening}</p>{figure}{following}' if location == "article"
+              else f'<ol start="4"><li value="9">{opening}{figure}{following}</li></ol>')
+    raw, media = markup.encode(), "text/html"
+    if provider == "banktwo":
+        raw = json.dumps({"_embedded": {"data": {"article": {"content": markup}}}}).encode()
+        media = "application/hal+json"
+    capture_fixture.body(provider, raw, media, assets=["figure"], asset_bindings=[
+        {"source_url": "/fixture/bench", "resource_ref": "figure"},
+    ])
+    if available:
+        raster = BytesIO()
+        Image.new("RGB", (24, 24), "green").save(raster, format="PNG")
+        capture_fixture.body(provider, raster.getvalue(), "image/png", ref="figure", kind="asset")
+
+    def children(document):
+        blocks = document["blocks"]
+        if location == "article":
+            return blocks[1:]
+        return blocks[0]["items"][0]["blocks"]
+
+    context = capture_fixture.context(provider)
+    options = dict(registry=capture_fixture.registry, object_store=capture_fixture.objects,
+                   keep_html_figure_captions=True, keep_html_table_image_order=True)
+    prior = capture_source_article(context, **options)
+    assert children(prior.source_document)[0].get("caption") is None
+    guarded = capture_source_article(
+        replace(context, legacy_published_html_flow_figure_body=sha256(raw).hexdigest()),
+        keep_html_flow_figure_captions=True, **options,
+    )
+    assert (guarded.source_document, guarded.source_fingerprint) == (prior.source_document, prior.source_fingerprint)
+    capture = capture_source_article(context, keep_html_flow_figure_captions=True, **options)
+    assert capture.resource_manifest[0]["html_flow_figure_caption_layout"] == HTML_FLOW_FIGURE_CAPTION_LAYOUT
+    assert capture.resource_manifest[1:] == prior.resource_manifest[1:]
+    assert capture.evidence_manifest == prior.evidence_manifest
+    assert capture.source_body.splitlines() == [opening, caption, following]
+    blocks = children(capture.source_document)
+    assert [(block["type"], block.get("caption"), block.get("text")) for block in blocks] == [
+        ("image", caption if available else None, None),
+        *([] if available else [("paragraph", None, caption)]),
+        ("paragraph", None, following),
+    ]
+    assert blocks[0]["image_id"] == prior.source_images[0]["image_id"]
+    if not available:
+        assert capture.projection_status == "partial"
+        return
+
+    assert capture_fixture.objects.data[blocks[0]["storage_key"]] == (raster.getvalue(), "image/png")
+    normalized = normalize_procedure_article({
+        "normalized_document": capture.source_document, "body": capture.source_body, "steps": capture.source_steps,
+    }, resource_manifest=capture.resource_manifest)["normalized_document"]
+    slots = prose_slots(normalized, include_cell_blocks=True)
+    assert [slot["text"] for slot in slots] == [opening, following]
+    response = {"introduction": "This procedure covers pump removal.", "replacements": [
+        {**slot, "action": "rewrite", "text": text, "reason": ""}
+        for slot, text in zip(slots, ("Take off the pump.", rewritten_following), strict=True)
+    ]}
+    canonical = render_auto(normalized, response)
+    assert validate_auto(normalized, canonical, response=response).passed
+    article = {"blocks": canonical["blocks"][1:]}
+    canonical_figure = children(article)[0]
+    assert canonical_figure == {**blocks[0], "source_order": canonical_figure["source_order"]}
+    assert children(article)[-1]["text"] == rewritten_following
+
+
+@pytest.mark.parametrize("provider", ["bankone", "banktwo"])
+def test_authored_html_table_caption_stays_with_table_through_rewrite(capture_fixture, provider):
+    import json
+
+    from autodata_ingestion.article_document import validate_ordered_document
+    from autodata_ingestion.article_lifecycle_types import HTML_TABLE_CAPTION_LAYOUT
+    from autodata_ingestion.procedure_normalize import normalize_procedure_article
+    from autodata_ingestion.procedure_rewrite_auto import render_auto, validate_auto
+    from autodata_ingestion.procedure_rewrite_full import prose_slots
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    markup = (
+        '<p>Remove the pump.</p><table>'
+        '<caption>Service <em>data</em><br>Front flange<script>Hidden script</script></caption>'
+        '<tr><th>Fastener</th><th>Torque</th></tr><tr><td>Cover bolt</td><td>18 Nm</td></tr></table>'
+    )
+    raw, media = markup.encode(), "text/html"
+    if provider == "banktwo":
+        raw = json.dumps({"_embedded": {"data": {"article": {"content": markup}}}}).encode()
+        media = "application/hal+json"
+    capture_fixture.body(provider, raw, media)
+    context = capture_fixture.context(provider)
+    options = dict(registry=capture_fixture.registry, object_store=capture_fixture.objects)
+
+    previous = capture_source_article(context, **options)
+    assert [(block["type"], block.get("text")) for block in previous.source_document["blocks"]] == [
+        ("paragraph", "Remove the pump."), ("paragraph", "Service data"),
+        ("paragraph", "Front flange"), ("table", None),
+    ]
+    assert not previous.source_document["blocks"][-1].get("label")
+    guarded = capture_source_article(
+        replace(context, legacy_published_html_table_caption_body=sha256(raw).hexdigest()),
+        keep_html_table_captions=True, **options,
+    )
+    assert guarded.source_document == previous.source_document
+    assert guarded.source_fingerprint == previous.source_fingerprint
+
+    captured = capture_source_article(context, keep_html_table_captions=True, **options)
+    assert captured.projection_version == "source-projection-v5"
+    assert captured.body_source_snapshot_id == previous.body_source_snapshot_id
+    assert captured.evidence_manifest == previous.evidence_manifest
+    [body] = captured.resource_manifest
+    assert body["html_table_caption_layout"] == HTML_TABLE_CAPTION_LAYOUT
+    [paragraph, table] = captured.source_document["blocks"]
+    assert paragraph["text"] == "Remove the pump."
+    assert table["label"] == "Service data Front flange"
+    assert table["rows"] == previous.source_document["blocks"][-1]["rows"]
+    assert captured.source_body.splitlines() == [
+        "Remove the pump.", "Service data Front flange", "Fastener", "Torque", "Cover bolt", "18 Nm",
+    ]
+    assert not validate_ordered_document(captured.source_document, strict=True)
+
+    normalized = normalize_procedure_article({
+        "normalized_document": captured.source_document, "body": captured.source_body, "steps": captured.source_steps,
+    }, resource_manifest=captured.resource_manifest)["normalized_document"]
+    [slot] = prose_slots(normalized, include_cell_blocks=True)
+    assert slot["text"] == "Remove the pump."
+    response = {"introduction": "This procedure covers pump removal.", "replacements": [
+        {**slot, "action": "rewrite", "text": "Take off the pump.", "reason": ""},
+    ]}
+    canonical = render_auto(normalized, response)
+    assert validate_auto(normalized, canonical, response=response).passed
+    assert canonical["blocks"][2] == {**table, "source_order": 3}
+
+
+@pytest.mark.parametrize("provider,in_table,available", [
+    ("bankone", False, True), ("banktwo", False, True),
+    ("bankone", True, True), ("banktwo", True, True), ("banktwo", False, False),
+])
+def test_multiline_html_chart_caption_stays_with_retained_png(capture_fixture, provider, in_table, available):
+    import json
+    from io import BytesIO
+
+    from PIL import Image
+    from autodata_ingestion.article_document import validate_ordered_document
+    from autodata_ingestion.article_lifecycle_types import HTML_MULTILINE_FIGURE_CAPTION_LAYOUT
+    from autodata_ingestion.procedure_normalize import normalize_procedure_article
+    from autodata_ingestion.procedure_rewrite_auto import render_auto, validate_auto
+    from autodata_ingestion.procedure_rewrite_full import prose_slots
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    caption = ["Fuel supply pressure", "Engine speed: 2,000 rpm"]
+    figure = ('<figure><img src="/fixture/chart.png" alt="Fuel-pressure chart">'
+              f'<figcaption>{caption[0]}<br>{caption[1]}</figcaption></figure>')
+    follow = "Remove the cover while the ignition is off."
+    chart = f'<table><tr><td>{figure}Keep the shim seated.</td></tr></table>' if in_table else figure
+    markup = f'<p>Remove the pump.</p>{chart}<p>{follow}</p>'
+    raw, media = markup.encode(), "text/html"
+    if provider == "banktwo":
+        raw = json.dumps({"_embedded": {"data": {"article": {"content": markup}}}}).encode()
+        media = "application/hal+json"
+    capture_fixture.body(provider, raw, media, assets=["chart"], asset_bindings=[
+        {"source_url": "/fixture/chart.png", "resource_ref": "chart"},
+    ])
+    if available:
+        raster = BytesIO()
+        Image.new("RGB", (96, 48), "navy").save(raster, format="PNG")
+        capture_fixture.body(provider, raster.getvalue(), "image/png", ref="chart", kind="asset")
+
+    context = capture_fixture.context(provider)
+    options = dict(registry=capture_fixture.registry, object_store=capture_fixture.objects,
+                   keep_html_figure_captions=True, keep_html_flow_figure_captions=True, keep_html_table_image_order=True)
+    original = capture_source_article(context, **options)
+    guarded = capture_source_article(replace(context, legacy_published_html_multiline_figure_body=sha256(raw).hexdigest()),
+                                     keep_html_multiline_figure_captions=True, **options)
+    assert (guarded.source_document, guarded.source_fingerprint) == (original.source_document, original.source_fingerprint)
+    captured = capture_source_article(context, keep_html_multiline_figure_captions=True, **options)
+    assert captured.resource_manifest[0]["html_multiline_figure_caption_layout"] == HTML_MULTILINE_FIGURE_CAPTION_LAYOUT
+    assert captured.resource_manifest[1:] == original.resource_manifest[1:]
+    assert captured.evidence_manifest == original.evidence_manifest
+    assert captured.source_images[0]["image_id"] == original.source_images[0]["image_id"]
+    assert not validate_ordered_document(captured.source_document, strict=True)
+
+    def chart_blocks(document, index):
+        if in_table:
+            return document["blocks"][index]["rows"][0][0]["blocks"]
+        return document["blocks"][index:-1]
+
+    old_image, *old_caption = chart_blocks(original.source_document, 1)
+    assert old_image.get("caption") is None and [part["text"] for part in old_caption[:2]] == caption
+    blocks = chart_blocks(captured.source_document, 1)
+    assert blocks[0].get("caption") == (" ".join(caption) if available else None)
+    expected_text = ([] if available else caption) + (["Keep the shim seated."] if in_table else [])
+    assert [paragraph["text"] for paragraph in blocks[1:]] == expected_text
+    if not available:
+        assert captured.projection_status == "partial"
+        return
+
+    assert capture_fixture.objects.data[blocks[0]["storage_key"]] == (raster.getvalue(), "image/png")
+    normalized = normalize_procedure_article({
+        "normalized_document": captured.source_document, "body": captured.source_body, "steps": captured.source_steps,
+    }, resource_manifest=captured.resource_manifest)["normalized_document"]
+    slots = prose_slots(normalized, include_cell_blocks=True)
+    assert [slot["text"] for slot in slots] == ["Remove the pump.", follow]
+    response = {"introduction": "This procedure covers pump removal.", "replacements": [
+        {**slot, "action": "rewrite", "text": text, "reason": ""}
+        for slot, text in zip(slots, ("Take off the pump.", "With the ignition off, take the cover off."), strict=True)
+    ]}
+    canonical = render_auto(normalized, response)
+    assert validate_auto(normalized, canonical, response=response).passed
+    canonical_image = chart_blocks(canonical, 2)[0]
+    assert canonical_image == {**blocks[0], "source_order": canonical_image["source_order"]}
+
+
+def test_bound_pdf_embed_keeps_table_cell_order_and_refuses_unbound_markup(capture_fixture):
+    from io import BytesIO
+
+    from PIL import Image
+    from reportlab.pdfgen import canvas
+    from autodata_ingestion.article_document import validate_ordered_document
+    from autodata_ingestion.procedure_rewrite_full import prose_slots
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    pdf_bytes = BytesIO()
+    pdf = canvas.Canvas(pdf_bytes)
+    pdf.drawString(72, 718, "Check the drive seal.")
+    pdf.save()
+    png = BytesIO()
+    Image.new("RGB", (20, 20), "green").save(png, format="PNG")
+    fixture = capture_fixture
+    fixture.body("bankone", (
+        b'<p>Inspect the housing.</p><table><tr><td>Drive reference'
+        b'<img data-resource-ref="alignment" alt="Alignment marks">'
+        b'<iframe src="/docs/drive"></iframe>Finish the inspection.</td><td>Torque reference'
+        b'<object type="application/pdf" data="/docs/drive"></object></td></tr></table>'
+        b'<iframe src="/docs/unbound"><p>Hidden fallback text</p></iframe>'
+        b'<p>Install the cover.</p>'
+    ), assets=["drive", "alignment"], asset_bindings=[{"source_url": "/docs/drive", "resource_ref": "drive"}])
+    fixture.body("bankone", pdf_bytes.getvalue(), "application/pdf", ref="drive", kind="asset")
+    fixture.body("bankone", png.getvalue(), "image/png", ref="alignment", kind="asset")
+    context = fixture.context("bankone")
+    options = {"registry": fixture.registry, "object_store": fixture.objects, "keep_bound_pdf_iframes": True}
+    historical = capture_source_article(context, **options)
+    captured = capture_source_article(context, keep_html_table_image_order=True, **options)
+    assert captured.projection_version == "source-projection-v6"
+    assert captured.source_document == historical.source_document
+    assert captured.source_fingerprint == historical.source_fingerprint
+    assert captured.projection_status == "readable"
+    assert not validate_ordered_document(captured.source_document, strict=True)
+    table = captured.source_document["blocks"][1]
+    left, right = table["rows"][0]
+    assert [node.get("text") or node.get("alt") for node in left["blocks"]] == [
+        "Drive reference", "Alignment marks", "Check the drive seal.", "Finish the inspection.",
+    ]
+    assert [node["text"] for node in right["blocks"]] == ["Torque reference", "Check the drive seal."]
+    assert [slot["text"] for slot in prose_slots(captured.source_document, include_cell_blocks=True)].count(
+        "Check the drive seal.",
+    ) == 2
+    assert "Hidden fallback text" not in captured.source_body
+    assert "/docs/" not in repr(captured.source_document)
+    assert fixture.resource_calls("bankone", "drive") == 2
+    assert fixture.resource_calls("bankone", "alignment") == 2
+    assert fixture.resource_calls("bankone", "unbound") == 0
+
+
+@pytest.mark.parametrize("provider,contents", [("bankone", "absent"), ("banktwo", "setup")])
+def test_linked_pdf_blank_page_keeps_native_procedure_without_ocr(capture_fixture, monkeypatch, provider, contents):
+    import json
+    from io import BytesIO
+
+    from pypdf import PdfReader, PdfWriter
+
+    from autodata_ingestion import source_adapters
+    from autodata_ingestion.article_lifecycle_types import PDF_BLANK_PAGE_LAYOUT
+    from autodata_ingestion.ocr import OCRUnavailable
+    from autodata_ingestion.source_article_capture import capture_source_article
+    from test_workshop_linked_pdf import _pdf_with_fixture_figure
+
+    pdf, _ = _pdf_with_fixture_figure(trailing_text="Install the replacement.", blank_page=contents == "setup")
+    if contents == "absent":
+        writer = PdfWriter()
+        writer.add_page(PdfReader(BytesIO(pdf)).pages[0])
+        writer.add_blank_page(width=612, height=792)
+        stream = BytesIO()
+        writer.write(stream)
+        pdf = stream.getvalue()
+
+    calls = []
+
+    def unavailable_ocr(_digest, _payload, covered, *, page_range):
+        calls.append(covered)
+        raise OCRUnavailable("Fixture OCR unavailable")
+
+    monkeypatch.setattr(source_adapters, "extract_scanned_pdf_text", unavailable_ocr)
+    html = '<p>Remove the pump.</p><iframe src="/docs/linked"></iframe>'
+    raw, media = html.encode(), "text/html"
+    if provider == "banktwo":
+        raw = json.dumps({"_embedded": {"data": {"article": {"content": html}}}}).encode()
+        media = "application/hal+json"
+    capture_fixture.body(provider, raw, media, assets=["addendum"], asset_bindings=[
+        {"source_url": "/docs/linked", "resource_ref": "addendum"},
+    ])
+    capture_fixture.body(provider, pdf, "application/pdf", ref="addendum", kind="binary")
+    context = capture_fixture.context(provider)
+    options = dict(registry=capture_fixture.registry, object_store=capture_fixture.objects,
+                   keep_bound_pdf_iframes=True, keep_pdf_figure_order=True)
+    legacy = capture_source_article(context, **options)
+    compatibility = capture_source_article(
+        replace(context, legacy_published_pdf_blank_roots=frozenset({sha256(pdf).hexdigest()})),
+        skip_blank_linked_pdf_pages=True, **options,
+    )
+    assert calls == [{1}, {1}]
+    assert compatibility.source_fingerprint == legacy.source_fingerprint
+    assert compatibility.source_document == legacy.source_document
+    assert legacy.projection_status == "partial" and legacy.source_images == []
+    assert legacy.resource_manifest[-1]["failure_code"] == "DOCUMENT_EXTRACTION_UNAVAILABLE"
+
+    corrected = capture_source_article(context, skip_blank_linked_pdf_pages=True, **options)
+    assert calls == [{1}, {1}]
+    assert corrected.projection_status == "readable"
+    assert [(b["type"], b.get("text")) for b in corrected.source_document["blocks"]] == [
+        ("paragraph", "Remove the pump."), ("paragraph", "Inspect the seal."),
+        ("image", None), ("paragraph", "Install the replacement."),
+    ]
+    _, retained_pdf, image = corrected.resource_manifest
+    assert retained_pdf["sha256"] == sha256(pdf).hexdigest()
+    assert retained_pdf["pdf_blank_page_layout"] == PDF_BLANK_PAGE_LAYOUT
+    assert image["role"] == "embedded_asset" and image["media_type"] == "image/png"
+    assert capture_fixture.objects.data[corrected.resources[1]["object_key"]] == (pdf, "application/pdf")
+
+
+@pytest.mark.parametrize(("mime", "payload", "reason"), [
+    ("image/png", b"not permitted", "UNSUPPORTED_DOCUMENT_MEDIA"),
+    ("application/pdf", b"not a PDF", "DOCUMENT_EXTRACTION_UNAVAILABLE"),
+    ("application/pdf", None, "DOCUMENT_EXTRACTION_UNAVAILABLE"),
+])
+def test_bound_embed_validation_keeps_surrounding_procedure(capture_fixture, monkeypatch, mime, payload, reason):
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    if payload is None:
+        from io import BytesIO
+
+        from reportlab.pdfgen import canvas
+
+        from autodata_ingestion import source_adapters
+        from autodata_ingestion.ocr import OCRUnavailable
+
+        stream = BytesIO()
+        pdf = canvas.Canvas(stream)
+        pdf.drawString(72, 718, "Readable first page.")
+        pdf.showPage()
+        pdf.line(72, 718, 200, 700)
+        pdf.showPage()
+        pdf.save()
+        payload = stream.getvalue()
+
+        def unavailable(_digest, _payload, native_pages, *, page_range):
+            assert native_pages == {1}
+            assert page_range == (2, 2)
+            raise OCRUnavailable("Fixture second page could not be recognized")
+
+        monkeypatch.setattr(source_adapters, "extract_scanned_pdf_text", unavailable)
+
+    fixture = capture_fixture
+    fixture.body("banktwo", (
+        b'<p>Remove the cover.</p><embed type="application/pdf" src="/docs/drive">'
+        b'<p>Install the cover.</p>'
+    ), assets=["drive"], asset_bindings=[{"source_url": "/docs/drive", "resource_ref": "drive"}])
+    fixture.body("banktwo", payload, mime, ref="drive", kind="asset")
+    captured = capture_source_article(
+        fixture.context("banktwo"), registry=fixture.registry, object_store=fixture.objects,
+        keep_bound_pdf_iframes=True, skip_blank_linked_pdf_pages=True,
+    )
+    assert captured.projection_version == "source-projection-v6"
+    assert captured.projection_status == "partial"
+    before, placeholder, after = captured.source_document["blocks"]
+    assert before["text"] == "Remove the cover." and after["text"] == "Install the cover."
+    assert placeholder["type"] == "callout" and placeholder["label"] == "Embedded document unavailable"
+    assert captured.source_images == []
+    assert captured.resource_manifest[-1] == {
+        "role": "document_asset", "opaque_ref": "drive", "failure_code": reason,
+    }
+    if mime == "application/pdf":
+        [retained] = [entry for entry in captured.resources if entry["role"] == "document_asset"]
+        assert captured.resource_manifest[-2]["sha256"] == sha256(payload).hexdigest()
+        assert fixture.objects.data[retained["object_key"]] == (payload, mime)

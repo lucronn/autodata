@@ -1439,6 +1439,8 @@ class ArticleObjectStore:
 
 def article_worker_main(argv=None):
     import argparse
+    from psycopg import Error as DatabaseError, sql
+    from .source_job_persistence import ARTICLE_JOB_CHANNEL
     from uuid import UUID,uuid4
     from urllib.parse import urlsplit
     from .article_lifecycle import run_article_worker_once
@@ -1456,8 +1458,41 @@ def article_worker_main(argv=None):
         access_key=os.environ["AUTODATA_S3_ACCESS_KEY"],secret_key=os.environ["AUTODATA_S3_SECRET_KEY"],bucket=os.environ["AUTODATA_SOURCE_BUCKET"])
     registry=source_connector_registry(include_defaults=False)
     model=Mercury2Client.from_environment() if os.getenv("INCEPTION_API_KEY","").strip() else None
-    repo=ArticleRepository();worker=args.worker_id or uuid4()
-    while True:
-        run_article_worker_once(repo,worker_id=worker,registry=registry,object_store=objects,model_client=model)
-        if args.once:return 0
-        time.sleep(args.poll_seconds)
+    repo = ArticleRepository()
+    worker = args.worker_id or uuid4()
+    listen = sql.SQL("LISTEN {}").format(sql.Identifier(ARTICLE_JOB_CHANNEL))
+    listener = None
+    try:
+        while True:
+            if listener is None and not args.once:
+                try:
+                    listener = repo.connect()
+                    listener.autocommit = True
+                    listener.execute(listen)
+                except DatabaseError:
+                    if listener is not None:
+                        listener.close()
+                        listener = None
+
+            claimed = run_article_worker_once(
+                repo, worker_id=worker, registry=registry, object_store=objects, model_client=model,
+            )
+            if args.once:
+                return 0
+            if claimed:
+                continue
+
+            # Check durable work after subscribing and after each wake or timeout.
+            # Polling still covers delayed retries, lease expiry, and listener failure.
+            if listener is not None:
+                try:
+                    for _ in listener.notifies(timeout=args.poll_seconds, stop_after=1):
+                        pass
+                    continue
+                except (DatabaseError, OSError):
+                    listener.close()
+                    listener = None
+            time.sleep(args.poll_seconds)
+    finally:
+        if listener is not None:
+            listener.close()

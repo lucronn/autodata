@@ -1285,7 +1285,138 @@ class APIAssertions(dict):
         super().__setitem__(name,value)
 
 
-async def api_case(browser,origin,name,output,observations=None):
+async def expect_figure_after_text(figure, text):
+    assert await figure.evaluate(
+        """(node, text) => {
+            let previous = node.previousElementSibling;
+            while (previous?.classList.contains('source-reference')) {
+                previous = previous.previousElementSibling;
+            }
+            return previous?.textContent.includes(text) === true;
+        }""",
+        text,
+    )
+
+
+async def expect_linked_pdf(article, *, rewritten=False):
+    from playwright.async_api import expect
+
+    cell = article.locator('ol[start="4"] > li[value="9"] table td').first
+    figures = cell.locator('figure:has(img[alt="Figure from page 1"])')
+    await expect(figures).to_have_count(2)
+    await expect(cell.locator(':scope > p')).to_have_text(
+        ['Check the seal.', 'Check the gasket.', 'After the flange has dried, fit the replacement oil seal into place.']
+        if rewritten else ['Inspect the seal.', 'Inspect the gasket.', 'Install a new oil seal after the flange is dry.']
+    )
+    assert await cell.locator(':scope > :is(p, figure)').evaluate_all(
+        "nodes => nodes.map(node => node.tagName).join(',')"
+    ) == "P,FIGURE,P,FIGURE,P"
+    assert await article.locator('iframe, object, embed').count() == 0
+    await expect(article).not_to_contain_text('Hidden fallback.')
+    assert "/provider-private/" not in await article.inner_html()
+    await expect(figures.first.locator('img')).to_have_js_property('naturalWidth', 96)
+    await expect(figures.last.locator('img')).to_have_js_property('naturalWidth', 128)
+
+
+async def expect_html_table_figure(article):
+    from playwright.async_api import expect
+
+    await expect(article.locator('table:has(img[alt="Alignment marks"]) > caption')).to_have_text(
+        'Alignment service data',
+    )
+    cell = article.locator('td:has(img[alt="Alignment marks"])')
+    await expect(cell.locator(':scope > p')).to_have_text(
+        ['Check mark.', 'Keep shim seated.'],
+    )
+    assert await cell.locator(':scope > :is(p, figure)').evaluate_all(
+        'nodes => nodes.map(node => node.tagName).join(",")'
+    ) == 'P,FIGURE,P'
+    await expect(cell.locator('figure figcaption')).to_have_text('Alignment witness marks')
+    await expect(cell.get_by_role('img', name='Alignment marks')).to_have_js_property('naturalWidth', 1)
+
+
+async def expect_html_list_figure(article):
+    from playwright.async_api import expect
+
+    figure = 'ol[start="4"] > li[value="9"] > figure:has(img[alt="Shim"])'
+    await expect(article.locator(f'{figure} > figcaption')).to_have_text('Shim A')
+    await expect(article.locator(f'{figure} > img')).to_have_js_property('naturalWidth', 1)
+    await expect(article.locator(
+        f'{figure} + .table-scroll > table, {figure} + a.source-reference + .table-scroll > table',
+    )).to_have_count(1)
+
+
+async def expect_paid_table_caption_search(page, origin, configuration, article_id):
+    from playwright.async_api import expect
+
+    path = f'/v1/catalog/vehicles/{configuration}/articles'
+    caption = 'Alignment service data'
+    search = page.locator('#search')
+    links = page.locator('#articles a')
+    for query in (f'{caption} witness marks', caption):
+        def matches_search(response):
+            url = urlsplit(response.url)
+            return (response.request.method == 'GET' and url.path == path
+                    and parse_qs(url.query).get('q') == [query])
+
+        async with page.expect_response(matches_search) as requested:
+            await search.fill(query)
+        response = await requested.value
+        assert response.status == 200
+        [descriptor] = (await response.json())['items']
+        assert descriptor['id'] == article_id and descriptor['content_origin'] == 'canonical'
+        assert all(not descriptor.get(field) for field in ('body', 'document', 'steps', 'images', 'source_review'))
+        await expect(links).to_have_count(1)
+        await expect(links).to_have_attribute('href', re.compile(f'[?&]article={article_id}(?:&|$)'))
+
+    denied = await page.request.get(origin + path, params={'q': caption, 'region': 'CA'})
+    assert denied.status == 404
+    denial = await denied.text()
+    assert caption not in denial and article_id not in denial
+    await links.click()
+    await expect(page.locator('#article-kind')).to_have_text('Workshop article')
+    await expect_html_table_figure(page.locator('#article-content'))
+
+
+async def expect_paid_reader_refocus(page, configuration, article_id):
+    from playwright.async_api import expect
+
+    reader = page.locator('#reader')
+    source = page.locator('#source-review-frame')
+    await page.locator('#article-reference summary').click()
+    await page.locator('#source-review-load').click()
+    await expect(source).to_contain_text('Remove the pump.')
+    await page.locator('#source-review-load').focus()
+    detail = f'/v1/catalog/vehicles/{configuration}/articles/{article_id}'
+    checks = []
+
+    def record(request):
+        url = urlsplit(request.url)
+        if url.path in ('/auth/config', '/auth/session', '/workshop/purchase-config.json',
+                        detail, detail + '/prepare', detail + '/source'):
+            checks.append((request.method, url.path))
+
+    page.on('request', record)
+    try:
+        assert await page.evaluate("""() => {
+            const view = document.querySelector('#article-content').firstElementChild;
+            const source = document.querySelector('#source-review-frame').firstElementChild;
+            window.checkedWorkshopView = () =>
+                view === document.querySelector('#article-content').firstElementChild &&
+                source === document.querySelector('#source-review-frame').firstElementChild;
+            window.dispatchEvent(new Event('focus'));
+            return document.querySelector('#reader').hidden && document.body.dataset.printable === 'false';
+        }""")
+        await expect(reader).to_be_visible()
+        await expect(source).to_be_visible()
+        await expect(page.locator('#source-review-load')).to_be_focused()
+        assert await page.evaluate('window.checkedWorkshopView()')
+        assert sorted(checks) == sorted([('GET', '/auth/session'), ('GET', detail), ('GET', detail + '/source')])
+    finally:
+        page.remove_listener('request', record)
+
+
+async def api_case(browser,origin,name,output,observations=None,*,verify_reader_refocus=False):
     from playwright.async_api import expect
     context=page=None;failure=None;result=None
     transport=APIFixture(origin,name,observations=observations)
@@ -1308,6 +1439,7 @@ async def api_case(browser,origin,name,output,observations=None):
         response=await api21_get(context,origin+'/__fixture/metadata',phase='metadata');metadata=await response.json()
         assert metadata['kind']=='api-fixture'
         scope=metadata['scope'];configuration=scope['configuration'];article_id=scope['article']
+        linked_pdf = name == API_CASES[1] and scope['provider'] == 'banktwo'
         if observations:observations.scope=dict(scope)
         route=origin+'/workshop/?configuration='+configuration+'&region=US'
         before=await api_measure(context,origin,'initial-measurement')
@@ -1320,7 +1452,7 @@ async def api_case(browser,origin,name,output,observations=None):
         assertions['official_sdk_cookie_and_pg_session']=True
         await expect(page.locator('#purchase-action')).to_be_enabled()
         await expect(page.locator('#purchase-message')).to_contain_text('purchase')
-        await expect(page.locator('#purchase-selection')).to_have_text('2024 Example Car Paid selected 2.0 L')
+        await expect(page.locator('#purchase-selection')).to_have_text('2024 Example Car Paid selected 2.0 L / US')
         await expect(page.locator('#purchase-price')).to_have_text('$20 USD · one-time')
         await page.locator('#agreement').check()
         if observations:observations.phase='checkout-first-http' if name==API_CASES[0] else 'checkout-http'
@@ -1348,6 +1480,7 @@ async def api_case(browser,origin,name,output,observations=None):
         # A provider return is only a request to check the owner-scoped ledger.
         await page.goto(origin+'/workshop/?order='+order)
         await expect(page.locator('#purchase-message')).to_contain_text('Do not pay again')
+        await expect(page.locator('#purchase-selection')).to_have_text('2024 Example Car Paid selected 2.0 L / US')
         assert (await api_measure(context,origin,'return-without-grant-measurement'))['entitlements']==0
         assertions['return_does_not_grant']=True
         await api_control(context,origin,'payment/settle?order_id='+order,'settlement-control')
@@ -1357,8 +1490,8 @@ async def api_case(browser,origin,name,output,observations=None):
         if observations:
             observations.owner_scope=(configuration,order)
             observations.phase='owner-library-initial-http'
-        await page.goto(route)
-        await expect(page.locator('#articles a')).not_to_have_count(0)
+        # Let the real return page observe the signed settlement and open the index.
+        await page.wait_for_function("!document.getElementById('catalog').hidden && document.querySelector('#articles a') && !new URL(location.href).searchParams.has('order')")
         await page.locator('#my-vehicles').click()
         if observations:
             await expect(page.locator('#library-items > li')).to_have_count(1)
@@ -1396,6 +1529,23 @@ async def api_case(browser,origin,name,output,observations=None):
         assert {key:restart_before[key] for key in durable}=={key:restart_after[key] for key in durable}
         restart_receipt={'runtime_before':runtime_before,'runtime_after':runtime_after,'before':restart_before,'after':restart_after}
         assertions['permanent_owner_library_server_restart']=True
+        if name==API_CASES[2]:
+            if observations:observations.phase='setup'
+            unexpected_quotes=[]
+            def record_quote(request):
+                if urlsplit(request.url).path == '/v1/workshop/quote':
+                    unexpected_quotes.append(True)
+            page.on('request', record_quote)
+            await page.get_by_role('button', name='Open articles', exact=True).click()
+            await expect(page.locator('#articles a')).not_to_have_count(0)
+            page.remove_listener('request', record_quote)
+            assert not unexpected_quotes, 'opening an owned Library vehicle requested a quote'
+            wrong_region = route.replace('&region=US', '&region=CA')
+            async with page.expect_response(lambda response: urlsplit(response.url).path.endswith('/articles') and 'region=CA' in urlsplit(response.url).query) as requested:
+                await page.goto(wrong_region)
+            assert (await requested.value).status == 404
+            await expect(page.locator('#critical-error')).not_to_be_empty()
+            await expect(page.locator('#articles a')).to_have_count(0)
         if name==API_CASES[0]:
             assert await page.evaluate('Object.keys(localStorage).filter(k=>/firebase:authUser|token|csrf/i.test(k))')==[]
         else:
@@ -1403,36 +1553,66 @@ async def api_case(browser,origin,name,output,observations=None):
             if observations:observations.phase='source-page-http'
             await page.goto(route+'&article='+article_id)
             await expect(page.locator('#article-kind')).to_have_text('Stored source',timeout=15000)
+            await expect(page.locator('#activity-text')).to_have_text('Stored source is ready.')
+            await expect(page.locator('#loading-progress')).to_be_hidden()
+            await expect(page.locator('#article-note')).to_have_text('Preparing the Workshop rewrite.')
             article_content = page.locator('#article-content')
             await expect(article_content).to_contain_text('Inspect the alignment marks before removing the pump.')
             await expect(article_content).to_contain_text('Remove the pump.')
             await expect(article_content).to_contain_text('Do not run the pump dry.')
+            await expect(article_content).to_contain_text('Remove the cover while the ignition is off.')
+            await expect(article_content).to_contain_text('Install a new oil seal after the flange is dry.')
+            await expect(article_content).to_contain_text('Tighten the cover bolts to 18 Nm.')
             await expect(page.locator('#print')).to_be_enabled()
             figure = page.locator('#article-content figure:has(img[alt="Alignment marks"])')
             await expect(figure).to_have_count(1)
-            await expect(page.locator('#article-content figure:has(img[alt="Alignment marks"]) figcaption')).to_have_text('Pump alignment marks')
-            assert await figure.evaluate("node => node.previousElementSibling.textContent.includes('Inspect the alignment marks')")
+            if not linked_pdf:
+                await expect(page.locator('#article-content figure:has(img[alt="Alignment marks"]) figcaption')).to_have_text('Pump alignment marks')
+            if not linked_pdf:
+                await expect_figure_after_text(figure, "Inspect the alignment marks")
             nested_item = '#article-content ol[start="4"] > li[value="9"]:has(table)'
-            nested_figure = nested_item + ' table td figure:has(img[alt="Drive alignment"])'
+            depth_cell = page.locator(nested_item + ' table td').last
+            depth_label = depth_cell if linked_pdf else depth_cell.locator(':scope > span').first
             await expect(page.locator(nested_item + " > p").first).to_have_text("Remove the pump.")
-            await expect(page.locator(nested_item + " table caption")).to_have_text("Alignment reference")
-            await expect(page.locator(nested_figure)).to_have_count(1)
-            await expect(page.locator(nested_figure + " figcaption")).to_have_text("Drive alignment reference")
-            await expect(page.locator(nested_item + " aside")).to_contain_text("Keep the drive seal in place.")
+            await expect(depth_label).to_have_text('Drive seal seating depth: 2.0 mm')
+            if linked_pdf:
+                await expect_linked_pdf(article_content)
+                await expect_html_table_figure(article_content)
+                await expect_html_list_figure(article_content)
+            else:
+                nested_figure = nested_item + ' table td figure:has(img[alt="Drive alignment"])'
+                await expect(page.locator(nested_item + " table caption")).to_have_text("Alignment reference")
+                await expect(page.locator(nested_figure)).to_have_count(1)
+                await expect(page.locator(nested_figure + " figcaption")).to_have_text("Drive alignment reference")
+                await expect(page.locator(nested_item + " aside")).to_contain_text("Keep the drive seal in place.")
             await page.wait_for_function(
                 "Array.from(document.querySelectorAll('#article-content td img')).some(img => img.complete && img.naturalWidth > 0)"
             )
             await page.wait_for_function("Array.from(document.querySelectorAll('#article-content img')).some(img => img.complete && img.naturalWidth > 0)")
-            image_url=await page.locator('#article-content img').first.get_attribute('src')
+            image_locator = 'img[alt="Figure from page 1"]' if linked_pdf else 'img'
+            image_url=await article_content.locator(image_locator).first.get_attribute('src')
             assert urlsplit(image_url).path.startswith('/v1/catalog/images/v2.')
             image=await api21_get(context,image_url,phase='source-image-http');assert image.status==200 and len(await image.body())>0
             if observations:observations.phase='source-review-http'
-            await page.locator('#article-reference summary').click();await page.locator('#source-review-load').click()
+            if linked_pdf:
+                source_link = page.locator(nested_item + ' table td figure + .source-reference').last
+                await source_link.press('Enter')
+            else:
+                await page.locator('#article-reference summary').click();await page.locator('#source-review-load').click()
             await expect(page.locator('#source-review-frame')).to_contain_text('Remove the pump.')
-            stored_figure = page.locator(
-                '#source-review-frame ol[start="4"] > li[value="9"] table td figure img[alt="Drive alignment"]'
-            )
-            await expect(stored_figure).to_have_count(1)
+            await expect(page.locator('#source-review-frame')).to_contain_text('Remove the cover while the ignition is off.')
+            await expect(page.locator('#source-review-frame')).to_contain_text('Install a new oil seal after the flange is dry.')
+            if linked_pdf:
+                source_frame = page.locator('#source-review-frame')
+                await expect_linked_pdf(source_frame)
+                await expect_html_table_figure(source_frame)
+                await expect_html_list_figure(source_frame)
+                await expect(source_frame.locator('table td figure').last).to_be_focused()
+            else:
+                stored_figure = page.locator(
+                    '#source-review-frame ol[start="4"] > li[value="9"] table td figure img[alt="Drive alignment"]'
+                )
+                await expect(stored_figure).to_have_count(1)
             source_path=await page.locator('#source-review-link').get_attribute('href')
             assert parse_qs(urlsplit(source_path).query).get('source_revision_id')
             assertions['paid_source_and_actual_s3_image']=True
@@ -1444,18 +1624,49 @@ async def api_case(browser,origin,name,output,observations=None):
             await expect(page.locator('#reader-engine')).to_have_text('US')
             await expect(article_content).to_contain_text('Take off the pump.')
             await expect(article_content).to_contain_text('Do not run the pump dry.')
+            await expect(article_content).to_contain_text('With the ignition off, take the cover off.')
+            await expect(article_content).not_to_contain_text('Remove the cover while the ignition is off.')
             await expect(article_content).not_to_contain_text('Remove the pump.')
+            await expect(article_content).to_contain_text('After the flange has dried, fit the replacement oil seal into place.')
+            await expect(article_content).not_to_contain_text('Install a new oil seal after the flange is dry.')
+            await expect(article_content).to_contain_text('Tighten the cover bolts to 18 Nm.')
             await expect(figure).to_have_count(1)
-            await expect(page.locator('#article-content figure:has(img[alt="Alignment marks"]) figcaption')).to_have_text('Pump alignment marks')
-            assert await figure.evaluate("node => node.previousElementSibling?.textContent.includes('Check the pump alignment marks')")
+            if not linked_pdf:
+                await expect(page.locator('#article-content figure:has(img[alt="Alignment marks"]) figcaption')).to_have_text('Pump alignment marks')
+            if not linked_pdf:
+                await expect_figure_after_text(figure, "Check the pump alignment marks")
             await expect(page.locator(nested_item + " > p").first).to_have_text("Take off the pump.")
-            await expect(page.locator(nested_figure + " figcaption")).to_have_text("Drive alignment reference")
-            await expect(page.locator(nested_item + " aside")).to_contain_text("Keep the drive seal in place.")
+            await expect(depth_label).to_have_text('Drive seal seating depth: 2.0 mm')
+            if linked_pdf:
+                await expect_linked_pdf(article_content, rewritten=True)
+                await expect_html_table_figure(article_content)
+                await expect_html_list_figure(article_content)
+            else:
+                await expect(page.locator(nested_figure + " figcaption")).to_have_text("Drive alignment reference")
+                await expect(page.locator(nested_item + " aside")).to_contain_text("Keep the drive seal in place.")
             await expect(page.locator('#article-content .source-reference').first).to_be_visible()
+            await expect(page.locator('#source-review-frame')).to_be_visible()
+            await expect(page.locator('#source-review-frame')).to_contain_text('Remove the pump.')
+            if linked_pdf:
+                await expect(source_frame.locator('table td figure').last).to_be_focused()
+                await expect_linked_pdf(source_frame)
             warm_before=await api_snapshot(context,origin,'warm-before-snapshot')
             reader_before=(await api_measure(context,origin,'reader-before-measurement'))['image_reads']
+            index_before_reader = []
+            def record_index(request):
+                if request.method == 'GET' and urlsplit(request.url).path.endswith('/articles'):
+                    index_before_reader.append(True)
+            if linked_pdf:
+                page.on('request', record_index)
             await page.reload();await expect(page.locator('#article-kind')).to_have_text('Workshop article')
+            if linked_pdf:
+                page.remove_listener('request', record_index)
+                assert not index_before_reader, 'saved reader requested the article index before rendering'
+                await expect(page.locator('#reader-vehicle')).to_contain_text('2.0 L')
+                await expect(page.locator('#reader-engine')).to_have_text('US')
             await expect(page.locator(nested_item + " > p").first).to_have_text("Take off the pump.")
+            if linked_pdf:
+                await expect_html_table_figure(article_content)
             # The page can render a warm article from the prepare response.
             # Capture the actual read endpoint separately after the GUI reload.
             warm_detail=await api21_get(context,origin+f'/v1/catalog/vehicles/{configuration}/articles/{article_id}',
@@ -1463,7 +1674,7 @@ async def api_case(browser,origin,name,output,observations=None):
             assert warm_detail.status==200
             assert (await warm_detail.json())['article']['content_origin']=='canonical'
             await expect(page.locator('#article-content img')).not_to_have_count(0)
-            warm_image=await page.locator('#article-content img').first.get_attribute('src')
+            warm_image=await article_content.locator(image_locator).first.get_attribute('src')
             delivered=await api21_get(context,warm_image,phase='warm-image-http');assert delivered.status==200 and len(await delivered.body())>0
             pinned=await api21_get(context,origin+source_path,phase='warm-pinned-source-http',
                                    headers={'Accept':'application/json'})
@@ -1476,6 +1687,15 @@ async def api_case(browser,origin,name,output,observations=None):
             warm_receipt={'before':warm_before,'after':warm_after,'reader_before':reader_before,'reader_after':reader_after}
             assertions['source_to_canonical_and_warm_reuse']=True
             assertions['warm_raw_runtime_unchanged_with_approved_s3_delivery']=True
+            if verify_reader_refocus and name == API_CASES[1] and scope['provider'] == 'bankone':
+                if observations:observations.phase='setup'
+                await expect_paid_reader_refocus(page, configuration, article_id)
+            if linked_pdf:
+                await page.locator('#back').click()
+                await expect(page.locator('#catalog')).to_be_visible()
+                await expect(page.locator(f'#articles a[href*="article={article_id}"]')).to_be_visible()
+                await expect(page.locator('#catalog-title')).to_be_focused()
+                await expect_paid_table_caption_search(page, origin, configuration, article_id)
             if name==API_CASES[2]:
                 for denial_phase,denied in zip(('adjacent-denial','other-region-denial','unscoped-article-denial','legacy-vehicle-denial'),(f'/v1/catalog/vehicles/{scope["adjacent"]}/articles',f'/v1/catalog/vehicles/{scope["other_region"]}/articles',f'/v1/catalog/vehicles/{configuration}/articles/{scope["unscoped"]}',f'/v1/catalog/vehicles/{scope["vehicle"]}/articles')):
                     denied_response=await api21_get(context,origin+denied,phase=denial_phase)
@@ -1766,7 +1986,9 @@ async def run(args):
             observations.note_lifecycle('setup','browser-launch','completed')
             stage='case';start=time.monotonic()
             try:
-                result=await asyncio.wait_for(api_case(browser,args.base_url,name,output/engines[0],observations=observations),timeout=65)
+                result=await asyncio.wait_for(api_case(
+                    browser,args.base_url,name,output/engines[0],observations=observations,verify_reader_refocus=True,
+                ),timeout=65)
                 rows.append(dict(browser=engines[0],scenario=name,elapsed_seconds=round(time.monotonic()-start,3),**result))
                 evidence['browser_versions']={engines[0]:browser.version}
             except BaseException as error:

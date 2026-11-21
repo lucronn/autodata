@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext as runVM } from 'node:vm';
 import { NavigationGeneration, processingArticle, readableArticle } from './workshop/article-read.mjs';
-import { purchaseConfiguration, uuid, validQuote, validScope, validLibrary } from './workshop/commerce.mjs';
-import { articlePresentation, configurationLabel, filterArticles, hasSourceReference, legacyArticleBlocks, localImageURL, readCollection, requestJSON, sourceReferenceURL } from './workshop/catalog.mjs';
+import { pollOrder, purchaseConfiguration, uuid, validQuote, validScope, validLibrary } from './workshop/commerce.mjs';
+import { articlePresentation, configurationLabel, filterArticles, hasSourceReference, legacyArticleBlocks, localImageURL, readCollection, requestInitialYears, requestJSON, sourceReferenceURL } from './workshop/catalog.mjs';
 import { LOAD_STAGES, loadingProgress } from './workshop/progress.mjs';
 
 // The app sections below run without the module bootstrap. Model the ordinary
@@ -12,6 +12,11 @@ import { LOAD_STAGES, loadingProgress } from './workshop/progress.mjs';
 function runInNewContext(code, context) {
   context.openDemo ??= false;
   context.demoPath ??= path => path;
+  context.requestInitialYears ??= params => requestInitialYears(params, context.requestJSON);
+  context.sourceDocumentRequest ??= null;
+  context.mountedSource ??= null;
+  context.paidOrder ??= null;
+  context.articleIndexOrigin ??= null;
   return runVM(code, context);
 }
 
@@ -132,7 +137,10 @@ test('search matches all words without changing catalog order or IDs', () => {
   const articles = [{ id: 'one', title: 'Oil Pump Removal', kind: 'procedure' }, { id: 'two', title: 'Water Pump' }, { id: 'three', title: 'Oil Pump Installation' }];
   assert.deepEqual(filterArticles(articles, ' PUMP oil ').map(a => a.id), ['one', 'three']);
   assert.deepEqual(filterArticles(articles, ''), articles);
-  assert.equal(configurationLabel({ engine: '2.0', trim: 'Base' }), '2.0 / Base');
+  assert.equal(configurationLabel({ engine: '2.0', trim: 'Base' }), '2.0 L / Base');
+  assert.equal(configurationLabel({ engine: '2.0 L', trim: 'Sport' }), '2.0 L / Sport');
+  assert.equal(configurationLabel({ engine: 'Hybrid' }), 'Hybrid');
+  assert.equal(configurationLabel({}), 'Base configuration');
 });
 
 const scope = { configuration_id: '11111111-1111-4111-8111-111111111111', region: 'US' };
@@ -154,6 +162,150 @@ test('order discriminants cannot grant access or create automatic replacement', 
   assert.equal(validOrder({ version: 'v1', ...scope, order_id: orderID, state: 'paid', retry_disposition: 'do_not_repay' }, orderID), true);
   assert.equal(validOrder({ version: 'v1', ...scope, order_id: orderID, state: 'paid', retry_disposition: 'new_key' }, orderID), false);
 });
+
+function orderPollFixture(responses, options = {}) {
+  let elapsed = 0;
+  const reads = [];
+  const updates = [];
+  const result = pollOrder(orderID, {
+    earlyCheckoutCheck: true,
+    ...options,
+    now: () => elapsed,
+    async wait(duration, signal) {
+      elapsed += duration;
+      options.afterWait?.(elapsed);
+      signal?.throwIfAborted();
+    },
+    async request(path, { signal, timeout }) {
+      assert.equal(path, `/v1/workshop/orders/${orderID}`);
+      assert.equal(signal, options.signal);
+      reads.push({ time: elapsed, timeout });
+      const response = responses.shift();
+      assert.notEqual(response, undefined, 'unexpected extra order read');
+      if (response instanceof Error) {
+        elapsed += response.elapsed || 0;
+        throw response;
+      }
+      if (typeof response !== 'string') return response;
+      return { version: 'v1', ...scope, order_id: orderID, state: response,
+        retry_disposition: ['expired', 'canceled'].includes(response) ? 'new_key' : 'do_not_repay' };
+    },
+    onUpdate: order => updates.push(order.state),
+  });
+  return { result, reads, updates, times: () => reads.map(read => read.time) };
+}
+
+test('checkout return checks once at 350 ms after an ordinary pending response', async () => {
+  for (const state of ['open', 'processing']) {
+    const probe = orderPollFixture([state, 'paid']);
+    const result = await probe.result;
+    assert.deepEqual(probe.times(), [0, 350]);
+    assert.equal(probe.reads[1].timeout, 650);
+    assert.deepEqual(probe.updates, [state, 'paid']);
+    assert.equal(result.state, 'paid');
+    assert.equal(result.timedOut, false);
+  }
+});
+
+test('a matching hosted checkout return can check early without moving either fallback', async () => {
+  const returnedCheckout = { ...scope, order_id: orderID,
+    provider_expires_at: new Date(Date.now() + 60_000).toISOString() };
+  const timeout = Object.assign(new TypeError('Probe timed out'), { elapsed: 100 });
+  const busy = Object.assign(new Error('Try again'), { status: 429, retryable: true, retryAfterSeconds: 2 });
+  for (const [label, responses, starts] of [
+    ['early payment', ['open', 'paid'], [0, 250]],
+    ['miss until the short fallback', ['open', 'processing', 'paid'], [0, 250, 350]],
+    ['miss until the regular fallback', ['open', 'open', 'processing', 'paid'], [0, 250, 350, 1000]],
+    ['timeout at the short fallback', ['open', timeout, 'paid'], [0, 250, 350]],
+    ['overload', ['open', busy, 'paid'], [0, 250, 2250]],
+    ['provider reconciliation', ['open', 'reconciliation_required', 'paid'], [0, 250, 1250]],
+    ['revoked', ['open', 'revoked'], [0, 250]],
+  ]) {
+    const probe = orderPollFixture(responses, { returnedCheckout });
+    assert.equal((await probe.result).state, label === 'revoked' ? 'revoked' : 'paid', label);
+    assert.deepEqual(probe.times(), starts, label);
+    assert.equal(probe.reads[1].timeout, 100, label);
+  }
+});
+
+test('the extra checkout return check requires current receipt scope and expiry', async () => {
+  const returnedCheckout = { ...scope, order_id: orderID,
+    provider_expires_at: new Date(Date.now() + 60_000).toISOString() };
+  for (const [receipt, earlyCheckoutCheck] of [
+    [{ ...returnedCheckout, order_id: scope.configuration_id }, true],
+    [{ ...returnedCheckout, configuration_id: orderID }, true],
+    [{ ...returnedCheckout, region: 'CA' }, true],
+    [{ ...returnedCheckout, provider_expires_at: new Date(Date.now() + 500).toISOString() }, true],
+    [{ ...returnedCheckout, provider_expires_at: 'invalid' }, true],
+    [returnedCheckout, false],
+  ]) {
+    const probe = orderPollFixture(['open', 'paid'], { returnedCheckout: receipt, earlyCheckoutCheck });
+    assert.equal((await probe.result).state, 'paid');
+    assert.deepEqual(probe.times(), [0, earlyCheckoutCheck ? 350 : 1000]);
+  }
+});
+
+test('checkout confirmation clean miss keeps the original schedule and adds one read', async () => {
+  const probe = orderPollFixture(['open', 'open', 'processing', 'processing', 'paid']);
+  assert.equal((await probe.result).state, 'paid');
+  assert.deepEqual(probe.times(), [0, 350, 1000, 3000, 7000]);
+});
+
+test('ordinary order checks and reconciliation retain their first delay', async () => {
+  for (const [state, earlyCheckoutCheck] of [['open', false], ['reconciliation_required', true], ['creating', true]]) {
+    const probe = orderPollFixture([state, 'paid'], { earlyCheckoutCheck });
+    assert.equal((await probe.result).state, 'paid');
+    assert.deepEqual(probe.times(), [0, 1000]);
+  }
+});
+
+test('checkout confirmation keeps terminal, invalid, and denied order responses terminal', async () => {
+  for (const state of ['paid', 'expired', 'canceled', 'revoked']) {
+    const probe = orderPollFixture([state]);
+    assert.equal((await probe.result).state, state);
+    assert.deepEqual(probe.times(), [0]);
+  }
+  const wrongOrder = { version: 'v1', ...scope, order_id: scope.configuration_id,
+    state: 'open', retry_disposition: 'do_not_repay' };
+  const wrong = orderPollFixture([wrongOrder]);
+  await assert.rejects(wrong.result, /Payment status is unavailable/);
+  assert.deepEqual(wrong.times(), [0]);
+  const denied = orderPollFixture(['open', Object.assign(new Error('Order is unavailable'), { status: 404 })]);
+  await assert.rejects(denied.result, /Order is unavailable/);
+  assert.deepEqual(denied.times(), [0, 350]);
+});
+
+test('checkout confirmation respects failure backoff and retry hints', async () => {
+  const retryable = (status, retryAfterSeconds) => Object.assign(new Error('Please retry'), { status, retryable: true, retryAfterSeconds });
+  for (const [responses, times, outages] of [
+    [[retryable(503, 2), 'open', 'paid'], [0, 2000, 4000], 1],
+    [['open', retryable(429, 3), 'paid'], [0, 350, 3350], 1],
+    [['open', retryable(503), 'paid'], [0, 350, 1350], 1],
+    [['open', retryable(503), 'open', retryable(503), 'paid'], [0, 350, 1350, 3350, 7350], 2],
+    [['open', 'reconciliation_required', 'paid'], [0, 350, 1350], 0],
+    [['open', new TypeError('network unavailable'), 'paid'], [0, 350, 1000], 0],
+  ]) {
+    let announced = 0;
+    const probe = orderPollFixture(responses, { onUnavailable: () => announced++ });
+    assert.equal((await probe.result).state, 'paid');
+    assert.deepEqual(probe.times(), times);
+    assert.equal(announced, outages);
+  }
+});
+
+test('checkout confirmation respects cancellation and absolute budget', async () => {
+  const controller = new AbortController();
+  const aborted = orderPollFixture(['open'], { signal: controller.signal, afterWait: () => controller.abort() });
+  await assert.rejects(aborted.result, { name: 'AbortError' });
+  assert.deepEqual(aborted.times(), [0]);
+  const short = orderPollFixture(['open'], { budgetMs: 900 });
+  assert.equal((await short.result).timedOut, true);
+  assert.deepEqual(short.reads, [{ time: 0, timeout: 900 }]);
+  const tight = orderPollFixture(['open', 'open', 'open'], { budgetMs: 1100 });
+  assert.equal((await tight.result).timedOut, true);
+  assert.deepEqual(tight.reads, [{ time: 0, timeout: 1100 }, { time: 350, timeout: 650 }, { time: 1000, timeout: 100 }]);
+});
+
 test('library requires nullable cursor and accepts revoked never-granted tombstone', async () => {
   const { validLibrary } = await import('./workshop/commerce.mjs');
   const item = { ...scope, library_item_id: orderID, label: 'Vehicle', access_state: 'revoked', granted_at: null };
@@ -305,6 +457,490 @@ test('reader offers one early cold confirmation and keeps the regular second che
     assert.equal(result.data.article.body, 'Published procedure', name);
   }
 });
+test('reader checks negotiated cold source early and preserves the half-second check on a miss', async () => {
+  const { readArticle } = await import('./workshop/article-read.mjs');
+  const prepare = { status: 202, shortSourceCheck: true, data: {
+    article: { processing: { job_id: 'job', state: 'queued' } },
+  } };
+  const pending = { status: 202, retryAfterSeconds: 1, data: prepare.data };
+  const fetching = { ...prepare, data: { article: { processing: { job_id: 'job', state: 'fetching_source' } } } };
+  const stored = { status: 200, retryAfterSeconds: 1, data: { article: {
+    body: 'Stored procedure', content_origin: 'source', processing: { job_id: 'job', state: 'rewriting' },
+  } } };
+  const complete = { status: 200, data: { article: { body: 'Published procedure' } } };
+  const overload = Object.assign(new Error('Busy'), { status: 429, retryable: true, retryAfterSeconds: 5 });
+  const unhintedOverload = Object.assign(new Error('Busy'), { status: 503, retryable: true });
+  const networkFailure = new TypeError('Network failed');
+  const timedOut = Symbol('timed out');
+  const delayedFetching = Symbol('fetching response after the third probe slot');
+
+  for (const [label, responses, expectedStarts] of [
+    ['source ready at first probe', [prepare, stored, complete], [0, 250, 1250]],
+    ['source ready at second probe', [prepare, prepare, stored, complete], [0, 250, 500, 1500]],
+    ['active capture can finish before the half-second slot', [prepare, fetching, stored, complete], [0, 250, 375, 1375]],
+    ['active capture still pending at the extra check', [prepare, fetching, fetching, fetching, stored, complete], [0, 250, 375, 500, 750, 1750]],
+    ['extra check timeout preserves the remaining reads', [prepare, fetching, timedOut, fetching, stored, complete], [0, 250, 375, 500, 750, 1750]],
+    ['extra check honors server retry hint', [prepare, fetching, pending, complete], [0, 250, 375, 1375]],
+    ['extra check honors overload', [prepare, fetching, overload, complete], [0, 250, 375, 5375]],
+    ['a replacement job at the extra check rejoins the regular cadence',
+      [prepare, fetching, { ...fetching, data: { article: { processing: { job_id: 'next-job', state: 'fetching_source' } } } }, complete],
+      [0, 250, 375, 1000]],
+    ['source ready at third probe', [prepare, prepare, fetching, stored, complete], [0, 250, 500, 750, 1750]],
+    ['pending at both probes', [prepare, prepare, prepare, pending, stored, complete], [0, 250, 500, 1000, 2000, 3000]],
+    ['third miss retains the ordinary read', [prepare, prepare, fetching, fetching, complete], [0, 250, 500, 750, 1000]],
+    ['a slow second response rejoins the ordinary read', [prepare, prepare, delayedFetching, complete], [0, 250, 500, 1000]],
+    ['same capture finishes just after the ordinary read',
+      [prepare, fetching, fetching, fetching, fetching, fetching, stored, complete], [0, 250, 375, 500, 750, 1000, 1250, 2250]],
+    ['late miss retains the next ordinary read',
+      [prepare, fetching, fetching, fetching, fetching, fetching, fetching, complete], [0, 250, 375, 500, 750, 1000, 1250, 2000]],
+    ['late timeout retains the next ordinary read',
+      [prepare, fetching, fetching, fetching, fetching, fetching, timedOut, complete], [0, 250, 375, 500, 750, 1000, 1250, 2000]],
+    ['late check honors overload',
+      [prepare, fetching, fetching, fetching, fetching, fetching, overload, complete], [0, 250, 375, 500, 750, 1000, 1250, 6250]],
+    ['ordinary read with explicit delay cannot add a late check',
+      [prepare, fetching, fetching, fetching, fetching, { ...fetching, retryAfterSeconds: 4 }, complete], [0, 250, 375, 500, 750, 1000, 5000]],
+    ['third probe honors overload', [prepare, prepare, fetching, overload, complete], [0, 250, 500, 750, 5750]],
+    ['retry hint at first probe', [prepare, pending, pending, stored, complete], [0, 250, 1250, 2250, 3250]],
+    ['retry hint at second probe', [prepare, prepare, pending, complete], [0, 250, 500, 1500]],
+    ['network failure at first probe', [prepare, networkFailure, stored, complete], [0, 250, 500, 1500]],
+    ['network failure at first probe prevents a third', [prepare, networkFailure, fetching, complete], [0, 250, 500, 1000]],
+    ['network failure at second probe prevents a third', [prepare, prepare, networkFailure, complete], [0, 250, 500, 1000]],
+    ['first probe cannot delay second probe', [prepare, timedOut, stored, complete], [0, 250, 500, 1500]],
+    ['overload applies to subsequent reads', [prepare, overload, pending, complete], [0, 250, 5250, 6250]],
+    ['overload without a hint skips the second probe', [prepare, unhintedOverload, complete], [0, 250, 1000]],
+    ['a replacement job rejoins the regular check', [prepare, { ...prepare, data: { article: { processing: { job_id: 'next-job', state: 'queued' } } } }, complete], [0, 250, 1000]],
+    ['a replacement job at the second probe prevents a third', [prepare, prepare, { ...prepare, data: { article: { processing: { job_id: 'next-job', state: 'fetching_source' } } } }, complete], [0, 250, 500, 1000]],
+    ['explicit wait overrides the preference', [{ ...prepare, retryAfterSeconds: 4 }, complete], [0, 4000]],
+  ]) {
+    let now = 0;
+    const actual = [];
+    const result = await readArticle(async ({ timeout, readableBodyTimeout, preferShortSourceCheck }) => {
+      actual.push(now);
+      const headerBudget = { 250: 250, 375: 125, 500: 500, 750: 250 };
+      const bodyBudget = { 250: 750, 375: 625, 500: 750, 750: 500 };
+      const confirmedAtOrdinaryRead = now === 1000 && [
+        'third miss retains the ordinary read',
+        'a slow second response rejoins the ordinary read',
+        'same capture finishes just after the ordinary read',
+        'late miss retains the next ordinary read',
+        'late timeout retains the next ordinary read',
+        'late check honors overload',
+        'ordinary read with explicit delay cannot add a late check',
+      ].includes(label);
+      const late = now === 1250 && expectedStarts.includes(750) && expectedStarts.includes(1000);
+      assert.equal(preferShortSourceCheck, now in headerBudget || confirmedAtOrdinaryRead || late, label);
+      if (now in headerBudget) assert.equal(timeout, headerBudget[now], label);
+      if (late) assert.equal(timeout, 750, label);
+      assert.equal(readableBodyTimeout, late ? 1000 : bodyBudget[now], label);
+      const next = responses.shift();
+      if (next === timedOut) {
+        now += timeout;
+        throw networkFailure;
+      }
+      if (next === delayedFetching) {
+        now += 300;
+        return fetching;
+      }
+      if (next instanceof Error) throw next;
+      return next;
+    }, { now: () => now, wait: async ms => { now += ms; } });
+    assert.deepEqual(actual, expectedStarts, label);
+    assert.equal(result.data.article.body, 'Published procedure', label);
+  }
+});
+test('reader confirms newly visible source once before resuming publication backoff', async () => {
+  const { readArticle } = await import('./workshop/article-read.mjs');
+  const pending = { status: 202, retryAfterSeconds: 1, data: {
+    article: { processing: { job_id: 'job', state: 'fetching_source' } },
+  } };
+  const stored = { status: 200, data: { article: {
+    content_origin: 'source', body: 'Stored source',
+    processing: { job_id: 'job', state: 'rewriting', retry_after_seconds: 1 },
+  } } };
+  const refresh = { status: 200, retryAfterSeconds: 2, data: { article: {
+    ...stored.data.article, content_origin: 'canonical',
+    processing: { job_id: 'job', state: 'rewriting' },
+  } } };
+  const complete = { status: 200, data: { article: { content_origin: 'canonical', body: 'Ready' } } };
+  const overloaded = Object.assign(new Error('busy'), { status: 503, retryable: true, retryAfterSeconds: 7 });
+  for (const [label, responsePrefix, expectedWaits] of [
+    ['finish at the earlier probe', [pending, stored], [1000, 1000]],
+    ['resume the regular second and third waits', [pending, stored, stored, stored], [1000, 1000, 1000, 4000]],
+    ['one early probe even after several cold reads', [pending, pending, stored, stored, stored], [1000, 1000, 1000, 1000, 4000]],
+    ['initially readable source needs no extra probe', [stored, stored, stored], [1000, 2000, 4000]],
+    ['published refresh preserves its backoff', [refresh, refresh], [2000, 2000]],
+    ['a longer HTTP hint takes precedence', [pending, { ...stored, retryAfterSeconds: 6 }], [1000, 6000]],
+    ['overload on the early read honors the hint', [pending, stored, overloaded], [1000, 1000, 7000]],
+    ['a transient error on the early read still makes the regular check', [pending, stored, new TypeError('network')], [1000, 1000, 1000]],
+  ]) {
+    let now = 0;
+    const responses = [...responsePrefix, complete];
+    const waits = [];
+    const result = await readArticle(async () => {
+      const next = responses.shift();
+      if (next instanceof Error) throw next;
+      return next;
+    }, { now: () => now, wait: async ms => { waits.push(ms); now += ms; } });
+    assert.deepEqual(waits, expectedWaits, label);
+    assert.equal(result.data.article.body, 'Ready', label);
+    assert.equal(result.timedOut, false, label);
+  }
+
+  // The early confirmation cannot consume time reserved for the regular read.
+  let now = 0;
+  const starts = [];
+  const responses = [pending, stored, overloaded, complete];
+  await readArticle(async ({ timeout }) => {
+    starts.push(now);
+    const next = responses.shift();
+    if (next === overloaded) {
+      assert.equal(timeout, 1000);
+      now += timeout;
+      throw new TypeError('network');
+    }
+    return next;
+  }, { now: () => now, wait: async ms => { now += ms; } });
+  assert.deepEqual(starts, [0, 1000, 2000, 3000]);
+});
+
+test('reader checks for first publication early and preserves the regular read on a miss', async () => {
+  const { readArticle } = await import('./workshop/article-read.mjs');
+  const pending = { status: 202, shortSourceCheck: true, data: {
+    article: { processing: { job_id: 'job', state: 'queued' } },
+  } };
+  const source = { status: 200, shortPublicationCheck: true, data: {
+    article: { body: 'Stored', content_origin: 'source', processing: { job_id: 'job', state: 'rewriting' } },
+  } };
+  const timed = { ...source, shortPublicationCheck: false, retryAfterSeconds: 1 };
+  const changedJob = { ...source, data: {
+    article: { ...source.data.article, processing: { ...source.data.article.processing, job_id: 'different-job' } },
+  } };
+  const ready = { status: 200, data: { article: { body: 'Published', content_origin: 'canonical' } } };
+  const busy = Object.assign(new Error('Busy'), { status: 503, retryable: true, retryAfterSeconds: 7 });
+
+  for (const [label, responses, expected] of [
+    ['publication already ready for the probe', [pending, source, ready], [0, 250, 750]],
+    ['publication ready after the first probe', [source, source, ready], [0, 500, 750]],
+    ['regular read preserved', [pending, source, source, source, timed, ready], [0, 250, 750, 1000, 1250, 2250]],
+    ['initially readable article', [source, source, source, timed, ready], [0, 500, 750, 1000, 3000]],
+    ['job changed during the first probe', [source, changedJob, ready], [0, 500, 1000]],
+    ['short read no longer offered', [source, timed, ready], [0, 500, 1500]],
+    ['first probe returned after the second probe would start', [source, source, ready], [0, 500, 1000]],
+    ['network failure rejoins regular read', [source, new TypeError('Network failed'), ready], [0, 500, 1000]],
+    ['second probe timeout rejoins regular read', [source, source, new TypeError('Network failed'), ready], [0, 500, 750, 1000]],
+    ['overload wins over the regular read', [source, busy, ready], [0, 500, 7500]],
+    ['second probe overload', [source, source, busy, ready], [0, 500, 750, 7750]],
+    ['explicit server delay wins', [{ ...source, retryAfterSeconds: 6 }, ready], [0, 6000]],
+  ]) {
+    let now = 0;
+    const starts = [], qualifiers = [];
+    const result = await readArticle(async ({ timeout, preferShortPublicationCheck, finishPublishedBody, readableBodyTimeout }) => {
+      starts.push(now);
+      qualifiers.push(preferShortPublicationCheck);
+      if (label === 'initially readable article') {
+        assert.equal(Boolean(finishPublishedBody), now === 500 || now === 750);
+        assert.equal(readableBodyTimeout, now === 500 || now === 750 ? 10000 : undefined);
+      }
+      const next = responses.shift();
+      if (label === 'network failure rejoins regular read' && next instanceof TypeError) {
+        assert.equal(timeout, 500);
+        now += timeout;
+      }
+      if (label === 'second probe timeout rejoins regular read' && next instanceof TypeError) {
+        assert.equal(timeout, 250);
+        now += timeout;
+      }
+      if (label === 'first probe returned after the second probe would start' && now === 500) now += 300;
+      if (next instanceof Error) throw next;
+      return next;
+    }, { now: () => now, wait: async ms => { now += ms; } });
+    assert.deepEqual(starts, expected, label);
+    assert.equal(qualifiers[0], true, label);
+    if (label === 'initially readable article') assert.deepEqual(qualifiers, [true, true, true, false, false]);
+    assert.equal(result.data.article.body, 'Published', label);
+  }
+});
+
+test('a ready body gets the ordinary read time within the remaining reader budget', async () => {
+  const { readArticle } = await import('./workshop/article-read.mjs');
+  let now = 0;
+  let reads = 0;
+  const result = await readArticle(async (options) => {
+    if (++reads === 1) {
+      return { status: 200, shortPublicationCheck: true, data: {
+        article: { body: 'Stored', content_origin: 'source', processing: { job_id: 'job', state: 'rewriting' } },
+      } };
+    }
+    assert.equal(now, 500);
+    assert.equal(options.timeout, 500);
+    assert.equal(options.finishPublishedBody, true);
+    assert.equal(options.readableBodyTimeout, 1500);
+    now += 1200;
+    return { status: 200, data: { article: { body: 'Published', content_origin: 'canonical' } } };
+  }, { now: () => now, wait: async ms => { now += ms; }, budgetMs: 2000 });
+  assert.equal(reads, 2);
+  assert.equal(result.data.article.body, 'Published');
+});
+
+test('early publication reads keep the displayed source with a negotiated pending reply', async () => {
+  const { readArticle } = await import('./workshop/article-read.mjs');
+  const article = {
+    id: 'article', content_origin: 'source', source_revision_id: 'source', body: 'Stored',
+    processing: { job_id: 'job', state: 'rewriting' },
+  };
+  const source = { status: 200, shortPublicationCheck: true, publicationCheckSupported: true, data: { article } };
+  const ready = { status: 200, data: { article: { body: 'Published' } } };
+  const pending = { status: 200, publicationStatus: true, data: {
+    version: 'v1', article_id: 'article', job_id: 'job', source_revision_id: 'source', state: 'validating',
+  } };
+  const wrongSource = { ...pending, data: { ...pending.data, source_revision_id: 'other', retry_after_seconds: 6 } };
+  const serverDelay = { ...pending, retryAfterSeconds: 6 };
+  const changed = { ...source, shortPublicationCheck: false, data: {
+    article: { ...article, body: 'New source', source_revision_id: 'new', processing: { job_id: 'new-job', state: 'validating' } },
+  } };
+  for (const [label, responses, expectedTimes, expectedUpdates] of [
+    ['ready on second check', [source, pending, ready], [0, 500, 750], ['Stored', 'Published']],
+    ['still processing', [source, pending, pending, ready], [0, 500, 750, 1000], ['Stored', 'Published']],
+    ['mismatched compact reply', [source, wrongSource, ready], [0, 500, 1000], ['Stored', 'Published']],
+    ['real server delay', [source, serverDelay, ready], [0, 500, 6500], ['Stored', 'Published']],
+    ['changed source renders the full response', [source, changed, ready], [0, 500, 1000], ['Stored', 'New source', 'Published']],
+  ]) {
+    let now = 0;
+    const starts = [], selected = [], rendered = [];
+    const result = await readArticle(async (options) => {
+      starts.push(now);
+      if (now === 500 || now === 750) {
+        assert.deepEqual(options.publicationCheck, { articleId: 'article', sourceRevisionId: 'source', jobId: 'job' }, label);
+        assert.equal(options.finishPublishedBody, true, label);
+        assert.equal(options.timeout, 1000 - now, label);
+      } else {
+        assert.equal(options.publicationCheck, undefined, label);
+      }
+      return responses.shift();
+    }, {
+      now: () => now, wait: async ms => { now += ms; },
+      selectResponse(response) { selected.push(response.data.article.body); return response; },
+      onUpdate(response) { rendered.push(response.data.article.body); },
+    });
+    assert.deepEqual(starts, expectedTimes, label);
+    assert.deepEqual(selected, expectedUpdates, label);
+    assert.deepEqual(rendered, expectedUpdates, label);
+    assert.equal(result.data.article.body, 'Published', label);
+  }
+  const captureQueued = { status: 202, shortSourceCheck: true, data: {
+    article: { processing: { job_id: 'job', state: 'queued' } },
+  } };
+  const responses = [captureQueued, source, pending, pending, pending, ready];
+  let now = 0;
+  const optionsByRead = [];
+  const result = await readArticle(async (options) => {
+    optionsByRead.push({ time: now, check: options.publicationCheck, timeout: options.timeout });
+    return responses.shift();
+  }, { now: () => now, wait: async ms => { now += ms; } });
+  assert.deepEqual(optionsByRead.map(({ time }) => time), [0, 250, 750, 1000, 1250, 2250]);
+  assert.deepEqual(optionsByRead.filter(({ check }) => check).map(({ time, timeout }) => [time, timeout]),
+    [[750, 500], [1000, 250], [1250, 1000]]);
+  assert.equal(result.data.article.body, 'Published');
+});
+
+test('one negotiated publication check can open a ready article while keeping the ordinary deadline on a miss', async () => {
+  const { readArticle } = await import('./workshop/article-read.mjs');
+  const source = {
+    status: 200, publicationCheckSupported: true, data: { article: {
+      id: 'article', content_origin: 'source', source_revision_id: 'source', body: 'Stored',
+      processing: { job_id: 'job', state: 'rewriting' },
+    } },
+  };
+  const ready = { status: 200, data: { article: { body: 'Published' } } };
+  const compact = { status: 200, publicationStatus: true, data: {
+    version: 'v1', article_id: 'article', job_id: 'job', source_revision_id: 'source', state: 'validating',
+  } };
+  const denied = Object.assign(new Error('Denied'), { status: 403 });
+  const badJSON = Object.assign(new Error('Incomplete'), { code: 'INVALID_RESPONSE' });
+  for (const [label, response, lastAt, expectedProbe] of [
+    ['ready', ready, 5000, true],
+    ['miss checks once despite a later long wait', compact, 15000, true],
+    ['retry hint', { ...compact, data: { ...compact.data, retry_after_seconds: 6 } }, 11000, true],
+    ['mismatched anchor cannot supply a body retry hint', { ...compact, data: { ...compact.data, job_id: 'other', retry_after_seconds: 6 } }, 7000, true],
+    ['network loss', new TypeError('Disconnected'), 7000, true],
+    ['incomplete response', badJSON, 7000, true],
+    ['full response fallback', source, 7000, true],
+    ['access revoked', denied, 5000, true],
+    ['old server', null, 7000, false],
+    ['explicit source wait', 6, 9000, false],
+  ]) {
+    let now = 0;
+    const starts = [], probes = [], shown = [];
+    const result = readArticle(async (options) => {
+      starts.push(now);
+      if (options.publicationCheck) {
+        probes.push(now);
+        assert.deepEqual(options.publicationCheck, { articleId: 'article', sourceRevisionId: 'source', jobId: 'job' });
+        assert.equal(options.timeout, 2000);
+        assert.equal(options.readableBodyTimeout, 10000);
+        assert.equal(options.finishPublishedBody, true);
+        if (response instanceof Error) throw response;
+        return response;
+      }
+      if (now === lastAt) return ready;
+      if (response === null) return { ...source, publicationCheckSupported: false };
+      if (response === 6 && now === 3000) return { ...source, retryAfterSeconds: 6 };
+      if (now === 0 || response === ready && now === 3000) return { ...source, retryAfterSeconds: 1 };
+      return source;
+    }, { now: () => now, wait: async ms => { now += ms; }, onUpdate: ({ data }) => shown.push(data.article.body) });
+    if (response === denied) await assert.rejects(result, error => error === denied);
+    else assert.equal((await result).data.article.body, 'Published');
+    assert.deepEqual(probes, expectedProbe ? [5000] : [], label);
+    assert.equal(starts.at(-1), lastAt, label);
+    assert.equal(shown.filter(item => item === 'Stored').length,
+      label === 'miss checks once despite a later long wait' || label === 'full response fallback' ? 4 : 3, label);
+  }
+});
+
+test('article transport negotiates publication status with exact retained source and job headers', async () => {
+  const { requestArticleJSON } = await import('./workshop/catalog.mjs');
+  const checked = await requestArticleJSON('/article', {
+    publicationCheck: { jobId: 'job', sourceRevisionId: 'source' },
+    finishPublishedBody: true,
+    fetcher: async (url, { method, headers }) => {
+      assert.equal(url, '/article');
+      assert.equal(method, 'GET');
+      assert.equal(headers.Prefer, 'workshop-finish-published-body, workshop-publication-status');
+      assert.equal(headers['X-Workshop-Publication-Job'], 'job');
+      assert.equal(headers['X-Workshop-Source-Revision'], 'source');
+      return new Response(JSON.stringify({ version: 'v1', job_id: 'job' }), {
+        headers: { 'Preference-Applied': 'workshop-publication-status', 'Retry-After': '4' },
+      });
+    },
+  });
+  assert.equal(checked.publicationStatus, true);
+  assert.equal(checked.retryAfterSeconds, 4);
+  const offered = await requestArticleJSON('/article', {
+    fetcher: async () => new Response(JSON.stringify({ article: {} }), {
+      headers: { 'Workshop-Publication-Check': 'supported' },
+    }),
+  });
+  assert.equal(offered.publicationCheckSupported, true);
+});
+
+test('only a confirmed published response can finish streaming past the early header deadline', async (t) => {
+  const { requestArticleJSON } = await import('./workshop/catalog.mjs');
+  const preference = 'workshop-finish-published-body';
+  const deadlines = [];
+  t.mock.method(AbortSignal, 'timeout', (duration) => {
+    const controller = new AbortController();
+    deadlines.push({ duration, controller });
+    return controller.signal;
+  });
+  for (const [status, applied, hint, expire, aborted] of [
+    [200, preference, '', 'short', false],
+    [200, preference, '', 'body', true],
+    [200, preference, '', 'navigation', true],
+    [200, 'workshop-short-publication-check', '', 'short', true],
+    [200, '', '', 'short', true],
+    [200, preference, '7', 'short', true],
+    [202, preference, '', 'short', true],
+  ]) {
+    deadlines.length = 0;
+    const navigation = new AbortController();
+    const started = deferredAuthOperation();
+    let release, requestSignal;
+    const result = requestArticleJSON('/article', {
+      timeout: 500, readableBodyTimeout: 1000, finishPublishedBody: true,
+      preferShortPublicationCheck: true, signal: navigation.signal,
+      fetcher: async (_url, { signal, headers }) => {
+        assert.equal(headers.Prefer, `workshop-short-publication-check, ${preference}`);
+        requestSignal = signal;
+        return {
+          status, ok: true, headers: new Headers({
+            ...(applied ? { 'Preference-Applied': applied } : {}),
+            ...(hint ? { 'Retry-After': hint } : {}),
+          }),
+          json: () => new Promise((resolve, reject) => {
+            release = resolve;
+            signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+            started.resolve();
+          }),
+        };
+      },
+    });
+    const outcome = result.catch(error => error);
+    await Promise.race([started.promise, outcome.then(error => { throw error; })]);
+    assert.deepEqual(deadlines.map(({ duration }) => duration), [500, 1000]);
+    if (expire === 'navigation') navigation.abort(new Error('Scope changed'));
+    else deadlines[expire === 'short' ? 0 : 1].controller.abort();
+    assert.equal(requestSignal.aborted, aborted);
+    if (!aborted) release({ article: { body: 'Published' } });
+    if (expire === 'navigation') assert.equal(await outcome, navigation.signal.reason);
+    else if (aborted) assert.equal((await outcome).code, 'NETWORK_UNAVAILABLE');
+    else assert.equal((await outcome).data.article.body, 'Published');
+  }
+});
+
+test('an article body interrupted by its deadline remains retryable', async () => {
+  const { requestArticleJSON } = await import('./workshop/catalog.mjs');
+  await assert.rejects(requestArticleJSON('/article', {
+    timeout: 10,
+    fetcher: async (_url, { signal }) => ({
+      status: 200, ok: true, headers: new Headers(),
+      json: () => new Promise((_resolve, reject) => {
+        const guard = setTimeout(() => reject(new Error('test timeout')), 500);
+        signal.addEventListener('abort', () => {
+          clearTimeout(guard);
+          reject(signal.reason);
+        }, { once: true });
+      }),
+    }),
+  }), { code: 'NETWORK_UNAVAILABLE', retryable: true });
+});
+test('a short source read can finish a successful body by the regular deadline', async (t) => {
+  const { requestArticleJSON } = await import('./workshop/catalog.mjs');
+  const deadlines = [];
+  t.mock.method(AbortSignal, 'timeout', (duration) => {
+    const controller = new AbortController();
+    deadlines.push({ duration, controller });
+    return controller.signal;
+  });
+  for (const [status, expire, cancels, retryAfter] of [
+    [200, 0, false],
+    [202, 0, true],
+    [undefined, 0, true],
+    [200, 1, true],
+    [200, 'navigation', true],
+    [503, undefined, false, '7'],
+  ]) {
+    deadlines.length = 0;
+    const navigation = new AbortController();
+    let release, requestSignal, started;
+    const bodyStarted = new Promise(resolve => { started = resolve; });
+    const waitForBody = () => new Promise((resolve, reject) => {
+      requestSignal.addEventListener('abort', () => reject(requestSignal.reason), { once: true });
+      release = resolve;
+      started();
+    });
+    const response = requestArticleJSON('/article', {
+      timeout: 250, readableBodyTimeout: 750, signal: navigation.signal,
+      fetcher: async (_url, { signal }) => {
+        requestSignal = signal;
+        if (!status) return waitForBody();
+        return {
+          status, ok: status < 400, json: waitForBody,
+          headers: new Headers(retryAfter ? { 'Retry-After': retryAfter } : {}),
+        };
+      },
+    });
+    await bodyStarted;
+    assert.deepEqual(deadlines.map(({ duration }) => duration), [250, 750]);
+    if (expire === 'navigation') navigation.abort(new Error('Scope changed'));
+    else deadlines[expire]?.controller.abort();
+    assert.equal(requestSignal.aborted, cancels);
+    if (!cancels) release({ article: { body: 'Stored procedure' }, error: { retryable: true } });
+    if (retryAfter) await assert.rejects(response, { status: 503, retryAfterSeconds: 7, retryable: true });
+    else if (expire === 'navigation') await assert.rejects(response, navigation.signal.reason);
+    else if (cancels) await assert.rejects(response, { code: 'NETWORK_UNAVAILABLE', retryable: true });
+    else assert.equal((await response).data.article.body, 'Stored procedure');
+  }
+});
 test('reader retries failed jobs until canonical without losing source', async () => {
   const { readArticle, processingArticle, readableArticle } = await import('./workshop/article-read.mjs');
   let now = 0, reads = 0, inFlight = 0, maxInFlight = 0;
@@ -432,6 +1068,41 @@ test('generation invalidation aborts every old callback', async () => {
   const { NavigationGeneration } = await import('./workshop/article-read.mjs');
   const g = new NavigationGeneration();const a=g.next();const b=g.next();assert.equal(a.signal.aborted,true);assert.equal(a.current(),false);assert.equal(b.current(),true);g.clear();assert.equal(b.current(),false);
 });
+test('initial session bootstrap consumes the prestarted account reads once', async () => {
+  const { createSession } = await import('./workshop/auth.mjs');
+  const config = { version: 'v1', mode: 'firebase', login_available: true, providers: ['google.com'],
+    firebase: { apiKey: 'fixture', authDomain: 'fixture-project.firebaseapp.com', projectId: 'fixture-project', appId: '1:123:web:abc' } };
+  const active = { authenticated: true, roles: ['dataset_viewer'], expires_at: '2099-01-01T00:00:00Z', csrf_token: 'initial-claim' };
+  const requests = [];
+  const account = createSession({ request: async path => {
+    requests.push(path);
+    return path === '/auth/config' ? config : { ...active, csrf_token: 'current-claim' };
+  } });
+  const initial = Promise.allSettled([Promise.resolve(config), Promise.resolve(active)]);
+  await account.bootstrap({ initial });
+  assert.deepEqual(requests, []);
+  assert.equal(account.state.authenticated, true);
+  assert.equal(account.state.csrf, 'initial-claim');
+  await account.bootstrap();
+  assert.deepEqual(requests, ['/auth/config', '/auth/session']);
+  assert.equal(account.state.csrf, 'current-claim');
+});
+
+test('prestarted account results cannot reopen a canceled or signed-out session', async () => {
+  const { createSession } = await import('./workshop/auth.mjs');
+  const initial = deferredAuthOperation();
+  const account = createSession({ request: async () => { throw new Error('unexpected duplicate account request'); } });
+  const pending = account.bootstrap({ initial: initial.promise });
+  account.clear();
+  initial.resolve([
+    { status: 'fulfilled', value: { mode: 'firebase' } },
+    { status: 'fulfilled', value: { authenticated: true, roles: ['dataset_viewer'], expires_at: '2099-01-01T00:00:00Z', csrf_token: 'stale' } },
+  ]);
+  await pending;
+  assert.equal(account.state.authenticated, false);
+  assert.equal(account.state.csrf, '');
+});
+
 test('session bootstrap validates cookie authority and never loads SDK for existing session', async () => {
   const { createSession } = await import('./workshop/auth.mjs'); let sdkLoads=0;const calls=[];
   const session=createSession({request:async path=>{calls.push(path);return path==='/auth/config'?{version:'v1',mode:'firebase',login_available:true,providers:['google.com'],firebase:{apiKey:'fixture',authDomain:'fixture-project.firebaseapp.com',projectId:'fixture-project',appId:'1:123:web:abc'}}:{authenticated:true,roles:['dataset_viewer'],expires_at:'2099-01-01T00:00:00Z',csrf_token:'memory-only'};},loadSDK:async()=>{sdkLoads++;}});
@@ -504,6 +1175,28 @@ function deferredAuthOperation() {
   const promise = new Promise((done, fail) => { resolve = done; reject = fail; });
   return { promise, resolve, reject };
 }
+
+test('session confirmation checks the same cookie proof without replacing client sign-in state', async () => {
+  const { createSession } = await import('./workshop/auth.mjs');
+  const calls = [];
+  const snapshot = { authenticated: true, roles: ['dataset_viewer'], expires_at: '2099-01-01T00:00:00Z', csrf_token: 'first' };
+  const pending = deferredAuthOperation();
+  const session = createSession({ request: async path => {
+    calls.push(path);
+    if (path === '/auth/config') return { mode: 'firebase' };
+    return calls.length === 5 ? pending.promise : snapshot;
+  } });
+  await session.bootstrap();
+  assert.equal(await session.matchesCurrentSession(), true);
+  snapshot.csrf_token = 'different';
+  assert.equal(await session.matchesCurrentSession(), false);
+  assert.equal(session.state.csrf, 'first');
+  const beforeClear = session.matchesCurrentSession();
+  session.clear();
+  pending.resolve({ ...snapshot, csrf_token: 'first' });
+  assert.equal(await beforeClear, false);
+  assert.deepEqual(calls, ['/auth/config', '/auth/session', '/auth/session', '/auth/session', '/auth/session']);
+});
 
 async function sessionPreparationHarness({
   authenticated = false, persistence = async () => {}, constructProvider = () => {}, popup,
@@ -731,6 +1424,12 @@ function appSection(start, end) {
   return source.slice(first, last);
 }
 
+function installArticleRequestPath(context) {
+  context.URLSearchParams = URLSearchParams;
+  context.demoPath ??= (path) => path;
+  runInNewContext(appSection('function articleRequestPath(', 'function status('), context);
+}
+
 function sourceReviewHarness() {
   const navigation = new NavigationGeneration();
   const first = navigation.next();
@@ -817,10 +1516,10 @@ const routeArticle = '22222222-2222-4222-8222-222222222222';
 const routeOrder = '33333333-3333-4333-8333-333333333333';
 const previousConfiguration = '44444444-4444-4444-8444-444444444444';
 
-function loginRouteHarness(search, { authenticate = true, signInError = null, login = null, library = null } = {}) {
+function loginRouteHarness(search, { authenticate = true, signInError = null, login = null, library = null, selectorRead = null } = {}) {
   const navigation = new NavigationGeneration();
   const calls = { signIns: 0, checkoutClears: 0, checkouts: 0, routes: 0,
-    selections: [], libraries: 0, orders: [], options: [], invalidations: 0 };
+    selections: [], selectionOptions: [], libraries: 0, orders: [], options: [], selectorReads: [], invalidations: 0 };
   const elements = new Map();
   const element = name => {
     if (!elements.has(name)) elements.set(name, { value: '', disabled: false, children: [],
@@ -831,11 +1530,11 @@ function loginRouteHarness(search, { authenticate = true, signInError = null, lo
   const context = {
     URLSearchParams, uuid, validScope, configurationLabel,
     Option: function(text, value) { return { text, value }; },
-    location: { search }, signingIn: false,
+    location: { search }, signingIn: false, sessionRequest: null,
     vehicle: { id: previousConfiguration, region: 'US' }, quote: null,
     names: ['year', 'make', 'model', 'configuration'],
     rows: { configuration: [configuration] }, $: element,
-    checkout: { clear() { calls.checkoutClears++; }, start() { calls.checkouts++; } },
+    checkout: { read: () => null, clear() { calls.checkoutClears++; }, start() { calls.checkouts++; } },
     session: { state: { authenticated: false }, async signIn() {
       calls.signIns++;
       if (login) await login();
@@ -855,25 +1554,83 @@ function loginRouteHarness(search, { authenticate = true, signInError = null, lo
       assert.equal(g.current(), true);
       calls.orders.push(id);
     },
-    async selectVehicle(g, article = '') {
+    async selectVehicle(g, article = '', options) {
       assert.equal(g.current(), true);
       calls.selections.push({ configuration: context.vehicle.id, region: context.vehicle.region, article });
+      calls.selectionOptions.push(options);
     },
-    async loadOptions(name, g, desired) {
+    async requestJSON(path, options) {
+      calls.selectorReads.push({ path, signal: options.signal });
+      return selectorRead?.(path);
+    },
+    async loadOptions(name, g, desired, initial) {
       assert.equal(g.current(), true);
       calls.options.push({ name, desired });
+      const response = await initial;
+      if (!g.current()) return;
+      if (response) {
+        if (desired && !response.items.some(item => String(item.id ?? item.year) === desired)) throw new Error('Unavailable choice');
+        return context.populate(name, response.items, desired);
+      }
       context.populate(name, name === 'configuration' ? [configuration] :
         [name === 'year' ? { year: Number(desired) || 2026 } : { id: desired || 'choice', name: desired }], desired);
     },
   };
   runInNewContext(
-    appSection('function populate(', 'function selectorPath(') +
-    appSection('async function signIn() {', 'async function bootstrap() {') +
+    appSection('function populate(', 'async function loadOptions(') +
+    appSection('async function signIn() {', 'export async function bootstrap(') +
     appSection('async function restoreRoute(', 'for (const [index, name] of names.entries())'),
     context,
   );
   return { context, calls, element };
 }
+
+test('checkout return checks sooner only for the matching, unexpired checkout', async () => {
+  const future = new Date(Date.now() + 60_000).toISOString();
+  const past = new Date(Date.now() - 60_000).toISOString();
+  for (const [attempt, expected] of [
+    [{ order_id: routeOrder, provider_expires_at: future }, true],
+    [{ order_id: routeOrder, provider_expires_at: past }, false],
+    [{ order_id: routeOrder }, false],
+    [{ order_id: previousConfiguration, provider_expires_at: future }, false],
+    [null, false],
+  ]) {
+    const h = loginRouteHarness(`?order=${routeOrder}`);
+    h.context.session.state.authenticated = true;
+    h.context.checkout.read = () => attempt;
+    const checks = [];
+    h.context.checkOrder = async (_g, id, { earlyCheckoutCheck, returnedCheckout }) =>
+      checks.push([id, earlyCheckoutCheck, returnedCheckout]);
+    await h.context.restoreRoute();
+    assert.deepEqual(checks, [[routeOrder, expected, expected ? attempt : undefined]]);
+  }
+});
+
+test('checkout return waits for the initial account check and drops a canceled navigation', async () => {
+  for (const canceled of [false, true]) {
+    const h = loginRouteHarness(`?order=${routeOrder}`);
+    const account = deferredAuthOperation();
+    h.context.sessionRequest = account.promise;
+    const loading = h.context.restoreRoute();
+    assert.deepEqual(h.calls.orders, []);
+    if (canceled) h.context.invalidate();
+    h.context.session.state.authenticated = true;
+    account.resolve();
+    await loading;
+    assert.deepEqual(h.calls.orders, canceled ? [] : [routeOrder]);
+  }
+});
+
+test('an owned Firebase saved search can restore its exact scope without the selector hierarchy', async () => {
+  const query = `?year=2020&make=toyota&model=rav4&configuration=${routeConfiguration}&region=US&q=oil+pump`;
+  const h = loginRouteHarness(query);
+  h.context.session.state.authenticated = true;
+  h.context.session.state.mode = 'firebase';
+  await h.context.restoreRoute();
+  assert.equal(h.element('search').value, 'oil pump');
+  assert.deepEqual(h.calls.options, []);
+  assert.deepEqual(h.calls.selections, [{ configuration: routeConfiguration, region: 'US', article: '' }]);
+});
 
 const loginRoutes = [
   { name: 'My vehicles instead of a prior selected configuration', query: '?view=library',
@@ -905,6 +1662,53 @@ for (const route of loginRoutes) {
     assert.equal(h.calls.checkouts, 0);
     assert.equal(h.context.signingIn, false);
     if (route.query.includes('q=brakes')) assert.equal(h.element('search').value, 'brakes');
+  });
+}
+
+const selectedCheckoutRoute = `?year=2020&make=toyota&model=rav4&configuration=${routeConfiguration}&region=US`;
+
+function selectedCheckoutHarness(options) {
+  const h = loginRouteHarness(selectedCheckoutRoute, options);
+  h.context.vehicle = { id: routeConfiguration, region: 'US' };
+  ['2020', 'toyota', 'rav4', routeConfiguration].forEach((value, index) => {
+    const name = h.context.names[index];
+    const item = name === 'year' ? { year: 2020 } : { id: value, name: value };
+    h.context.populate(name, [item], value);
+  });
+  return h;
+}
+
+test('sign-in rechecks paid access for the displayed selection without reloading selector choices', async () => {
+  const h = selectedCheckoutHarness();
+  const before = h.context.names.map(name => h.element(name).children);
+  await h.context.signIn();
+  assert.deepEqual(h.calls.selections, [{ configuration: routeConfiguration, region: 'US', article: '' }]);
+  assert.equal(h.calls.selectionOptions[0]?.reuseQuote, true);
+  assert.deepEqual(h.calls.options, []);
+  assert.equal(h.calls.invalidations, 1);
+  assert.equal(h.calls.checkoutClears, 1);
+  assert.equal(h.calls.checkouts, 0);
+  h.context.names.forEach((name, index) => assert.equal(h.element(name).children, before[index]));
+});
+
+for (const change of ['URL', 'selector', 'region']) {
+  test(`sign-in falls back to full restoration when the checkout ${change} changes`, async () => {
+    const pending = deferredAuthOperation();
+    const h = selectedCheckoutHarness({ login: () => pending.promise });
+    const signIn = h.context.signIn();
+    if (change === 'URL') h.context.location.search = '?view=library';
+    if (change === 'selector') h.element('model').value = 'different-model';
+    if (change === 'region') h.context.vehicle.region = 'CA';
+    pending.resolve();
+    await signIn;
+    if (change === 'URL') {
+      assert.equal(h.calls.libraries, 1);
+      assert.deepEqual(h.calls.selections, []);
+    } else {
+      assert.equal(h.calls.options.length, 4);
+      assert.deepEqual(h.calls.selections, [{ configuration: routeConfiguration, region: 'US', article: '' }]);
+    }
+    assert.equal(h.calls.checkouts, 0);
   });
 }
 
@@ -963,6 +1767,44 @@ test('partial saved hierarchy clears stale descendants before restoring its chos
   assert.deepEqual(h.calls.options, [{ name: 'year', desired: '2020' }, { name: 'make', desired: '' }]);
 });
 
+test('returning to the displayed year and make overlaps reads but hides models until the parents are checked', async () => {
+  const year = deferredAuthOperation();
+  const h = selectedCheckoutHarness({ selectorRead(path) {
+    if (path.endsWith('/years')) return year.promise;
+    if (path.includes('/models?')) return { items: [{ id: 'rav4', name: 'RAV4' }] };
+    return { items: [{ id: 'toyota', name: 'Toyota' }] };
+  } });
+  h.context.location.search = '?year=2020&make=toyota';
+  const opening = h.context.restoreRoute(null, { fromHistory: true });
+  assert.deepEqual(h.calls.selectorReads.map(({ path }) => path), [
+    '/v1/catalog/years', '/v1/catalog/years/2020/makes?region=US',
+    '/v1/catalog/years/2020/makes/toyota/models?region=US',
+  ]);
+  assert.equal(new Set(h.calls.selectorReads.map(({ signal }) => signal)).size, 1);
+  assert.equal(h.element('model').disabled, true);
+  assert.equal(h.element('configuration').disabled, true);
+  assert.equal(h.context.vehicle, null);
+  year.resolve({ items: [{ year: 2020 }] });
+  await opening;
+  assert.deepEqual(h.context.names.map(name => h.element(name).value), ['2020', 'toyota', '', '']);
+  assert.equal(h.element('model').disabled, false);
+  assert.equal(h.element('configuration').disabled, true);
+  assert.deepEqual(h.calls.selections, []);
+});
+
+test('history does not prefetch model choices for a make outside the displayed chooser prefix', async () => {
+  const h = selectedCheckoutHarness({ selectorRead(path) {
+    if (path.endsWith('/years')) return { items: [{ year: 2020 }] };
+    return { items: [{ id: 'different', name: 'Different make' }] };
+  } });
+  h.context.location.search = '?year=2020&make=different';
+  await h.context.restoreRoute(null, { fromHistory: true });
+  assert.deepEqual(h.calls.selectorReads.map(({ path }) => path), [
+    '/v1/catalog/years', '/v1/catalog/years/2020/makes?region=US',
+  ]);
+  assert.deepEqual(h.calls.selections, []);
+});
+
 test('saved hierarchy restores all exact vehicle choices and query over prior state', async () => {
   const h = loginRouteHarness(`?year=2020&make=toyota&model=rav4&configuration=${routeConfiguration}&region=US&q=pump`);
   seedPriorRoute(h);
@@ -970,6 +1812,44 @@ test('saved hierarchy restores all exact vehicle choices and query over prior st
   assert.deepEqual(h.context.names.map(name => h.element(name).value), ['2020', 'toyota', 'rav4', routeConfiguration]);
   assert.equal(h.element('search').value, 'pump');
   assert.deepEqual(h.calls.selections, [{ configuration: routeConfiguration, region: 'US', article: '' }]);
+});
+
+test('a complete saved vehicle overlaps public reads but validates parents before opening the exact scope', async () => {
+  const year = deferredAuthOperation();
+  const h = loginRouteHarness(selectedCheckoutRoute, { selectorRead(path) {
+    if (path.endsWith('/years')) return year.promise;
+    if (path.includes('/configurations?')) return { items: [{ id: routeConfiguration, region: 'US', engine: '2.0' }] };
+    if (path.includes('/models?')) return { items: [{ id: 'rav4', name: 'RAV4' }] };
+    return { items: [{ id: 'toyota', name: 'Toyota' }] };
+  } });
+  const restored = h.context.restoreRoute();
+  assert.deepEqual(h.calls.selectorReads.map(({ path }) => path), [
+    '/v1/catalog/years', '/v1/catalog/years/2020/makes?region=US',
+    '/v1/catalog/years/2020/makes/toyota/models?region=US',
+    '/v1/catalog/years/2020/makes/toyota/models/rav4/configurations?region=US',
+  ]);
+  assert.equal(new Set(h.calls.selectorReads.map(r => r.signal)).size, 1);
+  await new Promise(setImmediate);
+  assert.deepEqual(h.calls.selections, []);
+  assert.equal(h.element('configuration').disabled, true);
+  year.resolve({ items: [{ year: 2020 }] });
+  await restored;
+  assert.deepEqual(h.calls.selections, [{ configuration: routeConfiguration, region: 'US', article: '' }]);
+});
+
+test('a saved selector never opens a different region or falls through a missing parent', async () => {
+  const wrongRegion = loginRouteHarness(selectedCheckoutRoute.replace('region=US', 'region=CA'));
+  await assert.rejects(wrongRegion.context.restoreRoute(), /unavailable in the selected region/);
+  assert.deepEqual(wrongRegion.calls.selections, []);
+  assert.equal(wrongRegion.context.vehicle, null);
+
+  const missingParent = loginRouteHarness(selectedCheckoutRoute, { selectorRead(path) {
+    if (path.endsWith('/years')) return { items: [] };
+    throw new Error('A prefetched descendant can fail independently');
+  } });
+  await assert.rejects(missingParent.context.restoreRoute(), /Unavailable choice/);
+  assert.deepEqual(missingParent.calls.selections, []);
+  assert.equal(missingParent.element('configuration').disabled, true);
 });
 
 test('My vehicles activation clears the previous vehicle search and selector options in its saved URL', async () => {
@@ -984,20 +1864,36 @@ test('My vehicles activation clears the previous vehicle search and selector opt
   const list = makeElement('ul');
   list.replaceChildren = () => { list.children = []; };
   const get = h.context.$;
+  get('library-more').removeAttribute = () => {};
   h.context.$ = id => id === 'library-items' ? list : get(id);
   Object.assign(h.context, {
     location, URLSearchParams, validLibrary, element: makeElement,
     history: { pushState(_state, _title, url) { location.search = new URL(url, 'https://workshop.example').search; } },
-    currentOrder: '', libraryItems: [], libraryCursor: null, clearReader() {},
+    currentOrder: '', libraryPageRequest: null, libraryCursor: null, clearReader() {},
     session: { state: { authenticated: true } },
     async requestJSON() { return { version: 'v1', next_cursor: null, items: [{
       configuration_id: routeConfiguration, region: 'US', library_item_id: routeOrder,
       label: 'Purchased vehicle', access_state: 'viewable', granted_at: '2026-11-16T00:00:00Z',
+    }, {
+      configuration_id: '44444444-4444-4444-8444-444444444444', region: 'CA',
+      library_item_id: '55555555-5555-4555-8555-555555555555', label: 'Other purchased vehicle',
+      access_state: 'paid', granted_at: '2026-11-16T00:00:00Z', catalog_available: false,
+    }, {
+      configuration_id: '66666666-6666-4666-8666-666666666666', region: 'US',
+      library_item_id: '77777777-7777-4777-8777-777777777777', label: 'Revoked vehicle',
+      access_state: 'revoked', granted_at: null,
     }] }; },
   });
   runInNewContext(appSection('function updateURL(', 'function rememberOrderRoute(') +
+    appSection('function clearLibrary(', 'function resetSourceReview(') +
     appSection('async function library(', 'function clearReader('), h.context);
   await h.context.library({ signal: new AbortController().signal, current: () => true });
+  assert.equal(list.children[0].children[1].textContent, 'Articles available');
+  assert.equal(list.children[1].children[0].textContent, 'Other purchased vehicle / CA');
+  assert.equal(list.children[1].children[1].textContent, 'Owned. Service information is currently unavailable.');
+  assert.equal(list.children[1].children.length, 2);
+  assert.equal(list.children[2].children[1].textContent, 'Access revoked. Contact support.');
+  assert.equal(list.children[2].children.length, 2);
   list.children[0].children[2].events.click();
   assert.equal(h.element('search').value, '');
   const route = new URLSearchParams(location.search);
@@ -1095,7 +1991,10 @@ function orderStatusHarness(response, { selectionError = null } = {}) {
   let selectionCalls = 0;
   const statuses = [];
   const context = {
+    document: {},
     currentOrder: '', paidOrder: '', unconfirmedOrder: null, vehicle: null, quote: null, merchant: null, access: 'missing',
+    URLSearchParams, location: { pathname: '/workshop/', search: `?order=${orderID}` },
+    history: { replaceState() { assert.fail('the known order route should not need rewriting'); } },
     $: id => nodes[id],
     validScope, scope: () => ({ configuration_id: context.vehicle?.id, region: context.vehicle?.region }),
     validQuote: () => false, purchaseConfiguration: () => false,
@@ -1115,6 +2014,7 @@ function orderStatusHarness(response, { selectionError = null } = {}) {
   };
   runInNewContext(
     appSection('function invalidate(', 'async function operation(') +
+    appSection('function rememberOrderRoute(', 'function clearOrderRoute(') +
     appSection('async function checkOrder(', 'async function purchase()'),
     context,
   );
@@ -1187,12 +2087,22 @@ function paidPurchaseLifecycleHarness(selectionErrors, { realArticleIndex = fals
   const searchNavigation = new NavigationGeneration();
   const nodes = new Map();
   const $ = id => {
-    if (!nodes.has(id)) nodes.set(id, {
-      hidden: false, disabled: false, checked: id === 'agreement', value: '',
-      textContent: '', dataset: {}, children: [],
-      replaceChildren(...children) { this.children = children; this.value = ''; },
-      append(...children) { this.children.push(...children); }, removeAttribute() {},
-    });
+    if (!nodes.has(id)) {
+      const attributes = new Map();
+      const listeners = new Map();
+      nodes.set(id, {
+        hidden: false, disabled: false, checked: id === 'agreement', value: '',
+        textContent: '', dataset: {}, children: [],
+        replaceChildren(...children) { this.children = children; this.value = ''; },
+        append(...children) { this.children.push(...children); },
+        setAttribute(name, value) { attributes.set(name, value); },
+        getAttribute(name) { return attributes.get(name) ?? null; },
+        removeAttribute(name) { attributes.delete(name); },
+        addEventListener(type, listener) { listeners.set(type, listener); },
+        click() { return listeners.get('click')(); },
+        focus() { context.document.activeElement = this; },
+      });
+    }
     return nodes.get(id);
   };
   const location = {
@@ -1214,11 +2124,12 @@ function paidPurchaseLifecycleHarness(selectionErrors, { realArticleIndex = fals
     element: (tag, text) => ({ tag, textContent: text }),
     names: ['year', 'make', 'model', 'configuration'],
     vehicle: { id: scope.configuration_id, region: scope.region }, quote,
-    merchant: merchantFixture(), access: 'missing', currentOrder: '', paidOrder: null, unconfirmedOrder: null,
+    merchant: merchantFixture(), merchantRequest: null, access: 'missing', currentOrder: '', paidOrder: null, unconfirmedOrder: null,
     articles: [], searchItems: null, searchQuery: '', searchPending: false,
     searchComplete: false, searchError: false, searchTimer: null,
+    sourceRevision: 0,
     clearTimeout() {},
-    sessionEstablished: true, signingIn: false,
+    sessionEstablished: true, sessionRequest: null, signingIn: false,
     session: { state: { authenticated: true, ready: true, csrf: 'test-csrf' },
       async bootstrap() {}, clear() {
         context.session.state.authenticated = false;
@@ -1226,7 +2137,7 @@ function paidPurchaseLifecycleHarness(selectionErrors, { realArticleIndex = fals
         context.renderPurchase();
       } },
     scope: () => ({ configuration_id: context.vehicle?.id, region: context.vehicle?.region }),
-    checkout: { async start() {
+    checkout: { read: () => null, async start() {
       checkoutStarts++;
       return { version: 'v1', ...scope, order_id: orderID, state: 'processing' };
     }, clear() {} },
@@ -1248,7 +2159,8 @@ function paidPurchaseLifecycleHarness(selectionErrors, { realArticleIndex = fals
     show() {},
     status(message, options = {}) { statuses.push({ message, options }); },
     stage() {}, articlePath: () => `/v1/catalog/vehicles/${scope.configuration_id}/articles`,
-    renderArticles() { $('articles').replaceChildren(...context.articles.map(item => ({ id: item.id }))); },
+    filterArticles,
+    renderArticleLinks(items) { $('articles').replaceChildren(...items.map(item => ({ id: item.id }))); },
     async loadArticle() { if (articleOpenError) throw articleOpenError; },
     readCollection: (read, options) => readCollection(read, {
       ...options, wait: async () => { if (afterPartial) await afterPartial(context); },
@@ -1268,16 +2180,19 @@ function paidPurchaseLifecycleHarness(selectionErrors, { realArticleIndex = fals
       return merchantFixture();
     },
   };
+  installArticleRequestPath(context);
   runInNewContext(
     (realArticleIndex ? appSection('function show(', 'function clearProtected()') : '') +
     (realArticleIndex ? appSection('function clearProtected()', 'function invalidate()') : '') +
     appSection('function invalidate(', 'function updateURL(') +
     appSection('function updateURL(', 'function selectorPath(') +
     appSection('function renderPurchase(', 'async function selectVehicle(') +
-    (realArticleIndex ? appSection('async function selectVehicle(', 'function renderArticles(') : '') +
+    (realArticleIndex ? appSection('async function selectVehicle(', 'function renderArticleLinks(') : '') +
+    (realArticleIndex ? appSection('function renderArticles(', 'const assetID =') : '') +
     (articleOpenError ? appSection('function openArticle(', 'function validSourceURL(') : '') +
     appSection('async function checkOrder(', 'async function signIn()') +
-    appSection('async function bootstrap()', 'for (const [index, name] of names.entries())') +
+    appSection('$("check-order").addEventListener', '$("search").addEventListener') +
+    appSection('async function bootstrap(', 'for (const [index, name] of names.entries())') +
     appSection('let lifecycleCheck = null;', 'window.addEventListener("pageshow"'),
     context,
   );
@@ -1323,6 +2238,30 @@ test('paid catalog withdrawal through purchase never invites repayment or a no-o
   assert.equal(h.statuses.at(-1).options.retry, undefined);
 });
 
+test('paid return preserves confirmed payment while the entitled index is still opening', async () => {
+  const index = deferredAuthOperation();
+  const h = paidPurchaseLifecycleHarness([], { realArticleIndex: true, articleReadResponses: [index.promise] });
+  h.location.search = `?order=${orderID}`;
+  const opening = h.context.restoreRoute();
+  await new Promise(setImmediate);
+  assert.equal(h.context.access, 'unknown', 'payment confirmation does not grant article access');
+  assert.equal(h.$('purchase-action').textContent, 'Payment received');
+  assert.equal(h.$('purchase-action').disabled, true);
+  assert.equal(h.$('purchase-price').hidden, true);
+  assert.match(h.$('purchase-message').textContent, /Payment received.*do not pay again/);
+  assert.equal(h.$('check-order').hidden, false);
+  assert.equal(new URLSearchParams(h.location.search).get('order'), orderID);
+  assert.equal(h.$('articles').children.length, 0);
+
+  index.resolve({ items: [{ id: routeArticle, title: 'Private article' }], complete: true, hydrating: false });
+  await opening;
+  assert.equal(h.context.access, 'owned');
+  assert.equal(h.$('purchase-action').textContent, 'Open articles');
+  assert.equal(h.$('check-order').hidden, true);
+  assert.equal(new URLSearchParams(h.location.search).has('order'), false);
+  assert.equal(h.checkoutStarts(), 0);
+});
+
 test('paid partial article index is cleared when a later poll withdraws the catalog', async () => {
   const withdrawn = Object.assign(new Error('Catalog withdrawn'), { status: 410, code: 'CATALOG_WITHDRAWN' });
   const h = paidPurchaseLifecycleHarness([withdrawn], { realArticleIndex: true });
@@ -1359,6 +2298,43 @@ test('search during a partial paid index keeps its order resume route after with
   assert.equal(h.context.access, 'pending');
   assert.equal(h.context.currentOrder, orderID);
   assert.doesNotMatch(h.$('purchase-action').textContent, /Buy/);
+});
+
+test('a useful partial paid index can save and restore the exact reader before hydration finishes', async () => {
+  let partialReads = 0;
+  const restored = [];
+  const h = paidPurchaseLifecycleHarness([], {
+    realArticleIndex: true,
+    articleReadResponses: [
+      { items: [], hydrating: true, complete: false },
+      { items: [{ id: routeArticle, title: 'Private article' }], hydrating: true, complete: false },
+    ],
+    async afterPartial(context) {
+      const params = new URLSearchParams(h.location.search);
+      if (++partialReads === 1) {
+        assert.equal(params.get('order'), orderID);
+        return;
+      }
+      assert.equal(params.has('order'), false);
+      assert.equal(params.get('configuration'), scope.configuration_id);
+      assert.equal(params.get('region'), scope.region);
+      assert.equal(context.paidOrder?.id, orderID);
+      context.updateURL({ article: routeArticle });
+      assert.equal(new URLSearchParams(h.location.search).has('order'), false);
+      await context.restoreRoute();
+    },
+  });
+  h.location.search = `?order=${orderID}`;
+  h.context.session.state.mode = 'firebase';
+  h.context.loadArticle = async (id, _g, options) => {
+    restored.push({ id, configuration: h.context.vehicle.id, region: h.context.vehicle.region, savedLink: options.savedLink });
+    return true;
+  };
+  await h.context.restoreRoute();
+  assert.equal(partialReads, 2);
+  assert.equal(h.orderReads(), 1);
+  assert.equal(h.checkoutStarts(), 0);
+  assert.deepEqual(restored, [{ id: routeArticle, configuration: scope.configuration_id, region: scope.region, savedLink: true }]);
 });
 
 test('opening a partial paid article cannot turn its entitlement error into Buy', async () => {
@@ -1527,6 +2503,26 @@ test('processing order alone does not claim confirmed paid access on an entitlem
   assert.equal(h.context.access, 'missing');
 });
 
+test('the authorized owned vehicle shows its article action without purchase pricing', () => {
+  const { context, $ } = paidPurchaseLifecycleHarness([]);
+  for (const availableQuote of [null, quote]) {
+    context.quote = availableQuote;
+    context.access = 'owned';
+    context.renderPurchase();
+    assert.equal($('purchase-price').hidden, true);
+    assert.equal($('purchase-price').textContent, '');
+    assert.equal($('purchase-action').textContent, 'Open articles');
+    assert.equal($('purchase-action').disabled, false);
+    assert.match($('purchase-message').textContent, /Owned/);
+
+    context.access = 'missing';
+    context.renderPurchase();
+    assert.equal($('purchase-price').hidden, false);
+    assert.equal($('purchase-price').textContent, availableQuote ? '$20 USD · one-time' : 'Price is currently unavailable.');
+    assert.equal($('purchase-action').disabled, !availableQuote);
+  }
+});
+
 test('purchase availability status reports unavailable without a quote', async () => {
   const required = Object.assign(new Error('Access not ready'), { status: 403, code: 'ENTITLEMENT_REQUIRED' });
   const h = paidPurchaseLifecycleHarness([]);
@@ -1622,6 +2618,7 @@ test('fresh order-only return reveals Check payment status after owner validatio
   const processing = {
     version: 'v1', order_id: orderID, ...scope, state: 'processing',
     retry_disposition: 'do_not_repay', timedOut: true,
+    configuration_label: '2005 Toyota 2.4 L XLE',
   };
   const h = paidPurchaseLifecycleHarness([], { orderResponses: [processing] });
   h.context.vehicle = null;
@@ -1630,6 +2627,7 @@ test('fresh order-only return reveals Check payment status after owner validatio
   await h.context.restoreRoute();
   assert.equal(h.context.vehicle?.id, scope.configuration_id);
   assert.equal(h.context.vehicle?.region, scope.region);
+  assert.equal(h.$('purchase-selection').textContent, '2005 Toyota 2.4 L XLE / US');
   assert.equal(h.$('purchase').hidden, false);
   assert.equal(h.$('check-order').hidden, false);
   assert.equal(h.$('purchase-action').disabled, true);
@@ -1749,6 +2747,25 @@ test('confirmed paid marker for another vehicle does not mask missing access', a
   assert.equal(h.context.access, 'missing');
 });
 
+test('a confirmed payment marker cannot describe another scope, a signed-out viewer, or revoked access', () => {
+  const h = paidPurchaseLifecycleHarness([]);
+  h.context.currentOrder = orderID;
+  h.context.paidOrder = { id: orderID, ...scope };
+  for (const [vehicle, authenticated, access] of [
+    [{ id: previousConfiguration, region: scope.region }, true, 'unknown'],
+    [{ id: scope.configuration_id, region: 'CA' }, true, 'unknown'],
+    [{ id: scope.configuration_id, region: scope.region }, false, 'unknown'],
+    [{ id: scope.configuration_id, region: scope.region }, true, 'revoked'],
+  ]) {
+    h.context.vehicle = vehicle;
+    h.context.session.state.authenticated = authenticated;
+    h.context.access = access;
+    h.context.renderPurchase();
+    assert.doesNotMatch(h.$('purchase-message').textContent, /Payment received/);
+    if (access === 'revoked') assert.match(h.$('purchase-message').textContent, /Access revoked/);
+  }
+});
+
 test('paid processing checkout survives focus recheck without a second Buy invitation', async () => {
   const required = Object.assign(new Error('Access not ready'), { status: 403, code: 'ENTITLEMENT_REQUIRED' });
   const h = paidPurchaseLifecycleHarness([required, required]);
@@ -1778,6 +2795,290 @@ test('confirmed article access replaces the resumed order route with its vehicle
   assert.equal(h.context.currentOrder, '');
   assert.equal(h.$('check-order').hidden, true);
   assert.equal(h.context.access, 'owned');
+});
+
+const ownedCheckout = { version: 'v1', ...scope, order_id: orderID, library_item_id: orderID, state: 'owned' };
+const checkoutPaidOrder = { version: 'v1', ...scope, order_id: orderID, state: 'paid', retry_disposition: 'do_not_repay' };
+const checkoutReadyIndex = { items: [{ id: routeArticle, title: 'Purchased article' }], complete: true, hydrating: false };
+const checkoutPost = ['POST', '/v1/workshop/checkout-sessions'];
+const checkoutOrderGet = ['GET', `/v1/workshop/orders/${orderID}`];
+const checkoutIndexGet = ['GET', `/v1/catalog/vehicles/${scope.configuration_id}/articles?region=${scope.region}`];
+
+test('an explicit payment check ignores repeat clicks and focuses the recovered index', async () => {
+  const unavailable = Object.assign(new Error('Index unavailable'), { status: 503 });
+  const h = paidPurchaseLifecycleHarness([], {
+    realArticleIndex: true, articleReadResponses: [unavailable, checkoutReadyIndex],
+  });
+  h.location.search = `?order=${orderID}`;
+  await h.context.restoreRoute();
+  const response = deferredAuthOperation();
+  let checks = 0;
+  h.context.pollOrder = () => { checks++; return response.promise; };
+  const button = h.$('check-order');
+  button.focus();
+  button.click();
+  button.click();
+  assert.equal(checks, 1);
+  assert.equal(button.getAttribute('aria-disabled'), 'true');
+  assert.equal(h.context.document.activeElement, button);
+  response.resolve(checkoutPaidOrder);
+  await new Promise(setImmediate);
+  assert.equal(button.hidden, true);
+  assert.equal(button.getAttribute('aria-disabled'), null);
+  assert.equal(h.context.document.activeElement, h.$('catalog-title'));
+  assert.equal(h.location.search, `?configuration=${scope.configuration_id}&region=${scope.region}`);
+  assert.equal(h.checkoutStarts(), 0);
+});
+
+test('navigation unlocks an explicit status check and stale completion cannot unlock a newer check', async () => {
+  const unavailable = Object.assign(new Error('Index unavailable'), { status: 503 });
+  const h = paidPurchaseLifecycleHarness([unavailable]);
+  h.location.search = `?order=${orderID}`;
+  await h.context.restoreRoute();
+  const oldResponse = deferredAuthOperation();
+  const newResponse = deferredAuthOperation();
+  const pendingChecks = [oldResponse, newResponse];
+  h.context.pollOrder = () => pendingChecks.shift().promise;
+  const button = h.$('check-order');
+  button.click();
+  assert.equal(button.getAttribute('aria-disabled'), 'true');
+  h.context.navigation.clear();
+  assert.equal(button.getAttribute('aria-disabled'), null);
+  button.click();
+  h.$('my-vehicles').focus();
+  oldResponse.resolve(checkoutPaidOrder);
+  await new Promise(setImmediate);
+  assert.equal(button.getAttribute('aria-disabled'), 'true');
+  newResponse.resolve(checkoutPaidOrder);
+  await new Promise(setImmediate);
+  assert.equal(button.hidden, true);
+  assert.equal(button.getAttribute('aria-disabled'), null);
+  assert.equal(h.context.document.activeElement, h.$('my-vehicles'));
+});
+
+async function ownedCheckoutHarness(indexResponses, { checkoutResponse = ownedCheckout, orderResponses = [] } = {}) {
+  const { createCheckout } = await import('./workshop/commerce.mjs');
+  const h = paidPurchaseLifecycleHarness([], { realArticleIndex: true, articleReadResponses: indexResponses });
+  const requests = [];
+  const storage = new Map();
+  Object.assign(h.context, { indexLoaded: false, indexComplete: false, indexHydrating: false, indexFailed: false });
+  h.$('check-order').hidden = true;
+  h.context.checkout = createCheckout({
+    storage: {
+      getItem: key => storage.get(key),
+      setItem: (key, value) => storage.set(key, value),
+      removeItem: key => storage.delete(key),
+    },
+    uuid: () => 'bc32b7a1-1111-4111-8111-111111111111',
+    request: async (path, options) => {
+      requests.push([options.method, path]);
+      assert.deepEqual(options.body, { ...scope, terms_version: 'workshop-v1' });
+      return checkoutResponse;
+    },
+  });
+  const requestJSON = h.context.requestJSON;
+  h.context.requestJSON = async (path, options) => {
+    requests.push(['GET', path]);
+    return requestJSON(path, options);
+  };
+  h.context.pollOrder = (id, options) => pollOrder(id, {
+    ...options,
+    request: async path => {
+      requests.push(['GET', path]);
+      const next = orderResponses.shift();
+      assert.ok(next, 'unexpected order status read');
+      if (next instanceof Error) throw next;
+      return next;
+    },
+  });
+  return { ...h, requests };
+}
+
+for (const [known, message, feedback] of [
+  ['paid', /Payment was received.*order status is unavailable.*do not pay again/,
+    'Payment received. Status check is temporarily unavailable. Checking again…'],
+  ['pending', /^Payment was pending at the last check\. The current status is unavailable\./,
+    'Payment was pending at the last check. Status check is temporarily unavailable. Checking again…'],
+  ['unknown', /^Payment status is temporarily unavailable\. Try again\.$/,
+    'Payment status is temporarily unavailable. Checking again…'],
+]) {
+  test(`order status timeout describes ${known} payment accurately and can recover`, async () => {
+    const previouslyPaid = known === 'paid';
+    const label = 'Fixture selected XLE 2.4 L';
+    const indexError = Object.assign(new Error('Index unavailable'), { status: 503, code: 'CATALOG_UNAVAILABLE' });
+    const h = await ownedCheckoutHarness(previouslyPaid ? [indexError, checkoutReadyIndex] : [checkoutReadyIndex]);
+    if (previouslyPaid) {
+      h.context.quote = { ...h.context.quote, configuration_label: label };
+      await h.context.purchase();
+    } else {
+      h.location.search = `?order=${orderID}`;
+    }
+    const readsAt = [];
+    const feedbackAt = [];
+    let now = 0;
+    let recovered = false;
+    const recordStatus = h.context.status;
+    h.context.status = (text, options) => {
+      if (text.endsWith('Checking again…')) feedbackAt.push([now, text, options.busy]);
+      recordStatus(text, options);
+    };
+    h.context.pollOrder = (id, options) => pollOrder(id, {
+      ...options,
+      now: () => now,
+      wait: async elapsed => { now += elapsed; },
+      request: (path, readOptions) => requestJSON(path, {
+        ...readOptions,
+        fetcher: async () => {
+          assert.equal(path, checkoutOrderGet[1]);
+          h.requests.push(checkoutOrderGet);
+          readsAt.push(now);
+          if (recovered) return new Response(JSON.stringify(checkoutPaidOrder));
+          if (known === 'pending' && readsAt.length === 1) {
+            return new Response(JSON.stringify({ ...checkoutPaidOrder, state: 'processing', configuration_label: label }));
+          }
+          return new Response(JSON.stringify({ error: { code: 'COMMERCE_UNAVAILABLE', retryable: true } }), { status: 503 });
+        },
+      }),
+    });
+    if (previouslyPaid) await h.context.operation(g => h.context.checkOrder(g, orderID));
+    else await h.context.restoreRoute();
+
+    const attempts = [0, 1000, 3000, 7000, 15000, 25000, 35000, 45000, 55000, 65000, 75000, 85000, 95000, 105000, 115000];
+    const initial = previouslyPaid ? [checkoutPost, checkoutIndexGet] : [];
+    assert.deepEqual(feedbackAt, [[known === 'pending' ? 1000 : 0, feedback, true]]);
+    assert.deepEqual(readsAt, attempts);
+    assert.equal(now, 120000);
+    assert.deepEqual(h.requests, [...initial, ...attempts.map(() => checkoutOrderGet)]);
+    const status = h.statuses.at(-1);
+    assert.match(status.message, message);
+    assert.equal(Boolean(status.options.error), true);
+    assert.equal(new URLSearchParams(h.location.search).get('order'), orderID);
+    assert.equal(h.context.paidOrder?.id, previouslyPaid ? orderID : undefined);
+    assert.equal(h.context.unconfirmedOrder?.id, known === 'pending' ? orderID : undefined);
+    assert.equal(h.context.access, previouslyPaid ? 'pending' : 'unknown');
+    assert.equal(h.$('purchase').hidden, known === 'unknown');
+    assert.equal(h.$('purchase-action').disabled, true);
+    if (known !== 'unknown') {
+      assert.equal(h.$('purchase-selection').textContent, `${label} / ${scope.region}`);
+      assert.equal(h.$('check-order').hidden, false);
+      assert.match(h.$('purchase-message').textContent, /do not pay again/);
+    }
+
+    recovered = true;
+    await status.options.retry();
+    assert.deepEqual(h.requests, [...initial, ...attempts.map(() => checkoutOrderGet), checkoutOrderGet, checkoutIndexGet]);
+    assert.equal(h.context.access, 'owned');
+    assert.equal(h.$('check-order').hidden, true);
+    assert.equal(h.location.search, `?configuration=${scope.configuration_id}&region=${scope.region}`);
+  });
+}
+
+test('a checkout returning owned opens the exact index directly', async () => {
+  const h = await ownedCheckoutHarness([checkoutReadyIndex]);
+  await h.context.purchase();
+  assert.deepEqual(h.requests, [checkoutPost, checkoutIndexGet]);
+  assert.equal(h.context.access, 'owned');
+  assert.equal(h.$('articles').children.length, 1);
+  assert.equal(h.$('check-order').hidden, true);
+  assert.equal(h.context.paidOrder, null);
+  assert.equal(h.location.search, `?configuration=${scope.configuration_id}&region=${scope.region}`);
+});
+
+test('an owned checkout keeps the confirmed payment on scoped index failures and can recheck', async () => {
+  for (const [status, code] of [[503, 'CATALOG_UNAVAILABLE'], [403, 'ENTITLEMENT_REQUIRED']]) {
+    const error = Object.assign(new Error('Index unavailable'), { status, code });
+    const h = await ownedCheckoutHarness([error, checkoutReadyIndex], { orderResponses: [checkoutPaidOrder] });
+    h.context.vehicle = { id: scope.configuration_id, region: scope.region };
+    const purchaseLabel = '2005 Toyota / 2.4 L';
+    h.context.quote = { ...h.context.quote, configuration_label: purchaseLabel };
+    await h.context.purchase();
+    assert.deepEqual(h.requests, [checkoutPost, checkoutIndexGet]);
+    assert.equal(h.context.access, 'pending');
+    assert.equal(h.context.paidOrder?.id, orderID);
+    assert.equal(new URLSearchParams(h.location.search).get('order'), orderID);
+    assert.equal(h.$('purchase-action').disabled, true);
+    assert.equal(h.$('purchase-selection').textContent, `${purchaseLabel} / ${scope.region}`);
+    assert.equal(h.$('check-order').hidden, false);
+    assert.match(h.statuses.at(-1).message, /Payment received.*do not pay again/);
+    assert.equal(h.statuses.at(-1).options.retry, undefined);
+    await h.context.purchase();
+    await h.context.operation(g => h.context.checkOrder(g, orderID));
+    assert.deepEqual(h.requests, [checkoutPost, checkoutIndexGet, checkoutOrderGet, checkoutIndexGet]);
+    assert.equal(h.context.access, 'owned');
+    assert.equal(h.$('check-order').hidden, true);
+    assert.equal(h.location.search, `?configuration=${scope.configuration_id}&region=${scope.region}`);
+  }
+});
+
+test('the owned checkout handoff keeps an owner-only recovery route for signing in again', async () => {
+  const unauthorized = Object.assign(new Error('Sign in again'), { status: 401 });
+  const h = await ownedCheckoutHarness([unauthorized, checkoutReadyIndex], { orderResponses: [checkoutPaidOrder] });
+  await h.context.purchase();
+  assert.equal(h.context.session.state.authenticated, false);
+  assert.equal(new URLSearchParams(h.location.search).get('order'), orderID);
+  assert.match(h.$('purchase-action').textContent, /Sign in/);
+  h.context.session.state.authenticated = true;
+  h.context.session.state.ready = true;
+  await h.context.restoreRoute();
+  assert.deepEqual(h.requests, [checkoutPost, checkoutIndexGet, checkoutOrderGet, checkoutIndexGet]);
+  assert.equal(h.context.access, 'owned');
+  assert.equal(new URLSearchParams(h.location.search).has('order'), false);
+});
+
+test('the owned checkout stays confirmed on a missing status read and honors terminal revocation', async () => {
+  const unavailable = Object.assign(new Error('Index unavailable'), { status: 503 });
+  const missing = Object.assign(new Error('Order not found'), { status: 404 });
+  const revoked = { ...checkoutPaidOrder, state: 'revoked' };
+  const h = await ownedCheckoutHarness([unavailable], { orderResponses: [missing, revoked] });
+  await h.context.purchase();
+  await h.context.operation(g => h.context.checkOrder(g, orderID));
+  assert.equal(h.context.access, 'pending');
+  assert.equal(h.context.paidOrder?.id, orderID);
+  assert.equal(new URLSearchParams(h.location.search).get('order'), orderID);
+  assert.match(h.statuses.at(-1).message, /Payment was received.*do not pay again/);
+  await h.context.operation(g => h.context.checkOrder(g, orderID));
+  assert.deepEqual(h.requests, [checkoutPost, checkoutIndexGet, checkoutOrderGet, checkoutOrderGet]);
+  assert.equal(h.context.access, 'revoked');
+  assert.equal(h.context.paidOrder, null);
+  assert.equal(h.$('check-order').hidden, true);
+  assert.equal(new URLSearchParams(h.location.search).has('order'), false);
+});
+
+test('malformed or differently scoped owned checkout replies cannot establish a paid handoff', async () => {
+  for (const response of [{ ...ownedCheckout, library_item_id: undefined }, { ...ownedCheckout, region: 'CA' }]) {
+    const h = await ownedCheckoutHarness([], { checkoutResponse: response });
+    await h.context.purchase();
+    assert.deepEqual(h.requests, [checkoutPost]);
+    assert.equal(h.context.paidOrder, null);
+    assert.equal(h.$('check-order').hidden, true);
+    assert.equal(new URLSearchParams(h.location.search).has('order'), false);
+    assert.match(h.statuses.at(-1).message, /Payment status|Purchase status/);
+  }
+});
+
+test('a superseded owned checkout or article-index read cannot restore the previous payment route', async () => {
+  for (const phase of ['checkout', 'index']) {
+    const delayed = deferredAuthOperation();
+    const h = await ownedCheckoutHarness(
+      [phase === 'index' ? delayed.promise : checkoutReadyIndex],
+      { checkoutResponse: phase === 'checkout' ? delayed.promise : ownedCheckout },
+    );
+    const payment = h.context.purchase();
+    await new Promise(setImmediate);
+    assert.deepEqual(h.requests, phase === 'checkout' ? [checkoutPost] : [checkoutPost, checkoutIndexGet]);
+    h.context.invalidate();
+    h.context.vehicle = { id: previousConfiguration, region: 'CA' };
+    h.context.quote = null;
+    h.context.updateURL();
+    const selectedRoute = `?configuration=${previousConfiguration}&region=CA`;
+    delayed.resolve(phase === 'checkout' ? ownedCheckout : checkoutReadyIndex);
+    await payment;
+    assert.equal(h.location.search, selectedRoute);
+    assert.equal(h.context.paidOrder, null);
+    assert.equal(h.$('check-order').hidden, true);
+    assert.equal(h.$('articles').children.length, 0);
+    assert.deepEqual(h.requests, phase === 'checkout' ? [checkoutPost] : [checkoutPost, checkoutIndexGet]);
+  }
 });
 
 test('paid article authentication failure retains order route for sign-in recovery', async () => {
@@ -1834,12 +3135,32 @@ function articleIndexHarness(responses, { wait = async () => {}, openDemo = fals
   const navigation = new NavigationGeneration();
   const searchNavigation = new NavigationGeneration();
   const nodes = new Map();
+  const document = { title: '', body: { dataset: {} }, activeElement: null };
   function element(tag, text = '', className = '') {
-    return { tag, textContent: text, className, hidden: false, value: '', dataset: {}, attributes: {}, children: [], events: {},
-      append(...children) { this.children.push(...children); },
-      replaceChildren(...children) { this.children = children; },
+    return { tag, textContent: text, className, hidden: false, value: '', dataset: {}, attributes: {}, children: [], events: {}, parent: null,
+      get firstElementChild() { return this.children[0] || null; },
+      contains(node) { return node === this || this.children.some(child => child.contains(node)); },
+      remove() {
+        if (!this.parent) return;
+        if (this.contains(document.activeElement)) document.activeElement = document.body;
+        this.parent.children.splice(this.parent.children.indexOf(this), 1);
+        this.parent = null;
+      },
+      insertBefore(child, reference) {
+        child.remove();
+        this.children.splice(reference ? this.children.indexOf(reference) : this.children.length, 0, child);
+        child.parent = this;
+      },
+      append(...children) { for (const child of children) this.insertBefore(child, null); },
+      replaceChildren(...children) {
+        for (const child of [...this.children]) child.remove();
+        this.append(...children);
+      },
+      focus() { document.activeElement = this; },
+      scrollIntoView(options) { this.scrollOptions = options; },
       addEventListener(name, callback) { this.events[name] = callback; },
       setAttribute(name, value) { this.attributes[name] = String(value); },
+      getAttribute(name) { return this.attributes[name] ?? this[name] ?? null; },
       removeAttribute() {},
     };
   }
@@ -1851,11 +3172,11 @@ function articleIndexHarness(responses, { wait = async () => {}, openDemo = fals
   const context = {
     $, element, URL, openDemo, demoPath: path => openDemo ? `${path}${path.includes('?') ? '&' : '?'}demo=1` : path,
     location: { href: `https://cars.example/workshop?vehicle=B${openDemo ? '&demo=1' : ''}` },
-    document: { title: '', body: { dataset: {} } },
-    navigation, quote: null, vehicle: { id: 'B', region: 'US' }, articles: [], indexComplete: false, indexFailed: false, access: '', retryAction: null, filterArticles,
+    document,
+    navigation, quote: null, vehicle: { id: 'B', region: 'US' }, articles: [], indexLoaded: false, indexComplete: false, indexHydrating: false, indexFailed: false, access: '', retryAction: null, filterArticles,
     searchNavigation, searchItems: null, searchQuery: '', searchPending: false, searchComplete: false, searchError: false, searchTimer: null,
-    currentArticle: null, renderedRevision: '', sourceData: null, sourceURL: '', sourceRevision: '',
-    renewalUsed: false, renewal: null, libraryItems: [], libraryCursor: null,
+    currentArticle: null, renderedRevision: '', sourceURL: '', sourceRevision: 0, displayedSourceRevision: 0,
+    articleImageRefresh: null, sourceImageRefresh: null, libraryPageRequest: null, libraryCursor: null,
     currentOrder: '', paidOrder: null, unconfirmedOrder: null, viewGeneration: null,
     clearOrderRoute(id) { clearedOrders.push(id); },
     session: { clear() {}, async bootstrap() {} },
@@ -1884,11 +3205,14 @@ function articleIndexHarness(responses, { wait = async () => {}, openDemo = fals
     openArticle: id => opened.push({ id }),
     recordStatus: (text, options) => statuses.push({ text, ...options }),
   };
+  installArticleRequestPath(context);
   runInNewContext(
     appSection('function status(', 'function stage(') +
     appSection('function clearProtected()', 'function updateURL(') +
-    appSection('async function loadArticles(', 'const assetID =') +
+    appSection('async function loadSavedSearch(', 'const assetID =') +
+    appSection('function clearReader()', 'async function checkOrder(') +
     appSection('$("search").addEventListener("input"', '$("retry").addEventListener') +
+    appSection('function returnToArticleIndex()', '$("print").addEventListener') +
     '\nconst actualStatus = status; status = (text, options = {}) => { recordStatus(text, options); actualStatus(text, options); };',
     context,
   );
@@ -1899,13 +3223,243 @@ function articleIndexHarness(responses, { wait = async () => {}, openDemo = fals
 const indexResponse = (status, { complete = false, retryable = false, hydrating = false, items = [] } = {}) =>
   ({ items, complete, hydrating, progress: status ? { status, retryable } : null });
 
+test('returning from a direct reader focuses the first partial index without moving focus at completion', async () => {
+  const article = { id: 'first', title: 'First procedure' };
+  const completion = deferredAuthOperation();
+  const h = articleIndexHarness([
+    indexResponse('running', { hydrating: true, items: [article] }),
+    () => completion.promise,
+  ]);
+  const routes = [];
+  h.context.updateURL = (options) => routes.push(options.replace);
+  const returned = h.$('back').events.click();
+  await new Promise(setImmediate);
+  assert.equal(h.context.document.activeElement, h.$('catalog-title'));
+  assert.deepEqual(routes, [true]);
+  assert.equal(h.updates[0].count, 1);
+  h.$('search').focus();
+  completion.resolve(indexResponse('completed', { complete: true, items: [article, { id: 'added' }] }));
+  await returned;
+  assert.equal(h.context.document.activeElement, h.$('search'));
+  assert.equal(h.updates.at(-1).count, 2);
+});
+
+test('returning to an interrupted partial index reuses the rows and resumes the scoped read', async () => {
+  const article = { id: 'first', title: 'First procedure' };
+  const nextPoll = deferredAuthOperation();
+  const completion = deferredAuthOperation();
+  const h = articleIndexHarness([
+    indexResponse('running', { hydrating: true, items: [article] }),
+    () => completion.promise,
+  ], { wait: () => nextPoll.promise });
+  const loading = h.load();
+  await new Promise(setImmediate);
+  h.navigation.next();
+  nextPoll.resolve();
+  await assert.rejects(loading, { name: 'AbortError' });
+
+  const returned = h.$('back').events.click();
+  assert.equal(h.context.document.activeElement, h.$('catalog-title'));
+  assert.equal(h.$('articles').firstElementChild.children.length, 1);
+  assert.deepEqual(h.requests.map(request => request.path), [
+    '/v1/catalog/vehicles/B/articles?region=US', '/v1/catalog/vehicles/B/articles?region=US',
+  ]);
+  assert.notEqual(h.requests[1].signal, h.requests[0].signal);
+  completion.resolve(indexResponse('completed', { complete: true, items: [article, { id: 'added' }] }));
+  await returned;
+  assert.equal(h.updates.at(-1).count, 2);
+  assert.equal(h.statuses.at(-1).text, 'Article index ready.');
+});
+
+async function openedIndexHistory() {
+  const article = { id: 'first', title: 'First procedure' };
+  const h = articleIndexHarness([indexResponse('completed', { complete: true, items: [article] })]);
+  const indexURL = `https://cars.example/workshop?configuration=${scope.configuration_id}&region=${scope.region}`;
+  h.context.location.href = indexURL;
+  h.context.vehicle = { id: scope.configuration_id, region: scope.region };
+  h.context.scope = () => ({ configuration_id: h.context.vehicle.id, region: h.context.vehicle.region });
+  h.context.session.state = { authenticated: true, csrf: 'fixture-current' };
+  const routes = [], back = [], restores = [];
+  h.context.updateURL = ({ article = '', replace = false } = {}) => {
+    routes.push({ article, replace });
+    h.context.location.href = article ? `${indexURL}&article=${article}` : indexURL;
+  };
+  h.context.history = { back() { back.push(true); } };
+  h.context.restoreRoute = (_years, { fromHistory, focusArticle = '' } = {}) => restores.push({ fromHistory, focusArticle });
+  runInNewContext(appSection('function openArticle(', 'function validSourceURL('), h.context);
+  await h.load();
+  const link = h.$('articles').firstElementChild.firstElementChild.firstElementChild;
+  link.events.click({ button: 0, preventDefault() {} });
+  const returnToIndex = () => {
+    h.context.location.href = indexURL;
+    h.context.restoreHistoryEntry();
+  };
+  return { ...h, link, routes, back, restores, returnToIndex };
+}
+
+test('in-app Back traverses the original index entry once and focuses its article link', async () => {
+  const h = await openedIndexHistory();
+  h.$('back').events.click();
+  h.$('back').events.click();
+  assert.deepEqual(h.back, [true]);
+  h.returnToIndex();
+  assert.deepEqual(h.routes, [{ article: 'first', replace: false }]);
+  assert.equal(h.context.document.activeElement, h.link);
+  assert.deepEqual(h.restores, []);
+  assert.equal(h.requests.length, 1);
+});
+
+test('in-app Back falls back to its index heading when the prior link is gone', async () => {
+  const h = await openedIndexHistory();
+  h.$('articles').replaceChildren();
+  h.$('back').events.click();
+  h.returnToIndex();
+  assert.equal(h.context.document.activeElement, h.$('catalog-title'));
+  assert.deepEqual(h.restores, []);
+});
+
+test('browser Back revalidates the index and only carries the originating article for the exact current session and scope', async () => {
+  for (const change of ['browser', 'account', 'region']) {
+    const h = await openedIndexHistory();
+    if (change !== 'browser') {
+      h.$('back').events.click();
+      if (change === 'account') h.context.session.state.csrf = 'fixture-replaced';
+      else h.context.vehicle.region = 'CA';
+    }
+    h.returnToIndex();
+    assert.deepEqual(h.restores, [{ fromHistory: true, focusArticle: change === 'browser' ? 'first' : '' }], change);
+    assert.notEqual(h.context.document.activeElement, h.link, change);
+  }
+});
+
+test('a history return focuses the same authorized article after revalidation or the heading if removed', async () => {
+  const wanted = { id: 'original-id', title: 'Original pump procedure' };
+  const other = { id: 'alternate-id', title: wanted.title };
+  for (const retained of [true, false]) {
+    const held = deferredAuthOperation();
+    const h = articleIndexHarness([() => held.promise]);
+    const opening = h.context.loadArticles(h.navigation.next(), '', { focusArticle: wanted.id });
+    assert.equal(h.context.document.activeElement, null);
+    assert.equal(h.$('articles').children.length, 0);
+    held.resolve(indexResponse('completed', { complete: true, items: retained ? [other, wanted] : [other] }));
+    await opening;
+    assert.equal(h.context.document.activeElement, retained
+      ? h.$('articles').firstElementChild.children[1].firstElementChild
+      : h.$('catalog-title'));
+    if (retained) {
+      assert.match(h.context.document.activeElement.href, /article=original-id/);
+      assert.equal(h.context.document.activeElement.scrollOptions.behavior, 'instant');
+    }
+    assert.deepEqual(h.requests.map(request => request.path), ['/v1/catalog/vehicles/B/articles?region=US']);
+  }
+});
+
+test('a revalidated search return focuses its exact originating hit', async () => {
+  const wanted = { id: 'original-id', title: 'Oil pump' };
+  const h = articleIndexHarness([{
+    ...indexResponse('completed', { complete: true, items: [wanted] }),
+    configuration: { id: 'B', region: 'US' },
+  }]);
+  h.$('search').value = 'pump';
+  await h.context.loadSavedSearch(h.navigation.next(), 'pump', wanted.id);
+  assert.equal(h.context.document.activeElement, h.$('articles').firstElementChild.firstElementChild.firstElementChild);
+  assert.deepEqual(h.requests.map(request => request.path), ['/v1/catalog/vehicles/B/articles?q=pump&region=US']);
+});
+
+test('complete saved search uses its scoped response and loads the full index only when cleared', async () => {
+  const configuration = { id: 'B', region: 'US', year: 2024, make: 'Fixture', model: 'Touring' };
+  const hit = { id: 'only-match', title: 'Oil pump repair' };
+  const h = articleIndexHarness([
+    { ...indexResponse('completed', { complete: true, items: [hit] }), configuration },
+    { ...indexResponse('completed', { complete: true, items: [hit, { id: 'different', title: 'Brake pads' }] }), configuration },
+  ]);
+  h.$('search').value = 'pump';
+  assert.equal(await h.context.loadSavedSearch(h.navigation.next(), 'pump'), true);
+  assert.deepEqual(h.requests.map(({ path }) => path), ['/v1/catalog/vehicles/B/articles?q=pump&region=US']);
+  assert.equal(h.context.vehicle.model, 'Touring');
+  assert.equal(h.context.indexLoaded, false);
+  assert.equal(h.context.access, 'owned');
+  assert.equal(h.$('catalog-count').textContent, '1 articles');
+  assert.equal(h.$('articles').children[0].children.length, 1);
+  assert.match(h.$('completion-status').textContent, /search ready/i);
+
+  h.$('search').value = '';
+  h.$('search').events.input();
+  await new Promise(setImmediate);
+  assert.deepEqual(h.requests.map(({ path }) => path), [
+    '/v1/catalog/vehicles/B/articles?q=pump&region=US', '/v1/catalog/vehicles/B/articles?region=US',
+  ]);
+  assert.equal(h.context.indexLoaded, true);
+  assert.equal(h.$('articles').children[0].children.length, 2);
+});
+
+test('saved search only shows results from a current exact-scope response', async () => {
+  for (const configuration of [null, { id: 'B', region: 'CA' }, { id: 'C', region: 'US' }]) {
+    const h = articleIndexHarness([{ ...indexResponse('completed', { complete: true }), configuration }]);
+    assert.equal(await h.context.loadSavedSearch(h.navigation.next(), 'pump'), false);
+    assert.equal(h.context.access, '');
+    assert.deepEqual(h.shown, []);
+  }
+  const response = deferredAuthOperation();
+  const h = articleIndexHarness([() => response.promise]);
+  const opening = h.context.loadSavedSearch(h.navigation.next(), 'pump');
+  h.navigation.clear();
+  response.resolve({ ...indexResponse('completed', { complete: true }), configuration: { id: 'B', region: 'US' } });
+  assert.equal(await opening, true);
+  assert.equal(h.context.searchItems, null);
+  assert.deepEqual(h.shown, []);
+});
+
+test('saved search still treats a grant denial as an authorization error', async () => {
+  const denial = Object.assign(new Error('Access required'), { status: 403, code: 'ENTITLEMENT_REQUIRED' });
+  const h = articleIndexHarness([() => Promise.reject(denial)]);
+  await assert.rejects(h.context.loadSavedSearch(h.navigation.next(), 'pump'), denial);
+  assert.deepEqual(h.shown, []);
+});
+
+test('complete saved search can show an exact no-match result before the full index', async () => {
+  const h = articleIndexHarness([{
+    ...indexResponse('completed', { complete: true }), configuration: { id: 'B', region: 'US' },
+  }]);
+  h.$('search').value = 'alternator';
+  assert.equal(await h.context.loadSavedSearch(h.navigation.next(), 'alternator'), true);
+  assert.match(h.$('no-results').textContent, /no articles match this search/i);
+  assert.equal(h.requests.length, 1);
+});
+
+test('partial saved search displays matches while waiting for the full index', async () => {
+  const configuration = { id: 'B', region: 'US' };
+  const hit = { id: 'a', title: 'Pump repair', availability: 'available', source_revision_id: 'first' };
+  const full = deferredAuthOperation();
+  const response = { ...indexResponse('completed', { complete: true, items: [hit] }), configuration };
+  const h = articleIndexHarness([
+    { ...indexResponse('running', { hydrating: true, items: [hit] }), configuration },
+    () => full.promise,
+    response,
+  ]);
+  h.$('search').value = 'pump';
+  const opening = h.context.loadSavedSearch(h.navigation.next(), 'pump');
+  await new Promise(setImmediate);
+  assert.equal(h.$('articles').children[0].children.length, 1);
+  assert.match(h.$('catalog-count').textContent, /1 articles so far/);
+  assert.equal(h.context.indexLoaded, false);
+  full.resolve(response);
+  assert.equal(await opening, true);
+  assert.equal(h.context.indexLoaded, true);
+  assert.deepEqual(h.requests.map(({ path }) => path), [
+    '/v1/catalog/vehicles/B/articles?q=pump&region=US',
+    '/v1/catalog/vehicles/B/articles?region=US',
+    '/v1/catalog/vehicles/B/articles?q=pump&region=US',
+  ]);
+});
+
 test('open demo requests the real index and shows only readable articles', async () => {
   const h = articleIndexHarness([indexResponse('completed', { complete: true, items: [
     { id: 'ready', title: 'Stored procedure', availability: 'available' },
     { id: 'waiting', title: 'Index only', availability: 'unavailable' },
   ] })], { openDemo: true });
   await h.load();
-  assert.equal(h.requests[0].path, '/v1/catalog/vehicles/B/articles?demo=1');
+  assert.equal(h.requests[0].path, '/v1/catalog/vehicles/B/articles?region=US&demo=1');
   assert.equal(h.$('articles').children[0].children.length, 1);
   assert.match(h.$('catalog-count').textContent, /1 available articles · 2 indexed/);
 });
@@ -2007,6 +3561,48 @@ test('nonempty explicit completed article index is ready after one read', async 
   assert.equal(h.$('completion-status').textContent, 'Article index ready.');
 });
 
+test('hydration reuses article rows and keeps keyboard focus on the same article ID', async () => {
+  const polls = [deferredAuthOperation(), deferredAuthOperation()];
+  const releases = [...polls];
+  const first = { id: 'first/article', title: 'Pump service', kind: 'procedure' };
+  const second = { ...first, id: 'second/article' };
+  const added = { ...first, id: 'added/article' };
+  const initial = indexResponse('running', { hydrating: true, items: [second, first] });
+  const h = articleIndexHarness([initial, initial,
+    indexResponse('completed', { complete: true, items: [first, second, added] })],
+  { wait: () => polls.shift().promise });
+  const loading = h.load();
+  await new Promise(setImmediate);
+  const list = h.$('articles').firstElementChild;
+  const oldRows = [...list.children];
+  const focused = oldRows[1].firstElementChild;
+  focused.focus();
+  releases[0].resolve();
+  await new Promise(setImmediate);
+  assert.equal(h.$('articles').firstElementChild, list);
+  assert.equal(list.children[1].firstElementChild, focused);
+  assert.equal(h.context.document.activeElement, focused);
+  releases[1].resolve();
+  await loading;
+  assert.equal(h.$('articles').firstElementChild, list);
+  assert.equal(list.children[0], oldRows[1]);
+  assert.equal(list.children[1], oldRows[0]);
+  assert.equal(h.context.document.activeElement, focused);
+  assert.equal(new URL(focused.href, 'https://cars.example').searchParams.get('article'), first.id);
+  for (const flags of [{button:1}, {ctrlKey:true}, {metaKey:true}, {altKey:true}, {shiftKey:true}]) {
+    focused.events.click({ ...flags, preventDefault: () => assert.fail('modified click must stay native') });
+  }
+  assert.deepEqual(h.opened, []);
+  focused.events.click({ preventDefault() {} });
+  assert.deepEqual(h.opened, [{ id: first.id }]);
+
+  h.context.articles = [second, added];
+  h.context.renderArticles();
+  assert.equal(focused.parent.parent, null);
+  assert.equal(h.context.document.activeElement, h.$('catalog-title'));
+  assert.equal(h.$('articles').firstElementChild.children[0], oldRows[0]);
+});
+
 test('article index type labels show readable kinds beside titles without changing links', async () => {
   const h = articleIndexHarness([indexResponse('completed', { complete: true, items: [
     { id: 'source/procedure', title: 'Replace oil pump', kind: 'procedure' },
@@ -2056,7 +3652,7 @@ test('Workshop input searches owned article content through protected index quer
   h.$('search').events.input();
   await new Promise(resolve => setImmediate(resolve));
 
-  assert.equal(h.requests[1].path, '/v1/catalog/vehicles/B/articles?q=ground%20strap');
+  assert.equal(h.requests[1].path, '/v1/catalog/vehicles/B/articles?q=ground+strap&region=US');
   const list = h.$('articles').children[0];
   assert.deepEqual(list.children.map(row => row.children[0].children[0].textContent), ['Service notes']);
   assert.equal(new URL(list.children[0].children[0].href, 'https://cars.example').searchParams.get('article'), 'content-hit');
@@ -2078,8 +3674,85 @@ test('open demo content search keeps its access marker and excludes unreadable h
   h.$('search').value = 'ground strap';
   h.$('search').events.input();
   await new Promise(resolve => setImmediate(resolve));
-  assert.equal(h.requests[1].path, '/v1/catalog/vehicles/B/articles?q=ground%20strap&demo=1');
+  assert.equal(h.requests[1].path, '/v1/catalog/vehicles/B/articles?q=ground+strap&region=US&demo=1');
   assert.equal(h.$('articles').children[0].children.length, 1);
+});
+
+test('changing hydration coalesces an in-flight query and only keeps current matching descriptors', async () => {
+  const first = deferredAuthOperation(), followUp = deferredAuthOperation();
+  const polls = [deferredAuthOperation(), deferredAuthOperation()];
+  const same = { id: 'same', title: 'Pump service', availability: 'available', source_revision_id: 'rev-1' };
+  const removed = { ...same, id: 'removed' };
+  const changed = { ...same, id: 'changed' };
+  const updated = { ...changed, source_revision_id: 'rev-2' };
+  const added = { ...same, id: 'added' };
+  const h = articleIndexHarness([
+    indexResponse('running', { hydrating: true, items: [same, removed, changed] }),
+    () => first.promise,
+    indexResponse('running', { hydrating: true, items: [same, updated] }),
+    indexResponse('completed', { complete: true, items: [same, updated, added] }),
+    () => followUp.promise,
+  ], { wait: () => polls.shift().promise });
+  const releasePolls = [...polls];
+  const timers = [];
+  h.context.setTimeout = (callback, delay) => { timers.push(delay); callback(); return timers.length; };
+  h.$('search').value = 'pump';
+  const loading = h.load();
+  await new Promise(setImmediate);
+  const firstRequest = h.requests[1];
+  assert.match(firstRequest.path, /\?q=pump&region=US$/);
+  releasePolls[0].resolve();
+  await new Promise(setImmediate);
+  assert.equal(firstRequest.signal.aborted, false);
+  releasePolls[1].resolve();
+  await loading;
+  assert.equal(h.requests.filter(request => request.path.includes('q=')).length, 1);
+  first.resolve(indexResponse('running', { items: [same, removed, changed] }));
+  await new Promise(setImmediate);
+  assert.deepEqual(h.context.searchItems.map(item => item.id), ['same']);
+  assert.equal(h.$('articles').children[0].children.length, 1);
+  assert.equal(h.context.searchPending, true);
+  assert.equal(h.requests.filter(request => request.path.includes('q=')).length, 2);
+  followUp.resolve(indexResponse('completed', { complete: true, items: [same, added] }));
+  await new Promise(setImmediate);
+  assert.deepEqual(h.context.searchItems.map(item => item.id), ['same', 'added']);
+  assert.equal(h.context.searchPending, false);
+  assert.equal(h.$('catalog-count').textContent, '2 articles');
+  assert.deepEqual(timers, []);
+});
+
+test('same-query hydration retains settled hits while typing still debounces and clears them', async () => {
+  const poll = deferredAuthOperation(), refresh = deferredAuthOperation();
+  const hit = { id: 'same', title: 'Pump service', availability: 'available', source_revision_id: 'rev-1' };
+  const extra = { ...hit, id: 'other', title: 'More service notes' };
+  const h = articleIndexHarness([
+    indexResponse('running', { hydrating: true, items: [hit] }),
+    indexResponse('running', { items: [hit] }),
+    indexResponse('completed', { complete: true, items: [hit, extra] }),
+    () => refresh.promise,
+    indexResponse('completed', { complete: true, items: [extra] }),
+  ], { wait: () => poll.promise });
+  const typed = [];
+  h.context.setTimeout = (callback, delay) => { typed.push({ callback, delay }); return typed.length; };
+  h.$('search').value = 'pump';
+  const loading = h.load();
+  await new Promise(setImmediate);
+  assert.equal(h.$('articles').children[0].children.length, 1);
+  poll.resolve();
+  await loading;
+  assert.equal(h.$('articles').children[0].children.length, 1);
+  assert.equal(h.context.searchPending, true);
+  assert.deepEqual(typed, []);
+  const refreshing = h.requests[3];
+  h.$('search').value = 'notes';
+  h.$('search').events.input();
+  assert.equal(refreshing.signal.aborted, true);
+  assert.equal(h.$('articles').children[0].children.length, 0);
+  assert.deepEqual(typed.map(timer => timer.delay), [300]);
+  typed[0].callback();
+  refresh.resolve(indexResponse('completed', { complete: true, items: [hit] }));
+  await new Promise(setImmediate);
+  assert.deepEqual(h.context.searchItems.map(item => item.id), ['other']);
 });
 
 test('hydrating index polls do not restart a settled owned-content search', async () => {
@@ -2278,6 +3951,52 @@ test('Workshop content search partial response never claims no matches', async (
   assert.match(h.$('catalog-count').textContent, /still being prepared/i);
 });
 
+test('search can share an exact paid reader before the unfiltered index has articles', async () => {
+  const refresh = deferredAuthOperation();
+  const descriptor = { id: routeArticle, title: 'Oil pump' };
+  const h = articleIndexHarness([
+    indexResponse('running', { hydrating: true }),
+    indexResponse('running', { hydrating: true, items: [descriptor] }),
+  ], { wait: () => refresh.promise });
+  const { context } = h;
+  context.vehicle = { id: scope.configuration_id, region: scope.region };
+  context.location = new URL(`https://cars.example/workshop/?order=${orderID}&q=pump`);
+  context.URLSearchParams = URLSearchParams;
+  context.validScope = validScope;
+  context.scope = () => ({ configuration_id: context.vehicle.id, region: context.vehicle.region });
+  context.history = { replaceState(_state, _unused, url) { context.location.href = new URL(url, context.location).href; } };
+  context.currentOrder = orderID;
+  context.paidOrder = { id: orderID, ...scope };
+  runInNewContext(
+    appSection('function clearOrderRoute(', 'function populate(') +
+    appSection('function clearPaidOrderAction(', 'function completePaidOrder('),
+    context,
+  );
+  const loading = h.load();
+  try {
+    await new Promise(setImmediate);
+    assert.equal(context.location.searchParams.get('order'), orderID);
+    h.$('search').value = 'pump';
+    h.$('search').events.input();
+    await new Promise(setImmediate);
+    assert.equal(h.requests.length, 2);
+    assert.equal(context.articles.length, 0);
+    const link = h.$('articles').children[0].children[0].children[0];
+    const params = new URL(link.href, context.location).searchParams;
+    assert.equal(params.has('order'), false);
+    assert.equal(params.get('configuration'), scope.configuration_id);
+    assert.equal(params.get('region'), scope.region);
+    assert.equal(params.get('article'), routeArticle);
+    assert.equal(params.get('q'), 'pump');
+    assert.equal(h.$('check-order').hidden, true);
+    assert.equal(context.paidOrder.id, orderID);
+  } finally {
+    h.navigation.clear();
+    refresh.resolve();
+    await assert.rejects(loading, { name: 'AbortError' });
+  }
+});
+
 test('Workshop search failure is announced in the polite result status', async () => {
   const h = articleIndexHarness([
     indexResponse('completed', { complete: true, items: [{ id: 'index', title: 'Service notes' }] }),
@@ -2390,6 +4109,33 @@ test('paid access pending renders a non-Buy action even without merchant configu
   }
 });
 
+test('checkout remains disabled while purchase settings are loading', () => {
+  const nodes = new Map();
+  const $ = id => {
+    if (!nodes.has(id)) nodes.set(id, { replaceChildren() {}, append() {} });
+    return nodes.get(id);
+  };
+  const context = {
+    $, validScope, validQuote, purchaseConfiguration, configurationLabel,
+    scope: () => scope, quote: scopedQuoteFixture(), merchant: null,
+    merchantRequest: Promise.resolve(), access: 'missing', currentOrder: '', unconfirmedOrder: null,
+    vehicle: { id: scope.configuration_id, region: scope.region },
+    session: { state: { authenticated: true, ready: true } },
+    document: { createTextNode: text => ({ textContent: text }) },
+    element: (tag, text) => ({ tag, textContent: text }),
+  };
+  runInNewContext(appSection('function renderPurchase(', 'async function selectVehicle('), context);
+  context.renderPurchase();
+  assert.equal($('purchase-message').textContent, 'Checking purchase availability…');
+  assert.equal($('purchase-action').disabled, true);
+  assert.equal($('purchase-terms').hidden, true);
+  context.merchant = merchantFixture();
+  context.merchantRequest = null;
+  context.renderPurchase();
+  assert.equal($('purchase-action').disabled, false);
+  assert.equal($('purchase-terms').hidden, false);
+});
+
 test('purchase readiness requires the supported terms contract', async t => {
   assert.equal(purchaseConfiguration(merchantFixture(), quoteTermsFixture()), true);
   for (const [label, version] of [
@@ -2462,6 +4208,7 @@ class ArticleMediaNode {
   get textContent() { return this._text + this.children.map(n => n.textContent).join(''); }
   set textContent(value) { this.replaceChildren(); this._text = String(value); }
   get isConnected() { return this.tagName === 'body' || Boolean(this.parentNode?.isConnected); }
+  contains(node) { return node === this || Boolean(node?.parentNode && this.contains(node.parentNode)); }
   get nextSibling() {
     const siblings = this.parentNode?.children || [];
     return siblings[siblings.indexOf(this) + 1] || null;
@@ -2497,6 +4244,9 @@ class ArticleMediaNode {
     const handlers = this.handlers.get(name) || [];
     handlers.push(handler); this.handlers.set(name, handlers);
   }
+  removeEventListener(name, handler) {
+    this.handlers.set(name, (this.handlers.get(name) || []).filter(value => value !== handler));
+  }
   dispatch(name, event = {}) { for (const handler of this.handlers.get(name) || []) handler(event); }
   querySelectorAll(selector) {
     assert.equal(selector, 'img[data-asset-id]');
@@ -2520,23 +4270,25 @@ function mediaArticle(blocks, images = [], changes = {}) {
 function articleMediaHarness(overrides = {}) {
   const body = new ArticleMediaNode('body'), nodes = new Map();
   const ids = ['articles', 'article-content', 'source-review-frame', 'reference-data', 'library-items',
-    'article-title', 'catalog-count', 'article-note', 'source-review-meta', 'source-review', 'print',
-    'welcome', 'reader', 'catalog', 'library', 'source-review-link', 'reader-vehicle', 'reader-engine', 'purchase-selection',
-    'article-kind', 'article-reference', 'source-review-load', 'check-order'];
+    'article-title', 'catalog-count', 'article-note', 'source-review-meta', 'source-review', 'source-review-title', 'print',
+    'welcome', 'reader', 'catalog', 'library', 'source-review-link', 'reader-vehicle', 'reader-engine', 'purchase', 'purchase-selection',
+    'article-kind', 'article-reference', 'source-review-load', 'check-order',
+    'library-more', 'library-message', 'library-title'];
   for (const id of ids) { const node = new ArticleMediaNode('div'); nodes.set(id, node); body.append(node); }
   const navigation = new NavigationGeneration(), searchNavigation = new NavigationGeneration(), g = navigation.next();
   const shows = [], statuses = [];
   const context = {
     URL, uuid, articlePresentation, localImageURL, sourceReferenceURL, processingArticle, readableArticle,
-    session: { state: { mode: null } },
+    session: { state: { mode: null } }, sessionRequest: null,
     document: { body, title: '', createElement: tag => new ArticleMediaNode(tag),
       createDocumentFragment: () => new ArticleMediaNode('#fragment') },
     location: { origin: 'https://cars.example' },
     $: id => { assert.ok(nodes.has(id), `known DOM node ${id}`); return nodes.get(id); },
     navigation, searchNavigation, searchItems: null, searchQuery: '', searchPending: false,
     searchComplete: false, searchError: false, searchTimer: null, clearTimeout() {},
-    currentArticle: null, renderedRevision: '', sourceData: null, sourceURL: '', sourceRevision: 0,
-    renewalUsed: false, renewal: null, renewalFailures: new Set(), articles: [], libraryItems: [], libraryCursor: null,
+    currentArticle: null, renderedRevision: '', sourceURL: '', sourceRevision: 0, displayedSourceRevision: 0,
+    articleImageRefresh: null, sourceImageRefresh: null, articles: [],
+    libraryCursor: null, libraryPageRequest: null,
     currentOrder: '',
     access: 'granted', quote: { configuration_label: '2005 Toyota' }, vehicle: { region: 'US' },
     articlePath: id => `/v1/catalog/vehicles/v/articles/${id}`,
@@ -2545,6 +4297,7 @@ function articleMediaHarness(overrides = {}) {
     show: id => shows.push(id), status: (message, options) => statuses.push({ message, options }),
     ...overrides,
   };
+  installArticleRequestPath(context);
   runInNewContext([
     appSection('const element =', 'const session ='),
     appSection('function clearProtected(', 'async function operation('),
@@ -2557,6 +4310,292 @@ function articleMediaHarness(overrides = {}) {
   };
 }
 
+function warmFigureHarness({ count = 7, origin = 'canonical', repeated = false } = {}) {
+  const timers = new Map(), timeout = deferredAuthOperation(), printed = [];
+  const window = Object.assign(new EventTarget(), { print() { printed.push(true); } });
+  const h = articleMediaHarness({
+    session: { state: { authenticated: true, mode: 'firebase' } }, window,
+    setTimeout(callback, duration) { timers.set(callback, duration); return callback; },
+    clearTimeout(callback) { timers.delete(callback); },
+    delay(ms, signal) {
+      assert.equal(ms, 3000);
+      signal.addEventListener('abort', () => timeout.reject(signal.reason), { once: true });
+      return timeout.promise;
+    },
+  });
+  h.context.viewGeneration = h.g;
+  const assets = Array.from({ length: count }, (_, index) => ({ id: `figure-${index}`, url: mediaURL(repeated ? 'repeat' : index) }));
+  const blocks = assets.map(({ id }) => ({ type: 'image', asset_id: id }));
+  const content = h.render(mediaArticle(blocks, assets, { content_origin: origin }));
+  const images = mediaDescendants(content, 'img');
+  runInNewContext(appSection('async function printArticle()', '$("print").addEventListener'), h.context);
+  return { ...h, window, timers, timeout, printed, images,
+    starts: () => images.flatMap(node => node.src ? [node.dataset.assetId] : []) };
+}
+
+test('many settled paid figures give the leading pair first use of the connection', () => {
+  for (const action of ['lead load', 'timeout', 'browser print', 'navigate', 'new revision']) {
+    const h = warmFigureHarness();
+    assert.deepEqual(h.starts(), ['figure-0', 'figure-1'], action);
+    assert.deepEqual([...h.timers.values()], [250], action);
+    const [release] = h.timers.keys();
+    if (action === 'lead load') h.images[0].dispatch('load');
+    else if (action === 'browser print') h.window.dispatchEvent(new Event('beforeprint'));
+    else if (action === 'navigate') h.navigation.clear();
+    else {
+      if (action === 'new revision') h.render(mediaArticle([{ type: 'paragraph', text: 'New view' }], [], { view_revision: 'replacement' }));
+      release();
+    }
+    assert.equal(h.timers.size, 0, action);
+    assert.equal(h.starts().length, ['navigate', 'new revision'].includes(action) ? 2 : 7, action);
+  }
+
+  for (const options of [{ count: 6 }, { origin: 'source' }, { repeated: true }]) {
+    const h = warmFigureHarness(options);
+    assert.equal(h.starts().length, h.images.length);
+    assert.equal(h.timers.size, 0);
+  }
+});
+
+test('early reader Print releases all selected images and remains bounded on decode failure', async () => {
+  for (const finish of ['decoded', 'failed', 'timeout', 'navigate']) {
+    const h = warmFigureHarness();
+    const decoding = deferredAuthOperation();
+    for (const image of h.images) image.decode = () => decoding.promise;
+    const printing = h.context.printArticle();
+    assert.equal(h.starts().length, 7, finish);
+    assert.deepEqual(h.printed, [], finish);
+    if (finish === 'navigate') h.navigation.clear();
+    else if (finish === 'timeout') h.timeout.resolve();
+    else if (finish === 'failed') decoding.reject(new Error('Image could not be decoded'));
+    else decoding.resolve();
+    await printing;
+    assert.deepEqual(h.printed, finish === 'navigate' ? [] : [true], finish);
+  }
+});
+
+test('reader refocus reauthorizes account, exact detail and pinned source together', async () => {
+  const configuration = { id: routeConfiguration, region: 'US' };
+  const article = mediaArticle([{ type: 'paragraph', text: 'Authorized article' }], [], {
+    id: routeArticle,
+    content_origin: 'canonical',
+    source_review: { available: true, url: `/v1/catalog/vehicles/v/articles/${routeArticle}/source?source_revision_id=${routeOrder}` },
+  });
+  const account = deferredAuthOperation(), detail = deferredAuthOperation(), source = deferredAuthOperation();
+  const calls = [];
+  const h = articleMediaHarness({
+    vehicle: configuration,
+    scope: () => ({ configuration_id: configuration.id, region: configuration.region }),
+    session: { state: { authenticated: true, mode: 'firebase' }, matchesCurrentSession: () => {
+      calls.push('session'); return account.promise;
+    } },
+    requestArticleJSON(path, options) {
+      assert.equal(path, `/v1/catalog/vehicles/v/articles/${routeArticle}?region=US`);
+      assert.equal(options.signal, h.g.signal);
+      calls.push('article'); return detail.promise;
+    },
+    requestJSON(path, options) {
+      assert.equal(path, article.source_review.url);
+      assert.equal(options.signal, h.g.signal);
+      calls.push('source'); return source.promise;
+    },
+    renderPurchase() {},
+    show(id) { h.nodes.get('reader').hidden = id !== 'reader'; },
+  });
+  h.context.document.visibilityState = 'visible';
+  h.render(article);
+  h.context.sourceURL = article.source_review.url;
+  h.nodes.get('source-review-frame').append(new ArticleMediaNode('p', 'Pinned source'));
+  const held = h.nodes.get('source-review-frame').firstElementChild;
+  const focusTarget = h.nodes.get('source-review-load');
+  h.nodes.get('reader').append(focusTarget);
+  h.context.document.activeElement = focusTarget;
+  runInNewContext(appSection('let lifecycleCheck = null;', 'window.addEventListener("pageshow"'), h.context);
+  const checked = h.context.recheckReader(h.g);
+  assert.deepEqual(calls, ['session', 'article', 'source']);
+  assert.equal(h.nodes.get('reader').hidden, true);
+  assert.equal(h.context.document.body.dataset.printable, 'false');
+  h.context.document.activeElement = h.context.document.body;
+  account.resolve(true);
+  detail.resolve({ status: 200, data: { configuration, article } });
+  await new Promise(setImmediate);
+  assert.equal(h.nodes.get('reader').hidden, true);
+  source.resolve({ source: { url: article.source_review.url } });
+  await checked;
+  assert.equal(h.nodes.get('reader').hidden, false);
+  assert.equal(h.context.document.body.dataset.printable, 'true');
+  assert.equal(h.nodes.get('source-review-frame').firstElementChild, held);
+  assert.equal(focusTarget.focusCalls, 1);
+});
+
+test('opening My vehicles hides the previous purchase panel while Library is loading', async () => {
+  const response = deferredAuthOperation();
+  const h = articleMediaHarness({
+    session: { state: { authenticated: true } }, validLibrary, clearReader() {},
+    requestJSON: () => response.promise,
+  });
+  const purchase = h.nodes.get('purchase');
+  purchase.hidden = false;
+  runInNewContext(appSection('async function library(', 'function clearReader('), h.context);
+  const opening = h.context.library(h.g);
+  assert.equal(purchase.hidden, true);
+  response.resolve({ version: 'v1', next_cursor: null, items: [] });
+  await opening;
+  assert.equal(purchase.hidden, true);
+});
+
+test('Library Load more makes one cursor request and keeps prior cards mounted', async () => {
+  const page = (items, next_cursor) => ({ version: 'v1', items, next_cursor });
+  const row = (configuration_id, library_item_id, label, access_state = 'viewable') => ({
+    configuration_id, library_item_id, label, access_state, region: 'US',
+    granted_at: access_state === 'revoked' ? null : '2026-11-16T00:00:00Z',
+  });
+  const first = row(routeConfiguration, routeOrder, 'Vehicle on page one');
+  const second = row('22222222-2222-4222-8222-222222222222',
+    '33333333-3333-4333-8333-333333333333', 'Vehicle on page two', 'revoked');
+  const pending = deferredAuthOperation(), calls = [];
+  const h = articleMediaHarness({
+    session: { state: { authenticated: true } }, validLibrary, clearReader() {},
+    requestJSON(path) {
+      calls.push(path);
+      return calls.length === 1 ? Promise.resolve(page([first], 'page/2')) : pending.promise;
+    },
+  });
+  runInNewContext(appSection('async function library(', 'function clearReader('), h.context);
+  const list = h.nodes.get('library-items'), more = h.nodes.get('library-more');
+  await h.context.library(h.g);
+  const originalCard = list.children[0];
+  h.context.document.activeElement = more;
+  const next = h.context.library(h.g, true);
+  const duplicate = h.context.library(h.g, true);
+  const busy = more.getAttribute('aria-disabled');
+  pending.resolve(page([second], null));
+  await Promise.all([next, duplicate]);
+  assert.deepEqual(calls, ['/v1/workshop/library?limit=20', '/v1/workshop/library?limit=20&cursor=page%2F2']);
+  assert.equal(busy, 'true');
+  assert.equal(list.children[0], originalCard);
+  assert.equal(list.children[1].children[0].focusCalls, 1);
+  assert.match(list.children[1].textContent, /Vehicle on page two.*Access revoked/);
+  assert.equal(mediaDescendants(list.children[1], 'button').length, 0);
+  assert.equal(more.hidden, true);
+  assert.equal(more.getAttribute('aria-disabled'), null);
+});
+
+test('an explicit Library open focuses and scrolls to the authorized cards after they render', async () => {
+  const item = { configuration_id: routeConfiguration, library_item_id: routeOrder, label: 'Purchased engine',
+    access_state: 'viewable', region: 'US', granted_at: '2026-11-16T00:00:00Z' };
+  const h = articleMediaHarness({
+    session: { state: { authenticated: true } }, validLibrary, clearReader() {},
+    requestJSON: async () => ({ version: 'v1', next_cursor: null, items: [item] }),
+  });
+  const title = new ArticleMediaNode('h2');
+  const scrolls = [];
+  title.scrollIntoView = options => {
+    assert.equal(h.nodes.get('library-items').children.length, 1);
+    scrolls.push([options.behavior, options.block]);
+  };
+  h.nodes.set('library-title', title);
+  runInNewContext(appSection('async function library(', 'function clearReader('), h.context);
+  await h.context.library(h.g);
+  assert.equal(title.focusCalls ?? 0, 0);
+  assert.deepEqual(scrolls, []);
+  await h.context.library(h.navigation.next(), false, { focusOnShow: true });
+  assert.equal(title.focusCalls, 1);
+  assert.deepEqual(scrolls, [['instant', 'start']]);
+});
+
+test('a Library card retries the same exact vehicle and focuses its first article index', async () => {
+  const item = { configuration_id: routeConfiguration, library_item_id: routeOrder, label: 'Purchased engine',
+    access_state: 'viewable', region: 'CA', granted_at: '2026-11-16T00:00:00Z' };
+  const attempts = [];
+  let retryAction;
+  const h = articleMediaHarness({
+    session: { state: { authenticated: true } }, validLibrary, clearReader() {},
+    names: ['year', 'make', 'model', 'configuration'], populate() {}, updateURL() {},
+    requestJSON: async () => ({ version: 'v1', next_cursor: '', items: [item] }),
+    async selectVehicle(_g, _article, { quoteMode, focusOnShow }) {
+      attempts.push({ ...h.context.vehicle, quoteMode, focusOnShow });
+      if (attempts.length === 1) throw Object.assign(new Error('Unavailable'), { status: 503 });
+    },
+    operation(work, retry) {
+      retryAction = retry;
+      return work(h.navigation.next()).catch(() => {});
+    },
+  });
+  h.nodes.set('search', new ArticleMediaNode('input'));
+  runInNewContext(appSection('async function library(', 'function clearReader('), h.context);
+  await h.context.library(h.g);
+  h.nodes.get('library-items').children[0].children[2].dispatch('click');
+  await new Promise(setImmediate);
+  assert.equal(typeof retryAction, 'function');
+  assert.equal(h.shows.at(-1), 'welcome');
+  await retryAction();
+  const expected = { id: item.configuration_id, region: item.region, engine: item.label,
+    quoteMode: 'if-needed', focusOnShow: true };
+  assert.deepEqual(attempts, [expected, expected]);
+});
+
+test('Library cards distinguish preparation review, temporary failure, and readable articles', async () => {
+  const summaries = [
+    ['preparing', 'CATALOG_PREPARATION_REVIEW', 'Article preparation needs review.'],
+    ['preparing', 'CATALOG_PREPARATION_UNAVAILABLE', 'Articles are temporarily unavailable.'],
+    ['preparing', 'CATALOG_SOURCE_UNAVAILABLE', 'Articles are temporarily unavailable.'],
+    ['preparing', '', 'Preparing articles'],
+    ['viewable', 'CATALOG_PREPARATION_REVIEW', 'Articles available'],
+    ['revoked', 'CATALOG_PREPARATION_UNAVAILABLE', 'Access revoked. Contact support.'],
+  ];
+  const h = articleMediaHarness({
+    session: { state: { authenticated: true } }, validLibrary, clearReader() {},
+    requestJSON: async () => ({ version: 'v1', next_cursor: '', items: summaries.map(([access_state, content_error_code], i) => ({
+      configuration_id: routeConfiguration,
+      library_item_id: String(i + 1) + '1111111-1111-4111-8111-111111111111',
+      label: 'Fixture vehicle', region: 'US', access_state, content_error_code,
+      granted_at: '2026-11-16T00:00:00Z',
+    })) }),
+  });
+  runInNewContext(appSection('async function library(', 'function clearReader('), h.context);
+  await h.context.library(h.g);
+  const cards = h.nodes.get('library-items').children;
+  assert.deepEqual(cards.map(card => card.children[1].textContent), summaries.map(row => row[2]));
+  assert.deepEqual(cards.map(card => mediaDescendants(card, 'button').length), [1, 1, 1, 1, 1, 0]);
+});
+
+test('opening Library again clears the last empty result while waiting for a fresh page', async () => {
+  const pending = deferredAuthOperation();
+  const empty = { version: 'v1', next_cursor: '', items: [] };
+  let reads = 0;
+  const h = articleMediaHarness({
+    session: { state: { authenticated: true } }, validLibrary, clearReader() {},
+    requestJSON: () => ++reads === 1 ? Promise.resolve(empty) : pending.promise,
+  });
+  runInNewContext(appSection('async function library(', 'function clearReader('), h.context);
+  await h.context.library(h.g);
+  assert.match(h.nodes.get('library-message').textContent, /No vehicles purchased/);
+  const reloading = h.context.library(h.navigation.next());
+  assert.equal(h.nodes.get('library-message').textContent, '');
+  const card = { library_item_id: routeOrder, configuration_id: routeConfiguration, region: 'US', label: 'New purchase',
+    access_state: 'preparing', granted_at: '2026-11-16T00:00:00Z' };
+  pending.resolve({ ...empty, items: [card] });
+  await reloading;
+  assert.match(h.nodes.get('library-items').textContent, /New purchase/);
+});
+
+test('clearing protected state also clears an earlier Library message and Load more cursor', () => {
+  const h = articleMediaHarness();
+  const more = h.nodes.get('library-more'), message = h.nodes.get('library-message');
+  more.hidden = false;
+  more.setAttribute('aria-disabled', 'true');
+  message.textContent = 'No vehicles purchased yet.';
+  h.context.libraryCursor = 'old-page';
+  h.context.libraryPageRequest = Promise.resolve();
+  h.context.clearProtected();
+  assert.equal(h.context.libraryCursor, null);
+  assert.equal(h.context.libraryPageRequest, null);
+  assert.equal(more.hidden, true);
+  assert.equal(more.getAttribute('aria-disabled'), null);
+  assert.equal(message.textContent, '');
+});
+
 test('heading and paragraph illustrations keep their order, alt text, and caption', () => {
   const h = articleMediaHarness();
   const content = h.content(mediaArticle([
@@ -2568,6 +4607,21 @@ test('heading and paragraph illustrations keep their order, alt text, and captio
   assert.equal(content.children[1].children[0].alt, 'Bracket location');
   assert.equal(content.children[1].children[1].textContent, 'View from above');
   assert.equal(content.children[3].children[0].alt, 'Alignment mark');
+});
+
+test('figure aliases keep the first available match and independent placement text', () => {
+  const h = articleMediaHarness();
+  const content = h.content(mediaArticle([
+    { type: 'image', asset_id: 'shared', alt: 'First placement' },
+    { type: 'table', rows: [[{ blocks: [{ type: 'image', asset_id: 'shared', alt: 'Nested placement' }] }]] },
+  ], [
+    { id: 'missing', asset_id: 'shared', status: 'unavailable' },
+    { id: 'matched', image_id: 'shared', url: mediaURL('matched') },
+    { id: 'shared', url: mediaURL('later') },
+  ]));
+  const images = mediaDescendants(content, 'img');
+  assert.deepEqual(images.map(image => image.alt), ['First placement', 'Nested placement']);
+  assert.deepEqual(images.map(image => image.src), Array(2).fill('https://cars.example' + mediaURL('matched')));
 });
 
 test('empty source block text displays the unavailable reason used by article search', () => {
@@ -2635,6 +4689,126 @@ test('article navigation focuses its visible heading once before preparation and
   assert.equal(h.nodes.get('print').focusCalls, 1);
 });
 
+test('readable source ends the opening progress while the rewrite continues', async () => {
+  const source = mediaArticle([{ type: 'paragraph', text: 'Original procedure.' }], [], {
+    processing: { job_id: 'rewrite', state: 'rewriting' },
+  });
+  const canonical = mediaArticle([{ type: 'paragraph', text: 'Rewritten procedure.' }], [], {
+    content_origin: 'canonical', view_revision: 'published', review_status: 'UNREVIEWED',
+  });
+  const available = deferredAuthOperation(), published = deferredAuthOperation();
+  const h = articleMediaHarness({
+    session: { state: { authenticated: true, csrf: 'csrf' } }, stage() {}, openDemo: false,
+    requestArticleJSON: async () => ({ data: { article: source } }),
+    async readArticle(read, { onUpdate }) {
+      onUpdate(await read());
+      onUpdate({ data: { article: source } });
+      available.resolve();
+      await published.promise;
+      const response = { data: { article: canonical } };
+      onUpdate(response);
+      return response;
+    },
+  });
+  runInNewContext(appSection('async function loadArticle(', 'function openArticle('), h.context);
+  const opening = h.context.loadArticle('a', h.g);
+  await available.promise;
+  assert.deepEqual(h.statuses.map(({ message }) => message), ['Opening article…', 'Stored source is ready.']);
+  assert.equal(h.statuses.at(-1).options.busy, undefined);
+  assert.equal(h.statuses.at(-1).options.cancelable, true);
+  assert.equal(h.nodes.get('print').disabled, false);
+  assert.equal(h.nodes.get('article-note').textContent, 'Preparing the Workshop rewrite.');
+  published.resolve();
+  await opening;
+  assert.equal(h.statuses.at(-1).message, 'Article ready.');
+  assert.match(h.nodes.get('article-note').textContent, /has not been reviewed/);
+});
+
+test('authoritative article not-found clears previously readable source and printing', async () => {
+  const { requestArticleJSON } = await import('./workshop/catalog.mjs');
+  const { readArticle } = await import('./workshop/article-read.mjs');
+  const source = mediaArticle([{ type: 'paragraph', text: 'Previously readable pump procedure.' }], [], {
+    processing: { job_id: 'rewrite', state: 'rewriting' },
+  });
+  for (const status of [404, 503]) {
+    let calls = 0, elapsed = 0;
+    const h = articleMediaHarness({
+      session: { state: { authenticated: true, csrf: 'fixture' } }, stage() {},
+      viewGeneration: null, paidOrder: null, access: 'owned', articles: [{ id: 'another-article' }],
+      requestArticleJSON(path, options) {
+        return requestArticleJSON(path, { ...options, fetcher: async () => {
+          if (calls++ === 0) return new Response(JSON.stringify({ article: source }));
+          assert.match(h.nodes.get('article-content').textContent, /Previously readable pump procedure/);
+          assert.equal(h.nodes.get('print').disabled, false);
+          return new Response(JSON.stringify({ error: {
+            code: status === 404 ? 'CATALOG_NOT_FOUND' : 'CATALOG_UNAVAILABLE', retryable: status === 503,
+          } }), { status });
+        } });
+      },
+      readArticle: (read, options) => readArticle(read, { ...options, now: () => elapsed,
+        wait: async duration => { elapsed += duration; }, budgetMs: 2000 }),
+    });
+    for (const id of ['cancel', 'loading-progress']) h.nodes.set(id, new ArticleMediaNode('div'));
+    runInNewContext(appSection('async function operation(', 'function updateURL(') +
+      appSection('async function loadArticle(', 'function openArticle('), h.context);
+    await h.context.operation(g => h.context.loadArticle('a', g));
+    assert.equal(calls, 2);
+    assert.equal(h.context.access, 'owned');
+    assert.equal(h.context.articles.length, 1);
+    if (status === 404) {
+      assert.equal(h.nodes.get('article-content').textContent, '');
+      assert.equal(h.nodes.get('print').disabled, true);
+      assert.equal(h.context.document.body.dataset.printable, 'false');
+      assert.equal(h.nodes.get('article-title').textContent, 'Article unavailable');
+      assert.match(h.statuses.at(-1).message, /could not be found/);
+    } else {
+      assert.match(h.nodes.get('article-content').textContent, /Previously readable pump procedure/);
+      assert.equal(h.nodes.get('print').disabled, false);
+      assert.match(h.statuses.at(-1).message, /Article is readable/);
+    }
+  }
+});
+
+test('article detail not-found during image renewal invalidates only that reader', async () => {
+  const { requestArticleJSON } = await import('./workshop/catalog.mjs');
+  const h = articleMediaHarness({
+    session: { state: { authenticated: true, mode: 'firebase' } }, access: 'owned',
+    requestArticleJSON: (path, options) => requestArticleJSON(path, { ...options, fetcher: async () =>
+      new Response(JSON.stringify({ error: { code: 'CATALOG_NOT_FOUND' } }), { status: 404 }) }),
+  });
+  h.render(mediaArticle([{ type: 'image', asset_id: 'fixture' }, { type: 'paragraph', text: 'Readable procedure.' }],
+    [{ id: 'fixture', url: mediaURL('fixture') }]));
+  const image = mediaDescendants(h.nodes.get('article-content'), 'img')[0];
+  await h.context.renewMedia(h.g, image);
+  assert.equal(h.context.access, 'owned');
+  assert.equal(h.g.current(), false);
+  assert.equal(h.nodes.get('article-content').textContent, '');
+  assert.equal(h.nodes.get('print').disabled, true);
+  assert.match(h.statuses.at(-1).message, /could not be found/);
+});
+
+test('pinned source not-found clears its panel and preserves the canonical procedure', async () => {
+  let calls = 0;
+  const h = articleMediaHarness({
+    requestJSON: (path, options) => requestJSON(path, { ...options, fetcher: async () => {
+      if (calls++ === 0) return new Response(JSON.stringify({ source: { url: mediaSourceURL },
+        document: { blocks: [{ type: 'paragraph', text: 'Retained source text' }] } }));
+      return new Response(JSON.stringify({ error: { code: 'CATALOG_NOT_FOUND' } }), { status: 404 });
+    } }),
+  });
+  h.render(mediaArticle([{ type: 'paragraph', text: 'Canonical procedure' }], [], {
+    content_origin: 'canonical', source_review: { available: true, url: mediaSourceURL },
+  }));
+  await h.context.loadSource(mediaSourceURL, h.g);
+  assert.match(h.nodes.get('source-review-frame').textContent, /Retained source text/);
+  await h.context.loadSource(mediaSourceURL, h.g).catch(error => h.context.handleSourceError(error, h.g));
+  assert.equal(h.nodes.get('source-review-frame').textContent, '');
+  assert.equal(h.nodes.get('source-review-frame').hidden, true);
+  assert.equal(h.nodes.get('article-content').textContent, 'Canonical procedure');
+  assert.equal(h.nodes.get('print').disabled, false);
+  assert.equal(h.g.current(), true);
+});
+
 test('obsolete article navigation leaves current heading and focus alone', async () => {
   const h = articleMediaHarness({ session: { state: { authenticated: true } } });
   runInNewContext(appSection('async function loadArticle(', 'function openArticle('), h.context);
@@ -2664,6 +4838,47 @@ test('retrying a visible article keeps its tab title while preparation fails', a
   rejectPrepare(new Error('temporarily unavailable'));
   await assert.rejects(retry, /temporarily unavailable/);
   assert.equal(h.context.document.title, 'Pump service | AutoData');
+});
+
+test('opening another article removes the previous source and disables printing until it loads', async () => {
+  let resolvePrepare;
+  const h = articleRouteHarness('firebase', path => {
+    assert.equal(path, '/v1/catalog/vehicles/v/articles/b/prepare?region=US');
+    return new Promise(resolve => { resolvePrepare = resolve; });
+  });
+  const previousArticle = mediaArticle([{ type: 'paragraph', text: 'Old procedure.' }], [], {
+    review_status: 'UNREVIEWED', source_review: { available: true, url: mediaSourceURL },
+  });
+  h.render(previousArticle);
+  h.context.requestJSON = async () => ({
+    source: { url: mediaSourceURL },
+    document: { blocks: [{ type: 'paragraph', text: 'Old source copy.' }] },
+  });
+  await h.context.loadSource(mediaSourceURL, h.g);
+  assert.equal(h.nodes.get('source-review-frame').hidden, false);
+  assert.equal(h.context.document.body.dataset.printable, 'true');
+
+  const pending = h.context.loadArticle('b', h.navigation.next());
+  assert.equal(h.nodes.get('article-title').textContent, 'Opening article…');
+  assert.equal(h.context.document.title, 'AutoData — The workshop reference');
+  assert.equal(h.context.currentArticle, null);
+  assert.equal(h.nodes.get('article-kind').textContent, '');
+  assert.equal(h.nodes.get('article-note').hidden, true);
+  assert.equal(h.nodes.get('article-reference').open, false);
+  assert.equal(h.nodes.get('source-review').hidden, true);
+  assert.equal(h.nodes.get('source-review-link').href, undefined);
+  assert.equal(h.nodes.get('source-review-frame').textContent, '');
+  assert.equal(h.context.document.body.dataset.printable, 'false');
+
+  const nextArticle = mediaArticle([{ type: 'paragraph', text: 'Next procedure.' }], [], {
+    id: 'b', title: 'Seal service', view_revision: 'view-2',
+  });
+  resolvePrepare({ data: { article: nextArticle } });
+  await pending;
+  assert.equal(h.nodes.get('article-title').textContent, 'Seal service');
+  assert.equal(h.nodes.get('article-content').textContent, 'Next procedure.');
+  assert.equal(h.nodes.get('source-review').hidden, true);
+  assert.equal(h.context.document.body.dataset.printable, 'true');
 });
 
 for (const [type, tag] of [['ordered_list', 'ol'], ['unordered_list', 'ul']]) {
@@ -2702,7 +4917,7 @@ for (const label of ['Warning', 'Note']) {
     assert.equal(aside.children[1].children[0].textContent, 'Keep clear.');
     assert.deepEqual(mediaTags(aside.children[1].children[0]), []);
     assert.deepEqual(mediaIDs(aside), ['direct', 'flattened']);
-    assert.equal(parent.children[2].textContent, 'Source ↗');
+    assert.equal(parent.children[2].textContent, 'View source');
     assert.equal(parent.children[3].textContent, 'After');
   });
 }
@@ -2936,7 +5151,7 @@ for (const [origin, state, retryable, note] of [
     assert.equal(parent.textContent.includes('Conflicting'), false);
     assert.equal(h.nodes.get('article-kind').textContent, origin === 'canonical' ? 'Workshop article' : 'Stored source');
     assert.equal(h.nodes.get('article-note').hidden, !note);
-    assert.equal(h.nodes.get('article-note').textContent, note ? 'Preparing articles. Available source remains readable.' : '');
+    assert.equal(h.nodes.get('article-note').textContent, note ? 'An update is in progress.' : '');
     assert.equal(h.nodes.get('print').disabled, false);
     assert.equal(h.context.document.body.dataset.printable, 'true');
     assert.equal(h.nodes.get('source-review').hidden, false);
@@ -2979,6 +5194,7 @@ test('article block media actual loadSource renders retained shapes and rejects 
   assert.equal(h.nodes.get('source-review-load').disabled, false);
   assert.equal(calls[0].path, mediaSourceURL);
   assert.equal(calls[0].options.signal, h.g.signal);
+  assert.equal(calls[0].options.headers.Prefer, 'workshop-source-document');
   response = { ...response, source: { url: mediaSourceURL.replace('11111111-', '22222222-') } };
   await assert.rejects(h.context.loadSource(mediaSourceURL, h.g), /source reference changed/);
   assert.equal(frame.children[0], first);
@@ -2987,6 +5203,111 @@ test('article block media actual loadSource renders retained shapes and rejects 
   assert.equal(calls.length, count);
   assert.equal(frame.children[0], first);
   assert.equal(frame.hidden, false);
+});
+
+test('an inline source reference focuses the matching nested figure in the pinned copy', async () => {
+  const figure = { type: 'image', block_id: 'article:figure:2', asset_id: 'drawing', evidence_ids: ['page-1'] };
+  const blocks = [{ type: 'table', rows: [[{ blocks: [{ ...figure, block_id: 'article:figure:1' }, figure] }]] }];
+  const images = [{ id: 'drawing', url: mediaURL('figure') }];
+  let requested;
+  const h = articleMediaHarness({ requestJSON: async path => {
+    requested = path;
+    return { source: { url: mediaSourceURL }, document: { blocks }, images };
+  } });
+  const content = h.render(mediaArticle([
+    { type: 'paragraph', block_id: 'article:introduction', text: 'Rewritten introduction' },
+    ...blocks,
+  ], images, { content_origin: 'canonical', source_review: { available: true, url: mediaSourceURL } }));
+  const links = mediaDescendants(content, 'a');
+  assert.equal(links.length, 2);
+  assert.equal(links[1].textContent, 'View source');
+  links[1].dispatch('click', { preventDefault() {} });
+  await new Promise(setImmediate);
+  const [first, cited] = mediaDescendants(h.nodes.get('source-review-frame'), 'figure');
+  assert.equal(requested, `${mediaSourceURL}&evidence_id=page-1`);
+  assert.equal(first.focusCalls, undefined);
+  assert.equal(cited.getAttribute('tabindex'), '-1');
+  assert.equal(cited.focusCalls, 1);
+  await h.context.loadSource(mediaSourceURL, h.g, 'block-missing-in-copy');
+  assert.equal(h.nodes.get('source-review-title').focusCalls, 1);
+});
+
+test('overlapping citations share one pinned read, focus the latest block and recheck access on a new read', async () => {
+  const pending = deferredAuthOperation(), calls = [];
+  const blocks = [
+    { type: 'paragraph', block_id: 'first', text: 'First source instruction' },
+    { type: 'paragraph', block_id: 'latest', text: 'Selected source instruction' },
+  ];
+  const h = articleMediaHarness({ requestJSON(path, options) {
+    calls.push({ path, options });
+    if (calls.length === 1) return pending.promise;
+    return Promise.reject(Object.assign(new Error('Source access revoked'), { status: 403 }));
+  } });
+  h.render(mediaArticle(blocks, [], { source_review: { available: true, url: mediaSourceURL } }));
+  const firstPath = `${mediaSourceURL}&evidence_id=first`;
+  const secondPath = `${mediaSourceURL}&source_locator=body%5B2%5D`;
+  const first = h.context.loadSource(firstPath, h.g, 'first');
+  const last = h.context.loadSource(secondPath, h.g, 'latest').catch(error => h.context.handleSourceError(error, h.g));
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].path, firstPath);
+  assert.equal(calls[0].options.signal, h.g.signal);
+  assert.equal(h.nodes.get('source-review-load').disabled, true);
+  pending.resolve({ source: { url: mediaSourceURL }, document: { blocks } });
+  await Promise.all([first, last]);
+  const frame = h.nodes.get('source-review-frame');
+  assert.equal(frame.children[0].focusCalls, undefined);
+  assert.equal(frame.children[1].focusCalls, 1);
+  assert.equal(h.nodes.get('source-review-load').disabled, false);
+
+  await h.context.loadSource(secondPath, h.g, 'latest').catch(error => h.context.handleSourceError(error, h.g));
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1].path, secondPath);
+  assert.equal(frame.hidden, true);
+  assert.deepEqual(h.shows, ['welcome']);
+});
+
+test('fresh citation authorization keeps pending figures and focuses the new exact block of the same source', async () => {
+  const blocks = ['first', 'last'].map(id => ({
+    type: 'image', block_id: id, asset_id: id, caption: `Stored ${id}`,
+  }));
+  const calls = [];
+  let changed = false;
+  const h = articleMediaHarness({
+    session: { state: { authenticated: true, mode: 'firebase' } },
+    async requestJSON(path, options) {
+      calls.push({ path, signal: options.signal });
+      return {
+        source: { url: mediaSourceURL }, view_revision: 'same-retained-projection', document: { blocks },
+        images: blocks.map(({ asset_id: id }) => ({
+          id,
+          ...(!changed || id === 'first' ? { url: mediaURL(`${id}-${calls.length}`) } : {}),
+        })),
+      };
+    },
+  });
+  h.render(mediaArticle(blocks, [], {
+    content_origin: 'canonical', source_review: { available: true, url: mediaSourceURL },
+  }));
+  const firstPath = `${mediaSourceURL}&evidence_id=first`;
+  const lastPath = `${mediaSourceURL}&evidence_id=last`;
+  await h.context.loadSource(firstPath, h.g, 'first');
+  const frame = h.nodes.get('source-review-frame');
+  const [first, last] = mediaDescendants(frame, 'figure');
+  const [firstImage] = mediaDescendants(first, 'img');
+  const displayed = h.context.displayedSourceRevision;
+  await h.context.loadSource(lastPath, h.g, 'last');
+  assert.deepEqual(calls.map(call => call.path), [firstPath, lastPath]);
+  assert.ok(calls.every(call => call.signal === h.g.signal));
+  assert.equal(frame.children[0], first);
+  assert.equal(last.focusCalls, 1);
+  assert.equal(firstImage.src, 'https://cars.example/v1/catalog/images/v2.first-1');
+  assert.equal(h.context.displayedSourceRevision, displayed);
+
+  changed = true;
+  await h.context.loadSource(lastPath, h.g, 'last');
+  assert.notEqual(frame.children[0], first);
+  assert.equal(frame.children[1].focusCalls, 1);
+  assert.match(frame.children[1].textContent, /Illustration unavailable/);
 });
 
 for (const type of ['ordered_list', 'unordered_list', 'callout']) {
@@ -3025,25 +5346,256 @@ const renewedArticle = () => ({ data: { article: { ...renewalFixture(), images: 
   { id: 'list', url: mediaURL('new-list') }, { id: 'callout', url: mediaURL('new-callout') },
 ] } } });
 
+test('unchanged article polls keep decoded and in-flight figures on their current requests', () => {
+  const h = articleMediaHarness();
+  const parent = h.render(renewalFixture());
+  const [loaded, pending] = mediaDescendants(parent, 'img');
+  Object.assign(loaded, { complete: true, naturalWidth: 24 });
+  Object.assign(pending, { complete: false, naturalWidth: 0 });
+  const originals = [loaded.src, pending.src];
+  const incoming = renewedArticle().data.article;
+  h.render({ ...incoming, processing: { job_id: 'workshop-reader', state: 'rewriting' } });
+  assert.deepEqual(mediaDescendants(parent, 'img'), [loaded, pending]);
+  assert.deepEqual([loaded.src, pending.src], originals);
+  assert.deepEqual([loaded.dataset.replacement, pending.dataset.replacement], [undefined, undefined]);
+  assert.match(h.nodes.get('article-note').textContent, /Preparing the Workshop rewrite/);
+
+  h.render({ ...incoming, view_revision: 'published-view' });
+  const [nextLoaded, nextPending] = mediaDescendants(parent, 'img');
+  assert.notEqual(nextLoaded, loaded);
+  assert.notEqual(nextPending, pending);
+  assert.deepEqual([nextLoaded.src, nextPending.src], [
+    'https://cars.example/v1/catalog/images/v2.new-list',
+    'https://cars.example/v1/catalog/images/v2.new-callout',
+  ]);
+});
+
 test('article block media actual renewal shares one request and reconciles both shapes once per revision', async () => {
   const pending = deferredAuthOperation(), calls = [];
   const h = articleMediaHarness({ requestArticleJSON: (path, options) => { calls.push({ path, options }); return pending.promise; } });
   const parent = h.render(renewalFixture()), images = mediaDescendants(parent, 'img');
   assert.equal(images.length, 2);
-  images[0].dispatch('error'); const renewal = h.context.renewal;
-  images[1].dispatch('error');
-  assert.equal(calls.length, 1); assert.equal(h.context.renewal, renewal);
-  assert.equal(calls[0].path, '/v1/catalog/vehicles/v/articles/a'); assert.equal(calls[0].options.signal, h.g.signal);
+  const renewal = Promise.all(images.map(img => h.context.renewMedia(h.g, img)));
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].path, '/v1/catalog/vehicles/v/articles/a?region=US'); assert.equal(calls[0].options.signal, h.g.signal);
   pending.resolve(renewedArticle()); await renewal;
   assert.deepEqual(mediaDescendants(parent, 'img'), images, 'stable revision retains image nodes');
   assert.deepEqual(images.map(n => n.src), ['https://cars.example/v1/catalog/images/v2.new-list', 'https://cars.example/v1/catalog/images/v2.new-callout']);
   assert.deepEqual(images.map(n => n.dataset.replacement), ['1', '1']);
-  assert.equal(h.context.renewal, null); assert.equal(h.context.renewalFailures.size, 0);
   images[0].dispatch('error'); images[1].dispatch('error');
   assert.equal(calls.length, 1);
   assert.deepEqual(mediaIDs(parent), []);
   assert.equal(mediaDescendants(parent, 'figure')[0].textContent, 'Illustration unavailable. Refresh this article to try again.');
 });
+
+for (const race of ['same revision metadata', 'canonical publication', 'withdrawal', 'detail not found']) {
+  test(`concurrent article detail responses preserve ${race}`, async () => {
+    const { requestArticleJSON } = await import('./workshop/catalog.mjs');
+    const { readArticle } = await import('./workshop/article-read.mjs');
+    const id = '33333333-3333-4333-8333-333333333333';
+    const vehicle = { id: '11111111-1111-4111-8111-111111111111', region: 'US' };
+    const detail = `/v1/catalog/vehicles/${vehicle.id}/articles/${id}`;
+    const source = mediaArticle([
+      { type: 'paragraph', text: 'Synthetic retained procedure' },
+      { type: 'image', asset_id: 'figure' },
+    ], [{ id: 'figure', url: mediaURL('fixture-expired') }], {
+      id, view_revision: 'fixture-source-view',
+      processing: { job_id: 'fixture-job', state: 'rewriting' },
+    });
+    const needsReview = { ...source, processing: { job_id: 'fixture-job', state: 'needs_review' } };
+    const renewal = { ...source, images: [{ id: 'figure', url: mediaURL('fixture-fresh') }] };
+    const published = { ...renewal, view_revision: 'fixture-canonical-view', content_origin: 'canonical',
+      document: { blocks: [{ type: 'paragraph', text: 'Synthetic published procedure' }, { type: 'image', asset_id: 'figure' }] },
+      processing: { job_id: 'fixture-job', state: 'completed' } };
+    const wire = article => new Response(JSON.stringify({ version: 'v1', configuration: vehicle, article }));
+    const firstWait = deferredAuthOperation(), allowPoll = deferredAuthOperation();
+    const secondStarted = deferredAuthOperation(), older = deferredAuthOperation();
+    const requests = [];
+    let clock = 0;
+    const h = articleMediaHarness({
+      session: { state: { authenticated: true, mode: 'firebase', csrf: 'fixture' } },
+      vehicle, articlePath: () => detail, stage() {},
+      requestArticleJSON: (path, options) => requestArticleJSON(path, {
+        ...options, fetcher: async (_url, { method }) => {
+          requests.push([method, path]);
+          assert.equal(options.signal, h.g.signal);
+          if (requests.length === 1) return wire(source);
+          if (requests.length === 2) {
+            secondStarted.resolve();
+            return older.promise;
+          }
+          if (requests.length === 3) return wire(race === 'same revision metadata' ? needsReview : published);
+          assert.equal(race, 'canonical publication');
+          assert.equal(requests.length, 4);
+          return wire(needsReview);
+        },
+      }),
+      readArticle: (read, options) => readArticle(read, {
+        ...options, now: () => clock,
+        async wait(ms) { clock += ms; firstWait.resolve(); await allowPoll.promise; },
+      }),
+    });
+    runInNewContext(appSection('async function loadArticle(', 'function openArticle('), h.context);
+    const opening = h.context.loadArticle(id, h.g);
+    await firstWait.promise;
+    const body = h.nodes.get('article-content');
+    const failed = mediaDescendants(body, 'img')[0];
+    const expected = [['POST', detail + '/prepare?region=US'], ['GET', detail + '?region=US'], ['GET', detail + '?region=US']];
+    if (race === 'canonical publication' || race === 'detail not found') {
+      allowPoll.resolve();
+      await secondStarted.promise;
+      await h.context.renewMedia(h.g, failed);
+      assert.equal(body.textContent, 'Synthetic published procedure');
+      if (race === 'detail not found') {
+        older.resolve(new Response(JSON.stringify({ error: { code: 'CATALOG_NOT_FOUND' } }), { status: 404 }));
+        await assert.rejects(opening, { status: 404, code: 'CATALOG_NOT_FOUND' });
+        assert.equal(body.textContent, '');
+        assert.equal(h.nodes.get('print').disabled, true);
+        assert.equal(h.nodes.get('article-title').textContent, 'Article unavailable');
+      } else {
+        older.resolve(wire(needsReview));
+        await opening;
+        assert.equal(body.textContent, 'Synthetic published procedure');
+        assert.equal(h.context.currentArticle.processing.state, 'completed');
+        assert.equal(h.statuses.at(-1).message, 'Article ready.');
+        assert.deepEqual(requests, expected);
+
+        await h.context.renewMedia(h.g, mediaDescendants(body, 'img')[0]);
+        assert.equal(body.textContent, 'Synthetic retained procedure');
+        assert.equal(h.context.currentArticle.processing.state, 'needs_review');
+        expected.push(['GET', detail + '?region=US']);
+      }
+    } else {
+      const refreshing = h.context.renewMedia(h.g, failed);
+      await secondStarted.promise;
+      allowPoll.resolve();
+      await opening;
+      if (race === 'same revision metadata') {
+        assert.equal(h.context.currentArticle.processing.state, 'needs_review');
+        older.resolve(wire(renewal));
+        await refreshing;
+        assert.equal(h.context.currentArticle.processing.state, 'needs_review');
+        assert.equal(h.nodes.get('article-note').textContent, '');
+        assert.match(h.statuses.at(-1).message, /preparation needs review/);
+        assert.equal(failed.src, 'https://cars.example/v1/catalog/images/v2.fixture-fresh');
+      } else {
+        assert.equal(body.textContent, 'Synthetic published procedure');
+        older.resolve(new Response(JSON.stringify({ error: { code: 'CATALOG_WITHDRAWN' } }), { status: 410 }));
+        await refreshing;
+        assert.equal(body.textContent, '');
+        assert.equal(h.nodes.get('print').disabled, true);
+        assert.equal(h.g.current(), false);
+        assert.equal(h.shows.at(-1), 'welcome');
+      }
+    }
+    assert.deepEqual(requests, expected);
+  });
+}
+
+test('a superseded article response still contributes its retry delay to an active read', async () => {
+  const { readArticle } = await import('./workshop/article-read.mjs');
+  const current = { status: 200, data: { article: mediaArticle([], [], {
+    processing: { job_id: 'fixture-job', state: 'rewriting' },
+  }) } };
+  const older = { ...current, retryAfterSeconds: 4 };
+  const finished = { data: { article: mediaArticle([{ type: 'paragraph', text: 'Ready' }]) } };
+  const responses = [older, finished], updates = [], waits = [];
+  let clock = 0;
+  await readArticle(async () => responses.shift(), {
+    now: () => clock,
+    async wait(ms) { waits.push(ms); clock += ms; },
+    selectResponse: response => response === older ? current : response,
+    onUpdate: response => updates.push(response),
+  });
+  assert.deepEqual(updates, [current, finished]);
+  assert.deepEqual(waits, [4000]);
+});
+
+test('a figure that fails later reuses the refreshed article links', async () => {
+  let requests = 0;
+  const h = articleMediaHarness({ requestArticleJSON: async () => { requests++; return renewedArticle(); } });
+  const [first, later] = mediaDescendants(h.render(renewalFixture()), 'img');
+  await h.context.renewMedia(h.g, first);
+  assert.equal(first.src, 'https://cars.example/v1/catalog/images/v2.new-list');
+  assert.equal(later.src, 'https://cars.example/v1/catalog/images/v2.old-callout');
+  await h.context.renewMedia(h.g, later);
+  assert.equal(later.src, 'https://cars.example/v1/catalog/images/v2.new-callout');
+  assert.equal(later.isConnected, true);
+  assert.equal(requests, 1);
+});
+
+test('a pinned source figure refreshes only the selected source after article media have refreshed', async () => {
+  let articleRequests = 0, sourceRequests = 0;
+  const h = articleMediaHarness({
+    requestArticleJSON: async () => { articleRequests++; return renewedArticle(); },
+    requestJSON: async () => ({
+      source: { url: mediaSourceURL }, document: renewalFixture().document,
+      images: [{ id: 'list', url: mediaURL(++sourceRequests === 1 ? 'old-stored' : 'new-stored') }],
+    }),
+  });
+  const [first] = mediaDescendants(h.render(renewalFixture()), 'img');
+  await h.context.renewMedia(h.g, first);
+  await h.context.loadSource(mediaSourceURL, h.g);
+  const [stored] = mediaDescendants(h.nodes.get('source-review-frame'), 'img');
+  await h.context.renewMedia(h.g, stored);
+  assert.equal(stored.src, 'https://cars.example/v1/catalog/images/v2.new-stored');
+  assert.equal(stored.isConnected, true);
+  assert.equal(articleRequests, 1);
+  assert.equal(sourceRequests, 2);
+});
+test('same-navigation publication prevents an outstanding media renewal from restoring the old revision', async () => {
+  const pending = deferredAuthOperation();
+  const h = articleMediaHarness({ requestArticleJSON: () => pending.promise });
+  const parent = h.render(renewalFixture());
+  const first = mediaDescendants(parent, 'img')[0];
+  const renewal = h.context.renewMedia(h.g, first);
+  const published = { ...renewedArticle().data.article, content_origin: 'canonical', view_revision: 'publication' };
+  h.render(published);
+  const next = mediaDescendants(parent, 'img')[0];
+  assert.notEqual(next, first);
+  pending.resolve({ data: { article: renewalFixture() } });
+  await renewal;
+  assert.equal(h.context.currentArticle.view_revision, 'publication');
+  assert.equal(mediaDescendants(parent, 'img')[0], next);
+  assert.equal(h.context.articleImageRefresh, null);
+});
+
+test('media renewal replaces failed figures within their scoped responses only', async () => {
+  const pending = deferredAuthOperation(), calls = [];
+  const h = articleMediaHarness({
+    requestArticleJSON: () => pending.promise,
+    requestJSON: async url => {
+      calls.push(url);
+      return { source: { url: mediaSourceURL }, images: [
+        { id: 'list', url: mediaURL('new-stored-list') },
+        { id: 'callout', url: mediaURL('new-stored-callout') },
+      ] };
+    },
+  });
+  const article = h.render(renewalFixture());
+  const frame = h.nodes.get('source-review-frame');
+  const [failedArticle, healthyArticle] = mediaDescendants(article, 'img');
+  h.context.renderBlocks(frame, renewalFixture().document.blocks, h.context.indexRenderableImages([
+    { id: 'list', url: mediaURL('old-stored-list') },
+    { id: 'callout', url: mediaURL('old-stored-callout') },
+  ]), null, h.g);
+  const [healthySource, failedSource] = mediaDescendants(frame, 'img');
+  h.context.sourceURL = 'https://cars.example' + mediaSourceURL;
+  const renewal = Promise.all([h.context.renewMedia(h.g, failedArticle), h.context.renewMedia(h.g, failedSource)]);
+  assert.deepEqual(calls, ['https://cars.example' + mediaSourceURL], 'pinned refresh starts while article response is pending');
+  pending.resolve(renewedArticle());
+  await renewal;
+  assert.deepEqual(calls, ['https://cars.example' + mediaSourceURL]);
+  assert.deepEqual([failedArticle, healthyArticle, healthySource, failedSource].map(img => img.src), [
+    'https://cars.example/v1/catalog/images/v2.new-list',
+    'https://cars.example/v1/catalog/images/v2.old-callout',
+    'https://cars.example/v1/catalog/images/v2.old-stored-list',
+    'https://cars.example/v1/catalog/images/v2.new-stored-callout',
+  ]);
+  assert.deepEqual([failedArticle, healthyArticle, healthySource, failedSource].map(img => img.dataset.replacement),
+    ['1', undefined, undefined, '1']);
+});
+
 for (const changed of [false, true]) {
   test(`article block media actual renewal ${changed ? 'rejects changed' : 'reconciles matching'} stored-source revision`, async () => {
     const calls = [];
@@ -3055,12 +5607,13 @@ for (const changed of [false, true]) {
     h.render(renewalFixture());
     const frame = h.nodes.get('source-review-frame');
     h.context.renderBlocks(frame, [{ type: 'callout', text: 'Stored', images: [{ asset_id: 'stored' }] }],
-      [{ id: 'stored', url: mediaURL('old-stored') }], null, h.g);
-    frame.hidden = false; h.context.sourceData = { source: { url: mediaSourceURL } }; h.context.sourceURL = 'https://cars.example' + mediaSourceURL;
+      h.context.indexRenderableImages([{ id: 'stored', url: mediaURL('old-stored') }]), null, h.g);
+    frame.hidden = false; h.context.sourceURL = 'https://cars.example' + mediaSourceURL;
     const image = mediaDescendants(frame, 'img')[0];
     assert.ok(image, 'stored-source callout must contain a retained figure');
-    image.dispatch('error'); await h.context.renewal;
+    await h.context.renewMedia(h.g, image);
     assert.equal(calls.length, 1); assert.equal(calls[0].url, 'https://cars.example' + mediaSourceURL); assert.equal(calls[0].options.signal, h.g.signal);
+    assert.equal(calls[0].options.headers.Prefer, 'workshop-source-document');
     if (changed) {
       assert.deepEqual(mediaIDs(frame), []);
       assert.equal(frame.textContent, 'NoteStoredIllustration unavailable. Refresh this article to try again.');
@@ -3078,11 +5631,11 @@ for (const status of [401, 403, 410]) {
     for (const id of ['articles', 'source-review-frame', 'reference-data', 'library-items']) h.nodes.get(id).textContent = 'Protected';
     h.nodes.get('source-review-link').href = mediaSourceURL;
     const image = mediaDescendants(h.nodes.get('article-content'), 'img')[0];
-    assert.ok(image); image.dispatch('error'); await h.context.renewal;
+    assert.ok(image); await h.context.renewMedia(h.g, image);
     assert.equal(h.g.current(), false);
     assert.equal(h.g.signal.aborted, true);
     for (const id of ['articles', 'article-content', 'source-review-frame', 'reference-data', 'library-items']) assert.equal(h.nodes.get(id).textContent, '', id);
-    assert.equal(h.context.currentArticle, null); assert.equal(h.context.sourceData, null); assert.equal(h.context.sourceURL, '');
+    assert.equal(h.context.currentArticle, null); assert.equal(h.context.sourceImageRefresh, null); assert.equal(h.context.sourceURL, '');
     assert.equal(h.nodes.get('source-review-link').href, undefined);
     assert.equal(h.nodes.get('source-review-frame').hidden, true); assert.equal(h.nodes.get('print').disabled, true);
     assert.equal(h.context.document.body.dataset.printable, 'false');
@@ -3094,9 +5647,9 @@ for (const outcome of ['resolve', 'reject']) {
     const pending = deferredAuthOperation(); let sourceCalls = 0;
     const h = articleMediaHarness({ requestArticleJSON: () => pending.promise, requestJSON: () => { sourceCalls++; assert.fail('stale renewal cannot fetch source'); } });
     h.render(renewalFixture());
-    h.context.sourceData = { source: { url: mediaSourceURL } }; h.context.sourceURL = mediaSourceURL;
+    h.context.sourceURL = mediaSourceURL;
     const image = mediaDescendants(h.nodes.get('article-content'), 'img')[0];
-    assert.ok(image); image.dispatch('error'); const renewal = h.context.renewal;
+    assert.ok(image); const renewal = h.context.renewMedia(h.g, image);
     h.context.invalidate(); const next = h.navigation.next();
     h.context.renderArticle(mediaArticle([{ type: 'paragraph', text: 'New selected article' }], [], { id: 'b', view_revision: 'view-b' }), next);
     h.nodes.get('source-review-frame').textContent = 'New source';
@@ -3114,15 +5667,42 @@ function selectorOptionsHarness(response) {
  const nodes = new Map();
  const $ = id => { if (!nodes.has(id)) nodes.set(id, {value:'',disabled:false,hidden:true,textContent:'',dataset:{}}); return nodes.get(id); };
  const statuses=[], displayed=[];
- const context={ $, navigation:new NavigationGeneration(), document:{body:{dataset:{}}}, retryAction:null, currentOrder:'', paidOrder:'', stage(){}, selectorPath:()=>'/choices', requestJSON:async()=>{if(response instanceof Error)throw response;return response;},
+ const requests=[];
+ const context={ $, navigation:new NavigationGeneration(), document:{body:{dataset:{}}}, retryAction:null, currentOrder:'', paidOrder:'', stage(){}, selectorPath:()=>'/choices', requestJSON:async path=>{requests.push(path);if(response instanceof Error)throw response;return response;},
   readCollection:(read,options)=>readCollection(read,{...options,attempts:2,wait:async()=>{}}),
   populate(name,items,desired){displayed.push(items);$(name).disabled=!items.length;$(name).value=desired;},
   recordStatus:(text,options={})=>statuses.push({text,...options}), restoreRoute(){},
  };
  runInNewContext(appSection('function status(', 'function stage(')+appSection('async function operation(', 'function updateURL(')+appSection('async function loadOptions(', 'function renderPurchase(')+
   'const actualStatus = status; status = (text, options = {}) => { recordStatus(text, options); actualStatus(text, options); };',context);
- return {context,$,statuses,displayed,load:(desired='',current)=>context.operation(g=>context.loadOptions('configuration',current?{...g,current}:g,desired),()=>context.restoreRoute())};
+ return {context,$,statuses,displayed,requests,load:(desired='',current,initial=null,name='configuration')=>context.operation(g=>context.loadOptions(name,current?{...g,current}:g,desired,initial),()=>context.restoreRoute())};
 }
+
+test('a prefetched selector miss is checked again after the parent was validated', async () => {
+  const h = selectorOptionsHarness({ items: [{ id: 'selected' }], complete: true });
+  await h.load('selected', null, Promise.resolve({ items: [], complete: true }));
+  assert.deepEqual(h.requests, ['/choices']);
+  assert.equal(h.$('configuration').value, 'selected');
+});
+
+test('a missing saved year reports the existing error without repeating the top-level read', async () => {
+  const h = selectorOptionsHarness({ items: [{ year: 2020 }], complete: true });
+  await h.load('2020', null, Promise.resolve({ items: [{ year: 2021 }], complete: true }), 'year');
+  assert.deepEqual(h.requests, []);
+  assert.equal(h.statuses.at(-1).error, true);
+  assert.match(h.statuses.at(-1).text, /saved vehicle choice is unavailable/);
+});
+
+test('canceling a prefetched selector skips its fallback read', async () => {
+  const h = selectorOptionsHarness({ items: [{ id: 'selected' }], complete: true });
+  const held = deferredAuthOperation();
+  const selected = h.load('selected', null, held.promise);
+  h.context.navigation.clear();
+  held.resolve(null);
+  await selected;
+  assert.deepEqual(h.requests, []);
+  assert.deepEqual(h.displayed, []);
+});
 
 test('actual selector timeout remains a retryable loading failure with partial rows preserved', async()=>{
  for(const items of [[],[{id:'cfg-1',engine:'2.0L',complete:true}]]) {
@@ -3267,8 +5847,9 @@ const scopedQuoteFixture = () => ({
 function selectionQuoteHarness(merchant, { authenticated = true, openDemo = false, request = async () => scopedQuoteFixture() } = {}) {
   const navigation = new NavigationGeneration(), generation = navigation.next(), calls = [], opened = [], nodes = new Map();
   const context = {
-    merchant, openDemo, quote: null, access: "unknown", validScope, validQuote, scope: () => scope,
-    session: { state: { authenticated } }, clearProtected() {}, renderPurchase() {}, show() {}, status() {},
+    merchant, merchantRequest: null, openDemo, quote: null, access: "unknown", validScope, validQuote, uuid, scope: () => scope,
+    session: { state: { authenticated } }, sessionRequest: null,
+    clearProtected() {}, renderPurchase() {}, show() {}, status() {}, purchaseConfigured: () => context.merchant?.enabled === true,
     $: id => { if (!nodes.has(id)) nodes.set(id, {}); return nodes.get(id); },
     requestJSON: async (path, options) => { calls.push({ path, options }); return request(path, options); },
     loadArticles: async (g, id) => opened.push({ g, id }),
@@ -3276,6 +5857,129 @@ function selectionQuoteHarness(merchant, { authenticated = true, openDemo = fals
   runInNewContext(appSection('async function selectVehicle(', 'async function loadArticles('), context);
   return { context, navigation, generation, calls, opened };
 }
+
+test('same-selection sign-in keeps the public price visible and uses the current quote returned with paid access', async () => {
+  const h = selectionQuoteHarness({ enabled: true }, { authenticated: false });
+  await h.context.selectVehicle(h.generation);
+  const prior = h.context.quote;
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.opened.length, 0);
+
+  h.context.session.state.authenticated = true;
+  h.context.$('agreement').checked = true;
+  const current = { ...prior, configuration_label: '2024 Example Car 2.0 L' };
+  const required = Object.assign(new Error('Purchase required'), { code: 'ENTITLEMENT_REQUIRED', purchaseQuote: current });
+  h.context.loadArticles = async (_g, _id, options) => {
+    assert.equal(options.includePurchaseQuote, true);
+    assert.equal(h.context.quote, prior);
+    h.opened.push(true);
+    throw required;
+  };
+  await assert.rejects(h.context.selectVehicle(h.navigation.next(), '', { reuseQuote: true }), required);
+  assert.equal(h.context.quote, current);
+  assert.equal(h.context.$('agreement').checked, false);
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.opened.length, 1);
+});
+
+test('sign-in stops using the old quote after an authoritative unavailable result or falls back for an older API', async () => {
+  for (const [value, fetches, available] of [
+    [null, 0, false],
+    [{ ...scopedQuoteFixture(), region: 'CA' }, 0, false],
+    [undefined, 1, true],
+  ]) {
+    const h = selectionQuoteHarness({ enabled: true });
+    h.context.quote = scopedQuoteFixture();
+    const required = Object.assign(new Error('Purchase required'), { code: 'ENTITLEMENT_REQUIRED', purchaseQuote: value });
+    h.context.loadArticles = async () => { throw required; };
+    await assert.rejects(h.context.selectVehicle(h.generation, '', { reuseQuote: true }), required);
+    assert.equal(h.calls.length, fetches);
+    assert.equal(validQuote(h.context.quote, scope), available);
+  }
+});
+
+test('only a paid entitlement-required response can attach purchase quote details', async () => {
+  for (const [status, code, value, expected] of [
+    [403, 'ENTITLEMENT_REQUIRED', scopedQuoteFixture(), scopedQuoteFixture()],
+    [403, 'ENTITLEMENT_REQUIRED', null, null],
+    [401, 'ENTITLEMENT_REQUIRED', scopedQuoteFixture(), undefined],
+    [403, 'ENTITLEMENT_REVOKED', scopedQuoteFixture(), undefined],
+  ]) {
+    await assert.rejects(requestJSON('/articles', { fetcher: async () => new Response(JSON.stringify({
+      error: { code, details: { purchase_quote: value } },
+    }), { status }) }), (error) => {
+      assert.deepEqual(error.purchaseQuote, expected);
+      return true;
+    });
+  }
+});
+
+test('a superseded region or disabled merchant cannot reuse a public quote after sign-in', async () => {
+  for (const [merchant, prior, requests] of [
+    [{ enabled: true }, { ...scopedQuoteFixture(), region: 'CA' }, 1],
+    [{ enabled: false }, scopedQuoteFixture(), 0],
+  ]) {
+    const h = selectionQuoteHarness(merchant);
+    h.context.quote = prior;
+    await h.context.selectVehicle(h.generation, '', { reuseQuote: true });
+    assert.notEqual(h.context.quote, prior);
+    assert.equal(h.calls.length, requests);
+    assert.equal(h.opened.length, 1);
+  }
+});
+
+test('known-owned handoffs skip the quote and Library fetches a price only if access is missing', async () => {
+  for (const quoteMode of ['skip', 'if-needed']) {
+    const h = selectionQuoteHarness({ enabled: true });
+    await h.context.selectVehicle(h.generation, '', { quoteMode });
+    assert.equal(h.opened.length, 1);
+    assert.equal(h.calls.length, 0);
+
+    const required = Object.assign(new Error('Access required'), { code: 'ENTITLEMENT_REQUIRED' });
+    h.context.loadArticles = async () => { throw required; };
+    await assert.rejects(h.context.selectVehicle(h.generation, '', { quoteMode }), required);
+    assert.equal(h.calls.length, quoteMode === 'if-needed' ? 1 : 0);
+  }
+});
+
+test('saved exact Firebase links try the article before fetching index or quote', async () => {
+  for (const [mode, openDemo, supported, index] of [
+    ['firebase', false, true, false], ['firebase', false, false, true],
+    ['local', false, true, true], ['firebase', true, true, true],
+  ]) {
+    const h = selectionQuoteHarness({ enabled: true }, { openDemo });
+    h.context.session.state.mode = mode;
+    const direct = [];
+    h.context.loadArticle = async (id, generation, options) => {
+      assert.equal(id, routeArticle);
+      assert.equal(generation, h.generation);
+      assert.equal(options.savedLink, true);
+      direct.push(id);
+      return supported;
+    };
+    await h.context.selectVehicle(h.generation, routeArticle, { savedLink: true });
+    assert.equal(h.opened.length, Number(index));
+    assert.equal(direct.length, Number(mode === 'firebase' && !openDemo));
+    assert.equal(h.calls.length, Number(mode === 'local'));
+  }
+});
+
+test('cold selection waits for confirmed authentication and leaves superseded choices alone', async () => {
+  for (const canceled of [false, true]) {
+    const h = selectionQuoteHarness({ enabled: true }, { authenticated: false });
+    const account = deferredAuthOperation();
+    h.context.sessionRequest = account.promise;
+    const selecting = h.context.selectVehicle(h.generation);
+    assert.equal(h.calls.length, 0);
+    assert.equal(h.opened.length, 0);
+    if (canceled) h.navigation.clear();
+    h.context.session.state.authenticated = true;
+    account.resolve();
+    await selecting;
+    assert.equal(h.opened.length, canceled ? 0 : 1);
+    assert.equal(h.calls.length, canceled ? 0 : 1);
+  }
+});
 
 test('open demo selects a vehicle without login, quote, or purchase', async () => {
   const h = selectionQuoteHarness({ enabled: true }, {
@@ -3326,6 +6030,111 @@ test('enabled purchasing keeps scoped quote validation, tolerated unavailable qu
   }
 });
 
+test('startup restores an authenticated route before purchase configuration settles', async () => {
+  let finishMerchant;
+  const opened = [];
+  const config = { enabled: true };
+  const context = {
+    URLSearchParams, location: { search: '?view=library' }, openDemo: false,
+    merchant: null, merchantRequest: null, sessionEstablished: false, sessionRequest: null,
+    session: { async bootstrap() {} }, invalidate() {}, renderPurchase() {},
+    requestJSON(path) {
+      assert.equal(path, '/workshop/purchase-config.json');
+      return new Promise(resolve => { finishMerchant = resolve; });
+    },
+    async restoreRoute() { opened.push('library'); },
+  };
+  runInNewContext(appSection('async function bootstrap(', 'async function restoreRoute('), context);
+  const booted = context.bootstrap();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(opened, ['library']);
+  assert.equal(context.sessionEstablished, true);
+  assert.equal(context.merchant, null);
+  finishMerchant(config);
+  await booted;
+  await context.merchantRequest;
+  assert.equal(context.merchant, config);
+});
+
+test('cold startup exposes the prefetched public years during the account check', async () => {
+  const account = deferredAuthOperation();
+  const requests = [], routes = [];
+  const years = { items: [{ year: 2024 }] };
+  const context = {
+    URLSearchParams, location: { search: '' }, openDemo: false,
+    merchant: null, merchantRequest: null, sessionEstablished: false, sessionRequest: null,
+    session: { bootstrap: () => account.promise }, invalidate() {},
+    async requestJSON(path) {
+      requests.push(path);
+      return path === '/v1/catalog/years' ? years : { enabled: false };
+    },
+    async restoreRoute(initialYears) { routes.push(await initialYears); },
+  };
+  runInNewContext(appSection('async function bootstrap(', 'async function restoreRoute('), context);
+  const booted = context.bootstrap();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(routes, [years]);
+  assert.deepEqual(requests, ['/v1/catalog/years', '/workshop/purchase-config.json']);
+  assert.equal(context.sessionEstablished, false);
+  account.resolve();
+  await booted;
+  assert.deepEqual(routes, [years]);
+  assert.equal(context.sessionRequest, null);
+  assert.equal(context.sessionEstablished, true);
+});
+
+test('a late purchase configuration response cannot overwrite a newer refresh', async () => {
+  const replies = [];
+  const context = {
+    URLSearchParams, location: { search: '?view=library' }, openDemo: false,
+    merchant: null, merchantRequest: null, sessionEstablished: false, sessionRequest: null,
+    session: { async bootstrap() {} }, invalidate() {}, async restoreRoute() {},
+    requestJSON(path) {
+      assert.equal(path, '/workshop/purchase-config.json');
+      return new Promise(resolve => replies.push(resolve));
+    },
+  };
+  runInNewContext(appSection('async function bootstrap(', 'async function restoreRoute('), context);
+  await context.bootstrap();
+  const first = context.merchantRequest;
+  await context.bootstrap();
+  const latest = context.merchantRequest;
+  const disabled = { enabled: false };
+  replies[1](disabled);
+  await latest;
+  replies[0]({ enabled: true });
+  await first;
+  assert.equal(context.merchant, disabled);
+  assert.equal(context.merchantRequest, null);
+});
+
+test('owned articles can open before the purchase settings and scoped quote arrive', async () => {
+  let finishMerchant;
+  const h = selectionQuoteHarness(null);
+  h.context.merchantRequest = new Promise(resolve => { finishMerchant = resolve; });
+  await h.context.selectVehicle(h.generation, 'article-a');
+  assert.equal(h.opened[0]?.id, 'article-a');
+  assert.equal(h.calls.length, 0);
+  h.context.merchant = { enabled: true };
+  finishMerchant();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.calls.length, 1);
+  assert.equal(validQuote(h.context.quote, scope), true);
+});
+
+test('an obsolete vehicle cannot request a quote when purchase settings arrive', async () => {
+  let finishMerchant;
+  const h = selectionQuoteHarness(null);
+  h.context.merchantRequest = new Promise(resolve => { finishMerchant = resolve; });
+  await h.context.selectVehicle(h.generation, 'article-a');
+  h.navigation.clear();
+  h.context.merchant = { enabled: true };
+  finishMerchant();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.calls.length, 0);
+  assert.equal(h.context.quote, null);
+});
+
 test('owned articles open while a scoped quote is still in flight', async () => {
   let release;
   const h = selectionQuoteHarness({ enabled: true }, {
@@ -3363,10 +6172,190 @@ function articleRouteHarness(mode, request, authenticated = true, openDemo = fal
     },
   });
   h.context.openDemo = openDemo;
-  h.context.demoPath = path => openDemo ? `${path}?demo=1` : path;
+  h.context.demoPath = path => openDemo ? `${path}${path.includes('?') ? '&' : '?'}demo=1` : path;
   runInNewContext(appSection('async function loadArticle(', 'function openArticle('), h.context);
   return h;
 }
+
+test('the saved reader uses the authorized configuration and can fall back on an older response', async () => {
+  const article = mediaArticle([{ type: 'paragraph', text: 'Stored procedure.' }]);
+  const configuration = { id: routeConfiguration, region: 'US', make: 'Example', model: 'Car', engine: '2.0 L' };
+  for (const [scopeFromResponse, rendered] of [[configuration, true], [undefined, false],
+    [{ ...configuration, region: 'CA' }, false]]) {
+    const h = articleRouteHarness('firebase', async () => ({ data: { article, configuration: scopeFromResponse } }));
+    h.context.vehicle = { id: routeConfiguration, region: 'US' };
+    h.context.quote = null;
+    h.context.access = 'unknown';
+    h.context.renderPurchase = () => { h.nodes.get('purchase-selection').textContent = h.context.vehicle.engine; };
+    assert.equal(await h.context.loadArticle('a', h.g, { savedLink: true }), rendered);
+    assert.equal(h.context.currentArticle, rendered ? article : null);
+    assert.equal(h.context.access, rendered ? 'owned' : 'unknown');
+    if (rendered) assert.equal(h.nodes.get('reader-vehicle').textContent, '2.0 L');
+  }
+  for (const status of [404, 403]) {
+    const error = Object.assign(new Error('Unavailable'), { status });
+    const h = articleRouteHarness('firebase', async () => { throw error; });
+    h.context.vehicle = { id: routeConfiguration, region: 'US' };
+    const direct = h.context.loadArticle('a', h.g, { savedLink: true });
+    if (status === 404) assert.equal(await direct, false);
+    else await assert.rejects(direct, error);
+    assert.equal(h.context.currentArticle, null);
+  }
+});
+
+test('lost paid prepare recovers stored source or a durable job with scoped GETs only', async () => {
+  const { requestArticleJSON } = await import('./workshop/catalog.mjs');
+  const configuration = { id: routeConfiguration, region: 'CA', engine: 'Synthetic 2.0 L' };
+  const ready = mediaArticle([{ type: 'paragraph', text: 'Retained procedure.' }]);
+  const pending = { id: 'a', processing: { job_id: 'committed-job', state: 'fetching_source' } };
+  for (const [savedLink, detailReplies] of [
+    [false, [{ article: ready }]],
+    [true, [{ article: ready, configuration }]],
+    [true, [{ article: pending, configuration }, { article: ready, configuration }]],
+  ]) {
+    const calls = [];
+    const h = articleRouteHarness('firebase', (path, options) => requestArticleJSON(path, {
+      ...options,
+      fetcher: async (_url, { method, headers }) => {
+        calls.push({ path, method, headers, signal: options.signal });
+        if (method === 'POST') throw new TypeError('The connection was reset after prepare');
+        const data = detailReplies.shift();
+        assert.ok(data, 'only the initial recovery and durable job polling may read');
+        return new Response(JSON.stringify(data), { status: data.article === pending ? 202 : 200 });
+      },
+    }));
+    const expectedCalls = detailReplies.length + 1;
+    h.context.articlePath = id => `/v1/catalog/vehicles/${routeConfiguration}/articles/${id}`;
+    h.context.vehicle = { id: routeConfiguration, region: 'CA' };
+    h.context.quote = null;
+    h.context.access = 'unknown';
+    h.context.renderPurchase = () => { h.nodes.get('purchase-selection').textContent = h.context.vehicle.engine; };
+    assert.equal(await h.context.loadArticle('a', h.g, { savedLink }), true);
+    assert.equal(calls.length, expectedCalls);
+    assert.deepEqual(calls.map(({ method }) => method), ['POST', ...Array(expectedCalls - 1).fill('GET')]);
+    assert.equal(calls[0].path, `/v1/catalog/vehicles/${routeConfiguration}/articles/a/prepare?region=CA`);
+    assert.equal(calls[0].headers['X-CSRF-Token'], 'csrf');
+    for (const call of calls.slice(1)) {
+      assert.equal(call.path, `/v1/catalog/vehicles/${routeConfiguration}/articles/a?region=CA`);
+      assert.equal(call.headers['X-CSRF-Token'], undefined);
+    }
+    assert.ok(calls.every(({ signal }) => signal === h.g.signal));
+    assert.equal(h.nodes.get('article-content').textContent, 'Retained procedure.');
+    if (savedLink) {
+      assert.equal(h.context.access, 'owned');
+      assert.equal(h.nodes.get('reader-vehicle').textContent, configuration.engine);
+    }
+  }
+});
+
+test('an interrupted prepare body can recover after success without a retry delay', async () => {
+  const { requestArticleJSON } = await import('./workshop/catalog.mjs');
+  const configuration = { id: routeConfiguration, region: 'US' };
+  const article = mediaArticle([{ type: 'paragraph', text: 'Retained procedure.' }]);
+  for (const [status, malformed, retryAfter, expected] of [
+    [200, false, 0, null],
+    [202, false, 0, null],
+    [202, false, 7, { status: 0, code: 'INVALID_RESPONSE' }],
+    [200, true, 0, { status: 0, code: 'INVALID_RESPONSE' }],
+    [401, false, 0, { status: 401 }],
+    [403, false, 0, { status: 403 }],
+    [410, false, 0, { status: 410 }],
+    [429, false, 7, { status: 429, retryAfterSeconds: 7 }],
+    [503, false, 7, { status: 503, retryAfterSeconds: 7 }],
+  ]) {
+    const calls = [];
+    const h = articleRouteHarness('firebase', (path, options) => requestArticleJSON(path, {
+      ...options,
+      fetcher: async (_url, { method }) => {
+        calls.push([method, path]);
+        if (method === 'GET') return new Response(JSON.stringify({ configuration, article }));
+        const interruptedBody = malformed ? '{"article":' : new ReadableStream({
+          start(controller) { controller.error(new TypeError('The response was truncated')); },
+        });
+        return new Response(interruptedBody, { status, headers: retryAfter ? { 'Retry-After': String(retryAfter) } : {} });
+      },
+    }));
+    h.context.vehicle = configuration;
+    h.context.renderPurchase = () => {};
+    const loading = h.context.loadArticle('a', h.g, { savedLink: true });
+    if (expected) await assert.rejects(loading, expected);
+    else assert.equal(await loading, true);
+    const prepare = ['POST', '/v1/catalog/vehicles/v/articles/a/prepare?region=US'];
+    const detail = ['GET', '/v1/catalog/vehicles/v/articles/a?region=US'];
+    assert.deepEqual(calls, expected ? [prepare] : [prepare, detail]);
+    assert.equal(Boolean(h.context.currentArticle), !expected);
+  }
+});
+
+test('paid prepare recovery requires a usable exact article and honors authoritative denial', async () => {
+  const lost = Object.assign(new Error('Cannot reach AutoData.'), { status: 0, code: 'NETWORK_UNAVAILABLE' });
+  const configuration = { id: routeConfiguration, region: 'US' };
+  const article = mediaArticle([{ type: 'paragraph', text: 'Protected procedure.' }]);
+  const detailError = status => Object.assign(new Error('Detail unavailable'), {
+    status, code: status === 404 ? 'CATALOG_NOT_FOUND' : 'HTTP_ERROR',
+  });
+  for (const detail of [
+    ...[401, 403, 410, 404, 429, 503].map(detailError),
+    { status: 200, data: { article } },
+    { status: 200, data: { article, configuration: { ...configuration, region: 'CA' } } },
+    { status: 200, data: { article, configuration: { ...configuration, id: routeOrder } } },
+    { status: 200, data: { article: { ...article, id: 'b' }, configuration } },
+    { status: 200, data: { article: { id: 'a' }, configuration } },
+    { status: 202, data: { article: { id: 'a' }, configuration } },
+  ]) {
+    let calls = 0;
+    const h = articleRouteHarness('firebase', async () => {
+      if (++calls === 1) throw lost;
+      if (detail instanceof Error) throw detail;
+      return detail;
+    });
+    h.context.vehicle = configuration;
+    const expected = [401, 403, 404, 410].includes(detail.status) ? detail : lost;
+    await assert.rejects(h.context.loadArticle('a', h.g, { savedLink: true }), error => error === expected);
+    assert.equal(calls, 2);
+    assert.equal(h.context.currentArticle, null);
+    assert.equal(h.nodes.get('print').disabled, true);
+    if (detail.status === 404) assert.equal(h.nodes.get('article-title').textContent, 'Article unavailable');
+  }
+});
+
+test('only a current paid transport failure can start a prepare recovery GET', async () => {
+  const lost = Object.assign(new Error('Cannot reach AutoData.'), { status: 0, code: 'NETWORK_UNAVAILABLE' });
+  for (const [mode, demo, error] of [
+    ['local', false, lost], ['firebase', true, lost],
+    ...[401, 403, 410, 429, 503].map(status => ['firebase', false, Object.assign(new Error('Prepare unavailable'),
+      { status, code: 'NETWORK_UNAVAILABLE' })]),
+  ]) {
+    let calls = 0;
+    const h = articleRouteHarness(mode, async () => { calls++; throw error; }, !demo, demo);
+    await assert.rejects(h.context.loadArticle('a', h.g), failure => failure === error);
+    assert.equal(calls, 1);
+  }
+  for (const duringRecovery of [false, true]) {
+    const inflight = deferredAuthOperation(), detailStarted = deferredAuthOperation();
+    const methods = [];
+    const h = articleRouteHarness('firebase', async (_path, options) => {
+      methods.push(options.method || 'GET');
+      if (!duringRecovery) return inflight.promise;
+      if (options.method === 'POST') throw lost;
+      detailStarted.resolve();
+      return inflight.promise;
+    });
+    const opening = h.context.loadArticle('a', h.g);
+    if (duringRecovery) await detailStarted.promise;
+    h.navigation.next();
+    if (duringRecovery) {
+      inflight.resolve({ status: 200, data: { article: mediaArticle([{ type: 'paragraph', text: 'Obsolete.' }]) } });
+      await opening;
+    } else {
+      inflight.reject(lost);
+      await assert.rejects(opening, error => error === lost);
+    }
+    assert.equal(h.g.signal.aborted, true);
+    assert.equal(h.context.currentArticle, null);
+    assert.deepEqual(methods, duringRecovery ? ['POST', 'GET'] : ['POST']);
+  }
+});
 
 test('open demo reads an article with GET and no session or checkout', async () => {
   const calls = [], article = mediaArticle([{ type: 'paragraph', text: 'Stored procedure.' }]);
@@ -3376,7 +6365,7 @@ test('open demo reads an article with GET and no session or checkout', async () 
   }, false, true);
   await h.context.loadArticle('a', h.g);
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].path, '/v1/catalog/vehicles/v/articles/a?demo=1');
+  assert.equal(calls[0].path, '/v1/catalog/vehicles/v/articles/a?region=US&demo=1');
   assert.equal(calls[0].options.method, undefined);
 });
 
@@ -3386,7 +6375,7 @@ for (const mode of ['local', 'firebase', undefined, null, 'LOCAL', 'other']) {
     const h = articleRouteHarness(mode, async (path, options) => { calls.push({ path, options }); return { data: { article } }; });
     await h.context.loadArticle('a', h.g);
     assert.equal(calls.length, 1);
-    assert.equal(calls[0].path, mode === 'local' ? '/v1/catalog/vehicles/v/articles/a' : '/v1/catalog/vehicles/v/articles/a/prepare');
+    assert.equal(calls[0].path, mode === 'local' ? '/v1/catalog/vehicles/v/articles/a?region=US' : '/v1/catalog/vehicles/v/articles/a/prepare?region=US');
     assert.equal(calls[0].options.method || 'GET', mode === 'local' ? 'GET' : 'POST');
     assert.equal(calls[0].options.signal, h.g.signal);
     if (mode === 'local') {
@@ -3409,7 +6398,7 @@ test('local mode preserves actual GET polling responses and session authorizatio
   });
   await h.context.loadArticle('a', h.g);
   assert.equal(calls.length, 2);
-  assert.ok(calls.every(c => c.path === '/v1/catalog/vehicles/v/articles/a' && !c.options.method));
+  assert.ok(calls.every(c => c.path === '/v1/catalog/vehicles/v/articles/a?region=US' && !c.options.method));
   assert.equal(h.context.currentArticle, ready);
   const signedOut = articleRouteHarness('local', () => assert.fail('local mode does not grant a session'), false);
   await signedOut.context.loadArticle('a', signedOut.g);
@@ -3582,7 +6571,7 @@ test('local opaque image URLs require explicit local mode and retain strict URL 
   }
 });
 
-test('local referenced step images render and reconcile with opaque tokens without broad compatibility', () => {
+test('local referenced step images render and retry with opaque tokens without broad compatibility', () => {
   const image = { id: 'local-image', url: localOpaqueImagePath(localOpaqueImageToken), alt: 'Stored diagram' };
   const article = mediaArticle([], [image], { steps: [{ number: 1, action: 'Inspect', instructions: ['Inspect the stored diagram.'], image_ids: ['local-image'] }] });
   for (const mode of ['local', 'firebase', undefined]) {
@@ -3594,10 +6583,10 @@ test('local referenced step images render and reconcile with opaque tokens witho
       assert.equal(images[0].src, 'https://cars.example' + image.url);
       assert.equal(images[0].referrerPolicy, 'no-referrer');
       const replacement = localOpaqueImagePath('ZyXw9876_-'.repeat(15));
-      h.context.reconcileImages(parent, [{ ...image, url: replacement }], h.g);
+      assert.equal(h.context.retryImage(images[0], [{ ...image, url: replacement }]), true);
       assert.equal(images[0].src, 'https://cars.example' + replacement);
       h.navigation.clear();
-      h.context.reconcileImages(parent, [image], h.g);
+      void h.context.renewMedia(h.g, images[0]);
       assert.equal(images[0].src, 'https://cars.example' + replacement);
     }
   }
@@ -3610,12 +6599,15 @@ for (const fixture of searchRendererFixtures) test(`search renderer fixture: ${f
   const article = mediaArticle([], [], fixture.article);
   const presentation = articlePresentation(article);
   assert.equal(presentation.introBlocks.length > 0, fixture.has_intro);
-  const rendered = articleMediaHarness().render(article).textContent;
+  const parent = articleMediaHarness().render(article);
+  const rendered = parent.textContent;
   const lower = rendered.toLowerCase();
+  const imageAlt = mediaDescendants(parent, 'img').map(image => image.alt).join(' ').toLowerCase();
   for (const query of fixture.visible_queries) {
     for (const word of query.toLowerCase().split(/\s+/)) assert.ok(lower.includes(word), `${query} is visible`);
   }
-  for (const query of fixture.hidden_queries) assert.ok(!lower.includes(query.toLowerCase()), `${query} remains hidden`);
+  for (const query of fixture.accessible_queries || []) assert.ok(imageAlt.includes(query.toLowerCase()), `${query} is an image alternative`);
+  for (const query of fixture.hidden_queries) assert.ok(!lower.includes(query.toLowerCase()) && !imageAlt.includes(query.toLowerCase()), `${query} remains hidden`);
   for (const phrase of fixture.once) assert.equal(rendered.split(phrase).length - 1, 1, `${phrase} renders once`);
 });
 
@@ -3645,14 +6637,113 @@ test('source and canonical viewers retain nested list and table cell content', (
   }
 });
 
-test('a late stored-source response cannot reopen the panel after the article revision changes', async () => {
+test('source and published viewers place each occurrence of a shared retained PDF figure', () => {
+  const diagrams = [{ id: 'shared', url: mediaURL('shared-pdf') }];
+  const blocks = [
+    { type: 'paragraph', text: 'Open the pump cover.' },
+    { type: 'image', block_id: 'page-1-figure', asset_id: 'shared', alt: 'Figure from page 1' },
+    { type: 'paragraph', text: 'Inspect the seal.' },
+    { type: 'image', block_id: 'page-2-figure', asset_id: 'shared', alt: 'Figure from page 2' },
+    { type: 'paragraph', text: 'Install the replacement.' },
+  ];
+  for (const content_origin of ['source', 'canonical']) {
+    const parent = articleMediaHarness().content(mediaArticle(blocks, diagrams, { content_origin }));
+    assert.deepEqual(mediaTags(parent), ['p', 'figure', 'p', 'figure', 'p']);
+    const occurrences = mediaDescendants(parent, 'img');
+    assert.deepEqual(occurrences.map(image => image.alt), ['Figure from page 1', 'Figure from page 2']);
+    assert.equal(occurrences[0].src, occurrences[1].src);
+  }
+});
+
+test('first publication keeps the approved source panel and its cited focus', async () => {
+  const review = { available: true, url: mediaSourceURL };
+  const figure = { type: 'image', block_id: 'pinned-figure', asset_id: 'drawing', alt: 'Original drawing' };
+  const images = [{ id: 'drawing', url: mediaURL('original') }];
+  let requests = 0;
+  const h = articleMediaHarness({ requestJSON: async () => {
+    requests++;
+    return { source: { url: mediaSourceURL }, document: { blocks: [figure] }, images };
+  } });
+  h.render(mediaArticle([{ type: 'paragraph', text: 'Original instructions' }], [], { source_review: review }));
+  await h.context.loadSource(mediaSourceURL, h.g, figure.block_id);
+  const frame = h.nodes.get('source-review-frame'), cited = mediaDescendants(frame, 'figure')[0];
+  assert.equal(cited.focusCalls, 1);
+
+  const content = h.render(mediaArticle([{ type: 'paragraph', text: 'Published procedure' }], [], {
+    source_review: review, view_revision: 'view-2', content_origin: 'canonical',
+  }));
+  assert.equal(content.textContent, 'Published procedure');
+  assert.equal(frame.hidden, false);
+  assert.equal(frame.children[0], cited);
+  assert.equal(cited.focusCalls, 1);
+  assert.equal(h.nodes.get('source-review-meta').textContent, 'Stored source loaded.');
+  assert.equal(requests, 1);
+
+  h.render(mediaArticle([{ type: 'paragraph', text: 'Published procedure' }], [], {
+    source_review: { available: false }, view_revision: 'view-2', content_origin: 'canonical',
+  }));
+  assert.equal(frame.hidden, true);
+  assert.equal(frame.children.length, 0);
+});
+
+test('a source review can finish during publication while its approved pin stays the same', async () => {
+  const pending = deferredAuthOperation();
+  const review = { available: true, url: mediaSourceURL };
+  const h = articleMediaHarness({ requestJSON: () => pending.promise });
+  h.render(mediaArticle([{ type: 'paragraph', text: 'Original' }], [], { source_review: review }));
+  const load = h.context.loadSource(mediaSourceURL, h.g);
+  h.render(mediaArticle([{ type: 'paragraph', text: 'Published' }], [], {
+    view_revision: 'view-2', content_origin: 'canonical', source_review: review,
+  }));
+  assert.equal(h.nodes.get('source-review-load').disabled, true);
+  pending.resolve({ source: { url: mediaSourceURL }, document: { blocks: [{ type: 'paragraph', text: 'Original' }] } });
+  await load;
+  assert.equal(h.nodes.get('source-review-frame').hidden, false);
+  assert.equal(h.nodes.get('source-review-frame').textContent, 'Original');
+  assert.equal(h.nodes.get('source-review-load').disabled, false);
+});
+
+test('an in-flight source figure repair uses the new publication anchor for the retained panel', async () => {
+  const stale = deferredAuthOperation();
+  const review = { available: true, url: mediaSourceURL };
+  const figure = { type: 'image', asset_id: 'drawing', alt: 'Original drawing' };
+  const source = token => ({
+    source: { url: mediaSourceURL },
+    document: { blocks: [figure] },
+    images: [{ id: 'drawing', url: mediaURL(token) }],
+  });
+  const requests = [];
+  const h = articleMediaHarness({ requestJSON: async url => {
+    requests.push(url);
+    if (requests.length === 2) return stale.promise;
+    return source(requests.length === 1 ? 'original' : 'published-anchor');
+  } });
+  h.render(mediaArticle([{ type: 'paragraph', text: 'Original' }], [], { source_review: review }));
+  await h.context.loadSource(mediaSourceURL, h.g);
+  const frame = h.nodes.get('source-review-frame'), img = mediaDescendants(frame, 'img')[0];
+  const repair = h.context.renewMedia(h.g, img);
+  assert.equal(requests.length, 2);
+  h.render(mediaArticle([{ type: 'paragraph', text: 'Published' }], [], {
+    view_revision: 'view-2', content_origin: 'canonical', source_review: review,
+  }));
+  stale.resolve(source('stale-anchor'));
+  await repair;
+  assert.equal(mediaDescendants(frame, 'img')[0], img);
+  assert.equal(img.src, 'https://cars.example' + mediaURL('published-anchor'));
+  assert.equal(requests.length, 3);
+});
+
+test('a late stored-source response cannot reopen the panel after the approved pin changes', async () => {
   const pending = deferredAuthOperation();
   const h = articleMediaHarness({ requestJSON: () => pending.promise });
-  h.render(mediaArticle([{ type: 'paragraph', text: 'Source displayed' }]));
+  h.render(mediaArticle([{ type: 'paragraph', text: 'Source displayed' }], [], {
+    source_review: { available: true, url: mediaSourceURL },
+  }));
   const load = h.context.loadSource(mediaSourceURL, h.g);
   assert.equal(h.nodes.get('source-review-load').disabled, true);
   h.render(mediaArticle([{ type: 'paragraph', text: 'Workshop revision' }], [], {
     view_revision: 'view-2', content_origin: 'canonical',
+    source_review: { available: true, url: mediaSourceURL.replace('11111111-', '22222222-') },
   }));
   pending.resolve({
     source: { url: mediaSourceURL },
@@ -3688,8 +6779,7 @@ test('a stale media renewal cannot clear a newly opened pinned source', async ()
   h.render(renewalFixture());
   await h.context.loadSource(mediaSourceURL, h.g);
   const frame = h.nodes.get('source-review-frame');
-  mediaDescendants(frame, 'img')[0].dispatch('error');
-  const renewal = h.context.renewal;
+  const renewal = h.context.renewMedia(h.g, mediaDescendants(frame, 'img')[0]);
   await renewalRequested.promise;
   assert.equal(calls.length, 2);
   await h.context.loadSource(newerURL, h.g);
