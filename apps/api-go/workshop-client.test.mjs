@@ -589,15 +589,24 @@ test('reader checks for first publication early and preserves the regular read o
     article: { body: 'Stored', content_origin: 'source', processing: { job_id: 'job', state: 'rewriting' } },
   } };
   const timed = { ...source, shortPublicationCheck: false, retryAfterSeconds: 1 };
+  const changedJob = { ...source, data: {
+    article: { ...source.data.article, processing: { ...source.data.article.processing, job_id: 'different-job' } },
+  } };
   const ready = { status: 200, data: { article: { body: 'Published', content_origin: 'canonical' } } };
   const busy = Object.assign(new Error('Busy'), { status: 503, retryable: true, retryAfterSeconds: 7 });
 
   for (const [label, responses, expected] of [
     ['publication already ready for the probe', [pending, source, ready], [0, 250, 750]],
-    ['regular read preserved', [pending, source, source, timed, ready], [0, 250, 750, 1250, 2250]],
-    ['initially readable article', [source, source, timed, ready], [0, 500, 1000, 3000]],
+    ['publication ready after the first probe', [source, source, ready], [0, 500, 750]],
+    ['regular read preserved', [pending, source, source, source, timed, ready], [0, 250, 750, 1000, 1250, 2250]],
+    ['initially readable article', [source, source, source, timed, ready], [0, 500, 750, 1000, 3000]],
+    ['job changed during the first probe', [source, changedJob, ready], [0, 500, 1000]],
+    ['short read no longer offered', [source, timed, ready], [0, 500, 1500]],
+    ['first probe returned after the second probe would start', [source, source, ready], [0, 500, 1000]],
     ['network failure rejoins regular read', [source, new TypeError('Network failed'), ready], [0, 500, 1000]],
+    ['second probe timeout rejoins regular read', [source, source, new TypeError('Network failed'), ready], [0, 500, 750, 1000]],
     ['overload wins over the regular read', [source, busy, ready], [0, 500, 7500]],
+    ['second probe overload', [source, source, busy, ready], [0, 500, 750, 7750]],
     ['explicit server delay wins', [{ ...source, retryAfterSeconds: 6 }, ready], [0, 6000]],
   ]) {
     let now = 0;
@@ -606,20 +615,25 @@ test('reader checks for first publication early and preserves the regular read o
       starts.push(now);
       qualifiers.push(preferShortPublicationCheck);
       if (label === 'initially readable article') {
-        assert.equal(Boolean(finishPublishedBody), now === 500);
-        assert.equal(readableBodyTimeout, now === 500 ? 1000 : undefined);
+        assert.equal(Boolean(finishPublishedBody), now === 500 || now === 750);
+        assert.equal(readableBodyTimeout, now === 500 ? 1000 : now === 750 ? 750 : undefined);
       }
       const next = responses.shift();
       if (label === 'network failure rejoins regular read' && next instanceof TypeError) {
         assert.equal(timeout, 500);
         now += timeout;
       }
+      if (label === 'second probe timeout rejoins regular read' && next instanceof TypeError) {
+        assert.equal(timeout, 250);
+        now += timeout;
+      }
+      if (label === 'first probe returned after the second probe would start' && now === 500) now += 300;
       if (next instanceof Error) throw next;
       return next;
     }, { now: () => now, wait: async ms => { now += ms; } });
     assert.deepEqual(starts, expected, label);
     assert.equal(qualifiers[0], true, label);
-    if (label === 'initially readable article') assert.deepEqual(qualifiers, [true, true, false, false]);
+    if (label === 'initially readable article') assert.deepEqual(qualifiers, [true, true, true, false, false]);
     assert.equal(result.data.article.body, 'Published', label);
   }
 });

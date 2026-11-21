@@ -62,12 +62,14 @@ export async function readArticle(
   let firstSourceProbePending = false;
   let sourceConfirmationAt = 0;
   let publicationReadAt = 0;
+  let publicationProbeJob;
   let sawFastSource = false;
   let attempt = 0;
   while (now() < deadline) {
     signal?.throwIfAborted();
     let retryAfter = 0, fastPendingJob, fastSource = false, readable = false;
-    let shortSourceCheck = false, shortPublicationCheck = false, sourceProbeFailed = false;
+    let shortSourceCheck = false, sourceProbeFailed = false;
+    let shortPublicationJob;
     const startedAt = now();
     if (firstReadAt <= startedAt) firstReadAt = 0;
     if (nextSourceProbeAt <= startedAt) nextSourceProbeAt = 0;
@@ -106,8 +108,10 @@ export async function readArticle(
         latest.status === 202 && !readable &&
         ["queued", "fetching_source"].includes(article.processing.state);
       const readableSource = latest.status === 200 && readable && article.content_origin === "source";
-      shortPublicationCheck = latest.shortPublicationCheck === true && retryAfter === 0 &&
-        readableSource && ["normalizing", "rewriting", "validating", "publishing"].includes(article.processing.state);
+      if (latest.shortPublicationCheck === true && retryAfter === 0 &&
+          readableSource && ["normalizing", "rewriting", "validating", "publishing"].includes(article.processing.state)) {
+        shortPublicationJob = article.processing.job_id;
+      }
       if (retryAfter === 1 && article.processing.state !== "failed") {
         if (latest.status === 202 && !readable) {
           fastPendingJob = article.processing.job_id;
@@ -159,6 +163,15 @@ export async function readArticle(
       }
     }
     if (publicationReadAt) {
+      // If the first probe still sees the same active rewrite, try once
+      // halfway to the ordinary read.
+      const probeWait = publicationReadAt - publicationProbeIntervalMs / 2 - now();
+      const samePublicationJob = publicationProbeJob && publicationProbeJob === shortPublicationJob;
+      publicationProbeJob = undefined;
+      if (samePublicationJob && probeWait > 0) {
+        await wait(Math.min(remaining, probeWait), signal);
+        continue;
+      }
       // A missed publication probe rejoins the original read cadence.
       const regularWait = Math.max(0, publicationReadAt - now());
       publicationReadAt = 0;
@@ -191,14 +204,15 @@ export async function readArticle(
       backoff = Math.max(0, sourceConfirmationAt - now());
       sourceConfirmationAt = 0;
       attempt--;
-    } else if ((fastSource || shortPublicationCheck) && !sawFastSource) {
+    } else if ((fastSource || shortPublicationJob) && !sawFastSource) {
       sawFastSource = true;
       if (backoff > 1000) {
         sourceConfirmationAt = now() + backoff;
         backoff = 1000;
       }
-      if (shortPublicationCheck) {
+      if (shortPublicationJob) {
         publicationReadAt = now() + backoff;
+        publicationProbeJob = shortPublicationJob;
         backoff = publicationProbeIntervalMs;
       }
     }
