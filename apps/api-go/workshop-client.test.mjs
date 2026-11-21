@@ -3167,6 +3167,91 @@ test('readable source ends the opening progress while the rewrite continues', as
   assert.match(h.nodes.get('article-note').textContent, /has not been reviewed/);
 });
 
+test('authoritative article not-found clears previously readable source and printing', async () => {
+  const { requestArticleJSON } = await import('./workshop/catalog.mjs');
+  const { readArticle } = await import('./workshop/article-read.mjs');
+  const source = mediaArticle([{ type: 'paragraph', text: 'Previously readable pump procedure.' }], [], {
+    processing: { job_id: 'rewrite', state: 'rewriting' },
+  });
+  for (const status of [404, 503]) {
+    let calls = 0, elapsed = 0;
+    const h = articleMediaHarness({
+      session: { state: { authenticated: true, csrf: 'fixture' } }, stage() {},
+      viewGeneration: null, paidOrder: null, access: 'owned', articles: [{ id: 'another-article' }],
+      requestArticleJSON(path, options) {
+        return requestArticleJSON(path, { ...options, fetcher: async () => {
+          if (calls++ === 0) return new Response(JSON.stringify({ article: source }));
+          assert.match(h.nodes.get('article-content').textContent, /Previously readable pump procedure/);
+          assert.equal(h.nodes.get('print').disabled, false);
+          return new Response(JSON.stringify({ error: {
+            code: status === 404 ? 'CATALOG_NOT_FOUND' : 'CATALOG_UNAVAILABLE', retryable: status === 503,
+          } }), { status });
+        } });
+      },
+      readArticle: (read, options) => readArticle(read, { ...options, now: () => elapsed,
+        wait: async duration => { elapsed += duration; }, budgetMs: 2000 }),
+    });
+    for (const id of ['cancel', 'loading-progress']) h.nodes.set(id, new ArticleMediaNode('div'));
+    runInNewContext(appSection('async function operation(', 'function updateURL(') +
+      appSection('async function loadArticle(', 'function openArticle('), h.context);
+    await h.context.operation(g => h.context.loadArticle('a', g));
+    assert.equal(calls, 2);
+    assert.equal(h.context.access, 'owned');
+    assert.equal(h.context.articles.length, 1);
+    if (status === 404) {
+      assert.equal(h.nodes.get('article-content').textContent, '');
+      assert.equal(h.nodes.get('print').disabled, true);
+      assert.equal(h.context.document.body.dataset.printable, 'false');
+      assert.equal(h.nodes.get('article-title').textContent, 'Article unavailable');
+      assert.match(h.statuses.at(-1).message, /could not be found/);
+    } else {
+      assert.match(h.nodes.get('article-content').textContent, /Previously readable pump procedure/);
+      assert.equal(h.nodes.get('print').disabled, false);
+      assert.match(h.statuses.at(-1).message, /Article is readable/);
+    }
+  }
+});
+
+test('article detail not-found during image renewal invalidates only that reader', async () => {
+  const { requestArticleJSON } = await import('./workshop/catalog.mjs');
+  const h = articleMediaHarness({
+    session: { state: { authenticated: true, mode: 'firebase' } }, access: 'owned',
+    requestArticleJSON: (path, options) => requestArticleJSON(path, { ...options, fetcher: async () =>
+      new Response(JSON.stringify({ error: { code: 'CATALOG_NOT_FOUND' } }), { status: 404 }) }),
+  });
+  h.render(mediaArticle([{ type: 'image', asset_id: 'fixture' }, { type: 'paragraph', text: 'Readable procedure.' }],
+    [{ id: 'fixture', url: mediaURL('fixture') }]));
+  const image = mediaDescendants(h.nodes.get('article-content'), 'img')[0];
+  await h.context.renewMedia(h.g, image);
+  assert.equal(h.context.access, 'owned');
+  assert.equal(h.g.current(), false);
+  assert.equal(h.nodes.get('article-content').textContent, '');
+  assert.equal(h.nodes.get('print').disabled, true);
+  assert.match(h.statuses.at(-1).message, /could not be found/);
+});
+
+test('pinned source not-found clears its panel and preserves the canonical procedure', async () => {
+  let calls = 0;
+  const h = articleMediaHarness({
+    requestJSON: (path, options) => requestJSON(path, { ...options, fetcher: async () => {
+      if (calls++ === 0) return new Response(JSON.stringify({ source: { url: mediaSourceURL },
+        document: { blocks: [{ type: 'paragraph', text: 'Retained source text' }] } }));
+      return new Response(JSON.stringify({ error: { code: 'CATALOG_NOT_FOUND' } }), { status: 404 });
+    } }),
+  });
+  h.render(mediaArticle([{ type: 'paragraph', text: 'Canonical procedure' }], [], {
+    content_origin: 'canonical', source_review: { available: true, url: mediaSourceURL },
+  }));
+  await h.context.loadSource(mediaSourceURL, h.g);
+  assert.match(h.nodes.get('source-review-frame').textContent, /Retained source text/);
+  await h.context.loadSource(mediaSourceURL, h.g).catch(error => h.context.handleSourceError(error, h.g));
+  assert.equal(h.nodes.get('source-review-frame').textContent, '');
+  assert.equal(h.nodes.get('source-review-frame').hidden, true);
+  assert.equal(h.nodes.get('article-content').textContent, 'Canonical procedure');
+  assert.equal(h.nodes.get('print').disabled, false);
+  assert.equal(h.g.current(), true);
+});
+
 test('obsolete article navigation leaves current heading and focus alone', async () => {
   const h = articleMediaHarness({ session: { state: { authenticated: true } } });
   runInNewContext(appSection('async function loadArticle(', 'function openArticle('), h.context);

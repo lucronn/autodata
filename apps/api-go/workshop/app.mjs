@@ -190,6 +190,11 @@ function resetReaderContent() {
   $("print").disabled = true;
   document.body.dataset.printable = "false";
 }
+function clearUnavailableArticle() {
+  resetReaderContent();
+  $("article-title").textContent = "Article unavailable";
+  document.title = "AutoData — The workshop reference";
+}
 function invalidate() {
   navigation.clear();
   currentOrder = "";
@@ -995,6 +1000,11 @@ async function loadArticle(id, g, { savedLink = false } = {}) {
   $("article-title").focus();
   stage("article");
   status("Opening article…", { busy: true });
+  const handleReadError = (error) => {
+    if (g.current() && error.status === 404 && error.code === "CATALOG_NOT_FOUND")
+      clearUnavailableArticle();
+    throw error;
+  };
   const first = await (openDemo || session.state.mode === "local"
     ? requestArticleJSON(articleRequestPath(id), { signal: g.signal, preferShortPublicationCheck: true })
     : requestArticleJSON(articleRequestPath(id, "/prepare"), {
@@ -1006,7 +1016,7 @@ async function loadArticle(id, g, { savedLink = false } = {}) {
         signal: g.signal,
       })).catch((error) => {
         if (savedLink && error.status === 404) return null;
-        throw error;
+        return handleReadError(error);
       });
   if (!g.current()) return;
   if (savedLink) {
@@ -1043,7 +1053,7 @@ async function loadArticle(id, g, { savedLink = false } = {}) {
         else status("Opening article…", { busy: true });
       },
     },
-  );
+  ).catch(handleReadError);
   if (!g.current()) return;
   const article = result.data?.article;
   const readable = readableArticle(article);
@@ -1135,6 +1145,8 @@ function handleSourceError(error, g) {
   if ([401, 403, 410].includes(error.status)) {
     invalidate();
     show("welcome");
+  } else if (error.status === 404 && error.code === "CATALOG_NOT_FOUND") {
+    resetSourceReview();
   }
   status(error.message || "Stored source is unavailable.", { error: true });
 }
@@ -1172,10 +1184,17 @@ async function renewMedia(g, failed) {
       renderArticle(response.data.article, g);
       return imageMap(response.data.article);
     } catch (error) {
-      if (current() && [401, 403, 410].includes(error.status)) {
-        invalidate();
-        show("welcome");
-        status(error.message, { error: true });
+      if (!current()) return [];
+      if ([401, 403, 410].includes(error.status)) {
+        handleSourceError(error, g);
+      } else if (error.status === 404 && error.code === "CATALOG_NOT_FOUND") {
+        if (stored) handleSourceError(error, g);
+        else {
+          // Cancel any concurrent read of the article that just became unavailable.
+          navigation.clear();
+          clearUnavailableArticle();
+          status(error.message, { error: true });
+        }
       }
       return [];
     }
