@@ -15,6 +15,7 @@ function runInNewContext(code, context) {
   context.requestInitialYears ??= params => requestInitialYears(params, context.requestJSON);
   context.sourceDocumentRequest ??= null;
   context.paidOrder ??= null;
+  context.articleIndexOrigin ??= null;
   return runVM(code, context);
 }
 
@@ -2899,9 +2900,12 @@ test('returning from a direct reader focuses the first partial index without mov
     indexResponse('running', { hydrating: true, items: [article] }),
     () => completion.promise,
   ]);
+  const routes = [];
+  h.context.updateURL = (options) => routes.push(options.replace);
   const returned = h.$('back').events.click();
   await new Promise(setImmediate);
   assert.equal(h.context.document.activeElement, h.$('catalog-title'));
+  assert.deepEqual(routes, [true]);
   assert.equal(h.updates[0].count, 1);
   h.$('search').focus();
   completion.resolve(indexResponse('completed', { complete: true, items: [article, { id: 'added' }] }));
@@ -2935,6 +2939,67 @@ test('returning to an interrupted partial index reuses the rows and resumes the 
   await returned;
   assert.equal(h.updates.at(-1).count, 2);
   assert.equal(h.statuses.at(-1).text, 'Article index ready.');
+});
+
+async function openedIndexHistory() {
+  const article = { id: 'first', title: 'First procedure' };
+  const h = articleIndexHarness([indexResponse('completed', { complete: true, items: [article] })]);
+  const indexURL = `https://cars.example/workshop?configuration=${scope.configuration_id}&region=${scope.region}`;
+  h.context.location.href = indexURL;
+  h.context.vehicle = { id: scope.configuration_id, region: scope.region };
+  h.context.scope = () => ({ configuration_id: h.context.vehicle.id, region: h.context.vehicle.region });
+  h.context.session.state = { authenticated: true, csrf: 'fixture-current' };
+  const routes = [], back = [], restores = [];
+  h.context.updateURL = ({ article = '', replace = false } = {}) => {
+    routes.push({ article, replace });
+    h.context.location.href = article ? `${indexURL}&article=${article}` : indexURL;
+  };
+  h.context.history = { back() { back.push(true); } };
+  h.context.restoreRoute = () => restores.push(true);
+  runInNewContext(appSection('function openArticle(', 'function validSourceURL('), h.context);
+  await h.load();
+  const link = h.$('articles').firstElementChild.firstElementChild.firstElementChild;
+  link.events.click({ button: 0, preventDefault() {} });
+  const returnToIndex = () => {
+    h.context.location.href = indexURL;
+    h.context.restoreHistoryEntry();
+  };
+  return { ...h, link, routes, back, restores, returnToIndex };
+}
+
+test('in-app Back traverses the original index entry once and focuses its article link', async () => {
+  const h = await openedIndexHistory();
+  h.$('back').events.click();
+  h.$('back').events.click();
+  assert.deepEqual(h.back, [true]);
+  h.returnToIndex();
+  assert.deepEqual(h.routes, [{ article: 'first', replace: false }]);
+  assert.equal(h.context.document.activeElement, h.link);
+  assert.deepEqual(h.restores, []);
+  assert.equal(h.requests.length, 1);
+});
+
+test('in-app Back falls back to its index heading when the prior link is gone', async () => {
+  const h = await openedIndexHistory();
+  h.$('articles').replaceChildren();
+  h.$('back').events.click();
+  h.returnToIndex();
+  assert.equal(h.context.document.activeElement, h.$('catalog-title'));
+  assert.deepEqual(h.restores, []);
+});
+
+test('ordinary browser Back and an invalidated in-app return restore the route authoritatively', async () => {
+  for (const change of ['browser', 'account', 'region']) {
+    const h = await openedIndexHistory();
+    if (change !== 'browser') {
+      h.$('back').events.click();
+      if (change === 'account') h.context.session.state.csrf = 'fixture-replaced';
+      else h.context.vehicle.region = 'CA';
+    }
+    h.returnToIndex();
+    assert.deepEqual(h.restores, [true], change);
+    assert.notEqual(h.context.document.activeElement, h.link, change);
+  }
 });
 
 test('complete saved search uses its scoped response and loads the full index only when cleared', async () => {

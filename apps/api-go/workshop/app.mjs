@@ -79,6 +79,7 @@ let quote = null,
   sourceImageRefresh = null,
   sourceDocumentRequest = null,
   viewGeneration = null,
+  articleIndexOrigin = null,
   sessionRequest = null,
   sessionEstablished = false,
   signingIn = false;
@@ -138,6 +139,7 @@ function show(id) {
 }
 function clearProtected() {
   document.title = "AutoData — The workshop reference";
+  articleIndexOrigin = null;
   searchNavigation.clear();
   clearTimeout(searchTimer);
   searchItems = null;
@@ -750,7 +752,7 @@ function renderArticleLinks(items) {
       link.addEventListener("click", (event) => {
         if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
         event.preventDefault();
-        openArticle(item.id);
+        openArticle(item.id, link);
       });
       row.append(link);
     }
@@ -1259,10 +1261,23 @@ async function loadArticle(id, g, { savedLink = false } = {}) {
   );
   return true;
 }
-function openArticle(id) {
+function openArticle(id, indexLink = null) {
+  const indexURL = location.href;
+  const params = indexLink && new URL(indexURL).searchParams;
   updateURL({ article: id });
+  if (indexURL !== location.href) {
+    articleIndexOrigin = params && !params.has("article") && !params.has("order") &&
+      params.get("configuration") === vehicle?.id && params.get("region") === vehicle?.region &&
+      access === "owned" && session.state.authenticated && session.state.csrf
+      ? { indexURL, readerURL: location.href, indexLink, configuration: scope(), csrf: session.state.csrf }
+      : null;
+  }
   operation(
-    (g) => loadArticle(id, g),
+    (g) => {
+      if (articleIndexOrigin && articleIndexOrigin.readerURL === location.href)
+        articleIndexOrigin.generation = g;
+      return loadArticle(id, g);
+    },
     () => openArticle(id),
   );
 }
@@ -1960,9 +1975,35 @@ $("source-review-load").addEventListener("click", () => {
     );
 });
 function returnToArticleIndex() {
+  const origin = articleIndexOrigin;
+  if (origin?.returning) return;
+  const fromKnownReader = origin && origin.readerURL === location.href;
+  if (fromKnownReader && canReuseArticleIndex(origin)) {
+    origin.returning = true;
+    navigation.clear();
+    history.back();
+    return;
+  }
+  articleIndexOrigin = null;
+  updateURL({ replace: true });
+  return fromKnownReader ? restoreRoute() : showReturnedArticleIndex();
+}
+function canReuseArticleIndex(origin) {
+  return access === "owned" && viewGeneration === origin.generation && session.state.authenticated &&
+    session.state.csrf === origin.csrf && vehicle?.id === origin.configuration.configuration_id &&
+    vehicle?.region === origin.configuration.region;
+}
+function restoreHistoryEntry() {
+  const origin = articleIndexOrigin;
+  articleIndexOrigin = null;
+  if (origin?.returning && origin.indexURL === location.href && canReuseArticleIndex(origin)) {
+    return showReturnedArticleIndex(origin.indexLink);
+  }
+  return restoreRoute();
+}
+function showReturnedArticleIndex(indexLink = null) {
   navigation.clear();
   clearReader();
-  updateURL();
   $("completion-status").textContent = "";
   const needsIndex = !articles.length && !indexComplete && !searchItems;
   const refreshIndex = () => operation(
@@ -1971,7 +2012,8 @@ function returnToArticleIndex() {
   if (needsIndex) return refreshIndex();
   show("catalog");
   renderArticles();
-  $("catalog-title").focus();
+  const focus = indexLink && $("articles").contains(indexLink) ? indexLink : $("catalog-title");
+  focus.focus();
   if (indexHydrating) return refreshIndex();
   stage("articles");
   showArticleIndexStatus();
@@ -1981,7 +2023,7 @@ $("print").addEventListener("click", () => {
   if (readableArticle(currentArticle) && (openDemo || session.state.authenticated))
     window.print();
 });
-window.addEventListener("popstate", () => void restoreRoute());
+window.addEventListener("popstate", () => void restoreHistoryEntry());
 window.addEventListener("pagehide", () => invalidate());
 let lifecycleCheck = null;
 let readerCheck = null;
