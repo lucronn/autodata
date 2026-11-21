@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -128,6 +129,39 @@ func TestPostgresPaidCatalogRetainedMediaPublication(t *testing.T) {
 	f.image(1, current.Images[0].URL, 404)
 	f.image(1, historical.Images[0].URL, 404)
 	f.check("scope_denials_before_storage", f.reader.calls.Load() == reads)
+
+	if svg := os.Getenv("AUTODATA_PAID_TEST_ORIGINAL_SVG_SHA256"); svg != "" {
+		svgDigest, err := hex.DecodeString(svg)
+		if err != nil || len(svgDigest) != sha256.Size || bytes.Equal(svgDigest, wantDigest) || mediaType != "image/png" {
+			t.Fatal("fixture needs a private SVG and a distinct PNG derivative")
+		}
+		var snapshot string
+		if err := f.pool.QueryRow(context.Background(), `SELECT source_snapshot_id::text FROM source_snapshots
+			WHERE content_sha256=$1::bpchar`, svg).Scan(&snapshot); err != nil {
+			t.Fatal("private SVG original is missing", err)
+		}
+		articlePath := f.path("/" + f.article)
+		f.exec(`UPDATE source_snapshots SET takedown_status='takedown' WHERE source_snapshot_id=$1::uuid`, snapshot)
+		f.expect(0, "GET", articlePath, "", 410)
+		f.expect(0, "GET", sourcePath, "", 410)
+		f.image(0, current.Images[0].URL, 410)
+		f.image(0, historical.Images[0].URL, 410)
+		f.exec(`UPDATE source_snapshots SET takedown_status='active' WHERE source_snapshot_id=$1::uuid`, snapshot)
+
+		var quarantine string
+		if err := f.pool.QueryRow(context.Background(), `INSERT INTO source_review_items
+			(source_review_item_id,item_key,item_kind,reason_code,source_snapshot_ids)
+			VALUES(gen_random_uuid(),gen_random_uuid()::text,'quarantine','FIXTURE',jsonb_build_array($1::text))
+			RETURNING source_review_item_id::text`, snapshot).Scan(&quarantine); err != nil {
+			t.Fatal("SVG quarantine fixture failed", err)
+		}
+		f.expect(0, "GET", articlePath, "", 404)
+		f.expect(0, "GET", sourcePath, "", 404)
+		f.image(0, current.Images[0].URL, 404)
+		f.image(0, historical.Images[0].URL, 404)
+		f.exec(`UPDATE source_review_items SET status='approved' WHERE source_review_item_id=$1::uuid`, quarantine)
+		f.check("private_svg_rights_suppress_derivative_before_storage", f.reader.calls.Load() == reads)
+	}
 
 	f.exec(`UPDATE entitlements SET status='revoked',revoked_at=now(),revoke_reason='fixture' WHERE commerce_order_id=$1::uuid`, order)
 	f.image(0, current.Images[0].URL, 403)
