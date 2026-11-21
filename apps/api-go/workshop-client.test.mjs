@@ -4035,7 +4035,7 @@ function articleMediaHarness(overrides = {}) {
   const body = new ArticleMediaNode('body'), nodes = new Map();
   const ids = ['articles', 'article-content', 'source-review-frame', 'reference-data', 'library-items',
     'article-title', 'catalog-count', 'article-note', 'source-review-meta', 'source-review', 'source-review-title', 'print',
-    'welcome', 'reader', 'catalog', 'library', 'source-review-link', 'reader-vehicle', 'reader-engine', 'purchase-selection',
+    'welcome', 'reader', 'catalog', 'library', 'source-review-link', 'reader-vehicle', 'reader-engine', 'purchase', 'purchase-selection',
     'article-kind', 'article-reference', 'source-review-load', 'check-order',
     'library-more', 'library-message', 'library-title'];
   for (const id of ids) { const node = new ArticleMediaNode('div'); nodes.set(id, node); body.append(node); }
@@ -4190,6 +4190,22 @@ test('reader refocus reauthorizes account, exact detail and pinned source togeth
   assert.equal(h.context.document.body.dataset.printable, 'true');
   assert.equal(h.nodes.get('source-review-frame').firstElementChild, held);
   assert.equal(focusTarget.focusCalls, 1);
+});
+
+test('opening My vehicles hides the previous purchase panel while Library is loading', async () => {
+  const response = deferredAuthOperation();
+  const h = articleMediaHarness({
+    session: { state: { authenticated: true } }, validLibrary, clearReader() {},
+    requestJSON: () => response.promise,
+  });
+  const purchase = h.nodes.get('purchase');
+  purchase.hidden = false;
+  runInNewContext(appSection('async function library(', 'function clearReader('), h.context);
+  const opening = h.context.library(h.g);
+  assert.equal(purchase.hidden, true);
+  response.resolve({ version: 'v1', next_cursor: null, items: [] });
+  await opening;
+  assert.equal(purchase.hidden, true);
 });
 
 test('Library Load more makes one cursor request and keeps prior cards mounted', async () => {

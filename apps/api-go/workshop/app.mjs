@@ -1482,6 +1482,7 @@ async function renewMedia(g, failed) {
   if (!retryImage(failed, images)) showUnavailableImage(failed);
 }
 async function library(g, append = false, { focusOnShow = false } = {}) {
+  if (!append) $("purchase").hidden = true;
   if (sessionRequest) {
     status("Checking your account…", { busy: true });
     await sessionRequest;
