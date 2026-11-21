@@ -547,15 +547,31 @@ class CommerceService:
             return CommerceResult(dict(version='v1', items=items, next_cursor=next_cursor))
 
     def _article_pending(self, cursor, configuration_id):
-        cursor.execute("""SELECT 1 FROM source_fetch_jobs j JOIN canonical_articles a USING(canonical_article_id) WHERE a.vehicle_configuration_id=%s AND j.job_kind='article'
-            AND (j.status IN ('pending','processing') OR (j.status='failed' AND j.retryable)) LIMIT 1""", (configuration_id,))
+        cursor.execute("""SELECT 1 FROM canonical_articles a
+            JOIN LATERAL (
+                SELECT 1 FROM source_fetch_jobs j
+                WHERE j.canonical_article_id=a.canonical_article_id AND j.job_kind='article'
+                  AND j.status IN ('pending','processing','failed')
+                  AND (j.status<>'failed' OR j.retryable)
+                LIMIT 1
+            ) pending ON true
+            WHERE a.scope_key='configuration:' || %s::uuid::text
+              AND a.provider_slug IN ('bankone','banktwo')
+            LIMIT 1""", (configuration_id,))
         return bool(cursor.fetchone())
 
     def _readable(self, cursor, configuration_id, region):
-        cursor.execute("""SELECT 1 FROM catalog_article_current v JOIN canonical_articles a USING(canonical_article_id)
+        # Select articles by the indexed scope before evaluating the current view.
+        cursor.execute("""SELECT 1 FROM canonical_articles a
+            JOIN LATERAL (
+                SELECT takedown_status,availability,document FROM catalog_article_current
+                WHERE canonical_article_id=a.canonical_article_id LIMIT 1
+            ) v ON true
             JOIN vehicle_configurations c ON c.vehicle_configuration_id=a.vehicle_configuration_id
             JOIN vehicle_identity_bases b USING(vehicle_identity_base_id)
-            WHERE a.vehicle_configuration_id=%s AND b.region=%s AND c.reviewer_state<>'rejected' AND b.reviewer_state<>'rejected'
+            WHERE a.scope_key='configuration:' || %s::uuid::text
+            AND a.provider_slug IN ('bankone','banktwo')
+            AND b.region=%s AND c.reviewer_state<>'rejected' AND b.reviewer_state<>'rejected'
             AND a.membership_status='active' AND EXISTS(SELECT 1 FROM source_snapshots descriptor WHERE descriptor.source_snapshot_id=a.descriptor_source_snapshot_id AND descriptor.takedown_status='active') AND v.takedown_status='active' AND v.availability='available'
             AND jsonb_typeof(v.document->'blocks')='array' AND jsonb_array_length(v.document->'blocks')>0
             AND NOT EXISTS(SELECT 1 FROM source_review_items q WHERE q.item_kind='quarantine' AND q.status<>'approved'

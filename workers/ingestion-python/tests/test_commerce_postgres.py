@@ -369,20 +369,39 @@ def test_payment_survives_source_unavailable_and_restart(commerce):
 
 def test_library_is_owner_only_and_paginated(commerce):
     c=commerce;first=checkout(c);settle(c,first)
-    second=checkout(c,config=str(seed_configuration(c[0],seed_vehicle(c[0]))));settle(c,second)
+    with c[0].connect() as conn:
+        vehicle=conn.execute('SELECT vehicle_id FROM vehicle_configurations WHERE vehicle_configuration_id=%s',(c[4],)).fetchone()['vehicle_id']
+    second=checkout(c,config=str(seed_configuration(c[0],vehicle)));settle(c,second)
     page=c[1].library(*c[3],limit=1);assert len(page['items'])==1 and page['next_cursor']
     last=c[1].library(*c[3],cursor_value=page['next_cursor'],limit=1)
-    assert len(last['items'])==1 and not last['next_cursor'] and page['items'][0]['library_item_id']!=last['items'][0]['library_item_id']
+    assert len(last['items'])==1 and not last['next_cursor']
+    assert [page['items'][0]['library_item_id'],last['items'][0]['library_item_id']]==[second['order_id'],first['order_id']]
     with pytest.raises(CommerceError):c[1].library(str(uuid.uuid4()),str(uuid.uuid4()),cursor_value=page['next_cursor'])
     text=json.dumps(page);assert 'cs_' not in text and 'pi_' not in text and 'acct_' not in text
     descriptor,body=seed_readable_source(c)
-    assert next(i for i in c[1].library(*c[3])['items'] if i['configuration_id']==c[4])['access_state']=='viewable'
+    def states():
+        return {item['library_item_id']:item['access_state'] for item in c[1].library(*c[3])['items']}
+    with c[0].connect() as conn:
+        conn.execute("UPDATE workshop_orders SET preparation_state='index_ready'")
+    assert states()=={first['order_id']:'viewable',second['order_id']:'paid'}
     with c[0].connect() as conn:conn.execute("UPDATE source_snapshots SET takedown_status='takedown' WHERE source_snapshot_id=%s",(descriptor,))
-    assert next(i for i in c[1].library(*c[3])['items'] if i['configuration_id']==c[4])['access_state']!='viewable'
+    assert states()=={first['order_id']:'preparing',second['order_id']:'paid'}
     with c[0].connect() as conn:
         conn.execute("UPDATE source_snapshots SET takedown_status='active' WHERE source_snapshot_id=%s",(descriptor,))
         conn.execute("UPDATE source_snapshots SET takedown_status='takedown' WHERE source_snapshot_id=%s",(body,))
-    assert next(i for i in c[1].library(*c[3])['items'] if i['configuration_id']==c[4])['access_state']!='viewable'
+        conn.execute("UPDATE source_fetch_jobs SET status='failed',retryable=false WHERE job_kind='article'")
+    assert states()=={first['order_id']:'paid',second['order_id']:'paid'}
+    with c[0].connect() as conn:
+        conn.execute("UPDATE source_fetch_jobs SET retryable=true WHERE job_kind='article'")
+    assert states()=={first['order_id']:'preparing',second['order_id']:'paid'}
+    with c[0].connect() as conn:
+        conn.execute("UPDATE source_snapshots SET takedown_status='active' WHERE source_snapshot_id=%s",(body,))
+        conn.execute("""INSERT INTO source_review_items(source_review_item_id,item_key,item_kind,reason_code,source_snapshot_ids)
+            VALUES(gen_random_uuid(),'commerce-library-source','quarantine','FIXTURE',jsonb_build_array(%s::text))""", (body,))
+    assert states()=={first['order_id']:'preparing',second['order_id']:'paid'}
+    with c[0].connect() as conn:
+        conn.execute("UPDATE source_review_items SET status='approved' WHERE item_key='commerce-library-source'")
+    assert states()=={first['order_id']:'viewable',second['order_id']:'paid'}
 
 
 
