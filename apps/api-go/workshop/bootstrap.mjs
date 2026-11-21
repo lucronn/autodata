@@ -1,7 +1,11 @@
 // The fictional layout sample is separate from the real-data test checkout.
 const params = new URLSearchParams(location.search);
 const wantsDemo = params.get('demo') === '1';
+const pageReady = document.readyState === 'loading'
+  ? new Promise(resolve => document.addEventListener('DOMContentLoaded', resolve, { once: true }))
+  : Promise.resolve();
 if (params.get('sample') === '1' && !wantsDemo) {
+  await pageReady;
   await import('./demo.mjs');
 } else {
   if (!wantsDemo) {
@@ -39,6 +43,8 @@ if (params.get('sample') === '1' && !wantsDemo) {
   } catch {
     // An unavailable mode handshake must never be labeled a no-charge checkout.
   }
+  // Startup requests can overlap the stylesheet and page parsing.
+  await pageReady;
   if (wantsDemo && !testCheckoutReady && !openDemoReady) {
     document.getElementById('test-unavailable').hidden = false;
     document.querySelector('.site-header nav').hidden = true;
