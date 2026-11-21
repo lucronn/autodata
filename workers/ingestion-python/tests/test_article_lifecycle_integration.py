@@ -879,13 +879,13 @@ def test_automatic_real_runtime_source_first_publication_and_zero_call_restart(r
 @pytest.mark.parametrize(
     "prompt_version",
     ["v1", "v2", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v12", "v13", "v14", "v15", "v16", "v17", "v18",
-     "v19", "v20", "v21", "v22", "v23", "v24", "v25", "v26", "v27", "v28", "v29", "v30", "v31", "v32", "v33", "v34", "v35", "v36", "v37", "v38", "v39", "v40", "v41", "v42", "v43", "v44"],
+     "v19", "v20", "v21", "v22", "v23", "v24", "v25", "v26", "v27", "v28", "v29", "v30", "v31", "v32", "v33", "v34", "v35", "v36", "v37", "v38", "v39", "v40", "v41", "v42", "v43", "v44", "v45"],
 )
 def test_automatic_real_process_death_reuses_saved_response(runtime, point, prompt_version):
     ensure = automatic_runtime(runtime,"bankone")
     ensure();runtime.pause(point);runtime.start_workers(1);runtime.await_barrier()
     job = runtime.current_job_id();runtime.kill_worker();runtime.expire_lease(job)
-    if prompt_version != "v44":
+    if prompt_version != "v45":
         from hashlib import sha256
         from psycopg.types.json import Jsonb
         from autodata_ingestion.article_lifecycle_types import digest_json
@@ -900,7 +900,7 @@ def test_automatic_real_process_death_reuses_saved_response(runtime, point, prom
             _build_auto_prompt_v30, _build_auto_prompt_v31, _build_auto_prompt_v32, _build_auto_prompt_v33,
             _build_auto_prompt_v34, _build_auto_prompt_v35, _build_auto_prompt_v36, _build_auto_prompt_v37,
             _build_auto_prompt_v38, _build_auto_prompt_v39, _build_auto_prompt_v40, _build_auto_prompt_v41,
-            _build_auto_prompt_v42, _build_auto_prompt_v43, validate_auto,
+            _build_auto_prompt_v42, _build_auto_prompt_v43, _build_auto_prompt_v44, validate_auto,
         )
         build_prompt = {
             "v1": _build_auto_prompt_v1,
@@ -944,6 +944,7 @@ def test_automatic_real_process_death_reuses_saved_response(runtime, point, prom
             "v41": _build_auto_prompt_v41,
             "v42": _build_auto_prompt_v42,
             "v43": _build_auto_prompt_v43,
+            "v44": _build_auto_prompt_v44,
         }[prompt_version]
         with runtime.repo.connect() as conn:
             candidate = conn.execute("SELECT r.* FROM canonical_article_revisions r JOIN source_fetch_jobs j USING(transformation_key) WHERE j.source_fetch_job_id=%s", (job,)).fetchone()
@@ -1166,6 +1167,12 @@ def test_automatic_rejected_rewrite_leaves_source_readable(runtime, mode, source
         "Take the oil pan off, then clean the strainer before releasing the pump body.",
         "Clean the strainer before releasing the pump body, then remove the oil pan.",
         "REWRITE_CLAUSE_MUTATION", id="oil-pump-strainer-preparation-order",
+    ),
+    pytest.param(
+        "Inspect the brake connector before service. Remove the retaining clip and replace the terminal if damaged.",
+        "Before servicing, check the brake connector. Take the retaining clip off. If the terminal is damaged, replace it.",
+        "Inspect the brake connector before service. Take the retaining clip off. If the terminal is damaged, replace it.",
+        "REWRITE_PROSE_TOO_SIMILAR", id="copied-editable-sentence",
     ),
 ])
 def test_automatic_qualifier_controls_publication(runtime, provider, preserved, original, valid, invalid, error_code):

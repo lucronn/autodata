@@ -15,7 +15,7 @@ from .procedure_rewrite_v2 import PROFILE as TECHNICAL_V2
 from .procedure_rewrite_v2 import _selection, plan_v2, render_v2
 
 TECHNICAL_V1 = "technical-prose-v1"
-_SUPPORTED_PROMPTS = frozenset(f"full-prose-auto-prompt-v{version}" for version in range(1, 45))
+_SUPPORTED_PROMPTS = frozenset(f"full-prose-auto-prompt-v{version}" for version in range(1, 46))
 _POSITION_KEYS = frozenset({"block_id", "source_order"})
 _IMAGE_KEYS = _POSITION_KEYS | {"type"}
 MEDIA_METHOD = "published-media-placement-v1"
