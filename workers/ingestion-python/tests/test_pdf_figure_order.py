@@ -13,6 +13,7 @@ from reportlab.pdfgen import canvas
 import pytest
 
 from autodata_ingestion.ocr import OCRTextBlock
+from autodata_ingestion.article_lifecycle_types import PDF_REPEAT_MARGIN_LAYOUT
 from autodata_ingestion.source_adapters import SourceResource, adapt_bound_article
 from autodata_ingestion.source_article_capture import capture_source_article
 from test_source_article_capture import capture_fixture
@@ -89,6 +90,31 @@ def _repeated_pdf(*, margin=False, changed=False):
         pdf.showPage()
     pdf.save()
     return buffer.getvalue()
+
+
+def _pdf_with_logo(layout="header", *, changed=False):
+    stream = BytesIO()
+    pdf = canvas.Canvas(stream, invariant=True, pagesize=(612, 792))
+    diagram, logo = _image(7), _image(8)
+    first = "Check the seal" if changed else "Inspect the seal"
+    for page in range(1, 3):
+        pdf.drawString(72, 722, f"{first} on page {page}.")
+        pdf.drawImage(diagram, 72, 553, width=96, height=96)
+        if layout == "reuse-on-first-page" and page == 1:
+            pdf.drawImage(diagram, 190, 752, width=70, height=30)
+        left, bottom = (72, 615) if layout == "overlap-on-first-page" and page == 1 else (
+            190, 91 if layout == "footer" else 752
+        )
+        if layout != "mixed-with-classic" or page == 1:
+            pdf.drawImage(logo, left, bottom, width=70, height=30)
+        pdf.drawString(72, 452, f"Clean the flange on page {page}.")
+        pdf.showPage()
+    if layout == "ambiguous-logo-on-other-page":
+        pdf.drawString(72, 722, "Check the fitting.")
+        pdf.drawImage(logo, 72, 714, width=70, height=30)
+        pdf.drawString(72, 452, "Install the pump.")
+    pdf.save()
+    return stream.getvalue()
 
 
 def _layout(blocks):
@@ -375,3 +401,99 @@ def test_proven_repeated_pdf_figures_do_not_trigger_large_recurring_art_fallback
     figures = [block for block in retained["blocks"] if block["kind"] == "image"]
     assert [block["page"] for block in figures] == [1, 2]
     assert all(figure["content_sha256"] == legacy_figures[0]["content_sha256"] for figure in figures)
+
+
+@pytest.mark.parametrize("layout", ["header", "footer"])
+@pytest.mark.parametrize("provider", ["bankone", "banktwo"])
+def test_linked_repeated_pdf_keeps_interior_diagrams_with_recurring_margins(capture_fixture, provider, layout):
+    context = capture_fixture.context(provider)
+    raw = _pdf_with_logo(layout)
+    root = sha256(raw).hexdigest()
+    capture_fixture.body(
+        provider, b'<p>Read the appendix.</p><iframe src="/fixture/diagrams"></iframe>',
+        assets=["addendum"], asset_bindings=[{"source_url": "/fixture/diagrams", "resource_ref": "addendum"}],
+    )
+    capture_fixture.body(provider, raw, "application/pdf", kind="binary", ref="addendum")
+    options = dict(
+        registry=capture_fixture.registry, object_store=capture_fixture.objects, keep_bound_pdf_iframes=True,
+        keep_pdf_figure_order=True, keep_multiple_pdf_figures=True, keep_repeated_pdf_figures=True,
+    )
+
+    legacy = capture_source_article(context, **options)
+    assert [image["alt"] for image in legacy.source_images] == ["Figure from page 1"] * 2
+    assert legacy.projection_version == "source-projection-v6"
+    for gate in ("legacy_published_pdf_roots", "legacy_published_pdf_margin_roots"):
+        guarded = replace(context, **{gate: frozenset({root})})
+        captured = capture_source_article(guarded, keep_pdf_figures_with_margins=True, **options)
+        assert captured.source_document == legacy.source_document
+        assert captured.source_fingerprint == legacy.source_fingerprint
+        assert captured.resource_manifest == legacy.resource_manifest
+
+    def assert_order(captured, verb, expected_root):
+        assert captured.projection_version == "source-projection-v10"
+        assert captured.projection_status == "readable"
+        expected = [("paragraph", "Read the appendix.")]
+        for page in (1, 2):
+            expected += [
+                ("paragraph", f"{verb} the seal on page {page}."),
+                ("image", f"Figure from page {page}"),
+                ("paragraph", f"Clean the flange on page {page}."),
+            ]
+        assert _layout(captured.source_document["blocks"]) == expected
+        parent, = [entry for entry in captured.resource_manifest if entry["role"] == "document_asset"]
+        assert parent["sha256"] == expected_root and parent["pdf_figure_layout"] == PDF_REPEAT_MARGIN_LAYOUT
+        evidence, = [entry for entry in captured.resource_provenance if entry["role"] == "document_asset"]
+        assert evidence["pdf_figure_layout"] == PDF_REPEAT_MARGIN_LAYOUT
+        asset, = [entry for entry in captured.resource_manifest if entry["role"] == "embedded_asset"]
+        first, second = captured.source_images
+        assert first["storage_key"] == second["storage_key"]
+        assert first["block_id"] != second["block_id"]
+        assert first["evidence_ids"] == second["evidence_ids"]
+        assert asset["sha256"] in first["storage_key"]
+        data, media = capture_fixture.objects.data[first["storage_key"]]
+        assert media == "image/png"
+        with Image.open(BytesIO(data)) as raster:
+            assert raster.tobytes() == Random(7).randbytes(96 * 96 * 3)
+        assert "pdf_figure_layout" not in repr(captured.source_document)
+
+    cold = capture_source_article(context, keep_pdf_figures_with_margins=True, **options)
+    assert_order(cold, "Inspect", root)
+    changed_pdf = _pdf_with_logo(layout, changed=True)
+    capture_fixture.body(provider, changed_pdf, "application/pdf", kind="binary", ref="addendum")
+    old_pdf_only = replace(context, legacy_published_pdf_margin_roots=frozenset({root}))
+    changed = capture_source_article(old_pdf_only, keep_pdf_figures_with_margins=True, **options)
+    assert_order(changed, "Check", sha256(changed_pdf).hexdigest())
+    assert changed.source_fingerprint != cold.source_fingerprint
+
+
+@pytest.mark.parametrize("layout", [
+    "classic", "overlap-on-first-page", "reuse-on-first-page", "mixed-with-classic",
+    "ambiguous-logo-on-other-page",
+])
+def test_margins_do_not_change_existing_or_ambiguous_pdf_placements(layout):
+    payload = _repeated_pdf() if layout == "classic" else _pdf_with_logo(layout)
+    resource = SourceResource.from_bytes("fixture:margin-figures", "fixture", payload, "application/pdf")
+    options = dict(keep_pdf_figure_order=True, keep_multiple_pdf_figures=True, keep_repeated_pdf_figures=True)
+    legacy = adapt_bound_article(resource, None, **options)
+    assert any(block["kind"] == "image" for block in legacy["blocks"])
+    assert adapt_bound_article(resource, None, keep_pdf_figures_with_margins=True, **options) == legacy
+
+
+@pytest.mark.parametrize("wrapped", [False, True])
+def test_repeated_pdf_with_margins_marks_the_retained_body_root(capture_fixture, wrapped):
+    raw = _pdf_with_logo()
+    if wrapped:
+        raw = json.dumps({"body": {"pdf": base64.b64encode(raw).decode()}}).encode()
+        capture_fixture.body("bankone", raw, "application/json")
+    else:
+        capture_fixture.body("bankone", raw, "application/pdf", kind="binary")
+    captured = capture_source_article(
+        capture_fixture.context("bankone"), registry=capture_fixture.registry,
+        object_store=capture_fixture.objects, keep_embedded_pdf=True, keep_pdf_figure_order=True,
+        keep_multiple_pdf_figures=True, keep_repeated_pdf_figures=True, keep_pdf_figures_with_margins=True,
+    )
+    assert captured.projection_version == "source-projection-v10"
+    body = captured.resource_manifest[0]
+    assert body["role"] == "body" and body["sha256"] == sha256(raw).hexdigest()
+    assert body["pdf_figure_layout"] == PDF_REPEAT_MARGIN_LAYOUT
+    assert [image["alt"] for image in captured.source_images] == ["Figure from page 1", "Figure from page 2"]

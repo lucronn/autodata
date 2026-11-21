@@ -7,7 +7,7 @@ from psycopg.rows import dict_row
 from . import article_lifecycle_store as store
 from .source_job_persistence import (claim_source_job, heartbeat_source_job, lock_live_lease,
                                      fail_source_job, park_automatic_for_model, LeaseLost)
-from .article_lifecycle_types import ArticleKey, SourceArticleContext, SOURCE_PROJECTION_VERSIONS
+from .article_lifecycle_types import ArticleKey, PDF_REPEAT_MARGIN_LAYOUT, SourceArticleContext, SOURCE_PROJECTION_VERSIONS
 from .procedure_rewrite import (rewrite_ordered_document, validate_article_rewrite,
                                 build_rewrite_prompt, editable_slots)
 from .source_connector_client import SourceConnectorError
@@ -37,18 +37,20 @@ def _live(repo,lease):
 
 
 def _capture_context(repo,lease):
-    legacy_pdf_versions = SOURCE_PROJECTION_VERSIONS[:SOURCE_PROJECTION_VERSIONS.index("source-projection-v10")]
+    pdf_repeats_version = "source-projection-v10"
+    guarded_pdf_versions = SOURCE_PROJECTION_VERSIONS[:SOURCE_PROJECTION_VERSIONS.index(pdf_repeats_version) + 1]
     with repo.connect() as conn,conn.cursor(row_factory=dict_row) as cur:
         job=lock_live_lease(cur,lease)
         row=cur.execute("""SELECT a.*,v.make,v.model,v.model_year,v.region,
-            prior.resource_manifest AS legacy_published_resources, prior_body.content_sha256 AS legacy_published_body,
+            prior.projection_version AS prior_projection_version,
+            prior.resource_manifest AS prior_published_resources, prior_body.content_sha256 AS prior_published_body,
             COALESCE(s.resolution_source_snapshot_id,(SELECT o.resolution_source_snapshot_id FROM canonical_article_source_observations o WHERE o.canonical_article_id=a.canonical_article_id ORDER BY o.request_generation DESC LIMIT 1)) AS resolution_source_snapshot_id FROM canonical_articles a JOIN vehicles v USING(vehicle_id)
             LEFT JOIN catalog_article_provider_scopes s ON s.scope_key=a.scope_key AND s.provider_slug=a.provider_slug
               AND s.source_vehicle_ref=a.source_vehicle_ref
             LEFT JOIN canonical_article_source_revisions prior ON prior.source_revision_id=a.current_source_revision_id
               AND a.current_canonical_revision_id IS NOT NULL AND prior.projection_version=ANY(%s)
             LEFT JOIN source_snapshots prior_body ON prior_body.source_snapshot_id=prior.body_source_snapshot_id
-            WHERE a.canonical_article_id=%s""", (list(legacy_pdf_versions), lease.canonical_article_id)).fetchone()
+            WHERE a.canonical_article_id=%s""", (list(guarded_pdf_versions), lease.canonical_article_id)).fetchone()
         if row is None or row["current_job_id"]!=lease.job_id or row["request_generation"]!=lease.generation:
             raise LeaseLost("source capture generation changed")
         if row["resolution_source_snapshot_id"] is None:raise ValueError("SOURCE_BINDING_REVIEW_REQUIRED")
@@ -73,17 +75,30 @@ def _capture_context(repo,lease):
             if label:vehicle["configuration"]=label
             evidence.extend(str(configuration[name]) for name in ("source_snapshot_id","extraction_evidence_id","base_snapshot_id","base_evidence_id"))
         key=ArticleKey(row["provider_slug"],row["vehicle_id"],row["vehicle_configuration_id"],row["source_vehicle_ref"],row["source_article_ref"])
-        legacy_pdf_roots = {
-            resource["sha256"] for resource in row["legacy_published_resources"] or []
-            if isinstance(resource, dict) and isinstance(resource.get("sha256"), str)
-            and resource.get("role") == "document_asset" and resource.get("media_type") == "application/pdf"
-        }
-        if row["legacy_published_body"] is not None:
-            legacy_pdf_roots.add(row["legacy_published_body"])
+        previous_body = row["prior_published_body"]
+        previous_pdf_roots = {previous_body} if previous_body is not None else set()
+        margin_layout_roots = set()
+        for resource in row["prior_published_resources"] or []:
+            if not isinstance(resource, dict) or not isinstance(resource.get("sha256"), str):
+                continue
+            digest = resource["sha256"]
+            is_pdf = resource.get("role") == "document_asset" and resource.get("media_type") == "application/pdf"
+            if is_pdf:
+                previous_pdf_roots.add(digest)
+            if (is_pdf or (resource.get("role") == "body" and digest == previous_body)) and (
+                resource.get("pdf_figure_layout") == PDF_REPEAT_MARGIN_LAYOUT
+            ):
+                margin_layout_roots.add(digest)
+        previous_has_repeats = row["prior_projection_version"] == pdf_repeats_version
+        # The manifest records the selected algorithm per root, so a refresh
+        # preserves the earlier v10 layout of unchanged PDFs in mixed articles.
         return SourceArticleContext(
             key, vehicle, row["descriptor"], row["descriptor_source_snapshot_id"],
             row["resolution_source_snapshot_id"], tuple(dict.fromkeys(evidence)),
-            legacy_published_pdf_roots=frozenset(legacy_pdf_roots),
+            legacy_published_pdf_roots=frozenset() if previous_has_repeats else frozenset(previous_pdf_roots),
+            legacy_published_pdf_margin_roots=(
+                frozenset(previous_pdf_roots - margin_layout_roots) if previous_has_repeats else frozenset()
+            ),
         )
 
 
@@ -107,6 +122,7 @@ def run_article_job(repo,lease,*,registry,object_store,model_client,hooks=None):
                     keep_embedded_pdf=True, keep_html_headings=True, keep_bound_pdf_iframes=True,
                     keep_pdf_figure_order=True, keep_multiple_pdf_figures=True,
                     keep_html_table_image_order=True, keep_repeated_pdf_figures=True,
+                    keep_pdf_figures_with_margins=True,
                 )
                 if lost.is_set():raise LeaseLost("heartbeat lost during source IO")
                 _hook(hooks,"before_source_commit")

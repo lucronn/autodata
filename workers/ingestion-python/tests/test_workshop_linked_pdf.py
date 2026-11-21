@@ -11,10 +11,12 @@ from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 
 from autodata_ingestion.article_lifecycle import run_article_worker_once
+from autodata_ingestion.article_lifecycle_types import PDF_REPEAT_MARGIN_LAYOUT
 from autodata_ingestion.procedure_rewrite_auto import PROFILE as AUTO_PROFILE
 from autodata_ingestion.source_job_persistence import refresh_article_job
 
 from lifecycle_support import fresh_database, runtime
+from test_pdf_figure_order import _pdf_with_logo
 
 
 _PDF_REF = "fixture-linked-pdf"
@@ -30,19 +32,21 @@ _PARAPHRASES = {
 class FixtureDraft:
     _model = "fixture-linked-pdf-draft"
 
-    def __init__(self):
+    def __init__(self, *, paraphrases=_PARAPHRASES, introduction=_INTRODUCTION):
         self.requests = []
+        self.paraphrases = paraphrases
+        self.introduction = introduction
 
     def complete_json(self, prompt):
         slots = json.loads(prompt)["slots"]
         self.requests.append([slot["text"] for slot in slots])
         return {
-            "introduction": _INTRODUCTION,
+            "introduction": self.introduction,
             "replacements": [{
                 "block_id": slot["block_id"],
                 "path": slot["path"],
                 "action": "rewrite",
-                "text": _PARAPHRASES[slot["text"]],
+                "text": self.paraphrases[slot["text"]],
                 "reason": "",
             } for slot in slots],
         }
@@ -71,6 +75,70 @@ def _pdf_with_fixture_figure(*, trailing_text=None, second_figure=False):
 
 def _layout(document):
     return [(block["type"], block.get("text")) for block in document["blocks"]]
+
+
+def test_linked_pdf_repeated_layout_survives_same_byte_refresh_and_changed_pdf(runtime):
+    provider = "banktwo"
+    runtime.article_id = runtime.articles[provider]
+    connector = runtime.servers[provider]
+    connector.body(
+        f'<p>Remove the pump.</p><iframe src="{_PDF_LOCATOR}"></iframe>'.encode(),
+        assets=[_PDF_REF], asset_bindings=[{"source_url": _PDF_LOCATOR, "resource_ref": _PDF_REF}],
+    )
+    paraphrases = {"Remove the pump.": "Take off the pump."}
+    for page in (1, 2):
+        paraphrases[f"Inspect the seal on page {page}."] = f"Check the seal on page {page}."
+        paraphrases[f"Check the seal on page {page}."] = f"Inspect the seal on page {page}."
+        paraphrases[f"Clean the flange on page {page}."] = f"Wipe the flange clean on page {page}."
+    introduction = "This procedure covers pump removal, seal inspection, and flange cleaning."
+    draft = FixtureDraft(paraphrases=paraphrases, introduction=introduction)
+
+    def refresh():
+        job = refresh_article_job(
+            runtime.repo, runtime.article_id, actor="fixture", reason="inspect retained PDF layout",
+            rewrite_profile_version=AUTO_PROFILE,
+        )
+        assert run_article_worker_once(
+            runtime.repo, worker_id=uuid4(), registry=runtime.registry, object_store=runtime.objects,
+            model_client=draft, job_id=job.job_id,
+        )
+        current = runtime.read_current()
+        assert current["content_origin"] == "canonical", runtime.diagnostics()
+        with runtime.repo.connect() as conn:
+            source = conn.execute(
+                "SELECT * FROM canonical_article_source_revisions WHERE source_revision_id=%s",
+                (current["source_revision_id"],),
+            ).fetchone()
+        assert source["projection_version"] == "source-projection-v10"
+        return current, source
+
+    for changed in (False, True):
+        raw_pdf = _pdf_with_logo(changed=changed)
+        connector.body(raw_pdf, "application/pdf", ref=_PDF_REF, kind="binary")
+        current, source = refresh()
+        if changed:
+            assert current["canonical_revision_id"] != original_revision
+            assert current["source_revision_id"] != original_source
+        else:
+            original_revision = current["canonical_revision_id"]
+            original_source = current["source_revision_id"]
+
+        parent, = [entry for entry in source["resource_manifest"] if entry["role"] == "document_asset"]
+        assert (parent["sha256"], parent["pdf_figure_layout"]) == (sha256(raw_pdf).hexdigest(), PDF_REPEAT_MARGIN_LAYOUT)
+        embedded, = [entry for entry in source["resource_manifest"] if entry["role"] == "embedded_asset"]
+        assert len(current["images"]) == 2
+        assert {image["storage_key"].rsplit("/", 1)[-1] for image in current["images"]} == {embedded["sha256"]}
+        expected = [("paragraph", introduction), ("paragraph", "Take off the pump.")]
+        for page in (1, 2):
+            inspect = f"{'Inspect' if changed else 'Check'} the seal on page {page}."
+            expected += [("paragraph", inspect), ("image", None), ("paragraph", f"Wipe the flange clean on page {page}.")]
+        assert _layout(current["document"]) == expected
+
+        assert len(draft.requests) == 1 + int(changed)
+        repeated, same_source = refresh()
+        assert len(draft.requests) == 1 + int(changed)
+        assert repeated["canonical_revision_id"] == current["canonical_revision_id"]
+        assert same_source == source
 
 
 def test_linked_pdf_publishes_in_order_and_private_original_controls_visibility(runtime):

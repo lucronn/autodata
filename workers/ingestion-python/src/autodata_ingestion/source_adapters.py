@@ -794,6 +794,7 @@ def _adapt_pdf_resource(
     figure_gaps: dict[str, tuple[int, int, int]] | None = None,
     keep_multiple_pdf_figures: bool = False,
     keep_repeated_pdf_figures: bool = False,
+    keep_pdf_figures_with_margins: bool = False,
 ) -> SourceArtifact:
     """Extract native PDF text and OCR pages that contain no native text."""
 
@@ -827,6 +828,8 @@ def _adapt_pdf_resource(
     page_image_payloads: dict[str, dict[str, Any]] = {}
     multi_figure_groups: list[list[str]] = []
     positioned_images: list[dict[str, Any]] = []
+    margin_positions: dict[str, list[tuple[dict[str, Any], tuple[int, int, int]]]] = {}
+    margin_pages: dict[str, set[int]] = {}
     for index, page in enumerate(pages, start=1):
         try:
             # Keep line breaks so TSB/PDF text can be segmented into headings,
@@ -853,7 +856,21 @@ def _adapt_pdf_resource(
                 segments = segment_plain_article_text(text)
                 by_key = {image["pdf_key"]: image["image_id"] for image in extracted_images if image["pdf_key"]}
                 if len(by_key) == len(extracted_images):
-                    gaps = figure_text_gaps(page, text, segments, page_image_keys)
+                    gaps = figure_text_gaps(
+                        page, text, segments, page_image_keys,
+                        allow_margin_images=keep_repeated_pdf_figures and keep_pdf_figures_with_margins,
+                    )
+                    if gaps and len(gaps) < len(by_key):
+                        if len(gaps) == 1:
+                            for image in extracted_images:
+                                digest = image["content_sha256"]
+                                if image["pdf_key"] in gaps:
+                                    position = (gaps[image["pdf_key"]], len(segments), 0)
+                                    occurrence = {**image, "url": page_image_payloads[digest]["url"]}
+                                    margin_positions.setdefault(digest, []).append((occurrence, position))
+                                else:
+                                    margin_pages.setdefault(digest, set()).add(index)
+                        continue
                     for order, (key, gap) in enumerate(gaps.items()):
                         figure_gaps[by_key[key]] = (gap, len(segments), order)
                     if len(gaps) > 1:
@@ -872,6 +889,26 @@ def _adapt_pdf_resource(
         if len(page_image_digests.get(digest, ())) == 1
     ]
     repeats = [image for image in positioned_images if len(page_image_digests[image["content_sha256"]]) > 1]
+    margin_ids = set()
+    if margin_positions and not repeats:
+        unique_pages = {image["page"] for image in kept_images}
+        proposed = {
+            digest: positions for digest, positions in margin_positions.items()
+            if len(positions) > 1 and {image["page"] for image, _ in positions} == page_image_digests[digest]
+            and unique_pages.isdisjoint(page_image_digests[digest])
+        }
+        # Preserve any large recurring image the old fallback would retain unless
+        # every extracted occurrence is proven to be out in the page margins.
+        if proposed and (kept_images or all(
+            digest in proposed or payload["byte_count"] < 8_000
+            or margin_pages.get(digest) == page_image_digests[digest]
+            for digest, payload in page_image_payloads.items()
+        )):
+            for positions in proposed.values():
+                for image, position in positions:
+                    repeats.append(image)
+                    figure_gaps[image["image_id"]] = position
+                    margin_ids.add(image["image_id"])
     repeated_ids = {image["image_id"] for image in repeats}
     if not kept_images and not repeats:
         kept_images = [
@@ -898,6 +935,7 @@ def _adapt_pdf_resource(
             "content_sha256": image["content_sha256"],
             "page": image["page"],
             **({"_retained_repeated_pdf_figure": True} if image["image_id"] in repeated_ids else {}),
+            **({"_retained_pdf_figure_with_margins": True} if image["image_id"] in margin_ids else {}),
         }
         for image in kept_images
     ]
@@ -1762,7 +1800,7 @@ def adapt_bound_article(
     keep_html_headings: bool = False, keep_bound_pdf_iframes: bool = False,
     keep_pdf_figure_order: bool = False, keep_multiple_pdf_figures: bool = False,
     keep_html_table_image_order: bool = False,
-    keep_repeated_pdf_figures: bool = False,
+    keep_repeated_pdf_figures: bool = False, keep_pdf_figures_with_margins: bool = False,
 ) -> dict[str, Any]:
     """Adapt fetched bytes under proven connector scope, without weakening URL intake."""
     from .banktwo_connector import ArticleParser
@@ -1865,6 +1903,7 @@ def adapt_bound_article(
                         nested, keep_pdf_figure_order=keep_pdf_figure_order,
                         keep_multiple_pdf_figures=keep_multiple_pdf_figures,
                         keep_repeated_pdf_figures=keep_repeated_pdf_figures,
+                        keep_pdf_figures_with_margins=keep_pdf_figures_with_margins,
                     ),
                     "asset_resource_refs": article.get("asset_resource_refs", []),
                     "embedded_pdf": True,
@@ -1900,6 +1939,7 @@ def adapt_bound_article(
                         keep_multiple_pdf_figures=keep_multiple_pdf_figures,
                         keep_html_table_image_order=keep_html_table_image_order,
                         keep_repeated_pdf_figures=keep_repeated_pdf_figures,
+                        keep_pdf_figures_with_margins=keep_pdf_figures_with_margins,
                     )
                 blocks = segment_plain_article_text(text)
         return {
@@ -1965,6 +2005,7 @@ def adapt_bound_article(
             resource, keep_pdf_figure_order=keep_pdf_figure_order,
             keep_multiple_pdf_figures=keep_multiple_pdf_figures,
             keep_repeated_pdf_figures=keep_repeated_pdf_figures,
+            keep_pdf_figures_with_margins=keep_pdf_figures_with_margins,
         ), "asset_resource_refs": []}
     raise ValueError("unsupported article media")
 
@@ -1981,17 +2022,20 @@ def bound_pdf_embed_blocks(
 def adapt_bound_pdf_embed(
     resource: SourceResource, *, require_complete_ocr: bool = False, keep_pdf_figure_order: bool = False,
     keep_multiple_pdf_figures: bool = False, keep_repeated_pdf_figures: bool = False,
+    keep_pdf_figures_with_margins: bool = False,
 ) -> dict[str, Any]:
     return _adapt_bound_pdf(
         resource, embedded=True, require_complete_ocr=require_complete_ocr,
         keep_pdf_figure_order=keep_pdf_figure_order,
         keep_multiple_pdf_figures=keep_multiple_pdf_figures,
         keep_repeated_pdf_figures=keep_repeated_pdf_figures,
+        keep_pdf_figures_with_margins=keep_pdf_figures_with_margins,
     )
 
 
 def _adapt_bound_pdf(resource, *, embedded=False, require_complete_ocr=False, keep_pdf_figure_order=False,
-                     keep_multiple_pdf_figures=False, keep_repeated_pdf_figures=False):
+                     keep_multiple_pdf_figures=False, keep_repeated_pdf_figures=False,
+                     keep_pdf_figures_with_margins=False):
     if embedded and (resource.media_type != "application/pdf"
             or len(resource.payload) > _MAX_BOUND_EMBEDDED_PDF_BYTES
             or not resource.payload.startswith(b"%PDF-")):
@@ -2003,6 +2047,7 @@ def _adapt_bound_pdf(resource, *, embedded=False, require_complete_ocr=False, ke
             figure_gaps=figure_gaps,
             keep_multiple_pdf_figures=keep_multiple_pdf_figures,
             keep_repeated_pdf_figures=keep_repeated_pdf_figures,
+            keep_pdf_figures_with_margins=keep_pdf_figures_with_margins,
         )
     else:
         artifact = adapt_source_resource(resource)
@@ -2035,6 +2080,7 @@ def _bound_pdf_blocks(artifact: SourceArtifact, figure_gaps: dict[str, tuple[int
     page_images: dict[int, list[dict[str, Any]]] = {}
     for image in images.values():
         figure = {"kind": "image", **image}
+        figure.pop("_retained_pdf_figure_with_margins", None)
         page_number = image.get("page")
         if isinstance(page_number, int):
             pages.setdefault(page_number, [])
@@ -2043,6 +2089,7 @@ def _bound_pdf_blocks(artifact: SourceArtifact, figure_gaps: dict[str, tuple[int
             unplaced.append(figure)
     blocks = []
     positioned = False
+    positioned_with_margins = False
     legacy_asset_order = []
     for page in sorted(pages):
         text = pages[page]
@@ -2056,6 +2103,9 @@ def _bound_pdf_blocks(artifact: SourceArtifact, figure_gaps: dict[str, tuple[int
                 blocks.extend(at_gap.get(index, ()))
                 blocks.append(block)
             positioned = True
+            positioned_with_margins |= any(
+                images[image_id].get("_retained_pdf_figure_with_margins") is True for image_id in gaps
+            )
             if len(figures) > 1:
                 group = [figure["image_id"] for figure in figures]
                 legacy_asset_order.append(group)
@@ -2069,4 +2119,5 @@ def _bound_pdf_blocks(artifact: SourceArtifact, figure_gaps: dict[str, tuple[int
         **({"pdf_legacy_asset_order": legacy_asset_order} if legacy_asset_order else {}),
         **({"retained_repeated_pdf_figures": True}
            if any(image.get("_retained_repeated_pdf_figure") is True for image in images.values()) else {}),
+        **({"retained_pdf_figures_with_margins": True} if positioned_with_margins else {}),
     }

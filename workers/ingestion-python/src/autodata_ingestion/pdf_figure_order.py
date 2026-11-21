@@ -16,7 +16,7 @@ def _upright_matrix(matrix):
     )
 
 
-def figure_text_gaps(page, text, segments, page_image_keys):
+def figure_text_gaps(page, text, segments, page_image_keys, *, allow_margin_images=False):
     """Find insertion slots in visual order without changing the native text."""
     lines = text.splitlines()
     if (len(lines) < 2 or lines != [block.get("text") for block in segments]
@@ -83,10 +83,15 @@ def figure_text_gaps(page, text, segments, page_image_keys):
     ordered = sorted(bounds.items(), key=lambda item: item[1][3], reverse=True)
     if any(upper[1][1] <= lower[1][3] for upper, lower in zip(ordered, ordered[1:])):
         return {}
+    if allow_margin_images:
+        text_top = max(y + height for _, y, height in text_boxes)
+        text_bottom = min(y - height for _, y, height in text_boxes)
     gaps = {}
     for key, (left, bottom, right, top) in ordered:
         if not (crop_left <= left < right <= crop_right and crop_bottom <= bottom < top <= crop_top):
             return {}
+        if allow_margin_images and (bottom > text_top or top < text_bottom):
+            continue
         if any(not left - 2 <= x < right for x, _, _ in text_boxes):
             return {}
         gap = next((i for i, (_, y, height) in enumerate(text_boxes) if y - height <= top), len(text_boxes))
