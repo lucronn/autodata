@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext as runVM } from 'node:vm';
 import { NavigationGeneration, processingArticle, readableArticle } from './workshop/article-read.mjs';
-import { purchaseConfiguration, uuid, validQuote, validScope, validLibrary } from './workshop/commerce.mjs';
+import { pollOrder, purchaseConfiguration, uuid, validQuote, validScope, validLibrary } from './workshop/commerce.mjs';
 import { articlePresentation, configurationLabel, filterArticles, hasSourceReference, legacyArticleBlocks, localImageURL, readCollection, requestJSON, sourceReferenceURL } from './workshop/catalog.mjs';
 import { LOAD_STAGES, loadingProgress } from './workshop/progress.mjs';
 
@@ -157,6 +157,106 @@ test('order discriminants cannot grant access or create automatic replacement', 
   assert.equal(validOrder({ version: 'v1', ...scope, order_id: orderID, state: 'paid', retry_disposition: 'do_not_repay' }, orderID), true);
   assert.equal(validOrder({ version: 'v1', ...scope, order_id: orderID, state: 'paid', retry_disposition: 'new_key' }, orderID), false);
 });
+
+function orderPollFixture(responses, options = {}) {
+  let elapsed = 0;
+  const reads = [];
+  const updates = [];
+  const result = pollOrder(orderID, {
+    earlyCheckoutCheck: true,
+    ...options,
+    now: () => elapsed,
+    async wait(duration, signal) {
+      elapsed += duration;
+      options.afterWait?.(elapsed);
+      signal?.throwIfAborted();
+    },
+    async request(path, { signal, timeout }) {
+      assert.equal(path, `/v1/workshop/orders/${orderID}`);
+      assert.equal(signal, options.signal);
+      reads.push({ time: elapsed, timeout });
+      const response = responses.shift();
+      assert.notEqual(response, undefined, 'unexpected extra order read');
+      if (response instanceof Error) throw response;
+      if (typeof response !== 'string') return response;
+      return { version: 'v1', ...scope, order_id: orderID, state: response,
+        retry_disposition: ['expired', 'canceled'].includes(response) ? 'new_key' : 'do_not_repay' };
+    },
+    onUpdate: order => updates.push(order.state),
+  });
+  return { result, reads, updates, times: () => reads.map(read => read.time) };
+}
+
+test('checkout return checks once at 350 ms after an ordinary pending response', async () => {
+  for (const state of ['open', 'processing']) {
+    const probe = orderPollFixture([state, 'paid']);
+    const result = await probe.result;
+    assert.deepEqual(probe.times(), [0, 350]);
+    assert.equal(probe.reads[1].timeout, 650);
+    assert.deepEqual(probe.updates, [state, 'paid']);
+    assert.equal(result.state, 'paid');
+    assert.equal(result.timedOut, false);
+  }
+});
+
+test('checkout confirmation clean miss keeps the original schedule and adds one read', async () => {
+  const probe = orderPollFixture(['open', 'open', 'processing', 'processing', 'paid']);
+  assert.equal((await probe.result).state, 'paid');
+  assert.deepEqual(probe.times(), [0, 350, 1000, 3000, 7000]);
+});
+
+test('ordinary order checks and reconciliation retain their first delay', async () => {
+  for (const [state, earlyCheckoutCheck] of [['open', false], ['reconciliation_required', true], ['creating', true]]) {
+    const probe = orderPollFixture([state, 'paid'], { earlyCheckoutCheck });
+    assert.equal((await probe.result).state, 'paid');
+    assert.deepEqual(probe.times(), [0, 1000]);
+  }
+});
+
+test('checkout confirmation keeps terminal, invalid, and denied order responses terminal', async () => {
+  for (const state of ['paid', 'expired', 'canceled', 'revoked']) {
+    const probe = orderPollFixture([state]);
+    assert.equal((await probe.result).state, state);
+    assert.deepEqual(probe.times(), [0]);
+  }
+  const wrongOrder = { version: 'v1', ...scope, order_id: scope.configuration_id,
+    state: 'open', retry_disposition: 'do_not_repay' };
+  const wrong = orderPollFixture([wrongOrder]);
+  await assert.rejects(wrong.result, /Payment status is unavailable/);
+  assert.deepEqual(wrong.times(), [0]);
+  const denied = orderPollFixture(['open', Object.assign(new Error('Order is unavailable'), { status: 404 })]);
+  await assert.rejects(denied.result, /Order is unavailable/);
+  assert.deepEqual(denied.times(), [0, 350]);
+});
+
+test('checkout confirmation respects failure backoff and retry hints', async () => {
+  const retryable = (status, retryAfterSeconds) => Object.assign(new Error('Please retry'), { status, retryable: true, retryAfterSeconds });
+  for (const [responses, times] of [
+    [[retryable(503, 2), 'open', 'paid'], [0, 2000, 4000]],
+    [['open', retryable(429, 3), 'paid'], [0, 350, 3350]],
+    [['open', retryable(503), 'paid'], [0, 350, 1350]],
+    [['open', 'reconciliation_required', 'paid'], [0, 350, 1350]],
+    [['open', new TypeError('network unavailable'), 'paid'], [0, 350, 1000]],
+  ]) {
+    const probe = orderPollFixture(responses);
+    assert.equal((await probe.result).state, 'paid');
+    assert.deepEqual(probe.times(), times);
+  }
+});
+
+test('checkout confirmation respects cancellation and absolute budget', async () => {
+  const controller = new AbortController();
+  const aborted = orderPollFixture(['open'], { signal: controller.signal, afterWait: () => controller.abort() });
+  await assert.rejects(aborted.result, { name: 'AbortError' });
+  assert.deepEqual(aborted.times(), [0]);
+  const short = orderPollFixture(['open'], { budgetMs: 900 });
+  assert.equal((await short.result).timedOut, true);
+  assert.deepEqual(short.reads, [{ time: 0, timeout: 900 }]);
+  const tight = orderPollFixture(['open', 'open', 'open'], { budgetMs: 1100 });
+  assert.equal((await tight.result).timedOut, true);
+  assert.deepEqual(tight.reads, [{ time: 0, timeout: 1100 }, { time: 350, timeout: 650 }, { time: 1000, timeout: 100 }]);
+});
+
 test('library requires nullable cursor and accepts revoked never-granted tombstone', async () => {
   const { validLibrary } = await import('./workshop/commerce.mjs');
   const item = { ...scope, library_item_id: orderID, label: 'Vehicle', access_state: 'revoked', granted_at: null };

@@ -219,6 +219,10 @@ export function createCheckout({
   };
   return { read, clear, start };
 }
+
+const firstOrderRetryMs = 1000;
+const earlyCheckoutCheckMs = 350;
+
 export async function pollOrder(
   orderID,
   {
@@ -228,19 +232,25 @@ export async function pollOrder(
     wait = delay,
     now = () => performance.now(),
     budgetMs = 120000,
+    earlyCheckoutCheck = false,
   } = {},
 ) {
   if (!uuid(orderID)) throw new Error("This order is unavailable.");
   const deadline = now() + Math.min(120000, budgetMs);
   let attempt = 0,
-    latest;
+    latest,
+    regularReadAt = 0;
   while (now() < deadline) {
     signal?.throwIfAborted();
+    const startedAt = now();
+    if (regularReadAt <= startedAt) regularReadAt = 0;
     let retryAfter = 0;
+    let ordinaryPending = false;
+    let pauseBeforeRetry = false;
     try {
       latest = await request(`/v1/workshop/orders/${orderID}`, {
         signal,
-        timeout: Math.min(10000, Math.max(1, deadline - now())),
+        timeout: Math.min(10000, Math.max(1, (regularReadAt || deadline) - startedAt)),
       });
       signal?.throwIfAborted();
       if (!validOrder(latest, orderID))
@@ -248,6 +258,8 @@ export async function pollOrder(
       onUpdate(latest);
       if (["paid", "expired", "canceled", "revoked"].includes(latest.state))
         return { ...latest, timedOut: false };
+      ordinaryPending = latest.state === "open" || latest.state === "processing";
+      pauseBeforeRetry = latest.state === "reconciliation_required";
     } catch (error) {
       signal?.throwIfAborted();
       if (
@@ -259,17 +271,26 @@ export async function pollOrder(
       )
         throw error;
       retryAfter = Number(error.retryAfterSeconds) || 0;
+      pauseBeforeRetry = [429, 503].includes(error.status);
     }
-    const remaining = deadline - now();
+    const finishedAt = now();
+    const remaining = deadline - finishedAt;
     if (remaining <= 0) break;
+    let waitMs;
+    if (regularReadAt) {
+      // An unanswered probe rejoins the original first check. A provider
+      // reconciliation or overload response still gets the regular delay.
+      waitMs = Math.max(regularReadAt - finishedAt, pauseBeforeRetry ? firstOrderRetryMs : 0);
+      regularReadAt = 0;
+    } else {
+      waitMs = [firstOrderRetryMs, 2000, 4000, 8000, 10000][Math.min(attempt++, 4)];
+      if (earlyCheckoutCheck && attempt === 1 && ordinaryPending && remaining > waitMs) {
+        regularReadAt = finishedAt + waitMs;
+        waitMs = earlyCheckoutCheckMs;
+      }
+    }
     await wait(
-      Math.min(
-        remaining,
-        Math.max(
-          [1000, 2000, 4000, 8000, 10000][Math.min(attempt++, 4)],
-          retryAfter * 1000,
-        ),
-      ),
+      Math.min(remaining, Math.max(waitMs, retryAfter * 1000)),
       signal,
     );
   }
