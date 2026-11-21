@@ -1,6 +1,7 @@
 import {
   articlePresentation,
   configurationLabel,
+  delay,
   filterArticles,
   localImageURL,
   readCollection,
@@ -76,6 +77,7 @@ let quote = null,
   unconfirmedOrder = null,
   retryAction = null,
   articleImageRefresh = null,
+  deferredArticleFigures = null,
   sourceImageRefresh = null,
   sourceDocumentRequest = null,
   viewGeneration = null,
@@ -189,6 +191,7 @@ function resetReaderContent() {
   currentArticle = null;
   renderedRevision = "";
   articleImageRefresh = null;
+  deferredArticleFigures = null;
   resetSourceReview();
   $("article-content").replaceChildren();
   $("article-reference").hidden = true;
@@ -838,7 +841,7 @@ function imageMap(article) {
     ...(article?.steps || []).flatMap((step) => step.images || []),
   ];
 }
-function addImage(parent, image, caption, g, alt = caption) {
+function addImage(parent, image, caption, g, alt = caption, figures = null) {
   const figure = element("figure");
   const url = localImageURL(image?.url, location.origin, { authMode: session.state.mode }),
     id = assetID(image);
@@ -851,12 +854,43 @@ function addImage(parent, image, caption, g, alt = caption) {
     img.addEventListener("error", () => {
       if (g.current()) void renewMedia(g, img);
     });
-    img.src = url;
+    if (figures) figures.push({ img, url });
+    else img.src = url;
     figure.append(img);
     if (caption) figure.append(element("figcaption", caption));
   } else
     figure.append(element("p", "Illustration unavailable.", "image-missing"));
   parent.append(figure);
+}
+function startArticleFigures(figures, g) {
+  if (new Set(figures.map(({ url }) => url)).size < 7) {
+    for (const { img, url } of figures) img.src = url;
+    return null;
+  }
+  // Give the first figures a short head start on a shared connection. Every
+  // remaining figure still loads eagerly once the lead figure arrives.
+  const leading = new Set();
+  const remaining = [];
+  const first = figures[0].img;
+  const release = () => {
+    clearTimeout(timer);
+    first.removeEventListener("load", release);
+    window.removeEventListener("beforeprint", release);
+    g.signal.removeEventListener("abort", release);
+    for (const { img, url } of remaining.splice(0))
+      if (g.current() && img.isConnected) img.src = url;
+  };
+  const timer = setTimeout(release, 250);
+  first.addEventListener("load", release, { once: true });
+  window.addEventListener("beforeprint", release, { once: true });
+  g.signal.addEventListener("abort", release, { once: true });
+  for (const figure of figures) {
+    if (leading.size < 2 || leading.has(figure.url)) {
+      leading.add(figure.url);
+      figure.img.src = figure.url;
+    } else remaining.push(figure);
+  }
+  return { figures, release, printing: false };
 }
 function appendSource(parent, block, review, g) {
   const href = sourceReferenceURL(review, block);
@@ -880,7 +914,7 @@ function indexRenderableImages(images) {
   }
   return imagesByID;
 }
-function renderBlocks(parent, blocks, imagesByID, review, g, sourceTarget = null) {
+function renderBlocks(parent, blocks, imagesByID, review, g, sourceTarget = null, figures = null) {
   const isListNumber = value =>
     Number.isInteger(value) && value >= -2147483648 && value <= 2147483647;
   const find = (ref) => {
@@ -890,7 +924,7 @@ function renderBlocks(parent, blocks, imagesByID, review, g, sourceTarget = null
       : undefined;
   };
   const addReference = (target, ref) =>
-    addImage(target, find(ref), ref?.caption || ref?.alt, g, ref?.alt);
+    addImage(target, find(ref), ref?.caption || ref?.alt, g, ref?.alt, figures);
   const renderInline = (target, value, textTag) => {
     if (!value || typeof value !== "object") {
       target.textContent = String(value ?? "");
@@ -900,7 +934,7 @@ function renderBlocks(parent, blocks, imagesByID, review, g, sourceTarget = null
     if (value.asset_id || value.image_id || value.status === "unavailable")
       addReference(target, value);
     for (const ref of value.images || []) addReference(target, ref);
-    if (Array.isArray(value.blocks)) renderBlocks(target, value.blocks, imagesByID, review, g, sourceTarget);
+    if (Array.isArray(value.blocks)) renderBlocks(target, value.blocks, imagesByID, review, g, sourceTarget, figures);
   };
   for (const block of blocks || []) {
     if (!block || typeof block !== "object") continue;
@@ -913,7 +947,7 @@ function renderBlocks(parent, blocks, imagesByID, review, g, sourceTarget = null
         : "p";
       parent.append(element(tag, block.text ?? ""));
       for (const ref of block.images || [])
-        addImage(parent, find(ref), ref?.caption, g, ref?.alt);
+        addImage(parent, find(ref), ref?.caption, g, ref?.alt, figures);
     } else if (type === "callout") {
       const aside = element("aside", undefined, "article-callout");
       const content = element("div");
@@ -1013,7 +1047,7 @@ function renderBlocks(parent, blocks, imagesByID, review, g, sourceTarget = null
     appendSource(parent, block, review, g);
   }
 }
-function renderContent(parent, article, g) {
+function renderContent(parent, article, g, figures = null) {
   const presentation = articlePresentation(article),
     images = imageMap(article),
     imagesByID = indexRenderableImages(images);
@@ -1024,6 +1058,8 @@ function renderContent(parent, article, g) {
       imagesByID,
       article.source_review,
       g,
+      null,
+      figures,
     );
   else if (presentation.steps.length) {
     renderBlocks(parent, presentation.introBlocks, imagesByID, null, g);
@@ -1109,9 +1145,12 @@ function renderArticle(article, g) {
     currentArticle?.source_revision_id !== article.source_revision_id || previousURL !== reviewURL;
   if (revision !== renderedRevision || sourceChanged) {
     const fragment = document.createDocumentFragment();
-    renderContent(fragment, article, g);
+    const figures = !openDemo && session.state.mode === "firebase" && article.content_origin === "canonical" &&
+      !processingArticle(article) && article.document?.blocks?.length ? [] : null;
+    renderContent(fragment, article, g, figures);
     if (!g.current()) return;
     $("article-content").replaceChildren(fragment);
+    deferredArticleFigures = figures ? startArticleFigures(figures, g) : null;
     articleImageRefresh = null;
     sourceImageRefresh = null;
     if (renderedRevision) {
@@ -2029,10 +2068,34 @@ function showReturnedArticleIndex(indexLink = null) {
   showArticleIndexStatus();
 }
 $("back").addEventListener("click", returnToArticleIndex);
-$("print").addEventListener("click", () => {
-  if (readableArticle(currentArticle) && (openDemo || session.state.authenticated))
+async function printArticle() {
+  if (!readableArticle(currentArticle) || (!openDemo && !session.state.authenticated)) return;
+  const deferred = deferredArticleFigures;
+  if (!deferred) {
     window.print();
-});
+    return;
+  }
+  if (deferred.printing) return;
+  const g = viewGeneration;
+  if (!g?.current()) return;
+  deferred.printing = true;
+  try {
+    deferred.release();
+    const pending = deferred.figures.filter(({ img }) => !img.complete);
+    if (pending.length) {
+      await Promise.race([
+        Promise.allSettled(pending.map(({ img }) => img.decode())),
+        delay(3000, g.signal),
+      ]);
+    }
+    if (g.current() && deferred === deferredArticleFigures && session.state.authenticated) window.print();
+  } catch (error) {
+    if (!g.signal.aborted) throw error;
+  } finally {
+    deferred.printing = false;
+  }
+}
+$("print").addEventListener("click", printArticle);
 window.addEventListener("popstate", () => void restoreHistoryEntry());
 window.addEventListener("pagehide", () => invalidate());
 let lifecycleCheck = null;

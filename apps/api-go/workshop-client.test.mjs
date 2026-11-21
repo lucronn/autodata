@@ -3940,6 +3940,9 @@ class ArticleMediaNode {
     const handlers = this.handlers.get(name) || [];
     handlers.push(handler); this.handlers.set(name, handlers);
   }
+  removeEventListener(name, handler) {
+    this.handlers.set(name, (this.handlers.get(name) || []).filter(value => value !== handler));
+  }
   dispatch(name, event = {}) { for (const handler of this.handlers.get(name) || []) handler(event); }
   querySelectorAll(selector) {
     assert.equal(selector, 'img[data-asset-id]');
@@ -4002,6 +4005,70 @@ function articleMediaHarness(overrides = {}) {
     content(article) { const parent = new ArticleMediaNode('div'); body.append(parent); context.renderContent(parent, article, g); return parent; },
   };
 }
+
+function warmFigureHarness({ count = 7, origin = 'canonical', repeated = false } = {}) {
+  const timers = new Map(), timeout = deferredAuthOperation(), printed = [];
+  const window = Object.assign(new EventTarget(), { print() { printed.push(true); } });
+  const h = articleMediaHarness({
+    session: { state: { authenticated: true, mode: 'firebase' } }, window,
+    setTimeout(callback, duration) { timers.set(callback, duration); return callback; },
+    clearTimeout(callback) { timers.delete(callback); },
+    delay(ms, signal) {
+      assert.equal(ms, 3000);
+      signal.addEventListener('abort', () => timeout.reject(signal.reason), { once: true });
+      return timeout.promise;
+    },
+  });
+  h.context.viewGeneration = h.g;
+  const assets = Array.from({ length: count }, (_, index) => ({ id: `figure-${index}`, url: mediaURL(repeated ? 'repeat' : index) }));
+  const blocks = assets.map(({ id }) => ({ type: 'image', asset_id: id }));
+  const content = h.render(mediaArticle(blocks, assets, { content_origin: origin }));
+  const images = mediaDescendants(content, 'img');
+  runInNewContext(appSection('async function printArticle()', '$("print").addEventListener'), h.context);
+  return { ...h, window, timers, timeout, printed, images,
+    starts: () => images.flatMap(node => node.src ? [node.dataset.assetId] : []) };
+}
+
+test('many settled paid figures give the leading pair first use of the connection', () => {
+  for (const action of ['lead load', 'timeout', 'browser print', 'navigate', 'new revision']) {
+    const h = warmFigureHarness();
+    assert.deepEqual(h.starts(), ['figure-0', 'figure-1'], action);
+    assert.deepEqual([...h.timers.values()], [250], action);
+    const [release] = h.timers.keys();
+    if (action === 'lead load') h.images[0].dispatch('load');
+    else if (action === 'browser print') h.window.dispatchEvent(new Event('beforeprint'));
+    else if (action === 'navigate') h.navigation.clear();
+    else {
+      if (action === 'new revision') h.render(mediaArticle([{ type: 'paragraph', text: 'New view' }], [], { view_revision: 'replacement' }));
+      release();
+    }
+    assert.equal(h.timers.size, 0, action);
+    assert.equal(h.starts().length, ['navigate', 'new revision'].includes(action) ? 2 : 7, action);
+  }
+
+  for (const options of [{ count: 6 }, { origin: 'source' }, { repeated: true }]) {
+    const h = warmFigureHarness(options);
+    assert.equal(h.starts().length, h.images.length);
+    assert.equal(h.timers.size, 0);
+  }
+});
+
+test('early reader Print releases all selected images and remains bounded on decode failure', async () => {
+  for (const finish of ['decoded', 'failed', 'timeout', 'navigate']) {
+    const h = warmFigureHarness();
+    const decoding = deferredAuthOperation();
+    for (const image of h.images) image.decode = () => decoding.promise;
+    const printing = h.context.printArticle();
+    assert.equal(h.starts().length, 7, finish);
+    assert.deepEqual(h.printed, [], finish);
+    if (finish === 'navigate') h.navigation.clear();
+    else if (finish === 'timeout') h.timeout.resolve();
+    else if (finish === 'failed') decoding.reject(new Error('Image could not be decoded'));
+    else decoding.resolve();
+    await printing;
+    assert.deepEqual(h.printed, finish === 'navigate' ? [] : [true], finish);
+  }
+});
 
 test('reader refocus reauthorizes account, exact detail and pinned source together', async () => {
   const configuration = { id: routeConfiguration, region: 'US' };
