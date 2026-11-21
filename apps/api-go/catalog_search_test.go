@@ -12,16 +12,16 @@ func TestCatalogArticleSearchUsesRenderedDocumentNotHiddenCompatibilityFields(t 
 		Document: &CatalogDocument{Blocks: []CatalogDocumentBlock{
 			{Type: "step", Text: "Inspect ground strap.", Label: "HiddenStepLabelMarker"},
 			{Type: "paragraph", Text: "Use approved fastener.", Images: []CatalogImage{{Alt: "HiddenParagraphImageMarker"}}},
-			{Type: "callout", Label: "Warning", Text: "Disconnect battery.", Images: []CatalogImage{{AssetID: "table-distinct", Alt: "VisibleAltMarker", Caption: "HiddenCaptionMarker"}}},
+			{Type: "callout", Label: "Warning", Text: "Disconnect battery.", Images: []CatalogImage{{AssetID: "table-distinct", Alt: "VisibleAltMarker", Caption: "VisibleCaptionMarker"}}},
 			{Type: "table", Label: "Torque values", Columns: []any{"Fastener"}, Rows: [][]any{{map[string]any{"text": "VisibleCellMarker", "label": "HiddenCellLabelMarker", "images": []any{map[string]any{"asset_id": "cell-duplicate", "alt": "VisibleCellAltMarker"}}}, float64(12)}}, Images: []CatalogImage{{AssetID: "table-distinct", Alt: "TableFigureMarker"}, {AssetID: "cell-duplicate", Alt: "HiddenDuplicateAltMarker"}}},
 		}},
 	}
-	for _, query := range []string{"ground strap", "Warning", "VisibleAltMarker", "VisibleCellMarker", "VisibleCellAltMarker", "TableFigureMarker", "12"} {
+	for _, query := range []string{"ground strap", "Warning", "VisibleAltMarker", "VisibleCaptionMarker", "VisibleCellMarker", "VisibleCellAltMarker", "TableFigureMarker", "12"} {
 		if len(filterCatalogArticleSearch([]CatalogArticle{article}, query)) != 1 {
 			t.Fatalf("visible query %q did not match", query)
 		}
 	}
-	for _, query := range []string{"HiddenBodyMarker", "HiddenStepLabelMarker", "HiddenParagraphImageMarker", "HiddenCaptionMarker", "HiddenCellLabelMarker", "HiddenDuplicateAltMarker", "private-marker"} {
+	for _, query := range []string{"HiddenBodyMarker", "HiddenStepLabelMarker", "HiddenParagraphImageMarker", "HiddenCellLabelMarker", "HiddenDuplicateAltMarker", "private-marker"} {
 		if len(filterCatalogArticleSearch([]CatalogArticle{article}, query)) != 0 {
 			t.Fatalf("hidden query %q matched", query)
 		}

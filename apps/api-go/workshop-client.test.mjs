@@ -4667,12 +4667,15 @@ for (const fixture of searchRendererFixtures) test(`search renderer fixture: ${f
   const article = mediaArticle([], [], fixture.article);
   const presentation = articlePresentation(article);
   assert.equal(presentation.introBlocks.length > 0, fixture.has_intro);
-  const rendered = articleMediaHarness().render(article).textContent;
+  const parent = articleMediaHarness().render(article);
+  const rendered = parent.textContent;
   const lower = rendered.toLowerCase();
+  const imageAlt = mediaDescendants(parent, 'img').map(image => image.alt).join(' ').toLowerCase();
   for (const query of fixture.visible_queries) {
     for (const word of query.toLowerCase().split(/\s+/)) assert.ok(lower.includes(word), `${query} is visible`);
   }
-  for (const query of fixture.hidden_queries) assert.ok(!lower.includes(query.toLowerCase()), `${query} remains hidden`);
+  for (const query of fixture.accessible_queries || []) assert.ok(imageAlt.includes(query.toLowerCase()), `${query} is an image alternative`);
+  for (const query of fixture.hidden_queries) assert.ok(!lower.includes(query.toLowerCase()) && !imageAlt.includes(query.toLowerCase()), `${query} remains hidden`);
   for (const phrase of fixture.once) assert.equal(rendered.split(phrase).length - 1, 1, `${phrase} renders once`);
 });
 
