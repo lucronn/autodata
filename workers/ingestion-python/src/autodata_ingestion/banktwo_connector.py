@@ -23,6 +23,7 @@ _LIST_TAGS = {"ol": "ordered_list", "ul": "unordered_list"}
 _HEADING_LEVELS = {f"h{level}": level for level in range(1, 7)}
 _MAX_LIST_DEPTH = 32
 _MAX_FIGURE_DEPTH = 32
+_MAX_TABLE_DEPTH = 8
 _TABLE_ROW_GROUPS = frozenset({"thead", "tbody", "tfoot"})
 _HTML_LIST_NUMBER = re.compile(r"([+-]?)0*([0-9]{1,10})")
 
@@ -99,6 +100,18 @@ class _TableCaption:
     stop: int
 
 
+@dataclass
+class _EnclosingTable:
+    rows: list
+    row: list
+    cell: list
+    cell_spans: dict | None
+    row_group_boundaries: list[int]
+    has_candidate_spans: bool
+    caption: _TableCaption | None
+    figures: list[_FigureFrame]
+
+
 class ArticleParser(HTMLParser):
     """Keep ordered text, figures and component links without executable HTML."""
 
@@ -108,6 +121,7 @@ class ArticleParser(HTMLParser):
         keep_html_table_captions=False, keep_html_flow_figure_captions=False,
         keep_html_multiline_figure_captions=False,
         keep_html_table_spans=False,
+        keep_html_nested_tables=False,
     ):
         super().__init__(convert_charrefs=True)
         self._asset_bindings = {item["source_url"]: item["resource_ref"] for item in asset_bindings}
@@ -128,6 +142,7 @@ class ArticleParser(HTMLParser):
         self._keep_html_flow_figure_captions = keep_html_flow_figure_captions
         self._keep_html_multiline_figure_captions = keep_html_multiline_figure_captions
         self._keep_html_table_spans = keep_html_table_spans
+        self._keep_html_nested_tables = keep_html_nested_tables
         self.handled_pdf_embeds = False
         self.positioned_html_table_images = False
         self.html_figure_captions = False
@@ -135,6 +150,7 @@ class ArticleParser(HTMLParser):
         self.html_multiline_figure_captions = False
         self.html_table_captions = False
         self.html_table_spans = False
+        self.html_nested_tables = False
         self._figures: list[_FigureFrame] = []
         self._hidden_embed_tags: list[str] = []
         self._heading: dict[str, Any] | None = None
@@ -146,6 +162,7 @@ class ArticleParser(HTMLParser):
         self._table_has_candidate_spans = False
         self._table_caption_blocks: list[dict[str, Any]] | None = None
         self._table_caption: _TableCaption | None = None
+        self._enclosing_tables: list[_EnclosingTable] = []
 
     @property
     def _in_table(self):
@@ -242,7 +259,7 @@ class ArticleParser(HTMLParser):
 
     def close(self):
         super().close()
-        if self._in_table:
+        while self._in_table:
             self._finish_table()
         while self._lists:
             self._finish_list()
@@ -256,10 +273,17 @@ class ArticleParser(HTMLParser):
             if self._table_cell_spans:
                 cell["_html_table_cell_spans"] = self._table_cell_spans
                 self._table_has_candidate_spans = True
-            if self._keep_html_table_image_order:
+            if self._keep_html_table_image_order or self.html_nested_tables:
                 kinds = [block["kind"] for block in self._table_cell]
+                has_nested_table = self.html_nested_tables and "table" in kinds
+                if has_nested_table:
+                    cell["_preserve_cell_block_order"] = True
+                if self._enclosing_tables or has_nested_table:
+                    for block in self._table_cell:
+                        if block["kind"] == "text":
+                            block["_html_literal_table_text"] = True
                 # Cells with a linked document already have ordered blocks.
-                if ("document_embed" not in kinds and "image" in kinds
+                if (self._keep_html_table_image_order and "document_embed" not in kinds and "image" in kinds
                         and "text" in kinds[kinds.index("image") + 1:]):
                     cell["_ordered_html_table_cell"] = True
                     self.positioned_html_table_images = True
@@ -279,6 +303,33 @@ class ArticleParser(HTMLParser):
         if self._table_row_group_boundaries[-1] != row_count:
             self._table_row_group_boundaries.append(row_count)
 
+    def _suspend_enclosing_table(self):
+        if len(self._enclosing_tables) + 1 >= _MAX_TABLE_DEPTH:
+            raise ValueError("HTML table nesting exceeds its limit")
+        self._enclosing_tables.append(_EnclosingTable(
+            rows=self._table_rows,
+            row=self._table_row,
+            cell=self._table_cell,
+            cell_spans=self._table_cell_spans,
+            row_group_boundaries=self._table_row_group_boundaries,
+            has_candidate_spans=self._table_has_candidate_spans,
+            caption=self._table_caption,
+            figures=self._figures,
+        ))
+        self._figures = []
+        self.html_nested_tables = True
+
+    def _resume_enclosing_table(self):
+        parent = self._enclosing_tables.pop()
+        self._table_rows = parent.rows
+        self._table_row = parent.row
+        self._table_cell = parent.cell
+        self._table_cell_spans = parent.cell_spans
+        self._table_row_group_boundaries = parent.row_group_boundaries
+        self._table_has_candidate_spans = parent.has_candidate_spans
+        self._table_caption = parent.caption
+        self._figures = parent.figures
+
     def _finish_table(self):
         self._finish_table_caption(closed=False)
         self._flush_row()
@@ -289,6 +340,7 @@ class ArticleParser(HTMLParser):
                 self.html_table_spans |= _resolve_table_rowspans(rows, self._table_row_group_boundaries)
             rows = [row for row in rows if row]
         self._table_rows = None
+        table = None
         if rows:
             table = {"kind": "table", "rows": rows}
             caption = self._table_caption
@@ -296,25 +348,35 @@ class ArticleParser(HTMLParser):
                 del caption.source[caption.start:caption.stop]
                 table["label"] = caption.text
                 self.html_table_captions = True
-            self._append_block(table)
         self._table_caption = None
+        if self._enclosing_tables:
+            self._resume_enclosing_table()
+            if table is not None:
+                self._table_cell.append(table)
+        elif table is not None:
+            self._append_block(table)
 
     def _finish_table_caption(self, *, closed):
         if self._table_caption_blocks is None:
             return
         self.flush()
         blocks, self._table_caption_blocks = self._table_caption_blocks, None
-        item = self._current_list_item()
-        source = self.blocks if item is None else (item.blocks if item.blocks else item.lead)
-        start = len(source)
         # Keep the literal flow until a table with cells is ready. Mixed media,
         # malformed captions and empty tables retain their existing content.
-        for block in blocks:
-            if block["kind"] == "text":
-                self._text.append(block["text"])
-                self.flush()
-            else:
-                self._append_inline_media(block)
+        if self._enclosing_tables:
+            source = self._enclosing_tables[-1].cell
+            start = len(source)
+            source.extend(blocks)
+        else:
+            item = self._current_list_item()
+            source = self.blocks if item is None else (item.blocks if item.blocks else item.lead)
+            start = len(source)
+            for block in blocks:
+                if block["kind"] == "text":
+                    self._text.append(block["text"])
+                    self.flush()
+                else:
+                    self._append_inline_media(block)
         if closed and blocks and all(block["kind"] == "text" for block in blocks):
             self._table_caption = _TableCaption(
                 " ".join(block["text"] for block in blocks), source, start, len(source),
@@ -429,6 +491,8 @@ class ArticleParser(HTMLParser):
         if tag == "table":
             self._finish_table_caption(closed=False)
             self.flush()
+            if self._keep_html_nested_tables and self._table_cell is not None:
+                self._suspend_enclosing_table()
             self._list_start = 1
             self._list_continuation_pending = False
             self._table_rows = []

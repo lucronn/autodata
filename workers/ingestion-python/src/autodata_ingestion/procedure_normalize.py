@@ -13,7 +13,12 @@ from .article_document import (
     segment_plain_article_text,
     validate_ordered_document,
 )
-from .article_lifecycle_types import HTML_TABLE_CAPTION_LAYOUT, HTML_TABLE_SPAN_LAYOUT, STRUCTURED_TABLE_COLUMNS_LAYOUT
+from .article_lifecycle_types import (
+    HTML_NESTED_TABLE_LAYOUT,
+    HTML_TABLE_CAPTION_LAYOUT,
+    HTML_TABLE_SPAN_LAYOUT,
+    STRUCTURED_TABLE_COLUMNS_LAYOUT,
+)
 
 
 _COMPONENT_TERMS = {
@@ -50,6 +55,7 @@ def normalize_procedure_article(
     authored_table = any(
         entry.get("role") == "body" and (
             entry.get("html_table_caption_layout") == HTML_TABLE_CAPTION_LAYOUT
+            or entry.get("html_nested_table_layout") == HTML_NESTED_TABLE_LAYOUT
             or entry.get("html_table_span_layout") == HTML_TABLE_SPAN_LAYOUT
             or entry.get("structured_table_columns_layout") == STRUCTURED_TABLE_COLUMNS_LAYOUT
         )

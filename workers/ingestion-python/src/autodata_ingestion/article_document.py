@@ -186,7 +186,7 @@ def build_ordered_document(
         body = str(article.get("body") or "").strip()
         source_blocks = segment_plain_article_text(body) if body else []
     else:
-        source_blocks = _expand_plain_source_blocks(source_blocks)
+        source_blocks = _expand_plain_source_blocks(source_blocks, preserve_marked_cells=preserve_marked_cells)
 
     seen_image_keys: set[str] = set()
     for block in source_blocks:
@@ -311,7 +311,8 @@ def build_ordered_document(
         if not text:
             output.append(_unknown_block(article, source_index, raw))
             continue
-        explicit_number = _numbered_text(text)
+        literal_cell_text = preserve_marked_cells and raw.get("_html_literal_table_text") is True
+        explicit_number = None if literal_cell_text else _numbered_text(text)
         if explicit_number is not None:
             number, text = explicit_number
             output.append(
@@ -325,7 +326,7 @@ def build_ordered_document(
                     **extra_fields,
                 )
             )
-        elif _looks_like_heading(text):
+        elif not literal_cell_text and _looks_like_heading(text):
             output.append(_base_block(article, source_index, "heading", text=text, level=2, evidence_ids=evidence_ids, **extra_fields))
         else:
             output.append(_base_block(article, source_index, "paragraph", text=text, evidence_ids=evidence_ids, **extra_fields))
@@ -1267,7 +1268,7 @@ def _level(raw: Mapping[str, Any]) -> int:
         return 2
 
 
-def _expand_plain_source_blocks(source_blocks: list[Any]) -> list[Any]:
+def _expand_plain_source_blocks(source_blocks: list[Any], *, preserve_marked_cells: bool) -> list[Any]:
     expanded: list[Any] = []
     for raw in source_blocks:
         if isinstance(raw, str):
@@ -1276,7 +1277,7 @@ def _expand_plain_source_blocks(source_blocks: list[Any]) -> list[Any]:
             expanded.append(raw)
             continue
         kind = str(raw.get("type") or raw.get("kind") or "text").casefold()
-        if kind not in {"text", "paragraph"}:
+        if kind not in {"text", "paragraph"} or preserve_marked_cells and raw.get("_html_literal_table_text") is True:
             expanded.append(raw)
             continue
         text = str(raw.get("text") or raw.get("value") or "")

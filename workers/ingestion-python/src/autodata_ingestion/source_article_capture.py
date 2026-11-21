@@ -12,6 +12,7 @@ from .article_lifecycle_types import (
     HTML_FIGURE_CAPTION_LAYOUT,
     HTML_FLOW_FIGURE_CAPTION_LAYOUT,
     HTML_MULTILINE_FIGURE_CAPTION_LAYOUT,
+    HTML_NESTED_TABLE_LAYOUT,
     HTML_TABLE_CAPTION_LAYOUT,
     HTML_TABLE_SPAN_LAYOUT,
     PDF_BLANK_PAGE_LAYOUT,
@@ -263,6 +264,7 @@ def capture_source_article(
     keep_repeated_pdf_figures=False, keep_pdf_figures_with_margins=False, keep_compact_pdf_figures=False,
     keep_html_figure_captions=False, keep_html_table_captions=False, keep_html_flow_figure_captions=False,
     keep_html_table_spans=False,
+    keep_html_nested_tables=False,
     keep_html_multiline_figure_captions=False,
     skip_blank_linked_pdf_pages=False,
     keep_wordless_linked_pdf_figures=False,
@@ -369,6 +371,7 @@ def capture_source_article(
                 keep_html_table_captions and body.body["sha256"] != context.legacy_published_html_table_caption_body
             ),
             keep_html_table_spans=keep_html_table_spans,
+            keep_html_nested_tables=keep_html_nested_tables,
             keep_html_flow_figure_captions=(
                 keep_html_flow_figure_captions and body.body["sha256"] != context.legacy_published_html_flow_figure_body
             ),
@@ -398,6 +401,7 @@ def capture_source_article(
     html_multiline_figure_captions = article.get("html_multiline_figure_captions") is True
     html_table_captions = article.get("html_table_captions") is True
     html_table_spans = article.get("html_table_spans") is True
+    html_nested_tables = article.get("html_nested_tables") is True
     handled_pdf_embeds = article.get("handled_pdf_embeds") is True
     positioned_html_table_images = article.get("positioned_html_table_images") is True
     positioned_pdf_figures = article.get("positioned_pdf_figures") is True
@@ -412,7 +416,7 @@ def capture_source_article(
     )
     new_structure = (
         structured_table_columns or structured_table_cell_order or step_layout or html_table_captions or html_flow_figure_captions
-        or html_table_spans
+        or html_table_spans or html_nested_tables
         or article.get("embedded_pdf")
         or (article.get("authored_html_headings") and any(block.get("kind") == "heading" for block in _walk(blocks)))
     )
@@ -469,6 +473,8 @@ def capture_source_article(
         resources[0]["html_table_caption_layout"] = manifest[0]["html_table_caption_layout"] = HTML_TABLE_CAPTION_LAYOUT
     if html_table_spans:
         resources[0]["html_table_span_layout"] = manifest[0]["html_table_span_layout"] = HTML_TABLE_SPAN_LAYOUT
+    if html_nested_tables:
+        resources[0]["html_nested_table_layout"] = manifest[0]["html_nested_table_layout"] = HTML_NESTED_TABLE_LAYOUT
     if structured_table_columns:
         resources[0]["structured_table_columns_layout"] = manifest[0]["structured_table_columns_layout"] = STRUCTURED_TABLE_COLUMNS_LAYOUT
     if structured_table_cell_order:
@@ -706,6 +712,8 @@ def capture_source_article(
     for node in _walk(blocks):
         if not html_table_spans:
             node.pop("_html_table_cell_spans", None)
+        if not html_nested_tables:
+            node.pop("_html_literal_table_text", None)
         # No executable/provider URLs or upstream-supplied source_original enter the projection.
         for key in (
             "source_original",
@@ -803,7 +811,7 @@ def capture_source_article(
     doc = build_ordered_document(
         {"article_id": str(article_id(context.key)), "evidence_ids": evidence_ids},
         blocks,
-        preserve_marked_cells=handled_pdf_embeds or positioned_html_table_images or structured_table_cell_order,
+        preserve_marked_cells=handled_pdf_embeds or positioned_html_table_images or structured_table_cell_order or html_nested_tables,
         preserve_structured_columns=structured_table_columns,
     )
     for node in _image_nodes(doc["blocks"]):

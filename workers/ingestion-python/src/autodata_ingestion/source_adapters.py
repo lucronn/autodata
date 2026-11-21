@@ -1878,6 +1878,7 @@ def adapt_bound_article(
     keep_html_figure_captions: bool = False,
     keep_html_table_captions: bool = False,
     keep_html_table_spans: bool = False,
+    keep_html_nested_tables: bool = False,
     keep_html_flow_figure_captions: bool = False,
     keep_html_multiline_figure_captions: bool = False,
     keep_structured_table_cell_order: bool = False,
@@ -2028,6 +2029,7 @@ def adapt_bound_article(
                         keep_html_figure_captions=keep_html_figure_captions,
                         keep_html_table_captions=keep_html_table_captions,
                         keep_html_table_spans=keep_html_table_spans,
+                        keep_html_nested_tables=keep_html_nested_tables,
                         keep_html_flow_figure_captions=keep_html_flow_figure_captions,
                         keep_html_multiline_figure_captions=keep_html_multiline_figure_captions,
                     )
@@ -2064,6 +2066,7 @@ def adapt_bound_article(
             keep_html_figure_captions=keep_html_figure_captions,
             keep_html_table_captions=keep_html_table_captions,
             keep_html_table_spans=keep_html_table_spans,
+            keep_html_nested_tables=keep_html_nested_tables,
             keep_html_flow_figure_captions=keep_html_flow_figure_captions,
             keep_html_multiline_figure_captions=keep_html_multiline_figure_captions,
         )
@@ -2106,6 +2109,7 @@ def adapt_bound_article(
             **({"html_multiline_figure_captions": True} if parser.html_multiline_figure_captions else {}),
             **({"html_table_captions": True} if parser.html_table_captions else {}),
             **({"html_table_spans": True} if parser.html_table_spans else {}),
+            **({"html_nested_tables": True} if parser.html_nested_tables else {}),
         }
     if media == "text/plain":
         return {
