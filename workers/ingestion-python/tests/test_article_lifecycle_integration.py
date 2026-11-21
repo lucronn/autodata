@@ -879,13 +879,13 @@ def test_automatic_real_runtime_source_first_publication_and_zero_call_restart(r
 @pytest.mark.parametrize(
     "prompt_version",
     ["v1", "v2", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v12", "v13", "v14", "v15", "v16", "v17", "v18",
-     "v19", "v20", "v21", "v22", "v23", "v24", "v25", "v26", "v27", "v28", "v29", "v30"],
+     "v19", "v20", "v21", "v22", "v23", "v24", "v25", "v26", "v27", "v28", "v29", "v30", "v31"],
 )
 def test_automatic_real_process_death_reuses_saved_response(runtime, point, prompt_version):
     ensure = automatic_runtime(runtime,"bankone")
     ensure();runtime.pause(point);runtime.start_workers(1);runtime.await_barrier()
     job = runtime.current_job_id();runtime.kill_worker();runtime.expire_lease(job)
-    if prompt_version != "v30":
+    if prompt_version != "v31":
         from hashlib import sha256
         from psycopg.types.json import Jsonb
         from autodata_ingestion.article_lifecycle_types import digest_json
@@ -896,7 +896,8 @@ def test_automatic_real_process_death_reuses_saved_response(runtime, point, prom
             _build_auto_prompt_v14, _build_auto_prompt_v15, _build_auto_prompt_v16, _build_auto_prompt_v17,
             _build_auto_prompt_v18, _build_auto_prompt_v19, _build_auto_prompt_v20, _build_auto_prompt_v21,
             _build_auto_prompt_v22, _build_auto_prompt_v23, _build_auto_prompt_v24, _build_auto_prompt_v25,
-            _build_auto_prompt_v26, _build_auto_prompt_v27, _build_auto_prompt_v28, _build_auto_prompt_v29, validate_auto,
+            _build_auto_prompt_v26, _build_auto_prompt_v27, _build_auto_prompt_v28, _build_auto_prompt_v29,
+            _build_auto_prompt_v30, validate_auto,
         )
         build_prompt = {
             "v1": _build_auto_prompt_v1,
@@ -926,6 +927,7 @@ def test_automatic_real_process_death_reuses_saved_response(runtime, point, prom
             "v27": _build_auto_prompt_v27,
             "v28": _build_auto_prompt_v28,
             "v29": _build_auto_prompt_v29,
+            "v30": _build_auto_prompt_v30,
         }[prompt_version]
         with runtime.repo.connect() as conn:
             candidate = conn.execute("SELECT r.* FROM canonical_article_revisions r JOIN source_fetch_jobs j USING(transformation_key) WHERE j.source_fetch_job_id=%s", (job,)).fetchone()
@@ -1046,6 +1048,12 @@ def test_automatic_rejected_rewrite_leaves_source_readable(runtime, mode, source
         "Lift the vehicle, then support it securely.",
         "Lift the vehicle to gain access.",
         "REWRITE_CLAUSE_MUTATION", id="vehicle-lift-support",
+    ),
+    pytest.param(
+        "Bleed the brake system and check for leaks.",
+        "Purge air from the brake system, then inspect it for leakage.",
+        "Check the brake system for any sign of leakage.",
+        "REWRITE_CLAUSE_MUTATION", id="brake-bleed-leak-check",
     ),
 ])
 def test_automatic_qualifier_controls_publication(runtime, provider, preserved, original, valid, invalid, error_code):
