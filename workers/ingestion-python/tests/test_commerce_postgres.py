@@ -370,7 +370,7 @@ def test_payment_survives_source_unavailable_and_restart(commerce):
         assert conn.execute("SELECT count(*) AS n FROM source_fetch_jobs WHERE job_kind='article'").fetchone()['n']==0
 
 
-def test_library_is_owner_only_and_paginated(commerce):
+def test_library_is_owner_only_and_paginated(commerce, monkeypatch):
     c=commerce;first=checkout(c);settle(c,first)
     with c[0].connect() as conn:
         vehicle=conn.execute('SELECT vehicle_id FROM vehicle_configurations WHERE vehicle_configuration_id=%s',(c[4],)).fetchone()['vehicle_id']
@@ -386,7 +386,25 @@ def test_library_is_owner_only_and_paginated(commerce):
         return {item['library_item_id']:item['access_state'] for item in c[1].library(*c[3])['items']}
     with c[0].connect() as conn:
         conn.execute("UPDATE workshop_orders SET preparation_state='index_ready'")
-    assert states()=={first['order_id']:'viewable',second['order_id']:'paid'}
+    from psycopg import Cursor
+
+    executions = []
+
+    class CountingCursor(Cursor):
+        def execute(self, *args, **kwargs):
+            executions.append(1)
+            return super().execute(*args, **kwargs)
+
+    def counted_connection():
+        conn = c[0].connect()
+        conn.cursor_factory = CountingCursor
+        return conn
+
+    with monkeypatch.context() as patch:
+        patch.setattr(c[1], "connect", counted_connection)
+        assert states()=={first['order_id']:'viewable',second['order_id']:'paid'}
+    # Two transaction settings, one owner check, and one query for the page.
+    assert len(executions) == 4
     with c[0].connect() as conn:conn.execute("UPDATE source_snapshots SET takedown_status='takedown' WHERE source_snapshot_id=%s",(descriptor,))
     assert states()=={first['order_id']:'preparing',second['order_id']:'paid'}
     with c[0].connect() as conn:

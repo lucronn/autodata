@@ -529,22 +529,72 @@ class CommerceService:
             clause = 'AND (o.created_at,o.order_id)<(%s,%s)' if after else ''
             price_clause = ' AND o.expected_price_id=%s' if self.read_only else ''
             args = [account_id, self.config.account_id, self.config.livemode] + ([self.config.price_id] if self.read_only else []) + (list(after) if after else []) + [limit + 1]
-            cursor.execute(f"""SELECT o.*,{_CONFIGURATION_LABEL_SQL} AS label,e.status AS grant_status,e.granted_at,
-                    c.reviewer_state<>'rejected' AND b.reviewer_state<>'rejected' AS catalog_available
-                FROM workshop_orders o JOIN vehicle_configurations c ON c.vehicle_configuration_id=o.configuration_id
-                JOIN vehicle_identity_bases b USING(vehicle_identity_base_id) LEFT JOIN entitlements e ON e.entitlement_id=o.entitlement_id
-                WHERE o.customer_account_id=%s AND o.stripe_account_id=%s AND o.livemode=%s""" + price_clause + " AND (o.status='revoked' OR e.entitlement_id IS NOT NULL) " + clause + ' ORDER BY o.created_at DESC,o.order_id DESC LIMIT %s', args)
+            # Limit the owner-scoped page before checking article readiness.
+            cursor.execute(f"""
+                WITH page AS MATERIALIZED (
+                    SELECT o.*,{_CONFIGURATION_LABEL_SQL} AS label,e.status AS grant_status,e.granted_at,
+                        c.reviewer_state<>'rejected' AND b.reviewer_state<>'rejected' AS catalog_available
+                    FROM workshop_orders o JOIN vehicle_configurations c ON c.vehicle_configuration_id=o.configuration_id
+                    JOIN vehicle_identity_bases b USING(vehicle_identity_base_id)
+                    LEFT JOIN entitlements e ON e.entitlement_id=o.entitlement_id
+                    WHERE o.customer_account_id=%s AND o.stripe_account_id=%s AND o.livemode=%s {price_clause}
+                      AND (o.status='revoked' OR e.entitlement_id IS NOT NULL) {clause}
+                    ORDER BY o.created_at DESC,o.order_id DESC LIMIT %s
+                )
+                SELECT p.*, CASE
+                    WHEN p.status='revoked' OR p.grant_status='revoked' THEN 'revoked'
+                    WHEN p.catalog_available IS NOT TRUE THEN 'paid'
+                    WHEN EXISTS (
+                        SELECT 1 FROM canonical_articles a
+                        JOIN LATERAL (
+                            SELECT takedown_status,availability,document FROM catalog_article_current
+                            WHERE canonical_article_id=a.canonical_article_id LIMIT 1
+                        ) v ON true
+                        JOIN vehicle_configurations c ON c.vehicle_configuration_id=a.vehicle_configuration_id
+                        JOIN vehicle_identity_bases b USING(vehicle_identity_base_id)
+                        WHERE a.scope_key='configuration:' || p.configuration_id::text
+                          AND a.provider_slug IN ('bankone','banktwo')
+                          AND b.region=p.region AND c.reviewer_state<>'rejected' AND b.reviewer_state<>'rejected'
+                          AND a.membership_status='active' AND EXISTS (
+                              SELECT 1 FROM source_snapshots descriptor
+                              WHERE descriptor.source_snapshot_id=a.descriptor_source_snapshot_id
+                                AND descriptor.takedown_status='active'
+                          )
+                          AND v.takedown_status='active' AND v.availability='available'
+                          AND jsonb_typeof(v.document->'blocks')='array' AND jsonb_array_length(v.document->'blocks')>0
+                          AND NOT EXISTS (
+                              SELECT 1 FROM source_review_items q WHERE q.item_kind='quarantine' AND q.status<>'approved'
+                                AND (q.source_snapshot_ids ? a.descriptor_source_snapshot_id::text OR EXISTS (
+                                    SELECT 1 FROM canonical_article_source_revisions s
+                                    WHERE s.source_revision_id=a.current_source_revision_id
+                                      AND (q.source_snapshot_ids ? s.body_source_snapshot_id::text OR EXISTS (
+                                          SELECT 1 FROM jsonb_array_elements(s.resource_manifest) resource
+                                          JOIN source_snapshots asset ON asset.content_sha256::text=resource->>'sha256'
+                                          WHERE q.source_snapshot_ids ? asset.source_snapshot_id::text
+                                      ))
+                                ))
+                          )
+                    ) THEN 'viewable'
+                    WHEN p.preparation_state IS DISTINCT FROM 'index_ready' OR EXISTS (
+                        SELECT 1 FROM canonical_articles a
+                        JOIN LATERAL (
+                            SELECT 1 FROM source_fetch_jobs j
+                            WHERE j.canonical_article_id=a.canonical_article_id AND j.job_kind='article'
+                              AND j.status IN ('pending','processing','failed')
+                              AND (j.status<>'failed' OR j.retryable)
+                            LIMIT 1
+                        ) pending ON true
+                        WHERE a.scope_key='configuration:' || p.configuration_id::text
+                          AND a.provider_slug IN ('bankone','banktwo')
+                    ) THEN 'preparing'
+                    ELSE 'paid'
+                END AS access_state
+                FROM page p ORDER BY p.created_at DESC,p.order_id DESC
+            """, args)
             rows = cursor.fetchall()
             items = []
             for order in rows[:limit]:
-                state = 'paid'
-                if order['status'] == 'revoked' or order['grant_status'] == 'revoked':
-                    state = 'revoked'
-                elif order['catalog_available']:
-                    if self._readable(cursor, order['configuration_id'], order['region']):
-                        state = 'viewable'
-                    elif order['preparation_state'] != 'index_ready' or self._article_pending(cursor, order['configuration_id']):
-                        state = 'preparing'
+                state = order['access_state']
                 item = dict(library_item_id=str(order['order_id']), configuration_id=str(order['configuration_id']), region=order['region'],
                     label=order['label'], access_state=state, granted_at=order['granted_at'].astimezone(UTC).isoformat() if order['granted_at'] else None)
                 if state == 'paid' and not order['catalog_available']:
@@ -559,42 +609,6 @@ class CommerceService:
                 last = rows[limit - 1]
                 next_cursor = base64.urlsafe_b64encode(json.dumps([account_id, last['created_at'].isoformat(), str(last['order_id'])]).encode()).decode().rstrip('=')
             return CommerceResult(dict(version='v1', items=items, next_cursor=next_cursor))
-
-    def _article_pending(self, cursor, configuration_id):
-        cursor.execute("""SELECT 1 FROM canonical_articles a
-            JOIN LATERAL (
-                SELECT 1 FROM source_fetch_jobs j
-                WHERE j.canonical_article_id=a.canonical_article_id AND j.job_kind='article'
-                  AND j.status IN ('pending','processing','failed')
-                  AND (j.status<>'failed' OR j.retryable)
-                LIMIT 1
-            ) pending ON true
-            WHERE a.scope_key='configuration:' || %s::uuid::text
-              AND a.provider_slug IN ('bankone','banktwo')
-            LIMIT 1""", (configuration_id,))
-        return bool(cursor.fetchone())
-
-    def _readable(self, cursor, configuration_id, region):
-        # Select articles by the indexed scope before evaluating the current view.
-        cursor.execute("""SELECT 1 FROM canonical_articles a
-            JOIN LATERAL (
-                SELECT takedown_status,availability,document FROM catalog_article_current
-                WHERE canonical_article_id=a.canonical_article_id LIMIT 1
-            ) v ON true
-            JOIN vehicle_configurations c ON c.vehicle_configuration_id=a.vehicle_configuration_id
-            JOIN vehicle_identity_bases b USING(vehicle_identity_base_id)
-            WHERE a.scope_key='configuration:' || %s::uuid::text
-            AND a.provider_slug IN ('bankone','banktwo')
-            AND b.region=%s AND c.reviewer_state<>'rejected' AND b.reviewer_state<>'rejected'
-            AND a.membership_status='active' AND EXISTS(SELECT 1 FROM source_snapshots descriptor WHERE descriptor.source_snapshot_id=a.descriptor_source_snapshot_id AND descriptor.takedown_status='active') AND v.takedown_status='active' AND v.availability='available'
-            AND jsonb_typeof(v.document->'blocks')='array' AND jsonb_array_length(v.document->'blocks')>0
-            AND NOT EXISTS(SELECT 1 FROM source_review_items q WHERE q.item_kind='quarantine' AND q.status<>'approved'
-              AND (q.source_snapshot_ids ? a.descriptor_source_snapshot_id::text OR EXISTS(
-                SELECT 1 FROM canonical_article_source_revisions s WHERE s.source_revision_id=a.current_source_revision_id
-                AND (q.source_snapshot_ids ? s.body_source_snapshot_id::text OR EXISTS(
-                  SELECT 1 FROM jsonb_array_elements(s.resource_manifest) resource JOIN source_snapshots asset ON asset.content_sha256::text=resource->>'sha256'
-                  WHERE q.source_snapshot_ids ? asset.source_snapshot_id::text))))) LIMIT 1""", (configuration_id, region))
-        return bool(cursor.fetchone())
 
 
 class ReadOnlyCommerceService(CommerceService):
