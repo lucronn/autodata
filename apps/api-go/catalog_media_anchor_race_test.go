@@ -231,3 +231,75 @@ func TestPaidCatalogArticleKeepsStableMediaReadCost(t *testing.T) {
 		t.Fatal("stable article performed extra reads")
 	}
 }
+
+func TestPaidCatalogArticleFinishPublishedBodyPreference(t *testing.T) {
+	for _, tc := range []struct {
+		name, method, region, origin, state string
+		prefer, applied, retry              string
+		status                              int
+		demo, emptyDocument, explicitRetry  bool
+	}{
+		{name: "terminal publication", origin: "canonical", state: "completed", prefer: finishPublishedBodyPreference, applied: finishPublishedBodyPreference, status: 200},
+		{name: "published without a job", origin: "canonical", prefer: "other, " + finishPublishedBodyPreference, applied: finishPublishedBodyPreference, status: 200},
+		{name: "published without preference", origin: "canonical", status: 200},
+		{name: "published without readable blocks", origin: "canonical", emptyDocument: true, prefer: finishPublishedBodyPreference, status: 200},
+		{name: "published with active refresh", origin: "canonical", state: "rewriting", prefer: finishPublishedBodyPreference, retry: "2", status: 200},
+		{name: "explicit retry hint", origin: "canonical", state: "completed", explicitRetry: true, prefer: finishPublishedBodyPreference, retry: "5", status: 200},
+		{name: "stored source", origin: "source", state: "rewriting", prefer: finishPublishedBodyPreference, retry: "1", status: 200},
+		{name: "stored source short check", origin: "source", state: "rewriting", prefer: finishPublishedBodyPreference + ", " + shortPublicationCheckPreference, applied: shortPublicationCheckPreference, status: 200},
+		{name: "pending", state: "fetching_source", prefer: finishPublishedBodyPreference, retry: "1", status: 202},
+		{name: "pending short check", state: "fetching_source", prefer: finishPublishedBodyPreference + ", " + shortSourceCheckPreference, applied: shortSourceCheckPreference, status: 202},
+		{name: "wrong region", origin: "canonical", region: "CA", prefer: finishPublishedBodyPreference, status: 404},
+		{name: "prepare", method: http.MethodPost, origin: "canonical", prefer: finishPublishedBodyPreference, status: 200},
+		{name: "OpenDemo", origin: "canonical", demo: true, prefer: finishPublishedBodyPreference, status: 200},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, catalog, grant, _, principal, ref := paidMediaFixture()
+			article := catalog.view.Article
+			if tc.origin == "" {
+				article.Availability = "unavailable"
+			} else {
+				article.ContentOrigin = stringPointer(tc.origin)
+				if !tc.emptyDocument {
+					article.Document = &CatalogDocument{Blocks: []CatalogDocumentBlock{{Type: "paragraph", Text: "Remove pump."}}}
+				}
+			}
+			if tc.origin != "canonical" {
+				article.CanonicalRevisionID = nil
+			}
+			if tc.state != "" {
+				article.Processing = &CatalogProcessing{JobID: "fixture-job", State: tc.state}
+				if tc.explicitRetry {
+					retry := 5
+					article.Processing.RetryAfterSeconds = &retry
+				}
+			}
+			catalog.view.Article = lifecycleArticle(article)
+			method := tc.method
+			if method == "" {
+				method = http.MethodGet
+			}
+			request := paidMediaRaceRequest(t, s, principal, ref, method)
+			request.Header.Del("Prefer")
+			if tc.prefer != "" {
+				request.Header.Set("Prefer", tc.prefer)
+			}
+			if tc.region != "" {
+				request.URL.RawQuery = "region=" + tc.region
+			}
+			if tc.demo {
+				s.workshopOpenDemoHost = request.Host
+				request.URL.RawQuery = "demo=1"
+			}
+			response := httptest.NewRecorder()
+			s.Handler().ServeHTTP(response, request)
+			if response.Code != tc.status || response.Header().Get("Preference-Applied") != tc.applied || response.Header().Get("Retry-After") != tc.retry {
+				t.Fatalf("unexpected status %d, preference %q, retry %q", response.Code, response.Header().Get("Preference-Applied"), response.Header().Get("Retry-After"))
+			}
+			if tc.applied == finishPublishedBodyPreference && (grant.calls.Load() != 1 || catalog.sourceCalls.Load() != 1 ||
+				!strings.Contains(response.Body.String(), "Remove pump.") || !strings.Contains(response.Body.String(), "/v1/catalog/images/v2.")) {
+				t.Fatal("published success bypassed scope/media or omitted readable content")
+			}
+		})
+	}
+}

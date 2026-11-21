@@ -309,7 +309,19 @@ func (s *Server) getCatalogArticle(response http.ResponseWriter, request *http.R
 const (
 	shortSourceCheckPreference      = "workshop-short-source-check"
 	shortPublicationCheckPreference = "workshop-short-publication-check"
+	finishPublishedBodyPreference   = "workshop-finish-published-body"
 )
+
+func catalogReadPreferenceRequested(request *http.Request, preference string) bool {
+	for _, value := range request.Header.Values("Prefer") {
+		for token := range strings.SplitSeq(value, ",") {
+			if strings.TrimSpace(token) == preference {
+				return true
+			}
+		}
+	}
+	return false
+}
 
 func (s *Server) respondCatalogArticleView(response http.ResponseWriter, request *http.Request, principal Principal, view CatalogArticleView) {
 	if view.Withdrawn {
@@ -362,20 +374,21 @@ func (s *Server) respondCatalogArticleView(response http.ResponseWriter, request
 		preference := current.shortReadPreference
 		applicable := preference == shortSourceCheckPreference && status == http.StatusAccepted ||
 			preference == shortPublicationCheckPreference && status == http.StatusOK
-		if applicable {
-			for _, requested := range strings.Split(strings.Join(request.Header.Values("Prefer"), ","), ",") {
-				if strings.TrimSpace(requested) != preference {
-					continue
-				}
-				// Only replace the default read cadence when the client opts in.
-				processing := *current
-				processing.RetryAfterSeconds = nil
-				article.Processing = &processing
-				response.Header().Del("Retry-After")
-				response.Header().Set("Preference-Applied", preference)
-				break
-			}
+		if applicable && catalogReadPreferenceRequested(request, preference) {
+			// Only replace the default read cadence when the client opts in.
+			processing := *current
+			processing.RetryAfterSeconds = nil
+			article.Processing = &processing
+			response.Header().Del("Retry-After")
+			response.Header().Set("Preference-Applied", preference)
 		}
+	}
+	if configuration != nil && request.Method == http.MethodGet && status == http.StatusOK &&
+		article.CanonicalRevisionID != nil && article.ContentOrigin != nil && *article.ContentOrigin == "canonical" &&
+		article.Document != nil && len(article.Document.Blocks) > 0 &&
+		(article.Processing == nil || article.Processing.State == "completed" && article.Processing.RetryAfterSeconds == nil) &&
+		catalogReadPreferenceRequested(request, finishPublishedBodyPreference) {
+		response.Header().Set("Preference-Applied", finishPublishedBodyPreference)
 	}
 	article.SourceReview = sourceReviewForArticle(article, vehicleID, article.ID)
 	writeJSON(response, status, CatalogArticleResponse{Version: "v1", Article: article, Configuration: configuration})

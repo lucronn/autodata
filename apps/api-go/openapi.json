@@ -121,6 +121,15 @@
             "$ref": "#/components/parameters/ArticleId"
           },
           {
+            "name": "Prefer",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "example": "workshop-finish-published-body"
+            },
+            "description": "Requests an acknowledgement when a paid canonical article is readable and publication processing has finished."
+          },
+          {
             "name": "region",
             "in": "query",
             "required": false,
@@ -435,6 +444,13 @@
                 "schema": {
                   "type": "string",
                   "example": "private, no-store"
+                }
+              },
+              "Preference-Applied": {
+                "description": "Acknowledges a requested Workshop reader preference. The workshop-finish-published-body value applies to authorized paid canonical articles with a readable document and no active processing or retry hint. The normal article body is included.",
+                "schema": {
+                  "type": "string",
+                  "example": "workshop-finish-published-body"
                 }
               }
             }
