@@ -13,6 +13,7 @@ from .article_lifecycle_types import (
     HTML_FLOW_FIGURE_CAPTION_LAYOUT,
     HTML_MULTILINE_FIGURE_CAPTION_LAYOUT,
     HTML_TABLE_CAPTION_LAYOUT,
+    HTML_TABLE_SPAN_LAYOUT,
     PDF_BLANK_PAGE_LAYOUT,
     PDF_COMPACT_FIGURE_LAYOUT,
     PDF_LEGACY_FIGURE_LAYOUT,
@@ -261,6 +262,7 @@ def capture_source_article(
     keep_pdf_figure_order=False, keep_multiple_pdf_figures=False, keep_html_table_image_order=False,
     keep_repeated_pdf_figures=False, keep_pdf_figures_with_margins=False, keep_compact_pdf_figures=False,
     keep_html_figure_captions=False, keep_html_table_captions=False, keep_html_flow_figure_captions=False,
+    keep_html_table_spans=False,
     keep_html_multiline_figure_captions=False,
     skip_blank_linked_pdf_pages=False,
     keep_wordless_linked_pdf_figures=False,
@@ -366,6 +368,7 @@ def capture_source_article(
             keep_html_table_captions=(
                 keep_html_table_captions and body.body["sha256"] != context.legacy_published_html_table_caption_body
             ),
+            keep_html_table_spans=keep_html_table_spans,
             keep_html_flow_figure_captions=(
                 keep_html_flow_figure_captions and body.body["sha256"] != context.legacy_published_html_flow_figure_body
             ),
@@ -394,6 +397,7 @@ def capture_source_article(
     html_flow_figure_captions = article.get("html_flow_figure_captions") is True
     html_multiline_figure_captions = article.get("html_multiline_figure_captions") is True
     html_table_captions = article.get("html_table_captions") is True
+    html_table_spans = article.get("html_table_spans") is True
     handled_pdf_embeds = article.get("handled_pdf_embeds") is True
     positioned_html_table_images = article.get("positioned_html_table_images") is True
     positioned_pdf_figures = article.get("positioned_pdf_figures") is True
@@ -408,6 +412,7 @@ def capture_source_article(
     )
     new_structure = (
         structured_table_columns or structured_table_cell_order or step_layout or html_table_captions or html_flow_figure_captions
+        or html_table_spans
         or article.get("embedded_pdf")
         or (article.get("authored_html_headings") and any(block.get("kind") == "heading" for block in _walk(blocks)))
     )
@@ -462,6 +467,8 @@ def capture_source_article(
         resources[0]["html_multiline_figure_caption_layout"] = manifest[0]["html_multiline_figure_caption_layout"] = HTML_MULTILINE_FIGURE_CAPTION_LAYOUT
     if html_table_captions:
         resources[0]["html_table_caption_layout"] = manifest[0]["html_table_caption_layout"] = HTML_TABLE_CAPTION_LAYOUT
+    if html_table_spans:
+        resources[0]["html_table_span_layout"] = manifest[0]["html_table_span_layout"] = HTML_TABLE_SPAN_LAYOUT
     if structured_table_columns:
         resources[0]["structured_table_columns_layout"] = manifest[0]["structured_table_columns_layout"] = STRUCTURED_TABLE_COLUMNS_LAYOUT
     if structured_table_cell_order:
@@ -697,6 +704,8 @@ def capture_source_article(
     positioned = set()
     image_records = {}
     for node in _walk(blocks):
+        if not html_table_spans:
+            node.pop("_html_table_cell_spans", None)
         # No executable/provider URLs or upstream-supplied source_original enter the projection.
         for key in (
             "source_original",

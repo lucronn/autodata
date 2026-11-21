@@ -165,6 +165,7 @@ def run_article_job(repo,lease,*,registry,object_store,model_client,hooks=None):
                     keep_html_flow_figure_captions=True,
                     keep_html_multiline_figure_captions=True,
                     keep_html_table_captions=True,
+                    keep_html_table_spans=True,
                     keep_structured_table_columns=True,
                     keep_structured_table_cell_order=True,
                     keep_ordered_step_instructions=True,

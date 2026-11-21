@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from hashlib import sha256
 from html.parser import HTMLParser
+from itertools import accumulate, pairwise
 import re
 import os
 from typing import Any, Mapping
@@ -22,6 +23,7 @@ _LIST_TAGS = {"ol": "ordered_list", "ul": "unordered_list"}
 _HEADING_LEVELS = {f"h{level}": level for level in range(1, 7)}
 _MAX_LIST_DEPTH = 32
 _MAX_FIGURE_DEPTH = 32
+_TABLE_ROW_GROUPS = frozenset({"thead", "tbody", "tfoot"})
 _HTML_LIST_NUMBER = re.compile(r"([+-]?)0*([0-9]{1,10})")
 
 
@@ -30,6 +32,37 @@ def _html_list_number(value):
         return None
     match = _HTML_LIST_NUMBER.fullmatch(value.strip())
     return list_number(int(match[1] + match[2])) if match else None
+
+
+def _table_spans(attrs):
+    rowspan = _html_list_number(attrs.get("rowspan"))
+    colspan = _html_list_number(attrs.get("colspan"))
+    spans = {}
+    if rowspan is not None and (rowspan == 0 or rowspan > 1):
+        spans["rowspan"] = min(rowspan, 65_534)
+    if colspan is not None and colspan > 1:
+        spans["colspan"] = min(colspan, 1_000)
+    return spans
+
+
+def _resolve_table_rowspans(rows, boundaries):
+    """Use finite spans scoped to the authored group and retained rows."""
+    retained_rows = list(accumulate(map(bool, rows), initial=0))
+    has_spans = False
+    for start, stop in pairwise(boundaries):
+        for index in range(start, stop):
+            for cell in rows[index]:
+                spans = cell.get("_html_table_cell_spans")
+                if spans is None:
+                    continue
+                rowspan = spans.pop("rowspan", None)
+                if rowspan is not None:
+                    end = stop if rowspan == 0 else min(stop, index + rowspan)
+                    length = retained_rows[end] - retained_rows[index]
+                    if length > 1:
+                        spans["rowspan"] = min(length, 65_534)
+                has_spans |= bool(spans)
+    return has_spans
 
 
 @dataclass
@@ -74,6 +107,7 @@ class ArticleParser(HTMLParser):
         keep_bound_pdf_iframes=False, keep_html_table_image_order=False, keep_html_figure_captions=False,
         keep_html_table_captions=False, keep_html_flow_figure_captions=False,
         keep_html_multiline_figure_captions=False,
+        keep_html_table_spans=False,
     ):
         super().__init__(convert_charrefs=True)
         self._asset_bindings = {item["source_url"]: item["resource_ref"] for item in asset_bindings}
@@ -93,18 +127,23 @@ class ArticleParser(HTMLParser):
         self._keep_html_table_captions = keep_html_table_captions
         self._keep_html_flow_figure_captions = keep_html_flow_figure_captions
         self._keep_html_multiline_figure_captions = keep_html_multiline_figure_captions
+        self._keep_html_table_spans = keep_html_table_spans
         self.handled_pdf_embeds = False
         self.positioned_html_table_images = False
         self.html_figure_captions = False
         self.html_flow_figure_captions = False
         self.html_multiline_figure_captions = False
         self.html_table_captions = False
+        self.html_table_spans = False
         self._figures: list[_FigureFrame] = []
         self._hidden_embed_tags: list[str] = []
         self._heading: dict[str, Any] | None = None
         self._table_rows = None
         self._table_row = None
         self._table_cell = None
+        self._table_cell_spans = None
+        self._table_row_group_boundaries = [0]
+        self._table_has_candidate_spans = False
         self._table_caption_blocks: list[dict[str, Any]] | None = None
         self._table_caption: _TableCaption | None = None
 
@@ -214,6 +253,9 @@ class ArticleParser(HTMLParser):
             self._figures[:] = [frame for frame in self._figures if not frame.in_table]
         if self._table_cell is not None and self._table_row is not None:
             cell = {"blocks": self._table_cell}
+            if self._table_cell_spans:
+                cell["_html_table_cell_spans"] = self._table_cell_spans
+                self._table_has_candidate_spans = True
             if self._keep_html_table_image_order:
                 kinds = [block["kind"] for block in self._table_cell]
                 # Cells with a linked document already have ordered blocks.
@@ -223,18 +265,29 @@ class ArticleParser(HTMLParser):
                     self.positioned_html_table_images = True
             self._table_row.append(cell)
         self._table_cell = None
+        self._table_cell_spans = None
 
     def _flush_row(self):
         self._flush_cell()
         if self._table_row is not None and self._table_rows is not None:
-            if self._table_row:
+            if self._table_row or self._keep_html_table_spans:
                 self._table_rows.append(self._table_row)
         self._table_row = None
+
+    def _mark_table_row_group_boundary(self):
+        row_count = len(self._table_rows) + int(self._table_row is not None)
+        if self._table_row_group_boundaries[-1] != row_count:
+            self._table_row_group_boundaries.append(row_count)
 
     def _finish_table(self):
         self._finish_table_caption(closed=False)
         self._flush_row()
         rows = self._table_rows
+        if rows and self._keep_html_table_spans:
+            if self._table_has_candidate_spans:
+                self._mark_table_row_group_boundary()
+                self.html_table_spans |= _resolve_table_rowspans(rows, self._table_row_group_boundaries)
+            rows = [row for row in rows if row]
         self._table_rows = None
         if rows:
             table = {"kind": "table", "rows": rows}
@@ -381,9 +434,15 @@ class ArticleParser(HTMLParser):
             self._table_rows = []
             self._table_row = None
             self._table_cell = None
+            self._table_cell_spans = None
+            self._table_row_group_boundaries = [0]
+            self._table_has_candidate_spans = False
             self._table_caption = None
             return
         if self._in_table:
+            if self._keep_html_table_spans and tag in _TABLE_ROW_GROUPS:
+                self._mark_table_row_group_boundary()
+                return
             if (tag == "caption" and self._keep_html_table_captions
                     and not self._table_caption and self._table_caption_blocks is None
                     and not self._table_rows and self._table_row is None):
@@ -401,6 +460,8 @@ class ArticleParser(HTMLParser):
                 if self._table_row is None:
                     self._table_row = []
                 self._table_cell = []
+                if self._keep_html_table_spans:
+                    self._table_cell_spans = _table_spans(attrs)
                 return
             if tag == "br":
                 self.flush()
@@ -485,6 +546,9 @@ class ArticleParser(HTMLParser):
             self._finish_table()
             return
         if self._in_table:
+            if self._keep_html_table_spans and tag in _TABLE_ROW_GROUPS:
+                self._mark_table_row_group_boundary()
+                return
             if tag == "caption" and self._table_caption_blocks is not None:
                 self._finish_table_caption(closed=True)
                 return

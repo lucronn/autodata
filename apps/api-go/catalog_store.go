@@ -192,6 +192,15 @@ func catalogJSONListNumber(value any) (int32, bool) {
 	return integer, float64(integer) == number
 }
 
+func catalogJSONTableSpan(attribute string, value any) (int32, bool) {
+	number, ok := catalogJSONListNumber(value)
+	limit := int32(1000)
+	if attribute == "rowspan" {
+		limit = 65534
+	}
+	return number, ok && number > 1 && number <= limit
+}
+
 func catalogNestedBlocks(value any) []CatalogDocumentBlock {
 	if value == nil {
 		return nil

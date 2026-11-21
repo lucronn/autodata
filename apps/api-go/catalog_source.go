@@ -521,6 +521,22 @@ func renderCatalogOrderedSource(document *CatalogDocument, images []CatalogImage
 			}, placed, false)
 		case "table":
 			cellImages := map[string]bool{}
+			writeCell := func(tag string, value any) {
+				output.WriteString("<" + tag)
+				if tag == "th" {
+					output.WriteString(" scope=\"col\"")
+				}
+				if fields, ok := value.(map[string]any); ok {
+					for _, attribute := range [...]string{"rowspan", "colspan"} {
+						if span, valid := catalogJSONTableSpan(attribute, fields[attribute]); valid {
+							output.WriteString(" " + attribute + "=\"" + strconv.Itoa(int(span)) + "\"")
+						}
+					}
+				}
+				output.WriteString(">")
+				writeInline(value, cellImages)
+				output.WriteString("</" + tag + ">")
+			}
 			output.WriteString("<table>")
 			if label != "" {
 				output.WriteString("<caption>" + stdhtml.EscapeString(label) + "</caption>")
@@ -528,9 +544,7 @@ func renderCatalogOrderedSource(document *CatalogDocument, images []CatalogImage
 			if len(block.Columns) > 0 {
 				output.WriteString("<thead><tr>")
 				for _, column := range block.Columns {
-					output.WriteString("<th scope=\"col\">")
-					writeInline(column, cellImages)
-					output.WriteString("</th>")
+					writeCell("th", column)
 				}
 				output.WriteString("</tr></thead>")
 			}
@@ -538,9 +552,7 @@ func renderCatalogOrderedSource(document *CatalogDocument, images []CatalogImage
 			for _, row := range block.Rows {
 				output.WriteString("<tr>")
 				for _, value := range row {
-					output.WriteString("<td>")
-					writeInline(value, cellImages)
-					output.WriteString("</td>")
+					writeCell("td", value)
 				}
 				output.WriteString("</tr>")
 			}

@@ -548,6 +548,10 @@ func publicCatalogDocument(document *CatalogDocument) *CatalogDocument {
 					if _, ok := catalogJSONListNumber(child); ok && node["type"] == "ordered_list" {
 						out[key] = child
 					}
+				case "rowspan", "colspan":
+					if _, ok := catalogJSONTableSpan(key, child); ok {
+						out[key] = child
+					}
 				case "asset_id", "image_id":
 					if text, ok := child.(string); ok {
 						out[key] = publicCatalogAssetID(text)

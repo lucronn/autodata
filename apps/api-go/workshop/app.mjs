@@ -951,6 +951,15 @@ function renderBlocks(parent, blocks, imagesByID, review, g, sourceTarget = null
         for (const img of cell.querySelectorAll("img[data-asset-id]"))
           cellImageIDs.add(img.dataset.assetId);
       };
+      const renderCell = (cell, value) => {
+        const rowspan = value?.rowspan, colspan = value?.colspan;
+        if (Number.isInteger(rowspan) && rowspan > 1 && rowspan <= 65534)
+          cell.rowSpan = rowspan;
+        if (Number.isInteger(colspan) && colspan > 1 && colspan <= 1000)
+          cell.colSpan = colspan;
+        renderInline(cell, value, "span");
+        trackCellImages(cell);
+      };
       if (block.label || block.caption)
         table.append(element("caption", block.label || block.caption));
       if (block.columns?.length) {
@@ -959,8 +968,7 @@ function renderBlocks(parent, blocks, imagesByID, review, g, sourceTarget = null
         for (const c of block.columns) {
           const th = element("th");
           th.scope = "col";
-          renderInline(th, c, "span");
-          trackCellImages(th);
+          renderCell(th, c);
           row.append(th);
         }
         head.append(row);
@@ -973,8 +981,7 @@ function renderBlocks(parent, blocks, imagesByID, review, g, sourceTarget = null
         const row = element("tr");
         for (const value of cells) {
           const cell = element("td");
-          renderInline(cell, value, "span");
-          trackCellImages(cell);
+          renderCell(cell, value);
           row.append(cell);
         }
         body.append(row);

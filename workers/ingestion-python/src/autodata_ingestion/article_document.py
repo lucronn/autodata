@@ -851,6 +851,13 @@ def _table_cell(
 ) -> Any:
     if not isinstance(value, Mapping):
         return _clean_text(value)
+    spans = value.get("_html_table_cell_spans")
+    layout = {}
+    if isinstance(spans, Mapping):
+        for name, maximum in (("rowspan", 65_534), ("colspan", 1_000)):
+            span = spans.get(name)
+            if type(span) is int and 1 < span <= maximum:
+                layout[name] = span
     text_parts: list[str] = []
     direct_text = _clean_text(
         value.get("text")
@@ -878,6 +885,7 @@ def _table_cell(
             )["blocks"],
             **({"protected_text": True} if ordered_source_cell else {}),
             **({"images": images} if images else {}),
+            **layout,
         }
     if isinstance(nested, list):
         for child in nested:
@@ -897,8 +905,8 @@ def _table_cell(
                 if text:
                     text_parts.append(text)
     combined_text = " ".join(part for part in text_parts if part).strip()
-    if images:
-        return {"text": combined_text, "images": images}
+    if images or layout:
+        return {"text": combined_text, **({"images": images} if images else {}), **layout}
     return combined_text
 
 
