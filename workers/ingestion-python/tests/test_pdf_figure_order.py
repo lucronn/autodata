@@ -33,6 +33,24 @@ def _compact_figure(size=96):
     return figure
 
 
+def _single_line_compact_pdf(layout="body"):
+    buffer = BytesIO()
+    pdf = canvas.Canvas(buffer, invariant=True, pagesize=(612, 792))
+    if layout == "rotated":
+        pdf.setPageRotation(90)
+    text_y = 750 if layout == "header" else 225 if layout == "footer" else 670
+    figure_y = {"header": 625, "footer": 70, "far": 290, "overlap": 590, "before": 680}.get(layout, 510)
+    x = 260 if layout == "other-column" else 72
+    size = 32 if layout == "small" else 96
+    image = ImageReader(_compact_figure())
+    pdf.drawString(72, text_y, "Inspect the seal.")
+    pdf.drawImage(image, x, figure_y, width=size, height=size)
+    if layout == "repeat":
+        pdf.drawImage(image, 72, 390, width=96, height=96)
+    pdf.save()
+    return buffer.getvalue()
+
+
 def _pdf(layout="clear", *, mixed=False, compact=False, picture_size=96):
     buffer = BytesIO()
     pdf = canvas.Canvas(buffer, invariant=True, pagesize=(612, 792))
@@ -585,6 +603,64 @@ def test_compact_diagram_requires_native_geometry_and_existing_dimensions(layout
     legacy = adapt_bound_article(source, None, **options)
     assert all(block["kind"] != "image" for block in legacy["blocks"])
     assert adapt_bound_article(source, None, keep_compact_pdf_figures=True, **options) == legacy
+
+
+@pytest.mark.parametrize("layout", ["header", "footer", "far", "overlap", "before", "other-column", "small", "repeat", "rotated"])
+def test_single_line_compact_pdf_requires_proven_body_placement(layout):
+    from autodata_ingestion.source_adapters import adapt_bound_pdf_embed
+
+    resource = SourceResource.from_bytes("fixture:one-line", "fixture", _single_line_compact_pdf(layout), "application/pdf")
+    legacy = adapt_bound_pdf_embed(resource, keep_pdf_figure_order=True, keep_compact_pdf_figures=True)
+    corrected = adapt_bound_pdf_embed(resource, keep_pdf_figure_order=True, keep_compact_pdf_figures=True,
+                                       keep_single_line_compact_figures=True)
+    assert corrected == legacy
+    assert all(block["kind"] != "image" for block in corrected["blocks"])
+
+
+@pytest.mark.parametrize("provider", ["bankone", "banktwo"])
+def test_linked_single_line_pdf_keeps_native_figure_before_next_article_instruction(capture_fixture, provider):
+    from pypdf import PdfReader
+
+    from autodata_ingestion.article_lifecycle_types import PDF_SINGLE_LINE_FIGURE_LAYOUT
+
+    payload = _single_line_compact_pdf()
+    [embedded] = list(PdfReader(BytesIO(payload)).pages[0].images)
+    assert 0 < len(embedded.data) < 2_048
+    html = ('<p>Remove the pump.</p><iframe src="/fixture/diagram.pdf"></iframe>'
+            '<p>Install the replacement.</p>')
+    body, media = html.encode(), "text/html"
+    if provider == "banktwo":
+        body = json.dumps({"_embedded": {"data": {"article": {"content": html}}}}).encode()
+        media = "application/hal+json"
+    capture_fixture.body(provider, body, media, assets=["appendix"], asset_bindings=[
+        {"source_url": "/fixture/diagram.pdf", "resource_ref": "appendix"},
+    ])
+    capture_fixture.body(provider, payload, "application/pdf", kind="binary", ref="appendix")
+    context = capture_fixture.context(provider)
+    options = dict(registry=capture_fixture.registry, object_store=capture_fixture.objects,
+                   keep_bound_pdf_iframes=True, keep_pdf_figure_order=True, keep_compact_pdf_figures=True)
+    previous = capture_source_article(context, **options)
+    assert not previous.source_images
+    captured = capture_source_article(
+        replace(context, legacy_published_pdf_compact_roots=frozenset({sha256(payload).hexdigest()})),
+        keep_single_line_pdf_figures=True, **options,
+    )
+    assert captured.projection_version == "source-projection-v7"
+    assert captured.projection_status == "readable"
+    assert _layout(captured.source_document["blocks"]) == [
+        ("paragraph", "Remove the pump."), ("paragraph", "Inspect the seal."),
+        ("image", "Figure from page 1"), ("paragraph", "Install the replacement."),
+    ]
+    assert captured.source_body == previous.source_body and captured.evidence_manifest == previous.evidence_manifest
+    body_retained, pdf, png = captured.resource_manifest
+    assert body_retained == previous.resource_manifest[0]
+    assert pdf == {**previous.resource_manifest[1], "pdf_single_line_figure_layout": PDF_SINGLE_LINE_FIGURE_LAYOUT}
+    assert png["role"] == "embedded_asset"
+    assert capture_fixture.objects.data[captured.resources[1]["object_key"]] == (payload, "application/pdf")
+    [image] = captured.source_images
+    raw_png, mime = capture_fixture.objects.data[image["storage_key"]]
+    with Image.open(BytesIO(raw_png)) as decoded, _compact_figure() as expected:
+        assert mime == "image/png" and decoded.tobytes() == expected.tobytes()
 
 
 def test_repeated_compact_diagram_preserves_legacy_art_and_one_asset(capture_fixture):

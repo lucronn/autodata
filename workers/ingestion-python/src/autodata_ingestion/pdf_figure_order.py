@@ -16,10 +16,14 @@ def _upright_matrix(matrix):
     )
 
 
-def figure_text_gaps(page, text, segments, page_image_keys, *, allow_margin_images=False):
+def figure_text_gaps(
+    page, text, segments, page_image_keys, *, allow_margin_images=False, allow_single_line_figure=False,
+):
     """Find insertion slots in visual order without changing the native text."""
     lines = text.splitlines()
-    if (len(lines) < 2 or lines != [block.get("text") for block in segments]
+    single_line = len(lines) == 1
+    if (not lines or single_line and not allow_single_line_figure
+            or lines != [block.get("text") for block in segments]
             or not page_image_keys or any(not isinstance(key, str) for key in page_image_keys)):
         return {}
 
@@ -82,6 +86,20 @@ def figure_text_gaps(page, text, segments, page_image_keys, *, allow_margin_imag
         return {}
     ordered = sorted(bounds.items(), key=lambda item: item[1][3], reverse=True)
     if any(upper[1][1] <= lower[1][3] for upper, lower in zip(ordered, ordered[1:])):
+        return {}
+    if single_line:
+        if len(ordered) != 1:
+            return {}
+        key, (left, bottom, right, top) = ordered[0]
+        x, y, height = text_boxes[0]
+        margin = (crop_top - crop_bottom) / 10
+        # This narrow case admits a full-size diagram immediately below its
+        # line in the page body. Header and footer art stays outside the path.
+        if (abs(left - x) <= 2 and crop_left <= left < right <= crop_right
+                and right - left >= 64 and top - bottom >= 64
+                and crop_bottom + margin <= bottom and y + height <= crop_top - margin
+                and 0 < y - height - top <= top - bottom):
+            return {key: 1}
         return {}
     if allow_margin_images:
         text_top = max(y + height for _, y, height in text_boxes)

@@ -817,6 +817,7 @@ def _adapt_pdf_resource(
     keep_pdf_figures_with_margins: bool = False,
     keep_compact_pdf_figures: bool = False,
     skip_blank_pages: bool = False,
+    keep_single_line_compact_figures: bool = False,
 ) -> SourceArtifact:
     """Extract native PDF text and OCR pages that contain no native text."""
 
@@ -870,15 +871,18 @@ def _adapt_pdf_resource(
         if skip_blank_pages and not text and _is_blank_pdf_page(page):
             blank_pages.add(index)
             continue
+        single_line = bool(text) and "\n" not in text and keep_single_line_compact_figures
         extracted_images, page_image_keys = _extract_pdf_page_images(
             page, page_number=index,
-            allow_compact_figure=bool(text) and figure_gaps is not None and keep_compact_pdf_figures,
+            allow_compact_figure=bool(text) and figure_gaps is not None and (keep_compact_pdf_figures or single_line),
         )
         if extracted_images and extracted_images[0].get("_compact_pdf_figure") is True:
             [figure] = extracted_images
             segments = segment_plain_article_text(text)
-            gaps = figure_text_gaps(page, text, segments, page_image_keys)
+            gaps = figure_text_gaps(page, text, segments, page_image_keys, allow_single_line_figure=single_line)
             if figure["pdf_key"] in gaps:
+                if single_line:
+                    figure["_single_line_pdf_figure"] = True
                 compact_figures.append(figure)
                 compact_positions[figure["image_id"]] = (gaps[figure["pdf_key"]], len(segments), 0)
             # Compact candidates must not alter legacy image or OCR fallback.
@@ -985,6 +989,7 @@ def _adapt_pdf_resource(
             **({"_retained_repeated_pdf_figure": True} if image["image_id"] in repeated_ids else {}),
             **({"_retained_pdf_figure_with_margins": True} if image["image_id"] in margin_ids else {}),
             **({"_compact_pdf_figure": True} if image.get("_compact_pdf_figure") is True else {}),
+            **({"_single_line_pdf_figure": True} if image.get("_single_line_pdf_figure") is True else {}),
         }
         for image in kept_images
     ]
@@ -2098,6 +2103,7 @@ def adapt_bound_pdf_embed(
     keep_pdf_figures_with_margins: bool = False,
     keep_compact_pdf_figures: bool = False,
     skip_blank_pages: bool = False,
+    keep_single_line_compact_figures: bool = False,
 ) -> dict[str, Any]:
     return _adapt_bound_pdf(
         resource, embedded=True, require_complete_ocr=require_complete_ocr,
@@ -2107,12 +2113,14 @@ def adapt_bound_pdf_embed(
         keep_pdf_figures_with_margins=keep_pdf_figures_with_margins,
         keep_compact_pdf_figures=keep_compact_pdf_figures,
         skip_blank_pages=skip_blank_pages,
+        keep_single_line_compact_figures=keep_single_line_compact_figures,
     )
 
 
 def _adapt_bound_pdf(resource, *, embedded=False, require_complete_ocr=False, keep_pdf_figure_order=False,
                      keep_multiple_pdf_figures=False, keep_repeated_pdf_figures=False,
-                     keep_pdf_figures_with_margins=False, keep_compact_pdf_figures=False, skip_blank_pages=False):
+                     keep_pdf_figures_with_margins=False, keep_compact_pdf_figures=False, skip_blank_pages=False,
+                     keep_single_line_compact_figures=False):
     if embedded and (resource.media_type != "application/pdf"
             or len(resource.payload) > _MAX_BOUND_EMBEDDED_PDF_BYTES
             or not resource.payload.startswith(b"%PDF-")):
@@ -2127,6 +2135,7 @@ def _adapt_bound_pdf(resource, *, embedded=False, require_complete_ocr=False, ke
             keep_pdf_figures_with_margins=keep_pdf_figures_with_margins,
             keep_compact_pdf_figures=keep_compact_pdf_figures,
             skip_blank_pages=skip_blank_pages,
+            keep_single_line_compact_figures=keep_single_line_compact_figures,
         )
     else:
         artifact = adapt_source_resource(resource)
@@ -2164,6 +2173,7 @@ def _bound_pdf_blocks(artifact: SourceArtifact, figure_gaps: dict[str, tuple[int
         figure = {"kind": "image", **image}
         figure.pop("_retained_pdf_figure_with_margins", None)
         figure.pop("_compact_pdf_figure", None)
+        figure.pop("_single_line_pdf_figure", None)
         page_number = image.get("page")
         if isinstance(page_number, int):
             pages.setdefault(page_number, [])
@@ -2174,6 +2184,7 @@ def _bound_pdf_blocks(artifact: SourceArtifact, figure_gaps: dict[str, tuple[int
     positioned = False
     positioned_with_margins = False
     positioned_compact_figures = False
+    positioned_single_line_figures = False
     legacy_asset_order = []
     for page in sorted(pages):
         text = pages[page]
@@ -2186,11 +2197,16 @@ def _bound_pdf_blocks(artifact: SourceArtifact, figure_gaps: dict[str, tuple[int
             for index, block in enumerate(text):
                 blocks.extend(at_gap.get(index, ()))
                 blocks.append(block)
+            blocks.extend(at_gap.get(len(text), ()))
             positioned = True
             positioned_with_margins |= any(
                 images[image_id].get("_retained_pdf_figure_with_margins") is True for image_id in gaps
             )
-            positioned_compact_figures |= any(images[image_id].get("_compact_pdf_figure") is True for image_id in gaps)
+            positioned_compact_figures |= any(
+                images[image_id].get("_compact_pdf_figure") is True and not images[image_id].get("_single_line_pdf_figure")
+                for image_id in gaps
+            )
+            positioned_single_line_figures |= any(images[image_id].get("_single_line_pdf_figure") is True for image_id in gaps)
             if len(figures) > 1:
                 group = [figure["image_id"] for figure in figures]
                 legacy_asset_order.append(group)
@@ -2206,4 +2222,5 @@ def _bound_pdf_blocks(artifact: SourceArtifact, figure_gaps: dict[str, tuple[int
            if any(image.get("_retained_repeated_pdf_figure") is True for image in images.values()) else {}),
         **({"retained_pdf_figures_with_margins": True} if positioned_with_margins else {}),
         **({"positioned_compact_pdf_figures": True} if positioned_compact_figures else {}),
+        **({"positioned_single_line_pdf_figures": True} if positioned_single_line_figures else {}),
     }

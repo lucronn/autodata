@@ -14,12 +14,13 @@ import pytest
 from autodata_ingestion.article_lifecycle import run_article_worker_once
 from autodata_ingestion.article_lifecycle_types import (
     PDF_BLANK_PAGE_LAYOUT, PDF_COMPACT_FIGURE_LAYOUT, PDF_LEGACY_FIGURE_LAYOUT, PDF_REPEAT_MARGIN_LAYOUT,
+    PDF_SINGLE_LINE_FIGURE_LAYOUT,
 )
 from autodata_ingestion.procedure_rewrite_auto import PROFILE as AUTO_PROFILE
 from autodata_ingestion.source_job_persistence import refresh_article_job
 
 from lifecycle_support import fresh_database, runtime
-from test_pdf_figure_order import _compact_figure, _pdf_with_logo
+from test_pdf_figure_order import _compact_figure, _pdf_with_logo, _single_line_compact_pdf
 
 
 _PDF_REF = "fixture-linked-pdf"
@@ -83,6 +84,61 @@ def _pdf_with_fixture_figure(*, trailing_text=None, second_figure=False, compact
 
 def _layout(document):
     return [(block["type"], block.get("text")) for block in document["blocks"]]
+
+
+def test_linked_single_line_figure_refresh_reuses_original_pdf_bytes(runtime, monkeypatch):
+    from autodata_ingestion import source_article_capture as capture_module
+
+    provider = "banktwo"
+    runtime.article_id = runtime.articles[provider]
+    connector = runtime.servers[provider]
+    original_pdf = _single_line_compact_pdf()
+    body = (f'<p>Remove the pump.</p><iframe src="{_PDF_LOCATOR}"></iframe>'
+            '<p>Install the replacement.</p>').encode()
+    connector.body(body, assets=[_PDF_REF], asset_bindings=[{"source_url": _PDF_LOCATOR, "resource_ref": _PDF_REF}])
+    connector.body(original_pdf, "application/pdf", ref=_PDF_REF, kind="binary")
+    draft = FixtureDraft()
+    capture = capture_module.capture_source_article
+
+    def historic_capture(*args, **kwargs):
+        return capture(*args, **{**kwargs, "keep_single_line_pdf_figures": False})
+
+    def source(revision):
+        with runtime.repo.connect() as conn:
+            return conn.execute("SELECT * FROM canonical_article_source_revisions WHERE source_revision_id=%s",
+                                (revision,)).fetchone()
+
+    def refresh():
+        job = refresh_article_job(runtime.repo, runtime.article_id, actor="fixture", reason="refresh compact service diagram",
+                                  rewrite_profile_version=AUTO_PROFILE)
+        assert run_article_worker_once(runtime.repo, worker_id=uuid4(), registry=runtime.registry,
+                                       object_store=runtime.objects, model_client=draft, job_id=job.job_id)
+        current = runtime.read_current()
+        assert current["content_origin"] == "canonical", runtime.diagnostics()
+        return current
+
+    with monkeypatch.context() as old:
+        old.setattr(capture_module, "capture_source_article", historic_capture)
+        published_old = refresh()
+    assert not published_old["images"]
+    prior = source(published_old["source_revision_id"])
+    published = refresh()
+    current = source(published["source_revision_id"])
+    assert published["canonical_revision_id"] != published_old["canonical_revision_id"]
+    assert current["body_source_snapshot_id"] == prior["body_source_snapshot_id"]
+    assert source(published_old["source_revision_id"]) == prior
+    assert current["resource_manifest"][1] == {
+        **prior["resource_manifest"][1], "pdf_single_line_figure_layout": PDF_SINGLE_LINE_FIGURE_LAYOUT,
+    }
+    assert _layout(published["document"]) == [
+        ("paragraph", _INTRODUCTION), ("paragraph", "Take off the pump."), ("paragraph", "Check the seal."),
+        ("image", None), ("paragraph", "Fit the replacement unit."),
+    ]
+    [image] = published["images"]
+    data = runtime.objects.get_object(image["storage_key"], max_bytes=1 << 20)
+    with Image.open(BytesIO(data)) as decoded, _compact_figure() as expected:
+        assert decoded.tobytes() == expected.tobytes()
+    assert refresh()["canonical_revision_id"] == published["canonical_revision_id"] and len(draft.requests) == 2
 
 
 def test_compact_linked_pdf_preserves_legacy_pins_and_publishes_changed_bytes(runtime, monkeypatch):
