@@ -10,6 +10,7 @@ from uuid import NAMESPACE_URL, uuid5
 from .article_lifecycle_types import (
     CapturedSource,
     HTML_FIGURE_CAPTION_LAYOUT,
+    HTML_FLOW_FIGURE_CAPTION_LAYOUT,
     HTML_TABLE_CAPTION_LAYOUT,
     PDF_COMPACT_FIGURE_LAYOUT,
     PDF_LEGACY_FIGURE_LAYOUT,
@@ -114,7 +115,21 @@ def _image_nodes(value, *, image_container=False):
             yield from _image_nodes(child, image_container=image_container)
 
 
-def project_document(document, *, include_cell_figure_captions=False, include_table_captions=False):
+def _attach_figure_captions(blocks, key):
+    ordered = []
+    for block in blocks:
+        caption = ordered[-1].pop(key, None) if ordered else None
+        if (caption is not None and block.pop("_html_figure_caption_text", False)
+                and block.get("text") == caption and ordered[-1].get("status") == "available"):
+            ordered[-1]["caption"] = caption
+        else:
+            ordered.append(block)
+    blocks[:] = ordered
+
+
+def project_document(
+    document, *, include_cell_figure_captions=False, include_table_captions=False, include_flow_figure_captions=False,
+):
     """Compatibility fields derived only from the authoritative ordered document."""
     texts = []
     steps = []
@@ -131,7 +146,8 @@ def project_document(document, *, include_cell_figure_captions=False, include_ta
             node = value
             if isinstance(node.get("text"), str) and node["text"]:
                 texts.append(node["text"])
-            if include_cell_figure_captions and cell and node.get("type") == "image" and node.get("caption"):
+            if ((include_cell_figure_captions if cell else include_flow_figure_captions)
+                    and node.get("type") == "image" and node.get("caption")):
                 texts.append(node["caption"])
             if include_table_captions and node.get("type") == "table" and node.get("label"):
                 texts.append(node["label"])
@@ -198,7 +214,7 @@ def capture_source_article(
     keep_embedded_pdf=False, keep_html_headings=False, keep_bound_pdf_iframes=False,
     keep_pdf_figure_order=False, keep_multiple_pdf_figures=False, keep_html_table_image_order=False,
     keep_repeated_pdf_figures=False, keep_pdf_figures_with_margins=False, keep_compact_pdf_figures=False,
-    keep_html_figure_captions=False, keep_html_table_captions=False,
+    keep_html_figure_captions=False, keep_html_table_captions=False, keep_html_flow_figure_captions=False,
 ):
     if not 0 < deadline_seconds <= 30:
         raise ValueError("capture deadline must be within 30 seconds")
@@ -296,6 +312,9 @@ def capture_source_article(
             keep_html_table_captions=(
                 keep_html_table_captions and body.body["sha256"] != context.legacy_published_html_table_caption_body
             ),
+            keep_html_flow_figure_captions=(
+                keep_html_flow_figure_captions and body.body["sha256"] != context.legacy_published_html_flow_figure_body
+            ),
         )
         article = parsing.result(timeout=remaining())
     except (ValueError, TypeError, KeyError, UnicodeError) as error:
@@ -311,13 +330,14 @@ def capture_source_article(
         parser_pool.shutdown(wait=False, cancel_futures=True)
     blocks = deepcopy(article["blocks"])
     html_figure_captions = article.get("html_figure_captions") is True
+    html_flow_figure_captions = article.get("html_flow_figure_captions") is True
     html_table_captions = article.get("html_table_captions") is True
     handled_pdf_embeds = article.get("handled_pdf_embeds") is True
     positioned_html_table_images = article.get("positioned_html_table_images") is True
     positioned_pdf_figures = article.get("positioned_pdf_figures") is True
     retained_pdf_repeats = article.get("retained_repeated_pdf_figures") is True
     pdf_asset_order = article.get("pdf_legacy_asset_order", [])
-    new_structure = html_table_captions or article.get("embedded_pdf") or (
+    new_structure = html_table_captions or html_flow_figure_captions or article.get("embedded_pdf") or (
         article.get("authored_html_headings") and any(block.get("kind") == "heading" for block in _walk(blocks))
     )
     for node in _image_nodes(blocks):
@@ -365,6 +385,8 @@ def capture_source_article(
         resources[0]["pdf_compact_figure_layout"] = manifest[0]["pdf_compact_figure_layout"] = PDF_COMPACT_FIGURE_LAYOUT
     if html_figure_captions:
         resources[0]["html_figure_caption_layout"] = manifest[0]["html_figure_caption_layout"] = HTML_FIGURE_CAPTION_LAYOUT
+    if html_flow_figure_captions:
+        resources[0]["html_flow_figure_caption_layout"] = manifest[0]["html_flow_figure_caption_layout"] = HTML_FLOW_FIGURE_CAPTION_LAYOUT
     if html_table_captions:
         resources[0]["html_table_caption_layout"] = manifest[0]["html_table_caption_layout"] = HTML_TABLE_CAPTION_LAYOUT
     provenance = [deepcopy(resources[0])]
@@ -666,16 +688,14 @@ def capture_source_article(
         for node in _walk(blocks):
             if not node.get("_ordered_html_table_cell") and not node.get("_preserve_cell_block_order"):
                 continue
-            children = node.get("blocks", [])
-            ordered = []
-            for child in children:
-                caption = ordered[-1].pop("_html_figure_caption", None) if ordered else None
-                if (caption is not None and child.pop("_html_figure_caption_text", False)
-                        and child.get("text") == caption and ordered[-1].get("status") == "available"):
-                    ordered[-1]["caption"] = caption
-                else:
-                    ordered.append(child)
-            children[:] = ordered
+            _attach_figure_captions(node.get("blocks", []), "_html_figure_caption")
+    if html_flow_figure_captions:
+        _attach_figure_captions(blocks, "_html_flow_figure_caption")
+        for node in _walk(blocks):
+            if (node.get("kind") or node.get("type")) in ("ordered_list", "unordered_list"):
+                for item in node.get("items", []):
+                    if isinstance(item, dict) and isinstance(item.get("blocks"), list):
+                        _attach_figure_captions(item["blocks"], "_html_flow_figure_caption")
     doc = build_ordered_document(
         {"article_id": str(article_id(context.key)), "evidence_ids": evidence_ids},
         blocks,
@@ -694,6 +714,7 @@ def capture_source_article(
             )
     body_text, steps, images = project_document(
         doc, include_cell_figure_captions=html_figure_captions, include_table_captions=html_table_captions,
+        include_flow_figure_captions=html_flow_figure_captions,
     )
     if (
         not body_text.strip()

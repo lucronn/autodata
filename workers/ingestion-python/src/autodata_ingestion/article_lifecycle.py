@@ -8,7 +8,8 @@ from . import article_lifecycle_store as store
 from .source_job_persistence import (claim_source_job, heartbeat_source_job, lock_live_lease,
                                      fail_source_job, park_automatic_for_model, LeaseLost)
 from .article_lifecycle_types import (
-    ArticleKey, HTML_FIGURE_CAPTION_LAYOUT, HTML_TABLE_CAPTION_LAYOUT, PDF_COMPACT_FIGURE_LAYOUT,
+    ArticleKey, HTML_FIGURE_CAPTION_LAYOUT, HTML_FLOW_FIGURE_CAPTION_LAYOUT, HTML_TABLE_CAPTION_LAYOUT,
+    PDF_COMPACT_FIGURE_LAYOUT,
     PDF_LEGACY_FIGURE_LAYOUT, PDF_REPEAT_MARGIN_LAYOUT, SourceArticleContext, SOURCE_PROJECTION_VERSIONS,
 )
 from .procedure_rewrite import (rewrite_ordered_document, validate_article_rewrite,
@@ -80,6 +81,7 @@ def _capture_context(repo,lease):
         key=ArticleKey(row["provider_slug"],row["vehicle_id"],row["vehicle_configuration_id"],row["source_vehicle_ref"],row["source_article_ref"])
         previous_body = row["prior_published_body"]
         legacy_figure_body = previous_body
+        legacy_flow_figure_body = previous_body
         legacy_table_caption_body = previous_body
         previous_pdf_roots = {previous_body} if previous_body is not None else set()
         compact_layout_roots = set()
@@ -92,6 +94,8 @@ def _capture_context(repo,lease):
             if resource.get("role") == "body" and digest == previous_body:
                 if resource.get("html_figure_caption_layout") == HTML_FIGURE_CAPTION_LAYOUT:
                     legacy_figure_body = None
+                if resource.get("html_flow_figure_caption_layout") == HTML_FLOW_FIGURE_CAPTION_LAYOUT:
+                    legacy_flow_figure_body = None
                 if resource.get("html_table_caption_layout") == HTML_TABLE_CAPTION_LAYOUT:
                     legacy_table_caption_body = None
             is_pdf = resource.get("role") == "document_asset" and resource.get("media_type") == "application/pdf"
@@ -118,6 +122,7 @@ def _capture_context(repo,lease):
             published_legacy_pdf_layout_roots=frozenset(legacy_layout_roots) if previous_has_repeats else frozenset(),
             legacy_published_pdf_compact_roots=frozenset(previous_pdf_roots - compact_layout_roots),
             legacy_published_html_figure_body=legacy_figure_body,
+            legacy_published_html_flow_figure_body=legacy_flow_figure_body,
             legacy_published_html_table_caption_body=legacy_table_caption_body,
         )
 
@@ -145,6 +150,7 @@ def run_article_job(repo,lease,*,registry,object_store,model_client,hooks=None):
                     keep_pdf_figures_with_margins=True,
                     keep_compact_pdf_figures=True,
                     keep_html_figure_captions=True,
+                    keep_html_flow_figure_captions=True,
                     keep_html_table_captions=True,
                 )
                 if lost.is_set():raise LeaseLost("heartbeat lost during source IO")

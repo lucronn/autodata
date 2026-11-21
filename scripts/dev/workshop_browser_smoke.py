@@ -1335,6 +1335,19 @@ async def expect_html_table_figure(article):
     await expect(cell.get_by_role('img', name='Alignment marks')).to_have_js_property('naturalWidth', 1)
 
 
+async def expect_html_flow_figures(article):
+    from playwright.async_api import expect
+
+    for parent, name, caption in (
+        (':scope', 'Bench diagram', 'Bench reference diagram'),
+        ('ol[start="4"] > li[value="9"]', 'Shim diagram', 'Shim orientation diagram'),
+    ):
+        figure = f'{parent} > figure:has(img[alt="{name}"])'
+        await expect(article.locator(f'{figure} > figcaption')).to_have_text(caption)
+        await expect(article.locator(f'{figure} > img')).to_have_js_property('naturalWidth', 1)
+        await expect(article.locator(f'{figure} + table')).to_have_count(1)
+
+
 async def expect_paid_table_caption_search(page, origin, configuration, article_id):
     from playwright.async_api import expect
 
@@ -1529,6 +1542,7 @@ async def api_case(browser,origin,name,output,observations=None):
             if linked_pdf:
                 await expect_linked_pdf(article_content)
                 await expect_html_table_figure(article_content)
+                await expect_html_flow_figures(article_content)
             else:
                 nested_figure = nested_item + ' table td figure:has(img[alt="Drive alignment"])'
                 await expect(page.locator(nested_item + " table caption")).to_have_text("Alignment reference")
@@ -1556,6 +1570,7 @@ async def api_case(browser,origin,name,output,observations=None):
                 source_frame = page.locator('#source-review-frame')
                 await expect_linked_pdf(source_frame)
                 await expect_html_table_figure(source_frame)
+                await expect_html_flow_figures(source_frame)
                 await expect(source_frame.locator('table td figure').last).to_be_focused()
             else:
                 stored_figure = page.locator(
@@ -1589,6 +1604,7 @@ async def api_case(browser,origin,name,output,observations=None):
             if linked_pdf:
                 await expect_linked_pdf(article_content, rewritten=True)
                 await expect_html_table_figure(article_content)
+                await expect_html_flow_figures(article_content)
             else:
                 await expect(page.locator(nested_figure + " figcaption")).to_have_text("Drive alignment reference")
                 await expect(page.locator(nested_item + " aside")).to_contain_text("Keep the drive seal in place.")

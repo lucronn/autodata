@@ -1968,6 +1968,89 @@ def test_authored_table_figure_caption_and_following_instruction_are_distinct(ca
     assert canonical["blocks"][2]["rows"][0][0] == cell
 
 
+@pytest.mark.parametrize("provider,location,available", [
+    ("bankone", "article", True), ("banktwo", "article", True),
+    ("bankone", "list", True), ("banktwo", "list", True), ("banktwo", "article", False),
+])
+def test_html_flow_figure_caption_stays_with_available_figure(capture_fixture, provider, location, available):
+    import json
+    from io import BytesIO
+
+    from PIL import Image
+    from autodata_ingestion.article_lifecycle_types import HTML_FLOW_FIGURE_CAPTION_LAYOUT
+    from autodata_ingestion.procedure_normalize import normalize_procedure_article
+    from autodata_ingestion.procedure_rewrite_auto import render_auto, validate_auto
+    from autodata_ingestion.procedure_rewrite_full import prose_slots
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    opening, caption, following = "Remove the pump.", "Stamped witness marks", "Remove the cover while the ignition is off."
+    rewritten_following = "With the ignition off, take the cover off."
+    figure = ('<figure><img src="/fixture/bench" alt="Bench diagram">'
+              f'<figcaption>{caption}</figcaption></figure>')
+    markup = (f'<p>{opening}</p>{figure}{following}' if location == "article"
+              else f'<ol start="4"><li value="9">{opening}{figure}{following}</li></ol>')
+    raw, media = markup.encode(), "text/html"
+    if provider == "banktwo":
+        raw = json.dumps({"_embedded": {"data": {"article": {"content": markup}}}}).encode()
+        media = "application/hal+json"
+    capture_fixture.body(provider, raw, media, assets=["figure"], asset_bindings=[
+        {"source_url": "/fixture/bench", "resource_ref": "figure"},
+    ])
+    if available:
+        raster = BytesIO()
+        Image.new("RGB", (24, 24), "green").save(raster, format="PNG")
+        capture_fixture.body(provider, raster.getvalue(), "image/png", ref="figure", kind="asset")
+
+    def children(document):
+        blocks = document["blocks"]
+        if location == "article":
+            return blocks[1:]
+        return blocks[0]["items"][0]["blocks"]
+
+    context = capture_fixture.context(provider)
+    options = dict(registry=capture_fixture.registry, object_store=capture_fixture.objects,
+                   keep_html_figure_captions=True, keep_html_table_image_order=True)
+    prior = capture_source_article(context, **options)
+    assert children(prior.source_document)[0].get("caption") is None
+    guarded = capture_source_article(
+        replace(context, legacy_published_html_flow_figure_body=sha256(raw).hexdigest()),
+        keep_html_flow_figure_captions=True, **options,
+    )
+    assert (guarded.source_document, guarded.source_fingerprint) == (prior.source_document, prior.source_fingerprint)
+    capture = capture_source_article(context, keep_html_flow_figure_captions=True, **options)
+    assert capture.resource_manifest[0]["html_flow_figure_caption_layout"] == HTML_FLOW_FIGURE_CAPTION_LAYOUT
+    assert capture.resource_manifest[1:] == prior.resource_manifest[1:]
+    assert capture.evidence_manifest == prior.evidence_manifest
+    assert capture.source_body.splitlines() == [opening, caption, following]
+    blocks = children(capture.source_document)
+    assert [(block["type"], block.get("caption"), block.get("text")) for block in blocks] == [
+        ("image", caption if available else None, None),
+        *([] if available else [("paragraph", None, caption)]),
+        ("paragraph", None, following),
+    ]
+    assert blocks[0]["image_id"] == prior.source_images[0]["image_id"]
+    if not available:
+        assert capture.projection_status == "partial"
+        return
+
+    assert capture_fixture.objects.data[blocks[0]["storage_key"]] == (raster.getvalue(), "image/png")
+    normalized = normalize_procedure_article({
+        "normalized_document": capture.source_document, "body": capture.source_body, "steps": capture.source_steps,
+    }, resource_manifest=capture.resource_manifest)["normalized_document"]
+    slots = prose_slots(normalized, include_cell_blocks=True)
+    assert [slot["text"] for slot in slots] == [opening, following]
+    response = {"introduction": "This procedure covers pump removal.", "replacements": [
+        {**slot, "action": "rewrite", "text": text, "reason": ""}
+        for slot, text in zip(slots, ("Take off the pump.", rewritten_following), strict=True)
+    ]}
+    canonical = render_auto(normalized, response)
+    assert validate_auto(normalized, canonical, response=response).passed
+    article = {"blocks": canonical["blocks"][1:]}
+    canonical_figure = children(article)[0]
+    assert canonical_figure == {**blocks[0], "source_order": canonical_figure["source_order"]}
+    assert children(article)[-1]["text"] == rewritten_following
+
+
 @pytest.mark.parametrize("provider", ["bankone", "banktwo"])
 def test_authored_html_table_caption_stays_with_table_through_rewrite(capture_fixture, provider):
     import json

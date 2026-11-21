@@ -50,6 +50,8 @@ class _ListFrame:
 
 @dataclass
 class _FigureFrame:
+    blocks: list[dict[str, Any]] | None
+    in_table: bool = False
     image: dict[str, Any] | None = None
     caption: dict[str, Any] | None = None
     open_caption: int | None = None
@@ -70,7 +72,7 @@ class ArticleParser(HTMLParser):
     def __init__(
         self, *, asset_bindings=(), preserve_legacy_list_starts=True, keep_html_headings=False,
         keep_bound_pdf_iframes=False, keep_html_table_image_order=False, keep_html_figure_captions=False,
-        keep_html_table_captions=False,
+        keep_html_table_captions=False, keep_html_flow_figure_captions=False,
     ):
         super().__init__(convert_charrefs=True)
         self._asset_bindings = {item["source_url"]: item["resource_ref"] for item in asset_bindings}
@@ -88,9 +90,11 @@ class ArticleParser(HTMLParser):
         self._keep_html_table_image_order = keep_html_table_image_order
         self._keep_html_figure_captions = keep_html_figure_captions
         self._keep_html_table_captions = keep_html_table_captions
+        self._keep_html_flow_figure_captions = keep_html_flow_figure_captions
         self.handled_pdf_embeds = False
         self.positioned_html_table_images = False
         self.html_figure_captions = False
+        self.html_flow_figure_captions = False
         self.html_table_captions = False
         self._figures: list[_FigureFrame] = []
         self._hidden_embed_tags: list[str] = []
@@ -151,6 +155,8 @@ class ArticleParser(HTMLParser):
         if item is None:
             return
         self.flush()
+        if self._figures:
+            self._figures[:] = [frame for frame in self._figures if frame.blocks is not item.blocks]
         text = " ".join(item.lead)
         if item.blocks or item.number is not None:
             entry = {"text": text}
@@ -201,7 +207,8 @@ class ArticleParser(HTMLParser):
 
     def _flush_cell(self):
         self.flush()
-        self._figures.clear()
+        if self._figures:
+            self._figures[:] = [frame for frame in self._figures if not frame.in_table]
         if self._table_cell is not None and self._table_row is not None:
             cell = {"blocks": self._table_cell}
             if self._keep_html_table_image_order:
@@ -275,13 +282,34 @@ class ArticleParser(HTMLParser):
         else:
             self._append_block(block)
 
+    def _start_figure(self):
+        cell = self._table_cell is not None and self._keep_html_figure_captions
+        item = self._current_list_item()
+        blocks = None
+        if cell:
+            blocks = self._table_cell
+        elif self._keep_html_flow_figure_captions and not self._in_table and (not self._lists or item is not None):
+            blocks = item.blocks if item is not None else self.blocks
+        if blocks is None and not self._figures:
+            return
+        if self._figures:
+            self._figures[-1].invalid = True
+        if len(self._figures) >= _MAX_FIGURE_DEPTH:
+            raise ValueError("HTML figure nesting exceeds its limit")
+        self._figures.append(_FigureFrame(blocks, in_table=self._in_table))
+
     def _start_figure_caption(self):
         self.flush()
         frame = self._figures[-1]
-        self.html_figure_captions = True
+        if frame.in_table:
+            self.html_figure_captions = True
+        else:
+            self.html_flow_figure_captions = True
         if frame.open_caption is not None or frame.caption is not None:
             frame.invalid = True
-        frame.open_caption = len(self._table_cell)
+        blocks = frame.blocks
+        if blocks is not None:
+            frame.open_caption = len(blocks)
 
     def _finish_figure_caption(self):
         self.flush()
@@ -292,7 +320,7 @@ class ArticleParser(HTMLParser):
         frame.open_caption = None
         # Only one trailing text block immediately following the figure is a
         # safe semantic caption. Other content stays in the authored flow.
-        blocks = self._table_cell
+        blocks = frame.blocks
         if (blocks is not None and offset > 0 and len(blocks) == offset + 1
                 and blocks[offset - 1] is frame.image and blocks[offset].get("kind") == "text"):
             frame.caption = blocks[offset]
@@ -309,13 +337,9 @@ class ArticleParser(HTMLParser):
             self._skip += 1
         if self._skip:
             return
-        if self._keep_html_figure_captions and tag == "figure" and self._table_cell is not None:
-            if self._figures:
-                self._figures[-1].invalid = True
-            if len(self._figures) >= _MAX_FIGURE_DEPTH:
-                raise ValueError("HTML figure nesting exceeds its limit")
-            self._figures.append(_FigureFrame())
-        if tag == "figcaption" and self._figures and self._table_cell is not None:
+        if tag == "figure" and (self._keep_html_figure_captions or self._keep_html_flow_figure_captions):
+            self._start_figure()
+        if tag == "figcaption" and self._figures and self._figures[-1].blocks is not None:
             self._start_figure_caption()
             return
         if self._keep_bound_pdf_iframes and (
@@ -436,13 +460,14 @@ class ArticleParser(HTMLParser):
             if tag in {"script", "style"}:
                 self._skip -= 1
             return
-        if tag == "figcaption" and self._figures and self._table_cell is not None:
+        if tag == "figcaption" and self._figures and self._figures[-1].blocks is not None:
             self._finish_figure_caption()
             return
         if tag == "figure" and self._figures:
             frame = self._figures.pop()
             if frame.image is not None and frame.caption is not None and not frame.invalid:
-                frame.image["_html_figure_caption"] = frame.caption["text"]
+                key = "_html_figure_caption" if frame.in_table else "_html_flow_figure_caption"
+                frame.image[key] = frame.caption["text"]
                 frame.caption["_html_figure_caption_text"] = True
         if self._heading is not None and tag in _HEADING_LEVELS:
             self.flush()

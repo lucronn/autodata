@@ -413,6 +413,8 @@ def _child(root_name,engine,provider,directory,monkeypatch):
                         )
                         html = (
                             '<p>Inspect the alignment marks before removing the pump.</p>'
+                            '<figure><img src="/fixture/alignment.png" alt="Bench diagram">'
+                            '<figcaption>Bench reference diagram</figcaption></figure>'
                             '<table><caption>Alignment service data</caption><tr><td>Check the reference mark.'
                             '<figure><img src="/fixture/alignment.png" alt="Alignment marks">'
                             '<figcaption>Alignment witness marks</figcaption></figure>'
@@ -420,6 +422,8 @@ def _child(root_name,engine,provider,directory,monkeypatch):
                             '<p>Do not run the pump dry.</p>'
                             '<p>Remove the cover while the ignition is off.</p>'
                             '<ol start="4"><li value="9">Remove the pump.'
+                            '<figure><img src="/fixture/alignment.png" alt="Shim diagram">'
+                            '<figcaption>Shim orientation diagram</figcaption></figure>'
                             '<table><tr><td>'
                             f'<iframe src="{_PDF_LOCATOR}">Hidden fallback.</iframe>'
                             '</td><td>Drive seal seating depth: 2.0 mm</td></tr></table></li></ol>'
