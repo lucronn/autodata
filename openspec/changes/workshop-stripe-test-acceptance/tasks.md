@@ -42,6 +42,15 @@
   full TEST refund delivered a signed revocation. Stripe charge and refund API
   readback, persisted verified event rows, and the server grant checks agreed.
   Replaying the stored settlement left the revocation in place.
+- On `dc7c953`, Kali Chromium connected the native signed Workshop buyer
+  flow to the same provider-backed method. The browser started the exact
+  scoped Checkout, kept the return unpaid until the Stripe-signed event
+  reached the actual public Go webhook, then opened the owned Library,
+  stored article, rewritten article, and protected image. Library state
+  survived a reload and app restart. A Stripe-signed full TEST refund
+  revoked the order and denied the previously valid article, source, and
+  image links. This connected run used the provider test fixture, a local
+  signed identity fixture, and synthetic supplier content.
 - A separate TEST expiry case delivered two genuine signed expiry events.
   Reusing the first idempotency key kept its session, and a new key opened a
   fresh session after expiry. Both sessions ended unpaid with zero grants.
