@@ -1345,7 +1345,9 @@ async def expect_html_flow_figures(article):
         figure = f'{parent} > figure:has(img[alt="{name}"])'
         await expect(article.locator(f'{figure} > figcaption')).to_have_text(caption)
         await expect(article.locator(f'{figure} > img')).to_have_js_property('naturalWidth', 1)
-        await expect(article.locator(f'{figure} + table, {figure} + a.source-reference + table')).to_have_count(1)
+        await expect(article.locator(
+            f'{figure} + .table-scroll > table, {figure} + a.source-reference + .table-scroll > table',
+        )).to_have_count(1)
 
 
 async def expect_paid_table_caption_search(page, origin, configuration, article_id):
