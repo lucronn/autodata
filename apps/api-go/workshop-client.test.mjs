@@ -488,6 +488,16 @@ test('reader checks negotiated cold source early and preserves the half-second c
     ['pending at both probes', [prepare, prepare, prepare, pending, stored, complete], [0, 250, 500, 1000, 2000, 3000]],
     ['third miss retains the ordinary read', [prepare, prepare, fetching, fetching, complete], [0, 250, 500, 750, 1000]],
     ['a slow second response rejoins the ordinary read', [prepare, prepare, delayedFetching, complete], [0, 250, 500, 1000]],
+    ['same capture finishes just after the ordinary read',
+      [prepare, fetching, fetching, fetching, fetching, fetching, stored, complete], [0, 250, 375, 500, 750, 1000, 1250, 2250]],
+    ['late miss retains the next ordinary read',
+      [prepare, fetching, fetching, fetching, fetching, fetching, fetching, complete], [0, 250, 375, 500, 750, 1000, 1250, 2000]],
+    ['late timeout retains the next ordinary read',
+      [prepare, fetching, fetching, fetching, fetching, fetching, timedOut, complete], [0, 250, 375, 500, 750, 1000, 1250, 2000]],
+    ['late check honors overload',
+      [prepare, fetching, fetching, fetching, fetching, fetching, overload, complete], [0, 250, 375, 500, 750, 1000, 1250, 6250]],
+    ['ordinary read with explicit delay cannot add a late check',
+      [prepare, fetching, fetching, fetching, fetching, { ...fetching, retryAfterSeconds: 4 }, complete], [0, 250, 375, 500, 750, 1000, 5000]],
     ['third probe honors overload', [prepare, prepare, fetching, overload, complete], [0, 250, 500, 750, 5750]],
     ['retry hint at first probe', [prepare, pending, pending, stored, complete], [0, 250, 1250, 2250, 3250]],
     ['retry hint at second probe', [prepare, prepare, pending, complete], [0, 250, 500, 1500]],
@@ -507,9 +517,20 @@ test('reader checks negotiated cold source early and preserves the half-second c
       actual.push(now);
       const headerBudget = { 250: 250, 375: 125, 500: 500, 750: 250 };
       const bodyBudget = { 250: 750, 375: 625, 500: 750, 750: 500 };
-      assert.equal(preferShortSourceCheck, now in headerBudget, label);
+      const confirmedAtOrdinaryRead = now === 1000 && [
+        'third miss retains the ordinary read',
+        'a slow second response rejoins the ordinary read',
+        'same capture finishes just after the ordinary read',
+        'late miss retains the next ordinary read',
+        'late timeout retains the next ordinary read',
+        'late check honors overload',
+        'ordinary read with explicit delay cannot add a late check',
+      ].includes(label);
+      const late = now === 1250 && expectedStarts.includes(750) && expectedStarts.includes(1000);
+      assert.equal(preferShortSourceCheck, now in headerBudget || confirmedAtOrdinaryRead || late, label);
       if (now in headerBudget) assert.equal(timeout, headerBudget[now], label);
-      assert.equal(readableBodyTimeout, bodyBudget[now], label);
+      if (late) assert.equal(timeout, 750, label);
+      assert.equal(readableBodyTimeout, late ? 1000 : bodyBudget[now], label);
       const next = responses.shift();
       if (next === timedOut) {
         now += timeout;

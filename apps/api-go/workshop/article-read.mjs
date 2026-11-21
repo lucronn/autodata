@@ -60,6 +60,8 @@ export async function readArticle(
   let firstReadAt = 0;
   let nextSourceProbeAt = 0;
   let firstSourceProbePending = false;
+  let confirmedSourceCapture = false;
+  let regularSourceReadAt = 0;
   let sourceConfirmationAt = 0;
   let publicationReadAt = 0;
   let publicationProbeJob;
@@ -73,15 +75,19 @@ export async function readArticle(
     const startedAt = now();
     if (firstReadAt <= startedAt) firstReadAt = 0;
     if (nextSourceProbeAt <= startedAt) nextSourceProbeAt = 0;
+    if (regularSourceReadAt <= startedAt) regularSourceReadAt = 0;
     if (sourceConfirmationAt <= startedAt) sourceConfirmationAt = 0;
     if (publicationReadAt <= startedAt) publicationReadAt = 0;
     const readDeadline = Math.min(
       deadline, firstReadAt || deadline, nextSourceProbeAt || deadline,
-      sourceConfirmationAt || deadline, publicationReadAt || deadline,
+      regularSourceReadAt || deadline, sourceConfirmationAt || deadline, publicationReadAt || deadline,
     );
+    const firstScheduledSourceRead = !firstReadAt && confirmedSourceCapture && earlyConfirmationJob !== undefined;
     // Keep the header deadline for a short read. Give a successful body on
     // the later probes one extra interval to finish without downloading twice.
-    const sourceBodyDeadline = firstReadAt && (firstReadAt + (nextSourceProbeAt ? 0 : sourceProbeIntervalMs));
+    const sourceBodyDeadline = firstReadAt
+      ? firstReadAt + (nextSourceProbeAt ? 0 : sourceProbeIntervalMs)
+      : regularSourceReadAt && regularSourceReadAt + sourceProbeIntervalMs;
     const bodyDeadline = sourceBodyDeadline ||
       (publicationReadAt && publicationReadAt + publicationProbeIntervalMs);
     try {
@@ -90,7 +96,7 @@ export async function readArticle(
         timeout: Math.max(1, Math.floor(Math.min(10000, readDeadline - startedAt))),
         readableBodyTimeout: bodyDeadline ? Math.floor(Math.min(deadline, bodyDeadline) - startedAt) : undefined,
         finishPublishedBody: Boolean(publicationReadAt),
-        preferShortSourceCheck: Boolean(firstReadAt),
+        preferShortSourceCheck: Boolean(firstReadAt || regularSourceReadAt || firstScheduledSourceRead),
         preferShortPublicationCheck: !sawFastSource || Boolean(publicationReadAt),
       });
       signal?.throwIfAborted();
@@ -128,6 +134,8 @@ export async function readArticle(
     if (remaining <= 0) break;
     if (firstReadAt) {
       const samePendingSource = shortSourceCheck && latest.data.article.processing.job_id === earlyConfirmationJob;
+      confirmedSourceCapture = (firstSourceProbePending || confirmedSourceCapture) && samePendingSource &&
+        latest.data.article.processing.state === "fetching_source";
       if (nextSourceProbeAt && retryAfter === 0 && (samePendingSource || sourceProbeFailed)) {
         const probeWait = Math.max(0, nextSourceProbeAt - now());
         // A confirmed fetch can finish before the next scheduled read. Give
@@ -162,6 +170,14 @@ export async function readArticle(
         continue;
       }
     }
+    if (regularSourceReadAt) {
+      const regularWait = Math.max(0, regularSourceReadAt - now());
+      regularSourceReadAt = 0;
+      if (!readable) {
+        await wait(Math.min(remaining, Math.max(regularWait, retryAfter * 1000)), signal);
+        continue;
+      }
+    }
     if (publicationReadAt) {
       // If the first probe still sees the same active rewrite, try once
       // halfway to the ordinary read.
@@ -192,9 +208,17 @@ export async function readArticle(
       // keep the normal two-second check before resuming the usual backoff.
       earlyConfirmationJob = fastPendingJob;
     } else if (earlyConfirmationJob !== undefined) {
-      if (fastPendingJob === earlyConfirmationJob) {
+      const stillFetching = firstScheduledSourceRead && shortSourceCheck &&
+        latest.data.article.processing.job_id === earlyConfirmationJob &&
+        latest.data.article.processing.state === "fetching_source";
+      if (fastPendingJob === earlyConfirmationJob || stillFetching) {
         backoff = 1000;
         attempt--;
+      }
+      if (stillFetching) {
+        // Keep the next ordinary read if this resumed short check misses.
+        regularSourceReadAt = now() + backoff;
+        backoff = sourceProbeIntervalMs;
       }
       earlyConfirmationJob = undefined;
     }
