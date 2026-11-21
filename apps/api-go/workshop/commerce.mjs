@@ -235,6 +235,7 @@ export async function pollOrder(
     request = requestJSON,
     signal,
     onUpdate = () => {},
+    onUnavailable = () => {},
     wait = delay,
     now = () => performance.now(),
     budgetMs = 120000,
@@ -245,6 +246,7 @@ export async function pollOrder(
   const deadline = now() + Math.min(120000, budgetMs);
   let attempt = 0,
     latest,
+    unavailable = false,
     regularReadAt = 0;
   while (now() < deadline) {
     signal?.throwIfAborted();
@@ -261,6 +263,7 @@ export async function pollOrder(
       signal?.throwIfAborted();
       if (!validOrder(latest, orderID))
         throw new Error("Payment status is unavailable.");
+      unavailable = false;
       onUpdate(latest);
       if (["paid", "expired", "canceled", "revoked"].includes(latest.state))
         return { ...latest, timedOut: false };
@@ -278,6 +281,11 @@ export async function pollOrder(
         throw error;
       retryAfter = Number(error.retryAfterSeconds) || 0;
       pauseBeforeRetry = [429, 503].includes(error.status);
+      // A speculative read can hit its short deadline before the ordinary check.
+      if (!unavailable && (!regularReadAt || pauseBeforeRetry)) {
+        unavailable = true;
+        onUnavailable();
+      }
     }
     const finishedAt = now();
     const remaining = deadline - finishedAt;

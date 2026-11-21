@@ -2376,10 +2376,13 @@ async function ownedCheckoutHarness(indexResponses, { checkoutResponse = ownedCh
   return { ...h, requests };
 }
 
-for (const [known, message] of [
-  ['paid', /Payment was received.*order status is unavailable.*do not pay again/],
-  ['pending', /^Payment confirmation is still pending/],
-  ['unknown', /^Payment status is temporarily unavailable\. Try again\.$/],
+for (const [known, message, feedback] of [
+  ['paid', /Payment was received.*order status is unavailable.*do not pay again/,
+    'Payment received. Status check is temporarily unavailable. Checking again…'],
+  ['pending', /^Payment was pending at the last check\. The current status is unavailable\./,
+    'Payment was pending at the last check. Status check is temporarily unavailable. Checking again…'],
+  ['unknown', /^Payment status is temporarily unavailable\. Try again\.$/,
+    'Payment status is temporarily unavailable. Checking again…'],
 ]) {
   test(`order status timeout describes ${known} payment accurately and can recover`, async () => {
     const previouslyPaid = known === 'paid';
@@ -2393,8 +2396,14 @@ for (const [known, message] of [
       h.location.search = `?order=${orderID}`;
     }
     const readsAt = [];
+    const feedbackAt = [];
     let now = 0;
     let recovered = false;
+    const recordStatus = h.context.status;
+    h.context.status = (text, options) => {
+      if (text.endsWith('Checking again…')) feedbackAt.push([now, text, options.busy]);
+      recordStatus(text, options);
+    };
     h.context.pollOrder = (id, options) => pollOrder(id, {
       ...options,
       now: () => now,
@@ -2418,12 +2427,13 @@ for (const [known, message] of [
 
     const attempts = [0, 1000, 3000, 7000, 15000, 25000, 35000, 45000, 55000, 65000, 75000, 85000, 95000, 105000, 115000];
     const initial = previouslyPaid ? [checkoutPost, checkoutIndexGet] : [];
+    assert.deepEqual(feedbackAt, [[known === 'pending' ? 1000 : 0, feedback, true]]);
     assert.deepEqual(readsAt, attempts);
     assert.equal(now, 120000);
     assert.deepEqual(h.requests, [...initial, ...attempts.map(() => checkoutOrderGet)]);
     const status = h.statuses.at(-1);
     assert.match(status.message, message);
-    assert.equal(Boolean(status.options.error), known !== 'pending');
+    assert.equal(Boolean(status.options.error), true);
     assert.equal(new URLSearchParams(h.location.search).get('order'), orderID);
     assert.equal(h.context.paidOrder?.id, previouslyPaid ? orderID : undefined);
     assert.equal(h.context.unconfirmedOrder?.id, known === 'pending' ? orderID : undefined);

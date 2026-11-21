@@ -1480,6 +1480,9 @@ async function checkOrder(g, id, { earlyCheckoutCheck = false } = {}) {
   $("check-order").hidden = false;
   status("Checking payment status…", { busy: true });
   const paidStatusUnavailable = "Payment was received, but order status is unavailable. Check payment status again or contact support; do not pay again.";
+  const matchesSelection = (order) => order?.id === id &&
+    vehicle?.id === order.configuration_id && vehicle?.region === order.region;
+  let statusUnavailable = false;
   const rememberUnconfirmed = (order) => {
     const unresolved = ["creating", "open", "processing", "reconciliation_required"];
     if (unresolved.includes(order.state)) {
@@ -1496,8 +1499,21 @@ async function checkOrder(g, id, { earlyCheckoutCheck = false } = {}) {
   const result = await pollOrder(id, {
     signal: g.signal,
     earlyCheckoutCheck,
+    onUnavailable() {
+      if (!g.current()) return;
+      statusUnavailable = true;
+      const previous = matchesSelection(paidOrder) ? "Payment received. " :
+        matchesSelection(unconfirmedOrder) ? "Payment was pending at the last check. " : "";
+      const message = previous ? `${previous}Status check is temporarily unavailable.` :
+        "Payment status is temporarily unavailable.";
+      status(`${message} Checking again…`, { busy: true });
+    },
     onUpdate(order) {
       if (g.current()) {
+        if (statusUnavailable) {
+          statusUnavailable = false;
+          status("Checking payment status…", { busy: true });
+        }
         rememberUnconfirmed(order);
         $("purchase-message").textContent =
           order.state === "paid"
@@ -1553,15 +1569,14 @@ async function checkOrder(g, id, { earlyCheckoutCheck = false } = {}) {
     show("welcome");
     status("Access revoked. Contact support.", { error: true });
   } else {
-    const matchesSelection = (order) => order?.id === id &&
-      vehicle?.id === order.configuration_id && vehicle?.region === order.region;
     const confirmedPaid = matchesSelection(paidOrder);
     const pending = !confirmedPaid && matchesSelection(unconfirmedOrder);
     let message = "Payment status is temporarily unavailable. Try again.";
     if (confirmedPaid) message = paidStatusUnavailable;
+    else if (pending && statusUnavailable) message = "Payment was pending at the last check. The current status is unavailable. Try again.";
     else if (pending) message = "Payment confirmation is still pending. Check payment status manually.";
     status(message, {
-      error: !pending,
+      error: !pending || statusUnavailable,
       retry: () => operation((g) => checkOrder(g, id)),
     });
   }
