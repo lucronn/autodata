@@ -1403,7 +1403,7 @@ async def api_case(browser,origin,name,output,observations=None):
         assertions['official_sdk_cookie_and_pg_session']=True
         await expect(page.locator('#purchase-action')).to_be_enabled()
         await expect(page.locator('#purchase-message')).to_contain_text('purchase')
-        await expect(page.locator('#purchase-selection')).to_have_text('2024 Example Car Paid selected 2.0 L')
+        await expect(page.locator('#purchase-selection')).to_have_text('2024 Example Car Paid selected 2.0 L / US')
         await expect(page.locator('#purchase-price')).to_have_text('$20 USD · one-time')
         await page.locator('#agreement').check()
         if observations:observations.phase='checkout-first-http' if name==API_CASES[0] else 'checkout-http'

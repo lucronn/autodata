@@ -1149,7 +1149,7 @@ const previousConfiguration = '44444444-4444-4444-8444-444444444444';
 function loginRouteHarness(search, { authenticate = true, signInError = null, login = null, library = null, selectorRead = null } = {}) {
   const navigation = new NavigationGeneration();
   const calls = { signIns: 0, checkoutClears: 0, checkouts: 0, routes: 0,
-    selections: [], libraries: 0, orders: [], options: [], selectorReads: [], invalidations: 0 };
+    selections: [], selectionOptions: [], libraries: 0, orders: [], options: [], selectorReads: [], invalidations: 0 };
   const elements = new Map();
   const element = name => {
     if (!elements.has(name)) elements.set(name, { value: '', disabled: false, children: [],
@@ -1184,9 +1184,10 @@ function loginRouteHarness(search, { authenticate = true, signInError = null, lo
       assert.equal(g.current(), true);
       calls.orders.push(id);
     },
-    async selectVehicle(g, article = '') {
+    async selectVehicle(g, article = '', options) {
       assert.equal(g.current(), true);
       calls.selections.push({ configuration: context.vehicle.id, region: context.vehicle.region, article });
+      calls.selectionOptions.push(options);
     },
     async requestJSON(path, options) {
       calls.selectorReads.push({ path, signal: options.signal });
@@ -1311,6 +1312,7 @@ test('sign-in rechecks paid access for the displayed selection without reloading
   const before = h.context.names.map(name => h.element(name).children);
   await h.context.signIn();
   assert.deepEqual(h.calls.selections, [{ configuration: routeConfiguration, region: 'US', article: '' }]);
+  assert.equal(h.calls.selectionOptions[0]?.reuseQuote, true);
   assert.deepEqual(h.calls.options, []);
   assert.equal(h.calls.invalidations, 1);
   assert.equal(h.calls.checkoutClears, 1);
@@ -4478,7 +4480,7 @@ function selectionQuoteHarness(merchant, { authenticated = true, openDemo = fals
   const context = {
     merchant, merchantRequest: null, openDemo, quote: null, access: "unknown", validScope, validQuote, uuid, scope: () => scope,
     session: { state: { authenticated } }, sessionRequest: null,
-    clearProtected() {}, renderPurchase() {}, show() {}, status() {},
+    clearProtected() {}, renderPurchase() {}, show() {}, status() {}, purchaseConfigured: () => context.merchant?.enabled === true,
     $: id => { if (!nodes.has(id)) nodes.set(id, {}); return nodes.get(id); },
     requestJSON: async (path, options) => { calls.push({ path, options }); return request(path, options); },
     loadArticles: async (g, id) => opened.push({ g, id }),
@@ -4486,6 +4488,38 @@ function selectionQuoteHarness(merchant, { authenticated = true, openDemo = fals
   runInNewContext(appSection('async function selectVehicle(', 'async function loadArticles('), context);
   return { context, navigation, generation, calls, opened };
 }
+
+test('same-selection sign-in keeps a validated public quote and still checks paid access', async () => {
+  const h = selectionQuoteHarness({ enabled: true }, { authenticated: false });
+  await h.context.selectVehicle(h.generation);
+  const prior = h.context.quote;
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.opened.length, 0);
+
+  h.context.session.state.authenticated = true;
+  h.context.$('agreement').checked = true;
+  const required = Object.assign(new Error('Purchase required'), { code: 'ENTITLEMENT_REQUIRED' });
+  h.context.loadArticles = async () => { h.opened.push(true); throw required; };
+  await assert.rejects(h.context.selectVehicle(h.navigation.next(), '', { reuseQuote: true }), required);
+  assert.equal(h.context.quote, prior);
+  assert.equal(h.context.$('agreement').checked, false);
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.opened.length, 1);
+});
+
+test('a superseded region or disabled merchant cannot reuse a public quote after sign-in', async () => {
+  for (const [merchant, prior, requests] of [
+    [{ enabled: true }, { ...scopedQuoteFixture(), region: 'CA' }, 1],
+    [{ enabled: false }, scopedQuoteFixture(), 0],
+  ]) {
+    const h = selectionQuoteHarness(merchant);
+    h.context.quote = prior;
+    await h.context.selectVehicle(h.generation, '', { reuseQuote: true });
+    assert.notEqual(h.context.quote, prior);
+    assert.equal(h.calls.length, requests);
+    assert.equal(h.opened.length, 1);
+  }
+});
 
 test('known-owned handoffs skip the quote and Library fetches a price only if access is missing', async () => {
   for (const quoteMode of ['skip', 'if-needed']) {

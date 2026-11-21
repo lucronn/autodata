@@ -386,9 +386,11 @@ function renderPurchase() {
   const confirming = unconfirmedOrder?.id === currentOrder &&
     vehicle?.id === unconfirmedOrder.configuration_id &&
     vehicle?.region === unconfirmedOrder.region;
+  const priced = validQuote(quote, scope());
+  const quotedLabel = priced ? `${quote.configuration_label} / ${quote.region}` : "";
   $("purchase").hidden = !validScope(scope());
   $("purchase-selection").textContent =
-    vehicle?.orderLabel || quote?.configuration_label ||
+    vehicle?.orderLabel || quotedLabel ||
     [
       vehicle?.year,
       vehicle?.make,
@@ -403,8 +405,7 @@ function renderPurchase() {
     $("purchase-terms").hidden = true;
     return;
   }
-  const priced = validQuote(quote, scope()),
-    configured = purchaseConfigured();
+  const configured = purchaseConfigured();
   $("purchase-price").textContent = priced
     ? "$20 USD · one-time"
     : "Price is currently unavailable.";
@@ -463,10 +464,13 @@ function purchaseConfigured() {
     origin: globalThis.location?.origin,
   });
 }
-async function selectVehicle(g, articleID = "", { quoteMode = "eager", savedLink = false } = {}) {
+async function selectVehicle(g, articleID = "", { quoteMode = "eager", savedLink = false, reuseQuote = false } = {}) {
   if (!g.current()) return;
+  // Quotes are public and scoped to the vehicle, so confirming the account
+  // does not invalidate a quote for the exact selection still on screen.
+  const retainedQuote = reuseQuote && validQuote(quote, scope()) && purchaseConfigured() ? quote : null;
   clearProtected();
-  quote = null;
+  quote = retainedQuote;
   $("agreement").checked = false;
   renderPurchase();
   if (!validScope(scope())) return;
@@ -506,9 +510,9 @@ async function selectVehicle(g, articleID = "", { quoteMode = "eager", savedLink
       if (g.current()) renderPurchase();
     }
   };
-  const quoteRequest = quoteMode === "eager" && !directArticle && !savedQuery ? loadQuote() : null;
+  const quoteRequest = !retainedQuote && quoteMode === "eager" && !directArticle && !savedQuery ? loadQuote() : null;
   if (!openDemo && !session.state.authenticated) {
-    if (quoteMode !== "skip") await (quoteRequest ?? loadQuote());
+    if (!retainedQuote && quoteMode !== "skip") await (quoteRequest ?? loadQuote());
     if (!g.current()) return;
     show("welcome");
     status("Sign in to check access to your selected vehicle.");
@@ -522,7 +526,7 @@ async function selectVehicle(g, articleID = "", { quoteMode = "eager", savedLink
   } catch (error) {
     // When a purchase is required, present the price or its unavailable state
     // with the access result so the UI does not announce a false checkout failure.
-    if (error.code === "ENTITLEMENT_REQUIRED" && quoteMode !== "skip") {
+    if (error.code === "ENTITLEMENT_REQUIRED" && !retainedQuote && quoteMode !== "skip") {
       await (quoteRequest ?? loadQuote());
     }
     throw error;
@@ -1642,7 +1646,7 @@ async function signIn() {
       // Public selector choices remain valid for the same displayed route.
       // Check paid access again with the newly confirmed session cookie.
       invalidate();
-      await operation((g) => selectVehicle(g), () => restoreRoute());
+      await operation((g) => selectVehicle(g, "", { reuseQuote: true }), () => restoreRoute());
       return;
     }
   }
