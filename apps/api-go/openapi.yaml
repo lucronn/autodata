@@ -76,7 +76,12 @@ paths:
         UUID, not a base vehicle UUID. A verified session and current owner/configuration/region
         grant precede descriptor/progress reads, including content search. GET
         never schedules an index or article job. Only canonical identities are
-        returned; document, body, steps and image URLs are omitted.
+        returned; document, body, steps and image URLs are omitted. An authenticated
+        full-index GET with the exact region and the workshop-purchase-quote
+        preference may receive a validated current purchase quote in
+        error.details.purchase_quote on ENTITLEMENT_REQUIRED. The applied
+        preference returns in Preference-Applied. A null quote indicates unavailable
+        purchasing for the checked configuration.
   /v1/catalog/vehicles/{vehicle_id}/articles/{article_id}:
     get:
       tags:
