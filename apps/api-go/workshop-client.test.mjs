@@ -4646,6 +4646,121 @@ test('the saved reader uses the authorized configuration and can fall back on an
   }
 });
 
+test('lost paid prepare recovers stored source or a durable job with scoped GETs only', async () => {
+  const { requestArticleJSON } = await import('./workshop/catalog.mjs');
+  const configuration = { id: routeConfiguration, region: 'CA', engine: 'Synthetic 2.0 L' };
+  const ready = mediaArticle([{ type: 'paragraph', text: 'Retained procedure.' }]);
+  const pending = { id: 'a', processing: { job_id: 'committed-job', state: 'fetching_source' } };
+  for (const [savedLink, detailReplies] of [
+    [false, [{ article: ready }]],
+    [true, [{ article: ready, configuration }]],
+    [true, [{ article: pending, configuration }, { article: ready, configuration }]],
+  ]) {
+    const calls = [];
+    const h = articleRouteHarness('firebase', (path, options) => requestArticleJSON(path, {
+      ...options,
+      fetcher: async (_url, { method, headers }) => {
+        calls.push({ path, method, headers, signal: options.signal });
+        if (method === 'POST') throw new TypeError('The connection was reset after prepare');
+        const data = detailReplies.shift();
+        assert.ok(data, 'only the initial recovery and durable job polling may read');
+        return new Response(JSON.stringify(data), { status: data.article === pending ? 202 : 200 });
+      },
+    }));
+    const expectedCalls = detailReplies.length + 1;
+    h.context.articlePath = id => `/v1/catalog/vehicles/${routeConfiguration}/articles/${id}`;
+    h.context.vehicle = { id: routeConfiguration, region: 'CA' };
+    h.context.quote = null;
+    h.context.access = 'unknown';
+    h.context.renderPurchase = () => { h.nodes.get('purchase-selection').textContent = h.context.vehicle.engine; };
+    assert.equal(await h.context.loadArticle('a', h.g, { savedLink }), true);
+    assert.equal(calls.length, expectedCalls);
+    assert.deepEqual(calls.map(({ method }) => method), ['POST', ...Array(expectedCalls - 1).fill('GET')]);
+    assert.equal(calls[0].path, `/v1/catalog/vehicles/${routeConfiguration}/articles/a/prepare?region=CA`);
+    assert.equal(calls[0].headers['X-CSRF-Token'], 'csrf');
+    for (const call of calls.slice(1)) {
+      assert.equal(call.path, `/v1/catalog/vehicles/${routeConfiguration}/articles/a?region=CA`);
+      assert.equal(call.headers['X-CSRF-Token'], undefined);
+    }
+    assert.ok(calls.every(({ signal }) => signal === h.g.signal));
+    assert.equal(h.nodes.get('article-content').textContent, 'Retained procedure.');
+    if (savedLink) {
+      assert.equal(h.context.access, 'owned');
+      assert.equal(h.nodes.get('reader-vehicle').textContent, configuration.engine);
+    }
+  }
+});
+
+test('paid prepare recovery requires a usable exact article and honors authoritative denial', async () => {
+  const lost = Object.assign(new Error('Cannot reach AutoData.'), { status: 0, code: 'NETWORK_UNAVAILABLE' });
+  const configuration = { id: routeConfiguration, region: 'US' };
+  const article = mediaArticle([{ type: 'paragraph', text: 'Protected procedure.' }]);
+  const detailError = status => Object.assign(new Error('Detail unavailable'), {
+    status, code: status === 404 ? 'CATALOG_NOT_FOUND' : 'HTTP_ERROR',
+  });
+  for (const detail of [
+    ...[401, 403, 410, 404, 429, 503].map(detailError),
+    { status: 200, data: { article } },
+    { status: 200, data: { article, configuration: { ...configuration, region: 'CA' } } },
+    { status: 200, data: { article, configuration: { ...configuration, id: routeOrder } } },
+    { status: 200, data: { article: { ...article, id: 'b' }, configuration } },
+    { status: 200, data: { article: { id: 'a' }, configuration } },
+    { status: 202, data: { article: { id: 'a' }, configuration } },
+  ]) {
+    let calls = 0;
+    const h = articleRouteHarness('firebase', async () => {
+      if (++calls === 1) throw lost;
+      if (detail instanceof Error) throw detail;
+      return detail;
+    });
+    h.context.vehicle = configuration;
+    const expected = [401, 403, 404, 410].includes(detail.status) ? detail : lost;
+    await assert.rejects(h.context.loadArticle('a', h.g, { savedLink: true }), error => error === expected);
+    assert.equal(calls, 2);
+    assert.equal(h.context.currentArticle, null);
+    assert.equal(h.nodes.get('print').disabled, true);
+    if (detail.status === 404) assert.equal(h.nodes.get('article-title').textContent, 'Article unavailable');
+  }
+});
+
+test('only a current paid transport failure can start a prepare recovery GET', async () => {
+  const lost = Object.assign(new Error('Cannot reach AutoData.'), { status: 0, code: 'NETWORK_UNAVAILABLE' });
+  for (const [mode, demo, error] of [
+    ['local', false, lost], ['firebase', true, lost],
+    ...[401, 403, 410, 429, 503].map(status => ['firebase', false, Object.assign(new Error('Prepare unavailable'),
+      { status, code: 'NETWORK_UNAVAILABLE' })]),
+  ]) {
+    let calls = 0;
+    const h = articleRouteHarness(mode, async () => { calls++; throw error; }, !demo, demo);
+    await assert.rejects(h.context.loadArticle('a', h.g), failure => failure === error);
+    assert.equal(calls, 1);
+  }
+  for (const duringRecovery of [false, true]) {
+    const inflight = deferredAuthOperation(), detailStarted = deferredAuthOperation();
+    const methods = [];
+    const h = articleRouteHarness('firebase', async (_path, options) => {
+      methods.push(options.method || 'GET');
+      if (!duringRecovery) return inflight.promise;
+      if (options.method === 'POST') throw lost;
+      detailStarted.resolve();
+      return inflight.promise;
+    });
+    const opening = h.context.loadArticle('a', h.g);
+    if (duringRecovery) await detailStarted.promise;
+    h.navigation.next();
+    if (duringRecovery) {
+      inflight.resolve({ status: 200, data: { article: mediaArticle([{ type: 'paragraph', text: 'Obsolete.' }]) } });
+      await opening;
+    } else {
+      inflight.reject(lost);
+      await assert.rejects(opening, error => error === lost);
+    }
+    assert.equal(h.g.signal.aborted, true);
+    assert.equal(h.context.currentArticle, null);
+    assert.deepEqual(methods, duringRecovery ? ['POST', 'GET'] : ['POST']);
+  }
+});
+
 test('open demo reads an article with GET and no session or checkout', async () => {
   const calls = [], article = mediaArticle([{ type: 'paragraph', text: 'Stored procedure.' }]);
   const h = articleRouteHarness('firebase', async (path, options) => {

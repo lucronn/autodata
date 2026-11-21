@@ -1093,23 +1093,43 @@ async function loadArticle(id, g, { savedLink = false } = {}) {
       clearUnavailableArticle();
     throw error;
   };
-  const first = await (openDemo || session.state.mode === "local"
-    ? requestArticleJSON(articleRequestPath(id), { signal: g.signal, preferShortPublicationCheck: true })
-    : requestArticleJSON(articleRequestPath(id, "/prepare"), {
+  const paid = !openDemo && session.state.mode !== "local";
+  const selected = vehicle;
+  const matchesConfiguration = (configuration) =>
+    configuration?.id === selected.id && configuration?.region === selected.region;
+  const detailPath = articleRequestPath(id);
+  const readOptions = { signal: g.signal, preferShortPublicationCheck: true };
+  const first = await (paid
+    ? requestArticleJSON(articleRequestPath(id, "/prepare"), {
+        ...readOptions,
         method: "POST",
         body: {},
         preferShortSourceCheck: true,
-        preferShortPublicationCheck: true,
         headers: { "X-CSRF-Token": session.state.csrf },
-        signal: g.signal,
-      })).catch((error) => {
+      })
+    : requestArticleJSON(detailPath, readOptions)).catch(async (error) => {
+        if (paid && g.current() && error.status === 0 && error.code === "NETWORK_UNAVAILABLE") {
+          // Prepare may have committed before the browser lost the response.
+          const recovered = await requestArticleJSON(detailPath, { ...readOptions, preferShortSourceCheck: true })
+            .catch((detailError) => {
+              g.signal.throwIfAborted();
+              if ([401, 403, 404, 410].includes(detailError.status)) return handleReadError(detailError);
+              return null;
+            });
+          if (!g.current()) return null;
+          const article = recovered?.data?.article;
+          const configuration = recovered?.data?.configuration;
+          if (article?.id === id && (matchesConfiguration(configuration) || !savedLink && !configuration) &&
+              (recovered.status === 200 && readableArticle(article) ||
+               recovered.status === 202 && processingArticle(article))) return recovered;
+        }
         if (savedLink && error.status === 404) return null;
         return handleReadError(error);
       });
   if (!g.current()) return;
   if (savedLink) {
     const configuration = first?.data?.configuration;
-    if (configuration?.id !== vehicle.id || configuration?.region !== vehicle.region) return false;
+    if (!matchesConfiguration(configuration)) return false;
     vehicle = configuration;
     access = "owned";
     renderPurchase();
@@ -1123,7 +1143,7 @@ async function loadArticle(id, g, { savedLink = false } = {}) {
         initial = null;
         return value;
       }
-      return requestArticleJSON(articleRequestPath(id), options);
+      return requestArticleJSON(detailPath, options);
     },
     {
       signal: g.signal,
