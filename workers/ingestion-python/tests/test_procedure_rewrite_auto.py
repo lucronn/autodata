@@ -760,6 +760,8 @@ _OIL_PUMP_PREPARATION_SOURCE = "Remove the oil pan and clean the strainer before
     "Take the oil pan off and clean the filter before releasing the pump body.",
     "Take the oil pan off and clean the strainer before releasing the valve body.",
     "Take off the oil pan or clean the strainer before releasing the pump body.",
+    "Clean the strainer before releasing the pump body, then remove the oil pan.",
+    "Before releasing the pump body, clean the strainer, then take off the oil pan.",
 ])
 def test_automatic_rewrite_rejects_changed_oil_pump_preparation(in_cell, draft):
     from autodata_ingestion import procedure_rewrite_auto as auto

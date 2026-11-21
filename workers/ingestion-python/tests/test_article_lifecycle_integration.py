@@ -1161,6 +1161,12 @@ def test_automatic_rejected_rewrite_leaves_source_readable(runtime, mode, source
         "Take the oil pan off and clean the strainer after releasing the pump body.",
         "REWRITE_CLAUSE_MUTATION", id="oil-pump-strainer-preparation",
     ),
+    pytest.param(
+        "Remove the oil pan and clean the strainer before releasing the pump body.",
+        "Take the oil pan off, then clean the strainer before releasing the pump body.",
+        "Clean the strainer before releasing the pump body, then remove the oil pan.",
+        "REWRITE_CLAUSE_MUTATION", id="oil-pump-strainer-preparation-order",
+    ),
 ])
 def test_automatic_qualifier_controls_publication(runtime, provider, preserved, original, valid, invalid, error_code):
     ensure = automatic_runtime(runtime, provider)

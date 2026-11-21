@@ -1380,7 +1380,7 @@ def build_auto_prompt(document, *, context):
         payload["prompt_version"] = _PROSE_PROMPT_VERSION
         payload["rules"].append(
             "When an instruction removes the oil pan and cleans the strainer before releasing the pump body, "
-            "keep both required actions and the requirement to clean before that release."
+            "keep oil pan removal before strainer cleaning and cleaning before that release."
         )
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
@@ -2173,13 +2173,14 @@ def _pump_to_drain(text):
     return None
 
 
-def _matches_timed_cleaning(text, removal, *, cleaning, timed_cleaning, timing_prefix):
+def _matches_timed_cleaning(text, removal, *, cleaning, timed_cleaning, timing_prefix, removal_first=False):
     draft = _proof_text(text)
     separator = _REQUIRED_TASK_SEPARATOR.search(draft)
     if separator is None:
         return False
     first, second = draft[:separator.start()], draft[separator.end():]
-    for task, cleaning_text in ((first, second), (second, first)):
+    task_pairs = ((first, second),) if removal_first else ((first, second), (second, first))
+    for task, cleaning_text in task_pairs:
         if timed_cleaning.fullmatch(cleaning_text) and _simple_directive(task) == removal:
             return True
     # A timing clause before a conjunction can govern both tasks in the same sentence.
@@ -2215,7 +2216,7 @@ def _oil_pump_preparation_changed(original, replacement):
         return False
     return not _matches_timed_cleaning(
         replacement, removal, cleaning=_STRAINER_CLEANING,
-        timed_cleaning=_TIMED_STRAINER_CLEANING, timing_prefix=_PUMP_RELEASE_PREFIX,
+        timed_cleaning=_TIMED_STRAINER_CLEANING, timing_prefix=_PUMP_RELEASE_PREFIX, removal_first=True,
     )
 
 
