@@ -1525,7 +1525,7 @@ function clearReader() {
   resetReaderContent();
   $("reader").hidden = true;
 }
-async function checkOrder(g, id, { earlyCheckoutCheck = false } = {}) {
+async function checkOrder(g, id, { earlyCheckoutCheck = false, returnedCheckout } = {}) {
   if (paidOrder?.id !== id) paidOrder = null;
   if (unconfirmedOrder?.id !== id) unconfirmedOrder = null;
   currentOrder = id;
@@ -1551,6 +1551,7 @@ async function checkOrder(g, id, { earlyCheckoutCheck = false } = {}) {
   const result = await pollOrder(id, {
     signal: g.signal,
     earlyCheckoutCheck,
+    returnedCheckout,
     onUnavailable() {
       if (!g.current()) return;
       statusUnavailable = true;
@@ -1815,7 +1816,10 @@ async function restoreRoute(initialYears = null) {
           const attempt = checkout.read();
           const earlyCheckoutCheck = attempt?.order_id === order &&
             Date.parse(attempt.provider_expires_at) > Date.now() + 1000;
-          await checkOrder(g, order, { earlyCheckoutCheck });
+          await checkOrder(g, order, {
+            earlyCheckoutCheck,
+            returnedCheckout: earlyCheckoutCheck ? attempt : undefined,
+          });
         } else status("Sign in to check this payment.");
         return;
       }

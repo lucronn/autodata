@@ -228,6 +228,7 @@ export function createCheckout({
 
 const firstOrderRetryMs = 1000;
 const earlyCheckoutCheckMs = 350;
+const firstCheckoutReturnCheckMs = 250;
 
 export async function pollOrder(
   orderID,
@@ -240,6 +241,7 @@ export async function pollOrder(
     now = () => performance.now(),
     budgetMs = 120000,
     earlyCheckoutCheck = false,
+    returnedCheckout,
   } = {},
 ) {
   if (!uuid(orderID)) throw new Error("This order is unavailable.");
@@ -247,18 +249,21 @@ export async function pollOrder(
   let attempt = 0,
     latest,
     unavailable = false,
-    regularReadAt = 0;
+    regularReadAt = 0,
+    checkoutReadAt = 0;
   while (now() < deadline) {
     signal?.throwIfAborted();
     const startedAt = now();
     if (regularReadAt <= startedAt) regularReadAt = 0;
+    if (checkoutReadAt <= startedAt) checkoutReadAt = 0;
     let retryAfter = 0;
     let ordinaryPending = false;
     let pauseBeforeRetry = false;
     try {
+      const readDeadline = checkoutReadAt || regularReadAt || deadline;
       latest = await request(`/v1/workshop/orders/${orderID}`, {
         signal,
-        timeout: Math.min(10000, Math.max(1, (regularReadAt || deadline) - startedAt)),
+        timeout: Math.min(10000, Math.max(1, Math.floor(readDeadline - startedAt))),
       });
       signal?.throwIfAborted();
       if (!validOrder(latest, orderID))
@@ -291,7 +296,11 @@ export async function pollOrder(
     const remaining = deadline - finishedAt;
     if (remaining <= 0) break;
     let waitMs;
-    if (regularReadAt) {
+    if (checkoutReadAt && retryAfter === 0 && !pauseBeforeRetry) {
+      waitMs = Math.max(0, checkoutReadAt - finishedAt);
+      checkoutReadAt = 0;
+    } else if (regularReadAt) {
+      checkoutReadAt = 0;
       // An unanswered probe rejoins the original first check. A provider
       // reconciliation or overload response still gets the regular delay.
       waitMs = Math.max(regularReadAt - finishedAt, pauseBeforeRetry ? firstOrderRetryMs : 0);
@@ -301,6 +310,14 @@ export async function pollOrder(
       if (earlyCheckoutCheck && attempt === 1 && ordinaryPending && remaining > waitMs) {
         regularReadAt = finishedAt + waitMs;
         waitMs = earlyCheckoutCheckMs;
+        // Match the hosted return receipt to the owner's current order.
+        // The extra read must leave the existing confirmation slots free.
+        if (returnedCheckout?.order_id === orderID && sameScope(returnedCheckout, latest) &&
+            validTime(returnedCheckout.provider_expires_at) &&
+            Date.parse(returnedCheckout.provider_expires_at) > Date.now() + firstOrderRetryMs) {
+          checkoutReadAt = finishedAt + earlyCheckoutCheckMs;
+          waitMs = firstCheckoutReturnCheckMs;
+        }
       }
     }
     await wait(

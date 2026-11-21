@@ -180,7 +180,10 @@ function orderPollFixture(responses, options = {}) {
       reads.push({ time: elapsed, timeout });
       const response = responses.shift();
       assert.notEqual(response, undefined, 'unexpected extra order read');
-      if (response instanceof Error) throw response;
+      if (response instanceof Error) {
+        elapsed += response.elapsed || 0;
+        throw response;
+      }
       if (typeof response !== 'string') return response;
       return { version: 'v1', ...scope, order_id: orderID, state: response,
         retry_disposition: ['expired', 'canceled'].includes(response) ? 'new_key' : 'do_not_repay' };
@@ -199,6 +202,44 @@ test('checkout return checks once at 350 ms after an ordinary pending response',
     assert.deepEqual(probe.updates, [state, 'paid']);
     assert.equal(result.state, 'paid');
     assert.equal(result.timedOut, false);
+  }
+});
+
+test('a matching hosted checkout return can check early without moving either fallback', async () => {
+  const returnedCheckout = { ...scope, order_id: orderID,
+    provider_expires_at: new Date(Date.now() + 60_000).toISOString() };
+  const timeout = Object.assign(new TypeError('Probe timed out'), { elapsed: 100 });
+  const busy = Object.assign(new Error('Try again'), { status: 429, retryable: true, retryAfterSeconds: 2 });
+  for (const [label, responses, starts] of [
+    ['early payment', ['open', 'paid'], [0, 250]],
+    ['miss until the short fallback', ['open', 'processing', 'paid'], [0, 250, 350]],
+    ['miss until the regular fallback', ['open', 'open', 'processing', 'paid'], [0, 250, 350, 1000]],
+    ['timeout at the short fallback', ['open', timeout, 'paid'], [0, 250, 350]],
+    ['overload', ['open', busy, 'paid'], [0, 250, 2250]],
+    ['provider reconciliation', ['open', 'reconciliation_required', 'paid'], [0, 250, 1250]],
+    ['revoked', ['open', 'revoked'], [0, 250]],
+  ]) {
+    const probe = orderPollFixture(responses, { returnedCheckout });
+    assert.equal((await probe.result).state, label === 'revoked' ? 'revoked' : 'paid', label);
+    assert.deepEqual(probe.times(), starts, label);
+    assert.equal(probe.reads[1].timeout, 100, label);
+  }
+});
+
+test('the extra checkout return check requires current receipt scope and expiry', async () => {
+  const returnedCheckout = { ...scope, order_id: orderID,
+    provider_expires_at: new Date(Date.now() + 60_000).toISOString() };
+  for (const [receipt, earlyCheckoutCheck] of [
+    [{ ...returnedCheckout, order_id: scope.configuration_id }, true],
+    [{ ...returnedCheckout, configuration_id: orderID }, true],
+    [{ ...returnedCheckout, region: 'CA' }, true],
+    [{ ...returnedCheckout, provider_expires_at: new Date(Date.now() + 500).toISOString() }, true],
+    [{ ...returnedCheckout, provider_expires_at: 'invalid' }, true],
+    [returnedCheckout, false],
+  ]) {
+    const probe = orderPollFixture(['open', 'paid'], { returnedCheckout: receipt, earlyCheckoutCheck });
+    assert.equal((await probe.result).state, 'paid');
+    assert.deepEqual(probe.times(), [0, earlyCheckoutCheck ? 350 : 1000]);
   }
 });
 
@@ -1324,9 +1365,10 @@ test('checkout return checks sooner only for the matching, unexpired checkout', 
     h.context.session.state.authenticated = true;
     h.context.checkout.read = () => attempt;
     const checks = [];
-    h.context.checkOrder = async (_g, id, { earlyCheckoutCheck }) => checks.push([id, earlyCheckoutCheck]);
+    h.context.checkOrder = async (_g, id, { earlyCheckoutCheck, returnedCheckout }) =>
+      checks.push([id, earlyCheckoutCheck, returnedCheckout]);
     await h.context.restoreRoute();
-    assert.deepEqual(checks, [[routeOrder, expected]]);
+    assert.deepEqual(checks, [[routeOrder, expected, expected ? attempt : undefined]]);
   }
 });
 
