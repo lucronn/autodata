@@ -1803,7 +1803,8 @@ function paidPurchaseLifecycleHarness(selectionErrors, { realArticleIndex = fals
     show() {},
     status(message, options = {}) { statuses.push({ message, options }); },
     stage() {}, articlePath: () => `/v1/catalog/vehicles/${scope.configuration_id}/articles`,
-    renderArticles() { $('articles').replaceChildren(...context.articles.map(item => ({ id: item.id }))); },
+    filterArticles,
+    renderArticleLinks(items) { $('articles').replaceChildren(...items.map(item => ({ id: item.id }))); },
     async loadArticle() { if (articleOpenError) throw articleOpenError; },
     readCollection: (read, options) => readCollection(read, {
       ...options, wait: async () => { if (afterPartial) await afterPartial(context); },
@@ -1830,7 +1831,8 @@ function paidPurchaseLifecycleHarness(selectionErrors, { realArticleIndex = fals
     appSection('function invalidate(', 'function updateURL(') +
     appSection('function updateURL(', 'function selectorPath(') +
     appSection('function renderPurchase(', 'async function selectVehicle(') +
-    (realArticleIndex ? appSection('async function selectVehicle(', 'function renderArticles(') : '') +
+    (realArticleIndex ? appSection('async function selectVehicle(', 'function renderArticleLinks(') : '') +
+    (realArticleIndex ? appSection('function renderArticles(', 'const assetID =') : '') +
     (articleOpenError ? appSection('function openArticle(', 'function validSourceURL(') : '') +
     appSection('async function checkOrder(', 'async function signIn()') +
     appSection('async function bootstrap(initialYears)', 'for (const [index, name] of names.entries())') +
@@ -3378,6 +3380,48 @@ test('Workshop content search partial response never claims no matches', async (
   assert.match(h.$('catalog-count').textContent, /still being prepared/i);
 });
 
+test('search can share an exact paid reader before the unfiltered index has articles', async () => {
+  const refresh = deferredAuthOperation();
+  const descriptor = { id: routeArticle, title: 'Oil pump' };
+  const h = articleIndexHarness([
+    indexResponse('running', { hydrating: true }),
+    indexResponse('running', { hydrating: true, items: [descriptor] }),
+  ], { wait: () => refresh.promise });
+  const { context } = h;
+  context.vehicle = { id: scope.configuration_id, region: scope.region };
+  context.location = new URL(`https://cars.example/workshop/?order=${orderID}&q=pump`);
+  context.URLSearchParams = URLSearchParams;
+  context.validScope = validScope;
+  context.scope = () => ({ configuration_id: context.vehicle.id, region: context.vehicle.region });
+  context.history = { replaceState(_state, _unused, url) { context.location.href = new URL(url, context.location).href; } };
+  context.currentOrder = orderID;
+  context.paidOrder = { id: orderID, ...scope };
+  runInNewContext(appSection('function clearOrderRoute(', 'function populate('), context);
+  const loading = h.load();
+  try {
+    await new Promise(setImmediate);
+    assert.equal(context.location.searchParams.get('order'), orderID);
+    h.$('search').value = 'pump';
+    h.$('search').events.input();
+    await new Promise(setImmediate);
+    assert.equal(h.requests.length, 2);
+    assert.equal(context.articles.length, 0);
+    const link = h.$('articles').children[0].children[0].children[0];
+    const params = new URL(link.href, context.location).searchParams;
+    assert.equal(params.has('order'), false);
+    assert.equal(params.get('configuration'), scope.configuration_id);
+    assert.equal(params.get('region'), scope.region);
+    assert.equal(params.get('article'), routeArticle);
+    assert.equal(params.get('q'), 'pump');
+    assert.equal(h.$('check-order').hidden, true);
+    assert.equal(context.paidOrder.id, orderID);
+  } finally {
+    h.navigation.clear();
+    refresh.resolve();
+    await assert.rejects(loading, { name: 'AbortError' });
+  }
+});
+
 test('Workshop search failure is announced in the polite result status', async () => {
   const h = articleIndexHarness([
     indexResponse('completed', { complete: true, items: [{ id: 'index', title: 'Service notes' }] }),
@@ -3723,6 +3767,37 @@ test('Library Load more makes one cursor request and keeps prior cards mounted',
   assert.equal(mediaDescendants(list.children[1], 'button').length, 0);
   assert.equal(more.hidden, true);
   assert.equal(more.getAttribute('aria-disabled'), null);
+});
+
+test('a Library card retries the same exact vehicle and focuses its first article index', async () => {
+  const item = { configuration_id: routeConfiguration, library_item_id: routeOrder, label: 'Purchased engine',
+    access_state: 'viewable', region: 'CA', granted_at: '2026-11-16T00:00:00Z' };
+  const attempts = [];
+  let retryAction;
+  const h = articleMediaHarness({
+    session: { state: { authenticated: true } }, validLibrary, clearReader() {},
+    names: ['year', 'make', 'model', 'configuration'], populate() {}, updateURL() {},
+    requestJSON: async () => ({ version: 'v1', next_cursor: '', items: [item] }),
+    async selectVehicle(_g, _article, { quoteMode, focusOnShow }) {
+      attempts.push({ ...h.context.vehicle, quoteMode, focusOnShow });
+      if (attempts.length === 1) throw Object.assign(new Error('Unavailable'), { status: 503 });
+    },
+    operation(work, retry) {
+      retryAction = retry;
+      return work(h.navigation.next()).catch(() => {});
+    },
+  });
+  h.nodes.set('search', new ArticleMediaNode('input'));
+  runInNewContext(appSection('async function library(', 'function clearReader('), h.context);
+  await h.context.library(h.g);
+  h.nodes.get('library-items').children[0].children[2].dispatch('click');
+  await new Promise(setImmediate);
+  assert.equal(typeof retryAction, 'function');
+  assert.equal(h.shows.at(-1), 'welcome');
+  await retryAction();
+  const expected = { id: item.configuration_id, region: item.region, engine: item.label,
+    quoteMode: 'if-needed', focusOnShow: true };
+  assert.deepEqual(attempts, [expected, expected]);
 });
 
 test('Library cards distinguish preparation review, temporary failure, and readable articles', async () => {

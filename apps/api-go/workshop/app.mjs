@@ -472,7 +472,7 @@ function purchaseConfigured() {
     origin: globalThis.location?.origin,
   });
 }
-async function selectVehicle(g, articleID = "", { quoteMode = "eager", savedLink = false, reuseQuote = false, paidOrderID = "" } = {}) {
+async function selectVehicle(g, articleID = "", { quoteMode = "eager", savedLink = false, reuseQuote = false, focusOnShow = false } = {}) {
   if (!g.current()) return;
   // Keep the exact public price visible while paid access and purchase
   // availability are checked together for this same selection.
@@ -530,7 +530,7 @@ async function selectVehicle(g, articleID = "", { quoteMode = "eager", savedLink
     if (directArticle && await loadArticle(articleID, g, { savedLink: true })) return;
     if (savedQuery && await loadSavedSearch(g, savedQuery)) return;
     if (!g.current()) return;
-    await loadArticles(g, articleID, { includePurchaseQuote: Boolean(retainedQuote), paidOrderID });
+    await loadArticles(g, articleID, { focusOnShow, includePurchaseQuote: Boolean(retainedQuote) });
   } catch (error) {
     // When a purchase is required, present the price or its unavailable state
     // with the access result so the UI does not announce a false checkout failure.
@@ -573,7 +573,7 @@ async function loadSavedSearch(g, query) {
   return true;
 }
 
-async function loadArticles(g, articleID = "", { focusOnShow = false, includePurchaseQuote = false, paidOrderID = "" } = {}) {
+async function loadArticles(g, articleID = "", { focusOnShow = false, includePurchaseQuote = false } = {}) {
   if (!g.current()) return;
   $("completion-status").textContent = "";
   stage("articles");
@@ -602,10 +602,6 @@ async function loadArticles(g, articleID = "", { focusOnShow = false, includePur
           result.progress?.status === "failed" &&
           result.progress?.retryable !== true;
         access = "owned";
-        if (paidOrderID && articles.length) {
-          clearOrderRoute(paidOrderID, true);
-          $("check-order").hidden = true;
-        }
         renderPurchase();
         show("catalog");
         const query = $("search").value.trim();
@@ -792,6 +788,11 @@ function renderArticles() {
   const visible = openDemo ? articles.filter((item) => item.availability === 'available') : articles;
   const results = searching ? (searchItems || []) : filterArticles(visible, query);
   const items = openDemo ? results.filter((item) => item.availability === 'available') : results;
+  if (items.length && access === "owned" && paidOrder?.id === currentOrder &&
+      vehicle?.id === paidOrder.configuration_id && vehicle?.region === paidOrder.region) {
+    clearOrderRoute(currentOrder, true);
+    $("check-order").hidden = true;
+  }
   renderArticleLinks(items);
   const resultsComplete = searching ? searchComplete && indexComplete : indexComplete;
   const countText = searching && searchPending
@@ -1492,7 +1493,11 @@ async function library(g, append = false) {
         };
         quote = null;
         updateURL();
-        operation((g) => selectVehicle(g, "", { quoteMode: "if-needed" }));
+        show("welcome");
+        const openIndex = () => operation(
+          (g) => selectVehicle(g, "", { quoteMode: "if-needed", focusOnShow: true }), openIndex,
+        );
+        void openIndex();
       });
       li.append(button);
     }
@@ -1648,7 +1653,7 @@ async function openPaidOrder(g, order) {
   rememberOrderRoute(id);
   selectOrderVehicle(order);
   try {
-    await selectVehicle(g, "", { quoteMode: "skip", paidOrderID: id });
+    await selectVehicle(g, "", { quoteMode: "skip" });
   } catch (error) {
     if (!g.current()) return;
     if (error.code === "ENTITLEMENT_REVOKED") {
