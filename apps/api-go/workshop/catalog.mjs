@@ -283,7 +283,7 @@ const shortPublicationCheckPreference = 'workshop-short-publication-check';
 
 export async function requestArticleJSON(path, {
   signal, timeout = 10000, readableBodyTimeout = 0, fetcher = fetch, method = 'GET', body, headers = {},
-  preferShortSourceCheck = false, preferShortPublicationCheck = false,
+  preferShortSourceCheck = false, preferShortPublicationCheck = false, reportBodyNetworkError = false,
 } = {}) {
   const preferences = [];
   if (preferShortSourceCheck) preferences.push(shortSourceCheckPreference);
@@ -303,12 +303,17 @@ export async function requestArticleJSON(path, {
     const response = await fetcher(path, { method, signal: combined, credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json', ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...(preferences.length ? { Prefer: preferences.join(', ') } : {}), ...headers }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
     // A successful early read can finish its body within the regular read deadline.
     if (response.status === 200) earlyTimeout?.removeEventListener('abort', abortEarly);
-    const data = response.status === 204 ? null : await response.json().catch(() => null);
+    let bodyError;
+    const data = response.status === 204 ? null : await response.json().catch((error) => {
+      bodyError = error;
+      return null;
+    });
     signal?.throwIfAborted();
     combined.throwIfAborted();
     const retry = response.headers.get('Retry-After');
     const retryAfterSeconds = retry && /^\d+$/.test(retry) ? Number(retry) : retry ? Math.max(0, Math.ceil((Date.parse(retry) - Date.now()) / 1000)) || 0 : 0;
     if (!response.ok) throw new CatalogRequestError(safeRequestMessage(response.status), { status: response.status, code: typeof data?.error?.code === 'string' ? data.error.code : 'HTTP_ERROR', retryable: data?.error?.retryable === true, retryAfterSeconds, requestId: typeof data?.error?.request_id === 'string' ? data.error.request_id : '' });
+    if (reportBodyNetworkError && retryAfterSeconds === 0 && bodyError instanceof TypeError) throw bodyError;
     if (response.status !== 204 && (!data || typeof data !== 'object' || Array.isArray(data))) throw new CatalogRequestError('The catalog returned an unreadable response. Try again.', { code: 'INVALID_RESPONSE' });
     const applied = response.headers.get('Preference-Applied');
     const shortSourceCheck = preferShortSourceCheck && applied === shortSourceCheckPreference;

@@ -1105,6 +1105,7 @@ async function loadArticle(id, g, { savedLink = false } = {}) {
         method: "POST",
         body: {},
         preferShortSourceCheck: true,
+        reportBodyNetworkError: true,
         headers: { "X-CSRF-Token": session.state.csrf },
       })
     : requestArticleJSON(detailPath, readOptions)).catch(async (error) => {

@@ -4693,6 +4693,45 @@ test('lost paid prepare recovers stored source or a durable job with scoped GETs
   }
 });
 
+test('an interrupted prepare body can recover after success without a retry delay', async () => {
+  const { requestArticleJSON } = await import('./workshop/catalog.mjs');
+  const configuration = { id: routeConfiguration, region: 'US' };
+  const article = mediaArticle([{ type: 'paragraph', text: 'Retained procedure.' }]);
+  for (const [status, malformed, retryAfter, expected] of [
+    [200, false, 0, null],
+    [202, false, 0, null],
+    [202, false, 7, { status: 0, code: 'INVALID_RESPONSE' }],
+    [200, true, 0, { status: 0, code: 'INVALID_RESPONSE' }],
+    [401, false, 0, { status: 401 }],
+    [403, false, 0, { status: 403 }],
+    [410, false, 0, { status: 410 }],
+    [429, false, 7, { status: 429, retryAfterSeconds: 7 }],
+    [503, false, 7, { status: 503, retryAfterSeconds: 7 }],
+  ]) {
+    const calls = [];
+    const h = articleRouteHarness('firebase', (path, options) => requestArticleJSON(path, {
+      ...options,
+      fetcher: async (_url, { method }) => {
+        calls.push([method, path]);
+        if (method === 'GET') return new Response(JSON.stringify({ configuration, article }));
+        const interruptedBody = malformed ? '{"article":' : new ReadableStream({
+          start(controller) { controller.error(new TypeError('The response was truncated')); },
+        });
+        return new Response(interruptedBody, { status, headers: retryAfter ? { 'Retry-After': String(retryAfter) } : {} });
+      },
+    }));
+    h.context.vehicle = configuration;
+    h.context.renderPurchase = () => {};
+    const loading = h.context.loadArticle('a', h.g, { savedLink: true });
+    if (expected) await assert.rejects(loading, expected);
+    else assert.equal(await loading, true);
+    const prepare = ['POST', '/v1/catalog/vehicles/v/articles/a/prepare?region=US'];
+    const detail = ['GET', '/v1/catalog/vehicles/v/articles/a?region=US'];
+    assert.deepEqual(calls, expected ? [prepare] : [prepare, detail]);
+    assert.equal(Boolean(h.context.currentArticle), !expected);
+  }
+});
+
 test('paid prepare recovery requires a usable exact article and honors authoritative denial', async () => {
   const lost = Object.assign(new Error('Cannot reach AutoData.'), { status: 0, code: 'NETWORK_UNAVAILABLE' });
   const configuration = { id: routeConfiguration, region: 'US' };
