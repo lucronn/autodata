@@ -438,11 +438,12 @@ test('reader checks negotiated cold source early and preserves the half-second c
   ]) {
     let now = 0;
     const actual = [];
-    const result = await readArticle(async ({ timeout, preferShortSourceCheck }) => {
+    const result = await readArticle(async ({ timeout, readableBodyTimeout, preferShortSourceCheck }) => {
       actual.push(now);
       assert.equal(preferShortSourceCheck, now === 250 || now === 500, label);
       if (now === 250) assert.equal(timeout, 250, label);
       if (now === 500) assert.equal(timeout, 500, label);
+      assert.equal(readableBodyTimeout, now === 250 ? 750 : undefined, label);
       const next = responses.shift();
       if (next === timedOut) {
         now += timeout;
@@ -565,6 +566,54 @@ test('an article body interrupted by its deadline remains retryable', async () =
       }),
     }),
   }), { code: 'NETWORK_UNAVAILABLE', retryable: true });
+});
+test('a short source read can finish a successful body by the regular deadline', async (t) => {
+  const { requestArticleJSON } = await import('./workshop/catalog.mjs');
+  const deadlines = [];
+  t.mock.method(AbortSignal, 'timeout', (duration) => {
+    const controller = new AbortController();
+    deadlines.push({ duration, controller });
+    return controller.signal;
+  });
+  for (const [status, expire, cancels, retryAfter] of [
+    [200, 0, false],
+    [202, 0, true],
+    [undefined, 0, true],
+    [200, 1, true],
+    [200, 'navigation', true],
+    [503, undefined, false, '7'],
+  ]) {
+    deadlines.length = 0;
+    const navigation = new AbortController();
+    let release, requestSignal, started;
+    const bodyStarted = new Promise(resolve => { started = resolve; });
+    const waitForBody = () => new Promise((resolve, reject) => {
+      requestSignal.addEventListener('abort', () => reject(requestSignal.reason), { once: true });
+      release = resolve;
+      started();
+    });
+    const response = requestArticleJSON('/article', {
+      timeout: 250, readableBodyTimeout: 750, signal: navigation.signal,
+      fetcher: async (_url, { signal }) => {
+        requestSignal = signal;
+        if (!status) return waitForBody();
+        return {
+          status, ok: status < 400, json: waitForBody,
+          headers: new Headers(retryAfter ? { 'Retry-After': retryAfter } : {}),
+        };
+      },
+    });
+    await bodyStarted;
+    assert.deepEqual(deadlines.map(({ duration }) => duration), [250, 750]);
+    if (expire === 'navigation') navigation.abort(new Error('Scope changed'));
+    else deadlines[expire]?.controller.abort();
+    assert.equal(requestSignal.aborted, cancels);
+    if (!cancels) release({ article: { body: 'Stored procedure' }, error: { retryable: true } });
+    if (retryAfter) await assert.rejects(response, { status: 503, retryAfterSeconds: 7, retryable: true });
+    else if (expire === 'navigation') await assert.rejects(response, navigation.signal.reason);
+    else if (cancels) await assert.rejects(response, { code: 'NETWORK_UNAVAILABLE', retryable: true });
+    else assert.equal((await response).data.article.body, 'Stored procedure');
+  }
 });
 test('reader retries failed jobs until canonical without losing source', async () => {
   const { readArticle, processingArticle, readableArticle } = await import('./workshop/article-read.mjs');

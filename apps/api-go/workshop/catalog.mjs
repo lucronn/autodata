@@ -282,19 +282,30 @@ const shortSourceCheckPreference = 'workshop-short-source-check';
 const shortPublicationCheckPreference = 'workshop-short-publication-check';
 
 export async function requestArticleJSON(path, {
-  signal, timeout = 10000, fetcher = fetch, method = 'GET', body, headers = {},
+  signal, timeout = 10000, readableBodyTimeout = 0, fetcher = fetch, method = 'GET', body, headers = {},
   preferShortSourceCheck = false, preferShortPublicationCheck = false,
 } = {}) {
   const preferences = [];
   if (preferShortSourceCheck) preferences.push(shortSourceCheckPreference);
   if (preferShortPublicationCheck) preferences.push(shortPublicationCheckPreference);
-  const timeoutSignal = AbortSignal.timeout(Math.max(1, Math.min(10000, timeout)));
-  const combined = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
+  const readTimeout = Math.max(1, Math.min(10000, timeout));
+  const bodyTimeout = Math.min(10000, readableBodyTimeout);
+  const earlyTimeout = bodyTimeout > readTimeout ? AbortSignal.timeout(readTimeout) : null;
+  const timeoutSignal = AbortSignal.timeout(earlyTimeout ? bodyTimeout : readTimeout);
+  const earlyController = earlyTimeout ? new AbortController() : null;
+  const abortEarly = () => earlyController.abort(earlyTimeout.reason);
+  earlyTimeout?.addEventListener('abort', abortEarly, { once: true });
+  const signals = [timeoutSignal];
+  if (signal) signals.push(signal);
+  if (earlyController) signals.push(earlyController.signal);
+  const combined = signals.length > 1 ? AbortSignal.any(signals) : timeoutSignal;
   try {
     const response = await fetcher(path, { method, signal: combined, credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json', ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...(preferences.length ? { Prefer: preferences.join(', ') } : {}), ...headers }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+    // A successful early read can finish its body within the regular read deadline.
+    if (response.status === 200) earlyTimeout?.removeEventListener('abort', abortEarly);
     const data = response.status === 204 ? null : await response.json().catch(() => null);
     signal?.throwIfAborted();
-    timeoutSignal.throwIfAborted();
+    combined.throwIfAborted();
     const retry = response.headers.get('Retry-After');
     const retryAfterSeconds = retry && /^\d+$/.test(retry) ? Number(retry) : retry ? Math.max(0, Math.ceil((Date.parse(retry) - Date.now()) / 1000)) || 0 : 0;
     if (!response.ok) throw new CatalogRequestError(safeRequestMessage(response.status), { status: response.status, code: typeof data?.error?.code === 'string' ? data.error.code : 'HTTP_ERROR', retryable: data?.error?.retryable === true, retryAfterSeconds, requestId: typeof data?.error?.request_id === 'string' ? data.error.request_id : '' });
@@ -306,8 +317,10 @@ export async function requestArticleJSON(path, {
   } catch (error) {
     signal?.throwIfAborted();
     if (error instanceof CatalogRequestError) throw error;
-    if (timeoutSignal.aborted || error instanceof TypeError) throw new CatalogRequestError('Cannot reach AutoData. Try again.', { retryable: true });
+    if (combined.aborted || error instanceof TypeError) throw new CatalogRequestError('Cannot reach AutoData. Try again.', { retryable: true });
     throw error;
+  } finally {
+    earlyTimeout?.removeEventListener('abort', abortEarly);
   }
 }
 export async function requestJSON(path, options) { return (await requestArticleJSON(path, options)).data; }

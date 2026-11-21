@@ -70,6 +70,9 @@ export async function readArticle(
       latest = await read({
         signal,
         timeout: Math.max(1, Math.floor(Math.min(10000, readDeadline - startedAt))),
+        readableBodyTimeout: firstReadAt && nextSourceProbeAt
+          ? Math.floor(Math.min(deadline, firstReadAt) - startedAt)
+          : undefined,
         preferShortSourceCheck: Boolean(firstReadAt),
         preferShortPublicationCheck: !sawFastSource || Boolean(publicationReadAt),
       });
