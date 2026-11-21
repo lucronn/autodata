@@ -13,6 +13,7 @@ function runInNewContext(code, context) {
   context.openDemo ??= false;
   context.demoPath ??= path => path;
   context.requestInitialYears ??= params => requestInitialYears(params, context.requestJSON);
+  context.sourceDocumentRequest ??= null;
   return runVM(code, context);
 }
 
@@ -4143,6 +4144,40 @@ test('an inline source reference focuses the matching nested figure in the pinne
   assert.equal(cited.focusCalls, 1);
   await h.context.loadSource(mediaSourceURL, h.g, 'block-missing-in-copy');
   assert.equal(h.nodes.get('source-review-title').focusCalls, 1);
+});
+
+test('overlapping citations share one pinned read, focus the latest block and recheck access on a new read', async () => {
+  const pending = deferredAuthOperation(), calls = [];
+  const blocks = [
+    { type: 'paragraph', block_id: 'first', text: 'First source instruction' },
+    { type: 'paragraph', block_id: 'latest', text: 'Selected source instruction' },
+  ];
+  const h = articleMediaHarness({ requestJSON(path, options) {
+    calls.push({ path, options });
+    if (calls.length === 1) return pending.promise;
+    return Promise.reject(Object.assign(new Error('Source access revoked'), { status: 403 }));
+  } });
+  h.render(mediaArticle(blocks, [], { source_review: { available: true, url: mediaSourceURL } }));
+  const firstPath = `${mediaSourceURL}&evidence_id=first`;
+  const secondPath = `${mediaSourceURL}&source_locator=body%5B2%5D`;
+  const first = h.context.loadSource(firstPath, h.g, 'first');
+  const last = h.context.loadSource(secondPath, h.g, 'latest').catch(error => h.context.handleSourceError(error, h.g));
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].path, firstPath);
+  assert.equal(calls[0].options.signal, h.g.signal);
+  assert.equal(h.nodes.get('source-review-load').disabled, true);
+  pending.resolve({ source: { url: mediaSourceURL }, document: { blocks } });
+  await Promise.all([first, last]);
+  const frame = h.nodes.get('source-review-frame');
+  assert.equal(frame.children[0].focusCalls, undefined);
+  assert.equal(frame.children[1].focusCalls, 1);
+  assert.equal(h.nodes.get('source-review-load').disabled, false);
+
+  await h.context.loadSource(secondPath, h.g, 'latest').catch(error => h.context.handleSourceError(error, h.g));
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1].path, secondPath);
+  assert.equal(frame.hidden, true);
+  assert.deepEqual(h.shows, ['welcome']);
 });
 
 for (const type of ['ordered_list', 'unordered_list', 'callout']) {

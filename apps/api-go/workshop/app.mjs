@@ -77,6 +77,7 @@ let quote = null,
   retryAction = null,
   articleImageRefresh = null,
   sourceImageRefresh = null,
+  sourceDocumentRequest = null,
   viewGeneration = null,
   sessionRequest = null,
   sessionEstablished = false,
@@ -171,6 +172,7 @@ function clearLibrary() {
 }
 function resetSourceReview() {
   sourceImageRefresh = null;
+  sourceDocumentRequest = null;
   sourceURL = "";
   ++sourceRevision;
   displayedSourceRevision = sourceRevision;
@@ -1239,13 +1241,25 @@ const sourceDocumentHeaders = { Prefer: "workshop-source-document" };
 async function loadSource(value, g, blockID = null) {
   const requested = validSourceURL(value);
   if (!requested) throw new Error("This source reference is unavailable.");
+  const query = new URLSearchParams(requested.search);
+  // The JSON document is independent of the clicked evidence marker.
+  query.delete("evidence_id");
+  query.delete("source_locator");
+  query.sort();
+  const key = `${requested.pathname}?${query}`;
   const selected = ++sourceRevision;
   $("source-review-load").disabled = true;
+  let pending;
   try {
-    const data = await requestJSON(demoPath(requested.pathname + requested.search), {
-      signal: g.signal,
-      headers: sourceDocumentHeaders,
-    });
+    if (sourceDocumentRequest?.key !== key || sourceDocumentRequest.signal !== g.signal) {
+      const response = requestJSON(demoPath(requested.pathname + requested.search), {
+        signal: g.signal,
+        headers: sourceDocumentHeaders,
+      });
+      sourceDocumentRequest = { key, signal: g.signal, response };
+    }
+    pending = sourceDocumentRequest;
+    const data = await pending.response;
     if (!g.current() || selected !== sourceRevision) return;
     const returned = validSourceURL(data.source?.url);
     if (
@@ -1277,6 +1291,7 @@ async function loadSource(value, g, blockID = null) {
   } catch (error) {
     if (g.current() && selected === sourceRevision) throw error;
   } finally {
+    if (sourceDocumentRequest === pending) sourceDocumentRequest = null;
     if (g.current() && selected === sourceRevision)
       $("source-review-load").disabled = false;
   }
