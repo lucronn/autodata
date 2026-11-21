@@ -1395,6 +1395,7 @@ async def api_case(browser,origin,name,output,observations=None):
         # A provider return is only a request to check the owner-scoped ledger.
         await page.goto(origin+'/workshop/?order='+order)
         await expect(page.locator('#purchase-message')).to_contain_text('Do not pay again')
+        await expect(page.locator('#purchase-selection')).to_have_text('2024 Example Car Paid selected 2.0 L / US')
         assert (await api_measure(context,origin,'return-without-grant-measurement'))['entitlements']==0
         assertions['return_does_not_grant']=True
         await api_control(context,origin,'payment/settle?order_id='+order,'settlement-control')

@@ -21,6 +21,7 @@ TERMS = "workshop-v1"
 # Preserve the card-only Checkout contract across Stripe SDK default changes.
 STRIPE_API_VERSION = '2025-08-27.basil'
 LIVE = ('creating', 'open', 'processing', 'paid', 'reconciliation_required')
+_CONFIGURATION_LABEL_SQL = "concat_ws(' ',b.model_year::text,b.make,b.model,c.trim,c.engine_displacement_l::text || ' L')"
 READ_ONLY_COMMERCE_PATHS = frozenset('/internal/commerce/' + path for path in
     ('purchase-config', 'quote', 'library', 'grants/check'))
 
@@ -193,7 +194,7 @@ class CommerceService:
 
     def _scope(self, cursor, configuration_id, region):
         validate_uuid(configuration_id); validate_region(region)
-        cursor.execute("""SELECT c.vehicle_configuration_id, concat_ws(' ',b.model_year::text,b.make,b.model,c.trim,c.engine_displacement_l::text || ' L') AS label
+        cursor.execute(f"""SELECT c.vehicle_configuration_id, {_CONFIGURATION_LABEL_SQL} AS label
             FROM vehicle_configurations c JOIN vehicle_identity_bases b USING(vehicle_identity_base_id)
             WHERE c.vehicle_configuration_id=%s AND b.region=%s
               AND c.reviewer_state<>'rejected' AND b.reviewer_state<>'rejected'""", (configuration_id, region))
@@ -352,15 +353,24 @@ class CommerceService:
         validate_uuid(order_id)
         with self.transaction() as (_, cursor):
             self._account(cursor, account_id, organization_id)
-            cursor.execute('SELECT * FROM workshop_orders WHERE order_id=%s AND customer_account_id=%s', (order_id, account_id))
+            cursor.execute(f"""SELECT o.*, CASE WHEN b.vehicle_identity_base_id IS NOT NULL
+                    THEN {_CONFIGURATION_LABEL_SQL} END AS configuration_label
+                FROM workshop_orders o
+                LEFT JOIN vehicle_configurations c ON c.vehicle_configuration_id=o.configuration_id
+                LEFT JOIN vehicle_identity_bases b ON b.vehicle_identity_base_id=c.vehicle_identity_base_id AND b.region=o.region
+                WHERE o.order_id=%s AND o.customer_account_id=%s""", (order_id, account_id))
             order = cursor.fetchone()
             if not order:
                 raise CommerceError('ORDER_NOT_FOUND', 404)
             self._assert_merchant(order)
+        label = order['configuration_label']
         if order['status'] == 'open' and order['provider_expires_at'] <= self.clock():
             order = self._reconcile_expiry(order)
-        return CommerceResult(dict(version='v1', order_id=order_id, configuration_id=str(order['configuration_id']), region=order['region'],
-            state=order['status'], retry_disposition=('new_key' if order['status'] in {'expired', 'canceled'} else 'do_not_repay')))
+        result = dict(version='v1', order_id=order_id, configuration_id=str(order['configuration_id']), region=order['region'],
+            state=order['status'], retry_disposition=('new_key' if order['status'] in {'expired', 'canceled'} else 'do_not_repay'))
+        if label:
+            result['configuration_label'] = label
+        return CommerceResult(result)
 
     def webhook(self, signature, body):
         if not isinstance(signature, str) or not signature or len(signature.encode()) > 4096 or len(body) > 1048576:
@@ -519,7 +529,7 @@ class CommerceService:
             clause = 'AND (o.created_at,o.order_id)<(%s,%s)' if after else ''
             price_clause = ' AND o.expected_price_id=%s' if self.read_only else ''
             args = [account_id, self.config.account_id, self.config.livemode] + ([self.config.price_id] if self.read_only else []) + (list(after) if after else []) + [limit + 1]
-            cursor.execute("""SELECT o.*,concat_ws(' ',b.model_year::text,b.make,b.model,c.trim,c.engine_displacement_l::text || ' L') AS label,e.status AS grant_status,e.granted_at
+            cursor.execute(f"""SELECT o.*,{_CONFIGURATION_LABEL_SQL} AS label,e.status AS grant_status,e.granted_at
                 FROM workshop_orders o JOIN vehicle_configurations c ON c.vehicle_configuration_id=o.configuration_id
                 JOIN vehicle_identity_bases b USING(vehicle_identity_base_id) LEFT JOIN entitlements e ON e.entitlement_id=o.entitlement_id
                 WHERE o.customer_account_id=%s AND o.stripe_account_id=%s AND o.livemode=%s""" + price_clause + " AND (o.status='revoked' OR e.entitlement_id IS NOT NULL) " + clause + ' ORDER BY o.created_at DESC,o.order_id DESC LIMIT %s', args)

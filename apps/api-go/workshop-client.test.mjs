@@ -2047,6 +2047,7 @@ test('fresh order-only return reveals Check payment status after owner validatio
   const processing = {
     version: 'v1', order_id: orderID, ...scope, state: 'processing',
     retry_disposition: 'do_not_repay', timedOut: true,
+    configuration_label: '2005 Toyota 2.4 L XLE',
   };
   const h = paidPurchaseLifecycleHarness([], { orderResponses: [processing] });
   h.context.vehicle = null;
@@ -2055,6 +2056,7 @@ test('fresh order-only return reveals Check payment status after owner validatio
   await h.context.restoreRoute();
   assert.equal(h.context.vehicle?.id, scope.configuration_id);
   assert.equal(h.context.vehicle?.region, scope.region);
+  assert.equal(h.$('purchase-selection').textContent, '2005 Toyota 2.4 L XLE / US');
   assert.equal(h.$('purchase').hidden, false);
   assert.equal(h.$('check-order').hidden, false);
   assert.equal(h.$('purchase-action').disabled, true);

@@ -61,12 +61,13 @@ type commerceCheckout struct {
 	LibraryItemID     string `json:"library_item_id,omitempty"`
 }
 type commerceOrder struct {
-	Version          string `json:"version"`
-	OrderID          string `json:"order_id"`
-	ConfigurationID  string `json:"configuration_id"`
-	Region           string `json:"region"`
-	State            string `json:"state"`
-	RetryDisposition string `json:"retry_disposition"`
+	Version            string `json:"version"`
+	OrderID            string `json:"order_id"`
+	ConfigurationID    string `json:"configuration_id"`
+	Region             string `json:"region"`
+	ConfigurationLabel string `json:"configuration_label,omitempty"`
+	State              string `json:"state"`
+	RetryDisposition   string `json:"retry_disposition"`
 }
 type commerceLibraryItem struct {
 	LibraryItemID    string  `json:"library_item_id"`
@@ -168,6 +169,9 @@ func commercePublicResult(operation string, status int, body []byte, input map[s
 		var v commerceOrder
 		if status != 200 || json.Unmarshal(body, &v) != nil || v.Version != "v1" || v.OrderID != input["order_id"] || !commerceUUID(v.OrderID) || !scopeMatches(v.ConfigurationID, v.Region) {
 			return nil, false
+		}
+		if len(v.ConfigurationLabel) > 1024 {
+			v.ConfigurationLabel = ""
 		}
 		switch v.State {
 		case "expired", "canceled":

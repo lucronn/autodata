@@ -383,7 +383,7 @@ function renderPurchase() {
     vehicle?.region === unconfirmedOrder.region;
   $("purchase").hidden = !validScope(scope());
   $("purchase-selection").textContent =
-    quote?.configuration_label ||
+    vehicle?.orderLabel || quote?.configuration_label ||
     [
       vehicle?.year,
       vehicle?.make,
@@ -1428,16 +1428,24 @@ async function checkOrder(g, id, { earlyCheckoutCheck = false } = {}) {
   currentOrder = id;
   $("check-order").hidden = false;
   status("Checking payment status…", { busy: true });
+  const selectOrderVehicle = (order) => {
+    if (vehicle?.id !== order.configuration_id || vehicle?.region !== order.region) {
+      clearProtected();
+      vehicle = { id: order.configuration_id, region: order.region };
+      quote = null;
+    }
+    if (typeof order.configuration_label === "string" && order.configuration_label.trim()) {
+      const orderLabel = `${order.configuration_label} / ${order.region}`;
+      if (vehicle.orderLabel !== orderLabel) vehicle = { ...vehicle, orderLabel };
+    }
+  };
   const rememberUnconfirmed = (order) => {
     const unresolved = ["creating", "open", "processing", "reconciliation_required"];
     if (unresolved.includes(order.state)) {
       unconfirmedOrder = {
         id, configuration_id: order.configuration_id, region: order.region,
       };
-      if (!validScope(scope())) {
-        vehicle = { id: order.configuration_id, region: order.region };
-        quote = null;
-      }
+      selectOrderVehicle(order);
       renderPurchase();
     } else if (["paid", "expired", "canceled", "revoked"].includes(order.state) &&
       unconfirmedOrder?.id === id) {
@@ -1488,7 +1496,7 @@ async function checkOrder(g, id, { earlyCheckoutCheck = false } = {}) {
   }
   if (result.state === "paid") {
     paidOrder = { id, configuration_id: result.configuration_id, region: result.region };
-    vehicle = { id: result.configuration_id, region: result.region };
+    selectOrderVehicle(result);
     try {
       await selectVehicle(g, "", { quoteMode: "skip" });
     } catch (error) {

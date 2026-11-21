@@ -183,7 +183,10 @@ def test_orders_create_and_owner_scope(commerce):
             run_go_private_seam(c,server.server_port,key,result['order_id'])
     finally:server.shutdown();server.server_close();thread.join()
 
-    assert c[1].order_status(*c[3],result['order_id'])['state']=='open'
+    order = c[1].order_status(*c[3], result['order_id'])
+    assert order['state'] == 'open'
+    assert (order['configuration_id'], order['region']) == (c[4], 'US')
+    assert order['configuration_label'] == quote['configuration_label']
     with pytest.raises(CommerceError) as error:c[1].order_status(str(uuid.uuid4()),str(uuid.uuid4()),result['order_id'])
     assert error.value.http_status==403
     with c[0].connect() as conn:

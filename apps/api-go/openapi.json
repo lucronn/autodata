@@ -3907,6 +3907,12 @@
               "do_not_repay"
             ],
             "description": "Only remotely confirmed expired/canceled orders permit a new key. Browser return parameters never establish payment."
+          },
+          "configuration_label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024,
+            "description": "Display label for the exact ordered vehicle configuration."
           }
         },
         "required": [
