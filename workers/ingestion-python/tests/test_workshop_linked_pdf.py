@@ -421,6 +421,18 @@ def test_linked_pdf_publishes_in_order_and_private_original_controls_visibility(
         assert image["storage_key"] == figure_resource["object_key"]
         assert image["media_type"] == "image/png"
 
+    unchanged = refresh_article_job(
+        runtime.repo, runtime.article_id, actor="fixture", reason="recheck retained PDF with the same blank page",
+        rewrite_profile_version=AUTO_PROFILE,
+    )
+    assert run_article_worker_once(
+        runtime.repo, worker_id=uuid4(), registry=runtime.registry,
+        object_store=runtime.objects, model_client=draft, job_id=unchanged.job_id,
+    )
+    reread = runtime.read_current()
+    assert reread["source_revision_id"] == published["source_revision_id"]
+    assert reread["canonical_revision_id"] == published["canonical_revision_id"]
+
     with runtime.repo.connect() as conn:
         changed = conn.execute(
             """UPDATE source_snapshots SET takedown_status='takedown'
@@ -439,5 +451,5 @@ def test_linked_pdf_publishes_in_order_and_private_original_controls_visibility(
     assert hidden["takedown_status"] == "takedown"
     for field in ("source_revision_id", "canonical_revision_id", "content_origin", "body", "document", "images"):
         assert hidden[field] is None
-    assert runtime.counters()["source"] == runtime.counters()["asset"] == 1
+    assert runtime.counters()["source"] == runtime.counters()["asset"] == 2
     assert len(draft.requests) == 1
