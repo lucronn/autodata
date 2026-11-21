@@ -1134,21 +1134,27 @@ footer {
   margin-right: 8px;
   accent-color: var(--blue);
 }
-#agreement-error,
-#critical-error {
+#agreement-error {
   color: var(--error);
 }
-#critical-error:empty,
-#completion-status:empty {
+/* The activity line is the visible copy. Keep the live regions available to assistive technology. */
+#critical-error,
+#completion-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+#purchase:has(+ #library:not([hidden])) {
   display: none;
 }
 #account-status {
   font-size: 13px;
   color: var(--quiet);
   margin: 8px 0;
-}
-#completion-status {
-  font-size: 13px;
 }
 #library-items {
   padding-left: 22px;
