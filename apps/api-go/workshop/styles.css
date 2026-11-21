@@ -1,6 +1,7 @@
 @font-face {
   font-family: Instrument;
-  src: url("/workshop/fonts/InstrumentSans.ttf") format("truetype");
+  src: url("/workshop/fonts/InstrumentSans.woff2") format("woff2"),
+    url("/workshop/fonts/InstrumentSans.ttf") format("truetype");
   font-style: normal;
   font-weight: 400 700;
   font-display: swap;

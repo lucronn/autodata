@@ -50,6 +50,7 @@ func TestWorkshopAssetsAvailableWithoutCatalogCredentials(t *testing.T) {
 		{"/workshop/firebase-web.mjs.LEGAL.txt", "text/plain"},
 		{"/workshop/firebase-web.provenance.json", "application/json"},
 		{"/workshop/fonts/InstrumentSans.ttf", "font/ttf"},
+		{"/workshop/fonts/InstrumentSans.woff2", "font/woff2"},
 	} {
 		t.Run(asset.path, func(t *testing.T) {
 			response := httptest.NewRecorder()
@@ -90,7 +91,7 @@ func TestWorkshopPublicAssetsRevalidateByContent(t *testing.T) {
 		handler.ServeHTTP(w, r)
 		return w
 	}
-	for _, path := range []string{"/workshop/?view=library", "/workshop/app.mjs", "/workshop/styles.css", "/workshop/fonts/InstrumentSans.ttf"} {
+	for _, path := range []string{"/workshop/?view=library", "/workshop/app.mjs", "/workshop/styles.css", "/workshop/fonts/InstrumentSans.woff2"} {
 		t.Run(path, func(t *testing.T) {
 			first := request(http.MethodGet, path, "")
 			digest := sha256.Sum256(first.Body.Bytes())

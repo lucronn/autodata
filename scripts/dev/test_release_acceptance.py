@@ -1999,6 +1999,7 @@ class DTOReceiptTests(unittest.TestCase):
  ('GET', '/workshop/commerce.mjs', []),
  ('GET', '/workshop/firebase-web.mjs', []),
  ('GET', '/workshop/fonts/InstrumentSans.ttf', []),
+ ('GET', '/workshop/fonts/InstrumentSans.woff2', []),
  ('GET', '/workshop/progress.mjs', []),
  ('GET', '/workshop/purchase-config.json', []),
  ('GET', '/workshop/styles.css', []),
@@ -3525,7 +3526,8 @@ class API21RawInspectorTests(unittest.TestCase):
         row=model[3]['evidence']['results'][0]
         row['requests']=[dict(method=method,path=path) for method,path in (
             ('GET','/auth/config'),('GET','/auth/session'),('POST','/auth/firebase/session'),('POST','/auth/logout'),
-            ('GET','/workshop/fonts/InstrumentSans.ttf'),('GET','/workshop/purchase-config.json'),
+            ('GET','/workshop/fonts/InstrumentSans.ttf'),('GET','/workshop/fonts/InstrumentSans.woff2'),
+            ('GET','/workshop/purchase-config.json'),
             ('GET','/v1/catalog/years/2024/makes'),
             ('GET','/v1/catalog/years/2024/makes/example/models'),
             ('GET','/v1/catalog/years/2024/makes/example/models/car/configurations'),
