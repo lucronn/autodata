@@ -43,6 +43,12 @@ export function authMessage(error) {
   if (error?.status === 401) return "Your session has expired. Sign in again.";
   return "Google sign-in is unavailable. You can keep browsing.";
 }
+export function readSessionBootstrap(request = requestJSON, { signal } = {}) {
+  return Promise.allSettled([
+    request("/auth/config", { signal, timeout: 10000 }),
+    request("/auth/session", { signal, timeout: 10000 }),
+  ]);
+}
 export function createSession({
   request = requestJSON,
   loadSDK = () => import("./firebase-web.mjs"),
@@ -130,16 +136,14 @@ export function createSession({
       return !signal?.aborted && current === epoch && state.authenticated &&
         csrf === state.csrf && validSession(data) && data.csrf_token === csrf;
     },
-    async bootstrap({ signal } = {}) {
+    async bootstrap({ signal, initial } = {}) {
       const current = ++epoch;
       state.mode = null;
       state.authenticated = false;
       state.csrf = "";
       state.ready = false;
-      const [configuration, session] = await Promise.allSettled([
-        request("/auth/config", { signal, timeout: 10000 }),
-        request("/auth/session", { signal, timeout: 10000 }),
-      ]);
+      const initialResult = initial ? await initial : null;
+      const [configuration, session] = await (initialResult ?? readSessionBootstrap(request, { signal }));
       if (signal?.aborted || current !== epoch) return;
       config = configuration.status === "fulfilled" ? configuration.value : null;
       state.mode = ["local", "firebase"].includes(config?.mode) ? config.mode : null;

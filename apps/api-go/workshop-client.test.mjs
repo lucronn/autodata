@@ -869,6 +869,41 @@ test('generation invalidation aborts every old callback', async () => {
   const { NavigationGeneration } = await import('./workshop/article-read.mjs');
   const g = new NavigationGeneration();const a=g.next();const b=g.next();assert.equal(a.signal.aborted,true);assert.equal(a.current(),false);assert.equal(b.current(),true);g.clear();assert.equal(b.current(),false);
 });
+test('initial session bootstrap consumes the prestarted account reads once', async () => {
+  const { createSession } = await import('./workshop/auth.mjs');
+  const config = { version: 'v1', mode: 'firebase', login_available: true, providers: ['google.com'],
+    firebase: { apiKey: 'fixture', authDomain: 'fixture-project.firebaseapp.com', projectId: 'fixture-project', appId: '1:123:web:abc' } };
+  const active = { authenticated: true, roles: ['dataset_viewer'], expires_at: '2099-01-01T00:00:00Z', csrf_token: 'initial-claim' };
+  const requests = [];
+  const account = createSession({ request: async path => {
+    requests.push(path);
+    return path === '/auth/config' ? config : { ...active, csrf_token: 'current-claim' };
+  } });
+  const initial = Promise.allSettled([Promise.resolve(config), Promise.resolve(active)]);
+  await account.bootstrap({ initial });
+  assert.deepEqual(requests, []);
+  assert.equal(account.state.authenticated, true);
+  assert.equal(account.state.csrf, 'initial-claim');
+  await account.bootstrap();
+  assert.deepEqual(requests, ['/auth/config', '/auth/session']);
+  assert.equal(account.state.csrf, 'current-claim');
+});
+
+test('prestarted account results cannot reopen a canceled or signed-out session', async () => {
+  const { createSession } = await import('./workshop/auth.mjs');
+  const initial = deferredAuthOperation();
+  const account = createSession({ request: async () => { throw new Error('unexpected duplicate account request'); } });
+  const pending = account.bootstrap({ initial: initial.promise });
+  account.clear();
+  initial.resolve([
+    { status: 'fulfilled', value: { mode: 'firebase' } },
+    { status: 'fulfilled', value: { authenticated: true, roles: ['dataset_viewer'], expires_at: '2099-01-01T00:00:00Z', csrf_token: 'stale' } },
+  ]);
+  await pending;
+  assert.equal(account.state.authenticated, false);
+  assert.equal(account.state.csrf, '');
+});
+
 test('session bootstrap validates cookie authority and never loads SDK for existing session', async () => {
   const { createSession } = await import('./workshop/auth.mjs'); let sdkLoads=0;const calls=[];
   const session=createSession({request:async path=>{calls.push(path);return path==='/auth/config'?{version:'v1',mode:'firebase',login_available:true,providers:['google.com'],firebase:{apiKey:'fixture',authDomain:'fixture-project.firebaseapp.com',projectId:'fixture-project',appId:'1:123:web:abc'}}:{authenticated:true,roles:['dataset_viewer'],expires_at:'2099-01-01T00:00:00Z',csrf_token:'memory-only'};},loadSDK:async()=>{sdkLoads++;}});
@@ -1344,7 +1379,7 @@ function loginRouteHarness(search, { authenticate = true, signInError = null, lo
   };
   runInNewContext(
     appSection('function populate(', 'async function loadOptions(') +
-    appSection('async function signIn() {', 'export async function bootstrap(initialYears) {') +
+    appSection('async function signIn() {', 'export async function bootstrap(') +
     appSection('async function restoreRoute(', 'for (const [index, name] of names.entries())'),
     context,
   );
@@ -1908,7 +1943,7 @@ function paidPurchaseLifecycleHarness(selectionErrors, { realArticleIndex = fals
     (realArticleIndex ? appSection('function renderArticles(', 'const assetID =') : '') +
     (articleOpenError ? appSection('function openArticle(', 'function validSourceURL(') : '') +
     appSection('async function checkOrder(', 'async function signIn()') +
-    appSection('async function bootstrap(initialYears)', 'for (const [index, name] of names.entries())') +
+    appSection('async function bootstrap(', 'for (const [index, name] of names.entries())') +
     appSection('let lifecycleCheck = null;', 'window.addEventListener("pageshow"'),
     context,
   );
@@ -5404,7 +5439,7 @@ test('startup restores an authenticated route before purchase configuration sett
     },
     async restoreRoute() { opened.push('library'); },
   };
-  runInNewContext(appSection('async function bootstrap(initialYears)', 'async function restoreRoute('), context);
+  runInNewContext(appSection('async function bootstrap(', 'async function restoreRoute('), context);
   const booted = context.bootstrap();
   await new Promise(resolve => setImmediate(resolve));
   assert.deepEqual(opened, ['library']);
@@ -5430,7 +5465,7 @@ test('cold startup exposes the prefetched public years during the account check'
     },
     async restoreRoute(initialYears) { routes.push(await initialYears); },
   };
-  runInNewContext(appSection('async function bootstrap(initialYears)', 'async function restoreRoute('), context);
+  runInNewContext(appSection('async function bootstrap(', 'async function restoreRoute('), context);
   const booted = context.bootstrap();
   await new Promise(resolve => setImmediate(resolve));
   assert.deepEqual(routes, [years]);
@@ -5454,7 +5489,7 @@ test('a late purchase configuration response cannot overwrite a newer refresh', 
       return new Promise(resolve => replies.push(resolve));
     },
   };
-  runInNewContext(appSection('async function bootstrap(initialYears)', 'async function restoreRoute('), context);
+  runInNewContext(appSection('async function bootstrap(', 'async function restoreRoute('), context);
   await context.bootstrap();
   const first = context.merchantRequest;
   await context.bootstrap();

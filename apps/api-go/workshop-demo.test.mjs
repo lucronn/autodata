@@ -23,8 +23,8 @@ test('real demo uses the ordinary app only in test mode; sample stays separate',
     ['?demo=1', true, ['./app.mjs'], true, 1],
     ['?demo=1', false, [], false, 1],
     ['?demo=1&sample=1', false, [], false, 1],
-    ['?order=22222222-2222-4222-8222-222222222222', true, ['./catalog.mjs', './app.mjs'], true, 1],
-    ['', false, ['./catalog.mjs', './app.mjs'], false, 1],
+    ['?order=22222222-2222-4222-8222-222222222222', true, ['./catalog.mjs', './auth.mjs', './app.mjs'], true, 1],
+    ['', false, ['./catalog.mjs', './auth.mjs', './app.mjs'], false, 1],
   ];
   for (const [search, ready, expected, banner, fetchCount] of scenarios) {
     const loaded = [];
@@ -47,7 +47,7 @@ test('real demo uses the ordinary app only in test mode; sample stays separate',
       },
       loadModule: async path => {
         loaded.push(path);
-        return { requestInitialYears: () => null, bootstrap() {} };
+        return { requestInitialYears: () => null, readSessionBootstrap: () => null, bootstrap() {} };
       },
     });
     assert.deepEqual(loaded, expected);
@@ -88,10 +88,11 @@ test('real demo request fails closed on unavailable or malformed mode signal', a
     assert.equal(main.hidden, true);
   }
 });
-test('regular startup fetches the public years while checkout mode is pending', async () => {
+test('regular startup fetches public years and account status while checkout mode is pending', async () => {
   const code = source('bootstrap.mjs').replaceAll('import(', 'loadModule(');
   let releaseMode;
   const result = Promise.resolve({ items: [{ year: 2024 }] });
+  const account = [{ status: 'fulfilled', value: {} }];
   const events = [];
   const banner = { hidden: true };
   const started = runInNewContext(`(async () => { ${code} })()`, {
@@ -113,18 +114,25 @@ test('regular startup fetches the public years while checkout mode is pending', 
           return result;
         } };
       }
-      return { bootstrap(years) {
+      if (path === './auth.mjs') {
+        return { readSessionBootstrap() {
+          events.push('account requested');
+          return account;
+        } };
+      }
+      return { async bootstrap(years, initialAccount) {
         assert.equal(banner.hidden, false);
         assert.equal(years, result);
+        assert.equal(await initialAccount, account);
         events.push('app bootstrapped');
       } };
     },
   });
   await new Promise(setImmediate);
-  assert.deepEqual(events, ['mode requested', 'years requested']);
+  assert.deepEqual(events, ['mode requested', 'years requested', 'account requested']);
   releaseMode({ ok: true, json: async () => ({ enabled: true }) });
   await started;
-  assert.deepEqual(events, ['mode requested', 'years requested', 'app bootstrapped']);
+  assert.deepEqual(events, ['mode requested', 'years requested', 'account requested', 'app bootstrapped']);
 });
 test('open demo handshake loads the real app without test checkout UI', async () => {
   const code = source('bootstrap.mjs').replaceAll('import(', 'loadModule(');

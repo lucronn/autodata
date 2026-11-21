@@ -15,6 +15,7 @@ if (params.get('sample') === '1' && !wantsDemo) {
   let testCheckoutReady = false;
   let openDemoReady = false;
   let preview = null;
+  let initialAccount;
   try {
     const modeRequest = fetch('/workshop/demo-mode.json', { cache: 'no-store', credentials: 'same-origin' });
     if (!wantsDemo) {
@@ -22,6 +23,11 @@ if (params.get('sample') === '1' && !wantsDemo) {
       // the first route without waiting for it to initialize the rest of the app.
       preview = import('./catalog.mjs')
         .then(({ requestInitialYears }) => ({ years: requestInitialYears(params) }))
+        .catch(() => null);
+      // Regular routes can read account status while the mode check runs.
+      // The app still establishes the mode before consuming those results.
+      initialAccount = import('./auth.mjs')
+        .then(({ readSessionBootstrap }) => readSessionBootstrap())
         .catch(() => null);
     }
     const response = await modeRequest;
@@ -42,6 +48,6 @@ if (params.get('sample') === '1' && !wantsDemo) {
     document.getElementById('open-demo-banner').hidden = !(wantsDemo && openDemoReady);
     document.documentElement.dataset.workshopMode = wantsDemo && openDemoReady ? 'open-demo' : 'regular';
     const { bootstrap } = await import('./app.mjs');
-    await bootstrap((await preview)?.years);
+    await bootstrap((await preview)?.years, initialAccount);
   }
 }

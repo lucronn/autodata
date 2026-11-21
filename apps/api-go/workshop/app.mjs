@@ -1769,7 +1769,7 @@ async function signIn() {
   }
   await restoreRoute();
 }
-export async function bootstrap(initialYears) {
+export async function bootstrap(initialYears, initialAccount) {
   invalidate();
   const params = new URLSearchParams(location.search);
   const years = initialYears ?? requestInitialYears(params);
@@ -1783,7 +1783,7 @@ export async function bootstrap(initialYears) {
     });
   merchant = null;
   merchantRequest = configRequest;
-  const accountCheck = session.bootstrap().then(() => {
+  const accountCheck = session.bootstrap({ initial: initialAccount }).then(() => {
     if (sessionRequest !== accountCheck) return;
     sessionRequest = null;
     sessionEstablished = true;
