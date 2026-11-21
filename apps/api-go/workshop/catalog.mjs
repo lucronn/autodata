@@ -281,14 +281,17 @@ function safeRequestMessage(status) {
 }
 const shortSourceCheckPreference = 'workshop-short-source-check';
 const shortPublicationCheckPreference = 'workshop-short-publication-check';
+const finishPublishedBodyPreference = 'workshop-finish-published-body';
 
 export async function requestArticleJSON(path, {
   signal, timeout = 10000, readableBodyTimeout = 0, fetcher = fetch, method = 'GET', body, headers = {},
-  preferShortSourceCheck = false, preferShortPublicationCheck = false, reportBodyNetworkError = false,
+  preferShortSourceCheck = false, preferShortPublicationCheck = false,
+  finishPublishedBody = false, reportBodyNetworkError = false,
 } = {}) {
   const preferences = [];
   if (preferShortSourceCheck) preferences.push(shortSourceCheckPreference);
   if (preferShortPublicationCheck) preferences.push(shortPublicationCheckPreference);
+  if (finishPublishedBody) preferences.push(finishPublishedBodyPreference);
   const readTimeout = Math.max(1, Math.min(10000, timeout));
   const bodyTimeout = Math.min(10000, readableBodyTimeout);
   const earlyTimeout = bodyTimeout > readTimeout ? AbortSignal.timeout(readTimeout) : null;
@@ -302,8 +305,12 @@ export async function requestArticleJSON(path, {
   const combined = signals.length > 1 ? AbortSignal.any(signals) : timeoutSignal;
   try {
     const response = await fetcher(path, { method, signal: combined, credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json', ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...(preferences.length ? { Prefer: preferences.join(', ') } : {}), ...headers }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
-    // A successful early read can finish its body within the regular read deadline.
-    if (response.status === 200) earlyTimeout?.removeEventListener('abort', abortEarly);
+    const applied = response.headers.get('Preference-Applied');
+    const retry = response.headers.get('Retry-After');
+    const confirmedPublication = applied === finishPublishedBodyPreference && retry === null;
+    if (response.status === 200 && (!finishPublishedBody || confirmedPublication)) {
+      earlyTimeout?.removeEventListener('abort', abortEarly);
+    }
     let bodyError;
     const data = response.status === 204 ? null : await response.json().catch((error) => {
       bodyError = error;
@@ -311,7 +318,6 @@ export async function requestArticleJSON(path, {
     });
     signal?.throwIfAborted();
     combined.throwIfAborted();
-    const retry = response.headers.get('Retry-After');
     const retryAfterSeconds = retry && /^\d+$/.test(retry) ? Number(retry) : retry ? Math.max(0, Math.ceil((Date.parse(retry) - Date.now()) / 1000)) || 0 : 0;
     if (!response.ok) {
       const error = data?.error;
@@ -324,7 +330,6 @@ export async function requestArticleJSON(path, {
     }
     if (reportBodyNetworkError && retryAfterSeconds === 0 && bodyError instanceof TypeError) throw bodyError;
     if (response.status !== 204 && (!data || typeof data !== 'object' || Array.isArray(data))) throw new CatalogRequestError('The catalog returned an unreadable response. Try again.', { code: 'INVALID_RESPONSE' });
-    const applied = response.headers.get('Preference-Applied');
     const shortSourceCheck = preferShortSourceCheck && applied === shortSourceCheckPreference;
     const shortPublicationCheck = preferShortPublicationCheck && applied === shortPublicationCheckPreference;
     return { status: response.status, data, retryAfterSeconds, shortSourceCheck, shortPublicationCheck };

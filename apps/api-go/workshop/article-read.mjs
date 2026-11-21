@@ -1,5 +1,7 @@
 import { delay } from "./catalog.mjs";
 
+const publicationProbeIntervalMs = 500;
+
 export class NavigationGeneration {
   #controller;
   next() {
@@ -67,13 +69,16 @@ export async function readArticle(
       deadline, firstReadAt || deadline, nextSourceProbeAt || deadline,
       sourceConfirmationAt || deadline, publicationReadAt || deadline,
     );
+    // Once a short read has the published view, let it finish transferring for
+    // one probe interval past the normal fallback instead of downloading twice.
+    const bodyDeadline = firstReadAt && nextSourceProbeAt ? firstReadAt :
+      publicationReadAt ? publicationReadAt + publicationProbeIntervalMs : 0;
     try {
       latest = await read({
         signal,
         timeout: Math.max(1, Math.floor(Math.min(10000, readDeadline - startedAt))),
-        readableBodyTimeout: firstReadAt && nextSourceProbeAt
-          ? Math.floor(Math.min(deadline, firstReadAt) - startedAt)
-          : undefined,
+        readableBodyTimeout: bodyDeadline ? Math.floor(Math.min(deadline, bodyDeadline) - startedAt) : undefined,
+        finishPublishedBody: Boolean(publicationReadAt),
         preferShortSourceCheck: Boolean(firstReadAt),
         preferShortPublicationCheck: !sawFastSource || Boolean(publicationReadAt),
       });
@@ -177,7 +182,7 @@ export async function readArticle(
       }
       if (shortPublicationCheck) {
         publicationReadAt = now() + backoff;
-        backoff = 500;
+        backoff = publicationProbeIntervalMs;
       }
     }
     await wait(

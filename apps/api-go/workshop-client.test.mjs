@@ -546,9 +546,13 @@ test('reader checks for first publication early and preserves the regular read o
   ]) {
     let now = 0;
     const starts = [], qualifiers = [];
-    const result = await readArticle(async ({ timeout, preferShortPublicationCheck }) => {
+    const result = await readArticle(async ({ timeout, preferShortPublicationCheck, finishPublishedBody, readableBodyTimeout }) => {
       starts.push(now);
       qualifiers.push(preferShortPublicationCheck);
+      if (label === 'initially readable article') {
+        assert.equal(Boolean(finishPublishedBody), now === 500);
+        assert.equal(readableBodyTimeout, now === 500 ? 1000 : undefined);
+      }
       const next = responses.shift();
       if (label === 'network failure rejoins regular read' && next instanceof TypeError) {
         assert.equal(timeout, 500);
@@ -561,6 +565,60 @@ test('reader checks for first publication early and preserves the regular read o
     assert.equal(qualifiers[0], true, label);
     if (label === 'initially readable article') assert.deepEqual(qualifiers, [true, true, false, false]);
     assert.equal(result.data.article.body, 'Published', label);
+  }
+});
+
+test('only a confirmed published response can finish streaming past the early header deadline', async (t) => {
+  const { requestArticleJSON } = await import('./workshop/catalog.mjs');
+  const preference = 'workshop-finish-published-body';
+  const deadlines = [];
+  t.mock.method(AbortSignal, 'timeout', (duration) => {
+    const controller = new AbortController();
+    deadlines.push({ duration, controller });
+    return controller.signal;
+  });
+  for (const [status, applied, hint, expire, aborted] of [
+    [200, preference, '', 'short', false],
+    [200, preference, '', 'body', true],
+    [200, preference, '', 'navigation', true],
+    [200, 'workshop-short-publication-check', '', 'short', true],
+    [200, '', '', 'short', true],
+    [200, preference, '7', 'short', true],
+    [202, preference, '', 'short', true],
+  ]) {
+    deadlines.length = 0;
+    const navigation = new AbortController();
+    const started = deferredAuthOperation();
+    let release, requestSignal;
+    const result = requestArticleJSON('/article', {
+      timeout: 500, readableBodyTimeout: 1000, finishPublishedBody: true,
+      preferShortPublicationCheck: true, signal: navigation.signal,
+      fetcher: async (_url, { signal, headers }) => {
+        assert.equal(headers.Prefer, `workshop-short-publication-check, ${preference}`);
+        requestSignal = signal;
+        return {
+          status, ok: true, headers: new Headers({
+            ...(applied ? { 'Preference-Applied': applied } : {}),
+            ...(hint ? { 'Retry-After': hint } : {}),
+          }),
+          json: () => new Promise((resolve, reject) => {
+            release = resolve;
+            signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+            started.resolve();
+          }),
+        };
+      },
+    });
+    const outcome = result.catch(error => error);
+    await Promise.race([started.promise, outcome.then(error => { throw error; })]);
+    assert.deepEqual(deadlines.map(({ duration }) => duration), [500, 1000]);
+    if (expire === 'navigation') navigation.abort(new Error('Scope changed'));
+    else deadlines[expire === 'short' ? 0 : 1].controller.abort();
+    assert.equal(requestSignal.aborted, aborted);
+    if (!aborted) release({ article: { body: 'Published' } });
+    if (expire === 'navigation') assert.equal(await outcome, navigation.signal.reason);
+    else if (aborted) assert.equal((await outcome).code, 'NETWORK_UNAVAILABLE');
+    else assert.equal((await outcome).data.article.body, 'Published');
   }
 });
 
