@@ -38,7 +38,8 @@ _PROSE_PROMPT_V23 = "full-prose-auto-prompt-v23"
 _PROSE_PROMPT_V24 = "full-prose-auto-prompt-v24"
 _PROSE_PROMPT_V25 = "full-prose-auto-prompt-v25"
 _PROSE_PROMPT_V26 = "full-prose-auto-prompt-v26"
-_PROSE_PROMPT_VERSION = "full-prose-auto-prompt-v27"
+_PROSE_PROMPT_V27 = "full-prose-auto-prompt-v27"
+_PROSE_PROMPT_VERSION = "full-prose-auto-prompt-v28"
 _WORDS = re.compile(r"\w+")
 _INLINE_WARNING = re.compile(
     r"(?:^|[.!?]\s+|\n)[ \t]*(?:warnings?|caution|danger|notice|important)\s*[:!–—-]"
@@ -411,6 +412,16 @@ _PRESSURE_TEMPORAL_CONDITION = re.compile(
     + r"(?P<pressure>" + _PRESSURE_STATE + r")" + _SIMULTANEOUS_END,
 )
 _PRESSURE_OPEN_CLOSE = re.compile(r"(?P<verb>open|close)\s+" + _SIMPLE_TARGET)
+_PRESSURE_RELEASE_MARKER = re.compile(r"\b(?:depressuri[sz](?:e|ing)|pressure)\b", re.IGNORECASE)
+_PRESSURE_RELEASE_DIRECTIVE = re.compile(
+    r"(?:depressuri[sz](?:e|ing)\s+|"
+    r"(?:(?:releas(?:e|ing)|reliev(?:e|ing))\s+(?:the\s+)?pressure|"
+    r"(?:the\s+)?pressure\s+has\s+been\s+(?:released|relieved))\s+(?:from|in)\s+)"
+    + _SIMPLE_TARGET, re.IGNORECASE,
+)
+_PRESSURE_ORDER_OPEN = re.compile(r"open(?:ing)?\s+" + _SIMPLE_TARGET, re.IGNORECASE)
+_PRESSURE_ORDER_PREFIX = re.compile(r"^(before|after|once)\s+([^,;.!?]+),\s+(.+)$", re.IGNORECASE)
+_PRESSURE_ORDER_TIMING = re.compile(r"\s+(before|after|once)\s+", re.IGNORECASE)
 _WHILE_MARKER = re.compile(r"\bwhile\b", re.IGNORECASE)
 _CONTINUED_PREDICATE = re.compile(_CONDITION_PREDICATE, re.IGNORECASE)
 _CONTINUED_STATE = re.compile(r"(" + _CONDITION_STATE + r")(?=[,.\s]|$)", re.IGNORECASE)
@@ -919,13 +930,29 @@ def _build_auto_prompt_v26(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def build_auto_prompt(document, *, context):
+def _auto_prompt_payload_v27(document, *, context):
     payload = _auto_prompt_payload_v26(document, context=context)
     if payload["slots"]:
-        payload["prompt_version"] = _PROSE_PROMPT_VERSION
+        payload["prompt_version"] = _PROSE_PROMPT_V27
         payload["rules"].append(
             "Keep explicit pressurized or depressurized prerequisites attached to the original "
             "system and action. Preserve whether the state is required before, after, or during the action."
+        )
+    return payload
+
+
+def _build_auto_prompt_v27(document, *, context):
+    payload = _auto_prompt_payload_v27(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def build_auto_prompt(document, *, context):
+    payload = _auto_prompt_payload_v27(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_VERSION
+        payload["rules"].append(
+            "When an instruction explicitly orders pressure release and opening, keep both actions, "
+            "their original targets, and the explicit order. A bare conjunction does not express precedence."
         )
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
@@ -933,7 +960,8 @@ def build_auto_prompt(document, *, context):
 def _auto_prompt_version(document, *, context, prompt_hash):
     """Identify the rules bound to the saved model attempt."""
     for builder in (
-        build_auto_prompt, _build_auto_prompt_v26, _build_auto_prompt_v25, _build_auto_prompt_v24,
+        build_auto_prompt, _build_auto_prompt_v27, _build_auto_prompt_v26,
+        _build_auto_prompt_v25, _build_auto_prompt_v24,
         _build_auto_prompt_v23, _build_auto_prompt_v22, _build_auto_prompt_v21, _build_auto_prompt_v20, _build_auto_prompt_v19,
         _build_auto_prompt_v18, _build_auto_prompt_v17, _build_auto_prompt_v16, _build_auto_prompt_v15,
         _build_auto_prompt_v14, _build_auto_prompt_v13,
@@ -1066,17 +1094,32 @@ def _simple_directive(text):
     return action, target
 
 
-def _clause_pair(text):
+def _pressure_order_directive(text):
+    action = "pressure_release"
+    match = _PRESSURE_RELEASE_DIRECTIVE.fullmatch(text)
+    if match is None:
+        action = "open"
+        match = _PRESSURE_ORDER_OPEN.fullmatch(text)
+    if match:
+        target = tuple(_WORDS.findall(match["object"].casefold()))
+        if set(target).isdisjoint(_TARGET_DELIMITERS):
+            return action, target
+    return None
+
+
+def _clause_pair(text, *, pressure_order=False):
     """Recognize two complete directives with literal single-component targets."""
     text = text.strip().rstrip(".!")
-    if prefix := _CLAUSE_PREFIX_TIMING.fullmatch(text):
+    prefix_pattern = _PRESSURE_ORDER_PREFIX if pressure_order else _CLAUSE_PREFIX_TIMING
+    timing_pattern = _PRESSURE_ORDER_TIMING if pressure_order else _CLAUSE_TIMING
+    if prefix := prefix_pattern.fullmatch(text):
         first, second = prefix[2], prefix[3]
         if prefix[1].casefold() == "before":
             first, second = second, first
         ordered = True
-    elif timing := _CLAUSE_TIMING.search(text):
+    elif timing := timing_pattern.search(text):
         first, second = text[:timing.start()], text[timing.end():]
-        if timing[1].casefold() == "after":
+        if timing[1].casefold() in ("after", "once"):
             first, second = second, first
         ordered = True
     elif then := _CLAUSE_THEN.search(text):
@@ -1093,11 +1136,20 @@ def _clause_pair(text):
     for clause in (first, second):
         clause = _NEXT_MARKER.sub("", _FIRST_MARKER.sub("", clause.strip())).strip()
         clause = _CLAUSE_GERUND.sub(lambda match: _CLAUSE_GERUNDS[match[1].casefold()], clause, count=1)
-        directive = _simple_directive(clause)
+        directive = _pressure_order_directive(clause) if pressure_order else _simple_directive(clause)
         if directive is None:
             return None
         clauses.append(directive)
     return tuple(clauses), ordered
+
+
+def _pressure_release_order(text):
+    if not _PRESSURE_RELEASE_MARKER.search(text):
+        return None
+    pair = _clause_pair(text, pressure_order=True)
+    if pair and pair[1] and {action for action, _ in pair[0]} == {"pressure_release", "open"}:
+        return pair[0]
+    return None
 
 
 def _clause_assignment_changed(original, replacement, *, preserve_order=False, preserve_steps=False):
@@ -1574,7 +1626,7 @@ def _uses_prose_guards(prompt_version, slot_count):
         _PROSE_PROMPT_V12, _PROSE_PROMPT_V13, _PROSE_PROMPT_V14, _PROSE_PROMPT_V15, _PROSE_PROMPT_V16,
         _PROSE_PROMPT_V17, _PROSE_PROMPT_V18, _PROSE_PROMPT_V19, _PROSE_PROMPT_V20, _PROSE_PROMPT_V21,
         _PROSE_PROMPT_V22, _PROSE_PROMPT_V23, _PROSE_PROMPT_V24,
-        _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_VERSION,
     )
 
 
@@ -1583,7 +1635,7 @@ def _include_cell_blocks(prompt_version):
         None, _CELL_PROSE_PROMPT_V11, _PROSE_PROMPT_V12, _PROSE_PROMPT_V13,
         _PROSE_PROMPT_V14, _PROSE_PROMPT_V15, _PROSE_PROMPT_V16, _PROSE_PROMPT_V17, _PROSE_PROMPT_V18,
         _PROSE_PROMPT_V19, _PROSE_PROMPT_V20, _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23,
-        _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_VERSION,
     )
 
 
@@ -1602,55 +1654,59 @@ def _require_changes(source, candidate, *, prompt_version):
         None, _PROSE_PROMPT_V12, _PROSE_PROMPT_V13, _PROSE_PROMPT_V14, _PROSE_PROMPT_V15,
         _PROSE_PROMPT_V16, _PROSE_PROMPT_V17, _PROSE_PROMPT_V18, _PROSE_PROMPT_V19, _PROSE_PROMPT_V20,
         _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23, _PROSE_PROMPT_V24,
-        _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_VERSION,
     )
     guard_identified_inspection = guard_simultaneous and prompt_version != _PROSE_PROMPT_V12
     guard_compound_inspection = guard_identified_inspection and prompt_version != _PROSE_PROMPT_V13
     guard_bound_alternatives = guard_scope and prompt_version in (
         None, _PROSE_PROMPT_V15, _PROSE_PROMPT_V16, _PROSE_PROMPT_V17, _PROSE_PROMPT_V18,
         _PROSE_PROMPT_V19, _PROSE_PROMPT_V20, _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23,
-        _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_VERSION,
     )
     guard_bound_order = guard_clauses and prompt_version in (
         None, _PROSE_PROMPT_V16, _PROSE_PROMPT_V17, _PROSE_PROMPT_V18, _PROSE_PROMPT_V19,
         _PROSE_PROMPT_V20, _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23,
-        _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_VERSION,
     )
     guard_bound_steps = prompt_version in (
-        None, _PROSE_PROMPT_V23, _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_VERSION,
+        None, _PROSE_PROMPT_V23, _PROSE_PROMPT_V24, _PROSE_PROMPT_V25,
+        _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_VERSION,
     )
     guard_torque_aliases = prompt_version in (
         None, _PROSE_PROMPT_V17, _PROSE_PROMPT_V18, _PROSE_PROMPT_V19, _PROSE_PROMPT_V20,
         _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23, _PROSE_PROMPT_V24,
-        _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_VERSION,
     )
     guard_duration_values = prompt_version in (
         None, _PROSE_PROMPT_V18, _PROSE_PROMPT_V19, _PROSE_PROMPT_V20, _PROSE_PROMPT_V21,
         _PROSE_PROMPT_V22, _PROSE_PROMPT_V23, _PROSE_PROMPT_V24,
-        _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_VERSION,
     )
     guard_electrical_values = prompt_version in (
         None, _PROSE_PROMPT_V19, _PROSE_PROMPT_V20, _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23,
-        _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_VERSION,
     )
     guard_pressure_values = prompt_version in (
         None, _PROSE_PROMPT_V20, _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23,
-        _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_VERSION,
     )
     guard_temperature_values = prompt_version in (
         None, _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23, _PROSE_PROMPT_V24,
-        _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_VERSION,
     )
     guard_resistance_values = prompt_version in (
         None, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23, _PROSE_PROMPT_V24,
-        _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_VERSION,
     )
     guard_clearance_warnings = prompt_version in (
-        None, _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_VERSION,
+        None, _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_VERSION,
     )
-    guard_rotation_values = prompt_version in (None, _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_VERSION)
-    guard_conjunctive = guard_simultaneous and prompt_version in (None, _PROSE_PROMPT_V26, _PROSE_PROMPT_VERSION)
-    guard_pressure_conditions = prompt_version in (None, _PROSE_PROMPT_VERSION)
+    guard_rotation_values = prompt_version in (
+        None, _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_VERSION,
+    )
+    guard_conjunctive = guard_simultaneous and prompt_version in (None, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_VERSION)
+    guard_pressure_conditions = prompt_version in (None, _PROSE_PROMPT_V27, _PROSE_PROMPT_VERSION)
+    guard_pressure_order = prompt_version in (None, _PROSE_PROMPT_VERSION)
     introduction = candidate["blocks"][0].get("text", "")
     if guard_prose and (
         _INLINE_WARNING.search(introduction)
@@ -1740,6 +1796,9 @@ def _require_changes(source, candidate, *, prompt_version):
                 replacement, compound=guard_compound_inspection,
             ):
                 raise ValueError("REWRITE_QUALIFIER_MUTATION")
+        if guard_pressure_order and (ordered_pressure := _pressure_release_order(original)):
+            if ordered_pressure != _pressure_release_order(replacement):
+                raise ValueError("REWRITE_CLAUSE_MUTATION")
         if guard_pressure_conditions and _pressure_qualified_task(original) != _pressure_qualified_task(replacement):
             raise ValueError("REWRITE_QUALIFIER_MUTATION")
         if guard_qualifiers and _qualifier_changed(
@@ -1799,7 +1858,8 @@ def validate_auto(source, candidate, *, response=None, prompt_version=None):
             _PROSE_PROMPT_V24: "full-prose-auto-validator-v22",
             _PROSE_PROMPT_V25: "full-prose-auto-validator-v23",
             _PROSE_PROMPT_V26: "full-prose-auto-validator-v24",
-        }.get(prompt_version, "full-prose-auto-validator-v25")
+            _PROSE_PROMPT_V27: "full-prose-auto-validator-v25",
+        }.get(prompt_version, "full-prose-auto-validator-v26")
     report.update(validator_version=validator_version, profile_version=PROFILE,
         publication_mode="automatic", content_acceptance_required=False,
         complete_rewrite=False, passed=not errors, error_codes=errors)
