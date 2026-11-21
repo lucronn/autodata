@@ -624,13 +624,15 @@ async function loadArticles(g, articleID = "", { focusOnShow = false, focusArtic
           completenessChanged)) {
           if (indexChanged && searchQuery === query && searchItems)
             searchItems = searchHitsOnCurrentIndex(searchItems);
-          scheduleArticleSearch({ fromIndex: true });
-        }
-        else renderArticles();
-        if (focusOnShow || focusArticle) {
-          focusArticleIndex(focusArticle);
+          scheduleArticleSearch({ fromIndex: true, focusAfter: focusArticle });
           focusArticle = "";
-          focusOnShow = false;
+        } else {
+          renderArticles();
+          if (focusOnShow || focusArticle) {
+            focusArticleIndex(focusArticle);
+            focusArticle = "";
+            focusOnShow = false;
+          }
         }
       },
     },
@@ -680,7 +682,7 @@ function searchHitsOnCurrentIndex(items) {
   return items.filter((item) => sameArticleDescriptor(item, descriptors.get(item.id)));
 }
 
-function scheduleArticleSearch({ fromIndex = false } = {}) {
+function scheduleArticleSearch({ fromIndex = false, focusAfter = "" } = {}) {
   const query = $("search").value.trim();
   const refresh = fromIndex && query === searchQuery;
   if (refresh && searchPending) {
@@ -720,7 +722,10 @@ function scheduleArticleSearch({ fromIndex = false } = {}) {
       if (!indexLoaded) indexComplete = searchComplete;
       searchPending = false;
       if (searchRefreshPending) scheduleArticleSearch({ fromIndex: true });
-      else renderArticles();
+      else {
+        renderArticles();
+        if (focusAfter) focusArticleIndex(focusAfter);
+      }
     }).catch((error) => {
       if (!current()) return;
       if ([401, 403, 410].includes(error.status)) {

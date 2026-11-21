@@ -569,7 +569,7 @@ _TIMED_STRAINER_CLEANING = re.compile(
 )
 _REQUIRED_TASK_SEPARATOR = re.compile(r"[.;]\s*(?:then\s+)?|,?\s+and(?:\s+then)?\s+|,?\s+then\s+")
 _COMBINED_PREPARATION_SEPARATOR = re.compile(
-    r"[.,;]\s*(?:(?:and\s+)?then\s+|next[,\s]+|and\s+)?|\s+(?:and(?:\s+then)?|then)\s+",
+    r"[.,;]\s*(?:(?:and\s+)?then[,\s]+|next[,\s]+|and\s+)?|\s+(?:and(?:\s+then)?|then)\s+",
 )
 _TWO_REPLACEMENT_COMPONENTS = r"(?:both|the\s+two)\s+components"
 _BEFORE_TWO_REPLACEMENTS = rf"(?:before|ahead\s+of)\s+replacing\s+{_TWO_REPLACEMENT_COMPONENTS}"
