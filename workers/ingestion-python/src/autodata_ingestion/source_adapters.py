@@ -819,6 +819,7 @@ def _adapt_pdf_resource(
     skip_blank_pages: bool = False,
     keep_single_line_compact_figures: bool = False,
     keep_wordless_pdf_figures: bool = False,
+    step_parser=None,
 ) -> SourceArtifact:
     """Extract native PDF text and OCR pages that contain no native text."""
 
@@ -884,7 +885,7 @@ def _adapt_pdf_resource(
         if extracted_images and extracted_images[0].get("_compact_pdf_figure") is True:
             [figure] = extracted_images
             if text:
-                segments = segment_plain_article_text(text)
+                segments = segment_plain_article_text(text, step_parser=step_parser)
                 gaps = figure_text_gaps(page, text, segments, page_image_keys, allow_single_line_figure=single_line)
                 if figure["pdf_key"] in gaps:
                     if single_line:
@@ -904,7 +905,7 @@ def _adapt_pdf_resource(
             page_texts.append((index, text))
             if (figure_gaps is not None and extracted_images and len(extracted_images) == len(page_image_keys)
                     and (keep_multiple_pdf_figures or len(extracted_images) == 1)):
-                segments = segment_plain_article_text(text)
+                segments = segment_plain_article_text(text, step_parser=step_parser)
                 by_key = {image["pdf_key"]: image["image_id"] for image in extracted_images if image["pdf_key"]}
                 if len(by_key) == len(extracted_images):
                     gaps = figure_text_gaps(
@@ -1884,6 +1885,7 @@ def adapt_bound_article(
     keep_structured_table_cell_order: bool = False,
     keep_ordered_step_instructions: bool = False,
     keep_image_only_step_instructions: bool = False,
+    step_parser=None,
 ) -> dict[str, Any]:
     """Adapt fetched bytes under proven connector scope, without weakening URL intake."""
     from .banktwo_connector import ArticleParser
@@ -1989,6 +1991,7 @@ def adapt_bound_article(
                         keep_repeated_pdf_figures=keep_repeated_pdf_figures,
                         keep_pdf_figures_with_margins=keep_pdf_figures_with_margins,
                         keep_compact_pdf_figures=keep_compact_pdf_figures,
+                        step_parser=step_parser,
                     ),
                     "asset_resource_refs": article.get("asset_resource_refs", []),
                     "embedded_pdf": True,
@@ -2032,8 +2035,9 @@ def adapt_bound_article(
                         keep_html_nested_tables=keep_html_nested_tables,
                         keep_html_flow_figure_captions=keep_html_flow_figure_captions,
                         keep_html_multiline_figure_captions=keep_html_multiline_figure_captions,
+                        step_parser=step_parser,
                     )
-                blocks = segment_plain_article_text(text)
+                blocks = segment_plain_article_text(text, step_parser=step_parser)
         ordered_steps = False
         has_image_only_steps = False
         if keep_ordered_step_instructions:
@@ -2113,7 +2117,7 @@ def adapt_bound_article(
         }
     if media == "text/plain":
         return {
-            "blocks": segment_plain_article_text(resource.payload.decode("utf-8-sig")),
+            "blocks": segment_plain_article_text(resource.payload.decode("utf-8-sig"), step_parser=step_parser),
             "asset_resource_refs": [],
         }
     if media == "application/pdf":
@@ -2123,6 +2127,7 @@ def adapt_bound_article(
             keep_repeated_pdf_figures=keep_repeated_pdf_figures,
             keep_pdf_figures_with_margins=keep_pdf_figures_with_margins,
             keep_compact_pdf_figures=keep_compact_pdf_figures,
+            step_parser=step_parser,
         ), "asset_resource_refs": []}
     raise ValueError("unsupported article media")
 
@@ -2144,6 +2149,7 @@ def adapt_bound_pdf_embed(
     skip_blank_pages: bool = False,
     keep_single_line_compact_figures: bool = False,
     keep_wordless_pdf_figures: bool = False,
+    step_parser=None,
 ) -> dict[str, Any]:
     return _adapt_bound_pdf(
         resource, embedded=True, require_complete_ocr=require_complete_ocr,
@@ -2155,13 +2161,14 @@ def adapt_bound_pdf_embed(
         skip_blank_pages=skip_blank_pages,
         keep_single_line_compact_figures=keep_single_line_compact_figures,
         keep_wordless_pdf_figures=keep_wordless_pdf_figures,
+        step_parser=step_parser,
     )
 
 
 def _adapt_bound_pdf(resource, *, embedded=False, require_complete_ocr=False, keep_pdf_figure_order=False,
                      keep_multiple_pdf_figures=False, keep_repeated_pdf_figures=False,
                      keep_pdf_figures_with_margins=False, keep_compact_pdf_figures=False, skip_blank_pages=False,
-                     keep_single_line_compact_figures=False, keep_wordless_pdf_figures=False):
+                     keep_single_line_compact_figures=False, keep_wordless_pdf_figures=False, step_parser=None):
     if embedded and (resource.media_type != "application/pdf"
             or len(resource.payload) > _MAX_BOUND_EMBEDDED_PDF_BYTES
             or not resource.payload.startswith(b"%PDF-")):
@@ -2178,12 +2185,13 @@ def _adapt_bound_pdf(resource, *, embedded=False, require_complete_ocr=False, ke
             skip_blank_pages=skip_blank_pages,
             keep_single_line_compact_figures=keep_single_line_compact_figures,
             keep_wordless_pdf_figures=keep_wordless_pdf_figures,
+            step_parser=step_parser,
         )
     else:
         artifact = adapt_source_resource(resource)
     if require_complete_ocr and artifact.metadata.get("rasterization_status") == "unavailable":
         raise ValueError("linked PDF has pages requiring unavailable OCR")
-    result = _bound_pdf_blocks(artifact, figure_gaps or {})
+    result = _bound_pdf_blocks(artifact, figure_gaps or {}, step_parser=step_parser)
     if artifact.metadata.get("skipped_blank_pages") is True:
         result["skipped_blank_pages"] = True
     if artifact.metadata.get("retained_wordless_pdf_figures") is True:
@@ -2191,7 +2199,7 @@ def _adapt_bound_pdf(resource, *, embedded=False, require_complete_ocr=False, ke
     return result
 
 
-def _bound_pdf_blocks(artifact: SourceArtifact, figure_gaps: dict[str, tuple[int, int, int]]) -> dict[str, Any]:
+def _bound_pdf_blocks(artifact: SourceArtifact, figure_gaps: dict[str, tuple[int, int, int]], *, step_parser=None) -> dict[str, Any]:
     from .article_document import segment_plain_article_text
 
     text_candidates = [
@@ -2204,7 +2212,7 @@ def _bound_pdf_blocks(artifact: SourceArtifact, figure_gaps: dict[str, tuple[int
     images = {}
     # Native text and OCR candidates are produced in separate passes.
     for candidate in text_candidates:
-        segments = segment_plain_article_text(candidate.data.get("text", ""))
+        segments = segment_plain_article_text(candidate.data.get("text", ""), step_parser=step_parser)
         page = re.match(r"^page:(\d+)(?:$|:)", candidate.locator)
         if page:
             pages.setdefault(int(page[1]), []).extend(segments)

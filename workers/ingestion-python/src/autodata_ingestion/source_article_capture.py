@@ -15,6 +15,7 @@ from .article_lifecycle_types import (
     HTML_NESTED_TABLE_LAYOUT,
     HTML_TABLE_CAPTION_LAYOUT,
     HTML_TABLE_SPAN_LAYOUT,
+    LEADING_DECIMAL_LAYOUT,
     PDF_BLANK_PAGE_LAYOUT,
     PDF_COMPACT_FIGURE_LAYOUT,
     PDF_LEGACY_FIGURE_LAYOUT,
@@ -29,7 +30,7 @@ from .article_lifecycle_types import (
 )
 from .source_adapters import adapt_bound_article, adapt_bound_pdf_embed
 from .source_connector_client import SourceConnectorError
-from .article_document import build_ordered_document, walk_ordered_list_items
+from .article_document import LeadingDecimalStepParser, build_ordered_document, walk_ordered_list_items
 from .svg_rasterization import rasterize_svg, SVGUnavailable, RASTERIZER_VERSION
 
 
@@ -273,10 +274,12 @@ def capture_source_article(
     keep_structured_table_cell_order=False,
     keep_ordered_step_instructions=False,
     keep_image_only_step_instructions=False,
+    keep_leading_decimals=False,
 ):
     if not 0 < deadline_seconds <= 30:
         raise ValueError("capture deadline must be within 30 seconds")
     provider = context.key.provider
+    step_parser = LeadingDecimalStepParser() if keep_leading_decimals else None
     if provider not in registry:
         raise SourceConnectorError("NOT_CONFIGURED")
     client = registry[provider]
@@ -382,6 +385,7 @@ def capture_source_article(
             keep_structured_table_cell_order=keep_structured_table_cell_order,
             keep_ordered_step_instructions=keep_ordered_step_instructions,
             keep_image_only_step_instructions=keep_image_only_step_instructions,
+            step_parser=step_parser,
         )
         article = parsing.result(timeout=remaining())
     except (ValueError, TypeError, KeyError, UnicodeError) as error:
@@ -485,6 +489,7 @@ def capture_source_article(
     failures = {}
     localized = {}
     documents = {}
+    linked_decimal_preserved = False
 
     # All requests share one deadline; no more than four can run concurrently.
     def fetch(pair):
@@ -498,6 +503,7 @@ def capture_source_article(
                     return ref, role, None, "UNSUPPORTED_DOCUMENT_MEDIA", originals, None
                 resource = upload_resource(envelope, ref, role, bounded_objects)
                 try:
+                    linked_step_parser = LeadingDecimalStepParser() if keep_leading_decimals else None
                     adapted = adapt_bound_pdf_embed(
                         payload, require_complete_ocr=True, keep_pdf_figure_order=keep_pdf_figure_order,
                         keep_multiple_pdf_figures=keep_multiple_pdf_figures,
@@ -506,11 +512,14 @@ def capture_source_article(
                         keep_compact_pdf_figures=retain_compact_figures(payload.content_sha256),
                         keep_single_line_compact_figures=keep_single_line_pdf_figures,
                         keep_wordless_pdf_figures=keep_wordless_linked_pdf_figures,
+                        step_parser=linked_step_parser,
                         skip_blank_pages=(
                             skip_blank_linked_pdf_pages
                             and payload.content_sha256 not in context.legacy_published_pdf_blank_roots
                         ),
                     )
+                    if linked_step_parser is not None and linked_step_parser.preserved:
+                        adapted["preserved_leading_decimals"] = True
                 except ValueError:
                     adapted = None
                 if not adapted or not adapted["blocks"]:
@@ -563,6 +572,7 @@ def capture_source_article(
                                   adapted.get("pdf_legacy_asset_order", []))
                 positioned_pdf_figures |= adapted.get("positioned_pdf_figures") is True
                 retained_pdf_repeats |= adapted.get("retained_repeated_pdf_figures") is True
+                linked_decimal_preserved |= adapted.get("preserved_leading_decimals") is True
                 if adapted.get("retained_pdf_figures_with_margins") is True:
                     resource["pdf_figure_layout"] = PDF_REPEAT_MARGIN_LAYOUT
                 if adapted.get("positioned_compact_pdf_figures") is True:
@@ -813,6 +823,7 @@ def capture_source_article(
         blocks,
         preserve_marked_cells=handled_pdf_embeds or positioned_html_table_images or structured_table_cell_order or html_nested_tables,
         preserve_structured_columns=structured_table_columns,
+        step_parser=step_parser,
     )
     for node in _image_nodes(doc["blocks"]):
         local = image_records.get(node.get("image_id"))
@@ -834,6 +845,10 @@ def capture_source_article(
         or body_text.strip() == str(context.descriptor.get("title", "")).strip()
     ):
         raise SourceConnectorError("INVALID_ARTICLE_BODY")
+    if linked_decimal_preserved or (step_parser is not None and step_parser.preserved):
+        new_structure = True
+        for record in (resources[0], provenance[0], manifest[0]):
+            record["leading_decimal_layout"] = LEADING_DECIMAL_LAYOUT
     fingerprint = digest_json(
         {
             "provider": provider,

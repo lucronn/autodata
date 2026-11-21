@@ -18,6 +18,7 @@ SCHEMA_VERSION = 1
 NORMALIZATION_VERSION = "ordered-article-v1"
 _MIN_LIST_NUMBER = -(2**31)
 _MAX_LIST_NUMBER = 2**31 - 1
+_LEADING_DECIMAL = re.compile(r"^\s*-?\d+\.\d")
 DOCUMENT_TYPES = frozenset(
     {
         "heading",
@@ -90,7 +91,20 @@ def empty_document() -> dict[str, Any]:
     }
 
 
-def segment_plain_article_text(text: str) -> list[dict[str, Any]]:
+class LeadingDecimalStepParser:
+    """Preserve a leading decimal and record when capture changed its interpretation."""
+
+    def __init__(self):
+        self.preserved = False
+
+    def __call__(self, text):
+        if _LEADING_DECIMAL.match(text):
+            self.preserved = True
+            return None
+        return _numbered_text(text)
+
+
+def segment_plain_article_text(text: str, *, step_parser=None) -> list[dict[str, Any]]:
     """Split PDF/TSB plain text into workshop-readable source blocks.
 
     Bankone bulletin PDFs often arrive as one whitespace-collapsed string.
@@ -116,7 +130,11 @@ def segment_plain_article_text(text: str) -> list[dict[str, Any]]:
 
     segments: list[dict[str, Any]] = []
     for raw_line in cleaned.splitlines():
-        line = re.sub(r"[ \t]+", " ", raw_line).strip(" -\t")
+        line = re.sub(r"[ \t]+", " ", raw_line)
+        if step_parser is not None and line.lstrip(" \t").startswith("-") and _LEADING_DECIMAL.match(line):
+            line = line.lstrip().rstrip(" -\t")
+        else:
+            line = line.strip(" -\t")
         if not line or _is_plain_boilerplate(line):
             continue
         note = re.match(r"^Note:\s*(.+)$", line, re.IGNORECASE)
@@ -129,7 +147,7 @@ def segment_plain_article_text(text: str) -> list[dict[str, Any]]:
         if _looks_like_heading(line):
             segments.append({"kind": "heading", "text": line, "level": 2})
             continue
-        numbered = _numbered_text(line)
+        numbered = (step_parser or _numbered_text)(line)
         if numbered is not None:
             number, step_text = numbered
             segments.append({"kind": "text", "text": f"{number}. {step_text}"})
@@ -174,6 +192,7 @@ def build_ordered_document(
     *,
     preserve_marked_cells: bool = False,
     preserve_structured_columns: bool = False,
+    step_parser=None,
 ) -> dict[str, Any]:
     """Convert adapter blocks into a deterministic, source-order document."""
 
@@ -184,9 +203,11 @@ def build_ordered_document(
         source_blocks = _blocks_from_steps(article.get("steps"))
     if not isinstance(source_blocks, list) or not source_blocks:
         body = str(article.get("body") or "").strip()
-        source_blocks = segment_plain_article_text(body) if body else []
+        source_blocks = segment_plain_article_text(body, step_parser=step_parser) if body else []
     else:
-        source_blocks = _expand_plain_source_blocks(source_blocks, preserve_marked_cells=preserve_marked_cells)
+        source_blocks = _expand_plain_source_blocks(
+            source_blocks, preserve_marked_cells=preserve_marked_cells, step_parser=step_parser,
+        )
 
     seen_image_keys: set[str] = set()
     for block in source_blocks:
@@ -244,16 +265,18 @@ def build_ordered_document(
             output.append(_image_block(article, source_index, raw, evidence_ids))
             continue
         if kind in {"table", "grid"}:
-            output.append(_table_block(article, source_index, raw, evidence_ids, preserve_marked_cells, preserve_structured_columns))
+            output.append(_table_block(article, source_index, raw, evidence_ids, preserve_marked_cells,
+                                       preserve_structured_columns, step_parser))
             continue
         if kind in {"ordered_list", "unordered_list", "list"}:
-            output.append(_list_block(article, source_index, raw, evidence_ids, kind, preserve_marked_cells, preserve_structured_columns))
+            output.append(_list_block(article, source_index, raw, evidence_ids, kind, preserve_marked_cells,
+                                      preserve_structured_columns, step_parser))
             continue
         if kind in {"callout", "note", "warning", "caution", "hint", "important"}:
             output.append(_callout_block(article, source_index, raw, evidence_ids, kind))
             continue
         if kind in {"step", "instruction"}:
-            output.append(_step_block(article, source_index, raw, evidence_ids))
+            output.append(_step_block(article, source_index, raw, evidence_ids, step_parser))
             continue
         if kind in {"break", "hr", "separator"}:
             output.append(_base_block(article, source_index, "break", evidence_ids=evidence_ids))
@@ -312,7 +335,7 @@ def build_ordered_document(
             output.append(_unknown_block(article, source_index, raw))
             continue
         literal_cell_text = preserve_marked_cells and raw.get("_html_literal_table_text") is True
-        explicit_number = None if literal_cell_text else _numbered_text(text)
+        explicit_number = None if literal_cell_text else (step_parser or _numbered_text)(text)
         if explicit_number is not None:
             number, text = explicit_number
             output.append(
@@ -719,7 +742,7 @@ def _image_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str
 
 def _table_block(
     article: Mapping[str, Any], source_order: int, raw: Mapping[str, Any],
-    evidence_ids: list[str], preserve_marked_cells: bool, preserve_structured_columns: bool,
+    evidence_ids: list[str], preserve_marked_cells: bool, preserve_structured_columns: bool, step_parser,
 ) -> dict[str, Any]:
     rows = raw.get("rows")
     if not isinstance(rows, list):
@@ -738,13 +761,13 @@ def _table_block(
             values = [values]
         clean_rows.append([_table_cell(
             value, evidence_ids=evidence_ids, preserve_marked_cells=preserve_marked_cells,
-            preserve_structured_columns=preserve_structured_columns,
+            preserve_structured_columns=preserve_structured_columns, step_parser=step_parser,
         ) for value in values])
     columns = raw.get("columns") if isinstance(raw.get("columns"), list) else []
     if preserve_structured_columns:
         clean_columns = [_table_cell(
             value, evidence_ids=evidence_ids, preserve_marked_cells=preserve_marked_cells,
-            preserve_structured_columns=preserve_structured_columns,
+            preserve_structured_columns=preserve_structured_columns, step_parser=step_parser,
         ) for value in columns]
     else:
         clean_columns = [_clean_text(value) for value in columns]
@@ -848,7 +871,7 @@ def _text_block_images(raw: Mapping[str, Any]) -> list[dict[str, Any]]:
 
 
 def _table_cell(
-    value: Any, *, evidence_ids: list[str], preserve_marked_cells: bool, preserve_structured_columns: bool,
+    value: Any, *, evidence_ids: list[str], preserve_marked_cells: bool, preserve_structured_columns: bool, step_parser,
 ) -> Any:
     if not isinstance(value, Mapping):
         return _clean_text(value)
@@ -882,7 +905,7 @@ def _table_cell(
             "text": direct_text,
             "blocks": build_ordered_document(
                 {"evidence_ids": evidence_ids}, nested, preserve_marked_cells=preserve_marked_cells,
-                preserve_structured_columns=preserve_structured_columns,
+                preserve_structured_columns=preserve_structured_columns, step_parser=step_parser,
             )["blocks"],
             **({"protected_text": True} if ordered_source_cell else {}),
             **({"images": images} if images else {}),
@@ -918,7 +941,7 @@ def _list_values(raw):
 
 def _list_block(
     article: Mapping[str, Any], source_order: int, raw: Mapping[str, Any],
-    evidence_ids: list[str], kind: str, preserve_marked_cells: bool, preserve_structured_columns: bool,
+    evidence_ids: list[str], kind: str, preserve_marked_cells: bool, preserve_structured_columns: bool, step_parser,
 ) -> dict[str, Any]:
     ordered = kind == "ordered_list"
     start = list_number(raw.get("start")) if ordered else None
@@ -943,7 +966,7 @@ def _list_block(
             item_evidence = _evidence_ids(value, {"evidence_ids": evidence_ids})
             children = build_ordered_document(
                 {"evidence_ids": item_evidence}, child_blocks, preserve_marked_cells=preserve_marked_cells,
-                preserve_structured_columns=preserve_structured_columns,
+                preserve_structured_columns=preserve_structured_columns, step_parser=step_parser,
             )["blocks"]
         number = list_number(value.get("number")) if ordered else None
         if children or images or number is not None:
@@ -1091,7 +1114,7 @@ def ordered_numbered_step(raw, *, keep_image_only=False):
     }, has_image_only
 
 
-def _step_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str, Any], evidence_ids: list[str]) -> dict[str, Any]:
+def _step_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str, Any], evidence_ids: list[str], step_parser) -> dict[str, Any]:
     text_candidates = [raw.get(field) for field in _STEP_TEXT_FIELDS]
     instruction_images: list[dict[str, Any]] = []
     instruction_text = ""
@@ -1126,7 +1149,7 @@ def _step_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str,
             number = None
 
     if number is None and text:
-        parsed_num = _numbered_text(text)
+        parsed_num = (step_parser or _numbered_text)(text)
         if parsed_num is not None:
             number, text = parsed_num
 
@@ -1268,7 +1291,7 @@ def _level(raw: Mapping[str, Any]) -> int:
         return 2
 
 
-def _expand_plain_source_blocks(source_blocks: list[Any], *, preserve_marked_cells: bool) -> list[Any]:
+def _expand_plain_source_blocks(source_blocks: list[Any], *, preserve_marked_cells: bool, step_parser) -> list[Any]:
     expanded: list[Any] = []
     for raw in source_blocks:
         if isinstance(raw, str):
@@ -1284,7 +1307,7 @@ def _expand_plain_source_blocks(source_blocks: list[Any], *, preserve_marked_cel
         if not text.strip() or not _needs_plain_segmentation(text):
             expanded.append(raw)
             continue
-        segments = segment_plain_article_text(text)
+        segments = segment_plain_article_text(text, step_parser=step_parser)
         if len(segments) <= 1:
             expanded.append(raw)
             continue

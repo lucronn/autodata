@@ -17,6 +17,7 @@ from .article_lifecycle_types import (
     HTML_NESTED_TABLE_LAYOUT,
     HTML_TABLE_CAPTION_LAYOUT,
     HTML_TABLE_SPAN_LAYOUT,
+    LEADING_DECIMAL_LAYOUT,
     STRUCTURED_TABLE_COLUMNS_LAYOUT,
 )
 
@@ -52,16 +53,17 @@ def normalize_procedure_article(
     _ensure_classification(out)
     # A captured ordered document is authoritative. Normalization must not
     # abbreviate its tables, interleaved media or nested content via old steps.
-    authored_table = any(
+    authoritative_source = any(
         entry.get("role") == "body" and (
             entry.get("html_table_caption_layout") == HTML_TABLE_CAPTION_LAYOUT
             or entry.get("html_nested_table_layout") == HTML_NESTED_TABLE_LAYOUT
             or entry.get("html_table_span_layout") == HTML_TABLE_SPAN_LAYOUT
+            or entry.get("leading_decimal_layout") == LEADING_DECIMAL_LAYOUT
             or entry.get("structured_table_columns_layout") == STRUCTURED_TABLE_COLUMNS_LAYOUT
         )
         for entry in resource_manifest
     )
-    if isinstance(out.get("normalized_document"), Mapping) and (authored_table or not _undersegmented_article(out)):
+    if isinstance(out.get("normalized_document"), Mapping) and (authoritative_source or not _undersegmented_article(out)):
         from .article_document import project_ordered_document
         out.update(project_ordered_document(out["normalized_document"]))
         out.pop("blocks", None)

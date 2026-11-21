@@ -8,6 +8,7 @@ import hashlib
 import json
 
 NORMALIZATION_VERSION = "ordered-article-v1"
+LEADING_DECIMAL_LAYOUT = "leading-decimal-text-v1"
 REWRITE_PROFILE_VERSION = "technical-prose-v1"
 HTML_FIGURE_CAPTION_LAYOUT = "html-figure-caption-v1"
 HTML_FLOW_FIGURE_CAPTION_LAYOUT = "html-flow-figure-caption-v1"
