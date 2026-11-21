@@ -233,16 +233,19 @@ test('checkout confirmation keeps terminal, invalid, and denied order responses 
 
 test('checkout confirmation respects failure backoff and retry hints', async () => {
   const retryable = (status, retryAfterSeconds) => Object.assign(new Error('Please retry'), { status, retryable: true, retryAfterSeconds });
-  for (const [responses, times] of [
-    [[retryable(503, 2), 'open', 'paid'], [0, 2000, 4000]],
-    [['open', retryable(429, 3), 'paid'], [0, 350, 3350]],
-    [['open', retryable(503), 'paid'], [0, 350, 1350]],
-    [['open', 'reconciliation_required', 'paid'], [0, 350, 1350]],
-    [['open', new TypeError('network unavailable'), 'paid'], [0, 350, 1000]],
+  for (const [responses, times, outages] of [
+    [[retryable(503, 2), 'open', 'paid'], [0, 2000, 4000], 1],
+    [['open', retryable(429, 3), 'paid'], [0, 350, 3350], 1],
+    [['open', retryable(503), 'paid'], [0, 350, 1350], 1],
+    [['open', retryable(503), 'open', retryable(503), 'paid'], [0, 350, 1350, 3350, 7350], 2],
+    [['open', 'reconciliation_required', 'paid'], [0, 350, 1350], 0],
+    [['open', new TypeError('network unavailable'), 'paid'], [0, 350, 1000], 0],
   ]) {
-    const probe = orderPollFixture(responses);
+    let announced = 0;
+    const probe = orderPollFixture(responses, { onUnavailable: () => announced++ });
     assert.equal((await probe.result).state, 'paid');
     assert.deepEqual(probe.times(), times);
+    assert.equal(announced, outages);
   }
 });
 
