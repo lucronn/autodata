@@ -484,7 +484,7 @@ function purchaseConfigured() {
     origin: globalThis.location?.origin,
   });
 }
-async function selectVehicle(g, articleID = "", { quoteMode = "eager", savedLink = false, reuseQuote = false, focusOnShow = false } = {}) {
+async function selectVehicle(g, articleID = "", { quoteMode = "eager", savedLink = false, reuseQuote = false, focusOnShow = false, focusArticle = "" } = {}) {
   if (!g.current()) return;
   // Keep the exact public price visible while paid access and purchase
   // availability are checked together for this same selection.
@@ -540,9 +540,9 @@ async function selectVehicle(g, articleID = "", { quoteMode = "eager", savedLink
   }
   try {
     if (directArticle && await loadArticle(articleID, g, { savedLink: true })) return;
-    if (savedQuery && await loadSavedSearch(g, savedQuery)) return;
+    if (savedQuery && await loadSavedSearch(g, savedQuery, focusArticle)) return;
     if (!g.current()) return;
-    await loadArticles(g, articleID, { focusOnShow, includePurchaseQuote: Boolean(retainedQuote) });
+    await loadArticles(g, articleID, { focusOnShow, focusArticle, includePurchaseQuote: Boolean(retainedQuote) });
   } catch (error) {
     // When a purchase is required, present the price or its unavailable state
     // with the access result so the UI does not announce a false checkout failure.
@@ -557,7 +557,7 @@ async function selectVehicle(g, articleID = "", { quoteMode = "eager", savedLink
     throw error;
   }
 }
-async function loadSavedSearch(g, query) {
+async function loadSavedSearch(g, query, focusArticle = "") {
   $("completion-status").textContent = "";
   stage("articles");
   status("Searching your articles…", { busy: true });
@@ -580,12 +580,13 @@ async function loadSavedSearch(g, query) {
   renderPurchase();
   show("catalog");
   renderArticles();
+  if (focusArticle) focusArticleIndex(focusArticle);
   if (searchComplete) status("Article search ready.", { complete: true });
   else await loadArticles(g);
   return true;
 }
 
-async function loadArticles(g, articleID = "", { focusOnShow = false, includePurchaseQuote = false } = {}) {
+async function loadArticles(g, articleID = "", { focusOnShow = false, focusArticle = "", includePurchaseQuote = false } = {}) {
   if (!g.current()) return;
   $("completion-status").textContent = "";
   stage("articles");
@@ -626,9 +627,10 @@ async function loadArticles(g, articleID = "", { focusOnShow = false, includePur
           scheduleArticleSearch({ fromIndex: true });
         }
         else renderArticles();
-        if (focusOnShow) {
+        if (focusOnShow || focusArticle) {
+          focusArticleIndex(focusArticle);
+          focusArticle = "";
           focusOnShow = false;
-          $("catalog-title").focus();
         }
       },
     },
@@ -833,6 +835,15 @@ function renderArticles() {
               ? "No articles match this search. Try a component name or a shorter phrase."
               : "No articles are currently available for this vehicle.";
   $("no-results").hidden = items.length > 0;
+}
+
+function focusArticleIndex(id) {
+  const row = id && Array.from($("articles").firstElementChild?.children || [])
+    .find((item) => item.dataset.articleId === id);
+  const link = row?.firstElementChild;
+  const target = link || $("catalog-title");
+  target.focus({ preventScroll: Boolean(link) });
+  link?.scrollIntoView({ behavior: "instant", block: "nearest" });
 }
 const assetID = (image) =>
   image?.id || image?.image_id || image?.asset_id || "";
@@ -1320,7 +1331,7 @@ function openArticle(id, indexLink = null) {
     articleIndexOrigin = params && !params.has("article") && !params.has("order") &&
       params.get("configuration") === vehicle?.id && params.get("region") === vehicle?.region &&
       access === "owned" && session.state.authenticated && session.state.csrf
-      ? { indexURL, readerURL: location.href, indexLink, configuration: scope(), csrf: session.state.csrf }
+      ? { indexURL, readerURL: location.href, indexLink, articleID: id, configuration: scope(), csrf: session.state.csrf }
       : null;
   }
   operation(
@@ -1903,7 +1914,7 @@ export async function bootstrap(initialYears, initialAccount) {
   if (sessionEstablished) await accountCheck;
   await Promise.all([accountCheck, restoreRoute(years)]);
 }
-async function restoreRoute(initialYears = null, { fromHistory = false } = {}) {
+async function restoreRoute(initialYears = null, { fromHistory = false, focusArticle = "" } = {}) {
   const displayed = fromHistory ? Object.fromEntries(names.map(name => [
     name, $(name).disabled ? "" : $(name).value,
   ])) : null;
@@ -1942,6 +1953,7 @@ async function restoreRoute(initialYears = null, { fromHistory = false } = {}) {
         return;
       }
       const articleID = params.get("article") || "";
+      const indexOptions = focusArticle ? { quoteMode: "if-needed", focusArticle } : {};
       const exact = { configuration_id: params.get("configuration"), region: params.get("region") };
       const hasHierarchy = Boolean(params.get("year"));
       const savedQuery = hasHierarchy && !openDemo && !articleID && validScope(exact) &&
@@ -1955,7 +1967,7 @@ async function restoreRoute(initialYears = null, { fromHistory = false } = {}) {
       if (uuid(exact.configuration_id) &&
           (!hasHierarchy || scopedSearch || (uuid(articleID) && validScope(exact)))) {
         vehicle = { id: exact.configuration_id, region: exact.region };
-        await selectVehicle(g, articleID, { savedLink: true });
+        await selectVehicle(g, articleID, { savedLink: true, ...indexOptions });
         return;
       }
       const desired = Object.fromEntries(names.map((name) => [name, params.get(name) || ""]));
@@ -1983,7 +1995,7 @@ async function restoreRoute(initialYears = null, { fromHistory = false } = {}) {
       if (params.has("region") && configuration?.region !== exact.region)
         throw new Error("This saved vehicle choice is unavailable in the selected region.");
       vehicle = configuration;
-      await selectVehicle(g, params.get("article") || "");
+      await selectVehicle(g, articleID, indexOptions);
     },
     () => restoreRoute(),
   );
@@ -2088,10 +2100,11 @@ function canReuseArticleIndex(origin) {
 function restoreHistoryEntry() {
   const origin = articleIndexOrigin;
   articleIndexOrigin = null;
-  if (origin?.returning && origin.indexURL === location.href && canReuseArticleIndex(origin)) {
+  const sameIndex = origin && origin.indexURL === location.href && canReuseArticleIndex(origin);
+  if (sameIndex && origin.returning) {
     return showReturnedArticleIndex(origin.indexLink);
   }
-  return restoreRoute(null, { fromHistory: true });
+  return restoreRoute(null, { fromHistory: true, focusArticle: sameIndex ? origin.articleID : "" });
 }
 function showReturnedArticleIndex(indexLink = null) {
   navigation.clear();

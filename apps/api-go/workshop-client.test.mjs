@@ -3157,6 +3157,7 @@ function articleIndexHarness(responses, { wait = async () => {}, openDemo = fals
         this.append(...children);
       },
       focus() { document.activeElement = this; },
+      scrollIntoView(options) { this.scrollOptions = options; },
       addEventListener(name, callback) { this.events[name] = callback; },
       setAttribute(name, value) { this.attributes[name] = String(value); },
       getAttribute(name) { return this.attributes[name] ?? this[name] ?? null; },
@@ -3284,7 +3285,7 @@ async function openedIndexHistory() {
     h.context.location.href = article ? `${indexURL}&article=${article}` : indexURL;
   };
   h.context.history = { back() { back.push(true); } };
-  h.context.restoreRoute = () => restores.push(true);
+  h.context.restoreRoute = (_years, { fromHistory, focusArticle = '' } = {}) => restores.push({ fromHistory, focusArticle });
   runInNewContext(appSection('function openArticle(', 'function validSourceURL('), h.context);
   await h.load();
   const link = h.$('articles').firstElementChild.firstElementChild.firstElementChild;
@@ -3317,7 +3318,7 @@ test('in-app Back falls back to its index heading when the prior link is gone', 
   assert.deepEqual(h.restores, []);
 });
 
-test('ordinary browser Back and an invalidated in-app return restore the route authoritatively', async () => {
+test('browser Back revalidates the index and only carries the originating article for the exact current session and scope', async () => {
   for (const change of ['browser', 'account', 'region']) {
     const h = await openedIndexHistory();
     if (change !== 'browser') {
@@ -3326,9 +3327,43 @@ test('ordinary browser Back and an invalidated in-app return restore the route a
       else h.context.vehicle.region = 'CA';
     }
     h.returnToIndex();
-    assert.deepEqual(h.restores, [true], change);
+    assert.deepEqual(h.restores, [{ fromHistory: true, focusArticle: change === 'browser' ? 'first' : '' }], change);
     assert.notEqual(h.context.document.activeElement, h.link, change);
   }
+});
+
+test('a history return focuses the same authorized article after revalidation or the heading if removed', async () => {
+  const wanted = { id: 'original-id', title: 'Original pump procedure' };
+  const other = { id: 'alternate-id', title: wanted.title };
+  for (const retained of [true, false]) {
+    const held = deferredAuthOperation();
+    const h = articleIndexHarness([() => held.promise]);
+    const opening = h.context.loadArticles(h.navigation.next(), '', { focusArticle: wanted.id });
+    assert.equal(h.context.document.activeElement, null);
+    assert.equal(h.$('articles').children.length, 0);
+    held.resolve(indexResponse('completed', { complete: true, items: retained ? [other, wanted] : [other] }));
+    await opening;
+    assert.equal(h.context.document.activeElement, retained
+      ? h.$('articles').firstElementChild.children[1].firstElementChild
+      : h.$('catalog-title'));
+    if (retained) {
+      assert.match(h.context.document.activeElement.href, /article=original-id/);
+      assert.equal(h.context.document.activeElement.scrollOptions.behavior, 'instant');
+    }
+    assert.deepEqual(h.requests.map(request => request.path), ['/v1/catalog/vehicles/B/articles?region=US']);
+  }
+});
+
+test('a revalidated search return focuses its exact originating hit', async () => {
+  const wanted = { id: 'original-id', title: 'Oil pump' };
+  const h = articleIndexHarness([{
+    ...indexResponse('completed', { complete: true, items: [wanted] }),
+    configuration: { id: 'B', region: 'US' },
+  }]);
+  h.$('search').value = 'pump';
+  await h.context.loadSavedSearch(h.navigation.next(), 'pump', wanted.id);
+  assert.equal(h.context.document.activeElement, h.$('articles').firstElementChild.firstElementChild.firstElementChild);
+  assert.deepEqual(h.requests.map(request => request.path), ['/v1/catalog/vehicles/B/articles?q=pump&region=US']);
 });
 
 test('complete saved search uses its scoped response and loads the full index only when cleared', async () => {
