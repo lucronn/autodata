@@ -406,6 +406,33 @@ def test_library_is_owner_only_and_paginated(commerce):
         conn.execute("UPDATE source_review_items SET status='approved' WHERE item_key='commerce-library-source'")
     assert states()=={first['order_id']:'viewable',second['order_id']:'paid'}
 
+    with c[0].connect() as conn:
+        conn.execute("UPDATE source_fetch_jobs SET retryable=false WHERE job_kind='article'")
+        identity = conn.execute("SELECT vehicle_identity_base_id FROM vehicle_configurations WHERE vehicle_configuration_id=%s", (c[4],)).fetchone()
+    original_grant = c[1].grant_check(*c[3], c[4], 'US')
+
+    def item_for(order_id):
+        return next(item for item in c[1].library(*c[3])['items'] if item['library_item_id'] == order_id)
+
+    original_item = item_for(first['order_id'])
+    control = item_for(second['order_id'])
+    assert original_item['access_state'] == 'viewable' and 'catalog_available' not in original_item
+    for table, key, value in (
+        ('vehicle_configurations', 'vehicle_configuration_id', c[4]),
+        ('vehicle_identity_bases', 'vehicle_identity_base_id', identity['vehicle_identity_base_id']),
+    ):
+        with c[0].connect() as conn:
+            conn.execute(f"UPDATE {table} SET reviewer_state='rejected' WHERE {key}=%s", (value,))
+        with pytest.raises(CommerceError) as unavailable:
+            c[1].quote(c[4], 'US')
+        assert (unavailable.value.http_status, unavailable.value.code) == (404, 'CONFIGURATION_NOT_FOUND')
+        assert c[1].grant_check(*c[3], c[4], 'US') == original_grant
+        assert item_for(first['order_id']) == dict(original_item, access_state='paid', catalog_available=False)
+        assert item_for(second['order_id']) == control
+        with c[0].connect() as conn:
+            conn.execute(f"UPDATE {table} SET reviewer_state='approved' WHERE {key}=%s", (value,))
+        assert item_for(first['order_id']) == original_item
+
 
 
 def test_grant_check_exact_scope_legacy_and_revoked(commerce):

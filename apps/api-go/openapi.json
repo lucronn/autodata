@@ -3971,6 +3971,13 @@
               "revoked"
             ]
           },
+          "catalog_available": {
+            "type": "boolean",
+            "enum": [
+              false
+            ],
+            "description": "Present when a retained paid vehicle configuration or its identity base is rejected by the catalog. Ownership remains recorded."
+          },
           "granted_at": {
             "type": "string",
             "format": "date-time",
@@ -4005,6 +4012,21 @@
           "granted_at"
         ],
         "description": "Permanent account ownership with current source readiness. No normal grant expiry. Revoked tombstones remain visible; viewable does not promise all articles are complete.",
+        "not": {
+          "properties": {
+            "access_state": {
+              "type": "string",
+              "enum": [
+                "preparing",
+                "viewable",
+                "revoked"
+              ]
+            }
+          },
+          "required": [
+            "catalog_available"
+          ]
+        },
         "oneOf": [
           {
             "properties": {

@@ -260,6 +260,50 @@ func TestCommerceLibraryTruthfulRevocationAndUTCTime(t *testing.T) {
 		})
 	}
 }
+
+func TestCommerceLibraryRetainsPaidCatalogUnavailableItem(t *testing.T) {
+	for _, tc := range []struct {
+		name, state, availability string
+		wantStatus                int
+	}{
+		{"older response", "paid", "", 200},
+		{"retained unavailable purchase", "paid", "false", 200},
+		{"null is not a retired scope", "paid", "null", 503},
+		{"true is not a retired scope", "paid", "true", 503},
+		{"preparing is a different state", "preparing", "false", 503},
+		{"viewable is a different state", "viewable", "false", 503},
+		{"revoked is a different state", "revoked", "false", 503},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, cookie, _ := commerceTestAPI(t, commerceFixture(func(context.Context, string, []byte, string) (int, []byte, error) {
+				extra := ""
+				if tc.availability != "" {
+					extra = `,"catalog_available":` + tc.availability
+				}
+				return 200, []byte(`{"version":"v1","items":[{"library_item_id":"` + commerceOrderID +
+					`","configuration_id":"` + commerceConfigID + `","region":"US","label":"Vehicle","access_state":"` +
+					tc.state + `","granted_at":"2026-11-03T20:00:00Z"` + extra + `}],"next_cursor":null}`), nil
+			}))
+			w := customerHTTP(t, s.Handler(), "GET", "/v1/workshop/library", "", nil, cookie)
+			if w.Code != tc.wantStatus || strings.Contains(w.Body.String(), `"catalog_available":false`) != (tc.wantStatus == 200 && tc.availability == "false") {
+				t.Fatalf("status=%d response=%s", w.Code, w.Body)
+			}
+			if w.Code != 200 {
+				return
+			}
+			var data commerceLibrary
+			if err := json.Unmarshal(w.Body.Bytes(), &data); err != nil || len(data.Items) != 1 {
+				t.Fatalf("invalid library response: %v %s", err, w.Body)
+			}
+			item := data.Items[0]
+			if item.LibraryItemID != commerceOrderID || item.ConfigurationID != commerceConfigID ||
+				item.Region != "US" || item.AccessState != "paid" || item.GrantedAt == nil || *item.GrantedAt != "2026-11-03T20:00:00Z" {
+				t.Fatalf("historical purchase changed: %+v", item)
+			}
+		})
+	}
+}
+
 func TestCommerceHostedURLRejectsWhitespaceAndControls(t *testing.T) {
 	for _, u := range []string{"https://checkout.stripe.com/c/pay/cs test", "https://checkout.stripe.com/c/pay/cs_test#opaque space", "https://checkout.stripe.com:443/c/pay/cs_test", "https://user@checkout.stripe.com/c/pay/cs_test", "https://checkout.stripe.com/c/pay/cs_test\n"} {
 		if commerceHostedURL(u) {
