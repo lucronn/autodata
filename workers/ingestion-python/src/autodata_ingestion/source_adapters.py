@@ -1863,10 +1863,11 @@ def adapt_bound_article(
     keep_html_flow_figure_captions: bool = False,
     keep_html_multiline_figure_captions: bool = False,
     keep_structured_table_cell_order: bool = False,
+    keep_ordered_step_instructions: bool = False,
 ) -> dict[str, Any]:
     """Adapt fetched bytes under proven connector scope, without weakening URL intake."""
     from .banktwo_connector import ArticleParser
-    from .article_document import segment_plain_article_text
+    from .article_document import ordered_numbered_step, segment_plain_article_text
 
     media = resource.media_type.split(";", 1)[0]
     if media in {"application/json", "application/hal+json"}:
@@ -2010,10 +2011,18 @@ def adapt_bound_article(
                         keep_html_multiline_figure_captions=keep_html_multiline_figure_captions,
                     )
                 blocks = segment_plain_article_text(text)
+        ordered_steps = False
+        if keep_ordered_step_instructions:
+            for index, block in enumerate(blocks):
+                ordered = ordered_numbered_step(block)
+                if ordered is not block:
+                    blocks[index] = ordered
+                    ordered_steps = True
         return {
             "blocks": blocks,
             "asset_resource_refs": article.get("asset_resource_refs", []),
             **({"authored_json_blocks": True} if keep_structured_table_cell_order and not needs_blocks else {}),
+            **({"ordered_step_instructions": True} if ordered_steps else {}),
         }
     if media in {"application/xml", "text/xml"}:
         return {

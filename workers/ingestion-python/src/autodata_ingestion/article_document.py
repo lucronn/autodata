@@ -1022,36 +1022,73 @@ def _callout_block(article: Mapping[str, Any], source_order: int, raw: Mapping[s
     return _base_block(article, source_order, "callout", label=label, text=text, evidence_ids=evidence_ids, **extra_fields)
 
 
+_STEP_TEXT_FIELDS = ("text", "action", "instruction", "value", "content", "body")
+
+
+def _step_instruction_text(item, *, strings_only=False):
+    if not isinstance(item, Mapping):
+        return _clean_text(item)
+    for field in (*_STEP_TEXT_FIELDS, "description"):
+        value = item.get(field)
+        if not strings_only or isinstance(value, str):
+            text = _clean_text(value)
+            if text:
+                return text
+    return ""
+
+
+def _step_number_hint(raw):
+    return next((raw[field] for field in ("number", "step_number", "index") if raw.get(field) is not None), None)
+
+
+def ordered_numbered_step(raw):
+    """Represent a numbered provider step and its nested instructions in order."""
+    if not isinstance(raw, Mapping) or str(raw.get("type") or raw.get("kind") or "").casefold() not in {"step", "instruction"}:
+        return raw
+    number = list_number(_step_number_hint(raw))
+    instructions = raw.get("instructions")
+    if not number or number < 1 or not isinstance(instructions, list) or not instructions:
+        return raw
+    children = []
+    for instruction in instructions:
+        if not isinstance(instruction, (str, Mapping)):
+            return raw
+        text = _step_instruction_text(instruction, strings_only=True)
+        if not text:
+            return raw
+        children.append({"kind": "paragraph", "text": text})
+        references = instruction.get("images") if isinstance(instruction, Mapping) else None
+        if isinstance(references, list):
+            children.extend({**image, "kind": "image", "type": "image"} for image in references if isinstance(image, Mapping))
+
+    lead = _step_instruction_text(raw, strings_only=True)
+    if not lead:
+        lead = children.pop(0)["text"]
+    if not children:
+        return raw
+    label = _clean_text(raw.get("label") or raw.get("title") or raw.get("heading") or raw.get("action"))
+    item = {"text": lead, "blocks": children}
+    if isinstance(raw.get("images"), list):
+        item["images"] = raw["images"]
+    return {
+        "kind": "ordered_list", "start": number, "items": [item],
+        **({"label": label} if label and label != lead else {}),
+    }
+
+
 def _step_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str, Any], evidence_ids: list[str]) -> dict[str, Any]:
-    text_candidates = [
-        raw.get("text"),
-        raw.get("action"),
-        raw.get("instruction"),
-        raw.get("value"),
-        raw.get("content"),
-        raw.get("body"),
-    ]
+    text_candidates = [raw.get(field) for field in _STEP_TEXT_FIELDS]
     instruction_images: list[dict[str, Any]] = []
     instruction_text = ""
     instructions = raw.get("instructions")
     if isinstance(instructions, list):
         cleaned_instructions: list[str] = []
         for item in instructions:
+            item_text = _step_instruction_text(item)
             if isinstance(item, Mapping):
-                item_text = ""
-                for candidate in (
-                    item.get("text"), item.get("action"), item.get("instruction"),
-                    item.get("value"), item.get("content"), item.get("body"),
-                    item.get("description"),
-                ):
-                    item_text = _clean_text(candidate)
-                    if item_text:
-                        break
                 for img in item.get("images") or []:
                     if isinstance(img, Mapping):
                         instruction_images.append(_normalize_cell_image(img))
-            else:
-                item_text = _clean_text(item)
             if item_text:
                 cleaned_instructions.append(item_text)
         if cleaned_instructions:
@@ -1066,7 +1103,7 @@ def _step_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str,
             break
 
     number = None
-    raw_number = raw.get("number") if raw.get("number") is not None else raw.get("step_number") if raw.get("step_number") is not None else raw.get("index")
+    raw_number = _step_number_hint(raw)
     if raw_number is not None:
         try:
             number = int(raw_number)

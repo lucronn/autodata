@@ -13,6 +13,7 @@ from .article_lifecycle_types import (
     HTML_FLOW_FIGURE_CAPTION_LAYOUT,
     HTML_MULTILINE_FIGURE_CAPTION_LAYOUT,
     HTML_TABLE_CAPTION_LAYOUT,
+    ORDERED_STEP_INSTRUCTIONS_LAYOUT,
     PDF_BLANK_PAGE_LAYOUT,
     PDF_COMPACT_FIGURE_LAYOUT,
     PDF_LEGACY_FIGURE_LAYOUT,
@@ -265,6 +266,7 @@ def capture_source_article(
     keep_single_line_pdf_figures=False,
     keep_structured_table_columns=False,
     keep_structured_table_cell_order=False,
+    keep_ordered_step_instructions=False,
 ):
     if not 0 < deadline_seconds <= 30:
         raise ValueError("capture deadline must be within 30 seconds")
@@ -370,6 +372,7 @@ def capture_source_article(
                 and body.body["sha256"] != context.legacy_published_html_multiline_figure_body
             ),
             keep_structured_table_cell_order=keep_structured_table_cell_order,
+            keep_ordered_step_instructions=keep_ordered_step_instructions,
         )
         article = parsing.result(timeout=remaining())
     except (ValueError, TypeError, KeyError, UnicodeError) as error:
@@ -394,13 +397,14 @@ def capture_source_article(
     retained_pdf_repeats = article.get("retained_repeated_pdf_figures") is True
     pdf_asset_order = article.get("pdf_legacy_asset_order", [])
     structured_table_cell_order = article.get("authored_json_blocks") is True and _mark_json_table_cells(blocks)
+    ordered_steps = article.get("ordered_step_instructions") is True
     structured_table_columns = keep_structured_table_columns and any(
         str(node.get("type") or node.get("kind") or "").casefold() in {"table", "grid"}
         and isinstance(node.get("columns"), list) and any(isinstance(column, dict) for column in node["columns"])
         for node in _walk(blocks)
     )
     new_structure = (
-        structured_table_columns or structured_table_cell_order or html_table_captions or html_flow_figure_captions
+        structured_table_columns or structured_table_cell_order or ordered_steps or html_table_captions or html_flow_figure_captions
         or article.get("embedded_pdf")
         or (article.get("authored_html_headings") and any(block.get("kind") == "heading" for block in _walk(blocks)))
     )
@@ -459,6 +463,8 @@ def capture_source_article(
         resources[0]["structured_table_columns_layout"] = manifest[0]["structured_table_columns_layout"] = STRUCTURED_TABLE_COLUMNS_LAYOUT
     if structured_table_cell_order:
         resources[0]["structured_table_cell_order_layout"] = manifest[0]["structured_table_cell_order_layout"] = STRUCTURED_TABLE_CELL_ORDER_LAYOUT
+    if ordered_steps:
+        resources[0]["ordered_step_instructions_layout"] = manifest[0]["ordered_step_instructions_layout"] = ORDERED_STEP_INSTRUCTIONS_LAYOUT
     provenance = [deepcopy(resources[0])]
     failures = {}
     localized = {}
