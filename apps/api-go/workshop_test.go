@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -74,6 +75,50 @@ func TestWorkshopAssetsAvailableWithoutCatalogCredentials(t *testing.T) {
 		if !strings.Contains(response.Body.String(), marker) {
 			t.Fatalf("workshop HTML is missing source review marker %q", marker)
 		}
+	}
+}
+
+func TestWorkshopPublicAssetsRevalidateByContent(t *testing.T) {
+	server := NewServerWithDependencies(staticReadiness{}, &fakeAuthenticator{err: ErrUnauthenticated}, newMemoryRequestStore())
+	handler := server.Handler()
+	request := func(method, path, tag string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, path, nil)
+		if tag != "" {
+			r.Header.Set("If-None-Match", tag)
+		}
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		return w
+	}
+	for _, path := range []string{"/workshop/?view=library", "/workshop/app.mjs", "/workshop/styles.css", "/workshop/fonts/InstrumentSans.ttf"} {
+		t.Run(path, func(t *testing.T) {
+			first := request(http.MethodGet, path, "")
+			digest := sha256.Sum256(first.Body.Bytes())
+			wantTag := `W/"` + hex.EncodeToString(digest[:]) + `"`
+			if first.Code != http.StatusOK || first.Header().Get("ETag") != wantTag || first.Header().Get("Cache-Control") != "no-cache" {
+				t.Fatalf("first read = %d, tag %q, cache %q", first.Code, first.Header().Get("ETag"), first.Header().Get("Cache-Control"))
+			}
+			for _, method := range []string{http.MethodGet, http.MethodHead} {
+				warm := request(method, path, wantTag)
+				if warm.Code != http.StatusNotModified || warm.Body.Len() != 0 || warm.Header().Get("ETag") != wantTag || warm.Header().Get("Cache-Control") != "no-cache" {
+					t.Fatalf("%s warm read = %d with %d bytes, tag %q, cache %q", method, warm.Code, warm.Body.Len(), warm.Header().Get("ETag"), warm.Header().Get("Cache-Control"))
+				}
+			}
+			stale := request(http.MethodGet, path, `W/"previous-build"`)
+			if stale.Code != http.StatusOK || stale.Header().Get("ETag") != wantTag || !bytes.Equal(stale.Body.Bytes(), first.Body.Bytes()) {
+				t.Fatalf("read after changed asset = %d, tag %q", stale.Code, stale.Header().Get("ETag"))
+			}
+		})
+	}
+	for _, path := range []string{"/workshop/purchase-config.json", "/workshop/demo-mode.json"} {
+		live := request(http.MethodGet, path, "*")
+		if live.Code != http.StatusOK || live.Body.Len() == 0 || live.Header().Get("ETag") != "" || live.Header().Get("Cache-Control") != "no-store" {
+			t.Fatalf("dynamic %s returned %d, tag %q, cache %q", path, live.Code, live.Header().Get("ETag"), live.Header().Get("Cache-Control"))
+		}
+	}
+	missing := request(http.MethodGet, "/workshop/missing.mjs", "*")
+	if missing.Code != http.StatusNotFound || missing.Header().Get("ETag") != "" {
+		t.Fatalf("missing file read = %d, tag %q", missing.Code, missing.Header().Get("ETag"))
 	}
 }
 
