@@ -2376,6 +2376,75 @@ async function ownedCheckoutHarness(indexResponses, { checkoutResponse = ownedCh
   return { ...h, requests };
 }
 
+for (const [known, message] of [
+  ['paid', /Payment was received.*order status is unavailable.*do not pay again/],
+  ['pending', /^Payment confirmation is still pending/],
+  ['unknown', /^Payment status is temporarily unavailable\. Try again\.$/],
+]) {
+  test(`order status timeout describes ${known} payment accurately and can recover`, async () => {
+    const previouslyPaid = known === 'paid';
+    const label = 'Fixture selected XLE 2.4 L';
+    const indexError = Object.assign(new Error('Index unavailable'), { status: 503, code: 'CATALOG_UNAVAILABLE' });
+    const h = await ownedCheckoutHarness(previouslyPaid ? [indexError, checkoutReadyIndex] : [checkoutReadyIndex]);
+    if (previouslyPaid) {
+      h.context.quote = { ...h.context.quote, configuration_label: label };
+      await h.context.purchase();
+    } else {
+      h.location.search = `?order=${orderID}`;
+    }
+    const readsAt = [];
+    let now = 0;
+    let recovered = false;
+    h.context.pollOrder = (id, options) => pollOrder(id, {
+      ...options,
+      now: () => now,
+      wait: async elapsed => { now += elapsed; },
+      request: (path, readOptions) => requestJSON(path, {
+        ...readOptions,
+        fetcher: async () => {
+          assert.equal(path, checkoutOrderGet[1]);
+          h.requests.push(checkoutOrderGet);
+          readsAt.push(now);
+          if (recovered) return new Response(JSON.stringify(checkoutPaidOrder));
+          if (known === 'pending' && readsAt.length === 1) {
+            return new Response(JSON.stringify({ ...checkoutPaidOrder, state: 'processing', configuration_label: label }));
+          }
+          return new Response(JSON.stringify({ error: { code: 'COMMERCE_UNAVAILABLE', retryable: true } }), { status: 503 });
+        },
+      }),
+    });
+    if (previouslyPaid) await h.context.operation(g => h.context.checkOrder(g, orderID));
+    else await h.context.restoreRoute();
+
+    const attempts = [0, 1000, 3000, 7000, 15000, 25000, 35000, 45000, 55000, 65000, 75000, 85000, 95000, 105000, 115000];
+    const initial = previouslyPaid ? [checkoutPost, checkoutIndexGet] : [];
+    assert.deepEqual(readsAt, attempts);
+    assert.equal(now, 120000);
+    assert.deepEqual(h.requests, [...initial, ...attempts.map(() => checkoutOrderGet)]);
+    const status = h.statuses.at(-1);
+    assert.match(status.message, message);
+    assert.equal(Boolean(status.options.error), known !== 'pending');
+    assert.equal(new URLSearchParams(h.location.search).get('order'), orderID);
+    assert.equal(h.context.paidOrder?.id, previouslyPaid ? orderID : undefined);
+    assert.equal(h.context.unconfirmedOrder?.id, known === 'pending' ? orderID : undefined);
+    assert.equal(h.context.access, previouslyPaid ? 'pending' : 'unknown');
+    assert.equal(h.$('purchase').hidden, known === 'unknown');
+    assert.equal(h.$('purchase-action').disabled, true);
+    if (known !== 'unknown') {
+      assert.equal(h.$('purchase-selection').textContent, `${label} / ${scope.region}`);
+      assert.equal(h.$('check-order').hidden, false);
+      assert.match(h.$('purchase-message').textContent, /do not pay again/);
+    }
+
+    recovered = true;
+    await status.options.retry();
+    assert.deepEqual(h.requests, [...initial, ...attempts.map(() => checkoutOrderGet), checkoutOrderGet, checkoutIndexGet]);
+    assert.equal(h.context.access, 'owned');
+    assert.equal(h.$('check-order').hidden, true);
+    assert.equal(h.location.search, `?configuration=${scope.configuration_id}&region=${scope.region}`);
+  });
+}
+
 test('a checkout returning owned opens the exact index directly', async () => {
   const h = await ownedCheckoutHarness([checkoutReadyIndex]);
   await h.context.purchase();

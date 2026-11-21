@@ -1479,6 +1479,7 @@ async function checkOrder(g, id, { earlyCheckoutCheck = false } = {}) {
   currentOrder = id;
   $("check-order").hidden = false;
   status("Checking payment status…", { busy: true });
+  const paidStatusUnavailable = "Payment was received, but order status is unavailable. Check payment status again or contact support; do not pay again.";
   const rememberUnconfirmed = (order) => {
     const unresolved = ["creating", "open", "processing", "reconciliation_required"];
     if (unresolved.includes(order.state)) {
@@ -1511,9 +1512,7 @@ async function checkOrder(g, id, { earlyCheckoutCheck = false } = {}) {
         access = "pending";
         renderPurchase();
         show("welcome");
-        status("Payment was received, but order status is unavailable. Check payment status again or contact support; do not pay again.", {
-          error: true,
-        });
+        status(paidStatusUnavailable, { error: true });
         return null;
       }
       checkout.clear();
@@ -1553,11 +1552,19 @@ async function checkOrder(g, id, { earlyCheckoutCheck = false } = {}) {
     renderPurchase();
     show("welcome");
     status("Access revoked. Contact support.", { error: true });
-  } else
-    status(
-      "Payment confirmation is still pending. Check payment status manually.",
-      { retry: () => operation((g) => checkOrder(g, id)) },
-    );
+  } else {
+    const matchesSelection = (order) => order?.id === id &&
+      vehicle?.id === order.configuration_id && vehicle?.region === order.region;
+    const confirmedPaid = matchesSelection(paidOrder);
+    const pending = !confirmedPaid && matchesSelection(unconfirmedOrder);
+    let message = "Payment status is temporarily unavailable. Try again.";
+    if (confirmedPaid) message = paidStatusUnavailable;
+    else if (pending) message = "Payment confirmation is still pending. Check payment status manually.";
+    status(message, {
+      error: !pending,
+      retry: () => operation((g) => checkOrder(g, id)),
+    });
+  }
 }
 function selectOrderVehicle(order) {
   if (vehicle?.id !== order.configuration_id || vehicle?.region !== order.region) {
