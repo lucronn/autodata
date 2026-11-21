@@ -1321,6 +1321,9 @@ async def expect_linked_pdf(article, *, rewritten=False):
 async def expect_html_table_figure(article):
     from playwright.async_api import expect
 
+    await expect(article.locator('table:has(img[alt="Alignment marks"]) > caption')).to_have_text(
+        'Alignment service data',
+    )
     cell = article.locator('td:has(img[alt="Alignment marks"])')
     await expect(cell.locator(':scope > p')).to_have_text(
         ['Check the reference mark.', 'Keep the shim seated.'],

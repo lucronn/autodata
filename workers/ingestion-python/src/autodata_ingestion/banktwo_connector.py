@@ -56,12 +56,21 @@ class _FigureFrame:
     invalid: bool = False
 
 
+@dataclass
+class _TableCaption:
+    text: str
+    source: list[Any]
+    start: int
+    stop: int
+
+
 class ArticleParser(HTMLParser):
     """Keep ordered text, figures and component links without executable HTML."""
 
     def __init__(
         self, *, asset_bindings=(), preserve_legacy_list_starts=True, keep_html_headings=False,
         keep_bound_pdf_iframes=False, keep_html_table_image_order=False, keep_html_figure_captions=False,
+        keep_html_table_captions=False,
     ):
         super().__init__(convert_charrefs=True)
         self._asset_bindings = {item["source_url"]: item["resource_ref"] for item in asset_bindings}
@@ -78,15 +87,19 @@ class ArticleParser(HTMLParser):
         self._keep_bound_pdf_iframes = keep_bound_pdf_iframes
         self._keep_html_table_image_order = keep_html_table_image_order
         self._keep_html_figure_captions = keep_html_figure_captions
+        self._keep_html_table_captions = keep_html_table_captions
         self.handled_pdf_embeds = False
         self.positioned_html_table_images = False
         self.html_figure_captions = False
+        self.html_table_captions = False
         self._figures: list[_FigureFrame] = []
         self._hidden_embed_tags: list[str] = []
         self._heading: dict[str, Any] | None = None
         self._table_rows = None
         self._table_row = None
         self._table_cell = None
+        self._table_caption_blocks: list[dict[str, Any]] | None = None
+        self._table_caption: _TableCaption | None = None
 
     @property
     def _in_table(self):
@@ -112,7 +125,9 @@ class ArticleParser(HTMLParser):
             return
         item = self._current_list_item()
         block = {"kind": "text", "text": value}
-        if self._table_cell is not None:
+        if self._table_caption_blocks is not None:
+            self._table_caption_blocks.append(block)
+        elif self._table_cell is not None:
             self._table_cell.append(block)
         elif item is None:
             self.blocks.append(block)
@@ -207,14 +222,46 @@ class ArticleParser(HTMLParser):
         self._table_row = None
 
     def _finish_table(self):
+        self._finish_table_caption(closed=False)
         self._flush_row()
         rows = self._table_rows
         self._table_rows = None
         if rows:
-            self._append_block({"kind": "table", "rows": rows})
+            table = {"kind": "table", "rows": rows}
+            caption = self._table_caption
+            if caption is not None:
+                del caption.source[caption.start:caption.stop]
+                table["label"] = caption.text
+                self.html_table_captions = True
+            self._append_block(table)
+        self._table_caption = None
+
+    def _finish_table_caption(self, *, closed):
+        if self._table_caption_blocks is None:
+            return
+        self.flush()
+        blocks, self._table_caption_blocks = self._table_caption_blocks, None
+        item = self._current_list_item()
+        source = self.blocks if item is None else (item.blocks if item.blocks else item.lead)
+        start = len(source)
+        # Keep the literal flow until a table with cells is ready. Mixed media,
+        # malformed captions and empty tables retain their existing content.
+        for block in blocks:
+            if block["kind"] == "text":
+                self._text.append(block["text"])
+                self.flush()
+            else:
+                self._append_inline_media(block)
+        if closed and blocks and all(block["kind"] == "text" for block in blocks):
+            self._table_caption = _TableCaption(
+                " ".join(block["text"] for block in blocks), source, start, len(source),
+            )
 
     def _append_inline_media(self, block):
         self.flush()
+        if self._table_caption_blocks is not None:
+            self._table_caption_blocks.append(block)
+            return
         if self._table_cell is not None:
             self._table_cell.append(block)
             return
@@ -298,19 +345,29 @@ class ArticleParser(HTMLParser):
             self._text.append(" ")
             return
         if tag == "table":
+            self._finish_table_caption(closed=False)
             self.flush()
             self._list_start = 1
             self._list_continuation_pending = False
             self._table_rows = []
             self._table_row = None
             self._table_cell = None
+            self._table_caption = None
             return
         if self._in_table:
+            if (tag == "caption" and self._keep_html_table_captions
+                    and not self._table_caption and self._table_caption_blocks is None
+                    and not self._table_rows and self._table_row is None):
+                self.flush()
+                self._table_caption_blocks = []
+                return
             if tag == "tr":
+                self._finish_table_caption(closed=False)
                 self._flush_row()
                 self._table_row = []
                 return
             if tag in {"td", "th"}:
+                self._finish_table_caption(closed=False)
                 self._flush_cell()
                 if self._table_row is None:
                     self._table_row = []
@@ -394,6 +451,9 @@ class ArticleParser(HTMLParser):
             self._finish_table()
             return
         if self._in_table:
+            if tag == "caption" and self._table_caption_blocks is not None:
+                self._finish_table_caption(closed=True)
+                return
             if tag in {"td", "th"}:
                 self._flush_cell()
                 return

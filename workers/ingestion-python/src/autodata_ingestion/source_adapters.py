@@ -1832,6 +1832,7 @@ def adapt_bound_article(
     keep_repeated_pdf_figures: bool = False, keep_pdf_figures_with_margins: bool = False,
     keep_compact_pdf_figures: bool = False,
     keep_html_figure_captions: bool = False,
+    keep_html_table_captions: bool = False,
 ) -> dict[str, Any]:
     """Adapt fetched bytes under proven connector scope, without weakening URL intake."""
     from .banktwo_connector import ArticleParser
@@ -1974,6 +1975,7 @@ def adapt_bound_article(
                         keep_pdf_figures_with_margins=keep_pdf_figures_with_margins,
                         keep_compact_pdf_figures=keep_compact_pdf_figures,
                         keep_html_figure_captions=keep_html_figure_captions,
+                        keep_html_table_captions=keep_html_table_captions,
                     )
                 blocks = segment_plain_article_text(text)
         return {
@@ -1994,6 +1996,7 @@ def adapt_bound_article(
             keep_bound_pdf_iframes=keep_bound_pdf_iframes,
             keep_html_table_image_order=keep_html_table_image_order,
             keep_html_figure_captions=keep_html_figure_captions,
+            keep_html_table_captions=keep_html_table_captions,
         )
         parser.feed(html)
         parser.close()
@@ -2030,6 +2033,7 @@ def adapt_bound_article(
             **({"handled_pdf_embeds": True} if parser.handled_pdf_embeds else {}),
             **({"positioned_html_table_images": True} if parser.positioned_html_table_images else {}),
             **({"html_figure_captions": True} if parser.html_figure_captions else {}),
+            **({"html_table_captions": True} if parser.html_table_captions else {}),
         }
     if media == "text/plain":
         return {

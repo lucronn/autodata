@@ -1968,6 +1968,71 @@ def test_authored_table_figure_caption_and_following_instruction_are_distinct(ca
     assert canonical["blocks"][2]["rows"][0][0] == cell
 
 
+@pytest.mark.parametrize("provider", ["bankone", "banktwo"])
+def test_authored_html_table_caption_stays_with_table_through_rewrite(capture_fixture, provider):
+    import json
+
+    from autodata_ingestion.article_document import validate_ordered_document
+    from autodata_ingestion.article_lifecycle_types import HTML_TABLE_CAPTION_LAYOUT
+    from autodata_ingestion.procedure_normalize import normalize_procedure_article
+    from autodata_ingestion.procedure_rewrite_auto import render_auto, validate_auto
+    from autodata_ingestion.procedure_rewrite_full import prose_slots
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    markup = (
+        '<p>Remove the pump.</p><table>'
+        '<caption>Service <em>data</em><br>Front flange<script>Hidden script</script></caption>'
+        '<tr><th>Fastener</th><th>Torque</th></tr><tr><td>Cover bolt</td><td>18 Nm</td></tr></table>'
+    )
+    raw, media = markup.encode(), "text/html"
+    if provider == "banktwo":
+        raw = json.dumps({"_embedded": {"data": {"article": {"content": markup}}}}).encode()
+        media = "application/hal+json"
+    capture_fixture.body(provider, raw, media)
+    context = capture_fixture.context(provider)
+    options = dict(registry=capture_fixture.registry, object_store=capture_fixture.objects)
+
+    previous = capture_source_article(context, **options)
+    assert [(block["type"], block.get("text")) for block in previous.source_document["blocks"]] == [
+        ("paragraph", "Remove the pump."), ("paragraph", "Service data"),
+        ("paragraph", "Front flange"), ("table", None),
+    ]
+    assert not previous.source_document["blocks"][-1].get("label")
+    guarded = capture_source_article(
+        replace(context, legacy_published_html_table_caption_body=sha256(raw).hexdigest()),
+        keep_html_table_captions=True, **options,
+    )
+    assert guarded.source_document == previous.source_document
+    assert guarded.source_fingerprint == previous.source_fingerprint
+
+    captured = capture_source_article(context, keep_html_table_captions=True, **options)
+    assert captured.projection_version == "source-projection-v5"
+    assert captured.body_source_snapshot_id == previous.body_source_snapshot_id
+    assert captured.evidence_manifest == previous.evidence_manifest
+    [body] = captured.resource_manifest
+    assert body["html_table_caption_layout"] == HTML_TABLE_CAPTION_LAYOUT
+    [paragraph, table] = captured.source_document["blocks"]
+    assert paragraph["text"] == "Remove the pump."
+    assert table["label"] == "Service data Front flange"
+    assert table["rows"] == previous.source_document["blocks"][-1]["rows"]
+    assert captured.source_body.splitlines() == [
+        "Remove the pump.", "Service data Front flange", "Fastener", "Torque", "Cover bolt", "18 Nm",
+    ]
+    assert not validate_ordered_document(captured.source_document, strict=True)
+
+    normalized = normalize_procedure_article({
+        "normalized_document": captured.source_document, "body": captured.source_body, "steps": captured.source_steps,
+    }, resource_manifest=captured.resource_manifest)["normalized_document"]
+    [slot] = prose_slots(normalized, include_cell_blocks=True)
+    assert slot["text"] == "Remove the pump."
+    response = {"introduction": "This procedure covers pump removal.", "replacements": [
+        {**slot, "action": "rewrite", "text": "Take off the pump.", "reason": ""},
+    ]}
+    canonical = render_auto(normalized, response)
+    assert validate_auto(normalized, canonical, response=response).passed
+    assert canonical["blocks"][2] == {**table, "source_order": 3}
+
+
 def test_bound_pdf_embed_keeps_table_cell_order_and_refuses_unbound_markup(capture_fixture):
     from io import BytesIO
 

@@ -83,6 +83,23 @@ class ConnectorTests(unittest.TestCase):
         self.assertEqual(parser.blocks[1]["text"], "Torque: 8.8 Nm")
         self.assertNotIn("bad()", str(parser.blocks))
 
+    def test_table_caption_fallback_keeps_existing_text_and_media(self):
+        for html in (
+            '<table><caption>Service data</caption></table>',
+            '<table><caption>Service data<tr><td>18 Nm</td></tr></table>',
+            '<table><caption>Service <img src="/figure.png">data</caption><tr><td>18 Nm</td></tr></table>',
+            '<table><caption>Service data</caption><tr><td><table><tr><td>18 Nm</td></tr></table></td></tr></table>',
+        ):
+            with self.subTest(html=html):
+                old = ArticleParser()
+                new = ArticleParser(keep_html_table_captions=True)
+                for parser in (old, new):
+                    parser.feed(html)
+                    parser.close()
+                    parser.flush()
+                self.assertEqual(new.blocks, old.blocks)
+                self.assertFalse(new.html_table_captions)
+
     def test_opt_in_preserves_heading_levels_and_ends_each_heading(self):
         parser = ArticleParser(keep_html_headings=True)
         parser.feed(

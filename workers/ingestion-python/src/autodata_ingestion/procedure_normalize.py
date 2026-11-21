@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from copy import deepcopy
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 from .article_document import (
     build_ordered_document,
@@ -13,6 +13,7 @@ from .article_document import (
     segment_plain_article_text,
     validate_ordered_document,
 )
+from .article_lifecycle_types import HTML_TABLE_CAPTION_LAYOUT
 
 
 _COMPONENT_TERMS = {
@@ -32,7 +33,9 @@ CONTENT_STATUS_LIST_ONLY = "list_only"
 CONTENT_STATUS_COMPLETE = "content_complete"
 
 
-def normalize_procedure_article(article: Mapping[str, Any]) -> dict[str, Any]:
+def normalize_procedure_article(
+    article: Mapping[str, Any], *, resource_manifest: Sequence[Mapping[str, Any]] = (),
+) -> dict[str, Any]:
     """Return one source-agnostic procedure article for catalog persistence.
 
     Provider HTML/blocks are converted into ordered consumer steps once. The
@@ -44,7 +47,11 @@ def normalize_procedure_article(article: Mapping[str, Any]) -> dict[str, Any]:
     _ensure_classification(out)
     # A captured ordered document is authoritative. Normalization must not
     # abbreviate its tables, interleaved media or nested content via old steps.
-    if isinstance(out.get("normalized_document"), Mapping) and not _undersegmented_article(out):
+    authored_table_caption = any(
+        entry.get("role") == "body" and entry.get("html_table_caption_layout") == HTML_TABLE_CAPTION_LAYOUT
+        for entry in resource_manifest
+    )
+    if isinstance(out.get("normalized_document"), Mapping) and (authored_table_caption or not _undersegmented_article(out)):
         from .article_document import project_ordered_document
         out.update(project_ordered_document(out["normalized_document"]))
         out.pop("blocks", None)

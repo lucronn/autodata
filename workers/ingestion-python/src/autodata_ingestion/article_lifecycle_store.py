@@ -637,7 +637,7 @@ def automatic_candidate_validation(cur, job, candidate):
         "blocks":captured["source_document"]["blocks"],"images":captured["source_images"],
         "body":captured["source_body"],"steps":captured["source_steps"],
         "evidence_ids":context["evidence_ids"],"title":context["descriptor"].get("title"),
-        "article_id":str(job["canonical_article_id"])})["normalized_document"]
+        "article_id":str(job["canonical_article_id"])}, resource_manifest=captured["resource_manifest"])["normalized_document"]
     from .procedure_rewrite_auto import SOURCE_PRESERVING_METHOD, validate_source_preserving_candidate
     if candidate["model_metadata"].get("transformation_method") == SOURCE_PRESERVING_METHOD:
         if (normalized != source or candidate["normalized_source_hash"] != digest_json(source)
