@@ -3,7 +3,7 @@ import types
 import unittest
 from io import BytesIO
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
 
 
 ROOT = Path(__file__).parents[3]
@@ -84,6 +84,24 @@ class PDFOCRTests(unittest.TestCase):
         )
         extract_image.assert_called_once_with("b" * 64, b"page7", "image/png")
         self.assertEqual(blocks, (OCRTextBlock("Check the connector.", 0.9, (1, 2, 3, 4), page_number=7),))
+
+    def test_scanned_pdf_ocr_skips_a_gap_of_native_pages(self):
+        regions = (OCRTextBlock("Check the connector.", 0.9, (1, 2, 3, 4)),)
+        with (
+            patch("autodata_ingestion.pdf_ocr.rasterize_pdf_pages",
+                  side_effect=((b"page2",), (b"page15",))) as rasterize,
+            patch("autodata_ingestion.pdf_ocr.extract_image_text", return_value=regions) as extract,
+        ):
+            blocks = extract_scanned_pdf_text(
+                "b" * 64, b"pdf", set(range(1, 17)) - {2, 15}, page_range=(2, 15),
+            )
+        self.assertEqual(rasterize.call_args_list, [
+            call(b"pdf", page_range=(2, 2)), call(b"pdf", page_range=(15, 15)),
+        ])
+        self.assertEqual(extract.call_args_list, [
+            call("b" * 64, b"page2", "image/png"), call("b" * 64, b"page15", "image/png"),
+        ])
+        self.assertEqual([block.page_number for block in blocks], [2, 15])
 
 
 if __name__ == "__main__":
