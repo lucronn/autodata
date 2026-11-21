@@ -173,6 +173,7 @@ def build_ordered_document(
     blocks: Any = None,
     *,
     preserve_marked_cells: bool = False,
+    preserve_structured_columns: bool = False,
 ) -> dict[str, Any]:
     """Convert adapter blocks into a deterministic, source-order document."""
 
@@ -194,6 +195,8 @@ def build_ordered_document(
             if bkind == "image":
                 seen_image_keys.update(_image_identities(block))
             elif bkind in {"table", "grid"}:
+                if preserve_structured_columns:
+                    seen_image_keys.update(_nested_image_keys(block.get("columns")))
                 for row in block.get("rows") or []:
                     if isinstance(row, Mapping):
                         for row_img in row.get("images") or []:
@@ -241,10 +244,10 @@ def build_ordered_document(
             output.append(_image_block(article, source_index, raw, evidence_ids))
             continue
         if kind in {"table", "grid"}:
-            output.append(_table_block(article, source_index, raw, evidence_ids, preserve_marked_cells))
+            output.append(_table_block(article, source_index, raw, evidence_ids, preserve_marked_cells, preserve_structured_columns))
             continue
         if kind in {"ordered_list", "unordered_list", "list"}:
-            output.append(_list_block(article, source_index, raw, evidence_ids, kind, preserve_marked_cells))
+            output.append(_list_block(article, source_index, raw, evidence_ids, kind, preserve_marked_cells, preserve_structured_columns))
             continue
         if kind in {"callout", "note", "warning", "caution", "hint", "important"}:
             output.append(_callout_block(article, source_index, raw, evidence_ids, kind))
@@ -715,7 +718,7 @@ def _image_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str
 
 def _table_block(
     article: Mapping[str, Any], source_order: int, raw: Mapping[str, Any],
-    evidence_ids: list[str], preserve_marked_cells: bool,
+    evidence_ids: list[str], preserve_marked_cells: bool, preserve_structured_columns: bool,
 ) -> dict[str, Any]:
     rows = raw.get("rows")
     if not isinstance(rows, list):
@@ -732,8 +735,18 @@ def _table_block(
             values = row
         if not isinstance(values, list):
             values = [values]
-        clean_rows.append([_table_cell(value, evidence_ids=evidence_ids, preserve_marked_cells=preserve_marked_cells) for value in values])
+        clean_rows.append([_table_cell(
+            value, evidence_ids=evidence_ids, preserve_marked_cells=preserve_marked_cells,
+            preserve_structured_columns=preserve_structured_columns,
+        ) for value in values])
     columns = raw.get("columns") if isinstance(raw.get("columns"), list) else []
+    if preserve_structured_columns:
+        clean_columns = [_table_cell(
+            value, evidence_ids=evidence_ids, preserve_marked_cells=preserve_marked_cells,
+            preserve_structured_columns=preserve_structured_columns,
+        ) for value in columns]
+    else:
+        clean_columns = [_clean_text(value) for value in columns]
     images_raw = raw.get("images")
     clean_images: list[dict[str, Any]] = []
     if isinstance(images_raw, list):
@@ -763,7 +776,7 @@ def _table_block(
             or raw.get("title")
             or raw.get("heading")
         ),
-        columns=[_clean_text(value) for value in columns],
+        columns=clean_columns,
         rows=clean_rows,
         evidence_ids=evidence_ids,
         **extra_fields,
@@ -833,7 +846,9 @@ def _text_block_images(raw: Mapping[str, Any]) -> list[dict[str, Any]]:
     return output
 
 
-def _table_cell(value: Any, *, evidence_ids: list[str], preserve_marked_cells: bool) -> Any:
+def _table_cell(
+    value: Any, *, evidence_ids: list[str], preserve_marked_cells: bool, preserve_structured_columns: bool,
+) -> Any:
     if not isinstance(value, Mapping):
         return _clean_text(value)
     text_parts: list[str] = []
@@ -859,6 +874,7 @@ def _table_cell(value: Any, *, evidence_ids: list[str], preserve_marked_cells: b
             "text": direct_text,
             "blocks": build_ordered_document(
                 {"evidence_ids": evidence_ids}, nested, preserve_marked_cells=preserve_marked_cells,
+                preserve_structured_columns=preserve_structured_columns,
             )["blocks"],
             **({"protected_text": True} if ordered_html_cell else {}),
             **({"images": images} if images else {}),
@@ -893,7 +909,7 @@ def _list_values(raw):
 
 def _list_block(
     article: Mapping[str, Any], source_order: int, raw: Mapping[str, Any],
-    evidence_ids: list[str], kind: str, preserve_marked_cells: bool,
+    evidence_ids: list[str], kind: str, preserve_marked_cells: bool, preserve_structured_columns: bool,
 ) -> dict[str, Any]:
     ordered = kind == "ordered_list"
     start = list_number(raw.get("start")) if ordered else None
@@ -918,6 +934,7 @@ def _list_block(
             item_evidence = _evidence_ids(value, {"evidence_ids": evidence_ids})
             children = build_ordered_document(
                 {"evidence_ids": item_evidence}, child_blocks, preserve_marked_cells=preserve_marked_cells,
+                preserve_structured_columns=preserve_structured_columns,
             )["blocks"]
         number = list_number(value.get("number")) if ordered else None
         if children or images or number is not None:
@@ -1342,7 +1359,10 @@ def project_ordered_document(document):
             if kind == "table":
                 for column in block.get("columns",[]):
                     if isinstance(column,str):texts.append(column)
-                    elif isinstance(column,dict) and isinstance(column.get("text"),str):texts.append(column["text"])
+                    elif isinstance(column,dict):
+                        if isinstance(column.get("text"),str):texts.append(column["text"])
+                        images.extend(deepcopy(column.get("images",[])))
+                        visit(column.get("blocks",[]),False)
                 for row in block.get("rows",[]):
                     cells=row if isinstance(row,list) else row.get("cells",[])
                     for cell in cells:

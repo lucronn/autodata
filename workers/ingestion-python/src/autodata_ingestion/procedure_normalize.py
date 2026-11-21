@@ -13,7 +13,7 @@ from .article_document import (
     segment_plain_article_text,
     validate_ordered_document,
 )
-from .article_lifecycle_types import HTML_TABLE_CAPTION_LAYOUT
+from .article_lifecycle_types import HTML_TABLE_CAPTION_LAYOUT, STRUCTURED_TABLE_COLUMNS_LAYOUT
 
 
 _COMPONENT_TERMS = {
@@ -47,11 +47,14 @@ def normalize_procedure_article(
     _ensure_classification(out)
     # A captured ordered document is authoritative. Normalization must not
     # abbreviate its tables, interleaved media or nested content via old steps.
-    authored_table_caption = any(
-        entry.get("role") == "body" and entry.get("html_table_caption_layout") == HTML_TABLE_CAPTION_LAYOUT
+    authored_table = any(
+        entry.get("role") == "body" and (
+            entry.get("html_table_caption_layout") == HTML_TABLE_CAPTION_LAYOUT
+            or entry.get("structured_table_columns_layout") == STRUCTURED_TABLE_COLUMNS_LAYOUT
+        )
         for entry in resource_manifest
     )
-    if isinstance(out.get("normalized_document"), Mapping) and (authored_table_caption or not _undersegmented_article(out)):
+    if isinstance(out.get("normalized_document"), Mapping) and (authored_table or not _undersegmented_article(out)):
         from .article_document import project_ordered_document
         out.update(project_ordered_document(out["normalized_document"]))
         out.pop("blocks", None)

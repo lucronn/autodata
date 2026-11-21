@@ -17,6 +17,7 @@ from .article_lifecycle_types import (
     PDF_COMPACT_FIGURE_LAYOUT,
     PDF_LEGACY_FIGURE_LAYOUT,
     PDF_REPEAT_MARGIN_LAYOUT,
+    STRUCTURED_TABLE_COLUMNS_LAYOUT,
     ResourceRef,
     article_id,
     digest_json,
@@ -230,6 +231,7 @@ def capture_source_article(
     keep_html_figure_captions=False, keep_html_table_captions=False, keep_html_flow_figure_captions=False,
     keep_html_multiline_figure_captions=False,
     skip_blank_linked_pdf_pages=False,
+    keep_structured_table_columns=False,
 ):
     if not 0 < deadline_seconds <= 30:
         raise ValueError("capture deadline must be within 30 seconds")
@@ -357,7 +359,12 @@ def capture_source_article(
     positioned_pdf_figures = article.get("positioned_pdf_figures") is True
     retained_pdf_repeats = article.get("retained_repeated_pdf_figures") is True
     pdf_asset_order = article.get("pdf_legacy_asset_order", [])
-    new_structure = html_table_captions or html_flow_figure_captions or article.get("embedded_pdf") or (
+    structured_table_columns = keep_structured_table_columns and any(
+        str(node.get("type") or node.get("kind") or "").casefold() in {"table", "grid"}
+        and isinstance(node.get("columns"), list) and any(isinstance(column, dict) for column in node["columns"])
+        for node in _walk(blocks)
+    )
+    new_structure = structured_table_columns or html_table_captions or html_flow_figure_captions or article.get("embedded_pdf") or (
         article.get("authored_html_headings") and any(block.get("kind") == "heading" for block in _walk(blocks))
     )
     for node in _image_nodes(blocks):
@@ -411,6 +418,8 @@ def capture_source_article(
         resources[0]["html_multiline_figure_caption_layout"] = manifest[0]["html_multiline_figure_caption_layout"] = HTML_MULTILINE_FIGURE_CAPTION_LAYOUT
     if html_table_captions:
         resources[0]["html_table_caption_layout"] = manifest[0]["html_table_caption_layout"] = HTML_TABLE_CAPTION_LAYOUT
+    if structured_table_columns:
+        resources[0]["structured_table_columns_layout"] = manifest[0]["structured_table_columns_layout"] = STRUCTURED_TABLE_COLUMNS_LAYOUT
     provenance = [deepcopy(resources[0])]
     failures = {}
     localized = {}
@@ -728,6 +737,7 @@ def capture_source_article(
         {"article_id": str(article_id(context.key)), "evidence_ids": evidence_ids},
         blocks,
         preserve_marked_cells=handled_pdf_embeds or positioned_html_table_images,
+        preserve_structured_columns=structured_table_columns,
     )
     for node in _image_nodes(doc["blocks"]):
         local = image_records.get(node.get("image_id"))
