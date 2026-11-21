@@ -1569,7 +1569,7 @@ function loginRouteHarness(search, { authenticate = true, signInError = null, lo
       const response = await initial;
       if (!g.current()) return;
       if (response) {
-        if (!response.items.some(item => String(item.id ?? item.year) === desired)) throw new Error('Unavailable choice');
+        if (desired && !response.items.some(item => String(item.id ?? item.year) === desired)) throw new Error('Unavailable choice');
         return context.populate(name, response.items, desired);
       }
       context.populate(name, name === 'configuration' ? [configuration] :
@@ -1765,6 +1765,44 @@ test('partial saved hierarchy clears stale descendants before restoring its chos
   assert.equal(h.context.vehicle, null);
   assert.equal(h.element('search').value, 'oil');
   assert.deepEqual(h.calls.options, [{ name: 'year', desired: '2020' }, { name: 'make', desired: '' }]);
+});
+
+test('returning to the displayed year and make overlaps reads but hides models until the parents are checked', async () => {
+  const year = deferredAuthOperation();
+  const h = selectedCheckoutHarness({ selectorRead(path) {
+    if (path.endsWith('/years')) return year.promise;
+    if (path.includes('/models?')) return { items: [{ id: 'rav4', name: 'RAV4' }] };
+    return { items: [{ id: 'toyota', name: 'Toyota' }] };
+  } });
+  h.context.location.search = '?year=2020&make=toyota';
+  const opening = h.context.restoreRoute(null, { fromHistory: true });
+  assert.deepEqual(h.calls.selectorReads.map(({ path }) => path), [
+    '/v1/catalog/years', '/v1/catalog/years/2020/makes?region=US',
+    '/v1/catalog/years/2020/makes/toyota/models?region=US',
+  ]);
+  assert.equal(new Set(h.calls.selectorReads.map(({ signal }) => signal)).size, 1);
+  assert.equal(h.element('model').disabled, true);
+  assert.equal(h.element('configuration').disabled, true);
+  assert.equal(h.context.vehicle, null);
+  year.resolve({ items: [{ year: 2020 }] });
+  await opening;
+  assert.deepEqual(h.context.names.map(name => h.element(name).value), ['2020', 'toyota', '', '']);
+  assert.equal(h.element('model').disabled, false);
+  assert.equal(h.element('configuration').disabled, true);
+  assert.deepEqual(h.calls.selections, []);
+});
+
+test('history does not prefetch model choices for a make outside the displayed chooser prefix', async () => {
+  const h = selectedCheckoutHarness({ selectorRead(path) {
+    if (path.endsWith('/years')) return { items: [{ year: 2020 }] };
+    return { items: [{ id: 'different', name: 'Different make' }] };
+  } });
+  h.context.location.search = '?year=2020&make=different';
+  await h.context.restoreRoute(null, { fromHistory: true });
+  assert.deepEqual(h.calls.selectorReads.map(({ path }) => path), [
+    '/v1/catalog/years', '/v1/catalog/years/2020/makes?region=US',
+  ]);
+  assert.deepEqual(h.calls.selections, []);
 });
 
 test('saved hierarchy restores all exact vehicle choices and query over prior state', async () => {
@@ -5602,7 +5640,7 @@ function selectorOptionsHarness(response) {
  };
  runInNewContext(appSection('function status(', 'function stage(')+appSection('async function operation(', 'function updateURL(')+appSection('async function loadOptions(', 'function renderPurchase(')+
   'const actualStatus = status; status = (text, options = {}) => { recordStatus(text, options); actualStatus(text, options); };',context);
- return {context,$,statuses,displayed,requests,load:(desired='',current,initial=null)=>context.operation(g=>context.loadOptions('configuration',current?{...g,current}:g,desired,initial),()=>context.restoreRoute())};
+ return {context,$,statuses,displayed,requests,load:(desired='',current,initial=null,name='configuration')=>context.operation(g=>context.loadOptions(name,current?{...g,current}:g,desired,initial),()=>context.restoreRoute())};
 }
 
 test('a prefetched selector miss is checked again after the parent was validated', async () => {
@@ -5610,6 +5648,14 @@ test('a prefetched selector miss is checked again after the parent was validated
   await h.load('selected', null, Promise.resolve({ items: [], complete: true }));
   assert.deepEqual(h.requests, ['/choices']);
   assert.equal(h.$('configuration').value, 'selected');
+});
+
+test('a missing saved year reports the existing error without repeating the top-level read', async () => {
+  const h = selectorOptionsHarness({ items: [{ year: 2020 }], complete: true });
+  await h.load('2020', null, Promise.resolve({ items: [{ year: 2021 }], complete: true }), 'year');
+  assert.deepEqual(h.requests, []);
+  assert.equal(h.statuses.at(-1).error, true);
+  assert.match(h.statuses.at(-1).text, /saved vehicle choice is unavailable/);
 });
 
 test('canceling a prefetched selector skips its fallback read', async () => {

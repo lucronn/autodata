@@ -362,9 +362,9 @@ async function loadOptions(name, g, desired = "", initial = null) {
         const response = await initial;
         initial = null;
         g.signal.throwIfAborted();
-        if (response && (!desired || Array.isArray(response.items) &&
+        if (response && Array.isArray(response.items) && (name === "year" || !desired ||
             response.items.some((item) => String(item.id ?? item.year) === desired))) return response;
-        // A speculative response can precede the parent’s hydration.
+        // A speculative child response can precede the parent’s hydration.
       }
       return requestJSON(selectorPath(name), { signal: g.signal });
     },
@@ -1903,7 +1903,10 @@ export async function bootstrap(initialYears, initialAccount) {
   if (sessionEstablished) await accountCheck;
   await Promise.all([accountCheck, restoreRoute(years)]);
 }
-async function restoreRoute(initialYears = null) {
+async function restoreRoute(initialYears = null, { fromHistory = false } = {}) {
+  const displayed = fromHistory ? Object.fromEntries(names.map(name => [
+    name, $(name).disabled ? "" : $(name).value,
+  ])) : null;
   invalidate();
   show("welcome");
   const params = new URLSearchParams(location.search);
@@ -1957,15 +1960,17 @@ async function restoreRoute(initialYears = null) {
       }
       const desired = Object.fromEntries(names.map((name) => [name, params.get(name) || ""]));
       const initial = { year: initialYears };
-      // A complete saved picker route supplies every public path. Overlap the
-      // initial reads, then validate each parent before exposing its children.
       const year = Number(desired.year);
-      if (validScope(exact) && exact.region === "US" && /^\d{4}$/.test(desired.year) &&
-          year >= 1886 && year <= 2100 && desired.make && desired.model) {
+      if (/^\d{4}$/.test(desired.year) && year >= 1886 && year <= 2100) {
+        const exactPicker = validScope(exact) && exact.region === "US" && desired.make && desired.model;
+        let matchingPicker = displayed?.year === desired.year && (!params.has("region") || exact.region === "US");
+        // Overlap reads for the exact saved picker or the displayed history
+        // prefix. Each parent must still pass before a child is shown.
         for (const name of names) {
-          if (initial[name]) continue;
-          initial[name] = requestJSON(selectorPath(name, desired), { signal: g.signal })
-            .catch(() => null);
+          if (!exactPicker && !matchingPicker) break;
+          if (!initial[name])
+            initial[name] = requestJSON(selectorPath(name, desired), { signal: g.signal }).catch(() => null);
+          matchingPicker = matchingPicker && Boolean(desired[name]) && displayed[name] === desired[name];
         }
       }
       for (const name of names) {
@@ -2086,7 +2091,7 @@ function restoreHistoryEntry() {
   if (origin?.returning && origin.indexURL === location.href && canReuseArticleIndex(origin)) {
     return showReturnedArticleIndex(origin.indexLink);
   }
-  return restoreRoute();
+  return restoreRoute(null, { fromHistory: true });
 }
 function showReturnedArticleIndex(indexLink = null) {
   navigation.clear();
