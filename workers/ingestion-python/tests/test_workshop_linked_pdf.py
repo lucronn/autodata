@@ -12,12 +12,12 @@ from reportlab.pdfgen import canvas
 import pytest
 
 from autodata_ingestion.article_lifecycle import run_article_worker_once
-from autodata_ingestion.article_lifecycle_types import PDF_LEGACY_FIGURE_LAYOUT, PDF_REPEAT_MARGIN_LAYOUT
+from autodata_ingestion.article_lifecycle_types import PDF_COMPACT_FIGURE_LAYOUT, PDF_LEGACY_FIGURE_LAYOUT, PDF_REPEAT_MARGIN_LAYOUT
 from autodata_ingestion.procedure_rewrite_auto import PROFILE as AUTO_PROFILE
 from autodata_ingestion.source_job_persistence import refresh_article_job
 
 from lifecycle_support import fresh_database, runtime
-from test_pdf_figure_order import _pdf_with_logo
+from test_pdf_figure_order import _compact_figure, _pdf_with_logo
 
 
 _PDF_REF = "fixture-linked-pdf"
@@ -53,10 +53,13 @@ class FixtureDraft:
         }
 
 
-def _pdf_with_fixture_figure(*, trailing_text=None, second_figure=False):
-    pixels = Random(7).randbytes(96 * 96 * 3)
-    with Image.frombytes("RGB", (96, 96), pixels) as figure, BytesIO() as output:
+def _pdf_with_fixture_figure(*, trailing_text=None, second_figure=False, compact=False, title=None):
+    raster = _compact_figure() if compact else Image.frombytes("RGB", (96, 96), Random(7).randbytes(96 * 96 * 3))
+    with raster as figure, BytesIO() as output:
+        pixels = figure.tobytes()
         document = canvas.Canvas(output)
+        if title:
+            document.setTitle(title)
         document.drawString(72, 720, "Inspect the seal.")
         if second_figure:
             # Draw the lower figure first to exercise resource-to-layout identity.
@@ -76,6 +79,76 @@ def _pdf_with_fixture_figure(*, trailing_text=None, second_figure=False):
 
 def _layout(document):
     return [(block["type"], block.get("text")) for block in document["blocks"]]
+
+
+def test_compact_linked_pdf_preserves_legacy_pins_and_publishes_changed_bytes(runtime, monkeypatch):
+    from autodata_ingestion import source_article_capture as capture_module
+
+    runtime.article_id = runtime.articles["banktwo"]
+    connector = runtime.servers["banktwo"]
+    connector.body(
+        f'<p>Remove the pump.</p><iframe src="{_PDF_LOCATOR}"></iframe>'.encode(),
+        assets=[_PDF_REF], asset_bindings=[{"source_url": _PDF_LOCATOR, "resource_ref": _PDF_REF}],
+    )
+    options = {"trailing_text": "Install the replacement.", "compact": True}
+    original_pdf, _ = _pdf_with_fixture_figure(**options, title="First fixture edition")
+    connector.body(original_pdf, "application/pdf", ref=_PDF_REF, kind="binary")
+    draft = FixtureDraft()
+
+    def refresh():
+        job = refresh_article_job(
+            runtime.repo, runtime.article_id, actor="fixture", reason="inspect compact PDF diagram",
+            rewrite_profile_version=AUTO_PROFILE,
+        )
+        assert run_article_worker_once(
+            runtime.repo, worker_id=uuid4(), registry=runtime.registry, object_store=runtime.objects,
+            model_client=draft, job_id=job.job_id,
+        )
+        current = runtime.read_current()
+        assert current["content_origin"] == "canonical", runtime.diagnostics()
+        with runtime.repo.connect() as conn:
+            source = conn.execute(
+                "SELECT * FROM canonical_article_source_revisions WHERE source_revision_id=%s",
+                (current["source_revision_id"],),
+            ).fetchone()
+        return current, source
+
+    capture = capture_module.capture_source_article
+
+    def capture_before_compact_support(*args, **kwargs):
+        return capture(*args, **{**kwargs, "keep_compact_pdf_figures": False})
+
+    with monkeypatch.context() as patch:
+        patch.setattr(capture_module, "capture_source_article", capture_before_compact_support)
+        original, legacy_source = refresh()
+    assert legacy_source["projection_version"] == "source-projection-v6"
+    assert not original["images"]
+    unchanged, same_source = refresh()
+    assert unchanged["canonical_revision_id"] == original["canonical_revision_id"]
+    assert same_source == legacy_source and len(draft.requests) == 1
+
+    revised_pdf, pixels = _pdf_with_fixture_figure(**options, title="Second fixture edition")
+    connector.body(revised_pdf, "application/pdf", ref=_PDF_REF, kind="binary")
+    revised, source = refresh()
+    assert revised["canonical_revision_id"] != original["canonical_revision_id"]
+    assert source["projection_version"] == "source-projection-v7"
+    assert _layout(source["source_document"]) == [
+        ("paragraph", "Remove the pump."), ("paragraph", "Inspect the seal."), ("image", None),
+        ("paragraph", "Install the replacement."),
+    ]
+    assert _layout(revised["document"]) == [
+        ("paragraph", _INTRODUCTION), ("paragraph", "Take off the pump."), ("paragraph", "Check the seal."),
+        ("image", None), ("paragraph", "Fit the replacement unit."),
+    ]
+    [parent] = [entry for entry in source["resource_manifest"] if entry["role"] == "document_asset"]
+    assert (parent["sha256"], parent["pdf_compact_figure_layout"]) == (sha256(revised_pdf).hexdigest(), PDF_COMPACT_FIGURE_LAYOUT)
+    [embedded] = revised["images"]
+    stored = runtime.objects.get_object(embedded["storage_key"], max_bytes=1024 * 1024)
+    with Image.open(BytesIO(stored)) as figure:
+        assert figure.format == "PNG" and figure.tobytes() == pixels
+    repeated, repeated_source = refresh()
+    assert repeated["canonical_revision_id"] == revised["canonical_revision_id"]
+    assert repeated_source == source and len(draft.requests) == 2
 
 
 def test_linked_pdf_repeated_layout_survives_same_byte_refresh_and_changed_pdf(runtime):

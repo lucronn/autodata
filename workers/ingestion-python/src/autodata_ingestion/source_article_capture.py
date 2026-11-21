@@ -9,6 +9,7 @@ import base64
 from uuid import NAMESPACE_URL, uuid5
 from .article_lifecycle_types import (
     CapturedSource,
+    PDF_COMPACT_FIGURE_LAYOUT,
     PDF_LEGACY_FIGURE_LAYOUT,
     PDF_REPEAT_MARGIN_LAYOUT,
     ResourceRef,
@@ -189,7 +190,7 @@ def capture_source_article(
     context, *, registry, object_store, deadline_seconds=30.0,
     keep_embedded_pdf=False, keep_html_headings=False, keep_bound_pdf_iframes=False,
     keep_pdf_figure_order=False, keep_multiple_pdf_figures=False, keep_html_table_image_order=False,
-    keep_repeated_pdf_figures=False, keep_pdf_figures_with_margins=False,
+    keep_repeated_pdf_figures=False, keep_pdf_figures_with_margins=False, keep_compact_pdf_figures=False,
 ):
     if not 0 < deadline_seconds <= 30:
         raise ValueError("capture deadline must be within 30 seconds")
@@ -266,6 +267,9 @@ def capture_source_article(
     def retain_repeats_with_margins(digest):
         return keep_pdf_figures_with_margins and digest not in context.legacy_published_pdf_margin_roots
 
+    def retain_compact_figures(digest):
+        return keep_compact_pdf_figures and digest not in context.legacy_published_pdf_compact_roots
+
     parser_pool = ThreadPoolExecutor(max_workers=1)
     try:
         parsing = parser_pool.submit(
@@ -277,6 +281,7 @@ def capture_source_article(
             keep_html_table_image_order=keep_html_table_image_order,
             keep_repeated_pdf_figures=retain_repeats(body.body["sha256"]),
             keep_pdf_figures_with_margins=retain_repeats_with_margins(body.body["sha256"]),
+            keep_compact_pdf_figures=retain_compact_figures(body.body["sha256"]),
         )
         article = parsing.result(timeout=remaining())
     except (ValueError, TypeError, KeyError, UnicodeError) as error:
@@ -340,6 +345,8 @@ def capture_source_article(
     ]
     if article.get("retained_pdf_figures_with_margins") is True:
         resources[0]["pdf_figure_layout"] = manifest[0]["pdf_figure_layout"] = PDF_REPEAT_MARGIN_LAYOUT
+    if article.get("positioned_compact_pdf_figures") is True:
+        resources[0]["pdf_compact_figure_layout"] = manifest[0]["pdf_compact_figure_layout"] = PDF_COMPACT_FIGURE_LAYOUT
     provenance = [deepcopy(resources[0])]
     failures = {}
     localized = {}
@@ -362,6 +369,7 @@ def capture_source_article(
                         keep_multiple_pdf_figures=keep_multiple_pdf_figures,
                         keep_repeated_pdf_figures=retain_repeats(payload.content_sha256),
                         keep_pdf_figures_with_margins=retain_repeats_with_margins(payload.content_sha256),
+                        keep_compact_pdf_figures=retain_compact_figures(payload.content_sha256),
                     )
                 except ValueError:
                     adapted = None
@@ -417,6 +425,8 @@ def capture_source_article(
                 retained_pdf_repeats |= adapted.get("retained_repeated_pdf_figures") is True
                 if adapted.get("retained_pdf_figures_with_margins") is True:
                     resource["pdf_figure_layout"] = PDF_REPEAT_MARGIN_LAYOUT
+                if adapted.get("positioned_compact_pdf_figures") is True:
+                    resource["pdf_compact_figure_layout"] = PDF_COMPACT_FIGURE_LAYOUT
             for original in originals:
                 resources.append(original)
                 provenance.append(deepcopy(original))
@@ -425,7 +435,7 @@ def capture_source_article(
             resources.append(resource)
             provenance.append(deepcopy(resource))
             manifest.append(
-                {k: resource[k] for k in ("role", "opaque_ref", "sha256", "media_type", "derived_from_sha256", "derivation_version", "pdf_figure_layout") if k in resource}
+                {k: resource[k] for k in ("role", "opaque_ref", "sha256", "media_type", "derived_from_sha256", "derivation_version", "pdf_figure_layout", "pdf_compact_figure_layout") if k in resource}
             )
             if role == "asset":
                 localized[ref] = resource

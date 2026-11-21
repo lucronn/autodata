@@ -7,13 +7,13 @@ from hashlib import sha256
 import json
 from random import Random
 
-from PIL import Image
+from PIL import Image, ImageDraw
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 import pytest
 
 from autodata_ingestion.ocr import OCRTextBlock
-from autodata_ingestion.article_lifecycle_types import PDF_REPEAT_MARGIN_LAYOUT
+from autodata_ingestion.article_lifecycle_types import PDF_COMPACT_FIGURE_LAYOUT, PDF_REPEAT_MARGIN_LAYOUT
 from autodata_ingestion.source_adapters import SourceResource, adapt_bound_article
 from autodata_ingestion.source_article_capture import capture_source_article
 from test_source_article_capture import capture_fixture
@@ -23,10 +23,20 @@ def _image(seed):
     return ImageReader(Image.frombytes("RGB", (96, 96), Random(seed).randbytes(96 * 96 * 3)))
 
 
-def _pdf(layout="clear", *, mixed=False):
+def _compact_figure(size=96):
+    figure = Image.new("RGB", (size, size), "white")
+    drawing = ImageDraw.Draw(figure)
+    inset = size // 6
+    drawing.rectangle((inset, inset, size - inset, size - inset), outline="black", width=2)
+    drawing.ellipse((size // 3, size // 3, 2 * size // 3, 2 * size // 3), outline="black", width=2)
+    drawing.line((inset, size - inset, size - inset, inset), fill="black", width=2)
+    return figure
+
+
+def _pdf(layout="clear", *, mixed=False, compact=False, picture_size=96):
     buffer = BytesIO()
     pdf = canvas.Canvas(buffer, invariant=True, pagesize=(612, 792))
-    figure = _image(7)
+    figure = ImageReader(_compact_figure(picture_size)) if compact else _image(7)
     if layout == "rotated":
         pdf.setPageRotation(90)
     swapped = layout == "reverse-text"
@@ -497,3 +507,116 @@ def test_repeated_pdf_with_margins_marks_the_retained_body_root(capture_fixture,
     assert body["role"] == "body" and body["sha256"] == sha256(raw).hexdigest()
     assert body["pdf_figure_layout"] == PDF_REPEAT_MARGIN_LAYOUT
     assert [image["alt"] for image in captured.source_images] == ["Figure from page 1", "Figure from page 2"]
+
+
+@pytest.mark.parametrize(("provider", "container"), [
+    ("bankone", "pdf"), ("banktwo", "wrapper"), ("bankone", "linked"), ("banktwo", "linked-hal"),
+])
+def test_compact_native_diagram_keeps_proven_position_and_retained_bytes(capture_fixture, provider, container):
+    from pypdf import PdfReader
+
+    payload = _pdf(compact=True)
+    [stored_picture] = list(PdfReader(BytesIO(payload)).pages[0].images)
+    assert 0 < len(stored_picture.data) < 2_048
+    outer = payload
+    linked = container.startswith("linked")
+    if linked:
+        markup = '<p>Review the addendum.</p><iframe src="/fixture/compact"></iframe>'
+        body, media = markup.encode(), "text/html"
+        if container == "linked-hal":
+            body = json.dumps({"_embedded": {"data": {"article": {"content": markup}}}}).encode()
+            media = "application/hal+json"
+        capture_fixture.body(
+            provider, body, media, assets=["appendix"],
+            asset_bindings=[{"source_url": "/fixture/compact", "resource_ref": "appendix"}],
+        )
+        capture_fixture.body(provider, payload, "application/pdf", kind="binary", ref="appendix")
+    elif container == "wrapper":
+        outer = json.dumps({"body": {"pdf": base64.b64encode(payload).decode()}}).encode()
+        capture_fixture.body(provider, outer, "application/json")
+    else:
+        capture_fixture.body(provider, payload, "application/pdf", kind="binary")
+    digest = sha256(outer).hexdigest()
+    context = capture_fixture.context(provider)
+    options = dict(
+        registry=capture_fixture.registry, object_store=capture_fixture.objects,
+        keep_embedded_pdf=True, keep_bound_pdf_iframes=True, keep_pdf_figure_order=True,
+        keep_multiple_pdf_figures=True, keep_repeated_pdf_figures=True,
+    )
+    before = capture_source_article(context, **options)
+    assert not before.source_images
+    guarded = capture_source_article(
+        replace(context, legacy_published_pdf_compact_roots=frozenset({digest})),
+        keep_compact_pdf_figures=True, **options,
+    )
+    assert (guarded.source_fingerprint, guarded.source_document, guarded.resource_manifest) == (
+        before.source_fingerprint, before.source_document, before.resource_manifest,
+    )
+
+    after = capture_source_article(context, keep_compact_pdf_figures=True, **options)
+    assert after.projection_version == "source-projection-v7"
+    assert after.projection_status == "readable"
+    assert _layout(after.source_document["blocks"])[-3:] == [
+        ("paragraph", "Open the pump cover."), ("image", "Figure from page 1"), ("paragraph", "Install the seal."),
+    ]
+    assert (after.source_body, after.source_steps, after.evidence_manifest) == (
+        before.source_body, before.source_steps, before.evidence_manifest,
+    )
+    parent_role = "document_asset" if linked else "body"
+    parent, = [entry for entry in after.resource_manifest if entry["role"] == parent_role]
+    assert parent["sha256"] == digest
+    assert parent["pdf_compact_figure_layout"] == PDF_COMPACT_FIGURE_LAYOUT
+    assert capture_fixture.objects.data[f"sources/{digest[:16]}/{digest}"][0] == outer
+    assert "pdf_compact_figure_layout" not in repr(after.source_document)
+    [figure] = after.source_images
+    data, mime = capture_fixture.objects.data[figure["storage_key"]]
+    with Image.open(BytesIO(data)) as raster, _compact_figure() as expected:
+        assert mime == "image/png" and raster.tobytes() == expected.tobytes()
+    assert capture_fixture.calls("bankone" if provider == "banktwo" else "banktwo") == []
+
+
+@pytest.mark.parametrize("layout,picture_size", [
+    ("overlap", 96), ("repeat", 96), ("form", 96), ("rotated", 96), ("clear", 48),
+])
+def test_compact_diagram_requires_native_geometry_and_existing_dimensions(layout, picture_size):
+    payload = _pdf(layout, compact=True, picture_size=picture_size)
+    source = SourceResource.from_bytes("fixture:compact", "fixture", payload, "application/pdf")
+    options = dict(keep_pdf_figure_order=True, keep_multiple_pdf_figures=True, keep_repeated_pdf_figures=True)
+    legacy = adapt_bound_article(source, None, **options)
+    assert all(block["kind"] != "image" for block in legacy["blocks"])
+    assert adapt_bound_article(source, None, keep_compact_pdf_figures=True, **options) == legacy
+
+
+def test_repeated_compact_diagram_preserves_legacy_art_and_one_asset(capture_fixture):
+    canvas_buffer = BytesIO()
+    pdf = canvas.Canvas(canvas_buffer, invariant=True, pagesize=(612, 792))
+    diagram, logo = ImageReader(_compact_figure()), _image(8)
+    for page in range(1, 5):
+        pdf.drawString(72, 720, f"Inspect the seal on page {page}.")
+        if page <= 2:
+            pdf.drawImage(logo, 190, 750, width=80, height=35)
+        else:
+            pdf.drawImage(diagram, 72, 550, width=96, height=96)
+        pdf.drawString(72, 450, f"Clean the flange on page {page}.")
+        pdf.showPage()
+    pdf.save()
+    provider = "banktwo"
+    capture_fixture.body(provider, canvas_buffer.getvalue(), "application/pdf", kind="binary")
+    context = capture_fixture.context(provider)
+    options = dict(
+        registry=capture_fixture.registry, object_store=capture_fixture.objects,
+        keep_pdf_figure_order=True, keep_multiple_pdf_figures=True, keep_repeated_pdf_figures=True,
+    )
+    before = capture_source_article(context, **options)
+    [legacy_logo] = before.source_images
+    after = capture_source_article(context, keep_compact_pdf_figures=True, **options)
+    assert after.projection_version == "source-projection-v10"
+    logo_result, first, second = after.source_images
+    assert logo_result == legacy_logo
+    assert first["storage_key"] == second["storage_key"] != logo_result["storage_key"]
+    images = [entry for entry in after.resource_manifest if entry["role"] == "embedded_asset"]
+    assert len(images) == 2
+    assert _layout(after.source_document["blocks"])[-6:] == [
+        ("paragraph", "Inspect the seal on page 3."), ("image", "Figure from page 3"), ("paragraph", "Clean the flange on page 3."),
+        ("paragraph", "Inspect the seal on page 4."), ("image", "Figure from page 4"), ("paragraph", "Clean the flange on page 4."),
+    ]
