@@ -267,8 +267,9 @@ export async function readCollection(
 }
 
 export class CatalogRequestError extends Error {
-  constructor(message, { status = 0, code = 'NETWORK_UNAVAILABLE', retryable = false, retryAfterSeconds = 0, requestId = '' } = {}) {
+  constructor(message, { status = 0, code = 'NETWORK_UNAVAILABLE', retryable = false, retryAfterSeconds = 0, requestId = '', purchaseQuote } = {}) {
     super(message); Object.assign(this, { status, code, retryable, retryAfterSeconds, requestId });
+    if (purchaseQuote !== undefined) this.purchaseQuote = purchaseQuote;
   }
 }
 function safeRequestMessage(status) {
@@ -312,7 +313,15 @@ export async function requestArticleJSON(path, {
     combined.throwIfAborted();
     const retry = response.headers.get('Retry-After');
     const retryAfterSeconds = retry && /^\d+$/.test(retry) ? Number(retry) : retry ? Math.max(0, Math.ceil((Date.parse(retry) - Date.now()) / 1000)) || 0 : 0;
-    if (!response.ok) throw new CatalogRequestError(safeRequestMessage(response.status), { status: response.status, code: typeof data?.error?.code === 'string' ? data.error.code : 'HTTP_ERROR', retryable: data?.error?.retryable === true, retryAfterSeconds, requestId: typeof data?.error?.request_id === 'string' ? data.error.request_id : '' });
+    if (!response.ok) {
+      const error = data?.error;
+      const code = typeof error?.code === 'string' ? error.code : 'HTTP_ERROR';
+      throw new CatalogRequestError(safeRequestMessage(response.status), {
+        status: response.status, code, retryable: error?.retryable === true, retryAfterSeconds,
+        requestId: typeof error?.request_id === 'string' ? error.request_id : '',
+        purchaseQuote: response.status === 403 && code === 'ENTITLEMENT_REQUIRED' ? error.details?.purchase_quote : undefined,
+      });
+    }
     if (reportBodyNetworkError && retryAfterSeconds === 0 && bodyError instanceof TypeError) throw bodyError;
     if (response.status !== 204 && (!data || typeof data !== 'object' || Array.isArray(data))) throw new CatalogRequestError('The catalog returned an unreadable response. Try again.', { code: 'INVALID_RESPONSE' });
     const applied = response.headers.get('Preference-Applied');

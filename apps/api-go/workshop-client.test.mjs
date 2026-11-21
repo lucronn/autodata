@@ -4489,7 +4489,7 @@ function selectionQuoteHarness(merchant, { authenticated = true, openDemo = fals
   return { context, navigation, generation, calls, opened };
 }
 
-test('same-selection sign-in keeps a validated public quote and still checks paid access', async () => {
+test('same-selection sign-in keeps the public price visible and uses the current quote returned with paid access', async () => {
   const h = selectionQuoteHarness({ enabled: true }, { authenticated: false });
   await h.context.selectVehicle(h.generation);
   const prior = h.context.quote;
@@ -4498,13 +4498,51 @@ test('same-selection sign-in keeps a validated public quote and still checks pai
 
   h.context.session.state.authenticated = true;
   h.context.$('agreement').checked = true;
-  const required = Object.assign(new Error('Purchase required'), { code: 'ENTITLEMENT_REQUIRED' });
-  h.context.loadArticles = async () => { h.opened.push(true); throw required; };
+  const current = { ...prior, configuration_label: '2024 Example Car 2.0 L' };
+  const required = Object.assign(new Error('Purchase required'), { code: 'ENTITLEMENT_REQUIRED', purchaseQuote: current });
+  h.context.loadArticles = async (_g, _id, options) => {
+    assert.equal(options.includePurchaseQuote, true);
+    assert.equal(h.context.quote, prior);
+    h.opened.push(true);
+    throw required;
+  };
   await assert.rejects(h.context.selectVehicle(h.navigation.next(), '', { reuseQuote: true }), required);
-  assert.equal(h.context.quote, prior);
+  assert.equal(h.context.quote, current);
   assert.equal(h.context.$('agreement').checked, false);
   assert.equal(h.calls.length, 1);
   assert.equal(h.opened.length, 1);
+});
+
+test('sign-in stops using the old quote after an authoritative unavailable result or falls back for an older API', async () => {
+  for (const [value, fetches, available] of [
+    [null, 0, false],
+    [{ ...scopedQuoteFixture(), region: 'CA' }, 0, false],
+    [undefined, 1, true],
+  ]) {
+    const h = selectionQuoteHarness({ enabled: true });
+    h.context.quote = scopedQuoteFixture();
+    const required = Object.assign(new Error('Purchase required'), { code: 'ENTITLEMENT_REQUIRED', purchaseQuote: value });
+    h.context.loadArticles = async () => { throw required; };
+    await assert.rejects(h.context.selectVehicle(h.generation, '', { reuseQuote: true }), required);
+    assert.equal(h.calls.length, fetches);
+    assert.equal(validQuote(h.context.quote, scope), available);
+  }
+});
+
+test('only a paid entitlement-required response can attach purchase quote details', async () => {
+  for (const [status, code, value, expected] of [
+    [403, 'ENTITLEMENT_REQUIRED', scopedQuoteFixture(), scopedQuoteFixture()],
+    [403, 'ENTITLEMENT_REQUIRED', null, null],
+    [401, 'ENTITLEMENT_REQUIRED', scopedQuoteFixture(), undefined],
+    [403, 'ENTITLEMENT_REVOKED', scopedQuoteFixture(), undefined],
+  ]) {
+    await assert.rejects(requestJSON('/articles', { fetcher: async () => new Response(JSON.stringify({
+      error: { code, details: { purchase_quote: value } },
+    }), { status }) }), (error) => {
+      assert.deepEqual(error.purchaseQuote, expected);
+      return true;
+    });
+  }
 });
 
 test('a superseded region or disabled merchant cannot reuse a public quote after sign-in', async () => {

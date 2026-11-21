@@ -466,8 +466,8 @@ function purchaseConfigured() {
 }
 async function selectVehicle(g, articleID = "", { quoteMode = "eager", savedLink = false, reuseQuote = false } = {}) {
   if (!g.current()) return;
-  // Quotes are public and scoped to the vehicle, so confirming the account
-  // does not invalidate a quote for the exact selection still on screen.
+  // Keep the exact public price visible while paid access and purchase
+  // availability are checked together for this same selection.
   const retainedQuote = reuseQuote && validQuote(quote, scope()) && purchaseConfigured() ? quote : null;
   clearProtected();
   quote = retainedQuote;
@@ -522,12 +522,17 @@ async function selectVehicle(g, articleID = "", { quoteMode = "eager", savedLink
     if (directArticle && await loadArticle(articleID, g, { savedLink: true })) return;
     if (savedQuery && await loadSavedSearch(g, savedQuery)) return;
     if (!g.current()) return;
-    await loadArticles(g, articleID);
+    await loadArticles(g, articleID, { includePurchaseQuote: Boolean(retainedQuote) });
   } catch (error) {
     // When a purchase is required, present the price or its unavailable state
     // with the access result so the UI does not announce a false checkout failure.
-    if (error.code === "ENTITLEMENT_REQUIRED" && !retainedQuote && quoteMode !== "skip") {
-      await (quoteRequest ?? loadQuote());
+    if (g.current() && error.code === "ENTITLEMENT_REQUIRED" && quoteMode !== "skip") {
+      if (retainedQuote && error.purchaseQuote !== undefined) {
+        quote = validQuote(error.purchaseQuote, selected) ? error.purchaseQuote : null;
+      } else {
+        if (retainedQuote) quote = null;
+        await (quoteRequest ?? loadQuote());
+      }
     }
     throw error;
   }
@@ -560,13 +565,16 @@ async function loadSavedSearch(g, query) {
   return true;
 }
 
-async function loadArticles(g, articleID = "", { focusOnShow = false } = {}) {
+async function loadArticles(g, articleID = "", { focusOnShow = false, includePurchaseQuote = false } = {}) {
   if (!g.current()) return;
   $("completion-status").textContent = "";
   stage("articles");
   status("Opening your article index…", { busy: true });
   await readCollection(
-    () => requestJSON(articleRequestPath(), { signal: g.signal }),
+    () => requestJSON(articleRequestPath(), {
+      signal: g.signal,
+      headers: includePurchaseQuote ? { Prefer: "workshop-purchase-quote" } : undefined,
+    }),
     {
       signal: g.signal,
       desired: articleID,
