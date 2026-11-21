@@ -18,6 +18,7 @@ PDF_COMPACT_FIGURE_LAYOUT = "compact-pdf-figures-v1"
 PDF_LEGACY_FIGURE_LAYOUT = "legacy-pdf-figures-v1"
 PDF_REPEAT_MARGIN_LAYOUT = "repeated-pdf-margins-v1"
 STRUCTURED_TABLE_COLUMNS_LAYOUT = "structured-table-columns-v1"
+STRUCTURED_TABLE_CELL_ORDER_LAYOUT = "structured-table-cell-order-v1"
 SOURCE_PROJECTION_VERSIONS = (
     "source-projection-v1",
     "source-projection-v2",

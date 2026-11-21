@@ -164,6 +164,7 @@ def run_article_job(repo,lease,*,registry,object_store,model_client,hooks=None):
                     keep_html_multiline_figure_captions=True,
                     keep_html_table_captions=True,
                     keep_structured_table_columns=True,
+                    keep_structured_table_cell_order=True,
                 )
                 if lost.is_set():raise LeaseLost("heartbeat lost during source IO")
                 _hook(hooks,"before_source_commit")

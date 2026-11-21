@@ -1857,6 +1857,7 @@ def adapt_bound_article(
     keep_html_table_captions: bool = False,
     keep_html_flow_figure_captions: bool = False,
     keep_html_multiline_figure_captions: bool = False,
+    keep_structured_table_cell_order: bool = False,
 ) -> dict[str, Any]:
     """Adapt fetched bytes under proven connector scope, without weakening URL intake."""
     from .banktwo_connector import ArticleParser
@@ -2007,6 +2008,7 @@ def adapt_bound_article(
         return {
             "blocks": blocks,
             "asset_resource_refs": article.get("asset_resource_refs", []),
+            **({"authored_json_blocks": True} if keep_structured_table_cell_order and not needs_blocks else {}),
         }
     if media in {"application/xml", "text/xml"}:
         return {

@@ -866,9 +866,9 @@ def _table_cell(
         if isinstance(direct_img, Mapping):
             images.append(_normalize_cell_image(direct_img))
     nested = value.get("blocks")
-    ordered_html_cell = value.get("_ordered_html_table_cell") is True
+    ordered_source_cell = value.get("_ordered_html_table_cell") is True or value.get("_ordered_json_table_cell") is True
     if preserve_marked_cells and isinstance(nested, list) and (
-        ordered_html_cell or value.get("_preserve_cell_block_order") is True
+        ordered_source_cell or value.get("_preserve_cell_block_order") is True
     ):
         return {
             "text": direct_text,
@@ -876,7 +876,7 @@ def _table_cell(
                 {"evidence_ids": evidence_ids}, nested, preserve_marked_cells=preserve_marked_cells,
                 preserve_structured_columns=preserve_structured_columns,
             )["blocks"],
-            **({"protected_text": True} if ordered_html_cell else {}),
+            **({"protected_text": True} if ordered_source_cell else {}),
             **({"images": images} if images else {}),
         }
     if isinstance(nested, list):

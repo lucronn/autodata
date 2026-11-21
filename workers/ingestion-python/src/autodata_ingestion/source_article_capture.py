@@ -17,6 +17,7 @@ from .article_lifecycle_types import (
     PDF_COMPACT_FIGURE_LAYOUT,
     PDF_LEGACY_FIGURE_LAYOUT,
     PDF_REPEAT_MARGIN_LAYOUT,
+    STRUCTURED_TABLE_CELL_ORDER_LAYOUT,
     STRUCTURED_TABLE_COLUMNS_LAYOUT,
     ResourceRef,
     article_id,
@@ -141,6 +142,35 @@ def _attach_figure_captions(blocks, key):
     blocks[:] = ordered
 
 
+def _mark_json_table_cells(blocks):
+    """Keep an authored cell sequence when a figure precedes procedure text."""
+    textual = {"text", "paragraph", "callout", "warning", "caution", "note", "hint", "important"}
+    ordered = []
+    for node in _walk(blocks):
+        # The connector document supplies the content, never private layout flags.
+        for private in ("_ordered_html_table_cell", "_ordered_json_table_cell", "_preserve_cell_block_order"):
+            node.pop(private, None)
+        rows = node.get("rows")
+        if not isinstance(rows, list) or str(node.get("type") or node.get("kind") or "").casefold() not in ("table", "grid"):
+            continue
+        for row in rows:
+            if isinstance(row, dict):
+                row = row.get("cells") or row.get("values") or row.get("blocks")
+            if not isinstance(row, list):
+                continue
+            for cell in row:
+                children = cell.get("blocks") if isinstance(cell, dict) else None
+                if not isinstance(children, list) or any(not isinstance(child, dict) for child in children):
+                    continue
+                kinds = [str(child.get("type") or child.get("kind") or "text").casefold() for child in children]
+                if ("image" in kinds and all(kind == "image" or kind in textual for kind in kinds)
+                        and any(kind in textual for kind in kinds[kinds.index("image") + 1:])):
+                    ordered.append(cell)
+    for cell in ordered:
+        cell["_ordered_json_table_cell"] = True
+    return bool(ordered)
+
+
 def project_document(
     document, *, include_cell_figure_captions=False, include_table_captions=False, include_flow_figure_captions=False,
 ):
@@ -232,6 +262,7 @@ def capture_source_article(
     keep_html_multiline_figure_captions=False,
     skip_blank_linked_pdf_pages=False,
     keep_structured_table_columns=False,
+    keep_structured_table_cell_order=False,
 ):
     if not 0 < deadline_seconds <= 30:
         raise ValueError("capture deadline must be within 30 seconds")
@@ -336,6 +367,7 @@ def capture_source_article(
                 keep_html_multiline_figure_captions
                 and body.body["sha256"] != context.legacy_published_html_multiline_figure_body
             ),
+            keep_structured_table_cell_order=keep_structured_table_cell_order,
         )
         article = parsing.result(timeout=remaining())
     except (ValueError, TypeError, KeyError, UnicodeError) as error:
@@ -359,13 +391,16 @@ def capture_source_article(
     positioned_pdf_figures = article.get("positioned_pdf_figures") is True
     retained_pdf_repeats = article.get("retained_repeated_pdf_figures") is True
     pdf_asset_order = article.get("pdf_legacy_asset_order", [])
+    structured_table_cell_order = article.get("authored_json_blocks") is True and _mark_json_table_cells(blocks)
     structured_table_columns = keep_structured_table_columns and any(
         str(node.get("type") or node.get("kind") or "").casefold() in {"table", "grid"}
         and isinstance(node.get("columns"), list) and any(isinstance(column, dict) for column in node["columns"])
         for node in _walk(blocks)
     )
-    new_structure = structured_table_columns or html_table_captions or html_flow_figure_captions or article.get("embedded_pdf") or (
-        article.get("authored_html_headings") and any(block.get("kind") == "heading" for block in _walk(blocks))
+    new_structure = (
+        structured_table_columns or structured_table_cell_order or html_table_captions or html_flow_figure_captions
+        or article.get("embedded_pdf")
+        or (article.get("authored_html_headings") and any(block.get("kind") == "heading" for block in _walk(blocks)))
     )
     for node in _image_nodes(blocks):
         node["kind"] = node["type"] = "image"
@@ -420,6 +455,8 @@ def capture_source_article(
         resources[0]["html_table_caption_layout"] = manifest[0]["html_table_caption_layout"] = HTML_TABLE_CAPTION_LAYOUT
     if structured_table_columns:
         resources[0]["structured_table_columns_layout"] = manifest[0]["structured_table_columns_layout"] = STRUCTURED_TABLE_COLUMNS_LAYOUT
+    if structured_table_cell_order:
+        resources[0]["structured_table_cell_order_layout"] = manifest[0]["structured_table_cell_order_layout"] = STRUCTURED_TABLE_CELL_ORDER_LAYOUT
     provenance = [deepcopy(resources[0])]
     failures = {}
     localized = {}
@@ -736,7 +773,7 @@ def capture_source_article(
     doc = build_ordered_document(
         {"article_id": str(article_id(context.key)), "evidence_ids": evidence_ids},
         blocks,
-        preserve_marked_cells=handled_pdf_embeds or positioned_html_table_images,
+        preserve_marked_cells=handled_pdf_embeds or positioned_html_table_images or structured_table_cell_order,
         preserve_structured_columns=structured_table_columns,
     )
     for node in _image_nodes(doc["blocks"]):
