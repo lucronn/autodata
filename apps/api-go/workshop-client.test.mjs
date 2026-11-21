@@ -2435,6 +2435,83 @@ test('open demo content search keeps its access marker and excludes unreadable h
   assert.equal(h.$('articles').children[0].children.length, 1);
 });
 
+test('changing hydration coalesces an in-flight query and only keeps current matching descriptors', async () => {
+  const first = deferredAuthOperation(), followUp = deferredAuthOperation();
+  const polls = [deferredAuthOperation(), deferredAuthOperation()];
+  const same = { id: 'same', title: 'Pump service', availability: 'available', source_revision_id: 'rev-1' };
+  const removed = { ...same, id: 'removed' };
+  const changed = { ...same, id: 'changed' };
+  const updated = { ...changed, source_revision_id: 'rev-2' };
+  const added = { ...same, id: 'added' };
+  const h = articleIndexHarness([
+    indexResponse('running', { hydrating: true, items: [same, removed, changed] }),
+    () => first.promise,
+    indexResponse('running', { hydrating: true, items: [same, updated] }),
+    indexResponse('completed', { complete: true, items: [same, updated, added] }),
+    () => followUp.promise,
+  ], { wait: () => polls.shift().promise });
+  const releasePolls = [...polls];
+  const timers = [];
+  h.context.setTimeout = (callback, delay) => { timers.push(delay); callback(); return timers.length; };
+  h.$('search').value = 'pump';
+  const loading = h.load();
+  await new Promise(setImmediate);
+  const firstRequest = h.requests[1];
+  assert.match(firstRequest.path, /\?q=pump&region=US$/);
+  releasePolls[0].resolve();
+  await new Promise(setImmediate);
+  assert.equal(firstRequest.signal.aborted, false);
+  releasePolls[1].resolve();
+  await loading;
+  assert.equal(h.requests.filter(request => request.path.includes('q=')).length, 1);
+  first.resolve(indexResponse('running', { items: [same, removed, changed] }));
+  await new Promise(setImmediate);
+  assert.deepEqual(h.context.searchItems.map(item => item.id), ['same']);
+  assert.equal(h.$('articles').children[0].children.length, 1);
+  assert.equal(h.context.searchPending, true);
+  assert.equal(h.requests.filter(request => request.path.includes('q=')).length, 2);
+  followUp.resolve(indexResponse('completed', { complete: true, items: [same, added] }));
+  await new Promise(setImmediate);
+  assert.deepEqual(h.context.searchItems.map(item => item.id), ['same', 'added']);
+  assert.equal(h.context.searchPending, false);
+  assert.equal(h.$('catalog-count').textContent, '2 articles');
+  assert.deepEqual(timers, []);
+});
+
+test('same-query hydration retains settled hits while typing still debounces and clears them', async () => {
+  const poll = deferredAuthOperation(), refresh = deferredAuthOperation();
+  const hit = { id: 'same', title: 'Pump service', availability: 'available', source_revision_id: 'rev-1' };
+  const extra = { ...hit, id: 'other', title: 'More service notes' };
+  const h = articleIndexHarness([
+    indexResponse('running', { hydrating: true, items: [hit] }),
+    indexResponse('running', { items: [hit] }),
+    indexResponse('completed', { complete: true, items: [hit, extra] }),
+    () => refresh.promise,
+    indexResponse('completed', { complete: true, items: [extra] }),
+  ], { wait: () => poll.promise });
+  const typed = [];
+  h.context.setTimeout = (callback, delay) => { typed.push({ callback, delay }); return typed.length; };
+  h.$('search').value = 'pump';
+  const loading = h.load();
+  await new Promise(setImmediate);
+  assert.equal(h.$('articles').children[0].children.length, 1);
+  poll.resolve();
+  await loading;
+  assert.equal(h.$('articles').children[0].children.length, 1);
+  assert.equal(h.context.searchPending, true);
+  assert.deepEqual(typed, []);
+  const refreshing = h.requests[3];
+  h.$('search').value = 'notes';
+  h.$('search').events.input();
+  assert.equal(refreshing.signal.aborted, true);
+  assert.equal(h.$('articles').children[0].children.length, 0);
+  assert.deepEqual(typed.map(timer => timer.delay), [300]);
+  typed[0].callback();
+  refresh.resolve(indexResponse('completed', { complete: true, items: [hit] }));
+  await new Promise(setImmediate);
+  assert.deepEqual(h.context.searchItems.map(item => item.id), ['other']);
+});
+
 test('hydrating index polls do not restart a settled owned-content search', async () => {
   let releasePoll;
   const gate = new Promise(resolve => { releasePoll = resolve; });

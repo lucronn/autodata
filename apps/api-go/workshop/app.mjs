@@ -53,6 +53,7 @@ let vehicle = null,
   searchItems = null,
   searchQuery = "",
   searchPending = false,
+  searchRefreshPending = false,
   searchComplete = false,
   searchError = false,
   searchTimer = null,
@@ -138,6 +139,7 @@ function clearProtected() {
   searchItems = null;
   searchQuery = "";
   searchPending = false;
+  searchRefreshPending = false;
   searchComplete = false;
   searchError = false;
   searchTimer = null;
@@ -531,14 +533,8 @@ async function loadArticles(g, articleID = "") {
         if (result.configuration?.id === vehicle.id &&
             result.configuration.region === vehicle.region)
           vehicle = result.configuration;
-        const descriptorFields = [
-          "id", "title", "kind", "component", "availability", "content_status",
-          "source_revision_id", "canonical_revision_id", "view_revision", "review_status",
-        ];
         const indexChanged = result.items.length !== articles.length ||
-          result.items.some((item, index) => descriptorFields.some(
-            (field) => item[field] !== articles[index]?.[field],
-          ));
+          result.items.some((item, index) => !sameArticleDescriptor(item, articles[index]));
         const completenessChanged = indexComplete !== (result.complete === true);
         articles = result.items;
         indexComplete = result.complete === true;
@@ -552,7 +548,11 @@ async function loadArticles(g, articleID = "") {
         if (query && (searchQuery !== query ||
           (!searchPending && searchItems === null && !searchError) ||
           indexChanged ||
-          completenessChanged)) scheduleArticleSearch();
+          completenessChanged)) {
+          if (indexChanged && searchQuery === query && searchItems)
+            searchItems = searchHitsOnCurrentIndex(searchItems);
+          scheduleArticleSearch({ fromIndex: true });
+        }
         else renderArticles();
       },
     },
@@ -580,32 +580,62 @@ async function loadArticles(g, articleID = "") {
   }
 }
 
-function scheduleArticleSearch() {
+const articleDescriptorFields = [
+  "id", "title", "kind", "component", "availability", "content_status",
+  "source_revision_id", "canonical_revision_id", "view_revision", "review_status",
+];
+
+function sameArticleDescriptor(item, current) {
+  return current && articleDescriptorFields.every((field) => item[field] === current[field]);
+}
+
+function searchHitsOnCurrentIndex(items) {
+  const descriptors = new Map(articles.map((item) => [item.id, item]));
+  return items.filter((item) => sameArticleDescriptor(item, descriptors.get(item.id)));
+}
+
+function scheduleArticleSearch({ fromIndex = false } = {}) {
   const query = $("search").value.trim();
+  const refresh = fromIndex && query === searchQuery;
+  if (refresh && searchPending) {
+    searchRefreshPending = true;
+    renderArticles();
+    return;
+  }
   searchNavigation.clear();
   clearTimeout(searchTimer);
   searchTimer = null;
   searchQuery = query;
-  searchItems = null;
+  searchRefreshPending = false;
+  if (!refresh) {
+    searchItems = null;
+    searchComplete = false;
+  }
   searchPending = Boolean(query && vehicle?.id && access === "owned");
-  searchComplete = false;
   searchError = false;
   renderArticles();
   if (!searchPending) return;
   const generation = searchNavigation.next();
   const vehicleID = vehicle.id;
-  searchTimer = setTimeout(() => {
+  const region = vehicle.region;
+  const current = () => generation.current() && vehicle?.id === vehicleID &&
+    vehicle?.region === region && $("search").value.trim() === query;
+  const startSearch = () => {
     searchTimer = null;
+    searchRefreshPending = false;
     void requestJSON(articleRequestPath(undefined, "", { q: query }), {
       signal: generation.signal,
     }).then((result) => {
-      if (!generation.current() || vehicle?.id !== vehicleID || $("search").value.trim() !== query) return;
-      searchItems = Array.isArray(result.items) ? result.items : [];
+      if (!current()) return;
+      const items = Array.isArray(result.items) ? result.items : [];
+      // A newer index may retire or replace results from the older search.
+      searchItems = searchRefreshPending ? searchHitsOnCurrentIndex(items) : items;
       searchComplete = result.complete === true;
       searchPending = false;
-      renderArticles();
+      if (searchRefreshPending) scheduleArticleSearch({ fromIndex: true });
+      else renderArticles();
     }).catch((error) => {
-      if (!generation.current() || vehicle?.id !== vehicleID) return;
+      if (!current()) return;
       if ([401, 403, 410].includes(error.status)) {
         // Reuse the paid purchase boundary: a changed grant must not expose
         // cached rows or turn an already-paid order into another Buy action.
@@ -613,10 +643,14 @@ function scheduleArticleSearch() {
         return;
       }
       searchPending = false;
+      searchRefreshPending = false;
+      searchItems = null;
       searchError = true;
       renderArticles();
     });
-  }, 300);
+  };
+  if (fromIndex) startSearch();
+  else searchTimer = setTimeout(startSearch, 300);
 }
 
 function renderArticles() {
