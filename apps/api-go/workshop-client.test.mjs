@@ -458,7 +458,8 @@ test('reader checks negotiated cold source early and preserves the half-second c
       assert.equal(preferShortSourceCheck, now === 250 || now === 500 || now === 750, label);
       if (now === 250 || now === 750) assert.equal(timeout, 250, label);
       if (now === 500) assert.equal(timeout, 500, label);
-      assert.equal(readableBodyTimeout, now === 250 ? 750 : undefined, label);
+      const bodyBudget = { 250: 750, 500: 750, 750: 500 };
+      assert.equal(readableBodyTimeout, bodyBudget[now], label);
       const next = responses.shift();
       if (next === timedOut) {
         now += timeout;

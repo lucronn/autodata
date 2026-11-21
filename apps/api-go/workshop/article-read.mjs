@@ -1,5 +1,6 @@
 import { delay } from "./catalog.mjs";
 
+const sourceProbeIntervalMs = 250;
 const publicationProbeIntervalMs = 500;
 
 export class NavigationGeneration {
@@ -76,10 +77,11 @@ export async function readArticle(
       deadline, firstReadAt || deadline, nextSourceProbeAt || deadline,
       sourceConfirmationAt || deadline, publicationReadAt || deadline,
     );
-    // Once a short read has the published view, let it finish transferring for
-    // one probe interval past the normal fallback instead of downloading twice.
-    const bodyDeadline = firstReadAt && nextSourceProbeAt ? firstReadAt :
-      publicationReadAt ? publicationReadAt + publicationProbeIntervalMs : 0;
+    // Keep the header deadline for a short read. Give a successful body on
+    // the later probes one extra interval to finish without downloading twice.
+    const sourceBodyDeadline = firstReadAt && (firstReadAt + (nextSourceProbeAt ? 0 : sourceProbeIntervalMs));
+    const bodyDeadline = sourceBodyDeadline ||
+      (publicationReadAt && publicationReadAt + publicationProbeIntervalMs);
     try {
       const response = await read({
         signal,
@@ -130,7 +132,7 @@ export async function readArticle(
         continue;
       }
       // Spend one more read only when both short probes confirmed the same capture.
-      const finalProbeWait = firstReadAt - 250 - now();
+      const finalProbeWait = firstReadAt - sourceProbeIntervalMs - now();
       if (firstSourceProbePending && finalProbeWait > 0 && samePendingSource &&
           latest.data.article.processing.state === "fetching_source") {
         firstSourceProbePending = false;
@@ -161,8 +163,8 @@ export async function readArticle(
       firstReadAt = scheduledAt + backoff;
       // An early hit can show cheap captures sooner. Keep the half-second
       // check for a source that is still pending or an early transport miss.
-      nextSourceProbeAt = scheduledAt + 500;
-      backoff = 250;
+      nextSourceProbeAt = scheduledAt + 2 * sourceProbeIntervalMs;
+      backoff = sourceProbeIntervalMs;
     } else if (attempt === 1 && fastPendingJob) {
       // Add an early check for newly retained source. If this check misses,
       // keep the normal two-second check before resuming the usual backoff.
