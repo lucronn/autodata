@@ -757,6 +757,9 @@ _MULTI_SENTENCE_CONNECTOR_SOURCE = (
 _COPIED_FIRST_CONNECTOR_SENTENCE = (
     "Inspect the brake connector before service. Take the retaining clip off. If the terminal is damaged, replace it."
 )
+_UNCONDITIONAL_TERMINAL_DRAFT = (
+    "Before servicing, check the brake connector. Take the retaining clip off and replace the terminal."
+)
 
 
 @pytest.mark.parametrize("in_cell", [False, True], ids=["article", "table-cell"])
@@ -782,6 +785,28 @@ def test_automatic_rewrite_rejects_copied_sentences_in_editable_prose(in_cell, d
 
 
 @pytest.mark.parametrize("in_cell", [False, True], ids=["article", "table-cell"])
+@pytest.mark.parametrize("draft", [
+    _UNCONDITIONAL_TERMINAL_DRAFT,
+    "Before servicing, check the brake connector. Take the retaining clip off and replace the connector if it is damaged.",
+    "Before servicing, check the brake connector. Take the retaining clip off and replace the terminal if it is undamaged.",
+    "Check the brake connector before servicing, then take off the retaining clip and replace the terminal if the clip is damaged.",
+])
+def test_automatic_rewrite_rejects_changed_embedded_terminal_condition(in_cell, draft):
+    from autodata_ingestion import procedure_rewrite_auto as auto
+    from autodata_ingestion.procedure_rewrite_full import render_full
+
+    source = _scoped_prose_source(_MULTI_SENTENCE_CONNECTOR_SOURCE, in_cell=in_cell)
+    prompt = auto.build_auto_prompt(source, context={})
+    payload = _scoped_prose_response(prompt, draft)
+    result = run(source, payload)
+    assert result.error_code == "REWRITE_QUALIFIER_MUTATION"
+    assert result.document == source
+    candidate = render_full(source, payload, profile_version=PROFILE, include_cell_blocks=in_cell)
+    checked = auto.validate_auto(source, candidate, response=payload, prompt_version=json.loads(prompt)["prompt_version"])
+    assert checked.error_codes == ("REWRITE_QUALIFIER_MUTATION",)
+
+
+@pytest.mark.parametrize("in_cell", [False, True], ids=["article", "table-cell"])
 @pytest.mark.parametrize("original,draft", [
     (_MULTI_SENTENCE_CONNECTOR_SOURCE,
      "Before servicing, check the brake connector. Take the retaining clip off. If the terminal is damaged, replace it."),
@@ -802,15 +827,27 @@ def test_automatic_rewrite_accepts_rephrased_editable_prose(in_cell, original, d
     assert checked.report["changed_prose_slots"] == [row["path"] for row in payload["replacements"]]
 
 
-@pytest.mark.parametrize("in_cell,prompt_hash,candidate_hash,report_hash", [
-    (False, "c9fcbb134c7d665060f62478c4d064972f6e9994968f712dca8633242fd3ce03",
+@pytest.mark.parametrize("in_cell,draft,error_code,prompt_hash,candidate_hash,report_hash", [
+    (False, _COPIED_FIRST_CONNECTOR_SENTENCE, "REWRITE_PROSE_TOO_SIMILAR",
+     "c9fcbb134c7d665060f62478c4d064972f6e9994968f712dca8633242fd3ce03",
      "82dd7158c35d82210ca539073bb6617d28777be7250803189732b61619757353",
      "dce78d34b60fd6d2cd7bf257626222a8f1fd7e405b94d068410a8180e212820d"),
-    (True, "6095203d1dc193cb2b0fcae03157466b9796bd118fbbbabd8f8f0c46cffdc553",
+    (True, _COPIED_FIRST_CONNECTOR_SENTENCE, "REWRITE_PROSE_TOO_SIMILAR",
+     "6095203d1dc193cb2b0fcae03157466b9796bd118fbbbabd8f8f0c46cffdc553",
      "c92916b25af0a7ec6603451a844b957ff7e9d546f4823b8a8e3d468e467b3898",
      "819aaf61bb089824ae2925b847deee983a8a47680186410fa067e8a721a4b1c9"),
+    (False, _UNCONDITIONAL_TERMINAL_DRAFT, "REWRITE_QUALIFIER_MUTATION",
+     "c9fcbb134c7d665060f62478c4d064972f6e9994968f712dca8633242fd3ce03",
+     "0367d85ee9368fb5296b656e5b4e3385317f81ff28939a2808278dba85c8a955",
+     "abc83edaf1775384ac07bf617462641b62e0ec4ad9719d70ff395479aa6edea0"),
+    (True, _UNCONDITIONAL_TERMINAL_DRAFT, "REWRITE_QUALIFIER_MUTATION",
+     "6095203d1dc193cb2b0fcae03157466b9796bd118fbbbabd8f8f0c46cffdc553",
+     "ebece0d645976ed01b98c039484d762b195e70c43d58300cea75ee033d44c441",
+     "045e690311a4002b34b694e03685a4d3a2f60bd5df0969a5e9248d4c589548e2"),
 ])
-def test_automatic_reopens_v44_with_original_validation_bytes(in_cell, prompt_hash, candidate_hash, report_hash):
+def test_automatic_reopens_v44_with_original_validation_bytes(
+    in_cell, draft, error_code, prompt_hash, candidate_hash, report_hash,
+):
     from hashlib import sha256
     from autodata_ingestion import procedure_rewrite_auto as auto
 
@@ -820,13 +857,13 @@ def test_automatic_reopens_v44_with_original_validation_bytes(in_cell, prompt_ha
     assert sha256(prompt.encode()).hexdigest() == prompt_hash
     version = auto._auto_prompt_version(source, context=context, prompt_hash=prompt_hash)
     assert version == "full-prose-auto-prompt-v44"
-    payload = _scoped_prose_response(prompt, _COPIED_FIRST_CONNECTOR_SENTENCE)
+    payload = _scoped_prose_response(prompt, draft)
     candidate = auto.render_auto(source, payload, prompt_version=version)
     historical = auto.validate_auto(source, candidate, response=payload, prompt_version=version)
     assert historical.passed
     assert digest_json(candidate) == candidate_hash
     assert digest_json(historical.report) == report_hash
-    assert auto.validate_auto(source, candidate, response=payload).error_codes == ("REWRITE_PROSE_TOO_SIMILAR",)
+    assert auto.validate_auto(source, candidate, response=payload).error_codes == (error_code,)
 
 
 _OIL_PUMP_PREPARATION_SOURCE = "Remove the oil pan and clean the strainer before releasing the pump body."

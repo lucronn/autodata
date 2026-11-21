@@ -322,6 +322,10 @@ _CLAUSE_GERUNDS = {
 _CLAUSE_GERUND = re.compile(r"^(" + "|".join(_CLAUSE_GERUNDS) + r")(?=\s)", re.IGNORECASE)
 _SERVICE_PHASE = r"(?:servicing|(?:the\s+)?service|(?:carrying\s+out|performing)\s+(?:(?:the|any)\s+)?service)"
 _BEFORE_SERVICE = rf"(?:before|ahead\s+of|prior\s+to)\s+{_SERVICE_PHASE}"
+_INSPECT_BRAKE_CONNECTOR = r"(?:inspect|check)\s+(?:the\s+)?brake\s+connector"
+_BRAKE_CONNECTOR_BEFORE_SERVICE = re.compile(
+    rf"{_INSPECT_BRAKE_CONNECTOR}\s+{_BEFORE_SERVICE}|{_BEFORE_SERVICE},\s*{_INSPECT_BRAKE_CONNECTOR}",
+)
 _DISCONNECT_BEFORE_SERVICE = tuple(re.compile(pattern) for pattern in (
     rf"(?P<disconnect>(?:disconnect|detach)\s+.+?)\s+{_BEFORE_SERVICE}",
     rf"{_BEFORE_SERVICE},\s*(?P<disconnect>(?:disconnect|detach)\s+.+)",
@@ -1400,6 +1404,10 @@ def build_auto_prompt(document, *, context):
             "Rephrase each ordinary prose sentence in a multi-sentence rewrite slot. Preserve its meaning "
             "and technical terms when splitting or combining sentences."
         )
+        payload["rules"].append(
+            "When a brake connector inspection precedes clip removal and conditional terminal replacement, "
+            "keep replacement dependent on damage to the same terminal."
+        )
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
@@ -2279,6 +2287,16 @@ def _conditional_terminal_replacement_scope(text):
     return None
 
 
+def _brake_connector_terminal_service_scope(text):
+    text = _proof_text(text)
+    if "brake" not in text or "terminal" not in text:
+        return None
+    separator = _REQUIRED_TASK_SEPARATOR.search(text)
+    if separator and _BRAKE_CONNECTOR_BEFORE_SERVICE.fullmatch(text[:separator.start()]):
+        return _conditional_terminal_replacement_scope(text[separator.end():])
+    return None
+
+
 def _prestart_eye_protection_target(text):
     text = _proof_text(text)
     if "eye" not in text or "start" not in text:
@@ -2427,6 +2445,7 @@ def _require_changes(source, candidate, *, prompt_version):
     guard_disconnect_before_service = prompt_version in (None, _PROSE_PROMPT_V43, _PROSE_PROMPT_V44, _PROSE_PROMPT_VERSION)
     guard_oil_pump_preparation = prompt_version in (None, _PROSE_PROMPT_V44, _PROSE_PROMPT_VERSION)
     guard_copied_sentences = prompt_version in (None, _PROSE_PROMPT_VERSION)
+    guard_embedded_terminal_condition = prompt_version in (None, _PROSE_PROMPT_VERSION)
     introduction = candidate["blocks"][0].get("text", "")
     if guard_prose and (
         _INLINE_WARNING.search(introduction)
@@ -2535,6 +2554,9 @@ def _require_changes(source, candidate, *, prompt_version):
             terminal := _conditional_terminal_replacement_scope(original)
         ):
             if terminal != _conditional_terminal_replacement_scope(replacement):
+                raise ValueError("REWRITE_QUALIFIER_MUTATION")
+        if guard_embedded_terminal_condition and (terminal := _brake_connector_terminal_service_scope(original)):
+            if terminal != _brake_connector_terminal_service_scope(replacement):
                 raise ValueError("REWRITE_QUALIFIER_MUTATION")
         if guard_prestart_eye_protection:
             target = _prestart_eye_protection_target(original)

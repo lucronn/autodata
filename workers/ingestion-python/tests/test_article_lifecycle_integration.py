@@ -1174,6 +1174,12 @@ def test_automatic_rejected_rewrite_leaves_source_readable(runtime, mode, source
         "Inspect the brake connector before service. Take the retaining clip off. If the terminal is damaged, replace it.",
         "REWRITE_PROSE_TOO_SIMILAR", id="copied-editable-sentence",
     ),
+    pytest.param(
+        "Inspect the brake connector before service. Remove the retaining clip and replace the terminal if damaged.",
+        "Check the brake connector before servicing, then take off the retaining clip and replace the terminal if it shows damage.",
+        "Before servicing, check the brake connector. Take the retaining clip off and replace the terminal.",
+        "REWRITE_QUALIFIER_MUTATION", id="multi-sentence-terminal-condition",
+    ),
 ])
 def test_automatic_qualifier_controls_publication(runtime, provider, preserved, original, valid, invalid, error_code):
     ensure = automatic_runtime(runtime, provider)
