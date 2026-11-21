@@ -257,6 +257,9 @@ func TestPaidCatalogMediaProjectionClonesAndProvesSourceAssets(t *testing.T) {
 			t.Fatalf("projection=%+v err=%v", got, err)
 		}
 	}
+	if view.Article.Images[0].URL != (*view.Article.Steps[0].Images)[0].URL {
+		t.Fatal("identical figure in one authorized response got a second URL")
+	}
 	if view.Article.Images[1].URL != "" {
 		t.Fatal("unmapped asset got URL")
 	}
@@ -275,6 +278,36 @@ func TestPaidCatalogMediaProjectionClonesAndProvesSourceAssets(t *testing.T) {
 	view = c.view
 	if err := s.rewritePaidCatalogArticleImages(context.Background(), p, c.configuration, c.identity, &view); !errors.Is(err, ErrCatalogWithdrawn) {
 		t.Fatal("withdrawn source ignored", err)
+	}
+}
+
+func TestPaidCatalogFigureURLReuseMatchesBothAssetAndObject(t *testing.T) {
+	s, c, _, _, p, _ := paidMediaFixture()
+	first := c.view.Article.Images[0]
+	differentAsset := first
+	differentAsset.ID, differentAsset.ImageID, differentAsset.AssetID = "other", "other", "other"
+	differentObject := first
+	differentObject.StorageKey = "procedure-images/" + strings.Repeat("b", 64)
+	unavailable := first
+	unavailable.Status = "unavailable"
+	c.source.Images = append(c.source.Images, differentAsset, differentObject)
+	seen := map[string]bool{}
+	for range 2 {
+		view := c.view
+		view.Article.Images = []CatalogImage{first, differentAsset, differentObject, unavailable}
+		if err := s.rewritePaidCatalogArticleImages(context.Background(), p, c.configuration, c.identity, &view); err != nil {
+			t.Fatal(err)
+		}
+		for _, image := range view.Article.Images[:3] {
+			ref, err := openPaidCatalogImageReference(strings.TrimPrefix(image.URL, "/v1/catalog/images/"), s.catalogImageKey, time.Now())
+			if err != nil || ref.AssetID != paidCatalogImageAssetID(image) || ref.ObjectKey != image.StorageKey || seen[image.URL] {
+				t.Fatal("reused a figure URL outside its asset, object or response", err)
+			}
+			seen[image.URL] = true
+		}
+		if view.Article.Images[3].URL != "" {
+			t.Fatal("unavailable occurrence reused a URL")
+		}
 	}
 }
 

@@ -720,14 +720,23 @@ function appendSource(parent, block, review, g) {
   });
   parent.append(link);
 }
-function renderBlocks(parent, blocks, images, review, g, sourceTarget = null) {
+function indexRenderableImages(images) {
+  const imagesByID = new Map();
+  for (const image of Array.isArray(images) ? images : []) {
+    if (!image || image.status === "unavailable") continue;
+    for (const id of [image.id, image.image_id, image.asset_id]) {
+      if (id && !imagesByID.has(id)) imagesByID.set(id, image);
+    }
+  }
+  return imagesByID;
+}
+function renderBlocks(parent, blocks, imagesByID, review, g, sourceTarget = null) {
   const isListNumber = value =>
     Number.isInteger(value) && value >= -2147483648 && value <= 2147483647;
   const find = (ref) => {
     const id = ref?.asset_id || ref?.image_id || ref?.id;
     return id && ref.status !== "unavailable"
-      ? images.find((image) => image.status !== "unavailable" &&
-          [image.id, image.image_id, image.asset_id].includes(id))
+      ? imagesByID.get(id)
       : undefined;
   };
   const addReference = (target, ref) =>
@@ -741,7 +750,7 @@ function renderBlocks(parent, blocks, images, review, g, sourceTarget = null) {
     if (value.asset_id || value.image_id || value.status === "unavailable")
       addReference(target, value);
     for (const ref of value.images || []) addReference(target, ref);
-    if (Array.isArray(value.blocks)) renderBlocks(target, value.blocks, images, review, g, sourceTarget);
+    if (Array.isArray(value.blocks)) renderBlocks(target, value.blocks, imagesByID, review, g, sourceTarget);
   };
   for (const block of blocks || []) {
     if (!block || typeof block !== "object") continue;
@@ -849,17 +858,18 @@ function renderBlocks(parent, blocks, images, review, g, sourceTarget = null) {
 }
 function renderContent(parent, article, g) {
   const presentation = articlePresentation(article),
-    images = imageMap(article);
+    images = imageMap(article),
+    imagesByID = indexRenderableImages(images);
   if (presentation.documentBlocks.length)
     renderBlocks(
       parent,
       presentation.documentBlocks,
-      images,
+      imagesByID,
       article.source_review,
       g,
     );
   else if (presentation.steps.length) {
-    renderBlocks(parent, presentation.introBlocks, images, null, g);
+    renderBlocks(parent, presentation.introBlocks, imagesByID, null, g);
     for (const step of presentation.steps) {
       const section = element("section", undefined, "procedure-step");
       if (Number.isInteger(step.number))
@@ -884,7 +894,7 @@ function renderContent(parent, article, g) {
         for (const part of b.parts || [])
           section.append(element("p", part.text ?? ""));
         parent.append(section);
-      } else renderBlocks(parent, [b], images, null, g);
+      } else renderBlocks(parent, [b], imagesByID, null, g);
     }
   else parent.append(element("p", "No readable content is available yet."));
 }
@@ -1091,7 +1101,7 @@ async function loadSource(value, g, blockID = null) {
     const fragment = document.createDocumentFragment();
     const sourceTarget = blockID ? { id: blockID, node: null } : null;
     if (data.document?.blocks?.length)
-      renderBlocks(fragment, data.document.blocks, data.images || [], null, g, sourceTarget);
+      renderBlocks(fragment, data.document.blocks, indexRenderableImages(data.images), null, g, sourceTarget);
     else if (data.source?.format === "json")
       fragment.append(element("pre", data.content ?? ""));
     else fragment.append(element("p", "Stored source is unavailable."));

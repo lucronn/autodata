@@ -3037,6 +3037,21 @@ test('heading and paragraph illustrations keep their order, alt text, and captio
   assert.equal(content.children[3].children[0].alt, 'Alignment mark');
 });
 
+test('figure aliases keep the first available match and independent placement text', () => {
+  const h = articleMediaHarness();
+  const content = h.content(mediaArticle([
+    { type: 'image', asset_id: 'shared', alt: 'First placement' },
+    { type: 'table', rows: [[{ blocks: [{ type: 'image', asset_id: 'shared', alt: 'Nested placement' }] }]] },
+  ], [
+    { id: 'missing', asset_id: 'shared', status: 'unavailable' },
+    { id: 'matched', image_id: 'shared', url: mediaURL('matched') },
+    { id: 'shared', url: mediaURL('later') },
+  ]));
+  const images = mediaDescendants(content, 'img');
+  assert.deepEqual(images.map(image => image.alt), ['First placement', 'Nested placement']);
+  assert.deepEqual(images.map(image => image.src), Array(2).fill('https://cars.example' + mediaURL('matched')));
+});
+
 test('empty source block text displays the unavailable reason used by article search', () => {
   const h = articleMediaHarness();
   const content = h.content(mediaArticle([{ type: 'unavailable', text: '', unavailable_reason: 'Wiring diagram pending source review' }]));
@@ -3702,10 +3717,10 @@ test('media renewal replaces failed figures within their scoped responses only',
   const article = h.render(renewalFixture());
   const frame = h.nodes.get('source-review-frame');
   const [failedArticle, healthyArticle] = mediaDescendants(article, 'img');
-  h.context.renderBlocks(frame, renewalFixture().document.blocks, [
+  h.context.renderBlocks(frame, renewalFixture().document.blocks, h.context.indexRenderableImages([
     { id: 'list', url: mediaURL('old-stored-list') },
     { id: 'callout', url: mediaURL('old-stored-callout') },
-  ], null, h.g);
+  ]), null, h.g);
   const [healthySource, failedSource] = mediaDescendants(frame, 'img');
   h.context.sourceURL = 'https://cars.example' + mediaSourceURL;
   const renewal = Promise.all([h.context.renewMedia(h.g, failedArticle), h.context.renewMedia(h.g, failedSource)]);
@@ -3734,7 +3749,7 @@ for (const changed of [false, true]) {
     h.render(renewalFixture());
     const frame = h.nodes.get('source-review-frame');
     h.context.renderBlocks(frame, [{ type: 'callout', text: 'Stored', images: [{ asset_id: 'stored' }] }],
-      [{ id: 'stored', url: mediaURL('old-stored') }], null, h.g);
+      h.context.indexRenderableImages([{ id: 'stored', url: mediaURL('old-stored') }]), null, h.g);
     frame.hidden = false; h.context.sourceURL = 'https://cars.example' + mediaSourceURL;
     const image = mediaDescendants(frame, 'img')[0];
     assert.ok(image, 'stored-source callout must contain a retained figure');

@@ -127,7 +127,7 @@ func (s *Server) servePaidCatalogSource(w http.ResponseWriter, r *http.Request, 
 		}
 		now := time.Now()
 		ref := paidCatalogProjectionReference(p, configuration, identity, view, selected, "source", now)
-		s.rewritePaidCatalogImages(stored.Images, stored, ref, now)
+		s.rewritePaidCatalogImages(stored.Images, paidCatalogAssetURLs(stored.Images), ref, now)
 	} else {
 		for i := range stored.Images {
 			stored.Images[i].URL = ""

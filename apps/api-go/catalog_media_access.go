@@ -104,23 +104,45 @@ func paidCatalogProjectionReference(p Principal, configuration CatalogConfigurat
 	}
 	return ref
 }
-func (s *Server) rewritePaidCatalogImages(images []CatalogImage, source CatalogSourceContent, ref paidCatalogImageReference, now time.Time) {
+
+type paidCatalogAssetKey struct {
+	assetID, objectKey string
+}
+
+// Build the membership index once for this response. Its signed URLs can be
+// reused by identical placements because the account and revision anchors agree.
+func paidCatalogAssetURLs(source []CatalogImage) map[paidCatalogAssetKey]string {
+	urls := make(map[paidCatalogAssetKey]string, len(source))
+	for _, image := range source {
+		if image.Status != "unavailable" {
+			urls[paidCatalogAssetKey{paidCatalogImageAssetID(image), image.StorageKey}] = ""
+		}
+	}
+	return urls
+}
+
+func (s *Server) rewritePaidCatalogImages(images []CatalogImage, urls map[paidCatalogAssetKey]string, ref paidCatalogImageReference, now time.Time) {
 	for i := range images {
 		image := &images[i]
 		image.URL = ""
 		image.ID = publicCatalogAssetID(image.ID)
 		image.ImageID = publicCatalogAssetID(image.ImageID)
 		image.AssetID = publicCatalogAssetID(image.AssetID)
-		asset := paidCatalogImageAssetID(*image)
-		if image.Status == "unavailable" || !paidCatalogHasAsset(source.Images, asset, image.StorageKey) {
+		key := paidCatalogAssetKey{paidCatalogImageAssetID(*image), image.StorageKey}
+		url, permitted := urls[key]
+		if image.Status == "unavailable" || !permitted {
 			continue
 		}
-		ref.AssetID, ref.ObjectKey = asset, image.StorageKey
-		token, err := sealPaidCatalogImageReference(ref, s.catalogImageKey, now)
-		if err != nil {
-			continue
+		if url == "" {
+			ref.AssetID, ref.ObjectKey = key.assetID, key.objectKey
+			token, err := sealPaidCatalogImageReference(ref, s.catalogImageKey, now)
+			if err != nil {
+				continue
+			}
+			url = "/v1/catalog/images/" + token
+			urls[key] = url
 		}
-		image.URL = "/v1/catalog/images/" + token
+		image.URL = url
 	}
 }
 
@@ -216,13 +238,13 @@ func (s *Server) rewritePaidCatalogArticleImages(ctx context.Context, p Principa
 	if err != nil {
 		return err
 	}
-	source := CatalogSourceContent{Images: sourceImages}
+	urls := paidCatalogAssetURLs(sourceImages)
 	now := time.Now()
 	ref := paidCatalogProjectionReference(p, configuration, identity, *view, selected, "article", now)
-	s.rewritePaidCatalogImages(view.Article.Images, source, ref, now)
+	s.rewritePaidCatalogImages(view.Article.Images, urls, ref, now)
 	for i := range view.Article.Steps {
 		if view.Article.Steps[i].Images != nil {
-			s.rewritePaidCatalogImages(*view.Article.Steps[i].Images, source, ref, now)
+			s.rewritePaidCatalogImages(*view.Article.Steps[i].Images, urls, ref, now)
 		}
 	}
 	return nil
