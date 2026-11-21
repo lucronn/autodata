@@ -33,7 +33,8 @@ _PROSE_PROMPT_V18 = "full-prose-auto-prompt-v18"
 _PROSE_PROMPT_V19 = "full-prose-auto-prompt-v19"
 _PROSE_PROMPT_V20 = "full-prose-auto-prompt-v20"
 _PROSE_PROMPT_V21 = "full-prose-auto-prompt-v21"
-_PROSE_PROMPT_VERSION = "full-prose-auto-prompt-v22"
+_PROSE_PROMPT_V22 = "full-prose-auto-prompt-v22"
+_PROSE_PROMPT_VERSION = "full-prose-auto-prompt-v23"
 _WORDS = re.compile(r"\w+")
 _INLINE_WARNING = re.compile(
     r"(?:^|[.!?]\s+|\n)[ \t]*(?:warnings?|caution|danger|notice|important)\s*[:!–—-]"
@@ -776,10 +777,10 @@ def _build_auto_prompt_v21(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def build_auto_prompt(document, *, context):
+def _auto_prompt_payload_v22(document, *, context):
     payload = _auto_prompt_payload_v21(document, context=context)
     if payload["slots"]:
-        payload["prompt_version"] = _PROSE_PROMPT_VERSION
+        payload["prompt_version"] = _PROSE_PROMPT_V22
         for slot in payload["slots"]:
             if slot["required_action"] == "rewrite" and _RESISTANCE_VALUE.search(slot["text"]):
                 slot["required_action"] = "retain"
@@ -787,13 +788,30 @@ def build_auto_prompt(document, *, context):
             "Keep the complete wording of resistance specifications marked retain, including "
             "the original unit prefix, range or limit, and winding, circuit or component."
         )
+    return payload
+
+
+def _build_auto_prompt_v22(document, *, context):
+    payload = _auto_prompt_payload_v22(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def build_auto_prompt(document, *, context):
+    payload = _auto_prompt_payload_v22(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_VERSION
+        payload["rules"].append(
+            "Keep every action and its own component in an ordered instruction. If the same "
+            "verb applies to two different components, both actions must remain in the rewrite."
+        )
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
 def _auto_prompt_version(document, *, context, prompt_hash):
     """Identify the rules bound to the saved model attempt."""
     for builder in (
-        build_auto_prompt, _build_auto_prompt_v21, _build_auto_prompt_v20, _build_auto_prompt_v19,
+        build_auto_prompt, _build_auto_prompt_v22, _build_auto_prompt_v21, _build_auto_prompt_v20,
+        _build_auto_prompt_v19,
         _build_auto_prompt_v18, _build_auto_prompt_v17, _build_auto_prompt_v16, _build_auto_prompt_v15,
         _build_auto_prompt_v14, _build_auto_prompt_v13,
         _build_auto_prompt_v12, _build_auto_prompt_v11,
@@ -959,7 +977,7 @@ def _clause_pair(text):
     return tuple(clauses), ordered
 
 
-def _clause_assignment_changed(original, replacement, *, preserve_order=False):
+def _clause_assignment_changed(original, replacement, *, preserve_order=False, preserve_steps=False):
     # Unrecognized, repeated, and unmatched targets are inconclusive. An
     # unordered conjunction supplies no timing constraint by itself.
     source = _clause_pair(original)
@@ -973,7 +991,9 @@ def _clause_assignment_changed(original, replacement, *, preserve_order=False):
         replacement = _COMMA_AND.sub(" and ", replacement)
     draft = _clause_pair(replacement)
     if draft is None:
-        return False
+        # A complete single directive matching one source action is evidence
+        # of omission. Unparsed compound or passive wording is inconclusive.
+        return preserve_steps and source_ordered and _simple_directive(replacement) in source_clauses
     draft_clauses, draft_ordered = draft
     if source_targets != {target for _, target in draft_clauses}:
         return False
@@ -1372,7 +1392,7 @@ def _uses_prose_guards(prompt_version, slot_count):
         _PROSE_PROMPT_V8, _PROSE_PROMPT_V9, _PROSE_PROMPT_V10, _CELL_PROSE_PROMPT_V11,
         _PROSE_PROMPT_V12, _PROSE_PROMPT_V13, _PROSE_PROMPT_V14, _PROSE_PROMPT_V15, _PROSE_PROMPT_V16,
         _PROSE_PROMPT_V17, _PROSE_PROMPT_V18, _PROSE_PROMPT_V19, _PROSE_PROMPT_V20, _PROSE_PROMPT_V21,
-        _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V22, _PROSE_PROMPT_VERSION,
     )
 
 
@@ -1380,7 +1400,7 @@ def _include_cell_blocks(prompt_version):
     return prompt_version in (
         None, _CELL_PROSE_PROMPT_V11, _PROSE_PROMPT_V12, _PROSE_PROMPT_V13,
         _PROSE_PROMPT_V14, _PROSE_PROMPT_V15, _PROSE_PROMPT_V16, _PROSE_PROMPT_V17, _PROSE_PROMPT_V18,
-        _PROSE_PROMPT_V19, _PROSE_PROMPT_V20, _PROSE_PROMPT_V21, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V19, _PROSE_PROMPT_V20, _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_VERSION,
     )
 
 
@@ -1398,31 +1418,35 @@ def _require_changes(source, candidate, *, prompt_version):
     guard_simultaneous = guard_scope and prompt_version in (
         None, _PROSE_PROMPT_V12, _PROSE_PROMPT_V13, _PROSE_PROMPT_V14, _PROSE_PROMPT_V15,
         _PROSE_PROMPT_V16, _PROSE_PROMPT_V17, _PROSE_PROMPT_V18, _PROSE_PROMPT_V19, _PROSE_PROMPT_V20,
-        _PROSE_PROMPT_V21, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_VERSION,
     )
     guard_identified_inspection = guard_simultaneous and prompt_version != _PROSE_PROMPT_V12
     guard_compound_inspection = guard_identified_inspection and prompt_version != _PROSE_PROMPT_V13
     guard_bound_alternatives = guard_scope and prompt_version in (
         None, _PROSE_PROMPT_V15, _PROSE_PROMPT_V16, _PROSE_PROMPT_V17, _PROSE_PROMPT_V18,
-        _PROSE_PROMPT_V19, _PROSE_PROMPT_V20, _PROSE_PROMPT_V21, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V19, _PROSE_PROMPT_V20, _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_VERSION,
     )
     guard_bound_order = guard_clauses and prompt_version in (
         None, _PROSE_PROMPT_V16, _PROSE_PROMPT_V17, _PROSE_PROMPT_V18, _PROSE_PROMPT_V19,
-        _PROSE_PROMPT_V20, _PROSE_PROMPT_V21, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V20, _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_VERSION,
     )
+    guard_bound_steps = prompt_version in (None, _PROSE_PROMPT_VERSION)
     guard_torque_aliases = prompt_version in (
         None, _PROSE_PROMPT_V17, _PROSE_PROMPT_V18, _PROSE_PROMPT_V19, _PROSE_PROMPT_V20,
-        _PROSE_PROMPT_V21, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_VERSION,
     )
     guard_duration_values = prompt_version in (
-        None, _PROSE_PROMPT_V18, _PROSE_PROMPT_V19, _PROSE_PROMPT_V20, _PROSE_PROMPT_V21, _PROSE_PROMPT_VERSION,
+        None, _PROSE_PROMPT_V18, _PROSE_PROMPT_V19, _PROSE_PROMPT_V20, _PROSE_PROMPT_V21,
+        _PROSE_PROMPT_V22, _PROSE_PROMPT_VERSION,
     )
     guard_electrical_values = prompt_version in (
-        None, _PROSE_PROMPT_V19, _PROSE_PROMPT_V20, _PROSE_PROMPT_V21, _PROSE_PROMPT_VERSION,
+        None, _PROSE_PROMPT_V19, _PROSE_PROMPT_V20, _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_VERSION,
     )
-    guard_pressure_values = prompt_version in (None, _PROSE_PROMPT_V20, _PROSE_PROMPT_V21, _PROSE_PROMPT_VERSION)
-    guard_temperature_values = prompt_version in (None, _PROSE_PROMPT_V21, _PROSE_PROMPT_VERSION)
-    guard_resistance_values = prompt_version in (None, _PROSE_PROMPT_VERSION)
+    guard_pressure_values = prompt_version in (
+        None, _PROSE_PROMPT_V20, _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_VERSION,
+    )
+    guard_temperature_values = prompt_version in (None, _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_VERSION)
+    guard_resistance_values = prompt_version in (None, _PROSE_PROMPT_V22, _PROSE_PROMPT_VERSION)
     introduction = candidate["blocks"][0].get("text", "")
     if guard_prose and (
         _INLINE_WARNING.search(introduction)
@@ -1492,7 +1516,9 @@ def _require_changes(source, candidate, *, prompt_version):
             original_actions = _execution_order(original)
             if original_actions and original_actions != _execution_order(replacement):
                 raise ValueError("REWRITE_ACTION_MUTATION")
-        if guard_clauses and _clause_assignment_changed(original, replacement, preserve_order=guard_bound_order):
+        if guard_clauses and _clause_assignment_changed(
+            original, replacement, preserve_order=guard_bound_order, preserve_steps=guard_bound_steps,
+        ):
             raise ValueError("REWRITE_CLAUSE_MUTATION")
         if guard_scope and not bound_alternatives and _alternative_changed(original, replacement):
             raise ValueError("REWRITE_CLAUSE_MUTATION")
@@ -1555,7 +1581,8 @@ def validate_auto(source, candidate, *, response=None, prompt_version=None):
             _PROSE_PROMPT_V19: "full-prose-auto-validator-v17",
             _PROSE_PROMPT_V20: "full-prose-auto-validator-v18",
             _PROSE_PROMPT_V21: "full-prose-auto-validator-v19",
-        }.get(prompt_version, "full-prose-auto-validator-v20")
+            _PROSE_PROMPT_V22: "full-prose-auto-validator-v20",
+        }.get(prompt_version, "full-prose-auto-validator-v21")
     report.update(validator_version=validator_version, profile_version=PROFILE,
         publication_mode="automatic", content_acceptance_required=False,
         complete_rewrite=False, passed=not errors, error_codes=errors)
