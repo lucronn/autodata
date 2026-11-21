@@ -268,6 +268,9 @@ func (s *Server) listCatalogArticles(response http.ResponseWriter, request *http
 
 func (s *Server) getCatalogArticle(response http.ResponseWriter, request *http.Request, principal Principal) {
 	response.Header().Set("Cache-Control", "private, no-store")
+	if s.respondCatalogPublicationStatus(response, request) {
+		return
+	}
 	vehicleID, articleID := request.PathValue("vehicle_id"), request.PathValue("article_id")
 	view, err := s.catalog.ArticleView(request.Context(), principal, vehicleID, articleID)
 	if err != nil {
@@ -389,6 +392,9 @@ func (s *Server) respondCatalogArticleView(response http.ResponseWriter, request
 		(article.Processing == nil || article.Processing.State == "completed" && article.Processing.RetryAfterSeconds == nil) &&
 		catalogReadPreferenceRequested(request, finishPublishedBodyPreference) {
 		response.Header().Set("Preference-Applied", finishPublishedBodyPreference)
+	}
+	if configuration != nil && status == http.StatusOK && s.canCheckCatalogPublication(article) {
+		response.Header().Set(publicationCheckHeader, "supported")
 	}
 	article.SourceReview = sourceReviewForArticle(article, vehicleID, article.ID)
 	writeJSON(response, status, CatalogArticleResponse{Version: "v1", Article: article, Configuration: configuration})
