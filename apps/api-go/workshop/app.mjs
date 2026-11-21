@@ -1479,17 +1479,6 @@ async function checkOrder(g, id, { earlyCheckoutCheck = false } = {}) {
   currentOrder = id;
   $("check-order").hidden = false;
   status("Checking payment status…", { busy: true });
-  const selectOrderVehicle = (order) => {
-    if (vehicle?.id !== order.configuration_id || vehicle?.region !== order.region) {
-      clearProtected();
-      vehicle = { id: order.configuration_id, region: order.region };
-      quote = null;
-    }
-    if (typeof order.configuration_label === "string" && order.configuration_label.trim()) {
-      const orderLabel = `${order.configuration_label} / ${order.region}`;
-      if (vehicle.orderLabel !== orderLabel) vehicle = { ...vehicle, orderLabel };
-    }
-  };
   const rememberUnconfirmed = (order) => {
     const unresolved = ["creating", "open", "processing", "reconciliation_required"];
     if (unresolved.includes(order.state)) {
@@ -1545,38 +1534,8 @@ async function checkOrder(g, id, { earlyCheckoutCheck = false } = {}) {
     $("check-order").hidden = true;
     clearOrderRoute(id);
   }
-  if (result.state === "paid") {
-    paidOrder = { id, configuration_id: result.configuration_id, region: result.region };
-    selectOrderVehicle(result);
-    try {
-      await selectVehicle(g, "", { quoteMode: "skip" });
-    } catch (error) {
-      if (!g.current()) return;
-      if (error.code === "ENTITLEMENT_REVOKED") {
-        currentOrder = "";
-        paidOrder = null;
-        $("check-order").hidden = true;
-        clearOrderRoute(id);
-        throw error;
-      }
-      if (error.status === 401) throw error;
-      clearProtected();
-      access = "pending";
-      renderPurchase();
-      show("welcome");
-      status(error.code === "ENTITLEMENT_REQUIRED"
-        ? "Payment received. Access is not ready. Check payment status again; do not pay again."
-        : "Payment received, but articles are unavailable. Check payment status again or contact support; do not pay again.", {
-        error: true,
-      });
-      return;
-    }
-    if (!g.current()) return;
-    currentOrder = "";
-    paidOrder = null;
-    $("check-order").hidden = true;
-    clearOrderRoute(id, true);
-  } else if (["expired", "canceled"].includes(result.state)) {
+  if (result.state === "paid") return openPaidOrder(g, result);
+  if (["expired", "canceled"].includes(result.state)) {
     checkout.clear();
     const readyToBuy =
       access === "missing" &&
@@ -1599,6 +1558,53 @@ async function checkOrder(g, id, { earlyCheckoutCheck = false } = {}) {
       "Payment confirmation is still pending. Check payment status manually.",
       { retry: () => operation((g) => checkOrder(g, id)) },
     );
+}
+function selectOrderVehicle(order) {
+  if (vehicle?.id !== order.configuration_id || vehicle?.region !== order.region) {
+    clearProtected();
+    vehicle = { id: order.configuration_id, region: order.region };
+    quote = null;
+  }
+  if (typeof order.configuration_label === "string" && order.configuration_label.trim()) {
+    const orderLabel = `${order.configuration_label} / ${order.region}`;
+    if (vehicle.orderLabel !== orderLabel) vehicle = { ...vehicle, orderLabel };
+  }
+}
+async function openPaidOrder(g, order) {
+  const id = order.order_id;
+  currentOrder = id;
+  paidOrder = { id, configuration_id: order.configuration_id, region: order.region };
+  unconfirmedOrder = null;
+  $("check-order").hidden = false;
+  selectOrderVehicle(order);
+  try {
+    await selectVehicle(g, "", { quoteMode: "skip" });
+  } catch (error) {
+    if (!g.current()) return;
+    if (error.code === "ENTITLEMENT_REVOKED") {
+      currentOrder = "";
+      paidOrder = null;
+      $("check-order").hidden = true;
+      clearOrderRoute(id);
+      throw error;
+    }
+    if (error.status === 401) throw error;
+    clearProtected();
+    access = "pending";
+    renderPurchase();
+    show("welcome");
+    status(error.code === "ENTITLEMENT_REQUIRED"
+      ? "Payment received. Access is not ready. Check payment status again; do not pay again."
+      : "Payment received, but articles are unavailable. Check payment status again or contact support; do not pay again.", {
+      error: true,
+    });
+    return;
+  }
+  if (!g.current()) return;
+  currentOrder = "";
+  paidOrder = null;
+  $("check-order").hidden = true;
+  clearOrderRoute(id, true);
 }
 async function purchase() {
   if (openDemo) return;
@@ -1636,8 +1642,10 @@ async function purchase() {
       });
       if (!g.current()) return;
       if (result.state === "checkout") location.assign(result.checkout_url);
-      else if (result.state === "owned") await loadArticles(g);
-      else {
+      else if (result.state === "owned") {
+        rememberOrderRoute(result.order_id);
+        await openPaidOrder(g, result);
+      } else {
         unconfirmedOrder = {
           id: result.order_id,
           configuration_id: result.configuration_id,

@@ -2331,6 +2331,155 @@ test('confirmed article access replaces the resumed order route with its vehicle
   assert.equal(h.context.access, 'owned');
 });
 
+const ownedCheckout = { version: 'v1', ...scope, order_id: orderID, library_item_id: orderID, state: 'owned' };
+const checkoutPaidOrder = { version: 'v1', ...scope, order_id: orderID, state: 'paid', retry_disposition: 'do_not_repay' };
+const checkoutReadyIndex = { items: [{ id: routeArticle, title: 'Purchased article' }], complete: true, hydrating: false };
+const checkoutPost = ['POST', '/v1/workshop/checkout-sessions'];
+const checkoutOrderGet = ['GET', `/v1/workshop/orders/${orderID}`];
+const checkoutIndexGet = ['GET', `/v1/catalog/vehicles/${scope.configuration_id}/articles?region=${scope.region}`];
+
+async function ownedCheckoutHarness(indexResponses, { checkoutResponse = ownedCheckout, orderResponses = [] } = {}) {
+  const { createCheckout } = await import('./workshop/commerce.mjs');
+  const h = paidPurchaseLifecycleHarness([], { realArticleIndex: true, articleReadResponses: indexResponses });
+  const requests = [];
+  const storage = new Map();
+  Object.assign(h.context, { indexLoaded: false, indexComplete: false, indexHydrating: false, indexFailed: false });
+  h.$('check-order').hidden = true;
+  h.context.checkout = createCheckout({
+    storage: {
+      getItem: key => storage.get(key),
+      setItem: (key, value) => storage.set(key, value),
+      removeItem: key => storage.delete(key),
+    },
+    uuid: () => 'bc32b7a1-1111-4111-8111-111111111111',
+    request: async (path, options) => {
+      requests.push([options.method, path]);
+      assert.deepEqual(options.body, { ...scope, terms_version: 'workshop-v1' });
+      return checkoutResponse;
+    },
+  });
+  const requestJSON = h.context.requestJSON;
+  h.context.requestJSON = async (path, options) => {
+    requests.push(['GET', path]);
+    return requestJSON(path, options);
+  };
+  h.context.pollOrder = (id, options) => pollOrder(id, {
+    ...options,
+    request: async path => {
+      requests.push(['GET', path]);
+      const next = orderResponses.shift();
+      assert.ok(next, 'unexpected order status read');
+      if (next instanceof Error) throw next;
+      return next;
+    },
+  });
+  return { ...h, requests };
+}
+
+test('a checkout returning owned opens the exact index directly', async () => {
+  const h = await ownedCheckoutHarness([checkoutReadyIndex]);
+  await h.context.purchase();
+  assert.deepEqual(h.requests, [checkoutPost, checkoutIndexGet]);
+  assert.equal(h.context.access, 'owned');
+  assert.equal(h.$('articles').children.length, 1);
+  assert.equal(h.$('check-order').hidden, true);
+  assert.equal(h.context.paidOrder, null);
+  assert.equal(h.location.search, `?configuration=${scope.configuration_id}&region=${scope.region}`);
+});
+
+test('an owned checkout keeps the confirmed payment on scoped index failures and can recheck', async () => {
+  for (const [status, code] of [[503, 'CATALOG_UNAVAILABLE'], [403, 'ENTITLEMENT_REQUIRED']]) {
+    const error = Object.assign(new Error('Index unavailable'), { status, code });
+    const h = await ownedCheckoutHarness([error, checkoutReadyIndex], { orderResponses: [checkoutPaidOrder] });
+    await h.context.purchase();
+    assert.deepEqual(h.requests, [checkoutPost, checkoutIndexGet]);
+    assert.equal(h.context.access, 'pending');
+    assert.equal(h.context.paidOrder?.id, orderID);
+    assert.equal(new URLSearchParams(h.location.search).get('order'), orderID);
+    assert.equal(h.$('purchase-action').disabled, true);
+    assert.equal(h.$('check-order').hidden, false);
+    assert.match(h.statuses.at(-1).message, /Payment received.*do not pay again/);
+    assert.equal(h.statuses.at(-1).options.retry, undefined);
+    await h.context.purchase();
+    await h.context.operation(g => h.context.checkOrder(g, orderID));
+    assert.deepEqual(h.requests, [checkoutPost, checkoutIndexGet, checkoutOrderGet, checkoutIndexGet]);
+    assert.equal(h.context.access, 'owned');
+    assert.equal(h.$('check-order').hidden, true);
+    assert.equal(h.location.search, `?configuration=${scope.configuration_id}&region=${scope.region}`);
+  }
+});
+
+test('the owned checkout handoff keeps an owner-only recovery route for signing in again', async () => {
+  const unauthorized = Object.assign(new Error('Sign in again'), { status: 401 });
+  const h = await ownedCheckoutHarness([unauthorized, checkoutReadyIndex], { orderResponses: [checkoutPaidOrder] });
+  await h.context.purchase();
+  assert.equal(h.context.session.state.authenticated, false);
+  assert.equal(new URLSearchParams(h.location.search).get('order'), orderID);
+  assert.match(h.$('purchase-action').textContent, /Sign in/);
+  h.context.session.state.authenticated = true;
+  h.context.session.state.ready = true;
+  await h.context.restoreRoute();
+  assert.deepEqual(h.requests, [checkoutPost, checkoutIndexGet, checkoutOrderGet, checkoutIndexGet]);
+  assert.equal(h.context.access, 'owned');
+  assert.equal(new URLSearchParams(h.location.search).has('order'), false);
+});
+
+test('the owned checkout stays confirmed on a missing status read and honors terminal revocation', async () => {
+  const unavailable = Object.assign(new Error('Index unavailable'), { status: 503 });
+  const missing = Object.assign(new Error('Order not found'), { status: 404 });
+  const revoked = { ...checkoutPaidOrder, state: 'revoked' };
+  const h = await ownedCheckoutHarness([unavailable], { orderResponses: [missing, revoked] });
+  await h.context.purchase();
+  await h.context.operation(g => h.context.checkOrder(g, orderID));
+  assert.equal(h.context.access, 'pending');
+  assert.equal(h.context.paidOrder?.id, orderID);
+  assert.equal(new URLSearchParams(h.location.search).get('order'), orderID);
+  assert.match(h.statuses.at(-1).message, /Payment was received.*do not pay again/);
+  await h.context.operation(g => h.context.checkOrder(g, orderID));
+  assert.deepEqual(h.requests, [checkoutPost, checkoutIndexGet, checkoutOrderGet, checkoutOrderGet]);
+  assert.equal(h.context.access, 'revoked');
+  assert.equal(h.context.paidOrder, null);
+  assert.equal(h.$('check-order').hidden, true);
+  assert.equal(new URLSearchParams(h.location.search).has('order'), false);
+});
+
+test('malformed or differently scoped owned checkout replies cannot establish a paid handoff', async () => {
+  for (const response of [{ ...ownedCheckout, library_item_id: undefined }, { ...ownedCheckout, region: 'CA' }]) {
+    const h = await ownedCheckoutHarness([], { checkoutResponse: response });
+    await h.context.purchase();
+    assert.deepEqual(h.requests, [checkoutPost]);
+    assert.equal(h.context.paidOrder, null);
+    assert.equal(h.$('check-order').hidden, true);
+    assert.equal(new URLSearchParams(h.location.search).has('order'), false);
+    assert.match(h.statuses.at(-1).message, /Payment status|Purchase status/);
+  }
+});
+
+test('a superseded owned checkout or article-index read cannot restore the previous payment route', async () => {
+  for (const phase of ['checkout', 'index']) {
+    const delayed = deferredAuthOperation();
+    const h = await ownedCheckoutHarness(
+      [phase === 'index' ? delayed.promise : checkoutReadyIndex],
+      { checkoutResponse: phase === 'checkout' ? delayed.promise : ownedCheckout },
+    );
+    const payment = h.context.purchase();
+    await new Promise(setImmediate);
+    assert.deepEqual(h.requests, phase === 'checkout' ? [checkoutPost] : [checkoutPost, checkoutIndexGet]);
+    h.context.invalidate();
+    h.context.vehicle = { id: previousConfiguration, region: 'CA' };
+    h.context.quote = null;
+    h.context.updateURL();
+    const selectedRoute = `?configuration=${previousConfiguration}&region=CA`;
+    delayed.resolve(phase === 'checkout' ? ownedCheckout : checkoutReadyIndex);
+    await payment;
+    assert.equal(h.location.search, selectedRoute);
+    assert.equal(h.context.paidOrder, null);
+    assert.equal(h.$('check-order').hidden, true);
+    assert.equal(h.$('articles').children.length, 0);
+    assert.deepEqual(h.requests, phase === 'checkout' ? [checkoutPost] : [checkoutPost, checkoutIndexGet]);
+  }
+});
+
 test('paid article authentication failure retains order route for sign-in recovery', async () => {
   const unauthorized = Object.assign(new Error('Sign in again'), { status: 401 });
   const h = paidPurchaseLifecycleHarness([unauthorized, null]);
