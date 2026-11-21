@@ -777,7 +777,7 @@
             "$ref": "#/components/responses/Conflict"
           }
         },
-        "description": "Read the currently permitted immutable source or canonical projection after current session, exact configuration grant and canonical article membership checks. Firebase GET never schedules work: a cold descriptor without readable content or durable processing returns503 CATALOG_SOURCE_UNAVAILABLE. POST prepare explicitly starts or joins durable processing. Readable source returns200 while rewriting; complete means validated canonical publication. Explicit local fixtures retain legacy lazy GET preparation."
+        "description": "Read the currently permitted immutable source or canonical projection after current session, exact configuration grant and canonical article membership checks. Successful paid responses include the validated configuration. Firebase GET never schedules work: a cold descriptor without readable content or durable processing returns503 CATALOG_SOURCE_UNAVAILABLE. POST prepare explicitly starts or joins durable processing. Readable source returns200 while rewriting; complete means validated canonical publication. Explicit local fixtures retain legacy lazy GET preparation."
       }
     },
     "/v1/catalog/vehicles/{vehicle_id}/articles/{article_id}/source": {

@@ -352,9 +352,7 @@ func (s *Server) respondCatalogArticleView(response http.ResponseWriter, request
 				s.writePaidCatalogError(response, request, err)
 				return
 			}
-			if request.Method == http.MethodPost {
-				configuration = &scope.configuration
-			}
+			configuration = &scope.configuration
 		}
 		article = view.Article
 	} else {

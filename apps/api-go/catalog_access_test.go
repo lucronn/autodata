@@ -208,6 +208,9 @@ func TestOpenDemoReadsExactCatalogWithoutLoginOrGrant(t *testing.T) {
 		if path == root+"/"+id+"?demo=1" && (!strings.Contains(w.Body.String(), "private body") || strings.Contains(w.Body.String(), "provider.example")) {
 			t.Fatal("article body missing or provider URL leaked")
 		}
+		if path == root+"/"+id+"?demo=1" && strings.Contains(w.Body.String(), `"configuration":`) {
+			t.Fatal("open demo article returned paid configuration metadata")
+		}
 	}
 	search := request(root+"?demo=1&q=private", "localhost:3013")
 	if search.Code != 200 || !strings.Contains(search.Body.String(), id) || strings.Contains(search.Body.String(), unavailableID) || strings.Contains(search.Body.String(), "private body") {
@@ -445,11 +448,12 @@ func TestPaidCatalogPrepareBodyOriginAndNoAcknowledgement(t *testing.T) {
 	token, _, _ := newCustomerSessionToken()
 	service := &customerAuthService{config: customerAuthConfig{Mode: "firebase", Origin: "https://cars.example"}, store: &customerSessionFixture{session: customerSession{AccountID: "11111111-1111-4111-8111-111111111111", OrganizationID: "22222222-2222-4222-8222-222222222222", ProjectID: "fixture-project", UID: "user", AuthTime: now.Unix(), ExpiresAt: now.Add(time.Hour)}}, verifier: &customerVerifierFixture{}}
 	s.customerAuth, s.auth = service, service
+	path := "/v1/catalog/vehicles/" + paidTestConfiguration + "/articles/" + id
 	for _, tc := range []struct {
 		body, origin string
 		want         int
 	}{{"{}", "https://foreign.example", 403}, {"null", "https://cars.example", 400}, {"[]", "https://cars.example", 400}, {"{\"source_uri\":\"https://private.example\"}", "https://cars.example", 400}, {"{} {}", "https://cars.example", 400}, {strings.Repeat(" ", 2049), "https://cars.example", 413}, {"{}", "https://cars.example", 503}} {
-		r := httptest.NewRequest("POST", "/v1/catalog/vehicles/"+paidTestConfiguration+"/articles/"+id+"/prepare", strings.NewReader(tc.body))
+		r := httptest.NewRequest("POST", path+"/prepare", strings.NewReader(tc.body))
 		r.AddCookie(customerSessionCookie(token, now.Add(time.Hour), now))
 		r.Header.Set("Origin", tc.origin)
 		r.Header.Set("X-CSRF-Token", customerCSRF(token))
@@ -460,6 +464,9 @@ func TestPaidCatalogPrepareBodyOriginAndNoAcknowledgement(t *testing.T) {
 			t.Fatal(tc.body, w.Code, w.Body.String())
 		}
 	}
+	ensure := &fakeIngestionClient{status: http.StatusAccepted}
+	s.ingestionClient = ensure
+	want := CatalogConfiguration{ID: paidTestConfiguration, VehicleID: paidTestVehicle, Region: "CA", Year: 2024, Make: "Acme", Model: "Roadster", Complete: true}
 	for _, tc := range []struct {
 		method, availability string
 		want                 int
@@ -467,15 +474,17 @@ func TestPaidCatalogPrepareBodyOriginAndNoAcknowledgement(t *testing.T) {
 		{http.MethodPost, "available", http.StatusOK},
 		{http.MethodPost, "pending", http.StatusAccepted},
 		{http.MethodGet, "available", http.StatusOK},
+		{http.MethodGet, "pending", http.StatusAccepted},
 	} {
-		c.view.CanSchedule = false
+		// A GET with a schedulable view must still be strictly observational.
+		c.view.CanSchedule = tc.method == http.MethodGet
 		c.view.Article.Availability = tc.availability
 		c.view.Article.Processing = &CatalogProcessing{JobID: "fixture", State: "queued"}
-		path := "/v1/catalog/vehicles/" + paidTestConfiguration + "/articles/" + id
+		target := path
 		if tc.method == http.MethodPost {
-			path += "/prepare"
+			target += "/prepare"
 		}
-		r := httptest.NewRequest(tc.method, path+"?region=CA", strings.NewReader("{}"))
+		r := httptest.NewRequest(tc.method, target+"?region=CA", strings.NewReader("{}"))
 		r.AddCookie(customerSessionCookie(token, now.Add(time.Hour), now))
 		r.Header.Set("Origin", "https://cars.example")
 		r.Header.Set("X-CSRF-Token", customerCSRF(token))
@@ -486,13 +495,34 @@ func TestPaidCatalogPrepareBodyOriginAndNoAcknowledgement(t *testing.T) {
 		if w.Code != tc.want || json.Unmarshal(w.Body.Bytes(), &response) != nil {
 			t.Fatalf("%s %s status=%d body=%s", tc.method, tc.availability, w.Code, w.Body.String())
 		}
-		if tc.method == http.MethodPost {
-			if response.Configuration == nil || response.Configuration.ID != paidTestConfiguration || response.Configuration.Region != "CA" {
-				t.Fatal("prepare omitted the authorized configuration", response.Configuration)
-			}
-		} else if response.Configuration != nil {
-			t.Fatal("ordinary reads unexpectedly returned configuration data")
+		if response.Configuration == nil || *response.Configuration != want {
+			t.Fatalf("%s returned configuration %#v, want %#v", tc.method, response.Configuration, want)
 		}
+	}
+	for _, tc := range []struct {
+		path  string
+		owner bool
+		grant error
+		want  int
+	}{
+		{path, false, nil, http.StatusUnauthorized},
+		{path + "?region=US", true, nil, http.StatusNotFound},
+		{path, true, ErrVehicleGrantRevoked, http.StatusForbidden},
+		{strings.Replace(path, paidTestConfiguration, paidTestVehicle, 1), true, nil, http.StatusNotFound},
+	} {
+		g.err = tc.grant
+		r := httptest.NewRequest(http.MethodGet, tc.path, nil)
+		if tc.owner {
+			r.AddCookie(customerSessionCookie(token, now.Add(time.Hour), now))
+		}
+		w := httptest.NewRecorder()
+		s.Handler().ServeHTTP(w, r)
+		if w.Code != tc.want || strings.Contains(w.Body.String(), `"configuration":`) || strings.Contains(w.Body.String(), "Roadster") {
+			t.Fatalf("denied detail status=%d want=%d body=%s", w.Code, tc.want, w.Body.String())
+		}
+	}
+	if ensure.path != "" {
+		t.Fatal("observational detail GET scheduled work")
 	}
 }
 func TestPaidCatalogProductionDependenciesFailClosed(t *testing.T) {
