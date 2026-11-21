@@ -1098,7 +1098,7 @@ function loginRouteHarness(search, { authenticate = true, signInError = null, lo
   const context = {
     URLSearchParams, uuid, validScope, configurationLabel,
     Option: function(text, value) { return { text, value }; },
-    location: { search }, signingIn: false,
+    location: { search }, signingIn: false, sessionRequest: null,
     vehicle: { id: previousConfiguration, region: 'US' }, quote: null,
     names: ['year', 'make', 'model', 'configuration'],
     rows: { configuration: [configuration] }, $: element,
@@ -1159,6 +1159,21 @@ test('checkout return checks sooner only for the matching, unexpired checkout', 
     h.context.checkOrder = async (_g, id, { earlyCheckoutCheck }) => checks.push([id, earlyCheckoutCheck]);
     await h.context.restoreRoute();
     assert.deepEqual(checks, [[routeOrder, expected]]);
+  }
+});
+
+test('checkout return waits for the initial account check and drops a canceled navigation', async () => {
+  for (const canceled of [false, true]) {
+    const h = loginRouteHarness(`?order=${routeOrder}`);
+    const account = deferredAuthOperation();
+    h.context.sessionRequest = account.promise;
+    const loading = h.context.restoreRoute();
+    assert.deepEqual(h.calls.orders, []);
+    if (canceled) h.context.invalidate();
+    h.context.session.state.authenticated = true;
+    account.resolve();
+    await loading;
+    assert.deepEqual(h.calls.orders, canceled ? [] : [routeOrder]);
   }
 });
 
@@ -1554,7 +1569,7 @@ function paidPurchaseLifecycleHarness(selectionErrors, { realArticleIndex = fals
     searchComplete: false, searchError: false, searchTimer: null,
     sourceRevision: 0,
     clearTimeout() {},
-    sessionEstablished: true, signingIn: false,
+    sessionEstablished: true, sessionRequest: null, signingIn: false,
     session: { state: { authenticated: true, ready: true, csrf: 'test-csrf' },
       async bootstrap() {}, clear() {
         context.session.state.authenticated = false;
@@ -2895,7 +2910,7 @@ function articleMediaHarness(overrides = {}) {
   const shows = [], statuses = [];
   const context = {
     URL, uuid, articlePresentation, localImageURL, sourceReferenceURL, processingArticle, readableArticle,
-    session: { state: { mode: null } },
+    session: { state: { mode: null } }, sessionRequest: null,
     document: { body, title: '', createElement: tag => new ArticleMediaNode(tag),
       createDocumentFragment: () => new ArticleMediaNode('#fragment') },
     location: { origin: 'https://cars.example' },
@@ -3963,7 +3978,8 @@ function selectionQuoteHarness(merchant, { authenticated = true, openDemo = fals
   const navigation = new NavigationGeneration(), generation = navigation.next(), calls = [], opened = [], nodes = new Map();
   const context = {
     merchant, merchantRequest: null, openDemo, quote: null, access: "unknown", validScope, validQuote, uuid, scope: () => scope,
-    session: { state: { authenticated } }, clearProtected() {}, renderPurchase() {}, show() {}, status() {},
+    session: { state: { authenticated } }, sessionRequest: null,
+    clearProtected() {}, renderPurchase() {}, show() {}, status() {},
     $: id => { if (!nodes.has(id)) nodes.set(id, {}); return nodes.get(id); },
     requestJSON: async (path, options) => { calls.push({ path, options }); return request(path, options); },
     loadArticles: async (g, id) => opened.push({ g, id }),
@@ -4005,6 +4021,23 @@ test('saved exact Firebase links try the article before fetching index or quote'
     assert.equal(h.opened.length, Number(index));
     assert.equal(direct.length, Number(mode === 'firebase' && !openDemo));
     assert.equal(h.calls.length, Number(mode === 'local'));
+  }
+});
+
+test('cold selection waits for confirmed authentication and leaves superseded choices alone', async () => {
+  for (const canceled of [false, true]) {
+    const h = selectionQuoteHarness({ enabled: true }, { authenticated: false });
+    const account = deferredAuthOperation();
+    h.context.sessionRequest = account.promise;
+    const selecting = h.context.selectVehicle(h.generation);
+    assert.equal(h.calls.length, 0);
+    assert.equal(h.opened.length, 0);
+    if (canceled) h.navigation.clear();
+    h.context.session.state.authenticated = true;
+    account.resolve();
+    await selecting;
+    assert.equal(h.opened.length, canceled ? 0 : 1);
+    assert.equal(h.calls.length, canceled ? 0 : 1);
   }
 });
 
@@ -4063,7 +4096,7 @@ test('startup restores an authenticated route before purchase configuration sett
   const config = { enabled: true };
   const context = {
     URLSearchParams, location: { search: '?view=library' }, openDemo: false,
-    merchant: null, merchantRequest: null, sessionEstablished: false,
+    merchant: null, merchantRequest: null, sessionEstablished: false, sessionRequest: null,
     session: { async bootstrap() {} }, invalidate() {}, renderPurchase() {},
     requestJSON(path) {
       assert.equal(path, '/workshop/purchase-config.json');
@@ -4083,11 +4116,38 @@ test('startup restores an authenticated route before purchase configuration sett
   assert.equal(context.merchant, config);
 });
 
+test('cold startup exposes the prefetched public years during the account check', async () => {
+  const account = deferredAuthOperation();
+  const requests = [], routes = [];
+  const years = { items: [{ year: 2024 }] };
+  const context = {
+    URLSearchParams, location: { search: '' }, openDemo: false,
+    merchant: null, merchantRequest: null, sessionEstablished: false, sessionRequest: null,
+    session: { bootstrap: () => account.promise }, invalidate() {},
+    async requestJSON(path) {
+      requests.push(path);
+      return path === '/v1/catalog/years' ? years : { enabled: false };
+    },
+    async restoreRoute(initialYears) { routes.push(await initialYears); },
+  };
+  runInNewContext(appSection('async function bootstrap()', 'async function restoreRoute('), context);
+  const booted = context.bootstrap();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(routes, [years]);
+  assert.deepEqual(requests, ['/v1/catalog/years', '/workshop/purchase-config.json']);
+  assert.equal(context.sessionEstablished, false);
+  account.resolve();
+  await booted;
+  assert.deepEqual(routes, [years]);
+  assert.equal(context.sessionRequest, null);
+  assert.equal(context.sessionEstablished, true);
+});
+
 test('a late purchase configuration response cannot overwrite a newer refresh', async () => {
   const replies = [];
   const context = {
     URLSearchParams, location: { search: '?view=library' }, openDemo: false,
-    merchant: null, merchantRequest: null, sessionEstablished: false,
+    merchant: null, merchantRequest: null, sessionEstablished: false, sessionRequest: null,
     session: { async bootstrap() {} }, invalidate() {}, async restoreRoute() {},
     requestJSON(path) {
       assert.equal(path, '/workshop/purchase-config.json');

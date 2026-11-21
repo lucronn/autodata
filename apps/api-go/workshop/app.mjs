@@ -74,6 +74,7 @@ let quote = null,
   articleImageRefresh = null,
   sourceImageRefresh = null,
   viewGeneration = null,
+  sessionRequest = null,
   sessionEstablished = false,
   signingIn = false;
 const element = (tag, text, className) => {
@@ -455,6 +456,11 @@ async function selectVehicle(g, articleID = "", { quoteMode = "eager", savedLink
   $("agreement").checked = false;
   renderPurchase();
   if (!validScope(scope())) return;
+  if (sessionRequest) {
+    status("Checking your account…", { busy: true });
+    await sessionRequest;
+    if (!g.current()) return;
+  }
   const selected = scope();
   const directArticle = savedLink && !openDemo && session.state.authenticated &&
     session.state.mode === "firebase" && uuid(articleID);
@@ -1188,6 +1194,11 @@ async function renewMedia(g, failed) {
   if (!retryImage(failed, images)) showUnavailableImage(failed);
 }
 async function library(g, append = false) {
+  if (sessionRequest) {
+    status("Checking your account…", { busy: true });
+    await sessionRequest;
+    if (!g.current()) return;
+  }
   if (append && (!libraryCursor || libraryPageRequest)) return;
   if (!append) {
     clearReader();
@@ -1489,20 +1500,26 @@ async function bootstrap() {
     !params.has("order") && params.get("view") !== "library"
     ? requestJSON("/v1/catalog/years").catch(() => null)
     : null;
-  if (!openDemo) {
-    const configRequest = requestJSON("/workshop/purchase-config.json")
-      .catch(() => null)
-      .then((config) => {
-        if (merchantRequest !== configRequest) return;
-        merchant = config;
-        merchantRequest = null;
-      });
-    merchant = null;
-    merchantRequest = configRequest;
-    await session.bootstrap();
-  }
-  sessionEstablished = true;
-  await restoreRoute(years);
+  if (openDemo) return restoreRoute(years);
+  const configRequest = requestJSON("/workshop/purchase-config.json")
+    .catch(() => null)
+    .then((config) => {
+      if (merchantRequest !== configRequest) return;
+      merchant = config;
+      merchantRequest = null;
+    });
+  merchant = null;
+  merchantRequest = configRequest;
+  const accountCheck = session.bootstrap().then(() => {
+    if (sessionRequest !== accountCheck) return;
+    sessionRequest = null;
+    sessionEstablished = true;
+  });
+  sessionRequest = accountCheck;
+  // The first route can restore public selectors while the account is checked.
+  // Account actions wait for that same check and use the current navigation.
+  if (sessionEstablished) await accountCheck;
+  await Promise.all([accountCheck, restoreRoute(years)]);
 }
 async function restoreRoute(initialYears = null) {
   invalidate();
@@ -1519,6 +1536,11 @@ async function restoreRoute(initialYears = null) {
     async (g) => {
       const order = params.get("order");
       if (!openDemo && uuid(order)) {
+        if (sessionRequest) {
+          status("Checking your account…", { busy: true });
+          await sessionRequest;
+          if (!g.current()) return;
+        }
         if (session.state.authenticated) {
           const attempt = checkout.read();
           const earlyCheckoutCheck = attempt?.order_id === order &&
