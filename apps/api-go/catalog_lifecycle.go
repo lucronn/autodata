@@ -478,25 +478,29 @@ func (s *postgresCatalogStore) ArticleSourceRevision(ctx context.Context, p Prin
 	var steps []byte
 	// Requested revision must belong to this authorized identity. Any resource
 	// takedown suppresses the immutable revision, including historical review.
-	err = s.pool.QueryRow(ctx, `SELECT sr.source_revision_id::text,sr.body_source_snapshot_id::text,snap.content_sha256::text,COALESCE((SELECT observation.body_provider_revision FROM canonical_article_source_observations observation WHERE observation.source_revision_id=sr.source_revision_id AND observation.canonical_article_id=sr.canonical_article_id ORDER BY observation.request_generation DESC,observation.captured_at DESC,observation.source_observation_id DESC LIMIT 1),snap.source_version,''),sr.source_document,sr.source_images,sr.source_body,sr.source_steps FROM canonical_article_source_revisions sr JOIN source_snapshots snap ON snap.source_snapshot_id=sr.body_source_snapshot_id WHERE sr.canonical_article_id=$1::uuid AND sr.source_revision_id=$2::uuid AND `+catalogSourceRevisionEligibleSQL, *view.Article.CanonicalArticleID, revision).Scan(&sourceID, &result.SnapshotID, &result.ContentSHA256, &result.Version, &doc, &images, &body, &steps)
+	err = s.pool.QueryRow(ctx, `SELECT sr.source_revision_id::text,sr.body_source_snapshot_id::text,snap.content_sha256::text,`+catalogSourceObservationVersionSQL+`,sr.source_document,sr.source_images,sr.source_body,sr.source_steps FROM canonical_article_source_revisions sr JOIN source_snapshots snap ON snap.source_snapshot_id=sr.body_source_snapshot_id WHERE sr.canonical_article_id=$1::uuid AND sr.source_revision_id=$2::uuid AND `+catalogSourceRevisionEligibleSQL, *view.Article.CanonicalArticleID, revision).Scan(&sourceID, &result.SnapshotID, &result.ContentSHA256, &result.Version, &doc, &images, &body, &steps)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return CatalogSourceContent{}, ErrCatalogNotFound
 	}
 	if err != nil {
 		return CatalogSourceContent{}, err
 	}
-	result.Document = &CatalogDocument{}
-	if err = json.Unmarshal(doc, result.Document); err != nil {
-		return CatalogSourceContent{}, err
-	}
-	if err = json.Unmarshal(images, &result.Images); err != nil {
-		return CatalogSourceContent{}, err
-	}
-	result.Document = publicCatalogDocument(result.Document)
 	result.SourceRevisionID = &sourceID
-	article := CatalogArticle{SourceRevisionID: &sourceID, ContentOrigin: stringPointer("source"), Document: result.Document, Images: result.Images, Body: body}
-	json.Unmarshal(steps, &article.Steps)
+	return decodeCatalogSourceProjection(result, doc, images, body, steps)
+}
+
+func decodeCatalogSourceProjection(result CatalogSourceContent, doc, images []byte, body string, steps []byte) (CatalogSourceContent, error) {
+	var document CatalogDocument
+	if err := json.Unmarshal(doc, &document); err != nil {
+		return CatalogSourceContent{}, err
+	}
+	if err := json.Unmarshal(images, &result.Images); err != nil {
+		return CatalogSourceContent{}, err
+	}
+	article := CatalogArticle{SourceRevisionID: result.SourceRevisionID, ContentOrigin: stringPointer("source"), Document: &document, Images: result.Images, Body: body}
+	_ = json.Unmarshal(steps, &article.Steps)
 	article = lifecycleArticle(article)
+	result.Document = article.Document
 	result.ViewRevision = article.ViewRevision
 	return result, nil
 }

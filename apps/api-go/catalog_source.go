@@ -70,31 +70,32 @@ func (s *Server) serveCatalogSource(response http.ResponseWriter, request *http.
 	writeCatalogSourceHTML(response, review, content, request.URL.Query().Get("evidence_id"), request.URL.Query().Get("source_locator"))
 }
 
-// Paid source review loads current anchors separately from a pinned historical
-// revision. A historical asset is never silently replaced by the newest source.
+// Paid source review issues media capabilities for a selected immutable revision
+// while binding them to the current article anchors.
 func (s *Server) servePaidCatalogSource(w http.ResponseWriter, r *http.Request, p Principal) {
 	w.Header().Set("Cache-Control", "private, no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	r = r.WithContext(ctx)
-	openDemo := s.workshopOpenDemoRequest(r)
-	configuration, err := s.resolveCatalogScope(ctx, p, r.PathValue("vehicle_id"), r.URL.Query().Get("region"), !openDemo)
-	if err != nil {
-		s.writePaidCatalogError(w, r, err)
-		return
+	scope, ok := ctx.Value(paidCatalogContextKey{}).(paidCatalogContext)
+	if !ok {
+		openDemo := s.workshopOpenDemoRequest(r)
+		configuration, err := s.resolveCatalogScope(ctx, p, r.PathValue("vehicle_id"), r.URL.Query().Get("region"), !openDemo)
+		if err != nil {
+			s.writePaidCatalogError(w, r, err)
+			return
+		}
+		scope = paidCatalogContext{configuration: configuration, openDemo: openDemo}
 	}
+	configuration := scope.configuration
 	articleID := r.PathValue("article_id")
 	if !commerceUUID(articleID) {
 		s.writePaidCatalogError(w, r, ErrCatalogNotFound)
 		return
 	}
-	identity, err := s.paidMediaIdentity(ctx, configuration, articleID)
-	if err != nil {
-		s.writePaidCatalogError(w, r, err)
-		return
-	}
-	view, err := s.catalog.ArticleView(ctx, p, configuration.ID, articleID)
+	selected := r.URL.Query().Get("source_revision_id")
+	identity, view, stored, err := s.readPaidCatalogSource(ctx, p, configuration, articleID, selected)
 	if err != nil {
 		s.writePaidCatalogError(w, r, err)
 		return
@@ -103,11 +104,10 @@ func (s *Server) servePaidCatalogSource(w http.ResponseWriter, r *http.Request, 
 		s.writePaidCatalogError(w, r, ErrCatalogWithdrawn)
 		return
 	}
-	if !paidCatalogViewMatches(view, identity) {
+	if !validPaidCatalogIdentity(identity, configuration, articleID) || !paidCatalogViewMatches(view, identity) {
 		s.writePaidCatalogError(w, r, ErrCatalogNotFound)
 		return
 	}
-	selected := r.URL.Query().Get("source_revision_id")
 	if selected == "" {
 		if view.Article.SourceRevisionID == nil {
 			s.writePaidCatalogError(w, r, ErrVehicleGrantUnavailable)
@@ -115,23 +115,17 @@ func (s *Server) servePaidCatalogSource(w http.ResponseWriter, r *http.Request, 
 		}
 		selected = *view.Article.SourceRevisionID
 	}
-	if !commerceUUID(selected) {
-		s.writePaidCatalogError(w, r, ErrCatalogNotFound)
-		return
-	}
-	stored, err := s.catalog.ArticleSourceRevision(ctx, p, configuration.ID, articleID, selected)
-	if err != nil {
-		s.writePaidCatalogError(w, r, err)
-		return
-	}
-	if stored.SourceRevisionID == nil || *stored.SourceRevisionID != selected {
+	if !commerceUUID(selected) || stored.SourceRevisionID == nil || *stored.SourceRevisionID != selected {
 		s.writePaidCatalogError(w, r, ErrCatalogNotFound)
 		return
 	}
 	stored.Images = append([]CatalogImage{}, stored.Images...)
-	stored.Document = publicCatalogDocument(stored.Document)
-	now := time.Now()
-	if !openDemo {
+	if !scope.openDemo {
+		if err = s.checkPaidCatalogGrant(ctx, p, configuration); err != nil {
+			s.writePaidCatalogError(w, r, err)
+			return
+		}
+		now := time.Now()
 		ref := paidCatalogProjectionReference(p, configuration, identity, view, selected, "source", now)
 		s.rewritePaidCatalogImages(stored.Images, stored, ref, now)
 	} else {
@@ -160,6 +154,38 @@ func (s *Server) servePaidCatalogSource(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	writeCatalogSourceHTML(w, review, content, r.URL.Query().Get("evidence_id"), r.URL.Query().Get("source_locator"))
+}
+
+func (s *Server) readPaidCatalogSource(ctx context.Context, p Principal, configuration CatalogConfiguration, article, revision string) (PaidArticleIdentity, CatalogArticleView, CatalogSourceContent, error) {
+	if store, ok := s.catalog.(paidCatalogSourceViewStore); ok {
+		return store.paidCatalogSourceView(ctx, configuration.ID, article, revision)
+	}
+	identity, err := s.paidMediaIdentity(ctx, configuration, article)
+	if err != nil {
+		return PaidArticleIdentity{}, CatalogArticleView{}, CatalogSourceContent{}, err
+	}
+	view, err := s.catalog.ArticleView(ctx, p, configuration.ID, article)
+	if err != nil {
+		return PaidArticleIdentity{}, CatalogArticleView{}, CatalogSourceContent{}, err
+	}
+	if view.Withdrawn {
+		return PaidArticleIdentity{}, CatalogArticleView{}, CatalogSourceContent{}, ErrCatalogWithdrawn
+	}
+	if !paidCatalogViewMatches(view, identity) {
+		return PaidArticleIdentity{}, CatalogArticleView{}, CatalogSourceContent{}, ErrCatalogNotFound
+	}
+	if revision == "" {
+		if view.Article.SourceRevisionID == nil {
+			return PaidArticleIdentity{}, CatalogArticleView{}, CatalogSourceContent{}, ErrVehicleGrantUnavailable
+		}
+		revision = *view.Article.SourceRevisionID
+	}
+	if !commerceUUID(revision) {
+		return PaidArticleIdentity{}, CatalogArticleView{}, CatalogSourceContent{}, ErrCatalogNotFound
+	}
+	stored, err := s.catalog.ArticleSourceRevision(ctx, p, configuration.ID, article, revision)
+	stored.Document = publicCatalogDocument(stored.Document)
+	return identity, view, stored, err
 }
 
 func sourceReviewForArticle(article CatalogArticle, vehicleID, articleID string) *CatalogSourceReview {

@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 	"sync"
@@ -796,6 +797,17 @@ func TestPostgresPaidCatalogHistoricalSourceAndRights(t *testing.T) {
 	f.controlPaid("refresh-source")
 	f.control.wait("snapshot", func(s map[string]any) bool { return r3Int(r3Map(s, "counts"), "published_revisions") == 2 })
 	fresh := f.detail(0)
+	store := newPostgresCatalogStore(f.pool)
+	for _, revision := range []string{"", *fresh.SourceRevisionID, oldSource} {
+		full, fullErr := store.ArticleSourceRevision(context.Background(), Principal{}, f.configuration, f.article, revision)
+		identity, anchor, narrow, narrowErr := store.paidCatalogSourceView(context.Background(), f.configuration, f.article, revision)
+		if fullErr != nil || narrowErr != nil || !reflect.DeepEqual(full, narrow) || !samePaidCatalogID(identity.CurrentSourceRevisionID, fresh.SourceRevisionID) || !samePaidCatalogID(anchor.Article.CanonicalRevisionID, fresh.CanonicalRevisionID) {
+			t.Fatal("scoped read changed source, version, display hash, or current anchor", fullErr, narrowErr)
+		}
+	}
+	if _, _, _, err := store.paidCatalogSourceView(context.Background(), f.adjacent, f.article, oldSource); !errors.Is(err, ErrCatalogNotFound) {
+		t.Fatal("scoped source lookup accepted an adjacent configuration", err)
+	}
 	// refresh-source independently seeds "Remove the refreshed pump.". The
 	// older canonical phrase must not match the newly selected source view.
 	searchBefore := f.contentSearch(0, "refreshed pump")
@@ -813,14 +825,20 @@ func TestPostgresPaidCatalogHistoricalSourceAndRights(t *testing.T) {
 	}
 	f.check("historical_source_selected", ref.SelectedSourceRevisionID == oldSource && ref.AnchorSourceRevisionID == *fresh.SourceRevisionID)
 	f.image(0, source.Images[0].URL, 200)
+	f.exec(`UPDATE source_snapshots SET takedown_status='takedown' WHERE source_snapshot_id=(SELECT body_source_snapshot_id FROM canonical_article_source_revisions WHERE source_revision_id=$1::uuid)`, oldSource)
+	f.expect(0, "GET", sourcePath, "", 404)
+	f.expect(0, "GET", f.path("/"+f.article+"/source"), "", 200)
+	f.exec(`UPDATE source_snapshots SET takedown_status='active' WHERE source_snapshot_id=(SELECT body_source_snapshot_id FROM canonical_article_source_revisions WHERE source_revision_id=$1::uuid)`, oldSource)
 	before := f.reader.calls.Load()
 	rightsBefore := f.snapshot("rights_before")
 	f.exec(`UPDATE source_snapshots SET takedown_status='takedown' WHERE source_snapshot_id=(SELECT body_source_snapshot_id FROM canonical_article_source_revisions WHERE source_revision_id=$1::uuid)`, *fresh.SourceRevisionID)
 	f.expect(0, "GET", f.path("/"+f.article), "", 410)
+	f.expect(0, "GET", sourcePath, "", 410)
 	f.image(0, fresh.Images[0].URL, 410)
 	f.exec(`UPDATE source_snapshots SET takedown_status='active' WHERE source_snapshot_id=(SELECT body_source_snapshot_id FROM canonical_article_source_revisions WHERE source_revision_id=$1::uuid)`, *fresh.SourceRevisionID)
 	f.exec(`UPDATE source_snapshots SET takedown_status='takedown' WHERE content_sha256::text IN (SELECT asset->>'sha256' FROM canonical_article_source_revisions, jsonb_array_elements(resource_manifest) asset WHERE source_revision_id=$1::uuid AND asset->>'role'='asset')`, *fresh.SourceRevisionID)
 	f.expect(0, "GET", f.path("/"+f.article), "", 410)
+	f.expect(0, "GET", sourcePath, "", 410)
 	f.exec(`UPDATE source_snapshots SET takedown_status='active' WHERE content_sha256::text IN (SELECT asset->>'sha256' FROM canonical_article_source_revisions, jsonb_array_elements(resource_manifest) asset WHERE source_revision_id=$1::uuid AND asset->>'role'='asset')`, *fresh.SourceRevisionID)
 	f.exec(`UPDATE source_snapshots SET takedown_status='takedown' WHERE source_snapshot_id=(SELECT descriptor_source_snapshot_id FROM canonical_articles WHERE canonical_article_id=$1::uuid)`, f.article)
 	var index CatalogArticlesResponse
@@ -838,6 +856,7 @@ func TestPostgresPaidCatalogHistoricalSourceAndRights(t *testing.T) {
 		}
 	}
 	f.expect(0, "GET", f.path("/"+f.article), "", 410)
+	f.expect(0, "GET", sourcePath, "", 410)
 	f.image(0, fresh.Images[0].URL, 410)
 	f.exec(`UPDATE source_snapshots SET takedown_status='active' WHERE source_snapshot_id=(SELECT descriptor_source_snapshot_id FROM canonical_articles WHERE canonical_article_id=$1::uuid)`, f.article)
 	rows, err := f.pool.Query(context.Background(), `SELECT snapshot.source_snapshot_id::text FROM canonical_articles a JOIN canonical_article_source_revisions revision ON revision.source_revision_id=a.current_source_revision_id JOIN source_snapshots snapshot ON snapshot.source_snapshot_id IN (a.descriptor_source_snapshot_id,revision.body_source_snapshot_id) OR EXISTS(SELECT 1 FROM jsonb_array_elements(revision.resource_manifest) asset WHERE asset->>'sha256'=snapshot.content_sha256::text) WHERE a.canonical_article_id::text=$1 ORDER BY snapshot.source_snapshot_id`, f.article)
