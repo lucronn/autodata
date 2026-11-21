@@ -326,10 +326,10 @@ function populate(name, items, desired = "") {
   $(name).disabled = !items.length;
   if (desired) $(name).value = desired;
 }
-function selectorPath(name) {
-  const year = encodeURIComponent($("year").value),
-    make = encodeURIComponent($("make").value),
-    model = encodeURIComponent($("model").value);
+function selectorPath(name, selection) {
+  const year = encodeURIComponent(selection?.year ?? $("year").value),
+    make = encodeURIComponent(selection?.make ?? $("make").value),
+    model = encodeURIComponent(selection?.model ?? $("model").value);
   return {
     year: "/v1/catalog/years",
     make: `/v1/catalog/years/${year}/makes?region=US`,
@@ -346,7 +346,10 @@ async function loadOptions(name, g, desired = "", initial = null) {
       if (initial) {
         const response = await initial;
         initial = null;
-        if (response) return response;
+        g.signal.throwIfAborted();
+        if (response && (!desired || Array.isArray(response.items) &&
+            response.items.some((item) => String(item.id ?? item.year) === desired))) return response;
+        // A speculative response can precede the parent’s hydration.
       }
       return requestJSON(selectorPath(name), { signal: g.signal });
     },
@@ -1722,14 +1725,29 @@ async function restoreRoute(initialYears = null) {
         await selectVehicle(g, articleID, { savedLink: true });
         return;
       }
-      for (const name of names) {
-        const desired = params.get(name) || "";
-        await loadOptions(name, g, desired, name === "year" ? initialYears : null);
-        if (!g.current() || !desired) return;
+      const desired = Object.fromEntries(names.map((name) => [name, params.get(name) || ""]));
+      const initial = { year: initialYears };
+      // A complete saved picker route supplies every public path. Overlap the
+      // initial reads, then validate each parent before exposing its children.
+      const year = Number(desired.year);
+      if (validScope(exact) && exact.region === "US" && /^\d{4}$/.test(desired.year) &&
+          year >= 1886 && year <= 2100 && desired.make && desired.model) {
+        for (const name of names) {
+          if (initial[name]) continue;
+          initial[name] = requestJSON(selectorPath(name, desired), { signal: g.signal })
+            .catch(() => null);
+        }
       }
-      vehicle = rows.configuration.find(
+      for (const name of names) {
+        await loadOptions(name, g, desired[name], initial[name]);
+        if (!g.current() || !desired[name]) return;
+      }
+      const configuration = rows.configuration.find(
         (item) => item.id === $("configuration").value,
       );
+      if (params.has("region") && configuration?.region !== exact.region)
+        throw new Error("This saved vehicle choice is unavailable in the selected region.");
+      vehicle = configuration;
       await selectVehicle(g, params.get("article") || "");
     },
     () => restoreRoute(),

@@ -1146,10 +1146,10 @@ const routeArticle = '22222222-2222-4222-8222-222222222222';
 const routeOrder = '33333333-3333-4333-8333-333333333333';
 const previousConfiguration = '44444444-4444-4444-8444-444444444444';
 
-function loginRouteHarness(search, { authenticate = true, signInError = null, login = null, library = null } = {}) {
+function loginRouteHarness(search, { authenticate = true, signInError = null, login = null, library = null, selectorRead = null } = {}) {
   const navigation = new NavigationGeneration();
   const calls = { signIns: 0, checkoutClears: 0, checkouts: 0, routes: 0,
-    selections: [], libraries: 0, orders: [], options: [], invalidations: 0 };
+    selections: [], libraries: 0, orders: [], options: [], selectorReads: [], invalidations: 0 };
   const elements = new Map();
   const element = name => {
     if (!elements.has(name)) elements.set(name, { value: '', disabled: false, children: [],
@@ -1188,15 +1188,25 @@ function loginRouteHarness(search, { authenticate = true, signInError = null, lo
       assert.equal(g.current(), true);
       calls.selections.push({ configuration: context.vehicle.id, region: context.vehicle.region, article });
     },
-    async loadOptions(name, g, desired) {
+    async requestJSON(path, options) {
+      calls.selectorReads.push({ path, signal: options.signal });
+      return selectorRead?.(path);
+    },
+    async loadOptions(name, g, desired, initial) {
       assert.equal(g.current(), true);
       calls.options.push({ name, desired });
+      const response = await initial;
+      if (!g.current()) return;
+      if (response) {
+        if (!response.items.some(item => String(item.id ?? item.year) === desired)) throw new Error('Unavailable choice');
+        return context.populate(name, response.items, desired);
+      }
       context.populate(name, name === 'configuration' ? [configuration] :
         [name === 'year' ? { year: Number(desired) || 2026 } : { id: desired || 'choice', name: desired }], desired);
     },
   };
   runInNewContext(
-    appSection('function populate(', 'function selectorPath(') +
+    appSection('function populate(', 'async function loadOptions(') +
     appSection('async function signIn() {', 'async function bootstrap() {') +
     appSection('async function restoreRoute(', 'for (const [index, name] of names.entries())'),
     context,
@@ -1391,6 +1401,44 @@ test('saved hierarchy restores all exact vehicle choices and query over prior st
   assert.deepEqual(h.context.names.map(name => h.element(name).value), ['2020', 'toyota', 'rav4', routeConfiguration]);
   assert.equal(h.element('search').value, 'pump');
   assert.deepEqual(h.calls.selections, [{ configuration: routeConfiguration, region: 'US', article: '' }]);
+});
+
+test('a complete saved vehicle overlaps public reads but validates parents before opening the exact scope', async () => {
+  const year = deferredAuthOperation();
+  const h = loginRouteHarness(selectedCheckoutRoute, { selectorRead(path) {
+    if (path.endsWith('/years')) return year.promise;
+    if (path.includes('/configurations?')) return { items: [{ id: routeConfiguration, region: 'US', engine: '2.0' }] };
+    if (path.includes('/models?')) return { items: [{ id: 'rav4', name: 'RAV4' }] };
+    return { items: [{ id: 'toyota', name: 'Toyota' }] };
+  } });
+  const restored = h.context.restoreRoute();
+  assert.deepEqual(h.calls.selectorReads.map(({ path }) => path), [
+    '/v1/catalog/years', '/v1/catalog/years/2020/makes?region=US',
+    '/v1/catalog/years/2020/makes/toyota/models?region=US',
+    '/v1/catalog/years/2020/makes/toyota/models/rav4/configurations?region=US',
+  ]);
+  assert.equal(new Set(h.calls.selectorReads.map(r => r.signal)).size, 1);
+  await new Promise(setImmediate);
+  assert.deepEqual(h.calls.selections, []);
+  assert.equal(h.element('configuration').disabled, true);
+  year.resolve({ items: [{ year: 2020 }] });
+  await restored;
+  assert.deepEqual(h.calls.selections, [{ configuration: routeConfiguration, region: 'US', article: '' }]);
+});
+
+test('a saved selector never opens a different region or falls through a missing parent', async () => {
+  const wrongRegion = loginRouteHarness(selectedCheckoutRoute.replace('region=US', 'region=CA'));
+  await assert.rejects(wrongRegion.context.restoreRoute(), /unavailable in the selected region/);
+  assert.deepEqual(wrongRegion.calls.selections, []);
+  assert.equal(wrongRegion.context.vehicle, null);
+
+  const missingParent = loginRouteHarness(selectedCheckoutRoute, { selectorRead(path) {
+    if (path.endsWith('/years')) return { items: [] };
+    throw new Error('A prefetched descendant can fail independently');
+  } });
+  await assert.rejects(missingParent.context.restoreRoute(), /Unavailable choice/);
+  assert.deepEqual(missingParent.calls.selections, []);
+  assert.equal(missingParent.element('configuration').disabled, true);
 });
 
 test('My vehicles activation clears the previous vehicle search and selector options in its saved URL', async () => {
@@ -4256,15 +4304,34 @@ function selectorOptionsHarness(response) {
  const nodes = new Map();
  const $ = id => { if (!nodes.has(id)) nodes.set(id, {value:'',disabled:false,hidden:true,textContent:'',dataset:{}}); return nodes.get(id); };
  const statuses=[], displayed=[];
- const context={ $, navigation:new NavigationGeneration(), document:{body:{dataset:{}}}, retryAction:null, currentOrder:'', paidOrder:'', stage(){}, selectorPath:()=>'/choices', requestJSON:async()=>{if(response instanceof Error)throw response;return response;},
+ const requests=[];
+ const context={ $, navigation:new NavigationGeneration(), document:{body:{dataset:{}}}, retryAction:null, currentOrder:'', paidOrder:'', stage(){}, selectorPath:()=>'/choices', requestJSON:async path=>{requests.push(path);if(response instanceof Error)throw response;return response;},
   readCollection:(read,options)=>readCollection(read,{...options,attempts:2,wait:async()=>{}}),
   populate(name,items,desired){displayed.push(items);$(name).disabled=!items.length;$(name).value=desired;},
   recordStatus:(text,options={})=>statuses.push({text,...options}), restoreRoute(){},
  };
  runInNewContext(appSection('function status(', 'function stage(')+appSection('async function operation(', 'function updateURL(')+appSection('async function loadOptions(', 'function renderPurchase(')+
   'const actualStatus = status; status = (text, options = {}) => { recordStatus(text, options); actualStatus(text, options); };',context);
- return {context,$,statuses,displayed,load:(desired='',current)=>context.operation(g=>context.loadOptions('configuration',current?{...g,current}:g,desired),()=>context.restoreRoute())};
+ return {context,$,statuses,displayed,requests,load:(desired='',current,initial=null)=>context.operation(g=>context.loadOptions('configuration',current?{...g,current}:g,desired,initial),()=>context.restoreRoute())};
 }
+
+test('a prefetched selector miss is checked again after the parent was validated', async () => {
+  const h = selectorOptionsHarness({ items: [{ id: 'selected' }], complete: true });
+  await h.load('selected', null, Promise.resolve({ items: [], complete: true }));
+  assert.deepEqual(h.requests, ['/choices']);
+  assert.equal(h.$('configuration').value, 'selected');
+});
+
+test('canceling a prefetched selector skips its fallback read', async () => {
+  const h = selectorOptionsHarness({ items: [{ id: 'selected' }], complete: true });
+  const held = deferredAuthOperation();
+  const selected = h.load('selected', null, held.promise);
+  h.context.navigation.clear();
+  held.resolve(null);
+  await selected;
+  assert.deepEqual(h.requests, []);
+  assert.deepEqual(h.displayed, []);
+});
 
 test('actual selector timeout remains a retryable loading failure with partial rows preserved', async()=>{
  for(const items of [[],[{id:'cfg-1',engine:'2.0L',complete:true}]]) {
