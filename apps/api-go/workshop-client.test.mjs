@@ -14,6 +14,7 @@ function runInNewContext(code, context) {
   context.demoPath ??= path => path;
   context.requestInitialYears ??= params => requestInitialYears(params, context.requestJSON);
   context.sourceDocumentRequest ??= null;
+  context.mountedSource ??= null;
   context.paidOrder ??= null;
   context.articleIndexOrigin ??= null;
   return runVM(code, context);
@@ -5049,6 +5050,50 @@ test('overlapping citations share one pinned read, focus the latest block and re
   assert.equal(calls[1].path, secondPath);
   assert.equal(frame.hidden, true);
   assert.deepEqual(h.shows, ['welcome']);
+});
+
+test('fresh citation authorization keeps pending figures and focuses the new exact block of the same source', async () => {
+  const blocks = ['first', 'last'].map(id => ({
+    type: 'image', block_id: id, asset_id: id, caption: `Stored ${id}`,
+  }));
+  const calls = [];
+  let changed = false;
+  const h = articleMediaHarness({
+    session: { state: { authenticated: true, mode: 'firebase' } },
+    async requestJSON(path, options) {
+      calls.push({ path, signal: options.signal });
+      return {
+        source: { url: mediaSourceURL }, view_revision: 'same-retained-projection', document: { blocks },
+        images: blocks.map(({ asset_id: id }) => ({
+          id,
+          ...(!changed || id === 'first' ? { url: mediaURL(`${id}-${calls.length}`) } : {}),
+        })),
+      };
+    },
+  });
+  h.render(mediaArticle(blocks, [], {
+    content_origin: 'canonical', source_review: { available: true, url: mediaSourceURL },
+  }));
+  const firstPath = `${mediaSourceURL}&evidence_id=first`;
+  const lastPath = `${mediaSourceURL}&evidence_id=last`;
+  await h.context.loadSource(firstPath, h.g, 'first');
+  const frame = h.nodes.get('source-review-frame');
+  const [first, last] = mediaDescendants(frame, 'figure');
+  const [firstImage] = mediaDescendants(first, 'img');
+  const displayed = h.context.displayedSourceRevision;
+  await h.context.loadSource(lastPath, h.g, 'last');
+  assert.deepEqual(calls.map(call => call.path), [firstPath, lastPath]);
+  assert.ok(calls.every(call => call.signal === h.g.signal));
+  assert.equal(frame.children[0], first);
+  assert.equal(last.focusCalls, 1);
+  assert.equal(firstImage.src, 'https://cars.example/v1/catalog/images/v2.first-1');
+  assert.equal(h.context.displayedSourceRevision, displayed);
+
+  changed = true;
+  await h.context.loadSource(lastPath, h.g, 'last');
+  assert.notEqual(frame.children[0], first);
+  assert.equal(frame.children[1].focusCalls, 1);
+  assert.match(frame.children[1].textContent, /Illustration unavailable/);
 });
 
 for (const type of ['ordered_list', 'unordered_list', 'callout']) {

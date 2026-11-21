@@ -80,6 +80,7 @@ let quote = null,
   deferredArticleFigures = null,
   sourceImageRefresh = null,
   sourceDocumentRequest = null,
+  mountedSource = null,
   viewGeneration = null,
   articleIndexOrigin = null,
   sessionRequest = null,
@@ -177,6 +178,7 @@ function clearLibrary() {
 function resetSourceReview() {
   sourceImageRefresh = null;
   sourceDocumentRequest = null;
+  mountedSource = null;
   sourceURL = "";
   ++sourceRevision;
   displayedSourceRevision = sourceRevision;
@@ -913,7 +915,7 @@ function indexRenderableImages(images) {
   }
   return imagesByID;
 }
-function renderBlocks(parent, blocks, imagesByID, review, g, sourceTarget = null, figures = null) {
+function renderBlocks(parent, blocks, imagesByID, review, g, sourceTargets = null, figures = null) {
   const isListNumber = value =>
     Number.isInteger(value) && value >= -2147483648 && value <= 2147483647;
   const find = (ref) => {
@@ -933,12 +935,12 @@ function renderBlocks(parent, blocks, imagesByID, review, g, sourceTarget = null
     if (value.asset_id || value.image_id || value.status === "unavailable")
       addReference(target, value);
     for (const ref of value.images || []) addReference(target, ref);
-    if (Array.isArray(value.blocks)) renderBlocks(target, value.blocks, imagesByID, review, g, sourceTarget, figures);
+    if (Array.isArray(value.blocks)) renderBlocks(target, value.blocks, imagesByID, review, g, sourceTargets, figures);
   };
   for (const block of blocks || []) {
     if (!block || typeof block !== "object") continue;
-    const locate = sourceTarget !== null && block.block_id === sourceTarget.id;
-    const childIndex = locate ? parent.children.length : 0;
+    const sourceID = sourceTargets && block.block_id;
+    const childIndex = sourceID ? parent.children.length : 0;
     const type = block.type;
     if (type === "heading" || type === "paragraph" || type === "link") {
       const tag = type === "heading"
@@ -1042,7 +1044,7 @@ function renderBlocks(parent, blocks, imagesByID, review, g, sourceTarget = null
           "article-callout",
         ),
       );
-    if (locate) sourceTarget.node = parent.children[childIndex];
+    if (sourceID) sourceTargets.set(sourceID, parent.children[childIndex]);
     appendSource(parent, block, review, g);
   }
 }
@@ -1101,6 +1103,7 @@ function retryImage(img, images) {
   return true;
 }
 function showUnavailableImage(img) {
+  if ($("source-review-frame").contains(img)) mountedSource = null;
   img.replaceWith(element(
     "p",
     "Illustration unavailable. Refresh this article to try again.",
@@ -1373,22 +1376,38 @@ async function loadSource(value, g, blockID = null) {
         requested.searchParams.get("source_revision_id")
     )
       throw new Error("The source reference changed. Reload this article.");
-    const fragment = document.createDocumentFragment();
-    const sourceTarget = blockID ? { id: blockID, node: null } : null;
-    if (data.document?.blocks?.length)
-      renderBlocks(fragment, data.document.blocks, indexRenderableImages(data.images), null, g, sourceTarget);
-    else if (data.source?.format === "json")
-      fragment.append(element("pre", data.content ?? ""));
-    else fragment.append(element("p", "Stored source is unavailable."));
-    $("source-review-frame").replaceChildren(fragment);
+    const blocks = data.document?.blocks;
+    const images = indexRenderableImages(data.images);
+    const revision = data.view_revision;
+    const stable = !openDemo && session.state.mode === "firebase" && blocks?.length &&
+      typeof revision === "string" && revision;
+    const assets = stable && JSON.stringify([...images].map(([id, image]) => [
+      id, Boolean(localImageURL(image.url, location.origin, { authMode: session.state.mode })),
+    ]));
+    // After a fresh authorized read, keep images already fetching for the same
+    // source projection. Media URLs rotate even when the displayed view agrees.
+    const keep = blockID !== null && stable && mountedSource?.key === key &&
+      mountedSource.signal === g.signal && mountedSource.articleRevision === renderedRevision &&
+      mountedSource.revision === revision && mountedSource.assets === assets;
+    let targets = mountedSource?.targets;
+    if (!keep) {
+      const fragment = document.createDocumentFragment();
+      targets = stable || blockID !== null ? new Map() : null;
+      if (blocks?.length) renderBlocks(fragment, blocks, images, null, g, targets);
+      else if (data.source?.format === "json")
+        fragment.append(element("pre", data.content ?? ""));
+      else fragment.append(element("p", "Stored source is unavailable."));
+      $("source-review-frame").replaceChildren(fragment);
+      mountedSource = stable ? { key, signal: g.signal, articleRevision: renderedRevision, revision, assets, targets } : null;
+      sourceImageRefresh = null;
+      displayedSourceRevision = selected;
+    }
     $("source-review-frame").hidden = false;
-    sourceImageRefresh = null;
     sourceURL = demoPath(requested.href);
-    displayedSourceRevision = selected;
     $("article-reference").open = true;
     $("source-review-meta").textContent = "Stored source loaded.";
     if (blockID !== null) {
-      const target = sourceTarget?.node || $("source-review-title");
+      const target = targets?.get(blockID) || $("source-review-title");
       target.setAttribute("tabindex", "-1");
       target.focus();
     }
