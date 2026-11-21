@@ -34,6 +34,17 @@
   hosted TEST session, reused the order on retry, and denied unpaid access.
   Stripe presented a human verification challenge before payment. The
   unpaid session was expired and the temporary services were removed.
+- On `c2f6922`, the real Workshop commerce handler created the sandbox
+  Checkout session for a synthetic customer in a disposable Kali database.
+  Stripe's official CLI checkout fixture completed that exact session with a
+  test payment method. The signed Checkout and PaymentIntent events granted
+  exact owner, vehicle and region access and a single Library item. A real
+  full TEST refund delivered a signed revocation. Stripe charge and refund API
+  readback, persisted verified event rows, and the server grant checks agreed.
+  Replaying the stored settlement left the revocation in place.
+- A separate TEST expiry case delivered two genuine signed expiry events.
+  Reusing the first idempotency key kept its session, and a new key opened a
+  fresh session after expiry. Both sessions ended unpaid with zero grants.
 - All 21 API fixture cases passed across Chromium, Firefox, and WebKit
   with isolated Go, Python, PostgreSQL, and object storage. They covered
   sign-in, checkout and Library persistence, both provider fixtures from
@@ -43,9 +54,10 @@
   It uses simulated identity, payments, and source content. The Workshop
   browser integration workflow runs the same command for relevant pull
   requests.
-- Real hosted settlement, webhook-driven grant and refund, and licensed
-  article acceptance remain open. The former local Firebase verifier file is
-  missing and no dedicated TEST project is configured on Kali. Use a
-  dedicated Firebase test environment and tester for the
-  authenticated Workshop flow and complete hosted Checkout interactively.
-  Keep licensed-data checks scoped to content approved for test use.
+- The provider-backed rehearsal used synthetic identity and the official CLI
+  sandbox fixture. The browser-driven hosted Checkout flow, a dedicated
+  authenticated staging flow and licensed article acceptance remain open.
+  A current Firebase configuration read confirmed Google sign-in is enabled
+  and its authorized domains omit the candidate staging origin. The
+  authenticated staging flow needs an approved Firebase environment and
+  tester. Keep licensed-data checks scoped to content approved for test use.
