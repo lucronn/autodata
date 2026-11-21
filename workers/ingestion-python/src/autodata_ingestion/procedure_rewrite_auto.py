@@ -35,7 +35,8 @@ _PROSE_PROMPT_V20 = "full-prose-auto-prompt-v20"
 _PROSE_PROMPT_V21 = "full-prose-auto-prompt-v21"
 _PROSE_PROMPT_V22 = "full-prose-auto-prompt-v22"
 _PROSE_PROMPT_V23 = "full-prose-auto-prompt-v23"
-_PROSE_PROMPT_VERSION = "full-prose-auto-prompt-v24"
+_PROSE_PROMPT_V24 = "full-prose-auto-prompt-v24"
+_PROSE_PROMPT_VERSION = "full-prose-auto-prompt-v25"
 _WORDS = re.compile(r"\w+")
 _INLINE_WARNING = re.compile(
     r"(?:^|[.!?]\s+|\n)[ \t]*(?:warnings?|caution|danger|notice|important)\s*[:!–—-]"
@@ -147,6 +148,12 @@ _RESISTANCE_VALUE = re.compile(
     + r"(?:[kmMµμ]?[ΩΩ]|[kmMµμ][ \t]*(?i:ohms?)|(?i:(?:micro|milli|kilo|mega?)[ -]?ohms?))"
     r"(?![\w/·⋅^-]|\.\w)",
 )
+_ROTATION_VALUE = re.compile(_MEASUREMENT_AMOUNT + r"(?i:turns?|degrees?)(?![\w/·⋅^-]|\.\w)")
+_ROTATION_WORDING = re.compile(
+    r"\b(?:clockwise|(?:anti|counter)[ -]?clockwise|rotat(?:e[sd]?|ing|ion)|"
+    r"turn(?:ed|ing)?\s+(?:the|each|an?|this|that))\b",
+    re.IGNORECASE,
+)
 
 
 def _alternate_torque_scope(text):
@@ -177,8 +184,20 @@ def _pressure_scope(text):
     )
 
 
+def _rotation_scope(text):
+    # A turn can be a feature of a route and degrees can describe temperature.
+    # Keep the component, limit, and direction when a rotation is specified.
+    if not _ROTATION_WORDING.search(text):
+        return False
+    return any(
+        _ROTATION_VALUE.search(sentence) and _ROTATION_WORDING.search(sentence)
+        for sentence in _SENTENCES.split(text)
+    )
+
+
 def _spec_scope(text, *, torque_aliases=False, duration_values=False, electrical_values=False,
-                pressure_values=False, temperature_values=False, resistance_values=False):
+                pressure_values=False, temperature_values=False, resistance_values=False,
+                rotation_values=False):
     return bool(
         _MEASUREMENT_VALUE.search(text) or _MEASUREMENT_UNITS.search(text)
         or (torque_aliases and _alternate_torque_scope(text))
@@ -187,6 +206,7 @@ def _spec_scope(text, *, torque_aliases=False, duration_values=False, electrical
         or (pressure_values and _pressure_scope(text))
         or (temperature_values and _TEMPERATURE_VALUE.search(text))
         or (resistance_values and _RESISTANCE_VALUE.search(text))
+        or (rotation_values and _rotation_scope(text))
     )
 
 
@@ -819,10 +839,10 @@ def _build_auto_prompt_v23(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def build_auto_prompt(document, *, context):
+def _auto_prompt_payload_v24(document, *, context):
     payload = _auto_prompt_payload_v23(document, context=context)
     if payload["slots"]:
-        payload["prompt_version"] = _PROSE_PROMPT_VERSION
+        payload["prompt_version"] = _PROSE_PROMPT_V24
         for slot in payload["slots"]:
             if slot["required_action"] == "rewrite" and _CLEARANCE_WARNING.search(slot["text"]):
                 slot["required_action"] = "retain"
@@ -830,14 +850,33 @@ def build_auto_prompt(document, *, context):
             "Preserve the full original wording of clearance warnings marked retain, including "
             "what must stay clear and the object it must stay away from."
         )
+    return payload
+
+
+def _build_auto_prompt_v24(document, *, context):
+    payload = _auto_prompt_payload_v24(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def build_auto_prompt(document, *, context):
+    payload = _auto_prompt_payload_v24(document, context=context)
+    if payload["slots"]:
+        payload["prompt_version"] = _PROSE_PROMPT_VERSION
+        for slot in payload["slots"]:
+            if slot["required_action"] == "rewrite" and _rotation_scope(slot["text"]):
+                slot["required_action"] = "retain"
+        payload["rules"].append(
+            "Keep the complete wording of measured rotation specifications marked retain, "
+            "including the original component, direction, amount, and any limit."
+        )
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
 def _auto_prompt_version(document, *, context, prompt_hash):
     """Identify the rules bound to the saved model attempt."""
     for builder in (
-        build_auto_prompt, _build_auto_prompt_v23, _build_auto_prompt_v22, _build_auto_prompt_v21,
-        _build_auto_prompt_v20, _build_auto_prompt_v19,
+        build_auto_prompt, _build_auto_prompt_v24, _build_auto_prompt_v23,
+        _build_auto_prompt_v22, _build_auto_prompt_v21, _build_auto_prompt_v20, _build_auto_prompt_v19,
         _build_auto_prompt_v18, _build_auto_prompt_v17, _build_auto_prompt_v16, _build_auto_prompt_v15,
         _build_auto_prompt_v14, _build_auto_prompt_v13,
         _build_auto_prompt_v12, _build_auto_prompt_v11,
@@ -1418,7 +1457,7 @@ def _uses_prose_guards(prompt_version, slot_count):
         _PROSE_PROMPT_V8, _PROSE_PROMPT_V9, _PROSE_PROMPT_V10, _CELL_PROSE_PROMPT_V11,
         _PROSE_PROMPT_V12, _PROSE_PROMPT_V13, _PROSE_PROMPT_V14, _PROSE_PROMPT_V15, _PROSE_PROMPT_V16,
         _PROSE_PROMPT_V17, _PROSE_PROMPT_V18, _PROSE_PROMPT_V19, _PROSE_PROMPT_V20, _PROSE_PROMPT_V21,
-        _PROSE_PROMPT_V22, _PROSE_PROMPT_V23, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V22, _PROSE_PROMPT_V23, _PROSE_PROMPT_V24, _PROSE_PROMPT_VERSION,
     )
 
 
@@ -1427,7 +1466,7 @@ def _include_cell_blocks(prompt_version):
         None, _CELL_PROSE_PROMPT_V11, _PROSE_PROMPT_V12, _PROSE_PROMPT_V13,
         _PROSE_PROMPT_V14, _PROSE_PROMPT_V15, _PROSE_PROMPT_V16, _PROSE_PROMPT_V17, _PROSE_PROMPT_V18,
         _PROSE_PROMPT_V19, _PROSE_PROMPT_V20, _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23,
-        _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V24, _PROSE_PROMPT_VERSION,
     )
 
 
@@ -1445,40 +1484,45 @@ def _require_changes(source, candidate, *, prompt_version):
     guard_simultaneous = guard_scope and prompt_version in (
         None, _PROSE_PROMPT_V12, _PROSE_PROMPT_V13, _PROSE_PROMPT_V14, _PROSE_PROMPT_V15,
         _PROSE_PROMPT_V16, _PROSE_PROMPT_V17, _PROSE_PROMPT_V18, _PROSE_PROMPT_V19, _PROSE_PROMPT_V20,
-        _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23, _PROSE_PROMPT_V24, _PROSE_PROMPT_VERSION,
     )
     guard_identified_inspection = guard_simultaneous and prompt_version != _PROSE_PROMPT_V12
     guard_compound_inspection = guard_identified_inspection and prompt_version != _PROSE_PROMPT_V13
     guard_bound_alternatives = guard_scope and prompt_version in (
         None, _PROSE_PROMPT_V15, _PROSE_PROMPT_V16, _PROSE_PROMPT_V17, _PROSE_PROMPT_V18,
         _PROSE_PROMPT_V19, _PROSE_PROMPT_V20, _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23,
-        _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V24, _PROSE_PROMPT_VERSION,
     )
     guard_bound_order = guard_clauses and prompt_version in (
         None, _PROSE_PROMPT_V16, _PROSE_PROMPT_V17, _PROSE_PROMPT_V18, _PROSE_PROMPT_V19,
-        _PROSE_PROMPT_V20, _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V20, _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23,
+        _PROSE_PROMPT_V24, _PROSE_PROMPT_VERSION,
     )
-    guard_bound_steps = prompt_version in (None, _PROSE_PROMPT_V23, _PROSE_PROMPT_VERSION)
+    guard_bound_steps = prompt_version in (None, _PROSE_PROMPT_V23, _PROSE_PROMPT_V24, _PROSE_PROMPT_VERSION)
     guard_torque_aliases = prompt_version in (
         None, _PROSE_PROMPT_V17, _PROSE_PROMPT_V18, _PROSE_PROMPT_V19, _PROSE_PROMPT_V20,
-        _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23, _PROSE_PROMPT_V24, _PROSE_PROMPT_VERSION,
     )
     guard_duration_values = prompt_version in (
         None, _PROSE_PROMPT_V18, _PROSE_PROMPT_V19, _PROSE_PROMPT_V20, _PROSE_PROMPT_V21,
-        _PROSE_PROMPT_V22, _PROSE_PROMPT_V23, _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V22, _PROSE_PROMPT_V23, _PROSE_PROMPT_V24, _PROSE_PROMPT_VERSION,
     )
     guard_electrical_values = prompt_version in (
         None, _PROSE_PROMPT_V19, _PROSE_PROMPT_V20, _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23,
-        _PROSE_PROMPT_VERSION,
+        _PROSE_PROMPT_V24, _PROSE_PROMPT_VERSION,
     )
     guard_pressure_values = prompt_version in (
-        None, _PROSE_PROMPT_V20, _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23, _PROSE_PROMPT_VERSION,
+        None, _PROSE_PROMPT_V20, _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23,
+        _PROSE_PROMPT_V24, _PROSE_PROMPT_VERSION,
     )
     guard_temperature_values = prompt_version in (
-        None, _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23, _PROSE_PROMPT_VERSION,
+        None, _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23, _PROSE_PROMPT_V24, _PROSE_PROMPT_VERSION,
     )
-    guard_resistance_values = prompt_version in (None, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23, _PROSE_PROMPT_VERSION)
-    guard_clearance_warnings = prompt_version in (None, _PROSE_PROMPT_VERSION)
+    guard_resistance_values = prompt_version in (
+        None, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23, _PROSE_PROMPT_V24, _PROSE_PROMPT_VERSION,
+    )
+    guard_clearance_warnings = prompt_version in (None, _PROSE_PROMPT_V24, _PROSE_PROMPT_VERSION)
+    guard_rotation_values = prompt_version in (None, _PROSE_PROMPT_VERSION)
     introduction = candidate["blocks"][0].get("text", "")
     if guard_prose and (
         _INLINE_WARNING.search(introduction)
@@ -1493,6 +1537,7 @@ def _require_changes(source, candidate, *, prompt_version):
         introduction, torque_aliases=guard_torque_aliases, duration_values=guard_duration_values,
         electrical_values=guard_electrical_values, pressure_values=guard_pressure_values,
         temperature_values=guard_temperature_values, resistance_values=guard_resistance_values,
+        rotation_values=guard_rotation_values,
     ):
         raise ValueError("REWRITE_SPEC_SCOPE_MUTATION")
     if guard_simultaneous and _simultaneous_state(_proof_text(introduction)):
@@ -1521,11 +1566,13 @@ def _require_changes(source, candidate, *, prompt_version):
                 original, torque_aliases=guard_torque_aliases, duration_values=guard_duration_values,
                 electrical_values=guard_electrical_values, pressure_values=guard_pressure_values,
                 temperature_values=guard_temperature_values, resistance_values=guard_resistance_values,
+                rotation_values=guard_rotation_values,
             )
             or _spec_scope(
                 replacement, torque_aliases=guard_torque_aliases, duration_values=guard_duration_values,
                 electrical_values=guard_electrical_values, pressure_values=guard_pressure_values,
                 temperature_values=guard_temperature_values, resistance_values=guard_resistance_values,
+                rotation_values=guard_rotation_values,
             )
         ):
             if original != replacement:
@@ -1617,7 +1664,8 @@ def validate_auto(source, candidate, *, response=None, prompt_version=None):
             _PROSE_PROMPT_V21: "full-prose-auto-validator-v19",
             _PROSE_PROMPT_V22: "full-prose-auto-validator-v20",
             _PROSE_PROMPT_V23: "full-prose-auto-validator-v21",
-        }.get(prompt_version, "full-prose-auto-validator-v22")
+            _PROSE_PROMPT_V24: "full-prose-auto-validator-v22",
+        }.get(prompt_version, "full-prose-auto-validator-v23")
     report.update(validator_version=validator_version, profile_version=PROFILE,
         publication_mode="automatic", content_acceptance_required=False,
         complete_rewrite=False, passed=not errors, error_codes=errors)

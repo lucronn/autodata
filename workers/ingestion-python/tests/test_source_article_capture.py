@@ -91,6 +91,51 @@ def test_banktwo_plain_html_uses_resolved_descriptor_context(capture_fixture):
 
 
 @pytest.mark.parametrize("provider", ["bankone", "banktwo"])
+def test_captured_rotation_retains_the_component_and_direction_when_rewritten(capture_fixture, provider):
+    import json
+
+    from autodata_ingestion.article_document import project_ordered_document
+    from autodata_ingestion.procedure_rewrite import build_rewrite_prompt, rewrite_ordered_document
+    from autodata_ingestion.source_article_capture import capture_source_article
+    from test_procedure_rewrite_full import Draft
+
+    opening = "Remove the retaining clip."
+    instruction = "Turn the adjuster 1.5 turns clockwise."
+    if provider == "bankone":
+        payload = {"blocks": [{"type": "paragraph", "text": text} for text in (opening, instruction)]}
+        capture_fixture.body(provider, json.dumps(payload).encode(), "application/json")
+    else:
+        capture_fixture.body(provider, f"<p>{opening}</p><p>{instruction}</p>".encode())
+
+    captured = capture_source_article(
+        capture_fixture.context(provider), registry=capture_fixture.registry, object_store=capture_fixture.objects,
+    )
+    assert captured.source_body.splitlines() == [opening, instruction]
+    source = captured.source_document
+    profile = "full-prose-auto-v1"
+    prompt = json.loads(build_rewrite_prompt(source, context={}, profile_version=profile))
+    assert [slot["required_action"] for slot in prompt["slots"]] == ["rewrite", "retain"]
+    replacements = ("Take the retaining clip off.", "Give the locknut 1.5 turns counterclockwise.")
+    response = {
+        "introduction": "This procedure describes component access.",
+        "replacements": [
+            {"block_id": slot["block_id"], "path": slot["path"], "action": "rewrite", "reason": "", "text": text}
+            for slot, text in zip(prompt["slots"], replacements, strict=True)
+        ],
+    }
+    rejected = rewrite_ordered_document(source, client=Draft(response), context={}, profile_version=profile)
+    assert rejected.error_code == "REWRITE_SPEC_SCOPE_MUTATION"
+    assert rejected.document == source
+
+    response["replacements"][1].update(action="retain", text=instruction, reason="Exact rotation specification.")
+    retained = rewrite_ordered_document(source, client=Draft(response), context={}, profile_version=profile)
+    assert retained.error_code is None
+    assert project_ordered_document(retained.document)["body"].splitlines() == [
+        response["introduction"], "Take the retaining clip off.", instruction,
+    ]
+
+
+@pytest.mark.parametrize("provider", ["bankone", "banktwo"])
 def test_same_asset_ref_never_crosses_provider(capture_fixture, provider):
     from autodata_ingestion.source_article_capture import capture_source_article
 
