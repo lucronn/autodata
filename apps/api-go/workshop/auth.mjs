@@ -123,6 +123,13 @@ export function createSession({
   return {
     state,
     clear,
+    async matchesCurrentSession({ signal } = {}) {
+      const current = epoch;
+      const csrf = state.csrf;
+      const data = await request("/auth/session", { signal, timeout: 10000 });
+      return !signal?.aborted && current === epoch && state.authenticated &&
+        csrf === state.csrf && validSession(data) && data.csrf_token === csrf;
+    },
     async bootstrap({ signal } = {}) {
       const current = ++epoch;
       state.mode = null;

@@ -892,6 +892,28 @@ function deferredAuthOperation() {
   return { promise, resolve, reject };
 }
 
+test('session confirmation checks the same cookie proof without replacing client sign-in state', async () => {
+  const { createSession } = await import('./workshop/auth.mjs');
+  const calls = [];
+  const snapshot = { authenticated: true, roles: ['dataset_viewer'], expires_at: '2099-01-01T00:00:00Z', csrf_token: 'first' };
+  const pending = deferredAuthOperation();
+  const session = createSession({ request: async path => {
+    calls.push(path);
+    if (path === '/auth/config') return { mode: 'firebase' };
+    return calls.length === 5 ? pending.promise : snapshot;
+  } });
+  await session.bootstrap();
+  assert.equal(await session.matchesCurrentSession(), true);
+  snapshot.csrf_token = 'different';
+  assert.equal(await session.matchesCurrentSession(), false);
+  assert.equal(session.state.csrf, 'first');
+  const beforeClear = session.matchesCurrentSession();
+  session.clear();
+  pending.resolve({ ...snapshot, csrf_token: 'first' });
+  assert.equal(await beforeClear, false);
+  assert.deepEqual(calls, ['/auth/config', '/auth/session', '/auth/session', '/auth/session', '/auth/session']);
+});
+
 async function sessionPreparationHarness({
   authenticated = false, persistence = async () => {}, constructProvider = () => {}, popup,
   sdkSignOut = async () => {}, serverLogout = async () => {},
@@ -3731,6 +3753,60 @@ function articleMediaHarness(overrides = {}) {
     content(article) { const parent = new ArticleMediaNode('div'); body.append(parent); context.renderContent(parent, article, g); return parent; },
   };
 }
+
+test('reader refocus reauthorizes account, exact detail and pinned source together', async () => {
+  const configuration = { id: routeConfiguration, region: 'US' };
+  const article = mediaArticle([{ type: 'paragraph', text: 'Authorized article' }], [], {
+    id: routeArticle,
+    content_origin: 'canonical',
+    source_review: { available: true, url: `/v1/catalog/vehicles/v/articles/${routeArticle}/source?source_revision_id=${routeOrder}` },
+  });
+  const account = deferredAuthOperation(), detail = deferredAuthOperation(), source = deferredAuthOperation();
+  const calls = [];
+  const h = articleMediaHarness({
+    vehicle: configuration,
+    scope: () => ({ configuration_id: configuration.id, region: configuration.region }),
+    session: { state: { authenticated: true, mode: 'firebase' }, matchesCurrentSession: () => {
+      calls.push('session'); return account.promise;
+    } },
+    requestArticleJSON(path, options) {
+      assert.equal(path, `/v1/catalog/vehicles/v/articles/${routeArticle}?region=US`);
+      assert.equal(options.signal, h.g.signal);
+      calls.push('article'); return detail.promise;
+    },
+    requestJSON(path, options) {
+      assert.equal(path, article.source_review.url);
+      assert.equal(options.signal, h.g.signal);
+      calls.push('source'); return source.promise;
+    },
+    renderPurchase() {},
+    show(id) { h.nodes.get('reader').hidden = id !== 'reader'; },
+  });
+  h.context.document.visibilityState = 'visible';
+  h.render(article);
+  h.context.sourceURL = article.source_review.url;
+  h.nodes.get('source-review-frame').append(new ArticleMediaNode('p', 'Pinned source'));
+  const held = h.nodes.get('source-review-frame').firstElementChild;
+  const focusTarget = h.nodes.get('source-review-load');
+  h.nodes.get('reader').append(focusTarget);
+  h.context.document.activeElement = focusTarget;
+  runInNewContext(appSection('let lifecycleCheck = null;', 'window.addEventListener("pageshow"'), h.context);
+  const checked = h.context.recheckReader(h.g);
+  assert.deepEqual(calls, ['session', 'article', 'source']);
+  assert.equal(h.nodes.get('reader').hidden, true);
+  assert.equal(h.context.document.body.dataset.printable, 'false');
+  h.context.document.activeElement = h.context.document.body;
+  account.resolve(true);
+  detail.resolve({ status: 200, data: { configuration, article } });
+  await new Promise(setImmediate);
+  assert.equal(h.nodes.get('reader').hidden, true);
+  source.resolve({ source: { url: article.source_review.url } });
+  await checked;
+  assert.equal(h.nodes.get('reader').hidden, false);
+  assert.equal(h.context.document.body.dataset.printable, 'true');
+  assert.equal(h.nodes.get('source-review-frame').firstElementChild, held);
+  assert.equal(focusTarget.focusCalls, 1);
+});
 
 test('Library Load more makes one cursor request and keeps prior cards mounted', async () => {
   const page = (items, next_cursor) => ({ version: 'v1', items, next_cursor });

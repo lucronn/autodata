@@ -1975,6 +1975,7 @@ $("print").addEventListener("click", () => {
 window.addEventListener("popstate", () => void restoreRoute());
 window.addEventListener("pagehide", () => invalidate());
 let lifecycleCheck = null;
+let readerCheck = null;
 async function recheck() {
   if (
     !sessionEstablished ||
@@ -1991,10 +1992,72 @@ async function recheck() {
     lifecycleCheck = null;
   }
 }
+async function recheckReader(g) {
+  const opened = currentArticle;
+  const selected = scope();
+  const scopeMatches = (configuration) =>
+    configuration?.id === selected.configuration_id && configuration?.region === selected.region;
+  const reader = $("reader");
+  const focused = document.activeElement;
+  const pinned = sourceURL && validSourceURL(sourceURL);
+  const order = articleDetailOrder(g, opened.id);
+  const { signal } = g;
+  // Keep the view nodes for continuity, withhold article display and printing
+  // until the same session and each retained projection are authorized again.
+  reader.hidden = true;
+  document.body.dataset.printable = "false";
+  try {
+    const [sameSession, detail, source] = await Promise.all([
+      session.matchesCurrentSession({ signal }),
+      requestArticleDetail(order, articleRequestPath(opened.id), { signal }),
+      pinned ? requestJSON(pinned.pathname + pinned.search, { signal, headers: sourceDocumentHeaders }) : null,
+    ]);
+    if (!g.current()) return;
+    const article = acceptArticleDetail(order, detail)?.data?.article;
+    const returnedPin = source && validSourceURL(source.source?.url);
+    if (!sameSession || detail.status !== 200 || !scopeMatches(detail.data?.configuration) ||
+        article?.id !== opened.id || !readableArticle(article) || processingArticle(article) ||
+        (sourceURL && (!pinned || !returnedPin || returnedPin.searchParams.get("source_revision_id") !==
+          pinned.searchParams.get("source_revision_id")))) {
+      invalidate();
+      await recheck();
+      return;
+    }
+    vehicle = detail.data.configuration;
+    renderPurchase();
+    renderArticle(article, g);
+    show("reader");
+    if (reader.contains(focused) && document.activeElement === document.body)
+      focused.focus({ preventScroll: true });
+  } catch (error) {
+    if (!g.current()) return;
+    invalidate();
+    if ([401, 403, 410].includes(error.status)) {
+      await operation(async () => { throw error; }, () => restoreRoute());
+    } else {
+      await recheck();
+    }
+  }
+}
+function recheckOnFocus() {
+  const g = viewGeneration;
+  if (g && readerCheck === g) return;
+  if (!g?.current() || lifecycleCheck || !sessionEstablished || openDemo || signingIn ||
+      document.visibilityState === "hidden" || !session.state.authenticated ||
+      session.state.mode !== "firebase" || $("reader").hidden || !readableArticle(currentArticle) ||
+      processingArticle(currentArticle) || sourceDocumentRequest || document.body.dataset.busy === "true") {
+    void recheck();
+    return;
+  }
+  readerCheck = g;
+  void recheckReader(g).finally(() => {
+    if (readerCheck === g) readerCheck = null;
+  });
+}
 window.addEventListener("pageshow", (event) => {
   if (event.persisted) void recheck();
 });
-window.addEventListener("focus", () => void recheck());
+window.addEventListener("focus", recheckOnFocus);
 const channel =
   typeof BroadcastChannel === "function"
     ? new BroadcastChannel("autodata-session-invalidation")
