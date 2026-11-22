@@ -801,14 +801,14 @@ def test_uncorrected_failed_intro_still_stops_at_active_worker_error(failed_draf
     assert after['canonical_articles'][0]['current_canonical_revision_id'] is None
 
 
-def automatic_runtime(runtime, provider):
+def automatic_runtime(runtime, provider, *, introduction="This procedure describes removing the pump."):
     """Exercise actual CLI/HTTP transport using an automatic-profile fixture model."""
     import json
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
     from threading import Thread
     from types import SimpleNamespace
     from autodata_ingestion.source_job_persistence import ensure_article_job
-    model = SimpleNamespace(calls=0, mode="valid")
+    model = SimpleNamespace(calls=0, mode="valid", retained_texts=())
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args): pass
         def do_POST(self):
@@ -824,8 +824,11 @@ def automatic_runtime(runtime, provider):
                     row["text"] = "First, " + slot["text"] if model.mode == "copy" else "Reconnect the battery."
             if model.mode == "explicit_rewrite":
                 original, replacement = model.explicit_rewrite
-                assert [slot["text"] for slot in prompt["slots"]] == [original]
+                assert tuple(slot["text"] for slot in prompt["slots"]) == (original, *model.retained_texts)
                 replacements[0]["text"] = replacement
+                for slot, row in zip(prompt["slots"][1:], replacements[1:], strict=True):
+                    assert slot["required_action"] == "retain"
+                    row.update(action="retain", reason="Preserve exact source wording.")
             if model.mode == "explicit_specification":
                 original, mutation = model.explicit_specification
                 assert [slot["text"] for slot in prompt["slots"]] == ["Remove the pump.", original]
@@ -834,7 +837,7 @@ def automatic_runtime(runtime, provider):
                     replacements[1].update(action="retain", reason="Preserve the exact specification.")
                 else:
                     replacements[1]["text"] = mutation
-            result = {"introduction":"This procedure describes removing the pump.","replacements":replacements}
+            result = {"introduction":introduction,"replacements":replacements}
             raw = json.dumps({"choices":[{"message":{"content":json.dumps(result)}}]}).encode()
             self.send_response(200);self.send_header("Content-Type","application/json")
             self.send_header("Content-Length",str(len(raw)));self.end_headers();self.wfile.write(raw)
@@ -879,13 +882,13 @@ def test_automatic_real_runtime_source_first_publication_and_zero_call_restart(r
 @pytest.mark.parametrize(
     "prompt_version",
     ["v1", "v2", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v12", "v13", "v14", "v15", "v16", "v17", "v18",
-     "v19", "v20", "v21", "v22", "v23", "v24", "v25", "v26", "v27", "v28", "v29", "v30", "v31", "v32", "v33", "v34", "v35", "v36", "v37", "v38", "v39", "v40", "v41", "v42", "v43", "v44", "v45", "v46", "v47", "v48"],
+     "v19", "v20", "v21", "v22", "v23", "v24", "v25", "v26", "v27", "v28", "v29", "v30", "v31", "v32", "v33", "v34", "v35", "v36", "v37", "v38", "v39", "v40", "v41", "v42", "v43", "v44", "v45", "v46", "v47", "v48", "v49"],
 )
 def test_automatic_real_process_death_reuses_saved_response(runtime, point, prompt_version):
     ensure = automatic_runtime(runtime,"bankone")
     ensure();runtime.pause(point);runtime.start_workers(1);runtime.await_barrier()
     job = runtime.current_job_id();runtime.kill_worker();runtime.expire_lease(job)
-    if prompt_version != "v48":
+    if prompt_version != "v49":
         from hashlib import sha256
         from psycopg.types.json import Jsonb
         from autodata_ingestion.article_lifecycle_types import digest_json
@@ -901,7 +904,7 @@ def test_automatic_real_process_death_reuses_saved_response(runtime, point, prom
             _build_auto_prompt_v34, _build_auto_prompt_v35, _build_auto_prompt_v36, _build_auto_prompt_v37,
             _build_auto_prompt_v38, _build_auto_prompt_v39, _build_auto_prompt_v40, _build_auto_prompt_v41,
             _build_auto_prompt_v42, _build_auto_prompt_v43, _build_auto_prompt_v44, _build_auto_prompt_v45,
-            _build_auto_prompt_v46, _build_auto_prompt_v47,
+            _build_auto_prompt_v46, _build_auto_prompt_v47, _build_auto_prompt_v48,
             validate_auto,
         )
         build_prompt = {
@@ -950,6 +953,7 @@ def test_automatic_real_process_death_reuses_saved_response(runtime, point, prom
             "v45": _build_auto_prompt_v45,
             "v46": _build_auto_prompt_v46,
             "v47": _build_auto_prompt_v47,
+            "v48": _build_auto_prompt_v48,
         }[prompt_version]
         with runtime.repo.connect() as conn:
             candidate = conn.execute("SELECT r.* FROM canonical_article_revisions r JOIN source_fetch_jobs j USING(transformation_key) WHERE j.source_fetch_job_id=%s", (job,)).fetchone()
@@ -1005,6 +1009,60 @@ def test_automatic_rejected_rewrite_leaves_source_readable(runtime, mode, source
         ).fetchone()
         assert attempt == {"status": "failed", "error_code": expected_code}
         assert conn.execute("SELECT count(*) AS n FROM publication_events").fetchone()["n"] == 0
+    assert runtime.counters() == {"source": 1, "asset": 0, "model": 1, "schedule": 1}
+
+
+@pytest.mark.parametrize("provider", ["bankone", "banktwo"])
+@pytest.mark.parametrize("draft,error_code", [
+    pytest.param(
+        "Lubricate the caliper slide pins with silicone grease.", None, id="faithful",
+    ),
+    pytest.param(
+        "Lubricate the caliper slide pins with copper grease.", "REWRITE_LUBRICATION_MUTATION", id="material",
+    ),
+    pytest.param(
+        "Lubricate the brake pad friction surfaces with silicone grease.", "REWRITE_LUBRICATION_MUTATION", id="recipient",
+    ),
+])
+def test_automatic_lubrication_assignment(runtime, provider, draft, error_code):
+    import json
+
+    original = "Apply silicone grease to the caliper slide pins."
+    warning = "Never put lubricant on the brake pad friction surfaces."
+    introduction = "This procedure describes caliper servicing."
+    ensure = automatic_runtime(runtime, provider, introduction=introduction)
+    if provider == "bankone":
+        payload = {"blocks": [{"type": "paragraph", "text": text} for text in (original, warning)]}
+        media_type = "application/json"
+    else:
+        payload = {"_embedded": {"data": {"article": {"content": f"<p>{original}</p><p>{warning}</p>"}}}}
+        media_type = "application/hal+json"
+    runtime.servers[provider].body(json.dumps(payload).encode(), media_type)
+    runtime.model.mode = "explicit_rewrite"
+    runtime.model.explicit_rewrite = original, draft
+    runtime.model.retained_texts = (warning,)
+    job = ensure().job_id
+    runtime.start_workers(1)
+    runtime.wait_for(lambda: runtime.read_current()["processing_state"] in ("completed", "failed", "needs_review"))
+    runtime.stop_workers()
+
+    state = runtime.read_current()
+    with runtime.repo.connect() as conn:
+        attempt = conn.execute(
+            "SELECT status, error_code FROM canonical_article_rewrite_attempts WHERE source_fetch_job_id=%s", (job,),
+        ).fetchone()
+        events = conn.execute("SELECT count(*) AS n FROM publication_events").fetchone()["n"]
+    if error_code is None:
+        assert state["content_origin"] == "canonical"
+        assert state["body"].splitlines() == [introduction, draft, warning]
+        assert attempt == {"status": "succeeded", "error_code": None}
+        assert events == 1
+    else:
+        assert state["content_origin"] == "source"
+        assert state["canonical_revision_id"] is None
+        assert state["body"].splitlines() == [original, warning]
+        assert attempt == {"status": "failed", "error_code": error_code}
+        assert events == 0
     assert runtime.counters() == {"source": 1, "asset": 0, "model": 1, "schedule": 1}
 
 
