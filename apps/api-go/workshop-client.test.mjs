@@ -2579,6 +2579,22 @@ test('purchase availability status keeps validated processing order no-repay gui
   assert.match(h.statuses.at(-1).message, /confirmation is pending.*do not pay again/i);
 });
 
+test('an order-only return shows the pending vehicle and status without a purchase price', async () => {
+  const label = '2024 Example Car 2.0 L';
+  const open = { version: 'v1', order_id: orderID, ...scope, state: 'open', configuration_label: label,
+    retry_disposition: 'do_not_repay', timedOut: true };
+  const h = paidPurchaseLifecycleHarness([], { orderResponses: [open] });
+  h.location.search = `?order=${orderID}`;
+  await h.context.restoreRoute();
+  assert.equal(h.$('purchase-selection').textContent, `${label} / ${scope.region}`);
+  assert.equal(h.$('purchase-price').hidden, true);
+  assert.equal(h.$('purchase-price').textContent, '');
+  assert.equal(h.$('purchase-action').textContent, 'Payment pending');
+  assert.equal(h.$('purchase-action').disabled, true);
+  assert.equal(h.$('check-order').hidden, false);
+  assert.equal(h.checkoutStarts(), 0);
+});
+
 test('processing checkout timeout keeps status check without an enabled Buy action', async () => {
   const processing = {
     version: 'v1', order_id: orderID, ...scope, state: 'processing',
