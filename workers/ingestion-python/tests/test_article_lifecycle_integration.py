@@ -1064,6 +1064,13 @@ def test_automatic_real_runtime_source_first_publication_and_zero_call_restart(r
 )
 def test_automatic_real_process_death_reuses_saved_response(runtime, point, prompt_version):
     ensure = automatic_runtime(runtime,"bankone")
+    if prompt_version == "v10":
+        # Preserve an actual nested cell whose eligible inner prose was
+        # protected by the older slot layout.
+        runtime.change_fixture_body(
+            b"<p>Remove the pump.</p><table><tr><td><p>Remove the seal.</p>"
+            b"<table><tr><td>47 Nm</td></tr></table></td></tr></table>"
+        )
     ensure();runtime.pause(point);runtime.start_workers(1);runtime.await_barrier()
     job = runtime.current_job_id();runtime.kill_worker();runtime.expire_lease(job)
     if prompt_version != "v55":
@@ -1143,12 +1150,37 @@ def test_automatic_real_process_death_reuses_saved_response(runtime, point, prom
         with runtime.repo.connect() as conn:
             candidate = conn.execute("SELECT r.* FROM canonical_article_revisions r JOIN source_fetch_jobs j USING(transformation_key) WHERE j.source_fetch_job_id=%s", (job,)).fetchone()
             context = conn.execute("SELECT captured_context FROM canonical_article_source_observations WHERE source_revision_id=%s ORDER BY captured_at LIMIT 1", (candidate["source_revision_id"],)).fetchone()["captured_context"]
-            legacy_hash = sha256(build_prompt(candidate["normalized_source_document"], context=context["vehicle"]).encode()).hexdigest()
+            legacy_prompt = build_prompt(candidate["normalized_source_document"], context=context["vehicle"])
+            legacy_hash = sha256(legacy_prompt.encode()).hexdigest()
             response = conn.execute("""UPDATE canonical_article_rewrite_attempts SET prompt_hash=%s
                 WHERE canonical_article_revision_id=%s RETURNING response""",
                 (legacy_hash, candidate["canonical_article_revision_id"])).fetchone()["response"]
             conn.execute("UPDATE canonical_article_revisions SET model_metadata=%s WHERE canonical_article_revision_id=%s",
                 (Jsonb({**candidate["model_metadata"], "prompt_hash": legacy_hash}), candidate["canonical_article_revision_id"]))
+            if prompt_version == "v10":
+                import json
+                from autodata_ingestion.article_document import project_ordered_document
+                from autodata_ingestion.procedure_rewrite_auto import render_auto
+
+                source = candidate["normalized_source_document"]
+                [original_table] = [block for block in source["blocks"] if block["type"] == "table"]
+                assert original_table["rows"][0][0]["blocks"][0]["text"] == "Remove the seal."
+                [legacy_slot] = json.loads(legacy_prompt)["slots"]
+                assert legacy_slot["path"] == "/blocks/0/text"
+                assert any("/rows/" in item["path"] for item in response["replacements"])
+                response["replacements"] = [item for item in response["replacements"] if item["path"] == legacy_slot["path"]]
+                draft = render_auto(source, response, prompt_version="full-prose-auto-prompt-v10")
+                projection = project_ordered_document(draft)
+                assert validate_auto(source, draft, response=response, prompt_version="full-prose-auto-prompt-v10").passed
+                assert not validate_auto(source, draft, response=response).passed
+                conn.execute("""UPDATE canonical_article_revisions SET canonical_document=%s,canonical_body=%s,
+                    canonical_steps=%s,canonical_images=%s,rewrite_result_hash=%s WHERE canonical_article_revision_id=%s""",
+                    (Jsonb(draft), projection["body"], Jsonb(projection["steps"]), Jsonb(projection["images"]),
+                     digest_json(draft), candidate["canonical_article_revision_id"]))
+                conn.execute("""UPDATE canonical_article_rewrite_attempts SET response=%s,response_hash=%s
+                    WHERE canonical_article_revision_id=%s""",
+                    (Jsonb(response), digest_json(response), candidate["canonical_article_revision_id"]))
+                candidate["canonical_document"] = draft
             if point == "inside_publication":
                 # The earlier validation commit would also have used the old rules.
                 report = validate_auto(
@@ -1166,6 +1198,147 @@ def test_automatic_real_process_death_reuses_saved_response(runtime, point, prom
     with runtime.repo.connect() as conn:
         assert conn.execute("SELECT count(*) AS n FROM publication_events").fetchone()["n"] == 1
         assert conn.execute("SELECT count(*) AS n FROM canonical_article_rewrite_attempts").fetchone()["n"] == 1
+        if prompt_version == "v10":
+            published = conn.execute("""SELECT canonical_document FROM canonical_article_revisions
+                WHERE canonical_article_revision_id=%s AND status='published'""",
+                (candidate["canonical_article_revision_id"],)).fetchone()["canonical_document"]
+            assert published == draft
+            [published_table] = [block for block in published["blocks"] if block["type"] == "table"]
+            assert published_table["rows"] == original_table["rows"]
+
+
+@pytest.mark.parametrize("point", ["after_model_result_commit", "inside_publication"])
+@pytest.mark.parametrize("version,original,faithful,mutation,error_code", [
+    pytest.param(
+        "v54", "Fill the fluid reservoir with at least 1.5 l of brake fluid.", None,
+        "Fill the fluid reservoir using at most 1.5 l of brake fluid.", "REWRITE_SPEC_SCOPE_MUTATION",
+        id="litre-v54",
+    ),
+    pytest.param(
+        "v53", "Disconnect the fuel line after the gauge returns to zero.",
+        "Once the gauge returns to zero, detach the fuel line.",
+        "Detach the fuel line before the gauge returns to zero.", "REWRITE_QUALIFIER_MUTATION",
+        id="fuel-v53",
+    ),
+])
+def test_automatic_real_process_death_rejects_historical_unsafe_draft(
+    runtime, point, version, original, faithful, mutation, error_code,
+):
+    from hashlib import sha256
+    import json
+    from psycopg.types.json import Jsonb
+    from autodata_ingestion.article_document import project_ordered_document
+    from autodata_ingestion.article_lifecycle_types import digest_json
+    from autodata_ingestion.procedure_rewrite_auto import (
+        _auto_prompt_version, _build_auto_prompt_v53, _build_auto_prompt_v54, render_auto, validate_auto,
+    )
+
+    ensure = automatic_runtime(runtime, "bankone", introduction="This procedure describes component access.")
+    if faithful is None:
+        runtime.change_fixture_body(f"<p>Remove the pump.</p><p>{original}</p>".encode())
+        runtime.model.mode = "explicit_specification"
+        runtime.model.explicit_specification = (original, None)
+    else:
+        runtime.change_fixture_body(f"<p>{original}</p>".encode())
+        runtime.model.mode = "explicit_rewrite"
+        runtime.model.explicit_rewrite = (original, faithful)
+    ensure()
+    runtime.pause(point)
+    runtime.start_workers(1)
+    runtime.await_barrier()
+    job_id = runtime.current_job_id()
+    runtime.kill_worker()
+    runtime.expire_lease(job_id)
+
+    # A current worker creates the real process-death checkpoint and source
+    # evidence. Replace only draft fields with their historical equivalents.
+    validated = point == "inside_publication"
+    prompt_version = f"full-prose-auto-prompt-{version}"
+    build_historical_prompt = {"v53": _build_auto_prompt_v53, "v54": _build_auto_prompt_v54}[version]
+    with runtime.repo.connect() as conn:
+        candidate = conn.execute("""SELECT r.* FROM canonical_article_revisions r
+            JOIN source_fetch_jobs j USING(transformation_key) WHERE j.source_fetch_job_id=%s""", (job_id,)).fetchone()
+        revision_id = candidate["canonical_article_revision_id"]
+        source_id = candidate["source_revision_id"]
+        assert candidate["status"] == ("validated" if validated else "building")
+        assert candidate["published_at"] is None
+        source = candidate["normalized_source_document"]
+        observation = conn.execute("""SELECT * FROM canonical_article_source_observations
+            WHERE source_revision_id=%s ORDER BY captured_at LIMIT 1""", (source_id,)).fetchone()
+        vehicle = observation["captured_context"]["vehicle"]
+        prompt = build_historical_prompt(source, context=vehicle)
+        prompt_hash = sha256(prompt.encode()).hexdigest()
+        assert _auto_prompt_version(source, context=vehicle, prompt_hash=prompt_hash) == prompt_version
+        attempt = conn.execute("""SELECT * FROM canonical_article_rewrite_attempts
+            WHERE canonical_article_revision_id=%s""", (revision_id,)).fetchone()
+        assert attempt["status"] == "succeeded"
+        response = deepcopy(attempt["response"])
+        slots = json.loads(prompt)["slots"]
+        assert [slot["path"] for slot in slots] == [item["path"] for item in response["replacements"]]
+        [target] = [slot for slot in slots if slot["text"] == original]
+        assert target["required_action"] == "rewrite"
+        [replaced] = [item for item in response["replacements"] if item["path"] == target["path"]]
+        replaced.update(action="rewrite", text=mutation, reason="")
+        draft = render_auto(source, response, prompt_version=prompt_version)
+        historical = validate_auto(source, draft, response=response, prompt_version=prompt_version)
+        assert historical.passed
+        assert validate_auto(source, draft, response=response).error_codes == (error_code,)
+        projection = project_ordered_document(draft)
+        report = historical.report if validated else {}
+        report_hash = digest_json(report)
+        conn.execute("""UPDATE canonical_article_rewrite_attempts SET prompt_hash=%s,response=%s,response_hash=%s
+            WHERE rewrite_attempt_id=%s""", (prompt_hash, Jsonb(response), digest_json(response), attempt["rewrite_attempt_id"]))
+        conn.execute("""UPDATE canonical_article_revisions SET canonical_document=%s,canonical_body=%s,
+            canonical_steps=%s,canonical_images=%s,rewrite_result_hash=%s,model_metadata=%s,
+            validation_report=%s,validation_hash=%s WHERE canonical_article_revision_id=%s""",
+            (Jsonb(draft), projection["body"], Jsonb(projection["steps"]), Jsonb(projection["images"]), digest_json(draft),
+             Jsonb({**candidate["model_metadata"], "prompt_hash": prompt_hash}), Jsonb(report), report_hash, revision_id))
+        if validated:
+            conn.execute("""UPDATE source_fetch_jobs SET checkpoint=checkpoint||%s
+                WHERE source_fetch_job_id=%s""", (Jsonb({"validation_hash": report_hash}), job_id))
+        source_revision = conn.execute("SELECT * FROM canonical_article_source_revisions WHERE source_revision_id=%s",
+                                       (source_id,)).fetchone()
+
+    before = recovery_snapshot(runtime.repo)
+    assert before["publication_events"] == []
+    assert runtime.read_current()["content_origin"] == "source"
+    assert runtime.counters() == {"source": 1, "asset": 0, "model": 1, "schedule": 1}
+    runtime.barrier = None
+    runtime.start_workers(2)
+    runtime.wait_for(lambda: runtime.read_current()["processing_state"] in ("completed", "failed", "needs_review"))
+    runtime.stop_workers()
+
+    state = runtime.read_current()
+    assert state["processing_error_code"] == error_code, state["processing_state"]
+    assert state["processing_state"] in ("failed", "needs_review")
+    assert state["content_origin"] == "source"
+    assert state["source_revision_id"] == source_id
+    assert state["canonical_revision_id"] is None
+    assert original in state["body"] and mutation not in state["body"]
+    assert runtime.counters() == {"source": 1, "asset": 0, "model": 1, "schedule": 1}
+    after = recovery_snapshot(runtime.repo)
+    assert after["publication_events"] == after["canonical_article_reviews"] == []
+    assert after["canonical_article_rewrite_attempts"] == before["canonical_article_rewrite_attempts"]
+    [saved_before] = before["canonical_article_revisions"]
+    [saved_after] = after["canonical_article_revisions"]
+    expected_report_hash = digest_json(historical.report)
+    # A building draft still records its historical validation before the
+    # publication gate runs. A validated draft already has that exact report.
+    assert saved_after == {
+        **saved_before,
+        "status": "validated",
+        "validation_report": historical.report,
+        "validation_hash": expected_report_hash,
+    }
+    [job] = after["source_fetch_jobs"]
+    assert job["retryable"] is False
+    assert job["checkpoint"]["normalized_document"] == source
+    assert job["checkpoint"]["validation_hash"] == expected_report_hash
+    with runtime.repo.connect() as conn:
+        assert conn.execute("SELECT * FROM canonical_article_source_revisions WHERE source_revision_id=%s",
+                            (source_id,)).fetchone() == source_revision
+        assert conn.execute("""SELECT * FROM canonical_article_source_observations
+            WHERE source_revision_id=%s ORDER BY captured_at LIMIT 1""", (source_id,)).fetchone() == observation
 
 
 @pytest.mark.parametrize("mode,source_html,expected_text,expected_code", [
