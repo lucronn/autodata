@@ -1487,8 +1487,10 @@ async def api_case(browser,origin,name,output,observations=None,*,verify_reader_
         await expect(page.locator('#purchase-selection')).to_have_text('2024 Example Car Paid selected 2.0 L / US')
         if name==API_CASES[0]:
             checkout_count = transport.checkout_count
+            request_offset = len(transport.requests)
             await page.locator('#purchase-action').click()
             await page.wait_for_url(trusted_hosted_checkout)
+            assert {'method': 'GET', 'path': '/v1/workshop/orders/{uuid}'} in transport.requests[request_offset:]
             assert page.url == hosted_url and transport.checkout_count == checkout_count
             await page.goto(return_url)
             await expect(page.locator('#purchase-action')).to_have_text('Continue checkout')

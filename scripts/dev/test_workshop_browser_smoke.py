@@ -1451,6 +1451,17 @@ class API21FakeLocator:
             self.page.emit('https://127.0.0.1:32001/v1/catalog/vehicles/'+smoke.CONFIG+'/articles/'+smoke.ARTICLE+'/source',{'source':'Remove the pump.'})
         elif self.selector in ('#purchase-action','#retry'):
             route=CheckoutRoute()
+            [order_id] = smoke.parse_qs(smoke.urlsplit(self.page.url).query).get('order', [''])
+            if self.selector == '#purchase-action' and order_id:
+                [order] = browser.snapshot()['paid_rows']['workshop_orders']
+                assert context.signed and not browser.paid and order['order_id'] == order_id
+                assert order['status'] == 'open'
+                route.request = SimpleNamespace(method='GET', headers={},
+                    url=f'{context.transport.origin}/v1/workshop/orders/{order_id}')
+                await context.transport.route(route)
+                assert route.events == ['continue']
+                self.page.url = order['checkout_url']
+                return
             route.request.post_data_buffer=route.request.post_data.encode()
             route.fetched_response.body=lambda:asyncio.sleep(0,result=json.dumps(route.fetched_response.data).encode())
             await context.transport.route(route)
