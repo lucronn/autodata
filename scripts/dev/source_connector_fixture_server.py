@@ -32,9 +32,9 @@ class ConnectorFixture:
         self.lock = Lock()
 
     def body(
-        self, payload, media_type="text/html", ref="body", kind="article", assets=()
+        self, payload, media_type="text/html", ref="body", kind="article", assets=(), *, asset_bindings=(),
     ):
-        self.resources[ref] = (payload, media_type, kind, list(assets))
+        self.resources[ref] = (payload, media_type, kind, list(assets), list(asset_bindings))
 
     def envelope(self, **fields):
         return {
@@ -63,7 +63,7 @@ class ConnectorFixture:
             finally:
                 with self.lock:
                     self.active -= 1
-            payload, media, kind, assets = self.resources[ref]
+            payload, media, kind, assets, bindings = self.resources[ref]
             content = (
                 {"content_base64": base64.b64encode(payload).decode()}
                 if kind in ("asset", "binary")
@@ -74,6 +74,7 @@ class ConnectorFixture:
                 media_type=media,
                 sha256=sha256(payload).hexdigest(),
                 **content,
+                **({"asset_bindings": bindings} if bindings else {}),
                 **(
                     {"asset_resource_refs": assets}
                     if kind in ("article", "text", "labor")
@@ -161,6 +162,31 @@ def serve_model():
             if fixture.mode=="transport":self.send_error(503);return
             slots=prompt["slots"]
             response={"replacements":[{**slot,"text":slot["text"] if fixture.mode=="unchanged" else slot["text"].replace("Remove","Take off").replace("Install","Fit").replace("Discard","Toss")} for slot in slots]}
+            if str(prompt.get("prompt_version", "")).startswith("full-prose-auto-prompt-"):
+                def replacement(slot):
+                    text = slot["text"]
+                    retained = slot.get("required_action") in ("retain", "rewrite_or_retain")
+                    rewritten = {
+                        "Inspect the alignment marks before removing the pump.": "Check the pump alignment marks before removal.",
+                        "Remove the pump.": "Take off the pump.",
+                        "Remove the refreshed pump.": "Lift off the refreshed pump.",
+                        "Remove the cover while the ignition is off.": "With the ignition off, take the cover off.",
+                        "Inspect the seal.": "Check the seal.",
+                        "Inspect the gasket.": "Check the gasket.",
+                        "Install the replacement.": "Fit the replacement unit.",
+                        "Install a new oil seal after the flange is dry.": "After the flange has dried, fit the replacement oil seal into place.",
+                    }.get(text, text)
+                    return {
+                        "block_id": slot["block_id"],
+                        "path": slot["path"],
+                        "action": "retain" if retained else "rewrite",
+                        "text": text if retained or fixture.mode == "unchanged" else rewritten,
+                        "reason": "Preserve the source wording." if retained else "",
+                    }
+                response = {
+                    "introduction": "This procedure covers pump removal.",
+                    "replacements": [replacement(slot) for slot in slots],
+                }
             if fixture.mode=="unsafe" and response["replacements"]:response["replacements"][0]["text"]="Install an invented component."
             raw=json.dumps({"choices":[{"message":{"content":json.dumps(response)}}]}).encode()
             self.send_response(200);self.send_header("Content-Type","application/json");self.send_header("Content-Length",str(len(raw)));self.end_headers()

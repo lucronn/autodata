@@ -21,6 +21,7 @@ TERMS = "workshop-v1"
 # Preserve the card-only Checkout contract across Stripe SDK default changes.
 STRIPE_API_VERSION = '2025-08-27.basil'
 LIVE = ('creating', 'open', 'processing', 'paid', 'reconciliation_required')
+_CONFIGURATION_LABEL_SQL = "concat_ws(' ',b.model_year::text,b.make,b.model,c.trim,c.engine_displacement_l::text || ' L')"
 READ_ONLY_COMMERCE_PATHS = frozenset('/internal/commerce/' + path for path in
     ('purchase-config', 'quote', 'library', 'grants/check'))
 
@@ -193,7 +194,7 @@ class CommerceService:
 
     def _scope(self, cursor, configuration_id, region):
         validate_uuid(configuration_id); validate_region(region)
-        cursor.execute("""SELECT c.vehicle_configuration_id, concat_ws(' ',b.make,b.model,b.model_year::text,c.trim) AS label
+        cursor.execute(f"""SELECT c.vehicle_configuration_id, {_CONFIGURATION_LABEL_SQL} AS label
             FROM vehicle_configurations c JOIN vehicle_identity_bases b USING(vehicle_identity_base_id)
             WHERE c.vehicle_configuration_id=%s AND b.region=%s
               AND c.reviewer_state<>'rejected' AND b.reviewer_state<>'rejected'""", (configuration_id, region))
@@ -237,7 +238,7 @@ class CommerceService:
             result.update(state='owned', library_item_id=str(order['order_id']))
             status = 200
         elif order['status'] == 'open' and order.get('checkout_url') and order.get('provider_expires_at') and order['provider_expires_at'] > self.clock():
-            result.update(state='checkout', checkout_url=validate_checkout_url(order['checkout_url']), provider_expires_at=order['provider_expires_at'].isoformat())
+            result.update(state='checkout', checkout_url=validate_checkout_url(order['checkout_url']), provider_expires_at=order['provider_expires_at'].astimezone(UTC).isoformat())
         else:
             status = 202
         return CommerceResult(result, status)
@@ -352,15 +353,24 @@ class CommerceService:
         validate_uuid(order_id)
         with self.transaction() as (_, cursor):
             self._account(cursor, account_id, organization_id)
-            cursor.execute('SELECT * FROM workshop_orders WHERE order_id=%s AND customer_account_id=%s', (order_id, account_id))
+            cursor.execute(f"""SELECT o.*, CASE WHEN b.vehicle_identity_base_id IS NOT NULL
+                    THEN {_CONFIGURATION_LABEL_SQL} END AS configuration_label
+                FROM workshop_orders o
+                LEFT JOIN vehicle_configurations c ON c.vehicle_configuration_id=o.configuration_id
+                LEFT JOIN vehicle_identity_bases b ON b.vehicle_identity_base_id=c.vehicle_identity_base_id AND b.region=o.region
+                WHERE o.order_id=%s AND o.customer_account_id=%s""", (order_id, account_id))
             order = cursor.fetchone()
             if not order:
                 raise CommerceError('ORDER_NOT_FOUND', 404)
             self._assert_merchant(order)
+        label = order['configuration_label']
         if order['status'] == 'open' and order['provider_expires_at'] <= self.clock():
             order = self._reconcile_expiry(order)
-        return CommerceResult(dict(version='v1', order_id=order_id, configuration_id=str(order['configuration_id']), region=order['region'],
-            state=order['status'], retry_disposition=('new_key' if order['status'] in {'expired', 'canceled'} else 'do_not_repay')))
+        result = dict(version='v1', order_id=order_id, configuration_id=str(order['configuration_id']), region=order['region'],
+            state=order['status'], retry_disposition=('new_key' if order['status'] in {'expired', 'canceled'} else 'do_not_repay'))
+        if label:
+            result['configuration_label'] = label
+        return CommerceResult(result)
 
     def webhook(self, signature, body):
         if not isinstance(signature, str) or not signature or len(signature.encode()) > 4096 or len(body) > 1048576:
@@ -519,24 +529,78 @@ class CommerceService:
             clause = 'AND (o.created_at,o.order_id)<(%s,%s)' if after else ''
             price_clause = ' AND o.expected_price_id=%s' if self.read_only else ''
             args = [account_id, self.config.account_id, self.config.livemode] + ([self.config.price_id] if self.read_only else []) + (list(after) if after else []) + [limit + 1]
-            cursor.execute("""SELECT o.*,concat_ws(' ',b.make,b.model,b.model_year::text,c.trim) AS label,e.status AS grant_status,e.granted_at
-                FROM workshop_orders o JOIN vehicle_configurations c ON c.vehicle_configuration_id=o.configuration_id
-                JOIN vehicle_identity_bases b USING(vehicle_identity_base_id) LEFT JOIN entitlements e ON e.entitlement_id=o.entitlement_id
-                WHERE o.customer_account_id=%s AND o.stripe_account_id=%s AND o.livemode=%s""" + price_clause + " AND (o.status='revoked' OR e.entitlement_id IS NOT NULL) " + clause + ' ORDER BY o.created_at DESC,o.order_id DESC LIMIT %s', args)
+            # Limit the owner-scoped page before checking article readiness.
+            cursor.execute(f"""
+                WITH page AS MATERIALIZED (
+                    SELECT o.*,{_CONFIGURATION_LABEL_SQL} AS label,e.status AS grant_status,e.granted_at,
+                        c.reviewer_state<>'rejected' AND b.reviewer_state<>'rejected' AS catalog_available
+                    FROM workshop_orders o JOIN vehicle_configurations c ON c.vehicle_configuration_id=o.configuration_id
+                    JOIN vehicle_identity_bases b USING(vehicle_identity_base_id)
+                    LEFT JOIN entitlements e ON e.entitlement_id=o.entitlement_id
+                    WHERE o.customer_account_id=%s AND o.stripe_account_id=%s AND o.livemode=%s {price_clause}
+                      AND (o.status='revoked' OR e.entitlement_id IS NOT NULL) {clause}
+                    ORDER BY o.created_at DESC,o.order_id DESC LIMIT %s
+                )
+                SELECT p.*, CASE
+                    WHEN p.status='revoked' OR p.grant_status='revoked' THEN 'revoked'
+                    WHEN p.catalog_available IS NOT TRUE THEN 'paid'
+                    WHEN EXISTS (
+                        SELECT 1 FROM canonical_articles a
+                        JOIN LATERAL (
+                            SELECT takedown_status,availability,document FROM catalog_article_current
+                            WHERE canonical_article_id=a.canonical_article_id LIMIT 1
+                        ) v ON true
+                        JOIN vehicle_configurations c ON c.vehicle_configuration_id=a.vehicle_configuration_id
+                        JOIN vehicle_identity_bases b USING(vehicle_identity_base_id)
+                        WHERE a.scope_key='configuration:' || p.configuration_id::text
+                          AND a.provider_slug IN ('bankone','banktwo')
+                          AND b.region=p.region AND c.reviewer_state<>'rejected' AND b.reviewer_state<>'rejected'
+                          AND a.membership_status='active' AND EXISTS (
+                              SELECT 1 FROM source_snapshots descriptor
+                              WHERE descriptor.source_snapshot_id=a.descriptor_source_snapshot_id
+                                AND descriptor.takedown_status='active'
+                          )
+                          AND v.takedown_status='active' AND v.availability='available'
+                          AND jsonb_typeof(v.document->'blocks')='array' AND jsonb_array_length(v.document->'blocks')>0
+                          AND NOT EXISTS (
+                              SELECT 1 FROM source_review_items q WHERE q.item_kind='quarantine' AND q.status<>'approved'
+                                AND (q.source_snapshot_ids ? a.descriptor_source_snapshot_id::text OR EXISTS (
+                                    SELECT 1 FROM canonical_article_source_revisions s
+                                    WHERE s.source_revision_id=a.current_source_revision_id
+                                      AND (q.source_snapshot_ids ? s.body_source_snapshot_id::text OR EXISTS (
+                                          SELECT 1 FROM jsonb_array_elements(s.resource_manifest) resource
+                                          JOIN source_snapshots asset ON asset.content_sha256::text=resource->>'sha256'
+                                          WHERE q.source_snapshot_ids ? asset.source_snapshot_id::text
+                                      ))
+                                ))
+                          )
+                    ) THEN 'viewable'
+                    WHEN p.preparation_state IS DISTINCT FROM 'index_ready' OR EXISTS (
+                        SELECT 1 FROM canonical_articles a
+                        JOIN LATERAL (
+                            SELECT 1 FROM source_fetch_jobs j
+                            WHERE j.canonical_article_id=a.canonical_article_id AND j.job_kind='article'
+                              AND j.status IN ('pending','processing','failed')
+                              AND (j.status<>'failed' OR j.retryable)
+                            LIMIT 1
+                        ) pending ON true
+                        WHERE a.scope_key='configuration:' || p.configuration_id::text
+                          AND a.provider_slug IN ('bankone','banktwo')
+                    ) THEN 'preparing'
+                    ELSE 'paid'
+                END AS access_state
+                FROM page p ORDER BY p.created_at DESC,p.order_id DESC
+            """, args)
             rows = cursor.fetchall()
             items = []
             for order in rows[:limit]:
-                state = 'paid'
-                if order['status'] == 'revoked' or order['grant_status'] == 'revoked':
-                    state = 'revoked'
-                elif self._readable(cursor, order['configuration_id'], order['region']):
-                    state = 'viewable'
-                elif order['preparation_state'] != 'index_ready' or self._article_pending(cursor, order['configuration_id']):
-                    state = 'preparing'
+                state = order['access_state']
                 item = dict(library_item_id=str(order['order_id']), configuration_id=str(order['configuration_id']), region=order['region'],
-                    label=order['label'], access_state=state, granted_at=order['granted_at'].isoformat() if order['granted_at'] else None)
+                    label=order['label'], access_state=state, granted_at=order['granted_at'].astimezone(UTC).isoformat() if order['granted_at'] else None)
+                if state == 'paid' and not order['catalog_available']:
+                    item['catalog_available'] = False
                 if order['revoked_at']:
-                    item['revoked_at'] = order['revoked_at'].isoformat()
+                    item['revoked_at'] = order['revoked_at'].astimezone(UTC).isoformat()
                 if order['preparation_last_error_code']:
                     item['content_error_code'] = order['preparation_last_error_code']
                 items.append(item)
@@ -545,26 +609,6 @@ class CommerceService:
                 last = rows[limit - 1]
                 next_cursor = base64.urlsafe_b64encode(json.dumps([account_id, last['created_at'].isoformat(), str(last['order_id'])]).encode()).decode().rstrip('=')
             return CommerceResult(dict(version='v1', items=items, next_cursor=next_cursor))
-
-    def _article_pending(self, cursor, configuration_id):
-        cursor.execute("""SELECT 1 FROM source_fetch_jobs j JOIN canonical_articles a USING(canonical_article_id) WHERE a.vehicle_configuration_id=%s AND j.job_kind='article'
-            AND (j.status IN ('pending','processing') OR (j.status='failed' AND j.retryable)) LIMIT 1""", (configuration_id,))
-        return bool(cursor.fetchone())
-
-    def _readable(self, cursor, configuration_id, region):
-        cursor.execute("""SELECT 1 FROM catalog_article_current v JOIN canonical_articles a USING(canonical_article_id)
-            JOIN vehicle_configurations c ON c.vehicle_configuration_id=a.vehicle_configuration_id
-            JOIN vehicle_identity_bases b USING(vehicle_identity_base_id)
-            WHERE a.vehicle_configuration_id=%s AND b.region=%s AND c.reviewer_state<>'rejected' AND b.reviewer_state<>'rejected'
-            AND a.membership_status='active' AND EXISTS(SELECT 1 FROM source_snapshots descriptor WHERE descriptor.source_snapshot_id=a.descriptor_source_snapshot_id AND descriptor.takedown_status='active') AND v.takedown_status='active' AND v.availability='available'
-            AND jsonb_typeof(v.document->'blocks')='array' AND jsonb_array_length(v.document->'blocks')>0
-            AND NOT EXISTS(SELECT 1 FROM source_review_items q WHERE q.item_kind='quarantine' AND q.status<>'approved'
-              AND (q.source_snapshot_ids ? a.descriptor_source_snapshot_id::text OR EXISTS(
-                SELECT 1 FROM canonical_article_source_revisions s WHERE s.source_revision_id=a.current_source_revision_id
-                AND (q.source_snapshot_ids ? s.body_source_snapshot_id::text OR EXISTS(
-                  SELECT 1 FROM jsonb_array_elements(s.resource_manifest) resource JOIN source_snapshots asset ON asset.content_sha256::text=resource->>'sha256'
-                  WHERE q.source_snapshot_ids ? asset.source_snapshot_id::text))))) LIMIT 1""", (configuration_id, region))
-        return bool(cursor.fetchone())
 
 
 class ReadOnlyCommerceService(CommerceService):

@@ -192,22 +192,19 @@ def fake_child_dependencies(producer,monkeypatch,tmp_path,browser_code=0,stale=F
     for name,value in producer._binding_env(producer._binding(root,'chromium','bankone','parent-pytest'),'child-pytest').items():monkeypatch.setenv(name,value)
     monkeypatch.setenv('AUTODATA_WORKSHOP_BROWSER_DATABASE','fake')
     for key,value in {'GOTOOLCHAIN':'local','GOPROXY':'off','GOCACHE':str(tmp_path/'cache'),'GOTMPDIR':str(tmp_path/'gotmp')}.items():monkeypatch.setenv(key,value)
-    def set_fixture_profile(statement, parameters):
-        assert statement.startswith("UPDATE canonical_articles")
-        assert parameters == ("technical-prose-v1", "configuration")
-
-    connection = types.SimpleNamespace(execute=set_fixture_profile)
-    monkeypatch.setattr(
-        producer, "Repository",
-        lambda name: types.SimpleNamespace(
-            database_name=name, connect=lambda: contextlib.nullcontext(connection),
-        ),
-    )
+    monkeypatch.setattr(producer,'Repository',lambda name:types.SimpleNamespace(database_name=name))
     runtime=types.SimpleNamespace(env={},vehicle='vehicle',article_id='article',articles={'banktwo':'other'},bucket='bucket',workers=[],logs=[],barrier=None,close=lambda:None,stop_workers=lambda:None)
+    runtime.servers = {}
     monkeypatch.setattr(producer,'LifecycleRuntime',lambda repo,stack:runtime)
     monkeypatch.setattr(producer,'configure_scoped_runtime',lambda *a:{key:key for key in ('configuration','adjacent','other_region','unscoped')})
+    published = {
+        'status': 'published', 'rewrite_profile_version': 'full-prose-auto-v1',
+        'validation_report': {'passed': True, 'changed_prose_slots': ['/blocks/0/text']},
+    }
     bridge=types.SimpleNamespace(token='never-retain-token',model_handler=lambda:None,ensure_handler=lambda:None,control_handler=lambda:None,
-        snapshot=lambda:{'proxy':{'errors':[]},'ensure':{'active':0}},stop=lambda:[],release_model=threading.Event())
+        snapshot=lambda:{'proxy':{'errors':[]},'ensure':{'active':0},
+                         'immutable_rows':{'canonical_article_revisions':[published]}},
+        stop=lambda:[],release_model=threading.Event())
     monkeypatch.setattr(producer,'BrowserBridge',lambda runtime:bridge)
     monkeypatch.setattr(producer,'serve',lambda handler:contextlib.nullcontext('https://127.0.0.1:1234'))
     def popen(command,**kwargs):

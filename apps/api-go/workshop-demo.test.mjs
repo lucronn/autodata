@@ -23,29 +23,43 @@ test('real demo uses the ordinary app only in test mode; sample stays separate',
     ['?demo=1', true, ['./app.mjs'], true, 1],
     ['?demo=1', false, [], false, 1],
     ['?demo=1&sample=1', false, [], false, 1],
-    ['?order=22222222-2222-4222-8222-222222222222', true, ['./app.mjs'], true, 1],
-    ['', false, ['./app.mjs'], false, 1],
+    ['?order=22222222-2222-4222-8222-222222222222', true, ['./catalog.mjs', './auth.mjs', './app.mjs'], true, 1],
+    ['', false, ['./catalog.mjs', './auth.mjs', './app.mjs'], false, 1],
   ];
   for (const [search, ready, expected, banner, fetchCount] of scenarios) {
     const loaded = [];
     const calls = [];
+    const preload = [];
     const nodes = new Map(['test-banner', 'open-demo-banner', 'test-unavailable'].map(id => [id, { hidden: true }]));
     const main = { hidden: false };
     const nav = { hidden: false };
     await runInNewContext(`(async () => { ${code} })()`, {
       URLSearchParams, location: { search }, document: {
         documentElement: { dataset: {} },
+        createElement: tag => ({ tag }),
+        head: { append: element => preload.push(element) },
         getElementById: id => nodes.get(id),
         querySelector: selector => selector === 'main' ? main : nav,
       },
-      fetch: async (path, options) => { calls.push([path, options]); return { ok: true, json: async () => ({ enabled: ready }) }; },
-      loadModule: async path => loaded.push(path),
+      fetch: async path => {
+        calls.push({ path, preload: preload.slice(), imports: loaded.slice() });
+        return { ok: true, json: async () => ({ enabled: ready }) };
+      },
+      loadModule: async path => {
+        loaded.push(path);
+        return { requestInitialYears: () => null, readSessionBootstrap: () => null, bootstrap() {} };
+      },
     });
     assert.deepEqual(loaded, expected);
     assert.equal(nodes.get('test-banner').hidden, !banner);
     assert.equal(nodes.get('test-unavailable').hidden, !(search.includes('demo=1') && !ready));
     assert.equal(calls.length, fetchCount);
-    if (fetchCount) assert.equal(calls[0][0], '/workshop/demo-mode.json');
+    assert.deepEqual(preload, fetchCount && !search.includes('demo=1') ? [
+      { tag: 'link', rel: 'modulepreload', href: '/workshop/app.mjs' },
+    ] : []);
+    if (fetchCount) assert.deepEqual(calls[0], {
+      path: '/workshop/demo-mode.json', preload, imports: [],
+    });
     if (search.includes('demo=1') && !ready) {
       assert.equal(main.hidden, true);
       assert.equal(nav.hidden, true);
@@ -74,6 +88,52 @@ test('real demo request fails closed on unavailable or malformed mode signal', a
     assert.equal(main.hidden, true);
   }
 });
+test('regular startup fetches public years and account status while checkout mode is pending', async () => {
+  const code = source('bootstrap.mjs').replaceAll('import(', 'loadModule(');
+  let releaseMode;
+  const result = Promise.resolve({ items: [{ year: 2024 }] });
+  const account = [{ status: 'fulfilled', value: {} }];
+  const events = [];
+  const banner = { hidden: true };
+  const started = runInNewContext(`(async () => { ${code} })()`, {
+    URLSearchParams, location: { search: '' }, document: {
+      documentElement: { dataset: {} },
+      createElement: () => ({}), head: { append() {} },
+      getElementById: id => id === 'test-banner' ? banner : {},
+    },
+    fetch(path) {
+      assert.equal(path, '/workshop/demo-mode.json');
+      events.push('mode requested');
+      return new Promise(resolve => { releaseMode = resolve; });
+    },
+    async loadModule(path) {
+      if (path === './catalog.mjs') {
+        return { requestInitialYears(params) {
+          assert.equal(params.toString(), '');
+          events.push('years requested');
+          return result;
+        } };
+      }
+      if (path === './auth.mjs') {
+        return { readSessionBootstrap() {
+          events.push('account requested');
+          return account;
+        } };
+      }
+      return { async bootstrap(years, initialAccount) {
+        assert.equal(banner.hidden, false);
+        assert.equal(years, result);
+        assert.equal(await initialAccount, account);
+        events.push('app bootstrapped');
+      } };
+    },
+  });
+  await new Promise(setImmediate);
+  assert.deepEqual(events, ['mode requested', 'years requested', 'account requested']);
+  releaseMode({ ok: true, json: async () => ({ enabled: true }) });
+  await started;
+  assert.deepEqual(events, ['mode requested', 'years requested', 'account requested', 'app bootstrapped']);
+});
 test('open demo handshake loads the real app without test checkout UI', async () => {
   const code = source('bootstrap.mjs').replaceAll('import(', 'loadModule(');
   const loaded = [];
@@ -84,7 +144,10 @@ test('open demo handshake loads the real app without test checkout UI', async ()
     location: { search: '?demo=1' },
     document: { documentElement: root, getElementById: id => nodes.get(id), querySelector: () => ({ hidden: false }) },
     fetch: async () => ({ ok: true, json: async () => ({ enabled: true, access: 'open' }) }),
-    loadModule: async path => loaded.push(path),
+    loadModule: async path => {
+      loaded.push(path);
+      return { bootstrap() {} };
+    },
   });
   assert.deepEqual(loaded, ['./app.mjs']);
   assert.equal(root.dataset.workshopMode, 'open-demo');

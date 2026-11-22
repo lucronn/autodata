@@ -35,6 +35,135 @@ func TestCatalogDetailLifecycle(t *testing.T) {
 	}
 }
 
+func TestCatalogArticleActiveReadRetryAfter(t *testing.T) {
+	retryDelay := 9
+	for _, test := range []struct {
+		name, state string
+		origin      string
+		delay       *int
+		status      int
+		header      string
+	}{
+		{"cold queued", "queued", "", nil, 202, "1"},
+		{"cold fetch", "fetching_source", "", nil, 202, "1"},
+		{"stored source awaiting first publication", "rewriting", "source", nil, 200, "1"},
+		{"published article during refresh", "rewriting", "canonical", nil, 200, "2"},
+		{"explicit source delay", "rewriting", "source", &retryDelay, 200, "9"},
+		{"explicit failed retry", "failed", "", &retryDelay, 202, "9"},
+		{"review required", "needs_review", "source", nil, 200, ""},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			store := newMemoryCatalogStore()
+			article := CatalogArticle{
+				ID: "a", VehicleID: "v", CanonicalArticleID: stringPointer("a"), Title: "Pump",
+				Availability: "pending", Processing: &CatalogProcessing{
+					JobID: "job", State: test.state, RetryAfterSeconds: test.delay, Retryable: test.state == "failed",
+				},
+			}
+			if test.origin != "" {
+				article.Availability = "available"
+				article.ContentOrigin = stringPointer(test.origin)
+				article.Document = &CatalogDocument{
+					SchemaVersion: 1, NormalizationVersion: "ordered-article-v1",
+					Blocks: []CatalogDocumentBlock{{Type: "paragraph", Text: "Remove pump."}},
+				}
+			}
+			store.PutArticle(article)
+			response := catalogRequest(catalogServer(store), "/v1/catalog/vehicles/v/articles/a")
+			if response.Code != test.status || response.Header().Get("Retry-After") != test.header {
+				t.Fatalf("status=%d retry=%q, want status=%d retry=%q",
+					response.Code, response.Header().Get("Retry-After"), test.status, test.header)
+			}
+		})
+	}
+}
+
+func TestCatalogPrepareShortSourceCheckPreference(t *testing.T) {
+	one, nine := 1, 9
+	for _, tc := range []struct {
+		name, method, state string
+		prefer              bool
+		delay               *int
+		want                string
+	}{
+		{"queued prepare", http.MethodPost, "queued", true, nil, ""},
+		{"fetching prepare", http.MethodPost, "fetching_source", true, nil, ""},
+		{"older client", http.MethodPost, "queued", false, nil, "1"},
+		{"short detail check", http.MethodGet, "queued", true, nil, ""},
+		{"normal detail retrieval", http.MethodGet, "queued", false, nil, "1"},
+		{"explicit short delay", http.MethodPost, "queued", true, &one, "1"},
+		{"explicit failure delay", http.MethodPost, "failed", true, &nine, "9"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			article := lifecycleArticle(CatalogArticle{
+				ID: "article", Availability: "pending", Processing: &CatalogProcessing{
+					JobID: "job", State: tc.state, Retryable: tc.state == "failed", RetryAfterSeconds: tc.delay,
+				},
+			})
+			request := httptest.NewRequest(tc.method, "/v1/catalog/vehicles/v/articles/article", nil)
+			if tc.prefer {
+				request.Header.Set("Prefer", shortSourceCheckPreference)
+			}
+			response := httptest.NewRecorder()
+			catalogServer(newMemoryCatalogStore()).respondCatalogArticleView(response, request, Principal{}, CatalogArticleView{Article: article})
+			if response.Code != http.StatusAccepted || response.Header().Get("Retry-After") != tc.want {
+				t.Fatalf("accepted response had status %d and retry %q, want retry %q", response.Code, response.Header().Get("Retry-After"), tc.want)
+			}
+			var result CatalogArticleResponse
+			if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil || result.Article.Processing == nil {
+				t.Fatalf("unreadable processing response: %v", err)
+			}
+			applied := response.Header().Get("Preference-Applied") == shortSourceCheckPreference
+			if applied != (tc.want == "") || (result.Article.Processing.RetryAfterSeconds == nil) != applied {
+				t.Fatal("preference acknowledgment and retry delay disagree")
+			}
+		})
+	}
+}
+
+func TestCatalogShortPublicationCheckPreference(t *testing.T) {
+	explicit := 1
+	for _, tc := range []struct {
+		name, origin, state, preference string
+		delay                           *int
+		wantRetry, wantApplied          string
+	}{
+		{"normalizing", "source", "normalizing", shortPublicationCheckPreference, nil, "", shortPublicationCheckPreference},
+		{"rewriting", "source", "rewriting", shortSourceCheckPreference + ", " + shortPublicationCheckPreference, nil, "", shortPublicationCheckPreference},
+		{"publishing", "source", "publishing", shortPublicationCheckPreference, nil, "", shortPublicationCheckPreference},
+		{"older reader", "source", "rewriting", shortSourceCheckPreference, nil, "1", ""},
+		{"explicit delay", "source", "rewriting", shortPublicationCheckPreference, &explicit, "1", ""},
+		{"refresh", "canonical", "rewriting", shortPublicationCheckPreference, nil, "2", ""},
+		{"waiting in queue", "source", "queued", shortPublicationCheckPreference, nil, "1", ""},
+		{"review", "source", "needs_review", shortPublicationCheckPreference, nil, "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			article := lifecycleArticle(CatalogArticle{
+				ID: "article", CanonicalArticleID: stringPointer("article"), Availability: "available",
+				ContentOrigin: stringPointer(tc.origin),
+				Document:      &CatalogDocument{Blocks: []CatalogDocumentBlock{{Type: "paragraph", Text: "Remove pump."}}},
+				Processing:    &CatalogProcessing{JobID: "job", State: tc.state, RetryAfterSeconds: tc.delay},
+			})
+			request := httptest.NewRequest(http.MethodGet, "/v1/catalog/vehicles/v/articles/article", nil)
+			request.Header.Set("Prefer", tc.preference)
+			response := httptest.NewRecorder()
+			catalogServer(newMemoryCatalogStore()).respondCatalogArticleView(response, request, Principal{}, CatalogArticleView{Article: article})
+			retry := response.Header().Get("Retry-After")
+			applied := response.Header().Get("Preference-Applied")
+			if response.Code != http.StatusOK || retry != tc.wantRetry || applied != tc.wantApplied {
+				t.Fatalf("status=%d retry=%q applied=%q", response.Code, retry, applied)
+			}
+			var result CatalogArticleResponse
+			if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil || result.Article.Processing == nil {
+				t.Fatalf("unreadable processing response: %v", err)
+			}
+			if delay := result.Article.Processing.RetryAfterSeconds; (delay != nil) != (retry != "") {
+				t.Fatalf("Retry-After and article processing disagree: %q / %v", retry, delay)
+			}
+		})
+	}
+}
+
 func TestCatalogLifecycleReadableSourceIgnoresWorkerOutage(t *testing.T) {
 	for _, state := range []string{"rewriting", "failed", "needs_review"} {
 		t.Run(state, func(t *testing.T) {
@@ -81,7 +210,7 @@ func TestCatalogLifecycleViewRevisionIgnoresProcessingAndURLs(t *testing.T) {
 	}
 }
 func TestCatalogSourceOrderedTablesWarningsAndUnavailableMedia(t *testing.T) {
-	doc := &CatalogDocument{SchemaVersion: 1, NormalizationVersion: "ordered-article-v1", Blocks: []CatalogDocumentBlock{{BlockID: "warning", Type: "warning", Label: "Warning", Text: "Disconnect <battery>."}, {BlockID: "table", Type: "table", Columns: []string{"Torque", "Diagram"}, Rows: [][]any{{"10 N·m", map[string]any{"text": "Pump", "asset_id": "missing"}}}}, {BlockID: "unknown", Type: "unknown", Text: "Retained unknown block"}}}
+	doc := &CatalogDocument{SchemaVersion: 1, NormalizationVersion: "ordered-article-v1", Blocks: []CatalogDocumentBlock{{BlockID: "warning", Type: "warning", Label: "Warning", Text: "Disconnect <battery>."}, {BlockID: "table", Type: "table", Columns: []any{"Torque", "Diagram"}, Rows: [][]any{{"10 N·m", map[string]any{"text": "Pump", "asset_id": "missing"}}}}, {BlockID: "unknown", Type: "unknown", Text: "Retained unknown block"}}}
 	rendered := renderCatalogOrderedSource(doc, nil)
 	for _, text := range []string{"Warning", "Disconnect &lt;battery&gt;.", "<table>", "10 N·m", "Image unavailable", "Retained unknown block"} {
 		if !strings.Contains(rendered, text) {
@@ -252,6 +381,8 @@ func TestCatalogCanonicalR2StepPreservesActualCompatibilityShape(t *testing.T) {
 	for _, raw := range []string{
 		`{"action":"Take off the pump.","instructions":[],"images":[],"evidence_ids":["e1","e2"]}`,
 		`{"action":"Take off the pump.","instructions":[],"evidence_ids":["e1"]}`,
+		`{"number":0,"action":"Take off the pump.","instructions":[],"evidence_ids":["e1"]}`,
+		`{"number":-2,"action":"Take off the pump.","instructions":[],"evidence_ids":["e1"]}`,
 		`{"action":"Take off the pump.","text":"Additional source context.","instructions":[],"images":[],"evidence_ids":["e1"]}`,
 		`{"number":7,"action":"Take off the pump.","instructions":["Keep the seal.","Inspect the bracket."],"images":[],"evidence_ids":["e2","e1"]}`,
 	} {
@@ -319,5 +450,88 @@ func TestCatalogCanonicalStepImageURLsDoNotChangeViewRevision(t *testing.T) {
 	changed := lifecycleArticle(article)
 	if *changed.ViewRevision == *first.ViewRevision {
 		t.Fatal("step image content did not change view identity")
+	}
+}
+
+func TestCatalogOrderedListsKeepNumberingInPaidDocumentAndHTML(t *testing.T) {
+	raw := []byte(`{"schema_version":1,"normalization_version":"ordered-article-v1","blocks":[
+		{"type":"ordered_list","start":0,"items":["Remove",{"text":"Inspect","number":-3,
+			"blocks":[{"type":"ordered_list","start":-2147483648,"items":[{"text":"Nested","number":2147483647}]}]},
+			"Fit",{"text":"Zero","number":0},{"text":"Fraction","number":1.5},
+			{"text":"Out of range","number":2147483648},{"text":"String ordinal","number":"9"}]},
+		{"type":"ordered_list","items":["Legacy sequence"]},
+		{"type":"unordered_list","start":6,"items":[{"text":"Bullet","number":8}]},
+		{"type":"ordered_list","start":2147483648,"items":["Invalid start"]}
+	]}`)
+	var stored CatalogDocument
+	if err := json.Unmarshal(raw, &stored); err != nil {
+		t.Fatal(err)
+	}
+	public := publicCatalogDocument(&stored)
+	if public == nil {
+		t.Fatal("public document is missing")
+	}
+	dto, err := json.Marshal(public)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{`"start":0`, `"number":0`, `"number":-3`, `"start":-2147483648`, `"number":2147483647`} {
+		if !strings.Contains(string(dto), field) {
+			t.Errorf("public document missing %s: %s", field, dto)
+		}
+	}
+	html := renderCatalogOrderedSource(public, nil)
+	for _, part := range []string{
+		`<ol start="0"><li>Remove</li><li value="-3">Inspect`,
+		`<ol start="-2147483648"><li value="2147483647">Nested</li></ol>`,
+		`<li>Fit</li><li value="0">Zero</li><li>Fraction</li><li>Out of range</li><li>String ordinal</li>`,
+		`<ol><li>Legacy sequence</li></ol>`, `<ul><li>Bullet</li></ul>`, `<ol><li>Invalid start</li></ol>`,
+	} {
+		if !strings.Contains(html, part) {
+			t.Errorf("source HTML missing %s: %s", part, html)
+		}
+	}
+}
+
+func TestCatalogOrderedSourceKeepsStructuredListsAndTableCells(t *testing.T) {
+	raw := []byte(`{
+		"schema_version":1,"normalization_version":"ordered-article-v1","blocks":[
+			{"type":"unordered_list","items":["Legacy item",{"text":"Inspect before proceeding",
+				"images":[{"asset_id":"list-diagram","alt":"Inspect","caption":"List detail"}],
+				"blocks":[{"type":"ordered_list","items":["Nested operation"]}]}]},
+			{"type":"table","caption":"Table title","columns":[{"text":"Diagram"}],
+				"rows":[{"cells":[{"text":"Cell detail","blocks":[{"type":"image","asset_id":"cell-diagram","alt":"View","caption":"Cell view"},
+					{"type":"paragraph","text":"Nested cell instruction"}]}]}],
+				"images":[{"asset_id":"cell-diagram"}]},
+			{"type":"link","text":"Related manual","href":"https://provider.invalid/private.pdf"}
+		]}`)
+	var doc CatalogDocument
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatalf("could not decode a valid structured article: %v", err)
+	}
+	doc = *publicCatalogDocument(&doc)
+	encoded, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "provider.invalid") || !strings.Contains(string(encoded), "Nested cell instruction") {
+		t.Fatalf("public document must retain nested content and omit private URLs: %s", encoded)
+	}
+	html := renderCatalogOrderedSource(&doc, []CatalogImage{
+		{ID: "list-diagram", URL: "/v1/catalog/images/v2.list"},
+		{ID: "cell-diagram", URL: "/v1/catalog/images/v2.cell"},
+	})
+	for _, part := range []string{
+		"<ul><li>Legacy item</li>", "<ol><li>Nested operation</li></ol>",
+		"<figcaption>List detail</figcaption>", "<caption>Table title</caption>",
+		"<th scope=\"col\">Diagram</th>", "<figcaption>Cell view</figcaption>",
+		"<p>Nested cell instruction</p>", "Related manual",
+	} {
+		if !strings.Contains(html, part) {
+			t.Errorf("stored source is missing %q: %s", part, html)
+		}
+	}
+	if strings.Count(html, "/v1/catalog/images/v2.cell") != 1 || strings.Contains(html, "provider.invalid") || strings.Contains(html, "href=") {
+		t.Fatalf("cell media must remain in place and provider link stay inert: %s", html)
 	}
 }

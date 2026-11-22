@@ -54,20 +54,22 @@ func (reader *minioCatalogImageReader) ReadImage(ctx context.Context, key string
 	if reader == nil || reader.client == nil || !localCatalogImageKeyPattern.MatchString(key) {
 		return nil, "", errors.New("invalid catalog image reference")
 	}
-	object, err := reader.client.GetObject(ctx, reader.bucket, key, minio.GetObjectOptions{})
+	// Core returns the stream and its metadata from the same GET.
+	core := minio.Core{Client: reader.client}
+	object, info, headers, err := core.GetObject(ctx, reader.bucket, key, minio.GetObjectOptions{})
 	if err != nil {
 		return nil, "", err
 	}
 	defer object.Close()
-	info, err := object.Stat()
-	if err != nil {
-		return nil, "", err
-	}
 	if info.Size <= 0 || info.Size > catalogImageMaxBytes {
 		return nil, "", errors.New("catalog image size is invalid")
 	}
-	payload, err := io.ReadAll(io.LimitReader(object, catalogImageMaxBytes+1))
-	if err != nil || len(payload) == 0 || len(payload) > catalogImageMaxBytes {
+	if headers.Get("Content-Range") != "" {
+		return nil, "", errors.New("catalog image could not be read")
+	}
+	// Read one extra byte to detect a body longer than its advertised size.
+	payload, err := io.ReadAll(io.LimitReader(object, info.Size+1))
+	if err != nil || int64(len(payload)) != info.Size {
 		return nil, "", errors.New("catalog image could not be read")
 	}
 	mediaType := strings.ToLower(strings.TrimSpace(strings.Split(info.ContentType, ";")[0]))

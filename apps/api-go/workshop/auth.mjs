@@ -43,6 +43,12 @@ export function authMessage(error) {
   if (error?.status === 401) return "Your session has expired. Sign in again.";
   return "Google sign-in is unavailable. You can keep browsing.";
 }
+export function readSessionBootstrap(request = requestJSON, { signal } = {}) {
+  return Promise.allSettled([
+    request("/auth/config", { signal, timeout: 10000 }),
+    request("/auth/session", { signal, timeout: 10000 }),
+  ]);
+}
 export function createSession({
   request = requestJSON,
   loadSDK = () => import("./firebase-web.mjs"),
@@ -123,23 +129,28 @@ export function createSession({
   return {
     state,
     clear,
-    async bootstrap({ signal } = {}) {
+    async matchesCurrentSession({ signal } = {}) {
+      const current = epoch;
+      const csrf = state.csrf;
+      const data = await request("/auth/session", { signal, timeout: 10000 });
+      return !signal?.aborted && current === epoch && state.authenticated &&
+        csrf === state.csrf && validSession(data) && data.csrf_token === csrf;
+    },
+    async bootstrap({ signal, initial } = {}) {
       const current = ++epoch;
       state.mode = null;
       state.authenticated = false;
       state.csrf = "";
       state.ready = false;
-      try {
-        config = await request("/auth/config", { signal, timeout: 10000 });
-      } catch {
-        config = null;
-      }
+      const initialResult = initial ? await initial : null;
+      const [configuration, session] = await (initialResult ?? readSessionBootstrap(request, { signal }));
       if (signal?.aborted || current !== epoch) return;
+      config = configuration.status === "fulfilled" ? configuration.value : null;
       state.mode = ["local", "firebase"].includes(config?.mode) ? config.mode : null;
       state.available = validLoginConfig(config);
       try {
-        const data = await request("/auth/session", { signal, timeout: 10000 });
-        if (signal?.aborted || current !== epoch) return;
+        if (session.status === "rejected") throw session.reason;
+        const data = session.value;
         if (!validSession(data)) throw new Error("Invalid session");
         state.authenticated = true;
         state.csrf = data.csrf_token;
@@ -225,14 +236,19 @@ export function createSession({
       clear();
       state.message = "Signing out…";
       changed();
-      if (sdk && auth) await sdk.signOut(auth).catch(() => {});
+      const firebaseLogout = sdk && auth
+        ? Promise.resolve().then(() => sdk.signOut(auth)).catch(() => {})
+        : null;
       try {
-        await request("/auth/logout", {
-          method: "POST",
-          body: {},
-          headers: { "X-CSRF-Token": csrf },
-          timeout: 10000,
-        });
+        await Promise.all([
+          request("/auth/logout", {
+            method: "POST",
+            body: {},
+            headers: { "X-CSRF-Token": csrf },
+            timeout: 10000,
+          }),
+          firebaseLogout,
+        ]);
         state.message = "Signed out.";
         state.ready = false;
         changed();

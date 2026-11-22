@@ -8,7 +8,39 @@ import hashlib
 import json
 
 NORMALIZATION_VERSION = "ordered-article-v1"
+LEADING_DECIMAL_LAYOUT = "leading-decimal-text-v1"
 REWRITE_PROFILE_VERSION = "technical-prose-v1"
+HTML_FIGURE_CAPTION_LAYOUT = "html-figure-caption-v1"
+HTML_FLOW_FIGURE_CAPTION_LAYOUT = "html-flow-figure-caption-v1"
+HTML_MULTILINE_FIGURE_CAPTION_LAYOUT = "html-multiline-figure-caption-v1"
+HTML_TABLE_CAPTION_LAYOUT = "html-table-caption-v1"
+HTML_MEDIA_TABLE_HEADER_LAYOUT = "html-media-table-header-v1"
+HTML_NESTED_TABLE_LAYOUT = "html-nested-tables-v1"
+HTML_TABLE_SPAN_LAYOUT = "html-table-spans-v1"
+PDF_BLANK_PAGE_LAYOUT = "blank-pdf-pages-v1"
+PDF_COMPACT_FIGURE_LAYOUT = "compact-pdf-figures-v1"
+PDF_LEGACY_FIGURE_LAYOUT = "legacy-pdf-figures-v1"
+PDF_REPEAT_MARGIN_LAYOUT = "repeated-pdf-margins-v1"
+PDF_SINGLE_LINE_FIGURE_LAYOUT = "single-line-pdf-figure-v1"
+PDF_WORDLESS_FIGURE_LAYOUT = "wordless-pdf-figure-v1"
+ORDERED_STEP_INSTRUCTIONS_LAYOUT = "ordered-step-instructions-v1"
+ORDERED_STEP_IMAGE_ONLY_LAYOUT = "ordered-step-instructions-v2"
+STRUCTURED_HEADING_IMAGE_LAYOUT = "structured-image-only-heading-v1"
+STRUCTURED_TABLE_COLUMNS_LAYOUT = "structured-table-columns-v1"
+STRUCTURED_TABLE_COLUMN_ORDER_LAYOUT = "structured-table-column-order-v1"
+STRUCTURED_TABLE_CELL_ORDER_LAYOUT = "structured-table-cell-order-v1"
+SOURCE_PROJECTION_VERSIONS = (
+    "source-projection-v1",
+    "source-projection-v2",
+    "source-projection-v3",
+    "source-projection-v4",
+    "source-projection-v5",
+    "source-projection-v6",
+    "source-projection-v7",
+    "source-projection-v8",
+    "source-projection-v9",
+    "source-projection-v10",
+)
 
 
 def validate_ref(value: str, limit: int = 2048) -> None:
@@ -89,7 +121,7 @@ def transformation_key(
     *,
     projection_version="source-projection-v1",
 ):
-    if projection_version not in ("source-projection-v1", "source-projection-v2"):
+    if projection_version not in SOURCE_PROJECTION_VERSIONS:
         raise ValueError("unsupported source projection version")
     payload = {
         "canonical_article_id": str(canonical_article_id),
@@ -98,10 +130,10 @@ def transformation_key(
         "rewrite_profile_version": rewrite_profile_version,
     }
     # Historical v1 keys are persisted identities: preserve their exact payload.
-    if projection_version == "source-projection-v2":
+    if projection_version != "source-projection-v1":
         payload.update(
             projection_version=projection_version,
-            domain="autodata:article-transformation:v2",
+            domain="autodata:article-transformation:" + projection_version.rsplit("-", 1)[1],
         )
     return digest_json(payload)
 
@@ -125,6 +157,15 @@ class SourceArticleContext:
     descriptor_snapshot_id: UUID
     resolution_snapshot_id: UUID
     evidence_ids: tuple[str, ...]
+    legacy_published_pdf_roots: frozenset[str] = frozenset()
+    legacy_published_pdf_margin_roots: frozenset[str] = frozenset()
+    published_legacy_pdf_layout_roots: frozenset[str] = frozenset()
+    legacy_published_pdf_compact_roots: frozenset[str] = frozenset()
+    legacy_published_pdf_blank_roots: frozenset[str] = frozenset()
+    legacy_published_html_figure_body: str | None = None
+    legacy_published_html_flow_figure_body: str | None = None
+    legacy_published_html_multiline_figure_body: str | None = None
+    legacy_published_html_table_caption_body: str | None = None
 
 
 @dataclass(frozen=True)

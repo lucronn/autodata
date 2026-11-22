@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -77,6 +78,7 @@ type CatalogStep struct {
 	Heading      string          `json:"heading,omitempty"`
 	Instructions []string        `json:"instructions"`
 	ImageIDs     []string        `json:"image_ids,omitempty"`
+	explicitZero bool
 }
 
 // R2 source steps retain text; canonical steps retain action and following
@@ -84,15 +86,33 @@ type CatalogStep struct {
 // optional image slice distinguishes absent images from an explicit empty list.
 func (step *CatalogStep) UnmarshalJSON(data []byte) error {
 	type plain CatalogStep
-	var value plain
+	var value struct {
+		plain
+		Number *int `json:"number"`
+	}
 	if err := json.Unmarshal(data, &value); err != nil {
 		return err
 	}
-	*step = CatalogStep(value)
+	*step = CatalogStep(value.plain)
+	if value.Number != nil {
+		step.Number = *value.Number
+		step.explicitZero = step.Number == 0
+	}
 	if step.Action == "" && len(step.Instructions) == 0 && step.Text != "" {
 		step.Instructions = []string{step.Text}
 	}
 	return nil
+}
+
+func (step CatalogStep) MarshalJSON() ([]byte, error) {
+	type plain CatalogStep
+	if step.Number != 0 || !step.explicitZero {
+		return json.Marshal(plain(step))
+	}
+	return json.Marshal(struct {
+		plain
+		Number int `json:"number"`
+	}{plain: plain(step), Number: step.Number})
 }
 
 type CatalogDocument struct {
@@ -109,12 +129,13 @@ type CatalogDocumentBlock struct {
 	Type              string         `json:"type"`
 	Level             int            `json:"level,omitempty"`
 	Number            int            `json:"number,omitempty"`
+	Start             *int32         `json:"start,omitempty"`
 	Text              string         `json:"text,omitempty"`
 	Label             string         `json:"label,omitempty"`
 	Href              string         `json:"href,omitempty"`
-	Columns           []string       `json:"columns,omitempty"`
+	Columns           []any          `json:"columns,omitempty"`
 	Rows              [][]any        `json:"rows,omitempty"`
-	Items             []string       `json:"items,omitempty"`
+	Items             []any          `json:"items,omitempty"`
 	AssetID           string         `json:"asset_id,omitempty"`
 	ImageID           string         `json:"image_id,omitempty"`
 	Alt               string         `json:"alt,omitempty"`
@@ -122,6 +143,77 @@ type CatalogDocumentBlock struct {
 	UnavailableReason string         `json:"unavailable_reason,omitempty"`
 	EvidenceIDs       []string       `json:"evidence_ids,omitempty"`
 	SourceLocator     string         `json:"source_locator,omitempty"`
+}
+
+// Table rows in stored documents may be arrays or objects containing cells.
+// Keep the established array projection for top-level rows.
+func (block *CatalogDocumentBlock) UnmarshalJSON(data []byte) error {
+	type plain CatalogDocumentBlock
+	var decoded struct {
+		plain
+		Rows  []json.RawMessage `json:"rows"`
+		Start any               `json:"start"`
+	}
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	if number, ok := catalogJSONListNumber(decoded.Start); ok && decoded.plain.Type == "ordered_list" {
+		decoded.plain.Start = &number
+	}
+	if decoded.Rows != nil {
+		decoded.plain.Rows = make([][]any, 0, len(decoded.Rows))
+	}
+	for _, raw := range decoded.Rows {
+		var cells []any
+		if bytes.HasPrefix(bytes.TrimSpace(raw), []byte("{")) {
+			var row struct {
+				Cells []any `json:"cells"`
+			}
+			if err := json.Unmarshal(raw, &row); err != nil {
+				return err
+			}
+			cells = row.Cells
+		} else if err := json.Unmarshal(raw, &cells); err != nil {
+			return err
+		}
+		decoded.plain.Rows = append(decoded.plain.Rows, cells)
+	}
+	*block = CatalogDocumentBlock(decoded.plain)
+	return nil
+}
+
+// Numbers in untyped JSON list items and nested blocks decode as float64.
+func catalogJSONListNumber(value any) (int32, bool) {
+	number, ok := value.(float64)
+	if !ok || number < math.MinInt32 || number > math.MaxInt32 {
+		return 0, false
+	}
+	integer := int32(number)
+	return integer, float64(integer) == number
+}
+
+func catalogJSONTableSpan(attribute string, value any) (int32, bool) {
+	number, ok := catalogJSONListNumber(value)
+	limit := int32(1000)
+	if attribute == "rowspan" {
+		limit = 65534
+	}
+	return number, ok && number > 1 && number <= limit
+}
+
+func catalogNestedBlocks(value any) []CatalogDocumentBlock {
+	if value == nil {
+		return nil
+	}
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return nil
+	}
+	var blocks []CatalogDocumentBlock
+	if err := json.Unmarshal(raw, &blocks); err != nil {
+		return nil
+	}
+	return blocks
 }
 
 type CatalogArticle struct {
@@ -630,6 +722,7 @@ func (s *postgresCatalogStore) CatalogScopeComplete(ctx context.Context, _ Princ
 }
 
 func (s *postgresCatalogStore) CatalogArticleProgress(ctx context.Context, _ Principal, vehicleID string) (*CatalogArticleProgress, error) {
+	// The scope check constraint binds each key to the corresponding vehicle or exact configuration.
 	var total, completed, active, failed, retryable int
 	err := s.pool.QueryRow(ctx, `
   SELECT count(*),
@@ -641,7 +734,7 @@ func (s *postgresCatalogStore) CatalogArticleProgress(ctx context.Context, _ Pri
       AND job.retry_count < job.max_attempts)
   FROM catalog_article_provider_scopes scope
   LEFT JOIN source_fetch_jobs job ON job.source_fetch_job_id=scope.current_job_id
-  WHERE (scope.vehicle_id::text=$1 AND scope.vehicle_configuration_id IS NULL OR scope.vehicle_configuration_id::text=$1)
+  WHERE scope.scope_key IN ('vehicle:'||$1, 'configuration:'||$1)
     AND scope.provider_slug IN ('bankone','banktwo')`, vehicleID).Scan(&total, &completed, &active, &failed, &retryable)
 	if err != nil {
 		return nil, err
@@ -658,6 +751,9 @@ func (s *postgresCatalogStore) CatalogArticleProgress(ctx context.Context, _ Pri
 }
 
 func (s *postgresCatalogStore) ConfigurationByVehicle(ctx context.Context, _ Principal, vehicleID string) (CatalogConfiguration, error) {
+	if !commerceUUID(vehicleID) {
+		return CatalogConfiguration{}, ErrCatalogNotFound
+	}
 	var record CatalogConfiguration
 	err := s.pool.QueryRow(ctx, `
 		SELECT vc.vehicle_configuration_id::text, vc.vehicle_id::text,
@@ -666,7 +762,7 @@ func (s *postgresCatalogStore) ConfigurationByVehicle(ctx context.Context, _ Pri
 		       vib.reviewer_state <> 'rejected' AND vc.reviewer_state <> 'rejected'
 		FROM vehicle_configurations vc
 		JOIN vehicle_identity_bases vib ON vib.vehicle_identity_base_id = vc.vehicle_identity_base_id
-		WHERE (vc.vehicle_id::text = $1 OR vc.vehicle_configuration_id::text = $1)
+		WHERE (vc.vehicle_id = $1::uuid OR vc.vehicle_configuration_id = $1::uuid)
 		  AND vib.reviewer_state <> 'rejected' AND vc.reviewer_state <> 'rejected'
 		ORDER BY vc.vehicle_configuration_id LIMIT 1`, vehicleID).
 		Scan(&record.ID, &record.VehicleID, &record.Year, &record.Make, &record.Model, &record.Region, &record.Trim, &record.Engine, &record.Complete)
@@ -693,7 +789,7 @@ func (s *postgresCatalogStore) legacyArticle(ctx context.Context, _ Principal, v
 		FROM catalog_articles ca
 		JOIN source_snapshots ss ON ss.source_snapshot_id = ca.source_snapshot_id
 		WHERE (ca.vehicle_id::text=$1 AND ca.vehicle_configuration_id IS NULL OR ca.vehicle_configuration_id::text=$1 AND EXISTS(SELECT 1 FROM vehicle_configurations vc JOIN vehicle_identity_bases vb USING(vehicle_identity_base_id) WHERE vc.vehicle_configuration_id=ca.vehicle_configuration_id AND vc.reviewer_state<>'rejected' AND vb.reviewer_state<>'rejected'))
-		  AND ca.catalog_article_id::text = $2 AND NOT EXISTS (SELECT 1 FROM canonical_article_aliases x JOIN canonical_articles owner ON owner.canonical_article_id=x.canonical_article_id WHERE x.catalog_article_id=ca.catalog_article_id AND owner.vehicle_id=ca.vehicle_id AND owner.vehicle_configuration_id IS NOT DISTINCT FROM ca.vehicle_configuration_id) AND ss.takedown_status='active' AND NOT EXISTS (SELECT 1 FROM source_review_items review WHERE review.item_kind='quarantine' AND review.status<>'approved' AND review.source_snapshot_ids ? ca.source_snapshot_id::text)
+		  AND ca.catalog_article_id = $2::uuid AND NOT EXISTS (SELECT 1 FROM canonical_article_aliases x JOIN canonical_articles owner ON owner.canonical_article_id=x.canonical_article_id WHERE x.catalog_article_id=ca.catalog_article_id AND owner.vehicle_id=ca.vehicle_id AND owner.vehicle_configuration_id IS NOT DISTINCT FROM ca.vehicle_configuration_id) AND ss.takedown_status='active' AND NOT EXISTS (SELECT 1 FROM source_review_items review WHERE review.item_kind='quarantine' AND review.status<>'approved' AND review.source_snapshot_ids ? ca.source_snapshot_id::text)
 		ORDER BY (ca.content_status = 'content_complete') DESC,
 		         ca.created_at DESC LIMIT 1`, vehicleID, articleID).
 		Scan(&record.ID, &sourceArticleID, &record.Title, &record.Kind, &record.Component, &record.ContentStatus, &record.Body, &rawSteps, &rawDocument, &rawImages, &rawOriginal, &sourceID, &sourceVersion, &sourceContentSHA256, &sourceURI)
@@ -738,7 +834,7 @@ func (s *postgresCatalogStore) legacyArticleSource(ctx context.Context, _ Princi
 		FROM catalog_articles ca
 		JOIN source_snapshots ss ON ss.source_snapshot_id = ca.source_snapshot_id
 		WHERE (ca.vehicle_id::text=$1 AND ca.vehicle_configuration_id IS NULL OR ca.vehicle_configuration_id::text=$1 AND EXISTS(SELECT 1 FROM vehicle_configurations vc JOIN vehicle_identity_bases vb USING(vehicle_identity_base_id) WHERE vc.vehicle_configuration_id=ca.vehicle_configuration_id AND vc.reviewer_state<>'rejected' AND vb.reviewer_state<>'rejected'))
-		  AND ca.catalog_article_id::text = $2 AND NOT EXISTS (SELECT 1 FROM canonical_article_aliases x JOIN canonical_articles owner ON owner.canonical_article_id=x.canonical_article_id WHERE x.catalog_article_id=ca.catalog_article_id AND owner.vehicle_id=ca.vehicle_id AND owner.vehicle_configuration_id IS NOT DISTINCT FROM ca.vehicle_configuration_id) AND ss.takedown_status='active' AND NOT EXISTS (SELECT 1 FROM source_review_items review WHERE review.item_kind='quarantine' AND review.status<>'approved' AND review.source_snapshot_ids ? ca.source_snapshot_id::text)
+		  AND ca.catalog_article_id = $2::uuid AND NOT EXISTS (SELECT 1 FROM canonical_article_aliases x JOIN canonical_articles owner ON owner.canonical_article_id=x.canonical_article_id WHERE x.catalog_article_id=ca.catalog_article_id AND owner.vehicle_id=ca.vehicle_id AND owner.vehicle_configuration_id IS NOT DISTINCT FROM ca.vehicle_configuration_id) AND ss.takedown_status='active' AND NOT EXISTS (SELECT 1 FROM source_review_items review WHERE review.item_kind='quarantine' AND review.status<>'approved' AND review.source_snapshot_ids ? ca.source_snapshot_id::text)
 		  AND jsonb_typeof(ca.source_original) = 'object'
 		  AND ca.source_original <> '{}'::jsonb
 		ORDER BY (ca.content_status = 'content_complete') DESC,

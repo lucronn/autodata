@@ -4,13 +4,22 @@ from __future__ import annotations
 
 import re
 from copy import deepcopy
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 from .article_document import (
     build_ordered_document,
     document_from_steps,
+    has_structured_list_items,
     segment_plain_article_text,
     validate_ordered_document,
+)
+from .article_lifecycle_types import (
+    HTML_MEDIA_TABLE_HEADER_LAYOUT,
+    HTML_NESTED_TABLE_LAYOUT,
+    HTML_TABLE_CAPTION_LAYOUT,
+    HTML_TABLE_SPAN_LAYOUT,
+    LEADING_DECIMAL_LAYOUT,
+    STRUCTURED_TABLE_COLUMNS_LAYOUT,
 )
 
 
@@ -31,7 +40,9 @@ CONTENT_STATUS_LIST_ONLY = "list_only"
 CONTENT_STATUS_COMPLETE = "content_complete"
 
 
-def normalize_procedure_article(article: Mapping[str, Any]) -> dict[str, Any]:
+def normalize_procedure_article(
+    article: Mapping[str, Any], *, resource_manifest: Sequence[Mapping[str, Any]] = (),
+) -> dict[str, Any]:
     """Return one source-agnostic procedure article for catalog persistence.
 
     Provider HTML/blocks are converted into ordered consumer steps once. The
@@ -43,7 +54,18 @@ def normalize_procedure_article(article: Mapping[str, Any]) -> dict[str, Any]:
     _ensure_classification(out)
     # A captured ordered document is authoritative. Normalization must not
     # abbreviate its tables, interleaved media or nested content via old steps.
-    if isinstance(out.get("normalized_document"), Mapping) and not _undersegmented_article(out):
+    authoritative_source = any(
+        entry.get("role") == "body" and (
+            entry.get("html_table_caption_layout") == HTML_TABLE_CAPTION_LAYOUT
+            or entry.get("html_media_table_header_layout") == HTML_MEDIA_TABLE_HEADER_LAYOUT
+            or entry.get("html_nested_table_layout") == HTML_NESTED_TABLE_LAYOUT
+            or entry.get("html_table_span_layout") == HTML_TABLE_SPAN_LAYOUT
+            or entry.get("leading_decimal_layout") == LEADING_DECIMAL_LAYOUT
+            or entry.get("structured_table_columns_layout") == STRUCTURED_TABLE_COLUMNS_LAYOUT
+        )
+        for entry in resource_manifest
+    )
+    if isinstance(out.get("normalized_document"), Mapping) and (authoritative_source or not _undersegmented_article(out)):
         from .article_document import project_ordered_document
         out.update(project_ordered_document(out["normalized_document"]))
         out.pop("blocks", None)
@@ -282,13 +304,25 @@ def _content_status_for(article: Mapping[str, Any]) -> str:
     return CONTENT_STATUS_LIST_ONLY
 
 
+def _has_positioned_media(value: Any) -> bool:
+    if isinstance(value, Mapping):
+        return bool(value.get("images")) or value.get("type") == "image" or any(
+            _has_positioned_media(child) for child in value.values()
+        )
+    if isinstance(value, list):
+        return any(_has_positioned_media(child) for child in value)
+    return False
+
+
 def _undersegmented_article(article: Mapping[str, Any]) -> bool:
     """True when stored content is one blob that should be re-split for display."""
 
     body = str(article.get("body") or "").strip()
     document = article.get("normalized_document")
     blocks = document.get("blocks") if isinstance(document, Mapping) else None
-    if isinstance(blocks, list) and len(blocks) >= 4:
+    if isinstance(blocks, list) and (
+        len(blocks) >= 4 or _has_positioned_media(blocks) or has_structured_list_items(document)
+    ):
         return False
     if body and (
         "\n" in body

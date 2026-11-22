@@ -20,22 +20,24 @@ func filterCatalogArticleSearch(items []CatalogArticle, query string) []CatalogA
 	}
 	matches := make([]CatalogArticle, 0)
 	for _, article := range items {
-		text := strings.ToLower(catalogArticleSearchText(article))
-		all := true
-		for _, word := range words {
-			if !strings.Contains(text, word) {
-				all = false
-				break
-			}
-		}
-		if all {
+		if catalogSearchWordsMatch(catalogArticleSearchText(article, false), words) {
 			matches = append(matches, article)
 		}
 	}
 	return matches
 }
 
-func catalogArticleSearchText(article CatalogArticle) string {
+func catalogSearchWordsMatch(text string, words []string) bool {
+	text = strings.ToLower(text)
+	for _, word := range words {
+		if !strings.Contains(text, word) {
+			return false
+		}
+	}
+	return true
+}
+
+func catalogArticleSearchText(article CatalogArticle, storedImageRefs bool) string {
 	parts := []string{article.Title, article.Component, article.Kind}
 	images := append([]CatalogImage(nil), article.Images...)
 	for _, step := range article.Steps {
@@ -44,8 +46,9 @@ func catalogArticleSearchText(article CatalogArticle) string {
 		}
 	}
 	if article.Document != nil && len(article.Document.Blocks) > 0 {
+		indexedImages := indexCatalogSearchImages(images, storedImageRefs)
 		for _, block := range article.Document.Blocks {
-			parts = append(parts, catalogBlockSearchText(block, images))
+			parts = append(parts, catalogBlockSearchText(block, indexedImages, nil))
 		}
 	} else {
 		// Workshop renders retained introductions alongside usable legacy steps.
@@ -76,14 +79,7 @@ func catalogArticleSearchText(article CatalogArticle) string {
 				}
 				for _, id := range step.ImageIDs {
 					for _, image := range images {
-						imageID := image.ID
-						if imageID == "" {
-							imageID = image.ImageID
-						}
-						if imageID == "" {
-							imageID = image.AssetID
-						}
-						if imageID == id {
+						if catalogSearchImageDisplayID(image) == id {
 							if catalogSearchableImage(image) {
 								parts = append(parts, image.Alt)
 							}
@@ -184,7 +180,7 @@ func catalogLegacyReplayVariants(steps []CatalogStep) [][]string {
 	return [][]string{full, instructions}
 }
 
-func catalogBlockSearchText(block CatalogDocumentBlock, images []CatalogImage) string {
+func catalogBlockSearchText(block CatalogDocumentBlock, images catalogSearchImages, placed map[string]bool) string {
 	parts := []string{}
 	switch block.Type {
 	case "heading", "paragraph", "link":
@@ -192,37 +188,37 @@ func catalogBlockSearchText(block CatalogDocumentBlock, images []CatalogImage) s
 	case "callout":
 		parts = append(parts, block.Label, block.Text)
 	case "image":
-		if catalogResolvedImageID(catalogImageRefID(CatalogImage{AssetID: block.AssetID, ImageID: block.ImageID}), images) != "" {
-			if block.Alt != "" {
-				parts = append(parts, block.Alt)
-			} else {
-				parts = append(parts, block.Caption)
-			}
-		}
+		ref := CatalogImage{AssetID: block.AssetID, ImageID: block.ImageID, Status: block.Status, Alt: block.Alt, Caption: block.Caption}
+		return catalogImageSearchText(ref, images.resolve(ref), placed)
 	case "step":
 		parts = append(parts, block.Text)
 	case "ordered_list", "unordered_list":
-		parts = append(parts, block.Items...)
+		for _, item := range block.Items {
+			parts = append(parts, catalogInlineSearchText(item, images, placed))
+		}
 	case "table":
 		if block.Label != "" {
 			parts = append(parts, block.Label)
 		} else {
 			parts = append(parts, block.Caption)
 		}
-		parts = append(parts, block.Columns...)
 		cellImageIDs := map[string]bool{}
+		for _, column := range block.Columns {
+			parts = append(parts, catalogInlineSearchText(column, images, cellImageIDs))
+		}
 		for _, row := range block.Rows {
 			for _, cell := range row {
-				parts = append(parts, catalogTableCellSearchText(cell, images))
-				for _, id := range catalogTableCellImageIDs(cell, images) {
-					cellImageIDs[id] = true
-				}
+				parts = append(parts, catalogInlineSearchText(cell, images, cellImageIDs))
 			}
 		}
 		for _, ref := range block.Images {
-			id := catalogResolvedImageID(catalogImageRefID(ref), images)
-			if id != "" && !cellImageIDs[id] {
-				parts = append(parts, ref.Alt)
+			if image := images.resolve(ref); image != nil && !cellImageIDs[catalogSearchImageDisplayID(*image)] {
+				parts = append(parts, catalogImageSearchText(ref, image, placed))
+			}
+		}
+		if placed != nil {
+			for id := range cellImageIDs {
+				placed[id] = true
 			}
 		}
 	case "break":
@@ -234,11 +230,10 @@ func catalogBlockSearchText(block CatalogDocumentBlock, images []CatalogImage) s
 			parts = append(parts, block.UnavailableReason)
 		}
 	}
-	if block.Type == "callout" || block.Type == "step" || block.Type == "ordered_list" || block.Type == "unordered_list" {
-		for _, image := range block.Images {
-			if catalogResolvedImageID(catalogImageRefID(image), images) != "" {
-				parts = append(parts, image.Alt)
-			}
+	switch block.Type {
+	case "heading", "paragraph", "link", "callout", "step", "ordered_list", "unordered_list":
+		for _, ref := range block.Images {
+			parts = append(parts, catalogImageSearchText(ref, images.resolve(ref), placed))
 		}
 	}
 	return strings.Join(parts, " ")
@@ -251,26 +246,80 @@ func catalogImageRefID(image CatalogImage) string {
 	return image.ImageID
 }
 
-func catalogResolvedImageID(ref string, images []CatalogImage) string {
-	if ref == "" {
-		return ""
+type catalogSearchImages struct {
+	byID            map[string]*CatalogImage
+	storedImageRefs bool
+}
+
+func indexCatalogSearchImages(images []CatalogImage, storedImageRefs bool) catalogSearchImages {
+	indexed := catalogSearchImages{storedImageRefs: storedImageRefs}
+	if len(images) == 0 {
+		return indexed
 	}
-	for _, image := range images {
-		if ref != image.ID && ref != image.ImageID && ref != image.AssetID {
+	indexed.byID = make(map[string]*CatalogImage, len(images))
+	for i := range images {
+		image := &images[i]
+		if image.Status == "unavailable" {
 			continue
 		}
-		if !catalogSearchableImage(image) {
-			return ""
+		var renderable *CatalogImage
+		if catalogSearchableImage(*image) {
+			renderable = image
 		}
-		if image.ID != "" {
-			return image.ID
+		for _, id := range []string{image.ID, image.ImageID, image.AssetID} {
+			// A first matching asset without a usable address still owns its alias.
+			if _, exists := indexed.byID[id]; id != "" && !exists {
+				indexed.byID[id] = renderable
+			}
 		}
-		if image.ImageID != "" {
-			return image.ImageID
-		}
-		return image.AssetID
 	}
-	return ""
+	return indexed
+}
+
+func (images catalogSearchImages) resolve(ref CatalogImage) *CatalogImage {
+	if ref.Status == "unavailable" {
+		return nil
+	}
+	id := catalogImageRefID(ref)
+	if images.storedImageRefs {
+		// The paid reader projects image_id over a stored asset_id, which can
+		// be a private object key. Match the same authorized public image.
+		id = paidCatalogImageAssetID(ref)
+	}
+	if id == "" {
+		id = ref.ID
+	}
+	return images.byID[id]
+}
+
+func catalogSearchImageDisplayID(image CatalogImage) string {
+	if image.ID != "" {
+		return image.ID
+	}
+	if image.ImageID != "" {
+		return image.ImageID
+	}
+	return image.AssetID
+}
+
+func catalogImageSearchText(ref CatalogImage, image *CatalogImage, placed map[string]bool) string {
+	if image == nil {
+		return ""
+	}
+	if placed != nil {
+		placed[catalogSearchImageDisplayID(*image)] = true
+	}
+	alt := ref.Alt
+	if alt == "" && ref.Caption == "" {
+		alt = image.Alt
+	}
+	if ref.Caption == "" {
+		return alt
+	}
+	if alt == "" || alt == ref.Caption {
+		return ref.Caption
+	}
+	return ref.Caption + " " + alt
 }
 
 func catalogSearchableImage(image CatalogImage) bool {
@@ -280,33 +329,24 @@ func catalogSearchableImage(image CatalogImage) bool {
 			len(image.URL) <= len("/v1/catalog/images/v2.")+6000 && catalogSearchImageURL.MatchString(image.URL))
 }
 
-func catalogTableCellImageIDs(cell any, images []CatalogImage) []string {
-	fields, ok := cell.(map[string]any)
-	if !ok {
-		return nil
+func catalogInlineImageSearchText(fields map[string]any, images catalogSearchImages, placed map[string]bool) string {
+	var ref CatalogImage
+	ref.AssetID, _ = fields["asset_id"].(string)
+	ref.ImageID, _ = fields["image_id"].(string)
+	ref.ID, _ = fields["id"].(string)
+	ref.Status, _ = fields["status"].(string)
+	ref.Caption, _ = fields["caption"].(string)
+	ref.Alt, _ = fields["alt"].(string)
+	image := images.resolve(ref)
+	// An omitted alt defaults to the reference caption. Inline JSON can carry
+	// an explicit empty alt, which lets the reader fall back to the asset alt.
+	if _, explicitAlt := fields["alt"]; image != nil && explicitAlt && ref.Alt == "" {
+		ref.Alt = image.Alt
 	}
-	raw, ok := fields["images"].([]any)
-	if !ok {
-		return nil
-	}
-	ids := make([]string, 0, len(raw))
-	for _, item := range raw {
-		ref, ok := item.(map[string]any)
-		if !ok {
-			continue
-		}
-		key, _ := ref["asset_id"].(string)
-		if key == "" {
-			key, _ = ref["image_id"].(string)
-		}
-		if id := catalogResolvedImageID(key, images); id != "" {
-			ids = append(ids, id)
-		}
-	}
-	return ids
+	return catalogImageSearchText(ref, image, placed)
 }
 
-func catalogTableCellSearchText(cell any, images []CatalogImage) string {
+func catalogInlineSearchText(cell any, images catalogSearchImages, placed map[string]bool) string {
 	switch value := cell.(type) {
 	case string:
 		return value
@@ -317,18 +357,20 @@ func catalogTableCellSearchText(cell any, images []CatalogImage) string {
 		if text, ok := value["text"].(string); ok {
 			parts = append(parts, text)
 		}
+		assetID, _ := value["asset_id"].(string)
+		imageID, _ := value["image_id"].(string)
+		if assetID != "" || imageID != "" {
+			parts = append(parts, catalogInlineImageSearchText(value, images, placed))
+		}
 		if cellImages, ok := value["images"].([]any); ok {
 			for _, image := range cellImages {
 				if fields, ok := image.(map[string]any); ok {
-					key, _ := fields["asset_id"].(string)
-					if key == "" {
-						key, _ = fields["image_id"].(string)
-					}
-					if alt, ok := fields["alt"].(string); ok && catalogResolvedImageID(key, images) != "" {
-						parts = append(parts, alt)
-					}
+					parts = append(parts, catalogInlineImageSearchText(fields, images, placed))
 				}
 			}
+		}
+		for _, nested := range catalogNestedBlocks(value["blocks"]) {
+			parts = append(parts, catalogBlockSearchText(nested, images, placed))
 		}
 		return strings.Join(parts, " ")
 	default:

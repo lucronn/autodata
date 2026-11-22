@@ -76,7 +76,12 @@ paths:
         UUID, not a base vehicle UUID. A verified session and current owner/configuration/region
         grant precede descriptor/progress reads, including content search. GET
         never schedules an index or article job. Only canonical identities are
-        returned; document, body, steps and image URLs are omitted.
+        returned; document, body, steps and image URLs are omitted. An authenticated
+        full-index GET with the exact region and the workshop-purchase-quote
+        preference may receive a validated current purchase quote in
+        error.details.purchase_quote on ENTITLEMENT_REQUIRED. The applied
+        preference returns in Preference-Applied. A null quote indicates unavailable
+        purchasing for the checked configuration.
   /v1/catalog/vehicles/{vehicle_id}/articles/{article_id}:
     get:
       tags:
@@ -86,6 +91,13 @@ paths:
       parameters:
       - $ref: '#/components/parameters/VehicleId'
       - $ref: '#/components/parameters/ArticleId'
+      - name: Prefer
+        in: header
+        schema:
+          type: string
+          example: workshop-finish-published-body
+        description: Requests an acknowledgement when a paid canonical article is
+          readable and publication processing has finished.
       - name: region
         in: query
         required: false
@@ -324,6 +336,14 @@ paths:
               schema:
                 type: string
                 example: private, no-store
+            Preference-Applied:
+              description: Acknowledges a requested Workshop reader preference.
+                The workshop-finish-published-body value applies to authorized paid
+                canonical articles with a readable document and no active processing
+                or retry hint. The normal article body is included.
+              schema:
+                type: string
+                example: workshop-finish-published-body
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -575,7 +595,8 @@ paths:
           $ref: '#/components/responses/Conflict'
       description: 'Read the currently permitted immutable source or canonical projection
         after current session, exact configuration grant and canonical article membership
-        checks. Firebase GET never schedules work: a cold descriptor without readable
+        checks. Successful paid responses include the validated configuration.
+        Firebase GET never schedules work: a cold descriptor without readable
         content or durable processing returns503 CATALOG_SOURCE_UNAVAILABLE. POST
         prepare explicitly starts or joins durable processing. Readable source returns200
         while rewriting; complete means validated canonical publication. Explicit
@@ -602,6 +623,14 @@ paths:
           enum:
           - application/json
           - text/html
+      - name: Prefer
+        in: header
+        required: false
+        description: Use workshop-source-document with application/json to return
+          the ordered document and images with an empty content string when structured blocks are available.
+        schema:
+          type: string
+          example: workshop-source-document
       - name: source_revision_id
         in: query
         required: false
@@ -632,6 +661,11 @@ paths:
               schema:
                 type: string
                 example: private, no-store
+            Preference-Applied:
+              description: Acknowledges the ordered-document preference when applied.
+              schema:
+                type: string
+                example: workshop-source-document
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -2063,9 +2097,7 @@ components:
             properties:
               number:
                 type: integer
-                minimum: 1
-                description: Explicit source step number, when present. Canonical
-                  document traversal does not fabricate numbers.
+                description: Explicit source or authored list ordinal, when present.
               heading:
                 type: string
               instructions:
@@ -2131,6 +2163,8 @@ components:
           - v1
         article:
           $ref: '#/components/schemas/CatalogArticle'
+        configuration:
+          $ref: '#/components/schemas/CatalogConfiguration'
     CatalogArticlesResponse:
       type: object
       required:
@@ -2144,6 +2178,33 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/CatalogArticle'
+        configuration:
+          $ref: '#/components/schemas/CatalogConfiguration'
+    CatalogConfiguration:
+      type: object
+      description: Exact configuration admitted by the server for the paid catalog request.
+      required: [id, year, make, model, region]
+      properties:
+        id:
+          type: string
+          format: uuid
+        vehicle_id:
+          type: string
+          format: uuid
+        year:
+          type: integer
+        make:
+          type: string
+        model:
+          type: string
+        region:
+          type: string
+        engine:
+          type: string
+        trim:
+          type: string
+        complete:
+          type: boolean
     SourceContentResponse:
       type: object
       properties:
@@ -2227,6 +2288,10 @@ components:
                 type: integer
               number:
                 type: integer
+              start:
+                type: integer
+                minimum: -2147483648
+                maximum: 2147483647
               columns:
                 type: array
                 items:
@@ -2234,7 +2299,27 @@ components:
               items:
                 type: array
                 items:
-                  type: string
+                  oneOf:
+                  - type: string
+                  - type: object
+                    additionalProperties: false
+                    required:
+                    - text
+                    properties:
+                      text:
+                        type: string
+                      number:
+                        type: integer
+                        minimum: -2147483648
+                        maximum: 2147483647
+                      blocks:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/CatalogDocument/properties/blocks/items'
+                      images:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/CatalogImage'
               evidence_ids:
                 type: array
                 items:
@@ -2269,6 +2354,10 @@ components:
                           type: array
                           items:
                             $ref: '#/components/schemas/CatalogImage'
+                        blocks:
+                          type: array
+                          items:
+                            $ref: '#/components/schemas/CatalogDocument/properties/blocks/items'
               caption:
                 type: string
               images:
@@ -2646,6 +2735,11 @@ components:
           - do_not_repay
           description: Only remotely confirmed expired/canceled orders permit a new
             key. Browser return parameters never establish payment.
+        configuration_label:
+          type: string
+          minLength: 1
+          maxLength: 1024
+          description: Display label for the exact ordered vehicle configuration.
       required:
       - version
       - order_id
@@ -2678,6 +2772,12 @@ components:
           - preparing
           - viewable
           - revoked
+        catalog_available:
+          type: boolean
+          enum:
+          - false
+          description: Present when a retained paid vehicle configuration or its
+            identity base is rejected by the catalog. Ownership remains recorded.
         granted_at:
           type: string
           format: date-time
@@ -2708,6 +2808,16 @@ components:
       description: Permanent account ownership with current source readiness. No normal
         grant expiry. Revoked tombstones remain visible; viewable does not promise
         all articles are complete.
+      not:
+        properties:
+          access_state:
+            type: string
+            enum:
+            - preparing
+            - viewable
+            - revoked
+        required:
+        - catalog_available
       oneOf:
       - properties:
           access_state:

@@ -40,15 +40,17 @@ type CatalogConfigurationsResponse struct {
 	CatalogHydrationResponse
 }
 type CatalogArticlesResponse struct {
-	Version   string                  `json:"version"`
-	Items     []CatalogArticle        `json:"items"`
-	Complete  bool                    `json:"complete"`
-	Hydrating bool                    `json:"hydrating"`
-	Progress  *CatalogArticleProgress `json:"progress,omitempty"`
+	Version       string                  `json:"version"`
+	Items         []CatalogArticle        `json:"items"`
+	Complete      bool                    `json:"complete"`
+	Hydrating     bool                    `json:"hydrating"`
+	Progress      *CatalogArticleProgress `json:"progress,omitempty"`
+	Configuration *CatalogConfiguration   `json:"configuration,omitempty"`
 }
 type CatalogArticleResponse struct {
-	Version string         `json:"version"`
-	Article CatalogArticle `json:"article"`
+	Version       string                `json:"version"`
+	Article       CatalogArticle        `json:"article"`
+	Configuration *CatalogConfiguration `json:"configuration,omitempty"`
 }
 
 func (s *Server) listCatalogYears(response http.ResponseWriter, request *http.Request, principal Principal) {
@@ -254,14 +256,21 @@ func (s *Server) listCatalogArticles(response http.ResponseWriter, request *http
 			rewriteCatalogImageURLs(&items[index], s.catalogImageKey)
 		}
 	}
+	var configuration *CatalogConfiguration
+	if scope, ok := request.Context().Value(paidCatalogContextKey{}).(paidCatalogContext); ok {
+		configuration = &scope.configuration
+	}
 	writeJSON(response, http.StatusOK, CatalogArticlesResponse{
 		Version: "v1", Items: items, Complete: progress != nil && progress.Complete,
-		Hydrating: hydrating, Progress: progress,
+		Hydrating: hydrating, Progress: progress, Configuration: configuration,
 	})
 }
 
 func (s *Server) getCatalogArticle(response http.ResponseWriter, request *http.Request, principal Principal) {
 	response.Header().Set("Cache-Control", "private, no-store")
+	if s.respondCatalogPublicationStatus(response, request) {
+		return
+	}
 	vehicleID, articleID := request.PathValue("vehicle_id"), request.PathValue("article_id")
 	view, err := s.catalog.ArticleView(request.Context(), principal, vehicleID, articleID)
 	if err != nil {
@@ -300,6 +309,23 @@ func (s *Server) getCatalogArticle(response http.ResponseWriter, request *http.R
 	s.respondCatalogArticleView(response, request, principal, view)
 }
 
+const (
+	shortSourceCheckPreference      = "workshop-short-source-check"
+	shortPublicationCheckPreference = "workshop-short-publication-check"
+	finishPublishedBodyPreference   = "workshop-finish-published-body"
+)
+
+func catalogReadPreferenceRequested(request *http.Request, preference string) bool {
+	for _, value := range request.Header.Values("Prefer") {
+		for token := range strings.SplitSeq(value, ",") {
+			if strings.TrimSpace(token) == preference {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (s *Server) respondCatalogArticleView(response http.ResponseWriter, request *http.Request, principal Principal, view CatalogArticleView) {
 	if view.Withdrawn {
 		s.writePaidCatalogError(response, request, ErrCatalogWithdrawn)
@@ -307,6 +333,7 @@ func (s *Server) respondCatalogArticleView(response http.ResponseWriter, request
 	}
 	vehicleID := request.PathValue("vehicle_id")
 	article := view.Article
+	var configuration *CatalogConfiguration
 	if article.Processing != nil && article.Processing.RetryAfterSeconds != nil {
 		response.Header().Set("Retry-After", strconv.Itoa(*article.Processing.RetryAfterSeconds))
 	}
@@ -340,13 +367,37 @@ func (s *Server) respondCatalogArticleView(response http.ResponseWriter, request
 				s.writePaidCatalogError(response, request, err)
 				return
 			}
+			configuration = &scope.configuration
 		}
 		article = view.Article
 	} else {
 		rewriteCatalogImageURLs(&article, s.catalogImageKey)
 	}
+	if current := article.Processing; current != nil {
+		preference := current.shortReadPreference
+		applicable := preference == shortSourceCheckPreference && status == http.StatusAccepted ||
+			preference == shortPublicationCheckPreference && status == http.StatusOK
+		if applicable && catalogReadPreferenceRequested(request, preference) {
+			// Only replace the default read cadence when the client opts in.
+			processing := *current
+			processing.RetryAfterSeconds = nil
+			article.Processing = &processing
+			response.Header().Del("Retry-After")
+			response.Header().Set("Preference-Applied", preference)
+		}
+	}
+	if configuration != nil && request.Method == http.MethodGet && status == http.StatusOK &&
+		article.CanonicalRevisionID != nil && article.ContentOrigin != nil && *article.ContentOrigin == "canonical" &&
+		article.Document != nil && len(article.Document.Blocks) > 0 &&
+		(article.Processing == nil || article.Processing.State == "completed" && article.Processing.RetryAfterSeconds == nil) &&
+		catalogReadPreferenceRequested(request, finishPublishedBodyPreference) {
+		response.Header().Set("Preference-Applied", finishPublishedBodyPreference)
+	}
+	if configuration != nil && status == http.StatusOK && s.canCheckCatalogPublication(article) {
+		response.Header().Set(publicationCheckHeader, "supported")
+	}
 	article.SourceReview = sourceReviewForArticle(article, vehicleID, article.ID)
-	writeJSON(response, status, CatalogArticleResponse{Version: "v1", Article: article})
+	writeJSON(response, status, CatalogArticleResponse{Version: "v1", Article: article, Configuration: configuration})
 }
 
 const catalogImageMaxBytes = 12 << 20

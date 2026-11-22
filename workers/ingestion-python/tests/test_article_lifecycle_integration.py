@@ -24,6 +24,30 @@ def test_twenty_ensures_two_processes_one_source_model_revision_event(runtime):
             assert conn.execute("SELECT count(*) AS n FROM "+table).fetchone()["n"]==1
 
 
+def test_queued_article_wakes_idle_worker(runtime):
+    from time import monotonic, sleep
+
+    runtime.ensure()
+    runtime.start_workers(1, poll_seconds=8)
+    runtime.await_publication()
+    # Let the worker settle after publication before scheduling the other article.
+    # The worker's eight-second fallback poll should not be needed.
+    sleep(0.25)
+    runtime.article_id = runtime.articles["banktwo"]
+    started = monotonic()
+    runtime.ensure()
+    deadline = started + 3
+    while monotonic() < deadline:
+        if runtime.read_current()["source_revision_id"] is not None:
+            break
+        sleep(0.02)
+    else:
+        pytest.fail("second source was not retained ahead of the idle poll")
+    print(f"source_job_wake_ms={round((monotonic() - started) * 1000)}")
+    runtime.await_publication()
+    assert runtime.counters() == {"source": 2, "asset": 0, "model": 2, "schedule": 2}
+
+
 def test_warm_restart_is_provider_and_model_free(runtime):
     first=runtime.ingest_to_publication("bankone")
     runtime.restart_workers();runtime.reset_counters()
@@ -795,6 +819,21 @@ def automatic_runtime(runtime, provider):
             model.calls += 1
             replacements = [{"block_id":slot["block_id"],"path":slot["path"],"action":"rewrite",
                 "text":slot["text"].replace("Remove", "Take off"),"reason":""} for slot in prompt["slots"]]
+            if model.mode in {"copy", "unsafe"}:
+                for slot, row in zip(prompt["slots"], replacements):
+                    row["text"] = "First, " + slot["text"] if model.mode == "copy" else "Reconnect the battery."
+            if model.mode == "explicit_rewrite":
+                original, replacement = model.explicit_rewrite
+                assert [slot["text"] for slot in prompt["slots"]] == [original]
+                replacements[0]["text"] = replacement
+            if model.mode == "explicit_specification":
+                original, mutation = model.explicit_specification
+                assert [slot["text"] for slot in prompt["slots"]] == ["Remove the pump.", original]
+                assert prompt["slots"][1]["required_action"] == "retain"
+                if mutation is None:
+                    replacements[1].update(action="retain", reason="Preserve the exact specification.")
+                else:
+                    replacements[1]["text"] = mutation
             result = {"introduction":"This procedure describes removing the pump.","replacements":replacements}
             raw = json.dumps({"choices":[{"message":{"content":json.dumps(result)}}]}).encode()
             self.send_response(200);self.send_header("Content-Type","application/json")
@@ -837,26 +876,421 @@ def test_automatic_real_runtime_source_first_publication_and_zero_call_restart(r
 
 
 @pytest.mark.parametrize("point", ["after_model_result_commit", "inside_publication"])
-@pytest.mark.parametrize("prompt_version", ["v1", "v2"])
+@pytest.mark.parametrize(
+    "prompt_version",
+    ["v1", "v2", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v12", "v13", "v14", "v15", "v16", "v17", "v18",
+     "v19", "v20", "v21", "v22", "v23", "v24", "v25", "v26", "v27", "v28", "v29", "v30", "v31", "v32", "v33", "v34", "v35", "v36", "v37", "v38", "v39", "v40", "v41", "v42", "v43", "v44", "v45", "v46", "v47", "v48"],
+)
 def test_automatic_real_process_death_reuses_saved_response(runtime, point, prompt_version):
     ensure = automatic_runtime(runtime,"bankone")
     ensure();runtime.pause(point);runtime.start_workers(1);runtime.await_barrier()
     job = runtime.current_job_id();runtime.kill_worker();runtime.expire_lease(job)
-    if prompt_version == "v1":
+    if prompt_version != "v48":
         from hashlib import sha256
         from psycopg.types.json import Jsonb
-        from autodata_ingestion.procedure_rewrite_auto import _build_auto_prompt_v1
+        from autodata_ingestion.article_lifecycle_types import digest_json
+        from autodata_ingestion.procedure_rewrite_auto import (
+            _build_auto_prompt_v1, _build_auto_prompt_v2, _build_auto_prompt_v4,
+            _build_auto_prompt_v5, _build_auto_prompt_v6, _build_auto_prompt_v7, _build_auto_prompt_v8,
+            _build_auto_prompt_v9, _build_auto_prompt_v10, _build_auto_prompt_v12, _build_auto_prompt_v13,
+            _build_auto_prompt_v14, _build_auto_prompt_v15, _build_auto_prompt_v16, _build_auto_prompt_v17,
+            _build_auto_prompt_v18, _build_auto_prompt_v19, _build_auto_prompt_v20, _build_auto_prompt_v21,
+            _build_auto_prompt_v22, _build_auto_prompt_v23, _build_auto_prompt_v24, _build_auto_prompt_v25,
+            _build_auto_prompt_v26, _build_auto_prompt_v27, _build_auto_prompt_v28, _build_auto_prompt_v29,
+            _build_auto_prompt_v30, _build_auto_prompt_v31, _build_auto_prompt_v32, _build_auto_prompt_v33,
+            _build_auto_prompt_v34, _build_auto_prompt_v35, _build_auto_prompt_v36, _build_auto_prompt_v37,
+            _build_auto_prompt_v38, _build_auto_prompt_v39, _build_auto_prompt_v40, _build_auto_prompt_v41,
+            _build_auto_prompt_v42, _build_auto_prompt_v43, _build_auto_prompt_v44, _build_auto_prompt_v45,
+            _build_auto_prompt_v46, _build_auto_prompt_v47,
+            validate_auto,
+        )
+        build_prompt = {
+            "v1": _build_auto_prompt_v1,
+            "v2": _build_auto_prompt_v2,
+            "v4": _build_auto_prompt_v4,
+            "v5": _build_auto_prompt_v5,
+            "v6": _build_auto_prompt_v6,
+            "v7": _build_auto_prompt_v7,
+            "v8": _build_auto_prompt_v8,
+            "v9": _build_auto_prompt_v9,
+            "v10": _build_auto_prompt_v10,
+            "v12": _build_auto_prompt_v12,
+            "v13": _build_auto_prompt_v13,
+            "v14": _build_auto_prompt_v14,
+            "v15": _build_auto_prompt_v15,
+            "v16": _build_auto_prompt_v16,
+            "v17": _build_auto_prompt_v17,
+            "v18": _build_auto_prompt_v18,
+            "v19": _build_auto_prompt_v19,
+            "v20": _build_auto_prompt_v20,
+            "v21": _build_auto_prompt_v21,
+            "v22": _build_auto_prompt_v22,
+            "v23": _build_auto_prompt_v23,
+            "v24": _build_auto_prompt_v24,
+            "v25": _build_auto_prompt_v25,
+            "v26": _build_auto_prompt_v26,
+            "v27": _build_auto_prompt_v27,
+            "v28": _build_auto_prompt_v28,
+            "v29": _build_auto_prompt_v29,
+            "v30": _build_auto_prompt_v30,
+            "v31": _build_auto_prompt_v31,
+            "v32": _build_auto_prompt_v32,
+            "v33": _build_auto_prompt_v33,
+            "v34": _build_auto_prompt_v34,
+            "v35": _build_auto_prompt_v35,
+            "v36": _build_auto_prompt_v36,
+            "v37": _build_auto_prompt_v37,
+            "v38": _build_auto_prompt_v38,
+            "v39": _build_auto_prompt_v39,
+            "v40": _build_auto_prompt_v40,
+            "v41": _build_auto_prompt_v41,
+            "v42": _build_auto_prompt_v42,
+            "v43": _build_auto_prompt_v43,
+            "v44": _build_auto_prompt_v44,
+            "v45": _build_auto_prompt_v45,
+            "v46": _build_auto_prompt_v46,
+            "v47": _build_auto_prompt_v47,
+        }[prompt_version]
         with runtime.repo.connect() as conn:
             candidate = conn.execute("SELECT r.* FROM canonical_article_revisions r JOIN source_fetch_jobs j USING(transformation_key) WHERE j.source_fetch_job_id=%s", (job,)).fetchone()
             context = conn.execute("SELECT captured_context FROM canonical_article_source_observations WHERE source_revision_id=%s ORDER BY captured_at LIMIT 1", (candidate["source_revision_id"],)).fetchone()["captured_context"]
-            legacy_hash = sha256(_build_auto_prompt_v1(candidate["normalized_source_document"], context=context["vehicle"]).encode()).hexdigest()
-            conn.execute("UPDATE canonical_article_rewrite_attempts SET prompt_hash=%s WHERE canonical_article_revision_id=%s", (legacy_hash, candidate["canonical_article_revision_id"]))
-            conn.execute("UPDATE canonical_article_revisions SET model_metadata=%s WHERE canonical_article_revision_id=%s", (Jsonb({**candidate["model_metadata"], "prompt_hash": legacy_hash}), candidate["canonical_article_revision_id"]))
+            legacy_hash = sha256(build_prompt(candidate["normalized_source_document"], context=context["vehicle"]).encode()).hexdigest()
+            response = conn.execute("""UPDATE canonical_article_rewrite_attempts SET prompt_hash=%s
+                WHERE canonical_article_revision_id=%s RETURNING response""",
+                (legacy_hash, candidate["canonical_article_revision_id"])).fetchone()["response"]
+            conn.execute("UPDATE canonical_article_revisions SET model_metadata=%s WHERE canonical_article_revision_id=%s",
+                (Jsonb({**candidate["model_metadata"], "prompt_hash": legacy_hash}), candidate["canonical_article_revision_id"]))
+            if point == "inside_publication":
+                # The earlier validation commit would also have used the old rules.
+                report = validate_auto(
+                    candidate["normalized_source_document"], candidate["canonical_document"],
+                    response=response, prompt_version=f"full-prose-auto-prompt-{prompt_version}",
+                ).report
+                validation_hash = digest_json(report)
+                conn.execute("""UPDATE canonical_article_revisions SET validation_report=%s, validation_hash=%s
+                    WHERE canonical_article_revision_id=%s""",
+                    (Jsonb(report), validation_hash, candidate["canonical_article_revision_id"]))
+                conn.execute("""UPDATE source_fetch_jobs SET checkpoint=checkpoint||%s
+                    WHERE source_fetch_job_id=%s""", (Jsonb({"validation_hash": validation_hash}), job))
     runtime.barrier = None;runtime.start_workers(2);runtime.await_publication();runtime.stop_workers()
     assert runtime.counters() == {"source":1,"asset":0,"model":1,"schedule":1}
     with runtime.repo.connect() as conn:
         assert conn.execute("SELECT count(*) AS n FROM publication_events").fetchone()["n"] == 1
         assert conn.execute("SELECT count(*) AS n FROM canonical_article_rewrite_attempts").fetchone()["n"] == 1
+
+
+@pytest.mark.parametrize("mode,source_html,expected_text,expected_code", [
+    ("copy", b"<ol><li>Remove the pump.</li></ol>", "Remove the pump.", "REWRITE_PROSE_TOO_SIMILAR"),
+    (
+        "unsafe", b"<p>Never connect the battery while the connector is wet.</p>",
+        "Never connect the battery while the connector is wet.", "REWRITE_SAFETY_MUTATION",
+    ),
+])
+def test_automatic_rejected_rewrite_leaves_source_readable(runtime, mode, source_html, expected_text, expected_code):
+    ensure = automatic_runtime(runtime, "bankone")
+    runtime.change_fixture_body(source_html)
+    runtime.model.mode = mode
+    job = ensure().job_id
+    runtime.start_workers(1)
+    runtime.wait_for(lambda: runtime.read_current()["processing_error_code"] == expected_code)
+    runtime.stop_workers()
+
+    state = runtime.read_current()
+    assert state["content_origin"] == "source"
+    assert state["canonical_revision_id"] is None
+    assert expected_text in state["body"]
+    with runtime.repo.connect() as conn:
+        attempt = conn.execute(
+            "SELECT status, error_code FROM canonical_article_rewrite_attempts WHERE source_fetch_job_id=%s", (job,),
+        ).fetchone()
+        assert attempt == {"status": "failed", "error_code": expected_code}
+        assert conn.execute("SELECT count(*) AS n FROM publication_events").fetchone()["n"] == 0
+    assert runtime.counters() == {"source": 1, "asset": 0, "model": 1, "schedule": 1}
+
+
+@pytest.mark.parametrize("provider", ["bankone", "banktwo"])
+@pytest.mark.parametrize("preserved", [True, False])
+@pytest.mark.parametrize(("original", "valid", "invalid", "error_code"), [
+    pytest.param(
+        "Remove the pump while the ignition is off.",
+        "With the ignition off, take the pump off.",
+        "With the ignition on, take the pump off.", "REWRITE_QUALIFIER_MUTATION", id="ignition",
+    ),
+    pytest.param(
+        "Inspect connector C-17 for corrosion.",
+        "Check the C-17 connector for signs of corrosion.",
+        "Check the C-17 connector for signs of wear.", "REWRITE_QUALIFIER_MUTATION", id="inspection",
+    ),
+    pytest.param(
+        "Inspect connector C-17 for corrosion and cracks.",
+        "Check the C-17 connector for signs of cracking and corrosion.",
+        "Check the C-17 connector for signs of corrosion.", "REWRITE_QUALIFIER_MUTATION", id="compound-inspection",
+    ),
+    pytest.param(
+        "Either disconnect the battery cable or disconnect the service plug.",
+        "Detach either the service plug or the battery cable.",
+        "Detach either the battery cable or the pump connector.", "REWRITE_CLAUSE_MUTATION", id="alternatives",
+    ),
+    pytest.param(
+        "Disconnect the battery cable before removing the fuse.",
+        "Take the fuse off after detaching the battery cable.",
+        "Detach the battery cable and take the fuse off.", "REWRITE_CLAUSE_MUTATION", id="temporal-order",
+    ),
+    pytest.param(
+        "Remove the inlet cover, then remove the cable shield.",
+        "Take the cable shield off after lifting off the inlet cover.",
+        "Take the inlet cover off.", "REWRITE_CLAUSE_MUTATION", id="ordered-omission",
+    ),
+    pytest.param(
+        "Install the seal while the ignition is off and the flange is dry.",
+        "With the flange dry and the ignition switched off, fit the seal into place.",
+        "With the ignition on and the flange wet, fit the seal into place.",
+        "REWRITE_QUALIFIER_MUTATION", id="conjunctive-simultaneous",
+    ),
+    pytest.param(
+        "Open the line while the brake system is depressurized.",
+        "With the brake system depressurised, open the line.",
+        "With the brake system pressurized, open the line.",
+        "REWRITE_QUALIFIER_MUTATION", id="pressure-prerequisite",
+    ),
+    pytest.param(
+        "Depressurize the brake system before opening the line.",
+        "Open the line after relieving pressure in the brake system.",
+        "Open the line before releasing pressure from the brake system.",
+        "REWRITE_CLAUSE_MUTATION", id="pressure-release-order",
+    ),
+    pytest.param(
+        "Disconnect negative battery terminal.",
+        "Detach the minus terminal from the battery.",
+        "Detach the positive battery terminal.",
+        "REWRITE_QUALIFIER_MUTATION", id="battery-terminal-polarity",
+    ),
+    pytest.param(
+        "Raise and support the vehicle.",
+        "Lift the vehicle, then support it securely.",
+        "Lift the vehicle to gain access.",
+        "REWRITE_CLAUSE_MUTATION", id="vehicle-lift-support",
+    ),
+    pytest.param(
+        "Bleed the brake system and check for leaks.",
+        "Purge air from the brake system, then inspect it for leakage.",
+        "Check the brake system for any sign of leakage.",
+        "REWRITE_CLAUSE_MUTATION", id="brake-bleed-leak-check",
+    ),
+    pytest.param(
+        "Remove retaining clip. Pull wiring harness plug firmly.",
+        "Take the retaining clip off, then give the wiring harness plug a firm pull.",
+        "Take the retaining clip off, then pull the wiring harness plug gently.",
+        "REWRITE_CLAUSE_MUTATION", id="harness-firm-pull",
+    ),
+    pytest.param(
+        "Inspect the alignment marks before removing the pump.",
+        "Check the pump alignment marks before removal.",
+        "Check the guide marks before taking the pump off.",
+        "REWRITE_CLAUSE_MUTATION", id="alignment-marks-before-removal",
+    ),
+    pytest.param(
+        "Install a new oil seal after the flange is dry.",
+        "After the flange has dried, fit the replacement oil seal into place.",
+        "After the flange has dried, fit the replacement gasket into place.",
+        "REWRITE_QUALIFIER_MUTATION", id="dry-replacement-installation",
+    ),
+    pytest.param(
+        "Drain the pump.",
+        "Empty the pump.",
+        "Fill the pump with fluid.",
+        "REWRITE_ACTION_MUTATION", id="pump-drain",
+    ),
+    pytest.param(
+        "Remove the damaged line and clean the fittings before installation.",
+        "Take the damaged line off. Before installation, clean the fittings.",
+        "Take the damaged line off before installation.",
+        "REWRITE_CLAUSE_MUTATION", id="line-fitting-cleaning",
+    ),
+    pytest.param(
+        "Visually inspect brake lines and replace as required.",
+        "Check the brake lines visually and replace them as needed.",
+        "Check the brake lines visually and replace them.",
+        "REWRITE_QUALIFIER_MUTATION", id="brake-line-conditional-replacement",
+    ),
+    pytest.param(
+        "Tighten the cover bolts by hand.",
+        "Hand-tighten the cover bolts.",
+        "Use an impact wrench to tighten the cover bolts.",
+        "REWRITE_QUALIFIER_MUTATION", id="hand-tightening-method",
+    ),
+    pytest.param(
+        "Tighten the cover bolts in a crisscross pattern.",
+        "Tighten the cover bolts in an alternating diagonal sequence.",
+        "Tighten the cover bolts in clockwise order.",
+        "REWRITE_QUALIFIER_MUTATION", id="crisscross-tightening-order",
+    ),
+    pytest.param(
+        "Tighten the cover bolts by hand in a crisscross pattern.",
+        "Hand-tighten the cover bolts in an alternating diagonal sequence.",
+        "Use an impact wrench to tighten the cover bolts in a crisscross pattern.",
+        "REWRITE_QUALIFIER_MUTATION", id="compound-fastener-tightening",
+    ),
+    pytest.param(
+        "Remove the retaining clip and replace terminal C-17 if damaged.",
+        "Take the retaining clip off. If terminal C-17 is damaged, replace it.",
+        "Take the retaining clip off and replace terminal C-17.",
+        "REWRITE_QUALIFIER_MUTATION", id="conditional-terminal-replacement",
+    ),
+    pytest.param(
+        "Wear eye protection before starting the engine.",
+        "Before starting the engine, put on eye protection.",
+        "After the engine starts, put on eye protection.",
+        "REWRITE_QUALIFIER_MUTATION", id="prestart-eye-protection",
+    ),
+    pytest.param(
+        "Pull the wiring harness plug with a maximum force of 35 N.",
+        "Use a force of no more than 35 N to pull the wiring harness plug.",
+        "Pull the wiring harness plug with a minimum force of 35 N.",
+        "REWRITE_SPEC_SCOPE_MUTATION", id="harness-pull-force-limit-maximum",
+    ),
+    pytest.param(
+        "Pull the wiring harness plug with a minimum force of 35 N.",
+        "Apply at least 35 N of force when pulling the wiring harness plug.",
+        "Pull the wiring harness plug with a maximum force of 35 N.",
+        "REWRITE_SPEC_SCOPE_MUTATION", id="harness-pull-force-limit-minimum",
+    ),
+    pytest.param(
+        "Disconnect the battery before service.",
+        "Carry out the service after disconnecting the battery.",
+        "After servicing, detach the battery.",
+        "REWRITE_CLAUSE_MUTATION", id="disconnect-before-service",
+    ),
+    pytest.param(
+        "Remove the oil pan and clean the strainer before releasing the pump body.",
+        "Take the oil pan off. Before releasing the pump body, clean the strainer.",
+        "Take the oil pan off and clean the strainer after releasing the pump body.",
+        "REWRITE_CLAUSE_MUTATION", id="oil-pump-strainer-preparation",
+    ),
+    pytest.param(
+        "Remove the oil pan and clean the strainer before releasing the pump body.",
+        "Take the oil pan off, then clean the strainer before releasing the pump body.",
+        "Clean the strainer before releasing the pump body, then remove the oil pan.",
+        "REWRITE_CLAUSE_MUTATION", id="oil-pump-strainer-preparation-order",
+    ),
+    pytest.param(
+        "Inspect the brake connector before service. Remove the retaining clip and replace the terminal if damaged.",
+        "Before servicing, check the brake connector. Take the retaining clip off. If the terminal is damaged, replace it.",
+        "Inspect the brake connector before service. Take the retaining clip off. If the terminal is damaged, replace it.",
+        "REWRITE_PROSE_TOO_SIMILAR", id="copied-editable-sentence",
+    ),
+    pytest.param(
+        "Inspect the brake connector before service. Remove the retaining clip and replace the terminal if damaged.",
+        "Check the brake connector before servicing, then take off the retaining clip and replace the terminal if it shows damage.",
+        "Before servicing, check the brake connector. Take the retaining clip off and replace the terminal.",
+        "REWRITE_QUALIFIER_MUTATION", id="multi-sentence-terminal-condition",
+    ),
+    pytest.param(
+        "Disconnect the battery, remove the shared drive belt, and inspect the mounting area before replacing both components.",
+        "Detach the battery and take off the shared drive belt. Replace both components after checking the mounting area.",
+        "Detach the battery, take the shared drive belt off, and check the mounting area after replacing both components.",
+        "REWRITE_CLAUSE_MUTATION", id="combined-replacement-preparation",
+    ),
+])
+def test_automatic_qualifier_controls_publication(runtime, provider, preserved, original, valid, invalid, error_code):
+    ensure = automatic_runtime(runtime, provider)
+    runtime.change_fixture_body(f"<ol><li>{original}</li></ol>".encode())
+    runtime.model.mode = "explicit_rewrite"
+    runtime.model.explicit_rewrite = (original, valid if preserved else invalid)
+    job = ensure().job_id
+    runtime.start_workers(1)
+    runtime.wait_for(lambda: runtime.read_current()["processing_state"] in ("completed", "failed", "needs_review"))
+    runtime.stop_workers()
+
+    state = runtime.read_current()
+    with runtime.repo.connect() as conn:
+        attempt = conn.execute(
+            "SELECT status, error_code FROM canonical_article_rewrite_attempts WHERE source_fetch_job_id=%s", (job,),
+        ).fetchone()
+        events = conn.execute("SELECT count(*) AS n FROM publication_events").fetchone()["n"]
+    if preserved:
+        assert state["content_origin"] == "canonical"
+        assert valid in state["body"]
+        assert attempt == {"status": "succeeded", "error_code": None}
+        assert events == 1
+    else:
+        assert state["content_origin"] == "source"
+        assert state["canonical_revision_id"] is None
+        assert original in state["body"]
+        assert invalid not in state["body"]
+        assert attempt == {"status": "failed", "error_code": error_code}
+        assert events == 0
+    assert runtime.counters() == {"source": 1, "asset": 0, "model": 1, "schedule": 1}
+
+
+@pytest.mark.parametrize("provider", ["bankone", "banktwo"])
+@pytest.mark.parametrize("preserved", [True, False])
+@pytest.mark.parametrize(("original", "invalid", "expected_code"), [
+    pytest.param(
+        "Tighten the cover bolts to 18 N-m and the bracket bolts to 25 N-m.",
+        "Torque the bracket bolts to 18 N-m and the cover bolts to 25 N-m.", "REWRITE_SPEC_SCOPE_MUTATION", id="torque",
+    ),
+    pytest.param(
+        "Hold the reset button for 5 seconds and the mode button for 10 seconds.",
+        "Press and hold the mode button for 5 seconds and the reset button for 10 seconds.",
+        "REWRITE_SPEC_SCOPE_MUTATION", id="duration",
+    ),
+    pytest.param(
+        "Apply 5 VDC to the sensor signal pin and 12 VDC to the supply pin.",
+        "Feed the supply pin with 5 VDC and the sensor signal pin with 12 VDC.", "REWRITE_SPEC_SCOPE_MUTATION", id="electrical",
+    ),
+    pytest.param(
+        "Set the inlet pressure to 18 PSI and the outlet pressure to 25 PSI.",
+        "Adjust the outlet pressure to 18 PSI and the inlet pressure to 25 PSI.", "REWRITE_SPEC_SCOPE_MUTATION", id="pressure",
+    ),
+    pytest.param(
+        "Set the intake sensor to 18 deg C and the outlet sensor to 25 deg C.",
+        "Use 18 deg C as the outlet sensor setting and 25 deg C as the intake sensor setting.",
+        "REWRITE_SPEC_SCOPE_MUTATION", id="temperature",
+    ),
+    pytest.param(
+        "The heater winding resistance is 3 to 5 kOhms and the sensor winding resistance is 8 to 12 kOhms.",
+        "Use 3 to 5 kOhms as the sensor winding range and 8 to 12 kOhms as the heater winding range.",
+        "REWRITE_SPEC_SCOPE_MUTATION", id="resistance",
+    ),
+    pytest.param(
+        "Keep your hands clear of the moving fan.",
+        "Keep your hands close to the moving fan.", "REWRITE_SAFETY_MUTATION", id="clearance-warning",
+    ),
+    pytest.param(
+        "Turn the adjuster 1.5 turns clockwise.",
+        "Give the locknut 1.5 turns counterclockwise.", "REWRITE_SPEC_SCOPE_MUTATION", id="rotation",
+    ),
+])
+def test_automatic_specification_units_control_publication(runtime, provider, preserved, original, invalid, expected_code):
+    ensure = automatic_runtime(runtime, provider)
+    runtime.change_fixture_body(f"<p>Remove the pump.</p><p>{original}</p>".encode())
+    runtime.model.mode = "explicit_specification"
+    runtime.model.explicit_specification = (original, None if preserved else invalid)
+    job = ensure().job_id
+    runtime.start_workers(1)
+    runtime.wait_for(lambda: runtime.read_current()["processing_state"] in ("completed", "failed", "needs_review"))
+    runtime.stop_workers()
+
+    state = runtime.read_current()
+    assert original in state["body"]
+    assert invalid not in state["body"]
+    with runtime.repo.connect() as conn:
+        attempt = conn.execute(
+            "SELECT status, error_code FROM canonical_article_rewrite_attempts WHERE source_fetch_job_id=%s", (job,),
+        ).fetchone()
+        events = conn.execute("SELECT count(*) AS n FROM publication_events").fetchone()["n"]
+    if preserved:
+        assert state["content_origin"] == "canonical"
+        assert "Take off the pump." in state["body"]
+        assert attempt == {"status": "succeeded", "error_code": None}
+        assert events == 1
+    else:
+        assert state["content_origin"] == "source"
+        assert state["canonical_revision_id"] is None
+        assert attempt == {"status": "failed", "error_code": expected_code}
+        assert events == 0
+    assert runtime.counters() == {"source": 1, "asset": 0, "model": 1, "schedule": 1}
 
 
 @pytest.mark.parametrize("failure,expected_code,expected_stage", [

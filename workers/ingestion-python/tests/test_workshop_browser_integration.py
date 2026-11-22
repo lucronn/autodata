@@ -1,6 +1,7 @@
 """Exactly 21 required browser cases over actual PG/auth/commerce/catalog/S3 HTTP."""
 from contextlib import ExitStack
 from datetime import datetime
+from io import BytesIO
 import json
 import hashlib
 import re
@@ -392,14 +393,71 @@ def _child(root_name,engine,provider,directory,monkeypatch):
             repo=Repository(os.environ['AUTODATA_WORKSHOP_BROWSER_DATABASE']);result['fixture_database']=repo.database_name
             runtime=LifecycleRuntime(repo,stack)
             scope=configure_scoped_runtime(runtime,provider)
-            # Newly scoped articles are created after LifecycleRuntime sets up
-            # the legacy mock model, which only supports technical-prose-v1.
-            with repo.connect() as conn:
-                conn.execute(
-                    "UPDATE canonical_articles SET target_rewrite_profile_version = %s "
-                    "WHERE vehicle_configuration_id = %s",
-                    ("technical-prose-v1", scope["configuration"]),
-                )
+            if runtime.servers:
+                with repo.connect() as conn:
+                    conn.execute(
+                        "UPDATE vehicle_configurations SET engine_displacement_l = %s WHERE vehicle_configuration_id = %s",
+                        ("2.0", scope["configuration"]),
+                    )
+            if not google:
+                from PIL import Image
+
+                diagram = BytesIO()
+                Image.new("RGB", (24, 24), "green").save(diagram, format="PNG")
+                for server in runtime.servers.values():
+                    if provider == "banktwo" and root_name == "test_browser_owned_source_canonical_and_media_real_api":
+                        from test_workshop_linked_pdf import _PDF_LOCATOR, _PDF_REF, _pdf_with_fixture_figure
+
+                        pdf, _ = _pdf_with_fixture_figure(
+                            trailing_text="Install a new oil seal after the flange is dry.", second_figure=True,
+                        )
+                        html = (
+                            '<p>Inspect the alignment marks before removing the pump.</p>'
+                            '<table><caption>Alignment service data</caption><tr><td>Check mark.'
+                            '<figure><img src="/fixture/alignment.png" alt="Alignment marks">'
+                            '<figcaption>Alignment witness marks</figcaption></figure>'
+                            'Keep shim seated.</td></tr></table>'
+                            '<p>Do not run the pump dry.</p>'
+                            '<p>Remove the cover while the ignition is off.</p>'
+                            '<ol start="4"><li value="9">Remove the pump.'
+                            '<figure><img src="/fixture/alignment.png" alt="Shim">'
+                            '<figcaption>Shim A</figcaption></figure>'
+                            '<table><tr><td>'
+                            f'<iframe src="{_PDF_LOCATOR}">Hidden fallback.</iframe>'
+                            '</td><td>Drive seal seating depth: 2.0 mm</td></tr></table></li></ol>'
+                            '<p>Tighten the cover bolts to 18 Nm.</p>'
+                        )
+                        server.body(pdf, "application/pdf", ref=_PDF_REF, kind="binary")
+                        server.body(html.encode(), assets=["figure", _PDF_REF], asset_bindings=[
+                            {"source_url": "/fixture/alignment.png", "resource_ref": "figure"},
+                            {"source_url": _PDF_LOCATOR, "resource_ref": _PDF_REF},
+                        ])
+                        continue
+                    body = {
+                        "blocks": [
+                            {"type": "paragraph", "text": "Inspect the alignment marks before removing the pump.",
+                             "images": [{"asset_resource_ref": "figure", "alt": "Alignment marks",
+                                         "caption": "Pump alignment marks"}]},
+                            {"type": "callout", "label": "Warning", "text": "Do not run the pump dry."},
+                            {"type": "paragraph", "text": "Remove the cover while the ignition is off."},
+                            {"type": "step", "number": 1, "text": "Remove the pump."},
+                            {"type": "ordered_list", "start": 4, "items": [
+                                {"text": "Remove the pump.", "number": 9, "blocks": [
+                                    {"type": "table", "label": "Alignment reference", "rows": [[
+                                        {"text": "Drive seal seating depth: 2.0 mm", "images": [{
+                                            "asset_resource_ref": "table-figure", "alt": "Drive alignment",
+                                            "caption": "Drive alignment reference",
+                                        }]},
+                                    ]]},
+                                    {"type": "callout", "label": "Note", "text": "Keep the drive seal in place."},
+                                ]},
+                            ]},
+                            {"type": "step", "number": 2, "text": "Tighten the cover bolts to 18 Nm."},
+                            {"type": "step", "number": 3, "text": "Install a new oil seal after the flange is dry."},
+                        ],
+                    }
+                    server.body(diagram.getvalue(), "image/png", ref="table-figure", kind="asset")
+                    server.body(json.dumps(body).encode(), "application/json", assets=["figure", "table-figure"])
             bridge=BrowserBridge(runtime)
             model=stack.enter_context(serve(bridge.model_handler()))
             runtime.env['INCEPTION_API_BASE_URL']=model+'/v1';runtime.env['INCEPTION_API_TIMEOUT_SECONDS']='35'
@@ -459,6 +517,11 @@ def _child(root_name,engine,provider,directory,monkeypatch):
                 observed=row['observations']
                 assert observed['binding']==expected_binding and observed['status']=='passed' and observed['primary_failure'] is None and observed['publication']=='written'
                 final=bridge.snapshot();assert not final['proxy']['errors'] and final['ensure']['active']==0
+                if not google:
+                    (revision,) = final['immutable_rows']['canonical_article_revisions']
+                    report = revision['validation_report']
+                    assert revision['status'] == 'published' and revision['rewrite_profile_version'] == 'full-prose-auto-v1'
+                    assert report['passed'] is True and report['changed_prose_slots']
                 result['final_snapshot']=json.loads(json.dumps(final, default=_snapshot_json_value, allow_nan=False))
                 with urlopen(Request(metadata['origin']+'/__fixture/stop',method='POST'),context=ssl._create_unverified_context(),timeout=2) as response:assert response.status==204
                 _lifecycle(sidecar,'fixture-stop','completed',elapsed_us=go.elapsed())

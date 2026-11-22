@@ -286,5 +286,81 @@
       "Distinct warning introduction.",
       "NOTE: Remove pump."
     ]
+  },
+  {
+    "name": "caption and unavailable occurrence of the same figure",
+    "article": {
+      "title": "Service guide",
+      "images": [
+        { "id": "figure", "url": "/v1/catalog/images/v2.figure" }
+      ],
+      "document": {
+        "schema_version": 1,
+        "blocks": [
+          { "type": "image", "asset_id": "figure", "alt": "Cross section", "caption": "Hydraulic return slot" },
+          { "type": "image", "asset_id": "figure", "status": "unavailable", "alt": "HiddenAlternateView", "caption": "HiddenDraftCaption" }
+        ]
+      }
+    },
+    "has_intro": false,
+    "visible_queries": ["Hydraulic return slot"],
+    "accessible_queries": ["Cross section"],
+    "hidden_queries": ["HiddenAlternateView", "HiddenDraftCaption"],
+    "once": ["Hydraulic return slot"]
+  },
+  {
+    "name": "figure captions and alternatives in paragraphs and table cells",
+    "article": {
+      "title": "Service guide",
+      "images": [
+        { "id": "header-figure", "image_id": "header-alias", "status": "unavailable", "alt": "HiddenUnavailableAsset", "url": "/v1/catalog/images/v2.unavailable" },
+        { "id": "header-figure", "image_id": "header-alias", "alt": "Stored header description", "url": "/v1/catalog/images/v2.header" },
+        { "id": "row-figure", "alt": "Stored row description", "url": "/v1/catalog/images/v2.row" },
+        { "id": "detached-figure", "url": "/v1/catalog/images/v2.detached" },
+        { "id": "nested-figure", "url": "/v1/catalog/images/v2.nested" },
+        { "id": "paragraph-figure", "url": "/v1/catalog/images/v2.paragraph" },
+        { "id": "unlabelled-figure", "alt": "Stored unlabelled description", "url": "/v1/catalog/images/v2.unlabelled" },
+        { "id": "shadowed-figure", "status": "available" },
+        { "id": "shadowed-figure", "url": "/v1/catalog/images/v2.shadowed" }
+      ],
+      "document": {
+        "schema_version": 1,
+        "blocks": [
+          {
+            "type": "paragraph",
+            "text": "Use the alignment reference.",
+            "images": [
+              { "asset_id": "paragraph-figure", "caption": "Alignment overview", "alt": "Overview diagram" },
+              { "asset_id": "unlabelled-figure" },
+              { "asset_id": "shadowed-figure", "caption": "HiddenShadowedCaption" }
+            ]
+          },
+          {
+            "type": "table",
+            "columns": [{ "text": "Measurements", "image_id": "header-alias", "caption": "Weld alignment witness" }],
+            "rows": [[{
+              "text": "Knuckle",
+              "images": [
+                { "asset_id": "row-figure", "alt": "", "caption": "Knuckle reference mark" },
+                { "asset_id": "detached-figure", "status": "unavailable", "caption": "HiddenCellOccurrence" }
+              ],
+              "blocks": [{ "type": "unordered_list", "items": [{ "blocks": [
+                { "type": "image", "asset_id": "nested-figure", "caption": "Lower housing detail" }
+              ] }] }]
+            }]],
+            "images": [
+              { "asset_id": "header-figure", "alt": "HiddenHeaderDuplicate" },
+              { "asset_id": "nested-figure", "caption": "HiddenNestedDuplicate" },
+              { "asset_id": "detached-figure", "caption": "Detached clearance diagram" }
+            ]
+          }
+        ]
+      }
+    },
+    "has_intro": false,
+    "visible_queries": ["Alignment overview", "Weld alignment witness", "Knuckle reference mark", "Lower housing detail", "Detached clearance diagram"],
+    "accessible_queries": ["Overview diagram", "Stored row description", "Stored unlabelled description"],
+    "hidden_queries": ["HiddenUnavailableAsset", "HiddenHeaderDuplicate", "HiddenCellOccurrence", "HiddenNestedDuplicate", "HiddenShadowedCaption", "Stored header description"],
+    "once": ["Weld alignment witness", "Knuckle reference mark", "Lower housing detail", "Detached clearance diagram"]
   }
 ]

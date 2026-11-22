@@ -384,7 +384,7 @@ class Bridge:
                         result = {'released': True}
                     else:
                         raise AssertionError('unexpected control route')
-                    body = json.dumps(result, default=str).encode()
+                    body = json.dumps(result, default=str, separators=(',', ':')).encode()
                     self.send_response(200)
                     self.send_header('Content-Type', 'application/json')
                     self.send_header('Content-Length', str(len(body)))

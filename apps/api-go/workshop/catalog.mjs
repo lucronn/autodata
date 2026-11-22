@@ -1,6 +1,8 @@
 // Pure catalog helpers are shared by the browser and the regression suite.
 export function configurationLabel(item) {
-  return [item.engine, item.trim].filter(Boolean).join(' / ') || 'Base configuration';
+  const displacement = typeof item.engine === 'string' && /^\d+(?:\.\d+)?$/.test(item.engine);
+  const engine = displacement ? `${item.engine} L` : item.engine;
+  return [engine, item.trim].filter(Boolean).join(' / ') || 'Base configuration';
 }
 
 export function filterArticles(items, query) {
@@ -265,8 +267,9 @@ export async function readCollection(
 }
 
 export class CatalogRequestError extends Error {
-  constructor(message, { status = 0, code = 'NETWORK_UNAVAILABLE', retryable = false, retryAfterSeconds = 0, requestId = '' } = {}) {
+  constructor(message, { status = 0, code = 'NETWORK_UNAVAILABLE', retryable = false, retryAfterSeconds = 0, requestId = '', purchaseQuote } = {}) {
     super(message); Object.assign(this, { status, code, retryable, retryAfterSeconds, requestId });
+    if (purchaseQuote !== undefined) this.purchaseQuote = purchaseQuote;
   }
 }
 function safeRequestMessage(status) {
@@ -276,23 +279,86 @@ function safeRequestMessage(status) {
   if (status === 409) return 'This article needs review before it can be opened.';
   return 'AutoData is temporarily unavailable. Try again.';
 }
-export async function requestArticleJSON(path, { signal, timeout = 10000, fetcher = fetch, method = 'GET', body, headers = {} } = {}) {
-  const timeoutSignal = AbortSignal.timeout(Math.max(1, Math.min(10000, timeout)));
-  const combined = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
+const shortSourceCheckPreference = 'workshop-short-source-check';
+const shortPublicationCheckPreference = 'workshop-short-publication-check';
+const finishPublishedBodyPreference = 'workshop-finish-published-body';
+const publicationStatusPreference = 'workshop-publication-status';
+
+export async function requestArticleJSON(path, {
+  signal, timeout = 10000, readableBodyTimeout = 0, fetcher = fetch, method = 'GET', body, headers = {},
+  preferShortSourceCheck = false, preferShortPublicationCheck = false,
+  finishPublishedBody = false, reportBodyNetworkError = false, publicationCheck,
+} = {}) {
+  const preferences = [];
+  if (preferShortSourceCheck) preferences.push(shortSourceCheckPreference);
+  if (preferShortPublicationCheck) preferences.push(shortPublicationCheckPreference);
+  if (finishPublishedBody) preferences.push(finishPublishedBodyPreference);
+  if (publicationCheck) {
+    preferences.push(publicationStatusPreference);
+    headers = {
+      ...headers,
+      'X-Workshop-Publication-Job': publicationCheck.jobId,
+      'X-Workshop-Source-Revision': publicationCheck.sourceRevisionId,
+    };
+  }
+  const readTimeout = Math.max(1, Math.min(10000, timeout));
+  const bodyTimeout = Math.min(10000, readableBodyTimeout);
+  const earlyTimeout = bodyTimeout > readTimeout ? AbortSignal.timeout(readTimeout) : null;
+  const timeoutSignal = AbortSignal.timeout(earlyTimeout ? bodyTimeout : readTimeout);
+  const earlyController = earlyTimeout ? new AbortController() : null;
+  const abortEarly = () => earlyController.abort(earlyTimeout.reason);
+  earlyTimeout?.addEventListener('abort', abortEarly, { once: true });
+  const signals = [timeoutSignal];
+  if (signal) signals.push(signal);
+  if (earlyController) signals.push(earlyController.signal);
+  const combined = signals.length > 1 ? AbortSignal.any(signals) : timeoutSignal;
   try {
-    const response = await fetcher(path, { method, signal: combined, credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json', ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...headers }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
-    const data = response.status === 204 ? null : await response.json().catch(() => null);
-    signal?.throwIfAborted();
+    const response = await fetcher(path, { method, signal: combined, credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json', ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...(preferences.length ? { Prefer: preferences.join(', ') } : {}), ...headers }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+    const applied = response.headers.get('Preference-Applied');
     const retry = response.headers.get('Retry-After');
+    const confirmedPublication = applied === finishPublishedBodyPreference && retry === null;
+    if (response.status === 200 && (!finishPublishedBody || confirmedPublication)) {
+      earlyTimeout?.removeEventListener('abort', abortEarly);
+    }
+    let bodyError;
+    const data = response.status === 204 ? null : await response.json().catch((error) => {
+      bodyError = error;
+      return null;
+    });
+    signal?.throwIfAborted();
+    combined.throwIfAborted();
     const retryAfterSeconds = retry && /^\d+$/.test(retry) ? Number(retry) : retry ? Math.max(0, Math.ceil((Date.parse(retry) - Date.now()) / 1000)) || 0 : 0;
-    if (!response.ok) throw new CatalogRequestError(safeRequestMessage(response.status), { status: response.status, code: typeof data?.error?.code === 'string' ? data.error.code : 'HTTP_ERROR', retryable: data?.error?.retryable === true, retryAfterSeconds, requestId: typeof data?.error?.request_id === 'string' ? data.error.request_id : '' });
+    if (!response.ok) {
+      const error = data?.error;
+      const code = typeof error?.code === 'string' ? error.code : 'HTTP_ERROR';
+      throw new CatalogRequestError(safeRequestMessage(response.status), {
+        status: response.status, code, retryable: error?.retryable === true, retryAfterSeconds,
+        requestId: typeof error?.request_id === 'string' ? error.request_id : '',
+        purchaseQuote: response.status === 403 && code === 'ENTITLEMENT_REQUIRED' ? error.details?.purchase_quote : undefined,
+      });
+    }
+    if (reportBodyNetworkError && retryAfterSeconds === 0 && bodyError instanceof TypeError) throw bodyError;
     if (response.status !== 204 && (!data || typeof data !== 'object' || Array.isArray(data))) throw new CatalogRequestError('The catalog returned an unreadable response. Try again.', { code: 'INVALID_RESPONSE' });
-    return { status: response.status, data, retryAfterSeconds };
+    const shortSourceCheck = preferShortSourceCheck && applied === shortSourceCheckPreference;
+    const shortPublicationCheck = preferShortPublicationCheck && applied === shortPublicationCheckPreference;
+    const publicationStatus = Boolean(publicationCheck && applied === publicationStatusPreference);
+    const publicationCheckSupported = response.headers.get('Workshop-Publication-Check') === 'supported';
+    return { status: response.status, data, retryAfterSeconds, shortSourceCheck, shortPublicationCheck,
+      ...(publicationStatus ? { publicationStatus } : {}),
+      ...(publicationCheckSupported ? { publicationCheckSupported } : {}),
+    };
   } catch (error) {
     signal?.throwIfAborted();
     if (error instanceof CatalogRequestError) throw error;
-    if (timeoutSignal.aborted || error instanceof TypeError) throw new CatalogRequestError('Cannot reach AutoData. Try again.', { retryable: true });
+    if (combined.aborted || error instanceof TypeError) throw new CatalogRequestError('Cannot reach AutoData. Try again.', { retryable: true });
     throw error;
+  } finally {
+    earlyTimeout?.removeEventListener('abort', abortEarly);
   }
 }
 export async function requestJSON(path, options) { return (await requestArticleJSON(path, options)).data; }
+
+export function requestInitialYears(params, request = requestJSON) {
+  if (params.has('year') || params.has('configuration') || params.has('order') || params.get('view') === 'library') return null;
+  return request('/v1/catalog/years').catch(() => null);
+}

@@ -15,18 +15,19 @@ func TestCatalogSearchCurrentRendererParity(t *testing.T) {
 		t.Fatal(err)
 	}
 	var cases []struct {
-		Name    string         `json:"name"`
-		Article CatalogArticle `json:"article"`
-		Visible []string       `json:"visible_queries"`
-		Hidden  []string       `json:"hidden_queries"`
-		Once    []string       `json:"once"`
+		Name       string         `json:"name"`
+		Article    CatalogArticle `json:"article"`
+		Visible    []string       `json:"visible_queries"`
+		Accessible []string       `json:"accessible_queries"`
+		Hidden     []string       `json:"hidden_queries"`
+		Once       []string       `json:"once"`
 	}
 	if err := json.Unmarshal(raw, &cases); err != nil {
 		t.Fatal(err)
 	}
 	for _, item := range cases {
 		t.Run(item.Name, func(t *testing.T) {
-			for _, query := range item.Visible {
+			for _, query := range append(item.Visible, item.Accessible...) {
 				if len(filterCatalogArticleSearch([]CatalogArticle{item.Article}, query)) != 1 {
 					t.Errorf("visible term %q did not match", query)
 				}
@@ -36,7 +37,7 @@ func TestCatalogSearchCurrentRendererParity(t *testing.T) {
 					t.Errorf("hidden term %q matched", query)
 				}
 			}
-			text := catalogArticleSearchText(item.Article)
+			text := catalogArticleSearchText(item.Article, false)
 			for _, phrase := range item.Once {
 				if n := strings.Count(text, phrase); n != 1 {
 					t.Errorf("displayed phrase %q appeared %d times, want once", phrase, n)

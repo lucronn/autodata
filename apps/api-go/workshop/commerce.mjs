@@ -86,6 +86,8 @@ export function validLibrary(data) {
           ["paid", "preparing", "viewable", "revoked"].includes(
             item.access_state,
           ) &&
+          (!Object.hasOwn(item, "catalog_available") ||
+            (item.catalog_available === false && item.access_state === "paid")) &&
           (item.granted_at === null
             ? item.access_state === "revoked"
             : validTime(item.granted_at)),
@@ -202,7 +204,11 @@ export function createCheckout({
           (data.state === "owned" && data.library_item_id !== data.order_id)
         )
           throw new Error("Purchase status is unavailable.");
-        save({ ...attempt, order_id: data.order_id });
+        save({
+          ...attempt,
+          order_id: data.order_id,
+          provider_expires_at: data.state === "checkout" ? data.provider_expires_at : undefined,
+        });
         return data;
       })
       .finally(() => {
@@ -219,35 +225,55 @@ export function createCheckout({
   };
   return { read, clear, start };
 }
+
+const firstOrderRetryMs = 1000;
+const earlyCheckoutCheckMs = 350;
+const firstCheckoutReturnCheckMs = 250;
+
 export async function pollOrder(
   orderID,
   {
     request = requestJSON,
     signal,
     onUpdate = () => {},
+    onUnavailable = () => {},
     wait = delay,
     now = () => performance.now(),
     budgetMs = 120000,
+    earlyCheckoutCheck = false,
+    returnedCheckout,
   } = {},
 ) {
   if (!uuid(orderID)) throw new Error("This order is unavailable.");
   const deadline = now() + Math.min(120000, budgetMs);
   let attempt = 0,
-    latest;
+    latest,
+    unavailable = false,
+    regularReadAt = 0,
+    checkoutReadAt = 0;
   while (now() < deadline) {
     signal?.throwIfAborted();
+    const startedAt = now();
+    if (regularReadAt <= startedAt) regularReadAt = 0;
+    if (checkoutReadAt <= startedAt) checkoutReadAt = 0;
     let retryAfter = 0;
+    let ordinaryPending = false;
+    let pauseBeforeRetry = false;
     try {
+      const readDeadline = checkoutReadAt || regularReadAt || deadline;
       latest = await request(`/v1/workshop/orders/${orderID}`, {
         signal,
-        timeout: Math.min(10000, Math.max(1, deadline - now())),
+        timeout: Math.min(10000, Math.max(1, Math.floor(readDeadline - startedAt))),
       });
       signal?.throwIfAborted();
       if (!validOrder(latest, orderID))
         throw new Error("Payment status is unavailable.");
+      unavailable = false;
       onUpdate(latest);
       if (["paid", "expired", "canceled", "revoked"].includes(latest.state))
         return { ...latest, timedOut: false };
+      ordinaryPending = latest.state === "open" || latest.state === "processing";
+      pauseBeforeRetry = latest.state === "reconciliation_required";
     } catch (error) {
       signal?.throwIfAborted();
       if (
@@ -259,17 +285,43 @@ export async function pollOrder(
       )
         throw error;
       retryAfter = Number(error.retryAfterSeconds) || 0;
+      pauseBeforeRetry = [429, 503].includes(error.status);
+      // A speculative read can hit its short deadline before the ordinary check.
+      if (!unavailable && (!regularReadAt || pauseBeforeRetry)) {
+        unavailable = true;
+        onUnavailable();
+      }
     }
-    const remaining = deadline - now();
+    const finishedAt = now();
+    const remaining = deadline - finishedAt;
     if (remaining <= 0) break;
+    let waitMs;
+    if (checkoutReadAt && retryAfter === 0 && !pauseBeforeRetry) {
+      waitMs = Math.max(0, checkoutReadAt - finishedAt);
+      checkoutReadAt = 0;
+    } else if (regularReadAt) {
+      checkoutReadAt = 0;
+      // An unanswered probe rejoins the original first check. A provider
+      // reconciliation or overload response still gets the regular delay.
+      waitMs = Math.max(regularReadAt - finishedAt, pauseBeforeRetry ? firstOrderRetryMs : 0);
+      regularReadAt = 0;
+    } else {
+      waitMs = [firstOrderRetryMs, 2000, 4000, 8000, 10000][Math.min(attempt++, 4)];
+      if (earlyCheckoutCheck && attempt === 1 && ordinaryPending && remaining > waitMs) {
+        regularReadAt = finishedAt + waitMs;
+        waitMs = earlyCheckoutCheckMs;
+        // Match the hosted return receipt to the owner's current order.
+        // The extra read must leave the existing confirmation slots free.
+        if (returnedCheckout?.order_id === orderID && sameScope(returnedCheckout, latest) &&
+            validTime(returnedCheckout.provider_expires_at) &&
+            Date.parse(returnedCheckout.provider_expires_at) > Date.now() + firstOrderRetryMs) {
+          checkoutReadAt = finishedAt + earlyCheckoutCheckMs;
+          waitMs = firstCheckoutReturnCheckMs;
+        }
+      }
+    }
     await wait(
-      Math.min(
-        remaining,
-        Math.max(
-          [1000, 2000, 4000, 8000, 10000][Math.min(attempt++, 4)],
-          retryAfter * 1000,
-        ),
-      ),
+      Math.min(remaining, Math.max(waitMs, retryAfter * 1000)),
       signal,
     );
   }

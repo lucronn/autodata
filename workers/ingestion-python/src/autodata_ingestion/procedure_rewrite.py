@@ -251,7 +251,7 @@ _PROTECTED_SLOT = re.compile(
 def editable_slots(document, *, profile_version=_PROFILE):
     if profile_version == "full-prose-auto-v1":
         from .procedure_rewrite_full import prose_slots
-        return prose_slots(document)
+        return prose_slots(document, include_cell_blocks=True)
     if profile_version == "full-prose-review-v1":
         from .procedure_rewrite_full import prose_slots
         return prose_slots(document)

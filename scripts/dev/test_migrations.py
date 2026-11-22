@@ -70,6 +70,14 @@ class MigrationPlanTests(unittest.TestCase):
                 "040_workshop_commerce.sql",
                 "041_article_source_projection_v2.sql",
                 "042_catalog_selector_rows.sql",
+                "043_article_source_projection_v3.sql",
+                "044_article_source_projection_v4.sql",
+                "045_article_source_projection_v5.sql",
+                "046_article_source_projection_v6.sql",
+                "047_article_source_projection_v7.sql",
+                "048_article_source_projection_v8.sql",
+                "049_article_source_projection_v9.sql",
+                "050_article_source_projection_v10.sql",
             ],
         )
 
@@ -81,7 +89,7 @@ class MigrationPlanTests(unittest.TestCase):
             self.assertIn(expected, text)
         self.assertNotIn("auth_login_transactions", text)
         driver = (ROOT / "scripts/dev/migrate_sql.sh").read_text()
-        self.assertEqual(driver.count("036_*|037_*|038_*|039_*|040_*|041_*|042_*"), 4)
+        self.assertEqual(driver.count("036_*|037_*|038_*|039_*|040_*|041_*|042_*|043_*|044_*|045_*|046_*|047_*|048_*|049_*|050_*"), 4)
         self.assertNotIn("036_*|037_*|038_*)", driver)
         for table in ("customer_accounts", "auth_sessions"):
             self.assertIn("'" + table + "'", driver)

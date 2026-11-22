@@ -81,6 +81,10 @@ func (s *Server) checkPaidCatalogGrant(ctx context.Context, p Principal, configu
 	return nil
 }
 func (s *Server) writePaidCatalogError(w http.ResponseWriter, r *http.Request, err error) {
+	s.writePaidCatalogErrorDetails(w, r, err, nil)
+}
+
+func (s *Server) writePaidCatalogErrorDetails(w http.ResponseWriter, r *http.Request, err error, details map[string]any) {
 	w.Header().Set("Cache-Control", "private, no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	status, code, message, retryable := 503, "CATALOG_UNAVAILABLE", "Catalog is temporarily unavailable.", true
@@ -95,16 +99,30 @@ func (s *Server) writePaidCatalogError(w http.ResponseWriter, r *http.Request, e
 		status, code, message, retryable = 410, "CATALOG_WITHDRAWN", "Catalog content is withdrawn.", false
 	}
 	// Do not send raw paths/errors to catalog logging: media paths contain tokens.
-	writeAPIError(w, r, status, code, message, retryable)
+	writeAPIErrorDetails(w, r, status, code, message, retryable, details)
 }
 
-// Paid descriptors use one metadata-only query, including descriptor rights.
-// Do not call the legacy union or load documents/individual article projections.
+// The scope key and provider are constrained by the canonical article schema.
+// Together they let PostgreSQL select a configuration's articles by index.
+const paidArticleScopeSQL = `a.scope_key='configuration:'||$1 AND a.provider_slug IN ('bankone','banktwo')`
+
+// The current view has one row per canonical article. The lateral limit keeps
+// PostgreSQL from evaluating the view across unrelated configurations.
+const paidArticleCurrentJoinSQL = `JOIN LATERAL (
+	SELECT * FROM catalog_article_current WHERE canonical_article_id=a.canonical_article_id LIMIT 1
+) c ON true`
+
+// Paid descriptors use a single metadata-only query, including descriptor rights.
 func (s *postgresCatalogStore) PaidArticleDescriptors(ctx context.Context, _ Principal, configurationID string) ([]CatalogArticle, error) {
 	if !commerceUUID(configurationID) {
 		return nil, ErrCatalogNotFound
 	}
-	rows, err := s.pool.Query(ctx, `SELECT a.canonical_article_id::text,COALESCE(a.title,''),COALESCE(a.kind,''),COALESCE(a.component,''),c.source_revision_id::text,c.canonical_revision_id::text,c.content_origin,c.availability,c.review_status FROM canonical_articles a JOIN catalog_article_current c USING(canonical_article_id) JOIN source_snapshots descriptor ON descriptor.source_snapshot_id=a.descriptor_source_snapshot_id WHERE a.vehicle_configuration_id::text=$1 AND `+lifecycleEligibleSQL+` AND c.takedown_status='active' AND descriptor.takedown_status='active' ORDER BY CASE a.provider_slug WHEN 'bankone' THEN 0 ELSE 1 END,a.source_sort_order NULLS LAST,a.canonical_article_id`, configurationID)
+	rows, err := s.pool.Query(ctx, `SELECT a.canonical_article_id::text,COALESCE(a.title,''),COALESCE(a.kind,''),COALESCE(a.component,''),
+		c.source_revision_id::text,c.canonical_revision_id::text,c.content_origin,c.availability,c.review_status
+		FROM canonical_articles a `+paidArticleCurrentJoinSQL+`
+		JOIN source_snapshots descriptor ON descriptor.source_snapshot_id=a.descriptor_source_snapshot_id
+		WHERE `+paidArticleScopeSQL+` AND `+lifecycleEligibleSQL+` AND c.takedown_status='active' AND descriptor.takedown_status='active'
+		ORDER BY CASE a.provider_slug WHEN 'bankone' THEN 0 ELSE 1 END,a.source_sort_order NULLS LAST,a.canonical_article_id`, configurationID)
 	if err != nil {
 		return nil, err
 	}
@@ -134,14 +152,22 @@ func (s *postgresCatalogStore) PaidArticleSearchDescriptors(ctx context.Context,
 	if !commerceUUID(configurationID) {
 		return nil, ErrCatalogNotFound
 	}
-	rows, err := s.pool.Query(ctx, `SELECT a.canonical_article_id::text,COALESCE(a.title,''),COALESCE(a.kind,''),COALESCE(a.component,''),c.source_revision_id::text,c.canonical_revision_id::text,c.content_origin,c.availability,c.review_status,c.document,COALESCE(c.body,''),c.steps,c.images,source.source_images FROM canonical_articles a JOIN catalog_article_current c USING(canonical_article_id) JOIN source_snapshots descriptor ON descriptor.source_snapshot_id=a.descriptor_source_snapshot_id LEFT JOIN canonical_article_source_revisions source ON source.source_revision_id=c.source_revision_id WHERE a.vehicle_configuration_id::text=$1 AND `+lifecycleEligibleSQL+` AND c.availability='available' AND c.takedown_status='active' AND descriptor.takedown_status='active' ORDER BY CASE a.provider_slug WHEN 'bankone' THEN 0 ELSE 1 END,a.source_sort_order NULLS LAST,a.canonical_article_id`, configurationID)
+	rows, err := s.pool.Query(ctx, `SELECT a.canonical_article_id::text,COALESCE(a.title,''),COALESCE(a.kind,''),COALESCE(a.component,''),
+		c.source_revision_id::text,c.canonical_revision_id::text,c.content_origin,c.availability,c.review_status,
+		c.document,COALESCE(c.body,''),c.steps,c.images,source.source_images
+		FROM canonical_articles a `+paidArticleCurrentJoinSQL+`
+		JOIN source_snapshots descriptor ON descriptor.source_snapshot_id=a.descriptor_source_snapshot_id
+		LEFT JOIN canonical_article_source_revisions source ON source.source_revision_id=c.source_revision_id
+		WHERE `+paidArticleScopeSQL+` AND `+lifecycleEligibleSQL+` AND c.availability='available' AND c.takedown_status='active' AND descriptor.takedown_status='active'
+		ORDER BY CASE a.provider_slug WHEN 'bankone' THEN 0 ELSE 1 END,a.source_sort_order NULLS LAST,a.canonical_article_id`, configurationID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	result := []CatalogArticle{}
+	words := strings.Fields(strings.ToLower(query))
 	for rows.Next() {
-		article, matched, err := scanPaidArticleSearchRow(rows, configurationID, query)
+		article, matched, err := scanPaidArticleSearchRow(rows, configurationID, words)
 		if err != nil {
 			return nil, err
 		}
@@ -152,58 +178,18 @@ func (s *postgresCatalogStore) PaidArticleSearchDescriptors(ctx context.Context,
 	return result, rows.Err()
 }
 
-// Scan all selected content only into a private comparison projection. The
-// returned descriptor remains metadata-only even when an image alt matches.
-func scanPaidArticleSearchRow(row interface{ Scan(...any) error }, configurationID, query string) (CatalogArticle, bool, error) {
+// The returned descriptor remains metadata-only even when its content matched.
+func scanPaidArticleSearchRow(row interface{ Scan(...any) error }, configurationID string, words []string) (CatalogArticle, bool, error) {
 	var article CatalogArticle
-	var document, steps, images, sourceImagesRaw []byte
-	var body string
-	if err := row.Scan(&article.ID, &article.Title, &article.Kind, &article.Component, &article.SourceRevisionID, &article.CanonicalRevisionID, &article.ContentOrigin, &article.Availability, &article.ReviewStatus, &document, &body, &steps, &images, &sourceImagesRaw); err != nil {
+	var projection paidSearchProjection
+	if err := row.Scan(&article.ID, &article.Title, &article.Kind, &article.Component, &article.SourceRevisionID, &article.CanonicalRevisionID, &article.ContentOrigin, &article.Availability, &article.ReviewStatus, &projection.document, &projection.body, &projection.steps, &projection.images, &projection.sourceImages); err != nil {
 		return CatalogArticle{}, false, err
 	}
-	searchable := CatalogArticle{Title: article.Title, Kind: article.Kind, Component: article.Component, Body: body}
-	if len(document) > 0 {
-		var parsed CatalogDocument
-		if err := json.Unmarshal(document, &parsed); err != nil {
+	if !catalogSearchWordsMatch(strings.Join([]string{article.Title, article.Component, article.Kind}, " "), words) {
+		matched, err := projection.matchesContent(article, words)
+		if err != nil || !matched {
 			return CatalogArticle{}, false, err
 		}
-		searchable.Document = &parsed
-	}
-	if len(steps) > 0 {
-		if err := json.Unmarshal(steps, &searchable.Steps); err != nil {
-			return CatalogArticle{}, false, err
-		}
-	}
-	if len(images) > 0 {
-		if err := json.Unmarshal(images, &searchable.Images); err != nil {
-			return CatalogArticle{}, false, err
-		}
-	}
-	var sourceImages []CatalogImage
-	if len(sourceImagesRaw) > 0 {
-		if err := json.Unmarshal(sourceImagesRaw, &sourceImages); err != nil {
-			return CatalogArticle{}, false, err
-		}
-	}
-	// A paid detail only mints media URLs for assets still present in the
-	// selected source. Preserve that boundary while comparing text privately.
-	for i := range searchable.Images {
-		if !paidSearchImageInSource(searchable.Images[i], sourceImages) {
-			searchable.Images[i].Status = "unavailable"
-		}
-	}
-	for i := range searchable.Steps {
-		if searchable.Steps[i].Images != nil {
-			for j := range *searchable.Steps[i].Images {
-				image := &(*searchable.Steps[i].Images)[j]
-				if !paidSearchImageInSource(*image, sourceImages) {
-					image.Status = "unavailable"
-				}
-			}
-		}
-	}
-	if len(filterCatalogArticleSearch([]CatalogArticle{searchable}, query)) == 0 {
-		return CatalogArticle{}, false, nil
 	}
 	article.CanonicalArticleID = stringPointer(article.ID)
 	article.VehicleID = configurationID
@@ -216,11 +202,83 @@ func scanPaidArticleSearchRow(row interface{ Scan(...any) error }, configuration
 	return article, true, nil
 }
 
-func paidSearchImageInSource(image CatalogImage, sourceImages []CatalogImage) bool {
-	asset := paidCatalogImageAssetID(image)
-	return paidCatalogAssetPattern.MatchString(asset) &&
-		localCatalogImageKeyPattern.MatchString(image.StorageKey) &&
-		paidCatalogHasAsset(sourceImages, asset, image.StorageKey)
+type paidSearchProjection struct {
+	document, steps, images, sourceImages []byte
+	body                                  string
+}
+
+func (projection paidSearchProjection) matchesContent(searchable CatalogArticle, words []string) (bool, error) {
+	if len(projection.document) > 0 {
+		var parsed CatalogDocument
+		if err := json.Unmarshal(projection.document, &parsed); err != nil {
+			return false, err
+		}
+		searchable.Document = &parsed
+	}
+	if len(projection.images) > 0 {
+		if err := json.Unmarshal(projection.images, &searchable.Images); err != nil {
+			return false, err
+		}
+	}
+	if searchable.Document != nil && len(searchable.Document.Blocks) > 0 {
+		// Ordered documents still resolve figures stored on compatibility steps.
+		// Their legacy action, body and evidence fields are hidden in this view.
+		if len(projection.steps) > 0 {
+			var steps []struct {
+				Images []CatalogImage `json:"images"`
+			}
+			if err := json.Unmarshal(projection.steps, &steps); err != nil {
+				return false, err
+			}
+			for _, step := range steps {
+				searchable.Images = append(searchable.Images, step.Images...)
+			}
+		}
+	} else {
+		searchable.Body = projection.body
+		if len(projection.steps) > 0 {
+			if err := json.Unmarshal(projection.steps, &searchable.Steps); err != nil {
+				return false, err
+			}
+		}
+	}
+	if err := projection.scopeImages(&searchable); err != nil {
+		return false, err
+	}
+	return catalogSearchWordsMatch(catalogArticleSearchText(searchable, true), words), nil
+}
+
+func (projection paidSearchProjection) scopeImages(article *CatalogArticle) error {
+	var sourceImages []CatalogImage
+	if len(projection.sourceImages) > 0 {
+		if err := json.Unmarshal(projection.sourceImages, &sourceImages); err != nil {
+			return err
+		}
+	}
+	assets := paidCatalogAssetURLs(sourceImages)
+	// A paid detail only mints media URLs for assets still present in the
+	// selected source. Preserve that boundary while comparing text privately.
+	clearUnproven := func(images []CatalogImage) {
+		for i := range images {
+			image := &images[i]
+			// JSON decoding projects asset_id and image_id. Match the paid
+			// reader's public alias for the legacy id field as well.
+			image.ID = publicCatalogAssetID(image.ID)
+			asset := paidCatalogImageAssetID(*image)
+			_, present := assets[paidCatalogAssetKey{asset, image.StorageKey}]
+			image.URL = ""
+			if !present || !paidCatalogAssetPattern.MatchString(asset) || !localCatalogImageKeyPattern.MatchString(image.StorageKey) {
+				image.StorageKey = ""
+			}
+		}
+	}
+	clearUnproven(article.Images)
+	for _, step := range article.Steps {
+		if step.Images != nil {
+			clearUnproven(*step.Images)
+		}
+	}
+	return nil
 }
 
 func (s *postgresCatalogStore) PaidArticleIdentity(ctx context.Context, configurationID, articleID string) (PaidArticleIdentity, error) {
@@ -229,7 +287,7 @@ func (s *postgresCatalogStore) PaidArticleIdentity(ctx context.Context, configur
 		return identity, ErrCatalogNotFound
 	}
 	var articleRights, descriptorRights string
-	err := s.pool.QueryRow(ctx, `SELECT a.vehicle_configuration_id::text,a.canonical_article_id::text,a.vehicle_id::text,a.provider_slug,a.source_vehicle_ref,a.source_article_ref,a.current_source_revision_id::text,a.takedown_status,descriptor.takedown_status FROM canonical_articles a JOIN source_snapshots descriptor ON descriptor.source_snapshot_id=a.descriptor_source_snapshot_id WHERE a.vehicle_configuration_id::text=$1 AND a.canonical_article_id::text=$2 AND `+lifecycleEligibleSQL, configurationID, articleID).Scan(&identity.ConfigurationID, &identity.CanonicalArticleID, &identity.VehicleID, &identity.ProviderSlug, &identity.SourceVehicleRef, &identity.SourceArticleRef, &identity.CurrentSourceRevisionID, &articleRights, &descriptorRights)
+	err := s.pool.QueryRow(ctx, `SELECT a.vehicle_configuration_id::text,a.canonical_article_id::text,a.vehicle_id::text,a.provider_slug,a.source_vehicle_ref,a.source_article_ref,a.current_source_revision_id::text,a.takedown_status,descriptor.takedown_status FROM canonical_articles a JOIN source_snapshots descriptor ON descriptor.source_snapshot_id=a.descriptor_source_snapshot_id WHERE a.vehicle_configuration_id=$1::uuid AND a.canonical_article_id=$2::uuid AND `+lifecycleEligibleSQL, configurationID, articleID).Scan(&identity.ConfigurationID, &identity.CanonicalArticleID, &identity.VehicleID, &identity.ProviderSlug, &identity.SourceVehicleRef, &identity.SourceArticleRef, &identity.CurrentSourceRevisionID, &articleRights, &descriptorRights)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return PaidArticleIdentity{}, ErrCatalogNotFound
 	}
@@ -244,6 +302,44 @@ type paidCatalogContext struct {
 	configuration CatalogConfiguration
 	identity      *PaidArticleIdentity
 	openDemo      bool
+}
+
+const (
+	catalogArticleIndexPattern = "GET /v1/catalog/vehicles/{vehicle_id}/articles"
+	purchaseQuotePreference    = "workshop-purchase-quote"
+)
+
+func wantsCatalogPurchaseQuote(r *http.Request, configuration CatalogConfiguration) bool {
+	if r.Method != http.MethodGet || r.Pattern != catalogArticleIndexPattern {
+		return false
+	}
+	query, ok := commerceQuery(r, "region")
+	if !ok || !commerceRegion(configuration.Region) || query.Get("region") != configuration.Region {
+		return false
+	}
+	for _, requested := range strings.Split(strings.Join(r.Header.Values("Prefer"), ","), ",") {
+		if strings.TrimSpace(requested) == purchaseQuotePreference {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Server) catalogPurchaseQuote(ctx context.Context, configuration CatalogConfiguration) *commerceQuote {
+	input := map[string]any{"configuration_id": configuration.ID, "region": configuration.Region}
+	status, body, err := s.doCommerce(ctx, "quote", input, nil, "")
+	if err != nil {
+		return nil
+	}
+	public, ok := commercePublicResult("quote", status, body, input, s.commerceClient)
+	if !ok {
+		return nil
+	}
+	quote, ok := public.(commerceQuote)
+	if !ok || !quote.Purchasable {
+		return nil
+	}
+	return &quote
 }
 
 func (s *Server) catalogSelector(next authenticatedHandler) http.Handler {
@@ -264,10 +360,23 @@ func (s *Server) catalogProtected(next authenticatedHandler, article bool) http.
 			s.writePaidCatalogError(w, r, ErrCatalogNotFound)
 			return
 		}
-		configuration, err := s.resolveCatalogScope(r.Context(), p, r.PathValue("vehicle_id"), r.URL.Query().Get("region"), !openDemo)
+		configuration, err := s.resolveCatalogScope(r.Context(), p, r.PathValue("vehicle_id"), r.URL.Query().Get("region"), false)
 		if err != nil {
 			s.writePaidCatalogError(w, r, err)
 			return
+		}
+		if !openDemo {
+			if err := s.checkPaidCatalogGrant(r.Context(), p, configuration); err != nil {
+				if errors.Is(err, ErrVehicleGrantRequired) && wantsCatalogPurchaseQuote(r, configuration) {
+					w.Header().Set("Preference-Applied", purchaseQuotePreference)
+					s.writePaidCatalogErrorDetails(w, r, err, map[string]any{
+						"purchase_quote": s.catalogPurchaseQuote(r.Context(), configuration),
+					})
+					return
+				}
+				s.writePaidCatalogError(w, r, err)
+				return
+			}
 		}
 		scope := paidCatalogContext{configuration: configuration, openDemo: openDemo}
 		if article {

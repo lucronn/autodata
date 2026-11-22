@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"fmt"
+	"strings"
+	"testing"
+)
 
 func TestCatalogArticleSearchUsesRenderedDocumentNotHiddenCompatibilityFields(t *testing.T) {
 	article := CatalogArticle{
@@ -12,19 +16,92 @@ func TestCatalogArticleSearchUsesRenderedDocumentNotHiddenCompatibilityFields(t 
 		Document: &CatalogDocument{Blocks: []CatalogDocumentBlock{
 			{Type: "step", Text: "Inspect ground strap.", Label: "HiddenStepLabelMarker"},
 			{Type: "paragraph", Text: "Use approved fastener.", Images: []CatalogImage{{Alt: "HiddenParagraphImageMarker"}}},
-			{Type: "callout", Label: "Warning", Text: "Disconnect battery.", Images: []CatalogImage{{AssetID: "table-distinct", Alt: "VisibleAltMarker", Caption: "HiddenCaptionMarker"}}},
-			{Type: "table", Label: "Torque values", Columns: []string{"Fastener"}, Rows: [][]any{{map[string]any{"text": "VisibleCellMarker", "label": "HiddenCellLabelMarker", "images": []any{map[string]any{"asset_id": "cell-duplicate", "alt": "VisibleCellAltMarker"}}}, float64(12)}}, Images: []CatalogImage{{AssetID: "table-distinct", Alt: "TableFigureMarker"}, {AssetID: "cell-duplicate", Alt: "HiddenDuplicateAltMarker"}}},
+			{Type: "callout", Label: "Warning", Text: "Disconnect battery.", Images: []CatalogImage{{AssetID: "table-distinct", Alt: "VisibleAltMarker", Caption: "VisibleCaptionMarker"}}},
+			{Type: "table", Label: "Torque values", Columns: []any{"Fastener"}, Rows: [][]any{{map[string]any{"text": "VisibleCellMarker", "label": "HiddenCellLabelMarker", "images": []any{map[string]any{"asset_id": "cell-duplicate", "alt": "VisibleCellAltMarker"}}}, float64(12)}}, Images: []CatalogImage{{AssetID: "table-distinct", Alt: "TableFigureMarker"}, {AssetID: "cell-duplicate", Alt: "HiddenDuplicateAltMarker"}}},
 		}},
 	}
-	for _, query := range []string{"ground strap", "Warning", "VisibleAltMarker", "VisibleCellMarker", "VisibleCellAltMarker", "TableFigureMarker", "12"} {
+	for _, query := range []string{"ground strap", "Warning", "VisibleAltMarker", "VisibleCaptionMarker", "VisibleCellMarker", "VisibleCellAltMarker", "TableFigureMarker", "12"} {
 		if len(filterCatalogArticleSearch([]CatalogArticle{article}, query)) != 1 {
 			t.Fatalf("visible query %q did not match", query)
 		}
 	}
-	for _, query := range []string{"HiddenBodyMarker", "HiddenStepLabelMarker", "HiddenParagraphImageMarker", "HiddenCaptionMarker", "HiddenCellLabelMarker", "HiddenDuplicateAltMarker", "private-marker"} {
+	for _, query := range []string{"HiddenBodyMarker", "HiddenStepLabelMarker", "HiddenParagraphImageMarker", "HiddenCellLabelMarker", "HiddenDuplicateAltMarker", "private-marker"} {
 		if len(filterCatalogArticleSearch([]CatalogArticle{article}, query)) != 0 {
 			t.Fatalf("hidden query %q matched", query)
 		}
+	}
+}
+
+func TestPaidCatalogArticleSearchUsesReaderIdentityForStoredFigureCaption(t *testing.T) {
+	const digest = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	const key = "sources/0123456789abcdef/" + digest
+	// HTML capture places the private asset_id and public image_id beside an
+	// authored figcaption in the ordered table-cell document.
+	document := []byte(fmt.Sprintf(`{"blocks":[{"type":"table","label":"Alignment service data","rows":[[{"blocks":[
+		{"type":"image","asset_id":%q,"image_id":%q,"alt":"Gaugeface diagram","caption":"Alignment witness marks","status":"available"}
+	]}]]}]}`, key, digest))
+	images := []byte(fmt.Sprintf(`[{"asset_id":%q,"image_id":%q,"storage_key":%q,"status":"available"}]`, key, digest, key))
+	for _, test := range []struct {
+		name         string
+		sourceImages []byte
+		figure       bool
+	}{
+		{name: "retained figure", sourceImages: images, figure: true},
+		{name: "unproven figure"},
+		{name: "unavailable figure", sourceImages: []byte(fmt.Sprintf(`[{"image_id":%q,"storage_key":%q,"status":"unavailable"}]`, digest, key))},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			projection := paidSearchProjection{document: document, images: images, sourceImages: test.sourceImages}
+			for _, query := range []struct {
+				text  string
+				match bool
+			}{
+				{text: "Alignment service data", match: true},
+				{text: "Alignment service data witness marks", match: test.figure},
+				{text: "Gaugeface diagram", match: test.figure},
+				{text: key, match: false},
+			} {
+				matched, err := projection.matchesContent(CatalogArticle{Title: "Pump removal"}, strings.Fields(strings.ToLower(query.text)))
+				if err != nil || matched != query.match {
+					t.Fatalf("query %q matched %v, want %v (error %v)", query.text, matched, query.match, err)
+				}
+			}
+		})
+	}
+}
+
+func TestPaidCatalogArticleSearchFindsProvenPathOnlyFigure(t *testing.T) {
+	const key = "sources/0123456789abcdef/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	const otherKey = "sources/0123456789abcdef/1123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	document := []byte(fmt.Sprintf(`{"blocks":[{"type":"image","asset_id":%q,"alt":"Gaugeface diagram","caption":"Alignment witness marks","status":"available"}]}`, key))
+	image := func(field, asset, objectKey, status string) []byte {
+		return []byte(fmt.Sprintf(`[{%q:%q,"storage_key":%q,"status":%q}]`, field, asset, objectKey, status))
+	}
+	for _, test := range []struct {
+		name   string
+		field  string
+		source []byte
+		match  bool
+	}{
+		{name: "path-only asset_id", field: "asset_id", source: image("asset_id", key, key, "available"), match: true},
+		{name: "legacy path-only id", field: "id", source: image("id", key, key, "available"), match: true},
+		{name: "different source object", field: "id", source: image("id", key, otherKey, "available")},
+		{name: "different source alias", field: "id", source: image("id", otherKey, key, "available")},
+		{name: "unavailable source asset", field: "id", source: image("id", key, key, "unavailable")},
+		{name: "no source membership", field: "id"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			projection := paidSearchProjection{document: document, images: image(test.field, key, key, "available"), sourceImages: test.source}
+			for _, query := range [][]string{{"alignment", "witness", "marks"}, {"gaugeface", "diagram"}} {
+				matched, err := projection.matchesContent(CatalogArticle{Title: "Pump removal"}, query)
+				if err != nil || matched != test.match {
+					t.Fatalf("query %q matched %v, want %v (error %v)", query, matched, test.match, err)
+				}
+			}
+			if matched, err := projection.matchesContent(CatalogArticle{Title: "Pump removal"}, []string{key}); err != nil || matched {
+				t.Fatalf("private object key became searchable (match %v, error %v)", matched, err)
+			}
+		})
 	}
 }
 

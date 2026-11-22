@@ -1,9 +1,10 @@
 """Transactional identity/source store; all connections belong to their caller."""
 
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from uuid import UUID, uuid4
-from .article_lifecycle_types import transformation_key
+from .article_document import has_ordered_list_numbering, has_structured_list_items
+from .article_lifecycle_types import SOURCE_PROJECTION_VERSIONS, transformation_key
 from .source_job_persistence import lock_live_lease, LeaseLost
 
 from psycopg.rows import dict_row
@@ -133,7 +134,7 @@ def store_captured_source(repo, lease, captured):
 
 def _store_captured_source(cur, lease, captured):
     """Use the caller's transaction, including exact source-only job creation."""
-    if captured.projection_version not in ("source-projection-v1", "source-projection-v2"):
+    if captured.projection_version not in SOURCE_PROJECTION_VERSIONS:
         raise ValueError("unsupported source projection version")
     context = captured.context
     if (
@@ -143,102 +144,88 @@ def _store_captured_source(cur, lease, captured):
     ):
         raise ValueError("captured article identity/body mismatch")
     job = lock_live_lease(cur, lease)
+    source_only = job["checkpoint"].get("source_only_reprojection") is True
+    article_query = """
+        SELECT a.*, s.projection_version AS current_projection_version,
+                    s.source_fingerprint AS current_source_fingerprint
+        FROM canonical_articles a
+        LEFT JOIN canonical_article_source_revisions s ON s.source_revision_id=a.current_source_revision_id
+        WHERE a.canonical_article_id=%s
+    """
+    article_params = (lease.canonical_article_id,)
+
+    structural_versions = (
+        "source-projection-v5", "source-projection-v6", "source-projection-v7", "source-projection-v8",
+        "source-projection-v9", "source-projection-v10",
+    )
+    new_structure = captured.projection_version in structural_versions
+    live_capture = not source_only and (captured.projection_version == "source-projection-v2" or new_structure)
+    numbered_lists = live_capture and not new_structure and has_ordered_list_numbering(captured.source_document)
+    structured_lists = live_capture and not new_structure and (numbered_lists or has_structured_list_items(captured.source_document))
+
+    def effective_projection(article):
+        if not live_capture:
+            return captured.projection_version
+        current = article["current_projection_version"]
+        published_same_bytes = (
+            article["current_canonical_revision_id"] is not None
+            and article["current_source_fingerprint"] == captured.source_fingerprint
+        )
+        # A new projection never replaces a same-byte publication in place.
+        if published_same_bytes and (new_structure or structured_lists):
+            return current
+        if current in structural_versions:
+            if new_structure:
+                return max(current, captured.projection_version, key=SOURCE_PROJECTION_VERSIONS.index)
+            return current
+        if new_structure:
+            return captured.projection_version
+        if numbered_lists or current == "source-projection-v4":
+            return "source-projection-v4"
+        if structured_lists or current == "source-projection-v3":
+            return "source-projection-v3"
+        return captured.projection_version
+
     # A full review owner may be adopted below. Lock it before the article,
     # matching review/publication's job -> article order even during refresh.
     review_owner = None
-    if job["rewrite_profile_version"] == "full-prose-review-v1" and not job["checkpoint"].get("source_only_reprojection"):
-        review_key = transformation_key(lease.canonical_article_id,captured.source_fingerprint,
-            job["normalization_version"],job["rewrite_profile_version"],projection_version=captured.projection_version)
-        review_owner = cur.execute("SELECT * FROM source_fetch_jobs WHERE transformation_key=%s FOR UPDATE",(review_key,)).fetchone()
-    article = cur.execute(
-        "SELECT * FROM canonical_articles WHERE canonical_article_id=%s FOR UPDATE",
-        (lease.canonical_article_id,),
-    ).fetchone()
+    review_projection = None
+    if job["rewrite_profile_version"] == "full-prose-review-v1" and not source_only:
+        before_lock = cur.execute(article_query, article_params).fetchone()
+        review_projection = effective_projection(before_lock)
+        review_key = transformation_key(
+            lease.canonical_article_id, captured.source_fingerprint,
+            job["normalization_version"], job["rewrite_profile_version"],
+            projection_version=review_projection,
+        )
+        review_owner = cur.execute(
+            "SELECT * FROM source_fetch_jobs WHERE transformation_key=%s FOR UPDATE", (review_key,)
+        ).fetchone()
+    article = cur.execute(article_query + " FOR UPDATE OF a", article_params).fetchone()
     if (
         article["request_generation"] != job["request_generation"]
         or article["current_job_id"] != lease.job_id
     ):
         raise LeaseLost("article generation changed")
-    if captured.projection_version == "source-projection-v1" and article["current_source_revision_id"]:
-        current = cur.execute("SELECT projection_version FROM canonical_article_source_revisions WHERE source_revision_id=%s",
-                              (article["current_source_revision_id"],)).fetchone()
-        if current["projection_version"] == "source-projection-v2":
-            raise ValueError("source projection downgrade is not supported")
+    current_version = article["current_projection_version"]
+    projection = effective_projection(article)
+    if review_projection is not None and review_projection != projection:
+        raise LeaseLost("article source projection changed")
+    if current_version and SOURCE_PROJECTION_VERSIONS.index(projection) < SOURCE_PROJECTION_VERSIONS.index(current_version):
+        raise ValueError("source projection downgrade is not supported")
+    if captured.projection_version != projection:
+        captured = replace(captured, projection_version=projection)
     observed = cur.execute(
         "SELECT source_revision_id FROM canonical_article_source_observations WHERE source_fetch_job_id=%s",
         (lease.job_id,),
     ).fetchone()
     if observed:
         return observed["source_revision_id"]
-    snapshots = {}
-    for resource in captured.resources:
-        snapshots[str(resource["source_snapshot_id"])] = persist_resource(
-            cur, resource
-        )
-    body_snapshot = snapshots[str(captured.body_source_snapshot_id)]
-    revision_id = uuid4()
-    row = cur.execute(
-        """INSERT INTO canonical_article_source_revisions(source_revision_id,canonical_article_id,source_fingerprint,body_source_snapshot_id,resource_manifest,source_document,source_images,source_body,source_steps,projection_status,evidence_manifest,captured_at,projection_version)
-    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT(canonical_article_id,source_fingerprint,projection_version) DO NOTHING RETURNING source_revision_id""",
-        (
-            revision_id,
-            lease.canonical_article_id,
-            captured.source_fingerprint,
-            body_snapshot,
-            Jsonb(
-                _remap_snapshot_references(captured.resource_manifest, snapshots)
-            ),
-            Jsonb(captured.source_document),
-            Jsonb(captured.source_images),
-            captured.source_body,
-            Jsonb(captured.source_steps),
-            captured.projection_status,
-            Jsonb(
-                _remap_snapshot_references(captured.evidence_manifest, snapshots)
-            ),
-            captured.captured_at,
-            captured.projection_version,
-        ),
-    ).fetchone()
-    if row is None:
-        row = cur.execute(
-            "SELECT source_revision_id FROM canonical_article_source_revisions WHERE canonical_article_id=%s AND source_fingerprint=%s AND projection_version=%s",
-            (lease.canonical_article_id, captured.source_fingerprint, captured.projection_version),
-        ).fetchone()
-    revision_id = row["source_revision_id"]
-    provenance = _remap_snapshot_references(captured.resource_provenance, snapshots)
-    body_resource = next(r for r in captured.resources if r["role"] == "body")
-    cur.execute(
-        """INSERT INTO canonical_article_source_observations(source_observation_id,canonical_article_id,source_revision_id,source_fetch_job_id,request_generation,body_provider_revision,resource_provenance,captured_context,resolution_source_snapshot_id,descriptor_source_snapshot_id,captured_at)
-    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-        (
-            uuid4(),
-            lease.canonical_article_id,
-            revision_id,
-            lease.job_id,
-            job["request_generation"],
-            next(
-                (
-                    r.get("source_revision")
-                    for r in provenance
-                    if r.get("role") == "body"
-                ),
-                body_resource["source_revision"],
-            ),
-            Jsonb(provenance),
-            Jsonb(
-                {
-                    "vehicle": context.vehicle,
-                    "descriptor": context.descriptor,
-                    "evidence_ids": list(context.evidence_ids),
-                }
-            ),
-            context.resolution_snapshot_id,
-            context.descriptor_snapshot_id,
-            captured.captured_at,
-        ),
+    revision_id = _persist_article_capture(
+        cur, lease.canonical_article_id, lease.job_id, job["request_generation"], captured,
+        verify_existing=source_only and projection == "source-projection-v3",
     )
-    if job["checkpoint"].get("source_only_reprojection") is True:
+    if source_only:
         cur.execute("""UPDATE source_fetch_jobs SET source_revision_id=%s,transformation_key=NULL,
             status='needs_review',phase='completed',error_code='SOURCE_ONLY_REPROJECTION',retryable=false,
             next_attempt_at=NULL,lease_owner=NULL,lease_expires_at=NULL,heartbeat_at=NULL,
@@ -319,6 +306,83 @@ def _store_captured_source(cur, lease, captured):
     cur.execute(
         """UPDATE canonical_articles SET current_source_revision_id=%s,current_canonical_revision_id=%s,current_job_id=%s,updated_at=clock_timestamp() WHERE canonical_article_id=%s""",
         (revision_id, current_canonical, current_job, lease.canonical_article_id),
+    )
+    return revision_id
+
+
+def _persist_article_capture(cur, canonical_article_id, job_id, generation, captured, *, verify_existing=False):
+    """Append immutable source and observation inside an article owner's transaction."""
+    context = captured.context
+    snapshots = {}
+    for resource in captured.resources:
+        snapshots[str(resource["source_snapshot_id"])] = persist_resource(
+            cur, resource
+        )
+    body_snapshot = snapshots[str(captured.body_source_snapshot_id)]
+    revision_id = uuid4()
+    row = cur.execute(
+        """INSERT INTO canonical_article_source_revisions(source_revision_id,canonical_article_id,source_fingerprint,body_source_snapshot_id,resource_manifest,source_document,source_images,source_body,source_steps,projection_status,evidence_manifest,captured_at,projection_version)
+    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT(canonical_article_id,source_fingerprint,projection_version) DO NOTHING RETURNING source_revision_id""",
+        (
+            revision_id,
+            canonical_article_id,
+            captured.source_fingerprint,
+            body_snapshot,
+            Jsonb(
+                _remap_snapshot_references(captured.resource_manifest, snapshots)
+            ),
+            Jsonb(captured.source_document),
+            Jsonb(captured.source_images),
+            captured.source_body,
+            Jsonb(captured.source_steps),
+            captured.projection_status,
+            Jsonb(
+                _remap_snapshot_references(captured.evidence_manifest, snapshots)
+            ),
+            captured.captured_at,
+            captured.projection_version,
+        ),
+    ).fetchone()
+    if row is None:
+        row = cur.execute(
+            """SELECT source_revision_id, source_document FROM canonical_article_source_revisions
+            WHERE canonical_article_id=%s AND source_fingerprint=%s AND projection_version=%s""",
+            (canonical_article_id, captured.source_fingerprint, captured.projection_version),
+        ).fetchone()
+        if verify_existing and row["source_document"] != captured.source_document:
+            raise ValueError("SOURCE_MEDIA_REPLAY_PROJECTION_CONFLICT")
+    revision_id = row["source_revision_id"]
+    provenance = _remap_snapshot_references(captured.resource_provenance, snapshots)
+    body_resource = next(r for r in captured.resources if r["role"] == "body")
+    cur.execute(
+        """INSERT INTO canonical_article_source_observations(source_observation_id,canonical_article_id,source_revision_id,source_fetch_job_id,request_generation,body_provider_revision,resource_provenance,captured_context,resolution_source_snapshot_id,descriptor_source_snapshot_id,captured_at)
+    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+        (
+            uuid4(),
+            canonical_article_id,
+            revision_id,
+            job_id,
+            generation,
+            next(
+                (
+                    r.get("source_revision")
+                    for r in provenance
+                    if r.get("role") == "body"
+                ),
+                body_resource["source_revision"],
+            ),
+            Jsonb(provenance),
+            Jsonb(
+                {
+                    "vehicle": context.vehicle,
+                    "descriptor": context.descriptor,
+                    "evidence_ids": list(context.evidence_ids),
+                }
+            ),
+            context.resolution_snapshot_id,
+            context.descriptor_snapshot_id,
+            captured.captured_at,
+        ),
     )
     return revision_id
 
@@ -556,7 +620,7 @@ def _require_full_approval(cur, job, article, candidate):
 def automatic_candidate_validation(cur, job, candidate):
     """Rebuild automatic source, prompt and output from immutable saved evidence."""
     from .article_lifecycle_types import digest_json
-    from .procedure_rewrite_auto import PROFILE, _matches_auto_prompt_hash, validate_auto
+    from .procedure_rewrite_auto import PROFILE, _auto_prompt_version, validate_auto
     from .procedure_normalize import normalize_procedure_article
     if candidate is None:
         raise ValueError("automatic candidate binding missing")
@@ -573,7 +637,7 @@ def automatic_candidate_validation(cur, job, candidate):
         "blocks":captured["source_document"]["blocks"],"images":captured["source_images"],
         "body":captured["source_body"],"steps":captured["source_steps"],
         "evidence_ids":context["evidence_ids"],"title":context["descriptor"].get("title"),
-        "article_id":str(job["canonical_article_id"])})["normalized_document"]
+        "article_id":str(job["canonical_article_id"])}, resource_manifest=captured["resource_manifest"])["normalized_document"]
     from .procedure_rewrite_auto import SOURCE_PRESERVING_METHOD, validate_source_preserving_candidate
     if candidate["model_metadata"].get("transformation_method") == SOURCE_PRESERVING_METHOD:
         if (normalized != source or candidate["normalized_source_hash"] != digest_json(source)
@@ -605,12 +669,15 @@ def automatic_candidate_validation(cur, job, candidate):
         or attempt["profile_version"] != PROFILE or not isinstance(attempt["response"],dict)
         or attempt["response_hash"] != digest_json(attempt["response"])
         or attempt["input_hash"] != digest_json(source)
-        or not _matches_auto_prompt_hash(source,context=context["vehicle"],prompt_hash=attempt["prompt_hash"])
         or attempt["prompt_hash"] != candidate["model_metadata"].get("prompt_hash")
         or attempt["model"] != candidate["model_metadata"].get("model")
         or candidate["model_metadata"].get("profile_version") != PROFILE):
         raise ValueError("automatic saved evidence binding mismatch")
-    validation = validate_auto(source,candidate["canonical_document"],response=attempt["response"])
+    prompt_version = _auto_prompt_version(source, context=context["vehicle"], prompt_hash=attempt["prompt_hash"])
+    if prompt_version is None:
+        raise ValueError("automatic saved prompt binding mismatch")
+    validation = validate_auto(
+        source, candidate["canonical_document"], response=attempt["response"], prompt_version=prompt_version)
     if not validation.passed:
         raise ValueError("automatic rewrite operation binding mismatch")
     return validation

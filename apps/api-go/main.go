@@ -238,25 +238,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/workshop/purchase-config.json", s.workshopPurchaseConfig)
 	mux.HandleFunc("/workshop/demo-mode.json", s.workshopDemoMode)
 	mux.HandleFunc("/workshop/test-notices/", s.workshopTestNotice)
-	workshopAssets, err := fs.Sub(dashboardFiles, "workshop")
-	if err != nil {
-		panic("embedded workshop assets unavailable: " + err.Error())
-	}
-	mux.Handle("/workshop/", http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		if request.Method != http.MethodGet && request.Method != http.MethodHead {
-			response.Header().Set("Allow", "GET, HEAD")
-			http.Error(response, "Method Not Allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		response.Header().Set("Cache-Control", "no-cache")
-		http.StripPrefix("/workshop/", http.FileServer(http.FS(workshopAssets))).ServeHTTP(response, request)
-	}))
+	mux.Handle("/workshop/", workshopAssetsHandler)
 	mux.Handle("GET /v1/catalog/years", s.catalogSelector(s.listCatalogYears))
 	mux.Handle("GET /v1/catalog/years/{year}/makes", s.catalogSelector(s.listCatalogMakes))
 	mux.Handle("GET /v1/catalog/years/{year}/makes/{make}/models", s.catalogSelector(s.listCatalogModels))
 	mux.Handle("GET /v1/catalog/years/{year}/makes/{make}/models/{model}/configurations", s.catalogSelector(s.listCatalogConfigurations))
-	mux.Handle("GET /v1/catalog/vehicles/{vehicle_id}/articles", s.catalogProtected(s.listCatalogArticles, false))
-	mux.Handle("GET /v1/catalog/vehicles/{vehicle_id}/articles/{article_id}/source", s.catalogProtected(s.serveCatalogSource, true))
+	mux.Handle(catalogArticleIndexPattern, s.catalogProtected(s.listCatalogArticles, false))
+	mux.Handle("GET /v1/catalog/vehicles/{vehicle_id}/articles/{article_id}/source", s.catalogProtected(s.serveCatalogSource, false))
 	mux.Handle("GET /v1/catalog/vehicles/{vehicle_id}/articles/{article_id}", s.catalogProtected(s.getCatalogArticle, true))
 	if s.paidCatalogEnabled() {
 		mux.Handle("POST /v1/catalog/vehicles/{vehicle_id}/articles/{article_id}/prepare", s.catalogProtected(s.preparePaidCatalogArticle, true))
@@ -588,14 +576,21 @@ func (s *Server) writeProjectionError(response http.ResponseWriter, request *htt
 }
 
 func writeAPIError(response http.ResponseWriter, request *http.Request, status int, code, message string, retryable bool) {
+	writeAPIErrorDetails(response, request, status, code, message, retryable, nil)
+}
+
+func writeAPIErrorDetails(response http.ResponseWriter, request *http.Request, status int, code, message string, retryable bool, details map[string]any) {
 	requestID := requestIDFrom(request)
+	if details == nil {
+		details = map[string]any{}
+	}
 	writeJSON(response, status, map[string]any{
 		"error": map[string]any{
 			"code":       code,
 			"message":    message,
 			"request_id": requestID,
 			"retryable":  retryable,
-			"details":    map[string]any{},
+			"details":    details,
 		},
 	})
 }

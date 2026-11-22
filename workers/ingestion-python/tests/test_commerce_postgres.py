@@ -183,7 +183,10 @@ def test_orders_create_and_owner_scope(commerce):
             run_go_private_seam(c,server.server_port,key,result['order_id'])
     finally:server.shutdown();server.server_close();thread.join()
 
-    assert c[1].order_status(*c[3],result['order_id'])['state']=='open'
+    order = c[1].order_status(*c[3], result['order_id'])
+    assert order['state'] == 'open'
+    assert (order['configuration_id'], order['region']) == (c[4], 'US')
+    assert order['configuration_label'] == quote['configuration_label']
     with pytest.raises(CommerceError) as error:c[1].order_status(str(uuid.uuid4()),str(uuid.uuid4()),result['order_id'])
     assert error.value.http_status==403
     with c[0].connect() as conn:
@@ -275,16 +278,37 @@ def test_duplicate_and_distinct_events_grant_once(commerce):
     assert len(rows)==2 and all('line_items' not in row['payload'] for row in rows)
 
 
-def test_refund_chargeback_ordering_and_monotonic_revocation(commerce):
-    c=commerce;first=checkout(c);sid=order(c,first['order_id'])['checkout_session_id'];c[2].paid(sid)
+def test_refund_chargeback_ordering_and_monotonic_revocation(commerce, monkeypatch):
+    repo, service, stripe, owner, _, _ = commerce
+
+    def non_utc_connection():
+        conn = repo.connect()
+        conn.execute("SET TIME ZONE 'America/New_York'")
+        conn.commit()
+        return conn
+
+    monkeypatch.setattr(service, "connect", non_utc_connection)
+    c = commerce
+    first = checkout(c)
+    initial_order = order(c, first["order_id"])
+    assert first["provider_expires_at"] == initial_order["provider_expires_at"].astimezone(UTC).isoformat()
+    sid = initial_order["checkout_session_id"]
+    stripe.paid(sid)
     assert c[1].webhook(*c[2].event(sid,kind='charge.refunded',refunded=True,amount_refunded=2000))['status']=='accepted'
     assert order(c,first['order_id'])['status']=='revoked'
     tombstone=c[1].library(*c[3])['items'][0]
     assert tombstone['access_state']=='revoked' and tombstone['granted_at'] is None
+    assert tombstone["revoked_at"] == order(c, first["order_id"])["revoked_at"].astimezone(UTC).isoformat()
     assert c[1].webhook(*c[2].event(sid))['status']=='accepted' and counts(c)['entitlements']==0
     with pytest.raises(CommerceError) as error:checkout(c)
     assert error.value.code=='ENTITLEMENT_REVOKED'
     other=str(seed_configuration(c[0],seed_vehicle(c[0])));second=checkout(c,config=other);settle(c,second)
+    paid_item = next(item for item in service.library(*owner)["items"] if item["library_item_id"] == second["order_id"])
+    with repo.connect() as conn:
+        grant = conn.execute(
+            "SELECT granted_at FROM entitlements WHERE commerce_order_id=%s", (second["order_id"],),
+        ).fetchone()
+    assert paid_item["granted_at"] == grant["granted_at"].astimezone(UTC).isoformat()
     sid=order(c,second['order_id'])['checkout_session_id']
     c[1].webhook(*c[2].event(sid,kind='charge.refunded',refunded=False,amount_refunded=100))
     assert order(c,second['order_id'])['status']=='paid'
@@ -346,22 +370,86 @@ def test_payment_survives_source_unavailable_and_restart(commerce):
         assert conn.execute("SELECT count(*) AS n FROM source_fetch_jobs WHERE job_kind='article'").fetchone()['n']==0
 
 
-def test_library_is_owner_only_and_paginated(commerce):
+def test_library_is_owner_only_and_paginated(commerce, monkeypatch):
     c=commerce;first=checkout(c);settle(c,first)
-    second=checkout(c,config=str(seed_configuration(c[0],seed_vehicle(c[0]))));settle(c,second)
+    with c[0].connect() as conn:
+        vehicle=conn.execute('SELECT vehicle_id FROM vehicle_configurations WHERE vehicle_configuration_id=%s',(c[4],)).fetchone()['vehicle_id']
+    second=checkout(c,config=str(seed_configuration(c[0],vehicle)));settle(c,second)
     page=c[1].library(*c[3],limit=1);assert len(page['items'])==1 and page['next_cursor']
     last=c[1].library(*c[3],cursor_value=page['next_cursor'],limit=1)
-    assert len(last['items'])==1 and not last['next_cursor'] and page['items'][0]['library_item_id']!=last['items'][0]['library_item_id']
+    assert len(last['items'])==1 and not last['next_cursor']
+    assert [page['items'][0]['library_item_id'],last['items'][0]['library_item_id']]==[second['order_id'],first['order_id']]
     with pytest.raises(CommerceError):c[1].library(str(uuid.uuid4()),str(uuid.uuid4()),cursor_value=page['next_cursor'])
     text=json.dumps(page);assert 'cs_' not in text and 'pi_' not in text and 'acct_' not in text
     descriptor,body=seed_readable_source(c)
-    assert next(i for i in c[1].library(*c[3])['items'] if i['configuration_id']==c[4])['access_state']=='viewable'
+    def states():
+        return {item['library_item_id']:item['access_state'] for item in c[1].library(*c[3])['items']}
+    with c[0].connect() as conn:
+        conn.execute("UPDATE workshop_orders SET preparation_state='index_ready'")
+    from psycopg import Cursor
+
+    executions = []
+
+    class CountingCursor(Cursor):
+        def execute(self, *args, **kwargs):
+            executions.append(1)
+            return super().execute(*args, **kwargs)
+
+    def counted_connection():
+        conn = c[0].connect()
+        conn.cursor_factory = CountingCursor
+        return conn
+
+    with monkeypatch.context() as patch:
+        patch.setattr(c[1], "connect", counted_connection)
+        assert states()=={first['order_id']:'viewable',second['order_id']:'paid'}
+    # Two transaction settings, one owner check, and one query for the page.
+    assert len(executions) == 4
     with c[0].connect() as conn:conn.execute("UPDATE source_snapshots SET takedown_status='takedown' WHERE source_snapshot_id=%s",(descriptor,))
-    assert next(i for i in c[1].library(*c[3])['items'] if i['configuration_id']==c[4])['access_state']!='viewable'
+    assert states()=={first['order_id']:'preparing',second['order_id']:'paid'}
     with c[0].connect() as conn:
         conn.execute("UPDATE source_snapshots SET takedown_status='active' WHERE source_snapshot_id=%s",(descriptor,))
         conn.execute("UPDATE source_snapshots SET takedown_status='takedown' WHERE source_snapshot_id=%s",(body,))
-    assert next(i for i in c[1].library(*c[3])['items'] if i['configuration_id']==c[4])['access_state']!='viewable'
+        conn.execute("UPDATE source_fetch_jobs SET status='failed',retryable=false WHERE job_kind='article'")
+    assert states()=={first['order_id']:'paid',second['order_id']:'paid'}
+    with c[0].connect() as conn:
+        conn.execute("UPDATE source_fetch_jobs SET retryable=true WHERE job_kind='article'")
+    assert states()=={first['order_id']:'preparing',second['order_id']:'paid'}
+    with c[0].connect() as conn:
+        conn.execute("UPDATE source_snapshots SET takedown_status='active' WHERE source_snapshot_id=%s",(body,))
+        conn.execute("""INSERT INTO source_review_items(source_review_item_id,item_key,item_kind,reason_code,source_snapshot_ids)
+            VALUES(gen_random_uuid(),'commerce-library-source','quarantine','FIXTURE',jsonb_build_array(%s::text))""", (body,))
+    assert states()=={first['order_id']:'preparing',second['order_id']:'paid'}
+    with c[0].connect() as conn:
+        conn.execute("UPDATE source_review_items SET status='approved' WHERE item_key='commerce-library-source'")
+    assert states()=={first['order_id']:'viewable',second['order_id']:'paid'}
+
+    with c[0].connect() as conn:
+        conn.execute("UPDATE source_fetch_jobs SET retryable=false WHERE job_kind='article'")
+        identity = conn.execute("SELECT vehicle_identity_base_id FROM vehicle_configurations WHERE vehicle_configuration_id=%s", (c[4],)).fetchone()
+    original_grant = c[1].grant_check(*c[3], c[4], 'US')
+
+    def item_for(order_id):
+        return next(item for item in c[1].library(*c[3])['items'] if item['library_item_id'] == order_id)
+
+    original_item = item_for(first['order_id'])
+    control = item_for(second['order_id'])
+    assert original_item['access_state'] == 'viewable' and 'catalog_available' not in original_item
+    for table, key, value in (
+        ('vehicle_configurations', 'vehicle_configuration_id', c[4]),
+        ('vehicle_identity_bases', 'vehicle_identity_base_id', identity['vehicle_identity_base_id']),
+    ):
+        with c[0].connect() as conn:
+            conn.execute(f"UPDATE {table} SET reviewer_state='rejected' WHERE {key}=%s", (value,))
+        with pytest.raises(CommerceError) as unavailable:
+            c[1].quote(c[4], 'US')
+        assert (unavailable.value.http_status, unavailable.value.code) == (404, 'CONFIGURATION_NOT_FOUND')
+        assert c[1].grant_check(*c[3], c[4], 'US') == original_grant
+        assert item_for(first['order_id']) == dict(original_item, access_state='paid', catalog_available=False)
+        assert item_for(second['order_id']) == control
+        with c[0].connect() as conn:
+            conn.execute(f"UPDATE {table} SET reviewer_state='approved' WHERE {key}=%s", (value,))
+        assert item_for(first['order_id']) == original_item
 
 
 
