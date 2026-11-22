@@ -1298,6 +1298,11 @@ _REVERSED_RETAINING_PIN_FORCE = "When pressing the retaining pin, apply at least
     ("Limit the retaining pin to 35 N.", "Limit the guide pin to 35 N."),
     ("Retaining pin: 35 newtons.", "Guide pin: 35 newtons."),
     ("Retaining pin: 1.2 kN.", "Guide pin: 1.2 kN."),
+    ("Press the retaining pin with 35 N.", "Push the guide pin using 35 N."),
+    ("Push the latch with 35 N.", "Pull the latch using 35 N."),
+    ("Pull the retaining clip at 35 N.", "At 35 N, push the retaining clip."),
+    ("At 35 N, press the retaining pin.", "Use the guide pin with 35 N."),
+    ("Press the retaining pin:35 N.", "Press the guide pin:35 N."),
 ])
 def test_automatic_rewrite_retains_unproved_measured_force(in_cell, original, draft):
     from autodata_ingestion import procedure_rewrite_auto as auto
@@ -1346,13 +1351,29 @@ def test_automatic_rewrite_rejects_repurposing_a_terminal_label_as_measured_forc
     assert run(source, payload).error_code == "REWRITE_SPEC_SCOPE_MUTATION"
 
 
-def test_automatic_rewrite_keeps_non_force_terminal_label_editable():
+@pytest.mark.parametrize("in_cell", [False, True], ids=["article", "table-cell"])
+@pytest.mark.parametrize("original,draft", [
+    (
+        "The retaining guide fits terminal 35 N on the test board.",
+        "On the test board, terminal 35 N accepts the retaining guide.",
+    ),
+    (
+        "The terminal directly below 35 N on the test board is the return terminal.",
+        "On the test board, the return terminal sits directly below 35 N.",
+    ),
+    (
+        "The electrical load uses connector 35 N on the test board.",
+        "On the test board, connector 35 N serves the electrical load.",
+    ),
+])
+def test_automatic_rewrite_keeps_non_force_terminal_label_editable(in_cell, original, draft):
     from autodata_ingestion import procedure_rewrite_auto as auto
 
-    source = document("The retaining guide fits terminal 35 N on the test board.")
-    payload = response("On the test board, terminal 35 N accepts the retaining guide.")
+    source = _scoped_prose_source(original, in_cell=in_cell)
+    prompt = auto.build_auto_prompt(source, context={})
+    payload = _scoped_prose_response(prompt, draft)
 
-    assert json.loads(auto.build_auto_prompt(source, context={}))["slots"][0]["required_action"] == "rewrite"
+    assert json.loads(prompt)["slots"][-1]["required_action"] == "rewrite"
     assert run(source, payload).error_code is None
 
 
