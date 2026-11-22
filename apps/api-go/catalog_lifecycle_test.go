@@ -229,6 +229,45 @@ func TestCatalogSourceOrderedTablesWarningsAndUnavailableMedia(t *testing.T) {
 	}
 }
 
+func TestCatalogOrderedSourceKeepsUnavailableChartCaptionInTable(t *testing.T) {
+	var doc CatalogDocument
+	if err := json.Unmarshal([]byte(`{"blocks":[{"type":"table","columns":[{"blocks":[
+		{"type":"paragraph","text":"Check the pressure scale."},
+		{"type":"image","asset_id":"chart","caption":"Pressure at <2,000> rpm & warm","status":"unavailable","unavailable_reason":"SOURCE_NOT_FOUND"},
+		{"type":"paragraph","text":"Read the upper line."}
+	]},{"asset_id":"inline","caption":"Inline figure caption","status":"unavailable","unavailable_reason":"SOURCE_NOT_FOUND"}],
+		"rows":[["Supply",{"asset_id":"no-caption","alt":"Alt only","caption":"","status":"unavailable","unavailable_reason":"SOURCE_NOT_FOUND"}],
+				["Draft",{"asset_id":"denied","caption":"Unproved caption","status":"unavailable"}]],
+		"images":[{"asset_id":"chart","caption":"Pressure at <2,000> rpm & warm","status":"unavailable","unavailable_reason":"SOURCE_NOT_FOUND"},
+			{"asset_id":"chart","caption":"Apply the outlet correction at altitude.","status":"unavailable","unavailable_reason":"SOURCE_NOT_FOUND"},
+			{"asset_id":"inline","caption":"Inline figure caption","status":"unavailable","unavailable_reason":"SOURCE_NOT_FOUND"},
+			{"asset_id":"no-caption","status":"unavailable","unavailable_reason":"SOURCE_NOT_FOUND"}]},
+		{"type":"paragraph","text":"Continue after the table."}]}`), &doc); err != nil {
+		t.Fatal(err)
+	}
+	content := renderCatalogOrderedSource(&doc, []CatalogImage{
+		{AssetID: "chart", Status: "available", URL: "/v1/catalog/images/v2.chart"},
+		{AssetID: "no-caption", Status: "available", URL: "/v1/catalog/images/v2.no-caption"},
+		{AssetID: "denied", Status: "available", URL: "/v1/catalog/images/v2.denied"},
+	})
+	figure := "<figure><span>Image unavailable</span><figcaption>Pressure at &lt;2,000&gt; rpm &amp; warm</figcaption></figure>"
+	before := strings.Index(content, "Check the pressure scale.")
+	media := strings.Index(content, figure)
+	after := strings.Index(content, "Read the upper line.")
+	if before < 0 || media <= before || after <= media || strings.Count(content, figure) != 1 {
+		t.Fatalf("unavailable image caption lost its ordered position: %s", content)
+	}
+	detachedFigure := "<figure><span>Image unavailable</span><figcaption>Apply the outlet correction at altitude.</figcaption></figure>"
+	if !strings.Contains(content, "</table>"+detachedFigure+"</section>") {
+		t.Fatalf("distinct unavailable caption lost its position after the table: %s", content)
+	}
+	if strings.Count(content, "Image unavailable") != 5 || strings.Count(content, "<figcaption>") != 3 ||
+		!strings.Contains(content, "<figcaption>Inline figure caption</figcaption>") ||
+		strings.Contains(content, "<img") || strings.Contains(content, "Alt only") || strings.Contains(content, "Unproved caption") {
+		t.Fatalf("duplicate or unauthorized figure content: %s", content)
+	}
+}
+
 func TestCatalogLifecycleConsumesR2StepsAndProjectsNestedImages(t *testing.T) {
 	var step CatalogStep
 	if err := json.Unmarshal([]byte(`{"number":3,"text":"Disconnect the battery.","evidence_ids":["evidence-1"]}`), &step); err != nil {
@@ -502,7 +541,7 @@ func TestCatalogOrderedSourceKeepsStructuredListsAndTableCells(t *testing.T) {
 			{"type":"table","caption":"Table title","columns":[{"text":"Diagram"}],
 				"rows":[{"cells":[{"text":"Cell detail","blocks":[{"type":"image","asset_id":"cell-diagram","alt":"View","caption":"Cell view"},
 					{"type":"paragraph","text":"Nested cell instruction"}]}]}],
-				"images":[{"asset_id":"cell-diagram"}]},
+				"images":[{"asset_id":"cell-diagram","caption":"Summary description"}]},
 			{"type":"link","text":"Related manual","href":"https://provider.invalid/private.pdf"}
 		]}`)
 	var doc CatalogDocument
@@ -531,7 +570,8 @@ func TestCatalogOrderedSourceKeepsStructuredListsAndTableCells(t *testing.T) {
 			t.Errorf("stored source is missing %q: %s", part, html)
 		}
 	}
-	if strings.Count(html, "/v1/catalog/images/v2.cell") != 1 || strings.Contains(html, "provider.invalid") || strings.Contains(html, "href=") {
+	if strings.Count(html, "/v1/catalog/images/v2.cell") != 1 || strings.Contains(html, "Summary description") ||
+		strings.Contains(html, "provider.invalid") || strings.Contains(html, "href=") {
 		t.Fatalf("cell media must remain in place and provider link stay inert: %s", html)
 	}
 }

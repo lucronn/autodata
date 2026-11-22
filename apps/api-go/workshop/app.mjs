@@ -856,20 +856,32 @@ function focusArticleIndex(id) {
 }
 const assetID = (image) =>
   image?.id || image?.image_id || image?.asset_id || "";
+const imageReferenceID = (reference) =>
+  reference?.asset_id || reference?.image_id || reference?.id || "";
+const missingSourceImage = (reference) =>
+  reference?.status === "unavailable" &&
+  reference.unavailable_reason === "SOURCE_NOT_FOUND";
+const missingImagePlacement = (id, caption) => JSON.stringify([id, caption || ""]);
 function imageMap(article) {
   return [
     ...(article?.images || []),
     ...(article?.steps || []).flatMap((step) => step.images || []),
   ];
 }
-function addImage(parent, image, caption, g, alt = caption, figures = null) {
+function addImage(parent, image, reference, g, figures = null, useAltCaption = false) {
+  const { caption, alt } = reference || {};
   const figure = element("figure");
   const url = localImageURL(image?.url, location.origin, { authMode: session.state.mode }),
     id = assetID(image);
-  if (url && id) {
+  const available = Boolean(url && id);
+  const missing = missingSourceImage(reference);
+  const visibleCaption = available && useAltCaption ? caption || alt : caption;
+  if (available) {
+    figure.dataset.assetId = id;
     const img = element("img");
     img.dataset.assetId = id;
-    img.alt = alt || image.alt || caption || "Article illustration";
+    const imageAlt = alt === undefined ? visibleCaption : alt;
+    img.alt = imageAlt || image.alt || visibleCaption || "Article illustration";
     img.decoding = "async";
     img.referrerPolicy = "no-referrer";
     img.addEventListener("error", () => {
@@ -878,9 +890,13 @@ function addImage(parent, image, caption, g, alt = caption, figures = null) {
     if (figures) figures.push({ img, url });
     else img.src = url;
     figure.append(img);
-    if (caption) figure.append(element("figcaption", caption));
-  } else
+  } else {
+    const missingID = missing ? imageReferenceID(reference) : "";
+    if (missingID) figure.dataset.missingImagePlacement = missingImagePlacement(missingID, caption);
     figure.append(element("p", "Illustration unavailable.", "image-missing"));
+  }
+  if ((available || missing) && visibleCaption)
+    figure.append(element("figcaption", visibleCaption));
   parent.append(figure);
 }
 function startArticleFigures(figures, g) {
@@ -939,13 +955,13 @@ function renderBlocks(parent, blocks, imagesByID, review, g, sourceTargets = nul
   const isListNumber = value =>
     Number.isInteger(value) && value >= -2147483648 && value <= 2147483647;
   const find = (ref) => {
-    const id = ref?.asset_id || ref?.image_id || ref?.id;
+    const id = imageReferenceID(ref);
     return id && ref.status !== "unavailable"
       ? imagesByID.get(id)
       : undefined;
   };
-  const addReference = (target, ref) =>
-    addImage(target, find(ref), ref?.caption || ref?.alt, g, ref?.alt, figures);
+  const addReference = (target, ref, useAltCaption = true) =>
+    addImage(target, find(ref), ref, g, figures, useAltCaption);
   const renderInline = (target, value, textTag) => {
     if (!value || typeof value !== "object") {
       target.textContent = String(value ?? "");
@@ -968,7 +984,7 @@ function renderBlocks(parent, blocks, imagesByID, review, g, sourceTargets = nul
         : "p";
       parent.append(element(tag, block.text ?? ""));
       for (const ref of block.images || [])
-        addImage(parent, find(ref), ref?.caption, g, ref?.alt, figures);
+        addReference(parent, ref, false);
     } else if (type === "callout") {
       const aside = element("aside", undefined, "article-callout");
       const content = element("div");
@@ -1005,9 +1021,13 @@ function renderBlocks(parent, blocks, imagesByID, review, g, sourceTargets = nul
     } else if (type === "table") {
       const table = element("table", undefined, "article-table");
       const cellImageIDs = new Set();
+      const cellMissingImages = new Set();
       const trackCellImages = (cell) => {
-        for (const img of cell.querySelectorAll("img[data-asset-id]"))
-          cellImageIDs.add(img.dataset.assetId);
+        for (const figure of cell.querySelectorAll("figure")) {
+          const { assetId, missingImagePlacement: placement } = figure.dataset;
+          if (assetId) cellImageIDs.add(assetId);
+          if (placement) cellMissingImages.add(placement);
+        }
       };
       const renderCell = (cell, value) => {
         const rowspan = value?.rowspan, colspan = value?.colspan;
@@ -1049,8 +1069,9 @@ function renderBlocks(parent, blocks, imagesByID, review, g, sourceTargets = nul
       wrap.append(table);
       parent.append(wrap);
       for (const ref of block.images || []) {
-        const image = find(ref);
-        if (image && cellImageIDs.has(assetID(image))) continue;
+        if (cellImageIDs.has(assetID(find(ref)))) continue;
+        if (missingSourceImage(ref) &&
+            cellMissingImages.has(missingImagePlacement(imageReferenceID(ref), ref.caption))) continue;
         addReference(parent, ref);
       }
     } else if (type === "break") parent.append(element("hr"));
@@ -1093,10 +1114,10 @@ function renderContent(parent, article, g, figures = null) {
       for (const text of step.instructions || [])
         section.append(element("p", text));
       for (const image of step.images || [])
-        addImage(section, image, image.alt, g);
+        addImage(section, image, { alt: image.alt }, g, null, true);
       for (const id of step.image_ids || []) {
         const image = images.find((i) => assetID(i) === id);
-        if (image) addImage(section, image, image.alt, g);
+        if (image) addImage(section, image, { alt: image.alt }, g, null, true);
       }
       parent.append(section);
     }

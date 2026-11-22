@@ -439,40 +439,58 @@ func renderCatalogOrderedSource(document *CatalogDocument, images []CatalogImage
 		}
 		return ref.ID
 	}
-	writeImage := func(ref CatalogImage, placed map[string]bool, skipPlaced bool) {
+	type figurePlacement struct {
+		id      string
+		caption string
+		missing bool
+	}
+	writeImage := func(ref CatalogImage, placed map[figurePlacement]bool, skipPlaced bool) {
 		id := imageKey(ref)
 		image, ok := assets[id]
-		if !ok || ref.Status == "unavailable" || image.Status == "unavailable" || image.URL == "" {
-			output.WriteString("<span>Image unavailable</span>")
-			return
+		available := ok && ref.Status != "unavailable" && image.Status != "unavailable" && image.URL != ""
+		missing := ref.Status == "unavailable" && ref.UnavailableReason == "SOURCE_NOT_FOUND"
+		var key figurePlacement
+		if available {
+			key.id = imageKey(image)
+		} else if missing {
+			key = figurePlacement{id: id, caption: ref.Caption, missing: true}
 		}
-		key := imageKey(image)
 		if skipPlaced && placed[key] {
 			return
 		}
-		if placed != nil {
+		if placed != nil && key.id != "" {
 			placed[key] = true
 		}
-		alt := ref.Alt
-		if alt == "" {
-			alt = image.Alt
+		const placeholder = "<span>Image unavailable</span>"
+		if !available && (!missing || ref.Caption == "") {
+			output.WriteString(placeholder)
+			return
 		}
-		if alt == "" {
-			alt = ref.Caption
+		output.WriteString("<figure>")
+		if available {
+			alt := ref.Alt
+			if alt == "" {
+				alt = image.Alt
+			}
+			if alt == "" {
+				alt = ref.Caption
+			}
+			if alt == "" {
+				alt = "Article illustration"
+			}
+			output.WriteString("<img src=\"" + stdhtml.EscapeString(image.URL) + "\" alt=\"" + stdhtml.EscapeString(alt) + "\">")
+		} else {
+			output.WriteString(placeholder)
 		}
-		if alt == "" {
-			alt = "Article illustration"
-		}
-		output.WriteString("<figure><img src=\"" + stdhtml.EscapeString(image.URL) + "\" alt=\"" + stdhtml.EscapeString(alt) + "\">")
 		if ref.Caption != "" {
 			output.WriteString("<figcaption>" + stdhtml.EscapeString(ref.Caption) + "</figcaption>")
 		}
 		output.WriteString("</figure>")
 	}
 
-	var writeBlock func(CatalogDocumentBlock, map[string]bool)
-	var writeInline func(any, map[string]bool)
-	writeInline = func(value any, placed map[string]bool) {
+	var writeBlock func(CatalogDocumentBlock, map[figurePlacement]bool)
+	var writeInline func(any, map[figurePlacement]bool)
+	writeInline = func(value any, placed map[figurePlacement]bool) {
 		switch v := value.(type) {
 		case nil:
 		case string:
@@ -486,6 +504,7 @@ func renderCatalogOrderedSource(document *CatalogDocument, images []CatalogImage
 			ref := CatalogImage{
 				AssetID: field("asset_id"), ImageID: field("image_id"),
 				Alt: field("alt"), Caption: field("caption"), Status: field("status"),
+				UnavailableReason: field("unavailable_reason"),
 			}
 			if imageKey(ref) != "" || ref.Status == "unavailable" {
 				writeImage(ref, placed, false)
@@ -504,7 +523,7 @@ func renderCatalogOrderedSource(document *CatalogDocument, images []CatalogImage
 		}
 	}
 
-	writeBlock = func(block CatalogDocumentBlock, placed map[string]bool) {
+	writeBlock = func(block CatalogDocumentBlock, placed map[figurePlacement]bool) {
 		output.WriteString("<section id=\"" + stdhtml.EscapeString(block.BlockID) + "\">")
 		text := stdhtml.EscapeString(block.Text)
 		label := block.Label
@@ -518,9 +537,10 @@ func renderCatalogOrderedSource(document *CatalogDocument, images []CatalogImage
 			writeImage(CatalogImage{
 				AssetID: block.AssetID, ImageID: block.ImageID, Alt: block.Alt,
 				Caption: block.Caption, Status: block.Status,
+				UnavailableReason: block.UnavailableReason,
 			}, placed, false)
 		case "table":
-			cellImages := map[string]bool{}
+			cellImages := map[figurePlacement]bool{}
 			writeCell := func(tag string, value any) {
 				output.WriteString("<" + tag)
 				if tag == "th" {

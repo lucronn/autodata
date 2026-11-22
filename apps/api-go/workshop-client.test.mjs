@@ -4351,8 +4351,8 @@ class ArticleMediaNode {
   }
   dispatch(name, event = {}) { for (const handler of this.handlers.get(name) || []) handler(event); }
   querySelectorAll(selector) {
-    assert.equal(selector, 'img[data-asset-id]');
-    return mediaDescendants(this, 'img').filter(n => n.dataset.assetId !== undefined);
+    assert.equal(selector, 'figure');
+    return mediaDescendants(this, 'figure');
   }
 }
 function mediaDescendants(node, tag) {
@@ -5138,11 +5138,61 @@ test('article table block image already shown in a cell is not repeated', () => 
   const h = articleMediaHarness();
   const parent = h.content(mediaArticle([
     { type: 'table', rows: [[{ text: 'Bolt', images: [{ asset_id: 'shared' }] }]],
-      images: [{ image_id: 'shared' }, { asset_id: 'row-only' }] },
+      images: [{ image_id: 'shared', caption: 'Summary description' }, { asset_id: 'row-only' }] },
   ], [{ id: 'shared', url: mediaURL('shared') }, { id: 'row-only', url: mediaURL('row-only') }]));
   assert.deepEqual(mediaIDs(parent), ['shared', 'row-only']);
   assert.deepEqual(mediaIDs(mediaDescendants(parent, 'td')[0]), ['shared']);
   assert.deepEqual(mediaTags(parent), ['div', 'figure']);
+  assert.ok(!parent.textContent.includes('Summary description'));
+});
+
+test('unavailable chart captions stay at their authored positions across stored and rewritten views', () => {
+  const h = articleMediaHarness();
+  const caption = 'Pressure at <2,000> rpm & warm';
+  const unavailable = { status: 'unavailable', unavailable_reason: 'SOURCE_NOT_FOUND' };
+  const chart = { type: 'image', asset_id: 'chart', caption, alt: 'Pressure chart', ...unavailable };
+  const detached = { ...chart, caption: 'Apply the outlet correction at altitude.' };
+  const noCaption = { type: 'image', asset_id: 'no-caption', caption: '', alt: 'Alt only', ...unavailable };
+  const inline = { asset_id: 'inline', caption: 'Inline figure caption', ...unavailable };
+  const denied = { asset_id: 'denied', caption: 'Hidden denied caption', status: 'unavailable', unavailable_reason: 'FORBIDDEN' };
+  const images = ['chart', 'no-caption', 'inline', 'denied', 'unrelated'].map(id => ({ id, url: mediaURL(id) }));
+  for (const origin of ['source', 'canonical']) {
+    const parent = h.render(mediaArticle([{
+      type: 'table',
+      columns: [
+        { blocks: [
+          { type: 'paragraph', text: 'Check the pressure scale.' },
+          chart,
+          { type: 'paragraph', text: 'Read the upper line.' },
+        ] },
+        { blocks: [noCaption] },
+        inline,
+      ],
+      rows: [['Supply', '500 kPa', denied]],
+      images: [chart, detached, inline, noCaption],
+    }, { type: 'paragraph', text: 'Continue after the table.' }], images, { content_origin: origin, view_revision: origin }));
+    assert.deepEqual(mediaTags(parent), ['div', 'figure', 'p']);
+    assert.deepEqual(mediaIDs(parent), []);
+    assert.equal(mediaDescendants(parent, 'figure').length, 5);
+    const [ordered, unlabelled, inlineCell] = mediaDescendants(parent, 'th');
+    assert.deepEqual(mediaTags(ordered), ['p', 'figure', 'p']);
+    assert.equal(ordered.children[0].textContent, 'Check the pressure scale.');
+    assert.equal(ordered.children[2].textContent, 'Read the upper line.');
+    const captioned = ordered.children[1];
+    assert.deepEqual(mediaTags(captioned), ['p', 'figcaption']);
+    assert.equal(captioned.children[0].textContent, 'Illustration unavailable.');
+    assert.equal(captioned.children[1].textContent, caption);
+    assert.deepEqual(captioned.children[1].children, []);
+    const [plain] = unlabelled.children;
+    assert.deepEqual(mediaTags(plain), ['p']);
+    assert.equal(plain.children[0].textContent, 'Illustration unavailable.');
+    assert.equal(mediaDescendants(inlineCell, 'figcaption')[0].textContent, inline.caption);
+    assert.deepEqual(mediaTags(parent.children[1]), ['p', 'figcaption']);
+    assert.equal(parent.children[1].children[1].textContent, detached.caption);
+    assert.equal(parent.children[2].textContent, 'Continue after the table.');
+    assert.equal(mediaDescendants(parent, 'figcaption').length, 3);
+    assert.ok(!parent.textContent.includes(denied.caption));
+  }
 });
 
 for (const type of ['ordered_list', 'unordered_list', 'callout']) {
