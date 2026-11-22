@@ -184,8 +184,8 @@ func TestOfficialFirebaseSDKVerification(t *testing.T) {
 	if err != nil || identity.UID != "fixture-user" || identity.ProjectID != "fixture-project" {
 		t.Fatal("valid Firebase token rejected", err)
 	}
-	if f.certCalls.Load() == 0 || f.userCalls.Load() < 2 {
-		t.Fatal("official signature/revocation/auth_time lookups were not exercised")
+	if f.certCalls.Load() == 0 || f.userCalls.Load() != 1 {
+		t.Fatalf("expected official signature verification and one account lookup, got %d cert and %d account requests", f.certCalls.Load(), f.userCalls.Load())
 	}
 	for _, tc := range []struct {
 		name   string
@@ -235,9 +235,13 @@ func TestOfficialFirebaseSDKVerification(t *testing.T) {
 	f.mu.Lock()
 	f.validSince = f.now.Unix()
 	f.mu.Unlock()
-	oldAuth := f.token(t, func(c map[string]any) { c["auth_time"] = f.now.Unix() - 1 })
-	if _, err := f.verifier.VerifyLogin(context.Background(), oldAuth); !errors.Is(err, ErrUnauthenticated) {
-		t.Fatal("fresh iat revived revoked auth_time", err)
+	for _, claim := range []string{"auth_time", "iat"} {
+		t.Run("revoked-"+claim, func(t *testing.T) {
+			old := f.token(t, func(c map[string]any) { c[claim] = f.now.Unix() - 1 })
+			if _, err := f.verifier.VerifyLogin(context.Background(), old); !errors.Is(err, ErrUnauthenticated) {
+				t.Fatalf("accepted a token with revoked %s: %v", claim, err)
+			}
+		})
 	}
 	f.mu.Lock()
 	f.validSince = 0
@@ -318,13 +322,14 @@ func TestFirebaseADCSurvivesStartupContext(t *testing.T) {
 			}
 			token := f.token(t, nil)
 			for attempt := 0; attempt < 2; attempt++ {
-				before := f.tokenCalls.Load()
+				beforeTokens := f.tokenCalls.Load()
+				beforeUsers := f.userCalls.Load()
 				identity, err := verifier.VerifyLogin(context.Background(), token)
 				if err != nil || identity.UID != "fixture-user" {
 					t.Fatal("startup cancellation broke ADC refresh", err)
 				}
-				if f.tokenCalls.Load() < before+2 {
-					t.Fatal("both live user checks must refresh expired credentials")
+				if f.tokenCalls.Load() != beforeTokens+1 || f.userCalls.Load() != beforeUsers+1 {
+					t.Fatal("the live account lookup must refresh expired credentials")
 				}
 			}
 			for _, expired := range []bool{false, true} {
