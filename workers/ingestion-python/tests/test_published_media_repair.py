@@ -168,6 +168,7 @@ def test_historical_model_output_uses_original_prompt_rules():
     "full-prose-auto-prompt-v49",
     "full-prose-auto-prompt-v50",
     "full-prose-auto-prompt-v51",
+    "full-prose-auto-prompt-v52",
 ])
 def test_repair_replays_cell_prose_with_original_prompt_version(prompt_version):
     text = "Remove the cover while the ignition is off."
