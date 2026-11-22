@@ -425,7 +425,7 @@ function renderPurchase() {
   }
   const configured = purchaseConfigured();
   const price = $("purchase-price");
-  price.hidden = access === "owned" || paymentReceived;
+  price.hidden = access === "owned" || paymentReceived || (confirming && session.state.authenticated);
   price.textContent = price.hidden ? "" : priced
     ? "$20 USD · one-time"
     : "Price is currently unavailable.";

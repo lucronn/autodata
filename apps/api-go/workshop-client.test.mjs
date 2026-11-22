@@ -457,7 +457,7 @@ test('reader offers one early cold confirmation and keeps the regular second che
     assert.equal(result.data.article.body, 'Published procedure', name);
   }
 });
-test('reader checks negotiated cold source early and preserves the half-second check on a miss', async () => {
+test('reader checks negotiated cold source early and preserves scheduled reads on a miss', async () => {
   const { readArticle } = await import('./workshop/article-read.mjs');
   const prepare = { status: 202, shortSourceCheck: true, data: {
     article: { processing: { job_id: 'job', state: 'queued' } },
@@ -470,12 +470,19 @@ test('reader checks negotiated cold source early and preserves the half-second c
   const complete = { status: 200, data: { article: { body: 'Published procedure' } } };
   const overload = Object.assign(new Error('Busy'), { status: 429, retryable: true, retryAfterSeconds: 5 });
   const unhintedOverload = Object.assign(new Error('Busy'), { status: 503, retryable: true });
+  const invalidResponse = Object.assign(new Error('Unreadable reply'), { code: 'INVALID_RESPONSE' });
   const networkFailure = new TypeError('Network failed');
   const timedOut = Symbol('timed out');
   const delayedFetching = Symbol('fetching response after the third probe slot');
 
   for (const [label, responses, expectedStarts] of [
-    ['source ready at first probe', [prepare, stored, complete], [0, 250, 1250]],
+    ['source ready before the original first probe', [prepare, stored, complete], [0, 150, 1150]],
+    ['initial timeout preserves the original first probe', [prepare, timedOut, stored, complete], [0, 150, 250, 1250]],
+    ['initial transient catalog failure preserves the original first probe', [prepare, unhintedOverload, stored, complete], [0, 150, 250, 1250]],
+    ['initial unreadable reply preserves the original first probe', [prepare, invalidResponse, stored, complete], [0, 150, 250, 1250]],
+    ['initial overload respects a retry hint', [prepare, overload, complete], [0, 150, 5150]],
+    ['initial failure honors server retry hint', [prepare, pending, stored, complete], [0, 150, 1150, 2150]],
+    ['source ready at the original first probe', [prepare, stored, complete], [0, 250, 1250]],
     ['source ready at second probe', [prepare, prepare, stored, complete], [0, 250, 500, 1500]],
     ['active capture can finish before the half-second slot', [prepare, fetching, stored, complete], [0, 250, 375, 1375]],
     ['active capture still pending at the extra check', [prepare, fetching, fetching, fetching, stored, complete], [0, 250, 375, 500, 750, 1750]],
@@ -514,10 +521,13 @@ test('reader checks negotiated cold source early and preserves the half-second c
   ]) {
     let now = 0;
     const actual = [];
+    const addsPendingInitialCheck = responses[0] === prepare && expectedStarts[1] !== 150;
+    const queuedResponses = addsPendingInitialCheck ? [prepare, ...responses] : responses;
+    const expected = addsPendingInitialCheck ? [0, 150, ...expectedStarts.slice(1)] : expectedStarts;
     const result = await readArticle(async ({ timeout, readableBodyTimeout, preferShortSourceCheck }) => {
       actual.push(now);
-      const headerBudget = { 250: 250, 375: 125, 500: 500, 750: 250 };
-      const bodyBudget = { 250: 750, 375: 625, 500: 750, 750: 500 };
+      const headerBudget = { 150: 100, 250: 250, 375: 125, 500: 500, 750: 250 };
+      const bodyBudget = { 150: 850, 250: 750, 375: 625, 500: 750, 750: 500 };
       const confirmedAtOrdinaryRead = now === 1000 && [
         'third miss retains the ordinary read',
         'a slow second response rejoins the ordinary read',
@@ -532,7 +542,7 @@ test('reader checks negotiated cold source early and preserves the half-second c
       if (now in headerBudget) assert.equal(timeout, headerBudget[now], label);
       if (late) assert.equal(timeout, 750, label);
       assert.equal(readableBodyTimeout, late ? 1000 : bodyBudget[now], label);
-      const next = responses.shift();
+      const next = queuedResponses.shift();
       if (next === timedOut) {
         now += timeout;
         throw networkFailure;
@@ -544,7 +554,7 @@ test('reader checks negotiated cold source early and preserves the half-second c
       if (next instanceof Error) throw next;
       return next;
     }, { now: () => now, wait: async ms => { now += ms; } });
-    assert.deepEqual(actual, expectedStarts, label);
+    assert.deepEqual(actual, expected, label);
     assert.equal(result.data.article.body, 'Published procedure', label);
   }
 });
@@ -619,9 +629,9 @@ test('reader checks for first publication early and preserves the regular read o
   const busy = Object.assign(new Error('Busy'), { status: 503, retryable: true, retryAfterSeconds: 7 });
 
   for (const [label, responses, expected] of [
-    ['publication already ready for the probe', [pending, source, ready], [0, 250, 750]],
+    ['publication already ready for the probe', [pending, source, ready], [0, 150, 650]],
     ['publication ready after the first probe', [source, source, ready], [0, 500, 750]],
-    ['regular read preserved', [pending, source, source, source, timed, ready], [0, 250, 750, 1000, 1250, 2250]],
+    ['regular read preserved', [pending, source, source, source, timed, ready], [0, 150, 650, 900, 1150, 2150]],
     ['initially readable article', [source, source, source, timed, ready], [0, 500, 750, 1000, 3000]],
     ['job changed during the first probe', [source, changedJob, ready], [0, 500, 1000]],
     ['short read no longer offered', [source, timed, ready], [0, 500, 1500]],
@@ -737,9 +747,9 @@ test('early publication reads keep the displayed source with a negotiated pendin
     optionsByRead.push({ time: now, check: options.publicationCheck, timeout: options.timeout });
     return responses.shift();
   }, { now: () => now, wait: async ms => { now += ms; } });
-  assert.deepEqual(optionsByRead.map(({ time }) => time), [0, 250, 750, 1000, 1250, 2250]);
+  assert.deepEqual(optionsByRead.map(({ time }) => time), [0, 150, 650, 900, 1150, 2150]);
   assert.deepEqual(optionsByRead.filter(({ check }) => check).map(({ time, timeout }) => [time, timeout]),
-    [[750, 500], [1000, 250], [1250, 1000]]);
+    [[650, 500], [900, 250], [1150, 1000]]);
   assert.equal(result.data.article.body, 'Published');
 });
 
@@ -908,6 +918,8 @@ test('a short source read can finish a successful body by the regular deadline',
     [200, 1, true],
     [200, 'navigation', true],
     [503, undefined, false, '7'],
+    [503, 0, true, '7'],
+    [503, 'navigation', true, '7'],
   ]) {
     deadlines.length = 0;
     const navigation = new AbortController();
@@ -935,9 +947,9 @@ test('a short source read can finish a successful body by the regular deadline',
     else deadlines[expire]?.controller.abort();
     assert.equal(requestSignal.aborted, cancels);
     if (!cancels) release({ article: { body: 'Stored procedure' }, error: { retryable: true } });
-    if (retryAfter) await assert.rejects(response, { status: 503, retryAfterSeconds: 7, retryable: true });
-    else if (expire === 'navigation') await assert.rejects(response, navigation.signal.reason);
-    else if (cancels) await assert.rejects(response, { code: 'NETWORK_UNAVAILABLE', retryable: true });
+    if (expire === 'navigation') await assert.rejects(response, navigation.signal.reason);
+    else if (cancels) await assert.rejects(response, { code: 'NETWORK_UNAVAILABLE', retryable: true, retryAfterSeconds: retryAfter ? 7 : 0 });
+    else if (retryAfter) await assert.rejects(response, { status: 503, retryAfterSeconds: 7, retryable: true });
     else assert.equal((await response).data.article.body, 'Stored procedure');
   }
 });
@@ -2571,6 +2583,22 @@ test('purchase availability status keeps validated processing order no-repay gui
   assert.equal(h.$('purchase-action').disabled, true);
   assert.equal(h.$('purchase-action').textContent, 'Payment pending');
   assert.match(h.statuses.at(-1).message, /confirmation is pending.*do not pay again/i);
+});
+
+test('an order-only return shows the pending vehicle and status without a purchase price', async () => {
+  const label = '2024 Example Car 2.0 L';
+  const open = { version: 'v1', order_id: orderID, ...scope, state: 'open', configuration_label: label,
+    retry_disposition: 'do_not_repay', timedOut: true };
+  const h = paidPurchaseLifecycleHarness([], { orderResponses: [open] });
+  h.location.search = `?order=${orderID}`;
+  await h.context.restoreRoute();
+  assert.equal(h.$('purchase-selection').textContent, `${label} / ${scope.region}`);
+  assert.equal(h.$('purchase-price').hidden, true);
+  assert.equal(h.$('purchase-price').textContent, '');
+  assert.equal(h.$('purchase-action').textContent, 'Payment pending');
+  assert.equal(h.$('purchase-action').disabled, true);
+  assert.equal(h.$('check-order').hidden, false);
+  assert.equal(h.checkoutStarts(), 0);
 });
 
 test('processing checkout timeout keeps status check without an enabled Buy action', async () => {
