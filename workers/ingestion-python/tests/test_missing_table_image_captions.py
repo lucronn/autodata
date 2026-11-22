@@ -10,10 +10,12 @@ from PIL import Image
 import pytest
 from reportlab.pdfgen import canvas
 
+from autodata_ingestion import source_article_capture
 from autodata_ingestion.article_document import validate_ordered_document
 from autodata_ingestion.article_lifecycle_types import (
     MISSING_TABLE_IMAGE_CAPTION_LAYOUT,
     MISSING_TABLE_IMAGE_CAPTION_LAYOUT_V2,
+    MISSING_TABLE_IMAGE_CAPTION_LAYOUT_V3,
 )
 from autodata_ingestion.procedure_normalize import normalize_procedure_article
 from autodata_ingestion.procedure_rewrite_auto import render_auto, validate_auto
@@ -237,6 +239,102 @@ def test_missing_table_chart_keeps_one_authored_caption(capture_fixture, provide
     assert repaired.resource_manifest[1:] == historical.resource_manifest[1:]
     assert repaired.evidence_manifest == historical.evidence_manifest
     assert capture_fixture.resource_calls(provider, CHART) == capture_fixture.resource_calls(provider, OTHER) == 2
+
+
+@pytest.mark.parametrize("provider", ["bankone", "banktwo"])
+@pytest.mark.parametrize("placement", ["ordered-cell", "inline-cell", "row-summary", "column"])
+def test_missing_chart_caption_keeps_cell_over_summary(capture_fixture, provider, placement, monkeypatch):
+    chart = _image(CHART, PRESSURE_CAPTION)
+    other = _image(OTHER, OTHER_CAPTION)
+    repeat = _image(CHART, label="  Read pressure above   2,000 rpm. ")
+    cell = {"text": "Check the gauge.", "images": [chart, other]}
+    if placement == "ordered-cell":
+        cell = {"blocks": [chart, other, {"kind": "text", "text": "Check the gauge."}]}
+    table = {"type": "table", "columns": ["Pressure"], "rows": [[cell]], "images": [repeat]}
+    if placement == "row-summary":
+        table["rows"] = [{"cells": [cell], "images": table.pop("images")}]
+    elif placement == "column":
+        table["columns"] = [cell]
+        table["rows"] = [["500 kPa"]]
+    article = {"blocks": [{"type": "paragraph", "text": "Remove the pump."}, table]}
+    payload, media = (article, "application/json") if provider == "bankone" else (
+        {"_embedded": {"data": {"article": article}}}, "application/hal+json"
+    )
+    raw = json.dumps(payload).encode()
+    capture_fixture.body(provider, raw, media, assets=[CHART, OTHER])
+    context = capture_fixture.context(provider)
+
+    def capture():
+        return capture_source_article(
+            context, registry=capture_fixture.registry, object_store=capture_fixture.objects,
+            keep_structured_table_cell_order=True, keep_structured_table_columns=True,
+        )
+
+    captured = capture()
+    clean_table = captured.source_document["blocks"][1]
+    assert "images" not in clean_table
+    assert [image["caption"] for image in captured.source_images] == [PRESSURE_CAPTION, OTHER_CAPTION]
+    assert not validate_ordered_document(captured.source_document, strict=True)
+    assert captured.resources[0]["sha256"] == sha256(raw).hexdigest()
+    assert capture_fixture.resource_calls(provider, CHART) == capture_fixture.resource_calls(provider, OTHER) == 1
+    for entry in (captured.resources[0], captured.resource_manifest[0], captured.resource_provenance[0]):
+        assert entry[LAYOUT_FIELD] == MISSING_TABLE_IMAGE_CAPTION_LAYOUT_V3
+
+    with monkeypatch.context() as historical:
+        historical.setattr(source_article_capture, "_drop_duplicate_missing_table_summaries", lambda *_: False)
+        prior = capture()
+    old_table = prior.source_document["blocks"][1]
+    [summary] = old_table["images"]
+    assert summary["caption"] == PRESSURE_CAPTION and summary["image_id"] != captured.source_images[0]["image_id"]
+    assert clean_table == {key: value for key, value in old_table.items() if key != "images"}
+    assert captured.source_document["blocks"][0] == prior.source_document["blocks"][0]
+    assert captured.source_fingerprint != prior.source_fingerprint
+    assert captured.body_source_snapshot_id == prior.body_source_snapshot_id
+    assert captured.resource_manifest[1:] == prior.resource_manifest[1:]
+    assert captured.evidence_manifest == prior.evidence_manifest
+
+    normalized = normalize_procedure_article({
+        "normalized_document": captured.source_document, "body": captured.source_body, "steps": captured.source_steps,
+    }, resource_manifest=captured.resource_manifest)["normalized_document"]
+    [slot] = prose_slots(normalized, include_cell_blocks=True)
+    response = {
+        "introduction": "This procedure covers pump service.",
+        "replacements": [{**slot, "action": "rewrite", "text": "Take off the pump.", "reason": ""}],
+    }
+    canonical = render_auto(normalized, response)
+    assert validate_auto(normalized, canonical, response=response).passed
+    [rewritten_table] = [block for block in canonical["blocks"] if block["type"] == "table"]
+    assert rewritten_table == {**clean_table, "source_order": clean_table["source_order"] + 1}
+
+
+@pytest.mark.parametrize("provider", ["bankone", "banktwo"])
+@pytest.mark.parametrize("control", ["same-id", "distinct-caption", "distinct-chart", "metadata", "denied"])
+def test_cell_caption_summary_controls_keep_fingerprint(capture_fixture, provider, control, monkeypatch):
+    chart = _image(CHART, PRESSURE_CAPTION)
+    extra = [] if control == "same-id" else [_image(OTHER, OTHER_CAPTION)]
+    cell = {"text": "Check the gauge.", "images": [chart, *extra]}
+    if control == "metadata":
+        cell["supplier_metadata"] = {"images": cell.pop("images")}
+    summary = _image(OTHER if control == "distinct-chart" else CHART,
+                     OUTLET_CAPTION if control == "distinct-caption" else PRESSURE_CAPTION)
+    table = {"type": "table", "columns": ["Pressure"], "rows": [[cell]], "images": [summary]}
+    article = {"blocks": [{"type": "paragraph", "text": "Remove the pump."}, table]}
+    payload, media = (article, "application/json") if provider == "bankone" else (
+        {"_embedded": {"data": {"article": article}}}, "application/hal+json"
+    )
+    capture_fixture.body(provider, json.dumps(payload).encode(), media, assets=[CHART, OTHER] if extra else [CHART])
+    if control == "denied":
+        _deny(capture_fixture, provider, CHART, monkeypatch)
+    context = capture_fixture.context(provider)
+    captured = _capture(capture_fixture, context)
+    prior = _capture(capture_fixture, context, structured=False)
+    assert captured.source_document == prior.source_document
+    assert captured.source_fingerprint == prior.source_fingerprint
+    assert LAYOUT_FIELD not in captured.resource_manifest[0]
+    [figure] = captured.source_document["blocks"][1]["images"]
+    assert figure["caption"] == summary["caption"]
+    if control == "denied":
+        assert figure["unavailable_reason"] == "UNAUTHORIZED"
 
 
 @pytest.mark.parametrize("provider", ["bankone", "banktwo"])
