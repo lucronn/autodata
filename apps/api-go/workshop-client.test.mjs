@@ -4380,7 +4380,7 @@ function articleMediaHarness(overrides = {}) {
   const navigation = new NavigationGeneration(), searchNavigation = new NavigationGeneration(), g = navigation.next();
   const shows = [], statuses = [];
   const context = {
-    URL, uuid, articlePresentation, localImageURL, sourceReferenceURL, processingArticle, readableArticle,
+    URL, uuid, articlePresentation, configurationLabel, localImageURL, sourceReferenceURL, processingArticle, readableArticle,
     session: { state: { mode: null } }, sessionRequest: null,
     document: { body, title: '', createElement: tag => new ArticleMediaNode(tag),
       createDocumentFragment: () => new ArticleMediaNode('#fragment') },
@@ -4403,6 +4403,7 @@ function articleMediaHarness(overrides = {}) {
   runInNewContext([
     appSection('const element =', 'const session ='),
     appSection('function clearProtected(', 'async function operation('),
+    appSection('function vehicleIdentityLabel(', 'function purchaseConfigured('),
     appSection('const assetID =', 'async function loadArticle('),
     appSection('function validSourceURL(', 'async function library('),
   ].join('\n'), context);
@@ -6289,9 +6290,17 @@ test('owned articles open while a scoped quote is still in flight', async () => 
   assert.equal(h.calls.length, 1);
   assert.equal(h.opened[0]?.id, 'article-a');
   assert.equal(h.context.quote, null);
+  h.context.access = 'owned';
+  const identity = '2024 / Example / Car / 2.0 L';
+  h.context.$('reader-vehicle').textContent = identity;
+  h.context.renderPurchase = () => {
+    h.context.$('purchase-selection').textContent = `${h.context.quote.configuration_label} / ${h.context.quote.region}`;
+  };
   release(scopedQuoteFixture());
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(validQuote(h.context.quote, scope), true);
+  assert.equal(h.context.$('vehicle-caption').textContent, h.context.$('purchase-selection').textContent);
+  assert.equal(h.context.$('reader-vehicle').textContent, identity);
 });
 
 test('obsolete quote cannot publish after selection is canceled', async () => {
@@ -6324,18 +6333,23 @@ function articleRouteHarness(mode, request, authenticated = true, openDemo = fal
 
 test('the saved reader uses the authorized configuration and can fall back on an older response', async () => {
   const article = mediaArticle([{ type: 'paragraph', text: 'Stored procedure.' }]);
-  const configuration = { id: routeConfiguration, region: 'US', make: 'Example', model: 'Car', engine: '2.0 L' };
+  const configuration = { id: routeConfiguration, region: 'US', year: 2024, make: 'Example', model: 'Car', engine: '2.0', trim: 'Sport' };
+  const identity = '2024 / Example / Car / 2.0 L / Sport';
   for (const [scopeFromResponse, rendered] of [[configuration, true], [undefined, false],
     [{ ...configuration, region: 'CA' }, false]]) {
     const h = articleRouteHarness('firebase', async () => ({ data: { article, configuration: scopeFromResponse } }));
     h.context.vehicle = { id: routeConfiguration, region: 'US' };
     h.context.quote = null;
     h.context.access = 'unknown';
-    h.context.renderPurchase = () => { h.nodes.get('purchase-selection').textContent = h.context.vehicle.engine; };
+    h.context.renderPurchase = () => { h.nodes.get('purchase-selection').textContent = `${identity} / US`; };
     assert.equal(await h.context.loadArticle('a', h.g, { savedLink: true }), rendered);
     assert.equal(h.context.currentArticle, rendered ? article : null);
     assert.equal(h.context.access, rendered ? 'owned' : 'unknown');
-    if (rendered) assert.equal(h.nodes.get('reader-vehicle').textContent, '2.0 L');
+    if (rendered) {
+      assert.equal(h.nodes.get('reader-vehicle').textContent, identity);
+      assert.equal(h.nodes.get('reader-engine').textContent, 'US');
+      assert.equal(h.nodes.get('purchase-selection').textContent, `${identity} / US`);
+    }
   }
   for (const status of [404, 403]) {
     const error = Object.assign(new Error('Unavailable'), { status });
@@ -6346,6 +6360,37 @@ test('the saved reader uses the authorized configuration and can fall back on an
     else await assert.rejects(direct, error);
     assert.equal(h.context.currentArticle, null);
   }
+});
+
+test('the same vehicle identity remains visible after its stored article is published', () => {
+  const vehicle = { id: routeConfiguration, region: 'CA', year: 2025, make: 'Example', model: 'Wagon', engine: '3.0 L', trim: 'Touring' };
+  const h = articleMediaHarness({ vehicle, quote: null });
+  const source = mediaArticle([{ type: 'paragraph', text: 'Stored procedure.' }]);
+  const identity = '2025 / Example / Wagon / 3.0 L / Touring';
+  const quotedIdentity = '2025 Example Wagon Touring 3.0 L';
+  h.nodes.get('purchase-selection').textContent = `${identity} / CA`;
+  h.render(source);
+  const sourceLabel = h.nodes.get('reader-vehicle').textContent;
+  h.context.quote = { ...scopedQuoteFixture(), configuration_id: vehicle.id, region: vehicle.region, configuration_label: quotedIdentity };
+  h.nodes.get('purchase-selection').textContent = `${quotedIdentity} / CA`;
+  h.render({ ...source, content_origin: 'canonical', view_revision: 'published' });
+  assert.equal(sourceLabel, identity);
+  assert.equal(h.nodes.get('reader-vehicle').textContent, identity);
+  assert.equal(h.nodes.get('reader-engine').textContent, 'CA');
+  assert.equal(h.nodes.get('purchase-selection').textContent, `${quotedIdentity} / CA`);
+});
+
+test('a legacy reader keeps the selected paid order label when configuration fields are absent', async () => {
+  const article = mediaArticle([{ type: 'paragraph', text: 'Stored procedure.' }]);
+  const h = articleRouteHarness('firebase', async () => ({ status: 200, data: { article } }));
+  h.context.vehicle = { id: routeConfiguration, region: 'CA' };
+  runInNewContext(appSection('function selectOrderVehicle(', 'async function openPaidOrder('), h.context);
+  h.context.selectOrderVehicle({
+    configuration_id: routeConfiguration, region: 'CA', configuration_label: '2025 Example Wagon Touring 3.0 L',
+  });
+  assert.equal(await h.context.loadArticle('a', h.g), true);
+  assert.equal(h.nodes.get('reader-vehicle').textContent, '2025 Example Wagon Touring 3.0 L');
+  assert.equal(h.nodes.get('reader-engine').textContent, 'CA');
 });
 
 test('lost paid prepare recovers stored source or a durable job with scoped GETs only', async () => {
@@ -6532,6 +6577,7 @@ for (const mode of ['local', 'firebase', undefined, null, 'LOCAL', 'other']) {
   test(`article opening mode ${String(mode)} uses only its authorized real route`, async () => {
     const calls = [], article = mediaArticle([{ type: 'paragraph', text: 'Stored procedure.' }]);
     const h = articleRouteHarness(mode, async (path, options) => { calls.push({ path, options }); return { data: { article } }; });
+    h.context.vehicle = { ...h.context.vehicle, make: 'Example', model: 'Car', engine: '2.0 L' };
     await h.context.loadArticle('a', h.g);
     assert.equal(calls.length, 1);
     assert.equal(calls[0].path, mode === 'local' ? '/v1/catalog/vehicles/v/articles/a?region=US' : '/v1/catalog/vehicles/v/articles/a/prepare?region=US');
@@ -6546,6 +6592,8 @@ for (const mode of ['local', 'firebase', undefined, null, 'LOCAL', 'other']) {
     }
     assert.match(h.nodes.get('article-content').textContent, /Stored procedure/);
     assert.equal(h.context.currentArticle, article);
+    assert.equal(h.nodes.get('reader-vehicle').textContent, 'Example / Car / 2.0 L');
+    assert.equal(h.nodes.get('reader-engine').textContent, 'US');
   });
 }
 

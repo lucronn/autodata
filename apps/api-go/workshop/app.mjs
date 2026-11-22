@@ -405,19 +405,10 @@ function renderPurchase() {
     (access === "unknown" && paidOrder !== null && paidOrder.id === currentOrder &&
       vehicle?.id === paidOrder.configuration_id && vehicle?.region === paidOrder.region));
   const priced = validQuote(quote, scope());
-  const quotedLabel = priced ? `${quote.configuration_label} / ${quote.region}` : "";
+  const purchaseLabel = vehicle?.orderLabel || (priced ? quote.configuration_label : vehicleIdentityLabel());
   $("purchase").hidden = !validScope(scope());
   $("purchase-selection").textContent =
-    vehicle?.orderLabel || quotedLabel ||
-    [
-      vehicle?.year,
-      vehicle?.make,
-      vehicle?.model,
-      (vehicle?.engine || vehicle?.trim) && configurationLabel(vehicle),
-      vehicle?.region,
-    ]
-      .filter(Boolean)
-      .join(" / ");
+    [purchaseLabel, vehicle?.region].filter(Boolean).join(" / ");
   if (openDemo) {
     $("purchase").hidden = true;
     $("purchase-terms").hidden = true;
@@ -478,6 +469,14 @@ function renderPurchase() {
     }
   $("tax-notice").textContent = configured ? merchant.tax_notice : "";
 }
+function vehicleIdentityLabel() {
+  return [
+    vehicle?.year,
+    vehicle?.make,
+    vehicle?.model,
+    (vehicle?.engine || vehicle?.trim) && configurationLabel(vehicle),
+  ].filter(Boolean).join(" / ") || vehicle?.orderLabel || "";
+}
 function purchaseConfigured() {
   return purchaseConfiguration(merchant, quote, {
     testCheckout: !$("test-banner").hidden,
@@ -521,9 +520,7 @@ async function selectVehicle(g, articleID = "", { quoteMode = "eager", savedLink
       quote = validQuote(q, selected) ? q : null;
       renderPurchase();
       if (access === "owned") {
-        const label = $("purchase-selection").textContent;
-        $("vehicle-caption").textContent = label;
-        $("reader-vehicle").textContent = label;
+        $("vehicle-caption").textContent = $("purchase-selection").textContent;
       }
     } catch {
       // The quote is optional for owned articles. Its absence keeps Buy disabled.
@@ -1194,8 +1191,7 @@ function renderArticle(article, g) {
       : article.content_origin === "source"
         ? "Stored source"
         : "Article";
-  $("reader-vehicle").textContent =
-    quote?.configuration_label || $("purchase-selection").textContent;
+  $("reader-vehicle").textContent = vehicleIdentityLabel();
   $("reader-engine").textContent = vehicle.region;
   const readable = readableArticle(article);
   const processing = processingArticle(article);
@@ -1774,7 +1770,7 @@ function selectOrderVehicle(order) {
     quote = null;
   }
   if (typeof order.configuration_label === "string" && order.configuration_label.trim()) {
-    const orderLabel = `${order.configuration_label} / ${order.region}`;
+    const orderLabel = order.configuration_label;
     if (vehicle.orderLabel !== orderLabel) vehicle = { ...vehicle, orderLabel };
   }
 }
