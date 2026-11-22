@@ -104,7 +104,7 @@ func (v *firebaseCustomerVerifier) VerifyLogin(ctx context.Context, raw string) 
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	token, err := firebaseCallWithinContext(v, ctx, func() (*auth.Token, error) {
-		return v.client.VerifyIDTokenAndCheckRevoked(ctx, raw)
+		return v.client.VerifyIDToken(ctx, raw)
 	})
 	if err != nil {
 		return VerifiedCustomerIdentity{}, firebaseIdentityError(err)
@@ -117,8 +117,8 @@ func (v *firebaseCustomerVerifier) VerifyLogin(ctx context.Context, raw string) 
 	if token.UID == "" || token.Audience != v.projectID || token.Issuer != "https://securetoken.google.com/"+v.projectID || token.Firebase.SignInProvider != "google.com" || token.Firebase.Tenant != "" || token.AuthTime <= 0 || token.IssuedAt <= 0 || token.Expires <= stamp || token.AuthTime < stamp-300 || token.IssuedAt < stamp-300 || token.AuthTime > stamp+60 || token.IssuedAt > stamp+60 {
 		return VerifiedCustomerIdentity{}, ErrUnauthenticated
 	}
-	// The SDK checks iat revocation. Check original authentication time too.
-	if err = v.CheckUser(ctx, v.projectID, token.UID, token.AuthTime); err != nil {
+	// One current account record checks revocation against both signed times.
+	if err = v.CheckUser(ctx, v.projectID, token.UID, min(token.AuthTime, token.IssuedAt)); err != nil {
 		return VerifiedCustomerIdentity{}, err
 	}
 	return VerifiedCustomerIdentity{ProjectID: v.projectID, UID: token.UID, AuthTime: token.AuthTime, IssuedAt: token.IssuedAt, Expires: token.Expires}, nil

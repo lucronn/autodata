@@ -3627,7 +3627,7 @@
             "writeOnly": true
           }
         },
-        "description": "Fresh Google Firebase ID token with iat/auth_time within 5 minutes, at most 60 seconds future skew. Signature, issuer, audience, provider, expiry and live user state are verified. SDK revocation uses iat; application additionally compares auth_time. The same still-fresh token may be exchanged again."
+        "description": "Fresh Google Firebase ID token with iat/auth_time within 5 minutes, at most 60 seconds future skew. Signature, issuer, audience, provider, expiry and live user state are verified. The account record is checked for revocation against both iat and auth_time. The same still-fresh token may be exchanged again."
       },
       "WorkshopQuote": {
         "type": "object",

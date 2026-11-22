@@ -469,7 +469,7 @@ func TestWorkshopBrowserOfficialIdentityAccounts(t *testing.T) {
 			t.Fatalf("official browser identity fixture failed for %s: %v", uid, err)
 		}
 	}
-	if identity.certCalls.Load() == 0 || identity.userCalls.Load() < 4 || identity.unexpected.Load() != 0 {
+	if identity.certCalls.Load() == 0 || identity.userCalls.Load() != 2 || identity.unexpected.Load() != 0 {
 		t.Fatal("official signature and current-user fixture calls missing")
 	}
 }
