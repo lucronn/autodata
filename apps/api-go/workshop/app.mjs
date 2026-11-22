@@ -405,16 +405,19 @@ function renderPurchase() {
     (access === "unknown" && paidOrder !== null && paidOrder.id === currentOrder &&
       vehicle?.id === paidOrder.configuration_id && vehicle?.region === paidOrder.region));
   const priced = validQuote(quote, scope());
+  const configured = !openDemo && purchaseConfigured();
+  const canPurchase = session.state.authenticated && access === "missing" && !confirming && priced && configured;
   const purchaseLabel = vehicle?.orderLabel || (priced ? quote.configuration_label : vehicleIdentityLabel());
   $("purchase").hidden = !validScope(scope());
   $("purchase-selection").textContent =
     [purchaseLabel, vehicle?.region].filter(Boolean).join(" / ");
+  $("purchase-consent").hidden = !canPurchase;
+  $("agreement").disabled = !canPurchase;
   if (openDemo) {
     $("purchase").hidden = true;
     $("purchase-terms").hidden = true;
     return;
   }
-  const configured = purchaseConfigured();
   const price = $("purchase-price");
   price.hidden = access === "owned" || paymentReceived || (confirming && session.state.authenticated);
   price.textContent = price.hidden ? "" : priced
@@ -452,7 +455,7 @@ function renderPurchase() {
     ? !session.state.ready
     : access === "owned"
       ? false
-      : !(access === "missing" && !confirming && priced && configured);
+      : !canPurchase;
   $("policy-links").replaceChildren();
   if (configured)
     for (const [field, label] of [
@@ -1871,6 +1874,8 @@ async function purchase() {
   await operation(
     async (g) => {
       $("purchase-action").disabled = true;
+      $("purchase-consent").hidden = true;
+      $("agreement").disabled = true;
       const purchaseLabel = quote.configuration_label;
       const result = await checkout.start(scope(), session.state.csrf, {
         signal: g.signal,
