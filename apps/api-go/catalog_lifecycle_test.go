@@ -229,6 +229,37 @@ func TestCatalogSourceOrderedTablesWarningsAndUnavailableMedia(t *testing.T) {
 	}
 }
 
+func TestCatalogOrderedSourceKeepsUnavailableChartCaptionInTable(t *testing.T) {
+	var doc CatalogDocument
+	if err := json.Unmarshal([]byte(`{"blocks":[{"type":"table","columns":[{"blocks":[
+		{"type":"paragraph","text":"Check the pressure scale."},
+		{"type":"image","asset_id":"chart","caption":"Pressure at <2,000> rpm & warm","status":"unavailable","unavailable_reason":"SOURCE_NOT_FOUND"},
+		{"type":"paragraph","text":"Read the upper line."}
+	]},{"asset_id":"inline","caption":"Inline figure caption","status":"unavailable","unavailable_reason":"SOURCE_NOT_FOUND"}],
+		"rows":[["Supply",{"asset_id":"no-caption","alt":"Alt only","caption":"","status":"unavailable","unavailable_reason":"SOURCE_NOT_FOUND"}],
+				["Draft",{"asset_id":"denied","caption":"Unproved caption","status":"unavailable"}]],
+		"images":[{"asset_id":"chart","caption":"Pressure at <2,000> rpm & warm","status":"unavailable","unavailable_reason":"SOURCE_NOT_FOUND"}]}]}`), &doc); err != nil {
+		t.Fatal(err)
+	}
+	content := renderCatalogOrderedSource(&doc, []CatalogImage{
+		{AssetID: "chart", Status: "available", URL: "/v1/catalog/images/v2.chart"},
+		{AssetID: "no-caption", Status: "available", URL: "/v1/catalog/images/v2.no-caption"},
+		{AssetID: "denied", Status: "available", URL: "/v1/catalog/images/v2.denied"},
+	})
+	figure := "<figure><span>Image unavailable</span><figcaption>Pressure at &lt;2,000&gt; rpm &amp; warm</figcaption></figure>"
+	before := strings.Index(content, "Check the pressure scale.")
+	media := strings.Index(content, figure)
+	after := strings.Index(content, "Read the upper line.")
+	if before < 0 || media <= before || after <= media || strings.Count(content, figure) != 1 {
+		t.Fatalf("unavailable image caption lost its ordered position: %s", content)
+	}
+	if strings.Count(content, "Image unavailable") != 4 || strings.Count(content, "<figcaption>") != 2 ||
+		!strings.Contains(content, "<figcaption>Inline figure caption</figcaption>") ||
+		strings.Contains(content, "<img") || strings.Contains(content, "Alt only") || strings.Contains(content, "Unproved caption") {
+		t.Fatalf("duplicate or unauthorized figure content: %s", content)
+	}
+}
+
 func TestCatalogLifecycleConsumesR2StepsAndProjectsNestedImages(t *testing.T) {
 	var step CatalogStep
 	if err := json.Unmarshal([]byte(`{"number":3,"text":"Disconnect the battery.","evidence_ids":["evidence-1"]}`), &step); err != nil {
