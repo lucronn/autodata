@@ -262,6 +262,29 @@ components:
             content: { type: string, maxLength: 10000000 }
             sha256: { type: string, pattern: '^[a-f0-9]{64}$' }
             asset_resource_refs: { type: array, maxItems: 128, items: { type: string, maxLength: 2048 } }
+            asset_bindings:
+              type: array
+              maxItems: 128
+              uniqueItems: true
+              description: >-
+                Each source_url is the exact HTML-decoded img src value and appears once.
+                Each resource_ref must be listed in this resource's asset_resource_refs.
+                The content SHA-256 covers the raw UTF-8 body.
+              items:
+                type: object
+                additionalProperties: false
+                required: [source_url, resource_ref]
+                properties:
+                  source_url: { $ref: '#/components/schemas/AssetBindingValue' }
+                  resource_ref: { $ref: '#/components/schemas/AssetBindingValue' }
+    AssetBindingValue:
+      type: string
+      minLength: 1
+      maxLength: 2048
+      not:
+        anyOf:
+          - pattern: '[\x00-\x1f\x7f-\x9f]'
+          - pattern: '^[ \u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+$'
     BinaryResource:
       allOf:
         - { $ref: '#/components/schemas/SourceEnvelope' }

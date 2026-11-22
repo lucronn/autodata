@@ -7,6 +7,7 @@ from pathlib import Path
 
 import yaml
 from jsonschema import Draft202012Validator
+from jsonschema.exceptions import ValidationError
 from referencing import Registry, Resource
 from referencing.jsonschema import DRAFT202012
 
@@ -83,6 +84,41 @@ class SourceConnectorContractTests(unittest.TestCase):
             "capabilities": ["catalog", "resource_read"],
         }
         validate_named(self.document, "CapabilitiesResponse", capabilities)
+
+    def test_text_resource_accepts_asset_bindings_for_either_provider(self):
+        resource = json.loads((FIXTURES / "text-resource-with-asset-bindings.json").read_text())
+        self.assertEqual(resource["sha256"], hashlib.sha256(resource["content"].encode()).hexdigest())
+        for provider in ("bankone", "banktwo"):
+            with self.subTest(provider=provider):
+                validate_named(self.document, "TextResource", {**resource, "provider": provider})
+        first = resource["asset_bindings"][0]
+        validate_named(self.document, "TextResource", {**resource, "asset_bindings": []})
+        full_batch = [{**first, "source_url": f"/fixture/chart-{i}"} for i in range(128)]
+        max_ref = "a" * 2048
+        full_batch[0] = {"source_url": "/" + "a" * 2047, "resource_ref": max_ref}
+        validate_named(self.document, "TextResource", {
+            **resource, "asset_bindings": full_batch,
+            "asset_resource_refs": [*resource["asset_resource_refs"], max_ref],
+        })
+
+    def test_text_resource_rejects_malformed_asset_bindings(self):
+        resource = json.loads((FIXTURES / "text-resource-with-asset-bindings.json").read_text())
+        first = resource["asset_bindings"][0]
+        bad_bindings = (
+            ("null", None),
+            ("missing field", [{"source_url": first["source_url"]}]),
+            ("unknown field", [{**first, "other": "extra"}]),
+            ("blank URL", [{**first, "source_url": " \u00a0"}]),
+            ("control character", [{**first, "source_url": "/figure\x85"}]),
+            ("trailing newline", [{**first, "resource_ref": "chart\n"}]),
+            ("long URL", [{**first, "source_url": "a" * 2049}]),
+            ("long ref", [{**first, "resource_ref": "a" * 2049}]),
+            ("duplicate binding", [first, first]),
+            ("too many bindings", [{**first, "source_url": f"/fixture/chart-{i}"} for i in range(129)]),
+        )
+        for label, bindings in bad_bindings:
+            with self.subTest(case=label), self.assertRaises(ValidationError):
+                validate_named(self.document, "TextResource", {**resource, "asset_bindings": bindings})
 
     def test_resource_hashes_are_content_hashes_and_secrets_are_absent(self):
         content = b"redacted source article"
