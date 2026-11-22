@@ -267,7 +267,9 @@ components:
               maxItems: 128
               uniqueItems: true
               description: >-
-                Each source_url is the exact HTML-decoded img src value and appears once.
+                Each source_url is the exact HTML-decoded attribute value and appears once.
+                Bind src for img and supported PDF iframe or embed elements, and data
+                for PDF object elements.
                 Each resource_ref must be listed in this resource's asset_resource_refs.
                 The content SHA-256 covers the raw UTF-8 body.
               items:
