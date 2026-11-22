@@ -1330,8 +1330,8 @@ def test_automatic_real_process_death_rejects_historical_unsafe_draft(
         "validation_report": historical.report,
         "validation_hash": expected_report_hash,
     }
-    [job] = after["source_fetch_jobs"]
-    assert job["retryable"] is False
+    [job] = [row for row in after["source_fetch_jobs"] if row["source_fetch_job_id"] == job_id]
+    assert job["status"] == "dead_letter" and job["retryable"] is False
     assert job["checkpoint"]["normalized_document"] == source
     assert job["checkpoint"]["validation_hash"] == expected_report_hash
     with runtime.repo.connect() as conn:
