@@ -2311,6 +2311,44 @@ test('loopback TEST notices allow Buy and a deliberate retry after cancellation'
   assert.equal(h.orderReads(), 2);
 });
 
+test('purchase consent is reserved for an actionable quote and still requires agreement', async () => {
+  const h = paidPurchaseLifecycleHarness([]);
+  h.context.session.state.authenticated = false;
+  h.context.renderPurchase();
+  assert.equal(h.$('purchase-action').textContent, 'Sign in with Google');
+  assert.equal(h.$('purchase-consent').hidden, true);
+  assert.equal(h.$('agreement').disabled, true);
+  assert.equal(h.$('purchase-terms').hidden, false);
+
+  h.context.session.state.authenticated = true;
+  h.context.renderPurchase();
+  assert.equal(h.$('purchase-action').disabled, false);
+  assert.equal(h.$('purchase-consent').hidden, false);
+  assert.equal(h.$('agreement').disabled, false);
+  h.$('agreement').checked = false;
+  await h.context.purchase();
+  assert.equal(h.checkoutStarts(), 0);
+  assert.equal(h.context.document.activeElement, h.$('agreement'));
+  assert.equal(h.$('agreement').getAttribute('aria-invalid'), 'true');
+  assert.match(h.$('agreement-error').textContent, /Agree to the purchase terms/);
+
+  const held = deferredAuthOperation();
+  const start = h.context.checkout.start;
+  h.context.checkout.start = async (...args) => {
+    await held.promise;
+    return start(...args);
+  };
+  h.$('agreement').checked = true;
+  const submitting = h.context.purchase();
+  assert.equal(h.$('purchase-action').disabled, true);
+  assert.equal(h.$('purchase-consent').hidden, true);
+  assert.equal(h.$('agreement').disabled, true);
+  assert.equal(h.$('agreement').getAttribute('aria-invalid'), null);
+  held.resolve();
+  await submitting;
+  assert.equal(h.checkoutStarts(), 1);
+});
+
 test('paid catalog withdrawal through purchase never invites repayment or a no-op purchase retry', async () => {
   const withdrawn = Object.assign(new Error('Catalog withdrawn'), { status: 410, code: 'CATALOG_WITHDRAWN' });
   const h = paidPurchaseLifecycleHarness([withdrawn]);
@@ -2322,6 +2360,11 @@ test('paid catalog withdrawal through purchase never invites repayment or a no-o
   assert.match(h.$('purchase-message').textContent, /Payment received.*do not pay again/);
   assert.doesNotMatch(h.$('purchase-action').textContent, /Buy/);
   assert.equal(h.$('purchase-action').disabled, true);
+  assert.equal(h.$('purchase-consent').hidden, true);
+  assert.equal(h.$('agreement').disabled, true);
+  assert.equal(h.$('purchase-terms').hidden, false);
+  assert.equal(h.$('policy-links').children.filter(node => node.tag === 'a').length, 4);
+  assert.equal(h.$('tax-notice').textContent, h.context.merchant.tax_notice);
   assert.match(h.statuses.at(-1).message, /do not pay again/);
   assert.equal(h.statuses.at(-1).options.retry, undefined);
 });
@@ -2691,6 +2734,8 @@ test('processing checkout timeout keeps status check without an enabled Buy acti
   assert.match(h.$('purchase-message').textContent, /confirmation.*do not pay again/i);
   assert.doesNotMatch(h.$('purchase-action').textContent, /Buy|Payment received/);
   assert.equal(h.$('purchase-action').disabled, true);
+  assert.equal(h.$('purchase-consent').hidden, true);
+  assert.equal(h.$('agreement').disabled, true);
   await h.context.purchase(); // Direct activation must not start a second checkout.
   assert.equal(h.checkoutStarts(), 1);
 });
@@ -2806,6 +2851,8 @@ for (const state of ['expired', 'canceled', 'revoked', 'paid']) {
     assert.equal(h.$('check-order').hidden, true);
     if (['expired', 'canceled'].includes(state)) {
       assert.equal(h.$('purchase-action').disabled, false);
+      assert.equal(h.$('purchase-consent').hidden, false);
+      assert.equal(h.$('agreement').disabled, false);
       assert.match(h.$('purchase-action').textContent, /Buy for \$20 USD/);
       assert.match(h.statuses.at(-1).message, /Choose Buy again/);
     } else if (state === 'revoked') {
@@ -2816,6 +2863,9 @@ for (const state of ['expired', 'canceled', 'revoked', 'paid']) {
       assert.equal(h.context.access, 'owned');
       h.context.renderPurchase(); // The harness selectVehicle stub does not render its success path.
       assert.match(h.$('purchase-action').textContent, /Open articles/);
+      assert.equal(h.$('purchase-consent').hidden, true);
+      assert.equal(h.$('agreement').disabled, true);
+      assert.equal(h.$('purchase-terms').hidden, false);
     }
   });
 }

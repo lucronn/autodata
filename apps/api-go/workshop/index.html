@@ -156,17 +156,20 @@
           <p id="purchase-price"></p>
           <p id="purchase-message"></p>
           <div id="purchase-terms" hidden>
-            <label for="agreement"
-              ><input
-                id="agreement"
-                type="checkbox"
-                aria-describedby="agreement-error"
-              />
-              I agree to the purchase terms</label
-            >
+            <div id="purchase-consent" hidden>
+              <label for="agreement"
+                ><input
+                  id="agreement"
+                  type="checkbox"
+                  aria-describedby="agreement-error"
+                  disabled
+                />
+                I agree to the purchase terms</label
+              >
+              <p id="agreement-error"></p>
+            </div>
             <p id="policy-links"></p>
             <p id="tax-notice"></p>
-            <p id="agreement-error"></p>
           </div>
           <button id="purchase-action" type="button" disabled>
             Buy for $20 USD</button
