@@ -858,29 +858,44 @@ def automatic_runtime(runtime, provider, *, introduction="This procedure describ
 
 
 @pytest.mark.parametrize("provider", ["bankone", "banktwo"])
-def test_automatic_missing_table_caption_refresh_preserves_revision_pair(runtime, monkeypatch, provider):
+@pytest.mark.parametrize("from_v1", [False, True], ids=["legacy", "v1"])
+def test_automatic_missing_table_caption_refresh_preserves_revision_pair(runtime, monkeypatch, provider, from_v1):
     from hashlib import sha256
     import json
     from autodata_ingestion import source_article_capture
     from autodata_ingestion.article_lifecycle import run_article_worker_once
     from autodata_ingestion.article_lifecycle_store import load_source_revision
-    from autodata_ingestion.article_lifecycle_types import MISSING_TABLE_IMAGE_CAPTION_LAYOUT
+    from autodata_ingestion.article_lifecycle_types import (
+        MISSING_TABLE_IMAGE_CAPTION_LAYOUT,
+        MISSING_TABLE_IMAGE_CAPTION_LAYOUT_V2,
+    )
     from autodata_ingestion.mercury2 import Mercury2Client
 
     chart_ref = "chart/pressure"
-    captions = ["Read pressure above 2,000 rpm.", "Apply the outlet correction at altitude."]
+    pressure = "Read pressure above 2,000 rpm."
+    outlet = "Apply the outlet correction at altitude."
+    supply = "Check the supply illustration."
+    supply_ref = "chart/supply"
+    references = [(chart_ref, pressure), (chart_ref, outlet)]
+    prior_captions = [pressure]
+    authored_captions = [pressure, outlet]
+    if from_v1:
+        references = [(supply_ref, supply), (chart_ref, pressure), (supply_ref, supply), (chart_ref, outlet)]
+        prior_captions = [supply, pressure, supply, outlet]
+        authored_captions = [supply, pressure, outlet]
     article = {"blocks": [
         {"type": "paragraph", "text": "Remove the pump."},
         {"type": "table", "columns": ["Pressure"], "rows": [["500 kPa"]], "images": [
-            {"kind": "image", "asset_resource_ref": chart_ref, "caption": caption}
-            for caption in captions
+            {"kind": "image", "asset_resource_ref": ref, "caption": caption}
+            for ref, caption in references
         ]},
     ]}
     payload, media = article, "application/json"
     if provider == "banktwo":
         payload, media = {"_embedded": {"data": {"article": article}}}, "application/hal+json"
     raw = json.dumps(payload).encode()
-    runtime.servers[provider].body(raw, media, assets=[chart_ref])
+    asset_refs = list(dict.fromkeys(ref for ref, _ in references))
+    runtime.servers[provider].body(raw, media, assets=asset_refs)
     ensure = automatic_runtime(runtime, provider)
     model = Mercury2Client(api_key="fixture-model", base_url=runtime.model.url, model="fixture-mercury")
 
@@ -902,9 +917,17 @@ def test_automatic_missing_table_caption_refresh_preserves_revision_pair(runtime
         [table] = [block for block in document["blocks"] if block["type"] == "table"]
         return table["images"]
 
-    # Exercise the old projection with the same live worker, raw body, and missing asset response.
+    retain_captions = source_article_capture._retain_missing_table_captions
+
+    def published_caption_layout(table, missing_refs, first_ids):
+        if not from_v1:
+            return set(), False
+        # PR #483 applied the special layout only to resources with distinct captions.
+        return retain_captions(table, {key: ref for key, ref in missing_refs.items() if ref == chart_ref}, first_ids)
+
+    # Capture the same raw body and missing assets with the historical behavior.
     with monkeypatch.context() as legacy:
-        legacy.setattr(source_article_capture, "_retain_missing_table_captions", lambda *_: {})
+        legacy.setattr(source_article_capture, "_retain_missing_table_captions", published_caption_layout)
         work(ensure().job_id)
     prior = runtime.read_current()
     assert prior["content_origin"] == "canonical", runtime.diagnostics()
@@ -912,13 +935,17 @@ def test_automatic_missing_table_caption_refresh_preserves_revision_pair(runtime
     prior_source = load_source_revision(runtime.repo, prior_source_id)
     prior_canonical = revision(prior_canonical_id)
     marker = "missing_table_image_caption_layout"
-    missing = {"role": "asset", "opaque_ref": chart_ref, "failure_code": "SOURCE_NOT_FOUND"}
+    missing = [{"role": "asset", "opaque_ref": ref, "failure_code": "SOURCE_NOT_FOUND"} for ref in asset_refs]
+    previous_layout = MISSING_TABLE_IMAGE_CAPTION_LAYOUT if from_v1 else None
+    next_layout = MISSING_TABLE_IMAGE_CAPTION_LAYOUT_V2 if from_v1 else MISSING_TABLE_IMAGE_CAPTION_LAYOUT
+    active_counts = {"source": 1, "asset": len(asset_refs), "model": 1, "schedule": 1}
     assert prior_canonical["source_revision_id"] == prior_source_id
-    assert prior_source.resource_manifest[1:] == [missing] and marker not in prior_source.resource_manifest[0]
-    assert [image["caption"] for image in figures(prior_source.source_document)] == captions[:1]
+    assert prior_source.resource_manifest[1:] == missing
+    assert prior_source.resource_manifest[0].get(marker) == previous_layout
+    assert [image["caption"] for image in figures(prior_source.source_document)] == prior_captions
     assert figures(prior["document"]) == figures(prior_source.source_document)
     assert prior["source_content_sha256"] == sha256(raw).hexdigest()
-    assert runtime.counters() == {"source": 1, "asset": 1, "model": 1, "schedule": 1}
+    assert runtime.counters() == active_counts
 
     def assert_prior_revision():
         assert load_source_revision(runtime.repo, prior_source_id) == prior_source
@@ -944,15 +971,15 @@ def test_automatic_missing_table_caption_refresh_preserves_revision_pair(runtime
         assert refreshed_source.body_source_snapshot_id == prior_source.body_source_snapshot_id
         assert refreshed_source.source_fingerprint != prior_source.source_fingerprint
         assert refreshed_source.resource_manifest == [
-            {**prior_source.resource_manifest[0], marker: MISSING_TABLE_IMAGE_CAPTION_LAYOUT}, missing,
+            {**prior_source.resource_manifest[0], marker: next_layout}, *missing,
         ]
         figures_in_table = figures(source_view["document"])
-        assert [image["caption"] for image in figures_in_table] == captions
-        assert len({image["image_id"] for image in figures_in_table}) == 1
+        assert [image["caption"] for image in figures_in_table] == authored_captions
+        assert len({image["image_id"] for image in figures_in_table}) == len(asset_refs)
         assert all(image["unavailable_reason"] == "SOURCE_NOT_FOUND" for image in figures_in_table)
         assert_prior_revision()
 
-    refresh = runtime.refresh(reason="capture separately authored missing chart captions")
+    refresh = runtime.refresh(reason="capture authored missing chart captions")
     work(refresh.job_id, hooks=inspect_committed_source)
     assert refreshed_source is not None
     current = runtime.read_current()
@@ -963,7 +990,7 @@ def test_automatic_missing_table_caption_refresh_preserves_revision_pair(runtime
     assert revision(current_canonical_id)["source_revision_id"] == refreshed_source.source_revision_id
     assert "Take off the pump." in current["body"]
     assert figures(current["document"]) == figures(refreshed_source.source_document)
-    assert runtime.counters() == {"source": 1, "asset": 1, "model": 1, "schedule": 1}
+    assert runtime.counters() == active_counts
     assert_prior_revision()
 
     runtime.reset_counters()
@@ -974,7 +1001,7 @@ def test_automatic_missing_table_caption_refresh_preserves_revision_pair(runtime
     assert reused["source_revision_id"] == refreshed_source.source_revision_id
     assert reused["canonical_revision_id"] == current_canonical_id
     assert reused["document"] == current["document"]
-    assert runtime.counters() == {"source": 1, "asset": 1, "model": 0, "schedule": 1}
+    assert runtime.counters() == {**active_counts, "model": 0}
     assert_prior_revision()
 
     with runtime.repo.connect() as conn:

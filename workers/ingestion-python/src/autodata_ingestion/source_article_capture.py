@@ -18,6 +18,7 @@ from .article_lifecycle_types import (
     HTML_TABLE_SPAN_LAYOUT,
     LEADING_DECIMAL_LAYOUT,
     MISSING_TABLE_IMAGE_CAPTION_LAYOUT,
+    MISSING_TABLE_IMAGE_CAPTION_LAYOUT_V2,
     PDF_BLANK_PAGE_LAYOUT,
     PDF_COMPACT_FIGURE_LAYOUT,
     PDF_LEGACY_FIGURE_LAYOUT,
@@ -191,22 +192,32 @@ def _mark_json_table_cells(blocks, *, keep_rows, keep_columns):
 
 
 def _retain_missing_table_captions(table, missing_refs, first_image_ids):
-    """Share asset identity for independently captioned, missing table figures."""
+    """Share a missing figure's identity when legacy table dedup loses or repeats captions."""
     captions = {}
+    legacy_captions = {}
     for image in table_image_summaries(table):
         ref = missing_refs.get(id(image))
-        if ref is not None and (caption := authored_image_caption(image)):
+        if ref is None:
+            continue
+        caption = authored_image_caption(image)
+        legacy_captions.setdefault(ref, {}).setdefault(image["image_id"], caption)
+        if caption:
             captions.setdefault(ref, set()).add(caption)
     distinct_refs = {ref for ref, values in captions.items() if len(values) > 1}
-    if not distinct_refs:
-        return set()
+    single_caption_repairs = {
+        ref for ref, values in captions.items()
+        if len(values) == 1 and list(legacy_captions[ref].values()) != list(values)
+    }
+    affected_refs = distinct_refs | single_caption_repairs
+    if not affected_refs:
+        return set(), False
     # The legacy ID includes the running asset position, which can differ
     # after an intervening image. Use the first captured ID inside this table.
     for image in _image_nodes(table):
         ref = missing_refs.get(id(image))
-        if ref in distinct_refs:
+        if ref in affected_refs:
             image["image_id"] = first_image_ids[ref]
-    return {first_image_ids[ref] for ref in distinct_refs}
+    return {first_image_ids[ref] for ref in affected_refs}, bool(single_caption_repairs)
 
 
 def project_document(
@@ -880,12 +891,15 @@ def capture_source_article(
                 for item in node.get("items", []):
                     if isinstance(item, dict) and isinstance(item.get("blocks"), list):
                         _attach_figure_captions(item["blocks"], "_html_flow_figure_caption")
-    retained_missing_table_captions = False
+    caption_layout = None
 
     def missing_caption_ids_for_table(table):
-        nonlocal retained_missing_table_captions
-        caption_ids = _retain_missing_table_captions(table, missing_refs, first_missing_image_ids)
-        retained_missing_table_captions = retained_missing_table_captions or bool(caption_ids)
+        nonlocal caption_layout
+        caption_ids, single_caption_repaired = _retain_missing_table_captions(table, missing_refs, first_missing_image_ids)
+        if single_caption_repaired:
+            caption_layout = MISSING_TABLE_IMAGE_CAPTION_LAYOUT_V2
+        elif caption_ids and caption_layout is None:
+            caption_layout = MISSING_TABLE_IMAGE_CAPTION_LAYOUT
         return caption_ids
 
     doc = build_ordered_document(
@@ -897,10 +911,10 @@ def capture_source_article(
         step_parser=step_parser,
         table_caption_ids=missing_caption_ids_for_table if missing_refs else None,
     )
-    if retained_missing_table_captions:
+    if caption_layout:
         new_structure = True
         for record in (resources[0], provenance[0], manifest[0]):
-            record["missing_table_image_caption_layout"] = MISSING_TABLE_IMAGE_CAPTION_LAYOUT
+            record["missing_table_image_caption_layout"] = caption_layout
     for node in _image_nodes(doc["blocks"]):
         local = image_records.get(node.get("image_id"))
         document_evidence = [evidence for evidence in node.get("evidence_ids", []) if evidence in evidence_sources]

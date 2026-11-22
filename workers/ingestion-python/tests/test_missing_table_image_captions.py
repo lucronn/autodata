@@ -11,7 +11,10 @@ import pytest
 from reportlab.pdfgen import canvas
 
 from autodata_ingestion.article_document import validate_ordered_document
-from autodata_ingestion.article_lifecycle_types import MISSING_TABLE_IMAGE_CAPTION_LAYOUT
+from autodata_ingestion.article_lifecycle_types import (
+    MISSING_TABLE_IMAGE_CAPTION_LAYOUT,
+    MISSING_TABLE_IMAGE_CAPTION_LAYOUT_V2,
+)
 from autodata_ingestion.procedure_normalize import normalize_procedure_article
 from autodata_ingestion.procedure_rewrite_auto import render_auto, validate_auto
 from autodata_ingestion.procedure_rewrite_full import prose_slots
@@ -197,6 +200,43 @@ def test_missing_captions_in_unvisited_supplier_metadata_keep_legacy_fingerprint
     assert captured.source_document == previous.source_document
     assert captured.source_fingerprint == previous.source_fingerprint
     assert LAYOUT_FIELD not in captured.resource_manifest[0]
+
+
+@pytest.mark.parametrize("provider", ["bankone", "banktwo"])
+@pytest.mark.parametrize("order", ["interleaved", "captionless-first"])
+def test_missing_table_chart_keeps_one_authored_caption(capture_fixture, provider, order, monkeypatch):
+    chart = _image(CHART, PRESSURE_CAPTION)
+    denied = _image(OTHER, OTHER_CAPTION)
+    if order == "interleaved":
+        figures = [chart, denied, _image(CHART, label="  Read pressure above   2,000 rpm. ")]
+    else:
+        figures = [_image(CHART, alt="Uncaptioned summary"), chart, denied]
+    raw, _ = _body(capture_fixture, provider, figures)
+    _deny(capture_fixture, provider, OTHER, monkeypatch)
+    context = capture_fixture.context(provider)
+    historical = _capture(capture_fixture, context, structured=False)
+    historical_images = historical.source_document["blocks"][1]["images"]
+    if order == "interleaved":
+        assert [image["caption"] for image in historical_images] == [PRESSURE_CAPTION, OTHER_CAPTION, PRESSURE_CAPTION]
+        assert historical_images[0]["image_id"] != historical_images[2]["image_id"]
+    else:
+        assert "caption" not in historical_images[0]
+
+    repaired = _capture(capture_fixture, context)
+    images = repaired.source_document["blocks"][1]["images"]
+    assert [image["caption"] for image in images] == [PRESSURE_CAPTION, OTHER_CAPTION]
+    assert images[0]["image_id"] == historical_images[0]["image_id"]
+    assert images[0]["unavailable_reason"] == "SOURCE_NOT_FOUND"
+    assert images[1]["unavailable_reason"] == "UNAUTHORIZED"
+    assert not validate_ordered_document(repaired.source_document, strict=True)
+    assert repaired.source_images == images
+    assert repaired.source_fingerprint != historical.source_fingerprint
+    for record in (repaired.resources[0], repaired.resource_provenance[0], repaired.resource_manifest[0]):
+        assert record[LAYOUT_FIELD] == MISSING_TABLE_IMAGE_CAPTION_LAYOUT_V2
+    assert repaired.resources[0]["sha256"] == historical.resources[0]["sha256"] == sha256(raw).hexdigest()
+    assert repaired.resource_manifest[1:] == historical.resource_manifest[1:]
+    assert repaired.evidence_manifest == historical.evidence_manifest
+    assert capture_fixture.resource_calls(provider, CHART) == capture_fixture.resource_calls(provider, OTHER) == 2
 
 
 @pytest.mark.parametrize("provider", ["bankone", "banktwo"])

@@ -30,6 +30,7 @@ STRUCTURED_TABLE_COLUMNS_LAYOUT = "structured-table-columns-v1"
 STRUCTURED_TABLE_COLUMN_ORDER_LAYOUT = "structured-table-column-order-v1"
 STRUCTURED_TABLE_CELL_ORDER_LAYOUT = "structured-table-cell-order-v1"
 MISSING_TABLE_IMAGE_CAPTION_LAYOUT = "missing-table-image-captions-v1"
+MISSING_TABLE_IMAGE_CAPTION_LAYOUT_V2 = "missing-table-image-captions-v2"
 SOURCE_PROJECTION_VERSIONS = (
     "source-projection-v1",
     "source-projection-v2",
