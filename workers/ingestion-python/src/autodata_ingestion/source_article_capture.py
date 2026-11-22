@@ -19,6 +19,7 @@ from .article_lifecycle_types import (
     LEADING_DECIMAL_LAYOUT,
     MISSING_TABLE_IMAGE_CAPTION_LAYOUT,
     MISSING_TABLE_IMAGE_CAPTION_LAYOUT_V2,
+    MISSING_TABLE_IMAGE_CAPTION_LAYOUT_V3,
     PDF_BLANK_PAGE_LAYOUT,
     PDF_COMPACT_FIGURE_LAYOUT,
     PDF_LEGACY_FIGURE_LAYOUT,
@@ -218,6 +219,37 @@ def _retain_missing_table_captions(table, missing_refs, first_image_ids):
         if ref in affected_refs:
             image["image_id"] = first_image_ids[ref]
     return {first_image_ids[ref] for ref in affected_refs}, bool(single_caption_repairs)
+
+
+def _drop_duplicate_missing_table_summaries(blocks, missing_image_refs):
+    def caption_key(image):
+        ref = missing_image_refs.get(image.get("image_id"))
+        caption = image.get("caption")
+        return (ref, caption) if ref and caption else None
+
+    tables = [block for block in _walk(blocks) if block.get("type") == "table" and block.get("images")]
+    repaired = False
+    # Process nested tables first so outer tables see only retained cell figures.
+    for table in reversed(tables):
+        cell_captions = {}
+        for cells in (table.get("columns", []), table.get("rows", [])):
+            for image in _image_nodes(cells):
+                key = caption_key(image)
+                if key:
+                    cell_captions.setdefault(key, set()).add(image["image_id"])
+        retained = []
+        for image in table["images"]:
+            ids = cell_captions.get(caption_key(image))
+            # Readers already suppress a summary with the same image ID and caption.
+            if not ids or image.get("image_id") in ids:
+                retained.append(image)
+        if len(retained) != len(table["images"]):
+            repaired = True
+            if retained:
+                table["images"] = retained
+            else:
+                del table["images"]
+    return repaired
 
 
 def project_document(
@@ -788,6 +820,7 @@ def capture_source_article(
     positioned = set()
     image_records = {}
     missing_refs = {}
+    missing_image_refs = {}
     first_missing_image_ids = {}
     for node in _walk(blocks):
         if not html_table_spans:
@@ -854,6 +887,7 @@ def capture_source_article(
                 )
                 if authored_json_blocks and ref in missing_asset_refs:
                     missing_refs[id(node)] = ref
+                    missing_image_refs[node["image_id"]] = ref
                     first_missing_image_ids.setdefault(ref, node["image_id"])
             image_records[node["image_id"]] = deepcopy(node)
     for ref in refs:
@@ -911,6 +945,8 @@ def capture_source_article(
         step_parser=step_parser,
         table_caption_ids=missing_caption_ids_for_table if missing_refs else None,
     )
+    if missing_image_refs and _drop_duplicate_missing_table_summaries(doc["blocks"], missing_image_refs):
+        caption_layout = MISSING_TABLE_IMAGE_CAPTION_LAYOUT_V3
     if caption_layout:
         new_structure = True
         for record in (resources[0], provenance[0], manifest[0]):
