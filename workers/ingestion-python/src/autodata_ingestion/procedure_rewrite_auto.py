@@ -180,7 +180,10 @@ _ROTATION_WORDING = re.compile(
     r"turn(?:ed|ing)?\s+(?:the|each|an?|this|that))\b",
     re.IGNORECASE,
 )
-_ROTARY_DIRECTION = re.compile(r"\b(?:(?P<opposite>anti|counter)[\t ‐‑-]?)?clockwise\b", re.IGNORECASE)
+_ROTARY_DIRECTION = re.compile(
+    r"\b(?:(?P<opposite>anti|counter)(?:\s*[-‐‑‒–—−\u00ad]\s*|\s+)?)?clockwise\b",
+    re.IGNORECASE,
+)
 
 
 def _alternate_torque_scope(text):
@@ -319,6 +322,18 @@ _DIRECTED_ROTATION = re.compile(
     rf"(?:in\s+(?:a|the)\s+)?{_ROTARY_DIRECTION.pattern}",
     re.IGNORECASE,
 )
+_ROTARY_UNCERTAIN = re.compile(
+    r"\b(?:not|no|never|without|only|either|or|if|unless|except|rather|instead|possibly|maybe|"
+    r"optional(?:ly)?|while|simultaneously)\b", re.IGNORECASE,
+)
+_ROTARY_UNTIL = re.compile(r"\buntil\b", re.IGNORECASE)
+_ROTARY_BY = re.compile(r"\bby$", re.IGNORECASE)
+_ROTARY_TO_ALIGN = re.compile(r"\bto\s+align\b", re.IGNORECASE)
+_ROTARY_ALIGNMENT_TARGET = rf"(?:the\s+)?(?P<endpoint>{_TARGET_WORD}(?:\s+{_TARGET_WORD}){{0,5}}?)"
+_ROTARY_UNTIL_ALIGNMENT = re.compile(rf"until\s+{_ROTARY_ALIGNMENT_TARGET}\s+aligns?", re.IGNORECASE)
+_ROTARY_ALIGNMENT_MEANS = re.compile(rf"bring\s+{_ROTARY_ALIGNMENT_TARGET}\s+into\s+alignment\s+by", re.IGNORECASE)
+_ROTARY_ALIGNMENT_PURPOSE = re.compile(rf"to\s+align\s+{_ROTARY_ALIGNMENT_TARGET}", re.IGNORECASE)
+_ROTARY_ALIGN_BY = re.compile(rf"align\s+{_ROTARY_ALIGNMENT_TARGET}\s+by", re.IGNORECASE)
 _LUBRICANT_MATERIAL = (
     rf"(?P<prohibition>no\s+)?(?:the\s+)?(?P<material>(?:{_TARGET_WORD}\s+){{0,5}}(?:grease|lubricant|oil))"
 )
@@ -1536,8 +1551,12 @@ def build_auto_prompt(document, *, context):
     payload = _auto_prompt_payload_v49(document, context=context)
     if payload["slots"]:
         payload["prompt_version"] = _PROSE_PROMPT_VERSION
+        for slot in payload["slots"]:
+            if slot["required_action"] == "rewrite" and _qualitative_rotations(slot["text"]) is None:
+                slot["required_action"] = "retain"
         payload["rules"].append(
-            "Keep each clockwise or counterclockwise rotation on the same component. "
+            "Keep each clockwise or counterclockwise rotation on the same component and preserve its order "
+            "and stopping condition. Retain instructions with unclear rotation details exactly. "
             "Restructure a short rotation instruction instead of swapping one word."
         )
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
@@ -1616,27 +1635,79 @@ def _rotary_direction(match):
     return "counterclockwise" if match["opposite"] else "clockwise"
 
 
-def _directed_rotations(text):
+def _rotation_alignment_endpoint(prefix, suffix):
+    prefix_claim = _ROTARY_BY.search(prefix) or _ROTARY_TO_ALIGN.search(prefix)
+    suffix_claim = _ROTARY_UNTIL.search(suffix) or _ROTARY_TO_ALIGN.search(suffix)
+    if _ROTARY_UNTIL.search(prefix) or (prefix_claim and suffix_claim):
+        return None
+    if prefix_claim:
+        alignment = (_ROTARY_ALIGNMENT_MEANS.fullmatch(prefix) or _ROTARY_ALIGN_BY.fullmatch(prefix)
+                     or _ROTARY_ALIGNMENT_PURPOSE.fullmatch(prefix))
+    elif suffix_claim:
+        alignment = _ROTARY_UNTIL_ALIGNMENT.fullmatch(suffix) or _ROTARY_ALIGNMENT_PURPOSE.fullmatch(suffix)
+    else:
+        return ()
+    if alignment is None:
+        return None
+    target = tuple(_WORDS.findall(alignment["endpoint"].casefold()))
+    return target if _TARGET_DELIMITERS.isdisjoint(target) else None
+
+
+def _rotations_in_clause(clause):
+    matches = list(_DIRECTED_ROTATION.finditer(clause))
+    if len(matches) != sum(1 for _ in _ROTARY_DIRECTION.finditer(clause)):
+        return None
     rotations = []
-    for match in _DIRECTED_ROTATION.finditer(text):
+    previous_end = 0
+    for index, match in enumerate(matches):
         target = tuple(_WORDS.findall(match["target"].casefold()))
-        if _TARGET_DELIMITERS.isdisjoint(target):
-            rotations.append((target, _rotary_direction(match)))
+        if not _TARGET_DELIMITERS.isdisjoint(target):
+            return None
+        next_start = matches[index + 1].start() if index + 1 < len(matches) else len(clause)
+        prefix = clause[previous_end:match.start()].strip(" ,.!?")
+        suffix = clause[match.end():next_start].strip(" ,.!?")
+        previous_end = match.end()
+        endpoint = _rotation_alignment_endpoint(prefix, suffix)
+        if endpoint is None:
+            return None
+        rotations.append((target, _rotary_direction(match), endpoint))
     return rotations
 
 
-def _check_qualitative_rotation(original, replacement):
-    source_directions = [_rotary_direction(match) for match in _ROTARY_DIRECTION.finditer(original)]
-    draft_directions = [_rotary_direction(match) for match in _ROTARY_DIRECTION.finditer(replacement)]
-    if source_directions != draft_directions:
+def _qualitative_rotations(text):
+    if not _ROTARY_DIRECTION.search(text):
+        return ()
+    rotations = []
+    # Remove wrapped direction spellings before sentence or timing boundaries
+    # are inspected, otherwise the clockwise suffix can look like a new claim.
+    normalized = _ROTARY_DIRECTION.sub(_rotary_direction, text)
+    for sentence in _SENTENCES.split(normalized):
+        if not _ROTARY_DIRECTION.search(sentence):
+            continue
+        if _ROTARY_UNCERTAIN.search(sentence):
+            return None
+        timing = list(_TIMING.finditer(sentence))
+        if timing:
+            if len(timing) != 1 or _ROTARY_UNTIL.search(sentence):
+                return None
+            clauses = tuple(_chronological_clauses(sentence))
+            if len(clauses) != 2 or not all(_ROTARY_DIRECTION.search(clause) for clause in clauses):
+                return None
+        else:
+            clauses = (sentence,)
+        for clause in clauses:
+            bound = _rotations_in_clause(clause)
+            if bound is None:
+                return None
+            rotations.extend(bound)
+    return tuple(rotations)
+
+
+def _check_qualitative_rotation(original, replacement, source_rotations):
+    if source_rotations != _qualitative_rotations(replacement):
         raise ValueError("REWRITE_DIRECTION_MUTATION")
-    if not source_directions:
+    if not source_rotations:
         return
-    rotations = _directed_rotations(original)
-    if len(rotations) != len(source_directions):
-        return
-    if rotations != _directed_rotations(replacement):
-        raise ValueError("REWRITE_DIRECTION_MUTATION")
     # For proven short rotation instructions, one vocabulary change is
     # insufficient. Normalize equivalent spellings of the direction first.
     source_words = _ordinary_prose_words(_ROTARY_DIRECTION.sub(_rotary_direction, original))
@@ -2822,6 +2893,12 @@ def _require_changes(source, candidate, *, prompt_version):
             if original != replacement:
                 raise ValueError("REWRITE_SPEC_SCOPE_MUTATION")
             continue
+        if guard_qualitative_rotation:
+            source_rotations = _qualitative_rotations(original)
+            if source_rotations is None:
+                if original != replacement:
+                    raise ValueError("REWRITE_DIRECTION_MUTATION")
+                continue
         if (_WORDS.findall(replacement.casefold()) == _WORDS.findall(original.casefold())
                 and not technical_only):
             raise ValueError("REWRITE_UNCHANGED")
@@ -2920,7 +2997,7 @@ def _require_changes(source, candidate, *, prompt_version):
         ):
             raise ValueError("REWRITE_QUALIFIER_MUTATION")
         if guard_qualitative_rotation:
-            _check_qualitative_rotation(original, replacement)
+            _check_qualitative_rotation(original, replacement, source_rotations)
     if guard_claims:
         directive = _directive_with_inspection_focus if guard_inspection_target_swaps else _simple_directive
         _check_target_swaps(slots, restored, directive=directive)

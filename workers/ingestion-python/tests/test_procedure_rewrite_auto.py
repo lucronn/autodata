@@ -3652,6 +3652,17 @@ _REVERSED_QUALITATIVE_ROTATION = (
         "Rotate the adjuster clockwise, then turn the spindle counterclockwise.",
         "Turn the spindle clockwise before rotating the adjuster counterclockwise.",
     ),
+    (
+        "Rotate the adjuster clockwise, then turn the spindle counterclockwise.",
+        "Rotate the adjuster clockwise after turning the spindle counterclockwise.",
+    ),
+    (_QUALITATIVE_ROTATION, "Align the guide slots before turning the adjuster clockwise."),
+    (_QUALITATIVE_ROTATION, "Bring the pressure slot into alignment by turning the adjuster clockwise."),
+    (_QUALITATIVE_ROTATION, "Bring the guide slots into alignment by turning the adjuster clockwise if needed."),
+    (
+        "Turn the spindle counter-clockwise to align the marks.",
+        "Align the cap by rotating the spindle anticlockwise.",
+    ),
 ])
 def test_automatic_rewrite_preserves_qualitative_rotation_direction(in_cell, original, draft):
     from autodata_ingestion import procedure_rewrite_auto as auto
@@ -3676,6 +3687,10 @@ def test_automatic_rewrite_preserves_qualitative_rotation_direction(in_cell, ori
         "Turn the spindle counter-clockwise to align the marks.",
         "Align the marks by rotating the spindle anticlockwise.",
     ),
+    (
+        "Rotate the adjuster clockwise, then turn the spindle counterclockwise.",
+        "Turn the spindle anticlockwise after rotating the adjuster clockwise.",
+    ),
 ])
 def test_automatic_rewrite_accepts_restructured_qualitative_rotation(in_cell, original, draft):
     from autodata_ingestion import procedure_rewrite_auto as auto
@@ -3690,6 +3705,67 @@ def test_automatic_rewrite_accepts_restructured_qualitative_rotation(in_cell, or
     assert result.error_code is None
     assert auto.validate_auto(source, result.document, response=payload).passed
     assert draft in project_ordered_document(result.document)["body"]
+
+
+@pytest.mark.parametrize("in_cell", [False, True], ids=["article", "table-cell"])
+@pytest.mark.parametrize("direction", ["counter-\nclockwise", "counter- clockwise", "counter–clockwise", "anti‑clockwise"])
+def test_automatic_rewrite_preserves_wrapped_rotary_direction(in_cell, direction):
+    from autodata_ingestion import procedure_rewrite_auto as auto
+
+    source = _scoped_prose_source(
+        f"Turn the adjuster {direction} until the guide slots align.", in_cell=in_cell,
+    )
+    prompt = auto.build_auto_prompt(source, context={})
+    reversed_payload = _scoped_prose_response(prompt, _QUALITATIVE_ROTATION_RESTATEMENT)
+    rejected = run(source, reversed_payload)
+    assert rejected.error_code == "REWRITE_DIRECTION_MUTATION"
+    assert rejected.document == source
+
+    payload = _scoped_prose_response(prompt, _REVERSED_QUALITATIVE_ROTATION)
+    faithful = run(source, payload)
+    assert faithful.error_code is None
+    assert auto.validate_auto(source, faithful.document, response=payload).passed
+
+
+@pytest.mark.parametrize("in_cell", [False, True], ids=["article", "table-cell"])
+@pytest.mark.parametrize("original,draft", [
+    (
+        "Turn the pump’s shaft clockwise.",
+        "Use a clockwise rotation on the spindle.",
+    ),
+    (
+        "Turn the adjuster slowly clockwise.",
+        "Use a clockwise rotation on the spindle.",
+    ),
+    (
+        "Turn the adjuster clockwise or counterclockwise.",
+        "Rotate the spindle in a clockwise or counterclockwise direction.",
+    ),
+    (
+        "Turn the adjuster not clockwise.",
+        "Use a clockwise rotation on the spindle.",
+    ),
+    (
+        "Rotate the adjuster clockwise until the detent engages.",
+        "Use a clockwise rotation on the spindle.",
+    ),
+])
+def test_automatic_rewrite_retains_unproven_rotary_scope(in_cell, original, draft):
+    from autodata_ingestion import procedure_rewrite_auto as auto
+    from autodata_ingestion.article_document import project_ordered_document
+
+    source = _scoped_prose_source(original, in_cell=in_cell)
+    prompt = auto.build_auto_prompt(source, context={})
+    payload = _scoped_prose_response(prompt, draft)
+    assert json.loads(prompt)["slots"][-1]["required_action"] == "retain"
+    rejected = run(source, payload)
+    assert rejected.error_code == "REWRITE_DIRECTION_MUTATION"
+    assert rejected.document == source
+
+    payload["replacements"][-1].update(action="retain", text=original, reason="Keep the exact source rotation.")
+    retained = run(source, payload)
+    assert retained.error_code is None
+    assert original in project_ordered_document(retained.document)["body"]
 
 
 @pytest.mark.parametrize("in_cell", [False, True], ids=["article", "table-cell"])
