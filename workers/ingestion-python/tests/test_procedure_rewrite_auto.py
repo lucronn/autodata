@@ -1303,6 +1303,16 @@ _REVERSED_RETAINING_PIN_FORCE = "When pressing the retaining pin, apply at least
     ("Pull the retaining clip at 35 N.", "At 35 N, push the retaining clip."),
     ("At 35 N, press the retaining pin.", "Use the guide pin with 35 N."),
     ("Press the retaining pin:35 N.", "Press the guide pin:35 N."),
+    ("The retaining pin must be pressed with 35 N.", "The guide pin must be pulled with 35 N."),
+    ("The insertion effort is 35 N.", "Removal effort is 35 N."),
+    ("The insertion force stays below 35 N.", "The insertion force stays above 35 N."),
+    ("The load remains below 35 N throughout travel.", "The load remains above 35 N throughout travel."),
+    ("Connector 35 N maximum.", "Connector 35 N minimum."),
+    ("Connector 30–35 N.", "Terminal 30–35 N."),
+    (
+        "The insertion effort at terminal 35 N is 35 N.",
+        "Removal effort at terminal 35 N is 35 N.",
+    ),
 ])
 def test_automatic_rewrite_retains_unproved_measured_force(in_cell, original, draft):
     from autodata_ingestion import procedure_rewrite_auto as auto
@@ -1335,6 +1345,7 @@ def test_automatic_rewrite_retains_unproved_measured_force(in_cell, original, dr
 @pytest.mark.parametrize("draft", [
     "The maximum force on the clip is 35 N.",
     "This procedure describes the 35 N maximum.",
+    "This procedure specifies an insertion effort of 35 N.",
 ])
 def test_automatic_rewrite_rejects_force_claims_in_the_introduction(draft):
     source = document("Remove the retaining clip.", _RETAINING_PIN_FORCE)
@@ -1344,9 +1355,13 @@ def test_automatic_rewrite_rejects_force_claims_in_the_introduction(draft):
     assert run(source, payload).error_code == "REWRITE_SPEC_SCOPE_MUTATION"
 
 
-def test_automatic_rewrite_rejects_repurposing_a_terminal_label_as_measured_force():
+@pytest.mark.parametrize("draft", [
+    "Use a force of at most 35 N to pull the wiring harness plug.",
+    "The retaining pin must be pressed with 35 N.",
+])
+def test_automatic_rewrite_rejects_repurposing_a_terminal_label_as_measured_force(draft):
     source = document("The retaining guide fits terminal 35 N on the test board.")
-    payload = response("Use a force of at most 35 N to pull the wiring harness plug.")
+    payload = response(draft)
 
     assert run(source, payload).error_code == "REWRITE_SPEC_SCOPE_MUTATION"
 
@@ -1365,6 +1380,10 @@ def test_automatic_rewrite_rejects_repurposing_a_terminal_label_as_measured_forc
         "The electrical load uses connector 35 N on the test board.",
         "On the test board, connector 35 N serves the electrical load.",
     ),
+    (
+        "Hold the electrical connector labeled: 35 N.",
+        "Hold the electrical connector designated: 35 N.",
+    ),
 ])
 def test_automatic_rewrite_keeps_non_force_terminal_label_editable(in_cell, original, draft):
     from autodata_ingestion import procedure_rewrite_auto as auto
@@ -1378,11 +1397,13 @@ def test_automatic_rewrite_keeps_non_force_terminal_label_editable(in_cell, orig
 
 
 @pytest.mark.parametrize("text", [
+    "Apply 35 N·m to the actuator.",
     "Apply 35 kN·m to the actuator.",
     "Apply 35 kN m to the actuator.",
     "Apply 35 lbf ft to the actuator.",
     "Apply 35 newton metres to the actuator.",
     "The stress rating is 35 kN/mm².",
+    "The expression uses 35 N².",
     "The expression uses 35 kN².",
 ])
 def test_measured_force_excludes_compound_units(text):

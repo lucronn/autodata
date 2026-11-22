@@ -182,18 +182,16 @@ _FORCE_SPECIFIC_UNIT = (
     rf"|(?:lbf|(?i:pounds?[ -]+force)){_FORCE_POUND_TORQUE_TAIL})"
 )
 _FORCE_UNIT_END = r"(?![\w/·⋅×*^−-]|\.\w|\s*[·⋅×*/^]|\s+(?i:per)\b)"
-_FORCE_VALUE = re.compile(
-    _MEASUREMENT_AMOUNT + rf"(?:N{_FORCE_NEWTON_TORQUE_TAIL}|{_FORCE_SPECIFIC_UNIT})" + _FORCE_UNIT_END,
+_FORCE_BARE_UNIT = rf"N{_FORCE_NEWTON_TORQUE_TAIL}"
+_TERMINAL_LABEL_PREFIX = (
+    r"(?i:\b(?:connector|terminal)[ \t]+"
+    r"(?:(?:labeled|labelled|designated|marked)(?:[ \t]*[:#][ \t]*|[ \t]+)"
+    r"|(?:(?:sits|lies)[ \t]+)?directly[ \t]+(?:above|below)[ \t]+)?)"
 )
-_FORCE_EXPLICIT_VALUE = re.compile(_MEASUREMENT_AMOUNT + _FORCE_SPECIFIC_UNIT + _FORCE_UNIT_END)
-_FORCE_NOUN = r"(?:forces?|tension|compression|(?:pre)?loads?)"
-_FORCE_MEASUREMENT_CONTEXT = re.compile(
-    r"(?i:\b(?:apply|exert|at\s+(?:most|least)|"
-    r"(?:no\s+)?(?:more|less|greater|higher|lower)\s+than|"
-    rf"(?:up|down)\s+to|(?:max(?:imum)?|min(?:imum)?)(?:\s+of)?)\s+){_FORCE_VALUE.pattern}"
-    rf"|(?i:\blimit(?:s|ed|ing)?\b[^.;!?]{{0,96}}?\bto\s+){_FORCE_VALUE.pattern}"
-    rf"|{_FORCE_VALUE.pattern}(?i:\s+(?:max(?:imum)?|min(?:imum)?|or\s+(?:more|less|greater|higher|lower))\b)"
-    rf"|(?:<=|>=|[<>≤≥])\s*{_FORCE_VALUE.pattern}",
+_FORCE_OR_TERMINAL_LABEL = re.compile(
+    rf"(?P<label>{_TERMINAL_LABEL_PREFIX}[0-9]+[ \t]*{_FORCE_BARE_UNIT}{_FORCE_UNIT_END}"
+    r"(?!\s+(?i:of\s+force|(?:or\s+)?(?:max(?:imum)?|min(?:imum)?|more|less|greater|higher|lower))\b))"
+    rf"|{_MEASUREMENT_AMOUNT}(?:{_FORCE_BARE_UNIT}|{_FORCE_SPECIFIC_UNIT}){_FORCE_UNIT_END}",
 )
 _ROTATION_VALUE = re.compile(_MEASUREMENT_AMOUNT + r"(?i:turns?|degrees?)(?![\w/·⋅^-]|\.\w)")
 _ROTATION_WORDING = re.compile(
@@ -236,15 +234,9 @@ def _pressure_scope(text):
 
 
 def _measured_force_scope(text):
-    # A bare N can be a connector label. Bind it to a measurement cue,
-    # a named force quantity, or a physical operation on a component.
-    return bool(_FORCE_VALUE.search(text) and (
-        _FORCE_EXPLICIT_VALUE.search(text)
-        or _FORCE_MEASUREMENT_CONTEXT.search(text)
-        or _FORCE_NAMED_VALUE.search(text)
-        or _FORCE_APPLIED_VALUE.search(text)
-        or _FORCE_PREFIXED_VALUE.search(text)
-    ))
+    # An immediately attached connector or terminal label may contain bare N.
+    # Check every match so a label cannot hide a second value in the same slot.
+    return any(match["label"] is None for match in _FORCE_OR_TERMINAL_LABEL.finditer(text))
 
 
 def _rotation_scope(text):
@@ -339,21 +331,6 @@ _INTRO_DIRECTIVE = re.compile(
 _SIMPLE_ACTION = r"(?:remove|take\s+off|lift\s+off|inspect|check|connect|attach|disconnect|detach|install|fit)"
 _TARGET_WORD = r"[a-z]+(?:-[a-z]+)*"
 _SIMPLE_TARGET = r"(?:the\s+)?(?P<object>" + _TARGET_WORD + r"(?:\s+" + _TARGET_WORD + r"){0,5})"
-_FORCE_ACTION = r"(?:press|push|pull|compress|hold|release)"
-_FORCE_COMMAND_START = r"(?:^|[.,;!?\n]|\band\b|\b(?:must|shall|should|can|may)\b)\s*(?:(?:then|please)[,\s]+)?"
-_FORCE_NAMED_VALUE = re.compile(
-    rf"(?i:\b{_FORCE_NOUN}\b(?:\s+(?:on|at|for)\s+{_SIMPLE_TARGET})?"
-    rf"(?:\s*[:=]\s*|\s+(?:(?:of|is|to|above|below)\s+)?)){_FORCE_VALUE.pattern}"
-    rf"|{_FORCE_VALUE.pattern}(?i:\s+of\s+{_FORCE_NOUN}\b)",
-)
-_FORCE_APPLIED_VALUE = re.compile(
-    rf"(?i:{_FORCE_COMMAND_START}{_FORCE_ACTION}\s+{_SIMPLE_TARGET}"
-    rf"(?:\s+(?:with|using|at|above|below|over|under)\s+|\s*:\s*)){_FORCE_VALUE.pattern}",
-)
-_FORCE_PREFIXED_VALUE = re.compile(
-    rf"(?i:\b(?:at|above|below|over|under)\s+){_FORCE_VALUE.pattern}\s*,\s*"
-    rf"(?i:{_FORCE_ACTION}\s+{_SIMPLE_TARGET})\b",
-)
 _SIMPLE_DIRECTIVE = re.compile(
     r"(?P<verb>" + _SIMPLE_ACTION + r")\s+" + _SIMPLE_TARGET + r"\s*[.!]?",
     re.IGNORECASE,
