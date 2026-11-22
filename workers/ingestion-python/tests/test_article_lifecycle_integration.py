@@ -1060,13 +1060,13 @@ def test_automatic_real_runtime_source_first_publication_and_zero_call_restart(r
 @pytest.mark.parametrize(
     "prompt_version",
     ["v1", "v2", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v12", "v13", "v14", "v15", "v16", "v17", "v18",
-     "v19", "v20", "v21", "v22", "v23", "v24", "v25", "v26", "v27", "v28", "v29", "v30", "v31", "v32", "v33", "v34", "v35", "v36", "v37", "v38", "v39", "v40", "v41", "v42", "v43", "v44", "v45", "v46", "v47", "v48", "v49", "v50", "v51", "v52", "v53"],
+     "v19", "v20", "v21", "v22", "v23", "v24", "v25", "v26", "v27", "v28", "v29", "v30", "v31", "v32", "v33", "v34", "v35", "v36", "v37", "v38", "v39", "v40", "v41", "v42", "v43", "v44", "v45", "v46", "v47", "v48", "v49", "v50", "v51", "v52", "v53", "v54"],
 )
 def test_automatic_real_process_death_reuses_saved_response(runtime, point, prompt_version):
     ensure = automatic_runtime(runtime,"bankone")
     ensure();runtime.pause(point);runtime.start_workers(1);runtime.await_barrier()
     job = runtime.current_job_id();runtime.kill_worker();runtime.expire_lease(job)
-    if prompt_version != "v53":
+    if prompt_version != "v54":
         from hashlib import sha256
         from psycopg.types.json import Jsonb
         from autodata_ingestion.article_lifecycle_types import digest_json
@@ -1083,7 +1083,8 @@ def test_automatic_real_process_death_reuses_saved_response(runtime, point, prom
             _build_auto_prompt_v38, _build_auto_prompt_v39, _build_auto_prompt_v40, _build_auto_prompt_v41,
             _build_auto_prompt_v42, _build_auto_prompt_v43, _build_auto_prompt_v44, _build_auto_prompt_v45,
             _build_auto_prompt_v46, _build_auto_prompt_v47, _build_auto_prompt_v48, _build_auto_prompt_v49,
-            _build_auto_prompt_v50, _build_auto_prompt_v51, _build_auto_prompt_v52, validate_auto,
+            _build_auto_prompt_v50, _build_auto_prompt_v51, _build_auto_prompt_v52,
+            _build_auto_prompt_v53, validate_auto,
         )
         build_prompt = {
             "v1": _build_auto_prompt_v1,
@@ -1136,6 +1137,7 @@ def test_automatic_real_process_death_reuses_saved_response(runtime, point, prom
             "v50": _build_auto_prompt_v50,
             "v51": _build_auto_prompt_v51,
             "v52": _build_auto_prompt_v52,
+            "v53": _build_auto_prompt_v53,
         }[prompt_version]
         with runtime.repo.connect() as conn:
             candidate = conn.execute("SELECT r.* FROM canonical_article_revisions r JOIN source_fetch_jobs j USING(transformation_key) WHERE j.source_fetch_job_id=%s", (job,)).fetchone()
@@ -1490,6 +1492,30 @@ def test_automatic_lubrication_assignment(runtime, provider, draft, error_code):
         "After the engine reaches 90 C, release the cap.",
         "Release the cap before the engine reaches 90 C.",
         "REWRITE_SPEC_SCOPE_MUTATION", id="temperature-timing",
+    ),
+    pytest.param(
+        "Disconnect the fuel line after the gauge returns to zero.",
+        "Once the gauge returns to zero, detach the fuel line.",
+        "Detach the fuel line before the gauge returns to zero.",
+        "REWRITE_QUALIFIER_MUTATION", id="fuel-line-zero-gauge-prerequisite",
+    ),
+    pytest.param(
+        "Remove the fuel rail after pressure in the rail has dissipated.",
+        "After pressure in the rail has dissipated, take off the fuel rail.",
+        "Take off the fuel rail before pressure in the rail has dissipated.",
+        "REWRITE_QUALIFIER_MUTATION", id="fuel-rail-residual-pressure-prerequisite",
+    ),
+    pytest.param(
+        "Disconnect the fuel line after depressurizing the fuel rail.",
+        "After depressurizing the fuel rail, detach the fuel line.",
+        "Detach the fuel line before depressurizing the fuel rail.",
+        "REWRITE_QUALIFIER_MUTATION", id="fuel-line-depressurization-prerequisite",
+    ),
+    pytest.param(
+        "Disconnect the fuel line after the vehicle is parked.",
+        "After the vehicle is parked, detach the fuel line.",
+        "Detach the fuel line before the vehicle is parked.",
+        "REWRITE_QUALIFIER_MUTATION", id="fuel-line-parked-vehicle-prerequisite",
     ),
 ])
 def test_automatic_qualifier_controls_publication(runtime, provider, preserved, original, valid, invalid, error_code):

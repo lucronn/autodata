@@ -161,4 +161,4 @@ def test_v52_replay_preserves_saved_temperature_prompt_document_and_validation(
     assert digest_json(historical.report) == report_hash
     current = auto.validate_auto(source, candidate, response=payload)
     assert current.error_codes == ("REWRITE_SPEC_SCOPE_MUTATION",)
-    assert current.report["validator_version"] == "full-prose-auto-validator-v51"
+    assert current.report["validator_version"] == "full-prose-auto-validator-v52"
