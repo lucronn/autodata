@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext as runVM } from 'node:vm';
 import { NavigationGeneration, processingArticle, readableArticle } from './workshop/article-read.mjs';
-import { pollOrder, purchaseConfiguration, uuid, validQuote, validScope, validLibrary } from './workshop/commerce.mjs';
+import { pollOrder, purchaseConfiguration, readOrder, resumableCheckoutURL, sameScope, uuid, validQuote, validScope, validLibrary } from './workshop/commerce.mjs';
 import { articlePresentation, configurationLabel, filterArticles, hasSourceReference, legacyArticleBlocks, localImageURL, readCollection, requestInitialYears, requestJSON, sourceReferenceURL } from './workshop/catalog.mjs';
 import { LOAD_STAGES, loadingProgress } from './workshop/progress.mjs';
 
@@ -11,6 +11,8 @@ import { LOAD_STAGES, loadingProgress } from './workshop/progress.mjs';
 // paid path unless a test explicitly opts into the open demo.
 function runInNewContext(code, context) {
   context.openDemo ??= false;
+  context.resumableCheckoutURL ??= resumableCheckoutURL;
+  context.sameScope ??= sameScope;
   context.demoPath ??= path => path;
   context.requestInitialYears ??= params => requestInitialYears(params, context.requestJSON);
   context.sourceDocumentRequest ??= null;
@@ -2233,6 +2235,14 @@ function paidPurchaseLifecycleHarness(selectionErrors, { realArticleIndex = fals
   };
   const statuses = [];
   let checkoutStarts = 0, orderReads = 0, selections = 0;
+  const nextOrder = (id) => {
+    assert.equal(id, orderID);
+    orderReads++;
+    const paid = { version: 'v1', ...scope, order_id: orderID, state: 'paid', retry_disposition: 'do_not_repay' };
+    const response = orderResponses ? orderResponses.shift() : paid;
+    if (response instanceof Error) throw response;
+    return response;
+  };
   const context = {
     $, location, history, URLSearchParams, URL, uuid, validScope, validQuote,
     purchaseConfiguration, configurationLabel, navigation, searchNavigation, rows: {},
@@ -2258,12 +2268,9 @@ function paidPurchaseLifecycleHarness(selectionErrors, { realArticleIndex = fals
       checkoutStarts++;
       return { version: 'v1', ...scope, order_id: orderID, state: 'processing' };
     }, clear() {} },
+    readOrder: (id, { signal }) => readOrder(id, { signal, request: async () => nextOrder(id) }),
     async pollOrder(id, { onUpdate }) {
-      assert.equal(id, orderID);
-      orderReads++;
-      const paid = { version: 'v1', ...scope, order_id: orderID, state: 'paid', retry_disposition: 'do_not_repay' };
-      const response = orderResponses ? orderResponses.shift() : paid;
-      if (response instanceof Error) throw response;
+      const response = nextOrder(id);
       onUpdate(response);
       return response;
     },
@@ -2743,10 +2750,84 @@ test('an order-only return shows the pending vehicle and status without a purcha
   assert.equal(h.$('purchase-selection').textContent, `${label} / ${scope.region}`);
   assert.equal(h.$('purchase-price').hidden, true);
   assert.equal(h.$('purchase-price').textContent, '');
-  assert.equal(h.$('purchase-action').textContent, 'Payment pending');
+  assert.equal(h.$('purchase-action').textContent, 'Checkout open');
+  assert.match(h.$('purchase-message').textContent, /Checkout is open/);
   assert.equal(h.$('purchase-action').disabled, true);
   assert.equal(h.$('check-order').hidden, false);
   assert.equal(h.checkoutStarts(), 0);
+});
+
+test('resuming a returned checkout rechecks the exact order and opens its original session', async () => {
+  const checkoutURL = 'https://checkout.stripe.com/c/pay/cs_test_original';
+  const open = { version: 'v1', order_id: orderID, ...scope, state: 'open',
+    retry_disposition: 'do_not_repay', checkout_url: checkoutURL, provider_expires_at: '2099-01-01T00:00:00Z' };
+  const h = paidPurchaseLifecycleHarness([], { orderResponses: [open, open] });
+  const destinations = [];
+  h.location.assign = url => destinations.push(url);
+  h.location.search = `?order=${orderID}`;
+  await h.context.restoreRoute();
+  assert.equal(h.$('purchase-action').textContent, 'Continue checkout');
+  assert.equal(h.$('purchase-action').disabled, false);
+  assert.equal(h.$('purchase-consent').hidden, true);
+  assert.equal(h.context.quote, null);
+  assert.equal(h.context.unconfirmedOrder.checkout_url, undefined);
+  await h.context.purchase();
+  assert.equal(h.orderReads(), 2);
+  assert.deepEqual(destinations, [checkoutURL]);
+  assert.equal(h.checkoutStarts(), 0);
+});
+
+for (const [name, response] of [
+  ['expired', { state: 'expired', retry_disposition: 'new_key' }],
+  ['processing', { state: 'processing', retry_disposition: 'do_not_repay' }],
+  ['other region', { state: 'open', retry_disposition: 'do_not_repay', region: 'GB',
+    checkout_url: 'https://checkout.stripe.com/c/pay/cs_test_other', provider_expires_at: '2099-01-01T00:00:00Z' }],
+  ['other order', { state: 'open', retry_disposition: 'do_not_repay', order_id: '00000000-0000-4000-8000-000000000094',
+    checkout_url: 'https://checkout.stripe.com/c/pay/cs_test_other', provider_expires_at: '2099-01-01T00:00:00Z' }],
+  ['untrusted link', { state: 'open', retry_disposition: 'do_not_repay',
+    checkout_url: 'https://payments.example.invalid/c/pay/fixture', provider_expires_at: '2099-01-01T00:00:00Z' }],
+  ['incomplete link', { state: 'open', retry_disposition: 'do_not_repay',
+    checkout_url: 'https://checkout.stripe.com/c/pay/cs_test_old' }],
+]) {
+  test(`checkout continuation stays on the Workshop when the fresh response is ${name}`, async () => {
+    const base = { version: 'v1', order_id: orderID, ...scope, retry_disposition: 'do_not_repay' };
+    const open = { ...base, state: 'open', checkout_url: 'https://checkout.stripe.com/c/pay/cs_test_original',
+      provider_expires_at: '2099-01-01T00:00:00Z' };
+    const h = paidPurchaseLifecycleHarness([], { orderResponses: [open, { ...base, ...response }] });
+    const destinations = [];
+    h.location.assign = url => destinations.push(url);
+    h.location.search = `?order=${orderID}`;
+    await h.context.restoreRoute();
+    await h.context.purchase();
+    assert.deepEqual(destinations, []);
+    assert.equal(h.orderReads(), 2);
+    assert.equal(h.checkoutStarts(), 0);
+    assert.equal(h.context.vehicle.region, scope.region);
+  });
+}
+
+test('retrying an unavailable continuation only checks the original order', async () => {
+  const open = { version: 'v1', order_id: orderID, ...scope, state: 'open', retry_disposition: 'do_not_repay',
+    checkout_url: 'https://checkout.stripe.com/c/pay/cs_test_original', provider_expires_at: '2099-01-01T00:00:00Z' };
+  const missing = Object.assign(new Error('Order not found'), { status: 404 });
+  const h = paidPurchaseLifecycleHarness([], { orderResponses: [open, missing, missing, missing] });
+  await h.context.purchase();
+  assert.equal(h.$('purchase-action').textContent, 'Continue checkout');
+  assert.equal(h.checkoutStarts(), 1);
+  await h.context.purchase();
+  assert.equal(h.orderReads(), 2);
+  assert.equal(h.$('purchase-action').textContent, 'Checkout status unavailable');
+  assert.equal(h.$('purchase-action').disabled, true);
+  assert.equal(h.$('purchase-consent').hidden, true);
+  await h.context.purchase();
+  assert.equal(h.checkoutStarts(), 1);
+  await h.statuses.at(-1).options.retry();
+  assert.equal(h.checkoutStarts(), 1);
+  assert.equal(h.orderReads(), 3);
+  await h.context.operation(g => h.context.checkOrder(g, orderID));
+  assert.equal(h.orderReads(), 4);
+  assert.equal(h.$('purchase-action').disabled, true);
+  assert.equal(h.$('check-order').hidden, false);
 });
 
 test('processing checkout timeout keeps status check without an enabled Buy action', async () => {
@@ -3144,7 +3225,7 @@ for (const [known, message, feedback] of [
     if (known !== 'unknown') {
       assert.equal(h.$('purchase-selection').textContent, `${label} / ${scope.region}`);
       assert.equal(h.$('check-order').hidden, false);
-      assert.match(h.$('purchase-message').textContent, /do not pay again/);
+      assert.match(h.$('purchase-message').textContent, /do not pay again/i);
     }
 
     recovered = true;

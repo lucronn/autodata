@@ -1466,6 +1466,7 @@ async def api_case(browser,origin,name,output,observations=None,*,verify_reader_
             if observations:observations.phase='checkout-retry-http'
             await page.locator('#retry').click()
         await page.wait_for_url(trusted_hosted_checkout)
+        hosted_url = page.url
         pending=await api_measure(context,origin,'pending-checkout-measurement')
         assert pending['workshop_orders']==1 and pending['entitlements']==0
         if name==API_CASES[0]:
@@ -1478,10 +1479,21 @@ async def api_case(browser,origin,name,output,observations=None,*,verify_reader_
             assertions['client_response_loss_same_key_one_checkout']=True
         order=pending['orders'][0]['order_id']
         # A provider return is only a request to check the owner-scoped ledger.
-        await page.goto(origin+'/workshop/?order='+order)
-        await expect(page.locator('#purchase-message')).to_contain_text('Do not pay again')
+        return_url = origin+'/workshop/?order='+order
+        await page.goto(return_url)
+        await expect(page.locator('#purchase-message')).to_contain_text('Checkout is open.')
+        await expect(page.locator('#purchase-action')).to_have_text('Continue checkout')
+        await expect(page.locator('#purchase-action')).to_be_enabled()
         await expect(page.locator('#purchase-selection')).to_have_text('2024 Example Car Paid selected 2.0 L / US')
-        assert (await api_measure(context,origin,'return-without-grant-measurement'))['entitlements']==0
+        if name==API_CASES[0]:
+            checkout_count = transport.checkout_count
+            await page.locator('#purchase-action').click()
+            await page.wait_for_url(trusted_hosted_checkout)
+            assert page.url == hosted_url and transport.checkout_count == checkout_count
+            await page.goto(return_url)
+            await expect(page.locator('#purchase-action')).to_have_text('Continue checkout')
+        returned = await api_measure(context,origin,'return-without-grant-measurement')
+        assert returned['workshop_orders']==1 and returned['entitlements']==0 and returned['payment_events']==0
         assertions['return_does_not_grant']=True
         await api_control(context,origin,'payment/settle?order_id='+order,'settlement-control')
         settled=await api_measure(context,origin,'settled-measurement')

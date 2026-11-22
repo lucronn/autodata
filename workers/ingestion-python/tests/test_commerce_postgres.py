@@ -183,16 +183,26 @@ def test_orders_create_and_owner_scope(commerce):
             run_go_private_seam(c,server.server_port,key,result['order_id'])
     finally:server.shutdown();server.server_close();thread.join()
 
-    order = c[1].order_status(*c[3], result['order_id'])
-    assert order['state'] == 'open'
-    assert (order['configuration_id'], order['region']) == (c[4], 'US')
-    assert order['configuration_label'] == quote['configuration_label']
+    provider_calls = list(c[2].calls)
+    before_status = counts(c)
+    status = c[1].order_status(*c[3], result['order_id'])
+    assert status['state'] == 'open'
+    assert (status['configuration_id'], status['region']) == (c[4], 'US')
+    assert status['configuration_label'] == quote['configuration_label']
+    assert status['retry_disposition'] == 'do_not_repay'
+    assert (status['checkout_url'], status['provider_expires_at']) == (
+        result['checkout_url'], result['provider_expires_at'],
+    )
+    assert c[2].calls == provider_calls and counts(c) == before_status
     with pytest.raises(CommerceError) as error:c[1].order_status(str(uuid.uuid4()),str(uuid.uuid4()),result['order_id'])
+    assert error.value.http_status==403
+    with pytest.raises(CommerceError) as error:c[1].order_status(c[3][0],str(uuid.uuid4()),result['order_id'])
     assert error.value.http_status==403
     with c[0].connect() as conn:
         foreign=conn.execute("INSERT INTO customer_accounts(firebase_project_id,firebase_uid) VALUES('fixture','other') RETURNING customer_account_id,personal_organization_id").fetchone()
     with pytest.raises(CommerceError) as error:c[1].order_status(str(foreign['customer_account_id']),str(foreign['personal_organization_id']),result['order_id'])
     assert error.value.http_status==404
+    assert c[2].calls == provider_calls and counts(c) == before_status
     assert len(c[2].sessions)==1
 
 

@@ -230,6 +230,16 @@ class CommerceService:
             raise CommerceError('COMMERCE_UNAVAILABLE', 503)
         return row['dataset_product_id']
 
+    def _open_checkout(self, order):
+        expires = order.get('provider_expires_at')
+        url = order.get('checkout_url')
+        if order['status'] == 'open' and url and expires and expires > self.clock():
+            return {
+                'checkout_url': validate_checkout_url(url),
+                'provider_expires_at': expires.astimezone(UTC).isoformat(),
+            }
+        return {}
+
     def _response(self, order, status=200):
         result = dict(version='v1', state='processing', order_id=str(order['order_id']), configuration_id=str(order['configuration_id']), region=order['region'])
         if order['status'] == 'revoked':
@@ -237,10 +247,12 @@ class CommerceService:
         if order['status'] == 'paid':
             result.update(state='owned', library_item_id=str(order['order_id']))
             status = 200
-        elif order['status'] == 'open' and order.get('checkout_url') and order.get('provider_expires_at') and order['provider_expires_at'] > self.clock():
-            result.update(state='checkout', checkout_url=validate_checkout_url(order['checkout_url']), provider_expires_at=order['provider_expires_at'].astimezone(UTC).isoformat())
         else:
-            status = 202
+            checkout = self._open_checkout(order)
+            if checkout:
+                result.update(state='checkout', **checkout)
+            else:
+                status = 202
         return CommerceResult(result, status)
 
     def checkout(self, account_id, organization_id, key, payload):
@@ -358,18 +370,26 @@ class CommerceService:
                 FROM workshop_orders o
                 LEFT JOIN vehicle_configurations c ON c.vehicle_configuration_id=o.configuration_id
                 LEFT JOIN vehicle_identity_bases b ON b.vehicle_identity_base_id=c.vehicle_identity_base_id AND b.region=o.region
-                WHERE o.order_id=%s AND o.customer_account_id=%s""", (order_id, account_id))
+                WHERE o.order_id=%s AND o.customer_account_id=%s AND o.organization_id=%s""",
+                (order_id, account_id, organization_id))
             order = cursor.fetchone()
             if not order:
                 raise CommerceError('ORDER_NOT_FOUND', 404)
             self._assert_merchant(order)
         label = order['configuration_label']
-        if order['status'] == 'open' and order['provider_expires_at'] <= self.clock():
+        expires = order.get('provider_expires_at')
+        if order['status'] == 'open' and expires is not None and expires <= self.clock():
             order = self._reconcile_expiry(order)
         result = dict(version='v1', order_id=order_id, configuration_id=str(order['configuration_id']), region=order['region'],
             state=order['status'], retry_disposition=('new_key' if order['status'] in {'expired', 'canceled'} else 'do_not_repay'))
         if label:
             result['configuration_label'] = label
+        if self._purchase_config.enabled and order.get('checkout_session_id'):
+            try:
+                result.update(self._open_checkout(order))
+            except CommerceError:
+                # A bad stored redirect must not hide the order's status.
+                pass
         return CommerceResult(result)
 
     def webhook(self, signature, body):

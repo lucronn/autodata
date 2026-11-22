@@ -19,6 +19,9 @@ import {
   validLibrary,
   purchaseConfiguration,
   pollOrder,
+  readOrder,
+  resumableCheckoutURL,
+  sameScope,
   uuid,
 } from "./commerce.mjs";
 import {
@@ -407,6 +410,7 @@ function renderPurchase() {
   const priced = validQuote(quote, scope());
   const configured = !openDemo && purchaseConfigured();
   const canPurchase = session.state.authenticated && access === "missing" && !confirming && priced && configured;
+  const canResume = Boolean(checkoutToResume());
   const purchaseLabel = vehicle?.orderLabel || (priced ? quote.configuration_label : vehicleIdentityLabel());
   $("purchase").hidden = !validScope(scope());
   $("purchase-selection").textContent =
@@ -432,7 +436,7 @@ function renderPurchase() {
         : paymentReceived
           ? "Payment received. Article access is still being checked. Use Check payment status; do not pay again."
           : confirming && session.state.authenticated
-            ? "Payment confirmation is pending. Use Check payment status; do not pay again."
+            ? pendingOrderMessage(unconfirmedOrder.state, canResume)
             : merchantRequest
               ? "Checking purchase availability…"
               : !configured
@@ -448,14 +452,16 @@ function renderPurchase() {
       ? "Open articles"
       : paymentReceived
         ? "Payment received"
-        : confirming
-          ? "Payment pending"
-          : "Buy for $20 USD";
+        : canResume
+          ? "Continue checkout"
+          : confirming
+            ? ({ open: "Checkout open", unavailable: "Checkout status unavailable" }[unconfirmedOrder.state] || "Payment pending")
+            : "Buy for $20 USD";
   $("purchase-action").disabled = !session.state.authenticated
     ? !session.state.ready
     : access === "owned"
       ? false
-      : !canPurchase;
+      : !canPurchase && !canResume;
   $("policy-links").replaceChildren();
   if (configured)
     for (const [field, label] of [
@@ -471,6 +477,22 @@ function renderPurchase() {
       $("policy-links").append(link, document.createTextNode(" · "));
     }
   $("tax-notice").textContent = configured ? merchant.tax_notice : "";
+}
+function checkoutToResume() {
+  return unconfirmedOrder?.resumeUntil > Date.now() &&
+    unconfirmedOrder.id === currentOrder && sameScope(unconfirmedOrder, scope()) &&
+    session.state.authenticated && ["unknown", "missing"].includes(access) &&
+    !openDemo ? unconfirmedOrder : null;
+}
+function pendingOrderMessage(state, canResume) {
+  if (state === "open")
+    return canResume
+      ? "Checkout is open. Continue checkout for the same order or check payment status."
+      : "Checkout is open. Check payment status before starting another payment.";
+  if (state === "creating") return "Checkout is being prepared. Use Check payment status before starting another payment.";
+  if (state === "reconciliation_required") return "Payment status needs verification. Use Check payment status. Do not pay again.";
+  if (state === "unavailable") return "Checkout status is unavailable. Use Check payment status before starting another payment.";
+  return "Payment confirmation is pending. Use Check payment status. Do not pay again.";
 }
 function vehicleIdentityLabel() {
   return [
@@ -1682,7 +1704,7 @@ function clearReader() {
   resetReaderContent();
   $("reader").hidden = true;
 }
-async function checkOrder(g, id, { earlyCheckoutCheck = false, returnedCheckout } = {}) {
+async function checkOrder(g, id, { earlyCheckoutCheck = false, returnedCheckout, resumeCheckoutFor } = {}) {
   if (paidOrder?.id !== id) paidOrder = null;
   if (unconfirmedOrder?.id !== id) unconfirmedOrder = null;
   currentOrder = id;
@@ -1697,6 +1719,8 @@ async function checkOrder(g, id, { earlyCheckoutCheck = false, returnedCheckout 
     if (unresolved.includes(order.state)) {
       unconfirmedOrder = {
         id, configuration_id: order.configuration_id, region: order.region,
+        state: order.state,
+        resumeUntil: resumableCheckoutURL(order) ? Date.parse(order.provider_expires_at) : 0,
       };
       selectOrderVehicle(order);
       renderPurchase();
@@ -1705,33 +1729,41 @@ async function checkOrder(g, id, { earlyCheckoutCheck = false, returnedCheckout 
       unconfirmedOrder = null;
     }
   };
-  const result = await pollOrder(id, {
-    signal: g.signal,
-    earlyCheckoutCheck,
-    returnedCheckout,
-    onUnavailable() {
-      if (!g.current()) return;
-      statusUnavailable = true;
-      const previous = matchesSelection(paidOrder) ? "Payment received. " :
-        matchesSelection(unconfirmedOrder) ? "Payment was pending at the last check. " : "";
-      const message = previous ? `${previous}Status check is temporarily unavailable.` :
-        "Payment status is temporarily unavailable.";
-      status(`${message} Checking again…`, { busy: true });
-    },
-    onUpdate(order) {
-      if (g.current()) {
-        if (statusUnavailable) {
-          statusUnavailable = false;
-          status("Checking payment status…", { busy: true });
-        }
-        rememberUnconfirmed(order);
-        $("purchase-message").textContent =
-          order.state === "paid"
-            ? "Payment received. Checking article access."
-            : "Payment is being confirmed. Do not pay again.";
-      }
-    },
-  }).catch((error) => {
+  const updateOrder = (order) => {
+    if (!g.current()) return;
+    if (resumeCheckoutFor && (order.order_id !== id || !sameScope(resumeCheckoutFor, order)))
+      throw new Error("This checkout could not be confirmed for the selected vehicle.");
+    if (statusUnavailable) {
+      statusUnavailable = false;
+      status("Checking payment status…", { busy: true });
+    }
+    rememberUnconfirmed(order);
+    if (order.state === "paid")
+      $("purchase-message").textContent = "Payment received. Checking article access.";
+  };
+  const reading = resumeCheckoutFor
+    ? readOrder(id, { signal: g.signal }).then(order => {
+        updateOrder(order);
+        return order;
+      })
+    : pollOrder(id, {
+      signal: g.signal,
+      earlyCheckoutCheck,
+      returnedCheckout,
+      onUpdate: updateOrder,
+      onUnavailable() {
+        if (!g.current()) return;
+        statusUnavailable = true;
+        const previous = matchesSelection(paidOrder) ? "Payment received. " :
+          matchesSelection(unconfirmedOrder) ?
+            unconfirmedOrder.state === "open" ? "Checkout was open at the last check. " : "Payment was pending at the last check. "
+            : "";
+        const message = previous ? `${previous}Status check is temporarily unavailable.` :
+          "Payment status is temporarily unavailable.";
+        status(`${message} Checking again…`, { busy: true });
+      },
+    });
+  const result = await reading.catch((error) => {
     if (g.current() && error.status === 404) {
       if (paidOrder?.id === id) {
         rememberOrderRoute(id);
@@ -1741,6 +1773,12 @@ async function checkOrder(g, id, { earlyCheckoutCheck = false, returnedCheckout 
         show("welcome");
         status(paidStatusUnavailable, { error: true });
         return null;
+      }
+      const knownOpen = matchesSelection(unconfirmedOrder) && ["open", "unavailable"].includes(unconfirmedOrder.state);
+      if (resumeCheckoutFor || knownOpen) {
+        unconfirmedOrder = { ...(resumeCheckoutFor || unconfirmedOrder), state: "unavailable", resumeUntil: 0 };
+        renderPurchase();
+        throw new Error("Checkout status could not be confirmed. Check payment status again.");
       }
       checkout.clear();
       currentOrder = "";
@@ -1753,7 +1791,12 @@ async function checkOrder(g, id, { earlyCheckoutCheck = false, returnedCheckout 
     throw error;
   });
   if (!g.current() || !result) return;
-  if (result.state) rememberUnconfirmed(result);
+  if (result.state && !resumeCheckoutFor) rememberUnconfirmed(result);
+  const resumeURL = resumeCheckoutFor && checkoutToResume() && resumableCheckoutURL(result);
+  if (resumeURL) {
+    location.assign(resumeURL);
+    return;
+  }
   if (["expired", "canceled", "revoked"].includes(result.state)) {
     currentOrder = "";
     paidOrder = null;
@@ -1784,8 +1827,12 @@ async function checkOrder(g, id, { earlyCheckoutCheck = false, returnedCheckout 
     const pending = !confirmedPaid && matchesSelection(unconfirmedOrder);
     let message = "Payment status is temporarily unavailable. Try again.";
     if (confirmedPaid) message = paidStatusUnavailable;
-    else if (pending && statusUnavailable) message = "Payment was pending at the last check. The current status is unavailable. Try again.";
-    else if (pending) message = "Payment confirmation is still pending. Check payment status manually.";
+    else if (pending && statusUnavailable) message = unconfirmedOrder.state === "open"
+      ? "Checkout was open at the last check. The current status is unavailable. Try again."
+      : "Payment was pending at the last check. The current status is unavailable. Try again.";
+    else if (pending) message = unconfirmedOrder.state === "open"
+      ? "Checkout is still open."
+      : "Payment confirmation is still pending. Check payment status manually.";
     status(message, {
       error: !pending || statusUnavailable,
       retry: () => operation((g) => checkOrder(g, id)),
@@ -1872,6 +1919,25 @@ async function purchase() {
   }
   if (access === "owned") {
     operation((g) => loadArticles(g));
+    return;
+  }
+  const resumeCheckoutFor = checkoutToResume();
+  if (resumeCheckoutFor) {
+    const csrf = session.state.csrf;
+    const resume = () => {
+      if (!session.state.authenticated || session.state.csrf !== csrf ||
+          !sameScope(resumeCheckoutFor, scope()) || (currentOrder && currentOrder !== resumeCheckoutFor.id))
+        return;
+      return operation(async (g) => {
+        $("purchase-action").disabled = true;
+        try {
+          await checkOrder(g, resumeCheckoutFor.id, { resumeCheckoutFor });
+        } finally {
+          if (g.current()) renderPurchase();
+        }
+      }, resume);
+    };
+    await resume();
     return;
   }
   if (

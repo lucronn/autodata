@@ -1,13 +1,16 @@
 """Authority checks independent of external services; PG transitions live separately."""
 import copy
-from datetime import UTC, datetime
+from contextlib import nullcontext
+from datetime import UTC, datetime, timedelta
 import sys
 from pathlib import Path
 import unittest
+from unittest.mock import Mock
 
 sys.path.insert(0, str(Path(__file__).parents[1] / 'src'))
 from autodata_ingestion.commerce_service import (CommerceError, validate_uuid, exact_fields,
     validate_settlement, validate_checkout_url, canonical_checkout_hash, checkout_return_origin, CommerceService, CommerceConfig)
+from autodata_ingestion.purchase_config import PurchaseConfig
 
 
 class CommerceAuthorityTests(unittest.TestCase):
@@ -91,6 +94,58 @@ class CommerceAuthorityTests(unittest.TestCase):
         self.assertEqual(response['version'],'v1')
         self.assertEqual(response.http_status,200)
         self.assertEqual(response['library_item_id'],order['order_id'])
+
+    def test_order_status_returns_existing_resume_pair_only_while_eligible(self):
+        now = datetime(2026, 11, 22, 12, tzinfo=UTC)
+        owner = ('11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222')
+        configuration = '33333333-3333-4333-8333-333333333333'
+        hosted = 'https://checkout.stripe.com/g/pay/cs_test_fixture#opaque%2Ffragment'
+        expires = now + timedelta(hours=1)
+        order = dict(self.order, stripe_account_id='acct_fixture', configuration_id=configuration,
+            configuration_label='Vehicle in Canada', region='CA', status='open',
+            checkout_session_id='cs_test_fixture', checkout_url=hosted, provider_expires_at=expires)
+        enabled = PurchaseConfig.from_public(dict(enabled=True, terms_version='workshop-v1',
+            terms_url='https://legal.example/terms', privacy_url='https://legal.example/privacy',
+            refund_url='https://legal.example/refund', contact_url='https://legal.example/contact',
+            tax_notice='Fixture notice'))
+        for label, config, changes in (
+            ('open', enabled, {}),
+            ('disabled', PurchaseConfig.disabled(), {}),
+            ('paid', enabled, {'status': 'paid'}),
+            ('processing', enabled, {'status': 'processing'}),
+            ('expired', enabled, {'status': 'expired'}),
+            ('elapsed open', enabled, {'provider_expires_at': now}),
+            ('missing expiry', enabled, {'provider_expires_at': None}),
+            ('missing session', enabled, {'checkout_session_id': None}),
+            ('untrusted url', enabled, {'checkout_url': 'https://foreign.invalid/pay/fixture'}),
+        ):
+            with self.subTest(label=label):
+                private_order = dict(order, **changes)
+                cursor, provider = Mock(), Mock()
+                cursor.fetchone.side_effect = [True, private_order]
+                service = CommerceService(None, CommerceConfig('stripe_test','acct_fixture','price_fixture'),
+                    provider, clock=lambda: now, purchase_config=config)
+                service.transaction = lambda: nullcontext((None, cursor))
+                service._reconcile_expiry = Mock(return_value=private_order)
+
+                result = service.order_status(*owner, order['order_id'])
+
+                self.assertEqual(cursor.execute.call_args.args[1], (order['order_id'], *owner))
+                self.assertEqual((result['order_id'], result['configuration_id'], result['region']),
+                    (order['order_id'], configuration, 'CA'))
+                self.assertEqual(result['state'], private_order['status'])
+                self.assertEqual(result['retry_disposition'], 'new_key' if label == 'expired' else 'do_not_repay')
+                if label == 'open':
+                    self.assertEqual((result['checkout_url'], result['provider_expires_at']),
+                        (hosted, expires.isoformat()))
+                else:
+                    self.assertNotIn('checkout_url', result)
+                    self.assertNotIn('provider_expires_at', result)
+                if label == 'elapsed open':
+                    service._reconcile_expiry.assert_called_once_with(private_order)
+                else:
+                    service._reconcile_expiry.assert_not_called()
+                self.assertEqual(provider.mock_calls, [])
 
 
 class PurchaseInterlockTests(unittest.TestCase):
