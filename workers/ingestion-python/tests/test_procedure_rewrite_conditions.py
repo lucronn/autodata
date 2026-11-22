@@ -152,4 +152,4 @@ def test_v51_replay_preserves_saved_prompt_document_and_validation(in_cell, prom
     assert digest_json(historical.report) == report_hash
     current = auto.validate_auto(source, candidate, response=payload)
     assert current.error_codes == ("REWRITE_QUALIFIER_MUTATION",)
-    assert current.report["validator_version"] == "full-prose-auto-validator-v50"
+    assert current.report["validator_version"] == "full-prose-auto-validator-v51"
