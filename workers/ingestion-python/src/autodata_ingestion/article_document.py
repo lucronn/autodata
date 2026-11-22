@@ -8,6 +8,7 @@ never the authoritative representation of an article.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from copy import deepcopy
 from hashlib import sha256
 import re
@@ -213,6 +214,7 @@ def build_ordered_document(
     preserve_marked_cells: bool = False,
     preserve_structured_columns: bool = False,
     step_parser=None,
+    table_caption_ids: Callable[[Mapping[str, Any]], set[str]] | None = None,
 ) -> dict[str, Any]:
     """Convert adapter blocks into a deterministic, source-order document."""
 
@@ -286,11 +288,11 @@ def build_ordered_document(
             continue
         if kind in {"table", "grid"}:
             output.append(_table_block(article, source_index, raw, evidence_ids, preserve_marked_cells,
-                                       preserve_structured_columns, step_parser))
+                                       preserve_structured_columns, step_parser, table_caption_ids))
             continue
         if kind in {"ordered_list", "unordered_list", "list"}:
             output.append(_list_block(article, source_index, raw, evidence_ids, kind, preserve_marked_cells,
-                                      preserve_structured_columns, step_parser))
+                                      preserve_structured_columns, step_parser, table_caption_ids))
             continue
         if kind in {"callout", "note", "warning", "caution", "hint", "important"}:
             output.append(_callout_block(article, source_index, raw, evidence_ids, kind))
@@ -712,6 +714,10 @@ def _base_block(article: Mapping[str, Any], source_order: int, block_type: str, 
     return block
 
 
+def authored_image_caption(raw: Mapping[str, Any]) -> str:
+    return _clean_text(raw.get("caption") or raw.get("label") or raw.get("description") or raw.get("legend") or raw.get("title"))
+
+
 def _image_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str, Any], evidence_ids: list[str]) -> dict[str, Any]:
     source_url = _clean_text(raw.get("url") or raw.get("src") or raw.get("href"))
     image_id = _clean_text(raw.get("image_id") or raw.get("id"))
@@ -727,13 +733,7 @@ def _image_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str
         "asset_id": asset_id or None,
         "image_id": image_id or asset_id or None,
         "alt": _clean_text(raw.get("alt") or raw.get("title") or raw.get("description") or raw.get("legend")) or "Article illustration",
-        "caption": _clean_text(
-            raw.get("caption")
-            or raw.get("label")
-            or raw.get("description")
-            or raw.get("legend")
-            or raw.get("title")
-        ),
+        "caption": authored_image_caption(raw),
         "status": "available" if is_available else "unavailable",
         "unavailable_reason": None if is_available else (
             _clean_text(raw.get("unavailable_reason")) or "source image reference is missing"
@@ -756,21 +756,30 @@ def _image_block(article: Mapping[str, Any], source_order: int, raw: Mapping[str
     return _base_block(article, source_order, "image", evidence_ids=evidence_ids, **fields)
 
 
+def table_image_summaries(raw: Mapping[str, Any]):
+    images = raw.get("images")
+    if isinstance(images, list):
+        yield from (image for image in images if isinstance(image, Mapping))
+    rows = raw.get("rows")
+    if isinstance(rows, list):
+        for row in rows:
+            if isinstance(row, Mapping):
+                yield from (image for image in (row.get("images") or []) if isinstance(image, Mapping))
+
+
 def _table_block(
     article: Mapping[str, Any], source_order: int, raw: Mapping[str, Any],
     evidence_ids: list[str], preserve_marked_cells: bool, preserve_structured_columns: bool, step_parser,
+    table_caption_ids,
 ) -> dict[str, Any]:
+    missing_caption_ids = table_caption_ids(raw) if table_caption_ids else ()
     rows = raw.get("rows")
     if not isinstance(rows, list):
         rows = []
     clean_rows = []
-    row_images: list[dict[str, Any]] = []
     for row in rows:
         if isinstance(row, Mapping):
             values = row.get("cells") or row.get("values") or row.get("blocks") or []
-            for img in row.get("images") or []:
-                if isinstance(img, Mapping):
-                    row_images.append(_normalize_cell_image(img))
         else:
             values = row
         if not isinstance(values, list):
@@ -778,31 +787,35 @@ def _table_block(
         clean_rows.append([_table_cell(
             value, evidence_ids=evidence_ids, preserve_marked_cells=preserve_marked_cells,
             preserve_structured_columns=preserve_structured_columns, step_parser=step_parser,
+            table_caption_ids=table_caption_ids,
         ) for value in values])
     columns = raw.get("columns") if isinstance(raw.get("columns"), list) else []
     if preserve_structured_columns:
         clean_columns = [_table_cell(
             value, evidence_ids=evidence_ids, preserve_marked_cells=preserve_marked_cells,
             preserve_structured_columns=preserve_structured_columns, step_parser=step_parser,
+            table_caption_ids=table_caption_ids,
         ) for value in columns]
     else:
         clean_columns = [_clean_text(value) for value in columns]
-    images_raw = raw.get("images")
-    clean_images: list[dict[str, Any]] = []
-    if isinstance(images_raw, list):
-        clean_images.extend(
-            _normalize_cell_image(image) for image in images_raw if isinstance(image, Mapping)
-        )
-    clean_images.extend(row_images)
+    clean_images = [_normalize_cell_image(image) for image in table_image_summaries(raw)]
     extra_fields: dict[str, Any] = {}
     if clean_images:
         seen_keys: set[str] = set()
+        seen_captions: set[tuple[str, str]] = set()
         deduped_images: list[dict[str, Any]] = []
         for img in clean_images:
-            keys = _image_identities(img)
-            if keys and keys & seen_keys:
-                continue
-            seen_keys.update(keys)
+            image_id = img.get("image_id")
+            if image_id in missing_caption_ids:
+                caption = img.get("caption")
+                if not caption or (image_id, caption) in seen_captions:
+                    continue
+                seen_captions.add((image_id, caption))
+            else:
+                keys = _image_identities(img)
+                if keys & seen_keys:
+                    continue
+                seen_keys.update(keys)
             deduped_images.append(img)
         if deduped_images:
             extra_fields["images"] = deduped_images
@@ -862,7 +875,7 @@ def _normalize_cell_image(raw: Mapping[str, Any]) -> dict[str, Any]:
         out["uri"] = uri
     if path:
         out["path"] = path
-    caption = _clean_text(raw.get("caption") or raw.get("label") or raw.get("description") or raw.get("legend") or raw.get("title"))
+    caption = authored_image_caption(raw)
     if caption:
         out["caption"] = caption
     return out
@@ -888,6 +901,7 @@ def _text_block_images(raw: Mapping[str, Any]) -> list[dict[str, Any]]:
 
 def _table_cell(
     value: Any, *, evidence_ids: list[str], preserve_marked_cells: bool, preserve_structured_columns: bool, step_parser,
+    table_caption_ids,
 ) -> Any:
     if not isinstance(value, Mapping):
         return _clean_text(value)
@@ -922,6 +936,7 @@ def _table_cell(
             "blocks": build_ordered_document(
                 {"evidence_ids": evidence_ids}, nested, preserve_marked_cells=preserve_marked_cells,
                 preserve_structured_columns=preserve_structured_columns, step_parser=step_parser,
+                table_caption_ids=table_caption_ids,
             )["blocks"],
             **({"protected_text": True} if ordered_source_cell else {}),
             **({"images": images} if images else {}),
@@ -958,6 +973,7 @@ def _list_values(raw):
 def _list_block(
     article: Mapping[str, Any], source_order: int, raw: Mapping[str, Any],
     evidence_ids: list[str], kind: str, preserve_marked_cells: bool, preserve_structured_columns: bool, step_parser,
+    table_caption_ids,
 ) -> dict[str, Any]:
     ordered = kind == "ordered_list"
     start = list_number(raw.get("start")) if ordered else None
@@ -983,6 +999,7 @@ def _list_block(
             children = build_ordered_document(
                 {"evidence_ids": item_evidence}, child_blocks, preserve_marked_cells=preserve_marked_cells,
                 preserve_structured_columns=preserve_structured_columns, step_parser=step_parser,
+                table_caption_ids=table_caption_ids,
             )["blocks"]
         number = list_number(value.get("number")) if ordered else None
         if children or images or number is not None:

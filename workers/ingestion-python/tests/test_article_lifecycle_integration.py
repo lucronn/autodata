@@ -858,6 +858,134 @@ def automatic_runtime(runtime, provider, *, introduction="This procedure describ
 
 
 @pytest.mark.parametrize("provider", ["bankone", "banktwo"])
+def test_automatic_missing_table_caption_refresh_preserves_revision_pair(runtime, monkeypatch, provider):
+    from hashlib import sha256
+    import json
+    from autodata_ingestion import source_article_capture
+    from autodata_ingestion.article_lifecycle import run_article_worker_once
+    from autodata_ingestion.article_lifecycle_store import load_source_revision
+    from autodata_ingestion.article_lifecycle_types import MISSING_TABLE_IMAGE_CAPTION_LAYOUT
+    from autodata_ingestion.mercury2 import Mercury2Client
+
+    chart_ref = "chart/pressure"
+    captions = ["Read pressure above 2,000 rpm.", "Apply the outlet correction at altitude."]
+    article = {"blocks": [
+        {"type": "paragraph", "text": "Remove the pump."},
+        {"type": "table", "columns": ["Pressure"], "rows": [["500 kPa"]], "images": [
+            {"kind": "image", "asset_resource_ref": chart_ref, "caption": caption}
+            for caption in captions
+        ]},
+    ]}
+    payload, media = article, "application/json"
+    if provider == "banktwo":
+        payload, media = {"_embedded": {"data": {"article": article}}}, "application/hal+json"
+    raw = json.dumps(payload).encode()
+    runtime.servers[provider].body(raw, media, assets=[chart_ref])
+    ensure = automatic_runtime(runtime, provider)
+    model = Mercury2Client(api_key="fixture-model", base_url=runtime.model.url, model="fixture-mercury")
+
+    def work(job_id, *, hooks=None):
+        assert run_article_worker_once(
+            runtime.repo, worker_id=uuid4(), registry=runtime.registry, object_store=runtime.objects,
+            model_client=model, job_id=job_id, hooks=hooks,
+        )
+
+    def revision(revision_id):
+        with runtime.repo.connect() as conn:
+            return conn.execute(
+                """SELECT * FROM canonical_article_revisions
+                   WHERE canonical_article_id=%s AND canonical_article_revision_id=%s""",
+                (runtime.article_id, revision_id),
+            ).fetchone()
+
+    def figures(document):
+        [table] = [block for block in document["blocks"] if block["type"] == "table"]
+        return table["images"]
+
+    # Exercise the old projection with the same live worker, raw body, and missing asset response.
+    with monkeypatch.context() as legacy:
+        legacy.setattr(source_article_capture, "_retain_missing_table_captions", lambda *_: {})
+        work(ensure().job_id)
+    prior = runtime.read_current()
+    assert prior["content_origin"] == "canonical", runtime.diagnostics()
+    prior_source_id, prior_canonical_id = prior["source_revision_id"], prior["canonical_revision_id"]
+    prior_source = load_source_revision(runtime.repo, prior_source_id)
+    prior_canonical = revision(prior_canonical_id)
+    marker = "missing_table_image_caption_layout"
+    missing = {"role": "asset", "opaque_ref": chart_ref, "failure_code": "SOURCE_NOT_FOUND"}
+    assert prior_canonical["source_revision_id"] == prior_source_id
+    assert prior_source.resource_manifest[1:] == [missing] and marker not in prior_source.resource_manifest[0]
+    assert [image["caption"] for image in figures(prior_source.source_document)] == captions[:1]
+    assert figures(prior["document"]) == figures(prior_source.source_document)
+    assert prior["source_content_sha256"] == sha256(raw).hexdigest()
+    assert runtime.counters() == {"source": 1, "asset": 1, "model": 1, "schedule": 1}
+
+    def assert_prior_revision():
+        assert load_source_revision(runtime.repo, prior_source_id) == prior_source
+        assert revision(prior_canonical_id) == prior_canonical
+
+    runtime.reset_counters()
+    refreshed_source = None
+
+    def inspect_committed_source(point):
+        nonlocal refreshed_source
+        if point != "after_source_commit":
+            return
+        source_view = runtime.read_current()
+        assert source_view["availability"] == "available" and source_view["content_origin"] == "source"
+        assert source_view["canonical_revision_id"] is None and runtime.model.calls == 0
+        assert source_view["source_revision_id"] != prior_source_id
+        refreshed_source = load_source_revision(runtime.repo, source_view["source_revision_id"])
+        assert source_view["document"] == refreshed_source.source_document
+        assert source_view["body"] == refreshed_source.source_body
+        assert source_view["steps"] == refreshed_source.source_steps
+        assert source_view["images"] == refreshed_source.source_images
+        assert refreshed_source.projection_status == "partial"
+        assert refreshed_source.body_source_snapshot_id == prior_source.body_source_snapshot_id
+        assert refreshed_source.source_fingerprint != prior_source.source_fingerprint
+        assert refreshed_source.resource_manifest == [
+            {**prior_source.resource_manifest[0], marker: MISSING_TABLE_IMAGE_CAPTION_LAYOUT}, missing,
+        ]
+        figures_in_table = figures(source_view["document"])
+        assert [image["caption"] for image in figures_in_table] == captions
+        assert len({image["image_id"] for image in figures_in_table}) == 1
+        assert all(image["unavailable_reason"] == "SOURCE_NOT_FOUND" for image in figures_in_table)
+        assert_prior_revision()
+
+    refresh = runtime.refresh(reason="capture separately authored missing chart captions")
+    work(refresh.job_id, hooks=inspect_committed_source)
+    assert refreshed_source is not None
+    current = runtime.read_current()
+    current_canonical_id = current["canonical_revision_id"]
+    assert current["content_origin"] == "canonical", runtime.diagnostics()
+    assert current_canonical_id != prior_canonical_id
+    assert current["source_revision_id"] == refreshed_source.source_revision_id
+    assert revision(current_canonical_id)["source_revision_id"] == refreshed_source.source_revision_id
+    assert "Take off the pump." in current["body"]
+    assert figures(current["document"]) == figures(refreshed_source.source_document)
+    assert runtime.counters() == {"source": 1, "asset": 1, "model": 1, "schedule": 1}
+    assert_prior_revision()
+
+    runtime.reset_counters()
+    inspection = runtime.refresh(reason="inspect identical structured article bytes")
+    work(inspection.job_id)
+    reused = runtime.read_current()
+    assert reused["processing_state"] == "completed"
+    assert reused["source_revision_id"] == refreshed_source.source_revision_id
+    assert reused["canonical_revision_id"] == current_canonical_id
+    assert reused["document"] == current["document"]
+    assert runtime.counters() == {"source": 1, "asset": 1, "model": 0, "schedule": 1}
+    assert_prior_revision()
+
+    with runtime.repo.connect() as conn:
+        events = conn.execute(
+            "SELECT canonical_article_revision_id FROM publication_events WHERE canonical_article_id=%s",
+            (runtime.article_id,),
+        ).fetchall()
+        assert {row["canonical_article_revision_id"] for row in events} == {prior_canonical_id, current_canonical_id}
+
+
+@pytest.mark.parametrize("provider", ["bankone", "banktwo"])
 def test_automatic_real_runtime_source_first_publication_and_zero_call_restart(runtime, provider):
     ensure = automatic_runtime(runtime,provider)
     jobs = [ensure().job_id for _ in range(20)]
