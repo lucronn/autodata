@@ -1,0 +1,24 @@
+{
+  "request_id": "00000000-0000-4000-8000-000000000009",
+  "provider": "banktwo",
+  "source_revision": "fixture-2026-11-05",
+  "fetched_at": "2026-11-05T12:00:00Z",
+  "kind": "article",
+  "media_type": "text/html",
+  "content": "<p>Remove the pump cover.</p><img src=\"/fixture/chart?locale=en_US&amp;region=US\" alt=\"Pressure chart\"><embed type=\"application/pdf\" src=\"/fixture/guide.pdf?locale=en_US&amp;region=US\">",
+  "sha256": "623390380cf6e43fc7a7fe7542ee68c5da0a025d00803159c1f14108823841ab",
+  "asset_resource_refs": [
+    "chart",
+    "guide"
+  ],
+  "asset_bindings": [
+    {
+      "source_url": "/fixture/chart?locale=en_US&region=US",
+      "resource_ref": "chart"
+    },
+    {
+      "source_url": "/fixture/guide.pdf?locale=en_US&region=US",
+      "resource_ref": "guide"
+    }
+  ]
+}
