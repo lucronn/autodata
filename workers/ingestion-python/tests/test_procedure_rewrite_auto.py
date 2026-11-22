@@ -3660,6 +3660,10 @@ _REVERSED_QUALITATIVE_ROTATION = (
     (_QUALITATIVE_ROTATION, "Bring the pressure slot into alignment by turning the adjuster clockwise."),
     (_QUALITATIVE_ROTATION, "Bring the guide slots into alignment by turning the adjuster clockwise if needed."),
     (
+        _QUALITATIVE_ROTATION,
+        "Bring the guide slots into alignment by turning the adjuster clockwise with steady hand pressure.",
+    ),
+    (
         "Turn the spindle counter-clockwise to align the marks.",
         "Align the cap by rotating the spindle anticlockwise.",
     ),
@@ -3684,12 +3688,28 @@ def test_automatic_rewrite_preserves_qualitative_rotation_direction(in_cell, ori
 @pytest.mark.parametrize("original,draft", [
     (_QUALITATIVE_ROTATION, _QUALITATIVE_ROTATION_RESTATEMENT),
     (
+        _QUALITATIVE_ROTATION,
+        "Bring the guide slots into alignment by turning the adjuster in a clockwise direction.",
+    ),
+    (
         "Turn the spindle counter-clockwise to align the marks.",
         "Align the marks by rotating the spindle anticlockwise.",
     ),
     (
         "Rotate the adjuster clockwise, then turn the spindle counterclockwise.",
         "Turn the spindle anticlockwise after rotating the adjuster clockwise.",
+    ),
+    (
+        "Rotate the adjuster clockwise, then turn the spindle counterclockwise.",
+        "Turn the adjuster clockwise. Then, rotate the spindle anticlockwise.",
+    ),
+    (
+        "Rotate the adjuster clockwise, then turn the spindle counterclockwise.",
+        "Before turning the spindle anticlockwise, rotate the adjuster clockwise.",
+    ),
+    (
+        "Rotate the adjuster clockwise, then turn the spindle counterclockwise.",
+        "After rotating the adjuster clockwise, turn the spindle anticlockwise.",
     ),
 ])
 def test_automatic_rewrite_accepts_restructured_qualitative_rotation(in_cell, original, draft):
@@ -3748,6 +3768,26 @@ def test_automatic_rewrite_preserves_wrapped_rotary_direction(in_cell, direction
     (
         "Rotate the adjuster clockwise until the detent engages.",
         "Use a clockwise rotation on the spindle.",
+    ),
+    (
+        "Rotate the adjuster clockwise with steady hand pressure.",
+        "Turn the adjuster clockwise.",
+    ),
+    (
+        "Using the knurled handle, rotate the adjuster clockwise.",
+        "Turn the adjuster clockwise.",
+    ),
+    (
+        "Rotate the adjuster clockwise and mark its position.",
+        "Turn the adjuster clockwise.",
+    ),
+    (
+        "Rotate the adjuster clockwise. Mark its position.",
+        "Turn the adjuster clockwise.",
+    ),
+    (
+        "Clean the keyed slot. Rotate the adjuster clockwise.",
+        "Turn the adjuster clockwise.",
     ),
 ])
 def test_automatic_rewrite_retains_unproven_rotary_scope(in_cell, original, draft):

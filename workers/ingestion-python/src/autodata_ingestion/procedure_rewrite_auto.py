@@ -319,7 +319,8 @@ _TARGET_DELIMITERS = frozenset(
 _DIRECTED_ROTATION = re.compile(
     rf"\b(?:rotat(?:e[sd]?|ing)|turn(?:s|ed|ing)?)\s+(?:the\s+)?"
     rf"(?P<target>{_TARGET_WORD}(?:\s+{_TARGET_WORD}){{0,5}}?)\s+"
-    rf"(?:in\s+(?:a|the)\s+)?{_ROTARY_DIRECTION.pattern}",
+    rf"(?:(?P<direction_phrase>in\s+(?:a|the)\s+))?{_ROTARY_DIRECTION.pattern}"
+    r"(?(direction_phrase)\s+direction\b)",
     re.IGNORECASE,
 )
 _ROTARY_UNCERTAIN = re.compile(
@@ -327,8 +328,6 @@ _ROTARY_UNCERTAIN = re.compile(
     r"optional(?:ly)?|while|simultaneously)\b", re.IGNORECASE,
 )
 _ROTARY_UNTIL = re.compile(r"\buntil\b", re.IGNORECASE)
-_ROTARY_BY = re.compile(r"\bby$", re.IGNORECASE)
-_ROTARY_TO_ALIGN = re.compile(r"\bto\s+align\b", re.IGNORECASE)
 _ROTARY_ALIGNMENT_TARGET = rf"(?:the\s+)?(?P<endpoint>{_TARGET_WORD}(?:\s+{_TARGET_WORD}){{0,5}}?)"
 _ROTARY_UNTIL_ALIGNMENT = re.compile(rf"until\s+{_ROTARY_ALIGNMENT_TARGET}\s+aligns?", re.IGNORECASE)
 _ROTARY_ALIGNMENT_MEANS = re.compile(rf"bring\s+{_ROTARY_ALIGNMENT_TARGET}\s+into\s+alignment\s+by", re.IGNORECASE)
@@ -354,6 +353,8 @@ _LUBRICANT_SCOPE_DELIMITERS = _TARGET_DELIMITERS | {"by", "except", "never", "no
 _CLAUSE_PREFIX_TIMING = re.compile(r"^(before|after)\s+([^,;.!?]+),\s+(.+)$", re.IGNORECASE)
 _CLAUSE_TIMING = re.compile(r"\s+(before|after)\s+", re.IGNORECASE)
 _CLAUSE_THEN = re.compile(r"(?:[.,;]\s*|\s+)(?:and\s+)?then[,\s]+", re.IGNORECASE)
+_ROTARY_STEP_SEPARATOR = re.compile(rf"{_CLAUSE_THEN.pattern}|;", re.IGNORECASE)
+_ROTARY_FOLLOWING_STEP = re.compile(r"^(?:then|next)[,\s]+", re.IGNORECASE)
 _LUBRICANT_CLAUSE_SEPARATOR = re.compile(rf"{_SENTENCES.pattern}|;")
 _LUBRICANT_SEQUENCE_MARKER = re.compile(r"^(first|next|then)[,\s]+")
 _LUBRICANT_DIRECTIVE_MARKER = re.compile(r"\b(?:apply|applied|lubricated?|greased?)\s+", re.IGNORECASE)
@@ -1636,14 +1637,14 @@ def _rotary_direction(match):
 
 
 def _rotation_alignment_endpoint(prefix, suffix):
-    prefix_claim = _ROTARY_BY.search(prefix) or _ROTARY_TO_ALIGN.search(prefix)
-    suffix_claim = _ROTARY_UNTIL.search(suffix) or _ROTARY_TO_ALIGN.search(suffix)
-    if _ROTARY_UNTIL.search(prefix) or (prefix_claim and suffix_claim):
+    prefix = prefix.strip().rstrip(",").rstrip()
+    suffix = suffix.strip().rstrip(".!").rstrip()
+    if prefix and suffix:
         return None
-    if prefix_claim:
+    if prefix:
         alignment = (_ROTARY_ALIGNMENT_MEANS.fullmatch(prefix) or _ROTARY_ALIGN_BY.fullmatch(prefix)
                      or _ROTARY_ALIGNMENT_PURPOSE.fullmatch(prefix))
-    elif suffix_claim:
+    elif suffix:
         alignment = _ROTARY_UNTIL_ALIGNMENT.fullmatch(suffix) or _ROTARY_ALIGNMENT_PURPOSE.fullmatch(suffix)
     else:
         return ()
@@ -1655,22 +1656,28 @@ def _rotation_alignment_endpoint(prefix, suffix):
 
 def _rotations_in_clause(clause):
     matches = list(_DIRECTED_ROTATION.finditer(clause))
-    if len(matches) != sum(1 for _ in _ROTARY_DIRECTION.finditer(clause)):
+    if not matches or len(matches) != sum(1 for _ in _ROTARY_DIRECTION.finditer(clause)):
         return None
     rotations = []
-    previous_end = 0
+    prefix = clause[:matches[0].start()]
     for index, match in enumerate(matches):
         target = tuple(_WORDS.findall(match["target"].casefold()))
         if not _TARGET_DELIMITERS.isdisjoint(target):
             return None
-        next_start = matches[index + 1].start() if index + 1 < len(matches) else len(clause)
-        prefix = clause[previous_end:match.start()].strip(" ,.!?")
-        suffix = clause[match.end():next_start].strip(" ,.!?")
-        previous_end = match.end()
+        next_prefix = ""
+        if index + 1 < len(matches):
+            between = clause[match.end():matches[index + 1].start()]
+            separator = _ROTARY_STEP_SEPARATOR.search(between)
+            if separator is None:
+                return None
+            suffix, next_prefix = between[:separator.start()], between[separator.end():]
+        else:
+            suffix = clause[match.end():]
         endpoint = _rotation_alignment_endpoint(prefix, suffix)
         if endpoint is None:
             return None
         rotations.append((target, _rotary_direction(match), endpoint))
+        prefix = next_prefix
     return rotations
 
 
@@ -1682,15 +1689,18 @@ def _qualitative_rotations(text):
     # are inspected, otherwise the clockwise suffix can look like a new claim.
     normalized = _ROTARY_DIRECTION.sub(_rotary_direction, text)
     for sentence in _SENTENCES.split(normalized):
-        if not _ROTARY_DIRECTION.search(sentence):
+        sentence = sentence.strip()
+        if not sentence:
             continue
-        if _ROTARY_UNCERTAIN.search(sentence):
+        if not _ROTARY_DIRECTION.search(sentence) or _ROTARY_UNCERTAIN.search(sentence):
             return None
+        if rotations:
+            sentence = _ROTARY_FOLLOWING_STEP.sub("", sentence, count=1)
         timing = list(_TIMING.finditer(sentence))
         if timing:
             if len(timing) != 1 or _ROTARY_UNTIL.search(sentence):
                 return None
-            clauses = tuple(_chronological_clauses(sentence))
+            clauses = tuple(_chronological_clauses(sentence, include_leading_marker=False))
             if len(clauses) != 2 or not all(_ROTARY_DIRECTION.search(clause) for clause in clauses):
                 return None
         else:
@@ -1735,7 +1745,7 @@ def _action_matches(text):
     return actions
 
 
-def _chronological_clauses(text):
+def _chronological_clauses(text, *, include_leading_marker=True):
     for sentence in _SENTENCES.split(text.strip()):
         timing = _TIMING.search(sentence)
         if timing is None:
@@ -1744,6 +1754,8 @@ def _chronological_clauses(text):
         earlier_first = timing[1].casefold() in {"before", "ahead of"}
         if timing.start() == 0 and "," in sentence:
             first, second = sentence.split(",", 1)
+            if not include_leading_marker:
+                first = first[timing.end():]
             yield from (second, first) if earlier_first else (first, second)
         else:
             first, second = sentence[:timing.start()], sentence[timing.end():]
