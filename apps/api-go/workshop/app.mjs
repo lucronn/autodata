@@ -1246,6 +1246,7 @@ async function loadArticle(id, g, { savedLink = false } = {}) {
   const order = articleDetailOrder(g, id);
   const detailPath = articleRequestPath(id);
   const readOptions = { signal: g.signal, preferShortPublicationCheck: true };
+  let initialReadStartedAt = performance.now();
   const first = await (paid
     ? requestArticleDetail(order, articleRequestPath(id, "/prepare"), {
         ...readOptions,
@@ -1258,6 +1259,7 @@ async function loadArticle(id, g, { savedLink = false } = {}) {
     : requestArticleDetail(order, detailPath, readOptions)).catch(async (error) => {
         if (paid && g.current() && error.status === 0 && error.code === "NETWORK_UNAVAILABLE") {
           // Prepare may have committed before the browser lost the response.
+          initialReadStartedAt = performance.now();
           const recovered = await requestArticleDetail(order, detailPath, { ...readOptions, preferShortSourceCheck: true })
             .catch((detailError) => {
               g.signal.throwIfAborted();
@@ -1295,6 +1297,7 @@ async function loadArticle(id, g, { savedLink = false } = {}) {
     },
     {
       signal: g.signal,
+      initialReadStartedAt,
       selectResponse: (response) => acceptArticleDetail(order, response),
       onUpdate(response) {
         if (!g.current()) return;

@@ -17,6 +17,7 @@ function runInNewContext(code, context) {
   context.mountedSource ??= null;
   context.paidOrder ??= null;
   context.articleIndexOrigin ??= null;
+  context.performance ??= performance;
   return runVM(code, context);
 }
 
@@ -556,6 +557,42 @@ test('reader checks negotiated cold source early and preserves scheduled reads o
     }, { now: () => now, wait: async ms => { now += ms; } });
     assert.deepEqual(actual, expected, label);
     assert.equal(result.data.article.body, 'Published procedure', label);
+  }
+});
+test('reader credits time spent awaiting the prepared response before polling', async () => {
+  const { readArticle } = await import('./workshop/article-read.mjs');
+  const prepared = { status: 202, shortSourceCheck: true, data: {
+    article: { processing: { job_id: 'job', state: 'queued' } },
+  } };
+  const complete = { status: 200, data: { article: { body: 'Stored procedure' } } };
+  const stalledBody = Symbol('stalled body');
+  for (const [elapsed, responses, expectedStarts] of [
+    [12, [prepared, complete], [12, 162]],
+    [150, [prepared, complete], [150, 150]],
+    [164, [prepared, prepared, complete], [164, 164, 314]],
+    [164, [prepared, stalledBody, complete], [164, 164, 314]],
+    [164, [prepared, prepared, prepared, complete], [164, 164, 314, 414]],
+    [164, [prepared, { ...prepared, retryAfterSeconds: 2 }, complete], [164, 164, 2164]],
+    [164, [{ ...prepared, retryAfterSeconds: 2 }, complete], [164, 2164]],
+  ]) {
+    let now = elapsed;
+    const starts = [];
+    const result = await readArticle(async ({ readableBodyTimeout }) => {
+      starts.push(now);
+      const next = responses.shift();
+      assert.ok(next);
+      if (next === stalledBody) {
+        now += readableBodyTimeout;
+        throw new TypeError('The response body did not arrive');
+      }
+      return next;
+    }, {
+      initialReadStartedAt: 0,
+      now: () => now,
+      wait: async (milliseconds) => { now += milliseconds; },
+    });
+    assert.deepEqual(starts, expectedStarts);
+    assert.equal(result.data.article.body, 'Stored procedure');
   }
 });
 test('reader confirms newly visible source once before resuming publication backoff', async () => {
@@ -6312,6 +6349,7 @@ test('the saved reader uses the authorized configuration and can fall back on an
 });
 
 test('lost paid prepare recovers stored source or a durable job with scoped GETs only', async () => {
+  const { readArticle } = await import('./workshop/article-read.mjs');
   const { requestArticleJSON } = await import('./workshop/catalog.mjs');
   const configuration = { id: routeConfiguration, region: 'CA', engine: 'Synthetic 2.0 L' };
   const ready = mediaArticle([{ type: 'paragraph', text: 'Retained procedure.' }]);
@@ -6322,17 +6360,29 @@ test('lost paid prepare recovers stored source or a durable job with scoped GETs
     [true, [{ article: pending, configuration }, { article: ready, configuration }]],
   ]) {
     const calls = [];
+    let now = 0;
     const h = articleRouteHarness('firebase', (path, options) => requestArticleJSON(path, {
       ...options,
       fetcher: async (_url, { method, headers }) => {
-        calls.push({ path, method, headers, signal: options.signal });
-        if (method === 'POST') throw new TypeError('The connection was reset after prepare');
+        calls.push({ path, method, headers, signal: options.signal, startedAt: now });
+        if (method === 'POST') {
+          now += 300;
+          throw new TypeError('The connection was reset after prepare');
+        }
         const data = detailReplies.shift();
         assert.ok(data, 'only the initial recovery and durable job polling may read');
-        return new Response(JSON.stringify(data), { status: data.article === pending ? 202 : 200 });
+        now += 2;
+        const response = data.article === pending
+          ? { status: 202, headers: { 'Preference-Applied': 'workshop-short-source-check' } }
+          : { status: 200 };
+        return new Response(JSON.stringify(data), response);
       },
     }));
     const expectedCalls = detailReplies.length + 1;
+    h.context.performance = { now: () => now };
+    h.context.readArticle = (read, options) => readArticle(read, {
+      ...options, now: () => now, wait: async (milliseconds) => { now += milliseconds; },
+    });
     h.context.articlePath = id => `/v1/catalog/vehicles/${routeConfiguration}/articles/${id}`;
     h.context.vehicle = { id: routeConfiguration, region: 'CA' };
     h.context.quote = null;
@@ -6341,6 +6391,7 @@ test('lost paid prepare recovers stored source or a durable job with scoped GETs
     assert.equal(await h.context.loadArticle('a', h.g, { savedLink }), true);
     assert.equal(calls.length, expectedCalls);
     assert.deepEqual(calls.map(({ method }) => method), ['POST', ...Array(expectedCalls - 1).fill('GET')]);
+    assert.deepEqual(calls.map(({ startedAt }) => startedAt), expectedCalls === 3 ? [0, 300, 452] : [0, 300]);
     assert.equal(calls[0].path, `/v1/catalog/vehicles/${routeConfiguration}/articles/a/prepare?region=CA`);
     assert.equal(calls[0].headers['X-CSRF-Token'], 'csrf');
     for (const call of calls.slice(1)) {
