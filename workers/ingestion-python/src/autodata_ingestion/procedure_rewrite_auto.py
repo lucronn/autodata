@@ -3092,10 +3092,12 @@ def _include_cell_blocks(prompt_version):
     )
 
 
-def _require_changes(source, candidate, *, prompt_version):
+def _require_changes(source, candidate, *, prompt_version, include_cell_blocks=None):
     # The introduced first block is the only offset in source paths.
     restored = {"blocks": candidate["blocks"][1:]}
-    slots = full.prose_slots(source, include_cell_blocks=_include_cell_blocks(prompt_version))
+    if include_cell_blocks is None:
+        include_cell_blocks = _include_cell_blocks(prompt_version)
+    slots = full.prose_slots(source, include_cell_blocks=include_cell_blocks)
     guard_prose = _uses_prose_guards(prompt_version, len(slots))
     guard_actions = guard_prose and prompt_version != _PROSE_PROMPT_V4
     guard_direction = guard_prose and prompt_version not in (_PROSE_PROMPT_V4, _PROSE_PROMPT_V5)
@@ -3403,6 +3405,15 @@ def _require_changes(source, candidate, *, prompt_version):
             # Newly recognized inspections can repeat an otherwise unique
             # target. Keep the narrower check above for those earlier cases.
             _check_target_swaps(slots, restored, directive=_directive_with_extended_inspection_focus)
+
+
+def require_current_publication_checks(source, candidate, *, saved_prompt_version):
+    """Apply current prose rules to the saved prompt's editable slots."""
+    if saved_prompt_version != _PROSE_PROMPT_VERSION:
+        _require_changes(
+            source, candidate, prompt_version=_PROSE_PROMPT_VERSION,
+            include_cell_blocks=_include_cell_blocks(saved_prompt_version),
+        )
 
 
 def render_auto(source, response, *, prompt_version=None):

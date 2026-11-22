@@ -617,10 +617,10 @@ def _require_full_approval(cur, job, article, candidate):
     return latest
 
 
-def automatic_candidate_validation(cur, job, candidate):
+def automatic_candidate_validation(cur, job, candidate, *, require_current=False):
     """Rebuild automatic source, prompt and output from immutable saved evidence."""
     from .article_lifecycle_types import digest_json
-    from .procedure_rewrite_auto import PROFILE, _auto_prompt_version, validate_auto
+    from .procedure_rewrite_auto import PROFILE, _auto_prompt_version, require_current_publication_checks, validate_auto
     from .procedure_normalize import normalize_procedure_article
     if candidate is None:
         raise ValueError("automatic candidate binding missing")
@@ -680,6 +680,10 @@ def automatic_candidate_validation(cur, job, candidate):
         source, candidate["canonical_document"], response=attempt["response"], prompt_version=prompt_version)
     if not validation.passed:
         raise ValueError("automatic rewrite operation binding mismatch")
+    if require_current:
+        require_current_publication_checks(
+            source, candidate["canonical_document"], saved_prompt_version=prompt_version,
+        )
     return validation
 
 
@@ -860,7 +864,15 @@ def publish_article_revision(repo,lease,revision_id,*,hooks=None):
         row=cur.execute("SELECT * FROM canonical_article_revisions WHERE canonical_article_revision_id=%s FOR UPDATE",(revision_id,)).fetchone()
         if row is None: raise ValueError("missing candidate")
         projection=project_ordered_document(row["canonical_document"])
-        validation=automatic_candidate_validation(cur,job,row) if job["rewrite_profile_version"] == "full-prose-auto-v1" else full_candidate_validation(cur,job,row) if job["rewrite_profile_version"] == "full-prose-review-v1" else validate_article_rewrite(row["normalized_source_document"],row["canonical_document"],profile_version=job["rewrite_profile_version"])
+        profile = job["rewrite_profile_version"]
+        if profile == "full-prose-auto-v1":
+            validation = automatic_candidate_validation(cur, job, row, require_current=True)
+        elif profile == "full-prose-review-v1":
+            validation = full_candidate_validation(cur, job, row)
+        else:
+            validation = validate_article_rewrite(
+                row["normalized_source_document"], row["canonical_document"], profile_version=profile,
+            )
         if (job["rewrite_profile_version"] == "technical-prose-v2"
             and digest_json(row["validation_report"]) != digest_json(validation.report)):
             raise ValueError("publication binding validation failed")
