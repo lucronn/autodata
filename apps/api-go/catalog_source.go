@@ -441,6 +441,7 @@ func renderCatalogOrderedSource(document *CatalogDocument, images []CatalogImage
 	}
 	type figurePlacement struct {
 		id      string
+		caption string
 		missing bool
 	}
 	writeImage := func(ref CatalogImage, placed map[figurePlacement]bool, skipPlaced bool) {
@@ -452,7 +453,7 @@ func renderCatalogOrderedSource(document *CatalogDocument, images []CatalogImage
 		if available {
 			key.id = imageKey(image)
 		} else if missing {
-			key = figurePlacement{id: id, missing: true}
+			key = figurePlacement{id: id, caption: ref.Caption, missing: true}
 		}
 		if skipPlaced && placed[key] {
 			return

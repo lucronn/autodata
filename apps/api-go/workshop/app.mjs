@@ -861,6 +861,7 @@ const imageReferenceID = (reference) =>
 const missingSourceImage = (reference) =>
   reference?.status === "unavailable" &&
   reference.unavailable_reason === "SOURCE_NOT_FOUND";
+const missingImagePlacement = (id, caption) => JSON.stringify([id, caption || ""]);
 function imageMap(article) {
   return [
     ...(article?.images || []),
@@ -891,7 +892,7 @@ function addImage(parent, image, reference, g, figures = null, useAltCaption = f
     figure.append(img);
   } else {
     const missingID = missing ? imageReferenceID(reference) : "";
-    if (missingID) figure.dataset.missingAssetId = missingID;
+    if (missingID) figure.dataset.missingImagePlacement = missingImagePlacement(missingID, caption);
     figure.append(element("p", "Illustration unavailable.", "image-missing"));
   }
   if ((available || missing) && visibleCaption)
@@ -1020,12 +1021,12 @@ function renderBlocks(parent, blocks, imagesByID, review, g, sourceTargets = nul
     } else if (type === "table") {
       const table = element("table", undefined, "article-table");
       const cellImageIDs = new Set();
-      const cellMissingImageIDs = new Set();
+      const cellMissingImages = new Set();
       const trackCellImages = (cell) => {
         for (const figure of cell.querySelectorAll("figure")) {
-          const { assetId, missingAssetId } = figure.dataset;
+          const { assetId, missingImagePlacement: placement } = figure.dataset;
           if (assetId) cellImageIDs.add(assetId);
-          if (missingAssetId) cellMissingImageIDs.add(missingAssetId);
+          if (placement) cellMissingImages.add(placement);
         }
       };
       const renderCell = (cell, value) => {
@@ -1069,7 +1070,8 @@ function renderBlocks(parent, blocks, imagesByID, review, g, sourceTargets = nul
       parent.append(wrap);
       for (const ref of block.images || []) {
         if (cellImageIDs.has(assetID(find(ref)))) continue;
-        if (missingSourceImage(ref) && cellMissingImageIDs.has(imageReferenceID(ref))) continue;
+        if (missingSourceImage(ref) &&
+            cellMissingImages.has(missingImagePlacement(imageReferenceID(ref), ref.caption))) continue;
         addReference(parent, ref);
       }
     } else if (type === "break") parent.append(element("hr"));

@@ -5138,11 +5138,12 @@ test('article table block image already shown in a cell is not repeated', () => 
   const h = articleMediaHarness();
   const parent = h.content(mediaArticle([
     { type: 'table', rows: [[{ text: 'Bolt', images: [{ asset_id: 'shared' }] }]],
-      images: [{ image_id: 'shared' }, { asset_id: 'row-only' }] },
+      images: [{ image_id: 'shared', caption: 'Summary description' }, { asset_id: 'row-only' }] },
   ], [{ id: 'shared', url: mediaURL('shared') }, { id: 'row-only', url: mediaURL('row-only') }]));
   assert.deepEqual(mediaIDs(parent), ['shared', 'row-only']);
   assert.deepEqual(mediaIDs(mediaDescendants(parent, 'td')[0]), ['shared']);
   assert.deepEqual(mediaTags(parent), ['div', 'figure']);
+  assert.ok(!parent.textContent.includes('Summary description'));
 });
 
 test('unavailable chart captions stay at their authored positions across stored and rewritten views', () => {
@@ -5150,6 +5151,7 @@ test('unavailable chart captions stay at their authored positions across stored 
   const caption = 'Pressure at <2,000> rpm & warm';
   const unavailable = { status: 'unavailable', unavailable_reason: 'SOURCE_NOT_FOUND' };
   const chart = { type: 'image', asset_id: 'chart', caption, alt: 'Pressure chart', ...unavailable };
+  const detached = { ...chart, caption: 'Apply the outlet correction at altitude.' };
   const noCaption = { type: 'image', asset_id: 'no-caption', caption: '', alt: 'Alt only', ...unavailable };
   const inline = { asset_id: 'inline', caption: 'Inline figure caption', ...unavailable };
   const denied = { asset_id: 'denied', caption: 'Hidden denied caption', status: 'unavailable', unavailable_reason: 'FORBIDDEN' };
@@ -5167,11 +5169,11 @@ test('unavailable chart captions stay at their authored positions across stored 
         inline,
       ],
       rows: [['Supply', '500 kPa', denied]],
-      images: [chart],
-    }], images, { content_origin: origin, view_revision: origin }));
-    assert.deepEqual(mediaTags(parent), ['div']);
+      images: [chart, detached, inline, noCaption],
+    }, { type: 'paragraph', text: 'Continue after the table.' }], images, { content_origin: origin, view_revision: origin }));
+    assert.deepEqual(mediaTags(parent), ['div', 'figure', 'p']);
     assert.deepEqual(mediaIDs(parent), []);
-    assert.equal(mediaDescendants(parent, 'figure').length, 4);
+    assert.equal(mediaDescendants(parent, 'figure').length, 5);
     const [ordered, unlabelled, inlineCell] = mediaDescendants(parent, 'th');
     assert.deepEqual(mediaTags(ordered), ['p', 'figure', 'p']);
     assert.equal(ordered.children[0].textContent, 'Check the pressure scale.');
@@ -5185,7 +5187,10 @@ test('unavailable chart captions stay at their authored positions across stored 
     assert.deepEqual(mediaTags(plain), ['p']);
     assert.equal(plain.children[0].textContent, 'Illustration unavailable.');
     assert.equal(mediaDescendants(inlineCell, 'figcaption')[0].textContent, inline.caption);
-    assert.equal(mediaDescendants(parent, 'figcaption').length, 2);
+    assert.deepEqual(mediaTags(parent.children[1]), ['p', 'figcaption']);
+    assert.equal(parent.children[1].children[1].textContent, detached.caption);
+    assert.equal(parent.children[2].textContent, 'Continue after the table.');
+    assert.equal(mediaDescendants(parent, 'figcaption').length, 3);
     assert.ok(!parent.textContent.includes(denied.caption));
   }
 });
