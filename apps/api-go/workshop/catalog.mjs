@@ -312,10 +312,13 @@ export async function requestArticleJSON(path, {
   if (signal) signals.push(signal);
   if (earlyController) signals.push(earlyController.signal);
   const combined = signals.length > 1 ? AbortSignal.any(signals) : timeoutSignal;
+  let retryAfterSeconds = 0;
   try {
     const response = await fetcher(path, { method, signal: combined, credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json', ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...(preferences.length ? { Prefer: preferences.join(', ') } : {}), ...headers }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
     const applied = response.headers.get('Preference-Applied');
     const retry = response.headers.get('Retry-After');
+    // Keep this header when a short probe times out receiving the body.
+    retryAfterSeconds = retry && /^\d+$/.test(retry) ? Number(retry) : retry ? Math.max(0, Math.ceil((Date.parse(retry) - Date.now()) / 1000)) || 0 : 0;
     const confirmedPublication = applied === finishPublishedBodyPreference && retry === null;
     if (response.status === 200 && (!finishPublishedBody || confirmedPublication)) {
       earlyTimeout?.removeEventListener('abort', abortEarly);
@@ -327,7 +330,6 @@ export async function requestArticleJSON(path, {
     });
     signal?.throwIfAborted();
     combined.throwIfAborted();
-    const retryAfterSeconds = retry && /^\d+$/.test(retry) ? Number(retry) : retry ? Math.max(0, Math.ceil((Date.parse(retry) - Date.now()) / 1000)) || 0 : 0;
     if (!response.ok) {
       const error = data?.error;
       const code = typeof error?.code === 'string' ? error.code : 'HTTP_ERROR';
@@ -350,7 +352,7 @@ export async function requestArticleJSON(path, {
   } catch (error) {
     signal?.throwIfAborted();
     if (error instanceof CatalogRequestError) throw error;
-    if (combined.aborted || error instanceof TypeError) throw new CatalogRequestError('Cannot reach AutoData. Try again.', { retryable: true });
+    if (combined.aborted || error instanceof TypeError) throw new CatalogRequestError('Cannot reach AutoData. Try again.', { retryable: true, retryAfterSeconds });
     throw error;
   } finally {
     earlyTimeout?.removeEventListener('abort', abortEarly);

@@ -167,7 +167,8 @@ export async function readArticle(
     } catch (error) {
       signal?.throwIfAborted();
       sourceProbeFailed = error instanceof TypeError || error.code === "NETWORK_UNAVAILABLE" ||
-        Boolean(publicationCheck && error.code === "INVALID_RESPONSE");
+        Boolean((publicationCheck || initialSourceFallback) && error.code === "INVALID_RESPONSE") ||
+        Boolean(initialSourceFallback && error.status === 503 && error.retryable);
       if (!sourceProbeFailed && !([429, 503].includes(error.status) && error.retryable)) throw error;
       retryAfter = Number(error.retryAfterSeconds) || 0;
     }

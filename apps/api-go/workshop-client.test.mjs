@@ -470,6 +470,7 @@ test('reader checks negotiated cold source early and preserves scheduled reads o
   const complete = { status: 200, data: { article: { body: 'Published procedure' } } };
   const overload = Object.assign(new Error('Busy'), { status: 429, retryable: true, retryAfterSeconds: 5 });
   const unhintedOverload = Object.assign(new Error('Busy'), { status: 503, retryable: true });
+  const invalidResponse = Object.assign(new Error('Unreadable reply'), { code: 'INVALID_RESPONSE' });
   const networkFailure = new TypeError('Network failed');
   const timedOut = Symbol('timed out');
   const delayedFetching = Symbol('fetching response after the third probe slot');
@@ -477,6 +478,9 @@ test('reader checks negotiated cold source early and preserves scheduled reads o
   for (const [label, responses, expectedStarts] of [
     ['source ready before the original first probe', [prepare, stored, complete], [0, 150, 1150]],
     ['initial timeout preserves the original first probe', [prepare, timedOut, stored, complete], [0, 150, 250, 1250]],
+    ['initial transient catalog failure preserves the original first probe', [prepare, unhintedOverload, stored, complete], [0, 150, 250, 1250]],
+    ['initial unreadable reply preserves the original first probe', [prepare, invalidResponse, stored, complete], [0, 150, 250, 1250]],
+    ['initial overload respects a retry hint', [prepare, overload, complete], [0, 150, 5150]],
     ['initial failure honors server retry hint', [prepare, pending, stored, complete], [0, 150, 1150, 2150]],
     ['source ready at the original first probe', [prepare, stored, complete], [0, 250, 1250]],
     ['source ready at second probe', [prepare, prepare, stored, complete], [0, 250, 500, 1500]],
@@ -914,6 +918,8 @@ test('a short source read can finish a successful body by the regular deadline',
     [200, 1, true],
     [200, 'navigation', true],
     [503, undefined, false, '7'],
+    [503, 0, true, '7'],
+    [503, 'navigation', true, '7'],
   ]) {
     deadlines.length = 0;
     const navigation = new AbortController();
@@ -941,9 +947,9 @@ test('a short source read can finish a successful body by the regular deadline',
     else deadlines[expire]?.controller.abort();
     assert.equal(requestSignal.aborted, cancels);
     if (!cancels) release({ article: { body: 'Stored procedure' }, error: { retryable: true } });
-    if (retryAfter) await assert.rejects(response, { status: 503, retryAfterSeconds: 7, retryable: true });
-    else if (expire === 'navigation') await assert.rejects(response, navigation.signal.reason);
-    else if (cancels) await assert.rejects(response, { code: 'NETWORK_UNAVAILABLE', retryable: true });
+    if (expire === 'navigation') await assert.rejects(response, navigation.signal.reason);
+    else if (cancels) await assert.rejects(response, { code: 'NETWORK_UNAVAILABLE', retryable: true, retryAfterSeconds: retryAfter ? 7 : 0 });
+    else if (retryAfter) await assert.rejects(response, { status: 503, retryAfterSeconds: 7, retryable: true });
     else assert.equal((await response).data.article.body, 'Stored procedure');
   }
 });
