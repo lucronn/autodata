@@ -882,13 +882,13 @@ def test_automatic_real_runtime_source_first_publication_and_zero_call_restart(r
 @pytest.mark.parametrize(
     "prompt_version",
     ["v1", "v2", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v12", "v13", "v14", "v15", "v16", "v17", "v18",
-     "v19", "v20", "v21", "v22", "v23", "v24", "v25", "v26", "v27", "v28", "v29", "v30", "v31", "v32", "v33", "v34", "v35", "v36", "v37", "v38", "v39", "v40", "v41", "v42", "v43", "v44", "v45", "v46", "v47", "v48", "v49"],
+     "v19", "v20", "v21", "v22", "v23", "v24", "v25", "v26", "v27", "v28", "v29", "v30", "v31", "v32", "v33", "v34", "v35", "v36", "v37", "v38", "v39", "v40", "v41", "v42", "v43", "v44", "v45", "v46", "v47", "v48", "v49", "v50"],
 )
 def test_automatic_real_process_death_reuses_saved_response(runtime, point, prompt_version):
     ensure = automatic_runtime(runtime,"bankone")
     ensure();runtime.pause(point);runtime.start_workers(1);runtime.await_barrier()
     job = runtime.current_job_id();runtime.kill_worker();runtime.expire_lease(job)
-    if prompt_version != "v49":
+    if prompt_version != "v50":
         from hashlib import sha256
         from psycopg.types.json import Jsonb
         from autodata_ingestion.article_lifecycle_types import digest_json
@@ -904,7 +904,7 @@ def test_automatic_real_process_death_reuses_saved_response(runtime, point, prom
             _build_auto_prompt_v34, _build_auto_prompt_v35, _build_auto_prompt_v36, _build_auto_prompt_v37,
             _build_auto_prompt_v38, _build_auto_prompt_v39, _build_auto_prompt_v40, _build_auto_prompt_v41,
             _build_auto_prompt_v42, _build_auto_prompt_v43, _build_auto_prompt_v44, _build_auto_prompt_v45,
-            _build_auto_prompt_v46, _build_auto_prompt_v47, _build_auto_prompt_v48,
+            _build_auto_prompt_v46, _build_auto_prompt_v47, _build_auto_prompt_v48, _build_auto_prompt_v49,
             validate_auto,
         )
         build_prompt = {
@@ -954,6 +954,7 @@ def test_automatic_real_process_death_reuses_saved_response(runtime, point, prom
             "v46": _build_auto_prompt_v46,
             "v47": _build_auto_prompt_v47,
             "v48": _build_auto_prompt_v48,
+            "v49": _build_auto_prompt_v49,
         }[prompt_version]
         with runtime.repo.connect() as conn:
             candidate = conn.execute("SELECT r.* FROM canonical_article_revisions r JOIN source_fetch_jobs j USING(transformation_key) WHERE j.source_fetch_job_id=%s", (job,)).fetchone()
@@ -1248,6 +1249,12 @@ def test_automatic_lubrication_assignment(runtime, provider, draft, error_code):
         "Detach the battery and take off the shared drive belt. Replace both components after checking the mounting area.",
         "Detach the battery, take the shared drive belt off, and check the mounting area after replacing both components.",
         "REWRITE_CLAUSE_MUTATION", id="combined-replacement-preparation",
+    ),
+    pytest.param(
+        "Rotate the adjuster clockwise until the guide slots align.",
+        "Bring the guide slots into alignment by turning the adjuster clockwise.",
+        "Bring the guide slots into alignment by turning the adjuster counterclockwise.",
+        "REWRITE_DIRECTION_MUTATION", id="qualitative-rotation-direction",
     ),
 ])
 def test_automatic_qualifier_controls_publication(runtime, provider, preserved, original, valid, invalid, error_code):
