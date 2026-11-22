@@ -4927,14 +4927,14 @@ test('article navigation focuses its visible heading once before preparation and
   assert.equal(h.nodes.get('print').focusCalls, 1);
 });
 
-test('a fresh article aligns the reader once while its heading remains in view and focused', async () => {
-  for (const interruption of ['', 'focus', 'offscreen', 'wheel', 'navigation']) {
+test('a fresh article aligns its focused heading once unless the reader has already moved', async () => {
+  for (const interruption of ['', 'heading below viewport', 'focus', 'past heading', 'wheel', 'navigation']) {
     const frames = [], alignments = [];
     const stored = { data: { article: mediaArticle([{ type: 'paragraph', text: 'Stored steps.' }]) } };
     const canonical = { data: { article: mediaArticle([{ type: 'paragraph', text: 'Published steps.' }], [],
       { content_origin: 'canonical', view_revision: 'view-2' }) } };
     const h = articleMediaHarness({
-      window: Object.assign(new EventTarget(), { innerHeight: 640 }),
+      window: new EventTarget(),
       session: { state: { authenticated: true, csrf: 'csrf' } },
       stage() {},
       requestAnimationFrame(callback) { frames.push(callback); },
@@ -4947,7 +4947,9 @@ test('a fresh article aligns the reader once while its heading remains in view a
     });
     const heading = h.nodes.get('article-title');
     h.context.document.activeElement = heading;
-    heading.getBoundingClientRect = () => interruption === 'offscreen' ? { top: -70, bottom: -10 } : { top: 460, bottom: 510 };
+    heading.getBoundingClientRect = () => ({
+      bottom: interruption === 'past heading' ? -10 : interruption === 'heading below viewport' ? 1200 : 510,
+    });
     h.nodes.get('reader').scrollIntoView = options => alignments.push(options.block);
     runInNewContext(appSection('async function loadArticle(', 'function openArticle('), h.context);
     await h.context.loadArticle('a', h.g);
@@ -4956,7 +4958,8 @@ test('a fresh article aligns the reader once while its heading remains in view a
     if (interruption === 'wheel') h.context.window.dispatchEvent(new Event('wheel'));
     if (interruption === 'navigation') h.navigation.clear();
     frames[0]();
-    assert.deepEqual(alignments, interruption ? [] : ['start'], interruption);
+    const shouldAlign = !interruption || interruption === 'heading below viewport';
+    assert.deepEqual(alignments, shouldAlign ? ['start'] : [], interruption);
   }
 });
 

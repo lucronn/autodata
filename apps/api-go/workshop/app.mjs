@@ -1340,8 +1340,7 @@ async function loadArticle(id, g, { savedLink = false } = {}) {
             if (controller.signal.aborted) return;
             controller.abort();
             if (!g.current() || document.activeElement !== heading) return;
-            const { top, bottom } = heading.getBoundingClientRect();
-            if (top < window.innerHeight && bottom > 0)
+            if (heading.getBoundingClientRect().bottom > 0)
               $("reader").scrollIntoView({ behavior: "instant", block: "start" });
           });
         }
