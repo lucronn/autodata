@@ -1289,9 +1289,13 @@ test('session confirmation checks the same cookie proof without replacing client
 async function sessionPreparationHarness({
   authenticated = false, persistence = async () => {}, constructProvider = () => {}, popup,
   sdkSignOut = async () => {}, serverLogout = async () => {},
+  tokenResult = () => {
+    const time = new Date().toISOString();
+    return { token: 'synthetic-token', authTime: time, issuedAtTime: time };
+  },
 } = {}) {
   const { createSession } = await import('./workshop/auth.mjs');
-  const calls = { loads: 0, initializations: 0, providers: 0, persistence: 0, popups: 0, signouts: 0, exchanges: 0 };
+  const calls = { loads: 0, initializations: 0, providers: 0, persistence: 0, popups: 0, signouts: 0, exchanges: 0, tokenRefreshes: [] };
   const changes = [], user = {}, auth = {};
   let provider;
   const sdk = {
@@ -1320,8 +1324,8 @@ async function sessionPreparationHarness({
     },
     getIdTokenResult: async (actualUser, forceRefresh) => {
       assert.equal(actualUser, user);
-      assert.equal(forceRefresh, true);
-      return { token: 'synthetic-token', authTime: new Date().toISOString() };
+      calls.tokenRefreshes.push(Boolean(forceRefresh));
+      return tokenResult(forceRefresh);
     },
     signOut: async actualAuth => { assert.equal(actualAuth, auth); await sdkSignOut(++calls.signouts); },
   };
@@ -1351,6 +1355,31 @@ async function sessionPreparationHarness({
   });
   return { session, calls, changes };
 }
+
+test('Firebase sign-in reuses recent popup tokens and refreshes older or unreadable issuance', async t => {
+  for (const [name, issuedAt, expected] of [
+    ['recent', new Date().toISOString(), [false]],
+    ['older', new Date(Date.now() - 245_000).toISOString(), [false, true]],
+    ['unreadable', undefined, [false, true]],
+    ['future', new Date(Date.now() + 90_000).toISOString(), [false, true]],
+  ]) {
+    await t.test(name, async () => {
+      const { session, calls } = await sessionPreparationHarness({
+        tokenResult(forceRefresh) {
+          const time = new Date().toISOString();
+          return { token: 'synthetic-token', authTime: time, issuedAtTime: forceRefresh ? time : issuedAt };
+        },
+      });
+      await session.bootstrap();
+      await session.signIn();
+      assert.deepEqual(calls.tokenRefreshes, expected);
+      assert.equal(calls.exchanges, 1);
+      assert.equal(calls.signouts, 1);
+      assert.equal(session.state.authenticated, true);
+      assert.equal(session.state.csrf, 'cookie-csrf');
+    });
+  }
+});
 
 test('server revocation starts while Firebase logout is pending', async () => {
   const sdkStarted = deferredAuthOperation();
