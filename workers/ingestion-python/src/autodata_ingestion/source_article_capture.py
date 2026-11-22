@@ -35,7 +35,8 @@ from .article_lifecycle_types import (
 from .source_adapters import adapt_bound_article, adapt_bound_pdf_embed
 from .source_connector_client import SourceConnectorError
 from .article_document import (
-    LeadingDecimalStepParser, authored_image_caption, build_ordered_document, walk_ordered_list_items,
+    LeadingDecimalStepParser, authored_image_caption, build_ordered_document,
+    table_image_summaries, walk_ordered_list_items,
 )
 from .svg_rasterization import rasterize_svg, SVGUnavailable, RASTERIZER_VERSION
 
@@ -189,32 +190,23 @@ def _mark_json_table_cells(blocks, *, keep_rows, keep_columns):
     return bool(ordered_rows), bool(ordered_columns)
 
 
-def _retain_missing_table_captions(blocks, missing_refs, first_image_ids):
+def _retain_missing_table_captions(table, missing_refs, first_image_ids):
     """Share asset identity for independently captioned, missing table figures."""
-    table_image_ids = {}
-    for table in blocks:
-        if not isinstance(table, dict):
-            continue
-        kind = str(table.get("type") or table.get("kind") or "").casefold()
-        images = table.get("images")
-        if kind not in {"table", "grid"} or not isinstance(images, list):
-            continue
-        captions = {}
-        for image in images:
-            ref = missing_refs.get(id(image))
-            if ref is not None and (caption := authored_image_caption(image)):
-                captions.setdefault(ref, set()).add(caption)
-        distinct_refs = {ref for ref, values in captions.items() if len(values) > 1}
-        if not distinct_refs:
-            continue
-        # The legacy ID includes the running asset position, which can differ
-        # after an intervening image. Use the first captured ID inside this table.
-        for image in _image_nodes(table):
-            ref = missing_refs.get(id(image))
-            if ref in distinct_refs:
-                image["image_id"] = first_image_ids[ref]
-        table_image_ids[id(table)] = {first_image_ids[ref] for ref in distinct_refs}
-    return table_image_ids
+    captions = {}
+    for image in table_image_summaries(table):
+        ref = missing_refs.get(id(image))
+        if ref is not None and (caption := authored_image_caption(image)):
+            captions.setdefault(ref, set()).add(caption)
+    distinct_refs = {ref for ref, values in captions.items() if len(values) > 1}
+    if not distinct_refs:
+        return set()
+    # The legacy ID includes the running asset position, which can differ
+    # after an intervening image. Use the first captured ID inside this table.
+    for image in _image_nodes(table):
+        ref = missing_refs.get(id(image))
+        if ref in distinct_refs:
+            image["image_id"] = first_image_ids[ref]
+    return {first_image_ids[ref] for ref in distinct_refs}
 
 
 def project_document(
@@ -888,14 +880,14 @@ def capture_source_article(
                 for item in node.get("items", []):
                     if isinstance(item, dict) and isinstance(item.get("blocks"), list):
                         _attach_figure_captions(item["blocks"], "_html_flow_figure_caption")
-    missing_table_caption_ids = (
-        _retain_missing_table_captions(blocks, missing_refs, first_missing_image_ids)
-        if missing_refs else {}
-    )
-    if missing_table_caption_ids:
-        new_structure = True
-        for record in (resources[0], provenance[0], manifest[0]):
-            record["missing_table_image_caption_layout"] = MISSING_TABLE_IMAGE_CAPTION_LAYOUT
+    retained_missing_table_captions = False
+
+    def missing_caption_ids_for_table(table):
+        nonlocal retained_missing_table_captions
+        caption_ids = _retain_missing_table_captions(table, missing_refs, first_missing_image_ids)
+        retained_missing_table_captions = retained_missing_table_captions or bool(caption_ids)
+        return caption_ids
+
     doc = build_ordered_document(
         {"article_id": str(article_id(context.key)), "evidence_ids": evidence_ids},
         blocks,
@@ -903,8 +895,12 @@ def capture_source_article(
                                or structured_table_column_order or html_nested_tables or html_media_table_headers),
         preserve_structured_columns=structured_table_columns or html_media_table_headers,
         step_parser=step_parser,
-        missing_table_caption_ids=missing_table_caption_ids,
+        table_caption_ids=missing_caption_ids_for_table if missing_refs else None,
     )
+    if retained_missing_table_captions:
+        new_structure = True
+        for record in (resources[0], provenance[0], manifest[0]):
+            record["missing_table_image_caption_layout"] = MISSING_TABLE_IMAGE_CAPTION_LAYOUT
     for node in _image_nodes(doc["blocks"]):
         local = image_records.get(node.get("image_id"))
         document_evidence = [evidence for evidence in node.get("evidence_ids", []) if evidence in evidence_sources]

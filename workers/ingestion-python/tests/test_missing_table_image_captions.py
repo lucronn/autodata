@@ -36,10 +36,22 @@ def _image(ref, caption=None, **fields):
     }
 
 
-def _body(fixture, provider, figures):
+def _body(fixture, provider, figures, *, placement="table"):
+    table = {"type": "table", "columns": ["Pressure"], "rows": [["500 kPa"]]}
+    if placement == "row":
+        table["rows"] = [{"cells": ["500 kPa"], "images": figures}]
+    elif placement == "mixed":
+        table["images"] = figures[:2]
+        table["rows"] = [{"cells": ["500 kPa"], "images": figures[2:]}]
+    else:
+        table["images"] = figures
+    if placement == "list":
+        table = {"type": "ordered_list", "items": [{"text": "Check the gauge.", "blocks": [table]}]}
+    elif placement == "metadata":
+        table = {"type": "paragraph", "text": "Check the gauge.", "supplier_metadata": table}
     article = {"blocks": [
         {"type": "paragraph", "text": "Remove the pump."},
-        {"type": "table", "columns": ["Pressure"], "rows": [["500 kPa"]], "images": figures},
+        table,
         {"type": "paragraph", "text": "Inspect the seal."},
         {"type": "paragraph", "text": "Install the replacement."},
     ]}
@@ -145,6 +157,46 @@ def test_missing_table_chart_keeps_distinct_authored_captions(capture_fixture, p
     [rewritten_table] = [block for block in canonical["blocks"] if block["type"] == "table"]
     assert rewritten_table["block_id"] == table["block_id"]
     assert rewritten_table["images"] == table["images"]
+
+
+@pytest.mark.parametrize("provider", ["bankone", "banktwo"])
+@pytest.mark.parametrize("placement", ["list", "row", "mixed"])
+def test_missing_chart_captions_in_nested_tables_and_row_images(capture_fixture, provider, placement, monkeypatch):
+    _, media = _body(capture_fixture, provider, [
+        _image(CHART, PRESSURE_CAPTION),
+        _image(OTHER, OTHER_CAPTION),
+        _image(CHART, "  Read pressure above   2,000 rpm. "),
+        _image(CHART, OUTLET_CAPTION),
+    ], placement=placement)
+    _deny(capture_fixture, provider, OTHER, monkeypatch)
+    writes = _write_counts(capture_fixture, monkeypatch)
+    context = capture_fixture.context(provider)
+    captured = _capture(capture_fixture, context)
+    table = captured.source_document["blocks"][1]
+    if placement == "list":
+        table = table["items"][0]["blocks"][0]
+    assert not validate_ordered_document(captured.source_document, strict=True)
+    assert [image["caption"] for image in table["images"]] == [PRESSURE_CAPTION, OTHER_CAPTION, OUTLET_CAPTION]
+    pressure, other, outlet = table["images"]
+    assert pressure["image_id"] == outlet["image_id"] != other["image_id"]
+    assert pressure["unavailable_reason"] == outlet["unavailable_reason"] == "SOURCE_NOT_FOUND"
+    assert other["unavailable_reason"] == "UNAUTHORIZED"
+    assert capture_fixture.resource_calls(provider, CHART) == capture_fixture.resource_calls(provider, OTHER) == 1
+    assert writes == {media: 1}
+    assert captured.source_images == table["images"]
+    assert captured.resource_manifest[0][LAYOUT_FIELD] == MISSING_TABLE_IMAGE_CAPTION_LAYOUT
+
+
+def test_missing_captions_in_unvisited_supplier_metadata_keep_legacy_fingerprint(capture_fixture):
+    _body(capture_fixture, "bankone", [
+        _image(CHART, PRESSURE_CAPTION), _image(CHART, OUTLET_CAPTION),
+    ], placement="metadata")
+    context = capture_fixture.context("bankone")
+    captured = _capture(capture_fixture, context)
+    previous = _capture(capture_fixture, context, structured=False)
+    assert captured.source_document == previous.source_document
+    assert captured.source_fingerprint == previous.source_fingerprint
+    assert LAYOUT_FIELD not in captured.resource_manifest[0]
 
 
 @pytest.mark.parametrize("provider", ["bankone", "banktwo"])
