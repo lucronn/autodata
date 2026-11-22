@@ -70,6 +70,41 @@ func TestPaidCatalogArticleSearchUsesReaderIdentityForStoredFigureCaption(t *tes
 	}
 }
 
+func TestPaidCatalogArticleSearchFindsProvenPathOnlyFigure(t *testing.T) {
+	const key = "sources/0123456789abcdef/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	const otherKey = "sources/0123456789abcdef/1123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	document := []byte(fmt.Sprintf(`{"blocks":[{"type":"image","asset_id":%q,"alt":"Gaugeface diagram","caption":"Alignment witness marks","status":"available"}]}`, key))
+	image := func(field, asset, objectKey, status string) []byte {
+		return []byte(fmt.Sprintf(`[{%q:%q,"storage_key":%q,"status":%q}]`, field, asset, objectKey, status))
+	}
+	for _, test := range []struct {
+		name   string
+		field  string
+		source []byte
+		match  bool
+	}{
+		{name: "path-only asset_id", field: "asset_id", source: image("asset_id", key, key, "available"), match: true},
+		{name: "legacy path-only id", field: "id", source: image("id", key, key, "available"), match: true},
+		{name: "different source object", field: "id", source: image("id", key, otherKey, "available")},
+		{name: "different source alias", field: "id", source: image("id", otherKey, key, "available")},
+		{name: "unavailable source asset", field: "id", source: image("id", key, key, "unavailable")},
+		{name: "no source membership", field: "id"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			projection := paidSearchProjection{document: document, images: image(test.field, key, key, "available"), sourceImages: test.source}
+			for _, query := range [][]string{{"alignment", "witness", "marks"}, {"gaugeface", "diagram"}} {
+				matched, err := projection.matchesContent(CatalogArticle{Title: "Pump removal"}, query)
+				if err != nil || matched != test.match {
+					t.Fatalf("query %q matched %v, want %v (error %v)", query, matched, test.match, err)
+				}
+			}
+			if matched, err := projection.matchesContent(CatalogArticle{Title: "Pump removal"}, []string{key}); err != nil || matched {
+				t.Fatalf("private object key became searchable (match %v, error %v)", matched, err)
+			}
+		})
+	}
+}
+
 func TestCatalogArticleSearchMatchesRenderedLegacyIntroductionAndSteps(t *testing.T) {
 	article := CatalogArticle{
 		Title: "Maintenance guide", Kind: "procedure", Body: "Check coolant level.",

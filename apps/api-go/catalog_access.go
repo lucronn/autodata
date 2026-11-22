@@ -261,6 +261,9 @@ func (projection paidSearchProjection) scopeImages(article *CatalogArticle) erro
 	clearUnproven := func(images []CatalogImage) {
 		for i := range images {
 			image := &images[i]
+			// JSON decoding projects asset_id and image_id. Match the paid
+			// reader's public alias for the legacy id field as well.
+			image.ID = publicCatalogAssetID(image.ID)
 			asset := paidCatalogImageAssetID(*image)
 			_, present := assets[paidCatalogAssetKey{asset, image.StorageKey}]
 			image.URL = ""
