@@ -4469,10 +4469,13 @@ function articleMediaHarness(overrides = {}) {
   const navigation = new NavigationGeneration(), searchNavigation = new NavigationGeneration(), g = navigation.next();
   const shows = [], statuses = [];
   const context = {
-    URL, uuid, articlePresentation, configurationLabel, localImageURL, sourceReferenceURL, processingArticle, readableArticle,
+    URL, AbortController, AbortSignal, uuid, articlePresentation, configurationLabel, localImageURL, sourceReferenceURL,
+    processingArticle, readableArticle,
     session: { state: { mode: null } }, sessionRequest: null,
     document: { body, title: '', createElement: tag => new ArticleMediaNode(tag),
       createDocumentFragment: () => new ArticleMediaNode('#fragment') },
+    window: new EventTarget(),
+    requestAnimationFrame() {},
     location: { origin: 'https://cars.example' },
     $: id => { assert.ok(nodes.has(id), `known DOM node ${id}`); return nodes.get(id); },
     navigation, searchNavigation, searchItems: null, searchQuery: '', searchPending: false,
@@ -4922,6 +4925,42 @@ test('article navigation focuses its visible heading once before preparation and
   assert.equal(title.textContent, 'Pump service');
   assert.equal(title.focusCalls, 1, 'prepare and polling updates must not reclaim focus');
   assert.equal(h.nodes.get('print').focusCalls, 1);
+});
+
+test('a fresh article aligns its focused heading once unless the reader has already moved', async () => {
+  for (const interruption of ['', 'heading below viewport', 'focus', 'past heading', 'wheel', 'navigation']) {
+    const frames = [], alignments = [];
+    const stored = { data: { article: mediaArticle([{ type: 'paragraph', text: 'Stored steps.' }]) } };
+    const canonical = { data: { article: mediaArticle([{ type: 'paragraph', text: 'Published steps.' }], [],
+      { content_origin: 'canonical', view_revision: 'view-2' }) } };
+    const h = articleMediaHarness({
+      window: new EventTarget(),
+      session: { state: { authenticated: true, csrf: 'csrf' } },
+      stage() {},
+      requestAnimationFrame(callback) { frames.push(callback); },
+      requestArticleJSON: async () => stored,
+      async readArticle(read, { onUpdate }) {
+        onUpdate(await read());
+        onUpdate(canonical);
+        return canonical;
+      },
+    });
+    const heading = h.nodes.get('article-title');
+    h.context.document.activeElement = heading;
+    heading.getBoundingClientRect = () => ({
+      bottom: interruption === 'past heading' ? -10 : interruption === 'heading below viewport' ? 1200 : 510,
+    });
+    h.nodes.get('reader').scrollIntoView = options => alignments.push(options.block);
+    runInNewContext(appSection('async function loadArticle(', 'function openArticle('), h.context);
+    await h.context.loadArticle('a', h.g);
+    assert.equal(frames.length, 1, interruption);
+    if (interruption === 'focus') h.context.document.activeElement = h.nodes.get('print');
+    if (interruption === 'wheel') h.context.window.dispatchEvent(new Event('wheel'));
+    if (interruption === 'navigation') h.navigation.clear();
+    frames[0]();
+    const shouldAlign = !interruption || interruption === 'heading below viewport';
+    assert.deepEqual(alignments, shouldAlign ? ['start'] : [], interruption);
+  }
 });
 
 test('readable source ends the opening progress while the rewrite continues', async () => {

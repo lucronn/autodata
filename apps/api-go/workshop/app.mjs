@@ -1245,15 +1245,24 @@ function renderArticle(article, g) {
 async function loadArticle(id, g, { savedLink = false } = {}) {
   if ((!openDemo && !session.state.authenticated) || !g.current()) return;
   const sameArticle = currentArticle?.id === id;
+  const heading = $("article-title");
   resetReaderContent();
   if (!sameArticle) {
-    $("article-title").textContent = "Opening article…";
+    heading.textContent = "Opening article…";
     document.title = "AutoData — The workshop reference";
   }
   show("reader");
-  $("article-title").focus();
   stage("article");
   status("Opening article…", { busy: true });
+  heading.focus();
+  let readerAlignment = sameArticle ? null : new AbortController();
+  if (readerAlignment) {
+    const controller = readerAlignment;
+    const signal = AbortSignal.any([g.signal, controller.signal]);
+    const keepPosition = () => controller.abort();
+    for (const type of ["wheel", "touchmove", "keydown", "pointerdown"])
+      window.addEventListener(type, keepPosition, { passive: true, signal });
+  }
   const handleReadError = (error) => {
     if (g.current() && error.status === 404 && error.code === "CATALOG_NOT_FOUND")
       clearUnavailableArticle();
@@ -1322,12 +1331,24 @@ async function loadArticle(id, g, { savedLink = false } = {}) {
       onUpdate(response) {
         if (!g.current()) return;
         const article = response.data.article;
+        const readable = readableArticle(article);
         renderArticle(article, g);
-        if (paidOrder && article.id === id && readableArticle(article) &&
+        if (readerAlignment && readable) {
+          const controller = readerAlignment;
+          readerAlignment = null;
+          requestAnimationFrame(() => {
+            if (controller.signal.aborted) return;
+            controller.abort();
+            if (!g.current() || document.activeElement !== heading) return;
+            if (heading.getBoundingClientRect().bottom > 0)
+              $("reader").scrollIntoView({ behavior: "instant", block: "start" });
+          });
+        }
+        if (paidOrder && article.id === id && readable &&
             paidOrder.configuration_id === selected.id && paidOrder.region === selected.region)
           completePaidOrder(paidOrder.id);
         if (!processingArticle(article)) return;
-        const ready = readableArticle(article)
+        const ready = readable
           ? article.content_origin === "source" ? "Stored source is ready." : "Article is readable."
           : "";
         if (ready === readingStatus) return;
