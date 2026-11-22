@@ -561,7 +561,11 @@ class ArticleParser(HTMLParser):
                     self._table_cell_spans = spans
                 if self._table_in_head:
                     scope = (attrs.get("scope") or "").strip().casefold()
-                    self._table_column_header = tag == "th" and scope in ("", "col") and not spans
+                    # Columns can represent an explicit horizontal span with column scope.
+                    supported_span = not spans or (
+                        scope == "col" and self._keep_html_table_spans and spans.keys() == {"colspan"}
+                    )
+                    self._table_column_header = tag == "th" and scope in ("", "col") and supported_span
                 return
             if tag == "br":
                 self.flush()

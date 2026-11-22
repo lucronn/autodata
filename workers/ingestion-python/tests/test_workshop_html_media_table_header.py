@@ -9,7 +9,7 @@ from reportlab.pdfgen import canvas
 import pytest
 
 from autodata_ingestion.article_document import validate_ordered_document
-from autodata_ingestion.article_lifecycle_types import HTML_MEDIA_TABLE_HEADER_LAYOUT
+from autodata_ingestion.article_lifecycle_types import HTML_MEDIA_TABLE_HEADER_LAYOUT, HTML_TABLE_SPAN_LAYOUT
 from autodata_ingestion.banktwo_connector import ArticleParser
 from autodata_ingestion.procedure_normalize import normalize_procedure_article
 from autodata_ingestion.procedure_rewrite_auto import render_auto, validate_auto
@@ -19,16 +19,17 @@ from test_source_article_capture import capture_fixture
 
 
 _HEADER = (
-    '<thead><tr><th scope="col">Check the pressure scale.'
+    '<thead><tr><th scope="col"{span}>Check the pressure scale.'
     '<figure><img src="/fixture/chart.png" alt="Pressure chart">'
     '<figcaption>Pressure at 2,000 rpm</figcaption></figure>'
     'Read the upper line.{pdf}<p>Record the result.</p></th><th>Limit</th></tr></thead>'
 )
 _ROWS = '<tbody><tr><td>Supply</td><td>500 kPa</td></tr></tbody>'
+_SPANNED_ROWS = '<tbody><tr><td>Supply</td><td>Idle</td><td>500 kPa</td></tr></tbody>'
 _PDF = '<iframe src="/fixture/drive.pdf">Hidden fallback.</iframe>'
 
 
-def _capture_pair(fixture, provider, *, linked=True):
+def _capture_pair(fixture, provider, *, linked=True, spanned=False):
     chart = BytesIO()
     Image.new("RGB", (96, 48), "navy").save(chart, format="PNG")
     fixture.body(provider, chart.getvalue(), "image/png", ref="chart", kind="asset")
@@ -42,10 +43,11 @@ def _capture_pair(fixture, provider, *, linked=True):
         fixture.body(provider, document.getvalue(), "application/pdf", ref="drive", kind="asset")
         assets.append("drive")
         bindings.append({"source_url": "/fixture/drive.pdf", "resource_ref": "drive"})
-    header = _HEADER.format(pdf=_PDF if linked else "")
+    header = _HEADER.format(pdf=_PDF if linked else "", span=' colspan="2"' if spanned else "")
+    rows = _SPANNED_ROWS if spanned else _ROWS
     html = (
         '<p>Remove the cover.</p><table><caption>Pressure data</caption>'
-        f'{header}{_ROWS}</table><p>Install the cover.</p>'
+        f'{header}{rows}</table><p>Install the cover.</p>'
     )
     payload, media = html.encode(), "text/html"
     if provider == "banktwo":
@@ -66,8 +68,9 @@ def _capture_pair(fixture, provider, *, linked=True):
 
 @pytest.mark.parametrize("provider", ["bankone", "banktwo"])
 @pytest.mark.parametrize("linked", [False, True])
-def test_html_chart_and_pdf_keep_their_column_header(capture_fixture, provider, linked):
-    legacy, capture, png, pdf = _capture_pair(capture_fixture, provider, linked=linked)
+@pytest.mark.parametrize("spanned", [False, True])
+def test_html_chart_and_pdf_keep_their_column_header(capture_fixture, provider, linked, spanned):
+    legacy, capture, png, pdf = _capture_pair(capture_fixture, provider, linked=linked, spanned=spanned)
     assert capture.projection_status == "readable"
     assert capture.projection_version == legacy.projection_version
     assert capture.body_source_snapshot_id == legacy.body_source_snapshot_id
@@ -85,7 +88,14 @@ def test_html_chart_and_pdf_keep_their_column_header(capture_fixture, provider, 
     _, table, _ = capture.source_document["blocks"]
     header, limit = table["columns"]
     assert table["label"] == "Pressure data"
-    assert limit == "Limit" and table["rows"] == [["Supply", "500 kPa"]]
+    assert limit == "Limit" and table["rows"] == [
+        ["Supply", "Idle", "500 kPa"] if spanned else ["Supply", "500 kPa"]
+    ]
+    if spanned:
+        assert header["colspan"] == old_table["rows"][0][0]["colspan"] == 2
+        assert capture.resource_manifest[0]["html_table_span_layout"] == HTML_TABLE_SPAN_LAYOUT
+    else:
+        assert "colspan" not in header and "html_table_span_layout" not in capture.resource_manifest[0]
     assert [child.get("text") or child.get("alt") for child in header["blocks"]] == [
         "Check the pressure scale.", "Pressure chart", "Read the upper line.",
         *(["Confirm the drive witness mark."] if linked else []), "Record the result.",
@@ -122,6 +132,8 @@ def test_html_chart_and_pdf_keep_their_column_header(capture_fixture, provider, 
     '<thead><tr><th><img data-resource-ref="chart"></th><td>Limit</td></tr></thead>',
     '<thead><tr><th scope="row"><img data-resource-ref="chart"></th><th>Limit</th></tr></thead>',
     '<thead><tr><th colspan="2"><img data-resource-ref="chart"></th></tr></thead>',
+    '<thead><tr><th scope="colgroup" colspan="2"><img data-resource-ref="chart"></th></tr></thead>',
+    '<thead><tr><th scope="col" rowspan="2"><img data-resource-ref="chart"></th><th>Limit</th></tr></thead>',
     '<thead><tr><th><img data-resource-ref="chart"></th></tr><tr><th>Pressure</th></tr></thead>',
     '<tr><th><img data-resource-ref="chart"></th><th>Limit</th></tr>',
 ])
@@ -134,3 +146,15 @@ def test_html_media_header_leaves_other_table_shapes_compatible(head):
         parser.close()
     assert not actual.html_media_table_headers
     assert actual.blocks == expected.blocks
+
+
+def test_spanned_html_media_header_keeps_legacy_projection_without_span_capture():
+    parser = ArticleParser(keep_html_media_table_headers=True)
+    parser.feed(
+        '<table><thead><tr><th scope="col" colspan="2"><img data-resource-ref="chart"></th>'
+        f'<th>Limit</th></tr></thead>{_SPANNED_ROWS}</table>'
+    )
+    parser.close()
+    [table] = parser.blocks
+    assert not parser.html_media_table_headers
+    assert "columns" not in table and len(table["rows"]) == 2
