@@ -72,6 +72,7 @@ export async function readArticle(
     selectResponse = (response) => response,
     wait = delay,
     now = () => performance.now(),
+    initialReadStartedAt,
     budgetMs = 120000,
   } = {},
 ) {
@@ -79,6 +80,7 @@ export async function readArticle(
   let latest, earlyConfirmationJob;
   let firstReadAt = 0;
   let initialSourceFallbackAt = 0;
+  let advancedSourceProbeUntil = 0;
   let nextSourceProbeAt = 0;
   let firstSourceProbePending = false;
   let confirmedSourceCapture = false;
@@ -96,6 +98,8 @@ export async function readArticle(
     let shortSourceCheck = false, sourceProbeFailed = false;
     let shortPublicationJob;
     const startedAt = now();
+    const advancedProbeLimit = advancedSourceProbeUntil > startedAt ? advancedSourceProbeUntil : 0;
+    advancedSourceProbeUntil = 0;
     const initialSourceFallback = initialSourceFallbackAt > startedAt ? initialSourceFallbackAt : 0;
     initialSourceFallbackAt = 0;
     const statusProbe = scheduledPublicationCheck?.regularReadAt > startedAt ? scheduledPublicationCheck : undefined;
@@ -111,7 +115,7 @@ export async function readArticle(
     const readDeadline = Math.min(
       deadline, firstReadAt || deadline, nextSourceProbeAt || deadline,
       regularSourceReadAt || deadline, sourceConfirmationAt || deadline, publicationReadAt || deadline,
-      statusProbe?.regularReadAt || deadline, initialSourceFallback || deadline,
+      statusProbe?.regularReadAt || deadline, initialSourceFallback || deadline, advancedProbeLimit || deadline,
     );
     const firstScheduledSourceRead = !firstReadAt && confirmedSourceCapture && earlyConfirmationJob !== undefined;
     // Keep the header deadline for a short read. Give a successful body on
@@ -121,7 +125,7 @@ export async function readArticle(
       : regularSourceReadAt && regularSourceReadAt + sourceProbeIntervalMs;
     // A confirmed publication can use the ordinary body deadline even
     // when the probe had a short deadline for its headers.
-    const bodyDeadline = sourceBodyDeadline ||
+    const bodyDeadline = advancedProbeLimit || sourceBodyDeadline ||
       (finishPublishedBody && startedAt + maxArticleRequestMs);
     try {
       const response = await read({
@@ -182,8 +186,10 @@ export async function readArticle(
     if (firstReadAt) {
       const samePendingSource = shortSourceCheck && latest.data.article.processing.job_id === earlyConfirmationJob;
       if (initialSourceFallback && retryAfter === 0 && (samePendingSource || sourceProbeFailed)) {
-        // Keep the regular first probe when the optional early check misses.
-        await wait(Math.min(remaining, Math.max(0, initialSourceFallback - now())), signal);
+        // A missed immediate check rejoins the original optional and regular reads.
+        if (advancedProbeLimit) initialSourceFallbackAt = initialSourceFallback;
+        const nextReadAt = advancedProbeLimit || initialSourceFallback;
+        await wait(Math.min(remaining, Math.max(0, nextReadAt - now())), signal);
         continue;
       }
       confirmedSourceCapture = (firstSourceProbePending || confirmedSourceCapture) && samePendingSource &&
@@ -253,7 +259,12 @@ export async function readArticle(
       firstReadAt = scheduledAt + backoff;
       initialSourceFallbackAt = scheduledAt + sourceProbeIntervalMs;
       nextSourceProbeAt = scheduledAt + 2 * sourceProbeIntervalMs;
+      const elapsed = scheduledAt - (initialReadStartedAt ?? startedAt);
       backoff = initialSourceProbeDelayMs;
+      if (elapsed >= initialSourceProbeDelayMs) {
+        advancedSourceProbeUntil = scheduledAt + backoff;
+        backoff = 0;
+      }
     } else if (attempt === 1 && fastPendingJob) {
       // Add an early check for newly retained source. If this check misses,
       // keep the normal two-second check before resuming the usual backoff.
