@@ -359,15 +359,61 @@ def test_rewrite_keeps_two_known_actions_after_lubrication(draft, error_code):
         assert draft in project_ordered_document(result.document)["body"]
 
 
-def test_rewrite_does_not_parse_one_half_of_a_compound_active_recipient():
-    original = "Apply silicone grease to the caliper slide pins and the guide boots."
+@pytest.mark.parametrize("original,draft", [
+    ("Apply silicone grease to the caliper slide pins and the guide boots.", _LUBRICATE),
+    (
+        "Apply silicone grease to the caliper slide pins and check valve bodies.",
+        "Lubricate the caliper slide pins with silicone grease, then inspect the valve bodies.",
+    ),
+    (
+        "Remove the cover and apply silicone grease to the caliper slide pins and the guide boots.",
+        "Take the cover off and lubricate the caliper slide pins with silicone grease.",
+    ),
+])
+def test_rewrite_retains_lubrication_before_an_ambiguous_conjunction(original, draft):
     source = _source(original, in_cell=False)
-    payload = _response(auto.build_auto_prompt(source, context={}), _LUBRICATE)
+    prompt = auto.build_auto_prompt(source, context={})
+    payload = _response(prompt, draft)
 
     result = run(source, payload)
 
-    assert result.error_code == "REWRITE_LUBRICATION_MUTATION"
+    assert result.error_code == "REWRITE_SAFETY_MUTATION"
     assert result.document == source
+    assert json.loads(prompt)["slots"][1]["required_action"] == "retain"
+
+    payload["replacements"][1].update(action="retain", text=original, reason="Keep all source recipients.")
+    assert run(source, payload).error_code is None
+
+
+def test_rewrite_keeps_an_unambiguous_joined_inspection():
+    original = "Apply silicone grease to the caliper slide pins and check the valve bodies."
+    draft = "Lubricate the caliper slide pins with silicone grease, then inspect the valve bodies."
+    source = _source(original, in_cell=False)
+    payload = _response(auto.build_auto_prompt(source, context={}), draft)
+
+    result = run(source, payload)
+
+    assert result.error_code is None
+    assert draft in project_ordered_document(result.document)["body"]
+
+
+@pytest.mark.parametrize("part,error_code", [
+    ("cover", None),
+    ("guard", "REWRITE_LUBRICATION_MUTATION"),
+])
+def test_rewrite_binds_a_verified_action_across_unrecognized_words(part, error_code):
+    original = "Apply silicone grease to the caliper slide pins. Clear the workspace and remove the cover."
+    draft = f"Lubricate the caliper slide pins with silicone grease. Clear the workspace and take the {part} off."
+    source = _source(original, in_cell=False)
+    payload = _response(auto.build_auto_prompt(source, context={}), draft)
+
+    result = run(source, payload)
+
+    assert result.error_code == error_code
+    if error_code:
+        assert result.document == source
+    else:
+        assert draft in project_ordered_document(result.document)["body"]
 
 
 def test_rewrite_retains_lubrication_with_a_joined_timing_phrase():

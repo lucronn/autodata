@@ -336,6 +336,7 @@ _LUBRICANT_SEQUENCE_MARKER = re.compile(r"^(first|next|then)[,\s]+")
 _LUBRICANT_DIRECTIVE_MARKER = re.compile(r"\b(?:apply|applied|lubricated?|greased?)\s+", re.IGNORECASE)
 _LUBRICANT_PHASE = re.compile(rf"{_TARGET_WORD}(?:\s+{_TARGET_WORD}){{0,3}}")
 _LUBRICANT_CONJUNCTION = re.compile(r",?\s+and\s+", re.IGNORECASE)
+_LUBRICANT_JOINED_ACTION = re.compile(rf"(?:{_SIMPLE_ACTION}|take|lift)\s+the\s+")
 _CLAUSE_PARALLEL = re.compile(r"\s+and\s+|[.;]\s*", re.IGNORECASE)
 _COMMA_AND = re.compile(r",\s*and\s+", re.IGNORECASE)
 _FIRST_MARKER = re.compile(r"^first[,\s]+|,?\s+first$", re.IGNORECASE)
@@ -1513,7 +1514,7 @@ def build_auto_prompt(document, *, context):
                 slot["required_action"] = "retain"
         payload["rules"].append(
             "Keep the same lubricant, application surface, timing, and whether the action is required or optional. "
-            "Retain prohibitions and any lubrication instruction with unclear timing exactly."
+            "Retain prohibitions and any lubrication instruction with unclear recipients or timing exactly."
         )
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
@@ -1982,28 +1983,40 @@ def _lubricant_assignment(text, *, patterns=_LUBRICANT_INSTRUCTIONS):
     return None
 
 
-def _lubricant_adjacent_action(text):
+def _lubricant_adjacent_action(text, *, joined=False):
     text = _proof_text(text)
     if (marker := _LUBRICANT_SEQUENCE_MARKER.match(text)) and marker[1] != "first":
         text = text[marker.end():]
+    elif joined and not _LUBRICANT_JOINED_ACTION.match(text):
+        # Bare "check valve bodies" can be a recipient, as in check valves.
+        return None
     return _simple_directive(text)
 
 
 def _reversed_lubricant_clause_steps(clause):
     # Peel only complete directives from the right of "and". A passive
     # subject can instead complete a compound recipient on the left.
-    end = len(clause)
+    end = unresolved = len(clause)
     for boundary in reversed(tuple(_LUBRICANT_CONJUNCTION.finditer(clause))):
         right = clause[boundary.end():end]
         if assignment := _lubricant_assignment(right, patterns=_LUBRICANT_ACTIVE_INSTRUCTIONS):
             yield assignment, None
-        elif action := _lubricant_adjacent_action(right):
+        elif action := _lubricant_adjacent_action(right, joined=True):
             yield None, action
+        elif unresolved < end and (
+            assignment := _lubricant_assignment(clause[boundary.end():unresolved], patterns=_LUBRICANT_ACTIVE_INSTRUCTIONS)
+        ):
+            yield (True, *assignment[1:]), None
         else:
+            unresolved = boundary.start()
             continue
-        end = boundary.start()
+        end = unresolved = boundary.start()
     left = clause[:end]
     assignment = _lubricant_assignment(left)
+    if assignment is None and unresolved < end and (assignment := _lubricant_assignment(clause[:unresolved])):
+        # Keep the whole source slot when its conjunction may name another
+        # recipient, even though the first recipient can be parsed.
+        assignment = (True, *assignment[1:])
     yield assignment, None if assignment else _lubricant_adjacent_action(left)
 
 
@@ -2020,7 +2033,7 @@ def _lubricant_assignments(text):
                 continue
             if assignment is not None:
                 assignments.append((*assignment, tuple(reversed(following_actions))))
-            following_actions.clear()
+                following_actions.clear()
     return tuple(reversed(assignments))
 
 
