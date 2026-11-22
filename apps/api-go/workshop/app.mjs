@@ -588,6 +588,7 @@ async function loadSavedSearch(g, query, focusArticle = "") {
 
 async function loadArticles(g, articleID = "", { focusOnShow = false, focusArticle = "", includePurchaseQuote = false } = {}) {
   if (!g.current()) return;
+  const previousFocus = focusArticle ? document.activeElement : null;
   $("completion-status").textContent = "";
   stage("articles");
   status("Opening your article index…", { busy: true });
@@ -624,7 +625,14 @@ async function loadArticles(g, articleID = "", { focusOnShow = false, focusArtic
           completenessChanged)) {
           if (indexChanged && searchQuery === query && searchItems)
             searchItems = searchHitsOnCurrentIndex(searchItems);
-          scheduleArticleSearch({ fromIndex: true });
+          const origin = focusArticle;
+          focusArticle = "";
+          // The fallback index has no filtered links until the search finishes.
+          scheduleArticleSearch({ fromIndex: true, restoreFocus: origin ? () => {
+            const active = document.activeElement;
+            if (g.current() && (active === previousFocus || active === document.body))
+              focusArticleIndex(origin);
+          } : undefined });
         }
         else renderArticles();
         if (focusOnShow || focusArticle) {
@@ -680,7 +688,7 @@ function searchHitsOnCurrentIndex(items) {
   return items.filter((item) => sameArticleDescriptor(item, descriptors.get(item.id)));
 }
 
-function scheduleArticleSearch({ fromIndex = false } = {}) {
+function scheduleArticleSearch({ fromIndex = false, restoreFocus } = {}) {
   const query = $("search").value.trim();
   const refresh = fromIndex && query === searchQuery;
   if (refresh && searchPending) {
@@ -719,8 +727,11 @@ function scheduleArticleSearch({ fromIndex = false } = {}) {
       searchComplete = result.complete === true;
       if (!indexLoaded) indexComplete = searchComplete;
       searchPending = false;
-      if (searchRefreshPending) scheduleArticleSearch({ fromIndex: true });
-      else renderArticles();
+      if (searchRefreshPending) scheduleArticleSearch({ fromIndex: true, restoreFocus });
+      else {
+        renderArticles();
+        restoreFocus?.();
+      }
     }).catch((error) => {
       if (!current()) return;
       if ([401, 403, 410].includes(error.status)) {
@@ -734,6 +745,7 @@ function scheduleArticleSearch({ fromIndex = false } = {}) {
       searchItems = null;
       searchError = true;
       renderArticles();
+      restoreFocus?.();
     });
   };
   if (fromIndex) startSearch();

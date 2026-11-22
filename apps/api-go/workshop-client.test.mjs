@@ -3366,6 +3366,43 @@ test('a revalidated search return focuses its exact originating hit', async () =
   assert.deepEqual(h.requests.map(request => request.path), ['/v1/catalog/vehicles/B/articles?q=pump&region=US']);
 });
 
+test('a history return waits for the filtered results if the saved search needs the full index', async () => {
+  const wanted = { id: 'original-id', title: 'Oil pump' };
+  const other = { id: 'other-id', title: wanted.title };
+  const configuration = { id: 'B', region: 'US' };
+  for (const outcome of ['retained', 'removed', 'user moved focus']) {
+    const search = deferredAuthOperation();
+    const h = articleIndexHarness([
+      () => Promise.reject(Object.assign(new Error('Temporarily unavailable'), { status: 503 })),
+      { ...indexResponse('completed', { complete: true, items: [other, wanted] }), configuration },
+      () => search.promise,
+    ]);
+    h.$('search').value = 'pump';
+    const generation = h.navigation.next();
+    h.$('article-title').focus();
+    assert.equal(await h.context.loadSavedSearch(generation, 'pump', wanted.id), false);
+    await h.context.loadArticles(generation, '', { focusArticle: wanted.id });
+    assert.equal(h.$('articles').firstElementChild.children.length, 0);
+    if (outcome === 'user moved focus') h.$('search').focus();
+    else if (h.context.document.activeElement === h.$('article-title'))
+      h.context.document.activeElement = h.context.document.body;
+    search.resolve({ ...indexResponse('completed', { complete: true,
+      items: outcome === 'removed' ? [other] : [other, wanted] }), configuration });
+    await new Promise(setImmediate);
+    const exactLink = h.$('articles').firstElementChild.children[1]?.firstElementChild;
+    assert.equal(h.context.document.activeElement, outcome === 'retained' ? exactLink :
+      outcome === 'removed' ? h.$('catalog-title') : h.$('search'), outcome);
+    if (outcome === 'retained') {
+      assert.match(exactLink.href, /article=original-id/);
+      assert.equal(exactLink.scrollOptions.behavior, 'instant');
+    }
+    assert.deepEqual(h.requests.map(({ path }) => path), [
+      '/v1/catalog/vehicles/B/articles?q=pump&region=US', '/v1/catalog/vehicles/B/articles?region=US',
+      '/v1/catalog/vehicles/B/articles?q=pump&region=US',
+    ]);
+  }
+});
+
 test('complete saved search uses its scoped response and loads the full index only when cleared', async () => {
   const configuration = { id: 'B', region: 'US', year: 2024, make: 'Fixture', model: 'Touring' };
   const hit = { id: 'only-match', title: 'Oil pump repair' };
