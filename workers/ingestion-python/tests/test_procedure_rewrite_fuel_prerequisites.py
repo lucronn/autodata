@@ -126,4 +126,4 @@ def test_v53_replay_preserves_historical_fuel_prompt_document_and_report(in_cell
     assert digest_json(historical.report) == report_hash
     current = auto.validate_auto(source, document, response=payload)
     assert current.error_codes == ("REWRITE_QUALIFIER_MUTATION",)
-    assert current.report["validator_version"] == "full-prose-auto-validator-v52"
+    assert current.report["validator_version"] == "full-prose-auto-validator-v53"
