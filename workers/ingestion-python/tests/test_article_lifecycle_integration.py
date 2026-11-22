@@ -834,7 +834,7 @@ def automatic_runtime(runtime, provider, *, introduction="This procedure describ
                 assert [slot["text"] for slot in prompt["slots"]] == ["Remove the pump.", original]
                 assert prompt["slots"][1]["required_action"] == "retain"
                 if mutation is None:
-                    replacements[1].update(action="retain", reason="Preserve the exact specification.")
+                    replacements[1].update(action="retain", text=original, reason="Preserve the exact specification.")
                 else:
                     replacements[1]["text"] = mutation
             result = {"introduction":introduction,"replacements":replacements}
@@ -1060,13 +1060,13 @@ def test_automatic_real_runtime_source_first_publication_and_zero_call_restart(r
 @pytest.mark.parametrize(
     "prompt_version",
     ["v1", "v2", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v12", "v13", "v14", "v15", "v16", "v17", "v18",
-     "v19", "v20", "v21", "v22", "v23", "v24", "v25", "v26", "v27", "v28", "v29", "v30", "v31", "v32", "v33", "v34", "v35", "v36", "v37", "v38", "v39", "v40", "v41", "v42", "v43", "v44", "v45", "v46", "v47", "v48", "v49", "v50", "v51"],
+     "v19", "v20", "v21", "v22", "v23", "v24", "v25", "v26", "v27", "v28", "v29", "v30", "v31", "v32", "v33", "v34", "v35", "v36", "v37", "v38", "v39", "v40", "v41", "v42", "v43", "v44", "v45", "v46", "v47", "v48", "v49", "v50", "v51", "v52"],
 )
 def test_automatic_real_process_death_reuses_saved_response(runtime, point, prompt_version):
     ensure = automatic_runtime(runtime,"bankone")
     ensure();runtime.pause(point);runtime.start_workers(1);runtime.await_barrier()
     job = runtime.current_job_id();runtime.kill_worker();runtime.expire_lease(job)
-    if prompt_version != "v51":
+    if prompt_version != "v52":
         from hashlib import sha256
         from psycopg.types.json import Jsonb
         from autodata_ingestion.article_lifecycle_types import digest_json
@@ -1083,7 +1083,7 @@ def test_automatic_real_process_death_reuses_saved_response(runtime, point, prom
             _build_auto_prompt_v38, _build_auto_prompt_v39, _build_auto_prompt_v40, _build_auto_prompt_v41,
             _build_auto_prompt_v42, _build_auto_prompt_v43, _build_auto_prompt_v44, _build_auto_prompt_v45,
             _build_auto_prompt_v46, _build_auto_prompt_v47, _build_auto_prompt_v48, _build_auto_prompt_v49,
-            _build_auto_prompt_v50, validate_auto,
+            _build_auto_prompt_v50, _build_auto_prompt_v51, validate_auto,
         )
         build_prompt = {
             "v1": _build_auto_prompt_v1,
@@ -1134,6 +1134,7 @@ def test_automatic_real_process_death_reuses_saved_response(runtime, point, prom
             "v48": _build_auto_prompt_v48,
             "v49": _build_auto_prompt_v49,
             "v50": _build_auto_prompt_v50,
+            "v51": _build_auto_prompt_v51,
         }[prompt_version]
         with runtime.repo.connect() as conn:
             candidate = conn.execute("SELECT r.* FROM canonical_article_revisions r JOIN source_fetch_jobs j USING(transformation_key) WHERE j.source_fetch_job_id=%s", (job,)).fetchone()
@@ -1435,6 +1436,42 @@ def test_automatic_lubrication_assignment(runtime, provider, draft, error_code):
         "Bring the guide slots into alignment by turning the adjuster counterclockwise.",
         "REWRITE_DIRECTION_MUTATION", id="qualitative-rotation-direction",
     ),
+    pytest.param(
+        "Open the coolant reservoir when the engine has cooled.",
+        "When the engine has cooled, open the coolant reservoir.",
+        "Open the coolant reservoir before the engine cools down.",
+        "REWRITE_QUALIFIER_MUTATION", id="coolant-prerequisite",
+    ),
+    pytest.param(
+        "Disconnect the battery cable before working on the high-voltage connector.",
+        "Before working on the high-voltage connector, detach the battery cable.",
+        "Detach the battery cable after carrying out work on the high-voltage connector.",
+        "REWRITE_QUALIFIER_MUTATION", id="connector-service-prerequisite",
+    ),
+    pytest.param(
+        "On vehicles with air suspension, remove the shield.",
+        "Take the shield off on vehicles equipped with air suspension.",
+        "Take the shield off on all vehicles.",
+        "REWRITE_QUALIFIER_MUTATION", id="vehicle-option-qualifier",
+    ),
+    pytest.param(
+        "Open the coolant reservoir with the engine cold.",
+        "With the engine cold, open the coolant reservoir.",
+        "Open the coolant reservoir with the engine at operating temperature.",
+        "REWRITE_QUALIFIER_MUTATION", id="coolant-state-qualifier",
+    ),
+    pytest.param(
+        "Vehicles with air suspension: Remove the shield.",
+        "Take the shield off on vehicles with air suspension.",
+        "Take the shield off.",
+        "REWRITE_QUALIFIER_MUTATION", id="vehicle-equipment-heading",
+    ),
+    pytest.param(
+        "Open the coolant reservoir provided the engine is cool.",
+        "Provided that the engine is cool, open the coolant reservoir.",
+        "Open the coolant reservoir provided that the engine is hot.",
+        "REWRITE_QUALIFIER_MUTATION", id="coolant-provided-qualifier",
+    ),
 ])
 def test_automatic_qualifier_controls_publication(runtime, provider, preserved, original, valid, invalid, error_code):
     ensure = automatic_runtime(runtime, provider)
@@ -1514,6 +1551,11 @@ def test_automatic_qualifier_controls_publication(runtime, provider, preserved, 
         "Press the retaining pin with a maximum force of 35 N.",
         "When pressing the guide pin, apply at most 35 N.",
         "REWRITE_SPEC_SCOPE_MUTATION", id="measured-force-recipient",
+    ),
+    pytest.param(
+        "Remove the shield when the vehicle has air suspension.",
+        "Take the shield off.",
+        "REWRITE_QUALIFIER_MUTATION", id="possession-equipment-qualifier",
     ),
 ])
 def test_automatic_specification_units_control_publication(runtime, provider, preserved, original, invalid, expected_code):
