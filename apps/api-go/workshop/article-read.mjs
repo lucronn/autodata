@@ -2,6 +2,7 @@ import { delay } from "./catalog.mjs";
 
 const sourceProbeIntervalMs = 250;
 const initialSourceProbeDelayMs = 150;
+const minimumSourceProbeAdvanceMs = 50;
 const publicationProbeIntervalMs = 500;
 const maxArticleRequestMs = 10000;
 const publicationStatusProbeDelayMs = 2000;
@@ -185,7 +186,8 @@ export async function readArticle(
     }
     if (firstReadAt) {
       const samePendingSource = shortSourceCheck && latest.data.article.processing.job_id === earlyConfirmationJob;
-      if (initialSourceFallback && retryAfter === 0 && (samePendingSource || sourceProbeFailed)) {
+      const advancedReadStillPending = advancedProbeLimit && shortSourceCheck;
+      if (initialSourceFallback && retryAfter === 0 && (samePendingSource || sourceProbeFailed || advancedReadStillPending)) {
         // A missed immediate check rejoins the original optional and regular reads.
         if (advancedProbeLimit) initialSourceFallbackAt = initialSourceFallback;
         const nextReadAt = advancedProbeLimit || initialSourceFallback;
@@ -261,9 +263,11 @@ export async function readArticle(
       nextSourceProbeAt = scheduledAt + 2 * sourceProbeIntervalMs;
       const elapsed = scheduledAt - (initialReadStartedAt ?? startedAt);
       backoff = initialSourceProbeDelayMs;
-      if (elapsed >= initialSourceProbeDelayMs) {
+      // Advance a useful first check toward the original request's start.
+      // An unanswered check still leaves the first scheduled probe in place.
+      if (elapsed >= minimumSourceProbeAdvanceMs) {
         advancedSourceProbeUntil = scheduledAt + backoff;
-        backoff = 0;
+        backoff = Math.max(0, backoff - elapsed);
       }
     } else if (attempt === 1 && fastPendingJob) {
       // Add an early check for newly retained source. If this check misses,
