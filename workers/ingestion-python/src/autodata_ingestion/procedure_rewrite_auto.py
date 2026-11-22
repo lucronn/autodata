@@ -333,7 +333,6 @@ _ROTARY_UNTIL_ALIGNMENT = re.compile(rf"until\s+{_ROTARY_ALIGNMENT_TARGET}\s+ali
 _ROTARY_ALIGNMENT_MEANS = re.compile(rf"bring\s+{_ROTARY_ALIGNMENT_TARGET}\s+into\s+alignment\s+by", re.IGNORECASE)
 _ROTARY_ALIGNMENT_PURPOSE = re.compile(rf"to\s+align\s+{_ROTARY_ALIGNMENT_TARGET}", re.IGNORECASE)
 _ROTARY_ALIGN_BY = re.compile(rf"align\s+{_ROTARY_ALIGNMENT_TARGET}\s+by", re.IGNORECASE)
-_ROTARY_SEQUENCE_CONNECTOR = re.compile(r"^(?:(?:and\s+)?then)?$", re.IGNORECASE)
 _LUBRICANT_MATERIAL = (
     rf"(?P<prohibition>no\s+)?(?:the\s+)?(?P<material>(?:{_TARGET_WORD}\s+){{0,5}}(?:grease|lubricant|oil))"
 )
@@ -1648,9 +1647,7 @@ def _rotation_alignment_endpoint(prefix, suffix):
     elif suffix:
         alignment = _ROTARY_UNTIL_ALIGNMENT.fullmatch(suffix) or _ROTARY_ALIGNMENT_PURPOSE.fullmatch(suffix)
     else:
-        if _ROTARY_SEQUENCE_CONNECTOR.fullmatch(prefix) and _ROTARY_SEQUENCE_CONNECTOR.fullmatch(suffix):
-            return ()
-        return None
+        return ()
     if alignment is None:
         return None
     target = tuple(_WORDS.findall(alignment["endpoint"].casefold()))
