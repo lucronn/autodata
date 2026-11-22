@@ -94,35 +94,43 @@ func TestStagingTesterConfigurationFailsClosed(t *testing.T) {
 		many[i] = strings.Repeat("x", i+1)
 	}
 	manyJSON, _ := json.Marshal(many)
-	for _, raw := range []string{"", `null`, `[]`, `{}`, `"fixture-user"`, `[null]`, `[42]`, `["fixture-user","fixture-user"]`, `["x"] []`, `[""]`, `["   "]`, `["a\nb"]`, `["\ud800"]`, string([]byte{'[', '"', 255, '"', ']'}), `["` + strings.Repeat("x", 129) + `"]`, string(manyJSON), strings.Repeat(" ", 32769) + `["x"]`} {
-		m := identityTestConfig()
-		m["AUTODATA_ENV"] = "staging"
-		m["AUTODATA_COMMERCE_MODE"] = "stripe_test"
-		m["AUTODATA_WORKSHOP_TESTER_UIDS_JSON"] = raw
-		_, err := loadCustomerAuthConfig(func(k string) string { return m[k] })
-		if err == nil {
-			t.Errorf("malformed staging tester configuration accepted (length %d)", len(raw))
-		} else if err.Error() != "customer authentication configuration is invalid" {
-			t.Fatal("configuration error disclosed details")
-		}
+	malformed := []string{" ", `null`, `[]`, `{}`, `"fixture-user"`, `[null]`, `[42]`, `["fixture-user","fixture-user"]`, `["x"] []`, `[""]`, `["   "]`, `["a\nb"]`, `["\ud800"]`, string([]byte{'[', '"', 255, '"', ']'}), `["` + strings.Repeat("x", 129) + `"]`, string(manyJSON), strings.Repeat(" ", 32769) + `["x"]`}
+	for _, mode := range []string{"stripe_test", "disabled"} {
+		t.Run(mode, func(t *testing.T) {
+			m := identityTestConfig()
+			m["AUTODATA_ENV"] = "staging"
+			m["AUTODATA_COMMERCE_MODE"] = mode
+			read := func(k string) string { return m[k] }
+			if mode == "stripe_test" {
+				if _, err := loadCustomerAuthConfig(read); err == nil {
+					t.Error("missing staging tester list accepted for TEST payments")
+				}
+			}
+			for _, raw := range malformed {
+				m["AUTODATA_WORKSHOP_TESTER_UIDS_JSON"] = raw
+				_, err := loadCustomerAuthConfig(read)
+				if err == nil {
+					t.Errorf("malformed staging tester configuration accepted (length %d)", len(raw))
+				} else if err.Error() != "customer authentication configuration is invalid" {
+					t.Fatal("configuration error disclosed details")
+				}
+			}
+			m["AUTODATA_WORKSHOP_TESTER_UIDS_JSON"] = `["fixture-user"]`
+			for _, origin := range []string{"https://cars.tk", "https://autodata.cars.tk"} {
+				m["AUTODATA_PUBLIC_ORIGIN"] = origin
+				if _, err := loadCustomerAuthConfig(read); err == nil {
+					t.Error("production origin accepted as restricted staging")
+				}
+			}
+		})
 	}
 	stagingTesterTestConfig(t, `["fixture-user","second-user"]`)
 	stagingTesterTestConfig(t, `["`+strings.Repeat("é", 128)+`"]`)
-	for _, origin := range []string{"https://cars.tk", "https://autodata.cars.tk"} {
-		m := identityTestConfig()
-		m["AUTODATA_ENV"] = "staging"
-		m["AUTODATA_COMMERCE_MODE"] = "stripe_test"
-		m["AUTODATA_PUBLIC_ORIGIN"] = origin
-		m["AUTODATA_WORKSHOP_TESTER_UIDS_JSON"] = `["fixture-user"]`
-		if _, err := loadCustomerAuthConfig(func(k string) string { return m[k] }); err == nil {
-			t.Error("production origin accepted as restricted staging")
-		}
-	}
 }
 func TestStagingTesterConfigurationDoesNotAffectOtherModes(t *testing.T) {
 	for _, environment := range []string{"test", "development", "staging", "production"} {
-		for _, mode := range []string{"disabled", "stripe_live", "stripe_test"} {
-			if environment == "staging" && mode == "stripe_test" {
+		for _, mode := range []string{"", "disabled", "read_only", "stripe_live", "stripe_test"} {
+			if environment == "staging" && (mode == "stripe_test" || mode == "disabled") {
 				continue
 			}
 			m := identityTestConfig()
@@ -136,6 +144,37 @@ func TestStagingTesterConfigurationDoesNotAffectOtherModes(t *testing.T) {
 			if err != nil || !c.allowsTester("unlisted-project", "unlisted-user") {
 				t.Errorf("unrelated mode changed %s/%s: %v", environment, mode, err)
 			}
+		}
+	}
+}
+
+func TestDisabledStagingTesterConfigurationOptsIn(t *testing.T) {
+	m := identityTestConfig()
+	m["AUTODATA_ENV"] = "staging"
+	m["AUTODATA_COMMERCE_MODE"] = "disabled"
+	read := func(k string) string { return m[k] }
+	legacy, err := loadCustomerAuthConfig(read)
+	if err != nil || !legacy.allowsTester("fixture-project", "unlisted-user") {
+		t.Fatalf("legacy disabled staging with no tester list changed: %v", err)
+	}
+	m["AUTODATA_WORKSHOP_TESTER_UIDS_JSON"] = `["approved-user","second-user"]`
+	config, err := loadCustomerAuthConfig(read)
+	if err != nil {
+		t.Fatal(err)
+	}
+	delete(m, "AUTODATA_WORKSHOP_TESTER_UIDS_JSON")
+	for _, tc := range []struct {
+		project, uid string
+		allowed      bool
+	}{
+		{"fixture-project", "approved-user", true},
+		{"fixture-project", "second-user", true},
+		{"fixture-project", "unlisted-user", false},
+		{"another-project", "approved-user", false},
+		{"fixture-project", "", false},
+	} {
+		if got := config.allowsTester(tc.project, tc.uid); got != tc.allowed {
+			t.Errorf("disabled staging audience for %s/%s: allowed %v, want %v", tc.project, tc.uid, got, tc.allowed)
 		}
 	}
 }

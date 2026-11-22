@@ -59,8 +59,8 @@ func loadCustomerAuthConfig(getenv func(string) string) (customerAuthConfig, err
 	if c.AuthDomain != c.ProjectID+".firebaseapp.com" && c.AuthDomain != origin.Hostname() {
 		return c, invalid
 	}
-	if c.restrictedStagingTesters() {
-		raw := getenv("AUTODATA_WORKSHOP_TESTER_UIDS_JSON")
+	raw := getenv("AUTODATA_WORKSHOP_TESTER_UIDS_JSON")
+	if c.restrictedStagingTesters() || (c.Environment == "staging" && c.commerceMode == "disabled" && raw != "") {
 		// Reuse strict Unicode validation: encoding/json replaces lone surrogates.
 		if workshopProductionOrigin(c.Origin) || len(raw) > 32768 || !purchaseUnicodeValid([]byte(raw)) {
 			return c, invalid
@@ -84,7 +84,8 @@ func loadCustomerAuthConfig(getenv func(string) string) (customerAuthConfig, err
 }
 
 func (c customerAuthConfig) restrictedStagingTesters() bool {
-	return c.Environment == "staging" && c.commerceMode == "stripe_test"
+	return c.Environment == "staging" && (c.commerceMode == "stripe_test" ||
+		(c.commerceMode == "disabled" && c.stagingTesterUIDs != nil))
 }
 
 func (c customerAuthConfig) allowsTester(projectID, uid string) bool {
