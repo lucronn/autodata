@@ -287,6 +287,103 @@ def test_rewrite_retains_a_lubrication_instruction_with_unresolved_timing():
     assert original in project_ordered_document(retained.document)["body"]
 
 
+_JOINED_LUBRICATION = "Apply silicone grease to the caliper slide pins and remove the cover."
+
+
+@pytest.mark.parametrize("draft", [
+    "Lubricate the caliper slide pins with copper grease and take the cover off.",
+    "Lubricate the caliper boots with silicone grease and take the cover off.",
+    "Lubricate the caliper slide pins with silicone grease and take the bracket off.",
+    "Take the cover off and lubricate the caliper slide pins with silicone grease.",
+    "Lubricate the caliper slide pins with silicone grease. First, take the cover off.",
+])
+def test_rewrite_preserves_lubrication_followed_by_a_known_action(draft):
+    source = _source(_JOINED_LUBRICATION, in_cell=True)
+    payload = _response(auto.build_auto_prompt(source, context={}), draft)
+
+    result = run(source, payload)
+
+    assert result.error_code == "REWRITE_LUBRICATION_MUTATION"
+    assert result.document == source
+
+
+@pytest.mark.parametrize("draft", [
+    "Lubricate the caliper slide pins with silicone grease and take the cover off.",
+    "Lubricate the caliper slide pins with silicone grease. Take the cover off.",
+    "Lubricate the caliper slide pins with silicone grease, then take the cover off.",
+    "Lubricate the caliper slide pins with silicone grease and next, take the cover off.",
+])
+def test_rewrite_accepts_equivalent_lubrication_then_removal(draft):
+    source = _source(_JOINED_LUBRICATION, in_cell=False)
+    payload = _response(auto.build_auto_prompt(source, context={}), draft)
+
+    result = run(source, payload)
+
+    assert result.error_code is None
+    assert draft in project_ordered_document(result.document)["body"]
+
+
+@pytest.mark.parametrize("draft,error_code", [
+    (
+        "Lubricate the caliper slide pins with silicone grease and inspect the cap and take the cover off.",
+        None,
+    ),
+    (
+        "Lubricate the caliper slide pins with silicone grease. Inspect the cap and take the cover off.",
+        None,
+    ),
+    (
+        "Lubricate the caliper slide pins with copper grease and inspect the cap and take the cover off.",
+        "REWRITE_LUBRICATION_MUTATION",
+    ),
+    (
+        "Lubricate the caliper slide pins with silicone grease and inspect the boot and take the cover off.",
+        "REWRITE_LUBRICATION_MUTATION",
+    ),
+    (
+        "Lubricate the caliper slide pins with silicone grease and take the cover off and inspect the cap.",
+        "REWRITE_LUBRICATION_MUTATION",
+    ),
+])
+def test_rewrite_keeps_two_known_actions_after_lubrication(draft, error_code):
+    original = "Apply silicone grease to the caliper slide pins and check the cap and remove the cover."
+    source = _source(original, in_cell=False)
+    payload = _response(auto.build_auto_prompt(source, context={}), draft)
+
+    result = run(source, payload)
+
+    assert result.error_code == error_code
+    if error_code:
+        assert result.document == source
+    else:
+        assert draft in project_ordered_document(result.document)["body"]
+
+
+def test_rewrite_does_not_parse_one_half_of_a_compound_active_recipient():
+    original = "Apply silicone grease to the caliper slide pins and the guide boots."
+    source = _source(original, in_cell=False)
+    payload = _response(auto.build_auto_prompt(source, context={}), _LUBRICATE)
+
+    result = run(source, payload)
+
+    assert result.error_code == "REWRITE_LUBRICATION_MUTATION"
+    assert result.document == source
+
+
+def test_rewrite_retains_lubrication_with_a_joined_timing_phrase():
+    original = "Apply silicone grease to the caliper slide pins after inspection and cover removal."
+    source = _source(original, in_cell=False)
+    prompt = auto.build_auto_prompt(source, context={})
+    payload = _response(
+        prompt, "Lubricate the caliper slide pins with copper grease after inspection and cover removal.",
+    )
+
+    assert json.loads(prompt)["slots"][1]["required_action"] == "retain"
+    assert run(source, payload).error_code == "REWRITE_SAFETY_MUTATION"
+    payload["replacements"][1].update(action="retain", text=original, reason="Keep the source timing.")
+    assert run(source, payload).error_code is None
+
+
 @pytest.mark.parametrize("in_cell,prompt_hash,candidate_hash,report_hash", [
     (False, "d85fbfea3e244dd84758ea228aa5edd2359129adc4ca397012ec5929504f0e41",
      "9644b9fcdf23993644c96f295cb4d0a1b4a1f884c8ca6a25ff54a640263a8a3d",

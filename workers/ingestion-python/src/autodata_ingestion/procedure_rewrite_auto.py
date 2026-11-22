@@ -1982,27 +1982,46 @@ def _lubricant_assignment(text, *, patterns=_LUBRICANT_INSTRUCTIONS):
     return None
 
 
-def _lubricant_clause_assignments(clause):
-    # An active directive can start after "and". A nominal passive subject
-    # can instead complete a compound recipient on the left.
+def _lubricant_adjacent_action(text):
+    text = _proof_text(text)
+    if (marker := _LUBRICANT_SEQUENCE_MARKER.match(text)) and marker[1] != "first":
+        text = text[marker.end():]
+    return _simple_directive(text)
+
+
+def _reversed_lubricant_clause_steps(clause):
+    # Peel only complete directives from the right of "and". A passive
+    # subject can instead complete a compound recipient on the left.
     end = len(clause)
-    assignments = []
     for boundary in reversed(tuple(_LUBRICANT_CONJUNCTION.finditer(clause))):
-        if assignment := _lubricant_assignment(clause[boundary.end():end], patterns=_LUBRICANT_ACTIVE_INSTRUCTIONS):
-            assignments.append(assignment)
-            end = boundary.start()
-    if assignment := _lubricant_assignment(clause[:end]):
-        assignments.append(assignment)
-    return reversed(assignments)
+        right = clause[boundary.end():end]
+        if assignment := _lubricant_assignment(right, patterns=_LUBRICANT_ACTIVE_INSTRUCTIONS):
+            yield assignment, None
+        elif action := _lubricant_adjacent_action(right):
+            yield None, action
+        else:
+            continue
+        end = boundary.start()
+    left = clause[:end]
+    assignment = _lubricant_assignment(left)
+    yield assignment, None if assignment else _lubricant_adjacent_action(left)
 
 
 def _lubricant_assignments(text):
     if not _LUBRICANT_DIRECTIVE_MARKER.search(text):
         return ()
     clauses = _LUBRICANT_CLAUSE_SEPARATOR.split(_CLAUSE_THEN.sub("; then ", text))
-    return tuple(
-        assignment for clause in clauses for assignment in _lubricant_clause_assignments(clause)
-    )
+    assignments = []
+    following_actions = []
+    for clause in reversed(clauses):
+        for assignment, action in _reversed_lubricant_clause_steps(clause):
+            if action is not None:
+                following_actions.append(action)
+                continue
+            if assignment is not None:
+                assignments.append((*assignment, tuple(reversed(following_actions))))
+            following_actions.clear()
+    return tuple(reversed(assignments))
 
 
 def _inspection_defects(text):
