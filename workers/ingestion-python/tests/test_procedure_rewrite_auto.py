@@ -1307,6 +1307,11 @@ _REVERSED_RETAINING_PIN_FORCE = "When pressing the retaining pin, apply at least
     ("The insertion effort is 35 N.", "Removal effort is 35 N."),
     ("The insertion force stays below 35 N.", "The insertion force stays above 35 N."),
     ("The load remains below 35 N throughout travel.", "The load remains above 35 N throughout travel."),
+    ("Keep the load on the terminal directly above 35 N.", "Keep the load on the terminal directly below 35 N."),
+    (
+        "The terminal directly below 35 N on the test board is the return terminal.",
+        "On the test board, the return terminal sits directly below 35 N.",
+    ),
     ("Connector 35 N maximum.", "Connector 35 N minimum."),
     ("Connector 30–35 N.", "Terminal 30–35 N."),
     (
@@ -1373,8 +1378,8 @@ def test_automatic_rewrite_rejects_repurposing_a_terminal_label_as_measured_forc
         "On the test board, terminal 35 N accepts the retaining guide.",
     ),
     (
-        "The terminal directly below 35 N on the test board is the return terminal.",
-        "On the test board, the return terminal sits directly below 35 N.",
+        "The terminal directly below connector 35 N on the test board is the return terminal.",
+        "On the test board, the return terminal sits directly below connector 35 N.",
     ),
     (
         "The electrical load uses connector 35 N on the test board.",

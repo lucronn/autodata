@@ -185,8 +185,7 @@ _FORCE_UNIT_END = r"(?![\w/·⋅×*^−-]|\.\w|\s*[·⋅×*/^]|\s+(?i:per)\b)"
 _FORCE_BARE_UNIT = rf"N{_FORCE_NEWTON_TORQUE_TAIL}"
 _TERMINAL_LABEL_PREFIX = (
     r"(?i:\b(?:connector|terminal)[ \t]+"
-    r"(?:(?:labeled|labelled|designated|marked)(?:[ \t]*[:#][ \t]*|[ \t]+)"
-    r"|(?:(?:sits|lies)[ \t]+)?directly[ \t]+(?:above|below)[ \t]+)?)"
+    r"(?:(?:labeled|labelled|designated|marked)(?:[ \t]*[:#][ \t]*|[ \t]+))?)"
 )
 _FORCE_OR_TERMINAL_LABEL = re.compile(
     rf"(?P<label>{_TERMINAL_LABEL_PREFIX}[0-9]+[ \t]*{_FORCE_BARE_UNIT}{_FORCE_UNIT_END}"
