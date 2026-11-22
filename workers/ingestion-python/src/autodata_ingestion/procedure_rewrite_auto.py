@@ -315,17 +315,27 @@ _LUBRICANT_MATERIAL = (
     rf"(?P<prohibition>no\s+)?(?:the\s+)?(?P<material>(?:{_TARGET_WORD}\s+){{0,5}}(?:grease|lubricant|oil))"
 )
 _LUBRICANT_RECIPIENT = rf"(?:the\s+)?(?P<recipient>{_TARGET_WORD}(?:\s+{_TARGET_WORD}){{0,7}})"
-_LUBRICANT_INSTRUCTIONS = tuple(re.compile(pattern) for pattern in (
-    rf"apply\s+{_LUBRICANT_MATERIAL}\s+to\s+{_LUBRICANT_RECIPIENT}",
-    rf"(?:lubricate|grease)\s+{_LUBRICANT_RECIPIENT}\s+with\s+{_LUBRICANT_MATERIAL}",
+_LUBRICANT_MODAL = r"must|shall|should|may|can|(?:need|needs|have|has)\s+to"
+_LUBRICANT_ACTIVE_PREFIX = rf"(?:please[,\s]+|(?:you\s+)?(?P<modal>{_LUBRICANT_MODAL})\s+)?"
+_LUBRICANT_PASSIVE_MODAL = rf"\s+(?P<modal>{_LUBRICANT_MODAL})\s+be\s+"
+_LUBRICANT_ACTIVE_INSTRUCTIONS = tuple(re.compile(pattern) for pattern in (
+    rf"{_LUBRICANT_ACTIVE_PREFIX}apply\s+{_LUBRICANT_MATERIAL}\s+to\s+{_LUBRICANT_RECIPIENT}",
+    rf"{_LUBRICANT_ACTIVE_PREFIX}(?:lubricate|grease)\s+{_LUBRICANT_RECIPIENT}\s+with\s+{_LUBRICANT_MATERIAL}",
 ))
+_LUBRICANT_INSTRUCTIONS = _LUBRICANT_ACTIVE_INSTRUCTIONS + tuple(re.compile(pattern) for pattern in (
+    rf"{_LUBRICANT_RECIPIENT}{_LUBRICANT_PASSIVE_MODAL}(?:lubricated|greased)\s+with\s+{_LUBRICANT_MATERIAL}",
+    rf"{_LUBRICANT_MATERIAL}{_LUBRICANT_PASSIVE_MODAL}applied\s+to\s+{_LUBRICANT_RECIPIENT}",
+))
+_LUBRICANT_MODAL_SCOPE = {"should": "recommended", "may": "permitted", "can": "possible"}
 _LUBRICANT_SCOPE_DELIMITERS = _TARGET_DELIMITERS | {"by", "except", "never", "no", "not", "only"}
 _CLAUSE_PREFIX_TIMING = re.compile(r"^(before|after)\s+([^,;.!?]+),\s+(.+)$", re.IGNORECASE)
 _CLAUSE_TIMING = re.compile(r"\s+(before|after)\s+", re.IGNORECASE)
 _CLAUSE_THEN = re.compile(r"(?:[.,;]\s*|\s+)(?:and\s+)?then[,\s]+", re.IGNORECASE)
-_LUBRICANT_CLAUSE_SEPARATOR = re.compile(rf"{_CLAUSE_THEN.pattern}|{_SENTENCES.pattern}|;", re.IGNORECASE)
-_LUBRICANT_SEQUENCE_MARKER = re.compile(r"^(?:first|next|then)[,\s]+")
-_LUBRICANT_DIRECTIVE_MARKER = re.compile(r"\b(?:apply|lubricate|grease)\s+", re.IGNORECASE)
+_LUBRICANT_CLAUSE_SEPARATOR = re.compile(rf"{_SENTENCES.pattern}|;")
+_LUBRICANT_SEQUENCE_MARKER = re.compile(r"^(first|next|then)[,\s]+")
+_LUBRICANT_DIRECTIVE_MARKER = re.compile(r"\b(?:apply|applied|lubricated?|greased?)\s+", re.IGNORECASE)
+_LUBRICANT_PHASE = re.compile(rf"{_TARGET_WORD}(?:\s+{_TARGET_WORD}){{0,3}}")
+_LUBRICANT_CONJUNCTION = re.compile(r",?\s+and\s+", re.IGNORECASE)
 _CLAUSE_PARALLEL = re.compile(r"\s+and\s+|[.;]\s*", re.IGNORECASE)
 _COMMA_AND = re.compile(r",\s*and\s+", re.IGNORECASE)
 _FIRST_MARKER = re.compile(r"^first[,\s]+|,?\s+first$", re.IGNORECASE)
@@ -1499,11 +1509,11 @@ def build_auto_prompt(document, *, context):
     if payload["slots"]:
         payload["prompt_version"] = _PROSE_PROMPT_VERSION
         for slot in payload["slots"]:
-            if any(prohibited for prohibited, _, _ in _lubricant_assignments(slot["text"])):
+            if any(retain for retain, *_ in _lubricant_assignments(slot["text"])):
                 slot["required_action"] = "retain"
         payload["rules"].append(
-            "Keep the exact lubricant and the exact component or surface it is applied to. "
-            "Retain instructions prohibiting application exactly."
+            "Keep the same lubricant, application surface, timing, and whether the action is required or optional. "
+            "Retain prohibitions and any lubrication instruction with unclear timing exactly."
         )
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
@@ -1935,25 +1945,63 @@ def _proof_text(text):
     return text.casefold().strip().rstrip(".!")
 
 
-def _lubricant_assignment(text):
-    # Bind a complete directive so other uses of "apply" and ambiguous
-    # compound targets do not become lubrication instructions.
-    text = _LUBRICANT_SEQUENCE_MARKER.sub("", _proof_text(text), count=1)
-    for pattern in _LUBRICANT_INSTRUCTIONS:
-        if match := pattern.fullmatch(text):
-            material = tuple(_WORDS.findall(match["material"]))
-            recipient = tuple(_WORDS.findall(match["recipient"]))
-            if _LUBRICANT_SCOPE_DELIMITERS.isdisjoint((*material, *recipient)):
-                return bool(match["prohibition"]), material, recipient
+def _lubricant_assignment(text, *, patterns=_LUBRICANT_INSTRUCTIONS):
+    # Compare complete, literal material/recipient clauses with explicit
+    # modal and sequencing words. Other uses of "apply" stay outside this grammar.
+    text = _proof_text(text)
+    sequence = None
+    if marker := _LUBRICANT_SEQUENCE_MARKER.match(text):
+        sequence = "first" if marker[1] == "first" else "next"
+        text = text[marker.end():]
+    timing = None
+    if prefix := _CLAUSE_PREFIX_TIMING.fullmatch(text):
+        timing = prefix[1], prefix[2]
+        text = prefix[3]
+    elif suffix := _CLAUSE_TIMING.search(text):
+        timing = suffix[1], text[suffix.end():]
+        text = text[:suffix.start()]
+    for pattern in patterns:
+        match = pattern.fullmatch(text)
+        if match is None:
+            continue
+        material = tuple(_WORDS.findall(match["material"]))
+        recipient = tuple(_WORDS.findall(match["recipient"]))
+        if not _LUBRICANT_SCOPE_DELIMITERS.isdisjoint((*material, *recipient)):
+            return None
+        retain = bool(match["prohibition"])
+        if timing is not None:
+            relation, phase = timing
+            phase = " ".join(phase.split()).removeprefix("the ")
+            retain = retain or (
+                _LUBRICANT_PHASE.fullmatch(phase) is None
+                or not _LUBRICANT_SCOPE_DELIMITERS.isdisjoint(_WORDS.findall(phase))
+            )
+            timing = relation, phase
+        scope = _LUBRICANT_MODAL_SCOPE.get(match["modal"], "required")
+        return retain, material, recipient, scope, sequence, timing
     return None
+
+
+def _lubricant_clause_assignments(clause):
+    # An active directive can start after "and". A nominal passive subject
+    # can instead complete a compound recipient on the left.
+    end = len(clause)
+    assignments = []
+    for boundary in reversed(tuple(_LUBRICANT_CONJUNCTION.finditer(clause))):
+        if assignment := _lubricant_assignment(clause[boundary.end():end], patterns=_LUBRICANT_ACTIVE_INSTRUCTIONS):
+            assignments.append(assignment)
+            end = boundary.start()
+    if assignment := _lubricant_assignment(clause[:end]):
+        assignments.append(assignment)
+    return reversed(assignments)
 
 
 def _lubricant_assignments(text):
     if not _LUBRICANT_DIRECTIVE_MARKER.search(text):
         return ()
+    clauses = _LUBRICANT_CLAUSE_SEPARATOR.split(_CLAUSE_THEN.sub("; then ", text))
     return tuple(
-        assignment for clause in _LUBRICANT_CLAUSE_SEPARATOR.split(text)
-        if (assignment := _lubricant_assignment(clause))
+        assignment for clause in clauses for assignment in _lubricant_clause_assignments(clause)
     )
 
 
@@ -2654,7 +2702,7 @@ def _require_changes(source, candidate, *, prompt_version):
             continue
         if guard_lubrication:
             assignments = _lubricant_assignments(original)
-            if any(prohibited for prohibited, _, _ in assignments):
+            if any(retain for retain, *_ in assignments):
                 if original != replacement:
                     raise ValueError("REWRITE_SAFETY_MUTATION")
                 continue
