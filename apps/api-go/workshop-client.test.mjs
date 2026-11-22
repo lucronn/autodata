@@ -458,6 +458,45 @@ test('reader offers one early cold confirmation and keeps the regular second che
     assert.equal(result.data.article.body, 'Published procedure', name);
   }
 });
+test('reader counts time spent preparing toward the first short source check', async () => {
+  const { readArticle } = await import('./workshop/article-read.mjs');
+  const pending = { status: 202, shortSourceCheck: true, data: {
+    article: { processing: { job_id: 'job', state: 'fetching_source' } },
+  } };
+  const replacement = { ...pending, data: {
+    article: { processing: { job_id: 'replacement', state: 'fetching_source' } },
+  } };
+  const timedOut = Symbol('advanced response timed out');
+  const stored = { status: 200, data: { article: { body: 'Stored procedure' } } };
+  for (const [elapsed, initial, replies, expected] of [
+    [49, pending, [stored], [49, 199]],
+    [50, pending, [stored], [50, 150]],
+    [74, pending, [stored], [74, 150]],
+    [95, pending, [pending, stored], [95, 150, 245]],
+    [95, pending, [replacement, stored], [95, 150, 245]],
+    [95, pending, [timedOut, stored], [95, 150, 245]],
+    [175, pending, [pending, stored], [175, 175, 325]],
+    [95, { ...pending, retryAfterSeconds: 3 }, [stored], [95, 3095]],
+  ]) {
+    let now = elapsed;
+    const starts = [];
+    const responses = [initial, ...replies];
+    const result = await readArticle(async ({ timeout, readableBodyTimeout }) => {
+      starts.push(now);
+      const response = responses.shift();
+      if (response === timedOut) {
+        assert.equal(timeout, 95);
+        assert.equal(readableBodyTimeout, 95);
+        now += timeout;
+        throw new TypeError('Probe timed out');
+      }
+      return response;
+    }, { initialReadStartedAt: 0, now: () => now, wait: async ms => { now += ms; } });
+    assert.deepEqual(starts, expected);
+    assert.equal(result.data.article.body, 'Stored procedure');
+  }
+});
+
 test('reader checks negotiated cold source early and preserves scheduled reads on a miss', async () => {
   const { readArticle } = await import('./workshop/article-read.mjs');
   const prepare = { status: 202, shortSourceCheck: true, data: {
