@@ -4469,10 +4469,12 @@ function articleMediaHarness(overrides = {}) {
   const navigation = new NavigationGeneration(), searchNavigation = new NavigationGeneration(), g = navigation.next();
   const shows = [], statuses = [];
   const context = {
-    URL, uuid, articlePresentation, configurationLabel, localImageURL, sourceReferenceURL, processingArticle, readableArticle,
+    URL, AbortController, AbortSignal, uuid, articlePresentation, configurationLabel, localImageURL, sourceReferenceURL,
+    processingArticle, readableArticle,
     session: { state: { mode: null } }, sessionRequest: null,
     document: { body, title: '', createElement: tag => new ArticleMediaNode(tag),
       createDocumentFragment: () => new ArticleMediaNode('#fragment') },
+    window: new EventTarget(),
     requestAnimationFrame() {},
     location: { origin: 'https://cars.example' },
     $: id => { assert.ok(nodes.has(id), `known DOM node ${id}`); return nodes.get(id); },
@@ -4926,13 +4928,13 @@ test('article navigation focuses its visible heading once before preparation and
 });
 
 test('a fresh article aligns the reader once while its heading remains in view and focused', async () => {
-  for (const interruption of ['', 'focus', 'scroll', 'navigation']) {
+  for (const interruption of ['', 'focus', 'offscreen', 'wheel', 'navigation']) {
     const frames = [], alignments = [];
     const stored = { data: { article: mediaArticle([{ type: 'paragraph', text: 'Stored steps.' }]) } };
     const canonical = { data: { article: mediaArticle([{ type: 'paragraph', text: 'Published steps.' }], [],
       { content_origin: 'canonical', view_revision: 'view-2' }) } };
     const h = articleMediaHarness({
-      window: { innerHeight: 640 },
+      window: Object.assign(new EventTarget(), { innerHeight: 640 }),
       session: { state: { authenticated: true, csrf: 'csrf' } },
       stage() {},
       requestAnimationFrame(callback) { frames.push(callback); },
@@ -4945,12 +4947,13 @@ test('a fresh article aligns the reader once while its heading remains in view a
     });
     const heading = h.nodes.get('article-title');
     h.context.document.activeElement = heading;
-    heading.getBoundingClientRect = () => interruption === 'scroll' ? { top: -70, bottom: -10 } : { top: 460, bottom: 510 };
+    heading.getBoundingClientRect = () => interruption === 'offscreen' ? { top: -70, bottom: -10 } : { top: 460, bottom: 510 };
     h.nodes.get('reader').scrollIntoView = options => alignments.push(options.block);
     runInNewContext(appSection('async function loadArticle(', 'function openArticle('), h.context);
     await h.context.loadArticle('a', h.g);
     assert.equal(frames.length, 1, interruption);
     if (interruption === 'focus') h.context.document.activeElement = h.nodes.get('print');
+    if (interruption === 'wheel') h.context.window.dispatchEvent(new Event('wheel'));
     if (interruption === 'navigation') h.navigation.clear();
     frames[0]();
     assert.deepEqual(alignments, interruption ? [] : ['start'], interruption);

@@ -1255,7 +1255,14 @@ async function loadArticle(id, g, { savedLink = false } = {}) {
   stage("article");
   status("Opening article…", { busy: true });
   heading.focus();
-  let alignReader = !sameArticle;
+  let readerAlignment = sameArticle ? null : new AbortController();
+  if (readerAlignment) {
+    const controller = readerAlignment;
+    const signal = AbortSignal.any([g.signal, controller.signal]);
+    const keepPosition = () => controller.abort();
+    for (const type of ["wheel", "touchmove", "keydown", "pointerdown"])
+      window.addEventListener(type, keepPosition, { passive: true, signal });
+  }
   const handleReadError = (error) => {
     if (g.current() && error.status === 404 && error.code === "CATALOG_NOT_FOUND")
       clearUnavailableArticle();
@@ -1325,16 +1332,19 @@ async function loadArticle(id, g, { savedLink = false } = {}) {
         if (!g.current()) return;
         const article = response.data.article;
         const readable = readableArticle(article);
-        if (alignReader && readable) {
-          alignReader = false;
+        renderArticle(article, g);
+        if (readerAlignment && readable) {
+          const controller = readerAlignment;
+          readerAlignment = null;
           requestAnimationFrame(() => {
+            if (controller.signal.aborted) return;
+            controller.abort();
             if (!g.current() || document.activeElement !== heading) return;
             const { top, bottom } = heading.getBoundingClientRect();
             if (top < window.innerHeight && bottom > 0)
               $("reader").scrollIntoView({ behavior: "instant", block: "start" });
           });
         }
-        renderArticle(article, g);
         if (paidOrder && article.id === id && readable &&
             paidOrder.configuration_id === selected.id && paidOrder.region === selected.region)
           completePaidOrder(paidOrder.id);
