@@ -1,6 +1,12 @@
 # Paid Workshop GCE operations
 
-This runbook follows the [bounded hosting plan](../superpowers/plans/2026-11-03-workshop-hosting.md), [Issue186](https://github.com/lucronn/autodata/issues/186), and [Project8](https://github.com/users/lucronn/projects/8). The [canonical planning gate](../agents/pre-implementation-gate.md), synchronized [record](../agents/records/2026-11-03-workshop-hosting.json), and [task](../agents/tasks/2026-11-03-production-release/workshop-hosting.json) govern implementation. Resource creation, real credentials, providers, staging, recovery and DNS changes require separate authorization after independent review.
+This runbook documents the GCE release path and its implementation status.
+The [hosting plan](../superpowers/plans/2026-11-03-workshop-hosting.md)
+and [planning record](../agents/records/2026-11-03-workshop-hosting.json)
+describe the original controller-managed work. For direct Workshop work,
+follow [`AGENTS.md`](../../AGENTS.md). Resource creation, real credentials,
+providers, staging, recovery and DNS changes require separate authorization
+after independent review.
 
 ## Current executable boundary
 

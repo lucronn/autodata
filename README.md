@@ -50,11 +50,11 @@ The repository is a modular monorepo:
 - `packages/contracts` — versioned API, event, and payment contracts.
 - `db/migrations` — forward-only PostgreSQL and pgvector schema migrations.
 - `infra/compose` and `infra/k8s` — local and Kubernetes-compatible topology.
-- `docs/architecture` — canonical system, lifecycle, contract, and operations
-  documentation.
+- `docs/architecture` — system design reference and compatibility contracts.
 - `docs/github` — repository and Project operating model.
-- `docs/agents/pre-implementation-gate.md` — mandatory, agent-agnostic planning
-  and GitHub/repository synchronization gate for implementation work.
+- [`AGENTS.md`](AGENTS.md) — direct Workshop development and release guidance.
+- [Autonomous run planning](docs/agents/pre-implementation-gate.md) — planning
+  contract for tasks submitted to the opt-in runner or orchestrator.
 
 For a guided introduction, start with the [GitHub Wiki](https://github.com/lucronn/autodata/wiki).
 For the authoritative technical details, use the linked documents under
@@ -139,6 +139,23 @@ Configure `BANKONE_BASE_URL` and `BANKTWO_BASE_URL` independently; these
 intended domain defaults do not prove live DNS or service availability.
 Runtime source access uses the shared Source Connector v1 contract and does
 not require a bank service to be built into the AutoData stack.
+
+## Test Workshop in a browser
+
+From the repository root, run the purchase and article flow in Chromium,
+Firefox, and WebKit with Docker Compose v2:
+
+```sh
+scripts/dev/workshop_browser_test.sh
+scripts/dev/workshop_browser_test.sh chromium
+```
+
+The suite runs the real Workshop API and article workers with disposable
+PostgreSQL and object storage. It simulates Google sign-in and Stripe Checkout,
+delivers signed fixture payment events to the webhook, and verifies Library
+persistence, article and image access, and refund revocation. It needs no
+provider credentials. The command prints the results directory, including the
+JUnit report, and removes the disposable services when it exits.
 
 ## Validate a heterogeneous source drop
 

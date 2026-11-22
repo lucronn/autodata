@@ -13,7 +13,7 @@ Check:
 - No credentials, tokens, private keys, production data, or sensitive provider payloads in source, fixtures, logs, artifacts, or prompts.
 - Source and evidence access cannot cross the intended organization boundary.
 - Dependencies, containers, and workflow permissions use least privilege.
-- Workflows cannot deploy production, disable required gates, force-push, or delete canonical data.
+- Controller workflows cannot deploy production. Review production workflows for scoped credentials and authorized release controls. Flag any bypass of required checks or branch protection and any destructive canonical data operation.
 - User feedback and error responses do not leak restricted source material.
 
 Report every finding with severity, path, reproduction, blocking state, and exact SHA. A critical or high finding always fails the gate. Never patch the candidate or suppress a finding to make the run pass.

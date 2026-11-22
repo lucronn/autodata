@@ -119,7 +119,8 @@ Critical and high findings always block merge under the initial policy. Medium a
 
 ## Task contract
 
-Before implementation, the architect emits:
+An autonomous run supplies a frozen task contract. The architecture role
+checks it and returns it unchanged. The legacy manifest projection includes:
 
 ```json
 {
@@ -138,14 +139,16 @@ Before implementation, the architect emits:
 }
 ```
 
-Builders may not begin if the task contract has missing outputs, ambiguous acceptance, or a forbidden-scope conflict. The orchestrator must retry architecture planning or mark the task blocked.
+Builders may not begin if the task contract has missing outputs, ambiguous
+acceptance, or a forbidden-scope conflict. Correct the inputs before
+submitting another run.
 
 ## Capability matrix
 
 | Capability | Orchestrator | Architect | Builder | Verifier | Release |
 | --- | :---: | :---: | :---: | :---: | :---: |
 | Read repository | yes | yes | yes | yes | yes |
-| Write isolated branch | metadata | design | implementation | reports/fixtures | release metadata |
+| Write isolated branch | metadata | no | implementation | reports/fixtures | release metadata |
 | Change canonical data | no | no | no | no | no |
 | Create PR | no | no | no | no | yes |
 | Merge PR | no | no | no | no | gate only |

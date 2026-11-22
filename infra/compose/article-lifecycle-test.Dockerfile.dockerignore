@@ -1,0 +1,6 @@
+**
+!apps/api-go/go.mod
+!apps/api-go/go.sum
+!packages/contracts/go/go.mod
+!scripts/dev/requirements-workshop-browser.txt
+!workers/ingestion-python/pyproject.toml

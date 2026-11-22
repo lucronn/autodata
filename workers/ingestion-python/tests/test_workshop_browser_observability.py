@@ -192,7 +192,17 @@ def fake_child_dependencies(producer,monkeypatch,tmp_path,browser_code=0,stale=F
     for name,value in producer._binding_env(producer._binding(root,'chromium','bankone','parent-pytest'),'child-pytest').items():monkeypatch.setenv(name,value)
     monkeypatch.setenv('AUTODATA_WORKSHOP_BROWSER_DATABASE','fake')
     for key,value in {'GOTOOLCHAIN':'local','GOPROXY':'off','GOCACHE':str(tmp_path/'cache'),'GOTMPDIR':str(tmp_path/'gotmp')}.items():monkeypatch.setenv(key,value)
-    monkeypatch.setattr(producer,'Repository',lambda name:types.SimpleNamespace(database_name=name))
+    def set_fixture_profile(statement, parameters):
+        assert statement.startswith("UPDATE canonical_articles")
+        assert parameters == ("technical-prose-v1", "configuration")
+
+    connection = types.SimpleNamespace(execute=set_fixture_profile)
+    monkeypatch.setattr(
+        producer, "Repository",
+        lambda name: types.SimpleNamespace(
+            database_name=name, connect=lambda: contextlib.nullcontext(connection),
+        ),
+    )
     runtime=types.SimpleNamespace(env={},vehicle='vehicle',article_id='article',articles={'banktwo':'other'},bucket='bucket',workers=[],logs=[],barrier=None,close=lambda:None,stop_workers=lambda:None)
     monkeypatch.setattr(producer,'LifecycleRuntime',lambda repo,stack:runtime)
     monkeypatch.setattr(producer,'configure_scoped_runtime',lambda *a:{key:key for key in ('configuration','adjacent','other_region','unscoped')})
