@@ -45,6 +45,9 @@ func buildWorkshopAssetsHandler() http.Handler {
 		if tag := tags[r.URL.Path]; tag != "" {
 			w.Header().Set("ETag", tag)
 		}
+		if r.URL.Path == prefix && r.URL.RawQuery == "" {
+			w.Header().Add("Link", "</workshop/app.mjs>; rel=modulepreload")
+		}
 		files.ServeHTTP(w, r)
 	})
 }

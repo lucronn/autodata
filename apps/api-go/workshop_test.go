@@ -91,7 +91,7 @@ func TestWorkshopPublicAssetsRevalidateByContent(t *testing.T) {
 		handler.ServeHTTP(w, r)
 		return w
 	}
-	for _, path := range []string{"/workshop/?view=library", "/workshop/app.mjs", "/workshop/styles.css", "/workshop/fonts/InstrumentSans.woff2"} {
+	for _, path := range []string{"/workshop/", "/workshop/?view=library", "/workshop/app.mjs", "/workshop/styles.css", "/workshop/fonts/InstrumentSans.woff2"} {
 		t.Run(path, func(t *testing.T) {
 			first := request(http.MethodGet, path, "")
 			digest := sha256.Sum256(first.Body.Bytes())
@@ -120,6 +120,42 @@ func TestWorkshopPublicAssetsRevalidateByContent(t *testing.T) {
 	missing := request(http.MethodGet, "/workshop/missing.mjs", "*")
 	if missing.Code != http.StatusNotFound || missing.Header().Get("ETag") != "" {
 		t.Fatalf("missing file read = %d, tag %q", missing.Code, missing.Header().Get("ETag"))
+	}
+}
+
+func TestWorkshopAppPreloadHeaderOnlyOnLanding(t *testing.T) {
+	server := NewServerWithDependencies(staticReadiness{}, &fakeAuthenticator{err: ErrUnauthenticated}, newMemoryRequestStore())
+	handler := server.Handler()
+	wantLink := []string{"</workshop/app.mjs>; rel=modulepreload"}
+	for _, method := range []string{http.MethodGet, http.MethodHead} {
+		landing := httptest.NewRecorder()
+		handler.ServeHTTP(landing, httptest.NewRequest(method, "/workshop/", nil))
+		if landing.Code != http.StatusOK || !reflect.DeepEqual(landing.Header().Values("Link"), wantLink) {
+			t.Fatalf("%s landing = %d with Link %q", method, landing.Code, landing.Header().Values("Link"))
+		}
+		if method == http.MethodHead && landing.Body.Len() != 0 {
+			t.Fatalf("HEAD landing included %d body bytes", landing.Body.Len())
+		}
+
+		revalidate := httptest.NewRequest(method, "/workshop/", nil)
+		revalidate.Header.Set("If-None-Match", landing.Header().Get("ETag"))
+		warm := httptest.NewRecorder()
+		handler.ServeHTTP(warm, revalidate)
+		if warm.Code != http.StatusNotModified || !reflect.DeepEqual(warm.Header().Values("Link"), wantLink) {
+			t.Fatalf("%s landing revalidation = %d with Link %q", method, warm.Code, warm.Header().Values("Link"))
+		}
+	}
+
+	for _, target := range []string{
+		"/workshop", "/workshop/index.html", "/workshop/app.mjs", "/workshop/missing",
+		"/workshop/?sample=1", "/workshop/?demo=1", "/workshop/?view=library",
+		"/workshop/?article=test-article", "/workshop/?source=", "/workshop/demo-mode.json",
+	} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, target, nil))
+		if link := response.Header().Values("Link"); len(link) != 0 {
+			t.Fatalf("%s unexpectedly advertised Link %q", target, link)
+		}
 	}
 }
 
