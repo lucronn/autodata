@@ -1245,15 +1245,17 @@ function renderArticle(article, g) {
 async function loadArticle(id, g, { savedLink = false } = {}) {
   if ((!openDemo && !session.state.authenticated) || !g.current()) return;
   const sameArticle = currentArticle?.id === id;
+  const heading = $("article-title");
   resetReaderContent();
   if (!sameArticle) {
-    $("article-title").textContent = "Opening article…";
+    heading.textContent = "Opening article…";
     document.title = "AutoData — The workshop reference";
   }
   show("reader");
-  $("article-title").focus();
   stage("article");
   status("Opening article…", { busy: true });
+  heading.focus();
+  let alignReader = !sameArticle;
   const handleReadError = (error) => {
     if (g.current() && error.status === 404 && error.code === "CATALOG_NOT_FOUND")
       clearUnavailableArticle();
@@ -1322,12 +1324,22 @@ async function loadArticle(id, g, { savedLink = false } = {}) {
       onUpdate(response) {
         if (!g.current()) return;
         const article = response.data.article;
+        const readable = readableArticle(article);
+        if (alignReader && readable) {
+          alignReader = false;
+          requestAnimationFrame(() => {
+            if (!g.current() || document.activeElement !== heading) return;
+            const { top, bottom } = heading.getBoundingClientRect();
+            if (top < window.innerHeight && bottom > 0)
+              $("reader").scrollIntoView({ behavior: "instant", block: "start" });
+          });
+        }
         renderArticle(article, g);
-        if (paidOrder && article.id === id && readableArticle(article) &&
+        if (paidOrder && article.id === id && readable &&
             paidOrder.configuration_id === selected.id && paidOrder.region === selected.region)
           completePaidOrder(paidOrder.id);
         if (!processingArticle(article)) return;
-        const ready = readableArticle(article)
+        const ready = readable
           ? article.content_origin === "source" ? "Stored source is ready." : "Article is readable."
           : "";
         if (ready === readingStatus) return;
