@@ -1,6 +1,7 @@
 import { delay } from "./catalog.mjs";
 
 const sourceProbeIntervalMs = 250;
+const initialSourceProbeDelayMs = 150;
 const publicationProbeIntervalMs = 500;
 const maxArticleRequestMs = 10000;
 const publicationStatusProbeDelayMs = 2000;
@@ -77,6 +78,7 @@ export async function readArticle(
   const deadline = now() + Math.min(120000, Math.max(0, budgetMs));
   let latest, earlyConfirmationJob;
   let firstReadAt = 0;
+  let initialSourceFallbackAt = 0;
   let nextSourceProbeAt = 0;
   let firstSourceProbePending = false;
   let confirmedSourceCapture = false;
@@ -94,6 +96,8 @@ export async function readArticle(
     let shortSourceCheck = false, sourceProbeFailed = false;
     let shortPublicationJob;
     const startedAt = now();
+    const initialSourceFallback = initialSourceFallbackAt > startedAt ? initialSourceFallbackAt : 0;
+    initialSourceFallbackAt = 0;
     const statusProbe = scheduledPublicationCheck?.regularReadAt > startedAt ? scheduledPublicationCheck : undefined;
     scheduledPublicationCheck = undefined;
     if (firstReadAt <= startedAt) firstReadAt = 0;
@@ -107,7 +111,7 @@ export async function readArticle(
     const readDeadline = Math.min(
       deadline, firstReadAt || deadline, nextSourceProbeAt || deadline,
       regularSourceReadAt || deadline, sourceConfirmationAt || deadline, publicationReadAt || deadline,
-      statusProbe?.regularReadAt || deadline,
+      statusProbe?.regularReadAt || deadline, initialSourceFallback || deadline,
     );
     const firstScheduledSourceRead = !firstReadAt && confirmedSourceCapture && earlyConfirmationJob !== undefined;
     // Keep the header deadline for a short read. Give a successful body on
@@ -176,6 +180,11 @@ export async function readArticle(
     }
     if (firstReadAt) {
       const samePendingSource = shortSourceCheck && latest.data.article.processing.job_id === earlyConfirmationJob;
+      if (initialSourceFallback && retryAfter === 0 && (samePendingSource || sourceProbeFailed)) {
+        // Keep the regular first probe when the optional early check misses.
+        await wait(Math.min(remaining, Math.max(0, initialSourceFallback - now())), signal);
+        continue;
+      }
       confirmedSourceCapture = (firstSourceProbePending || confirmedSourceCapture) && samePendingSource &&
         latest.data.article.processing.state === "fetching_source";
       if (nextSourceProbeAt && retryAfter === 0 && (samePendingSource || sourceProbeFailed)) {
@@ -241,10 +250,9 @@ export async function readArticle(
       earlyConfirmationJob = latest.data.article.processing.job_id;
       const scheduledAt = now();
       firstReadAt = scheduledAt + backoff;
-      // An early hit can show cheap captures sooner. Keep the half-second
-      // check for a source that is still pending or an early transport miss.
+      initialSourceFallbackAt = scheduledAt + sourceProbeIntervalMs;
       nextSourceProbeAt = scheduledAt + 2 * sourceProbeIntervalMs;
-      backoff = sourceProbeIntervalMs;
+      backoff = initialSourceProbeDelayMs;
     } else if (attempt === 1 && fastPendingJob) {
       // Add an early check for newly retained source. If this check misses,
       // keep the normal two-second check before resuming the usual backoff.
