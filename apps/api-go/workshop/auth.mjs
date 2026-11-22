@@ -181,8 +181,14 @@ export function createSession({
             ? sdk.reauthenticateWithPopup(auth.currentUser, provider)
             : sdk.signInWithPopup(auth, provider));
           if (current !== epoch) return;
-          const token = await sdk.getIdTokenResult(result.user, true);
+          let token = await sdk.getIdTokenResult(result.user);
           if (current !== epoch) return;
+          const issuedAge = Date.now() - Date.parse(token.issuedAtTime);
+          // Leave time for the exchange within the server's five-minute window.
+          if (!Number.isFinite(issuedAge) || issuedAge < -60000 || issuedAge > 240000) {
+            token = await sdk.getIdTokenResult(result.user, true);
+            if (current !== epoch) return;
+          }
           if (
             !Number.isFinite(Date.parse(token.authTime)) ||
             Date.now() - Date.parse(token.authTime) > 300000
