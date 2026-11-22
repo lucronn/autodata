@@ -17,6 +17,7 @@ from .article_lifecycle_types import (
     HTML_TABLE_CAPTION_LAYOUT,
     HTML_TABLE_SPAN_LAYOUT,
     LEADING_DECIMAL_LAYOUT,
+    MISSING_TABLE_IMAGE_CAPTION_LAYOUT,
     PDF_BLANK_PAGE_LAYOUT,
     PDF_COMPACT_FIGURE_LAYOUT,
     PDF_LEGACY_FIGURE_LAYOUT,
@@ -33,7 +34,9 @@ from .article_lifecycle_types import (
 )
 from .source_adapters import adapt_bound_article, adapt_bound_pdf_embed
 from .source_connector_client import SourceConnectorError
-from .article_document import LeadingDecimalStepParser, build_ordered_document, walk_ordered_list_items
+from .article_document import (
+    LeadingDecimalStepParser, authored_image_caption, build_ordered_document, walk_ordered_list_items,
+)
 from .svg_rasterization import rasterize_svg, SVGUnavailable, RASTERIZER_VERSION
 
 
@@ -184,6 +187,34 @@ def _mark_json_table_cells(blocks, *, keep_rows, keep_columns):
     for cell in ordered_rows + ordered_columns:
         cell["_ordered_json_table_cell"] = True
     return bool(ordered_rows), bool(ordered_columns)
+
+
+def _retain_missing_table_captions(blocks, missing_refs, first_image_ids):
+    """Share asset identity for independently captioned, missing table figures."""
+    table_image_ids = {}
+    for table in blocks:
+        if not isinstance(table, dict):
+            continue
+        kind = str(table.get("type") or table.get("kind") or "").casefold()
+        images = table.get("images")
+        if kind not in {"table", "grid"} or not isinstance(images, list):
+            continue
+        captions = {}
+        for image in images:
+            ref = missing_refs.get(id(image))
+            if ref is not None and (caption := authored_image_caption(image)):
+                captions.setdefault(ref, set()).add(caption)
+        distinct_refs = {ref for ref, values in captions.items() if len(values) > 1}
+        if not distinct_refs:
+            continue
+        # The legacy ID includes the running asset position, which can differ
+        # after an intervening image. Use the first captured ID inside this table.
+        for image in _image_nodes(table):
+            ref = missing_refs.get(id(image))
+            if ref in distinct_refs:
+                image["image_id"] = first_image_ids[ref]
+        table_image_ids[id(table)] = {first_image_ids[ref] for ref in distinct_refs}
+    return table_image_ids
 
 
 def project_document(
@@ -430,7 +461,8 @@ def capture_source_article(
     retained_pdf_repeats = article.get("retained_repeated_pdf_figures") is True
     pdf_asset_order = article.get("pdf_legacy_asset_order", [])
     structured_table_cell_order = structured_table_column_order = False
-    if article.get("authored_json_blocks") is True:
+    authored_json_blocks = article.get("authored_json_blocks") is True
+    if authored_json_blocks:
         structured_table_cell_order, structured_table_column_order = _mark_json_table_cells(
             blocks, keep_rows=keep_structured_table_cell_order,
             keep_columns=keep_structured_table_columns and keep_structured_table_column_order,
@@ -519,6 +551,7 @@ def capture_source_article(
     failures = {}
     localized = {}
     documents = {}
+    missing_asset_refs = set()
     linked_decimal_preserved = False
 
     # All requests share one deadline; no more than four can run concurrently.
@@ -631,6 +664,8 @@ def capture_source_article(
                 localized[ref] = resource
         else:
             failures[ref] = failure
+            if role == "asset" and failure == "SOURCE_NOT_FOUND":
+                missing_asset_refs.add(ref)
             entry = {"role": role, "opaque_ref": ref, "failure_code": failure}
             manifest.append(entry)
             provenance.append({"provider": provider, **entry})
@@ -749,6 +784,8 @@ def capture_source_article(
             node["reason"] = error.code
     positioned = set()
     image_records = {}
+    missing_refs = {}
+    first_missing_image_ids = {}
     for node in _walk(blocks):
         if not html_table_spans:
             node.pop("_html_table_cell_spans", None)
@@ -812,6 +849,9 @@ def capture_source_article(
                         ),
                     }
                 )
+                if authored_json_blocks and ref in missing_asset_refs:
+                    missing_refs[id(node)] = ref
+                    first_missing_image_ids.setdefault(ref, node["image_id"])
             image_records[node["image_id"]] = deepcopy(node)
     for ref in refs:
         if ref not in positioned:
@@ -848,6 +888,14 @@ def capture_source_article(
                 for item in node.get("items", []):
                     if isinstance(item, dict) and isinstance(item.get("blocks"), list):
                         _attach_figure_captions(item["blocks"], "_html_flow_figure_caption")
+    missing_table_caption_ids = (
+        _retain_missing_table_captions(blocks, missing_refs, first_missing_image_ids)
+        if missing_refs else {}
+    )
+    if missing_table_caption_ids:
+        new_structure = True
+        for record in (resources[0], provenance[0], manifest[0]):
+            record["missing_table_image_caption_layout"] = MISSING_TABLE_IMAGE_CAPTION_LAYOUT
     doc = build_ordered_document(
         {"article_id": str(article_id(context.key)), "evidence_ids": evidence_ids},
         blocks,
@@ -855,6 +903,7 @@ def capture_source_article(
                                or structured_table_column_order or html_nested_tables or html_media_table_headers),
         preserve_structured_columns=structured_table_columns or html_media_table_headers,
         step_parser=step_parser,
+        missing_table_caption_ids=missing_table_caption_ids,
     )
     for node in _image_nodes(doc["blocks"]):
         local = image_records.get(node.get("image_id"))
