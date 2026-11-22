@@ -14,6 +14,7 @@ from .article_document import (
     validate_ordered_document,
 )
 from .article_lifecycle_types import (
+    HTML_MEDIA_TABLE_HEADER_LAYOUT,
     HTML_NESTED_TABLE_LAYOUT,
     HTML_TABLE_CAPTION_LAYOUT,
     HTML_TABLE_SPAN_LAYOUT,
@@ -56,6 +57,7 @@ def normalize_procedure_article(
     authoritative_source = any(
         entry.get("role") == "body" and (
             entry.get("html_table_caption_layout") == HTML_TABLE_CAPTION_LAYOUT
+            or entry.get("html_media_table_header_layout") == HTML_MEDIA_TABLE_HEADER_LAYOUT
             or entry.get("html_nested_table_layout") == HTML_NESTED_TABLE_LAYOUT
             or entry.get("html_table_span_layout") == HTML_TABLE_SPAN_LAYOUT
             or entry.get("leading_decimal_layout") == LEADING_DECIMAL_LAYOUT

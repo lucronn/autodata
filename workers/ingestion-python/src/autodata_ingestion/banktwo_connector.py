@@ -108,6 +108,9 @@ class _EnclosingTable:
     cell_spans: dict | None
     row_group_boundaries: list[int]
     has_candidate_spans: bool
+    in_head: bool
+    column_header: bool | None
+    head_cells: list[tuple[dict, bool]]
     caption: _TableCaption | None
     figures: list[_FigureFrame]
 
@@ -120,7 +123,7 @@ class ArticleParser(HTMLParser):
         keep_bound_pdf_iframes=False, keep_html_table_image_order=False, keep_html_figure_captions=False,
         keep_html_table_captions=False, keep_html_flow_figure_captions=False,
         keep_html_multiline_figure_captions=False,
-        keep_html_table_spans=False,
+        keep_html_table_spans=False, keep_html_media_table_headers=False,
         keep_html_nested_tables=False,
     ):
         super().__init__(convert_charrefs=True)
@@ -142,6 +145,7 @@ class ArticleParser(HTMLParser):
         self._keep_html_flow_figure_captions = keep_html_flow_figure_captions
         self._keep_html_multiline_figure_captions = keep_html_multiline_figure_captions
         self._keep_html_table_spans = keep_html_table_spans
+        self._keep_html_media_table_headers = keep_html_media_table_headers
         self._keep_html_nested_tables = keep_html_nested_tables
         self.handled_pdf_embeds = False
         self.positioned_html_table_images = False
@@ -150,6 +154,7 @@ class ArticleParser(HTMLParser):
         self.html_multiline_figure_captions = False
         self.html_table_captions = False
         self.html_table_spans = False
+        self.html_media_table_headers = False
         self.html_nested_tables = False
         self._figures: list[_FigureFrame] = []
         self._hidden_embed_tags: list[str] = []
@@ -160,6 +165,9 @@ class ArticleParser(HTMLParser):
         self._table_cell_spans = None
         self._table_row_group_boundaries = [0]
         self._table_has_candidate_spans = False
+        self._table_in_head = False
+        self._table_column_header: bool | None = None
+        self._table_head_cells: list[tuple[dict, bool]] = []
         self._table_caption_blocks: list[dict[str, Any]] | None = None
         self._table_caption: _TableCaption | None = None
         self._enclosing_tables: list[_EnclosingTable] = []
@@ -270,6 +278,8 @@ class ArticleParser(HTMLParser):
             self._figures[:] = [frame for frame in self._figures if not frame.in_table]
         if self._table_cell is not None and self._table_row is not None:
             cell = {"blocks": self._table_cell}
+            if self._table_column_header is not None:
+                self._table_head_cells.append((cell, self._table_column_header))
             if self._table_cell_spans:
                 cell["_html_table_cell_spans"] = self._table_cell_spans
                 self._table_has_candidate_spans = True
@@ -290,6 +300,7 @@ class ArticleParser(HTMLParser):
             self._table_row.append(cell)
         self._table_cell = None
         self._table_cell_spans = None
+        self._table_column_header = None
 
     def _flush_row(self):
         self._flush_cell()
@@ -313,6 +324,9 @@ class ArticleParser(HTMLParser):
             cell_spans=self._table_cell_spans,
             row_group_boundaries=self._table_row_group_boundaries,
             has_candidate_spans=self._table_has_candidate_spans,
+            in_head=self._table_in_head,
+            column_header=self._table_column_header,
+            head_cells=self._table_head_cells,
             caption=self._table_caption,
             figures=self._figures,
         ))
@@ -327,6 +341,9 @@ class ArticleParser(HTMLParser):
         self._table_cell_spans = parent.cell_spans
         self._table_row_group_boundaries = parent.row_group_boundaries
         self._table_has_candidate_spans = parent.has_candidate_spans
+        self._table_in_head = parent.in_head
+        self._table_column_header = parent.column_header
+        self._table_head_cells = parent.head_cells
         self._table_caption = parent.caption
         self._figures = parent.figures
 
@@ -342,7 +359,17 @@ class ArticleParser(HTMLParser):
         self._table_rows = None
         table = None
         if rows:
-            table = {"kind": "table", "rows": rows}
+            # The ordered table contract has one row of column headers.
+            # Only project an explicit leading all-TH row with media.
+            first = rows[0]
+            headers = self._table_head_cells
+            if (headers and len(rows) > 1 and len(headers) == len(first)
+                    and all(is_header and head is cell for (head, is_header), cell in zip(headers, first, strict=True))
+                    and any(block["kind"] in {"image", "document_embed"} for cell in first for block in cell["blocks"])):
+                table = {"kind": "table", "columns": first, "rows": rows[1:]}
+                self.html_media_table_headers = True
+            else:
+                table = {"kind": "table", "rows": rows}
             caption = self._table_caption
             if caption is not None:
                 del caption.source[caption.start:caption.stop]
@@ -501,11 +528,16 @@ class ArticleParser(HTMLParser):
             self._table_cell_spans = None
             self._table_row_group_boundaries = [0]
             self._table_has_candidate_spans = False
+            self._table_in_head = False
+            self._table_column_header = None
+            self._table_head_cells = []
             self._table_caption = None
             return
         if self._in_table:
-            if self._keep_html_table_spans and tag in _TABLE_ROW_GROUPS:
-                self._mark_table_row_group_boundary()
+            if tag in _TABLE_ROW_GROUPS and (self._keep_html_table_spans or self._keep_html_media_table_headers):
+                if self._keep_html_table_spans:
+                    self._mark_table_row_group_boundary()
+                self._table_in_head = self._keep_html_media_table_headers and tag == "thead"
                 return
             if (tag == "caption" and self._keep_html_table_captions
                     and not self._table_caption and self._table_caption_blocks is None
@@ -524,8 +556,12 @@ class ArticleParser(HTMLParser):
                 if self._table_row is None:
                     self._table_row = []
                 self._table_cell = []
+                spans = _table_spans(attrs) if self._keep_html_table_spans or self._table_in_head else None
                 if self._keep_html_table_spans:
-                    self._table_cell_spans = _table_spans(attrs)
+                    self._table_cell_spans = spans
+                if self._table_in_head:
+                    scope = (attrs.get("scope") or "").strip().casefold()
+                    self._table_column_header = tag == "th" and scope in ("", "col") and not spans
                 return
             if tag == "br":
                 self.flush()
@@ -610,8 +646,10 @@ class ArticleParser(HTMLParser):
             self._finish_table()
             return
         if self._in_table:
-            if self._keep_html_table_spans and tag in _TABLE_ROW_GROUPS:
-                self._mark_table_row_group_boundary()
+            if tag in _TABLE_ROW_GROUPS and (self._keep_html_table_spans or self._keep_html_media_table_headers):
+                if self._keep_html_table_spans:
+                    self._mark_table_row_group_boundary()
+                self._table_in_head = False
                 return
             if tag == "caption" and self._table_caption_blocks is not None:
                 self._finish_table_caption(closed=True)

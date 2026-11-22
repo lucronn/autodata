@@ -11,6 +11,7 @@ from .article_lifecycle_types import (
     CapturedSource,
     HTML_FIGURE_CAPTION_LAYOUT,
     HTML_FLOW_FIGURE_CAPTION_LAYOUT,
+    HTML_MEDIA_TABLE_HEADER_LAYOUT,
     HTML_MULTILINE_FIGURE_CAPTION_LAYOUT,
     HTML_NESTED_TABLE_LAYOUT,
     HTML_TABLE_CAPTION_LAYOUT,
@@ -232,7 +233,7 @@ def project_document(
                     continue
                 if isinstance(child, (dict, list)):
                     visit(child, strings=key in ("columns", "rows", "items"),
-                          cell=cell or (node.get("type") == "table" and key == "rows"))
+                          cell=cell or (node.get("type") == "table" and key in ("columns", "rows")))
 
     visit(document.get("blocks", []))
     return "\n".join(texts), steps, images
@@ -274,6 +275,7 @@ def capture_source_article(
     keep_repeated_pdf_figures=False, keep_pdf_figures_with_margins=False, keep_compact_pdf_figures=False,
     keep_html_figure_captions=False, keep_html_table_captions=False, keep_html_flow_figure_captions=False,
     keep_html_table_spans=False,
+    keep_html_media_table_headers=False,
     keep_html_nested_tables=False,
     keep_html_multiline_figure_captions=False,
     skip_blank_linked_pdf_pages=False,
@@ -385,6 +387,7 @@ def capture_source_article(
                 keep_html_table_captions and body.body["sha256"] != context.legacy_published_html_table_caption_body
             ),
             keep_html_table_spans=keep_html_table_spans,
+            keep_html_media_table_headers=keep_html_media_table_headers,
             keep_html_nested_tables=keep_html_nested_tables,
             keep_html_flow_figure_captions=(
                 keep_html_flow_figure_captions and body.body["sha256"] != context.legacy_published_html_flow_figure_body
@@ -419,6 +422,7 @@ def capture_source_article(
     html_multiline_figure_captions = article.get("html_multiline_figure_captions") is True
     html_table_captions = article.get("html_table_captions") is True
     html_table_spans = article.get("html_table_spans") is True
+    html_media_table_headers = article.get("html_media_table_headers") is True
     html_nested_tables = article.get("html_nested_tables") is True
     handled_pdf_embeds = article.get("handled_pdf_embeds") is True
     positioned_html_table_images = article.get("positioned_html_table_images") is True
@@ -433,14 +437,14 @@ def capture_source_article(
         )
     image_only_headings = article.get("image_only_headings") is True
     step_layout = article.get("ordered_step_instructions_layout")
-    structured_table_columns = keep_structured_table_columns and any(
+    structured_table_columns = keep_structured_table_columns and not html_media_table_headers and any(
         str(node.get("type") or node.get("kind") or "").casefold() in {"table", "grid"}
         and isinstance(node.get("columns"), list) and any(isinstance(column, dict) for column in node["columns"])
         for node in _walk(blocks)
     )
     new_structure = (
         structured_table_columns or structured_table_cell_order or step_layout or html_table_captions or html_flow_figure_captions
-        or html_table_spans or html_nested_tables or image_only_headings
+        or html_table_spans or html_media_table_headers or html_nested_tables or image_only_headings
         or article.get("embedded_pdf")
         or (article.get("authored_html_headings") and any(block.get("kind") == "heading" for block in _walk(blocks)))
     )
@@ -497,6 +501,8 @@ def capture_source_article(
         resources[0]["html_table_caption_layout"] = manifest[0]["html_table_caption_layout"] = HTML_TABLE_CAPTION_LAYOUT
     if html_table_spans:
         resources[0]["html_table_span_layout"] = manifest[0]["html_table_span_layout"] = HTML_TABLE_SPAN_LAYOUT
+    if html_media_table_headers:
+        resources[0]["html_media_table_header_layout"] = manifest[0]["html_media_table_header_layout"] = HTML_MEDIA_TABLE_HEADER_LAYOUT
     if html_nested_tables:
         resources[0]["html_nested_table_layout"] = manifest[0]["html_nested_table_layout"] = HTML_NESTED_TABLE_LAYOUT
     if structured_table_columns:
@@ -846,8 +852,8 @@ def capture_source_article(
         {"article_id": str(article_id(context.key)), "evidence_ids": evidence_ids},
         blocks,
         preserve_marked_cells=(handled_pdf_embeds or positioned_html_table_images or structured_table_cell_order
-                               or structured_table_column_order or html_nested_tables),
-        preserve_structured_columns=structured_table_columns,
+                               or structured_table_column_order or html_nested_tables or html_media_table_headers),
+        preserve_structured_columns=structured_table_columns or html_media_table_headers,
         step_parser=step_parser,
     )
     for node in _image_nodes(doc["blocks"]):
