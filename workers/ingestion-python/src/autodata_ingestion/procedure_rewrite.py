@@ -239,7 +239,7 @@ __all__ = [
 # Versioned conservative ordered-document boundary. Only declared prose leaves
 # are editable; the rest of the document is an immutable comparison baseline.
 from hashlib import sha256
-from .article_lifecycle_types import RewriteResult, ValidationResult, digest_json
+from .article_lifecycle_types import AUTOMATIC_REWRITE_PROFILES, RewriteResult, ValidationResult, digest_json
 
 _PROFILE = "technical-prose-v1"
 _PROTECTED_SLOT = re.compile(
@@ -249,7 +249,7 @@ _PROTECTED_SLOT = re.compile(
 
 
 def editable_slots(document, *, profile_version=_PROFILE):
-    if profile_version == "full-prose-auto-v1":
+    if profile_version in AUTOMATIC_REWRITE_PROFILES:
         from .procedure_rewrite_full import prose_slots
         return prose_slots(document, include_cell_blocks=True)
     if profile_version == "full-prose-review-v1":
@@ -309,9 +309,9 @@ def protected_projection(document):
 
 
 def validate_article_rewrite(source, candidate, *, profile_version):
-    if profile_version == "full-prose-auto-v1":
+    if profile_version in AUTOMATIC_REWRITE_PROFILES:
         from .procedure_rewrite_auto import validate_auto
-        return validate_auto(source, candidate)
+        return validate_auto(source, candidate, profile_version=profile_version)
     if profile_version == "full-prose-review-v1":
         from .procedure_rewrite_full import validate_full
         return validate_full(source, candidate)
@@ -364,9 +364,9 @@ def validate_article_rewrite(source, candidate, *, profile_version):
 
 
 def build_rewrite_prompt(document, *, context, profile_version):
-    if profile_version == "full-prose-auto-v1":
+    if profile_version in AUTOMATIC_REWRITE_PROFILES:
         from .procedure_rewrite_auto import build_auto_prompt
-        return build_auto_prompt(document, context=context)
+        return build_auto_prompt(document, context=context, profile_version=profile_version)
     if profile_version == "full-prose-review-v1":
         from .procedure_rewrite_full import build_full_prompt
         return build_full_prompt(document, context=context)
@@ -394,9 +394,9 @@ def rewrite_ordered_document(document, *, client, context, profile_version=_PROF
             digest_json(candidate), prompt_hash, metadata, profile_version, error)
     if len(prompt.encode()) > 200*1024:
         return result(source, error="REWRITE_INPUT_LIMIT")
-    if profile_version in ("full-prose-review-v1", "full-prose-auto-v1"):
+    if profile_version == "full-prose-review-v1" or profile_version in AUTOMATIC_REWRITE_PROFILES:
         from .procedure_rewrite_full import render_full, validate_full, _source_valid
-        if profile_version == "full-prose-auto-v1":
+        if profile_version in AUTOMATIC_REWRITE_PROFILES:
             from .procedure_rewrite_auto import render_auto as render_full, validate_auto as validate_full
         if not _source_valid(source):
             return result(source, error="REWRITE_DOCUMENT_INVALID")
@@ -406,10 +406,10 @@ def rewrite_ordered_document(document, *, client, context, profile_version=_PROF
         if len(json.dumps(raw, ensure_ascii=False).encode()) > 1024*1024:
             return result(source, error="REWRITE_RESPONSE_LIMIT")
         try:
-            candidate = render_full(source, raw)
+            candidate = render_full(source, raw, profile_version=profile_version)
         except ValueError as error:
             return result(source, raw=raw if isinstance(raw, dict) else {}, error=str(error))
-        validation = validate_full(source, candidate, response=raw)
+        validation = validate_full(source, candidate, response=raw, profile_version=profile_version)
         if not validation.passed:
             return result(source, raw=raw, error=validation.error_codes[0])
         return result(candidate, validation.report["changed_slots"], raw)

@@ -1528,11 +1528,12 @@ def article_worker_main(argv=None):
     parser.add_argument("--once",action="store_true")
     parser.add_argument("--poll-seconds",type=float,default=1)
     parser.add_argument("--worker-id",type=UUID,default=None)
+    parser.add_argument("--job-id", type=UUID, help="claim one exact job and exit; requires no polling")
     parser.add_argument("--processes", type=int, choices=(1, 2),
                         help="Run one worker or supervise two. The deployed article-worker service defaults to two.")
     args=parser.parse_args(argv)
     if args.poll_seconds<=0:parser.error("poll interval must be positive")
-    single_worker_options = args.once or args.worker_id is not None
+    single_worker_options = args.once or args.worker_id is not None or args.job_id is not None
     if args.processes == 2 and single_worker_options:
         parser.error("--processes 2 requires long-running workers with generated IDs")
     hosted_pool = (
@@ -1550,6 +1551,10 @@ def article_worker_main(argv=None):
     model=Mercury2Client.from_environment() if os.getenv("INCEPTION_API_KEY","").strip() else None
     repo = ArticleRepository()
     worker = args.worker_id or uuid4()
+    if args.job_id is not None:
+        claimed = run_article_worker_once(repo, worker_id=worker, registry=registry, object_store=objects,
+                                         model_client=model, job_id=args.job_id)
+        return 0 if claimed else 1
     listen = sql.SQL("LISTEN {}").format(sql.Identifier(ARTICLE_JOB_CHANNEL))
     listener = None
     pdf_reader_pending = "banktwo" in registry

@@ -3,7 +3,7 @@ from copy import deepcopy
 import pytest
 
 from autodata_ingestion.article_document import build_ordered_document
-from autodata_ingestion.article_lifecycle_types import digest_json
+from autodata_ingestion.article_lifecycle_types import AUTOMATIC_REWRITE_PROFILE, SOURCE_BOUND_REWRITE_PROFILE, digest_json
 from autodata_ingestion.procedure_rewrite import editable_slots, rewrite_ordered_document
 from autodata_ingestion.procedure_rewrite_auto import render_auto
 from autodata_ingestion.procedure_rewrite_full import prose_slots, render_full
@@ -54,13 +54,20 @@ def _fixture():
     return old, published, repaired, response
 
 
-def test_placement_repair_keeps_exact_published_prose_and_protected_fields():
-    old, published, repaired, response = _fixture()
+@pytest.mark.parametrize("profile,prompt_version", [
+    (AUTOMATIC_REWRITE_PROFILE, _CURRENT_PROMPT),
+    (SOURCE_BOUND_REWRITE_PROFILE, "full-prose-auto-prompt-v55"),
+])
+def test_placement_repair_keeps_exact_published_prose_and_protected_fields(profile, prompt_version):
+    old, _, repaired, response = _fixture()
+    published = render_auto(old, response, prompt_version=prompt_version, profile_version=profile)
     before = deepcopy((old, published, repaired, response))
 
-    result = repair_published_media(old, published, repaired, response=response, prompt_version=_CURRENT_PROMPT)
+    result = repair_published_media(old, published, repaired, response=response, prompt_version=prompt_version,
+                                    profile=profile)
 
-    assert result == repair_published_media(old, published, repaired, response=response, prompt_version=_CURRENT_PROMPT)
+    assert result == repair_published_media(old, published, repaired, response=response, prompt_version=prompt_version,
+                                            profile=profile)
     introduction, first, figure, warning, table, second = result.document["blocks"]
     assert introduction["text"] == published["blocks"][0]["text"]
     assert introduction["evidence_ids"] == published["blocks"][0]["evidence_ids"]
@@ -78,6 +85,7 @@ def test_placement_repair_keeps_exact_published_prose_and_protected_fields():
     assert result.projection["images"] == [figure]
     assert [row["path"] for row in result.remapped_response["replacements"]] == ["/blocks/0/text", "/blocks/4/text"]
     assert result.validation.passed
+    assert result.validation.report["profile_version"] == profile
     assert result.provenance["original_published_document_hash"] == digest_json(published)
     assert result.provenance["repaired_published_document_hash"] == digest_json(result.document)
     assert result.provenance["original_response_hash"] == digest_json(response)

@@ -83,7 +83,7 @@ raise SystemExit(worker.article_worker_main(["--poll-seconds", "0.05"]))
                 pass
 
 
-@pytest.mark.parametrize("arguments", [["--once"], ["--worker-id", str(uuid4())]])
+@pytest.mark.parametrize("arguments", [["--once"], ["--worker-id", str(uuid4())], ["--job-id", str(uuid4())]])
 def test_article_worker_pool_rejects_options_for_a_single_worker(arguments):
     from autodata_ingestion.worker import article_worker_main
 
@@ -446,6 +446,26 @@ def article_cli(monkeypatch):
         return worker.article_worker_main(["--poll-seconds", "0.05", *args])
 
     return run
+
+
+@pytest.mark.parametrize("claimed,status", [(True, 0), (False, 1)])
+def test_worker_cli_claims_only_the_requested_job(article_cli, monkeypatch, claimed, status):
+    from autodata_ingestion import worker
+
+    job = uuid4()
+    requests = []
+
+    def iterate(_repo, **kwargs):
+        requests.append(kwargs["job_id"])
+        return claimed
+
+    def fail_if_polled(_repo):
+        pytest.fail("exact CLI worker opened a polling connection")
+
+    monkeypatch.setenv("AUTODATA_RUNTIME_SERVICE", "article-worker")
+    monkeypatch.setattr(worker.ArticleRepository, "connect", fail_if_polled)
+    assert article_cli(iterate, "--job-id", str(job)) == status
+    assert requests == [job]
 
 
 @pytest.mark.parametrize("reason", ["57014", "55P03", "ConnectionTimeout"])

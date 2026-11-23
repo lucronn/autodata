@@ -10,6 +10,9 @@ import json
 NORMALIZATION_VERSION = "ordered-article-v1"
 LEADING_DECIMAL_LAYOUT = "leading-decimal-text-v1"
 REWRITE_PROFILE_VERSION = "technical-prose-v1"
+AUTOMATIC_REWRITE_PROFILE = "full-prose-auto-v1"
+SOURCE_BOUND_REWRITE_PROFILE = "full-prose-auto-v2"
+AUTOMATIC_REWRITE_PROFILES = (AUTOMATIC_REWRITE_PROFILE, SOURCE_BOUND_REWRITE_PROFILE)
 HTML_FIGURE_CAPTION_LAYOUT = "html-figure-caption-v1"
 HTML_FLOW_FIGURE_CAPTION_LAYOUT = "html-flow-figure-caption-v1"
 HTML_MULTILINE_FIGURE_CAPTION_LAYOUT = "html-multiline-figure-caption-v1"

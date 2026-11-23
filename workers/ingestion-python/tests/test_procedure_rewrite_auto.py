@@ -1,11 +1,12 @@
 """Automatic mechanical publication checks; synthetic, not semantic proof."""
 from copy import deepcopy
+from hashlib import sha256
 import json
 
 import pytest
 
 from autodata_ingestion import procedure_rewrite as rewrite
-from autodata_ingestion.article_lifecycle_types import digest_json
+from autodata_ingestion.article_lifecycle_types import SOURCE_BOUND_REWRITE_PROFILE, digest_json
 from test_procedure_rewrite_full import document, response, Draft
 
 PROFILE = "full-prose-auto-v1"
@@ -32,6 +33,54 @@ def test_automatic_rewrite_has_own_identity_and_no_manual_acceptance():
     assert reviewed.error_code is None
     assert result.document["blocks"][0]["block_id"] != reviewed.document["blocks"][0]["block_id"]
     assert rewrite.validate_article_rewrite(source, reviewed.document, profile_version="full-prose-review-v1").report["content_acceptance_required"]
+
+
+def test_source_bound_prompt_omits_routing_facts_and_keeps_historical_hashes():
+    from autodata_ingestion.procedure_rewrite_auto import _auto_prompt_version
+
+    source = document("Remove the cover.")
+    context = {"year": 2024, "configuration": "Test 2.0L AWD"}
+    legacy = rewrite.build_rewrite_prompt(source, context=context, profile_version=PROFILE)
+    current = rewrite.build_rewrite_prompt(source, context=context, profile_version=SOURCE_BOUND_REWRITE_PROFILE)
+    payload = json.loads(current)
+    assert json.loads(legacy)["context"] == context
+    assert "context" not in payload and "2.0L" not in current and "2024" not in current
+    assert payload["profile_version"] == SOURCE_BOUND_REWRITE_PROFILE
+    assert payload["document"] == source
+    assert payload["slots"] == json.loads(legacy)["slots"]
+    assert current == rewrite.build_rewrite_prompt(source, context={"year": 2019},
+                                                  profile_version=SOURCE_BOUND_REWRITE_PROFILE)
+    assert _auto_prompt_version(source, context=context, prompt_hash=sha256(legacy.encode()).hexdigest()) == (
+        json.loads(legacy)["prompt_version"]
+    )
+    assert _auto_prompt_version(source, context=context, prompt_hash=sha256(current.encode()).hexdigest(),
+                                profile_version=SOURCE_BOUND_REWRITE_PROFILE) == payload["prompt_version"]
+    assert _auto_prompt_version(source, context=context, prompt_hash=sha256(legacy.encode()).hexdigest(),
+                                profile_version=SOURCE_BOUND_REWRITE_PROFILE) is None
+    assert _auto_prompt_version(source, context=context, prompt_hash=sha256(current.encode()).hexdigest()) is None
+
+
+@pytest.mark.parametrize("replacement,introduction,error", [
+    ("Take the cover off.", "This procedure covers the 2.0L engine.", "REWRITE_TECHNICAL_MUTATION"),
+    ("Remove the cover.", "This procedure describes component access.", "REWRITE_UNCHANGED"),
+    ("Take the cover off.", "This procedure describes component access.", None),
+])
+def test_source_bound_profile_applies_the_existing_mechanical_checks(replacement, introduction, error):
+    source = document("Remove the cover.")
+    payload = response(replacement, introduction=introduction)
+    result = rewrite.rewrite_ordered_document(source, client=Draft(payload), context={"engine": "2.0L"},
+                                              profile_version=SOURCE_BOUND_REWRITE_PROFILE)
+    assert result.error_code == error
+    assert result.profile_version == SOURCE_BOUND_REWRITE_PROFILE
+    assert result.raw_response == payload
+    if error:
+        assert result.document == source
+    else:
+        validation = rewrite.validate_article_rewrite(source, result.document,
+                                                      profile_version=SOURCE_BOUND_REWRITE_PROFILE)
+        assert validation.passed
+        assert validation.report["changed_prose_slots"] == ["/blocks/0/text"]
+        assert not rewrite.validate_article_rewrite(source, result.document, profile_version=PROFILE).passed
 
 
 def _assembly_label_rewrite(replacement, *, label="REAR TIMING SENSOR ASSEMBLY"):
@@ -4577,24 +4626,25 @@ def test_nonzero_slot_historical_v2_prompt_digest_remains_exact():
     assert sha256(prompt.encode()).hexdigest() == "d972668e5934f6f66dee2ead79ee6bd45e4ca3c98e4f8fb94128fa330cdd22b6"
 
 
-def test_server_zero_slot_candidate_is_exact_heading_and_preserves_source():
+@pytest.mark.parametrize("profile", [PROFILE, SOURCE_BOUND_REWRITE_PROFILE])
+def test_server_zero_slot_candidate_is_exact_heading_and_preserves_source(profile):
     from autodata_ingestion import procedure_rewrite_auto as auto
     source = zero_slot_document(); before = deepcopy(source)
-    candidate, metadata = auto.build_source_preserving_candidate(source)
+    candidate, metadata = auto.build_source_preserving_candidate(source, profile_version=profile)
     heading = next(b['text'] for b in source['blocks'] if b['type'] == 'heading')
     assert candidate['blocks'][0]['text'] == heading
     restored = deepcopy(candidate); restored['blocks'].pop(0)
     for block in restored['blocks']: block['source_order'] -= 1
     assert restored == source == before
     assert metadata == {"transformation_method":"source-preserving-zero-slot-v1",
-        "drafting_actor":"server", "model":"server-zero-slot-v1", "profile_version":PROFILE,
+        "drafting_actor":"server", "model":"server-zero-slot-v1", "profile_version":profile,
         "model_calls":0, "model_dispatch_count":0, "complete_rewrite":False,
         "source_hash":digest_json(source), "output_hash":digest_json(candidate)}
-    validation = auto.validate_source_preserving_candidate(source, candidate, metadata)
+    validation = auto.validate_source_preserving_candidate(source, candidate, metadata, profile_version=profile)
     assert validation.passed and validation.report['complete_rewrite'] is False
     assert validation.report['introduction_origin'] == 'source_heading'
     assert validation.report['model_dispatch_count'] == 0
-    assert auto.build_source_preserving_candidate(source) == (candidate, metadata)
+    assert auto.build_source_preserving_candidate(source, profile_version=profile) == (candidate, metadata)
 
 
 def test_server_zero_slot_skips_ambiguous_heading_without_editing_it():
