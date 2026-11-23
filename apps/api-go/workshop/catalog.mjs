@@ -325,11 +325,12 @@ const shortSourceCheckPreference = 'workshop-short-source-check';
 const shortPublicationCheckPreference = 'workshop-short-publication-check';
 const finishPublishedBodyPreference = 'workshop-finish-published-body';
 const publicationStatusPreference = 'workshop-publication-status';
+export const selectedIndexSessionPreference = 'workshop-confirm-session';
 
 export async function requestArticleJSON(path, {
   signal, timeout = 10000, readableBodyTimeout = 0, fetcher = fetch, method = 'GET', body, headers = {},
   preferShortSourceCheck = false, preferShortPublicationCheck = false,
-  finishPublishedBody = false, reportBodyNetworkError = false, publicationCheck, onResponseDate,
+  finishPublishedBody = false, reportBodyNetworkError = false, publicationCheck, onResponseDate, onSelectedIndexSession,
 } = {}) {
   const preferences = [];
   if (preferShortSourceCheck) preferences.push(shortSourceCheckPreference);
@@ -356,8 +357,25 @@ export async function requestArticleJSON(path, {
   const combined = signals.length > 1 ? AbortSignal.any(signals) : timeoutSignal;
   let retryAfterSeconds = 0;
   try {
-    const response = await fetcher(path, { method, signal: combined, credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json', ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...(preferences.length ? { Prefer: preferences.join(', ') } : {}), ...headers }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+    const response = await fetcher(path, {
+      method, signal: combined, credentials: 'same-origin', cache: 'no-store',
+      ...(onSelectedIndexSession ? { redirect: 'error' } : {}),
+      headers: {
+        Accept: 'application/json',
+        ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+        ...(preferences.length ? { Prefer: preferences.join(', ') } : {}),
+        ...headers,
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
     const applied = response.headers.get('Preference-Applied');
+    if (onSelectedIndexSession && response.status !== 401 &&
+        applied?.split(',').some(preference => preference.trim() === selectedIndexSessionPreference)) {
+      onSelectedIndexSession({
+        exchangeCSRF: response.status === 204 ? response.headers.get('X-CSRF-Token') : null,
+        expiresAt: response.headers.get('Workshop-Session-Expires'),
+      });
+    }
     const retry = response.headers.get('Retry-After');
     // Keep this header when a short probe times out receiving the body.
     retryAfterSeconds = retry && /^\d+$/.test(retry) ? Number(retry) : retry ? Math.max(0, Math.ceil((Date.parse(retry) - Date.now()) / 1000)) || 0 : 0;

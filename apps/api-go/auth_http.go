@@ -11,10 +11,12 @@ import (
 	"time"
 )
 
-func (s *customerAuthService) mountRoutes(mux *http.ServeMux) {
+func (s *customerAuthService) mountRoutes(mux *http.ServeMux, confirmSelectedIndex bool) {
 	mux.HandleFunc("GET /auth/config", s.publicConfig)
 	mux.HandleFunc("GET /auth/session", s.currentSession)
-	mux.HandleFunc("POST /auth/firebase/session", s.exchangeSession)
+	mux.HandleFunc("POST /auth/firebase/session", func(w http.ResponseWriter, r *http.Request) {
+		s.exchangeSession(w, r, confirmSelectedIndex)
+	})
 	mux.HandleFunc("POST /auth/logout", s.logoutSession)
 }
 func (s *customerAuthService) publicConfig(w http.ResponseWriter, r *http.Request) {
@@ -55,7 +57,7 @@ func (s *customerAuthService) currentSession(w http.ResponseWriter, r *http.Requ
 	}
 	writeJSON(w, 200, map[string]any{"authenticated": true, "roles": []string{"dataset_viewer"}, "expires_at": session.ExpiresAt.UTC().Format(time.RFC3339), "csrf_token": customerCSRF(token)})
 }
-func (s *customerAuthService) exchangeSession(w http.ResponseWriter, r *http.Request) {
+func (s *customerAuthService) exchangeSession(w http.ResponseWriter, r *http.Request, confirmSelectedIndex bool) {
 	w.Header().Set("Cache-Control", "no-store")
 	if s.config.Mode != "firebase" {
 		writeJSON(w, 503, map[string]any{"error": map[string]any{"code": "AUTHENTICATION_UNAVAILABLE", "message": "Sign-in is unavailable.", "retryable": false, "request_id": requestIDFrom(r), "details": map[string]any{"login_available": false}}})
@@ -129,6 +131,10 @@ func (s *customerAuthService) exchangeSession(w http.ResponseWriter, r *http.Req
 		return
 	}
 	http.SetCookie(w, customerSessionCookie(token, expires, now))
+	if confirmSelectedIndex && catalogReadPreferenceRequested(r, selectedIndexSessionPreference) {
+		w.Header().Set("Preference-Applied", selectedIndexSessionPreference)
+		w.Header().Set("X-CSRF-Token", customerCSRF(token))
+	}
 	w.WriteHeader(204)
 }
 func (s *customerAuthService) logoutSession(w http.ResponseWriter, r *http.Request) {

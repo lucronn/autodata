@@ -298,6 +298,7 @@ func (s *postgresCatalogStore) PaidArticleIdentity(ctx context.Context, configur
 }
 
 type paidCatalogContextKey struct{}
+type selectedIndexSessionContextKey struct{}
 type paidCatalogContext struct {
 	configuration CatalogConfiguration
 	identity      *PaidArticleIdentity
@@ -305,9 +306,26 @@ type paidCatalogContext struct {
 }
 
 const (
-	catalogArticleIndexPattern = "GET /v1/catalog/vehicles/{vehicle_id}/articles"
-	purchaseQuotePreference    = "workshop-purchase-quote"
+	catalogArticleIndexPattern     = "GET /v1/catalog/vehicles/{vehicle_id}/articles"
+	purchaseQuotePreference        = "workshop-purchase-quote"
+	selectedIndexSessionPreference = "workshop-confirm-session"
 )
+
+func (s *Server) selectedIndexAuth() *customerAuthService {
+	if customer, ok := s.auth.(*customerAuthService); ok && customer == s.customerAuth {
+		return customer
+	}
+	return nil
+}
+
+func wantsSelectedIndexSession(r *http.Request) bool {
+	if r.Method != http.MethodGet || r.Pattern != catalogArticleIndexPattern ||
+		!catalogReadPreferenceRequested(r, selectedIndexSessionPreference) {
+		return false
+	}
+	query, ok := commerceQuery(r, "region")
+	return ok && commerceScopeValid(r.PathValue("vehicle_id"), query.Get("region"))
+}
 
 func wantsCatalogPurchaseQuote(r *http.Request, configuration CatalogConfiguration) bool {
 	if r.Method != http.MethodGet || r.Pattern != catalogArticleIndexPattern {
@@ -317,12 +335,7 @@ func wantsCatalogPurchaseQuote(r *http.Request, configuration CatalogConfigurati
 	if !ok || !commerceRegion(configuration.Region) || query.Get("region") != configuration.Region {
 		return false
 	}
-	for _, requested := range strings.Split(strings.Join(r.Header.Values("Prefer"), ","), ",") {
-		if strings.TrimSpace(requested) == purchaseQuotePreference {
-			return true
-		}
-	}
-	return false
+	return catalogReadPreferenceRequested(r, purchaseQuotePreference)
 }
 
 func (s *Server) catalogPurchaseQuote(ctx context.Context, configuration CatalogConfiguration) *commerceQuote {
@@ -365,10 +378,14 @@ func (s *Server) catalogProtected(next authenticatedHandler, article bool) http.
 			s.writePaidCatalogError(w, r, err)
 			return
 		}
+		if expires, ok := r.Context().Value(selectedIndexSessionContextKey{}).(time.Time); ok {
+			w.Header().Add("Preference-Applied", selectedIndexSessionPreference)
+			w.Header().Set("Workshop-Session-Expires", expires.UTC().Format(time.RFC3339))
+		}
 		if !openDemo {
 			if err := s.checkPaidCatalogGrant(r.Context(), p, configuration); err != nil {
 				if errors.Is(err, ErrVehicleGrantRequired) && wantsCatalogPurchaseQuote(r, configuration) {
-					w.Header().Set("Preference-Applied", purchaseQuotePreference)
+					w.Header().Add("Preference-Applied", purchaseQuotePreference)
 					s.writePaidCatalogErrorDetails(w, r, err, map[string]any{
 						"purchase_quote": s.catalogPurchaseQuote(r.Context(), configuration),
 					})
@@ -409,7 +426,14 @@ func (s *Server) paidCatalogAuthenticated(next authenticatedHandler) http.Handle
 			s.customerAuth.writeError(w, r, ErrCustomerCSRF)
 			return
 		}
-		p, err := s.auth.Authenticate(r)
+		var p Principal
+		var expires time.Time
+		var err error
+		if customer := s.selectedIndexAuth(); customer != nil && wantsSelectedIndexSession(r) {
+			p, expires, err = customer.authenticate(r, true)
+		} else {
+			p, err = s.auth.Authenticate(r)
+		}
 		if err != nil {
 			s.customerAuth.writeError(w, r, err)
 			return
@@ -417,6 +441,9 @@ func (s *Server) paidCatalogAuthenticated(next authenticatedHandler) http.Handle
 		if !commerceUUID(p.CustomerAccountID) || !commerceUUID(p.OrganizationID) {
 			s.customerAuth.writeError(w, r, ErrCustomerDependency)
 			return
+		}
+		if !expires.IsZero() {
+			r = r.WithContext(context.WithValue(r.Context(), selectedIndexSessionContextKey{}, expires))
 		}
 		next(w, r, p)
 	})

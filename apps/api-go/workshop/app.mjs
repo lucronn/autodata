@@ -1,15 +1,4 @@
-import {
-  articlePresentation,
-  configurationLabel,
-  delay,
-  filterArticles,
-  localImageURL,
-  readCollection,
-  requestJSON,
-  requestArticleJSON,
-  requestInitialYears,
-  sourceReferenceURL,
-} from "./catalog.mjs";
+import * as catalog from "./catalog.mjs";
 import { loadingProgress } from "./progress.mjs";
 import { createSession } from "./auth.mjs";
 import {
@@ -30,6 +19,20 @@ import {
   readableArticle,
   processingArticle,
 } from "./article-read.mjs";
+
+const {
+  articlePresentation,
+  configurationLabel,
+  delay,
+  filterArticles,
+  localImageURL,
+  readCollection,
+  requestJSON,
+  requestArticleJSON,
+  requestInitialYears,
+  selectedIndexSessionPreference,
+  sourceReferenceURL,
+} = catalog;
 
 const $ = (id) => document.getElementById(id);
 const openDemo = document.documentElement.dataset.workshopMode === 'open-demo';
@@ -568,7 +571,7 @@ function purchaseConfigured() {
     origin: globalThis.location?.origin,
   });
 }
-async function selectVehicle(g, articleID = "", { quoteMode = "eager", savedLink = false, reuseQuote = false, focusOnShow = false, focusArticle = "" } = {}) {
+async function selectVehicle(g, articleID = "", { quoteMode = "eager", savedLink = false, reuseQuote = false, focusOnShow = false, focusArticle = "", firstIndex = null } = {}) {
   if (!g.current()) return;
   // Keep the exact public price visible while paid access and purchase
   // availability are checked together for this same selection.
@@ -624,7 +627,7 @@ async function selectVehicle(g, articleID = "", { quoteMode = "eager", savedLink
     if (directArticle && await loadArticle(articleID, g, { savedLink: true })) return;
     if (savedQuery && await loadSavedSearch(g, savedQuery, focusArticle)) return;
     if (!g.current()) return;
-    await loadArticles(g, articleID, { focusOnShow, focusArticle, includePurchaseQuote: Boolean(retainedQuote) });
+    await loadArticles(g, articleID, { focusOnShow, focusArticle, includePurchaseQuote: Boolean(retainedQuote), firstIndex });
   } catch (error) {
     // When a purchase is required, present the price or its unavailable state
     // with the access result so the UI does not announce a false checkout failure.
@@ -668,17 +671,25 @@ async function loadSavedSearch(g, query, focusArticle = "") {
   return true;
 }
 
-async function loadArticles(g, articleID = "", { focusOnShow = false, focusArticle = "", includePurchaseQuote = false } = {}) {
+async function loadArticles(g, articleID = "", { focusOnShow = false, focusArticle = "", includePurchaseQuote = false, firstIndex = null } = {}) {
   if (!g.current()) return;
   const previousFocus = focusArticle ? document.activeElement : null;
   $("completion-status").textContent = "";
   stage("articles");
   status("Opening your article index…", { busy: true });
   await readCollection(
-    () => requestJSON(articleRequestPath(), {
-      signal: g.signal,
-      headers: includePurchaseQuote ? { Prefer: "workshop-purchase-quote" } : undefined,
-    }),
+    () => {
+      if (firstIndex) {
+        const result = firstIndex;
+        firstIndex = null;
+        if (Object.hasOwn(result, "error")) throw result.error;
+        return result.value;
+      }
+      return requestJSON(articleRequestPath(), {
+        signal: g.signal,
+        headers: includePurchaseQuote ? { Prefer: "workshop-purchase-quote" } : undefined,
+      });
+    },
     {
       signal: g.signal,
       desired: articleID,
@@ -2050,26 +2061,55 @@ async function signIn() {
   if (signingIn) return;
   signingIn = true;
   checkout.clear();
+  const pathname = location.pathname;
   const route = location.search;
+  const params = new URLSearchParams(route);
+  const generation = viewGeneration;
+  const matchesSelection = () => {
+    const selected = scope();
+    return location.pathname === pathname && location.search === route &&
+      !params.has("order") && !params.has("view") && !params.has("article") &&
+      validScope(selected) && selected.configuration_id === params.get("configuration") &&
+      selected.region === params.get("region") &&
+      names.every((name) => $(name).value === (params.get(name) || ""));
+  };
+  const canConfirmIndex = () => generation?.current() && !sessionRequest &&
+    typeof selectedIndexSessionPreference === "string" && session.state.mode === "firebase" &&
+    !params.has("q") && matchesSelection();
+  let firstIndex;
   try {
-    await session.signIn();
+    firstIndex = await session.signIn(canConfirmIndex() ? {
+      async confirmSelectedIndex(exchangeCSRF, signal) {
+        if (!canConfirmIndex() || signal.aborted) return null;
+        const selected = scope();
+        const prefer = validQuote(quote, selected) && purchaseConfigured()
+          ? `${selectedIndexSessionPreference}, workshop-purchase-quote`
+          : selectedIndexSessionPreference;
+        let expiresAt;
+        const firstIndex = await requestJSON(articleRequestPath(), {
+          signal: AbortSignal.any([generation.signal, signal]),
+          headers: { Prefer: prefer, "X-CSRF-Token": exchangeCSRF },
+          onSelectedIndexSession(proof) { expiresAt = proof.expiresAt; },
+        }).then(value => ({ value }), error => ({ error }));
+        if (!canConfirmIndex() || signal.aborted) return null;
+        if (Object.hasOwn(firstIndex, "value")) {
+          const configuration = firstIndex.value?.configuration;
+          if (configuration?.id !== selected.configuration_id || configuration?.region !== selected.region ||
+              !Array.isArray(firstIndex.value?.items)) return { expiresAt, firstIndex: null };
+        }
+        return { expiresAt, firstIndex };
+      },
+    } : undefined);
   } finally {
     signingIn = false;
   }
   if (!session.state.authenticated) return;
-  if (location.search === route) {
-    const params = new URLSearchParams(route);
-    const selected = scope();
-    if (!params.has("order") && !params.has("view") && !params.has("article") &&
-        validScope(selected) && selected.configuration_id === params.get("configuration") &&
-        selected.region === params.get("region") &&
-        names.every((name) => $(name).value === (params.get(name) || ""))) {
-      // Public selector choices remain valid for the same displayed route.
-      // Check paid access again with the newly confirmed session cookie.
-      invalidate();
-      await operation((g) => selectVehicle(g, "", { reuseQuote: true }), () => restoreRoute());
-      return;
-    }
+  if (matchesSelection()) {
+    // Apply access only for the public selection retained through sign-in.
+    const confirmed = canConfirmIndex() ? firstIndex : null;
+    invalidate();
+    await operation((g) => selectVehicle(g, "", { reuseQuote: true, firstIndex: confirmed }), () => restoreRoute());
+    return;
   }
   await restoreRoute();
 }
