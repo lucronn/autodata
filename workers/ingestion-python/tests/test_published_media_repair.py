@@ -433,6 +433,7 @@ def test_retained_technical_rows_and_reasons_survive_repositioning():
 @pytest.mark.parametrize(("prompt_version", "validator_version", "flow_unit"), [
     ("full-prose-auto-prompt-v56", "full-prose-auto-validator-v54", "cm³/min"),
     ("full-prose-auto-prompt-v57", "full-prose-auto-validator-v55", "L/min"),
+    ("full-prose-auto-prompt-v58", "full-prose-auto-validator-v56", "fl oz/min"),
 ])
 @pytest.mark.parametrize("ordinals", [False, True], ids=["media", "ordinals"])
 def test_repair_replays_retained_compound_specification(prompt_version, validator_version, flow_unit, ordinals):
