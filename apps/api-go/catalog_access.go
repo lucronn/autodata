@@ -355,11 +355,12 @@ func (s *Server) catalogPurchaseQuote(ctx context.Context, configuration Catalog
 	return &quote
 }
 
-func (s *Server) catalogSelector(next authenticatedHandler) http.Handler {
+func (s *Server) mountCatalogSelector(mux *http.ServeMux, path string, next authenticatedHandler) {
 	if !s.paidCatalogEnabled() {
-		return s.requireRole("dataset_viewer", next)
+		mux.Handle("GET "+path, s.requireRole("dataset_viewer", next))
+		return
 	}
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { next(w, r, Principal{}) })
+	mountPublicRead(mux, path, func(w http.ResponseWriter, r *http.Request) { next(w, r, Principal{}) })
 }
 func (s *Server) catalogProtected(next authenticatedHandler, article bool) http.Handler {
 	if !s.paidCatalogEnabled() {

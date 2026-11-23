@@ -135,6 +135,11 @@ API container is running. External applications use the provider-neutral
 request normalized individual article details. `/dashboard/` is a compact
 landing page linking to Workshop, Swagger, and the catalog API.
 
+Browser clients on another origin can read the public Workshop vehicle
+selectors, quotes, and OpenAPI documents with cookies omitted. Customer
+sessions, purchases, Library entries, articles, and article media use the
+Workshop origin.
+
 Configure `BANKONE_BASE_URL` and `BANKTWO_BASE_URL` independently; these
 intended domain defaults do not prove live DNS or service availability.
 Runtime source access uses the shared Source Connector v1 contract and does
