@@ -9,12 +9,14 @@ if (params.get('sample') === '1' && !wantsDemo) {
   await import('./demo.mjs');
 } else {
   if (!wantsDemo) {
-    // Download the regular app while the mode is checked. Its import below
-    // runs only once the mode and checkout notice have been set.
-    const app = document.createElement('link');
-    app.rel = 'modulepreload';
-    app.href = '/workshop/app.mjs';
-    document.head.append(app);
+    // Download the regular app and its helpers during the mode check.
+    // The import below runs once the mode and checkout notice are set.
+    for (const module of ['app', 'progress', 'commerce', 'article-read']) {
+      const link = document.createElement('link');
+      link.rel = 'modulepreload';
+      link.href = `/workshop/${module}.mjs`;
+      document.head.append(link);
+    }
   }
   let testCheckoutReady = false;
   let openDemoReady = false;
