@@ -5,6 +5,7 @@ from unittest.mock import Mock
 from uuid import uuid4
 
 import pytest
+from psycopg.errors import QueryCanceled
 
 from autodata_ingestion import catalog_index_worker as worker
 
@@ -80,6 +81,29 @@ def test_idle_or_lost_claim_waits_two_seconds_and_stops(monkeypatch):
     worker.run_catalog_worker(None, registry={}, object_store=None, stop=stop)
     assert waits == [2]
     dispatch.assert_called_once()
+
+
+def test_preparation_timeout_preserves_catalog_dispatch_and_retries(monkeypatch, capsys):
+    repo = Repository(uuid4())
+    stop = Event()
+    prepare = Mock(side_effect=[QueryCanceled('private database diagnostics'), []])
+    monkeypatch.setattr(worker, 'reconcile_workshop_preparation', prepare)
+    now = 0
+
+    def dispatch(*args, **kwargs):
+        nonlocal now
+        assert not repo.open
+        now += 1
+        if now == 3:
+            stop.set()
+        return True
+
+    run = Mock(side_effect=dispatch)
+    monkeypatch.setattr(worker, 'monotonic', lambda: now)
+    monkeypatch.setattr(worker, 'dispatch_next', run)
+    assert worker.run_catalog_worker(repo, registry={}, object_store=None, prepare_orders=True, stop=stop) == 0
+    assert prepare.call_count == 2 and run.call_count == 3
+    assert capsys.readouterr().out == 'CATALOG_ORDER_PREPARATION_RETRY\n'
 
 
 def test_already_stopped_never_selects(monkeypatch):

@@ -7,6 +7,8 @@ from time import monotonic
 from urllib.parse import urlsplit
 from uuid import uuid4
 
+from psycopg import OperationalError
+
 from .article_lifecycle import run_article_worker_once
 from .commerce_service import reconcile_workshop_preparation
 
@@ -52,8 +54,11 @@ def run_catalog_worker(repo, *, registry, object_store, once=False, prepare_orde
     next_preparation = 0.0
     while not stop.is_set():
         if prepare_orders and monotonic() >= next_preparation:
-            with repo.connect() as connection:
-                reconcile_workshop_preparation(connection)
+            try:
+                with repo.connect() as connection:
+                    reconcile_workshop_preparation(connection)
+            except OperationalError:
+                print('CATALOG_ORDER_PREPARATION_RETRY', flush=True)
             next_preparation = monotonic() + 2
         claimed = dispatch_next(repo, worker_id=worker_id, registry=registry,
                                 object_store=object_store, stop=stop)
