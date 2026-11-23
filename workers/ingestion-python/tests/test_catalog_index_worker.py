@@ -125,12 +125,13 @@ def test_main_builds_only_catalog_clients_and_installs_stop_handlers(monkeypatch
     monkeypatch.setattr(worker.signal, 'signal', lambda sig, handler: handlers.update({sig: handler}))
     def run(*args, **kwargs):
         assert kwargs['once'] is True
+        assert kwargs['prepare_orders'] is True
         assert not kwargs['stop'].is_set()
         handlers[worker.signal.SIGTERM](None, None)
         assert kwargs['stop'].is_set()
         return 0
     monkeypatch.setattr(worker, 'run_catalog_worker', run)
-    assert worker.main(['--once']) == 0
+    assert worker.main(['--once', '--prepare-workshop-orders']) == 0
     assert set(handlers) == {worker.signal.SIGTERM, worker.signal.SIGINT}
     registry.assert_called_once_with(include_defaults=False)
     assert objects.call_args.kwargs['endpoint'] == 'fixture:9000'
@@ -173,5 +174,6 @@ def test_preview_service_has_no_automatic_start_or_article_state():
     assert '--stop-timeout 70' in unit and 'TimeoutStopSec=80' in unit
     assert 'new-article' not in unit and 'INCEPTION' not in unit
     assert 'python -m autodata_ingestion.catalog_index_worker' in unit
+    assert '--prepare-workshop-orders' in unit
     assert '--env-file /etc/autodata/catalog-index-runtime.env' in unit
     assert 'sha256:5c8e79b93db464da854ad33dc499e25c153bbcd52757569b1f2a4e5072acecb4' in unit

@@ -74,10 +74,14 @@ canonical names above. Do not add model, payment, admin, internal HTTP or finite
 article-worker state credentials to this file. Diagnostics contain only
 `CATALOG_INDEX_WORKER_BLOCKED` and exit 1 when configuration or execution fails.
 
-For a separately gated bounded dispatch, append `--once` to the Python command;
-it attempts at most one selected UUID and exits 0 for an empty queue or lost
-claim. Continuous operation polls serially and waits 2s after an empty selection
-or lost claim. It never creates catalog jobs or dispatches without an exact UUID.
+The Workshop unit passes `--prepare-workshop-orders` to reconcile due paid
+orders and queue their catalog indexes before selecting work. It uses the
+same durable preparation state for simulated and Stripe orders and requires
+no payment-provider credentials. The catalog worker still dispatches a single
+exact catalog job at a time and waits two seconds when idle.
+
+Without this option the worker selects only already queued jobs. Add `--once`
+for one preparation pass, when enabled, and at most one catalog dispatch.
 
 SIGTERM/SIGINT requests stop before the next selection/dispatch. An already
 running catalog job continues its existing heartbeat and may enumerate 1000
