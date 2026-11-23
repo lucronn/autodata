@@ -34,6 +34,40 @@ def test_automatic_rewrite_has_own_identity_and_no_manual_acceptance():
     assert rewrite.validate_article_rewrite(source, reviewed.document, profile_version="full-prose-review-v1").report["content_acceptance_required"]
 
 
+def _assembly_label_rewrite(replacement):
+    source = document("unused")
+    item = source["blocks"][0]
+    del item["text"]
+    item.update(type="ordered_list", items=["REAR TIMING SENSOR ASSEMBLY"])
+    draft = response(replacement, introduction="This article presents component reference information.")
+    draft["replacements"][0]["path"] = "/blocks/0/items/0"
+    return source, draft
+
+
+def test_automatic_rewrite_rewords_an_assembly_label_with_its_component_intact():
+    source, draft = _assembly_label_rewrite("Assembly for the rear timing sensor.")
+    result = run(source, draft)
+    assert result.error_code is None
+    assert result.document["blocks"][1]["items"] == ["Assembly for the rear timing sensor."]
+
+
+@pytest.mark.parametrize("replacement", [
+    "Assembly for the front timing sensor.",
+    "Assembly for the rear pressure sensor.",
+    "Assembly for the rear timing switch.",
+    "Assembly for the timing sensor.",
+])
+def test_automatic_rewrite_rejects_a_changed_assembly_component(replacement):
+    from autodata_ingestion import procedure_rewrite_auto as auto
+    from autodata_ingestion.procedure_rewrite_full import render_full
+
+    source, draft = _assembly_label_rewrite(replacement)
+    assert run(source, draft).error_code == "REWRITE_SPEC_SCOPE_MUTATION"
+    saved = render_full(source, draft, profile_version=PROFILE)
+    validation = auto.validate_auto(source, saved, response=draft, prompt_version="full-prose-auto-prompt-v55")
+    assert validation.error_codes == ("REWRITE_SPEC_SCOPE_MUTATION",)
+
+
 @pytest.mark.parametrize("replacement", ["Remove the cover.", " REMOVE  THE COVER. ", "Remove the cover!"])
 def test_automatic_profile_rejects_unchanged_ordinary_prose(replacement):
     source = document("Remove the cover.")

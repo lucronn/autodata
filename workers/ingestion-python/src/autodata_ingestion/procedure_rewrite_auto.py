@@ -449,6 +449,14 @@ _INTRO_DIRECTIVE = re.compile(
     re.IGNORECASE,
 )
 
+_ASSEMBLY_COMPONENT = (
+    r"(?P<component>(?:[a-z0-9]+(?:[-/][a-z0-9]+)* ){0,5}"
+    r"(?:actuator|module|motor|pump|relay|sensor|switch|valve))"
+)
+_COMPONENT_ASSEMBLY_LABEL = re.compile(r"(?:the )?" + _ASSEMBLY_COMPONENT + r" assembly")
+_ASSEMBLY_FOR_COMPONENT_LABEL = re.compile(r"(?:the )?assembly (?:for|of) (?:the )?" + _ASSEMBLY_COMPONENT)
+_LIST_ITEM_PROSE_PATH = re.compile(r"/items/\d+(?:/text)?$")
+
 
 _SIMPLE_ACTION = r"(?:remove|take\s+off|lift\s+off|inspect|check|connect|attach|disconnect|detach|install|fit)"
 _TARGET_WORD = r"[a-z]+(?:-[a-z]+)*"
@@ -2675,6 +2683,12 @@ def _proof_text(text):
     return text.casefold().strip().rstrip(".!")
 
 
+def _assembly_component(text):
+    wording = " ".join(_proof_text(text).rstrip(":").split())
+    label = _COMPONENT_ASSEMBLY_LABEL.fullmatch(wording) or _ASSEMBLY_FOR_COMPONENT_LABEL.fullmatch(wording)
+    return label["component"] if label else None
+
+
 def _lubricant_assignment(text, *, patterns=_LUBRICANT_INSTRUCTIONS):
     # Compare complete, literal material/recipient clauses with explicit
     # modal and sequencing words. Other uses of "apply" stay outside this grammar.
@@ -3486,6 +3500,12 @@ def _require_changes(source, candidate, *, prompt_version, include_cell_blocks=N
     for slot in slots:
         original = slot["text"]
         replacement = full._get(restored, slot["path"])
+        # An uppercase list label can name a part without a recognized
+        # specification or action. Keep the entire component name there.
+        if original.isupper() and _LIST_ITEM_PROSE_PATH.search(slot["path"]) and not _INTRO_DIRECTIVE.search(original):
+            component = _assembly_component(original)
+            if component and _assembly_component(replacement) != component:
+                raise ValueError("REWRITE_SPEC_SCOPE_MUTATION")
         if compound_measurement and any(compound_measurement.search(text) for text in (original, replacement)):
             if original != replacement:
                 raise ValueError("REWRITE_SPEC_SCOPE_MUTATION")
