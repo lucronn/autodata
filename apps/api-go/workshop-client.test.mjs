@@ -220,7 +220,7 @@ function orderPollFixture(responses, options = {}) {
       options.afterWait?.(elapsed);
       signal?.throwIfAborted();
     },
-    async request(path, { signal, timeout }) {
+    async request(path, { signal, timeout, onResponseDate }) {
       assert.equal(path, `/v1/workshop/orders/${orderID}`);
       assert.equal(signal, options.signal);
       reads.push({ time: elapsed, timeout });
@@ -230,6 +230,7 @@ function orderPollFixture(responses, options = {}) {
         elapsed += response.elapsed || 0;
         throw response;
       }
+      onResponseDate?.(options.responseDate ?? new Date().toUTCString());
       if (typeof response !== 'string') return response;
       return { version: 'v1', ...scope, order_id: orderID, state: response,
         retry_disposition: ['expired', 'canceled'].includes(response) ? 'new_key' : 'do_not_repay' };
@@ -255,13 +256,27 @@ test('a matching hosted checkout return can check early without moving either fa
   const returnedCheckout = { ...scope, order_id: orderID,
     provider_expires_at: new Date(Date.now() + 60_000).toISOString() };
   const timeout = Object.assign(new TypeError('Probe timed out'), { elapsed: 100 });
+  const lateTimeout = Object.assign(new TypeError('Later check timed out'), { elapsed: 400 });
   const busy = Object.assign(new Error('Try again'), { status: 429, retryable: true, retryAfterSeconds: 2 });
+  const resumable = {
+    ...returnedCheckout, version: 'v1', state: 'open', retry_disposition: 'do_not_repay',
+    checkout_url: 'https://checkout.stripe.com/c/pay/cs_test_fixture',
+  };
+  const nearExpiry = {
+    ...resumable, provider_expires_at: new Date(Date.now() + 1000).toISOString(),
+  };
   for (const [label, responses, starts] of [
     ['early payment', ['open', 'paid'], [0, 250]],
     ['miss until the short fallback', ['open', 'processing', 'paid'], [0, 250, 350]],
-    ['miss until the regular fallback', ['open', 'open', 'processing', 'paid'], [0, 250, 350, 1000]],
+    ['payment between the early and ordinary checks', ['open', 'open', 'processing', 'paid'], [0, 250, 350, 600]],
+    ['a server-confirmed open checkout', ['open', 'open', resumable, 'paid'], [0, 250, 350, 600]],
+    ['an open checkout near expiry on the server clock', ['open', 'open', nearExpiry, 'paid'], [0, 250, 350, 1000]],
+    ['open without an active checkout link', ['open', 'open', 'open', 'paid'], [0, 250, 350, 1000]],
+    ['miss until the regular fallback', ['open', 'open', 'processing', 'processing', 'paid'], [0, 250, 350, 600, 1000]],
     ['timeout at the short fallback', ['open', timeout, 'paid'], [0, 250, 350]],
+    ['later check times out at the regular fallback', ['open', 'open', 'processing', lateTimeout, 'paid'], [0, 250, 350, 600, 1000]],
     ['overload', ['open', busy, 'paid'], [0, 250, 2250]],
+    ['overload at the later check', ['open', 'processing', 'processing', busy, 'paid'], [0, 250, 350, 600, 2600]],
     ['provider reconciliation', ['open', 'reconciliation_required', 'paid'], [0, 250, 1250]],
     ['revoked', ['open', 'revoked'], [0, 250]],
   ]) {
@@ -269,6 +284,7 @@ test('a matching hosted checkout return can check early without moving either fa
     assert.equal((await probe.result).state, label === 'revoked' ? 'revoked' : 'paid', label);
     assert.deepEqual(probe.times(), starts, label);
     assert.equal(probe.reads[1].timeout, 100, label);
+    if (starts.includes(600)) assert.equal(probe.reads[3].timeout, 400, label);
   }
 });
 

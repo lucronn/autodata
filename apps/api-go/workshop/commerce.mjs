@@ -237,10 +237,14 @@ export function createCheckout({
 const firstOrderRetryMs = 1000;
 const earlyCheckoutCheckMs = 350;
 const firstCheckoutReturnCheckMs = 250;
+const laterCheckoutReturnCheckMs = 600;
+const httpDatePrecisionMs = 1000;
 
-export async function readOrder(orderID, { request = requestJSON, signal, timeout = 10000 } = {}) {
+export async function readOrder(orderID, { request = requestJSON, signal, timeout = 10000, onResponseDate } = {}) {
   if (!uuid(orderID)) throw new Error("This order is unavailable.");
-  const order = await request(`/v1/workshop/orders/${orderID}`, { signal, timeout });
+  const order = await request(`/v1/workshop/orders/${orderID}`, {
+    signal, timeout, ...(onResponseDate ? { onResponseDate } : {}),
+  });
   signal?.throwIfAborted();
   if (!validOrder(order, orderID)) throw new Error("Payment status is unavailable.");
   return order;
@@ -266,7 +270,8 @@ export async function pollOrder(
     latest,
     unavailable = false,
     regularReadAt = 0,
-    checkoutReadAt = 0;
+    checkoutReadAt = 0,
+    laterReturnReadAt = 0;
   while (now() < deadline) {
     signal?.throwIfAborted();
     const startedAt = now();
@@ -275,12 +280,14 @@ export async function pollOrder(
     let retryAfter = 0;
     let ordinaryPending = false;
     let pauseBeforeRetry = false;
+    let responseDate;
     try {
       const readDeadline = checkoutReadAt || regularReadAt || deadline;
       latest = await readOrder(orderID, {
         request,
         signal,
         timeout: Math.min(10000, Math.max(1, Math.floor(readDeadline - startedAt))),
+        onResponseDate: laterReturnReadAt ? value => { responseDate = Date.parse(value); } : undefined,
       });
       unavailable = false;
       onUpdate(latest);
@@ -313,8 +320,19 @@ export async function pollOrder(
     if (checkoutReadAt && retryAfter === 0 && !pauseBeforeRetry) {
       waitMs = Math.max(0, checkoutReadAt - finishedAt);
       checkoutReadAt = 0;
+    } else if (laterReturnReadAt > finishedAt && ordinaryPending &&
+        (latest.state === "processing" || (
+          resumableCheckoutURL(latest) &&
+          Date.parse(latest.provider_expires_at) > responseDate + httpDatePrecisionMs + firstOrderRetryMs
+        )) &&
+        sameScope(returnedCheckout, latest) && retryAfter === 0 && !pauseBeforeRetry) {
+      // Leave room for network travel and the server Date header's precision
+      // before an open checkout can enter provider reconciliation.
+      waitMs = laterReturnReadAt - finishedAt;
+      laterReturnReadAt = 0;
     } else if (regularReadAt) {
       checkoutReadAt = 0;
+      laterReturnReadAt = 0;
       // An unanswered probe rejoins the original first check. A provider
       // reconciliation or overload response still gets the regular delay.
       waitMs = Math.max(regularReadAt - finishedAt, pauseBeforeRetry ? firstOrderRetryMs : 0);
@@ -330,6 +348,7 @@ export async function pollOrder(
             validTime(returnedCheckout.provider_expires_at) &&
             Date.parse(returnedCheckout.provider_expires_at) > Date.now() + firstOrderRetryMs) {
           checkoutReadAt = finishedAt + earlyCheckoutCheckMs;
+          laterReturnReadAt = finishedAt + laterCheckoutReturnCheckMs;
           waitMs = firstCheckoutReturnCheckMs;
         }
       }
