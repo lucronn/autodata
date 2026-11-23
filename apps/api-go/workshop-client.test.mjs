@@ -4165,7 +4165,7 @@ test('a revalidated search return focuses its exact originating hit', async () =
   assert.deepEqual(h.requests.map(request => request.path), ['/v1/catalog/vehicles/B/articles?q=pump&region=US']);
 });
 
-test('a history return waits for the filtered results if the saved search needs the full index', async () => {
+test('a history return shows loaded matches and restores focus after the protected search responds', async () => {
   const wanted = { id: 'original-id', title: 'Oil pump' };
   const other = { id: 'other-id', title: wanted.title };
   const configuration = { id: 'B', region: 'US' };
@@ -4181,7 +4181,7 @@ test('a history return waits for the filtered results if the saved search needs 
     h.$('article-title').focus();
     assert.equal(await h.context.loadSavedSearch(generation, 'pump', wanted.id), false);
     await h.context.loadArticles(generation, '', { focusArticle: wanted.id });
-    assert.equal(h.$('articles').firstElementChild.children.length, 0);
+    assert.deepEqual(h.$('articles').firstElementChild.children.map(row => row.dataset.articleId), [other.id, wanted.id]);
     if (outcome === 'user moved focus') h.$('search').focus();
     else if (h.context.document.activeElement === h.$('article-title'))
       h.context.document.activeElement = h.context.document.body;
@@ -4397,6 +4397,15 @@ test('nonempty explicit completed article index is ready after one read', async 
   assert.equal(h.$('completion-status').textContent, 'Article index ready.');
 });
 
+test('a failed supplier index still shows articles returned by the available source', async () => {
+  const h = articleIndexHarness([indexResponse('failed', { items: [{ id: 'oil-pump', title: 'Oil Pump' }] })]);
+  await h.load();
+  assert.equal(h.$('catalog-count').textContent, '1 article from available sources.');
+  assert.equal(h.$('articles').firstElementChild.children[0].dataset.articleId, 'oil-pump');
+  assert.equal(h.$('no-results').hidden, true);
+  assert.match(h.$('activity-text').textContent, /open the articles below/i);
+});
+
 test('hydration reuses article rows and keeps keyboard focus on the same article ID', async () => {
   const polls = [deferredAuthOperation(), deferredAuthOperation()];
   const releases = [...polls];
@@ -4557,7 +4566,7 @@ test('changing hydration coalesces an in-flight query and only keeps current mat
   assert.deepEqual(timers, []);
 });
 
-test('same-query hydration retains settled hits while typing still debounces and clears them', async () => {
+test('same-query hydration keeps settled hits and new queries show loaded matches during debounce', async () => {
   const poll = deferredAuthOperation(), refresh = deferredAuthOperation();
   const hit = { id: 'same', title: 'Pump service', availability: 'available', source_revision_id: 'rev-1' };
   const extra = { ...hit, id: 'other', title: 'More service notes' };
@@ -4583,7 +4592,8 @@ test('same-query hydration retains settled hits while typing still debounces and
   h.$('search').value = 'notes';
   h.$('search').events.input();
   assert.equal(refreshing.signal.aborted, true);
-  assert.equal(h.$('articles').children[0].children.length, 0);
+  assert.deepEqual(h.$('articles').children[0].children.map(row => row.dataset.articleId), [extra.id]);
+  assert.match(h.$('catalog-count').textContent, /loaded index.*searching/i);
   assert.deepEqual(typed.map(timer => timer.delay), [300]);
   typed[0].callback();
   refresh.resolve(indexResponse('completed', { complete: true, items: [hit] }));

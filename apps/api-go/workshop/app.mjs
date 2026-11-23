@@ -744,7 +744,7 @@ async function loadArticles(g, articleID = "", { focusOnShow = false, focusArtic
             searchItems = searchHitsOnCurrentIndex(searchItems);
           const origin = focusArticle;
           focusArticle = "";
-          // The fallback index has no filtered links until the search finishes.
+          // Restore focus again when the protected search refreshes the rows.
           scheduleArticleSearch({ fromIndex: true, restoreFocus: origin ? () => {
             const active = document.activeElement;
             if (g.current() && (active === previousFocus || active === document.body))
@@ -780,7 +780,9 @@ function showArticleIndexStatus(articleID = "") {
       articles.length ? "Article index ready." : "Article index ready. No articles are currently available.";
     status(ready, { complete: true });
   } else if (indexFailed) {
-    status("Your article index could not be prepared. Available articles can still be opened.", {
+    status(articles.length
+      ? "You can open the articles below. Some sources could not be reached."
+      : "Your article index could not be prepared.", {
       complete: false,
     });
   } else {
@@ -929,15 +931,17 @@ function renderArticles() {
   const query = $("search").value.trim();
   const searching = Boolean(query && searchQuery === query);
   const visible = openDemo ? articles.filter((item) => item.availability === 'available') : articles;
-  const results = searching ? (searchItems || []) : filterArticles(visible, query);
+  const localSearch = searching && searchItems === null;
+  const results = searching && !localSearch ? searchItems : filterArticles(visible, query);
   const items = openDemo ? results.filter((item) => item.availability === 'available') : results;
-  if (items.length && access === "owned" && paidOrder?.id === currentOrder &&
+  if (items.length && !localSearch && access === "owned" && paidOrder?.id === currentOrder &&
       vehicle?.id === paidOrder.configuration_id && vehicle?.region === paidOrder.region) {
     clearPaidOrderAction(currentOrder);
   }
   renderArticleLinks(items);
+  const articleCount = `${items.length} ${items.length === 1 ? "article" : "articles"}`;
   const resultsComplete = searching ? searchComplete && indexComplete : indexComplete;
-  const countText = searching && searchPending
+  let countText = searching && searchPending
     ? "Searching articles…"
     : searching && searchError
       ? "Article search is unavailable. Try again."
@@ -948,6 +952,12 @@ function renderArticles() {
           : openDemo
             ? `${items.length} available articles · ${articles.length} indexed`
             : `${items.length} articles`;
+  if (items.length && searching && searchPending)
+    countText = `${articleCount} from the loaded index. Searching…`;
+  else if (items.length && searching && searchError)
+    countText = `${articleCount} from the loaded index. Search could not refresh.`;
+  else if (items.length && indexFailed)
+    countText = `${articleCount} from available sources.`;
   // Avoid mutating the polite live region with the same pending text on every keystroke.
   if ($("catalog-count").textContent !== countText) $("catalog-count").textContent = countText;
   $("no-results").textContent = searching && searchError
