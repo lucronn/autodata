@@ -1872,6 +1872,7 @@ def _maintenance_xml_blocks(text: str) -> list[dict[str, Any]]:
 def adapt_bound_article(
     resource: SourceResource, context, *, keep_embedded_pdf: bool = False,
     keep_html_headings: bool = False, keep_bound_pdf_iframes: bool = False,
+    keep_html_section_titles: bool = False,
     keep_pdf_figure_order: bool = False, keep_multiple_pdf_figures: bool = False,
     keep_html_table_image_order: bool = False,
     keep_repeated_pdf_figures: bool = False, keep_pdf_figures_with_margins: bool = False,
@@ -1907,6 +1908,7 @@ def adapt_bound_article(
             asset_bindings=html_resource.metadata.get("asset_bindings", []),
             preserve_legacy_list_starts=False,
             keep_html_headings=keep_html_headings,
+            keep_html_section_titles=keep_html_section_titles,
             keep_bound_pdf_iframes=keep_bound_pdf_iframes,
             resolved_pdf_refs=resolved_pdf_refs,
             include_untyped_pdf_positions=include_untyped_pdf_positions,
@@ -1957,6 +1959,7 @@ def adapt_bound_article(
             "blocks": parser.blocks,
             "asset_resource_refs": [],
             **({"authored_html_headings": True} if keep_html_headings else {}),
+            **({"html_section_titles": True} if parser.html_section_titles else {}),
             **({"handled_pdf_embeds": True} if parser.handled_pdf_embeds else {}),
             **({"untyped_pdf_embed_refs": tuple(parser.untyped_pdf_embed_refs)} if parser.untyped_pdf_embed_refs else {}),
             **({"positioned_html_table_images": True} if parser.positioned_html_table_images else {}),
@@ -2104,6 +2107,7 @@ def adapt_bound_article(
                     )
                     return adapt_bound_article(
                         nested, context, keep_html_headings=keep_html_headings,
+                        keep_html_section_titles=keep_html_section_titles,
                         keep_bound_pdf_iframes=keep_bound_pdf_iframes,
                         resolved_pdf_refs=resolved_pdf_refs,
                         keep_pdf_figure_order=keep_pdf_figure_order,

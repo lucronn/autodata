@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from hashlib import sha256
+from html import unescape
 from html.parser import HTMLParser
 from itertools import accumulate, pairwise
 import re
@@ -21,6 +22,8 @@ from .source_connector_client import (
 
 _LIST_TAGS = {"ol": "ordered_list", "ul": "unordered_list"}
 _HEADING_LEVELS = {f"h{level}": level for level in range(1, 7)}
+_SECTION_TITLE_PARAGRAPH = re.compile(r"<p>\s*<(b|strong)>\s*([^<>]{1,80}?)\s*</\1>\s*</p>", re.IGNORECASE)
+_SECTION_TITLE_LEVELS = {"removal": 2, "installation": 2, "all vehicles": 3}
 _MAX_LIST_DEPTH = 32
 _MAX_FIGURE_DEPTH = 32
 _MAX_TABLE_DEPTH = 8
@@ -188,6 +191,7 @@ class ArticleParser(HTMLParser):
         keep_html_nested_tables=False, keep_html_numeric_superscripts=False, resolved_pdf_refs=frozenset(),
         include_untyped_pdf_positions=False, keep_bound_html_images=False, skip_noscript_images=frozenset(),
         declared_image_refs=frozenset(), lazy_image_alts=None, keep_html_document_links=False,
+        keep_html_section_titles=False,
     ):
         super().__init__(convert_charrefs=True)
         self._asset_bindings = {item["source_url"]: item["resource_ref"] for item in asset_bindings}
@@ -210,6 +214,8 @@ class ArticleParser(HTMLParser):
         self._list_continuation_pending = False
         self._preserve_legacy_list_starts = preserve_legacy_list_starts
         self._keep_html_headings = keep_html_headings
+        self._keep_html_section_titles = keep_html_section_titles
+        self.html_section_titles = False
         self._keep_html_document_links = keep_html_document_links
         self.html_document_links = False
         # Bounds are indexes into _text. A new list item awaits both bounds.
@@ -833,6 +839,26 @@ class ArticleParser(HTMLParser):
                 self._heading.setdefault("images", []).append(image)
                 return
             self._append_inline_media(image)
+
+    def parse_starttag(self, offset):
+        if (
+            self._keep_html_section_titles and not self._in_table and not self._lists and not self._figures
+            and not self._skip and not self._image_link and not self._hidden_embed_tags
+            and self._hidden_html_tag is None and self._hidden_image_scope is None
+            and self._heading is None and self._document_link_scope is None
+        ):
+            # A supplier can use an isolated bold paragraph as a section title.
+            # The closed shape preserves bold instructions and mixed paragraphs.
+            section = _SECTION_TITLE_PARAGRAPH.match(self.rawdata, offset)
+            if section:
+                title = " ".join(unescape(section[2]).split())
+                level = _SECTION_TITLE_LEVELS.get(title.casefold())
+                if level:
+                    self.handle_starttag("p", [])
+                    self._append_block({"kind": "heading", "level": level, "text": title})
+                    self.html_section_titles = True
+                    return section.end()
+        return super().parse_starttag(offset)
 
     def parse_endtag(self, offset):
         # HTMLParser accepts attributes on end tags and only reports the name.
