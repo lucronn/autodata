@@ -6,6 +6,7 @@ const minimumSourceProbeAdvanceMs = 50;
 const publicationProbeIntervalMs = 500;
 const maxArticleRequestMs = 10000;
 const publicationStatusProbeDelayMs = 2000;
+const latePublicationProbeMinimumBackoffMs = 8000;
 const publicationStates = ["normalizing", "rewriting", "validating", "publishing"];
 
 export class NavigationGeneration {
@@ -90,7 +91,7 @@ export async function readArticle(
   let publicationReadAt = 0;
   let publicationProbeJob;
   let scheduledPublicationCheck;
-  const checkedPublicationJobs = new Set();
+  const publicationStatusProbes = new Map();
   let sawFastSource = false;
   let attempt = 0;
   while (now() < deadline) {
@@ -116,7 +117,8 @@ export async function readArticle(
     const readDeadline = Math.min(
       deadline, firstReadAt || deadline, nextSourceProbeAt || deadline,
       regularSourceReadAt || deadline, sourceConfirmationAt || deadline, publicationReadAt || deadline,
-      statusProbe?.regularReadAt || deadline, initialSourceFallback || deadline, advancedProbeLimit || deadline,
+      statusProbe ? Math.min(statusProbe.regularReadAt, startedAt + publicationStatusProbeDelayMs) : deadline,
+      initialSourceFallback || deadline, advancedProbeLimit || deadline,
     );
     const firstScheduledSourceRead = !firstReadAt && confirmedSourceCapture && earlyConfirmationJob !== undefined;
     // Keep the header deadline for a short read. Give a successful body on
@@ -126,8 +128,8 @@ export async function readArticle(
       : regularSourceReadAt && regularSourceReadAt + sourceProbeIntervalMs;
     // A confirmed publication can use the ordinary body deadline even
     // when the probe had a short deadline for its headers.
-    const bodyDeadline = advancedProbeLimit || sourceBodyDeadline ||
-      (finishPublishedBody && startedAt + maxArticleRequestMs);
+    const finishBodyBy = statusProbe?.late ? statusProbe.regularReadAt : startedAt + maxArticleRequestMs;
+    const bodyDeadline = advancedProbeLimit || sourceBodyDeadline || (finishPublishedBody && finishBodyBy);
     try {
       const response = await read({
         signal,
@@ -142,7 +144,13 @@ export async function readArticle(
       if (publicationCheck && (response.publicationStatus || !response.data?.article)) {
         const pending = matchingPublicationStatus(response, publicationCheck);
         retryAfter = Math.max(articleRetryAfter(response), Number(pending?.retry_after_seconds) || 0);
-        if (pending && retryAfter === 0) shortPublicationJob = pending.job_id;
+        if (pending) {
+          if (retryAfter === 0) shortPublicationJob = pending.job_id;
+          const scheduled = statusProbe && publicationStatusProbes.get(pending.job_id);
+          if (scheduled?.attempts === 1 && retryAfter <= publicationStatusProbeDelayMs / 1000) {
+            scheduled.confirmedPending = true;
+          }
+        }
       } else {
         latest = selectResponse(response);
         if (!latest?.data?.article || typeof latest.data.article !== "object")
@@ -309,9 +317,20 @@ export async function readArticle(
     // Keep the regular read time while allowing one smaller check after any server hint.
     const anchor = readable && retryAfter * 1000 <= publicationStatusProbeDelayMs &&
       backoff >= 2 * publicationStatusProbeDelayMs && publicationAnchor(latest);
-    if (anchor && remaining > publicationStatusProbeDelayMs && !checkedPublicationJobs.has(anchor.jobId)) {
-      checkedPublicationJobs.add(anchor.jobId);
-      scheduledPublicationCheck = { anchor, regularReadAt: now() + backoff };
+    const earlierProbe = anchor && publicationStatusProbes.get(anchor.jobId);
+    // A confirmed slow rewrite gets one more compact check during the long
+    // backoff. An error or mismatched response leaves the regular read intact.
+    const checkLongBackoff = earlierProbe?.attempts === 1 && earlierProbe.confirmedPending &&
+      earlierProbe.articleId === anchor.articleId && earlierProbe.sourceRevisionId === anchor.sourceRevisionId &&
+      backoff >= latePublicationProbeMinimumBackoffMs;
+    if (anchor && remaining > publicationStatusProbeDelayMs && (!earlierProbe || checkLongBackoff)) {
+      publicationStatusProbes.set(anchor.jobId, {
+        articleId: anchor.articleId,
+        sourceRevisionId: anchor.sourceRevisionId,
+        attempts: earlierProbe ? 2 : 1,
+        confirmedPending: false,
+      });
+      scheduledPublicationCheck = { anchor, regularReadAt: now() + backoff, late: checkLongBackoff };
       backoff = publicationStatusProbeDelayMs;
     }
     await wait(
