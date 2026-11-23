@@ -1707,6 +1707,11 @@ paths:
           description: Account-scoped library and opaque next cursor. Another account
             cursor is invalid.
           headers:
+            Preference-Applied:
+              description: Present when the Library catalog-empty preference was requested.
+              schema:
+                type: string
+                enum: [workshop-library-catalog-empty]
             Cache-Control:
               schema:
                 type: string
@@ -1766,6 +1771,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/CommerceAPIError'
       parameters:
+      - name: Prefer
+        in: header
+        required: false
+        description: Request workshop-library-catalog-empty to receive the optional catalog_empty marker.
+        schema:
+          type: string
       - name: cursor
         in: query
         required: false
@@ -2885,6 +2896,12 @@ components:
           - false
           description: Present when a retained paid vehicle configuration or its
             identity base is rejected by the catalog. Ownership remains recorded.
+        catalog_empty:
+          type: boolean
+          enum: [true]
+          description: Returned to clients requesting workshop-library-catalog-empty for an
+            owned configuration when both current supplier indexes completed with zero
+            articles and no active descriptors remain.
         granted_at:
           type: string
           format: date-time
@@ -2916,15 +2933,15 @@ components:
         grant expiry. Revoked tombstones remain visible; viewable does not promise
         all articles are complete.
       not:
-        properties:
-          access_state:
-            type: string
-            enum:
-            - preparing
-            - viewable
-            - revoked
-        required:
-        - catalog_available
+        anyOf:
+        - properties:
+            access_state:
+              type: string
+              enum: [preparing, viewable, revoked]
+          anyOf:
+          - required: [catalog_available]
+          - required: [catalog_empty]
+        - required: [catalog_available, catalog_empty]
       oneOf:
       - properties:
           access_state:

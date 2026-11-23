@@ -336,18 +336,25 @@ func TestCommerceLibraryTruthfulRevocationAndUTCTime(t *testing.T) {
 	}
 }
 
-func TestCommerceLibraryRetainsPaidCatalogUnavailableItem(t *testing.T) {
+func TestCommerceLibraryRetainsPaidCatalogAvailability(t *testing.T) {
 	for _, tc := range []struct {
-		name, state, availability string
-		wantStatus                int
+		name, state, availability, empty string
+		wantStatus                       int
 	}{
-		{"older response", "paid", "", 200},
-		{"retained unavailable purchase", "paid", "false", 200},
-		{"null is not a retired scope", "paid", "null", 503},
-		{"true is not a retired scope", "paid", "true", 503},
-		{"preparing is a different state", "preparing", "false", 503},
-		{"viewable is a different state", "viewable", "false", 503},
-		{"revoked is a different state", "revoked", "false", 503},
+		{"older response", "paid", "", "", 200},
+		{"retained unavailable purchase", "paid", "false", "", 200},
+		{"completed empty catalog", "paid", "", "true", 200},
+		{"null unavailable marker", "paid", "null", "", 503},
+		{"true unavailable marker", "paid", "true", "", 503},
+		{"preparing with unavailable marker", "preparing", "false", "", 503},
+		{"viewable with unavailable marker", "viewable", "false", "", 503},
+		{"revoked with unavailable marker", "revoked", "false", "", 503},
+		{"null empty marker", "paid", "", "null", 503},
+		{"false empty marker", "paid", "", "false", 503},
+		{"preparing with empty marker", "preparing", "", "true", 503},
+		{"viewable with empty marker", "viewable", "", "true", 503},
+		{"revoked with empty marker", "revoked", "", "true", 503},
+		{"contradictory catalog markers", "paid", "false", "true", 503},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s, cookie, _ := commerceTestAPI(t, commerceFixture(func(context.Context, string, []byte, string) (int, []byte, error) {
@@ -355,16 +362,31 @@ func TestCommerceLibraryRetainsPaidCatalogUnavailableItem(t *testing.T) {
 				if tc.availability != "" {
 					extra = `,"catalog_available":` + tc.availability
 				}
+				if tc.empty != "" {
+					extra += `,"catalog_empty":` + tc.empty
+				}
 				return 200, []byte(`{"version":"v1","items":[{"library_item_id":"` + commerceOrderID +
 					`","configuration_id":"` + commerceConfigID + `","region":"US","label":"Vehicle","access_state":"` +
 					tc.state + `","granted_at":"2026-11-03T20:00:00Z"` + extra + `}],"next_cursor":null}`), nil
 			}))
-			w := customerHTTP(t, s.Handler(), "GET", "/v1/workshop/library", "", nil, cookie)
-			if w.Code != tc.wantStatus || strings.Contains(w.Body.String(), `"catalog_available":false`) != (tc.wantStatus == 200 && tc.availability == "false") {
+			w := customerHTTP(t, s.Handler(), "GET", "/v1/workshop/library", "",
+				map[string]string{"Prefer": "workshop-library-catalog-empty"}, cookie)
+			if w.Code != tc.wantStatus || strings.Contains(w.Body.String(), `"catalog_available":false`) != (tc.wantStatus == 200 && tc.availability == "false") ||
+				strings.Contains(w.Body.String(), `"catalog_empty":true`) != (tc.wantStatus == 200 && tc.empty == "true") {
 				t.Fatalf("status=%d response=%s", w.Code, w.Body)
 			}
 			if w.Code != 200 {
 				return
+			}
+			if w.Header().Get("Preference-Applied") != "workshop-library-catalog-empty" {
+				t.Fatalf("missing applied Library preference: %v", w.Header())
+			}
+			if tc.empty == "true" {
+				legacy := customerHTTP(t, s.Handler(), "GET", "/v1/workshop/library", "", nil, cookie)
+				if legacy.Code != http.StatusOK || strings.Contains(legacy.Body.String(), "catalog_empty") ||
+					legacy.Header().Get("Preference-Applied") != "" {
+					t.Fatalf("closed Library response changed: %d %s", legacy.Code, legacy.Body)
+				}
 			}
 			var data commerceLibrary
 			if err := json.Unmarshal(w.Body.Bytes(), &data); err != nil || len(data.Items) != 1 {

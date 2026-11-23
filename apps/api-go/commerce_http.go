@@ -12,6 +12,8 @@ import (
 	"strconv"
 )
 
+const libraryCatalogEmptyPreference = "workshop-library-catalog-empty"
+
 func (s *Server) mountCommerceRoutes(mux *http.ServeMux) {
 	mountPublicRead(mux, "/v1/workshop/quote", s.commerceQuoteHTTP)
 	mux.HandleFunc("POST /v1/workshop/checkout-sessions", s.commerceCheckoutHTTP)
@@ -260,6 +262,17 @@ func (s *Server) commerceCall(w http.ResponseWriter, r *http.Request, operation 
 	if !ok {
 		unavailable()
 		return
+	}
+	if library, isLibrary := public.(commerceLibrary); isLibrary {
+		// The existing v1 schema is closed. Only clients opting in can
+		// receive the extra catalog marker.
+		if catalogReadPreferenceRequested(r, libraryCatalogEmptyPreference) {
+			w.Header().Set("Preference-Applied", libraryCatalogEmptyPreference)
+		} else {
+			for index := range library.Items {
+				library.Items[index].CatalogEmpty = nil
+			}
+		}
 	}
 	if status == 202 {
 		w.Header().Set("Retry-After", "2")
