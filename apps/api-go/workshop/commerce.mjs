@@ -146,7 +146,7 @@ export function createCheckout({
   uuid: newUUID = () => crypto.randomUUID(),
   expectedMode,
 } = {}) {
-  let inflight = null, inflightScope = null, inflightSignal = null;
+  let inflight = null, inflightScope = null, inflightSignal = null, inflightMode;
   const read = () => {
     try {
       const a = JSON.parse(storage?.getItem(ATTEMPT_KEY) || "null");
@@ -167,30 +167,30 @@ export function createCheckout({
       storage?.setItem(ATTEMPT_KEY, JSON.stringify(attempt));
     } catch {}
   };
-  const start = (scope, csrf, { signal } = {}) => {
-    if (!validScope(scope) || !csrf || (expectedMode !== undefined && expectedMode !== 'stripe_test'))
+  const start = (scope, csrf, { signal, mode = expectedMode } = {}) => {
+    if (!validScope(scope) || !csrf || (mode !== undefined && mode !== 'stripe_test' && mode !== 'simulation'))
       return Promise.reject(new Error("Purchase is unavailable."));
     if (inflight) {
-      if (sameScope(inflightScope, scope) && !inflightSignal?.aborted)
+      if (inflightMode === mode && sameScope(inflightScope, scope) && !inflightSignal?.aborted)
         return inflight;
       // One stored attempt cannot safely represent two concurrent vehicles.
       // Let the old request settle before starting the new scope.
       return inflight.catch(() => {}).then(() => {
         signal?.throwIfAborted();
-        return start(scope, csrf, { signal });
+        return start(scope, csrf, { signal, mode });
       });
     }
     const saved = read();
-    const attempt = sameScope(saved, scope)
+    const attempt = sameScope(saved, scope) && saved.expected_mode === mode
       ? saved
-      : { ...scope, key: newUUID() };
+      : { ...scope, key: newUUID(), expected_mode: mode };
     save(attempt);
     const body = {
       configuration_id: scope.configuration_id,
       region: scope.region,
       terms_version: "workshop-v1",
     };
-    if (expectedMode === 'stripe_test') body.expected_mode = 'stripe_test';
+    if (mode !== undefined) body.expected_mode = mode;
     const pending = request("/v1/workshop/checkout-sessions", {
       method: "POST",
       signal,
@@ -205,6 +205,7 @@ export function createCheckout({
           !sameScope(data, scope) ||
           !uuid(data.order_id) ||
           !["checkout", "processing", "owned"].includes(data.state) ||
+          (mode === "simulation" && data.state !== "owned") ||
           (data.state === "checkout" &&
             (!hostedCheckoutURL(data.checkout_url) ||
               !validTime(data.provider_expires_at))) ||
@@ -224,11 +225,13 @@ export function createCheckout({
           inflight = null;
           inflightScope = null;
           inflightSignal = null;
+          inflightMode = undefined;
         }
       });
     inflight = pending;
     inflightScope = { ...scope };
     inflightSignal = signal;
+    inflightMode = mode;
     return pending;
   };
   return { read, clear, start };

@@ -25,6 +25,7 @@ function runInNewContext(code, context) {
   context.selectorCacheSize ??= 32;
   context.cachedSelector ??= () => null;
   context.selectorLabel ??= selectorLabel;
+  context.merchant ??= null;
   return runVM(code, context);
 }
 
@@ -443,6 +444,23 @@ test('checkout attempt shares one in-flight request and retries the same key/bod
   assert.deepEqual(calls[0].body, calls[1].body);
   assert.ok(![...values.values()].join('').includes('csrf'));
 });
+test('main Workshop simulation sends an explicit mode and refuses a Stripe redirect', async () => {
+  const { createCheckout } = await import('./workshop/commerce.mjs');
+  const calls = [];
+  const checkout = createCheckout({ uuid: () => orderID, request: async (path, options) => {
+    calls.push([path, options.body]);
+    return calls.length === 1
+      ? { version: 'v1', ...scope, order_id: orderID, state: 'owned', library_item_id: orderID }
+      : { version: 'v1', ...scope, order_id: orderID, state: 'checkout',
+          checkout_url: 'https://checkout.stripe.com/c/pay/test', provider_expires_at: '2027-01-01T00:00:00Z' };
+  } });
+  assert.equal((await checkout.start(scope, 'csrf', { mode: 'simulation' })).state, 'owned');
+  await assert.rejects(checkout.start(scope, 'csrf', { mode: 'simulation' }), /Purchase status is unavailable/);
+  assert.deepEqual(calls.map(([path, body]) => [path, body.expected_mode]), [
+    ['/v1/workshop/checkout-sessions', 'simulation'], ['/v1/workshop/checkout-sessions', 'simulation'],
+  ]);
+});
+
 test('banner-bearing test tab asserts test mode on each checkout request', async () => {
   const { createCheckout } = await import('./workshop/commerce.mjs');
   const calls = [];

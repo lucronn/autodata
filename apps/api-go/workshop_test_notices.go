@@ -15,11 +15,18 @@ var workshopTestNotices = map[string]workshopTestNotice{
 	"contact": {"Demo help and feedback", "Contact the AutoData maintainer through the linked demo issue to report a problem or request a test refund. Include a short description and the time of the test.", "The linked GitHub issue is public. Do not post payment details, passwords, access tokens, personal account details or licensed repair content. This is a test feedback channel with no promised response time."},
 }
 
+var workshopSimulationNotices = map[string]workshopTestNotice{
+	"terms":   {"Simulated purchase terms", "The Workshop simulates the payment step. No payment details are requested and no money is charged.", "Your test access belongs to the selected vehicle and your tester account. The same Workshop Library and article reader open the authorized data."},
+	"privacy": {"Simulated purchase privacy", "The normal Google sign-in identifies your tester account. Workshop records your selected vehicle and simulated purchase to give you access.", "The simulated checkout collects no card details."},
+	"refund":  {"Simulated purchases and access", "A simulated purchase has no payment to refund.", "The AutoData maintainer can remove access granted by a simulated purchase."},
+	"contact": {"Workshop test feedback", "Contact the AutoData maintainer through the linked issue to report a problem. Include the vehicle selection and time of the test.", "The issue is public. Keep account details, tokens and licensed repair content private."},
+}
+
 var workshopTestNoticeTemplate = template.Must(template.New("test-notice").Parse(`<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>{{.Title}} | Workshop TEST</title></head>
 <body><header><p><strong>Workshop TEST — No real money is charged.</strong></p></header>
 <main><h1>{{.Title}}</h1><p>{{.First}}</p><p>{{.Second}}</p><p><a href="https://github.com/lucronn/autodata/issues/398" rel="noreferrer">Contact the AutoData demo maintainer on GitHub</a></p></main>
-<footer><p><a href="/workshop/?demo=1">Return to Workshop TEST</a></p><nav aria-label="Test notices"><ul><li><a href="/workshop/test-notices/terms">Test participation</a></li><li><a href="/workshop/test-notices/privacy">Test data and privacy</a></li><li><a href="/workshop/test-notices/refund">Test refunds and access</a></li><li><a href="/workshop/test-notices/contact">Demo help and feedback</a></li></ul></nav></footer></body></html>`))
+<footer><p><a href="{{.ReturnURL}}">Return to Workshop TEST</a></p><nav aria-label="Test notices"><ul><li><a href="/workshop/test-notices/terms">Test participation</a></li><li><a href="/workshop/test-notices/privacy">Test data and privacy</a></li><li><a href="/workshop/test-notices/refund">Test refunds and access</a></li><li><a href="/workshop/test-notices/contact">Demo help and feedback</a></li></ul></nav></footer></body></html>`))
 
 func (s *Server) workshopTestNotice(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
@@ -27,7 +34,12 @@ func (s *Server) workshopTestNotice(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")
 	name := strings.TrimPrefix(r.URL.Path, "/workshop/test-notices/")
 	notice, ok := workshopTestNotices[name]
-	if !s.workshopTestCheckout || !ok || r.URL.RawPath != "" || r.URL.RawQuery != "" || r.URL.ForceQuery {
+	returnURL := "/workshop/?demo=1"
+	if s.workshopSimulation {
+		notice, ok = workshopSimulationNotices[name]
+		returnURL = "/workshop/"
+	}
+	if (!s.workshopTestCheckout && !s.workshopSimulation) || !ok || r.URL.RawPath != "" || r.URL.RawQuery != "" || r.URL.ForceQuery {
 		http.NotFound(w, r)
 		return
 	}
@@ -41,5 +53,8 @@ func (s *Server) workshopTestNotice(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	_ = workshopTestNoticeTemplate.Execute(w, notice)
+	_ = workshopTestNoticeTemplate.Execute(w, struct {
+		workshopTestNotice
+		ReturnURL string
+	}{notice, returnURL})
 }

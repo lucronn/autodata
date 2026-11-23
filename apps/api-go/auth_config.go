@@ -30,7 +30,7 @@ func loadCustomerAuthConfig(getenv func(string) string) (customerAuthConfig, err
 	if c.Mode != "firebase" && c.Mode != "local" {
 		return c, invalid
 	}
-	if c.Mode == "local" && c.Environment != "development" && c.Environment != "test" {
+	if c.Mode == "local" && (c.commerceMode == workshopSimulationMode || (c.Environment != "development" && c.Environment != "test")) {
 		return c, invalid
 	}
 	origin, err := url.Parse(c.Origin)

@@ -3814,6 +3814,14 @@
             "enum": [
               "workshop-v1"
             ]
+          },
+          "expected_mode": {
+            "type": "string",
+            "description": "Explicitly identifies the enabled test or simulated payment mode.",
+            "enum": [
+              "stripe_test",
+              "simulation"
+            ]
           }
         },
         "required": [

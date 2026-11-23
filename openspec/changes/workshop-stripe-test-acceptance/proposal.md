@@ -16,6 +16,9 @@ to do before moving toward a production release.
   cancellation and explicit retry, and access denial for an unowned scope.
 - Run the repeatable browser fixtures first. Track real Stripe TEST settlement
   and licensed-data browser acceptance separately.
+- Support a temporary no-charge payment mode on the regular Workshop route.
+  A designated signed-in tester exercises the same catalog, vehicle scope,
+  Library and article reader used after settlement.
 
 ## Capabilities
 
@@ -33,6 +36,7 @@ owned by the existing Workshop implementation.
 ## Impact
 
 Workshop browser code, the current Go API and Python commerce integration,
-private TEST configuration, and browser acceptance. This change targets
-an isolated test environment. Live charges, public entitlement changes and
-production rollout are outside its scope.
+private TEST configuration, and browser acceptance. Stripe TEST continues to
+use an isolated environment. The separately configured simulation mode
+supports signed-in users on the public Workshop origin. It moves no money
+and uses the normal account and scoped grant checks.

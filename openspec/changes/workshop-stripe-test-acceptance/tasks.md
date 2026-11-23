@@ -5,6 +5,13 @@
 - [x] Run local Workshop browser fixtures and reproduce any blocked or
   misleading purchase action before applying the fix.
 
+## Temporary simulation on the main Workshop
+
+- [x] Verify a no-charge purchase in the ordinary browser flow with the
+  same selected configuration, Library, article reader and authorized media.
+- [x] Exercise stale checkout, account denial, and switching simulation off.
+- [ ] Verify ordinary sign-in and the same real-data flow on the public Workshop.
+
 ## 2. Apply and verify the Workshop fix
 
 - [x] Make purchase rendering, submission and explicit retry agree on the

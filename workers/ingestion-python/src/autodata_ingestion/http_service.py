@@ -89,27 +89,39 @@ def dispatch_request(
 def dispatch_commerce(service, path, payload):
     from .commerce_service import exact_fields, CommerceError, assert_commerce_operation
     assert_commerce_operation(service, path)
+    mode = getattr(getattr(service, 'config', None), 'mode', None)
+    owner_fields = {'customer_account_id', 'organization_id'}
     if path == '/internal/commerce/purchase-config':
+        if mode == 'simulation' and payload:
+            exact_fields(payload, owner_fields)
+            return service.purchase_configuration(
+                account_id=payload['customer_account_id'], organization_id=payload['organization_id'])
         exact_fields(payload, set())
         return service.purchase_configuration()
     if path == '/internal/commerce/demo-mode':
         exact_fields(payload, set())
         return service.demo_mode_status()
     if path == '/internal/commerce/quote':
-        exact_fields(payload,{'configuration_id','region'})
+        quote_fields = {'configuration_id', 'region'}
+        if mode == 'simulation' and isinstance(payload, dict) and owner_fields.intersection(payload):
+            exact_fields(payload, quote_fields | owner_fields)
+            return service.quote(payload['configuration_id'], payload['region'],
+                                 account_id=payload['customer_account_id'], organization_id=payload['organization_id'])
+        exact_fields(payload, quote_fields)
         return service.quote(payload['configuration_id'],payload['region'])
-    fields = {'customer_account_id','organization_id'}
     suffix = path.removeprefix('/internal/commerce/')
     additions = {'checkouts':{'idempotency_key','configuration_id','region','terms_version'},
         'orders/status':{'order_id'},'library':{'cursor','limit'},'grants/check':{'configuration_id','region'}}
     if suffix not in additions:
         raise CommerceError('NOT_FOUND',404)
     if suffix == 'checkouts' and isinstance(payload, dict) and 'expected_mode' in payload:
-        exact_fields(payload, fields | additions[suffix] | {'expected_mode'})
-        if payload['expected_mode'] != 'stripe_test' or getattr(getattr(service, 'config', None), 'mode', None) != 'stripe_test':
+        exact_fields(payload, owner_fields | additions[suffix] | {'expected_mode'})
+        if mode not in {'stripe_test', 'simulation'} or payload['expected_mode'] != mode:
             raise CommerceError('COMMERCE_UNAVAILABLE', 503)
     else:
-        exact_fields(payload, fields | additions[suffix])
+        exact_fields(payload, owner_fields | additions[suffix])
+        if suffix == 'checkouts' and mode == 'simulation':
+            raise CommerceError('COMMERCE_UNAVAILABLE', 503)
     owner = payload['customer_account_id'],payload['organization_id']
     if suffix == 'checkouts':
         return service.checkout(*owner,payload['idempotency_key'],{key:payload[key] for key in ('configuration_id','region','terms_version')})

@@ -471,6 +471,7 @@ function renderPurchase() {
       vehicle?.id === paidOrder.configuration_id && vehicle?.region === paidOrder.region));
   const priced = validQuote(quote, scope());
   const configured = !openDemo && priced && purchaseConfigured();
+  const simulation = merchant?.checkout_mode === "simulation";
   const canPurchase = session.state.authenticated && access === "missing" && !confirming && configured;
   const canResume = Boolean(checkoutToResume());
   const purchaseLabel = vehicle?.orderLabel || (priced ? quote.configuration_label : vehicleIdentityLabel());
@@ -486,7 +487,7 @@ function renderPurchase() {
   }
   const price = $("purchase-price");
   price.hidden = !configured || access === "owned" || paymentReceived || (confirming && session.state.authenticated);
-  price.textContent = price.hidden ? "" : "$20 USD · one-time";
+  price.textContent = price.hidden ? "" : simulation ? "No charge · simulated $20 USD" : "$20 USD · one-time";
   $("purchase-terms").hidden = !configured;
   $("purchase-message").textContent =
     access === "revoked"
@@ -494,18 +495,24 @@ function renderPurchase() {
       : access === "owned"
         ? "Owned. Open your articles without another purchase."
         : paymentReceived
-          ? "Payment received. Article access is still being checked. Use Check payment status; do not pay again."
+          ? simulation
+            ? "Simulated purchase complete. Article access is still being checked."
+            : "Payment received. Article access is still being checked. Use Check payment status; do not pay again."
           : confirming && session.state.authenticated
             ? pendingOrderMessage(unconfirmedOrder.state, canResume)
             : merchantRequest
               ? "Checking purchase availability…"
-              : !configured
-                ? "Purchasing is currently unavailable. You can keep browsing."
-                : !session.state.authenticated
-                  ? "Sign in to check access and purchase for your account."
-                  : access === "missing"
-                    ? "One purchase for this exact configuration and region. No renewal is required, subject to published terms and source availability."
-                    : "Checking access. Try again if the service is unavailable.";
+              : simulation && !session.state.authenticated
+                ? "Sign in with Google to simulate purchase. No payment is collected."
+                : !configured
+                  ? "Purchasing is currently unavailable. You can keep browsing."
+                  : !session.state.authenticated
+                    ? "Sign in to check access and purchase for your account."
+                    : access === "missing"
+                      ? simulation
+                        ? "Simulate this purchase to add the selected vehicle to My vehicles. No card details are needed."
+                        : "One purchase for this exact configuration and region. No renewal is required, subject to published terms and source availability."
+                      : "Checking access. Try again if the service is unavailable.";
   const action = $("purchase-action");
   action.hidden = session.state.authenticated && access !== "owned" &&
     !paymentReceived && !canResume && !confirming && !canPurchase;
@@ -514,12 +521,12 @@ function renderPurchase() {
     : access === "owned"
       ? "Open articles"
       : paymentReceived
-        ? "Payment received"
+        ? (simulation ? "Simulation complete" : "Payment received")
         : canResume
           ? "Continue checkout"
           : confirming
             ? ({ open: "Checkout open", unavailable: "Checkout status unavailable" }[unconfirmedOrder.state] || "Payment pending")
-            : "Buy for $20 USD";
+            : (simulation ? "Simulate purchase" : "Buy for $20 USD");
   action.disabled = !session.state.authenticated
     ? !session.state.ready
     : access === "owned"
@@ -568,7 +575,7 @@ function vehicleIdentityLabel() {
 }
 function purchaseConfigured() {
   return purchaseConfiguration(merchant, quote, {
-    testCheckout: !$("test-banner").hidden,
+    testCheckout: !$("test-banner").hidden || merchant?.checkout_mode === "simulation",
     origin: globalThis.location?.origin,
   });
 }
@@ -2038,6 +2045,7 @@ async function purchase() {
       const purchaseLabel = quote.configuration_label;
       const result = await checkout.start(scope(), session.state.csrf, {
         signal: g.signal,
+        ...(merchant?.checkout_mode === "simulation" ? { mode: "simulation" } : {}),
       });
       if (!g.current()) return;
       if (result.state === "checkout") location.assign(result.checkout_url);
@@ -2105,6 +2113,7 @@ async function signIn() {
     signingIn = false;
   }
   if (!session.state.authenticated) return;
+  if (merchant?.checkout_mode === "simulation") loadPurchaseConfiguration();
   if (matchesSelection()) {
     // Apply access only for the public selection retained through sign-in.
     const confirmed = canConfirmIndex() ? firstIndex : null;
@@ -2119,15 +2128,7 @@ export async function bootstrap(initialYears, initialAccount, { preservePicker =
   const params = new URLSearchParams(location.search);
   const years = preservePicker ? null : initialYears ?? requestInitialYears(params);
   if (openDemo) return restoreRoute(years);
-  const configRequest = requestJSON("/workshop/purchase-config.json")
-    .catch(() => null)
-    .then((config) => {
-      if (merchantRequest !== configRequest) return;
-      merchant = config;
-      merchantRequest = null;
-    });
-  merchant = null;
-  merchantRequest = configRequest;
+  loadPurchaseConfiguration();
   const accountCheck = checkAccount(initialAccount);
   if (preservePicker) {
     await Promise.all([accountCheck, operation((g) => selectVehicle(g), () => restoreRoute())]);
@@ -2137,6 +2138,17 @@ export async function bootstrap(initialYears, initialAccount, { preservePicker =
   // Account actions wait for that same check and use the current navigation.
   if (sessionEstablished) await accountCheck;
   await Promise.all([accountCheck, restoreRoute(years)]);
+}
+function loadPurchaseConfiguration() {
+  const configRequest = requestJSON("/workshop/purchase-config.json")
+    .catch(() => null)
+    .then((config) => {
+      if (merchantRequest !== configRequest) return;
+      merchant = config;
+      merchantRequest = null;
+    });
+  merchant = null;
+  merchantRequest = configRequest;
 }
 function checkAccount(initial) {
   const accountCheck = session.bootstrap({ initial }).then(() => {

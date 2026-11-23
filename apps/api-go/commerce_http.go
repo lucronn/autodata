@@ -67,7 +67,8 @@ func (s *Server) commerceQuoteHTTP(w http.ResponseWriter, r *http.Request) {
 		commerceInvalid(w, r, 400)
 		return
 	}
-	s.commerceCall(w, r, "quote", map[string]any{"configuration_id": q.Get("configuration_id"), "region": q.Get("region")}, nil, "")
+	p, _ := s.workshopSimulationOwner(r)
+	s.commerceCall(w, r, "quote", s.workshopQuoteInput(q.Get("configuration_id"), q.Get("region"), p), nil, "")
 }
 func (s *Server) commerceCheckoutHTTP(w http.ResponseWriter, r *http.Request) {
 	p, ok := s.commercePrincipal(w, r)
@@ -103,7 +104,8 @@ func (s *Server) commerceCheckoutHTTP(w http.ResponseWriter, r *http.Request) {
 		commerceInvalid(w, r, 400)
 		return
 	}
-	if _, testExpected := input["expected_mode"]; testExpected && !s.workshopTestCheckout {
+	expected, _ := input["expected_mode"].(string)
+	if (expected == workshopSimulationMode) != (s.workshopSimulation) || expected == "stripe_test" && !s.workshopTestCheckout {
 		w.Header().Set("Cache-Control", "no-store")
 		writeAPIError(w, r, 503, "COMMERCE_UNAVAILABLE", "Commerce is temporarily unavailable.", true)
 		return
@@ -155,7 +157,7 @@ func commerceCheckoutInput(b []byte) (map[string]any, bool) {
 	}
 	id, _ := input["configuration_id"].(string)
 	region, _ := input["region"].(string)
-	if expected, present := input["expected_mode"]; present && expected != "stripe_test" {
+	if expected, present := input["expected_mode"]; present && expected != "stripe_test" && expected != workshopSimulationMode {
 		return nil, false
 	}
 	return input, (len(input) == 3 || len(input) == 4) && commerceScopeValid(id, region) && input["terms_version"] == "workshop-v1"
