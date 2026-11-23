@@ -1,9 +1,11 @@
 """Bounded provider-bound capture; immutable public projection from actual bytes."""
 
-from concurrent.futures import ThreadPoolExecutor, wait
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from copy import deepcopy
 from datetime import datetime, timezone
+from functools import partial
 from hashlib import sha256
+from threading import Lock
 import time
 import base64
 from uuid import NAMESPACE_URL, uuid5
@@ -131,6 +133,25 @@ def _image_nodes(value, *, image_container=False):
     elif isinstance(value, list):
         for child in value:
             yield from _image_nodes(child, image_container=image_container)
+
+
+def _embedded_images(blocks):
+    return [
+        node for node in _walk(blocks)
+        if (node.get("kind") or node.get("type")) == "image"
+        and not node.get("asset_resource_ref") and node.get("url", "").startswith("data:image/")
+    ]
+
+
+def _embedded_image_bytes(uri):
+    header, encoded = uri.split(",", 1)
+    media = header[5:].split(";", 1)[0].strip().lower()
+    if ";base64" not in header or media == "image/svg+xml":
+        raise ValueError("unsupported embedded figure")
+    payload = base64.b64decode(encoded, validate=True)
+    digest = sha256(payload).hexdigest()
+    key = "sources/" + digest[:16] + "/" + digest
+    return media, payload, digest, key
 
 
 def _attach_figure_captions(blocks, key):
@@ -434,167 +455,53 @@ def capture_source_article(
     def retain_compact_figures(digest):
         return keep_compact_pdf_figures and digest not in context.legacy_published_pdf_compact_roots
 
-    parser_pool = ThreadPoolExecutor(max_workers=1)
-    try:
-        parsing = parser_pool.submit(
-            adapt_bound_article, body.to_source_resource(), context,
-            keep_embedded_pdf=keep_embedded_pdf, keep_html_headings=keep_html_headings,
-            keep_bound_pdf_iframes=keep_bound_pdf_iframes,
-            keep_pdf_figure_order=keep_pdf_figure_order,
-            keep_multiple_pdf_figures=keep_multiple_pdf_figures,
-            keep_html_table_image_order=keep_html_table_image_order,
-            keep_repeated_pdf_figures=retain_repeats(body.body["sha256"]),
-            keep_pdf_figures_with_margins=retain_repeats_with_margins(body.body["sha256"]),
-            keep_compact_pdf_figures=retain_compact_figures(body.body["sha256"]),
-            keep_html_figure_captions=(
-                keep_html_figure_captions and body.body["sha256"] != context.legacy_published_html_figure_body
-            ),
-            keep_html_table_captions=(
-                keep_html_table_captions and body.body["sha256"] != context.legacy_published_html_table_caption_body
-            ),
-            keep_html_table_spans=keep_html_table_spans,
-            keep_html_media_table_headers=keep_html_media_table_headers,
-            keep_html_nested_tables=keep_html_nested_tables,
-            keep_html_flow_figure_captions=(
-                keep_html_flow_figure_captions and body.body["sha256"] != context.legacy_published_html_flow_figure_body
-            ),
-            keep_html_multiline_figure_captions=(
-                keep_html_multiline_figure_captions
-                and body.body["sha256"] != context.legacy_published_html_multiline_figure_body
-            ),
-            keep_structured_table_cell_order=keep_structured_table_cell_order or (
-                keep_structured_table_columns and keep_structured_table_column_order
-            ),
-            keep_image_only_headings=keep_image_only_headings,
-            keep_ordered_step_instructions=keep_ordered_step_instructions,
-            keep_image_only_step_instructions=keep_image_only_step_instructions,
-            step_parser=step_parser,
+    def plan_assets(article, blocks):
+        for node in _image_nodes(blocks):
+            node["kind"] = node["type"] = "image"
+        refs = (
+            list(context.descriptor.get("asset_resource_refs") or [])
+            + list(body.body.get("asset_resource_refs") or [])
+            + list(article.get("asset_resource_refs") or [])
         )
-        article = parsing.result(timeout=remaining())
-    except (ValueError, TypeError, KeyError, UnicodeError) as error:
-        code = (
-            "WRONG_APPLICABILITY"
-            if "applicability" in str(error)
-            else "INVALID_ARTICLE_BODY"
+        for node in _walk(blocks):
+            if (node.get("kind") or node.get("type")) == "image" and node.get(
+                "asset_resource_ref"
+            ):
+                refs.append(node["asset_resource_ref"])
+        # A provider JSON block cannot authorize a document fetch by declaring a marker.
+        linked_refs = dict.fromkeys(
+            node["asset_resource_ref"] for node in _walk(blocks)
+            if article.get("handled_pdf_embeds") is True and node.get("kind") == "document_embed"
+            and isinstance(node.get("asset_resource_ref"), str)
+            and node["asset_resource_ref"] in (body.body.get("asset_resource_refs") or [])
+            and node["asset_resource_ref"] != body_ref
         )
-        raise SourceConnectorError(code) from None
-    except TimeoutError:
-        raise SourceConnectorError("CAPTURE_DEADLINE", retryable=True) from None
-    finally:
-        parser_pool.shutdown(wait=False, cancel_futures=True)
-    blocks = deepcopy(article["blocks"])
-    html_figure_captions = article.get("html_figure_captions") is True
-    html_flow_figure_captions = article.get("html_flow_figure_captions") is True
-    html_multiline_figure_captions = article.get("html_multiline_figure_captions") is True
-    html_table_captions = article.get("html_table_captions") is True
-    html_table_spans = article.get("html_table_spans") is True
-    html_media_table_headers = article.get("html_media_table_headers") is True
-    html_nested_tables = article.get("html_nested_tables") is True
-    handled_pdf_embeds = article.get("handled_pdf_embeds") is True
-    positioned_html_table_images = article.get("positioned_html_table_images") is True
-    positioned_pdf_figures = article.get("positioned_pdf_figures") is True
-    retained_pdf_repeats = article.get("retained_repeated_pdf_figures") is True
-    pdf_asset_order = article.get("pdf_legacy_asset_order", [])
-    structured_table_cell_order = structured_table_column_order = False
-    authored_json_blocks = article.get("authored_json_blocks") is True
-    if authored_json_blocks:
-        structured_table_cell_order, structured_table_column_order = _mark_json_table_cells(
-            blocks, keep_rows=keep_structured_table_cell_order,
-            keep_columns=keep_structured_table_columns and keep_structured_table_column_order,
-        )
-    image_only_headings = article.get("image_only_headings") is True
-    step_layout = article.get("ordered_step_instructions_layout")
-    structured_table_columns = keep_structured_table_columns and not html_media_table_headers and any(
-        str(node.get("type") or node.get("kind") or "").casefold() in {"table", "grid"}
-        and isinstance(node.get("columns"), list) and any(isinstance(column, dict) for column in node["columns"])
-        for node in _walk(blocks)
-    )
-    new_structure = (
-        structured_table_columns or structured_table_cell_order or step_layout or html_table_captions or html_flow_figure_captions
-        or html_table_spans or html_media_table_headers or html_nested_tables or image_only_headings
-        or article.get("embedded_pdf")
-        or (article.get("authored_html_headings") and any(block.get("kind") == "heading" for block in _walk(blocks)))
-    )
-    for node in _image_nodes(blocks):
-        node["kind"] = node["type"] = "image"
-    refs = (
-        list(context.descriptor.get("asset_resource_refs") or [])
-        + list(body.body.get("asset_resource_refs") or [])
-        + list(article.get("asset_resource_refs") or [])
-    )
-    for node in _walk(blocks):
-        if (node.get("kind") or node.get("type")) == "image" and node.get(
-            "asset_resource_ref"
-        ):
-            refs.append(node["asset_resource_ref"])
-    # A provider JSON block cannot authorize a document fetch by declaring a marker.
-    linked_refs = dict.fromkeys(
-        node["asset_resource_ref"] for node in _walk(blocks)
-        if handled_pdf_embeds and node.get("kind") == "document_embed"
-        and isinstance(node.get("asset_resource_ref"), str)
-        and node["asset_resource_ref"] in (body.body.get("asset_resource_refs") or [])
-        and node["asset_resource_ref"] != body_ref
-    )
-    selected_documents = set(list(linked_refs)[:_MAX_LINKED_PDFS])
-    # Stable dedupe retains the first source position; opaque refs are never normalized.
-    refs = list(dict.fromkeys(ref for ref in refs if ref not in linked_refs))
-    for node in _walk(blocks):
-        if (
-            (node.get("kind") or node.get("type")) == "image"
-            and not node.get("asset_resource_ref")
-            and node.get("url") in refs
-        ):
-            node["asset_resource_ref"] = node["url"]
-    labor_ref = context.descriptor.get("labor_resource_ref")
-    optional = [(ref, "asset") for ref in refs]
-    optional += [(ref, "document_asset") for ref in linked_refs if ref in selected_documents]
-    if labor_ref and labor_ref not in refs and labor_ref not in linked_refs and labor_ref != body_ref:
-        optional.append((labor_ref, "labor"))
-    resources = [upload_resource(body, body_ref, "body", bounded_objects)]
-    manifest = [
-        {k: resources[0][k] for k in ("role", "opaque_ref", "sha256", "media_type")}
-    ]
-    if article.get("retained_pdf_figures_with_margins") is True:
-        resources[0]["pdf_figure_layout"] = manifest[0]["pdf_figure_layout"] = PDF_REPEAT_MARGIN_LAYOUT
-    if article.get("positioned_compact_pdf_figures") is True:
-        resources[0]["pdf_compact_figure_layout"] = manifest[0]["pdf_compact_figure_layout"] = PDF_COMPACT_FIGURE_LAYOUT
-    if html_figure_captions:
-        resources[0]["html_figure_caption_layout"] = manifest[0]["html_figure_caption_layout"] = HTML_FIGURE_CAPTION_LAYOUT
-    if html_flow_figure_captions:
-        resources[0]["html_flow_figure_caption_layout"] = manifest[0]["html_flow_figure_caption_layout"] = HTML_FLOW_FIGURE_CAPTION_LAYOUT
-    if html_multiline_figure_captions:
-        resources[0]["html_multiline_figure_caption_layout"] = manifest[0]["html_multiline_figure_caption_layout"] = HTML_MULTILINE_FIGURE_CAPTION_LAYOUT
-    if html_table_captions:
-        resources[0]["html_table_caption_layout"] = manifest[0]["html_table_caption_layout"] = HTML_TABLE_CAPTION_LAYOUT
-    if html_table_spans:
-        resources[0]["html_table_span_layout"] = manifest[0]["html_table_span_layout"] = HTML_TABLE_SPAN_LAYOUT
-    if html_media_table_headers:
-        resources[0]["html_media_table_header_layout"] = manifest[0]["html_media_table_header_layout"] = HTML_MEDIA_TABLE_HEADER_LAYOUT
-    if html_nested_tables:
-        resources[0]["html_nested_table_layout"] = manifest[0]["html_nested_table_layout"] = HTML_NESTED_TABLE_LAYOUT
-    if structured_table_columns:
-        resources[0]["structured_table_columns_layout"] = manifest[0]["structured_table_columns_layout"] = STRUCTURED_TABLE_COLUMNS_LAYOUT
-    if structured_table_cell_order:
-        resources[0]["structured_table_cell_order_layout"] = manifest[0]["structured_table_cell_order_layout"] = STRUCTURED_TABLE_CELL_ORDER_LAYOUT
-    if structured_table_column_order:
-        resources[0]["structured_table_column_order_layout"] = manifest[0]["structured_table_column_order_layout"] = STRUCTURED_TABLE_COLUMN_ORDER_LAYOUT
-    if image_only_headings:
-        resources[0]["structured_heading_image_layout"] = manifest[0]["structured_heading_image_layout"] = STRUCTURED_HEADING_IMAGE_LAYOUT
-    if step_layout:
-        resources[0]["ordered_step_instructions_layout"] = manifest[0]["ordered_step_instructions_layout"] = step_layout
-    provenance = [deepcopy(resources[0])]
-    failures = {}
-    localized = {}
-    documents = {}
-    missing_asset_refs = set()
-    linked_decimal_preserved = False
+        selected_documents = set(list(linked_refs)[:_MAX_LINKED_PDFS])
+        # Stable dedupe retains the first source position; opaque refs are never normalized.
+        refs = list(dict.fromkeys(ref for ref in refs if ref not in linked_refs))
+        labor_ref = context.descriptor.get("labor_resource_ref")
+        optional = [(ref, "asset") for ref in refs]
+        optional += [(ref, "document_asset") for ref in linked_refs if ref in selected_documents]
+        if labor_ref and labor_ref not in refs and labor_ref not in linked_refs and labor_ref != body_ref:
+            optional.append((labor_ref, "labor"))
+        return refs, linked_refs, optional
+
+    def positioned_media_refs(article):
+        return set(article.get("untyped_pdf_embed_refs", ())) | {
+            node["asset_resource_ref"] for node in _walk(article["blocks"])
+            if (node.get("kind") or node.get("type")) in {"image", "document_embed"}
+            and isinstance(node.get("asset_resource_ref"), str)
+        }
 
     # All requests share one deadline; no more than four can run concurrently.
-    def fetch(pair):
+    def fetch(pair, defer_pdf=False):
         ref, role = pair
         originals = []
         try:
             envelope = read(ref)
+            if defer_pdf and envelope.body["media_type"] == "application/pdf":
+                # Keep the connector response cached until this PDF is given a slot.
+                return ref, "document_asset", None, "DOCUMENT_LIMIT", originals, None
             if role == "document_asset":
                 payload = envelope.to_source_resource()
                 if payload.media_type != "application/pdf":
@@ -654,17 +561,257 @@ def capture_source_article(
                 None,
             )
 
-    pool = ThreadPoolExecutor(max_workers=4)
-    futures = [pool.submit(fetch, pair) for pair in optional]
-    done, _ = wait(futures, timeout=max(0, deadline - time.monotonic()))
-    for pair, future in zip(optional, futures):
-        ref, role = pair
+    early_figures = set()
+    figure_lock = Lock()
+    figure_writes = {}
+    hidden_fallback_refs = set()
+
+    def store_document_figures(blocks):
+        for node in _embedded_images(blocks):
+            try:
+                media, payload, _, key = _embedded_image_bytes(node["url"])
+                with figure_lock:
+                    if (key, media) in early_figures:
+                        continue
+                bounded_objects.put_object(key, payload, media)
+                with figure_lock:
+                    early_figures.add((key, media))
+            except (ValueError, TypeError, SourceConnectorError):
+                continue  # The final projection records any figure failure.
+
+    parser_pool = ThreadPoolExecutor(max_workers=1)
+    body_resource = None
+    pool = None
+    try:
+        parse = partial(
+            adapt_bound_article, body.to_source_resource(), context,
+            keep_embedded_pdf=keep_embedded_pdf, keep_html_headings=keep_html_headings,
+            keep_bound_pdf_iframes=keep_bound_pdf_iframes,
+            keep_pdf_figure_order=keep_pdf_figure_order,
+            keep_multiple_pdf_figures=keep_multiple_pdf_figures,
+            keep_html_table_image_order=keep_html_table_image_order,
+            keep_repeated_pdf_figures=retain_repeats(body.body["sha256"]),
+            keep_pdf_figures_with_margins=retain_repeats_with_margins(body.body["sha256"]),
+            keep_compact_pdf_figures=retain_compact_figures(body.body["sha256"]),
+            keep_html_figure_captions=(
+                keep_html_figure_captions and body.body["sha256"] != context.legacy_published_html_figure_body
+            ),
+            keep_html_table_captions=(
+                keep_html_table_captions and body.body["sha256"] != context.legacy_published_html_table_caption_body
+            ),
+            keep_html_table_spans=keep_html_table_spans,
+            keep_html_media_table_headers=keep_html_media_table_headers,
+            keep_html_nested_tables=keep_html_nested_tables,
+            keep_html_flow_figure_captions=(
+                keep_html_flow_figure_captions and body.body["sha256"] != context.legacy_published_html_flow_figure_body
+            ),
+            keep_html_multiline_figure_captions=(
+                keep_html_multiline_figure_captions
+                and body.body["sha256"] != context.legacy_published_html_multiline_figure_body
+            ),
+            keep_structured_table_cell_order=keep_structured_table_cell_order or (
+                keep_structured_table_columns and keep_structured_table_column_order
+            ),
+            keep_image_only_headings=keep_image_only_headings,
+            keep_ordered_step_instructions=keep_ordered_step_instructions,
+            keep_image_only_step_instructions=keep_image_only_step_instructions,
+        )
+        article = parser_pool.submit(parse, step_parser=step_parser).result(timeout=remaining())
+        candidates = article.get("untyped_pdf_embed_refs", ())
+        if candidates:
+            _, positioned, planned = plan_assets(article, article["blocks"])
+            roles = dict(planned)
+            candidates = [ref for ref in candidates if ref in roles and ref != body_ref]
+        if candidates:
+            initial_media_refs = positioned_media_refs(article)
+            # Normal assets share the same workers. Optional reads must not hold
+            # up PDF preparation or the corresponding HTML projection.
+            body_resource = upload_resource(body, body_ref, "body", bounded_objects)
+            pool = ThreadPoolExecutor(max_workers=4)
+            reading = {ref for ref in candidates if roles[ref] == "asset"}
+            futures = {
+                ref: pool.submit(fetch, (ref, role), ref in reading)
+                for ref, role in planned
+            }
+            inferred = set(candidates)
+            pending = {futures[ref]: ref for ref, role in planned if ref in inferred or role == "document_asset"}
+            capacity = max(0, _MAX_LINKED_PDFS - len(positioned))
+            verified = set()
+            projected_refs = frozenset()
+            projection = None
+            while pending or projection is not None:
+                waiting = set(pending)
+                if projection is not None:
+                    waiting.add(projection)
+                done, _ = wait(waiting, timeout=max(0, deadline - time.monotonic()), return_when=FIRST_COMPLETED)
+                if not done:
+                    break
+                if projection in done:
+                    article = projection.result()
+                    step_parser = projected_steps
+                    # A successful object hides its fallback, including media only found there.
+                    hidden_fallback_refs = initial_media_refs - positioned_media_refs(article)
+                    done.remove(projection)
+                    projection = None
+                acquired = set()
+                for future in done:
+                    ref = pending.pop(future)
+                    if ref in hidden_fallback_refs:
+                        continue
+                    if ref in reading:
+                        reading.remove(ref)
+                        if future.result()[1] == "document_asset":
+                            acquired.add(ref)
+                    else:
+                        adapted = future.result()[-1]
+                        if adapted is not None:
+                            if ref in inferred:
+                                verified.add(ref)
+                            if deadline > time.monotonic():
+                                figure_writes[ref] = pool.submit(store_document_figures, adapted["blocks"])
+                for future, ref in tuple(pending.items()):
+                    if ref in hidden_fallback_refs:
+                        del pending[future]
+                        future.cancel()
+                if deadline <= time.monotonic():
+                    break
+                # Rank ready PDFs in source order. Pending or non-PDF reads take no slot.
+                for ref in [ref for ref in candidates if ref in acquired][:capacity]:
+                    future = pool.submit(fetch, (ref, "document_asset"))
+                    futures[ref] = future
+                    pending[future] = ref
+                    capacity -= 1
+                if projection is None and verified != projected_refs:
+                    projected_refs = frozenset(verified)
+                    projected_steps = LeadingDecimalStepParser() if keep_leading_decimals else None
+                    projection = parser_pool.submit(parse, step_parser=projected_steps, resolved_pdf_refs=projected_refs)
+    except (ValueError, TypeError, KeyError, UnicodeError) as error:
+        if pool is not None:
+            pool.shutdown(wait=False, cancel_futures=True)
+        code = (
+            "WRONG_APPLICABILITY"
+            if "applicability" in str(error)
+            else "INVALID_ARTICLE_BODY"
+        )
+        raise SourceConnectorError(code) from None
+    except TimeoutError:
+        if pool is not None:
+            pool.shutdown(wait=False, cancel_futures=True)
+        raise SourceConnectorError("CAPTURE_DEADLINE", retryable=True) from None
+    except BaseException:
+        if pool is not None:
+            pool.shutdown(wait=False, cancel_futures=True)
+        raise
+    finally:
+        parser_pool.shutdown(wait=False, cancel_futures=True)
+    blocks = deepcopy(article["blocks"])
+    html_figure_captions = article.get("html_figure_captions") is True
+    html_flow_figure_captions = article.get("html_flow_figure_captions") is True
+    html_multiline_figure_captions = article.get("html_multiline_figure_captions") is True
+    html_table_captions = article.get("html_table_captions") is True
+    html_table_spans = article.get("html_table_spans") is True
+    html_media_table_headers = article.get("html_media_table_headers") is True
+    html_nested_tables = article.get("html_nested_tables") is True
+    handled_pdf_embeds = article.get("handled_pdf_embeds") is True
+    positioned_html_table_images = article.get("positioned_html_table_images") is True
+    positioned_pdf_figures = article.get("positioned_pdf_figures") is True
+    retained_pdf_repeats = article.get("retained_repeated_pdf_figures") is True
+    pdf_asset_order = article.get("pdf_legacy_asset_order", [])
+    structured_table_cell_order = structured_table_column_order = False
+    authored_json_blocks = article.get("authored_json_blocks") is True
+    if authored_json_blocks:
+        structured_table_cell_order, structured_table_column_order = _mark_json_table_cells(
+            blocks, keep_rows=keep_structured_table_cell_order,
+            keep_columns=keep_structured_table_columns and keep_structured_table_column_order,
+        )
+    image_only_headings = article.get("image_only_headings") is True
+    step_layout = article.get("ordered_step_instructions_layout")
+    structured_table_columns = keep_structured_table_columns and not html_media_table_headers and any(
+        str(node.get("type") or node.get("kind") or "").casefold() in {"table", "grid"}
+        and isinstance(node.get("columns"), list) and any(isinstance(column, dict) for column in node["columns"])
+        for node in _walk(blocks)
+    )
+    new_structure = (
+        structured_table_columns or structured_table_cell_order or step_layout or html_table_captions or html_flow_figure_captions
+        or html_table_spans or html_media_table_headers or html_nested_tables or image_only_headings
+        or article.get("embedded_pdf")
+        or (article.get("authored_html_headings") and any(block.get("kind") == "heading" for block in _walk(blocks)))
+    )
+    refs, linked_refs, optional = plan_assets(article, blocks)
+    if hidden_fallback_refs:
+        refs = [ref for ref in refs if ref not in hidden_fallback_refs]
+        optional = [(ref, role) for ref, role in optional if role != "asset" or ref not in hidden_fallback_refs]
+    selected_documents = set(list(linked_refs)[:_MAX_LINKED_PDFS])
+    for node in _walk(blocks):
+        if (
+            (node.get("kind") or node.get("type")) == "image"
+            and not node.get("asset_resource_ref")
+            and node.get("url") in refs
+        ):
+            node["asset_resource_ref"] = node["url"]
+    resources = [body_resource if body_resource is not None else upload_resource(body, body_ref, "body", bounded_objects)]
+    manifest = [
+        {k: resources[0][k] for k in ("role", "opaque_ref", "sha256", "media_type")}
+    ]
+    if article.get("retained_pdf_figures_with_margins") is True:
+        resources[0]["pdf_figure_layout"] = manifest[0]["pdf_figure_layout"] = PDF_REPEAT_MARGIN_LAYOUT
+    if article.get("positioned_compact_pdf_figures") is True:
+        resources[0]["pdf_compact_figure_layout"] = manifest[0]["pdf_compact_figure_layout"] = PDF_COMPACT_FIGURE_LAYOUT
+    if html_figure_captions:
+        resources[0]["html_figure_caption_layout"] = manifest[0]["html_figure_caption_layout"] = HTML_FIGURE_CAPTION_LAYOUT
+    if html_flow_figure_captions:
+        resources[0]["html_flow_figure_caption_layout"] = manifest[0]["html_flow_figure_caption_layout"] = HTML_FLOW_FIGURE_CAPTION_LAYOUT
+    if html_multiline_figure_captions:
+        resources[0]["html_multiline_figure_caption_layout"] = manifest[0]["html_multiline_figure_caption_layout"] = HTML_MULTILINE_FIGURE_CAPTION_LAYOUT
+    if html_table_captions:
+        resources[0]["html_table_caption_layout"] = manifest[0]["html_table_caption_layout"] = HTML_TABLE_CAPTION_LAYOUT
+    if html_table_spans:
+        resources[0]["html_table_span_layout"] = manifest[0]["html_table_span_layout"] = HTML_TABLE_SPAN_LAYOUT
+    if html_media_table_headers:
+        resources[0]["html_media_table_header_layout"] = manifest[0]["html_media_table_header_layout"] = HTML_MEDIA_TABLE_HEADER_LAYOUT
+    if html_nested_tables:
+        resources[0]["html_nested_table_layout"] = manifest[0]["html_nested_table_layout"] = HTML_NESTED_TABLE_LAYOUT
+    if structured_table_columns:
+        resources[0]["structured_table_columns_layout"] = manifest[0]["structured_table_columns_layout"] = STRUCTURED_TABLE_COLUMNS_LAYOUT
+    if structured_table_cell_order:
+        resources[0]["structured_table_cell_order_layout"] = manifest[0]["structured_table_cell_order_layout"] = STRUCTURED_TABLE_CELL_ORDER_LAYOUT
+    if structured_table_column_order:
+        resources[0]["structured_table_column_order_layout"] = manifest[0]["structured_table_column_order_layout"] = STRUCTURED_TABLE_COLUMN_ORDER_LAYOUT
+    if image_only_headings:
+        resources[0]["structured_heading_image_layout"] = manifest[0]["structured_heading_image_layout"] = STRUCTURED_HEADING_IMAGE_LAYOUT
+    if step_layout:
+        resources[0]["ordered_step_instructions_layout"] = manifest[0]["ordered_step_instructions_layout"] = step_layout
+    provenance = [deepcopy(resources[0])]
+    failures = {}
+    localized = {}
+    documents = {}
+    missing_asset_refs = set()
+    linked_decimal_preserved = False
+
+    if pool is None:
+        pool = ThreadPoolExecutor(max_workers=4)
+        futures = {}
+    for ref, role in optional:
+        if ref not in futures:
+            futures[ref] = pool.submit(fetch, (ref, role))
+    work = [futures[ref] for ref, _ in optional]
+    work.extend(figure_writes[ref] for ref, _ in optional if ref in figure_writes)
+    done, _ = wait(work, timeout=max(0, deadline - time.monotonic()))
+    with figure_lock:
+        stored_embedded_images = early_figures.copy()
+    for ref, role in optional:
+        future = futures[ref]
         if future not in done:
             future.cancel()
             resource = None
             failure = "CAPTURE_DEADLINE"
         else:
-            _, _, resource, failure, originals, adapted = future.result()
+            _, fetched_role, resource, failure, originals, adapted = future.result()
+            if role == "asset" and fetched_role == "document_asset" and adapted is not None:
+                # An inferred document without a position stays a regular asset.
+                resource, failure, adapted = None, "UNSUPPORTED_ASSET_MEDIA", None
+            else:
+                role = fetched_role
             if adapted is not None:
                 documents[ref] = (adapted["blocks"], ["source:" + resource["source_snapshot_id"]],
                                   adapted.get("pdf_legacy_asset_order", []))
@@ -732,11 +879,7 @@ def capture_source_article(
         "source:" + resource["source_snapshot_id"]: resource
         for resource in resources if resource["role"] == "document_asset"
     }
-    embedded_nodes = [
-        node for node in _walk(blocks)
-        if (node.get("kind") or node.get("type")) == "image"
-        and not node.get("asset_resource_ref") and node.get("url", "").startswith("data:image/")
-    ]
+    embedded_nodes = _embedded_images(blocks)
     pdf_asset_orders = {(): pdf_asset_order} if pdf_asset_order else {}
     pdf_asset_orders.update({tuple(evidence): order for _, evidence, order in documents.values() if order})
     if pdf_asset_orders:
@@ -765,13 +908,7 @@ def capture_source_article(
     for node in embedded_nodes:
         uri = node["url"]
         try:
-            header, encoded = uri.split(",", 1)
-            media = header[5:].split(";", 1)[0].strip().lower()
-            if ";base64" not in header or media == "image/svg+xml":
-                raise ValueError("unsupported embedded figure")
-            payload = base64.b64decode(encoded, validate=True)
-            digest = sha256(payload).hexdigest()
-            key = "sources/" + digest[:16] + "/" + digest
+            media, payload, digest, key = _embedded_image_bytes(uri)
             evidence = node.get("evidence_ids")
             parent = next(
                 (evidence_sources[item] for item in evidence if isinstance(item, str) and item in evidence_sources),
@@ -782,7 +919,9 @@ def capture_source_article(
             if repeated and localized.get(ref, {}).get("media_type") == media:
                 node["asset_resource_ref"] = ref
                 continue
-            if not retained_pdf_repeats or (key, media) not in uploaded_embedded_images:
+            if (key, media) not in stored_embedded_images and (
+                not retained_pdf_repeats or (key, media) not in uploaded_embedded_images
+            ):
                 bounded_objects.put_object(key, payload, media)
             if retained_pdf_repeats:
                 uploaded_embedded_images.add((key, media))

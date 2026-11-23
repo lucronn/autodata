@@ -1705,6 +1705,13 @@ async def api_case(browser,origin,name,output,observations=None,*,verify_reader_
                 if observations:observations.phase='setup'
                 await expect_paid_reader_refocus(page, configuration, article_id)
             if linked_pdf:
+                assert await delivered.body() == await image.body()
+                guest = await browser.new_context(ignore_https_errors=True)
+                try:
+                    assert (await guest.request.get(warm_image)).status == 401
+                finally:
+                    await guest.close()
+                assertions['linked_pdf_figure_reused_and_private'] = True
                 await page.locator('#back').click()
                 await expect(page.locator('#catalog')).to_be_visible()
                 await expect(page.locator(f'#articles a[href*="article={article_id}"]')).to_be_visible()

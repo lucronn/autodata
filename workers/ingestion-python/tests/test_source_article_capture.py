@@ -2429,3 +2429,392 @@ def test_bound_embed_validation_keeps_surrounding_procedure(capture_fixture, mon
         [retained] = [entry for entry in captured.resources if entry["role"] == "document_asset"]
         assert captured.resource_manifest[-2]["sha256"] == sha256(payload).hexdigest()
         assert fixture.objects.data[retained["object_key"]] == (payload, mime)
+
+
+@pytest.mark.parametrize('provider', ['bankone', 'banktwo'])
+@pytest.mark.parametrize('tag', ['object', 'embed'])
+def test_bound_pdf_without_html_type_uses_verified_pdf_in_source_order(capture_fixture, provider, tag):
+    import json
+
+    from autodata_ingestion.source_article_capture import capture_source_article
+    from test_workshop_linked_pdf import _pdf_with_fixture_figure
+
+    opening = 'Disconnect the battery.'
+    closing = 'Remove the cover.'
+    pdf, _ = _pdf_with_fixture_figure(trailing_text='Inspect the connector for corrosion.')
+    embed = '<object data="/media/diagram"><p>Diagram fallback.</p></object>' if tag == 'object' else '<embed src="/media/diagram">'
+    html = f'<p>{opening}</p>{embed}<p>{closing}</p>'
+    if provider == 'bankone':
+        raw, media = html.encode(), 'text/html'
+    else:
+        raw = json.dumps({'_embedded': {'data': {'article': {'content': html}}}}).encode()
+        media = 'application/hal+json'
+    capture_fixture.body(provider, raw, media, assets=['diagram'], asset_bindings=[
+        {'source_url': '/media/diagram', 'resource_ref': 'diagram'},
+    ])
+    capture_fixture.body(provider, pdf, 'application/pdf', ref='diagram', kind='binary')
+
+    captured = capture_source_article(
+        capture_fixture.context(provider), registry=capture_fixture.registry,
+        object_store=capture_fixture.objects, keep_bound_pdf_iframes=True,
+        keep_pdf_figure_order=True, skip_blank_linked_pdf_pages=True,
+    )
+
+    assert capture_fixture.resource_calls(provider, 'diagram') == 1
+    assert captured.projection_status == 'readable'
+    assert [(block['type'], block.get('text')) for block in captured.source_document['blocks']] == [
+        ('paragraph', opening), ('paragraph', 'Inspect the seal.'), ('image', None),
+        ('paragraph', 'Inspect the connector for corrosion.'), ('paragraph', closing),
+    ]
+    [document] = [resource for resource in captured.resources if resource['role'] == 'document_asset']
+    assert document['sha256'] == sha256(pdf).hexdigest()
+    assert capture_fixture.objects.data[document['object_key']] == (pdf, 'application/pdf')
+    [figure] = captured.source_images
+    assert figure['status'] == 'available'
+    assert 'source:' + document['source_snapshot_id'] in figure['evidence_ids']
+
+
+def test_inferred_pdf_omits_assets_only_used_in_hidden_fallback(capture_fixture):
+    from io import BytesIO
+
+    from PIL import Image
+    from autodata_ingestion.source_article_capture import capture_source_article
+    from test_workshop_linked_pdf import _pdf_with_fixture_figure
+
+    fixture = capture_fixture
+    refs = ['diagram', 'alternate', 'hidden-image', 'shared-image', 'declared-image']
+    fixture.body('banktwo', (
+        b'<p>Remove the cover.</p><object data="/media/diagram">'
+        b'<embed type="application/pdf" src="/media/alternate">'
+        b'<img src="/media/hidden-image" alt="Fallback illustration">'
+        b'<img src="/media/shared-image" alt="Fallback terminal">'
+        b'<p>Use the printed diagram.</p></object>'
+        b'<img src="/media/shared-image" alt="Visible terminal"><p>Install the cover.</p>'
+    ), assets=refs, asset_bindings=[
+        {'source_url': f'/media/{ref}', 'resource_ref': ref}
+        for ref in refs if ref != 'declared-image'
+    ])
+    for ref, instruction in (
+        ('diagram', 'Inspect the main connector.'), ('alternate', 'Inspect the spare connector.'),
+    ):
+        pdf, _ = _pdf_with_fixture_figure(trailing_text=instruction)
+        fixture.body('banktwo', pdf, 'application/pdf', ref=ref, kind='binary')
+    for ref, color in (('hidden-image', 'red'), ('shared-image', 'green'), ('declared-image', 'blue')):
+        with BytesIO() as png:
+            Image.new('RGB', (4, 4), color).save(png, format='PNG')
+            fixture.body('banktwo', png.getvalue(), 'image/png', ref=ref, kind='binary')
+
+    captured = capture_source_article(
+        fixture.context('banktwo'), registry=fixture.registry, object_store=fixture.objects,
+        keep_bound_pdf_iframes=True, keep_pdf_figure_order=True,
+    )
+
+    blocks = captured.source_document['blocks']
+    assert [(block['type'], block.get('text')) for block in blocks] == [
+        ('paragraph', 'Remove the cover.'),
+        ('paragraph', 'Inspect the seal.'), ('image', None),
+        ('paragraph', 'Inspect the main connector.'), ('image', None),
+        ('paragraph', 'Install the cover.'), ('image', None),
+    ]
+    assert blocks[4]['alt'] == 'Visible terminal'
+    assert [figure['status'] for figure in captured.source_images] == ['available'] * 3
+    manifest_refs = {item['opaque_ref'] for item in captured.resource_manifest}
+    assert {'diagram', 'shared-image', 'declared-image'} <= manifest_refs
+    assert manifest_refs.isdisjoint({'alternate', 'hidden-image'})
+
+
+def test_bound_object_without_type_keeps_fallback_for_non_pdf(capture_fixture):
+    from io import BytesIO
+
+    from PIL import Image
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    fixture = capture_fixture
+    fixture.body('banktwo', (
+        b'<p>Disconnect the battery and<object data="/media/diagram"> inspect the terminal</object> carefully.</p>'
+        b'<p>Remove the cover.</p>'
+    ), assets=['diagram'], asset_bindings=[{'source_url': '/media/diagram', 'resource_ref': 'diagram'}])
+    png = BytesIO()
+    Image.new('RGB', (4, 4), 'red').save(png, format='PNG')
+    fixture.body('banktwo', png.getvalue(), 'image/png', ref='diagram', kind='binary')
+
+    captured = capture_source_article(
+        fixture.context('banktwo'), registry=fixture.registry, object_store=fixture.objects,
+        keep_bound_pdf_iframes=True,
+    )
+
+    assert fixture.resource_calls('banktwo', 'diagram') == 1
+    assert captured.source_body.splitlines() == ['Disconnect the battery and inspect the terminal carefully.', 'Remove the cover.']
+    assert all(item['role'] != 'document_asset' for item in captured.resource_manifest)
+    [figure] = captured.source_images
+    assert figure['status'] == 'available'
+
+
+def test_bound_object_without_type_keeps_fallback_if_pdf_cannot_be_extracted(capture_fixture):
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    fixture = capture_fixture
+    fixture.body('banktwo', (
+        b'<p>Remove the cover.</p><object data="/media/diagram"><p>Inspect underneath the terminal.</p></object>'
+        b'<p>Install the cover.</p>'
+    ), assets=['diagram'], asset_bindings=[{'source_url': '/media/diagram', 'resource_ref': 'diagram'}])
+    fixture.body('banktwo', b'not a PDF', 'application/pdf', ref='diagram', kind='binary')
+
+    captured = capture_source_article(
+        fixture.context('banktwo'), registry=fixture.registry, object_store=fixture.objects,
+        keep_bound_pdf_iframes=True,
+    )
+
+    assert fixture.resource_calls('banktwo', 'diagram') == 1
+    assert captured.source_body.splitlines() == [
+        'Remove the cover.', 'Inspect underneath the terminal.', 'Install the cover.',
+    ]
+
+
+def test_slow_untyped_document_cannot_starve_existing_image(capture_fixture, monkeypatch):
+    from io import BytesIO
+    from threading import Event
+
+    from PIL import Image
+    from autodata_ingestion.source_article_capture import capture_source_article
+
+    fixture = capture_fixture
+    fixture.body('banktwo', (
+        b'<p>Remove the cover.</p><object data="/media/diagram"><p>Inspect underneath the terminal.</p></object>'
+        b'<img src="/media/figure" alt="Terminal assembly"><p>Install the cover.</p>'
+    ), assets=['diagram', 'figure'], asset_bindings=[
+        {'source_url': '/media/diagram', 'resource_ref': 'diagram'},
+        {'source_url': '/media/figure', 'resource_ref': 'figure'},
+    ])
+    png = BytesIO()
+    Image.new('RGB', (4, 4), 'red').save(png, format='PNG')
+    fixture.body('banktwo', png.getvalue(), 'image/png', ref='figure', kind='binary')
+    fixture.body('banktwo', b'not a PDF', 'application/pdf', ref='diagram', kind='binary')
+
+    client = fixture.registry['banktwo']
+    read = client.read_resource
+    image_requested = Event()
+
+    def delayed_read(ref, *, timeout):
+        if ref == 'diagram':
+            image_requested.wait(timeout=timeout)
+            raise SourceConnectorError('UPSTREAM_UNAVAILABLE', retryable=True)
+        response = read(ref, timeout=timeout)
+        if ref == 'figure':
+            image_requested.set()
+        return response
+
+    monkeypatch.setattr(client, 'read_resource', delayed_read)
+    captured = capture_source_article(
+        fixture.context('banktwo'), registry=fixture.registry, object_store=fixture.objects,
+        keep_bound_pdf_iframes=True, deadline_seconds=0.8,
+    )
+
+    assert fixture.resource_calls('banktwo', 'figure') == 1
+    [figure] = [image for image in captured.source_images if image['alt'] == 'Terminal assembly']
+    assert figure['status'] == 'available'
+    assert 'Inspect underneath the terminal.' in captured.source_body
+
+
+def test_slow_untyped_locator_cannot_starve_ready_bound_pdf(capture_fixture, monkeypatch):
+    from threading import Event
+
+    from autodata_ingestion.source_article_capture import capture_source_article
+    from test_workshop_linked_pdf import _pdf_with_fixture_figure
+
+    fixture = capture_fixture
+    fixture.body('banktwo', (
+        b'<p>Remove the cover.</p>'
+        b'<object data="/media/slow"><p>Inspect underneath the terminal.</p></object>'
+        b'<p>Check the seal housing.</p>'
+        b'<object data="/media/diagram"><p>Use the printed diagram.</p></object>'
+        b'<p>Install the cover.</p>'
+    ), assets=['slow', 'diagram'], asset_bindings=[
+        {'source_url': '/media/slow', 'resource_ref': 'slow'},
+        {'source_url': '/media/diagram', 'resource_ref': 'diagram'},
+    ])
+    pdf, _ = _pdf_with_fixture_figure(trailing_text='Inspect the connector for corrosion.')
+    fixture.body('banktwo', pdf, 'application/pdf', ref='diagram', kind='binary')
+
+    client = fixture.registry['banktwo']
+    read = client.read_resource
+    release_slow = Event()
+    reads = []
+
+    def delayed_read(ref, *, timeout):
+        reads.append(ref)
+        if ref == 'slow':
+            # Keep this read pending at the capture deadline.
+            release_slow.wait(timeout=timeout + 1)
+            raise SourceConnectorError('UPSTREAM_UNAVAILABLE', retryable=True)
+        return read(ref, timeout=timeout)
+
+    monkeypatch.setattr(client, 'read_resource', delayed_read)
+    try:
+        captured = capture_source_article(
+            fixture.context('banktwo'), registry=fixture.registry, object_store=fixture.objects,
+            keep_bound_pdf_iframes=True, keep_pdf_figure_order=True, deadline_seconds=1.5,
+        )
+    finally:
+        release_slow.set()
+
+    assert sorted(reads) == ['body', 'diagram', 'slow']
+    assert captured.source_body.splitlines() == [
+        'Remove the cover.',
+        'Inspect underneath the terminal.',
+        'Check the seal housing.',
+        'Inspect the seal.',
+        'Inspect the connector for corrosion.',
+        'Install the cover.',
+    ]
+    assert [(block['type'], block.get('text')) for block in captured.source_document['blocks'][:7]] == [
+        ('paragraph', 'Remove the cover.'),
+        ('paragraph', 'Inspect underneath the terminal.'),
+        ('paragraph', 'Check the seal housing.'),
+        ('paragraph', 'Inspect the seal.'),
+        ('image', None),
+        ('paragraph', 'Inspect the connector for corrosion.'),
+        ('paragraph', 'Install the cover.'),
+    ]
+    [document] = [item for item in captured.resources if item['role'] == 'document_asset']
+    assert document['sha256'] == sha256(pdf).hexdigest()
+    [figure] = [item for item in captured.source_images if item['status'] == 'available']
+    assert 'source:' + document['source_snapshot_id'] in figure['evidence_ids']
+
+
+def test_slow_derived_figure_upload_preserves_typed_pdf_text(capture_fixture, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    from autodata_ingestion import source_article_capture as capture
+    from test_workshop_linked_pdf import _pdf_with_fixture_figure
+
+    fixture = capture_fixture
+    fixture.body('banktwo', (
+        b'<p>Remove the cover.</p>'
+        b'<embed type="application/pdf" src="/media/diagram">'
+        b'<object data="/media/missing"><p>Read the label.</p></object>'
+        b'<p>Install the cover.</p>'
+    ), assets=['diagram', 'missing'], asset_bindings=[
+        {'source_url': '/media/diagram', 'resource_ref': 'diagram'},
+        {'source_url': '/media/missing', 'resource_ref': 'missing'},
+    ])
+    pdf, _ = _pdf_with_fixture_figure(trailing_text='Inspect the connector for corrosion.')
+    fixture.body('banktwo', pdf, 'application/pdf', ref='diagram', kind='binary')
+    figure_requested = Event()
+    release_figure = Event()
+
+    class DelayedFigureReceiptExecutor(ThreadPoolExecutor):
+        def submit(self, task, *args, **kwargs):
+            future = super().submit(task, *args, **kwargs)
+            if task == fixture.objects.put_object and args[-1] == 'image/png':
+                def delayed_result(*, timeout):
+                    # The upload has no usable receipt before the capture deadline.
+                    figure_requested.set()
+                    release_figure.wait(timeout=timeout + 1)
+                    raise TimeoutError
+
+                future.result = delayed_result
+            return future
+
+    monkeypatch.setattr(capture, 'ThreadPoolExecutor', DelayedFigureReceiptExecutor)
+    try:
+        captured = capture.capture_source_article(
+            fixture.context('banktwo'), registry=fixture.registry, object_store=fixture.objects,
+            keep_bound_pdf_iframes=True, keep_pdf_figure_order=True, deadline_seconds=0.8,
+        )
+    finally:
+        release_figure.set()
+
+    assert figure_requested.is_set()
+    assert fixture.resource_calls('banktwo', 'diagram') == 1
+    assert captured.source_body.splitlines() == [
+        'Remove the cover.', 'Inspect the seal.', 'Inspect the connector for corrosion.',
+        'Read the label.', 'Install the cover.',
+    ]
+    [document] = [item for item in captured.resource_manifest if item['role'] == 'document_asset']
+    assert document == {
+        'role': 'document_asset', 'opaque_ref': 'diagram',
+        'sha256': sha256(pdf).hexdigest(), 'media_type': 'application/pdf',
+    }
+
+
+def test_pending_untyped_locator_does_not_reserve_ready_pdf_quota(capture_fixture, monkeypatch):
+    from threading import Event
+
+    from autodata_ingestion.source_article_capture import capture_source_article
+    from test_workshop_linked_pdf import _pdf_with_fixture_figure
+
+    fixture = capture_fixture
+    ready = ['diagram-1', 'diagram-2', 'diagram-3', 'diagram-4']
+    refs = ['slow', *ready]
+    embeds = ''.join(f'<embed src="/media/{ref}">' for ref in ready)
+    html = '<object data="/media/slow"><p>Inspect underneath the terminal.</p></object>' + embeds
+    fixture.body('banktwo', html.encode(), assets=refs, asset_bindings=[
+        {'source_url': f'/media/{ref}', 'resource_ref': ref} for ref in refs
+    ])
+    for index, ref in enumerate(ready, start=1):
+        pdf, _ = _pdf_with_fixture_figure(trailing_text=f'Check connector {index} for corrosion.')
+        fixture.body('banktwo', pdf, 'application/pdf', ref=ref, kind='binary')
+
+    client = fixture.registry['banktwo']
+    read = client.read_resource
+    release_slow = Event()
+
+    def delayed_read(ref, *, timeout):
+        if ref == 'slow':
+            release_slow.wait(timeout=timeout + 1)
+            raise SourceConnectorError('UPSTREAM_UNAVAILABLE', retryable=True)
+        return read(ref, timeout=timeout)
+
+    monkeypatch.setattr(client, 'read_resource', delayed_read)
+    try:
+        captured = capture_source_article(
+            fixture.context('banktwo'), registry=fixture.registry, object_store=fixture.objects,
+            keep_bound_pdf_iframes=True, keep_pdf_figure_order=True, deadline_seconds=1.5,
+        )
+    finally:
+        release_slow.set()
+
+    assert all(fixture.resource_calls('banktwo', ref) == 1 for ref in ready)
+    assert [item['opaque_ref'] for item in captured.resource_manifest if item['role'] == 'document_asset'] == ready
+    assert captured.source_body.splitlines() == [
+        'Inspect underneath the terminal.',
+        'Inspect the seal.', 'Check connector 1 for corrosion.',
+        'Inspect the seal.', 'Check connector 2 for corrosion.',
+        'Inspect the seal.', 'Check connector 3 for corrosion.',
+        'Inspect the seal.', 'Check connector 4 for corrosion.',
+    ]
+
+
+def test_untyped_non_pdf_assets_do_not_consume_linked_pdf_quota(capture_fixture):
+    from io import BytesIO
+
+    from PIL import Image
+    from autodata_ingestion.source_article_capture import capture_source_article
+    from test_workshop_linked_pdf import _pdf_with_fixture_figure
+
+    fixture = capture_fixture
+    images = [f'figure-{index}' for index in range(4)]
+    refs = [*images, 'diagram']
+    embeds = ''.join(f'<embed src="/media/{ref}">' for ref in refs)
+    fixture.body('banktwo', f'<p>Remove the cover.</p>{embeds}<p>Install the cover.</p>'.encode(),
+        assets=refs, asset_bindings=[{'source_url': f'/media/{ref}', 'resource_ref': ref} for ref in refs])
+    png = BytesIO()
+    Image.new('RGB', (4, 4), 'red').save(png, format='PNG')
+    for ref in images:
+        fixture.body('banktwo', png.getvalue(), 'image/png', ref=ref, kind='binary')
+    pdf, _ = _pdf_with_fixture_figure(trailing_text='Inspect the connector for corrosion.')
+    fixture.body('banktwo', pdf, 'application/pdf', ref='diagram', kind='binary')
+
+    captured = capture_source_article(
+        fixture.context('banktwo'), registry=fixture.registry, object_store=fixture.objects,
+        keep_bound_pdf_iframes=True, keep_pdf_figure_order=True,
+    )
+
+    assert all(fixture.resource_calls('banktwo', ref) == 1 for ref in refs)
+    assert captured.projection_status == 'readable'
+    assert captured.source_body.splitlines() == [
+        'Remove the cover.', 'Inspect the seal.', 'Inspect the connector for corrosion.', 'Install the cover.',
+    ]
+    assert [item['opaque_ref'] for item in captured.resource_manifest if item['role'] == 'document_asset'] == ['diagram']

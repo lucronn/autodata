@@ -124,7 +124,7 @@ class ArticleParser(HTMLParser):
         keep_html_table_captions=False, keep_html_flow_figure_captions=False,
         keep_html_multiline_figure_captions=False,
         keep_html_table_spans=False, keep_html_media_table_headers=False,
-        keep_html_nested_tables=False,
+        keep_html_nested_tables=False, resolved_pdf_refs=frozenset(),
     ):
         super().__init__(convert_charrefs=True)
         self._asset_bindings = {item["source_url"]: item["resource_ref"] for item in asset_bindings}
@@ -148,6 +148,8 @@ class ArticleParser(HTMLParser):
         self._keep_html_media_table_headers = keep_html_media_table_headers
         self._keep_html_nested_tables = keep_html_nested_tables
         self.handled_pdf_embeds = False
+        self.untyped_pdf_embed_refs = {}
+        self._resolved_pdf_refs = resolved_pdf_refs
         self.positioned_html_table_images = False
         self.html_figure_captions = False
         self.html_flow_figure_captions = False
@@ -489,21 +491,21 @@ class ArticleParser(HTMLParser):
         if tag == "figcaption" and self._figures and self._figures[-1].blocks is not None:
             self._start_figure_caption()
             return
-        if self._keep_bound_pdf_iframes and (
-            tag == "iframe"
-            or (
-                tag in {"object", "embed"}
-                and (attrs.get("type") or "").strip().casefold() == "application/pdf"
-            )
-        ):
-            self.handled_pdf_embeds = True
+        if self._keep_bound_pdf_iframes and tag in {"iframe", "object", "embed"}:
             locator = attrs.get("data" if tag == "object" else "src")
             ref = self._asset_bindings.get(locator)
-            if ref and not (tag == "iframe" and "srcdoc" in attrs):
-                self._append_inline_media({"kind": "document_embed", "asset_resource_ref": ref})
-            if tag != "embed":
-                self._hidden_embed_tags.append(tag)
-            return
+            media_type = (attrs.get("type") or "").strip().casefold()
+            is_document = tag == "iframe" or media_type == "application/pdf"
+            if tag != "iframe" and not media_type and ref:
+                self.untyped_pdf_embed_refs[ref] = None
+                is_document = ref in self._resolved_pdf_refs
+            if is_document:
+                self.handled_pdf_embeds = True
+                if ref and not (tag == "iframe" and "srcdoc" in attrs):
+                    self._append_inline_media({"kind": "document_embed", "asset_resource_ref": ref})
+                if tag != "embed":
+                    self._hidden_embed_tags.append(tag)
+                return
         if self._list_continuation_pending and tag not in {"ol", "ul", "li", "a", "img"}:
             self._list_start = 1
             self._list_continuation_pending = False
