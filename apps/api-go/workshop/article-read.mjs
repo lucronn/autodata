@@ -3,6 +3,7 @@ import { delay } from "./catalog.mjs";
 const sourceProbeIntervalMs = 250;
 const initialSourceProbeDelayMs = 150;
 const minimumSourceProbeAdvanceMs = 50;
+const initialPublicationProbeDelayMs = 250;
 const publicationProbeIntervalMs = 500;
 const maxArticleRequestMs = 10000;
 const publicationStatusProbeDelayMs = 2000;
@@ -309,9 +310,17 @@ export async function readArticle(
         backoff = 1000;
       }
       if (shortPublicationJob) {
-        publicationReadAt = now() + backoff;
+        const scheduledAt = now();
+        publicationReadAt = scheduledAt + backoff;
         publicationProbeJob = shortPublicationJob;
         backoff = publicationProbeIntervalMs;
+        const anchor = publicationAnchor(latest);
+        if (anchor) {
+          // Give an anchored rewrite one early opportunity. Keep both original
+          // checks for a rewrite that is still active or an unanswered probe.
+          scheduledPublicationCheck = { anchor, regularReadAt: scheduledAt + backoff, late: false };
+          backoff = initialPublicationProbeDelayMs;
+        }
       }
     }
     // Keep the regular read time while allowing one smaller check after any server hint.
