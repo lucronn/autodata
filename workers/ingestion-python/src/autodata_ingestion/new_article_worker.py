@@ -123,7 +123,8 @@ class RolloutState:
     def worker_lock(self):
         return self._lock('worker.lock', nonblocking=True)
 
-    def _validate(self, value):
+    def _validate(self, value, *, source_shas=None):
+        source_shas = (self.source_sha,) if source_shas is None else source_shas
         keys = {'schema', 'rollout_id', 'source_sha', 'cutoff', 'expires_at', 'providers',
                 'max_jobs', 'enabled', 'reservations'}
         if self.schema == 2:
@@ -131,7 +132,7 @@ class RolloutState:
         if not isinstance(value, dict) or set(value) != keys:
             raise WorkerBlocked('ROLLOUT_SHAPE_INVALID')
         if (type(value['schema']) is not int or value['schema'] != self.schema
-                or value['source_sha'] != self.source_sha
+                or value['source_sha'] not in source_shas
                 or value['providers'] != ['bankone', 'banktwo']
                 or type(value['max_jobs']) is not int or value['max_jobs'] != 10
                 or type(value['enabled']) is not bool):
@@ -161,7 +162,7 @@ class RolloutState:
                 raise WorkerBlocked('ROLLOUT_HISTORICAL_QUOTA_INVALID')
         return value
 
-    def _read(self):
+    def _read(self, *, source_shas=None):
         fd = self._open('rollout.json')
         try:
             raw = os.read(fd, self.max_bytes + 1)
@@ -171,7 +172,7 @@ class RolloutState:
             current = os.stat('rollout.json', dir_fd=self.fd, follow_symlinks=False)
             if (current.st_dev, current.st_ino) != (os.fstat(fd).st_dev, os.fstat(fd).st_ino):
                 raise WorkerBlocked('ROLLOUT_FILE_REPLACED')
-            return self._validate(value)
+            return self._validate(value, source_shas=source_shas)
         except (ValueError, UnicodeError):
             raise WorkerBlocked('ROLLOUT_JSON_INVALID') from None
         finally:
@@ -218,6 +219,18 @@ class RolloutState:
     def read(self):
         with self._lock('state.lock'):
             return self._read()
+
+    def rebind_source(self, previous_sha):
+        """Move a stopped continuous rollout to a new source pin."""
+        if (self.schema != 2 or not re.fullmatch('[a-f0-9]{40}', previous_sha)
+                or previous_sha == self.source_sha):
+            raise WorkerBlocked('ROLLOUT_REBIND_INVALID')
+        with self.worker_lock(), self._lock('state.lock'):
+            value = self._read(source_shas=(previous_sha, self.source_sha))
+            if value['source_sha'] == self.source_sha:
+                return
+            value['source_sha'] = self.source_sha
+            self._write(value)
 
     def set_enabled(self, enabled):
         with self._lock('state.lock'):
@@ -389,11 +402,15 @@ def main(argv=None):
     control.add_argument('--initialize', action='store_true')
     control.add_argument('--enable', action='store_true')
     control.add_argument('--disable', action='store_true')
+    control.add_argument('--rebind-source-from', metavar='SHA', help='Move a stopped continuous rollout to the configured source SHA')
     parser.add_argument('--continuous', action='store_true', help='Require opt-in rolling-quota schema2 state')
     args = parser.parse_args(argv)
     try:
         source_sha = os.environ.get('AUTODATA_NEW_ARTICLE_SOURCE_SHA', '')
         with RolloutState(source_sha=source_sha, continuous=args.continuous) as state:
+            if args.rebind_source_from is not None:
+                state.rebind_source(args.rebind_source_from)
+                return 0
             from .worker import ArticleRepository, ArticleObjectStore
             repo = ArticleRepository()
             if args.initialize:

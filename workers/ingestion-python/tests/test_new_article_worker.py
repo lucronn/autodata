@@ -166,6 +166,46 @@ def test_continuous_initialization_and_mode_are_explicit(continuous_state,state)
         with pytest.raises(worker.WorkerBlocked):sustained.read()
 
 
+def test_rebind_preserves_enabled_state_and_spent_quota(continuous_state):
+    continuous_state.set_enabled(True)
+    jobs = [uuid4() for _ in range(10)]
+    for job_id in jobs:
+        assert continuous_state.reserve(job_id, NOW)
+    original = continuous_state.read()
+    next_sha = 'b' * 40
+    with worker.RolloutState(continuous_state.directory, source_sha=next_sha,
+                             owner_uid=os.getuid(), continuous=True) as upgraded:
+        upgraded.rebind_source(SHA)
+        assert upgraded.read() == {**original, 'source_sha': next_sha}
+        upgraded.rebind_source(SHA)
+        with pytest.raises(worker.WorkerBlocked, match='ROLLOUT_SCOPE_INVALID'):
+            continuous_state.read()
+        assert not upgraded.reserve(uuid4(), NOW + timedelta(hours=23))
+        assert not upgraded.reserve(jobs[0], NOW + timedelta(days=2))
+        assert upgraded.reserve(uuid4(), NOW + timedelta(days=2))
+
+
+def test_rebind_requires_an_idle_worker_and_matching_previous_pin(continuous_state):
+    original = continuous_state.read()
+    with worker.RolloutState(continuous_state.directory, source_sha='b' * 40,
+                             owner_uid=os.getuid(), continuous=True) as upgraded:
+        with pytest.raises(worker.WorkerBlocked, match='ROLLOUT_SCOPE_INVALID'):
+            upgraded.rebind_source('c' * 40)
+        with continuous_state.worker_lock():
+            with pytest.raises(worker.WorkerBlocked, match='WORKER_ALREADY_RUNNING'):
+                upgraded.rebind_source(SHA)
+    assert continuous_state.read() == original
+
+
+def test_rebind_refuses_a_finite_rollout(state):
+    state.initialize(NOW)
+    original = state.read()
+    with worker.RolloutState(state.directory, source_sha='b' * 40, owner_uid=os.getuid()) as upgraded:
+        with pytest.raises(worker.WorkerBlocked, match='ROLLOUT_REBIND_INVALID'):
+            upgraded.rebind_source(SHA)
+    assert state.read() == original
+
+
 def test_continuous_rolling_boundary_keeps_all_spent_ids(continuous_state):
     state=continuous_state;state.set_enabled(True);jobs=[uuid4() for _ in range(10)]
     for job in jobs:assert state.reserve(job,NOW)
