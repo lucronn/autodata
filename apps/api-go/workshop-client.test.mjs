@@ -918,24 +918,30 @@ test('early publication reads keep the displayed source with a negotiated pendin
     article: { ...article, body: 'New source', source_revision_id: 'new', processing: { job_id: 'new-job', state: 'validating' } },
   } };
   for (const [label, responses, expectedTimes, expectedUpdates] of [
-    ['ready on second check', [source, pending, ready], [0, 500, 750], ['Stored', 'Published']],
-    ['still processing', [source, pending, pending, ready], [0, 500, 750, 1000], ['Stored', 'Published']],
-    ['mismatched compact reply', [source, wrongSource, ready], [0, 500, 1000], ['Stored', 'Published']],
-    ['real server delay', [source, serverDelay, ready], [0, 500, 6500], ['Stored', 'Published']],
-    ['changed source renders the full response', [source, changed, ready], [0, 500, 1000], ['Stored', 'New source', 'Published']],
+    ['ready by the extra check', [source, ready], [0, 250], ['Stored', 'Published']],
+    ['ready on the original first check', [source, pending, ready], [0, 250, 500], ['Stored', 'Published']],
+    ['ready on the original second check', [source, pending, pending, ready], [0, 250, 500, 750], ['Stored', 'Published']],
+    ['still processing', [source, pending, pending, pending, ready], [0, 250, 500, 750, 1000], ['Stored', 'Published']],
+    ['mismatched extra reply preserves the original first check', [source, wrongSource, ready], [0, 250, 500], ['Stored', 'Published']],
+    ['mismatched original reply', [source, pending, wrongSource, ready], [0, 250, 500, 1000], ['Stored', 'Published']],
+    ['network failure preserves the original checks', [source, new TypeError('Network failed'), pending, ready], [0, 250, 500, 750], ['Stored', 'Published']],
+    ['real server delay', [source, serverDelay, ready], [0, 250, 6250], ['Stored', 'Published']],
+    ['changed source renders the full response', [source, pending, changed, ready], [0, 250, 500, 1000], ['Stored', 'New source', 'Published']],
   ]) {
     let now = 0;
     const starts = [], selected = [], rendered = [];
     const result = await readArticle(async (options) => {
       starts.push(now);
-      if (now === 500 || now === 750) {
+      if (now === 250 || now === 500 || now === 750) {
         assert.deepEqual(options.publicationCheck, { articleId: 'article', sourceRevisionId: 'source', jobId: 'job' }, label);
         assert.equal(options.finishPublishedBody, true, label);
-        assert.equal(options.timeout, 1000 - now, label);
+        assert.equal(options.timeout, (now === 250 ? 500 : 1000) - now, label);
       } else {
         assert.equal(options.publicationCheck, undefined, label);
       }
-      return responses.shift();
+      const next = responses.shift();
+      if (next instanceof Error) throw next;
+      return next;
     }, {
       now: () => now, wait: async ms => { now += ms; },
       selectResponse(response) { selected.push(response.data.article.body); return response; },
@@ -949,17 +955,31 @@ test('early publication reads keep the displayed source with a negotiated pendin
   const captureQueued = { status: 202, shortSourceCheck: true, data: {
     article: { processing: { job_id: 'job', state: 'queued' } },
   } };
-  const responses = [captureQueued, source, pending, pending, pending, ready];
+  const responses = [captureQueued, source, pending, pending, pending, pending, ready];
   let now = 0;
   const optionsByRead = [];
   const result = await readArticle(async (options) => {
     optionsByRead.push({ time: now, check: options.publicationCheck, timeout: options.timeout });
     return responses.shift();
   }, { now: () => now, wait: async ms => { now += ms; } });
-  assert.deepEqual(optionsByRead.map(({ time }) => time), [0, 150, 650, 900, 1150, 2150]);
+  assert.deepEqual(optionsByRead.map(({ time }) => time), [0, 150, 400, 650, 900, 1150, 2150]);
   assert.deepEqual(optionsByRead.filter(({ check }) => check).map(({ time, timeout }) => [time, timeout]),
-    [[650, 500], [900, 250], [1150, 1000]]);
+    [[400, 250], [650, 500], [900, 250], [1150, 1000]]);
   assert.equal(result.data.article.body, 'Published');
+
+  const controller = new AbortController();
+  let reads = 0;
+  await assert.rejects(readArticle(async () => {
+    reads++;
+    return source;
+  }, {
+    signal: controller.signal,
+    wait: async (delay) => {
+      assert.equal(delay, 250);
+      controller.abort();
+    },
+  }), { name: 'AbortError' });
+  assert.equal(reads, 1);
 });
 
 test('negotiated publication checks can open ready text and keep ordinary deadlines on a miss', async () => {
