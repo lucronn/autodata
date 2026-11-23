@@ -20,6 +20,7 @@ from .article_lifecycle_types import (
     HTML_MULTILINE_FIGURE_CAPTION_LAYOUT,
     HTML_NESTED_TABLE_LAYOUT,
     HTML_NUMERIC_SUPERSCRIPT_LAYOUT,
+    HTML_SECTION_TITLE_LAYOUT,
     HTML_TABLE_CAPTION_LAYOUT,
     HTML_TABLE_SPAN_LAYOUT,
     LEADING_DECIMAL_LAYOUT,
@@ -409,6 +410,7 @@ def capture_source_article(
     keep_leading_decimals=False,
     keep_html_numeric_superscripts=False,
     keep_html_document_links=False,
+    keep_html_section_titles=False,
     keep_mixed_html_pdf_embeds=False,
     keep_bound_html_images=False,
     on_body_preview=None,
@@ -649,6 +651,9 @@ def capture_source_article(
             keep_html_document_links=(
                 keep_html_document_links and body_digest != context.legacy_published_html_document_link_body
             ),
+            keep_html_section_titles=(
+                keep_html_section_titles and body_digest != context.legacy_published_html_section_title_body
+            ),
             keep_mixed_html_pdf_embeds=keep_mixed_html_pdf_embeds,
             keep_structured_table_cell_order=keep_structured_table_cell_order or (
                 keep_structured_table_columns and keep_structured_table_column_order
@@ -790,6 +795,7 @@ def capture_source_article(
     html_document_links = article.get("html_document_links") is True
     html_bound_images = article.get("html_bound_images") is True
     mixed_html_pdf_embeds = article.get("mixed_html_pdf_embeds") is True
+    html_section_titles = article.get("html_section_titles") is True
     handled_pdf_embeds = article.get("handled_pdf_embeds") is True
     positioned_html_table_images = article.get("positioned_html_table_images") is True
     positioned_pdf_figures = article.get("positioned_pdf_figures") is True
@@ -812,7 +818,7 @@ def capture_source_article(
     new_structure = (
         structured_table_columns or structured_table_cell_order or step_layout or html_table_captions or html_flow_figure_captions
         or html_table_spans or html_media_table_headers or html_nested_tables or html_numeric_superscripts or image_only_headings
-        or html_bound_images or html_document_links or article.get("embedded_pdf")
+        or html_bound_images or html_document_links or html_section_titles or article.get("embedded_pdf")
         or (article.get("authored_html_headings") and any(block.get("kind") == "heading" for block in _walk(blocks)))
     )
     refs, linked_refs, optional = plan_assets(article, blocks)
@@ -853,6 +859,8 @@ def capture_source_article(
         resources[0]["html_numeric_superscript_layout"] = manifest[0]["html_numeric_superscript_layout"] = HTML_NUMERIC_SUPERSCRIPT_LAYOUT
     if html_document_links:
         resources[0]["html_document_link_layout"] = manifest[0]["html_document_link_layout"] = HTML_DOCUMENT_LINK_LAYOUT
+    if html_section_titles:
+        resources[0]["html_section_title_layout"] = manifest[0]["html_section_title_layout"] = HTML_SECTION_TITLE_LAYOUT
     if html_bound_images:
         resources[0]["html_bound_image_layout"] = manifest[0]["html_bound_image_layout"] = HTML_BOUND_IMAGE_LAYOUT
     if mixed_html_pdf_embeds:
