@@ -129,6 +129,40 @@ def _remap_snapshot_references(value, snapshots):
     return result
 
 
+def store_source_body_preview(repo, lease, context, resource, document):
+    """Bind the parsed body to a live article generation without publishing it."""
+    body_ref = context.descriptor.get("resource_ref") or context.descriptor.get("body_resource_ref")
+    if (article_id(context.key) != lease.canonical_article_id or resource["provider"] != context.key.provider
+            or resource["role"] != "body" or resource["opaque_ref"] != body_ref):
+        raise ValueError("source body preview identity mismatch")
+    with repo.connect() as conn, conn.cursor(row_factory=dict_row) as cur:
+        job = lock_live_lease(cur, lease)
+        article = cur.execute("""
+            SELECT current_job_id,request_generation,current_source_revision_id,descriptor_source_snapshot_id,
+                   membership_status,takedown_status
+            FROM canonical_articles WHERE canonical_article_id=%s FOR UPDATE
+            """, (lease.canonical_article_id,)).fetchone()
+        if (article is None or article["current_job_id"] != lease.job_id
+                or job["canonical_article_id"] != lease.canonical_article_id
+                or article["request_generation"] != job["request_generation"]
+                or job["request_generation"] != lease.generation):
+            raise LeaseLost("article generation changed during body preview")
+        if (job["phase"] != "fetching_source" or job["source_revision_id"] is not None
+                or article["current_source_revision_id"] is not None
+                or article["membership_status"] != "active" or article["takedown_status"] != "active"
+                or article["descriptor_source_snapshot_id"] != context.descriptor_snapshot_id):
+            return
+        snapshot = persist_resource(cur, resource)
+        preview = {
+            "snapshot_id": str(snapshot),
+            "descriptor_snapshot_id": str(context.descriptor_snapshot_id),
+            "document": document,
+        }
+        cur.execute("""
+            UPDATE source_fetch_jobs SET checkpoint=checkpoint||%s WHERE source_fetch_job_id=%s
+            """, (Jsonb({"source_body_preview": preview}), lease.job_id))
+
+
 def store_captured_source(repo, lease, captured):
     """Source revision, observation, pointer and transformation transition are atomic."""
     with repo.connect() as conn, conn.cursor(row_factory=dict_row) as cur:
@@ -232,6 +266,7 @@ def _store_captured_source(cur, lease, captured):
         cur.execute("""UPDATE source_fetch_jobs SET source_revision_id=%s,transformation_key=NULL,
             status='needs_review',phase='completed',error_code='SOURCE_ONLY_REPROJECTION',retryable=false,
             next_attempt_at=NULL,lease_owner=NULL,lease_expires_at=NULL,heartbeat_at=NULL,
+            checkpoint=checkpoint-'source_body_preview',
             updated_at=clock_timestamp() WHERE source_fetch_job_id=%s""", (revision_id, lease.job_id))
         cur.execute("""UPDATE canonical_articles SET current_source_revision_id=%s,current_canonical_revision_id=NULL,
             current_job_id=%s,updated_at=clock_timestamp() WHERE canonical_article_id=%s""",
@@ -272,7 +307,7 @@ def _store_captured_source(cur, lease, captured):
         if published:
             checkpoint["reused_published_revision_id"] = str(current_canonical)
         cur.execute(
-            """UPDATE source_fetch_jobs SET source_revision_id=%s,phase='completed',status='completed',checkpoint=checkpoint||%s,lease_owner=NULL,lease_expires_at=NULL,heartbeat_at=NULL,retryable=false,updated_at=clock_timestamp() WHERE source_fetch_job_id=%s""",
+            """UPDATE source_fetch_jobs SET source_revision_id=%s,phase='completed',status='completed',checkpoint=(checkpoint-'source_body_preview')||%s,lease_owner=NULL,lease_expires_at=NULL,heartbeat_at=NULL,retryable=false,updated_at=clock_timestamp() WHERE source_fetch_job_id=%s""",
             (revision_id, Jsonb(checkpoint), lease.job_id),
         )
         if terminal:
@@ -303,7 +338,8 @@ def _store_captured_source(cur, lease, captured):
                         (adopted_generation,lease.canonical_article_id))
     else:
         cur.execute(
-            "UPDATE source_fetch_jobs SET source_revision_id=%s,transformation_key=%s,phase='normalizing',updated_at=clock_timestamp() WHERE source_fetch_job_id=%s",
+            """UPDATE source_fetch_jobs SET source_revision_id=%s,transformation_key=%s,phase='normalizing',
+                checkpoint=checkpoint-'source_body_preview',updated_at=clock_timestamp() WHERE source_fetch_job_id=%s""",
             (revision_id, key, lease.job_id),
         )
     cur.execute(

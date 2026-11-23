@@ -355,6 +355,65 @@ func TestPaidCatalogContentSearchUsesGrantAndReturnsOnlyMatchingDescriptors(t *t
 		t.Fatalf("revoked search read protected content: status=%d protected=%d searches=%d", w.Code, c.protected, c.searches)
 	}
 }
+
+func TestPaidArticleDisplaysSourceBodyWhileFullCaptureRuns(t *testing.T) {
+	const id = "55555555-5555-4555-8555-555555555555"
+	const sourceText = "Disconnect the battery ground cable."
+	s, store, grant := paidHTTPServer()
+	grant.err = nil
+	store.identity = PaidArticleIdentity{
+		ConfigurationID: paidTestConfiguration, CanonicalArticleID: id, VehicleID: paidTestVehicle,
+		ProviderSlug: "banktwo", SourceVehicleRef: "fixture-vehicle", SourceArticleRef: "fixture-article",
+	}
+	store.view = &CatalogArticleView{
+		Article: CatalogArticle{
+			ID: id, CanonicalArticleID: stringPointer(id), Title: "Battery", Availability: "pending",
+			Processing: &CatalogProcessing{JobID: "fixture-job", State: "fetching_source"},
+		},
+		sourceBodyPreview: &CatalogDocument{SchemaVersion: 1, Blocks: []CatalogDocumentBlock{
+			{Type: "callout", Label: "Warning", Text: sourceText, Href: "https://fixture.invalid/private-resource"},
+		}},
+	}
+	path := "/v1/catalog/vehicles/" + paidTestConfiguration + "/articles/" + id
+	read := func(path string, demo bool) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(http.MethodGet, path, nil)
+		if demo {
+			r.Host = "localhost:3013"
+		}
+		s.Handler().ServeHTTP(w, r)
+		return w
+	}
+	w := read(path, false)
+	var result CatalogArticleResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	body := result.Article
+	if w.Code != http.StatusOK || w.Header().Get("Cache-Control") != "private, no-store" ||
+		!body.SourceBodyPreview || body.ContentStatus != "content_partial" ||
+		body.ContentOrigin == nil || *body.ContentOrigin != "source" ||
+		body.SourceReview != nil || body.SourceRevisionID != nil || body.ViewRevision == nil ||
+		body.Processing == nil || body.Processing.State != "fetching_source" ||
+		body.Document == nil || len(body.Document.Blocks) != 1 ||
+		body.Document.Blocks[0].Text != sourceText || body.Document.Blocks[0].Href != "" {
+		t.Fatalf("incorrect source body response: %d %s", w.Code, w.Body)
+	}
+	store.view.Article.Processing.State = "failed"
+	if w = read(path, false); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), sourceText) {
+		t.Fatalf("a later capture failure hid the source body: %d %s", w.Code, w.Body)
+	}
+	store.view.Article.Processing.State = "fetching_source"
+	s.workshopOpenDemoHost = workshopOpenDemoHost("1", "test", "http://localhost:3013")
+	if w = read(path+"?demo=1", true); w.Code != http.StatusAccepted || strings.Contains(w.Body.String(), sourceText) {
+		t.Fatalf("preview leaked into demo: %d %s", w.Code, w.Body)
+	}
+	grant.err = ErrVehicleGrantRevoked
+	if w = read(path, false); w.Code != http.StatusForbidden || strings.Contains(w.Body.String(), sourceText) {
+		t.Fatalf("preview leaked after revocation: %d %s", w.Code, w.Body)
+	}
+}
+
 func TestPaidCatalogContentSearchRejectsUnboundedQueriesBeforeCatalogRead(t *testing.T) {
 	s, c, g := paidHTTPServer()
 	g.err = nil

@@ -27,9 +27,10 @@ type CatalogProcessing struct {
 	shortReadPreference string
 }
 type CatalogArticleView struct {
-	Article     CatalogArticle
-	CanSchedule bool
-	Withdrawn   bool
+	Article           CatalogArticle
+	CanSchedule       bool
+	Withdrawn         bool
+	sourceBodyPreview *CatalogDocument
 }
 type CatalogScheduleResult struct {
 	JobID              string  `json:"job_id"`
@@ -148,13 +149,32 @@ func (s *postgresCatalogStore) ArticleView(ctx context.Context, p Principal, v, 
 	if !commerceUUID(id) {
 		return CatalogArticleView{}, ErrCatalogNotFound
 	}
-	var raw []byte
+	var raw, preview []byte
 	// Resolve the direct ID and at most one proven alias before evaluating the
 	// effective article view. Direct IDs take precedence within the same scope.
-	err := s.pool.QueryRow(ctx, `SELECT to_jsonb(view_row) FROM canonical_articles a
+	err := s.pool.QueryRow(ctx, `SELECT to_jsonb(view_row), early.document FROM canonical_articles a
 		JOIN LATERAL (
 			SELECT * FROM catalog_article_current WHERE canonical_article_id=a.canonical_article_id LIMIT 1
 		) view_row ON true
+		LEFT JOIN LATERAL (
+			SELECT j.checkpoint->'source_body_preview'->'document' AS document
+			FROM source_fetch_jobs j
+			JOIN source_snapshots snap ON snap.source_snapshot_id=CASE
+				WHEN j.checkpoint->'source_body_preview'->>'snapshot_id' ~ '^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$'
+				THEN (j.checkpoint->'source_body_preview'->>'snapshot_id')::uuid END
+			WHERE a.vehicle_configuration_id::text=$1 AND a.current_source_revision_id IS NULL AND a.takedown_status='active'
+			AND view_row.takedown_status='active' AND j.source_fetch_job_id=a.current_job_id
+			AND j.job_kind='article' AND j.canonical_article_id=a.canonical_article_id
+			AND j.request_generation=a.request_generation AND j.canonical_vehicle_id=a.vehicle_id
+			AND j.provider_slug=a.provider_slug AND j.source_vehicle_ref=a.source_vehicle_ref
+			AND j.source_article_ref=a.source_article_ref AND snap.takedown_status='active'
+			AND j.checkpoint->'source_body_preview'->>'descriptor_snapshot_id'=a.descriptor_source_snapshot_id::text
+			AND NOT EXISTS (
+				SELECT 1 FROM source_review_items quarantine
+				WHERE quarantine.item_kind='quarantine' AND quarantine.status<>'approved'
+				AND quarantine.source_snapshot_ids ? snap.source_snapshot_id::text
+			)
+		) early ON true
 		WHERE a.canonical_article_id IN ($2::uuid, (
 			SELECT alias.canonical_article_id FROM canonical_article_aliases alias
 			JOIN catalog_articles legacy USING(catalog_article_id)
@@ -162,7 +182,7 @@ func (s *postgresCatalogStore) ArticleView(ctx context.Context, p Principal, v, 
 			WHERE alias.catalog_article_id=$2::uuid AND legacy.vehicle_id=owner.vehicle_id
 			AND legacy.vehicle_configuration_id IS NOT DISTINCT FROM owner.vehicle_configuration_id
 		)) AND `+lifecycleScopeSQL+` AND `+lifecycleEligibleSQL+`
-		ORDER BY (a.canonical_article_id=$2::uuid) DESC LIMIT 1`, v, id).Scan(&raw)
+		ORDER BY (a.canonical_article_id=$2::uuid) DESC LIMIT 1`, v, id).Scan(&raw, &preview)
 	if errors.Is(err, pgx.ErrNoRows) {
 		legacy, e := s.legacyArticle(ctx, p, v, id)
 		if e != nil {
@@ -240,7 +260,15 @@ func (s *postgresCatalogStore) ArticleView(ctx context.Context, p Principal, v, 
 	article.canonicalVehicleID = row.VehicleID
 	article.canonicalConfigurationID = row.ConfigurationID
 	article = lifecycleArticle(article)
-	return CatalogArticleView{Article: article, Withdrawn: row.Takedown != "active", CanSchedule: row.JobID == nil && row.Takedown == "active"}, nil
+	view := CatalogArticleView{Article: article, Withdrawn: row.Takedown != "active", CanSchedule: row.JobID == nil && row.Takedown == "active"}
+	if len(preview) != 0 && !view.Withdrawn {
+		var document CatalogDocument
+		// A failed preview read must not prevent the current article view.
+		if json.Unmarshal(preview, &document) == nil && len(document.Blocks) != 0 {
+			view.sourceBodyPreview = &document
+		}
+	}
+	return view, nil
 }
 func publicProcessingError(code *string) *string {
 	if code == nil {

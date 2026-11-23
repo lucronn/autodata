@@ -393,6 +393,113 @@ def scoped_runtime_article(runtime):
     return configuration
 
 
+@pytest.mark.parametrize("fail_after_preview", [False, True])
+def test_workshop_source_preview_while_optional_asset_is_held(runtime, monkeypatch, fail_after_preview):
+    from collections import Counter
+    from concurrent.futures import ThreadPoolExecutor
+    from hashlib import sha256
+    from io import BytesIO
+    import json
+    from threading import Event
+    from PIL import Image
+    from autodata_ingestion.article_lifecycle import run_article_worker_once
+
+    scoped_runtime_article(runtime)
+    html = (
+        b"<h2>Pump service</h2><ol start='3'><li>Remove the pump.</li>"
+        b"<li><img data-resource-ref='fixture-private-ref' img_name='fixture-private-image-name' "
+        b"src='https://fixture.invalid/private.png'>Inspect the seal.</li></ol>"
+    )
+    png = BytesIO()
+    Image.new("RGB", (2, 2), "blue").save(png, format="PNG")
+    connector = runtime.servers["bankone"]
+    connector.body(html, assets=["fixture-private-ref"])
+    connector.body(png.getvalue(), "image/png", ref="fixture-private-ref", kind="asset")
+    job = runtime.ensure()
+    asset_read = Event()
+    release_asset = Event()
+    client = runtime.registry["bankone"]
+    uploads = Counter()
+    put_object = runtime.objects.put_object
+
+    class HeldAssetConnector:
+        provider = "bankone"
+
+        def read_resource(self, ref, **kwargs):
+            if ref == "fixture-private-ref":
+                asset_read.set()
+                assert release_asset.wait(8)
+            return client.read_resource(ref, **kwargs)
+
+    def count_upload(key, payload, media_type):
+        uploads[sha256(payload).hexdigest()] += 1
+        return put_object(key, payload, media_type)
+
+    def stop_before_full_source(point):
+        if fail_after_preview and point == "before_source_commit":
+            raise ValueError("SOURCE_PREVIEW_FIXTURE_FAILURE")
+
+    monkeypatch.setattr(runtime.objects, "put_object", count_upload)
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        pending = executor.submit(
+            run_article_worker_once, runtime.repo, worker_id=uuid4(), job_id=job.job_id,
+            registry={"bankone": HeldAssetConnector()}, object_store=runtime.objects,
+            model_client=None, hooks=stop_before_full_source,
+        )
+        try:
+            if not asset_read.wait(5):
+                if pending.done():
+                    pending.result()
+                pytest.fail(runtime.diagnostics())
+            assert not pending.done()
+            with runtime.repo.connect() as conn:
+                row = conn.execute("""
+                    SELECT j.source_revision_id,j.checkpoint->'source_body_preview' AS preview,
+                           a.descriptor_source_snapshot_id::text AS descriptor_snapshot_id
+                    FROM source_fetch_jobs j JOIN canonical_articles a USING(canonical_article_id)
+                    WHERE j.source_fetch_job_id=%s
+                    """, (job.job_id,)).fetchone()
+                assert row["source_revision_id"] is None
+                preview = row["preview"]
+                assert set(preview) == {"snapshot_id", "descriptor_snapshot_id", "document"}
+                assert preview["descriptor_snapshot_id"] == row["descriptor_snapshot_id"]
+                assert conn.execute(
+                    "SELECT content_sha256 FROM source_snapshots WHERE source_snapshot_id=%s",
+                    (preview["snapshot_id"],),
+                ).fetchone()["content_sha256"] == sha256(html).hexdigest()
+            heading, ordered = preview["document"]["blocks"]
+            assert heading["text"] == "Pump service"
+            assert ordered["start"] == 3
+            assert ordered["items"][0] == "Remove the pump."
+            image, instruction = ordered["items"][1]["blocks"]
+            assert image["unavailable_reason"] == "SOURCE_MEDIA_PENDING"
+            assert instruction["text"] == "Inspect the seal."
+            preview_json = json.dumps(preview)
+            assert "fixture-private-" not in preview_json
+            assert "fixture.invalid" not in preview_json
+        finally:
+            release_asset.set()
+        assert pending.result(timeout=10)
+
+    assert uploads == {sha256(html).hexdigest(): 1, sha256(png.getvalue()).hexdigest(): 1}
+    with runtime.repo.connect() as conn:
+        final = conn.execute("""
+            SELECT checkpoint->'source_body_preview' AS preview,j.error_code,
+                   s.source_document,s.source_images,s.body_source_snapshot_id::text AS snapshot_id
+            FROM source_fetch_jobs j LEFT JOIN canonical_article_source_revisions s USING(source_revision_id)
+            WHERE source_fetch_job_id=%s
+            """, (job.job_id,)).fetchone()
+    if fail_after_preview:
+        assert final["error_code"] == "SOURCE_PREVIEW_FIXTURE_FAILURE"
+        assert final["preview"] == preview and final["source_document"] is None
+    else:
+        assert final["preview"] is None and final["snapshot_id"] == preview["snapshot_id"]
+        assert final["source_images"][0]["content_sha256"] == sha256(png.getvalue()).hexdigest()
+        final_image, final_instruction = final["source_document"]["blocks"][1]["items"][1]["blocks"]
+        assert final_image["status"] == "available"
+        assert final_instruction["text"] == "Inspect the seal."
+
+
 @pytest.mark.parametrize("field,value,scoped",[("year",1999,False),("model_year",1999,False),("trim","Different",True),("engine_displacement_l",5.0,True),("drivetrain","RWD",True),("body_style","Coupe",True),("configuration","Different 5.0L RWD",True)])
 def test_actual_worker_rejects_wrong_year_aliases_and_configuration(runtime,field,value,scoped):
     import json

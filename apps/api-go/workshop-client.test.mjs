@@ -5653,6 +5653,43 @@ test('readable source ends the opening progress while the rewrite continues', as
   assert.match(h.nodes.get('article-note').textContent, /has not been reviewed/);
 });
 
+test('the reader displays supplier text before the original figures finish', async () => {
+  const first = mediaArticle([
+    { type: 'paragraph', text: 'Remove the retaining bolts.' },
+    { type: 'image', status: 'unavailable', unavailable_reason: 'SOURCE_MEDIA_PENDING', caption: 'Retaining bolt locations' },
+  ], [], {
+    source_body_preview: true, source_revision_id: null, view_revision: 'supplier-body',
+    processing: { job_id: 'capture', state: 'fetching_source' },
+  });
+  const full = mediaArticle([{ type: 'paragraph', text: 'Remove the retaining bolts.' }], [], {
+    view_revision: 'stored-source',
+  });
+  const seen = deferredAuthOperation(), release = deferredAuthOperation();
+  const h = articleMediaHarness({
+    session: { state: { authenticated: true, csrf: 'csrf' } }, stage() {}, openDemo: false,
+    requestArticleJSON: async () => ({ status: 200, data: { article: first } }),
+    async readArticle(read, { onUpdate }) {
+      onUpdate(await read());
+      seen.resolve();
+      await release.promise;
+      const result = { status: 200, data: { article: full } };
+      onUpdate(result);
+      return result;
+    },
+  });
+  runInNewContext(appSection('async function loadArticle(', 'function openArticle('), h.context);
+  const opening = h.context.loadArticle('a', h.g);
+  await seen.promise;
+  assert.equal(h.nodes.get('article-kind').textContent, 'Supplier source');
+  assert.match(h.nodes.get('article-content').textContent, /Remove the retaining bolts/);
+  assert.match(h.nodes.get('article-content').textContent, /Preparing illustration…Retaining bolt locations/);
+  assert.equal(h.statuses.at(-1).message, 'Source text is ready.');
+  release.resolve();
+  await opening;
+  assert.equal(h.nodes.get('article-kind').textContent, 'Stored source');
+  assert.doesNotMatch(h.nodes.get('article-content').textContent, /Preparing illustration/);
+});
+
 test('authoritative article not-found clears previously readable source and printing', async () => {
   const { requestArticleJSON } = await import('./workshop/catalog.mjs');
   const { readArticle } = await import('./workshop/article-read.mjs');
