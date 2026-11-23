@@ -8,7 +8,6 @@ test('HTML starts only the isolated bootstrap', () => {
   assert.doesNotMatch(source('index.html'), /src="\/workshop\/(app|demo)\.mjs"/);
   assert.match(source('index.html'), /Test checkout — no real charge/);
   assert.match(source('index.html'), /Sample — fictional content/);
-  assert.match(source('app.mjs'), /createCheckout\(\{\s*expectedMode:\s*\$\('test-banner'\)\.hidden\s*\?\s*undefined\s*:\s*'stripe_test'/);
 });
 test('sign-in is inert in initial HTML until async app readiness', () => {
   const button = source('index.html').match(/<button\b[^>]*\bid="signin"[^>]*>/)?.[0];
@@ -34,7 +33,7 @@ test('real demo uses the ordinary app only in test mode; sample stays separate',
     const main = { hidden: false };
     const nav = { hidden: false };
     await runInNewContext(`(async () => { ${code} })()`, {
-      URLSearchParams, location: { search }, document: {
+      AbortSignal, URLSearchParams, location: { search }, document: {
         documentElement: { dataset: {} },
         createElement: tag => ({ tag }),
         head: { append: element => preload.push(element) },
@@ -47,7 +46,14 @@ test('real demo uses the ordinary app only in test mode; sample stays separate',
       },
       loadModule: async path => {
         loaded.push(path);
-        return { requestInitialYears: () => null, readSessionBootstrap: () => null, bootstrap() {} };
+        return {
+          requestInitialYears: () => null,
+          startSavedSelectorReads: () => null,
+          readSessionBootstrap: () => null,
+          async bootstrap(_years, _account, { testCheckout }) {
+            if (testCheckout) nodes.get('test-banner').hidden = !(await testCheckout);
+          },
+        };
       },
     });
     assert.deepEqual(loaded, expected);
@@ -81,7 +87,7 @@ test('real demo request fails closed on unavailable or malformed mode signal', a
     const nodes = new Map(['test-banner', 'open-demo-banner', 'test-unavailable'].map(id => [id, { hidden: true }]));
     const main = { hidden: false };
     await runInNewContext(`(async () => { ${code} })()`, {
-      URLSearchParams, location: { search: '?demo=1' },
+      AbortSignal, URLSearchParams, location: { search: '?demo=1' },
       document: { documentElement: { dataset: {} }, getElementById: id => nodes.get(id), querySelector: () => main },
       fetch: response, loadModule: async path => loaded.push(path),
     });
@@ -91,15 +97,16 @@ test('real demo request fails closed on unavailable or malformed mode signal', a
     assert.equal(main.hidden, true);
   }
 });
-test('regular startup fetches public years and account status while checkout mode is pending', async () => {
+test('regular startup opens the app with the first reads while checkout mode is pending', async () => {
   const code = source('bootstrap.mjs').replaceAll('import(', 'loadModule(');
   let releaseMode;
+  let modeConfirmation;
   const result = Promise.resolve({ items: [{ year: 2024 }] });
   const account = [{ status: 'fulfilled', value: {} }];
   const events = [];
   const banner = { hidden: true };
   const started = runInNewContext(`(async () => { ${code} })()`, {
-    URLSearchParams, location: { search: '' }, document: {
+    AbortSignal, URLSearchParams, location: { search: '' }, document: {
       documentElement: { dataset: {} },
       createElement: () => ({}), head: { append() {} },
       getElementById: id => id === 'test-banner' ? banner : {},
@@ -111,7 +118,7 @@ test('regular startup fetches public years and account status while checkout mod
     },
     async loadModule(path) {
       if (path === './catalog.mjs') {
-        return { requestInitialYears(params) {
+        return { startSavedSelectorReads: () => null, requestInitialYears(params) {
           assert.equal(params.toString(), '');
           events.push('years requested');
           return result;
@@ -123,19 +130,20 @@ test('regular startup fetches public years and account status while checkout mod
           return account;
         } };
       }
-      return { async bootstrap(years, initialAccount) {
-        assert.equal(banner.hidden, false);
+      return { async bootstrap(years, initialAccount, { testCheckout }) {
+        assert.equal(banner.hidden, true);
         assert.equal(years, result);
         assert.equal(await initialAccount, account);
+        modeConfirmation = testCheckout;
         events.push('app bootstrapped');
       } };
     },
   });
   await new Promise(setImmediate);
-  assert.deepEqual(events, ['mode requested', 'years requested', 'account requested']);
+  assert.deepEqual(events, ['mode requested', 'years requested', 'account requested', 'app bootstrapped']);
   releaseMode({ ok: true, json: async () => ({ enabled: true }) });
   await started;
-  assert.deepEqual(events, ['mode requested', 'years requested', 'account requested', 'app bootstrapped']);
+  assert.equal(await modeConfirmation, true);
 });
 test('open demo handshake loads the real app without test checkout UI', async () => {
   const code = source('bootstrap.mjs').replaceAll('import(', 'loadModule(');
@@ -143,7 +151,7 @@ test('open demo handshake loads the real app without test checkout UI', async ()
   const nodes = new Map(['test-banner', 'open-demo-banner', 'test-unavailable'].map(id => [id, { hidden: true }]));
   const root = { dataset: {} };
   await runInNewContext(`(async () => { ${code} })()`, {
-    URLSearchParams,
+    AbortSignal, URLSearchParams,
     location: { search: '?demo=1' },
     document: { documentElement: root, getElementById: id => nodes.get(id), querySelector: () => ({ hidden: false }) },
     fetch: async () => ({ ok: true, json: async () => ({ enabled: true, access: 'open' }) }),

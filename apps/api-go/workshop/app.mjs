@@ -57,9 +57,9 @@ const selectorCacheLifetime = 30_000;
 const selectorCacheSize = 32;
 const navigation = new NavigationGeneration();
 const searchNavigation = new NavigationGeneration();
-const checkout = createCheckout({
-  expectedMode: $('test-banner').hidden ? undefined : 'stripe_test',
-});
+const checkout = createCheckout();
+let testStripeMode = $("test-banner").hidden === false;
+let checkoutModeReady = null;
 let vehicle = null,
   articles = [],
   indexLoaded = false,
@@ -2080,9 +2080,11 @@ async function purchase() {
       $("purchase-consent").hidden = true;
       $("agreement").disabled = true;
       const purchaseLabel = quote.configuration_label;
+      const mode = merchant?.checkout_mode === "simulation" ? "simulation"
+        : testStripeMode ? "stripe_test" : undefined;
       const result = await checkout.start(scope(), session.state.csrf, {
         signal: g.signal,
-        ...(merchant?.checkout_mode === "simulation" ? { mode: "simulation" } : {}),
+        ...(mode ? { mode } : {}),
       });
       if (!g.current()) return;
       if (result.state === "checkout") location.assign(result.checkout_url);
@@ -2160,7 +2162,11 @@ async function signIn() {
   }
   await restoreRoute();
 }
-export async function bootstrap(initialYears, initialAccount, { preservePicker = false, initialSelectors = null } = {}) {
+export async function bootstrap(initialYears, initialAccount, { preservePicker = false, initialSelectors = null, testCheckout } = {}) {
+  if (testCheckout) checkoutModeReady = testCheckout.then(enabled => {
+    testStripeMode = enabled;
+    $("test-banner").hidden = !enabled;
+  });
   invalidate();
   const params = new URLSearchParams(location.search);
   const early = openDemo || preservePicker ? null : initialSelectors;
@@ -2179,9 +2185,11 @@ export async function bootstrap(initialYears, initialAccount, { preservePicker =
   await Promise.all([accountCheck, restoreRoute(years, { initialSelectors: early })]);
 }
 function loadPurchaseConfiguration() {
-  const configRequest = requestJSON("/workshop/purchase-config.json")
-    .catch(() => null)
-    .then((config) => {
+  const configRequest = Promise.all([
+    requestJSON("/workshop/purchase-config.json").catch(() => null),
+    checkoutModeReady,
+  ])
+    .then(([config]) => {
       if (merchantRequest !== configRequest) return;
       merchant = config;
       merchantRequest = null;
