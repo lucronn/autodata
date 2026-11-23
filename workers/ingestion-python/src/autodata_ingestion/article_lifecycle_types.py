@@ -24,6 +24,7 @@ HTML_DOCUMENT_LINK_LAYOUT = "html-document-link-labels-v1"
 HTML_SECTION_TITLE_LAYOUT = "html-section-titles-v1"
 HTML_TABLE_SPAN_LAYOUT = "html-table-spans-v1"
 HTML_BOUND_IMAGE_LAYOUT = "html-bound-image-v1"
+BANKONE_HTML_FLOW_LAYOUT = "bankone-html-flow-v1"
 MIXED_HTML_PDF_LAYOUT = "mixed-html-pdf-v1"
 PDF_BLANK_PAGE_LAYOUT = "blank-pdf-pages-v1"
 PDF_COMPACT_FIGURE_LAYOUT = "compact-pdf-figures-v1"
@@ -179,6 +180,7 @@ class SourceArticleContext:
     legacy_published_html_table_caption_body: str | None = None
     legacy_published_html_document_link_body: str | None = None
     legacy_published_html_section_title_body: str | None = None
+    legacy_published_bankone_flow_body: str | None = None
 
 
 @dataclass(frozen=True)

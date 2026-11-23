@@ -45,6 +45,14 @@ class ConnectorDocumentEmbed(dict):
         self.untyped = untyped
 
 
+class ConnectorBankoneGraphic(dict):
+    """Authored HTML graphic position awaiting a matching connector receipt."""
+
+    def __init__(self, locator: str, alt: str):
+        super().__init__(kind="image", alt=alt)
+        self.graphic_locator = locator
+
+
 _PLAIN_MULTIWORD_SECTION_HEADERS = (
     "Technical Background",
     "Production Solution",
