@@ -385,20 +385,22 @@ _DIRECTION = re.compile(
     re.IGNORECASE,
 )
 _BOUNDARY_WORDS = {
-    "inboard": "inside", "inner": "inside", "inside": "inside", "internal": "inside", "interior": "inside",
-    "outboard": "outside", "outer": "outside", "outside": "outside", "external": "outside", "exterior": "outside",
+    "inboard": "inboard", "inner": "inside", "inside": "inside", "internal": "inside", "interior": "inside",
+    "outboard": "outboard", "outer": "outside", "outside": "outside", "external": "outside", "exterior": "outside",
 }
-_BOUNDARY_ALIASES = {"internal", "interior", "external", "exterior"}
+_BOUNDARY_SCOPED_WORDS = {"internal", "interior", "external", "exterior", "inboard", "outboard"}
 _ORIENTED_BOUNDARY = re.compile(
     r"\b(?P<direction>" + "|".join(_BOUNDARY_WORDS) + r")[ \t]+"
     r"(?P<target>(?:[a-z][a-z0-9'-]*[ \t]+)?(?:faces?|edges?|rims?|sides?|surfaces?|walls?|lips?|"
     r"flanges?|boundar(?:y|ies)))\b",
     re.IGNORECASE,
 )
-_BOUNDARY_OF = re.compile(r"[ \t]+of[ \t]+(?:(?:the|a|an|this|that)[ \t]+)?", re.IGNORECASE)
+_BOUNDARY_OF = re.compile(
+    r"[ \t]+(?:of|belonging[ \t]+to)[ \t]+(?:(?:the|a|an|this|that)[ \t]+)?", re.IGNORECASE,
+)
 _BOUNDARY_POSSESSOR = re.compile(
     r"\b(?:(?:the|a|an|this|that)[ \t]+(?P<part>(?:(?!(?:the|a|an|this|that|in|on|of|at|above|below|under|by|"
-    r"from|for|beside|and|or)[ \t])[\w-]+[ \t]+)*[\w-]+)|(?P<one>[\w-]+))['’]s[ \t]+$",
+    r"from|for|beside|and|or)[ \t])[\w-]+[ \t]+)*[\w-]+)|(?P<one>[\w-]+))['’]s?[ \t]+$",
     re.IGNORECASE,
 )
 _PROXIMITY = re.compile(
@@ -406,15 +408,17 @@ _PROXIMITY = re.compile(
     re.IGNORECASE,
 )
 _CLOSE_TO = re.compile(r"\bclose[ \t]+to\b", re.IGNORECASE)
-_PROXIMITY_PREDICATE = re.compile(
-    r"\b(?:is|are|was|were|be|been|being|sits?|sat|lies?|lay|rests?|stands?|stays?|remains?|"
-    r"located|positioned|placed|mounted|runs?|extends?|passes?|comes?|moves?)[ \t]+$",
+_PROXIMITY_SUBJECT = re.compile(
+    r"\b(?:the|this|that|a|an)[ \t]+(?P<subject>(?:[\w'-]+[ \t]+){1,8})"
+    r"(?:(?P<past>was|were|sat|lay|rested|stood|stayed|remained)|"
+    r"is|are|sits?|lies?|rests?|stands?|stays?|remains?)[ \t]+$",
     re.IGNORECASE,
 )
-_PROXIMITY_END = re.compile(r"[,.!?;:\n]|\b(?:but|before|after|until|while|when|which|where)\b", re.IGNORECASE)
+# Commas and conjunctions can continue a target or describe a second location.
+_PROXIMITY_END = re.compile(r"[.!?;\n]")
 _BOUNDARY_OWNER_END = re.compile(
-    _PROXIMITY_END.pattern
-    + r"|\b(?:am|is|are|was|were|has|have|holds?|identif(?:y|ies)|shows?|marks?|carries?|remains?|sits?|rests?)\b",
+    r"[,.!?;:\n]|\b(?:but|before|after|until|while|when|which|where|am|is|are|was|were|has|have|holds?|"
+    r"identif(?:y|ies)|shows?|marks?|carries?|remains?|sits?|rests?)\b",
     re.IGNORECASE,
 )
 _NEGATIVE_SCOPE = re.compile(
@@ -1941,8 +1945,8 @@ def build_auto_prompt(document, *, context):
         payload["prompt_version"] = _SPATIAL_SCOPE_PROMPT_VERSION
         payload["rules"].append(
             "Keep directional terms on the same physical boundary and part. An equivalent adjective "
-            "must describe the same target. Preserve whether a location is near a component or the "
-            "procedure directs you to close it. Keep location details out of the introduction."
+            "must describe the same target. For proximity, preserve the subject, state and complete reference. "
+            "Keep real closure instructions intact and omit placement details from the introduction."
         )
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
@@ -2190,7 +2194,7 @@ def _normalize_boundary_aliases(original, replacement):
     source_matches = list(_ORIENTED_BOUNDARY.finditer(original))
     draft_matches = list(_ORIENTED_BOUNDARY.finditer(replacement))
     if not any(
-        match["direction"].casefold() in _BOUNDARY_ALIASES
+        match["direction"].casefold() in _BOUNDARY_SCOPED_WORDS
         for matches in (source_matches, draft_matches) for match in matches
     ):
         return original, replacement
@@ -2207,12 +2211,15 @@ def _proximity_references(text):
     references = []
     for match in _PROXIMITY.finditer(text):
         ambiguous = match["relation"].casefold().startswith("close")
-        if ambiguous and not _PROXIMITY_PREDICATE.search(text, max(0, match.start() - 48), match.start()):
+        subject = _PROXIMITY_SUBJECT.search(text, max(0, match.start() - 128), match.start())
+        if ambiguous and subject is None:
             continue
         end = _PROXIMITY_END.search(text, match.end())
         target = _component_words(text[match.end() : end.start() if end else len(text)])
         if target:
-            references.append((target, match.span("relation") if ambiguous else None))
+            identity = _component_words(subject["subject"]) if subject else ()
+            past = bool(subject and subject["past"])
+            references.append(((identity, target, past), match.span("relation") if ambiguous else None))
     return references
 
 
@@ -2222,7 +2229,7 @@ def _normalize_proximity(original, replacement):
     draft_refs = _proximity_references(replacement)
     if not any(span is not None for refs in (source_refs, draft_refs) for _, span in refs):
         return original, replacement
-    if [target for target, _ in source_refs] != [target for target, _ in draft_refs]:
+    if [relation for relation, _ in source_refs] != [relation for relation, _ in draft_refs]:
         raise ValueError("REWRITE_DIRECTION_MUTATION")
 
     def normalize(text, refs):
