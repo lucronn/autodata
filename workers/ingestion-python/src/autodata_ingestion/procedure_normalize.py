@@ -14,6 +14,7 @@ from .article_document import (
     validate_ordered_document,
 )
 from .article_lifecycle_types import (
+    HTML_BOUND_IMAGE_LAYOUT,
     HTML_MEDIA_TABLE_HEADER_LAYOUT,
     HTML_NESTED_TABLE_LAYOUT,
     HTML_NUMERIC_SUPERSCRIPT_LAYOUT,
@@ -62,6 +63,7 @@ def normalize_procedure_article(
             or entry.get("html_media_table_header_layout") == HTML_MEDIA_TABLE_HEADER_LAYOUT
             or entry.get("html_nested_table_layout") == HTML_NESTED_TABLE_LAYOUT
             or entry.get("html_numeric_superscript_layout") == HTML_NUMERIC_SUPERSCRIPT_LAYOUT
+            or entry.get("html_bound_image_layout") == HTML_BOUND_IMAGE_LAYOUT
             or entry.get("mixed_html_pdf_layout") == MIXED_HTML_PDF_LAYOUT
             or entry.get("html_table_span_layout") == HTML_TABLE_SPAN_LAYOUT
             or entry.get("leading_decimal_layout") == LEADING_DECIMAL_LAYOUT
