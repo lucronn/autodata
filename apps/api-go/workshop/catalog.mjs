@@ -239,6 +239,8 @@ const DEFAULT_COLLECTION_POLL_ATTEMPTS = Math.ceil(
 );
 const EMPTY_COLLECTION_PROBE_DELAY_MS = 350;
 const EMPTY_COLLECTION_PROBE_TIMEOUT_MS = 500;
+const PARTIAL_SELECTOR_FAST_WINDOW_MS = 8000;
+const MAX_PARTIAL_SELECTOR_INTERVAL_MS = 12_000;
 
 // Hydration polling is bounded to one minute. The UI reports source progress;
 // this internal polling budget is not a user-facing attempt counter.
@@ -252,10 +254,14 @@ export async function readCollection(
     interval = DEFAULT_COLLECTION_POLL_INTERVAL_MS,
     wait = delay,
     emptyProbe,
+    backoffWithChoices = false,
     now = () => performance.now(),
   } = {},
 ) {
   let latest;
+  let choicesSince;
+  let partialInterval = interval;
+  const pollUntil = backoffWithChoices ? now() + DEFAULT_COLLECTION_POLL_WINDOW_MS : Infinity;
   function update(data, attempt) {
     signal?.throwIfAborted();
     if (!Array.isArray(data?.items)) throw new Error('The catalog returned an unreadable list. Try again.');
@@ -267,8 +273,10 @@ export async function readCollection(
   }
   for (let attempt = 0; attempt < attempts; attempt++) {
     signal?.throwIfAborted();
-    if (update(await read(), attempt)) return latest;
-    if (attempt === attempts - 1) break;
+    const remaining = Math.floor(pollUntil - now());
+    if (remaining < 1 && latest) break;
+    if (update(await read(backoffWithChoices ? Math.max(1, remaining) : undefined), attempt)) return latest;
+    if (attempt === attempts - 1 || now() >= pollUntil) break;
     if (attempt === 0 && emptyProbe && !latest.items.length && interval > EMPTY_COLLECTION_PROBE_DELAY_MS) {
       // Check newly stored options once without moving the regular polling schedule.
       const deadline = now() + interval;
@@ -282,7 +290,19 @@ export async function readCollection(
       }
       await wait(Math.max(0, deadline - now()), signal);
     } else {
-      await wait(interval, signal);
+      const checkedAt = now();
+      // The second supplier may follow the first by six seconds. Keep the
+      // initial cadence through that interval, then slow optional refreshes.
+      if (backoffWithChoices && !desired && latest.items.length > 0) {
+        choicesSince ??= checkedAt;
+        if (checkedAt - choicesSince >= PARTIAL_SELECTOR_FAST_WINDOW_MS)
+          partialInterval = Math.min(partialInterval * 2, MAX_PARTIAL_SELECTOR_INTERVAL_MS);
+      } else {
+        choicesSince = undefined;
+        partialInterval = interval;
+      }
+      if (checkedAt + partialInterval >= pollUntil) break;
+      await wait(partialInterval, signal);
     }
   }
   return { ...latest, timedOut: true };

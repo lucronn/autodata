@@ -94,6 +94,53 @@ test('a partial list with visible choices keeps the normal polling cadence', asy
   assert.deepEqual(waits, [1500]);
 });
 
+test('visible selector choices back off within the one-minute window', async () => {
+  const partial = { items: [{ id: 'envision-awd' }], complete: false, hydrating: true };
+  let clock = 0;
+  const reads = [];
+  const timeouts = [];
+  const result = await readCollection(async timeout => {
+    reads.push(clock);
+    timeouts.push(timeout);
+    clock += 150;
+    return partial;
+  }, {
+    backoffWithChoices: true,
+    now: () => clock,
+    wait: async ms => { clock += ms; },
+  });
+  assert.deepEqual(reads, [0, 1650, 3300, 4950, 6600, 8250, 11400, 17550, 29700, 41850, 54000]);
+  assert.equal(timeouts.at(-1), 6000);
+  assert.ok(reads.at(-1) < 60_000);
+  assert.equal(result.timedOut, true);
+  assert.equal(result.complete, false);
+  assert.deepEqual(result.items, partial.items);
+});
+
+test('a second supplier can publish choices within the original picker cadence', async () => {
+  let clock = 0;
+  const rows = [{ id: 'first' }];
+  const later = { items: [...rows, { id: 'second' }], complete: true, hydrating: false };
+  const result = await readCollection(async () =>
+    clock >= 6500 ? later : { items: rows, complete: false, hydrating: true }, {
+    backoffWithChoices: true, now: () => clock, wait: async ms => { clock += ms; },
+  });
+  assert.equal(clock, 7500);
+  assert.deepEqual(result, later);
+});
+
+test('a saved choice missing from a partial list keeps the normal polling cadence', async () => {
+  const partial = { items: [{ id: 'other' }], complete: false, hydrating: true };
+  const found = { ...partial, items: [{ id: 'saved' }] };
+  const replies = [partial, partial, found];
+  const waits = [];
+  const result = await readCollection(async () => replies.shift(), {
+    desired: 'saved', backoffWithChoices: true, wait: async ms => { waits.push(ms); },
+  });
+  assert.deepEqual(waits, [1500, 1500]);
+  assert.deepEqual(result, found);
+});
+
 test('obsolete requests never publish their result after vehicle selection changes', async () => {
   const controller = new AbortController();
   let resolveRead, updates = 0;
@@ -2775,8 +2822,9 @@ test('the authorized owned vehicle shows its article action without purchase pri
 
     context.access = 'missing';
     context.renderPurchase();
-    assert.equal($('purchase-price').hidden, false);
-    assert.equal($('purchase-price').textContent, availableQuote ? '$20 USD · one-time' : 'Price is currently unavailable.');
+    assert.equal($('purchase-price').hidden, !availableQuote);
+    assert.equal($('purchase-price').textContent, availableQuote ? '$20 USD · one-time' : '');
+    assert.equal($('purchase-action').hidden, !availableQuote);
     assert.equal($('purchase-action').disabled, !availableQuote);
   }
 });
@@ -2795,9 +2843,12 @@ test('purchase availability status reports unavailable without a quote', async (
 test('purchase availability status reports unavailable without merchant configuration', async () => {
   const required = Object.assign(new Error('Access not ready'), { status: 403, code: 'ENTITLEMENT_REQUIRED' });
   const h = paidPurchaseLifecycleHarness([]);
-  h.context.merchant = null;
+  h.context.merchant = { enabled: false };
   await h.context.operation(async () => { throw required; });
+  assert.equal(h.$('purchase-action').hidden, true);
   assert.equal(h.$('purchase-action').disabled, true);
+  assert.equal(h.$('purchase-price').hidden, true);
+  assert.equal(h.$('purchase-price').textContent, '');
   assert.match(h.statuses.at(-1).message, /Purchasing is currently unavailable/);
 });
 
@@ -6292,13 +6343,13 @@ test('canceling a prefetched selector skips its fallback read', async () => {
   assert.deepEqual(h.displayed, []);
 });
 
-test('actual selector timeout remains a retryable loading failure with partial rows preserved', async()=>{
+test('a selector timeout keeps populated choices usable and offers a retry', async()=>{
  for(const items of [[],[{id:'cfg-1',engine:'2.0L',complete:true}]]) {
   const h=selectorOptionsHarness({items,complete:false,hydrating:true});
   await h.load();
   const last=h.statuses.at(-1);
-  assert.equal(last.error,true);
-  assert.match(last.text,/loading|load/i);
+  assert.equal(Boolean(last.error), !items.length);
+  assert.match(last.text, items.length ? /Choose an available engine/ : /loading|load/i);
   assert.doesNotMatch(last.text,/No choices|Choose your vehicle/);
   assert.equal(typeof last.retry,'function');
   assert.equal(h.$('retry').hidden,false);

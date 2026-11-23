@@ -389,7 +389,7 @@ async function loadOptions(name, g, desired = "", initial = null) {
   stage(name);
   $(name).disabled = true;
   const result = await readCollection(
-    async () => {
+    async (timeout) => {
       if (cached && (!desired || cached.items.some(choice))) return cached;
       if (initial) {
         const response = await initial;
@@ -405,11 +405,12 @@ async function loadOptions(name, g, desired = "", initial = null) {
         }
         // Stored descendants cannot start ingestion. A regular read can do so once the parent is valid.
       }
-      return requestJSON(path, { signal: g.signal });
+      return requestJSON(path, { signal: g.signal, timeout });
     },
     {
       signal: g.signal,
       desired,
+      backoffWithChoices: true,
       async emptyProbe(timeout) {
         try {
           return await readStoredSelector(path, g.signal, timeout);
@@ -422,22 +423,30 @@ async function loadOptions(name, g, desired = "", initial = null) {
       onUpdate(data) {
         if (!g.current()) return;
         populate(name, data.items, desired);
-        if (!showingPartial && data.items.length && (data.hydrating || data.discovering)) {
-          showingPartial = true;
-          status(`More ${label} choices are loading. You can choose an available option.`, { busy: true });
-        }
+        if (!(data.hydrating || data.discovering)) return;
+        const hasChoices = data.items.length > 0;
+        if (hasChoices === showingPartial) return;
+        showingPartial = hasChoices;
+        if (hasChoices)
+          status(`More ${label} choices are loading. You can choose an available option.`, { cancelable: true });
+        else status(`Loading ${label} choices…`, { busy: true });
       },
     },
   );
   if (!g.current()) return;
   if (result !== cached) rememberSelector(path, name, result);
   const selected = desired && result.items.some(choice);
-  if (!selected && (result.timedOut || (result.complete === false && !usableEngineChoices(name, result))))
+  if (!selected && (result.timedOut || (result.complete === false && !usableEngineChoices(name, result)))) {
+    if (!desired && result.items.length) {
+      status(`Choose an available ${label}. Some choices could not be loaded.`, { retry: () => restoreRoute() });
+      return;
+    }
     throw new Error(
       result.items.length
         ? "Some choices loaded, but the source catalog could not finish loading. Choose an available option or try again."
         : "The source catalog could not finish loading these choices. Try again.",
     );
+  }
   if (desired && !selected)
     throw new Error(
       "This saved vehicle choice is unavailable. Choose another vehicle.",
@@ -457,8 +466,8 @@ function renderPurchase() {
     (access === "unknown" && paidOrder !== null && paidOrder.id === currentOrder &&
       vehicle?.id === paidOrder.configuration_id && vehicle?.region === paidOrder.region));
   const priced = validQuote(quote, scope());
-  const configured = !openDemo && purchaseConfigured();
-  const canPurchase = session.state.authenticated && access === "missing" && !confirming && priced && configured;
+  const configured = !openDemo && priced && purchaseConfigured();
+  const canPurchase = session.state.authenticated && access === "missing" && !confirming && configured;
   const canResume = Boolean(checkoutToResume());
   const purchaseLabel = vehicle?.orderLabel || (priced ? quote.configuration_label : vehicleIdentityLabel());
   $("purchase").hidden = !validScope(scope());
@@ -472,10 +481,8 @@ function renderPurchase() {
     return;
   }
   const price = $("purchase-price");
-  price.hidden = access === "owned" || paymentReceived || (confirming && session.state.authenticated);
-  price.textContent = price.hidden ? "" : priced
-    ? "$20 USD · one-time"
-    : "Price is currently unavailable.";
+  price.hidden = !configured || access === "owned" || paymentReceived || (confirming && session.state.authenticated);
+  price.textContent = price.hidden ? "" : "$20 USD · one-time";
   $("purchase-terms").hidden = !configured;
   $("purchase-message").textContent =
     access === "revoked"
@@ -495,7 +502,10 @@ function renderPurchase() {
                   : access === "missing"
                     ? "One purchase for this exact configuration and region. No renewal is required, subject to published terms and source availability."
                     : "Checking access. Try again if the service is unavailable.";
-  $("purchase-action").textContent = !session.state.authenticated
+  const action = $("purchase-action");
+  action.hidden = session.state.authenticated && access !== "owned" &&
+    !paymentReceived && !canResume && !confirming && !canPurchase;
+  action.textContent = action.hidden ? "" : !session.state.authenticated
     ? "Sign in with Google"
     : access === "owned"
       ? "Open articles"
@@ -506,7 +516,7 @@ function renderPurchase() {
           : confirming
             ? ({ open: "Checkout open", unavailable: "Checkout status unavailable" }[unconfirmedOrder.state] || "Payment pending")
             : "Buy for $20 USD";
-  $("purchase-action").disabled = !session.state.authenticated
+  action.disabled = !session.state.authenticated
     ? !session.state.ready
     : access === "owned"
       ? false
