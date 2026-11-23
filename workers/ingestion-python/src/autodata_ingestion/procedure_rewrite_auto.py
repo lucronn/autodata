@@ -70,6 +70,7 @@ _PROSE_PROMPT_VERSION = "full-prose-auto-prompt-v55"
 _SUPERSCRIPT_PROMPT_VERSION = "full-prose-auto-prompt-v56"
 _COMPOUND_MEASUREMENT_PROMPT_VERSION = "full-prose-auto-prompt-v57"
 _FLUID_OUNCE_RATE_PROMPT_VERSION = "full-prose-auto-prompt-v58"
+_SPATIAL_SCOPE_PROMPT_VERSION = "full-prose-auto-prompt-v59"
 _NUMERIC_SUPERSCRIPT = re.compile(r"[⁰¹²³⁴⁵⁶⁷⁸⁹]|\^\([+−-]?(?:[0-9]*\.[0-9]+|[0-9]+/[0-9]+)\)")
 _WORDS = re.compile(r"\w+")
 _MIN_COPIED_SENTENCE_WORDS = 6
@@ -381,6 +382,39 @@ _DIRECTION = re.compile(
     r"|(?P<lateral>" + _LATERAL_DIRECTION + r")(?!\s+(?:behind|over|the|a|an|handed)\b)"
     r"|(?P<end>front|rear)|(?P<inner>inboard|inner|inside)|(?P<outer>outboard|outer|outside)"
     r"|(?P<vertical>upper|lower|top|bottom)(?!\s+(?:the|a|an)\b))\b",
+    re.IGNORECASE,
+)
+_BOUNDARY_WORDS = {
+    "inboard": "inside", "inner": "inside", "inside": "inside", "internal": "inside", "interior": "inside",
+    "outboard": "outside", "outer": "outside", "outside": "outside", "external": "outside", "exterior": "outside",
+}
+_BOUNDARY_ALIASES = {"internal", "interior", "external", "exterior"}
+_ORIENTED_BOUNDARY = re.compile(
+    r"\b(?P<direction>" + "|".join(_BOUNDARY_WORDS) + r")[ \t]+"
+    r"(?P<target>(?:[a-z][a-z0-9'-]*[ \t]+)?(?:faces?|edges?|rims?|sides?|surfaces?|walls?|lips?|"
+    r"flanges?|boundar(?:y|ies)))\b",
+    re.IGNORECASE,
+)
+_BOUNDARY_OF = re.compile(r"[ \t]+of[ \t]+(?:(?:the|a|an|this|that)[ \t]+)?", re.IGNORECASE)
+_BOUNDARY_POSSESSOR = re.compile(
+    r"\b(?:(?:the|a|an|this|that)[ \t]+(?P<part>(?:(?!(?:the|a|an|this|that|in|on|of|at|above|below|under|by|"
+    r"from|for|beside|and|or)[ \t])[\w-]+[ \t]+)*[\w-]+)|(?P<one>[\w-]+))['’]s[ \t]+$",
+    re.IGNORECASE,
+)
+_PROXIMITY = re.compile(
+    r"\b(?P<relation>close[ \t]+to|near(?:[ \t]+to)?)[ \t]+(?:the|a|an|this|that)[ \t]+",
+    re.IGNORECASE,
+)
+_CLOSE_TO = re.compile(r"\bclose[ \t]+to\b", re.IGNORECASE)
+_PROXIMITY_PREDICATE = re.compile(
+    r"\b(?:is|are|was|were|be|been|being|sits?|sat|lies?|lay|rests?|stands?|stays?|remains?|"
+    r"located|positioned|placed|mounted|runs?|extends?|passes?|comes?|moves?)[ \t]+$",
+    re.IGNORECASE,
+)
+_PROXIMITY_END = re.compile(r"[,.!?;:\n]|\b(?:but|before|after|until|while|when|which|where)\b", re.IGNORECASE)
+_BOUNDARY_OWNER_END = re.compile(
+    _PROXIMITY_END.pattern
+    + r"|\b(?:am|is|are|was|were|has|have|holds?|identif(?:y|ies)|shows?|marks?|carries?|remains?|sits?|rests?)\b",
     re.IGNORECASE,
 )
 _NEGATIVE_SCOPE = re.compile(
@@ -1865,7 +1899,7 @@ def _build_auto_prompt_v56(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def _build_compound_measurement_prompt(document, *, context, include_fluid_ounces):
+def _compound_measurement_prompt_payload(document, *, context, include_fluid_ounces):
     payload = _auto_prompt_payload_v56(document, context=context)
     measurements = _COMPOUND_MEASUREMENT
     version = _COMPOUND_MEASUREMENT_PROMPT_VERSION
@@ -1884,21 +1918,40 @@ def _build_compound_measurement_prompt(document, *, context, include_fluid_ounce
             "Retain the full text of compound flow-rate and kilogram-force specifications exactly. "
             "Keep their units, limits, directions and components together, and omit them from the introduction."
         )
-    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+    return payload
 
 
 def _build_auto_prompt_v57(document, *, context):
-    return _build_compound_measurement_prompt(document, context=context, include_fluid_ounces=False)
+    payload = _compound_measurement_prompt_payload(document, context=context, include_fluid_ounces=False)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def _build_auto_prompt_v58(document, *, context):
+    payload = _compound_measurement_prompt_payload(document, context=context, include_fluid_ounces=True)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def _has_spatial_scope(text):
+    return any(pattern.search(text) for pattern in (_ORIENTED_BOUNDARY, _PROXIMITY, _CLOSE_TO))
 
 
 def build_auto_prompt(document, *, context):
-    return _build_compound_measurement_prompt(document, context=context, include_fluid_ounces=True)
+    payload = _compound_measurement_prompt_payload(document, context=context, include_fluid_ounces=True)
+    if any(_has_spatial_scope(slot["text"]) for slot in payload["slots"]):
+        payload["prompt_version"] = _SPATIAL_SCOPE_PROMPT_VERSION
+        payload["rules"].append(
+            "Keep directional terms on the same physical boundary and part. An equivalent adjective "
+            "must describe the same target. Preserve whether a location is near a component or the "
+            "procedure directs you to close it. Keep location details out of the introduction."
+        )
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
 def _auto_prompt_version(document, *, context, prompt_hash):
     """Identify the rules bound to the saved model attempt."""
     for builder in (
-        build_auto_prompt, _build_auto_prompt_v57, _build_auto_prompt_v56, _build_auto_prompt_v55, _build_auto_prompt_v54,
+        build_auto_prompt, _build_auto_prompt_v58, _build_auto_prompt_v57, _build_auto_prompt_v56,
+        _build_auto_prompt_v55, _build_auto_prompt_v54,
         _build_auto_prompt_v53, _build_auto_prompt_v52,
         _build_auto_prompt_v51,
         _build_auto_prompt_v50,
@@ -2108,6 +2161,78 @@ def _execution_order(text):
 
 def _negative_scope(text):
     return bool(_NEGATIVE_SCOPE.search(text) or _DIRECTIVE_RESTRICTION.search(text))
+
+
+def _component_words(text):
+    return tuple(_WORDS.findall(text.casefold()))
+
+
+def _boundary_owners(text, match):
+    owners = set()
+    if owner := _BOUNDARY_OF.match(text, match.end()):
+        end = _BOUNDARY_OWNER_END.search(text, owner.end())
+        owners.add(_component_words(text[owner.end() : end.start() if end else len(text)]))
+    if possessive := _BOUNDARY_POSSESSOR.search(text, max(0, match.start() - 128), match.start()):
+        owners.add(_component_words(possessive["part"] or possessive["one"]))
+    return owners
+
+
+def _boundary_signature(text, matches):
+    return tuple(
+        (_BOUNDARY_WORDS[match["direction"].casefold()], tuple(match["target"].casefold().split()),
+         _boundary_owners(text, match))
+        for match in matches
+    )
+
+
+def _normalize_boundary_aliases(original, replacement):
+    """Compare physical aliases only when they still point to the same boundary and owner."""
+    source_matches = list(_ORIENTED_BOUNDARY.finditer(original))
+    draft_matches = list(_ORIENTED_BOUNDARY.finditer(replacement))
+    if not any(
+        match["direction"].casefold() in _BOUNDARY_ALIASES
+        for matches in (source_matches, draft_matches) for match in matches
+    ):
+        return original, replacement
+    if _boundary_signature(original, source_matches) != _boundary_signature(replacement, draft_matches):
+        raise ValueError("REWRITE_DIRECTION_MUTATION")
+
+    def normalize(match):
+        return _BOUNDARY_WORDS[match["direction"].casefold()] + " " + match["target"]
+
+    return _ORIENTED_BOUNDARY.sub(normalize, original), _ORIENTED_BOUNDARY.sub(normalize, replacement)
+
+
+def _proximity_references(text):
+    references = []
+    for match in _PROXIMITY.finditer(text):
+        ambiguous = match["relation"].casefold().startswith("close")
+        if ambiguous and not _PROXIMITY_PREDICATE.search(text, max(0, match.start() - 48), match.start()):
+            continue
+        end = _PROXIMITY_END.search(text, match.end())
+        target = _component_words(text[match.end() : end.start() if end else len(text)])
+        if target:
+            references.append((target, match.span("relation") if ambiguous else None))
+    return references
+
+
+def _normalize_proximity(original, replacement):
+    """Exclude proved proximity phrases from the closing-action comparison."""
+    source_refs = _proximity_references(original)
+    draft_refs = _proximity_references(replacement)
+    if not any(span is not None for refs in (source_refs, draft_refs) for _, span in refs):
+        return original, replacement
+    if [target for target, _ in source_refs] != [target for target, _ in draft_refs]:
+        raise ValueError("REWRITE_DIRECTION_MUTATION")
+
+    def normalize(text, refs):
+        for _, span in reversed(refs):
+            if span is not None:
+                start, end = span
+                text = text[:start] + "near" + text[end:]
+        return text
+
+    return normalize(original, source_refs), normalize(replacement, draft_refs)
 
 
 def _direction_labels(text):
@@ -3178,6 +3303,7 @@ def _combined_replacement_preparation_targets(text, *, recognize_then_comma=Fals
 def _uses_prose_guards(prompt_version, slot_count):
     return bool(slot_count) and prompt_version in (
         None, _SUPERSCRIPT_PROMPT_VERSION, _COMPOUND_MEASUREMENT_PROMPT_VERSION, _FLUID_OUNCE_RATE_PROMPT_VERSION,
+        _SPATIAL_SCOPE_PROMPT_VERSION,
         _PROSE_PROMPT_V4, _PROSE_PROMPT_V5, _PROSE_PROMPT_V6, _PROSE_PROMPT_V7,
         _PROSE_PROMPT_V8, _PROSE_PROMPT_V9, _PROSE_PROMPT_V10, _CELL_PROSE_PROMPT_V11,
         _PROSE_PROMPT_V12, _PROSE_PROMPT_V13, _PROSE_PROMPT_V14, _PROSE_PROMPT_V15, _PROSE_PROMPT_V16,
@@ -3190,6 +3316,7 @@ def _uses_prose_guards(prompt_version, slot_count):
 def _include_cell_blocks(prompt_version):
     return prompt_version in (
         None, _SUPERSCRIPT_PROMPT_VERSION, _COMPOUND_MEASUREMENT_PROMPT_VERSION, _FLUID_OUNCE_RATE_PROMPT_VERSION,
+        _SPATIAL_SCOPE_PROMPT_VERSION,
         _CELL_PROSE_PROMPT_V11, _PROSE_PROMPT_V12, _PROSE_PROMPT_V13,
         _PROSE_PROMPT_V14, _PROSE_PROMPT_V15, _PROSE_PROMPT_V16, _PROSE_PROMPT_V17, _PROSE_PROMPT_V18,
         _PROSE_PROMPT_V19, _PROSE_PROMPT_V20, _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23,
@@ -3202,13 +3329,17 @@ def _require_changes(source, candidate, *, prompt_version, include_cell_blocks=N
     restored = {"blocks": candidate["blocks"][1:]}
     if include_cell_blocks is None:
         include_cell_blocks = _include_cell_blocks(prompt_version)
+    guard_spatial_scope = prompt_version in (None, _SPATIAL_SCOPE_PROMPT_VERSION)
     compound_measurement = None
-    if prompt_version in (None, _FLUID_OUNCE_RATE_PROMPT_VERSION):
+    if prompt_version in (None, _FLUID_OUNCE_RATE_PROMPT_VERSION, _SPATIAL_SCOPE_PROMPT_VERSION):
         compound_measurement = _EXTENDED_COMPOUND_MEASUREMENT
     elif prompt_version == _COMPOUND_MEASUREMENT_PROMPT_VERSION:
         compound_measurement = _COMPOUND_MEASUREMENT
     guard_superscripts = compound_measurement is not None or prompt_version == _SUPERSCRIPT_PROMPT_VERSION
-    if prompt_version in (_SUPERSCRIPT_PROMPT_VERSION, _COMPOUND_MEASUREMENT_PROMPT_VERSION, _FLUID_OUNCE_RATE_PROMPT_VERSION):
+    if prompt_version in (
+        _SUPERSCRIPT_PROMPT_VERSION, _COMPOUND_MEASUREMENT_PROMPT_VERSION, _FLUID_OUNCE_RATE_PROMPT_VERSION,
+        _SPATIAL_SCOPE_PROMPT_VERSION,
+    ):
         prompt_version = _PROSE_PROMPT_VERSION
     slots = full.prose_slots(source, include_cell_blocks=include_cell_blocks)
     guard_prose = _uses_prose_guards(prompt_version, len(slots))
@@ -3439,12 +3570,18 @@ def _require_changes(source, candidate, *, prompt_version, include_cell_blocks=N
                 if choices != _alternative_pair(replacement):
                     raise ValueError("REWRITE_CLAUSE_MUTATION")
         # Proven alternative actions and literal targets have no execution order.
-        if guard_direction and not bound_alternatives and _direction_scope(original) != _direction_scope(replacement):
-            raise ValueError("REWRITE_DIRECTION_MUTATION")
+        source_directions, draft_directions = original, replacement
+        if guard_spatial_scope and guard_direction and not bound_alternatives:
+            source_directions, draft_directions = _normalize_boundary_aliases(original, replacement)
+            source_directions, draft_directions = _normalize_proximity(source_directions, draft_directions)
+        if guard_direction and not bound_alternatives:
+            if _direction_scope(source_directions) != _direction_scope(draft_directions):
+                raise ValueError("REWRITE_DIRECTION_MUTATION")
         if guard_actions and not technical_only and not bound_alternatives:
-            original_actions = _execution_order(original)
-            if original_actions and original_actions != _execution_order(replacement):
-                raise ValueError("REWRITE_ACTION_MUTATION")
+            original_actions = _execution_order(source_directions)
+            if original_actions or (guard_spatial_scope and _CLOSE_TO.search(draft_directions)):
+                if original_actions != _execution_order(draft_directions):
+                    raise ValueError("REWRITE_ACTION_MUTATION")
         if guard_clauses and _clause_assignment_changed(
             original, replacement, preserve_order=guard_bound_order, preserve_steps=guard_bound_steps,
         ):
@@ -3534,10 +3671,14 @@ def _require_changes(source, candidate, *, prompt_version, include_cell_blocks=N
 
 def require_current_publication_checks(source, candidate, *, saved_prompt_version):
     """Apply current prose rules to the saved prompt's editable slots."""
-    if saved_prompt_version == _FLUID_OUNCE_RATE_PROMPT_VERSION:
+    if saved_prompt_version == _SPATIAL_SCOPE_PROMPT_VERSION:
         return
     documents = (source, candidate)
-    if any(_FLUID_OUNCE_RATE.search(text) for document in documents for text in full._strings(document)):
+    if any(_has_spatial_scope(text) for document in documents for text in full._strings(document)):
+        current_version = _SPATIAL_SCOPE_PROMPT_VERSION
+    elif saved_prompt_version == _FLUID_OUNCE_RATE_PROMPT_VERSION:
+        return
+    elif any(_FLUID_OUNCE_RATE.search(text) for document in documents for text in full._strings(document)):
         current_version = _FLUID_OUNCE_RATE_PROMPT_VERSION
     elif saved_prompt_version == _COMPOUND_MEASUREMENT_PROMPT_VERSION:
         return
@@ -3636,6 +3777,7 @@ def validate_auto(source, candidate, *, response=None, prompt_version=None):
             _SUPERSCRIPT_PROMPT_VERSION: "full-prose-auto-validator-v54",
             _COMPOUND_MEASUREMENT_PROMPT_VERSION: "full-prose-auto-validator-v55",
             _FLUID_OUNCE_RATE_PROMPT_VERSION: "full-prose-auto-validator-v56",
+            _SPATIAL_SCOPE_PROMPT_VERSION: "full-prose-auto-validator-v57",
         }.get(prompt_version, "full-prose-auto-validator-v53")
     report.update(validator_version=validator_version, profile_version=PROFILE,
         publication_mode="automatic", content_acceptance_required=False,

@@ -494,3 +494,24 @@ def test_available_figure_accepts_a_missing_historical_null_reason():
     repaired["blocks"][1]["unavailable_reason"] = "a changed reason"
     with pytest.raises(ValueError, match="MEDIA_DRIFT"):
         repair_published_media(old, published, repaired, response=response, prompt_version=prompt)
+
+
+def test_repair_replays_v59_equivalent_orientation_at_the_authored_figure_position():
+    image = _image()
+    original = "The painted mark on the inside guide face of the cover identifies the latch."
+    rewrite = "Find the latch by the reference mark on the cover's interior guide face."
+    before = _document([{"kind": "ordered_list", "items": [original]}, image])
+    corrected = _document([{"kind": "ordered_list", "items": [{"text": original, "blocks": [image]}]}])
+    response = _response(before, [rewrite])
+    prompt = "full-prose-auto-prompt-v59"
+    published = render_auto(before, response, prompt_version=prompt)
+
+    result = repair_published_media(before, published, corrected, response=response, prompt_version=prompt)
+
+    step = result.document["blocks"][1]["items"][0]
+    assert step["text"] == rewrite
+    assert step["blocks"][0]["storage_key"] == image["storage_key"]
+    assert result.validation.passed
+    assert result.validation.report["validator_version"] == "full-prose-auto-validator-v57"
+    assert result.provenance["original_prompt_version"] == prompt
+    assert result.provenance["model_dispatch_count"] == 0
