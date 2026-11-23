@@ -458,7 +458,10 @@ _COMPONENT_ASSEMBLY_LABEL = re.compile(r"(?:the )?" + _ASSEMBLY_COMPONENT + r" a
 _ASSEMBLY_FOR_COMPONENT_LABEL = re.compile(r"(?:the )?assembly (?:for|of) (?:the )?" + _ASSEMBLY_COMPONENT)
 _LIST_ITEM_PROSE_PATH = re.compile(r"/items/\d+(?:/text)?$")
 _ASSEMBLY_LABEL_DELIMITERS = frozenset({"a", "an", "and", "or", "the", "then", "before", "after", "with", "without"})
-_ASSEMBLY_INSTRUCTION = re.compile(r"^(?:adjust|clean|depress|drain|fill|lubricate|operate|select|test|verify)\b", re.I)
+_ASSEMBLY_INSTRUCTION = re.compile(
+    r"^(?:adjust|clean|depress|disassemble|drain|fill|lubricate|operate|reassemble|"
+    r"rebuild|refit|repair|select|service|test|verify)\b", re.I,
+)
 _ASSEMBLY_SWITCH_NAMES = frozenset({"start switch", "stop lamp switch", "stop light switch"})
 
 
@@ -3739,11 +3742,12 @@ def _require_changes(source, candidate, *, prompt_version, include_cell_blocks=N
 def require_current_publication_checks(source, candidate, *, saved_prompt_version):
     """Apply current prose rules to the saved prompt's editable slots."""
     if saved_prompt_version == _ASSEMBLY_LABEL_PROMPT_VERSION:
-        return
-    _check_assembly_components(
-        full.prose_slots(source, include_cell_blocks=_include_cell_blocks(saved_prompt_version)),
-        {"blocks": candidate["blocks"][1:]},
-    )
+        saved_prompt_version = _auto_prompt_payload_v59(source, context={})["prompt_version"]
+    else:
+        _check_assembly_components(
+            full.prose_slots(source, include_cell_blocks=_include_cell_blocks(saved_prompt_version)),
+            {"blocks": candidate["blocks"][1:]},
+        )
     if saved_prompt_version == _SPATIAL_SCOPE_PROMPT_VERSION:
         return
     documents = (source, candidate)

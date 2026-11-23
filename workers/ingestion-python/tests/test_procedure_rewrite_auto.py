@@ -79,9 +79,13 @@ def test_automatic_rewrite_replays_old_assembly_draft_before_current_publication
         auto.require_current_publication_checks(source, saved, saved_prompt_version=version)
 
 
-@pytest.mark.parametrize("label", ["CLEAN THE FUEL PUMP ASSEMBLY", "CLEAN FUEL PUMP ASSEMBLY"])
-def test_automatic_rewrite_keeps_an_uppercase_cleaning_instruction_editable(label):
-    source, draft = _assembly_label_rewrite("Carry out cleaning of the fuel pump assembly.", label=label)
+@pytest.mark.parametrize(("label", "replacement"), [
+    ("CLEAN THE FUEL PUMP ASSEMBLY", "Carry out cleaning of the fuel pump assembly."),
+    ("CLEAN FUEL PUMP ASSEMBLY", "Carry out cleaning of the fuel pump assembly."),
+    ("REBUILD FUEL PUMP ASSEMBLY", "Carry out the rebuild of the fuel pump assembly."),
+])
+def test_automatic_rewrite_keeps_an_uppercase_assembly_instruction_editable(label, replacement):
+    source, draft = _assembly_label_rewrite(replacement, label=label)
     assert run(source, draft).error_code is None
 
 
@@ -92,6 +96,24 @@ def test_automatic_rewrite_keeps_an_uppercase_cleaning_instruction_editable(labe
 def test_automatic_rewrite_preserves_switch_names_with_verb_like_words(label, replacement):
     source, draft = _assembly_label_rewrite(replacement, label=label)
     assert run(source, draft).error_code == "REWRITE_SPEC_SCOPE_MUTATION"
+
+
+def test_assembly_label_prompt_rechecks_new_technical_qualifiers_at_publication():
+    from autodata_ingestion import procedure_rewrite_auto as auto
+
+    source, draft = _assembly_label_rewrite("Assembly for the rear timing sensor.")
+    paragraph = document("The reservoir contains 14 US gal of water.")["blocks"][0]
+    paragraph.update(block_id="p1", source_order=2)
+    source["blocks"].append(paragraph)
+    draft["replacements"].append({
+        "block_id": "p1", "path": "/blocks/1/text", "action": "rewrite",
+        "text": "The reservoir holds 14 US gal of water per second.", "reason": "",
+    })
+    version = "full-prose-auto-prompt-v60"
+    saved = auto.render_auto(source, draft, prompt_version=version)
+    assert auto.validate_auto(source, saved, response=draft, prompt_version=version).passed
+    with pytest.raises(ValueError, match="^REWRITE_SPEC_SCOPE_MUTATION$"):
+        auto.require_current_publication_checks(source, saved, saved_prompt_version=version)
 
 
 @pytest.mark.parametrize("replacement", ["Remove the cover.", " REMOVE  THE COVER. ", "Remove the cover!"])
