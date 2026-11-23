@@ -1881,6 +1881,7 @@ def adapt_bound_article(
     keep_html_media_table_headers: bool = False,
     keep_html_table_spans: bool = False,
     keep_html_nested_tables: bool = False,
+    keep_html_numeric_superscripts: bool = False,
     keep_html_flow_figure_captions: bool = False,
     keep_html_multiline_figure_captions: bool = False,
     keep_structured_table_cell_order: bool = False,
@@ -2037,6 +2038,7 @@ def adapt_bound_article(
                         keep_html_media_table_headers=keep_html_media_table_headers,
                         keep_html_table_spans=keep_html_table_spans,
                         keep_html_nested_tables=keep_html_nested_tables,
+                        keep_html_numeric_superscripts=keep_html_numeric_superscripts,
                         keep_html_flow_figure_captions=keep_html_flow_figure_captions,
                         keep_html_multiline_figure_captions=keep_html_multiline_figure_captions,
                         step_parser=step_parser,
@@ -2089,6 +2091,7 @@ def adapt_bound_article(
             keep_html_media_table_headers=keep_html_media_table_headers,
             keep_html_table_spans=keep_html_table_spans,
             keep_html_nested_tables=keep_html_nested_tables,
+            keep_html_numeric_superscripts=keep_html_numeric_superscripts,
             keep_html_flow_figure_captions=keep_html_flow_figure_captions,
             keep_html_multiline_figure_captions=keep_html_multiline_figure_captions,
         )
@@ -2134,6 +2137,7 @@ def adapt_bound_article(
             **({"html_media_table_headers": True} if parser.html_media_table_headers else {}),
             **({"html_table_spans": True} if parser.html_table_spans else {}),
             **({"html_nested_tables": True} if parser.html_nested_tables else {}),
+            **({"html_numeric_superscripts": True} if parser.html_numeric_superscripts else {}),
         }
     if media == "text/plain":
         return {

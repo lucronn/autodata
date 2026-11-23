@@ -175,6 +175,7 @@ def run_article_job(repo,lease,*,registry,object_store,model_client,hooks=None):
                     keep_ordered_step_instructions=True,
                     keep_image_only_step_instructions=True,
                     keep_leading_decimals=True,
+                    keep_html_numeric_superscripts=True,
                 )
                 if lost.is_set():raise LeaseLost("heartbeat lost during source IO")
                 _hook(hooks,"before_source_commit")

@@ -16,6 +16,7 @@ from .article_lifecycle_types import (
     HTML_MEDIA_TABLE_HEADER_LAYOUT,
     HTML_MULTILINE_FIGURE_CAPTION_LAYOUT,
     HTML_NESTED_TABLE_LAYOUT,
+    HTML_NUMERIC_SUPERSCRIPT_LAYOUT,
     HTML_TABLE_CAPTION_LAYOUT,
     HTML_TABLE_SPAN_LAYOUT,
     LEADING_DECIMAL_LAYOUT,
@@ -375,6 +376,7 @@ def capture_source_article(
     keep_ordered_step_instructions=False,
     keep_image_only_step_instructions=False,
     keep_leading_decimals=False,
+    keep_html_numeric_superscripts=False,
 ):
     if not 0 < deadline_seconds <= 30:
         raise ValueError("capture deadline must be within 30 seconds")
@@ -602,6 +604,7 @@ def capture_source_article(
             keep_html_table_spans=keep_html_table_spans,
             keep_html_media_table_headers=keep_html_media_table_headers,
             keep_html_nested_tables=keep_html_nested_tables,
+            keep_html_numeric_superscripts=keep_html_numeric_superscripts,
             keep_html_flow_figure_captions=(
                 keep_html_flow_figure_captions and body.body["sha256"] != context.legacy_published_html_flow_figure_body
             ),
@@ -712,6 +715,7 @@ def capture_source_article(
     html_table_spans = article.get("html_table_spans") is True
     html_media_table_headers = article.get("html_media_table_headers") is True
     html_nested_tables = article.get("html_nested_tables") is True
+    html_numeric_superscripts = article.get("html_numeric_superscripts") is True
     handled_pdf_embeds = article.get("handled_pdf_embeds") is True
     positioned_html_table_images = article.get("positioned_html_table_images") is True
     positioned_pdf_figures = article.get("positioned_pdf_figures") is True
@@ -733,7 +737,7 @@ def capture_source_article(
     )
     new_structure = (
         structured_table_columns or structured_table_cell_order or step_layout or html_table_captions or html_flow_figure_captions
-        or html_table_spans or html_media_table_headers or html_nested_tables or image_only_headings
+        or html_table_spans or html_media_table_headers or html_nested_tables or html_numeric_superscripts or image_only_headings
         or article.get("embedded_pdf")
         or (article.get("authored_html_headings") and any(block.get("kind") == "heading" for block in _walk(blocks)))
     )
@@ -771,6 +775,8 @@ def capture_source_article(
         resources[0]["html_media_table_header_layout"] = manifest[0]["html_media_table_header_layout"] = HTML_MEDIA_TABLE_HEADER_LAYOUT
     if html_nested_tables:
         resources[0]["html_nested_table_layout"] = manifest[0]["html_nested_table_layout"] = HTML_NESTED_TABLE_LAYOUT
+    if html_numeric_superscripts:
+        resources[0]["html_numeric_superscript_layout"] = manifest[0]["html_numeric_superscript_layout"] = HTML_NUMERIC_SUPERSCRIPT_LAYOUT
     if structured_table_columns:
         resources[0]["structured_table_columns_layout"] = manifest[0]["structured_table_columns_layout"] = STRUCTURED_TABLE_COLUMNS_LAYOUT
     if structured_table_cell_order:

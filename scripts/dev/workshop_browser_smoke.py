@@ -29,6 +29,7 @@ OTHER = '22222222-2222-4222-8222-222222222222'
 ARTICLE = '33333333-3333-4333-8333-333333333333'
 REVISION = '44444444-4444-4444-8444-444444444444'
 ORDER = '55555555-5555-4555-8555-555555555555'
+LINKED_PDF_FIXTURE_EXPONENTS = 'Chamber reference pressure: 1.2 × 10⁻³ Pa. Fixture scale factor: 10^(0.5).'
 ENGINES = ('chromium', 'firefox', 'webkit')
 
 
@@ -1311,6 +1312,7 @@ async def expect_figure_after_text(figure, text):
 async def expect_linked_pdf(article, *, rewritten=False):
     from playwright.async_api import expect
 
+    await expect(article).to_contain_text(LINKED_PDF_FIXTURE_EXPONENTS)
     cell = article.locator('ol[start="4"] > li[value="9"] table td').first
     figures = cell.locator('figure:has(img[alt="Figure from page 1"])')
     await expect(figures).to_have_count(2)
@@ -1691,6 +1693,7 @@ async def api_case(browser,origin,name,output,observations=None,*,verify_reader_
             await expect(page.locator(nested_item + " > p").first).to_have_text("Take off the pump.")
             if linked_pdf:
                 await expect_html_table_figure(article_content)
+                await expect(article_content).to_contain_text(LINKED_PDF_FIXTURE_EXPONENTS)
             # The page can render a warm article from the prepare response.
             # Capture the actual read endpoint separately after the GUI reload.
             warm_detail=await api21_get(context,origin+f'/v1/catalog/vehicles/{configuration}/articles/{article_id}',

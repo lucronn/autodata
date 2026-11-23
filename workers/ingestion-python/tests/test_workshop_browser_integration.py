@@ -335,17 +335,25 @@ def _lifecycle(receipt,operation,state,reason=None,elapsed_us=0):
 
 class BrowserBridge(PaidBridge):
     """Synthetic Stripe facts still enter the actual public signed webhook."""
-    def control_handler(self):
+    def control_handler(self, *, warm_snapshot=False):
         parent=super().control_handler();owner=self
         class Control(parent):
             def dispatch(self):
                 target=urlsplit(self.path)
-                if not target.path.startswith('/browser-fixture/'):
+                warming=warm_snapshot and self.path=='/r3-fixture/snapshot'
+                if not warming and not target.path.startswith('/browser-fixture/'):
                     return super().dispatch()
                 try:
                     assert self.headers.get('X-R3-Fixture-Token')==owner.token
                     assert self.headers.get('Content-Length','0')=='0'
-                    if target.path=='/browser-fixture/lose-response':
+                    if warming:
+                        assert self.command=='GET'
+                        snapshot=owner.snapshot()
+                        # The warm check compares the digest of every immutable
+                        # row. Sending the rows again exhausts the browser receipt.
+                        fields=('provider_calls','source_calls','asset_calls','model_calls','counts','immutable_sha256')
+                        result={field:snapshot[field] for field in fields}
+                    elif target.path=='/browser-fixture/lose-response':
                         assert self.command=='POST';owner.payment.lose_once=True;result={'ok':True}
                     elif target.path=='/browser-fixture/event':
                         assert self.command=='GET'
@@ -418,6 +426,8 @@ def _child(root_name,engine,provider,directory,monkeypatch):
                             '<figcaption>Alignment witness marks</figcaption></figure>'
                             'Keep shim seated.</td></tr></table>'
                             '<p>Do not run the pump dry.</p>'
+                            '<p>Chamber reference pressure: 1.2 × 10<sup>&minus; 3</sup> Pa. '
+                            'Fixture scale factor: 10<sup>0.5</sup>.</p>'
                             '<p>Remove the cover while the ignition is off.</p>'
                             '<ol start="4"><li value="9">Remove the pump.'
                             '<figure><img src="/fixture/alignment.png" alt="Shim">'
@@ -462,7 +472,8 @@ def _child(root_name,engine,provider,directory,monkeypatch):
             model=stack.enter_context(serve(bridge.model_handler()))
             runtime.env['INCEPTION_API_BASE_URL']=model+'/v1';runtime.env['INCEPTION_API_TIMEOUT_SECONDS']='35'
             for key,value in runtime.env.items():monkeypatch.setenv(key,value)
-            ensure=stack.enter_context(serve(bridge.ensure_handler()));control=stack.enter_context(serve(bridge.control_handler()))
+            ensure=stack.enter_context(serve(bridge.ensure_handler()))
+            control=stack.enter_context(serve(bridge.control_handler(warm_snapshot=not google)))
             allowed=('PATH','GOTOOLCHAIN','GOPROXY','GOFLAGS','CGO_ENABLED','GOMODCACHE','GOCACHE','GOTMPDIR','PLAYWRIGHT_BROWSERS_PATH','XDG_CACHE_HOME','XDG_CONFIG_HOME','TMPDIR')
             env={key:os.environ[key] for key in allowed if key in os.environ}
             assert env.get('GOTOOLCHAIN')=='local' and env.get('GOPROXY')=='off'

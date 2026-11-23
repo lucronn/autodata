@@ -201,7 +201,9 @@ def fake_child_dependencies(producer,monkeypatch,tmp_path,browser_code=0,stale=F
         'status': 'published', 'rewrite_profile_version': 'full-prose-auto-v1',
         'validation_report': {'passed': True, 'changed_prose_slots': ['/blocks/0/text']},
     }
-    bridge=types.SimpleNamespace(token='never-retain-token',model_handler=lambda:None,ensure_handler=lambda:None,control_handler=lambda:None,
+    def control_handler(*,warm_snapshot):
+        assert warm_snapshot == (root != ROOT_NAME)
+    bridge=types.SimpleNamespace(token='never-retain-token',model_handler=lambda:None,ensure_handler=lambda:None,control_handler=control_handler,
         snapshot=lambda:{'proxy':{'errors':[]},'ensure':{'active':0},
                          'immutable_rows':{'canonical_article_revisions':[published]}},
         stop=lambda:[],release_model=threading.Event())
