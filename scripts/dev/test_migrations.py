@@ -78,6 +78,7 @@ class MigrationPlanTests(unittest.TestCase):
                 "048_article_source_projection_v8.sql",
                 "049_article_source_projection_v9.sql",
                 "050_article_source_projection_v10.sql",
+                "051_source_bound_correction_attempts.sql",
             ],
         )
 

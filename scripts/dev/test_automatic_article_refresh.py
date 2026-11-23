@@ -59,6 +59,32 @@ def test_source_bound_cli_passes_the_exact_job_and_source(tmp_path, monkeypatch,
     assert json.loads(capsys.readouterr().out)["items"][0]["job_id"] == str(new_job)
 
 
+def test_correction_cli_requires_explicit_budget_and_exact_job(tmp_path, monkeypatch, capsys):
+    article, source, prior, current = (uuid4() for _ in range(4))
+    path = tmp_path / "selection.json"
+    path.write_text(json.dumps([{"canonical_article_id": str(article), "expected_source_revision_id": str(source)}]))
+    refresh = module()
+    repo = object()
+    calls = []
+
+    def schedule(repository, article_id, **kwargs):
+        calls.append((repository, article_id, kwargs))
+        return SimpleNamespace(job_id=current, created=True)
+
+    monkeypatch.setattr(refresh, "schedule_source_bound_correction", schedule)
+    args = ["--selection", str(path), "--actor", "operator", "--reason", "Correct the draft",
+            "--correct-from", str(prior), "--apply"]
+    with pytest.raises(SystemExit):
+        refresh.main(args, repo=repo)
+    with pytest.raises(SystemExit):
+        refresh.main([*args, "--model-call-budget", "13"], repo=repo)
+    assert not calls
+    assert refresh.main([*args, "--model-call-budget", "8"], repo=repo) == 0
+    assert calls == [(repo, article, {"expected_job_id": prior, "expected_source_revision_id": source,
+                      "actor": "operator", "reason": "Correct the draft", "model_call_budget": 8})]
+    assert json.loads(capsys.readouterr().out)["items"][0]["job_id"] == str(current)
+
+
 def historical_source(repo, fixture):
     from test_article_transform import prepare_transform
     lease, source = prepare_transform(repo, fixture)

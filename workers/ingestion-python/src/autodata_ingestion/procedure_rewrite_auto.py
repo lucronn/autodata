@@ -3425,7 +3425,9 @@ def _include_cell_blocks(prompt_version):
     )
 
 
-def _require_changes(source, candidate, *, prompt_version, include_cell_blocks=None, slot_errors=None):
+def _require_changes(
+    source, candidate, *, prompt_version, include_cell_blocks=None, slot_errors=None, introduction_only=False,
+):
     # The introduced first block is the only offset in source paths.
     restored = {"blocks": candidate["blocks"][1:]}
     if include_cell_blocks is None:
@@ -3584,6 +3586,8 @@ def _require_changes(source, candidate, *, prompt_version, include_cell_blocks=N
             raise ValueError("REWRITE_INTRODUCTION_UNSUPPORTED_CLAIM")
         if guard_claims:
             _check_intro_claims(source, slots, introduction)
+        if introduction_only:
+            return
 
     def check_slot(slot):
         original = slot["text"]
@@ -3825,6 +3829,12 @@ def require_current_publication_checks(source, candidate, *, saved_prompt_versio
         source, candidate, prompt_version=current_version,
         include_cell_blocks=_include_cell_blocks(saved_prompt_version),
     )
+
+
+def check_automatic_introduction(source, wording):
+    full._check_introduction(source, wording)
+    _require_changes(source, {"blocks": [{"text": wording}, *source["blocks"]]},
+                     prompt_version=None, introduction_only=True)
 
 
 def failed_rewrite_passages(source, response):
