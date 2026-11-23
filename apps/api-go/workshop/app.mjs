@@ -129,7 +129,7 @@ function articleRequestPath(id, suffix = "", query) {
 }
 function status(
   text,
-  { error = false, busy = false, retry = null, complete = false, cancelable = busy } = {},
+  { error = false, busy = false, retry = null, retryText = "Try again", complete = false, cancelable = busy } = {},
 ) {
   $("activity-text").textContent = text;
   $("activity").dataset.tone = error ? "error" : busy ? "loading" : "ready";
@@ -137,6 +137,7 @@ function status(
   if (complete) $("completion-status").textContent = text;
   $("cancel").hidden = !cancelable;
   $("retry").hidden = !retry;
+  if (retry) $("retry").textContent = retryText;
   retryAction = retry;
   $("loading-progress").hidden = !busy;
   document.body.dataset.busy = String(busy);
@@ -1379,7 +1380,34 @@ function renderArticle(article, g, redraw = false) {
   }
   document.title = `${article.title || "Article"} | AutoData`;
 }
-async function loadArticle(id, g, { savedLink = false } = {}) {
+function showArticleReadStatus(id, article, timedOut = false) {
+  const readable = readableArticle(article);
+  const checkUpdate = readable && !openDemo && session.state.mode === "firebase" &&
+    (timedOut || article.content_origin === "source");
+  status(
+    timedOut
+      ? readable ? "Article is readable. You can check for an update again." : "Preparation is taking longer. You can check again."
+      : article?.processing?.state === "needs_review"
+        ? readable
+          ? article.content_origin === "source"
+            ? "Stored source is readable. Article preparation needs review."
+            : "Article is readable. An update needs review."
+          : "This article needs review."
+        : article?.processing?.state === "failed"
+          ? readable ? "Preparation could not finish. The available article is still readable." : "Article preparation could not finish."
+          : readable
+            ? "Article ready."
+            : "No readable content is available.",
+    {
+      retry: checkUpdate
+        ? () => openArticle(id, null, { refreshOnly: true })
+        : timedOut || !readable ? () => openArticle(id) : null,
+      retryText: checkUpdate ? "Check for an update" : undefined,
+      complete: readable,
+    },
+  );
+}
+async function loadArticle(id, g, { savedLink = false, refreshOnly = false } = {}) {
   if ((!openDemo && !session.state.authenticated) || !g.current()) return;
   const sameArticle = currentArticle?.id === id;
   let refreshVisibleArticle = sameArticle && !$("reader").hidden && readableArticle(currentArticle);
@@ -1410,7 +1438,7 @@ async function loadArticle(id, g, { savedLink = false } = {}) {
       clearUnavailableArticle();
     throw error;
   };
-  const paid = !openDemo && session.state.mode !== "local";
+  const prepare = !refreshOnly && !openDemo && session.state.mode !== "local";
   const selected = vehicle;
   const matchesConfiguration = (configuration) =>
     configuration?.id === selected.id && configuration?.region === selected.region;
@@ -1418,7 +1446,7 @@ async function loadArticle(id, g, { savedLink = false } = {}) {
   const detailPath = articleRequestPath(id);
   const readOptions = { signal: g.signal, preferShortPublicationCheck: true };
   let initialReadStartedAt = performance.now();
-  const first = await (paid
+  const first = await (prepare
     ? requestArticleDetail(order, articleRequestPath(id, "/prepare"), {
         ...readOptions,
         method: "POST",
@@ -1428,7 +1456,7 @@ async function loadArticle(id, g, { savedLink = false } = {}) {
         headers: { "X-CSRF-Token": session.state.csrf },
       })
     : requestArticleDetail(order, detailPath, readOptions)).catch(async (error) => {
-        if (paid && g.current() && error.status === 0 && error.code === "NETWORK_UNAVAILABLE") {
+        if (prepare && g.current() && error.status === 0 && error.code === "NETWORK_UNAVAILABLE") {
           // Prepare may have committed before the browser lost the response.
           initialReadStartedAt = performance.now();
           const recovered = await requestArticleDetail(order, detailPath, { ...readOptions, preferShortSourceCheck: true })
@@ -1505,27 +1533,10 @@ async function loadArticle(id, g, { savedLink = false } = {}) {
     },
   ).catch(handleReadError);
   if (!g.current()) return;
-  const article = result.data?.article;
-  const readable = readableArticle(article);
-  status(
-    result.timedOut
-      ? readable ? "Article is readable. You can check for an update again." : "Preparation is taking longer. You can check again."
-      : article?.processing?.state === "needs_review"
-        ? readable
-          ? article.content_origin === "source"
-            ? "Stored source is readable. Article preparation needs review."
-            : "Article is readable. An update needs review."
-          : "This article needs review."
-        : article?.processing?.state === "failed"
-          ? readable ? "Preparation could not finish. The available article is still readable." : "Article preparation could not finish."
-          : readable
-            ? "Article ready."
-            : "No readable content is available.",
-    { retry: result.timedOut || !readable ? () => openArticle(id) : null, complete: readable },
-  );
+  showArticleReadStatus(id, result.data?.article, result.timedOut);
   return true;
 }
-function openArticle(id, indexLink = null) {
+function openArticle(id, indexLink = null, { refreshOnly = false } = {}) {
   const indexURL = location.href;
   const params = indexLink && new URL(indexURL).searchParams;
   updateURL({ article: id });
@@ -1540,9 +1551,9 @@ function openArticle(id, indexLink = null) {
     (g) => {
       if (articleIndexOrigin && articleIndexOrigin.readerURL === location.href)
         articleIndexOrigin.generation = g;
-      return loadArticle(id, g);
+      return loadArticle(id, g, { refreshOnly });
     },
-    () => openArticle(id),
+    () => openArticle(id, null, { refreshOnly }),
   );
 }
 function validSourceURL(value) {
@@ -2511,6 +2522,8 @@ async function recheckReader(g) {
     vehicle = detail.data.configuration;
     renderPurchase();
     renderArticle(article, g);
+    if (articleViewRevision(opened) !== articleViewRevision(article) || opened.processing?.state !== article.processing?.state)
+      showArticleReadStatus(opened.id, article);
     show("reader");
     if (reader.contains(focused) && document.activeElement === document.body)
       focused.focus({ preventScroll: true });
