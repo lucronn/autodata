@@ -1889,6 +1889,10 @@ def adapt_bound_article(
     keep_image_only_headings: bool = False,
     keep_ordered_step_instructions: bool = False,
     keep_image_only_step_instructions: bool = False,
+    keep_bound_html_images: bool = False,
+    skip_noscript_images: frozenset[tuple[int, int]] = frozenset(),
+    lazy_image_alts: dict[tuple[int, int], str] | None = None,
+    declared_image_refs: frozenset[str] = frozenset(),
     step_parser=None, resolved_pdf_refs: frozenset[str] = frozenset(),
 ) -> dict[str, Any]:
     """Adapt fetched bytes under proven connector scope, without weakening URL intake."""
@@ -1914,6 +1918,10 @@ def adapt_bound_article(
             keep_html_numeric_superscripts=keep_html_numeric_superscripts,
             keep_html_flow_figure_captions=keep_html_flow_figure_captions,
             keep_html_multiline_figure_captions=keep_html_multiline_figure_captions,
+            keep_bound_html_images=keep_bound_html_images and not include_untyped_pdf_positions,
+            skip_noscript_images=skip_noscript_images,
+            lazy_image_alts=lazy_image_alts,
+            declared_image_refs=declared_image_refs,
         )
         parser.feed(html)
         parser.close()
@@ -1958,6 +1966,9 @@ def adapt_bound_article(
             **({"html_table_spans": True} if parser.html_table_spans else {}),
             **({"html_nested_tables": True} if parser.html_nested_tables else {}),
             **({"html_numeric_superscripts": True} if parser.html_numeric_superscripts else {}),
+            **({"html_bound_images": True} if parser.html_bound_images else {}),
+            **({"html_image_mirrors": frozenset(parser.html_image_mirrors)} if parser.html_image_mirrors else {}),
+            **({"html_lazy_image_alts": parser.html_lazy_image_alts} if parser.html_lazy_image_alts else {}),
         }
 
     media = resource.media_type.split(";", 1)[0]
@@ -2106,6 +2117,10 @@ def adapt_bound_article(
                         keep_html_numeric_superscripts=keep_html_numeric_superscripts,
                         keep_html_flow_figure_captions=keep_html_flow_figure_captions,
                         keep_html_multiline_figure_captions=keep_html_multiline_figure_captions,
+                        keep_bound_html_images=keep_bound_html_images,
+                        skip_noscript_images=skip_noscript_images,
+                        lazy_image_alts=lazy_image_alts,
+                        declared_image_refs=declared_image_refs,
                         step_parser=step_parser,
                     )
                 blocks = segment_plain_article_text(text, step_parser=step_parser)

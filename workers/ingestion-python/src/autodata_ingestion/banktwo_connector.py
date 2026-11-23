@@ -28,6 +28,11 @@ _TABLE_ROW_GROUPS = frozenset({"thead", "tbody", "tfoot"})
 _VOID_TAGS = frozenset({
     "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr",
 })
+_HTML_SPACE = " \t\n\f\r"
+_SRCSET_SPACE = re.compile(r"[ \t\n\f\r]*")
+_SRCSET_URL = re.compile(r"[^ \t\n\f\r]+")
+_SRCSET_WIDTH = re.compile(r"0*[1-9][0-9]*w")
+_SRCSET_DENSITY = re.compile(r"(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?x")
 _HTML_LIST_NUMBER = re.compile(r"([+-]?)0*([0-9]{1,10})")
 _SUPERSCRIPT_NUMBER = re.compile(r"[+−⁺⁻-]?\s*[0-9⁰¹²³⁴⁵⁶⁷⁸⁹]+")
 _FRACTIONAL_SUPERSCRIPT = re.compile(r"[+−-]?\s*(?:[0-9]*\.[0-9]+|[0-9]+\s*[/⁄]\s*[0-9]+)")
@@ -39,6 +44,37 @@ def _html_list_number(value):
         return None
     match = _HTML_LIST_NUMBER.fullmatch(value.strip())
     return list_number(int(match[1] + match[2])) if match else None
+
+
+def _bound_srcset_ref(value, bindings, ref):
+    # A comma can be part of the URL. A comma after the URL or descriptor
+    # separates candidates. Accept only the usual width and density forms.
+    position = 0
+    while position < len(value):
+        position = _SRCSET_SPACE.match(value, position).end()
+        if position == len(value):
+            break
+        match = _SRCSET_URL.match(value, position)
+        url, position = match[0], match.end()
+        if url.startswith(","):
+            return None
+        if url.endswith(","):
+            url = url[:-1]
+            if url.endswith(","):
+                return None
+        else:
+            comma = value.find(",", position)
+            end = len(value) if comma == -1 else comma
+            descriptor = value[position:end].strip(_HTML_SPACE)
+            if descriptor and not _SRCSET_WIDTH.fullmatch(descriptor):
+                if not _SRCSET_DENSITY.fullmatch(descriptor) or not 0 < float(descriptor[:-1]) < float("inf"):
+                    return None
+            position = end + 1
+        candidate = bindings.get(url)
+        if not candidate or (ref and candidate != ref):
+            return None
+        ref = candidate
+    return ref
 
 
 def _table_spans(attrs):
@@ -96,6 +132,8 @@ class _FigureFrame:
     caption: list[dict[str, Any]] | None = None
     open_caption: int | None = None
     invalid: bool = False
+    lazy_images: dict[tuple[int, int], tuple[str, bool]] = field(default_factory=dict)
+    noscript_images: dict[tuple[int, int], tuple[str, str]] = field(default_factory=dict)
 
 
 @dataclass
@@ -131,10 +169,20 @@ class ArticleParser(HTMLParser):
         keep_html_multiline_figure_captions=False,
         keep_html_table_spans=False, keep_html_media_table_headers=False,
         keep_html_nested_tables=False, keep_html_numeric_superscripts=False, resolved_pdf_refs=frozenset(),
-        include_untyped_pdf_positions=False,
+        include_untyped_pdf_positions=False, keep_bound_html_images=False, skip_noscript_images=frozenset(),
+        declared_image_refs=frozenset(), lazy_image_alts=None,
     ):
         super().__init__(convert_charrefs=True)
         self._asset_bindings = {item["source_url"]: item["resource_ref"] for item in asset_bindings}
+        self._keep_bound_html_images = keep_bound_html_images and bool(self._asset_bindings)
+        self._skip_noscript_images = skip_noscript_images
+        self._lazy_image_alts = lazy_image_alts or {}
+        self._declared_image_refs = declared_image_refs
+        self._hidden_image_scope = None
+        self._hidden_image_depth = 0
+        self.html_bound_images = False
+        self.html_image_mirrors = set()
+        self.html_lazy_image_alts = {}
         self.blocks = []
         self.links = []
         self._text = []
@@ -512,6 +560,19 @@ class ArticleParser(HTMLParser):
         else:
             frame.invalid = True
 
+    def _bound_lazy_image(self, attrs):
+        locator = (attrs.get("data-src") or "").strip(_HTML_SPACE)
+        ref = self._asset_bindings.get(locator) if locator else None
+        if locator and not ref:
+            return None
+        for name in ("srcset", "data-srcset"):
+            value = (attrs.get(name) or "").strip(_HTML_SPACE)
+            if value:
+                ref = _bound_srcset_ref(value, self._asset_bindings, ref)
+                if not ref:
+                    return None
+        return ref
+
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
         if self._hidden_embed_tags:
@@ -531,6 +592,14 @@ class ArticleParser(HTMLParser):
                 self._hidden_html_tag = tag
                 self._hidden_html_depth = 1
             return
+        if self._keep_bound_html_images:
+            if tag == self._hidden_image_scope:
+                self._hidden_image_depth += 1
+            elif self._hidden_image_scope is None and tag not in _VOID_TAGS and (
+                tag in {"template", "noscript"} or "hidden" in attrs
+            ):
+                self._hidden_image_scope = tag
+                self._hidden_image_depth = 1
         if tag == "figure" and (self._keep_html_figure_captions or self._keep_html_flow_figure_captions):
             self._start_figure()
         if tag == "figcaption" and self._figures and self._figures[-1].blocks is not None:
@@ -658,17 +727,36 @@ class ArticleParser(HTMLParser):
             elif attrs.get("href"):
                 self.links.append(attrs["href"])
         if tag == "img":
+            if self._skip_noscript_images and self.getpos() in self._skip_noscript_images:
+                return
             src = attrs.get("src") or ""
             ref = self._asset_bindings.get(src) or attrs.get("data-resource-ref") or attrs.get("asset_resource_ref")
+            lazy_ref = None
+            if (self._keep_bound_html_images and not ref and src not in self._declared_image_refs
+                    and not src.startswith("data:image/")
+                    and self._hidden_image_scope is None and "hidden" not in attrs):
+                lazy_ref = self._bound_lazy_image(attrs)
+                if lazy_ref:
+                    ref = lazy_ref
+                    src = ""
+                    self.html_bound_images = True
             if not src and not ref:
                 return
             image = {"kind": "image", "alt": attrs.get("alt", ""), "name": attrs.get("img_name", "")}
+            if self._lazy_image_alts:
+                image["alt"] = self._lazy_image_alts.get(self.getpos(), image["alt"])
             if src:
                 image["url"] = src
             if ref:
                 image["asset_resource_ref"] = ref
             if self._figures:
                 frame = self._figures[-1]
+                if lazy_ref:
+                    frame.lazy_images[self.getpos()] = (lazy_ref, "alt" not in attrs and not attrs.get("img_name"))
+                elif self._hidden_image_scope == "noscript":
+                    mirror_ref = ref or (src if src in self._declared_image_refs else None)
+                    if mirror_ref:
+                        frame.noscript_images[self.getpos()] = (mirror_ref, (attrs.get("alt") or "").strip())
                 if frame.image is not None or frame.open_caption is not None:
                     frame.invalid = True
                 frame.image = image
@@ -692,6 +780,10 @@ class ArticleParser(HTMLParser):
             if tag in {"script", "style"}:
                 self._skip -= 1
             return
+        if tag == self._hidden_image_scope:
+            self._hidden_image_depth -= 1
+            if not self._hidden_image_depth:
+                self._hidden_image_scope = None
         if tag == "sup" and self._superscript_depth:
             self._superscript_depth -= 1
             if not self._superscript_depth:
@@ -702,6 +794,19 @@ class ArticleParser(HTMLParser):
             return
         if tag == "figure" and self._figures:
             frame = self._figures.pop()
+            if frame.lazy_images and frame.noscript_images:
+                lazy_refs = {ref for ref, _ in frame.lazy_images.values()}
+                labels = {}
+                for position, (ref, alt) in frame.noscript_images.items():
+                    if ref in lazy_refs:
+                        self.html_image_mirrors.add(position)
+                        if alt:
+                            labels.setdefault(ref, set()).add(alt)
+                for position, (ref, needs_alt) in frame.lazy_images.items():
+                    alternatives = labels.get(ref, ())
+                    # Keep an authored name when the visible copy has none.
+                    if needs_alt and len(alternatives) == 1:
+                        self.html_lazy_image_alts[position] = next(iter(alternatives))
             if frame.image is not None and frame.caption is not None and not frame.invalid:
                 key = "_html_figure_caption" if frame.in_table else "_html_flow_figure_caption"
                 text_parts = [part["text"] for part in frame.caption]

@@ -11,6 +11,7 @@ import base64
 from uuid import NAMESPACE_URL, uuid5
 from .article_lifecycle_types import (
     CapturedSource,
+    HTML_BOUND_IMAGE_LAYOUT,
     HTML_FIGURE_CAPTION_LAYOUT,
     HTML_FLOW_FIGURE_CAPTION_LAYOUT,
     HTML_MEDIA_TABLE_HEADER_LAYOUT,
@@ -377,6 +378,7 @@ def capture_source_article(
     keep_leading_decimals=False,
     keep_html_numeric_superscripts=False,
     keep_mixed_html_pdf_embeds=False,
+    keep_bound_html_images=False,
 ):
     if not 0 < deadline_seconds <= 30:
         raise ValueError("capture deadline must be within 30 seconds")
@@ -584,7 +586,17 @@ def capture_source_article(
     body_resource = None
     pool = None
     try:
-        parse = partial(
+        caption_settings = {
+            "keep_html_figure_captions": (keep_html_figure_captions, context.legacy_published_html_figure_body),
+            "keep_html_flow_figure_captions": (keep_html_flow_figure_captions, context.legacy_published_html_flow_figure_body),
+            "keep_html_multiline_figure_captions": (
+                keep_html_multiline_figure_captions, context.legacy_published_html_multiline_figure_body,
+            ),
+        }
+        body_digest = body.body["sha256"]
+        legacy_captions = {name: enabled and body_digest != legacy for name, (enabled, legacy) in caption_settings.items()}
+        refreshed_captions = {name: enabled for name, (enabled, _) in caption_settings.items() if enabled and not legacy_captions[name]}
+        adapt = partial(
             adapt_bound_article, body.to_source_resource(), context,
             keep_embedded_pdf=keep_embedded_pdf, keep_html_headings=keep_html_headings,
             keep_bound_pdf_iframes=keep_bound_pdf_iframes,
@@ -594,9 +606,6 @@ def capture_source_article(
             keep_repeated_pdf_figures=retain_repeats(body.body["sha256"]),
             keep_pdf_figures_with_margins=retain_repeats_with_margins(body.body["sha256"]),
             keep_compact_pdf_figures=retain_compact_figures(body.body["sha256"]),
-            keep_html_figure_captions=(
-                keep_html_figure_captions and body.body["sha256"] != context.legacy_published_html_figure_body
-            ),
             keep_html_table_captions=(
                 keep_html_table_captions and body.body["sha256"] != context.legacy_published_html_table_caption_body
             ),
@@ -605,20 +614,32 @@ def capture_source_article(
             keep_html_nested_tables=keep_html_nested_tables,
             keep_html_numeric_superscripts=keep_html_numeric_superscripts,
             keep_mixed_html_pdf_embeds=keep_mixed_html_pdf_embeds,
-            keep_html_flow_figure_captions=(
-                keep_html_flow_figure_captions and body.body["sha256"] != context.legacy_published_html_flow_figure_body
-            ),
-            keep_html_multiline_figure_captions=(
-                keep_html_multiline_figure_captions
-                and body.body["sha256"] != context.legacy_published_html_multiline_figure_body
-            ),
             keep_structured_table_cell_order=keep_structured_table_cell_order or (
                 keep_structured_table_columns and keep_structured_table_column_order
             ),
             keep_image_only_headings=keep_image_only_headings,
             keep_ordered_step_instructions=keep_ordered_step_instructions,
             keep_image_only_step_instructions=keep_image_only_step_instructions,
+            keep_bound_html_images=keep_bound_html_images,
+            declared_image_refs=frozenset(
+                list(context.descriptor.get("asset_resource_refs") or ()) + list(body.body.get("asset_resource_refs") or ())
+            ) if keep_bound_html_images else frozenset(),
+            **legacy_captions,
         )
+
+        def parse(**options):
+            article = adapt(**options)
+            # The new binding creates a separate projection for unchanged bytes.
+            # Keep captions even when the previous projection omitted them.
+            if article.get("html_bound_images") and refreshed_captions:
+                article = adapt(**options, **refreshed_captions)
+            if mirrors := article.get("html_image_mirrors"):
+                article = adapt(
+                    **options, **refreshed_captions, skip_noscript_images=mirrors,
+                    lazy_image_alts=article.get("html_lazy_image_alts"),
+                )
+            return article
+
         article = parser_pool.submit(parse, step_parser=step_parser).result(timeout=remaining())
         candidates = article.get("untyped_pdf_embed_refs", ())
         if candidates:
@@ -716,6 +737,7 @@ def capture_source_article(
     html_media_table_headers = article.get("html_media_table_headers") is True
     html_nested_tables = article.get("html_nested_tables") is True
     html_numeric_superscripts = article.get("html_numeric_superscripts") is True
+    html_bound_images = article.get("html_bound_images") is True
     mixed_html_pdf_embeds = article.get("mixed_html_pdf_embeds") is True
     handled_pdf_embeds = article.get("handled_pdf_embeds") is True
     positioned_html_table_images = article.get("positioned_html_table_images") is True
@@ -739,7 +761,7 @@ def capture_source_article(
     new_structure = (
         structured_table_columns or structured_table_cell_order or step_layout or html_table_captions or html_flow_figure_captions
         or html_table_spans or html_media_table_headers or html_nested_tables or html_numeric_superscripts or image_only_headings
-        or article.get("embedded_pdf")
+        or html_bound_images or article.get("embedded_pdf")
         or (article.get("authored_html_headings") and any(block.get("kind") == "heading" for block in _walk(blocks)))
     )
     refs, linked_refs, optional = plan_assets(article, blocks)
@@ -778,6 +800,8 @@ def capture_source_article(
         resources[0]["html_nested_table_layout"] = manifest[0]["html_nested_table_layout"] = HTML_NESTED_TABLE_LAYOUT
     if html_numeric_superscripts:
         resources[0]["html_numeric_superscript_layout"] = manifest[0]["html_numeric_superscript_layout"] = HTML_NUMERIC_SUPERSCRIPT_LAYOUT
+    if html_bound_images:
+        resources[0]["html_bound_image_layout"] = manifest[0]["html_bound_image_layout"] = HTML_BOUND_IMAGE_LAYOUT
     if mixed_html_pdf_embeds:
         resources[0]["mixed_html_pdf_layout"] = manifest[0]["mixed_html_pdf_layout"] = MIXED_HTML_PDF_LAYOUT
     if structured_table_columns:
