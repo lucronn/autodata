@@ -19,6 +19,7 @@ var catalogHydrationInFlight sync.Map
 type CatalogYearsResponse struct {
 	Version string        `json:"version"`
 	Items   []CatalogYear `json:"items"`
+	CatalogHydrationResponse
 }
 type CatalogHydrationResponse struct {
 	Complete  bool `json:"complete"`
@@ -59,18 +60,14 @@ func (s *Server) listCatalogYears(response http.ResponseWriter, request *http.Re
 		s.writeCatalogError(response, request, err)
 		return
 	}
-	if len(items) == 0 && s.ingestionClient != nil {
-		if err := s.ensureCatalogHydrated(request, map[string]any{"scope": "years"}); err != nil {
-			s.writeCatalogError(response, request, err)
-			return
-		}
-		items, err = s.catalog.Years(request.Context(), principal)
-		if err != nil {
-			s.writeCatalogError(response, request, err)
-			return
-		}
+	hydrating := len(items) == 0 && s.ingestionClient != nil
+	if hydrating && !catalogStoredSelector(request) {
+		s.scheduleCatalogHydration(request, map[string]any{"scope": "years"})
 	}
-	writeJSON(response, http.StatusOK, CatalogYearsResponse{Version: "v1", Items: items})
+	writeJSON(response, http.StatusOK, CatalogYearsResponse{
+		Version: "v1", Items: items,
+		CatalogHydrationResponse: CatalogHydrationResponse{Complete: !hydrating, Hydrating: hydrating},
+	})
 }
 
 func (s *Server) listCatalogMakes(response http.ResponseWriter, request *http.Request, principal Principal) {
@@ -90,7 +87,7 @@ func (s *Server) listCatalogMakes(response http.ResponseWriter, request *http.Re
 		return
 	}
 	hydrating := !complete && s.ingestionClient != nil
-	if hydrating {
+	if hydrating && !catalogStoredSelector(request) {
 		s.scheduleCatalogHydration(request, map[string]any{
 			"scope": "makes", "year": year, "region": catalogRegion(request),
 		})
@@ -119,7 +116,7 @@ func (s *Server) listCatalogModels(response http.ResponseWriter, request *http.R
 		return
 	}
 	hydrating := !complete && s.ingestionClient != nil
-	if hydrating {
+	if hydrating && !catalogStoredSelector(request) {
 		s.scheduleCatalogHydration(request, map[string]any{
 			"scope": "models", "year": year, "make": makeName, "region": catalogRegion(request),
 		})
@@ -154,7 +151,7 @@ func (s *Server) listCatalogConfigurations(response http.ResponseWriter, request
 	// Keep background ensure running until the marker
 	// lands, but do not hide the list behind hydrating:true.
 	hydrating := !usable && s.ingestionClient != nil
-	if (!complete || !usable) && s.ingestionClient != nil {
+	if (!complete || !usable) && s.ingestionClient != nil && !catalogStoredSelector(request) {
 		s.scheduleCatalogHydration(request, map[string]any{
 			"scope": "configurations", "year": year, "make": makeName,
 			"model": modelName, "region": catalogRegion(request),
@@ -486,6 +483,12 @@ func catalogArticlesIncomplete(items []CatalogArticle) bool {
 func catalogYearPath(request *http.Request) (int, bool) {
 	year, err := strconv.Atoi(request.PathValue("year"))
 	return year, err == nil && year >= 1886 && year <= 2100
+}
+
+// Saved picker links can pre-read stored descendants before their parent is
+// validated. Only a regular selector read may schedule supplier hydration.
+func catalogStoredSelector(request *http.Request) bool {
+	return request.URL.Query().Get("stored_only") == "1"
 }
 
 func catalogPathValue(value string) string {

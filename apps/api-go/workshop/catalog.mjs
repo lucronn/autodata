@@ -365,6 +365,6 @@ export async function requestArticleJSON(path, {
 export async function requestJSON(path, options) { return (await requestArticleJSON(path, options)).data; }
 
 export function requestInitialYears(params, request = requestJSON) {
-  if (params.has('year') || params.has('configuration') || params.has('order') || params.get('view') === 'library') return null;
+  if (params.has('configuration') || params.has('order') || params.get('view') === 'library') return null;
   return request('/v1/catalog/years').catch(() => null);
 }

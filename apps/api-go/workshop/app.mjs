@@ -46,6 +46,9 @@ const demoPath = (path) => {
 };
 const names = ["year", "make", "model", "configuration"];
 const rows = Object.fromEntries(names.map((name) => [name, []]));
+const selectorCache = new Map();
+const selectorCacheLifetime = 30_000;
+const selectorCacheSize = 32;
 const navigation = new NavigationGeneration();
 const searchNavigation = new NavigationGeneration();
 const checkout = createCheckout({
@@ -322,27 +325,24 @@ function clearOrderRoute(id, keepVehicle = false) {
   history.replaceState(null, "", `${location.pathname}${params.size ? `?${params}` : ""}`);
 }
 function populate(name, items, desired = "") {
-  rows[name] =
-    name === "year" ? [...items].sort((a, b) => b.year - a.year) : items;
-  $(name).replaceChildren(
-    new Option(
-      `Choose ${name === "configuration" ? "engine / trim" : name}`,
-      "",
-    ),
-    ...rows[name].map(
-      (item) =>
-        new Option(
-          name === "year"
-            ? item.year
-            : name === "configuration"
-              ? configurationLabel(item)
-              : item.name,
-          String(item.id ?? item.year),
-        ),
-    ),
-  );
-  $(name).disabled = !items.length;
-  if (desired) $(name).value = desired;
+  const select = $(name);
+  const selected = desired || select.value;
+  rows[name] = name === "year" ? [...items].sort((a, b) => b.year - a.year) : items;
+  const options = rows[name].map((item) => [
+    String(item.id ?? item.year),
+    name === "year" ? String(item.year) : name === "configuration" ? configurationLabel(item) : item.name,
+  ]);
+  const unchanged = select.options.length === options.length + 1 && options.every(([value, label], index) =>
+    select.options[index + 1].value === value && select.options[index + 1].text === label);
+  if (!unchanged) {
+    select.replaceChildren(
+      new Option(`Choose ${name === "configuration" ? "engine / trim" : name}`, ""),
+      ...options.map(([value, label]) => new Option(label, value)),
+    );
+  }
+  const nextValue = options.some(([value]) => value === selected) ? selected : "";
+  if (select.value !== nextValue) select.value = nextValue;
+  select.disabled = !items.length;
 }
 function selectorPath(name, selection) {
   const year = encodeURIComponent(selection?.year ?? $("year").value),
@@ -355,21 +355,51 @@ function selectorPath(name, selection) {
     configuration: `/v1/catalog/years/${year}/makes/${make}/models/${model}/configurations?region=US`,
   }[name];
 }
+function cachedSelector(path) {
+  if (session.state.mode !== "firebase") return null;
+  const entry = selectorCache.get(path);
+  if (entry?.expires > performance.now()) return entry.response;
+  selectorCache.delete(path);
+  return null;
+}
+function rememberSelector(path, name, response) {
+  // Local mode protects the same paths with a dataset role. Reuse anonymous
+  // Firebase selector responses only.
+  if (session.state.mode !== "firebase" || !response.items.length || response.hydrating ||
+      !(response.complete === true || (name === "year" && response.complete === undefined))) return;
+  selectorCache.delete(path);
+  selectorCache.set(path, { response, expires: performance.now() + selectorCacheLifetime });
+  if (selectorCache.size > selectorCacheSize) selectorCache.delete(selectorCache.keys().next().value);
+}
+function usableEngineChoices(name, response) {
+  return name === "configuration" && !response.hydrating && response.items.length > 0 &&
+    response.items.every((item) => item.complete !== false);
+}
 async function loadOptions(name, g, desired = "", initial = null) {
-  status(`Loading ${name} choices…`, { busy: true });
+  const path = selectorPath(name);
+  const cached = cachedSelector(path);
+  const choice = (item) => String(item.id ?? item.year) === desired;
+  status(`Loading ${name === "configuration" ? "engine / trim" : name} choices…`, { busy: true });
   stage(name);
   $(name).disabled = true;
   const result = await readCollection(
     async () => {
+      if (cached && (!desired || cached.items.some(choice))) return cached;
       if (initial) {
         const response = await initial;
         initial = null;
         g.signal.throwIfAborted();
-        if (response && Array.isArray(response.items) && (name === "year" || !desired ||
-            response.items.some((item) => String(item.id ?? item.year) === desired))) return response;
-        // A speculative child response can precede the parent’s hydration.
+        if (response && Array.isArray(response.items) && (name === "year" ||
+            (desired ? response.items.some(choice) : (response.complete === true || usableEngineChoices(name, response))))) {
+          if (name !== "year" && response.complete !== true) {
+            // The parent is now verified. Continue filling any usable partial list.
+            void requestJSON(path, { signal: g.signal }).catch(() => null);
+          }
+          return response;
+        }
+        // Stored descendants cannot start ingestion. A regular read can do so once the parent is valid.
       }
-      return requestJSON(selectorPath(name), { signal: g.signal });
+      return requestJSON(path, { signal: g.signal });
     },
     {
       signal: g.signal,
@@ -380,10 +410,9 @@ async function loadOptions(name, g, desired = "", initial = null) {
     },
   );
   if (!g.current()) return;
-  const selected = desired && result.items.some(
-    (item) => String(item.id ?? item.year) === desired,
-  );
-  if (!selected && (result.timedOut || result.complete === false))
+  if (result !== cached) rememberSelector(path, name, result);
+  const selected = desired && result.items.some(choice);
+  if (!selected && !usableEngineChoices(name, result) && (result.timedOut || result.complete === false))
     throw new Error(
       result.items.length
         ? "Some choices loaded, but the source catalog could not finish loading. Choose an available option or try again."
@@ -2013,10 +2042,10 @@ async function signIn() {
   }
   await restoreRoute();
 }
-export async function bootstrap(initialYears, initialAccount) {
+export async function bootstrap(initialYears, initialAccount, { preservePicker = false } = {}) {
   invalidate();
   const params = new URLSearchParams(location.search);
-  const years = initialYears ?? requestInitialYears(params);
+  const years = preservePicker ? null : initialYears ?? requestInitialYears(params);
   if (openDemo) return restoreRoute(years);
   const configRequest = requestJSON("/workshop/purchase-config.json")
     .catch(() => null)
@@ -2027,21 +2056,26 @@ export async function bootstrap(initialYears, initialAccount) {
     });
   merchant = null;
   merchantRequest = configRequest;
-  const accountCheck = session.bootstrap({ initial: initialAccount }).then(() => {
-    if (sessionRequest !== accountCheck) return;
-    sessionRequest = null;
-    sessionEstablished = true;
-  });
-  sessionRequest = accountCheck;
+  const accountCheck = checkAccount(initialAccount);
+  if (preservePicker) {
+    await Promise.all([accountCheck, operation((g) => selectVehicle(g), () => restoreRoute())]);
+    return;
+  }
   // The first route can restore public selectors while the account is checked.
   // Account actions wait for that same check and use the current navigation.
   if (sessionEstablished) await accountCheck;
   await Promise.all([accountCheck, restoreRoute(years)]);
 }
-async function restoreRoute(initialYears = null, { fromHistory = false, focusArticle = "" } = {}) {
-  const displayed = fromHistory ? Object.fromEntries(names.map(name => [
-    name, $(name).disabled ? "" : $(name).value,
-  ])) : null;
+function checkAccount(initial) {
+  const accountCheck = session.bootstrap({ initial }).then(() => {
+    if (sessionRequest !== accountCheck) return;
+    sessionRequest = null;
+    sessionEstablished = true;
+  });
+  sessionRequest = accountCheck;
+  return accountCheck;
+}
+async function restoreRoute(initialYears = null, { focusArticle = "" } = {}) {
   invalidate();
   show("welcome");
   const params = new URLSearchParams(location.search);
@@ -2098,15 +2132,15 @@ async function restoreRoute(initialYears = null, { fromHistory = false, focusArt
       const initial = { year: initialYears };
       const year = Number(desired.year);
       if (/^\d{4}$/.test(desired.year) && year >= 1886 && year <= 2100) {
-        const exactPicker = validScope(exact) && exact.region === "US" && desired.make && desired.model;
-        let matchingPicker = displayed?.year === desired.year && (!params.has("region") || exact.region === "US");
-        // Overlap reads for the exact saved picker or the displayed history
-        // prefix. Each parent must still pass before a child is shown.
+        // Read stored choices in parallel. A deeper list remains hidden until
+        // the parent is confirmed, and only then may it queue missing data.
         for (const name of names) {
-          if (!exactPicker && !matchingPicker) break;
-          if (!initial[name])
-            initial[name] = requestJSON(selectorPath(name, desired), { signal: g.signal }).catch(() => null);
-          matchingPicker = matchingPicker && Boolean(desired[name]) && displayed[name] === desired[name];
+          const path = selectorPath(name, desired);
+          if (!initial[name] && !cachedSelector(path)) {
+            const storedPath = name === "year" ? path : `${path}&stored_only=1`;
+            initial[name] = requestJSON(storedPath, { signal: g.signal }).catch(() => null);
+          }
+          if (!desired[name]) break;
         }
       }
       for (const name of names) {
@@ -2228,7 +2262,7 @@ function restoreHistoryEntry() {
   if (sameIndex && origin.returning) {
     return showReturnedArticleIndex(origin.indexLink);
   }
-  return restoreRoute(null, { fromHistory: true, focusArticle: sameIndex ? origin.articleID : "" });
+  return restoreRoute(null, { focusArticle: sameIndex ? origin.articleID : "" });
 }
 function showReturnedArticleIndex(indexLink = null) {
   navigation.clear();
@@ -2280,7 +2314,7 @@ window.addEventListener("popstate", () => void restoreHistoryEntry());
 window.addEventListener("pagehide", () => invalidate());
 let lifecycleCheck = null;
 let readerCheck = null;
-async function recheck() {
+async function recheck(preservePicker = false) {
   if (
     !sessionEstablished ||
     openDemo ||
@@ -2289,7 +2323,7 @@ async function recheck() {
     lifecycleCheck
   )
     return;
-  lifecycleCheck = bootstrap();
+  lifecycleCheck = preservePicker && !validScope(scope()) ? checkAccount() : bootstrap(undefined, undefined, { preservePicker });
   try {
     await lifecycleCheck;
   } finally {
@@ -2348,6 +2382,13 @@ async function recheckReader(g) {
 function recheckOnFocus() {
   const g = viewGeneration;
   if (g && readerCheck === g) return;
+  const route = new URLSearchParams(location.search);
+  if (session.state.mode === 'firebase' && !$('welcome').hidden && !currentOrder &&
+      !route.has('order') && !route.has('view') && !route.has('article') &&
+      (!validScope(scope()) || (route.get('configuration') === vehicle.id && route.get('region') === vehicle.region))) {
+    void recheck(true);
+    return;
+  }
   if (!g?.current() || lifecycleCheck || !sessionEstablished || openDemo || signingIn ||
       document.visibilityState === "hidden" || !session.state.authenticated ||
       session.state.mode !== "firebase" || $("reader").hidden || !readableArticle(currentArticle) ||

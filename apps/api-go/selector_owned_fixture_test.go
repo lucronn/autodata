@@ -47,8 +47,9 @@ func TestSelectorOwnedColdYearsFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i < 2; i++ {
-		response := catalogRequest(server, "/v1/catalog/years")
+	readYears := func(path string) CatalogYearsResponse {
+		t.Helper()
+		response := catalogRequest(server, path)
 		if response.Code != http.StatusOK {
 			t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 		}
@@ -56,12 +57,39 @@ func TestSelectorOwnedColdYearsFixture(t *testing.T) {
 		if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
 			t.Fatal(err)
 		}
-		if os.Getenv("AUTODATA_SELECTOR_EXPECT_EMPTY") == "1" {
-			if len(body.Items) != 0 {
-				t.Fatalf("partial years escaped into durable reader: %#v", body.Items)
+		return body
+	}
+	initial := readYears("/v1/catalog/years")
+	if len(initial.Items) != 0 || initial.Complete || !initial.Hydrating {
+		t.Fatalf("initial empty catalog should be hydrating, got %#v", initial)
+	}
+	key, _, err := catalogHydrationRequest(map[string]any{"scope": "years"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ticker := time.NewTicker(50 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		if _, running := catalogHydrationInFlight.Load(key); !running {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatal("year hydration did not finish within the fixture deadline")
+		case <-ticker.C:
+		}
+	}
+	if os.Getenv("AUTODATA_SELECTOR_EXPECT_EMPTY") == "1" {
+		body := readYears("/v1/catalog/years?stored_only=1")
+		if len(body.Items) != 0 {
+			t.Fatalf("partial years escaped into durable reader: %#v", body.Items)
+		}
+	} else {
+		for i := 0; i < 2; i++ {
+			body := readYears("/v1/catalog/years")
+			if !body.Complete || body.Hydrating || len(body.Items) != 2 || body.Items[0].Year != 2023 || body.Items[1].Year != 2024 {
+				t.Fatalf("unordered/unusable years: %#v", body)
 			}
-		} else if len(body.Items) != 2 || body.Items[0].Year != 2023 || body.Items[1].Year != 2024 {
-			t.Fatalf("unordered/unusable years: %#v", body.Items)
 		}
 	}
 	var count int
