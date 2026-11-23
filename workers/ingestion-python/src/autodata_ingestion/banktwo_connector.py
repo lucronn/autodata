@@ -127,7 +127,6 @@ class _ListFrame:
     authored_start: bool = False
     items: list[str | dict[str, Any]] = field(default_factory=list)
     item: _ListItem | None = None
-    bankone_graphic: bool = False
 
 
 @dataclass
@@ -194,7 +193,7 @@ class ArticleParser(HTMLParser):
         keep_html_nested_tables=False, keep_html_numeric_superscripts=False, resolved_pdf_refs=frozenset(),
         include_untyped_pdf_positions=False, keep_bound_html_images=False, skip_noscript_images=frozenset(),
         declared_image_refs=frozenset(), lazy_image_alts=None, keep_html_document_links=False,
-        keep_html_section_titles=False, keep_bankone_graphic_positions=False,
+        keep_html_section_titles=False, keep_bankone_html_flow=False,
     ):
         super().__init__(convert_charrefs=True)
         self._asset_bindings = {item["source_url"]: item["resource_ref"] for item in asset_bindings}
@@ -219,8 +218,8 @@ class ArticleParser(HTMLParser):
         self._keep_html_headings = keep_html_headings
         self._keep_html_section_titles = keep_html_section_titles
         self.html_section_titles = False
-        self._keep_bankone_graphic_positions = keep_bankone_graphic_positions
-        self.bankone_graphic_positions = False
+        self._keep_bankone_html_flow = keep_bankone_html_flow
+        self.bankone_html_flow = False
         self._keep_html_document_links = keep_html_document_links
         self.html_document_links = False
         # Bounds are indexes into _text. A new list item awaits both bounds.
@@ -320,8 +319,9 @@ class ArticleParser(HTMLParser):
             self._table_caption_blocks.append(block)
         elif self._table_cell is not None:
             self._table_cell.append(block)
-        elif self._lists and item is None and self._lists[-1].bankone_graphic:
-            self._append_between_list_items(block)
+        elif item is None and self._keep_bankone_html_flow and self._lists and self._lists[-1].items:
+            self.bankone_html_flow = True
+            self._append_between_list_items(block, keep_continuation=True)
         elif item is None:
             self.blocks.append(block)
             self._list_start = 1
@@ -572,11 +572,10 @@ class ArticleParser(HTMLParser):
                 " ".join(block["text"] for block in blocks), source, start, len(source),
             )
 
-    def _append_between_list_items(self, block):
+    def _append_between_list_items(self, block, *, keep_continuation=False):
         frame = self._lists.pop()
-        frame.bankone_graphic |= isinstance(block, ConnectorBankoneGraphic)
         frame.start, frame.authored_start = self._emit_list(frame, top_level=not self._lists)
-        if frame.bankone_graphic and frame.tag == "ol" and frame.items:
+        if keep_continuation and frame.tag == "ol" and frame.items:
             frame.authored_start = True
         frame.items = []
         self._append_block(block)
@@ -592,7 +591,7 @@ class ArticleParser(HTMLParser):
             return
         if self._lists and self._lists[-1].item is None:
             # Emit media between sibling <li> tags in the enclosing item.
-            self._append_between_list_items(block)
+            self._append_between_list_items(block, keep_continuation=isinstance(block, ConnectorBankoneGraphic))
         else:
             self._append_block(block)
 
@@ -678,7 +677,7 @@ class ArticleParser(HTMLParser):
                 self._hidden_html_tag = tag
                 self._hidden_html_depth = 1
             return
-        if self._keep_bound_html_images or self._keep_bankone_graphic_positions:
+        if self._keep_bound_html_images or self._keep_bankone_html_flow:
             if tag == self._hidden_image_scope:
                 self._hidden_image_depth += 1
             elif self._hidden_image_scope is None and tag not in _VOID_TAGS and (
@@ -817,7 +816,7 @@ class ArticleParser(HTMLParser):
                 self.links.append(attrs["href"])
         if tag in {"img", "mtr-image"}:
             if tag == "mtr-image" and (
-                not self._keep_bankone_graphic_positions or duplicate_graphic_id
+                not self._keep_bankone_html_flow or duplicate_graphic_id
                 or self._hidden_image_scope is not None or "hidden" in attrs
                 or not _BANKONE_GRAPHIC_ID.fullmatch(attrs.get("id") or "")
             ):
@@ -831,7 +830,7 @@ class ArticleParser(HTMLParser):
                 locator = "bankone:asset:" + sha256(locator_input.encode()).hexdigest()[:24]
                 image = ConnectorBankoneGraphic(locator, attrs.get("alt") or "")
                 src = ref = ""
-                self.bankone_graphic_positions = True
+                self.bankone_html_flow = True
             else:
                 src = attrs.get("src") or ""
                 ref = self._asset_bindings.get(src) or attrs.get("data-resource-ref") or attrs.get("asset_resource_ref")

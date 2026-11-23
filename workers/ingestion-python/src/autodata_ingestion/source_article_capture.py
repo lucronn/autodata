@@ -11,7 +11,7 @@ import time
 import base64
 from uuid import NAMESPACE_URL, uuid5
 from .article_lifecycle_types import (
-    BANKONE_GRAPHIC_POSITION_LAYOUT,
+    BANKONE_HTML_FLOW_LAYOUT,
     CapturedSource,
     HTML_BOUND_IMAGE_LAYOUT,
     HTML_DOCUMENT_LINK_LAYOUT,
@@ -433,7 +433,7 @@ def capture_source_article(
     keep_html_numeric_superscripts=False,
     keep_html_document_links=False,
     keep_html_section_titles=False,
-    keep_bankone_graphic_positions=False,
+    keep_bankone_html_flow=False,
     keep_mixed_html_pdf_embeds=False,
     keep_bound_html_images=False,
     on_body_preview=None,
@@ -677,8 +677,8 @@ def capture_source_article(
             keep_html_section_titles=(
                 keep_html_section_titles and body_digest != context.legacy_published_html_section_title_body
             ),
-            keep_bankone_graphic_positions=(
-                keep_bankone_graphic_positions and body_digest != context.legacy_published_bankone_graphic_body
+            keep_bankone_html_flow=(
+                keep_bankone_html_flow and body_digest != context.legacy_published_bankone_flow_body
             ),
             keep_mixed_html_pdf_embeds=keep_mixed_html_pdf_embeds,
             keep_structured_table_cell_order=keep_structured_table_cell_order or (
@@ -822,7 +822,7 @@ def capture_source_article(
     html_bound_images = article.get("html_bound_images") is True
     mixed_html_pdf_embeds = article.get("mixed_html_pdf_embeds") is True
     html_section_titles = article.get("html_section_titles") is True
-    bankone_graphic_positions = article.get("bankone_graphic_positions") is True
+    bankone_html_flow = article.get("bankone_html_flow") is True
     handled_pdf_embeds = article.get("handled_pdf_embeds") is True
     positioned_html_table_images = article.get("positioned_html_table_images") is True
     positioned_pdf_figures = article.get("positioned_pdf_figures") is True
@@ -845,7 +845,7 @@ def capture_source_article(
     new_structure = (
         structured_table_columns or structured_table_cell_order or step_layout or html_table_captions or html_flow_figure_captions
         or html_table_spans or html_media_table_headers or html_nested_tables or html_numeric_superscripts or image_only_headings
-        or html_bound_images or html_document_links or html_section_titles or bankone_graphic_positions
+        or html_bound_images or html_document_links or html_section_titles or bankone_html_flow
         or article.get("embedded_pdf")
         or (article.get("authored_html_headings") and any(block.get("kind") == "heading" for block in _walk(blocks)))
     )
@@ -995,10 +995,10 @@ def capture_source_article(
                     record["pdf_figure_layout"] = PDF_LEGACY_FIGURE_LAYOUT
     if handled_pdf_embeds:
         _replace_pdf_embeds(blocks, documents)
-    if bankone_graphic_positions:
+    if bankone_html_flow:
         bindings = _bind_bankone_graphics(blocks, resources, body.body.get("asset_resource_refs") or [])
         for record in (resources[0], provenance[0], manifest[0]):
-            record["bankone_graphic_position_layout"] = BANKONE_GRAPHIC_POSITION_LAYOUT
+            record["bankone_html_flow_layout"] = BANKONE_HTML_FLOW_LAYOUT
             record["bankone_graphic_position_bindings"] = bindings
 
     # Embedded figures are derived only from verified bytes and never fetched by URL.
