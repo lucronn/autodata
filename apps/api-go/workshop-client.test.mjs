@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext as runVM } from 'node:vm';
 import { NavigationGeneration, processingArticle, readableArticle } from './workshop/article-read.mjs';
 import { pollOrder, purchaseConfiguration, readOrder, resumableCheckoutURL, sameScope, uuid, validQuote, validScope, validLibrary } from './workshop/commerce.mjs';
-import { articlePresentation, configurationLabel, filterArticles, hasSourceReference, legacyArticleBlocks, localImageURL, readCollection, requestInitialYears, requestJSON, selectedIndexSessionPreference, selectorLabel, sourceReferenceURL } from './workshop/catalog.mjs';
+import { articlePresentation, configurationLabel, filterArticles, hasSourceReference, legacyArticleBlocks, localImageURL, readCollection, requestInitialYears, requestJSON, requestStoredSelector, selectedIndexSessionPreference, selectorLabel, sourceReferenceURL, startSavedSelectorReads, vehicleSelectorPath } from './workshop/catalog.mjs';
 import { LOAD_STAGES, loadingProgress } from './workshop/progress.mjs';
 
 // The app sections below run without the module bootstrap. Model the ordinary
@@ -15,6 +15,8 @@ function runInNewContext(code, context) {
   context.sameScope ??= sameScope;
   context.demoPath ??= path => path;
   context.requestInitialYears ??= params => requestInitialYears(params, context.requestJSON);
+  context.requestStoredSelector ??= requestStoredSelector;
+  context.vehicleSelectorPath ??= vehicleSelectorPath;
   context.sourceDocumentRequest ??= null;
   context.mountedSource ??= null;
   context.paidOrder ??= null;
@@ -2336,6 +2338,117 @@ test('saved hierarchy restores all exact vehicle choices and query over prior st
   assert.deepEqual(h.calls.selections, [{ configuration: routeConfiguration, region: 'US', article: '' }]);
 });
 
+const savedPickerRoute = '?year=2024&make=buick-truck&model=envision-awd';
+const savedPickerPaths = [
+  '/v1/catalog/years?stored_only=1',
+  '/v1/catalog/years/2024/makes?region=US&stored_only=1',
+  '/v1/catalog/years/2024/makes/buick-truck/models?region=US&stored_only=1',
+  '/v1/catalog/years/2024/makes/buick-truck/models/envision-awd/configurations?region=US&stored_only=1',
+];
+const savedPickerRows = [
+  { items: [{ year: 2024 }], complete: true },
+  { items: [{ id: 'buick-truck', name: 'Buick Truck' }], complete: true },
+  { items: [{ id: 'envision-awd', name: 'Envision AWD' }], complete: true },
+  { items: [{ id: routeConfiguration, region: 'US', engine: '2.0' }], complete: true },
+];
+
+test('startup starts each saved picker read once and restores the hierarchy in parent order', async () => {
+  const year = deferredAuthOperation();
+  const earlyCalls = [];
+  const initialSelectors = startSavedSelectorReads(new URLSearchParams(savedPickerRoute), async (path, { signal }) => {
+    const index = earlyCalls.push({ path, signal }) - 1;
+    return index === 0 ? year.promise : savedPickerRows[index];
+  });
+  assert.deepEqual(earlyCalls.map(({ path }) => path), savedPickerPaths);
+  assert.equal(new Set(earlyCalls.map(({ signal }) => signal)).size, 1);
+  const h = loginRouteHarness(savedPickerRoute);
+  h.context.rows.configuration = [];
+  h.element('configuration').disabled = true;
+  const loading = h.context.restoreRoute(null, { initialSelectors });
+  await new Promise(setImmediate);
+  assert.equal(h.element('configuration').disabled, true);
+  assert.deepEqual(h.calls.selectorReads, []);
+  year.resolve(savedPickerRows[0]);
+  await loading;
+  assert.deepEqual(h.calls.selectorReads, []);
+  assert.deepEqual(h.context.names.map(name => h.element(name).value), ['2024', 'buick-truck', 'envision-awd', '']);
+  assert.equal(h.element('configuration').disabled, false);
+  assert.equal(h.context.rows.configuration[0].id, routeConfiguration);
+  assert.equal(earlyCalls[0].signal.aborted, true);
+});
+
+test('early saved selectors skip independent or session-dependent routes', () => {
+  for (const search of [
+    '', '?year=upcoming&make=buick-truck', '?year=1700',
+    ...['sample=1', 'demo=1', 'view=library', `order=${routeOrder}`, `configuration=${routeConfiguration}&q=brakes`,
+      `configuration=${routeConfiguration}&region=US&article=${routeArticle}`].map(suffix => `${savedPickerRoute}&${suffix}`),
+  ]) {
+    assert.equal(startSavedSelectorReads(new URLSearchParams(search), async () => assert.fail(search)), null, search);
+  }
+});
+
+test('early stored-only reads stop at the first unresolved selector and let an incomplete missing year fall back', async () => {
+  const calls = [];
+  const initial = startSavedSelectorReads(new URLSearchParams('?year=2024&model=envision-awd'), async path => {
+    calls.push(path);
+    return { items: [{ year: 2023 }], complete: false, hydrating: true };
+  });
+  assert.deepEqual(calls, savedPickerPaths.slice(0, 2));
+  assert.equal(await initial.reads.year, null);
+  initial.abort();
+});
+
+test('a partial stored year list still triggers the regular read when it already contains the saved year', async () => {
+  const initialSelectors = startSavedSelectorReads(new URLSearchParams('?year=2024'), async path => {
+    assert.equal(path, savedPickerPaths[0]);
+    return { ...savedPickerRows[0], complete: false, hydrating: true };
+  });
+  const years = [{ year: 2024 }, { year: 2023 }];
+  const h = selectorOptionsHarness({ items: years, complete: true });
+  h.context.selectorPath = () => '/v1/catalog/years';
+  await h.load('2024', undefined, initialSelectors.reads.year, 'year');
+  assert.deepEqual(h.requests, ['/v1/catalog/years']);
+  assert.deepEqual(h.displayed, [years]);
+  assert.equal(h.$('year').value, '2024');
+  initialSelectors.abort();
+});
+
+test('superseding a saved picker restore aborts every early request and leaves stale choices hidden', async () => {
+  const response = deferredAuthOperation();
+  let signal;
+  const initialSelectors = startSavedSelectorReads(new URLSearchParams(savedPickerRoute), async (_path, options) => {
+    signal = options.signal;
+    return response.promise;
+  });
+  const h = loginRouteHarness(savedPickerRoute);
+  const loading = h.context.restoreRoute(null, { initialSelectors });
+  h.context.invalidate();
+  assert.equal(signal.aborted, true);
+  response.resolve(savedPickerRows[0]);
+  await loading;
+  assert.equal(h.element('year').disabled, true);
+  assert.equal(h.element('configuration').disabled, true);
+  assert.deepEqual(h.calls.selectorReads, []);
+});
+
+test('a changed startup route discards early selector rows and reads only its own hierarchy', async () => {
+  let signal;
+  const initialSelectors = startSavedSelectorReads(new URLSearchParams(savedPickerRoute), async (_path, options) => {
+    signal = options.signal;
+    return null;
+  });
+  const h = loginRouteHarness('?year=2025', { selectorRead(path) {
+    if (path.endsWith('/years')) return { items: [{ year: 2025 }] };
+    return { items: [{ id: 'toyota', name: 'Toyota' }] };
+  } });
+  await h.context.restoreRoute(null, { initialSelectors });
+  assert.equal(signal.aborted, true);
+  assert.deepEqual(h.calls.selectorReads.map(({ path }) => path), [
+    '/v1/catalog/years', '/v1/catalog/years/2025/makes?region=US&stored_only=1',
+  ]);
+  assert.deepEqual(h.context.names.map(name => h.element(name).value), ['2025', '', '', '']);
+});
+
 test('a complete saved vehicle overlaps public reads but validates parents before opening the exact scope', async () => {
   const year = deferredAuthOperation();
   const h = loginRouteHarness(selectedCheckoutRoute, { selectorRead(path) {
@@ -4052,7 +4165,7 @@ test('a revalidated search return focuses its exact originating hit', async () =
   assert.deepEqual(h.requests.map(request => request.path), ['/v1/catalog/vehicles/B/articles?q=pump&region=US']);
 });
 
-test('a history return waits for the filtered results if the saved search needs the full index', async () => {
+test('a history return shows loaded matches and restores focus after the protected search responds', async () => {
   const wanted = { id: 'original-id', title: 'Oil pump' };
   const other = { id: 'other-id', title: wanted.title };
   const configuration = { id: 'B', region: 'US' };
@@ -4068,7 +4181,7 @@ test('a history return waits for the filtered results if the saved search needs 
     h.$('article-title').focus();
     assert.equal(await h.context.loadSavedSearch(generation, 'pump', wanted.id), false);
     await h.context.loadArticles(generation, '', { focusArticle: wanted.id });
-    assert.equal(h.$('articles').firstElementChild.children.length, 0);
+    assert.deepEqual(h.$('articles').firstElementChild.children.map(row => row.dataset.articleId), [other.id, wanted.id]);
     if (outcome === 'user moved focus') h.$('search').focus();
     else if (h.context.document.activeElement === h.$('article-title'))
       h.context.document.activeElement = h.context.document.body;
@@ -4284,6 +4397,15 @@ test('nonempty explicit completed article index is ready after one read', async 
   assert.equal(h.$('completion-status').textContent, 'Article index ready.');
 });
 
+test('a failed supplier index still shows articles returned by the available source', async () => {
+  const h = articleIndexHarness([indexResponse('failed', { items: [{ id: 'oil-pump', title: 'Oil Pump' }] })]);
+  await h.load();
+  assert.equal(h.$('catalog-count').textContent, '1 article from available sources.');
+  assert.equal(h.$('articles').firstElementChild.children[0].dataset.articleId, 'oil-pump');
+  assert.equal(h.$('no-results').hidden, true);
+  assert.match(h.$('activity-text').textContent, /open the articles below/i);
+});
+
 test('hydration reuses article rows and keeps keyboard focus on the same article ID', async () => {
   const polls = [deferredAuthOperation(), deferredAuthOperation()];
   const releases = [...polls];
@@ -4444,7 +4566,7 @@ test('changing hydration coalesces an in-flight query and only keeps current mat
   assert.deepEqual(timers, []);
 });
 
-test('same-query hydration retains settled hits while typing still debounces and clears them', async () => {
+test('same-query hydration keeps settled hits and new queries show loaded matches during debounce', async () => {
   const poll = deferredAuthOperation(), refresh = deferredAuthOperation();
   const hit = { id: 'same', title: 'Pump service', availability: 'available', source_revision_id: 'rev-1' };
   const extra = { ...hit, id: 'other', title: 'More service notes' };
@@ -4470,7 +4592,8 @@ test('same-query hydration retains settled hits while typing still debounces and
   h.$('search').value = 'notes';
   h.$('search').events.input();
   assert.equal(refreshing.signal.aborted, true);
-  assert.equal(h.$('articles').children[0].children.length, 0);
+  assert.deepEqual(h.$('articles').children[0].children.map(row => row.dataset.articleId), [extra.id]);
+  assert.match(h.$('catalog-count').textContent, /loaded index.*searching/i);
   assert.deepEqual(typed.map(timer => timer.delay), [300]);
   typed[0].callback();
   refresh.resolve(indexResponse('completed', { complete: true, items: [hit] }));

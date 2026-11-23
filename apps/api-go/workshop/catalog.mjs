@@ -434,6 +434,46 @@ export async function requestArticleJSON(path, {
 }
 export async function requestJSON(path, options) { return (await requestArticleJSON(path, options)).data; }
 
+export function vehicleSelectorPath(name, selection) {
+  const year = encodeURIComponent(selection.year ?? '');
+  const make = encodeURIComponent(selection.make ?? '');
+  const model = encodeURIComponent(selection.model ?? '');
+  return {
+    year: '/v1/catalog/years',
+    make: `/v1/catalog/years/${year}/makes?region=US`,
+    model: `/v1/catalog/years/${year}/makes/${make}/models?region=US`,
+    configuration: `/v1/catalog/years/${year}/makes/${make}/models/${model}/configurations?region=US`,
+  }[name];
+}
+
+export function requestStoredSelector(path, options, request = requestJSON) {
+  const separator = path.includes('?') ? '&' : '?';
+  return request(`${path}${separator}stored_only=1`, options);
+}
+
+export function startSavedSelectorReads(params, request = requestJSON) {
+  const year = params.get('year') || '';
+  // These routes can open without the vehicle hierarchy, or depend on the session.
+  if (params.get('sample') === '1' || params.get('demo') === '1' ||
+      params.has('order') || params.get('view') === 'library' || params.has('article') ||
+      (params.has('configuration') && params.get('q')?.trim()) ||
+      !/^\d{4}$/.test(year) || Number(year) < 1886 || Number(year) > 2100) return null;
+  const controller = new AbortController();
+  const selection = { year, make: params.get('make'), model: params.get('model') };
+  const reads = {};
+  for (const name of ['year', 'make', 'model', 'configuration']) {
+    const result = requestStoredSelector(vehicleSelectorPath(name, selection), { signal: controller.signal }, request)
+      .catch(() => null);
+    // The regular year request starts hydration when the stored list is incomplete.
+    reads[name] = name === 'year' ? result.then(response =>
+      response?.complete === true && Array.isArray(response.items) ? response : null
+    ) : result;
+    const value = selection[name];
+    if (!value || value.length > 128 || value === '.' || value === '..') break;
+  }
+  return { route: params.toString(), reads, abort: () => controller.abort() };
+}
+
 export function requestInitialYears(params, request = requestJSON) {
   if (params.has('configuration') || params.has('order') || params.get('view') === 'library') return null;
   return request('/v1/catalog/years').catch(() => null);

@@ -25,10 +25,12 @@ if (params.get('sample') === '1' && !wantsDemo) {
   try {
     const modeRequest = fetch('/workshop/demo-mode.json', { cache: 'no-store', credentials: 'same-origin' });
     if (!wantsDemo) {
-      // The public years do not depend on checkout mode. Keep the result for
-      // the first route without waiting for it to initialize the rest of the app.
+      // Public selector reads can start while the mode and account are checked.
       preview = import('./catalog.mjs')
-        .then(({ requestInitialYears }) => ({ years: requestInitialYears(params) }))
+        .then(({ requestInitialYears, startSavedSelectorReads }) => {
+          const selectors = startSavedSelectorReads(params);
+          return { selectors, years: selectors ? null : requestInitialYears(params) };
+        })
         .catch(() => null);
       // Regular routes can read account status while the mode check runs.
       // The app still establishes the mode before consuming those results.
@@ -56,6 +58,7 @@ if (params.get('sample') === '1' && !wantsDemo) {
     document.getElementById('open-demo-banner').hidden = !(wantsDemo && openDemoReady);
     document.documentElement.dataset.workshopMode = wantsDemo && openDemoReady ? 'open-demo' : 'regular';
     const { bootstrap } = await import('./app.mjs');
-    await bootstrap((await preview)?.years, initialAccount);
+    const initial = await preview;
+    await bootstrap(initial?.years, initialAccount, { initialSelectors: initial?.selectors });
   }
 }
