@@ -9,6 +9,8 @@ import re
 import time
 from collections.abc import Mapping
 from dataclasses import replace
+from importlib import import_module
+from threading import Thread
 
 
 def run_once() -> dict[str, object]:
@@ -1437,6 +1439,14 @@ class ArticleObjectStore:
         self.client.put_object(self.bucket,key,BytesIO(payload),len(payload),content_type=media_type,num_parallel_uploads=1)
 
 
+def _warm_article_pdf_reader():
+    try:
+        import_module("pypdf")
+    except Exception:
+        # The adapter handles a PDF read even if optional warmup failed.
+        pass
+
+
 def article_worker_main(argv=None):
     import argparse
     import sys
@@ -1464,6 +1474,7 @@ def article_worker_main(argv=None):
     worker = args.worker_id or uuid4()
     listen = sql.SQL("LISTEN {}").format(sql.Identifier(ARTICLE_JOB_CHANNEL))
     listener = None
+    pdf_reader_pending = "banktwo" in registry
     try:
         while True:
             if listener is None and not args.once:
@@ -1498,6 +1509,14 @@ def article_worker_main(argv=None):
             # Check durable work after subscribing and after each wake or timeout.
             # Polling still covers delayed retries, lease expiry, and listener failure.
             if listener is not None:
+                if pdf_reader_pending:
+                    pdf_reader_pending = False
+                    # Pending jobs get first claim. Listening continues while
+                    # the first idle worker warms the optional parser.
+                    try:
+                        Thread(target=_warm_article_pdf_reader, daemon=True).start()
+                    except RuntimeError:
+                        pass
                 try:
                     for _ in listener.notifies(timeout=args.poll_seconds, stop_after=1):
                         pass
