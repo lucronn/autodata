@@ -548,7 +548,8 @@ function vehicleIdentityLabel() {
     vehicle?.year,
     vehicle?.make,
     vehicle?.model,
-    (vehicle?.engine || vehicle?.trim) && configurationLabel(vehicle),
+    (vehicle?.engine || vehicle?.trim || vehicle?.body_style || vehicle?.drivetrain) &&
+      configurationLabel(vehicle),
   ].filter(Boolean).join(" / ") || vehicle?.orderLabel || "";
 }
 function purchaseConfigured() {

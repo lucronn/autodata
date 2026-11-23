@@ -81,12 +81,12 @@ func TestPostgresPublicSelectorSlugsPreserveScope(t *testing.T) {
 	}
 	defer pool.Close()
 	// Temporary relations keep this read-path regression independent of durable fixture data.
-	_, err = pool.Exec(ctx, `CREATE TEMP TABLE vehicle_identity_bases(vehicle_identity_base_id int, model_year int, make text, model text, region text, reviewer_state text);
+	_, err = pool.Exec(ctx, `CREATE TEMP TABLE vehicle_identity_bases(vehicle_identity_base_id int, model_year int, make text, model text, region text, reviewer_state text, body_style text, drivetrain text);
  CREATE TEMP TABLE vehicle_configurations(vehicle_configuration_id text, vehicle_id text, vehicle_identity_base_id int, trim text, engine_displacement_l numeric, reviewer_state text);
  CREATE TEMP TABLE vehicle_catalog_hydration_scopes(scope text, model_year int, make text, model text, region text, completion_version int, selector_rows jsonb);
  CREATE TEMP TABLE vehicle_catalog_sync_scopes(vehicle_catalog_sync_id int, status text, scope_key text);
  CREATE TEMP TABLE vehicle_catalog_syncs(vehicle_catalog_sync_id int, provider text, status text);
- INSERT INTO vehicle_identity_bases VALUES (1,2020,'Ford','Figo (MEXICO)','US','approved'),(2,2019,'Ford','Figo (MEXICO)','US','approved'),(3,2020,'Ford','Figo (MEXICO)','CA','approved'),(4,2020,'Other','Figo (MEXICO)','US','approved'),(5,2020,'Mercedes Benz','A-Class','US','approved');
+ INSERT INTO vehicle_identity_bases(vehicle_identity_base_id,model_year,make,model,region,reviewer_state) VALUES (1,2020,'Ford','Figo (MEXICO)','US','approved'),(2,2019,'Ford','Figo (MEXICO)','US','approved'),(3,2020,'Ford','Figo (MEXICO)','CA','approved'),(4,2020,'Other','Figo (MEXICO)','US','approved'),(5,2020,'Mercedes Benz','A-Class','US','approved');
  INSERT INTO vehicle_configurations SELECT CASE vehicle_identity_base_id WHEN 1 THEN 'figo' WHEN 2 THEN 'year' WHEN 3 THEN 'region' WHEN 4 THEN 'make' ELSE 'punctuated' END, 'vehicle',vehicle_identity_base_id,'',NULL, 'approved' FROM vehicle_identity_bases;
  INSERT INTO vehicle_catalog_hydration_scopes SELECT 'configurations',model_year,make,model,region,1,'[]'::jsonb FROM vehicle_identity_bases;`)
 	if err != nil {

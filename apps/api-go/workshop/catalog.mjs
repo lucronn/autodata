@@ -2,7 +2,7 @@
 export function configurationLabel(item) {
   const displacement = typeof item.engine === 'string' && /^\d+(?:\.\d+)?$/.test(item.engine);
   const engine = displacement ? `${item.engine} L` : item.engine;
-  return [engine, item.trim].filter(Boolean).join(' / ') || 'Base configuration';
+  return [engine, item.trim, item.body_style, item.drivetrain].filter(Boolean).join(' / ') || 'Base configuration';
 }
 
 export function filterArticles(items, query) {

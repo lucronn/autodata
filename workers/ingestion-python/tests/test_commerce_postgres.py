@@ -381,14 +381,39 @@ def test_payment_survives_source_unavailable_and_restart(commerce):
 
 
 def test_library_is_owner_only_and_paginated(commerce, monkeypatch):
-    c=commerce;first=checkout(c);settle(c,first)
-    with c[0].connect() as conn:
-        vehicle=conn.execute('SELECT vehicle_id FROM vehicle_configurations WHERE vehicle_configuration_id=%s',(c[4],)).fetchone()['vehicle_id']
-    second=checkout(c,config=str(seed_configuration(c[0],vehicle)));settle(c,second)
+    c = commerce
+    repo, service, _, owner, first_configuration, _ = c
+    assert service.quote(first_configuration, 'US')['configuration_label'] == '2024 Example Car'
+    with repo.connect() as conn:
+        vehicle = conn.execute(
+            'SELECT vehicle_id FROM vehicle_configurations WHERE vehicle_configuration_id=%s', (first_configuration,),
+        ).fetchone()['vehicle_id']
+    second_configuration = str(seed_configuration(repo, vehicle))
+    variants = [(first_configuration, 'Coupe', '2WD'), (second_configuration, 'Sedan', 'AWD')]
+    with repo.connect() as conn:
+        for configuration, body_style, drivetrain in variants:
+            base = conn.execute(
+                """UPDATE vehicle_configurations SET trim='SPORT', engine_displacement_l=2.0
+                    WHERE vehicle_configuration_id=%s RETURNING vehicle_identity_base_id""", (configuration,),
+            ).fetchone()['vehicle_identity_base_id']
+            conn.execute(
+                'UPDATE vehicle_identity_bases SET body_style=%s, drivetrain=%s WHERE vehicle_identity_base_id=%s',
+                (body_style, drivetrain, base),
+            )
+    orders = []
+    for configuration, body_style, drivetrain in variants:
+        label = f'2024 Example Car SPORT 2.0 L {body_style} {drivetrain}'
+        result = checkout(c, config=configuration)
+        assert service.quote(configuration, 'US')['configuration_label'] == label
+        assert service.order_status(*owner, result['order_id'])['configuration_label'] == label
+        settle(c, result)
+        orders.append((result, label))
+    (first, first_label), (second, second_label) = orders
     page=c[1].library(*c[3],limit=1);assert len(page['items'])==1 and page['next_cursor']
     last=c[1].library(*c[3],cursor_value=page['next_cursor'],limit=1)
     assert len(last['items'])==1 and not last['next_cursor']
     assert [page['items'][0]['library_item_id'],last['items'][0]['library_item_id']]==[second['order_id'],first['order_id']]
+    assert [page['items'][0]['label'], last['items'][0]['label']] == [second_label, first_label]
     with pytest.raises(CommerceError):c[1].library(str(uuid.uuid4()),str(uuid.uuid4()),cursor_value=page['next_cursor'])
     text=json.dumps(page);assert 'cs_' not in text and 'pi_' not in text and 'acct_' not in text
     descriptor,body=seed_readable_source(c)

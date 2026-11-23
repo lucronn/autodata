@@ -1762,6 +1762,21 @@ function loginRouteHarness(search, { authenticate = true, signInError = null, lo
   return { context, calls, element };
 }
 
+test('the engine picker distinguishes configurations that share a displacement and trim', () => {
+  const h = loginRouteHarness('');
+  const shared = { engine: '2.0', trim: 'Sport' };
+  const variants = [
+    { ...shared, id: routeConfiguration, body_style: 'Coupe', drivetrain: '2WD' },
+    { ...shared, id: previousConfiguration, body_style: 'Sedan', drivetrain: 'AWD' },
+  ];
+  h.context.populate('configuration', variants, previousConfiguration);
+  assert.deepEqual(Array.from(h.element('configuration').options.slice(1), ({ text, value }) => [text, value]), [
+    ['2.0 L / Sport / Coupe / 2WD', routeConfiguration],
+    ['2.0 L / Sport / Sedan / AWD', previousConfiguration],
+  ]);
+  assert.equal(h.element('configuration').value, previousConfiguration);
+});
+
 test('checkout return checks sooner only for the matching, unexpired checkout', async () => {
   const future = new Date(Date.now() + 60_000).toISOString();
   const past = new Date(Date.now() - 60_000).toISOString();
@@ -6774,11 +6789,14 @@ test('the saved reader uses the authorized configuration and can fall back on an
 });
 
 test('the same vehicle identity remains visible after its stored article is published', () => {
-  const vehicle = { id: routeConfiguration, region: 'CA', year: 2025, make: 'Example', model: 'Wagon', engine: '3.0 L', trim: 'Touring' };
+  const vehicle = {
+    id: routeConfiguration, region: 'CA', year: 2025, make: 'Example', model: 'Wagon',
+    engine: '3.0 L', trim: 'Touring', body_style: 'Estate', drivetrain: 'AWD',
+  };
   const h = articleMediaHarness({ vehicle, quote: null });
   const source = mediaArticle([{ type: 'paragraph', text: 'Stored procedure.' }]);
-  const identity = '2025 / Example / Wagon / 3.0 L / Touring';
-  const quotedIdentity = '2025 Example Wagon Touring 3.0 L';
+  const identity = '2025 / Example / Wagon / 3.0 L / Touring / Estate / AWD';
+  const quotedIdentity = '2025 Example Wagon Touring 3.0 L Estate AWD';
   h.nodes.get('purchase-selection').textContent = `${identity} / CA`;
   h.render(source);
   const sourceLabel = h.nodes.get('reader-vehicle').textContent;

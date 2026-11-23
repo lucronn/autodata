@@ -21,7 +21,10 @@ TERMS = "workshop-v1"
 # Preserve the card-only Checkout contract across Stripe SDK default changes.
 STRIPE_API_VERSION = '2025-08-27.basil'
 LIVE = ('creating', 'open', 'processing', 'paid', 'reconciliation_required')
-_CONFIGURATION_LABEL_SQL = "concat_ws(' ',b.model_year::text,b.make,b.model,c.trim,c.engine_displacement_l::text || ' L')"
+_CONFIGURATION_LABEL_SQL = (
+    "concat_ws(' ',b.model_year::text,b.make,b.model,c.trim,c.engine_displacement_l::text || ' L',"
+    "NULLIF(btrim(b.body_style),''),NULLIF(btrim(b.drivetrain),''))"
+)
 READ_ONLY_COMMERCE_PATHS = frozenset('/internal/commerce/' + path for path in
     ('purchase-config', 'quote', 'library', 'grants/check'))
 
