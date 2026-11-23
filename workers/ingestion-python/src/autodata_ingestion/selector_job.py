@@ -1,6 +1,7 @@
 """Owned, bounded initial selector work. This module has no persistence path."""
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 from pathlib import Path
@@ -12,6 +13,7 @@ import time
 from threading import RLock
 
 MAX_OUTPUT = 4 * 1024 * 1024
+MAX_PROGRESS = 128 * 1024
 STOP_REASONS = frozenset({'elapsed', 'request_limit', 'byte_limit', 'response_limit', 'row_limit',
                           'rate_limited', 'output_limit', 'child_failed', 'invalid_result'})
 
@@ -108,13 +110,32 @@ class SelectorAdmission:
 ADMISSION = SelectorAdmission()
 
 
-def run_owned(request, absolute_deadline, *, command=None):
+def _decode_result(encoded):
+    try:
+        result = json.loads(encoded)
+        if not isinstance(result, dict):
+            raise ValueError()
+        if set(result) == {'stopped'}:
+            raise SelectorJobStopped(result['stopped'])
+        if (set(result) != {'rows', 'complete', 'provenance', 'missing_scopes'}
+                or type(result['complete']) is not bool
+                or not isinstance(result['rows'], list) or len(result['rows']) > 5000
+                or not isinstance(result['provenance'], list)
+                or not isinstance(result['missing_scopes'], list)):
+            raise ValueError()
+        return result
+    except (ValueError, TypeError):
+        raise SelectorJobStopped('invalid_result') from None
+
+
+def run_owned(request, absolute_deadline, *, command=None, on_progress=None):
     """Bound IPC and reap only our process group, including resolver stalls.
 
     command is a Python-only fixture seam; it is never accepted from HTTP input.
     stderr is discarded rather than accumulating or exposing supplier diagnostics.
     """
-    encoded = json.dumps({'request': request, 'deadline': absolute_deadline}, separators=(',', ':')).encode()
+    encoded = json.dumps({'request': request, 'deadline': absolute_deadline,
+                          'progress': on_progress is not None}, separators=(',', ':')).encode()
     if len(encoded) > 16384:
         raise SelectorJobStopped('invalid_result')
     if time.monotonic() >= absolute_deadline:
@@ -130,6 +151,8 @@ def run_owned(request, absolute_deadline, *, command=None):
                                stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                stderr=subprocess.DEVNULL, start_new_session=True, env=child_env)
     output = bytearray()
+    progress_bytes = 0
+    progress_writer = ThreadPoolExecutor(max_workers=1) if on_progress is not None else None
     try:
         # Both pipes are nonblocking; even a child that never reads stdin is bounded.
         os.set_blocking(process.stdin.fileno(), False)
@@ -155,6 +178,22 @@ def run_owned(request, absolute_deadline, *, command=None):
                         block = os.read(key.fd, min(65536, MAX_OUTPUT + 1 - len(output)))
                         if not block:
                             events.unregister(key.fileobj)
+                            continue
+                        # Partial records use newline framing. The final result
+                        # keeps its own output budget and is read through EOF.
+                        while progress_writer is not None and b'\n' in block:
+                            line, _, block = block.partition(b'\n')
+                            output.extend(line)
+                            progress_bytes += len(output) + 1
+                            if progress_bytes > MAX_PROGRESS:
+                                raise SelectorJobStopped('output_limit')
+                            progress = _decode_result(output)
+                            output.clear()
+                            if progress['complete'] or not progress['rows'] or not progress['provenance']:
+                                raise SelectorJobStopped('invalid_result')
+                            if time.monotonic() >= absolute_deadline:
+                                raise SelectorJobStopped('elapsed')
+                            progress_writer.submit(on_progress, progress)
                         output.extend(block)
                         if len(output) > MAX_OUTPUT:
                             raise SelectorJobStopped('output_limit')
@@ -166,31 +205,23 @@ def run_owned(request, absolute_deadline, *, command=None):
             raise SelectorJobStopped('child_failed')
         if time.monotonic() >= absolute_deadline:
             raise SelectorJobStopped('elapsed')
-        try:
-            result = json.loads(output)
-            if not isinstance(result, dict):
-                raise ValueError()
-            if set(result) == {'stopped'}:
-                raise SelectorJobStopped(result['stopped'])
-            if (set(result) != {'rows', 'complete', 'provenance', 'missing_scopes'}
-                    or type(result['complete']) is not bool
-                    or not isinstance(result['rows'], list) or len(result['rows']) > 5000
-                    or not isinstance(result['provenance'], list)
-                    or not isinstance(result['missing_scopes'], list)):
-                raise ValueError()
-            return result
-        except (ValueError, TypeError):
-            raise SelectorJobStopped('invalid_result') from None
+        return _decode_result(output)
     finally:
         # Kill even after a nominal exit: a descendant may still own a pipe/socket.
         try:
-            os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-        process.wait(timeout=2)
-        if not process.stdin.closed:
-            process.stdin.close()
-        process.stdout.close()
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            process.wait(timeout=2)
+            if not process.stdin.closed:
+                process.stdin.close()
+            process.stdout.close()
+        finally:
+            # Keep database waits off the pipe reader and reap the child
+            # before waiting for progress writes. Final persistence follows.
+            if progress_writer is not None:
+                progress_writer.shutdown()
 
 
 def _main():
@@ -209,8 +240,24 @@ def _main():
             raise ValueError()
         model = CatalogRequest(int(request.get('year', 2000)), str(request.get('make', 'unknown')),
                                'unknown', str(request.get('region', 'US')), scope=request['scope'])
+        progress_remaining = MAX_PROGRESS
+
+        def emit_progress(result):
+            nonlocal progress_remaining
+            control.remaining()
+            encoded = json.dumps({
+                'rows': list(result.rows), 'complete': False,
+                'provenance': list(result.provenance), 'missing_scopes': list(result.missing_scopes),
+            }, separators=(',', ':')).encode() + b'\n'
+            if len(encoded) <= progress_remaining:
+                sys.stdout.buffer.write(encoded)
+                sys.stdout.buffer.flush()
+                progress_remaining -= len(encoded)
+
         resolved = CacheFirstCatalogService(cache_reader=lambda _: None,
-                    providers=_configured_catalog_providers(deepening_control=control)).resolve(model)
+                    providers=_configured_catalog_providers(deepening_control=control)).resolve(
+                        model, on_progress=emit_progress if envelope.get('progress') and request['scope'] != 'years' else None,
+                    )
         control.remaining()
         result = {'rows': list(resolved.rows), 'complete': resolved.complete,
                   'provenance': list(resolved.provenance), 'missing_scopes': list(resolved.missing_scopes)}

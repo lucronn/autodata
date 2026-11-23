@@ -80,6 +80,61 @@ def test_owned_output_limit_and_secret_stderr_are_not_forwarded():
     assert 'SECRET_PROVIDER' not in str(caught.value)
 
 
+@pytest.mark.parametrize('invalid,reason', [('complete', 'invalid_result'), ('oversize', 'output_limit')])
+def test_owned_progress_never_publishes_invalid_frames(invalid, reason):
+    frame = {'rows': [{'make': 'Authored'}], 'complete': invalid == 'complete',
+             'provenance': [{'provider': 'autoapi'}], 'missing_scopes': ['makes']}
+    script = f'import json; frame={frame!r}; '
+    if invalid == 'oversize':
+        script += f"frame['rows'][0]['make']='x'*{job.MAX_PROGRESS}; "
+    script += 'print(json.dumps(frame))'
+    with pytest.raises(job.SelectorJobStopped, match=reason):
+        job.run_owned({},time.monotonic()+2,command=[sys.executable,'-c',script],
+                      on_progress=lambda _: pytest.fail('invalid partial selector reached persistence'))
+
+
+def test_owned_deadline_reaps_child_while_progress_writer_is_busy(tmp_path):
+    pidfile = tmp_path / 'progress-child-pid'
+    partial = {'rows': [{'make': 'Authored'}], 'complete': False,
+               'provenance': [{'provider': 'autoapi'}], 'missing_scopes': ['makes']}
+    script = ('import os, time; '
+              f'open({str(pidfile)!r}, "w").write(str(os.getpid())); '
+              f'print({json.dumps(partial)!r}, flush=True); time.sleep(30)')
+    entered, release = threading.Event(), threading.Event()
+    stopped = []
+
+    def write_progress(value):
+        assert value == partial
+        entered.set()
+        release.wait(4)
+
+    def run():
+        try:
+            job.run_owned({}, time.monotonic() + .5,
+                          command=[sys.executable, '-c', script], on_progress=write_progress)
+        except job.SelectorJobStopped as error:
+            stopped.append(error.reason)
+
+    reader = threading.Thread(target=run)
+    reader.start()
+    try:
+        assert entered.wait(2)
+        pid = int(pidfile.read_text())
+        until = time.monotonic() + 2
+        while time.monotonic() < until:
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                break
+            time.sleep(.02)
+        else:
+            pytest.fail('a blocked persistence callback delayed reaping the owned child')
+    finally:
+        release.set()
+        reader.join(3)
+    assert stopped == ['elapsed']
+
+
 @pytest.mark.parametrize('scope',['years','makes','models'])
 def test_public_initial_selector_never_schedules_descendants(monkeypatch,scope):
     catalog._HYDRATION_RESULTS.clear()

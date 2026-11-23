@@ -383,7 +383,9 @@ async function loadOptions(name, g, desired = "", initial = null) {
   const path = selectorPath(name);
   const cached = cachedSelector(path);
   const choice = (item) => String(item.id ?? item.year) === desired;
-  status(`Loading ${name === "configuration" ? "engine / trim" : name} choices…`, { busy: true });
+  const label = name === "configuration" ? "engine / trim" : name;
+  let showingPartial = false;
+  status(`Loading ${label} choices…`, { busy: true });
   stage(name);
   $(name).disabled = true;
   const result = await readCollection(
@@ -418,14 +420,19 @@ async function loadOptions(name, g, desired = "", initial = null) {
         }
       },
       onUpdate(data) {
-        if (g.current()) populate(name, data.items, desired);
+        if (!g.current()) return;
+        populate(name, data.items, desired);
+        if (!showingPartial && data.items.length && (data.hydrating || data.discovering)) {
+          showingPartial = true;
+          status(`More ${label} choices are loading. You can choose an available option.`, { busy: true });
+        }
       },
     },
   );
   if (!g.current()) return;
   if (result !== cached) rememberSelector(path, name, result);
   const selected = desired && result.items.some(choice);
-  if (!selected && !usableEngineChoices(name, result) && (result.timedOut || result.complete === false))
+  if (!selected && (result.timedOut || (result.complete === false && !usableEngineChoices(name, result))))
     throw new Error(
       result.items.length
         ? "Some choices loaded, but the source catalog could not finish loading. Choose an available option or try again."

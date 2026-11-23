@@ -29,7 +29,7 @@ Banktwo 404 parent-label enumeration/retry:
 | Minimum spacing between dispatches | 6 seconds |
 | Decoded HTTP response body | 1 MiB per response; 4 MiB cumulative |
 | Response rows before deduplication, including repair pages | 5,000 |
-| IPC input/output | 16 KiB / 4 MiB |
+| IPC input/output | 16 KiB / 4 MiB final result plus up to 128 KiB of partial choices |
 | Child address space / CPU / open files | 512 MiB / 22 CPU seconds / 64 |
 
 Normally at most four dispatches fit the elapsed/spacing limits; the request
@@ -43,8 +43,10 @@ The child imports only selector resolution and performs no persistence.
 Parent IPC is nonblocking and bounded, stderr is discarded, and fixed stop
 codes replace child exception text. On deadline, the parent kills and reaps
 only the owned process group, covering DNS, headers and trickling bodies.
-Expired/failed children cannot persist rows or complete markers. Existing
-durable partial rows remain available.
+The parent may save a partial Make or Model list after a provider finishes
+enumerating that scope, before the next provider dispatch. A failed or expired
+remaining traversal leaves verified partial options readable. It cannot mark
+the scope complete.
 
 Parent persistence checks remaining time before connection, writes and
 commit, reserves connect/commit time, and uses one-second connect/statement
@@ -52,7 +54,8 @@ and 250 ms lock timeouts. These driver/server limits are distinct from the hard
 owned-provider deadline; database cleanup is not claimed to have an owned
 process deadline. Makes/models store sparse rows and provenance in their
 normal scoped marker: version 0 remains partial, version 1 proves complete.
-They do not enter full vehicle/S3 evidence persistence.
+Progress writes leave an existing complete scope intact. These choices do
+not enter full vehicle/S3 evidence persistence.
 
 Years writes one bounded PostgreSQL upsert using exact row/page provider,
 source version and source URI carried in initial-only provider mappings.

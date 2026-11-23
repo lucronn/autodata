@@ -6191,6 +6191,23 @@ test('usable engine rows stay selectable while the catalog completion marker is 
   assert.equal(h.statuses.some(status => status.error), false);
 });
 
+test('selectable engine choices expand when the rest of the scope is discovered', async () => {
+  const first = { id: 'engine-a', complete: true };
+  const second = { id: 'engine-b', complete: true };
+  const h = selectorOptionsHarness(null);
+  let checks = 0;
+  h.context.requestJSON = async () => {
+    if (++checks === 1) return { items: [first], hydrating: false, discovering: true, complete: false };
+    assert.equal(h.$('configuration').disabled, false);
+    assert.match(h.statuses.at(-1).text, /More engine \/ trim choices are loading/);
+    return { items: [first, second], hydrating: false, complete: true };
+  };
+  await h.load();
+  assert.equal(checks, 2);
+  assert.deepEqual(h.displayed, [[first], [first, second]]);
+  assert.equal(h.statuses.at(-1).text, 'Choose your vehicle to continue.');
+});
+
 test('complete picker rows are reused only in their own scope and within their freshness window', async () => {
   const h = selectorOptionsHarness({ items: [{ id: 'engine' }], hydrating: false, complete: true });
   let time = 0;

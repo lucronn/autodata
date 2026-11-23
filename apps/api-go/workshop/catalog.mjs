@@ -263,7 +263,7 @@ export async function readCollection(
     onUpdate(latest, { attempt: attempt + 1, attempts });
     // A saved selection can resume using an existing row while ingestion continues.
     return (desired && latest.items.some(item => String(item.id ?? item.year) === desired)) ||
-      !latest.hydrating || latest.complete === true;
+      !(latest.hydrating || latest.discovering) || latest.complete === true;
   }
   for (let attempt = 0; attempt < attempts; attempt++) {
     signal?.throwIfAborted();
