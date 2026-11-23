@@ -6,7 +6,6 @@ from hashlib import sha256
 import json
 from uuid import uuid4
 
-from psycopg.types.json import Jsonb
 import pytest
 
 from autodata_ingestion.article_document import build_ordered_document
@@ -119,34 +118,6 @@ def seed_legacy(repo, *, partial):
     return owner, source_revision, objects
 
 
-def publish_fixture_anchor(repo, owner, source_revision):
-    canonical = uuid4()
-    with repo.connect() as conn:
-        source = conn.execute("SELECT * FROM canonical_article_source_revisions WHERE source_revision_id=%s",
-                              (source_revision,)).fetchone()
-        job = conn.execute("""SELECT j.transformation_key FROM source_fetch_jobs j
-            JOIN canonical_articles a ON a.current_job_id=j.source_fetch_job_id
-            WHERE a.canonical_article_id=%s""", (owner,)).fetchone()
-        published = deepcopy(source["source_document"])
-        published["blocks"][0]["text"] = "Check the fasteners before fitting."
-        report = {"passed": True, "changed_slots": ["fixture-paragraph"], "evidence_ids": ["fixture-evidence"]}
-        metadata = {"model": "fixture", "profile_version": "technical-prose-v1"}
-        conn.execute("""INSERT INTO canonical_article_revisions(canonical_article_revision_id,canonical_article_id,
-            source_revision_id,transformation_key,normalization_version,rewrite_profile_version,status,
-            normalized_source_document,normalized_source_hash,canonical_document,canonical_body,canonical_steps,
-            canonical_images,validation_report,validation_hash,rewrite_result_hash,model_metadata,published_at)
-            VALUES (%s,%s,%s,%s,'ordered-article-v1','technical-prose-v1','published',
-                    %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,now())""",
-            (canonical, owner, source_revision, job["transformation_key"], Jsonb(source["source_document"]),
-             "b" * 64, Jsonb(published), "Check the fasteners before fitting.", Jsonb(source["source_steps"]),
-             Jsonb(source["source_images"]), Jsonb(report), "c" * 64, "d" * 64, Jsonb(metadata)))
-        conn.execute("UPDATE canonical_articles SET current_canonical_revision_id=%s WHERE canonical_article_id=%s",
-                     (canonical, owner))
-        assert conn.execute("SELECT content_origin FROM catalog_article_current WHERE canonical_article_id=%s",
-                            (owner,)).fetchone()["content_origin"] == "canonical"
-    return canonical
-
-
 def source_state(repo, owner):
     with repo.connect() as conn:
         return conn.execute("""SELECT current_source_revision_id,current_canonical_revision_id,request_generation,
@@ -158,16 +129,15 @@ def source_state(repo, owner):
 def test_disposable_replay_preview_schema_gate_and_exact_atomic_apply(fresh_database, partial, reprojection_cli, capsys):
     repo = fresh_database(through=42)
     owner, source_revision, objects = seed_legacy(repo, partial=partial)
-    anchor = publish_fixture_anchor(repo, owner, source_revision) if partial else None
     prior = source_state(repo, owner)
     binding, capture = preview_table_replay(repo, source_revision, object_store=objects)
     assert objects.reads == 1 and source_state(repo, owner) == prior
     row = binding.row
-    assert row["current_canonical_revision_id"] == anchor
+    assert row["current_canonical_revision_id"] is None
     cli = ["--retained-table-spans", "--article-id", str(owner), "--source-revision-id", str(source_revision)]
     assert reprojection_cli.main([*cli, "--dry-run"], repo=repo, object_store=objects) == 0
     preview = json.loads(capsys.readouterr().out)
-    assert preview["status"] == "preview" and preview["requires_source_fallback_acknowledgment"] is partial
+    assert preview["status"] == "preview" and preview["requires_canonical_repair"] is False
     assert preview["source_observation_id"] == str(row["source_observation_id"])
     assert preview["document_sha256"] == digest_json(capture.source_document)
     assert source_state(repo, owner) == prior
@@ -204,27 +174,21 @@ def test_disposable_replay_preview_schema_gate_and_exact_atomic_apply(fresh_data
         "reason": "restore source table spans",
     }
     with pytest.raises(ValueError, match="SCHEMA_REQUIRED"):
-        apply_table_reprojection(repo, owner, source_revision, **args, accept_source_fallback_from=anchor)
+        apply_table_reprojection(repo, owner, source_revision, **args)
     assert source_state(repo, owner) == prior
     for migration in (43, 44, 45):
         apply_migration(repo, migration)
-    with pytest.raises(ValueError, match="CANONICAL_ANCHOR"):
-        apply_table_reprojection(repo, owner, source_revision, **args, accept_source_fallback_from=uuid4())
-    if partial:
-        with pytest.raises(ValueError, match="CANONICAL_ANCHOR"):
-            apply_table_reprojection(repo, owner, source_revision, **args)
     with pytest.raises(ValueError, match="PREVIEW_BINDING_MISMATCH"):
         apply_table_reprojection(repo, owner, source_revision,
-            **{**args, "expected_document_sha256": "0" * 64}, accept_source_fallback_from=anchor)
+            **{**args, "expected_document_sha256": "0" * 64})
     assert source_state(repo, owner) == prior
-    result = apply_table_reprojection(repo, owner, source_revision, **args, accept_source_fallback_from=anchor)
-    assert result["status"] == "applied" and result["canonical_revalidation_required"] is partial
+    result = apply_table_reprojection(repo, owner, source_revision, **args)
+    assert result["status"] == "applied"
     state = source_state(repo, owner)
     assert str(state["current_source_revision_id"]) == result["source_revision_id"]
     assert state["current_canonical_revision_id"] is None
     assert state["revision_count"] == prior["revision_count"] + 1
-    assert apply_table_reprojection(repo, owner, source_revision,
-        **args, accept_source_fallback_from=anchor)["status"] == "already_applied"
+    assert apply_table_reprojection(repo, owner, source_revision, **args)["status"] == "already_applied"
     assert source_state(repo, owner) == state
     with repo.connect() as conn:
         original = conn.execute("SELECT source_document FROM canonical_article_source_revisions WHERE source_revision_id=%s",
@@ -233,6 +197,3 @@ def test_disposable_replay_preview_schema_gate_and_exact_atomic_apply(fresh_data
                             (owner,)).fetchone()
         assert original["source_document"] == row["source_document"]
         assert view == {"content_origin": "source", "document": capture.source_document}
-        if anchor:
-            assert conn.execute("SELECT source_revision_id FROM canonical_article_revisions WHERE canonical_article_revision_id=%s",
-                                (anchor,)).fetchone()["source_revision_id"] == source_revision

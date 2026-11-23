@@ -43,16 +43,12 @@ def main(argv=None, *, repo=None, object_store=None):
     parser.add_argument("--expected-body-sha256")
     parser.add_argument("--expected-observation-id", type=UUID)
     parser.add_argument("--expected-document-sha256")
-    parser.add_argument("--accept-source-fallback-from", type=UUID,
-                        help="Acknowledge replacement of this exact canonical anchor with source fallback")
     args = parser.parse_args(argv)
     if args.apply and not all((args.actor, args.reason, args.expected_fingerprint, args.expected_body_sha256)):
         parser.error("--apply requires --actor, --reason, --expected-fingerprint and --expected-body-sha256")
     if (args.apply and (args.retained_media or args.retained_table_spans)
             and not (args.expected_observation_id and args.expected_document_sha256)):
         parser.error("apply requires --expected-observation-id and --expected-document-sha256 for retained media or table spans")
-    if args.accept_source_fallback_from is not None and not (args.apply and args.retained_table_spans):
-        parser.error("--accept-source-fallback-from requires --apply --retained-table-spans")
     repo, object_store = article_archive(repo, object_store)
     if args.retained_table_spans:
         print(json.dumps(replay_table_spans(args, repo, object_store), sort_keys=True))
@@ -124,7 +120,7 @@ def replay_table_spans(args, repo, object_store):
             expected_fingerprint=args.expected_fingerprint,
             expected_body_sha256=args.expected_body_sha256,
             expected_document_sha256=args.expected_document_sha256,
-            accept_source_fallback_from=args.accept_source_fallback_from, actor=args.actor, reason=args.reason,
+            actor=args.actor, reason=args.reason,
         )
     binding, captured = preview_table_replay(repo, args.source_revision_id, object_store=object_store)
     row = binding.row
@@ -137,7 +133,7 @@ def replay_table_spans(args, repo, object_store):
         "original_source_revision_id": str(args.source_revision_id),
         "source_observation_id": str(row["source_observation_id"]),
         "current_canonical_revision_id": str(canonical) if canonical else None,
-        "requires_source_fallback_acknowledgment": canonical is not None,
+        "requires_canonical_repair": canonical is not None,
         "source_fingerprint": row["source_fingerprint"],
         "corrected_source_fingerprint": captured.source_fingerprint,
         "body_sha256": row["resource_manifest"][0]["sha256"],

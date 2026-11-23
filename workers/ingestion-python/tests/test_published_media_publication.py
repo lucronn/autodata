@@ -2,7 +2,7 @@
 
 from copy import deepcopy
 import json
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -13,7 +13,7 @@ from autodata_ingestion.procedure_rewrite_auto import PROFILE as AUTO_PROFILE
 from autodata_ingestion.published_media_publication import publish_retained_media_repair
 from autodata_ingestion.source_job_persistence import refresh_article_job
 from lifecycle_support import fresh_database, runtime
-from test_source_revision_reprojection import all_rows, seed_historical_figure
+from test_source_revision_reprojection import all_rows, reprojection_cli, seed_historical_figure
 
 
 class FixtureModel:
@@ -432,3 +432,129 @@ def test_publish_retained_ordinals_preserves_prose_and_visibility(
     _run(runtime, model)
     assert model.calls == 1
     assert runtime.read_current()["canonical_revision_id"] == updated["canonical_revision_id"]
+
+
+def test_publish_retained_table_spans_preserves_bound_rewrite_atomically(
+    runtime, monkeypatch, tmp_path, capsys, reprojection_cli,
+):
+    from autodata_ingestion import source_article_capture as capture
+    from autodata_ingestion.source_revision_reprojection import apply_table_reprojection
+    from publish_article_media_repair import main
+
+    runtime.article_id = runtime.articles["bankone"]
+    runtime.servers["bankone"].body(
+        b'<p>Remove the pump.</p>'
+        b'<table><thead><tr><th colspan="2">Mounting fasteners</th><th>Torque</th></tr></thead>'
+        b'<tbody><tr><th rowspan="2">Cover</th><td>Upper</td><td>25 Nm</td></tr>'
+        b'<tr><td>Lower</td><td>12 Nm</td></tr></tbody></table>'
+        b'<p>Install the replacement.</p>',
+        assets=["missing-figure"],
+    )
+    capture_current = capture.capture_source_article
+
+    def historical_capture(*args, **kwargs):
+        return capture_current(*args, **{**kwargs, "keep_html_table_spans": False})
+
+    refresh_article_job(runtime.repo, runtime.article_id, actor="fixture",
+                        reason="publish retained HTML with historical table layout", rewrite_profile_version=AUTO_PROFILE)
+    model = FixtureModel()
+    with monkeypatch.context() as historical:
+        historical.setattr(capture, "capture_source_article", historical_capture)
+        _run(runtime, model)
+    original = runtime.read_current()
+    assert original["content_origin"] == "canonical", runtime.diagnostics()
+    assert original["canonical_revision_id"] and model.calls == 1
+    assert original["images"] and all(image["status"] == "unavailable" for image in original["images"])
+    before = _rows(runtime.repo)
+    traffic = runtime.counters()
+    attempt, = before["canonical_article_rewrite_attempts"]
+    article_args = ["--article-id", str(runtime.article_id), "--source-revision-id", str(original["source_revision_id"])]
+
+    assert reprojection_cli.main(["--retained-table-spans", "--dry-run", *article_args],
+                                repo=runtime.repo, object_store=runtime.objects) == 0
+    source_preview = json.loads(capsys.readouterr().out)
+    assert source_preview["requires_canonical_repair"] is True
+    assert source_preview["current_canonical_revision_id"] == str(original["canonical_revision_id"])
+    with pytest.raises(ValueError, match="SOURCE_TABLE_REPLAY_CANONICAL_ANCHOR"):
+        apply_table_reprojection(
+            runtime.repo, runtime.article_id, original["source_revision_id"], object_store=runtime.objects,
+            expected_observation_id=UUID(source_preview["source_observation_id"]),
+            expected_fingerprint=source_preview["source_fingerprint"], expected_body_sha256=source_preview["body_sha256"],
+            expected_document_sha256=source_preview["document_sha256"], actor="fixture", reason="check source-only safety",
+        )
+    assert runtime.read_current() == original and _rows(runtime.repo) == before
+
+    destination = tmp_path / "table-spans-preview"
+    assert main(["preview", "--table-spans", *article_args, "--output", str(destination), "--fixture-mode"],
+                repo=runtime.repo, object_store=runtime.objects) == 0
+    output = json.loads(capsys.readouterr().out)
+    manifest = json.loads((destination / "manifest.json").read_text())
+    assert manifest["schema"] == "autodata:published-table-spans:v1"
+    assert manifest["repaired_projection_version"] == "source-projection-v5"
+    assert manifest["original_attempt_id"] == str(attempt["rewrite_attempt_id"])
+    assert manifest["original_prompt_hash"] == attempt["prompt_hash"]
+    assert manifest["original_response_hash"] == attempt["response_hash"]
+    assert manifest["original_normalized_source_hash"] == attempt["input_hash"]
+    assert manifest["canonical_revision_id"] == str(original["canonical_revision_id"])
+    assert output["manifest_sha256"] == digest_json(manifest)
+    candidate = json.loads((destination / "candidate.json").read_text())
+    source = json.loads((destination / "source.json").read_text())
+    assert candidate["before"] == original["document"]
+    for pair in (source, candidate):
+        corrected = deepcopy(pair["before"])
+        table, = [block for block in corrected["blocks"] if block["type"] == "table"]
+        table["rows"][0][0] = {"text": "Mounting fasteners", "colspan": 2}
+        table["rows"][1][0] = {"text": "Cover", "rowspan": 2}
+        if pair is candidate:
+            # The canonical introduction's ID binds the entire source hash.
+            assert corrected["blocks"][0]["block_id"] != pair["after"]["blocks"][0]["block_id"]
+            corrected["blocks"][0]["block_id"] = pair["after"]["blocks"][0]["block_id"]
+        assert pair["after"] == corrected
+    assert runtime.read_current() == original and _rows(runtime.repo) == before
+
+    allowlist = _allowlist(tmp_path)
+    rationale = "Verified the two authored spans against the retained synthetic table."
+    kwargs = dict(expected=manifest, object_store=runtime.objects, reviewer_id="media-reviewer",
+                  allowlist=allowlist, rationale=rationale, fixture_mode=True)
+    for key, altered in (("repaired_published_document_hash", "0" * 64), ("original_attempt_id", str(uuid4()))):
+        with pytest.raises(ValueError, match="PUBLISHED_MEDIA_REPAIR_STALE"):
+            publish_retained_media_repair(runtime.repo, **{**kwargs, "expected": {**manifest, key: altered}})
+    assert runtime.read_current() == original and _rows(runtime.repo) == before
+
+    def lose_transaction(point):
+        assert point == "inside_publication"
+        assert runtime.read_current() == original and _rows(runtime.repo) == before
+        raise RuntimeError("fixture table publication interrupted")
+
+    with pytest.raises(RuntimeError, match="fixture table publication interrupted"):
+        publish_retained_media_repair(runtime.repo, hooks=lose_transaction, **kwargs)
+    assert runtime.read_current() == original and _rows(runtime.repo) == before
+
+    assert main(["publish", "--expected", str(destination / "manifest.json"), "--reviewer", "media-reviewer",
+                 "--allowlist", str(allowlist), "--rationale", rationale, "--fixture-mode"],
+                repo=runtime.repo, object_store=runtime.objects) == 0
+    published = json.loads(capsys.readouterr().out)
+    updated = runtime.read_current()
+    assert published["status"] == "published" and updated["content_origin"] == "canonical"
+    assert published["canonical_revision_id"] == str(updated["canonical_revision_id"])
+    assert published["source_revision_id"] == str(updated["source_revision_id"])
+    assert updated["source_revision_id"] != original["source_revision_id"]
+    assert updated["canonical_revision_id"] != original["canonical_revision_id"]
+    assert updated["document"] == candidate["after"]
+    for field in ("body", "steps", "images", "review_status", "source_content_sha256"):
+        assert updated[field] == original[field]
+    after = _rows(runtime.repo)
+    for table in ("canonical_article_rewrite_attempts", "source_snapshots", "source_artifacts"):
+        assert after[table] == before[table]
+    for table in ("canonical_article_source_revisions", "canonical_article_source_observations",
+                  "canonical_article_revisions", "publication_events", "source_fetch_jobs"):
+        assert len(after[table]) == len(before[table]) + 1
+        assert all(row in after[table] for row in before[table])
+    prior_source, = before["canonical_article_source_revisions"]
+    repaired_source, = [row for row in after["canonical_article_source_revisions"] if row not in before["canonical_article_source_revisions"]]
+    for field in ("body_source_snapshot_id", "evidence_manifest", "source_images", "source_body", "source_steps"):
+        assert repaired_source[field] == prior_source[field]
+    assert repaired_source["resource_manifest"][1:] == prior_source["resource_manifest"][1:]
+    assert publish_retained_media_repair(runtime.repo, **kwargs) == {**published, "status": "already_published"}
+    assert _rows(runtime.repo) == after and model.calls == 1
+    assert runtime.counters() == {**traffic, "schedule": traffic["schedule"] + 1}

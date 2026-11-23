@@ -5,7 +5,9 @@ from copy import deepcopy
 from dataclasses import dataclass
 from functools import partial
 
-from .article_document import has_only_list_ordinal_additions, project_ordered_document
+from .article_document import (
+    has_only_list_ordinal_additions, has_only_table_span_additions, project_ordered_document,
+)
 from .article_lifecycle_types import ValidationResult, digest_json
 from .procedure_rewrite import _set_path, editable_slots, validate_article_rewrite
 from .procedure_rewrite_auto import PROFILE, _include_cell_blocks, render_auto, validate_auto
@@ -20,6 +22,7 @@ _POSITION_KEYS = frozenset({"block_id", "source_order"})
 _IMAGE_KEYS = _POSITION_KEYS | {"type"}
 MEDIA_METHOD = "published-media-placement-v1"
 ORDINAL_METHOD = "published-list-ordinals-v1"
+TABLE_SPAN_METHOD = "published-table-spans-v1"
 
 
 @dataclass(frozen=True)
@@ -145,9 +148,10 @@ def _remap_v2_operations(old_source, repaired_source):
 
 
 def repair_published_media(
-    old_source, published, repaired_source, *, response, prompt_version=None, profile=PROFILE, ordinals=False,
+    old_source, published, repaired_source, *, response, prompt_version=None, profile=PROFILE,
+    ordinals=False, table_spans=False,
 ) -> PublishedMediaRepair:
-    """Restore equivalent figures or missing list numbering using the saved rewrite.
+    """Restore figure placement, list numbering or table spans using the saved rewrite.
 
     The caller supplies a validated immutable publication, its authorized
     response, and a source reconstructed from verified retained bytes. Resolve
@@ -155,6 +159,8 @@ def repair_published_media(
     reviewed publication, supply its approved effective response. Reviewed
     and technical publications do not use an automatic prompt version.
     """
+    if ordinals and table_spans:
+        raise ValueError("PUBLISHED_MEDIA_REPAIR_MODE_INVALID")
     if profile == PROFILE:
         if not isinstance(prompt_version, str) or prompt_version not in _SUPPORTED_PROMPTS:
             raise ValueError("PUBLISHED_MEDIA_REPAIR_PROMPT_UNSUPPORTED")
@@ -183,10 +189,19 @@ def repair_published_media(
         raise ValueError("PUBLISHED_MEDIA_REPAIR_PUBLISHED_BINDING_MISMATCH") from None
     if not previous_validation.passed:
         raise ValueError("PUBLISHED_MEDIA_REPAIR_PUBLISHED_BINDING_MISMATCH")
-    if ordinals:
-        if not has_only_list_ordinal_additions(old_source, repaired_source):
+    structure_only = None
+    if table_spans:
+        structure_only = has_only_table_span_additions
+        method = TABLE_SPAN_METHOD
+        if not structure_only(old_source, repaired_source):
+            raise ValueError("PUBLISHED_MEDIA_REPAIR_TABLE_DRIFT")
+    elif ordinals:
+        structure_only = has_only_list_ordinal_additions
+        method = ORDINAL_METHOD
+        if not structure_only(old_source, repaired_source):
             raise ValueError("PUBLISHED_MEDIA_REPAIR_ORDINAL_DRIFT")
     else:
+        method = MEDIA_METHOD
         if _without_media(old_source) != _without_media(repaired_source):
             raise ValueError("PUBLISHED_MEDIA_REPAIR_SOURCE_TEXT_DRIFT")
         old_positions = _image_positions(old_source)
@@ -208,7 +223,7 @@ def repair_published_media(
     if not validation.passed:
         raise ValueError("PUBLISHED_MEDIA_REPAIR_REWRITE_INVALID")
     published_prose = _without_media(published)
-    if ordinals:
+    if structure_only is not None:
         if profile in (PROFILE, REVIEW_PROFILE):
             # The validated introduction's ID binds the entire source hash.
             # Compare its prose and evidence while allowing that ID to rebind.
@@ -218,11 +233,11 @@ def repair_published_media(
                 {key: value for key, value in before_intro.items() if key != "block_id"}
                 == {key: value for key, value in after_intro.items() if key != "block_id"}
             )
-            preserved = intact_intro and has_only_list_ordinal_additions(
+            preserved = intact_intro and structure_only(
                 {**published, "blocks": before_blocks}, {**document, "blocks": after_blocks},
             )
         else:
-            preserved = has_only_list_ordinal_additions(published, document)
+            preserved = structure_only(published, document)
     else:
         preserved = published_prose == _without_media(document)
     if not preserved:
@@ -234,7 +249,7 @@ def repair_published_media(
         remapped_response=new_response,
         validation=validation,
         provenance={
-            "transformation_method": ORDINAL_METHOD if ordinals else MEDIA_METHOD,
+            "transformation_method": method,
             "profile_version": profile,
             "model_calls": 0,
             "model_dispatch_count": 0,

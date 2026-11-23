@@ -9,7 +9,7 @@ from time import monotonic
 from psycopg.rows import dict_row
 
 from .article_document import build_ordered_document, validate_ordered_document
-from .article_lifecycle_types import CapturedSource, HTML_TABLE_SPAN_LAYOUT, digest_json
+from .article_lifecycle_types import CapturedSource, HTML_TABLE_SPAN_LAYOUT, SourceArticleContext, digest_json
 from .banktwo_connector import ArticleParser
 from .source_article_capture import snapshot_id
 from .source_media_replay import (
@@ -27,6 +27,27 @@ _SPAN_FIELDS = frozenset({"rowspan", "colspan"})
 class TableReplayBinding:
     row: dict
     snapshots: tuple
+    context: SourceArticleContext
+
+    @property
+    def canonical_article_id(self):
+        return self.row["canonical_article_id"]
+
+    @property
+    def source_revision_id(self):
+        return self.row["source_revision_id"]
+
+    @property
+    def source_observation_id(self):
+        return self.row["source_observation_id"]
+
+    @property
+    def source_fingerprint(self):
+        return self.row["source_fingerprint"]
+
+    @property
+    def body_sha256(self):
+        return self.row["resource_manifest"][0]["sha256"]
 
 
 def load_table_replay_binding(cur, source_revision_id, *, lock=False):
@@ -62,7 +83,7 @@ def load_table_replay_binding(cur, source_revision_id, *, lock=False):
     _check_review_quarantine(
         cur, body_ids | {context.descriptor_snapshot_id, context.resolution_snapshot_id}, lock=lock,
     )
-    return TableReplayBinding(row, snapshots)
+    return TableReplayBinding(row, snapshots, context)
 
 
 def _tables(document):
@@ -152,7 +173,7 @@ def _replay(repo, source_revision_id, object_store, deadline):
     if monotonic() >= deadline:
         raise ValueError("SOURCE_TABLE_REPLAY_DEADLINE")
     body["html_table_span_layout"] = owner["html_table_span_layout"] = HTML_TABLE_SPAN_LAYOUT
-    context = _context(row)
+    context = binding.context
     captured = CapturedSource(
         context, _replay_fingerprint(context, manifest), row["body_source_snapshot_id"],
         (owner,), manifest, provenance, document, row["source_images"], row["source_body"],
