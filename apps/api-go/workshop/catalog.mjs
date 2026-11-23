@@ -282,7 +282,18 @@ export async function readCollection(
     signal?.throwIfAborted();
     const remaining = Math.floor(pollUntil - now());
     if (remaining < 1 && latest) break;
-    if (update(await read(backoffWithChoices ? Math.max(1, remaining) : undefined), attempt)) return latest;
+    let data;
+    try {
+      data = await read(backoffWithChoices ? Math.max(1, remaining) : undefined);
+    } catch (error) {
+      signal?.throwIfAborted();
+      // Keep the usable list already shown for this request scope.
+      if (latest?.items.length && error instanceof CatalogRequestError &&
+          (error.status === 0 || error.status === 408 || error.status === 429 || error.status >= 500))
+        return { ...latest, refreshFailed: true };
+      throw error;
+    }
+    if (update(data, attempt)) return latest;
     if (attempt === attempts - 1 || now() >= pollUntil) break;
     if (attempt === 0 && emptyProbe && !latest.items.length && interval > EMPTY_COLLECTION_PROBE_DELAY_MS) {
       // Check newly stored options once without moving the regular polling schedule.
