@@ -1436,6 +1436,10 @@
                     "discovering": {
                       "type": "boolean",
                       "description": "The listed engines are selectable while the source catalog looks for more."
+                    },
+                    "discovery_instance": {
+                      "type": "string",
+                      "description": "Opaque identifier for the API instance reporting configuration discovery."
                     }
                   }
                 }

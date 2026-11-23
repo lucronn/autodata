@@ -133,34 +133,64 @@ func (s incompleteScopeCatalogStore) CatalogScopeComplete(context.Context, Princ
 	return false, nil
 }
 
-func TestUsableConfigurationsAreNotBlockedByMissingHydrationScope(t *testing.T) {
-	store := incompleteScopeCatalogStore{memoryCatalogStore: catalogFixtureStore()}
-	capture := &blockingCatalogHydrationClient{
-		started:  make(chan struct{}),
-		release:  make(chan struct{}),
-		finished: make(chan struct{}),
-	}
-	close(capture.release)
-	server := NewServerWithCatalogStore(staticReadiness{}, &fakeAuthenticator{
-		principal: Principal{OrganizationID: "org-1", Roles: []string{"dataset_viewer"}},
-	}, newMemoryRequestStore(), store)
-	server.ingestionClient = capture
+func TestStoredConfigurationsReportActualDiscovery(t *testing.T) {
+	for _, model := range []struct {
+		name      string
+		itemCount int
+	}{
+		{"roadster", 1},
+		{"unknown", 0},
+	} {
+		t.Run(model.name, func(t *testing.T) {
+			store := incompleteScopeCatalogStore{memoryCatalogStore: catalogFixtureStore()}
+			capture := &blockingCatalogHydrationClient{
+				started:  make(chan struct{}),
+				release:  make(chan struct{}),
+				finished: make(chan struct{}),
+			}
+			released := false
+			defer func() {
+				if !released {
+					close(capture.release)
+				}
+			}()
+			server := catalogServer(store)
+			server.ingestionClient = capture
+			path := "/v1/catalog/years/2024/makes/acme/models/" + model.name + "/configurations"
+			assertState := func(suffix string, active bool) {
+				t.Helper()
+				response := catalogRequest(server, path+suffix)
+				var body CatalogConfigurationsResponse
+				err := json.Unmarshal(response.Body.Bytes(), &body)
+				usable := model.itemCount > 0
+				if response.Code != http.StatusOK || err != nil || body.Complete ||
+					body.DiscoveryInstance != catalogDiscoveryInstance ||
+					body.Discovering != (active && usable) || body.Hydrating != (active && !usable) ||
+					len(body.Items) != model.itemCount || (usable && !body.Items[0].Complete) {
+					t.Fatalf("configuration state %q with active=%t: status=%d body=%s err=%v",
+						suffix, active, response.Code, response.Body, err)
+				}
+			}
 
-	response := catalogRequest(server, "/v1/catalog/years/2024/makes/acme/models/roadster/configurations")
-	if response.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusOK, response.Body.String())
-	}
-	var body CatalogConfigurationsResponse
-	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
-		t.Fatal(err)
-	}
-	if body.Complete || body.Hydrating || !body.Discovering || len(body.Items) != 1 || !body.Items[0].Complete {
-		t.Fatalf("body = %#v, want usable items with more choices being discovered", body)
-	}
-	select {
-	case <-capture.finished:
-	case <-time.After(500 * time.Millisecond):
-		t.Fatal("expected background /v1/catalog/ensure to fill the missing scope marker")
+			assertState("?stored_only=1", false)
+			assertState("", true)
+			select {
+			case <-capture.started:
+			case <-time.After(500 * time.Millisecond):
+				t.Fatal("expected background discovery to start")
+			}
+			assertState("?stored_only=1", true)
+			close(capture.release)
+			released = true
+			payload := map[string]any{
+				"scope": "configurations", "year": 2024, "make": "acme", "model": model.name, "region": "US",
+			}
+			deadline := time.Now().Add(500 * time.Millisecond)
+			for server.catalogHydrationRunning(payload) && time.Now().Before(deadline) {
+				time.Sleep(time.Millisecond)
+			}
+			assertState("?stored_only=1", false)
+		})
 	}
 }
 

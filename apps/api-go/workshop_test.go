@@ -279,10 +279,12 @@ func TestWorkshopRealDemoPrivateModeHandshakeHTTP(t *testing.T) {
 
 func TestWorkshopRedirectPreservesSeparateEntryPoint(t *testing.T) {
 	server := NewServerWithDependencies(staticReadiness{}, &fakeAuthenticator{err: ErrUnauthenticated}, newMemoryRequestStore())
-	response := httptest.NewRecorder()
-	server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/workshop", nil))
-	if response.Code != http.StatusMovedPermanently || response.Header().Get("Location") != "/workshop/" {
-		t.Fatalf("unexpected redirect: %d %s", response.Code, response.Header().Get("Location"))
+	for _, query := range []string{"", "?year=2024&make=buick-truck&model=envision-awd&region=US"} {
+		response := httptest.NewRecorder()
+		server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/workshop"+query, nil))
+		if response.Code != http.StatusMovedPermanently || response.Header().Get("Location") != "/workshop/"+query {
+			t.Fatalf("unexpected redirect: %d %s", response.Code, response.Header().Get("Location"))
+		}
 	}
 }
 

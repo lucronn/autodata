@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"log"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 // this process-level gate prevents repeated browser polling from opening
 // duplicate long-running requests before the worker has persisted its result.
 var catalogHydrationInFlight sync.Map
+var catalogDiscoveryInstance = rand.Text()
 
 type CatalogYearsResponse struct {
 	Version string        `json:"version"`
@@ -36,9 +38,10 @@ type CatalogModelsResponse struct {
 	CatalogHydrationResponse
 }
 type CatalogConfigurationsResponse struct {
-	Version     string                 `json:"version"`
-	Items       []CatalogConfiguration `json:"items"`
-	Discovering bool                   `json:"discovering,omitempty"`
+	Version           string                 `json:"version"`
+	Items             []CatalogConfiguration `json:"items"`
+	Discovering       bool                   `json:"discovering,omitempty"`
+	DiscoveryInstance string                 `json:"discovery_instance,omitempty"`
 	CatalogHydrationResponse
 }
 type CatalogArticlesResponse struct {
@@ -145,6 +148,14 @@ func (s *Server) listCatalogConfigurations(response http.ResponseWriter, request
 	makeName := catalogPathValue(request.PathValue("make"))
 	modelName := catalogPathValue(request.PathValue("model"))
 	region := request.URL.Query().Get("region")
+	payload := map[string]any{
+		"scope": "configurations", "year": year, "make": makeName,
+		"model": modelName, "region": catalogRegion(request),
+	}
+	storedOnly := catalogStoredSelector(request)
+	// Check before reading the rows. In-flight work can finish and persist rows
+	// while this request is reading, in which case another stored read is safe.
+	running := storedOnly && s.catalogHydrationRunning(payload)
 	complete, err := s.catalog.CatalogScopeComplete(request.Context(), principal, "configurations", year, makeName, modelName, region)
 	if err != nil {
 		s.writeCatalogError(response, request, err)
@@ -156,21 +167,19 @@ func (s *Server) listCatalogConfigurations(response http.ResponseWriter, request
 		return
 	}
 	usable := !catalogConfigurationsIncomplete(items) || (complete && len(items) == 0)
-	// A completed empty scope is terminal. Usable complete rows must stay
-	// selectable even when the durable scope marker is still missing.
-	// Keep background ensure running until the marker
-	// lands, but do not hide the list behind hydrating:true.
-	hydrating := !usable && s.ingestionClient != nil
-	if (!complete || !usable) && s.ingestionClient != nil && !catalogStoredSelector(request) {
-		s.scheduleCatalogHydration(request, map[string]any{
-			"scope": "configurations", "year": year, "make": makeName,
-			"model": modelName, "region": catalogRegion(request),
-		})
+	scopeComplete := complete && usable
+	discoveryInstance := ""
+	if !scopeComplete && s.ingestionClient != nil {
+		discoveryInstance = catalogDiscoveryInstance
+	}
+	if !scopeComplete && !storedOnly {
+		running = s.scheduleCatalogHydration(request, payload)
 	}
 	writeJSON(response, http.StatusOK, CatalogConfigurationsResponse{
 		Version: "v1", Items: items,
-		Discovering:              usable && !complete && s.ingestionClient != nil,
-		CatalogHydrationResponse: CatalogHydrationResponse{Complete: complete && usable, Hydrating: hydrating},
+		Discovering:              usable && !scopeComplete && running,
+		DiscoveryInstance:        discoveryInstance,
+		CatalogHydrationResponse: CatalogHydrationResponse{Complete: scopeComplete, Hydrating: !usable && running},
 	})
 }
 
@@ -513,17 +522,29 @@ func catalogRegion(request *http.Request) string {
 	return "US"
 }
 
-func (s *Server) scheduleCatalogHydration(request *http.Request, payload map[string]any) {
+func (s *Server) catalogHydrationRunning(payload map[string]any) bool {
 	if s.ingestionClient == nil {
-		return
+		return false
+	}
+	key, _, err := catalogHydrationRequest(payload)
+	if err != nil {
+		return false
+	}
+	_, running := catalogHydrationInFlight.Load(key)
+	return running
+}
+
+func (s *Server) scheduleCatalogHydration(request *http.Request, payload map[string]any) bool {
+	if s.ingestionClient == nil {
+		return false
 	}
 	key, _, err := catalogHydrationRequest(payload)
 	if err != nil {
 		log.Printf("catalog hydration could not be scheduled: %v", err)
-		return
+		return false
 	}
 	if _, alreadyRunning := catalogHydrationInFlight.LoadOrStore(key, struct{}{}); alreadyRunning {
-		return
+		return true
 	}
 	backgroundRequest := request.Clone(context.Background())
 	go func() {
@@ -532,6 +553,7 @@ func (s *Server) scheduleCatalogHydration(request *http.Request, payload map[str
 			log.Printf("catalog hydration %s failed: %v", key, err)
 		}
 	}()
+	return true
 }
 
 func (s *Server) writeCatalogError(response http.ResponseWriter, request *http.Request, err error) {
