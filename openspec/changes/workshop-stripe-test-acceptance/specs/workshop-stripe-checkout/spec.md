@@ -37,3 +37,16 @@ purchaser for the order's canonical vehicle configuration and region.
 - **WHEN** Checkout is canceled or expires without settlement
 - **THEN** the tester receives no paid access
 - **AND** a fresh purchase requires an explicit action after the server confirms that retry is safe
+
+### Requirement: Temporary payment simulation on the main Workshop
+An enabled simulation SHALL substitute a no-charge settlement for payment
+for signed-in customers in the regular Workshop.
+
+#### Scenario: Simulate payment for a catalog vehicle
+- **WHEN** a signed-in customer selects a real configuration and submits the simulated purchase
+- **THEN** the server records one simulation settlement and grants the exact account, configuration and region
+- **AND** the regular Library, article reader and media authorization use that grant
+
+#### Scenario: Disabled or unauthorized simulation
+- **WHEN** the request lacks a valid customer session or scope or a request prepared in simulation mode reaches a server with that mode disabled
+- **THEN** the request creates no grant and initiates no Stripe session

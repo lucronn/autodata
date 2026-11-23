@@ -338,8 +338,8 @@ func wantsCatalogPurchaseQuote(r *http.Request, configuration CatalogConfigurati
 	return catalogReadPreferenceRequested(r, purchaseQuotePreference)
 }
 
-func (s *Server) catalogPurchaseQuote(ctx context.Context, configuration CatalogConfiguration) *commerceQuote {
-	input := map[string]any{"configuration_id": configuration.ID, "region": configuration.Region}
+func (s *Server) catalogPurchaseQuote(ctx context.Context, configuration CatalogConfiguration, p Principal) *commerceQuote {
+	input := s.workshopQuoteInput(configuration.ID, configuration.Region, p)
 	status, body, err := s.doCommerce(ctx, "quote", input, nil, "")
 	if err != nil {
 		return nil
@@ -387,7 +387,7 @@ func (s *Server) catalogProtected(next authenticatedHandler, article bool) http.
 				if errors.Is(err, ErrVehicleGrantRequired) && wantsCatalogPurchaseQuote(r, configuration) {
 					w.Header().Add("Preference-Applied", purchaseQuotePreference)
 					s.writePaidCatalogErrorDetails(w, r, err, map[string]any{
-						"purchase_quote": s.catalogPurchaseQuote(r.Context(), configuration),
+						"purchase_quote": s.catalogPurchaseQuote(r.Context(), configuration, p),
 					})
 					return
 				}

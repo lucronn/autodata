@@ -163,6 +163,9 @@ func commercePublicResult(operation string, status int, body []byte, input map[s
 		if json.Unmarshal(body, &v) != nil || v.Version != "v1" || !commerceUUID(v.OrderID) || !scopeMatches(v.ConfigurationID, v.Region) {
 			return nil, false
 		}
+		if input["expected_mode"] == workshopSimulationMode && v.State != "owned" {
+			return nil, false
+		}
 		switch v.State {
 		case "checkout":
 			return v, (status == 200 || status == 201) && commerceHostedURL(v.CheckoutURL) && commerceTime(v.ProviderExpiresAt) && v.LibraryItemID == ""

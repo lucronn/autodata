@@ -134,6 +134,10 @@ func TestWorkshopBrowserFixtureHTTP(t *testing.T) {
 		}
 		paid = paidSetup(t)
 	}
+	simulation := os.Getenv("AUTODATA_WORKSHOP_BROWSER_SIMULATION") == "1"
+	if simulation && paid == nil {
+		t.Fatal("simulation requires an isolated paid fixture")
+	}
 	firebase := newWorkshopFirebaseSDKFixture(t)
 	server, customer := newWorkshopBrowserApplication(t, paid, firebase, "https://fixture.invalid")
 	stopped := make(chan struct{})
@@ -173,6 +177,8 @@ func TestWorkshopBrowserFixtureHTTP(t *testing.T) {
 	})
 	if paid != nil {
 		mountWorkshopPaidControls(t, mux, paid, firebase, func() *httptest.Server { return tlsServer })
+	}
+	if paid != nil && !simulation {
 		mux.HandleFunc("GET /workshop/purchase-config.json", func(w http.ResponseWriter, r *http.Request) {
 			origin := "https://" + r.Host
 			writeJSON(w, 200, map[string]any{"enabled": true, "terms_version": "workshop-v1", "terms_url": origin + "/__fixture/policy/terms", "privacy_url": origin + "/__fixture/policy/privacy", "refund_url": origin + "/__fixture/policy/refund", "contact_url": origin + "/__fixture/policy/contact", "tax_notice": "Synthetic fixture tax included."})
@@ -581,6 +587,10 @@ func newWorkshopBrowserApplication(t *testing.T, paid *paidFixture, firebase *fi
 		server.ingestionClient = paid.applications[0].ingestionClient
 		server.catalogImageKey = paid.applications[0].catalogImageKey
 		server.catalogImageReader = paid.reader
+		if os.Getenv("AUTODATA_WORKSHOP_BROWSER_SIMULATION") == "1" {
+			customer.config.commerceMode = workshopSimulationMode
+			server.workshopSimulation = true
+		}
 		if err = server.validatePaidCatalogDependencies(); err != nil {
 			t.Fatal(err)
 		}

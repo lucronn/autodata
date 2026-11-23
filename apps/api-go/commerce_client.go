@@ -16,6 +16,7 @@ type HTTPCommerceClient struct {
 	baseURL, token string
 	client         *http.Client
 	readOnly       bool
+	simulation     bool
 }
 
 func NewHTTPCommerceClient(baseURL, token string) (*HTTPCommerceClient, error) {
@@ -40,6 +41,9 @@ func (c *HTTPCommerceClient) Do(ctx context.Context, operation string, body []by
 		return 0, nil, fmt.Errorf("invalid commerce operation")
 	}
 	if c == nil || c.client == nil || c.token == "" || len(body) > 1<<20 || len(signature) > 4096 {
+		return 0, nil, ErrVehicleGrantUnavailable
+	}
+	if c.simulation && operation == "stripe/webhook" {
 		return 0, nil, ErrVehicleGrantUnavailable
 	}
 	if c.readOnly {
@@ -111,15 +115,20 @@ func configuredCommerceClient(getenv func(string) string) (CommerceClient, error
 	switch mode {
 	case "", "disabled":
 		return nil, nil
-	case "read_only", "stripe_test", "stripe_live":
+	case "read_only", "stripe_test", "stripe_live", "simulation":
 		if mode == "stripe_test" && workshopProductionOrigin(getenv("AUTODATA_PUBLIC_ORIGIN")) {
 			return nil, fmt.Errorf("invalid commerce configuration")
 		}
-		client, err := NewHTTPCommerceClient(getenv("AUTODATA_INGESTION_URL"), getenv("AUTODATA_INGESTION_INTERNAL_TOKEN"))
+		endpoint := getenv("AUTODATA_INGESTION_URL")
+		if mode == "simulation" && getenv("AUTODATA_WORKSHOP_COMMERCE_URL") != "" {
+			endpoint = getenv("AUTODATA_WORKSHOP_COMMERCE_URL")
+		}
+		client, err := NewHTTPCommerceClient(endpoint, getenv("AUTODATA_INGESTION_INTERNAL_TOKEN"))
 		if err != nil {
 			return nil, err
 		}
 		client.readOnly = mode == "read_only"
+		client.simulation = mode == "simulation"
 		return client, nil
 	default:
 		return nil, fmt.Errorf("invalid commerce mode")

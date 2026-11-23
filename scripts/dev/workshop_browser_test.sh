@@ -4,11 +4,11 @@ set -eu
 
 engine=${1:-all}
 case "$engine" in
-    all|chromium|firefox|webkit) ;;
-    *) echo "Usage: $0 [all|chromium|firefox|webkit]" >&2; exit 2 ;;
+    all|chromium|firefox|webkit|simulation) ;;
+    *) echo "Usage: $0 [all|chromium|firefox|webkit|simulation]" >&2; exit 2 ;;
 esac
 if [ "$#" -gt 1 ]; then
-    echo "Usage: $0 [all|chromium|firefox|webkit]" >&2
+    echo "Usage: $0 [all|chromium|firefox|webkit|simulation]" >&2
     exit 2
 fi
 
@@ -53,6 +53,19 @@ trap 'exit 143' TERM
 
 printf 'Workshop browser results: %s\n' "$AUTODATA_LIFECYCLE_ARTIFACT_DIR"
 compose up -d --wait --wait-timeout 60 postgres minio
+
+if [ "$engine" = simulation ]; then
+    compose run --rm -T --no-deps --pull never --user "$(id -u):$(id -g)" \
+        go-test-runner sh -ec '
+            mkdir -p "$GOCACHE" "$GOTMPDIR"
+            go -C apps/api-go test -c -o /tmp/workshop-simulation.test .
+            AUTODATA_REQUIRE_WORKSHOP_SIMULATION_BROWSER=1 \
+            AUTODATA_WORKSHOP_SIMULATION_GO_BINARY=/tmp/workshop-simulation.test \
+                python -m pytest -v -p no:cacheprovider \
+                    --junitxml=/artifacts/workshop-simulation-browser.xml \
+                    scripts/dev/test_workshop_simulation_browser.py'
+    exit
+fi
 
 set -- python -m pytest -v -p no:cacheprovider \
     --junitxml=/artifacts/workshop-browser-api.xml \

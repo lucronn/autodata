@@ -27,6 +27,12 @@ _CONFIGURATION_LABEL_SQL = (
 )
 READ_ONLY_COMMERCE_PATHS = frozenset('/internal/commerce/' + path for path in
     ('purchase-config', 'quote', 'library', 'grants/check'))
+SIMULATION_COMMERCE_PATHS = READ_ONLY_COMMERCE_PATHS | {
+    '/internal/commerce/checkouts', '/internal/commerce/orders/status',
+}
+SIMULATION_MERCHANT = 'workshop_simulation'
+SIMULATION_PRICE = 'workshop_no_charge'
+SIMULATION_PROVIDER = 'workshop_simulation'
 
 
 class CommerceError(ValueError):
@@ -42,8 +48,11 @@ class CommerceResult(dict):
 
 
 def assert_commerce_operation(service, path):
-    if getattr(service, 'read_only', False) and path not in READ_ONLY_COMMERCE_PATHS:
-        raise CommerceError('COMMERCE_UNAVAILABLE', 503)
+    if getattr(service, 'read_only', False):
+        mode = getattr(getattr(service, 'config', None), 'mode', '')
+        allowed = SIMULATION_COMMERCE_PATHS if mode == 'simulation' else READ_ONLY_COMMERCE_PATHS
+        if path not in allowed:
+            raise CommerceError('COMMERCE_UNAVAILABLE', 503)
 
 
 def exact_fields(value, fields):
@@ -158,7 +167,7 @@ class CommerceService:
     read_only = False
 
     def __init__(self, connection_factory, config, provider, *, clock=None, purchase_config=None):
-        if config.mode not in {'stripe_test', 'stripe_live'} or not config.account_id or not config.price_id:
+        if config.mode not in {'stripe_test', 'stripe_live', 'simulation'} or not config.account_id or not config.price_id:
             raise CommerceError('COMMERCE_UNAVAILABLE', 503)
         if purchase_config is not None and type(purchase_config) is not PurchaseConfig:
             raise ValueError("validated purchase configuration required")
@@ -178,12 +187,12 @@ class CommerceService:
         return CommerceResult({'mode': self.config.mode, 'purchase_enabled': self._purchase_config.enabled})
 
     @contextmanager
-    def transaction(self):
+    def transaction(self, *, writable=False):
         from psycopg.rows import dict_row
         with self.connect() as connection:
             with connection.transaction():
                 with connection.cursor(row_factory=dict_row) as cursor:
-                    if self.read_only:
+                    if self.read_only and not writable:
                         cursor.execute('SET TRANSACTION READ ONLY')
                     cursor.execute("SET LOCAL statement_timeout = '3s'")
                     cursor.execute("SET LOCAL lock_timeout = '3s'")
@@ -220,11 +229,14 @@ class CommerceService:
 
     def quote(self, configuration_id, region):
         with self.transaction() as (_, cursor):
-            scope = self._scope(cursor, configuration_id, region)
-            self._product(cursor)
+            return self._quote(cursor, configuration_id, region, purchasable=True)
+
+    def _quote(self, cursor, configuration_id, region, *, purchasable):
+        scope = self._scope(cursor, configuration_id, region)
+        self._product(cursor)
         return CommerceResult(dict(version='v1', product_key=PRODUCT, configuration_id=configuration_id,
             region=region, configuration_label=scope['label'], amount_minor=2000, currency='USD',
-            purchase_terms_version=TERMS, purchasable=True))
+            purchase_terms_version=TERMS, purchasable=purchasable))
 
     def _product(self, cursor):
         cursor.execute("SELECT dataset_product_id FROM dataset_products WHERE product_key=%s AND product_version=1 AND active AND price_minor=2000 AND currency='USD'", (PRODUCT,))
@@ -259,50 +271,9 @@ class CommerceService:
         return CommerceResult(result, status)
 
     def checkout(self, account_id, organization_id, key, payload):
-        exact_fields(payload, {'configuration_id', 'region', 'terms_version'})
-        config_id = validate_uuid(payload['configuration_id']); region = validate_region(payload['region'])
-        validate_uuid(key)
-        if payload['terms_version'] != TERMS:
-            raise CommerceError('TERMS_VERSION_REQUIRED', 409)
-        if not self._purchase_config.enabled:
-            raise CommerceError("COMMERCE_UNAVAILABLE", 503)
-        digest = canonical_checkout_hash(config_id, region, TERMS)
-        created = False
+        config_id, region = self._checkout_scope(key, payload)
         with self.transaction() as (_, cursor):
-            self._account(cursor, account_id, organization_id)
-            self._lock(cursor, account_id, config_id, region)
-            cursor.execute("SELECT 1 FROM entitlements WHERE customer_account_id=%s AND configuration_id=%s AND region=%s AND status='revoked' LIMIT 1", (account_id,config_id,region))
-            if cursor.fetchone():
-                raise CommerceError('ENTITLEMENT_REVOKED',403)
-            cursor.execute('SELECT * FROM workshop_checkout_requests WHERE customer_account_id=%s AND client_idempotency_key=%s', (account_id, key))
-            mapping = cursor.fetchone()
-            if mapping:
-                if bytes(mapping['canonical_request_sha256']) != digest:
-                    raise CommerceError('IDEMPOTENCY_CONFLICT', 409)
-                order = self._order(cursor, mapping['order_id'])
-            else:
-                cursor.execute("SELECT order_id FROM workshop_orders WHERE customer_account_id=%s AND configuration_id=%s AND region=%s AND status='revoked' LIMIT 1", (account_id, config_id, region))
-                if cursor.fetchone():
-                    raise CommerceError('ENTITLEMENT_REVOKED', 403)
-                cursor.execute('SELECT order_id FROM workshop_orders WHERE customer_account_id=%s AND configuration_id=%s AND region=%s AND status=ANY(%s) LIMIT 1', (account_id, config_id, region, list(LIVE)))
-                live = cursor.fetchone()
-                if live:
-                    order = self._order(cursor, live['order_id'])
-                else:
-                    self._scope(cursor, config_id, region)
-                    order_id = str(uuid.uuid4())
-                    cursor.execute("""INSERT INTO workshop_orders(order_id,customer_account_id,organization_id,configuration_id,region,dataset_product_id,terms_version,
-                        amount_minor,currency,stripe_account_id,livemode,expected_price_id,provider_idempotency_key,status,first_create_attempt_at)
-                        VALUES(%s,%s,%s,%s,%s,%s,%s,2000,'USD',%s,%s,%s,%s,'creating',%s) RETURNING *""",
-                        (order_id, account_id, organization_id, config_id, region, self._product(cursor), TERMS, self.config.account_id,
-                         self.config.livemode, self.config.price_id, f'workshop:checkout:{order_id}:v1', self.clock()))
-                    order = cursor.fetchone(); created = True
-                cursor.execute('INSERT INTO workshop_checkout_requests(customer_account_id,client_idempotency_key,canonical_request_sha256,order_id) VALUES(%s,%s,%s,%s) ON CONFLICT DO NOTHING', (account_id, key, digest, order['order_id']))
-                cursor.execute('SELECT canonical_request_sha256,order_id FROM workshop_checkout_requests WHERE customer_account_id=%s AND client_idempotency_key=%s', (account_id, key))
-                bound = cursor.fetchone()
-                if bytes(bound['canonical_request_sha256']) != digest or bound['order_id'] != order['order_id']:
-                    raise CommerceError('IDEMPOTENCY_CONFLICT', 409)
-            self._assert_merchant(order)
+            order, created = self._reserve_checkout(cursor, account_id, organization_id, config_id, region, key)
         if order['status'] == 'creating':
             if self.clock() - order['first_create_attempt_at'] >= timedelta(hours=23):
                 with self.transaction() as (_, cursor):
@@ -329,6 +300,69 @@ class CommerceService:
         elif order['status'] == 'open' and order['provider_expires_at'] <= self.clock():
             order = self._reconcile_expiry(order)
         return self._response(order, 201 if created else 200)
+
+    def _checkout_scope(self, key, payload):
+        exact_fields(payload, {'configuration_id', 'region', 'terms_version'})
+        configuration_id = validate_uuid(payload['configuration_id'])
+        region = validate_region(payload['region'])
+        validate_uuid(key)
+        if payload['terms_version'] != TERMS:
+            raise CommerceError('TERMS_VERSION_REQUIRED', 409)
+        if not self._purchase_config.enabled:
+            raise CommerceError('COMMERCE_UNAVAILABLE', 503)
+        return configuration_id, region
+
+    def _reserve_checkout(self, cursor, account_id, organization_id, configuration_id, region, key):
+        self._account(cursor, account_id, organization_id)
+        self._lock(cursor, account_id, configuration_id, region)
+        scope = (account_id, configuration_id, region)
+        cursor.execute("""SELECT 1 FROM entitlements WHERE customer_account_id=%s
+            AND configuration_id=%s AND region=%s AND status='revoked' LIMIT 1""", scope)
+        if cursor.fetchone():
+            raise CommerceError('ENTITLEMENT_REVOKED', 403)
+        digest = canonical_checkout_hash(configuration_id, region, TERMS)
+        cursor.execute("""SELECT * FROM workshop_checkout_requests
+            WHERE customer_account_id=%s AND client_idempotency_key=%s""", (account_id, key))
+        mapping = cursor.fetchone()
+        if mapping:
+            if bytes(mapping['canonical_request_sha256']) != digest:
+                raise CommerceError('IDEMPOTENCY_CONFLICT', 409)
+            order = self._order(cursor, mapping['order_id'])
+            self._assert_merchant(order)
+            return order, False
+
+        cursor.execute("""SELECT order_id FROM workshop_orders WHERE customer_account_id=%s
+            AND configuration_id=%s AND region=%s AND status='revoked' LIMIT 1""", scope)
+        if cursor.fetchone():
+            raise CommerceError('ENTITLEMENT_REVOKED', 403)
+        cursor.execute("""SELECT order_id FROM workshop_orders WHERE customer_account_id=%s
+            AND configuration_id=%s AND region=%s AND status=ANY(%s) LIMIT 1""", (*scope, list(LIVE)))
+        live = cursor.fetchone()
+        created = live is None
+        if live:
+            order = self._order(cursor, live['order_id'])
+        else:
+            self._scope(cursor, configuration_id, region)
+            order_id = str(uuid.uuid4())
+            operation = 'simulation' if self.config.mode == 'simulation' else 'checkout'
+            cursor.execute("""INSERT INTO workshop_orders(order_id,customer_account_id,organization_id,configuration_id,
+                region,dataset_product_id,terms_version,amount_minor,currency,stripe_account_id,livemode,
+                expected_price_id,provider_idempotency_key,status,first_create_attempt_at)
+                VALUES(%s,%s,%s,%s,%s,%s,%s,2000,'USD',%s,%s,%s,%s,'creating',%s) RETURNING *""",
+                (order_id, account_id, organization_id, configuration_id, region, self._product(cursor), TERMS,
+                 self.config.account_id, self.config.livemode, self.config.price_id,
+                 f'workshop:{operation}:{order_id}:v1', self.clock()))
+            order = cursor.fetchone()
+        self._assert_merchant(order)
+        cursor.execute("""INSERT INTO workshop_checkout_requests
+            (customer_account_id,client_idempotency_key,canonical_request_sha256,order_id)
+            VALUES(%s,%s,%s,%s) ON CONFLICT DO NOTHING""", (account_id, key, digest, order['order_id']))
+        cursor.execute("""SELECT canonical_request_sha256,order_id FROM workshop_checkout_requests
+            WHERE customer_account_id=%s AND client_idempotency_key=%s""", (account_id, key))
+        bound = cursor.fetchone()
+        if bytes(bound['canonical_request_sha256']) != digest or bound['order_id'] != order['order_id']:
+            raise CommerceError('IDEMPOTENCY_CONFLICT', 409)
+        return order, created
 
     def _reconcile_expiry(self, order):
         try:
@@ -499,19 +533,51 @@ class CommerceService:
                 # Recheck immutable bindings under the scope lock after remote I/O.
                 pid = validate_settlement(order, session)
                 if order['status'] != 'paid':
-                    request_id, entitlement_id, projection_id = [str(uuid.uuid5(uuid.UUID(str(order['order_id'])), name)) for name in ('request', 'entitlement', 'projection')]
-                    cursor.execute("""INSERT INTO dataset_requests(dataset_request_id,dataset_product_id,vehicle_key,region,status,lane,correlation_id,idempotency_key,processing_version,organization_id)
-                        VALUES(%s,%s,%s,%s,'purchased','fast',%s,%s,'workshop-v1',%s)""",
-                        (request_id, order['dataset_product_id'], str(order['configuration_id']), order['region'], order['order_id'], 'workshop:' + str(order['order_id']), order['organization_id']))
-                    cursor.execute("""INSERT INTO entitlements(entitlement_id,organization_id,dataset_request_id,payment_event_id,provider_event_id,status,granted_at,customer_account_id,configuration_id,region,commerce_order_id)
-                        VALUES(%s,%s,%s,%s,%s,'active',now(),%s,%s,%s,%s)""",
-                        (entitlement_id, order['organization_id'], request_id, event_id, event['provider_event_id'], order['customer_account_id'], order['configuration_id'], order['region'], order['order_id']))
-                    cursor.execute('INSERT INTO dataset_projections(dataset_projection_id,dataset_product_id,dataset_request_id,entitlement_id) VALUES(%s,%s,%s,%s)',
-                        (projection_id, order['dataset_product_id'], request_id, entitlement_id))
-                    cursor.execute("""UPDATE workshop_orders SET status='paid',dataset_request_id=%s,entitlement_id=%s,paid_at=now(),checkout_session_id=%s,
-                        payment_intent_id=%s,preparation_state='pending',preparation_next_attempt_at=now(),updated_at=now() WHERE order_id=%s""", (request_id, entitlement_id, session['id'], pid, order['order_id']))
+                    self._settle_order(cursor, order, event_id, event['provider_event_id'],
+                                       checkout_session_id=session['id'], payment_intent_id=pid)
             cursor.execute("UPDATE payment_events SET fulfillment_status='fulfilled',fulfilled_at=now(),last_fulfillment_error=NULL WHERE payment_event_id=%s", (event_id,))
         return CommerceResult({'status': 'accepted'})
+
+    def _settle_order(self, cursor, order, event_id, provider_event_id, *,
+                      checkout_session_id=None, payment_intent_id=None):
+        # The caller holds the order and exact scope locks and has verified its authority.
+        order_id = str(order['order_id'])
+        request_id, entitlement_id, projection_id = (
+            str(uuid.uuid5(uuid.UUID(order_id), purpose))
+            for purpose in ('request', 'entitlement', 'projection')
+        )
+        cursor.execute("""INSERT INTO dataset_requests(dataset_request_id,dataset_product_id,vehicle_key,region,
+            status,lane,correlation_id,idempotency_key,processing_version,organization_id)
+            VALUES(%s,%s,%s,%s,'purchased','fast',%s,%s,'workshop-v1',%s)""",
+            (request_id, order['dataset_product_id'], str(order['configuration_id']), order['region'],
+             order_id, 'workshop:' + order_id, order['organization_id']))
+        cursor.execute("""INSERT INTO entitlements(entitlement_id,organization_id,dataset_request_id,
+            payment_event_id,provider_event_id,status,granted_at,customer_account_id,configuration_id,region,commerce_order_id)
+            VALUES(%s,%s,%s,%s,%s,'active',now(),%s,%s,%s,%s)""",
+            (entitlement_id, order['organization_id'], request_id, event_id, provider_event_id,
+             order['customer_account_id'], order['configuration_id'], order['region'], order_id))
+        cursor.execute("""INSERT INTO dataset_projections(dataset_projection_id,dataset_product_id,dataset_request_id,entitlement_id)
+            VALUES(%s,%s,%s,%s)""", (projection_id, order['dataset_product_id'], request_id, entitlement_id))
+        cursor.execute("""UPDATE workshop_orders SET status='paid',dataset_request_id=%s,entitlement_id=%s,
+            paid_at=now(),checkout_session_id=%s,payment_intent_id=%s,preparation_state='pending',
+            preparation_next_attempt_at=now(),updated_at=now() WHERE order_id=%s RETURNING *""",
+            (request_id, entitlement_id, checkout_session_id, payment_intent_id, order_id))
+        return cursor.fetchone()
+
+    def _read_merchant_configs(self):
+        return (self.config,)
+
+    def _read_order_pins(self):
+        pins = self._read_merchant_configs()
+        if self.read_only:
+            fields = '(o.stripe_account_id,o.livemode,o.expected_price_id)'
+            placeholders = ','.join(['(%s,%s,%s)'] * len(pins))
+            args = [value for pin in pins for value in (pin.account_id, pin.livemode, pin.price_id)]
+        else:
+            fields = '(o.stripe_account_id,o.livemode)'
+            placeholders = ','.join(['(%s,%s)'] * len(pins))
+            args = [value for pin in pins for value in (pin.account_id, pin.livemode)]
+        return f'{fields} IN ({placeholders})', args
 
     def grant_check(self, account_id, organization_id, configuration_id, region):
         with self.transaction() as (_, cursor):
@@ -519,15 +585,17 @@ class CommerceService:
             validate_uuid(configuration_id); validate_region(region)
             if self.read_only:
                 self._scope(cursor, configuration_id, region)
-            price_clause = ' AND expected_price_id=%s' if self.read_only else ''
-            price_args = (self.config.price_id,) if self.read_only else ()
-            cursor.execute("SELECT 1 FROM workshop_orders WHERE customer_account_id=%s AND configuration_id=%s AND region=%s AND stripe_account_id=%s AND livemode=%s" + price_clause + " AND status='revoked' LIMIT 1", (account_id,configuration_id,region,self.config.account_id,self.config.livemode) + price_args)
+            pin_predicate, pin_args = self._read_order_pins()
+            args = [account_id, configuration_id, region, *pin_args]
+            cursor.execute(f"""SELECT 1 FROM workshop_orders o WHERE o.customer_account_id=%s
+                AND o.configuration_id=%s AND o.region=%s AND {pin_predicate}
+                AND o.status='revoked' LIMIT 1""", args)
             if cursor.fetchone():
                 raise CommerceError('ENTITLEMENT_REVOKED',403)
-            cursor.execute("""SELECT e.entitlement_id,e.status,o.order_id FROM entitlements e JOIN workshop_orders o ON o.order_id=e.commerce_order_id
-                WHERE e.customer_account_id=%s AND e.configuration_id=%s AND e.region=%s AND o.stripe_account_id=%s AND o.livemode=%s"""
-                + (' AND o.expected_price_id=%s' if self.read_only else '')
-                + ' ORDER BY e.granted_at DESC LIMIT 1', (account_id, configuration_id, region, self.config.account_id, self.config.livemode) + price_args)
+            cursor.execute(f"""SELECT e.entitlement_id,e.status,o.order_id FROM entitlements e
+                JOIN workshop_orders o ON o.order_id=e.commerce_order_id
+                WHERE e.customer_account_id=%s AND e.configuration_id=%s AND e.region=%s AND {pin_predicate}
+                ORDER BY e.granted_at DESC LIMIT 1""", args)
             grant = cursor.fetchone()
             if not grant:
                 raise CommerceError('ENTITLEMENT_REQUIRED', 403)
@@ -550,8 +618,8 @@ class CommerceService:
         with self.transaction() as (_, cursor):
             self._account(cursor, account_id, organization_id)
             clause = 'AND (o.created_at,o.order_id)<(%s,%s)' if after else ''
-            price_clause = ' AND o.expected_price_id=%s' if self.read_only else ''
-            args = [account_id, self.config.account_id, self.config.livemode] + ([self.config.price_id] if self.read_only else []) + (list(after) if after else []) + [limit + 1]
+            pin_predicate, pin_args = self._read_order_pins()
+            args = [account_id, *pin_args, *(after or ()), limit + 1]
             # Limit the owner-scoped page before checking article readiness.
             cursor.execute(f"""
                 WITH page AS MATERIALIZED (
@@ -560,7 +628,7 @@ class CommerceService:
                     FROM workshop_orders o JOIN vehicle_configurations c ON c.vehicle_configuration_id=o.configuration_id
                     JOIN vehicle_identity_bases b USING(vehicle_identity_base_id)
                     LEFT JOIN entitlements e ON e.entitlement_id=o.entitlement_id
-                    WHERE o.customer_account_id=%s AND o.stripe_account_id=%s AND o.livemode=%s {price_clause}
+                    WHERE o.customer_account_id=%s AND {pin_predicate}
                       AND (o.status='revoked' OR e.entitlement_id IS NOT NULL) {clause}
                     ORDER BY o.created_at DESC,o.order_id DESC LIMIT %s
                 )
@@ -653,6 +721,81 @@ class ReadOnlyCommerceService(CommerceService):
     checkout = order_status = webhook = reconcile_event = _reconcile_expiry = demo_mode_status = _payment_unavailable
 
 
+class SimulationCommerceService(CommerceService):
+    """No-charge checkout for active accounts using the regular Workshop grant."""
+
+    read_only = True
+
+    def __init__(self, connection_factory, read_only_config, purchase_config):
+        super().__init__(connection_factory, CommerceConfig('simulation', SIMULATION_MERCHANT, SIMULATION_PRICE),
+                         None, purchase_config=purchase_config)
+        self.read_only_config = read_only_config
+
+    def _read_merchant_configs(self):
+        return self.read_only_config, self.config
+
+    def _assert_merchant(self, order):
+        if (order['status'] in ('paid', 'revoked') and order['entitlement_id']
+                and order['stripe_account_id'] == self.read_only_config.account_id
+                and order['livemode'] == self.read_only_config.livemode
+                and order['expected_price_id'] == self.read_only_config.price_id):
+            return
+        super()._assert_merchant(order)
+
+    def purchase_configuration(self, *, account_id=None, organization_id=None):
+        if account_id is None and organization_id is None:
+            return CommerceResult(dict(PurchaseConfig.disabled().public(), checkout_mode='simulation'))
+        with self.transaction() as (_, cursor):
+            self._account(cursor, account_id, organization_id)
+        return CommerceResult(dict(self._purchase_config.public(), checkout_mode='simulation'))
+
+    def quote(self, configuration_id, region, *, account_id=None, organization_id=None):
+        signed_in = account_id is not None or organization_id is not None
+        with self.transaction() as (_, cursor):
+            if signed_in:
+                self._account(cursor, account_id, organization_id)
+            return self._quote(cursor, configuration_id, region, purchasable=signed_in)
+
+    def checkout(self, account_id, organization_id, key, payload):
+        configuration_id, region = self._checkout_scope(key, payload)
+        with self.transaction(writable=True) as (_, cursor):
+            order, created = self._reserve_checkout(cursor, account_id, organization_id, configuration_id, region, key)
+            if not created:
+                if order['status'] != 'paid' or not order['entitlement_id']:
+                    raise CommerceError('COMMERCE_CONFIGURATION_INVALID', 503)
+                return self._response(order)
+            from psycopg.types.json import Jsonb
+            order_id = str(order['order_id'])
+            event_id = str(uuid.uuid5(uuid.UUID(order_id), 'simulation'))
+            provider_event_id = f'workshop:simulation:{order_id}:v1'
+            cursor.execute("""INSERT INTO payment_events(payment_event_id,provider_name,provider_event_id,
+                event_type,verified,payload,occurred_at,fulfillment_status,fulfilled_at)
+                VALUES(%s,%s,%s,'workshop.checkout.simulated',false,%s,%s,'fulfilled',now())""",
+                (event_id, SIMULATION_PROVIDER, provider_event_id,
+                 Jsonb({'order_id': order_id, 'amount_charged_minor': 0}), self.clock()))
+            order = self._settle_order(cursor, order, event_id, provider_event_id)
+        return self._response(order)
+
+    _reconcile_expiry = reconcile_event = webhook = demo_mode_status = ReadOnlyCommerceService._payment_unavailable
+
+
+def _simulation_configuration(origin):
+    try:
+        base = origin + '/workshop/test-notices/'
+        purchase_config = PurchaseConfig(
+            enabled=True,
+            terms_url=base + 'terms',
+            privacy_url=base + 'privacy',
+            refund_url=base + 'refund',
+            contact_url=base + 'contact',
+            tax_notice='Simulated checkout. No payment is collected and no tax is charged.',
+            local_test_origin=origin if origin.startswith('http://') else None,
+        )
+    except ValueError:
+        raise CommerceError('COMMERCE_CONFIGURATION_INVALID', 503) from None
+    return purchase_config
+
+
 def database_connection():
     import psycopg
     address = os.environ.get('AUTODATA_DB_ADDRESS', 'postgres:5432')
@@ -666,7 +809,7 @@ def configured_commerce(*, connection_factory=database_connection):
     mode = os.environ.get('AUTODATA_COMMERCE_MODE', 'disabled')
     if mode == 'disabled':
         return None
-    if mode == 'read_only':
+    if mode in {'read_only', 'simulation'}:
         pinned_mode = os.environ.get('AUTODATA_COMMERCE_READ_ONLY_MODE', '')
         account = os.environ.get('AUTODATA_STRIPE_ACCOUNT_ID', '')
         price = os.environ.get('AUTODATA_STRIPE_PRICE_ID', '')
@@ -675,8 +818,12 @@ def configured_commerce(*, connection_factory=database_connection):
                 or not re.fullmatch(r'price_[A-Za-z0-9]+', price)
                 or not os.environ.get('AUTODATA_INGESTION_INTERNAL_TOKEN', '').strip()):
             raise CommerceError('COMMERCE_CONFIGURATION_INVALID', 503)
-        checkout_return_origin(os.environ.get('AUTODATA_ENV', ''), os.environ.get('AUTODATA_PUBLIC_ORIGIN', ''))
-        service = ReadOnlyCommerceService(connection_factory, CommerceConfig(pinned_mode, account, price))
+        origin = checkout_return_origin(os.environ.get('AUTODATA_ENV', ''), os.environ.get('AUTODATA_PUBLIC_ORIGIN', ''))
+        pinned_config = CommerceConfig(pinned_mode, account, price)
+        if mode == 'simulation':
+            service = SimulationCommerceService(connection_factory, pinned_config, _simulation_configuration(origin))
+        else:
+            service = ReadOnlyCommerceService(connection_factory, pinned_config)
         try:
             with service.transaction() as (_, cursor):
                 cursor.execute("SELECT 1 FROM schema_migrations WHERE version='040_workshop_commerce'")
@@ -717,7 +864,25 @@ def configured_commerce(*, connection_factory=database_connection):
             cursor.execute("SELECT 1 FROM schema_migrations WHERE version='040_workshop_commerce'")
             if not cursor.fetchone():
                 raise ValueError()
-            cursor.execute('SELECT 1 FROM workshop_orders WHERE stripe_account_id<>%s OR livemode<>%s LIMIT 1', (account, service.config.livemode))
+            # Simulator rows use the ordinary order schema. Only terminal rows
+            # backed by their internal event are outside the Stripe merchant history.
+            cursor.execute("""SELECT 1 FROM workshop_orders o
+                WHERE (o.stripe_account_id<>%s OR o.livemode<>%s)
+                  AND NOT (
+                    o.stripe_account_id=%s AND o.expected_price_id=%s AND NOT o.livemode
+                    AND o.provider_idempotency_key='workshop:simulation:' || o.order_id::text || ':v1'
+                    AND o.status IN ('paid','revoked')
+                    AND o.checkout_session_id IS NULL AND o.payment_intent_id IS NULL
+                    AND EXISTS (
+                        SELECT 1 FROM entitlements e JOIN payment_events p USING(payment_event_id)
+                        WHERE e.entitlement_id=o.entitlement_id AND e.commerce_order_id=o.order_id
+                          AND p.provider_name=%s AND NOT p.verified AND p.fulfillment_status='fulfilled'
+                          AND p.event_type='workshop.checkout.simulated'
+                          AND p.provider_event_id=o.provider_idempotency_key
+                          AND e.provider_event_id=p.provider_event_id
+                    )
+                  ) LIMIT 1""", (account, service.config.livemode, SIMULATION_MERCHANT, SIMULATION_PRICE,
+                                 SIMULATION_PROVIDER))
             if cursor.fetchone():
                 raise ValueError()
             service._product(cursor)

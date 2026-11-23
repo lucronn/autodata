@@ -55,3 +55,19 @@ test fails or completes. Keep TEST resources and credentials separate from
 production. If a browser fix regresses the purchase flow, revert that
 implementation and rerun the fixture. Keep the order and webhook records
 needed to reconcile a test purchase until settlement or refund is verified.
+
+## Temporary payment simulation on Workshop
+
+Use the ordinary Workshop page and the existing Google sign-in for
+every customer. Both services must agree on simulation mode. Verify the
+session and retain each user’s existing account and organization scope. The browser pins simulation in the existing checkout
+request. The private service records a distinct internal event and uses the
+shared atomic settlement writes for the selected configuration and region.
+It returns the existing owned result so Workshop opens the normal Library
+and article reader.
+
+Keep catalog, article preparation, images and Google sign-in on their
+existing paths. In simulation mode the commerce endpoint can run separately
+from the current ingestion endpoint. Switch the API back to read-only
+commerce to disable simulation. Preserve real orders and shared catalog
+data. Revoke exact simulated orders when their access must be retired.

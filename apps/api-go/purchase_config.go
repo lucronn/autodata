@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,7 +9,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 	"unicode/utf8"
 )
 
@@ -22,6 +20,7 @@ type workshopPurchaseConfig struct {
 	RefundURL    *string `json:"refund_url"`
 	ContactURL   *string `json:"contact_url"`
 	TaxNotice    *string `json:"tax_notice"`
+	CheckoutMode string  `json:"checkout_mode,omitempty"`
 }
 
 func disabledWorkshopPurchaseConfig() workshopPurchaseConfig {
@@ -78,11 +77,13 @@ func purchaseLocalTestOriginValid(origin string) bool {
 }
 
 func (s *Server) purchaseLocalTestOrigin() string {
-	if !s.workshopTestCheckout || s.customerAuth == nil {
+	if (!s.workshopTestCheckout && !s.workshopSimulation) || s.customerAuth == nil {
 		return ""
 	}
 	config := s.customerAuth.config
-	if config.Environment != "test" || config.Mode != "firebase" || config.commerceMode != "stripe_test" || !purchaseLocalTestOriginValid(config.Origin) {
+	testMode := (s.workshopTestCheckout && config.commerceMode == "stripe_test") ||
+		(s.workshopSimulation && config.commerceMode == workshopSimulationMode)
+	if !testMode || config.Environment != "test" || config.Mode != "firebase" || !purchaseLocalTestOriginValid(config.Origin) {
 		return ""
 	}
 	return config.Origin
@@ -188,7 +189,10 @@ func decodeWorkshopPurchaseConfigForLocalTest(b []byte, localTestOrigin string) 
 		return bad()
 	}
 	var fields map[string]json.RawMessage
-	if json.Unmarshal(b, &fields) != nil || len(fields) != 7 {
+	if json.Unmarshal(b, &fields) != nil || len(fields) < 7 || len(fields) > 8 {
+		return bad()
+	}
+	if len(fields) == 8 && string(fields["checkout_mode"]) != `"simulation"` {
 		return bad()
 	}
 	for _, key := range []string{"enabled", "terms_version", "terms_url", "privacy_url", "refund_url", "contact_url", "tax_notice"} {
@@ -214,7 +218,7 @@ func decodeWorkshopPurchaseConfigForLocalTest(b []byte, localTestOrigin string) 
 				return bad()
 			}
 		}
-		return disabledWorkshopPurchaseConfig(), nil
+		return result, nil
 	}
 	localNotices := []string{"terms", "privacy", "refund", "contact"}
 	localOriginValid := purchaseLocalTestOriginValid(localTestOrigin)
@@ -252,16 +256,24 @@ func (s *Server) workshopPurchaseConfig(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	result := disabledWorkshopPurchaseConfig()
-	if s.commerceClient != nil {
-		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
-		defer cancel()
-		status, b, e := s.commerceClient.Do(ctx, "purchase-config", []byte(`{}`), "")
+	input := map[string]any{}
+	if s.workshopSimulation {
+		result.CheckoutMode = workshopSimulationMode
+		if p, eligible := s.workshopSimulationOwner(r); eligible {
+			input = commerceOwner(p)
+		} else {
+			input = nil
+		}
+	}
+	if s.commerceClient != nil && input != nil {
+		status, b, e := s.doCommerce(r.Context(), "purchase-config", input, nil, "")
 		if e != nil || status != 200 {
 			fail(503, "COMMERCE_UNAVAILABLE")
 			return
 		}
+		expectedMode := result.CheckoutMode
 		result, e = decodeWorkshopPurchaseConfigForLocalTest(b, s.purchaseLocalTestOrigin())
-		if e != nil {
+		if e != nil || result.CheckoutMode != expectedMode {
 			fail(503, "COMMERCE_UNAVAILABLE")
 			return
 		}
