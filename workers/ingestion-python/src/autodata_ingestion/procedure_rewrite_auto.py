@@ -71,6 +71,7 @@ _SUPERSCRIPT_PROMPT_VERSION = "full-prose-auto-prompt-v56"
 _COMPOUND_MEASUREMENT_PROMPT_VERSION = "full-prose-auto-prompt-v57"
 _FLUID_OUNCE_RATE_PROMPT_VERSION = "full-prose-auto-prompt-v58"
 _SPATIAL_SCOPE_PROMPT_VERSION = "full-prose-auto-prompt-v59"
+_ASSEMBLY_LABEL_PROMPT_VERSION = "full-prose-auto-prompt-v60"
 _NUMERIC_SUPERSCRIPT = re.compile(r"[⁰¹²³⁴⁵⁶⁷⁸⁹]|\^\([+−-]?(?:[0-9]*\.[0-9]+|[0-9]+/[0-9]+)\)")
 _WORDS = re.compile(r"\w+")
 _MIN_COPIED_SENTENCE_WORDS = 6
@@ -456,6 +457,9 @@ _ASSEMBLY_COMPONENT = (
 _COMPONENT_ASSEMBLY_LABEL = re.compile(r"(?:the )?" + _ASSEMBLY_COMPONENT + r" assembly")
 _ASSEMBLY_FOR_COMPONENT_LABEL = re.compile(r"(?:the )?assembly (?:for|of) (?:the )?" + _ASSEMBLY_COMPONENT)
 _LIST_ITEM_PROSE_PATH = re.compile(r"/items/\d+(?:/text)?$")
+_ASSEMBLY_LABEL_DELIMITERS = frozenset({"a", "an", "and", "or", "the", "then", "before", "after", "with", "without"})
+_ASSEMBLY_INSTRUCTION = re.compile(r"^(?:adjust|clean|depress|drain|fill|lubricate|operate|select|test|verify)\b", re.I)
+_ASSEMBLY_SWITCH_NAMES = frozenset({"start switch", "stop lamp switch", "stop light switch"})
 
 
 _SIMPLE_ACTION = r"(?:remove|take\s+off|lift\s+off|inspect|check|connect|attach|disconnect|detach|install|fit)"
@@ -1947,7 +1951,7 @@ def _has_spatial_scope(text):
     return any(pattern.search(text) for pattern in (_ORIENTED_BOUNDARY, _PROXIMITY, _CLOSE_TO))
 
 
-def build_auto_prompt(document, *, context):
+def _auto_prompt_payload_v59(document, *, context):
     payload = _compound_measurement_prompt_payload(document, context=context, include_fluid_ounces=True)
     if any(_has_spatial_scope(slot["text"]) for slot in payload["slots"]):
         payload["prompt_version"] = _SPATIAL_SCOPE_PROMPT_VERSION
@@ -1956,13 +1960,29 @@ def build_auto_prompt(document, *, context):
             "must describe the same target. For proximity, preserve the subject, state and complete reference. "
             "Keep real closure instructions intact and omit placement details from the introduction."
         )
+    return payload
+
+
+def _build_auto_prompt_v59(document, *, context):
+    payload = _auto_prompt_payload_v59(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def build_auto_prompt(document, *, context):
+    payload = _auto_prompt_payload_v59(document, context=context)
+    if any(_source_assembly_component(slot) for slot in payload["slots"]):
+        payload["prompt_version"] = _ASSEMBLY_LABEL_PROMPT_VERSION
+        payload["rules"].append(
+            "Preserve the complete component name in assembly labels, including its type and qualifiers. "
+            "For example, reword a component name followed by assembly as an assembly for that same component."
+        )
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
 def _auto_prompt_version(document, *, context, prompt_hash):
     """Identify the rules bound to the saved model attempt."""
     for builder in (
-        build_auto_prompt, _build_auto_prompt_v58, _build_auto_prompt_v57, _build_auto_prompt_v56,
+        build_auto_prompt, _build_auto_prompt_v59, _build_auto_prompt_v58, _build_auto_prompt_v57, _build_auto_prompt_v56,
         _build_auto_prompt_v55, _build_auto_prompt_v54,
         _build_auto_prompt_v53, _build_auto_prompt_v52,
         _build_auto_prompt_v51,
@@ -2689,6 +2709,26 @@ def _assembly_component(text):
     return label["component"] if label else None
 
 
+def _source_assembly_component(slot):
+    text = slot["text"]
+    if not text.isupper() or not _LIST_ITEM_PROSE_PATH.search(slot["path"]):
+        return None
+    component = _assembly_component(text)
+    if not component or not _ASSEMBLY_LABEL_DELIMITERS.isdisjoint(component.split()):
+        return None
+    # Start and stop can be nouns in the names of these switches.
+    if component not in _ASSEMBLY_SWITCH_NAMES and (_INTRO_DIRECTIVE.search(text) or _ASSEMBLY_INSTRUCTION.search(text)):
+        return None
+    return component
+
+
+def _check_assembly_components(slots, restored):
+    for slot in slots:
+        component = _source_assembly_component(slot)
+        if component and _assembly_component(full._get(restored, slot["path"])) != component:
+            raise ValueError("REWRITE_SPEC_SCOPE_MUTATION")
+
+
 def _lubricant_assignment(text, *, patterns=_LUBRICANT_INSTRUCTIONS):
     # Compare complete, literal material/recipient clauses with explicit
     # modal and sequencing words. Other uses of "apply" stay outside this grammar.
@@ -3324,7 +3364,7 @@ def _combined_replacement_preparation_targets(text, *, recognize_then_comma=Fals
 def _uses_prose_guards(prompt_version, slot_count):
     return bool(slot_count) and prompt_version in (
         None, _SUPERSCRIPT_PROMPT_VERSION, _COMPOUND_MEASUREMENT_PROMPT_VERSION, _FLUID_OUNCE_RATE_PROMPT_VERSION,
-        _SPATIAL_SCOPE_PROMPT_VERSION,
+        _SPATIAL_SCOPE_PROMPT_VERSION, _ASSEMBLY_LABEL_PROMPT_VERSION,
         _PROSE_PROMPT_V4, _PROSE_PROMPT_V5, _PROSE_PROMPT_V6, _PROSE_PROMPT_V7,
         _PROSE_PROMPT_V8, _PROSE_PROMPT_V9, _PROSE_PROMPT_V10, _CELL_PROSE_PROMPT_V11,
         _PROSE_PROMPT_V12, _PROSE_PROMPT_V13, _PROSE_PROMPT_V14, _PROSE_PROMPT_V15, _PROSE_PROMPT_V16,
@@ -3337,7 +3377,7 @@ def _uses_prose_guards(prompt_version, slot_count):
 def _include_cell_blocks(prompt_version):
     return prompt_version in (
         None, _SUPERSCRIPT_PROMPT_VERSION, _COMPOUND_MEASUREMENT_PROMPT_VERSION, _FLUID_OUNCE_RATE_PROMPT_VERSION,
-        _SPATIAL_SCOPE_PROMPT_VERSION,
+        _SPATIAL_SCOPE_PROMPT_VERSION, _ASSEMBLY_LABEL_PROMPT_VERSION,
         _CELL_PROSE_PROMPT_V11, _PROSE_PROMPT_V12, _PROSE_PROMPT_V13,
         _PROSE_PROMPT_V14, _PROSE_PROMPT_V15, _PROSE_PROMPT_V16, _PROSE_PROMPT_V17, _PROSE_PROMPT_V18,
         _PROSE_PROMPT_V19, _PROSE_PROMPT_V20, _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23,
@@ -3350,6 +3390,10 @@ def _require_changes(source, candidate, *, prompt_version, include_cell_blocks=N
     restored = {"blocks": candidate["blocks"][1:]}
     if include_cell_blocks is None:
         include_cell_blocks = _include_cell_blocks(prompt_version)
+    guard_assembly_labels = prompt_version in (None, _ASSEMBLY_LABEL_PROMPT_VERSION)
+    if prompt_version == _ASSEMBLY_LABEL_PROMPT_VERSION:
+        # Keep the existing content-specific guards for the rest of this document.
+        prompt_version = _auto_prompt_payload_v59(source, context={})["prompt_version"]
     guard_spatial_scope = prompt_version in (None, _SPATIAL_SCOPE_PROMPT_VERSION)
     compound_measurement = None
     if prompt_version in (None, _FLUID_OUNCE_RATE_PROMPT_VERSION, _SPATIAL_SCOPE_PROMPT_VERSION):
@@ -3363,6 +3407,8 @@ def _require_changes(source, candidate, *, prompt_version, include_cell_blocks=N
     ):
         prompt_version = _PROSE_PROMPT_VERSION
     slots = full.prose_slots(source, include_cell_blocks=include_cell_blocks)
+    if guard_assembly_labels:
+        _check_assembly_components(slots, restored)
     guard_prose = _uses_prose_guards(prompt_version, len(slots))
     guard_actions = guard_prose and prompt_version != _PROSE_PROMPT_V4
     guard_direction = guard_prose and prompt_version not in (_PROSE_PROMPT_V4, _PROSE_PROMPT_V5)
@@ -3500,12 +3546,6 @@ def _require_changes(source, candidate, *, prompt_version, include_cell_blocks=N
     for slot in slots:
         original = slot["text"]
         replacement = full._get(restored, slot["path"])
-        # An uppercase list label can name a part without a recognized
-        # specification or action. Keep the entire component name there.
-        if original.isupper() and _LIST_ITEM_PROSE_PATH.search(slot["path"]) and not _INTRO_DIRECTIVE.search(original):
-            component = _assembly_component(original)
-            if component and _assembly_component(replacement) != component:
-                raise ValueError("REWRITE_SPEC_SCOPE_MUTATION")
         if compound_measurement and any(compound_measurement.search(text) for text in (original, replacement)):
             if original != replacement:
                 raise ValueError("REWRITE_SPEC_SCOPE_MUTATION")
@@ -3698,6 +3738,12 @@ def _require_changes(source, candidate, *, prompt_version, include_cell_blocks=N
 
 def require_current_publication_checks(source, candidate, *, saved_prompt_version):
     """Apply current prose rules to the saved prompt's editable slots."""
+    if saved_prompt_version == _ASSEMBLY_LABEL_PROMPT_VERSION:
+        return
+    _check_assembly_components(
+        full.prose_slots(source, include_cell_blocks=_include_cell_blocks(saved_prompt_version)),
+        {"blocks": candidate["blocks"][1:]},
+    )
     if saved_prompt_version == _SPATIAL_SCOPE_PROMPT_VERSION:
         return
     documents = (source, candidate)
@@ -3805,6 +3851,7 @@ def validate_auto(source, candidate, *, response=None, prompt_version=None):
             _COMPOUND_MEASUREMENT_PROMPT_VERSION: "full-prose-auto-validator-v55",
             _FLUID_OUNCE_RATE_PROMPT_VERSION: "full-prose-auto-validator-v56",
             _SPATIAL_SCOPE_PROMPT_VERSION: "full-prose-auto-validator-v57",
+            _ASSEMBLY_LABEL_PROMPT_VERSION: "full-prose-auto-validator-v58",
         }.get(prompt_version, "full-prose-auto-validator-v53")
     report.update(validator_version=validator_version, profile_version=PROFILE,
         publication_mode="automatic", content_acceptance_required=False,
