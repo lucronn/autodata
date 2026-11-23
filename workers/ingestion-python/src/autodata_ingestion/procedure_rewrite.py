@@ -239,7 +239,9 @@ __all__ = [
 # Versioned conservative ordered-document boundary. Only declared prose leaves
 # are editable; the rest of the document is an immutable comparison baseline.
 from hashlib import sha256
-from .article_lifecycle_types import AUTOMATIC_REWRITE_PROFILES, RewriteResult, ValidationResult, digest_json
+from .article_lifecycle_types import (
+    AUTOMATIC_REWRITE_PROFILES, SOURCE_BOUND_REWRITE_PROFILE, RewriteResult, ValidationResult, digest_json,
+)
 
 _PROFILE = "technical-prose-v1"
 _PROTECTED_SLOT = re.compile(
@@ -408,6 +410,10 @@ def rewrite_ordered_document(document, *, client, context, profile_version=_PROF
         try:
             candidate = render_full(source, raw, profile_version=profile_version)
         except ValueError as error:
+            if profile_version == SOURCE_BOUND_REWRITE_PROFILE:
+                from .procedure_rewrite_auto import failed_rewrite_passages
+                if passages := failed_rewrite_passages(source, raw):
+                    metadata["passage_errors"] = passages
             return result(source, raw=raw if isinstance(raw, dict) else {}, error=str(error))
         validation = validate_full(source, candidate, response=raw, profile_version=profile_version)
         if not validation.passed:

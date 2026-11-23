@@ -19,8 +19,12 @@ from .article_content_review import (
     write_private_export,
 )
 from .article_document import project_ordered_document
-from .article_lifecycle_store import _latest_content_review, _persist_article_capture, automatic_candidate_validation
-from .article_lifecycle_types import AUTOMATIC_REWRITE_PROFILES, digest_json, transformation_key
+from .article_lifecycle_store import (
+    _latest_content_review, _persist_article_capture, automatic_candidate_validation, resolve_source_bound_correction,
+)
+from .article_lifecycle_types import (
+    AUTOMATIC_REWRITE_PROFILES, SOURCE_BOUND_CORRECTION_PROFILE, digest_json, transformation_key,
+)
 from .procedure_normalize import normalize_procedure_article
 from .procedure_rewrite import build_rewrite_prompt, validate_article_rewrite
 from .procedure_rewrite_auto import (
@@ -153,7 +157,11 @@ def _publication_evidence(cur, article, binding, *, fixture_mode, lock):
     elif profile in AUTOMATIC_REWRITE_PROFILES:
         validation = automatic_candidate_validation(cur, job, row)
         attempt = _saved_attempt(cur, revision_id, job["source_fetch_job_id"])
-        if row["model_metadata"].get("transformation_method") == SOURCE_PRESERVING_METHOD:
+        if profile == SOURCE_BOUND_CORRECTION_PROFILE:
+            corrected = resolve_source_bound_correction(cur, job, row)
+            response = corrected.response
+            prompt_version = corrected.evidence["guard_version"]
+        elif row["model_metadata"].get("transformation_method") == SOURCE_PRESERVING_METHOD:
             # Automatic validation above has independently rebuilt the exact
             # source-heading introduction and proved there was no model attempt.
             attempt = None
@@ -196,7 +204,7 @@ def _plan(cur, article, binding, captured, *, fixture_mode, lock=False, ordinals
         response=response, prompt_version=prompt_version, profile=row["rewrite_profile_version"],
         ordinals=ordinals, table_spans=table_spans, svg_recovery=svg_recovery,
     )
-    if attempt is None:
+    if row["model_metadata"].get("transformation_method") == SOURCE_PRESERVING_METHOD:
         preserving_document, _ = build_source_preserving_candidate(normalized, profile_version=row["rewrite_profile_version"])
         if digest_json(preserving_document) != digest_json(repair.document):
             raise ValueError("PUBLISHED_MEDIA_REPAIR_SOURCE_HEADING_CHANGED")

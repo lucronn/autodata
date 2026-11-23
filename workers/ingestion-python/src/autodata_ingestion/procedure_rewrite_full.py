@@ -133,6 +133,20 @@ def _check_text(original, replacement):
         raise ValueError("REWRITE_TECHNICAL_MUTATION")
 
 
+def _check_prose_row(slot, row):
+    if (not isinstance(row, dict) or set(row) != {"block_id", "path", "action", "text", "reason"}
+            or not all(isinstance(row[key], str) for key in row)
+            or row["block_id"] != slot["block_id"] or row["path"] != slot["path"]
+            or row["action"] not in {"rewrite", "retain"} or not row["text"].strip()):
+        raise ValueError("REWRITE_SLOT_MISMATCH")
+    if row["action"] == "retain":
+        if row["text"] != slot["text"] or not row["reason"].strip():
+            raise ValueError("REWRITE_RETENTION_INVALID")
+    elif row["text"] == slot["text"]:
+        raise ValueError("REWRITE_UNCHANGED")
+    _check_text(slot["text"], row["text"])
+
+
 def _strings(value):
     if isinstance(value, str):
         yield value
@@ -239,17 +253,7 @@ def render_full(source, response, *, profile_version=PROFILE, include_cell_block
         raise ValueError("REWRITE_SLOT_MISMATCH")
     result = deepcopy(source)
     for slot, row in zip(slots, rows):
-        if (not isinstance(row, dict) or set(row) != {"block_id", "path", "action", "text", "reason"}
-                or not all(isinstance(row[key], str) for key in row)
-                or row["block_id"] != slot["block_id"] or row["path"] != slot["path"]
-                or row["action"] not in {"rewrite", "retain"} or not row["text"].strip()):
-            raise ValueError("REWRITE_SLOT_MISMATCH")
-        if row["action"] == "retain":
-            if row["text"] != slot["text"] or not row["reason"].strip():
-                raise ValueError("REWRITE_RETENTION_INVALID")
-        elif row["text"] == slot["text"]:
-            raise ValueError("REWRITE_UNCHANGED")
-        _check_text(slot["text"], row["text"])
+        _check_prose_row(slot, row)
         _set(result, slot["path"], row["text"])
     for block in result["blocks"]:
         block["source_order"] += 1

@@ -8,15 +8,23 @@ from autodata_ingestion import article_lifecycle_store as store
 from autodata_ingestion.article_lifecycle import run_article_job
 from autodata_ingestion.article_lifecycle_types import (
     AUTOMATIC_REWRITE_PROFILE,
+    MAX_CORRECTION_CALLS,
     NORMALIZATION_VERSION,
+    SOURCE_BOUND_CORRECTION_PROFILE,
     SOURCE_BOUND_REWRITE_PROFILE,
+    digest_json,
     transformation_key,
 )
+from autodata_ingestion.catalog_coverage import ensure_article_catalog_jobs
 from autodata_ingestion.source_article_capture import capture_source_article
 from autodata_ingestion.source_job_persistence import (
+    ProfileRefreshRequired,
     claim_source_job,
     ensure_article_job,
     fail_source_job,
+    park_automatic_for_model,
+    refresh_article_job,
+    schedule_source_bound_correction,
     schedule_source_bound_rewrite,
 )
 from lifecycle_support import fresh_database, insert_descriptor, seed_configuration, seed_snapshot, seed_vehicle
@@ -66,6 +74,211 @@ def _schedule(repo, scope, *, actor="fixture"):
 def _job(repo, job_id):
     with repo.connect() as conn:
         return conn.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s", (job_id,)).fetchone()
+
+
+def _failed_v2_source(repo, capture_fixture):
+    article, _, source_id = first_scope = _v1_source(repo, capture_fixture)
+    v2 = _schedule(repo, first_scope)
+    lease = claim_source_job(repo, worker_id=uuid4(), job_id=v2.job_id)
+    model = AutomaticModel(unchanged=True)
+    run_article_job(repo, lease, registry={}, object_store=None, model_client=model)
+    assert model.calls == 1
+    state = store.load_article_state(repo, article)
+    assert state["source_revision_id"] == source_id and state["content_origin"] == "source"
+    assert state["processing_error_code"] == "REWRITE_UNCHANGED"
+    return article, v2.job_id, source_id
+
+
+def _correct(repo, scope, *, budget=MAX_CORRECTION_CALLS):
+    article, prior, source = scope
+    return schedule_source_bound_correction(
+        repo, article, expected_job_id=prior, expected_source_revision_id=source,
+        actor="fixture", reason="Correct the failed retained draft", model_call_budget=budget,
+    )
+
+
+def test_generic_claim_still_accepts_catalog_jobs_without_a_rewrite_profile(fresh_database):
+    repo = fresh_database()
+    results = ensure_article_catalog_jobs(repo, vehicle_id=seed_vehicle(repo), vehicle_configuration_id=None)
+    lease = claim_source_job(repo, worker_id=uuid4(), model_ready=False)
+    assert lease.job_id in {item.job_id for item in results}
+    assert lease.kind == "catalog_index" and lease.rewrite_profile_version is None
+
+
+def test_concurrent_correction_binds_exact_draft_for_an_explicit_claim(fresh_database, capture_fixture):
+    repo = fresh_database()
+    article, prior_id, source_id = scope = _failed_v2_source(repo, capture_fixture)
+    prior = _job(repo, prior_id)
+    with repo.connect() as conn:
+        attempt = conn.execute(
+            "SELECT * FROM canonical_article_rewrite_attempts WHERE source_fetch_job_id=%s", (prior_id,),
+        ).fetchone()
+    assert attempt["status"] == "failed" and attempt["response_hash"] == digest_json(attempt["response"])
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(lambda _: _correct(repo, scope), range(2)))
+    assert sum(result.created for result in results) == 1
+    assert results[0].job_id == results[1].job_id
+    job = _job(repo, results[0].job_id)
+    assert job["source_revision_id"] == source_id
+    assert job["rewrite_profile_version"] == SOURCE_BOUND_CORRECTION_PROFILE
+    assert job["phase"] == "normalizing" and job["max_attempts"] == 1 and job["retry_count"] == 0
+    assert job["checkpoint"] == {"source_bound_rewrite": {
+        "version": 2, "prior_job_id": str(prior_id), "source_revision_id": str(source_id),
+        "prior_attempt_id": str(attempt["rewrite_attempt_id"]), "prior_response_hash": attempt["response_hash"],
+        "model_call_budget": MAX_CORRECTION_CALLS, "prior_generation": prior["request_generation"],
+        "actor": "fixture", "reason": "Correct the failed retained draft",
+    }}
+    assert not ensure_article_job(
+        repo, article, normalization_version=NORMALIZATION_VERSION,
+        rewrite_profile_version=SOURCE_BOUND_CORRECTION_PROFILE,
+    ).created
+    assert store.load_article_state(repo, article)["content_origin"] == "source"
+    assert claim_source_job(repo, worker_id=uuid4()) is None
+    assert claim_source_job(repo, worker_id=uuid4(), job_id=uuid4()) is None
+    with pytest.raises(ValueError, match="^SOURCE_BOUND_REWRITE_ALREADY_SCHEDULED$"):
+        _correct(repo, scope, budget=MAX_CORRECTION_CALLS - 1)
+    lease = claim_source_job(repo, worker_id=uuid4(), job_id=job["source_fetch_job_id"])
+    assert lease.source_revision_id == source_id
+    assert lease.rewrite_profile_version == SOURCE_BOUND_CORRECTION_PROFILE
+    assert _job(repo, prior_id) == prior
+    with repo.connect() as conn:
+        assert conn.execute(
+            "SELECT * FROM canonical_article_rewrite_attempts WHERE rewrite_attempt_id=%s",
+            (attempt["rewrite_attempt_id"],),
+        ).fetchone() == attempt
+
+
+@pytest.mark.parametrize("budget", [0, -1, MAX_CORRECTION_CALLS + 1, True, 1.0, "1", None])
+def test_correction_rejects_an_invalid_model_call_budget(budget):
+    with pytest.raises(ValueError, match="^SOURCE_BOUND_CORRECTION_BUDGET_INVALID$"):
+        _correct(None, (uuid4(), uuid4(), uuid4()), budget=budget)
+
+
+@pytest.mark.parametrize("change", ["source", "source_withdrawn", "response_hash", "prompt_hash"])
+def test_correction_rejects_a_changed_source_or_draft(fresh_database, capture_fixture, change):
+    repo = fresh_database()
+    article, prior_id, source_id = scope = _failed_v2_source(repo, capture_fixture)
+    expected = "SOURCE_BOUND_CORRECTION_PRIOR_DRAFT_INVALID"
+    if change == "source":
+        scope = (article, prior_id, uuid4())
+        expected = "SOURCE_BOUND_REWRITE_PRIOR_JOB_CHANGED"
+    elif change == "source_withdrawn":
+        with repo.connect() as conn:
+            conn.execute("""UPDATE source_snapshots SET takedown_status='takedown'
+                WHERE source_snapshot_id=(SELECT body_source_snapshot_id
+                    FROM canonical_article_source_revisions WHERE source_revision_id=%s)""", (source_id,))
+        expected = "SOURCE_BOUND_REWRITE_SOURCE_UNAVAILABLE"
+    else:
+        with repo.connect() as conn:
+            if change == "response_hash":
+                conn.execute("""UPDATE canonical_article_rewrite_attempts SET response_hash=%s
+                    WHERE source_fetch_job_id=%s""", ("0" * 64, prior_id))
+            else:
+                conn.execute("""UPDATE canonical_article_rewrite_attempts SET prompt_hash=%s
+                    WHERE source_fetch_job_id=%s""", ("0" * 64, prior_id))
+    before = store.load_article_state(repo, article)
+    with pytest.raises(ValueError, match=f"^{expected}$"):
+        _correct(repo, scope)
+    assert store.load_article_state(repo, article) == before
+    with repo.connect() as conn:
+        assert conn.execute("SELECT count(*) AS n FROM source_fetch_jobs").fetchone()["n"] == 2
+
+
+@pytest.mark.parametrize("change", [
+    "document", "result_hash", "provider", "model", "profile_version", "prompt_hash",
+])
+def test_correction_requires_the_v2_candidate_to_match_its_failed_attempt(fresh_database, capture_fixture, change):
+    repo = fresh_database()
+    article, prior_id, _ = scope = _failed_v2_source(repo, capture_fixture)
+    with repo.connect() as conn:
+        revision = conn.execute("""SELECT canonical_article_revision_id
+            FROM canonical_article_rewrite_attempts WHERE source_fetch_job_id=%s""", (prior_id,)
+        ).fetchone()["canonical_article_revision_id"]
+        if change == "document":
+            conn.execute("""UPDATE canonical_article_revisions
+                SET canonical_document=canonical_document||'{"unexpected":true}'::jsonb
+                WHERE canonical_article_revision_id=%s""", (revision,))
+        elif change == "result_hash":
+            conn.execute("""UPDATE canonical_article_revisions
+                SET rewrite_result_hash=%s WHERE canonical_article_revision_id=%s""", ("0" * 64, revision))
+        else:
+            conn.execute("""UPDATE canonical_article_revisions
+                SET model_metadata=jsonb_set(model_metadata,ARRAY[%s]::text[],to_jsonb('altered'::text))
+                WHERE canonical_article_revision_id=%s""", (change, revision))
+    before = store.load_article_state(repo, article)
+    with pytest.raises(ValueError, match="^SOURCE_BOUND_CORRECTION_PRIOR_DRAFT_INVALID$"):
+        _correct(repo, scope)
+    assert store.load_article_state(repo, article) == before
+
+
+def test_only_an_explicit_source_bound_correction_can_create_v3(fresh_database, capture_fixture):
+    repo = fresh_database()
+    article, _, _ = scope = _failed_v2_source(repo, capture_fixture)
+    with pytest.raises(ProfileRefreshRequired):
+        refresh_article_job(
+            repo, article, actor="fixture", reason="Queue a recapture",
+            rewrite_profile_version=SOURCE_BOUND_CORRECTION_PROFILE,
+        )
+    correction = _correct(repo, scope)
+    assert refresh_article_job(repo, article, actor="fixture", reason="Inspect").job_id == correction.job_id
+    lease = claim_source_job(repo, worker_id=uuid4(), job_id=correction.job_id)
+    fail_source_job(repo, lease, code="REWRITE_CORRECTION_REJECTED", retryable=False)
+    with pytest.raises(ProfileRefreshRequired):
+        refresh_article_job(repo, article, actor="fixture", reason="Inspect")
+    assert _correct(repo, scope).job_id == correction.job_id
+    fresh = refresh_article_job(
+        repo, article, actor="fixture", reason="Inspect using an explicit capture profile",
+        rewrite_profile_version=SOURCE_BOUND_REWRITE_PROFILE,
+    )
+    assert fresh.created and fresh.job_id != correction.job_id
+    assert _job(repo, fresh.job_id)["rewrite_profile_version"] == SOURCE_BOUND_REWRITE_PROFILE
+
+
+@pytest.mark.parametrize("dispatch", [False, True])
+def test_correction_expiry_can_reacquire_only_a_never_dispatched_lease(fresh_database, capture_fixture, dispatch):
+    from autodata_ingestion.procedure_normalize import normalize_procedure_article
+
+    repo = fresh_database()
+    scope = _failed_v2_source(repo, capture_fixture)
+    correction = _correct(repo, scope)
+    first = claim_source_job(repo, worker_id=uuid4(), job_id=correction.job_id)
+    source = store.load_source_revision(repo, first.source_revision_id)
+    normalized = normalize_procedure_article(source.as_article(), resource_manifest=source.resource_manifest)
+    store.save_normalized_input(repo, first, normalized)
+    attempt = uuid4()
+    with repo.connect() as conn:
+        conn.execute("""INSERT INTO canonical_article_rewrite_attempts
+            (rewrite_attempt_id,source_fetch_job_id,lease_token,attempt_number,provider,model,
+             profile_version,prompt_hash,input_hash,status,dispatched_at)
+            VALUES (%s,%s,%s,1,'inception','fixture',%s,%s,%s,%s,
+                    CASE WHEN %s::boolean THEN clock_timestamp() END)""",
+            (attempt, first.job_id, first.token, SOURCE_BOUND_CORRECTION_PROFILE, "a" * 64,
+             digest_json(normalized["normalized_document"]), "dispatched" if dispatch else "prepared", dispatch))
+        conn.execute(
+            "UPDATE source_fetch_jobs SET lease_expires_at=clock_timestamp()-interval '1 second' WHERE source_fetch_job_id=%s",
+            (first.job_id,),
+        )
+    assert claim_source_job(repo, worker_id=uuid4()) is None
+    reclaimed = claim_source_job(repo, worker_id=uuid4(), job_id=correction.job_id, model_ready=False)
+    if dispatch:
+        assert reclaimed is None
+        assert _job(repo, first.job_id)["status"] == "dead_letter"
+    else:
+        assert reclaimed is not None and reclaimed.token > first.token
+        assert _job(repo, first.job_id)["retry_count"] == 1
+        park_automatic_for_model(repo, reclaimed)
+        assert claim_source_job(repo, worker_id=uuid4()) is None
+        assert claim_source_job(repo, worker_id=uuid4(), job_id=correction.job_id, model_ready=False) is None
+        ready = claim_source_job(repo, worker_id=uuid4(), job_id=correction.job_id)
+        assert ready is not None and ready.token > reclaimed.token
+        assert _job(repo, first.job_id)["retry_count"] == 1
+    with repo.connect() as conn:
+        old = conn.execute("""SELECT status,error_code FROM canonical_article_rewrite_attempts
+            WHERE rewrite_attempt_id=%s""", (attempt,)).fetchone()
+    assert old == (
+        {"status": "ambiguous", "error_code": "MODEL_DELIVERY_AMBIGUOUS"} if dispatch
+        else {"status": "failed", "error_code": "MODEL_NOT_DISPATCHED_LEASE_EXPIRED"}
+    )
 
 
 def test_concurrent_source_bound_admission_reuses_one_exact_job(fresh_database, capture_fixture):

@@ -15,7 +15,7 @@ from .article_lifecycle_types import (
     HTML_MULTILINE_FIGURE_CAPTION_LAYOUT, HTML_SECTION_TITLE_LAYOUT, HTML_TABLE_CAPTION_LAYOUT,
     PDF_BLANK_PAGE_LAYOUT, PDF_COMPACT_FIGURE_LAYOUT,
     PDF_LEGACY_FIGURE_LAYOUT, PDF_REPEAT_MARGIN_LAYOUT, SourceArticleContext,
-    SOURCE_BOUND_REWRITE_PROFILE, SOURCE_PROJECTION_VERSIONS,
+    SOURCE_BOUND_CORRECTION_PROFILE, SOURCE_BOUND_REWRITE_PROFILE, SOURCE_PROJECTION_VERSIONS,
 )
 from .procedure_rewrite import (rewrite_ordered_document, validate_article_rewrite,
                                 build_rewrite_prompt, editable_slots)
@@ -164,8 +164,14 @@ def run_article_job(repo,lease,*,registry,object_store,model_client,hooks=None):
             lease=_live(repo,lease)
             profile = lease.rewrite_profile_version
             automatic = profile in AUTOMATIC_REWRITE_PROFILES
-            if "source_bound_rewrite" in lease.checkpoint and (
-                profile != SOURCE_BOUND_REWRITE_PROFILE or lease.source_revision_id is None
+            correction = profile == SOURCE_BOUND_CORRECTION_PROFILE
+            bound = lease.checkpoint.get("source_bound_rewrite")
+            if (correction or "source_bound_rewrite" in lease.checkpoint) and (
+                profile not in (SOURCE_BOUND_REWRITE_PROFILE, SOURCE_BOUND_CORRECTION_PROFILE)
+                or lease.source_revision_id is None
+                or not isinstance(bound, dict)
+                or bound.get("version") != (2 if correction else 1)
+                or (correction and "new_article_rollout" in lease.checkpoint)
             ):
                 fail_source_job(repo, lease, code="SOURCE_BOUND_REWRITE_BINDING_INVALID", retryable=False)
                 return
@@ -244,7 +250,13 @@ def run_article_job(repo,lease,*,registry,object_store,model_client,hooks=None):
                 store.save_normalized_input(repo,lease,normalized)
                 document=normalized["normalized_document"]
                 from .procedure_rewrite_full import prose_slots
-                if automatic and not prose_slots(document, include_cell_blocks=True):
+                if correction:
+                    if model_client is None:
+                        park_automatic_for_model(repo,lease)
+                        return
+                    store.run_source_bound_correction(repo,lease,document,model_client=model_client,hooks=hooks)
+                    _hook(hooks,"after_model_result_commit")
+                elif automatic and not prose_slots(document, include_cell_blocks=True):
                     store.store_source_preserving_candidate(repo,lease)
                     _hook(hooks,"after_source_preserving_candidate_commit")
                 else:
