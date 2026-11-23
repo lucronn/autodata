@@ -26,6 +26,9 @@ _MAX_FIGURE_DEPTH = 32
 _MAX_TABLE_DEPTH = 8
 _TABLE_ROW_GROUPS = frozenset({"thead", "tbody", "tfoot"})
 _HTML_LIST_NUMBER = re.compile(r"([+-]?)0*([0-9]{1,10})")
+_SUPERSCRIPT_NUMBER = re.compile(r"[+−⁺⁻-]?\s*[0-9⁰¹²³⁴⁵⁶⁷⁸⁹]+")
+_FRACTIONAL_SUPERSCRIPT = re.compile(r"[+−-]?\s*(?:[0-9]*\.[0-9]+|[0-9]+\s*[/⁄]\s*[0-9]+)")
+_SUPERSCRIPT_TRANSLATION = str.maketrans("0123456789+−-", "⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁻")
 
 
 def _html_list_number(value):
@@ -124,7 +127,7 @@ class ArticleParser(HTMLParser):
         keep_html_table_captions=False, keep_html_flow_figure_captions=False,
         keep_html_multiline_figure_captions=False,
         keep_html_table_spans=False, keep_html_media_table_headers=False,
-        keep_html_nested_tables=False, resolved_pdf_refs=frozenset(),
+        keep_html_nested_tables=False, keep_html_numeric_superscripts=False, resolved_pdf_refs=frozenset(),
     ):
         super().__init__(convert_charrefs=True)
         self._asset_bindings = {item["source_url"]: item["resource_ref"] for item in asset_bindings}
@@ -147,6 +150,9 @@ class ArticleParser(HTMLParser):
         self._keep_html_table_spans = keep_html_table_spans
         self._keep_html_media_table_headers = keep_html_media_table_headers
         self._keep_html_nested_tables = keep_html_nested_tables
+        self._keep_html_numeric_superscripts = keep_html_numeric_superscripts
+        self._superscript_start = 0
+        self._superscript_depth = 0
         self.handled_pdf_embeds = False
         self.untyped_pdf_embed_refs = {}
         self._resolved_pdf_refs = resolved_pdf_refs
@@ -158,6 +164,7 @@ class ArticleParser(HTMLParser):
         self.html_table_spans = False
         self.html_media_table_headers = False
         self.html_nested_tables = False
+        self.html_numeric_superscripts = False
         self._figures: list[_FigureFrame] = []
         self._hidden_embed_tags: list[str] = []
         self._heading: dict[str, Any] | None = None
@@ -181,7 +188,29 @@ class ArticleParser(HTMLParser):
     def _current_list_item(self):
         return self._lists[-1].item if self._lists else None
 
-    def flush(self):
+    def _finish_superscript(self, start):
+        text = "".join(self._text[start:])
+        token = text.strip()
+        if _SUPERSCRIPT_NUMBER.fullmatch(token):
+            exponent = "".join(token.split()).translate(_SUPERSCRIPT_TRANSLATION)
+        elif _FRACTIONAL_SUPERSCRIPT.fullmatch(token):
+            # There is no superscript decimal point. Delimit the exponent so
+            # the number cannot be mistaken for digits of the base value.
+            exponent = "^(" + "".join(token.split()).replace("⁄", "/") + ")"
+        else:
+            return
+        if exponent != token:
+            before, _, after = text.partition(token)
+            self._text[start:] = [before + exponent + after]
+            self.html_numeric_superscripts = True
+
+    def flush(self, *, inline=False):
+        if self._superscript_depth:
+            self._finish_superscript(self._superscript_start)
+            if inline:
+                self._superscript_start = 0
+            else:
+                self._superscript_depth = 0
         value = re.sub(r"\s+", " ", "".join(self._text)).strip()
         self._text = []
         if self._heading is not None:
@@ -412,7 +441,7 @@ class ArticleParser(HTMLParser):
             )
 
     def _append_inline_media(self, block):
-        self.flush()
+        self.flush(inline=True)
         if self._table_caption_blocks is not None:
             self._table_caption_blocks.append(block)
             return
@@ -509,12 +538,20 @@ class ArticleParser(HTMLParser):
         if self._list_continuation_pending and tag not in {"ol", "ul", "li", "a", "img"}:
             self._list_start = 1
             self._list_continuation_pending = False
+        if tag == "sup" and self._keep_html_numeric_superscripts:
+            if not self._superscript_depth:
+                self._superscript_start = len(self._text)
+            self._superscript_depth += 1
+            return
         # Table cells normalize to text and images, including any heading text.
         if self._keep_html_headings and tag in _HEADING_LEVELS and not self._in_table:
             self.flush()
             self._heading = {"kind": "heading", "level": _HEADING_LEVELS[tag]}
             return
         if tag == "br" and self._heading is not None:
+            if self._superscript_depth:
+                self._finish_superscript(self._superscript_start)
+                self._superscript_start = len(self._text) + 1
             self._text.append(" ")
             return
         if tag == "table":
@@ -570,7 +607,7 @@ class ArticleParser(HTMLParser):
                     self._table_column_header = tag == "th" and scope in ("", "col") and supported_span
                 return
             if tag == "br":
-                self.flush()
+                self.flush(inline=True)
                 return
         if tag in _LIST_TAGS and not self._in_table:
             self.flush()
@@ -597,7 +634,7 @@ class ArticleParser(HTMLParser):
         if tag in {"br", "p", "div", "li", "tr", "h1", "h2", "h3"} or (
             tag in {"figure", "figcaption"} and self._current_list_item() is not None
         ):
-            self.flush()
+            self.flush(inline=tag == "br")
         if tag == "a":
             if attrs.get("class") == "image":
                 self._image_link += 1
@@ -631,6 +668,11 @@ class ArticleParser(HTMLParser):
         if self._skip:
             if tag in {"script", "style"}:
                 self._skip -= 1
+            return
+        if tag == "sup" and self._superscript_depth:
+            self._superscript_depth -= 1
+            if not self._superscript_depth:
+                self._finish_superscript(self._superscript_start)
             return
         if tag == "figcaption" and self._figures and self._figures[-1].blocks is not None:
             self._finish_figure_caption()
@@ -667,7 +709,7 @@ class ArticleParser(HTMLParser):
                 self._flush_row()
                 return
             if tag in {"br", "div", "p"}:
-                self.flush()
+                self.flush(inline=tag == "br")
                 return
         if self._lists and not self._in_table:
             if tag == "li":

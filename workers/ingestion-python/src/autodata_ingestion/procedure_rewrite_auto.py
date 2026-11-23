@@ -67,6 +67,8 @@ _PROSE_PROMPT_V52 = "full-prose-auto-prompt-v52"
 _PROSE_PROMPT_V53 = "full-prose-auto-prompt-v53"
 _PROSE_PROMPT_V54 = "full-prose-auto-prompt-v54"
 _PROSE_PROMPT_VERSION = "full-prose-auto-prompt-v55"
+_SUPERSCRIPT_PROMPT_VERSION = "full-prose-auto-prompt-v56"
+_NUMERIC_SUPERSCRIPT = re.compile(r"[⁰¹²³⁴⁵⁶⁷⁸⁹]|\^\([+−-]?(?:[0-9]*\.[0-9]+|[0-9]+/[0-9]+)\)")
 _WORDS = re.compile(r"\w+")
 _MIN_COPIED_SENTENCE_WORDS = 6
 _INLINE_WARNING = re.compile(
@@ -1779,7 +1781,7 @@ def _build_auto_prompt_v54(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def build_auto_prompt(document, *, context):
+def _auto_prompt_payload_v55(document, *, context):
     payload = _auto_prompt_payload_v54(document, context=context)
     if payload["slots"]:
         payload["prompt_version"] = _PROSE_PROMPT_VERSION
@@ -1790,13 +1792,32 @@ def build_auto_prompt(document, *, context):
             "Retain the complete fluid measurement and its limits or range when the source uses lowercase l "
             "for litres. Omit fluid quantities and capacity specifications from the introduction."
         )
+    return payload
+
+
+def _build_auto_prompt_v55(document, *, context):
+    payload = _auto_prompt_payload_v55(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def build_auto_prompt(document, *, context):
+    payload = _auto_prompt_payload_v55(document, context=context)
+    superscript_slots = [slot for slot in payload["slots"] if _NUMERIC_SUPERSCRIPT.search(slot["text"])]
+    if superscript_slots:
+        payload["prompt_version"] = _SUPERSCRIPT_PROMPT_VERSION
+        for slot in superscript_slots:
+            slot["required_action"] = "retain"
+        payload["rules"].append(
+            "Retain text with numeric superscripts or ^(…) exponents exactly, including signs and units. "
+            "Omit these specifications from the introduction."
+        )
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
 def _auto_prompt_version(document, *, context, prompt_hash):
     """Identify the rules bound to the saved model attempt."""
     for builder in (
-        build_auto_prompt, _build_auto_prompt_v54, _build_auto_prompt_v53, _build_auto_prompt_v52,
+        build_auto_prompt, _build_auto_prompt_v55, _build_auto_prompt_v54, _build_auto_prompt_v53, _build_auto_prompt_v52,
         _build_auto_prompt_v51,
         _build_auto_prompt_v50,
         _build_auto_prompt_v49, _build_auto_prompt_v48,
@@ -3074,7 +3095,7 @@ def _combined_replacement_preparation_targets(text, *, recognize_then_comma=Fals
 
 def _uses_prose_guards(prompt_version, slot_count):
     return bool(slot_count) and prompt_version in (
-        None, _PROSE_PROMPT_V4, _PROSE_PROMPT_V5, _PROSE_PROMPT_V6, _PROSE_PROMPT_V7,
+        None, _SUPERSCRIPT_PROMPT_VERSION, _PROSE_PROMPT_V4, _PROSE_PROMPT_V5, _PROSE_PROMPT_V6, _PROSE_PROMPT_V7,
         _PROSE_PROMPT_V8, _PROSE_PROMPT_V9, _PROSE_PROMPT_V10, _CELL_PROSE_PROMPT_V11,
         _PROSE_PROMPT_V12, _PROSE_PROMPT_V13, _PROSE_PROMPT_V14, _PROSE_PROMPT_V15, _PROSE_PROMPT_V16,
         _PROSE_PROMPT_V17, _PROSE_PROMPT_V18, _PROSE_PROMPT_V19, _PROSE_PROMPT_V20, _PROSE_PROMPT_V21,
@@ -3085,7 +3106,7 @@ def _uses_prose_guards(prompt_version, slot_count):
 
 def _include_cell_blocks(prompt_version):
     return prompt_version in (
-        None, _CELL_PROSE_PROMPT_V11, _PROSE_PROMPT_V12, _PROSE_PROMPT_V13,
+        None, _SUPERSCRIPT_PROMPT_VERSION, _CELL_PROSE_PROMPT_V11, _PROSE_PROMPT_V12, _PROSE_PROMPT_V13,
         _PROSE_PROMPT_V14, _PROSE_PROMPT_V15, _PROSE_PROMPT_V16, _PROSE_PROMPT_V17, _PROSE_PROMPT_V18,
         _PROSE_PROMPT_V19, _PROSE_PROMPT_V20, _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23,
         _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_V29, _PROSE_PROMPT_V30, _PROSE_PROMPT_V31, _PROSE_PROMPT_V32, _PROSE_PROMPT_V33, _PROSE_PROMPT_V34, _PROSE_PROMPT_V35, _PROSE_PROMPT_V36, _PROSE_PROMPT_V37, _PROSE_PROMPT_V38, _PROSE_PROMPT_V39, _PROSE_PROMPT_V40, _PROSE_PROMPT_V41, _PROSE_PROMPT_V42, _PROSE_PROMPT_V43, _PROSE_PROMPT_V44, _PROSE_PROMPT_V45, _PROSE_PROMPT_V46, _PROSE_PROMPT_V47, _PROSE_PROMPT_V48, _PROSE_PROMPT_V49, _PROSE_PROMPT_V50, _PROSE_PROMPT_V51, _PROSE_PROMPT_V52, _PROSE_PROMPT_V53, _PROSE_PROMPT_V54, _PROSE_PROMPT_VERSION,
@@ -3097,6 +3118,9 @@ def _require_changes(source, candidate, *, prompt_version, include_cell_blocks=N
     restored = {"blocks": candidate["blocks"][1:]}
     if include_cell_blocks is None:
         include_cell_blocks = _include_cell_blocks(prompt_version)
+    guard_superscripts = prompt_version in (None, _SUPERSCRIPT_PROMPT_VERSION)
+    if prompt_version == _SUPERSCRIPT_PROMPT_VERSION:
+        prompt_version = _PROSE_PROMPT_VERSION
     slots = full.prose_slots(source, include_cell_blocks=include_cell_blocks)
     guard_prose = _uses_prose_guards(prompt_version, len(slots))
     guard_actions = guard_prose and prompt_version != _PROSE_PROMPT_V4
@@ -3196,6 +3220,8 @@ def _require_changes(source, candidate, *, prompt_version, include_cell_blocks=N
     guard_fuel_prerequisites = prompt_version in (None, _PROSE_PROMPT_V54, _PROSE_PROMPT_VERSION)
     guard_lowercase_litres = prompt_version in (None, _PROSE_PROMPT_VERSION)
     introduction = candidate["blocks"][0].get("text", "")
+    if guard_superscripts and _NUMERIC_SUPERSCRIPT.search(introduction):
+        raise ValueError("REWRITE_TECHNICAL_AMBIGUOUS")
     if guard_prose and (
         _INLINE_WARNING.search(introduction)
         or (guard_actions and _PREREQUISITE.search(introduction))
@@ -3231,6 +3257,10 @@ def _require_changes(source, candidate, *, prompt_version, include_cell_blocks=N
     for slot in slots:
         original = slot["text"]
         replacement = full._get(restored, slot["path"])
+        if guard_superscripts and any(_NUMERIC_SUPERSCRIPT.search(text) for text in (original, replacement)):
+            if original != replacement:
+                raise ValueError("REWRITE_TECHNICAL_AMBIGUOUS")
+            continue
         if guard_prose and any(
             _INLINE_WARNING.search(text)
             or (guard_actions and _PREREQUISITE.search(text))
@@ -3409,11 +3439,17 @@ def _require_changes(source, candidate, *, prompt_version, include_cell_blocks=N
 
 def require_current_publication_checks(source, candidate, *, saved_prompt_version):
     """Apply current prose rules to the saved prompt's editable slots."""
-    if saved_prompt_version != _PROSE_PROMPT_VERSION:
-        _require_changes(
-            source, candidate, prompt_version=_PROSE_PROMPT_VERSION,
-            include_cell_blocks=_include_cell_blocks(saved_prompt_version),
-        )
+    if saved_prompt_version == _SUPERSCRIPT_PROMPT_VERSION:
+        return
+    if saved_prompt_version == _PROSE_PROMPT_VERSION and not any(
+        _NUMERIC_SUPERSCRIPT.search(text)
+        for document in (source, candidate) for text in full._strings(document)
+    ):
+        return
+    _require_changes(
+        source, candidate, prompt_version=_SUPERSCRIPT_PROMPT_VERSION,
+        include_cell_blocks=_include_cell_blocks(saved_prompt_version),
+    )
 
 
 def render_auto(source, response, *, prompt_version=None):
@@ -3492,6 +3528,7 @@ def validate_auto(source, candidate, *, response=None, prompt_version=None):
             _PROSE_PROMPT_V52: "full-prose-auto-validator-v50",
             _PROSE_PROMPT_V53: "full-prose-auto-validator-v51",
             _PROSE_PROMPT_V54: "full-prose-auto-validator-v52",
+            _SUPERSCRIPT_PROMPT_VERSION: "full-prose-auto-validator-v54",
         }.get(prompt_version, "full-prose-auto-validator-v53")
     report.update(validator_version=validator_version, profile_version=PROFILE,
         publication_mode="automatic", content_acceptance_required=False,
