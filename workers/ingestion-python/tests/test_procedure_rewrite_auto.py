@@ -83,6 +83,10 @@ def test_automatic_rewrite_replays_old_assembly_draft_before_current_publication
     ("CLEAN THE FUEL PUMP ASSEMBLY", "Carry out cleaning of the fuel pump assembly."),
     ("CLEAN FUEL PUMP ASSEMBLY", "Carry out cleaning of the fuel pump assembly."),
     ("REBUILD FUEL PUMP ASSEMBLY", "Carry out the rebuild of the fuel pump assembly."),
+    ("CALIBRATE THROTTLE ACTUATOR ASSEMBLY", "Carry out calibration of the throttle actuator assembly."),
+    ("FLUSH COOLANT PUMP ASSEMBLY", "Carry out flushing of the coolant pump assembly."),
+    ("ALIGN THROTTLE ACTUATOR ASSEMBLY", "Carry out alignment of the throttle actuator assembly."),
+    ("PRIME FUEL PUMP ASSEMBLY", "Carry out priming of the fuel pump assembly."),
 ])
 def test_automatic_rewrite_keeps_an_uppercase_assembly_instruction_editable(label, replacement):
     source, draft = _assembly_label_rewrite(replacement, label=label)
@@ -92,6 +96,7 @@ def test_automatic_rewrite_keeps_an_uppercase_assembly_instruction_editable(labe
 @pytest.mark.parametrize(("label", "replacement"), [
     ("STOP LAMP SWITCH ASSEMBLY", "Assembly for the stop lamp sensor."),
     ("START SWITCH ASSEMBLY", "Assembly for the start relay."),
+    ("START INHIBITOR SWITCH ASSEMBLY", "Assembly for the start inhibitor relay."),
 ])
 def test_automatic_rewrite_preserves_switch_names_with_verb_like_words(label, replacement):
     source, draft = _assembly_label_rewrite(replacement, label=label)

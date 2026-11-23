@@ -457,12 +457,14 @@ _ASSEMBLY_COMPONENT = (
 _COMPONENT_ASSEMBLY_LABEL = re.compile(r"(?:the )?" + _ASSEMBLY_COMPONENT + r" assembly")
 _ASSEMBLY_FOR_COMPONENT_LABEL = re.compile(r"(?:the )?assembly (?:for|of) (?:the )?" + _ASSEMBLY_COMPONENT)
 _LIST_ITEM_PROSE_PATH = re.compile(r"/items/\d+(?:/text)?$")
-_ASSEMBLY_LABEL_DELIMITERS = frozenset({"a", "an", "and", "or", "the", "then", "before", "after", "with", "without"})
-_ASSEMBLY_INSTRUCTION = re.compile(
-    r"^(?:adjust|clean|depress|disassemble|drain|fill|lubricate|operate|reassemble|"
-    r"rebuild|refit|repair|select|service|test|verify)\b", re.I,
+_ASSEMBLY_LABEL_QUALIFIERS = frozenset(
+    "air ambient brake camshaft coolant crankshaft engine exhaust flow fluid front fuel heated heater high "
+    "intake left level low lower mass oil oxygen pedal position pressure rear right speed temperature throttle timing "
+    "upper wheel".split()
 )
-_ASSEMBLY_SWITCH_NAMES = frozenset({"start switch", "stop lamp switch", "stop light switch"})
+_ASSEMBLY_SWITCH_NAMES = frozenset({
+    "start switch", "start inhibitor switch", "start interlock switch", "stop lamp switch", "stop light switch",
+})
 
 
 _SIMPLE_ACTION = r"(?:remove|take\s+off|lift\s+off|inspect|check|connect|attach|disconnect|detach|install|fit)"
@@ -2717,12 +2719,16 @@ def _source_assembly_component(slot):
     if not text.isupper() or not _LIST_ITEM_PROSE_PATH.search(slot["path"]):
         return None
     component = _assembly_component(text)
-    if not component or not _ASSEMBLY_LABEL_DELIMITERS.isdisjoint(component.split()):
+    if not component:
         return None
-    # Start and stop can be nouns in the names of these switches.
-    if component not in _ASSEMBLY_SWITCH_NAMES and (_INTRO_DIRECTIVE.search(text) or _ASSEMBLY_INSTRUCTION.search(text)):
-        return None
-    return component
+    if component in _ASSEMBLY_SWITCH_NAMES:
+        return component
+    # Require a known part-name pattern. An arbitrary word before a component
+    # can be an instruction, especially in all-caps procedure lists.
+    qualifiers = component.split()[:-1]
+    if qualifiers and qualifiers[0] not in {"level", "position"} and _ASSEMBLY_LABEL_QUALIFIERS.issuperset(qualifiers):
+        return component
+    return None
 
 
 def _check_assembly_components(slots, restored):
