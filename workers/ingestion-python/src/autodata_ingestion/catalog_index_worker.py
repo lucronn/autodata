@@ -3,10 +3,14 @@ import argparse
 import os
 import signal
 from threading import Event
+from time import monotonic
 from urllib.parse import urlsplit
 from uuid import uuid4
 
+from psycopg import OperationalError
+
 from .article_lifecycle import run_article_worker_once
+from .commerce_service import reconcile_workshop_preparation
 
 
 def select_next_catalog_job(repo):
@@ -42,12 +46,20 @@ def dispatch_next(repo, *, worker_id, registry, object_store, stop=None):
     )
 
 
-def run_catalog_worker(repo, *, registry, object_store, once=False, stop=None):
+def run_catalog_worker(repo, *, registry, object_store, once=False, prepare_orders=False, stop=None):
     """Signals stop between jobs; an active multi-page job may run much longer."""
     if stop is None:
         stop = Event()
     worker_id = uuid4()
+    next_preparation = 0.0
     while not stop.is_set():
+        if prepare_orders and monotonic() >= next_preparation:
+            try:
+                with repo.connect() as connection:
+                    reconcile_workshop_preparation(connection)
+            except OperationalError:
+                print('CATALOG_ORDER_PREPARATION_RETRY', flush=True)
+            next_preparation = monotonic() + 2
         claimed = dispatch_next(repo, worker_id=worker_id, registry=registry,
                                 object_store=object_store, stop=stop)
         if once:
@@ -60,6 +72,8 @@ def run_catalog_worker(repo, *, registry, object_store, once=False, stop=None):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--once', action='store_true')
+    parser.add_argument('--prepare-workshop-orders', action='store_true',
+                        help='Schedule catalog indexes for paid Workshop orders without calling Stripe.')
     args = parser.parse_args(argv)
     try:
         # Require explicit runtime configuration; never use development credentials.
@@ -90,7 +104,7 @@ def main(argv=None):
         signal.signal(signal.SIGINT, lambda *_: stop.set())
         return run_catalog_worker(ArticleRepository(),
             registry=source_connector_registry(include_defaults=False),
-            object_store=objects, once=args.once, stop=stop)
+            object_store=objects, once=args.once, prepare_orders=args.prepare_workshop_orders, stop=stop)
     except Exception:
         # Provider bodies, SQL and credentials never enter diagnostics.
         print('CATALOG_INDEX_WORKER_BLOCKED', flush=True)

@@ -6,6 +6,7 @@ import uuid
 
 import pytest
 
+from autodata_ingestion import catalog_index_worker
 from autodata_ingestion import commerce_service as commerce
 from autodata_ingestion.http_service import dispatch_commerce
 from autodata_ingestion.payment_reconciliation import revoke_entitlement
@@ -72,6 +73,48 @@ def account(repo):
             (uuid.uuid4().hex,)).fetchone()
     return {'customer_account_id': str(row['customer_account_id']),
             'organization_id': str(row['personal_organization_id'])}
+
+
+def test_catalog_worker_prepares_simulated_purchase_without_stripe(fresh_database, monkeypatch):
+    repo = fresh_database()
+    setup_env(monkeypatch)
+    monkeypatch.setenv('AUTODATA_DB_ADDRESS', 'postgres:5432')
+    monkeypatch.setenv('AUTODATA_POSTGRES_DB', repo.database_name)
+    monkeypatch.setenv('AUTODATA_POSTGRES_USER', 'lifecycle_test')
+    monkeypatch.setenv('AUTODATA_POSTGRES_PASSWORD', 'lifecycle_test_only')
+    owner = account(repo)
+    scope = {'configuration_id': str(seed_configuration(repo, seed_vehicle(repo))), 'region': 'US'}
+    simulation = commerce.configured_commerce(connection_factory=repo.connect)
+    receipt = call(simulation, 'checkouts', dict(scope, **owner, expected_mode='simulation',
+        terms_version=commerce.TERMS, idempotency_key=str(uuid.uuid4())))
+    assert receipt['state'] == 'owned'
+    called = []
+
+    def dispatch(actual_repo, **kwargs):
+        assert actual_repo is repo and kwargs['model_client'] is None
+        with repo.connect() as conn:
+            order = conn.execute('''SELECT status,preparation_state,preparation_index_job_ids
+                FROM workshop_orders WHERE order_id=%s''', (receipt['order_id'],)).fetchone()
+            assert order['status'] == 'paid' and order['preparation_state'] == 'index_queued'
+            jobs = conn.execute('''SELECT j.job_kind,j.provider_slug,s.vehicle_configuration_id
+                FROM source_fetch_jobs j JOIN catalog_article_provider_scopes s USING(catalog_provider_scope_id)
+                WHERE j.source_fetch_job_id=ANY(%s)''',
+                (order['preparation_index_job_ids'],)).fetchall()
+            assert {(job['job_kind'], job['provider_slug'], str(job['vehicle_configuration_id']))
+                    for job in jobs} == {('catalog_index', provider, scope['configuration_id'])
+                                         for provider in ('bankone', 'banktwo')}
+            assert kwargs['job_id'] in order['preparation_index_job_ids']
+        called.append(kwargs['job_id'])
+        return True
+
+    monkeypatch.setattr(catalog_index_worker, 'run_article_worker_once', dispatch)
+    assert catalog_index_worker.run_catalog_worker(repo, registry={}, object_store=None, once=True) == 0
+    assert not called
+    assert catalog_index_worker.run_catalog_worker(repo, registry={}, object_store=None, once=True,
+                                                   prepare_orders=True) == 0
+    assert len(called) == 1
+    assert call(simulation, 'grants/check', {**scope, **owner})['order_id'] == receipt['order_id']
+
 
 def seed_existing_paid_order(repo, owner, scope):
     pins = commerce.CommerceConfig('stripe_live', 'acct_fixture', 'price_fixture')

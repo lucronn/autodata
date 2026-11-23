@@ -5,6 +5,7 @@ from unittest.mock import Mock
 from uuid import uuid4
 
 import pytest
+from psycopg.errors import QueryCanceled
 
 from autodata_ingestion import catalog_index_worker as worker
 
@@ -82,6 +83,29 @@ def test_idle_or_lost_claim_waits_two_seconds_and_stops(monkeypatch):
     dispatch.assert_called_once()
 
 
+def test_preparation_timeout_preserves_catalog_dispatch_and_retries(monkeypatch, capsys):
+    repo = Repository(uuid4())
+    stop = Event()
+    prepare = Mock(side_effect=[QueryCanceled('private database diagnostics'), []])
+    monkeypatch.setattr(worker, 'reconcile_workshop_preparation', prepare)
+    now = 0
+
+    def dispatch(*args, **kwargs):
+        nonlocal now
+        assert not repo.open
+        now += 1
+        if now == 3:
+            stop.set()
+        return True
+
+    run = Mock(side_effect=dispatch)
+    monkeypatch.setattr(worker, 'monotonic', lambda: now)
+    monkeypatch.setattr(worker, 'dispatch_next', run)
+    assert worker.run_catalog_worker(repo, registry={}, object_store=None, prepare_orders=True, stop=stop) == 0
+    assert prepare.call_count == 2 and run.call_count == 3
+    assert capsys.readouterr().out == 'CATALOG_ORDER_PREPARATION_RETRY\n'
+
+
 def test_already_stopped_never_selects(monkeypatch):
     stop = Event()
     stop.set()
@@ -125,12 +149,13 @@ def test_main_builds_only_catalog_clients_and_installs_stop_handlers(monkeypatch
     monkeypatch.setattr(worker.signal, 'signal', lambda sig, handler: handlers.update({sig: handler}))
     def run(*args, **kwargs):
         assert kwargs['once'] is True
+        assert kwargs['prepare_orders'] is True
         assert not kwargs['stop'].is_set()
         handlers[worker.signal.SIGTERM](None, None)
         assert kwargs['stop'].is_set()
         return 0
     monkeypatch.setattr(worker, 'run_catalog_worker', run)
-    assert worker.main(['--once']) == 0
+    assert worker.main(['--once', '--prepare-workshop-orders']) == 0
     assert set(handlers) == {worker.signal.SIGTERM, worker.signal.SIGINT}
     registry.assert_called_once_with(include_defaults=False)
     assert objects.call_args.kwargs['endpoint'] == 'fixture:9000'
@@ -173,5 +198,6 @@ def test_preview_service_has_no_automatic_start_or_article_state():
     assert '--stop-timeout 70' in unit and 'TimeoutStopSec=80' in unit
     assert 'new-article' not in unit and 'INCEPTION' not in unit
     assert 'python -m autodata_ingestion.catalog_index_worker' in unit
+    assert '--prepare-workshop-orders' in unit
     assert '--env-file /etc/autodata/catalog-index-runtime.env' in unit
     assert 'sha256:5c8e79b93db464da854ad33dc499e25c153bbcd52757569b1f2a4e5072acecb4' in unit
