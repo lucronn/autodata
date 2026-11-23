@@ -326,6 +326,125 @@ class ConnectorTests(unittest.TestCase):
         ])
         self.assertEqual(second, "Replace the pump.")
 
+    def test_opt_in_keeps_standalone_document_link_in_its_authored_list_position(self):
+        from autodata_ingestion.article_document import build_ordered_document, validate_ordered_document
+        from autodata_ingestion.procedure_rewrite_auto import build_auto_prompt, render_auto, validate_auto
+
+        label = "Auxiliary Steering Reference"
+        html = (
+            '<ol start="4"><li>Remove the cover to expose the bracket.'
+            '<ul><li> <mtr-doc-link data-doc-id="supplier-private" href="https://fixture.invalid/private" '
+            'onclick="fixture()">Auxiliary Steering Reference</MTR-doc-LINK > </li>'
+            '<li>Inspect the bracket for wear.</li></ul></li>'
+            '<li value="9">Install the cover.</li></ol>'
+        )
+        legacy = ArticleParser()
+        legacy.feed(html)
+        legacy.close()
+        self.assertFalse(legacy.html_document_links)
+        self.assertEqual(legacy.blocks[0]["items"][0]["blocks"][0]["items"][0], label)
+
+        parser = ArticleParser(keep_html_document_links=True)
+        # Splitting text and tags across feeds uses the same bounds.
+        boundary = html.index(" Steering")
+        closing_boundary = html.index("</MTR-") + len("</MTR-")
+        parser.feed(html[:boundary])
+        parser.feed(html[boundary:closing_boundary])
+        parser.feed(html[closing_boundary:])
+        parser.close()
+        expected = legacy.blocks[0]
+        expected["items"][0]["blocks"][0]["items"][0] = {
+            "text": "", "blocks": [{"kind": "link", "text": label}],
+        }
+        self.assertTrue(parser.html_document_links)
+        self.assertEqual(parser.blocks, [expected])
+        self.assertEqual(parser.links, [])
+
+        document = build_ordered_document({"article_id": "fixture", "evidence_ids": ["fixture"]}, parser.blocks)
+        self.assertEqual(validate_ordered_document(document, strict=True), [])
+        prompt = json.loads(build_auto_prompt(document, context={}))
+        self.assertEqual([slot["text"] for slot in prompt["slots"]], [
+            "Remove the cover to expose the bracket.", "Inspect the bracket for wear.", "Install the cover.",
+        ])
+        response = {
+            "introduction": "This article describes service information for the cover.",
+            "replacements": [
+                {"block_id": slot["block_id"], "path": slot["path"], "action": "rewrite", "text": text, "reason": ""}
+                for slot, text in zip(prompt["slots"], [
+                    "Take the cover off to uncover the bracket.", "Check the bracket for wear.",
+                    "Fit the cover back into place.",
+                ], strict=True)
+            ],
+        }
+        candidate = render_auto(document, response)
+        self.assertTrue(validate_auto(document, candidate, response=response).passed)
+        link = candidate["blocks"][1]["items"][0]["blocks"][0]["items"][0]["blocks"][0]
+        self.assertEqual(link["text"], label)
+        self.assertEqual(link["type"], "link")
+        self.assertNotIn("href", link)
+        self.assertNotIn("supplier-private", json.dumps(candidate))
+
+    def test_standalone_document_link_opt_in_keeps_other_item_forms_on_legacy_path(self):
+        ref = "<mtr-doc-link>Auxiliary Steering Reference</mtr-doc-link>"
+        for html in (
+            f"<ul><li>See {ref}.</li></ul>",
+            f"<ul><li>{ref} followed by the next step.</li></ul>",
+            f"<ul><li>{ref}{ref}</li></ul>",
+            f"<ul><li><button>{ref}</button></li></ul>",
+            "<ul><li><mtr-doc-link><button>Reference</button></mtr-doc-link></li></ul>",
+            f"<form><ul><li>{ref}</li></ul></form>",
+            f"<a href='/control'><ul><li>{ref}</li></ul></a>",
+            f"<ol><li value='5'>{ref}<ul><li>Inspect the bracket.</li></ul></li></ol>",
+            f"<ul><li>{ref}<li>Inspect the bracket.</li></ul>",
+            "<ul><li><mtr-doc-link>Reference</li></ul>",
+            f"<ul><li><mtr-doc-link>Reference<li>{ref}</li></ul>",
+            "<ul><li><mtr-doc-link/>Reference</li></ul>",
+            "<ul><li><mtr-doc-link <a>Reference</mtr-doc-link></li></ul>",
+            "<ul><li><mtr-doc-link / malformed>Reference</mtr-doc-link></li></ul>",
+            "<ul><li><mtr-doc-link>Reference</mtr-doc-link malformed></li></ul>",
+            f"<ul><li / malformed>{ref}</li></ul>",
+            f"<ul><li>{ref}</li malformed></ul>",
+            "<ul><li><mtr-doc-link> </mtr-doc-link></li></ul>",
+            "<ul><li>Auxiliary Steering Reference</li></ul>",
+            f"<p>{ref}</p>",
+        ):
+            with self.subTest(html=html):
+                legacy = ArticleParser()
+                opted_in = ArticleParser(keep_html_document_links=True)
+                for parser in (legacy, opted_in):
+                    parser.feed(html)
+                    parser.close()
+                    parser.flush()
+                    self.assertFalse(parser.html_document_links)
+                self.assertEqual(opted_in.blocks, legacy.blocks)
+                self.assertEqual(opted_in.links, legacy.links)
+
+    def test_standalone_document_links_are_only_promoted_outside_hidden_subtrees(self):
+        ref = "<mtr-doc-link>Visible Steering Reference</mtr-doc-link>"
+        for hidden in (
+            '<template><ul><li><mtr-doc-link>Template label</mtr-doc-link></li></ul></template>',
+            '<noscript><ul><li><mtr-doc-link>Fallback label</mtr-doc-link></li></ul></noscript>',
+            '<ul><li hidden><mtr-doc-link>Hidden item</mtr-doc-link></li></ul>',
+            '<ul><li><mtr-doc-link aria-hidden="true">Hidden label</mtr-doc-link></li></ul>',
+            '<div hidden><div>Nested container</div>'
+            '<ul><li><mtr-doc-link>Hidden subtree label</mtr-doc-link></li></ul></div>',
+            '<div style="visibility: hidden !important;">'
+            '<ul><li><mtr-doc-link>Hidden styled label</mtr-doc-link></li></ul></div>',
+        ):
+            with self.subTest(html=hidden):
+                html = hidden + f"<ul><li>{ref}</li></ul>"
+                legacy = ArticleParser()
+                opted_in = ArticleParser(keep_html_document_links=True)
+                for parser in (legacy, opted_in):
+                    parser.feed(html)
+                    parser.close()
+                    parser.flush()
+                self.assertEqual(opted_in.blocks[:-1], legacy.blocks[:-1])
+                self.assertEqual(opted_in.blocks[-1]["items"], [
+                    {"text": "", "blocks": [{"kind": "link", "text": "Visible Steering Reference"}]},
+                ])
+                self.assertTrue(opted_in.html_document_links)
+
     def test_inline_figure_between_nested_items_stays_with_the_parent_item(self):
         parser = ArticleParser()
         parser.feed(
