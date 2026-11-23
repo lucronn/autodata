@@ -141,9 +141,10 @@ def _context(row) -> SourceArticleContext:
     )
 
 
-def _resource_binding(row, context, manifest, provenance, *, ordinals):
-    minimum_resources = 1 if ordinals else 2
-    if row["projection_status"] != "readable" or not minimum_resources <= len(manifest) <= _MAX_RESOURCES:
+def _resource_binding(row, context, manifest, provenance, *, ordinals, table_spans=False):
+    minimum_resources = 1 if ordinals or table_spans else 2
+    supported_statuses = {"readable", "partial"} if table_spans else {"readable"}
+    if row["projection_status"] not in supported_statuses or not minimum_resources <= len(manifest) <= _MAX_RESOURCES:
         raise ValueError("SOURCE_MEDIA_REPLAY_UNSUPPORTED")
     if len(provenance) != len(manifest):
         raise ValueError("SOURCE_MEDIA_REPLAY_BINDING_MISMATCH")
@@ -154,11 +155,25 @@ def _resource_binding(row, context, manifest, provenance, *, ordinals):
     snapshots = set()
     for index, (entry, owner) in enumerate(zip(manifest, provenance, strict=True)):
         role, mime = entry.get("role"), entry.get("media_type")
+        if table_spans and index:
+            # The topology replay can retain known missing assets unchanged.
+            # It never adds, fetches, or promotes a media resource.
+            ref = _source_ref(entry.get("opaque_ref"))
+            code = entry.get("failure_code")
+            if (row["projection_status"] != "partial" or role != "asset" or ref in references
+                    or set(entry) != {"role", "opaque_ref", "failure_code"}
+                    or not isinstance(code, str) or not re.fullmatch(r"[A-Z][A-Z0-9_]{0,95}", code)
+                    or owner != dict(entry, provider=context.key.provider)):
+                raise ValueError("SOURCE_TABLE_REPLAY_UNSUPPORTED_ASSET")
+            references.add(ref)
+            continue
         original = manifest[index - 1] if index and manifest[index - 1]["role"] == "asset_original" else None
         entry_fields = _MANIFEST_FIELDS
         expected_fields = _PROVENANCE_FIELDS
         if index == 0:
             supported = role == "body" and isinstance(mime, str) and mime in _BODY_MEDIA
+            if table_spans:
+                supported = supported and mime == "text/html" and "asset_bindings" not in owner
             if "asset_bindings" in owner:
                 expected_fields = expected_fields | {"asset_bindings"}
         elif original is not None:
@@ -229,19 +244,23 @@ def _resource_binding(row, context, manifest, provenance, *, ordinals):
     bindings = provenance[0].get("asset_bindings")
     if "asset_bindings" in provenance[0] and not _valid_asset_bindings(bindings, direct_refs):
         raise ValueError("SOURCE_MEDIA_REPLAY_BINDING_MISMATCH")
+    if _replay_fingerprint(context, manifest, bindings) != row["source_fingerprint"]:
+        raise ValueError("SOURCE_MEDIA_REPLAY_FINGERPRINT_MISMATCH")
+    return snapshots
+
+
+def _replay_fingerprint(context, manifest, bindings=None):
     body = manifest[0]
     fingerprint = {
         "provider": context.key.provider,
-        "body_ref": body_ref,
+        "body_ref": body["opaque_ref"],
         "body_sha256": body["sha256"],
         "body_media_type": body["media_type"],
         "resource_manifest": manifest,
     }
     if bindings:
         fingerprint["asset_bindings"] = sorted(bindings, key=lambda item: item["source_url"])
-    if digest_json(fingerprint) != row["source_fingerprint"]:
-        raise ValueError("SOURCE_MEDIA_REPLAY_FINGERPRINT_MISMATCH")
-    return snapshots
+    return digest_json(fingerprint)
 
 
 def _load_snapshots(cur, ids, *, resource_ids, lock):
@@ -355,14 +374,14 @@ def _block_inventory(document, body_media):
     return tuple(digest_json(block) for block in blocks)
 
 
-def load_media_replay_binding(cur, source_revision_id, *, lock=False, ordinals=False) -> MediaReplayBinding:
-    """Select one immutable source observation and all its current snapshot rights."""
-    row = cur.execute("""
+def _source_replay_row(cur, source_revision_id):
+    return cur.execute("""
         SELECT s.source_revision_id, s.canonical_article_id, s.source_fingerprint,
                s.body_source_snapshot_id, s.resource_manifest, s.evidence_manifest,
-               s.source_document, s.source_images, s.captured_at, s.projection_status,
+               s.source_document, s.source_images, s.source_body, s.source_steps, s.captured_at, s.projection_status,
                s.projection_version, a.provider_slug, a.vehicle_id, a.vehicle_configuration_id,
                a.source_vehicle_ref, a.source_article_ref, a.membership_status, a.takedown_status,
+               a.current_canonical_revision_id,
                o.source_observation_id, o.body_provider_revision, o.resource_provenance,
                o.captured_context, o.descriptor_source_snapshot_id, o.resolution_source_snapshot_id
         FROM canonical_article_source_revisions s
@@ -376,6 +395,11 @@ def load_media_replay_binding(cur, source_revision_id, *, lock=False, ordinals=F
         ) o ON true
         WHERE s.source_revision_id = %s
         """, (source_revision_id,)).fetchone()
+
+
+def load_media_replay_binding(cur, source_revision_id, *, lock=False, ordinals=False) -> MediaReplayBinding:
+    """Select one immutable source observation and all its current snapshot rights."""
+    row = _source_replay_row(cur, source_revision_id)
     if row is None:
         raise ValueError("SOURCE_MEDIA_REPLAY_SOURCE_NOT_FOUND")
     versions = MEDIA_REPLAY_SOURCE_VERSIONS

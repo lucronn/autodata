@@ -272,3 +272,88 @@ def apply_media_reprojection(repo, canonical_article_id, expected_source_revisio
             raise ValueError("SOURCE_REPLAY_CURRENT_SOURCE_CHANGED")
         _require_no_active_normal_job(cur, canonical_article_id)
         return _apply_source_only(cur, article, captured, checkpoint)
+
+
+def apply_table_reprojection(repo, canonical_article_id, expected_source_revision_id, *,
+                             object_store, expected_observation_id, expected_fingerprint,
+                             expected_body_sha256, expected_document_sha256, actor, reason,
+                             accept_source_fallback_from=None):
+    """Append a verified span-only source revision with an explicit canonical anchor."""
+    from .source_table_replay import TABLE_REPLAY_PROJECTION_VERSION, load_table_replay_binding, preview_table_replay
+
+    _validate_actor_reason(actor, reason)
+    binding, captured = preview_table_replay(repo, expected_source_revision_id, object_store=object_store)
+    row = binding.row
+    if (row["canonical_article_id"] != canonical_article_id
+            or row["source_observation_id"] != expected_observation_id
+            or row["source_fingerprint"] != expected_fingerprint
+            or row["resource_manifest"][0]["sha256"] != expected_body_sha256
+            or digest_json(captured.source_document) != expected_document_sha256):
+        raise ValueError("SOURCE_TABLE_REPLAY_PREVIEW_BINDING_MISMATCH")
+    checkpoint = {
+        "source_only_reprojection": True,
+        "table_span_reprojection": True,
+        "original_source_revision_id": str(expected_source_revision_id),
+        "original_source_observation_id": str(expected_observation_id),
+        "original_canonical_revision_id": str(accept_source_fallback_from) if accept_source_fallback_from else None,
+        "actor": actor,
+        "reason": reason,
+        "expected_fingerprint": expected_fingerprint,
+        "expected_body_sha256": expected_body_sha256,
+        "projection_document_hash": expected_document_sha256,
+    }
+    with repo.connect() as conn, conn.cursor(row_factory=dict_row) as cur:
+        article = cur.execute(
+            "SELECT * FROM canonical_articles WHERE canonical_article_id=%s FOR UPDATE",
+            (canonical_article_id,),
+        ).fetchone()
+        if article is None:
+            raise ValueError("SOURCE_TABLE_REPLAY_ARTICLE_NOT_FOUND")
+        if load_table_replay_binding(cur, expected_source_revision_id, lock=True) != binding:
+            raise ValueError("SOURCE_TABLE_REPLAY_PREVIEW_BINDING_MISMATCH")
+        current = cur.execute("""
+            SELECT j.source_fetch_job_id,j.status,j.error_code,j.checkpoint,j.request_generation,
+                   s.source_revision_id,s.source_fingerprint,s.source_document,s.projection_version
+            FROM source_fetch_jobs j JOIN canonical_article_source_revisions s USING(source_revision_id)
+            WHERE j.source_fetch_job_id=%s AND s.source_revision_id=%s
+        """, (article["current_job_id"], article["current_source_revision_id"])).fetchone()
+        if (current and article["current_canonical_revision_id"] is None
+                and current["status"] == "needs_review" and current["error_code"] == "SOURCE_ONLY_REPROJECTION"
+                and current["checkpoint"] == checkpoint and current["request_generation"] == article["request_generation"]
+                and current["projection_version"] == TABLE_REPLAY_PROJECTION_VERSION
+                and current["source_fingerprint"] == captured.source_fingerprint
+                and digest_json(current["source_document"]) == expected_document_sha256):
+            return {"status": "already_applied", "source_revision_id": str(current["source_revision_id"]),
+                    "job_id": str(current["source_fetch_job_id"]),
+                    "canonical_revalidation_required": accept_source_fallback_from is not None}
+        if article["current_source_revision_id"] != expected_source_revision_id:
+            raise ValueError("SOURCE_TABLE_REPLAY_CURRENT_SOURCE_CHANGED")
+        if article["current_canonical_revision_id"] != accept_source_fallback_from:
+            raise ValueError("SOURCE_TABLE_REPLAY_CANONICAL_ANCHOR")
+        if cur.execute("SELECT 1 FROM schema_migrations WHERE version='045_article_source_projection_v5'").fetchone() is None:
+            raise ValueError("SOURCE_TABLE_REPLAY_SCHEMA_REQUIRED")
+        _require_no_active_normal_job(cur, canonical_article_id)
+        _verify_table_replay_conflict(cur, canonical_article_id, captured)
+        result = _apply_source_only(cur, article, captured, checkpoint)
+        return dict(result, canonical_revalidation_required=accept_source_fallback_from is not None)
+
+
+def _verify_table_replay_conflict(cur, canonical_article_id, captured):
+    expected = {
+        "body_source_snapshot_id": captured.body_source_snapshot_id,
+        "source_document": captured.source_document,
+        "source_body": captured.source_body,
+        "source_images": captured.source_images,
+        "source_steps": captured.source_steps,
+        "resource_manifest": captured.resource_manifest,
+        "evidence_manifest": captured.evidence_manifest,
+        "projection_status": captured.projection_status,
+    }
+    existing = cur.execute("""
+        SELECT body_source_snapshot_id,source_document,source_body,source_images,source_steps,
+               resource_manifest,evidence_manifest,projection_status
+        FROM canonical_article_source_revisions
+        WHERE canonical_article_id=%s AND source_fingerprint=%s AND projection_version=%s
+    """, (canonical_article_id, captured.source_fingerprint, captured.projection_version)).fetchone()
+    if existing is not None and existing != expected:
+        raise ValueError("SOURCE_TABLE_REPLAY_PROJECTION_CONFLICT")
