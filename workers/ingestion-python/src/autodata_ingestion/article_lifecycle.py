@@ -3,6 +3,7 @@ from contextlib import contextmanager
 from dataclasses import replace
 from threading import Event, Thread
 from uuid import uuid4
+from psycopg.errors import ConnectionTimeout, LockNotAvailable, QueryCanceled
 from psycopg.rows import dict_row
 from . import article_lifecycle_store as store
 from .source_job_persistence import (claim_source_job, heartbeat_source_job, lock_live_lease,
@@ -180,7 +181,14 @@ def run_article_job(repo,lease,*,registry,object_store,model_client,hooks=None):
                 )
                 if lost.is_set():raise LeaseLost("heartbeat lost during source IO")
                 _hook(hooks,"before_source_commit")
-                store.store_captured_source(repo,lease,captured)
+                try:
+                    store.store_captured_source(repo,lease,captured)
+                except (ConnectionTimeout, LockNotAvailable, QueryCanceled):
+                    if lost.is_set():
+                        raise LeaseLost("heartbeat lost during source storage")
+                    # The failed transaction rolled back. Retry the same capture
+                    # under the same lease without fetching or writing media again.
+                    store.store_captured_source(repo,lease,captured)
                 _hook(hooks,"after_source_commit")
                 # Refresh inspection can have completed by reusing an existing
                 # publication or exhausted transformation without owning its key.
