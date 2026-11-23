@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -131,6 +132,57 @@ type incompleteScopeCatalogStore struct {
 
 func (s incompleteScopeCatalogStore) CatalogScopeComplete(context.Context, Principal, string, int, string, string, string) (bool, error) {
 	return false, nil
+}
+
+type catalogStatusErrorStore struct {
+	*memoryCatalogStore
+	statusErr error
+}
+
+func (s catalogStatusErrorStore) CatalogScopeComplete(context.Context, Principal, string, int, string, string, string) (bool, error) {
+	return false, s.statusErr
+}
+
+func (s catalogStatusErrorStore) CatalogArticleProgress(context.Context, Principal, string) (*CatalogArticleProgress, error) {
+	return nil, s.statusErr
+}
+
+func TestCatalogReturnsStoredRowsWhenDiscoveryStatusFails(t *testing.T) {
+	store := catalogStatusErrorStore{catalogFixtureStore(), errors.New("status query failed")}
+	server := catalogServer(store)
+	for _, tc := range []struct {
+		path string
+		id   string
+	}{
+		{"/v1/catalog/years/2024/makes?region=US", "acme"},
+		{"/v1/catalog/years/2024/makes/acme/models?region=US", "roadster"},
+		{"/v1/catalog/years/2024/makes/acme/models/roadster/configurations?region=US", "cfg-1"},
+		{"/v1/catalog/vehicles/vehicle-1/articles", "article-1"},
+		{"/v1/catalog/vehicles/vehicle-1/articles?q=filter", "article-1"},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			w := catalogRequest(server, tc.path)
+			var body struct {
+				Complete bool
+				Items    []struct{ ID string }
+				Progress *CatalogArticleProgress
+			}
+			err := json.Unmarshal(w.Body.Bytes(), &body)
+			if w.Code != 200 || err != nil || body.Complete || body.Progress != nil ||
+				len(body.Items) != 1 || body.Items[0].ID != tc.id {
+				t.Fatalf("stored rows unavailable: %d %s (%v)", w.Code, w.Body, err)
+			}
+		})
+	}
+	w := catalogRequest(server, "/v1/catalog/vehicles/vehicle-1/articles?q=absent")
+	if w.Code != 503 {
+		t.Fatalf("unknown completeness with no data returned %d: %s", w.Code, w.Body)
+	}
+	withdrawn := catalogServer(catalogStatusErrorStore{catalogFixtureStore(), ErrCatalogWithdrawn})
+	w = catalogRequest(withdrawn, "/v1/catalog/vehicles/vehicle-1/articles")
+	if w.Code != 410 || strings.Contains(w.Body.String(), "article-1") {
+		t.Fatalf("withdrawn data returned %d: %s", w.Code, w.Body)
+	}
 }
 
 func TestStoredConfigurationsReportActualDiscovery(t *testing.T) {

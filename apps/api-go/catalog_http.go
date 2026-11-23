@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Catalog selector reads must remain responsive while a missing scope is
@@ -17,6 +18,10 @@ import (
 // duplicate long-running requests before the worker has persisted its result.
 var catalogHydrationInFlight sync.Map
 var catalogDiscoveryInstance = rand.Text()
+
+// Discovery status is supplementary to stored catalog rows. Bound its
+// database read so it can't keep otherwise usable data waiting indefinitely.
+const catalogStatusReadTimeout = 250 * time.Millisecond
 
 type CatalogYearsResponse struct {
 	Version string        `json:"version"`
@@ -87,14 +92,13 @@ func (s *Server) listCatalogMakes(response http.ResponseWriter, request *http.Re
 	region := request.URL.Query().Get("region")
 	// Read the marker before the rows. A concurrent completion can otherwise
 	// make an older partial row set appear complete to the caller.
-	complete, err := s.catalog.CatalogScopeComplete(request.Context(), principal, "makes", year, "", "", region)
+	complete, statusErr := s.catalogSelectorCoverage(request, principal, "makes", year, "", "", region)
+	items, err := s.catalog.Makes(request.Context(), principal, year, region)
 	if err != nil {
 		s.writeCatalogError(response, request, err)
 		return
 	}
-	items, err := s.catalog.Makes(request.Context(), principal, year, region)
-	if err != nil {
-		s.writeCatalogError(response, request, err)
+	if !s.catalogCanServeRows(response, request, len(items), statusErr) {
 		return
 	}
 	hydrating := !complete && s.ingestionClient != nil
@@ -117,14 +121,13 @@ func (s *Server) listCatalogModels(response http.ResponseWriter, request *http.R
 	}
 	makeName := catalogPathValue(request.PathValue("make"))
 	region := request.URL.Query().Get("region")
-	complete, err := s.catalog.CatalogScopeComplete(request.Context(), principal, "models", year, makeName, "", region)
+	complete, statusErr := s.catalogSelectorCoverage(request, principal, "models", year, makeName, "", region)
+	items, err := s.catalog.Models(request.Context(), principal, year, makeName, region)
 	if err != nil {
 		s.writeCatalogError(response, request, err)
 		return
 	}
-	items, err := s.catalog.Models(request.Context(), principal, year, makeName, region)
-	if err != nil {
-		s.writeCatalogError(response, request, err)
+	if !s.catalogCanServeRows(response, request, len(items), statusErr) {
 		return
 	}
 	hydrating := !complete && s.ingestionClient != nil
@@ -156,14 +159,13 @@ func (s *Server) listCatalogConfigurations(response http.ResponseWriter, request
 	// Check before reading the rows. In-flight work can finish and persist rows
 	// while this request is reading, in which case another stored read is safe.
 	running := storedOnly && s.catalogHydrationRunning(payload)
-	complete, err := s.catalog.CatalogScopeComplete(request.Context(), principal, "configurations", year, makeName, modelName, region)
+	complete, statusErr := s.catalogSelectorCoverage(request, principal, "configurations", year, makeName, modelName, region)
+	items, err := s.catalog.Configurations(request.Context(), principal, year, makeName, modelName, region)
 	if err != nil {
 		s.writeCatalogError(response, request, err)
 		return
 	}
-	items, err := s.catalog.Configurations(request.Context(), principal, year, makeName, modelName, region)
-	if err != nil {
-		s.writeCatalogError(response, request, err)
+	if !s.catalogCanServeRows(response, request, len(items), statusErr) {
 		return
 	}
 	usable := !catalogConfigurationsIncomplete(items) || (complete && len(items) == 0)
@@ -183,6 +185,26 @@ func (s *Server) listCatalogConfigurations(response http.ResponseWriter, request
 	})
 }
 
+func (s *Server) catalogSelectorCoverage(request *http.Request, principal Principal, scope string, year int, makeName, model, region string) (bool, error) {
+	ctx, cancel := context.WithTimeout(request.Context(), catalogStatusReadTimeout)
+	defer cancel()
+	complete, err := s.catalog.CatalogScopeComplete(ctx, principal, scope, year, makeName, model, region)
+	return complete && err == nil, err
+}
+
+func (s *Server) catalogCanServeRows(response http.ResponseWriter, request *http.Request, count int, statusErr error) bool {
+	if statusErr == nil {
+		return true
+	}
+	if count == 0 || request.Context().Err() != nil ||
+		errors.Is(statusErr, ErrCatalogNotFound) || errors.Is(statusErr, ErrCatalogInvalid) || errors.Is(statusErr, ErrCatalogWithdrawn) {
+		s.writeCatalogError(response, request, statusErr)
+		return false
+	}
+	log.Printf("catalog discovery status unavailable; returning stored rows: %v", statusErr)
+	return true
+}
+
 func (s *Server) listCatalogArticles(response http.ResponseWriter, request *http.Request, principal Principal) {
 	vehicleID := request.PathValue("vehicle_id")
 	queryValues := request.URL.Query()["q"]
@@ -198,6 +220,11 @@ func (s *Server) listCatalogArticles(response http.ResponseWriter, request *http
 			return
 		}
 	}
+	// Read progress before the rows. A completion committed after the row
+	// snapshot must not make that older snapshot look complete.
+	statusCtx, cancelStatus := context.WithTimeout(request.Context(), catalogStatusReadTimeout)
+	progress, statusErr := s.catalog.CatalogArticleProgress(statusCtx, principal, vehicleID)
+	cancelStatus()
 	var items []CatalogArticle
 	var err error
 	if s.paidCatalogEnabled() {
@@ -235,28 +262,6 @@ func (s *Server) listCatalogArticles(response http.ResponseWriter, request *http
 		}
 		items = available
 	}
-	progress, err := s.catalog.CatalogArticleProgress(request.Context(), principal, vehicleID)
-	if err != nil {
-		s.writeCatalogError(response, request, err)
-		return
-	}
-	hydrating := progress != nil && !progress.Complete &&
-		(progress.Status == "pending" || progress.Status == "running" ||
-			(progress.Status == "failed" && progress.Retryable))
-	if !s.paidCatalogEnabled() && (progress == nil || !progress.Complete) && s.ingestionClient != nil {
-		configuration, configurationErr := s.catalog.ConfigurationByVehicle(request.Context(), principal, vehicleID)
-		if configurationErr != nil && !errors.Is(configurationErr, ErrCatalogNotFound) {
-			s.writeCatalogError(response, request, configurationErr)
-			return
-		}
-		if configurationErr == nil {
-			s.scheduleCatalogHydration(request, map[string]any{
-				"scope": "articles", "vehicle_id": vehicleID,
-				"year": configuration.Year, "make": configuration.Make, "model": configuration.Model,
-				"region": configuration.Region, "trim": configuration.Trim, "engine": configuration.Engine,
-			})
-		}
-	}
 	if s.paidCatalogEnabled() {
 		descriptors := make([]CatalogArticle, 0, len(items))
 		for _, item := range items {
@@ -271,6 +276,31 @@ func (s *Server) listCatalogArticles(response http.ResponseWriter, request *http
 	} else {
 		for index := range items {
 			rewriteCatalogImageURLs(&items[index], s.catalogImageKey)
+		}
+	}
+	if !s.catalogCanServeRows(response, request, len(items), statusErr) {
+		return
+	}
+	if statusErr != nil {
+		progress = nil
+	}
+	hydrating := progress != nil && !progress.Complete &&
+		(progress.Status == "pending" || progress.Status == "running" ||
+			(progress.Status == "failed" && progress.Retryable))
+	if !s.paidCatalogEnabled() && (progress == nil || !progress.Complete) && s.ingestionClient != nil {
+		ctx, cancel := context.WithTimeout(request.Context(), catalogStatusReadTimeout)
+		configuration, configurationErr := s.catalog.ConfigurationByVehicle(ctx, principal, vehicleID)
+		cancel()
+		if configurationErr != nil && !errors.Is(configurationErr, ErrCatalogNotFound) &&
+			!s.catalogCanServeRows(response, request, len(items), configurationErr) {
+			return
+		}
+		if configurationErr == nil {
+			s.scheduleCatalogHydration(request, map[string]any{
+				"scope": "articles", "vehicle_id": vehicleID,
+				"year": configuration.Year, "make": configuration.Make, "model": configuration.Model,
+				"region": configuration.Region, "trim": configuration.Trim, "engine": configuration.Engine,
+			})
 		}
 	}
 	var configuration *CatalogConfiguration

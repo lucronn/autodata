@@ -145,6 +145,27 @@ func (s *memoryCatalogStore) ArticleSourceRevision(ctx context.Context, p Princi
 const lifecycleScopeSQL = `(a.vehicle_id::text=$1 AND a.vehicle_configuration_id IS NULL OR a.vehicle_configuration_id::text=$1)`
 const lifecycleEligibleSQL = `a.membership_status='active' AND NOT EXISTS(SELECT 1 FROM source_review_items quarantine WHERE quarantine.item_kind='quarantine' AND quarantine.status<>'approved' AND (quarantine.source_snapshot_ids ? a.descriptor_source_snapshot_id::text OR EXISTS(SELECT 1 FROM canonical_article_source_revisions source WHERE source.source_revision_id=a.current_source_revision_id AND (quarantine.source_snapshot_ids ? source.body_source_snapshot_id::text OR EXISTS(SELECT 1 FROM jsonb_array_elements(source.resource_manifest) resource JOIN source_snapshots asset ON asset.content_sha256::text=resource->>'sha256' WHERE quarantine.source_snapshot_ids ? asset.source_snapshot_id::text))))) AND (a.vehicle_configuration_id IS NULL OR EXISTS (SELECT 1 FROM vehicle_configurations vc JOIN vehicle_identity_bases vb USING(vehicle_identity_base_id) WHERE vc.vehicle_configuration_id=a.vehicle_configuration_id AND vc.reviewer_state<>'rejected' AND vb.reviewer_state<>'rejected'))`
 
+// Search and detail use the same exact job and source rights for the first
+// supplier body. Callers still check current descriptor and configuration rights.
+const catalogSourceBodyPreviewSQL = `
+	SELECT j.checkpoint->'source_body_preview'->'document' AS document
+	FROM source_fetch_jobs j
+	JOIN source_snapshots snap ON snap.source_snapshot_id=CASE
+		WHEN j.checkpoint->'source_body_preview'->>'snapshot_id' ~ '^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$'
+		THEN (j.checkpoint->'source_body_preview'->>'snapshot_id')::uuid END
+	WHERE a.vehicle_configuration_id::text=$1 AND a.current_source_revision_id IS NULL AND a.takedown_status='active'
+	AND j.source_fetch_job_id=a.current_job_id
+	AND j.job_kind='article' AND j.canonical_article_id=a.canonical_article_id
+	AND j.request_generation=a.request_generation AND j.canonical_vehicle_id=a.vehicle_id
+	AND j.provider_slug=a.provider_slug AND j.source_vehicle_ref=a.source_vehicle_ref
+	AND j.source_article_ref=a.source_article_ref AND snap.takedown_status='active'
+	AND j.checkpoint->'source_body_preview'->>'descriptor_snapshot_id'=a.descriptor_source_snapshot_id::text
+	AND NOT EXISTS (
+		SELECT 1 FROM source_review_items quarantine
+		WHERE quarantine.item_kind='quarantine' AND quarantine.status<>'approved'
+		AND quarantine.source_snapshot_ids ? snap.source_snapshot_id::text
+	)`
+
 func (s *postgresCatalogStore) ArticleView(ctx context.Context, p Principal, v, id string) (CatalogArticleView, error) {
 	if !commerceUUID(id) {
 		return CatalogArticleView{}, ErrCatalogNotFound
@@ -156,25 +177,7 @@ func (s *postgresCatalogStore) ArticleView(ctx context.Context, p Principal, v, 
 		JOIN LATERAL (
 			SELECT * FROM catalog_article_current WHERE canonical_article_id=a.canonical_article_id LIMIT 1
 		) view_row ON true
-		LEFT JOIN LATERAL (
-			SELECT j.checkpoint->'source_body_preview'->'document' AS document
-			FROM source_fetch_jobs j
-			JOIN source_snapshots snap ON snap.source_snapshot_id=CASE
-				WHEN j.checkpoint->'source_body_preview'->>'snapshot_id' ~ '^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$'
-				THEN (j.checkpoint->'source_body_preview'->>'snapshot_id')::uuid END
-			WHERE a.vehicle_configuration_id::text=$1 AND a.current_source_revision_id IS NULL AND a.takedown_status='active'
-			AND view_row.takedown_status='active' AND j.source_fetch_job_id=a.current_job_id
-			AND j.job_kind='article' AND j.canonical_article_id=a.canonical_article_id
-			AND j.request_generation=a.request_generation AND j.canonical_vehicle_id=a.vehicle_id
-			AND j.provider_slug=a.provider_slug AND j.source_vehicle_ref=a.source_vehicle_ref
-			AND j.source_article_ref=a.source_article_ref AND snap.takedown_status='active'
-			AND j.checkpoint->'source_body_preview'->>'descriptor_snapshot_id'=a.descriptor_source_snapshot_id::text
-			AND NOT EXISTS (
-				SELECT 1 FROM source_review_items quarantine
-				WHERE quarantine.item_kind='quarantine' AND quarantine.status<>'approved'
-				AND quarantine.source_snapshot_ids ? snap.source_snapshot_id::text
-			)
-		) early ON true
+		LEFT JOIN LATERAL (`+catalogSourceBodyPreviewSQL+`) early ON view_row.takedown_status='active'
 		WHERE a.canonical_article_id IN ($2::uuid, (
 			SELECT alias.canonical_article_id FROM canonical_article_aliases alias
 			JOIN catalog_articles legacy USING(catalog_article_id)

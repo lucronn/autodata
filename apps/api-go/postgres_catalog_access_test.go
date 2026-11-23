@@ -684,9 +684,25 @@ func TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse(t *testing.T) {
 func TestPostgresPaidCatalogSourceBodyPreviewRights(t *testing.T) {
 	const snapshot = "c271a09e-5679-4445-93e0-0bddc85ad5bd"
 	const text = "Hold the latch open while disconnecting the negative cable."
+	const query = "disconnecting the negative cable"
 	f := paidSetup(t)
 	f.grant(0, f.configuration, "US")
 	detail := f.path("/" + f.article)
+	assertSearch := func(want bool) {
+		t.Helper()
+		found := false
+		for _, match := range f.contentSearch(0, query).Items {
+			if match.ID == f.article {
+				found = true
+				if match.SourceRevisionID != nil {
+					t.Fatal("preview search unexpectedly required a stored source revision")
+				}
+			}
+		}
+		if found != want {
+			t.Fatalf("source preview searchable = %t, want %t", found, want)
+		}
+	}
 	var title string
 	if err := f.pool.QueryRow(context.Background(), `SELECT title FROM canonical_articles
 		WHERE canonical_article_id=$1::uuid AND current_source_revision_id IS NULL`, f.article).Scan(&title); err != nil {
@@ -701,6 +717,7 @@ func TestPostgresPaidCatalogSourceBodyPreviewRights(t *testing.T) {
 	if !found {
 		t.Fatal("the title search dropped an article before its body was captured")
 	}
+	assertSearch(false)
 	f.expect(0, "POST", detail+"/prepare", "{}", 202)
 	f.exec(`INSERT INTO source_snapshots(source_snapshot_id,adapter_name,source_uri,source_version,content_sha256,object_key,
 		license_metadata,retrieved_at)
@@ -716,14 +733,35 @@ func TestPostgresPaidCatalogSourceBodyPreviewRights(t *testing.T) {
 			got.Document == nil || len(got.Document.Blocks) != 1 || got.Document.Blocks[0].Text != text {
 			t.Fatal("owner did not receive the original source body")
 		}
+		assertSearch(true)
 	}
 	assertHidden := func(owner, status int) {
 		t.Helper()
 		if bytes.Contains(f.expect(owner, "GET", detail, "", status), []byte(text)) {
 			t.Fatalf("preview body was visible to owner index %d with status %d", owner, status)
 		}
+		if owner == 0 {
+			assertSearch(false)
+		} else {
+			f.expect(owner, "GET", f.path("?q="+url.QueryEscape(query)), "", status)
+		}
 	}
 	assertVisible()
+	// Demo searches use the same store but must never match a preview-only term.
+	demoContext := context.WithValue(context.Background(), paidCatalogContextKey{}, paidCatalogContext{
+		configuration: CatalogConfiguration{ID: f.configuration}, openDemo: true,
+	})
+	demoItems, err := f.applications[0].catalog.(paidArticleSearchStore).PaidArticleSearchDescriptors(
+		demoContext, Principal{}, f.configuration, query,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range demoItems {
+		if item.ID == f.article {
+			t.Fatal("demo search matched a customer-only source preview")
+		}
+	}
 	assertHidden(-1, http.StatusUnauthorized)
 	assertHidden(1, http.StatusForbidden)
 	f.exec(`UPDATE source_snapshots SET takedown_status='takedown' WHERE source_snapshot_id=$1::uuid`, snapshot)
