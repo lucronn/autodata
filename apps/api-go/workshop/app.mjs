@@ -375,6 +375,10 @@ function usableEngineChoices(name, response) {
   return name === "configuration" && !response.hydrating && response.items.length > 0 &&
     response.items.every((item) => item.complete !== false);
 }
+function readStoredSelector(path, signal, timeout) {
+  const separator = path.includes("?") ? "&" : "?";
+  return requestJSON(`${path}${separator}stored_only=1`, { signal, timeout });
+}
 async function loadOptions(name, g, desired = "", initial = null) {
   const path = selectorPath(name);
   const cached = cachedSelector(path);
@@ -404,6 +408,15 @@ async function loadOptions(name, g, desired = "", initial = null) {
     {
       signal: g.signal,
       desired,
+      async emptyProbe(timeout) {
+        try {
+          return await readStoredSelector(path, g.signal, timeout);
+        } catch (error) {
+          g.signal.throwIfAborted();
+          if (error.status === 401 || error.status === 403) throw error;
+          return null;
+        }
+      },
       onUpdate(data) {
         if (g.current()) populate(name, data.items, desired);
       },
@@ -2137,8 +2150,8 @@ async function restoreRoute(initialYears = null, { focusArticle = "" } = {}) {
         for (const name of names) {
           const path = selectorPath(name, desired);
           if (!initial[name] && !cachedSelector(path)) {
-            const storedPath = name === "year" ? path : `${path}&stored_only=1`;
-            initial[name] = requestJSON(storedPath, { signal: g.signal }).catch(() => null);
+            const pending = name === "year" ? requestJSON(path, { signal: g.signal }) : readStoredSelector(path, g.signal);
+            initial[name] = pending.catch(() => null);
           }
           if (!desired[name]) break;
         }

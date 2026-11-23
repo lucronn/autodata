@@ -237,6 +237,8 @@ const DEFAULT_COLLECTION_POLL_WINDOW_MS = 60_000;
 const DEFAULT_COLLECTION_POLL_ATTEMPTS = Math.ceil(
   DEFAULT_COLLECTION_POLL_WINDOW_MS / DEFAULT_COLLECTION_POLL_INTERVAL_MS,
 );
+const EMPTY_COLLECTION_PROBE_DELAY_MS = 350;
+const EMPTY_COLLECTION_PROBE_TIMEOUT_MS = 500;
 
 // Hydration polling is bounded to one minute. The UI reports source progress;
 // this internal polling budget is not a user-facing attempt counter.
@@ -249,19 +251,39 @@ export async function readCollection(
     attempts = DEFAULT_COLLECTION_POLL_ATTEMPTS,
     interval = DEFAULT_COLLECTION_POLL_INTERVAL_MS,
     wait = delay,
+    emptyProbe,
+    now = () => performance.now(),
   } = {},
 ) {
   let latest;
-  for (let attempt = 0; attempt < attempts; attempt++) {
+  function update(data, attempt) {
     signal?.throwIfAborted();
-    latest = await read();
-    signal?.throwIfAborted();
-    if (!Array.isArray(latest.items)) throw new Error('The catalog returned an unreadable list. Try again.');
+    if (!Array.isArray(data?.items)) throw new Error('The catalog returned an unreadable list. Try again.');
+    latest = data;
     onUpdate(latest, { attempt: attempt + 1, attempts });
     // A saved selection can resume using an existing row while ingestion continues.
-    if (desired && latest.items.some(item => String(item.id ?? item.year) === desired)) return latest;
-    if (!latest.hydrating || latest.complete === true) return latest;
-    if (attempt < attempts - 1) await wait(interval, signal);
+    return (desired && latest.items.some(item => String(item.id ?? item.year) === desired)) ||
+      !latest.hydrating || latest.complete === true;
+  }
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    signal?.throwIfAborted();
+    if (update(await read(), attempt)) return latest;
+    if (attempt === attempts - 1) break;
+    if (attempt === 0 && emptyProbe && !latest.items.length && interval > EMPTY_COLLECTION_PROBE_DELAY_MS) {
+      // Check newly stored options once without moving the regular polling schedule.
+      const deadline = now() + interval;
+      await wait(EMPTY_COLLECTION_PROBE_DELAY_MS, signal);
+      const timeout = Math.min(EMPTY_COLLECTION_PROBE_TIMEOUT_MS, Math.floor(deadline - now()));
+      if (timeout > 0) {
+        signal?.throwIfAborted();
+        const early = await emptyProbe(timeout);
+        signal?.throwIfAborted();
+        if (Array.isArray(early?.items) && (early.items.length || early.complete === true) && update(early, attempt)) return latest;
+      }
+      await wait(Math.max(0, deadline - now()), signal);
+    } else {
+      await wait(interval, signal);
+    }
   }
   return { ...latest, timedOut: true };
 }
