@@ -309,7 +309,7 @@ const publicationStatusPreference = 'workshop-publication-status';
 export async function requestArticleJSON(path, {
   signal, timeout = 10000, readableBodyTimeout = 0, fetcher = fetch, method = 'GET', body, headers = {},
   preferShortSourceCheck = false, preferShortPublicationCheck = false,
-  finishPublishedBody = false, reportBodyNetworkError = false, publicationCheck,
+  finishPublishedBody = false, reportBodyNetworkError = false, publicationCheck, onResponseDate,
 } = {}) {
   const preferences = [];
   if (preferShortSourceCheck) preferences.push(shortSourceCheckPreference);
@@ -371,6 +371,7 @@ export async function requestArticleJSON(path, {
     const shortPublicationCheck = preferShortPublicationCheck && applied === shortPublicationCheckPreference;
     const publicationStatus = Boolean(publicationCheck && applied === publicationStatusPreference);
     const publicationCheckSupported = response.headers.get('Workshop-Publication-Check') === 'supported';
+    onResponseDate?.(response.headers.get('Date'));
     return { status: response.status, data, retryAfterSeconds, shortSourceCheck, shortPublicationCheck,
       ...(publicationStatus ? { publicationStatus } : {}),
       ...(publicationCheckSupported ? { publicationCheckSupported } : {}),
