@@ -885,6 +885,9 @@ paths:
                           type: string
                         name:
                           type: string
+                        market_unverified:
+                          type: boolean
+                          description: The requested market is unverified for this selector option.
                   complete:
                     type: boolean
                   hydrating:
@@ -950,6 +953,9 @@ paths:
                           type: string
                         name:
                           type: string
+                        market_unverified:
+                          type: boolean
+                          description: The requested market is unverified for this selector option.
                   complete:
                     type: boolean
                   hydrating:

@@ -5,6 +5,12 @@ export function configurationLabel(item) {
   return [engine, item.trim, item.body_style, item.drivetrain].filter(Boolean).join(' / ') || 'Base configuration';
 }
 
+export function selectorLabel(name, item) {
+  if (name === 'year') return String(item.year);
+  if (name === 'configuration') return configurationLabel(item);
+  return item.market_unverified === true ? `${item.name} · market unverified` : item.name;
+}
+
 export function filterArticles(items, query) {
   const words = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
   return items.filter(item => {

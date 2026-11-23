@@ -73,12 +73,18 @@ def test_sparse_scope_rows_and_version_upgrade(fresh_database, monkeypatch):
         assert row["completion_version"] == 0
         assert len(row["selector_rows"]) == 3
     model_request = {"scope": "models", "year": 2020, "make": "Ford", "region": "US"}
-    model_result = CatalogResult(rows=({"year": 2020, "make": "Ford", "model": "Bronco"},),
+    model_result = CatalogResult(rows=(
+        {"year": 2020, "make": "Ford", "model": "Bronco", "source_region": "US"},
+        {"year": 2020, "make": "Ford", "model": "Focus"},
+    ),
         complete=True, provenance=({"provider": "bankone", "source_uri": "fixture://models"},))
     _persist_hydration_scope(model_request, model_result)
     with repo.connect() as conn:
         row = conn.execute("SELECT selector_rows,completion_version,provenance FROM vehicle_catalog_hydration_scopes WHERE scope='models'").fetchone()
-        assert row["selector_rows"] == [{"year": 2020, "make": "Ford", "model": "Bronco", "region": "US"}]
+        assert row["selector_rows"] == [
+            {"year": 2020, "make": "Ford", "model": "Bronco", "source_region": "US"},
+            {"year": 2020, "make": "Ford", "model": "Focus"},
+        ]
         assert row["completion_version"] == 1
         assert row["provenance"] == list(model_result.provenance)
     # Off-scope source rows must never be certified as a completed requested scope.
@@ -87,6 +93,10 @@ def test_sparse_scope_rows_and_version_upgrade(fresh_database, monkeypatch):
     with pytest.raises(ValueError):
         _persist_hydration_scope({"scope": "models", "year": 2020, "make": "Ford", "region": "US"},
             CatalogResult(rows=({"year": 2020, "make": "Saab", "model": "900"},), complete=True))
+    with pytest.raises(ValueError):
+        _persist_hydration_scope(model_request, CatalogResult(rows=(
+            {"year": 2020, "make": "Ford", "model": "Fiesta", "source_region": "CA"},
+        ), complete=True))
 
 
 def test_go_sparse_selector_store(fresh_database):

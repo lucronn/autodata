@@ -440,6 +440,36 @@ class SourceConnectorClientTests(unittest.TestCase):
         self.assertEqual(result["rows"][0]["provider_mappings"][0]["provider_id"], "car:1")
         self.assertIn("cursor=page-2", calls[1])
 
+    def test_sparse_catalog_keeps_explicit_market_and_preserves_unknowns(self):
+        for scope in ("makes", "models"):
+            with self.subTest(scope=scope):
+                items = []
+                for i, market in enumerate((" us ", "PH", None, "North America", "NA", "ZZ")):
+                    row = {"opaque_ref": f"option:{i}", "label": f"choice {i}", "year": 2024}
+                    if scope == "makes":
+                        row["make"] = f"choice {i}"
+                    else:
+                        row.update(make="Example", model=f"choice {i}")
+                    if market is not None:
+                        row["region"] = market
+                    items.append(row)
+                payload = _envelope("banktwo", scope=scope, complete=True, items=items)
+
+                def open_request(request, timeout):
+                    self.assertNotIn("region=", request.full_url)
+                    return _Response(payload, url=request.full_url)
+
+                converter = _SourceCatalogProvider(SourceConnectorClient(
+                    "https://banktwo.cars.tk", provider="banktwo", opener=open_request,
+                ))
+                request = CatalogRequest(2024, "Example", "unknown", region="US", scope=scope)
+                result = converter.resolve_catalog(request)
+                self.assertTrue(result["complete"])
+                name = "make" if scope == "makes" else "model"
+                self.assertEqual([(row[name], row.get("source_region")) for row in result["rows"]],
+                                 [("choice 0", "US"), ("choice 2", None), ("choice 3", None),
+                                  ("choice 4", None), ("choice 5", None)])
+
     def test_banktwo_public_selector_ids_resolve_exact_source_labels(self):
         cases = (
             ("models", {"year": 2020, "make": "ford"}, "models", "Ford", None),

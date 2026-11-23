@@ -43,13 +43,15 @@ type CatalogYear struct {
 }
 
 type CatalogMake struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID               string `json:"id"`
+	Name             string `json:"name"`
+	MarketUnverified bool   `json:"market_unverified,omitempty"`
 }
 
 type CatalogModel struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID               string `json:"id"`
+	Name             string `json:"name"`
+	MarketUnverified bool   `json:"market_unverified,omitempty"`
 }
 
 type CatalogConfiguration struct {
@@ -609,69 +611,75 @@ func (s *postgresCatalogStore) Years(ctx context.Context, _ Principal) ([]Catalo
 
 func (s *postgresCatalogStore) Makes(ctx context.Context, _ Principal, year int, region string) ([]CatalogMake, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT DISTINCT make FROM vehicle_identity_bases
+		SELECT DISTINCT make, reviewer_state = 'approved' AS market_known FROM vehicle_identity_bases
 		WHERE model_year = $1 AND ($2 = '' OR region = $2) AND reviewer_state <> 'rejected'
 		UNION
-		SELECT item->>'make' AS make
+		SELECT item->>'make' AS make, COALESCE(item->>'source_region', '') = hydration.region
 		FROM vehicle_catalog_hydration_scopes hydration,
 		     jsonb_array_elements(hydration.selector_rows) AS item
 		WHERE hydration.scope = 'makes' AND hydration.model_year = $1
 		  AND ($2 = '' OR hydration.region = $2)
+		  AND COALESCE(item->>'source_region', '') IN ('', hydration.region)
 		  AND COALESCE(item->>'make', '') <> ''
-		ORDER BY make`, year, region)
+		ORDER BY make, market_known DESC`, year, region)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	result := []CatalogMake{}
-	seen := map[string]bool{}
+	seen := map[string]int{}
 	for rows.Next() {
 		var name string
-		if err := rows.Scan(&name); err != nil {
+		var marketKnown bool
+		if err := rows.Scan(&name, &marketKnown); err != nil {
 			return nil, err
 		}
 		name = catalogMakeLabel(name)
 		key := catalogSlug(name)
-		if seen[key] {
+		if index, duplicate := seen[key]; duplicate {
+			result[index].MarketUnverified = result[index].MarketUnverified && !marketKnown
 			continue
 		}
-		seen[key] = true
-		result = append(result, CatalogMake{ID: key, Name: name})
+		seen[key] = len(result)
+		result = append(result, CatalogMake{ID: key, Name: name, MarketUnverified: region != "" && !marketKnown})
 	}
 	return result, rows.Err()
 }
 
 func (s *postgresCatalogStore) Models(ctx context.Context, _ Principal, year int, makeName, region string) ([]CatalogModel, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT DISTINCT model FROM vehicle_identity_bases
+		SELECT DISTINCT model, reviewer_state = 'approved' AS market_known FROM vehicle_identity_bases
 		WHERE model_year = $1 AND (LOWER(make) = LOWER($2) OR ($4 <> '' AND TRIM(BOTH '-' FROM REGEXP_REPLACE(LOWER(make), '[^a-z0-9]+', '-', 'g')) = $4)) AND ($3 = '' OR region = $3) AND reviewer_state <> 'rejected'
 		  AND model NOT LIKE '\_%'
 		UNION
-		SELECT item->>'model' AS model
+		SELECT item->>'model' AS model, COALESCE(item->>'source_region', '') = hydration.region
 		FROM vehicle_catalog_hydration_scopes hydration,
 		     jsonb_array_elements(hydration.selector_rows) AS item
 		WHERE hydration.scope = 'models' AND hydration.model_year = $1
 		  AND (LOWER(hydration.make) = LOWER($2) OR ($4 <> '' AND TRIM(BOTH '-' FROM REGEXP_REPLACE(LOWER(hydration.make), '[^a-z0-9]+', '-', 'g')) = $4)) AND ($3 = '' OR hydration.region = $3)
+		  AND COALESCE(item->>'source_region', '') IN ('', hydration.region)
 		  AND COALESCE(item->>'model', '') <> '' AND item->>'model' NOT LIKE '\_%'
-		ORDER BY model`, year, makeName, region, catalogSlug(makeName))
+		ORDER BY model, market_known DESC`, year, makeName, region, catalogSlug(makeName))
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	result := []CatalogModel{}
-	seen := map[string]bool{}
+	seen := map[string]int{}
 	for rows.Next() {
 		var name string
-		if err := rows.Scan(&name); err != nil {
+		var marketKnown bool
+		if err := rows.Scan(&name, &marketKnown); err != nil {
 			return nil, err
 		}
 		name = catalogLabel(name)
 		key := catalogSlug(name)
-		if seen[key] {
+		if index, duplicate := seen[key]; duplicate {
+			result[index].MarketUnverified = result[index].MarketUnverified && !marketKnown
 			continue
 		}
-		seen[key] = true
-		result = append(result, CatalogModel{ID: key, Name: name})
+		seen[key] = len(result)
+		result = append(result, CatalogModel{ID: key, Name: name, MarketUnverified: region != "" && !marketKnown})
 	}
 	return result, rows.Err()
 }

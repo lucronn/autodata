@@ -1184,6 +1184,10 @@
                           },
                           "name": {
                             "type": "string"
+                          },
+                          "market_unverified": {
+                            "type": "boolean",
+                            "description": "The requested market is unverified for this selector option."
                           }
                         }
                       }
@@ -1282,6 +1286,10 @@
                           },
                           "name": {
                             "type": "string"
+                          },
+                          "market_unverified": {
+                            "type": "boolean",
+                            "description": "The requested market is unverified for this selector option."
                           }
                         }
                       }
