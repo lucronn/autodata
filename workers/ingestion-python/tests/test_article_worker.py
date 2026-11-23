@@ -1,7 +1,7 @@
 """Worker dispatch/recovery uses persisted phases and no warm IO."""
 import pytest
 from uuid import uuid4
-from lifecycle_support import fresh_database
+from lifecycle_support import fresh_database, runtime
 from test_source_article_capture import capture_fixture
 from test_article_transform import prepare_transform, Model
 from autodata_ingestion import article_lifecycle_store as store
@@ -330,3 +330,113 @@ def test_automatic_preexisting_missing_model_terminal_resume_requires_no_attempt
         assert store.load_article_state(repo, lease.canonical_article_id)["content_origin"] == "canonical"
         with repo.connect() as conn:
             assert conn.execute("SELECT retry_count FROM source_fetch_jobs WHERE source_fetch_job_id=%s", (lease.job_id,)).fetchone()["retry_count"] == 3
+
+
+@pytest.fixture
+def article_cli(monkeypatch):
+    from autodata_ingestion import article_lifecycle, worker
+
+    class Listener:
+        autocommit = False
+
+        def execute(self, _):
+            pass
+
+        def close(self):
+            pass
+
+    monkeypatch.setenv("AUTODATA_S3_ENDPOINT", "127.0.0.1:1")
+    monkeypatch.setenv("AUTODATA_S3_ACCESS_KEY", "fixture")
+    monkeypatch.setenv("AUTODATA_S3_SECRET_KEY", "fixture")
+    monkeypatch.setenv("AUTODATA_SOURCE_BUCKET", "fixture")
+    monkeypatch.delenv("INCEPTION_API_KEY", raising=False)
+    monkeypatch.setattr(worker, "ArticleObjectStore", lambda **_: object())
+    monkeypatch.setattr(worker.ArticleRepository, "connect", lambda _: Listener())
+
+    def run(iterate, *args):
+        monkeypatch.setattr(article_lifecycle, "run_article_worker_once", iterate)
+        return worker.article_worker_main(["--poll-seconds", "0.05", *args])
+
+    return run
+
+
+@pytest.mark.parametrize("reason", ["57014", "55P03", "ConnectionTimeout"])
+def test_worker_continues_after_postgres_timeout(article_cli, monkeypatch, capsys, reason):
+    from autodata_ingestion import worker
+    from psycopg.errors import ConnectionTimeout, lookup
+
+    class CompletedFixture(Exception):
+        pass
+
+    failure = ConnectionTimeout if reason == "ConnectionTimeout" else lookup(reason)
+    outcomes = iter([failure("private SQL error"), True, CompletedFixture()])
+    delays = []
+    monkeypatch.setattr(worker.time, "sleep", delays.append)
+
+    def iterate(*args, **kwargs):
+        outcome = next(outcomes)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    with pytest.raises(CompletedFixture):
+        article_cli(iterate)
+    assert delays == [0.05]
+    assert capsys.readouterr().err == f"Article worker database timeout ({reason}). Polling will resume.\n"
+
+
+@pytest.mark.parametrize("sqlstate,flags", [("42P01", []), ("57014", ["--once"])])
+def test_worker_keeps_postgres_errors_visible_for_fatal_or_single_runs(article_cli, sqlstate, flags):
+    from psycopg.errors import lookup
+
+    failure = lookup(sqlstate)
+
+    def iterate(*args, **kwargs):
+        raise failure("fixture SQL error")
+
+    with pytest.raises(failure):
+        article_cli(iterate, *flags)
+
+
+def test_worker_retries_captured_source_after_postgres_rollback(runtime, monkeypatch):
+    from autodata_ingestion.article_lifecycle import run_article_worker_once
+    from autodata_ingestion.procedure_rewrite_auto import PROFILE
+    from autodata_ingestion.source_job_persistence import refresh_article_job
+    from test_workshop_linked_pdf import FixtureDraft
+
+    body = b"<p>Remove the pump.</p><p>Install the replacement.</p>"
+    runtime.servers["bankone"].body(body)
+    runtime.reset_counters()
+    draft = FixtureDraft(introduction="This procedure covers pump removal and replacement.")
+    job = refresh_article_job(
+        runtime.repo, runtime.article_id, actor="fixture", reason="source store timeout", rewrite_profile_version=PROFILE,
+    )
+    persist = store._persist_article_capture
+    captured_attempts = []
+
+    def postpone_once(cur, article_id, job_id, generation, captured, **kwargs):
+        captured_attempts.append(captured)
+        assert cur.execute(
+            "SELECT count(*) AS n FROM canonical_article_source_observations WHERE source_fetch_job_id=%s",
+            (job_id,),
+        ).fetchone()["n"] == 0
+        revision = persist(cur, article_id, job_id, generation, captured, **kwargs)
+        if len(captured_attempts) == 1:
+            cur.execute("SET LOCAL statement_timeout = '5ms'")
+            cur.execute("SELECT pg_sleep(0.05)")
+        return revision
+
+    monkeypatch.setattr(store, "_persist_article_capture", postpone_once)
+    assert run_article_worker_once(runtime.repo, worker_id=uuid4(), registry=runtime.registry,
+                                   object_store=runtime.objects, model_client=draft, job_id=job.job_id)
+    assert len(captured_attempts) == 2
+    assert captured_attempts[0] == captured_attempts[1]
+    state = runtime.read_current()
+    assert state["content_origin"] == "canonical", runtime.diagnostics()
+    assert runtime.counters()["source"] == 1
+    assert len(draft.requests) == 1
+    with runtime.repo.connect() as conn:
+        assert conn.execute(
+            "SELECT count(*) AS n FROM canonical_article_source_observations WHERE source_fetch_job_id=%s",
+            (job.job_id,),
+        ).fetchone()["n"] == 1

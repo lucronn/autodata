@@ -1439,7 +1439,9 @@ class ArticleObjectStore:
 
 def article_worker_main(argv=None):
     import argparse
+    import sys
     from psycopg import Error as DatabaseError, sql
+    from psycopg.errors import ConnectionTimeout, LockNotAvailable, QueryCanceled
     from .source_job_persistence import ARTICLE_JOB_CHANNEL
     from uuid import UUID,uuid4
     from urllib.parse import urlsplit
@@ -1474,9 +1476,20 @@ def article_worker_main(argv=None):
                         listener.close()
                         listener = None
 
-            claimed = run_article_worker_once(
-                repo, worker_id=worker, registry=registry, object_store=objects, model_client=model,
-            )
+            try:
+                claimed = run_article_worker_once(
+                    repo, worker_id=worker, registry=registry, object_store=objects, model_client=model,
+                )
+            except (ConnectionTimeout, LockNotAvailable, QueryCanceled) as error:
+                if args.once:
+                    raise
+                reason = error.sqlstate or type(error).__name__
+                print(f"Article worker database timeout ({reason}). Polling will resume.",
+                      file=sys.stderr, flush=True)
+                # A separate connection owns the listener. Back off here so a
+                # burst of notifications cannot spin on an unhealthy database.
+                time.sleep(args.poll_seconds)
+                continue
             if args.once:
                 return 0
             if claimed:
