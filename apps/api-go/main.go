@@ -160,7 +160,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /{$}", func(response http.ResponseWriter, request *http.Request) {
 		http.Redirect(response, request, "/workshop/", http.StatusFound)
 	})
-	mux.HandleFunc("GET /openapi.json", func(response http.ResponseWriter, _ *http.Request) {
+	mountPublicRead(mux, "/openapi.json", func(response http.ResponseWriter, _ *http.Request) {
 		body, err := dashboardFiles.ReadFile("openapi.json")
 		if err != nil {
 			http.Error(response, "OpenAPI document unavailable", http.StatusInternalServerError)
@@ -170,7 +170,7 @@ func (s *Server) Handler() http.Handler {
 		response.Header().Set("Cache-Control", "no-cache")
 		_, _ = response.Write(body)
 	})
-	mux.HandleFunc("GET /openapi.yaml", func(response http.ResponseWriter, _ *http.Request) {
+	mountPublicRead(mux, "/openapi.yaml", func(response http.ResponseWriter, _ *http.Request) {
 		body, err := dashboardFiles.ReadFile("openapi.yaml")
 		if err != nil {
 			http.Error(response, "OpenAPI document unavailable", http.StatusInternalServerError)
@@ -240,10 +240,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/workshop/demo-mode.json", s.workshopDemoMode)
 	mux.HandleFunc("/workshop/test-notices/", s.workshopTestNotice)
 	mux.Handle("/workshop/", workshopAssetsHandler)
-	mux.Handle("GET /v1/catalog/years", s.catalogSelector(s.listCatalogYears))
-	mux.Handle("GET /v1/catalog/years/{year}/makes", s.catalogSelector(s.listCatalogMakes))
-	mux.Handle("GET /v1/catalog/years/{year}/makes/{make}/models", s.catalogSelector(s.listCatalogModels))
-	mux.Handle("GET /v1/catalog/years/{year}/makes/{make}/models/{model}/configurations", s.catalogSelector(s.listCatalogConfigurations))
+	s.mountCatalogSelector(mux, "/v1/catalog/years", s.listCatalogYears)
+	s.mountCatalogSelector(mux, "/v1/catalog/years/{year}/makes", s.listCatalogMakes)
+	s.mountCatalogSelector(mux, "/v1/catalog/years/{year}/makes/{make}/models", s.listCatalogModels)
+	s.mountCatalogSelector(mux, "/v1/catalog/years/{year}/makes/{make}/models/{model}/configurations", s.listCatalogConfigurations)
 	mux.Handle(catalogArticleIndexPattern, s.catalogProtected(s.listCatalogArticles, false))
 	mux.Handle("GET /v1/catalog/vehicles/{vehicle_id}/articles/{article_id}/source", s.catalogProtected(s.serveCatalogSource, false))
 	mux.Handle("GET /v1/catalog/vehicles/{vehicle_id}/articles/{article_id}", s.catalogProtected(s.getCatalogArticle, true))

@@ -13,7 +13,7 @@ import (
 )
 
 func (s *Server) mountCommerceRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /v1/workshop/quote", s.commerceQuoteHTTP)
+	mountPublicRead(mux, "/v1/workshop/quote", s.commerceQuoteHTTP)
 	mux.HandleFunc("POST /v1/workshop/checkout-sessions", s.commerceCheckoutHTTP)
 	mux.HandleFunc("GET /v1/workshop/orders/{order_id}", s.commerceOrderHTTP)
 	mux.HandleFunc("GET /v1/workshop/library", s.commerceLibraryHTTP)
