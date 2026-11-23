@@ -6,6 +6,7 @@ and some clause assignments and task qualifiers. Semantic equivalence
 still requires source comparison.
 """
 from collections import Counter
+from copy import deepcopy
 from hashlib import sha256
 from itertools import groupby
 import json
@@ -3424,7 +3425,7 @@ def _include_cell_blocks(prompt_version):
     )
 
 
-def _require_changes(source, candidate, *, prompt_version, include_cell_blocks=None):
+def _require_changes(source, candidate, *, prompt_version, include_cell_blocks=None, slot_errors=None):
     # The introduced first block is the only offset in source paths.
     restored = {"blocks": candidate["blocks"][1:]}
     if include_cell_blocks is None:
@@ -3446,7 +3447,7 @@ def _require_changes(source, candidate, *, prompt_version, include_cell_blocks=N
     ):
         prompt_version = _PROSE_PROMPT_VERSION
     slots = full.prose_slots(source, include_cell_blocks=include_cell_blocks)
-    if guard_assembly_labels:
+    if guard_assembly_labels and slot_errors is None:
         _check_assembly_components(slots, restored)
     guard_prose = _uses_prose_guards(prompt_version, len(slots))
     guard_actions = guard_prose and prompt_version != _PROSE_PROMPT_V4
@@ -3545,54 +3546,56 @@ def _require_changes(source, candidate, *, prompt_version, include_cell_blocks=N
     guard_bare_temperatures = prompt_version in (None, _PROSE_PROMPT_V53, _PROSE_PROMPT_V54, _PROSE_PROMPT_VERSION)
     guard_fuel_prerequisites = prompt_version in (None, _PROSE_PROMPT_V54, _PROSE_PROMPT_VERSION)
     guard_lowercase_litres = prompt_version in (None, _PROSE_PROMPT_VERSION)
-    introduction = candidate["blocks"][0].get("text", "")
-    if compound_measurement and compound_measurement.search(introduction):
-        raise ValueError("REWRITE_SPEC_SCOPE_MUTATION")
-    if guard_superscripts and _NUMERIC_SUPERSCRIPT.search(introduction):
-        raise ValueError("REWRITE_TECHNICAL_AMBIGUOUS")
-    if guard_prose and (
-        _INLINE_WARNING.search(introduction)
-        or (guard_actions and _PREREQUISITE.search(introduction))
-        or (guard_scope and _EXCEPTION_CONDITION.search(introduction))
-        or (guard_clearance_warnings and _CLEARANCE_WARNING.search(introduction))
-    ):
-        raise ValueError("REWRITE_SAFETY_MUTATION")
-    if guard_actions and (_INTRO_DIRECTIVE.search(introduction)
-                          or (guard_vehicle_support and _vehicle_support(introduction) is not None)):
-        raise ValueError("REWRITE_INTRODUCTION_INSTRUCTION")
-    if guard_lubrication and _lubricant_assignments(introduction):
-        raise ValueError("REWRITE_INTRODUCTION_INSTRUCTION")
-    if guard_actions and _spec_scope(
-        introduction, torque_aliases=guard_torque_aliases, duration_values=guard_duration_values,
-        electrical_values=guard_electrical_values, pressure_values=guard_pressure_values,
-        temperature_values=guard_temperature_values, resistance_values=guard_resistance_values,
-        rotation_values=guard_rotation_values, lowercase_litres=guard_lowercase_litres,
-    ):
-        raise ValueError("REWRITE_SPEC_SCOPE_MUTATION")
-    if guard_measured_force and _measured_force_scope(introduction):
-        raise ValueError("REWRITE_SPEC_SCOPE_MUTATION")
-    if guard_bare_temperatures and _bare_temperature_condition(introduction) != ():
-        raise ValueError("REWRITE_SPEC_SCOPE_MUTATION")
-    if guard_qualitative_rotation and _ROTARY_DIRECTION.search(introduction):
-        raise ValueError("REWRITE_INTRODUCTION_UNSUPPORTED_CLAIM")
-    if ((guard_simultaneous and _simultaneous_state(_proof_text(introduction), conjunctive=guard_conjunctive))
-            or (guard_pressure_conditions and _pressure_condition(_proof_text(introduction)))):
-        raise ValueError("REWRITE_INTRODUCTION_UNSUPPORTED_CLAIM")
-    if guard_procedure_conditions and _procedure_condition(introduction, fuel_prerequisites=guard_fuel_prerequisites) != ():
-        raise ValueError("REWRITE_INTRODUCTION_UNSUPPORTED_CLAIM")
-    if guard_claims:
-        _check_intro_claims(source, slots, introduction)
-    for slot in slots:
+    if slot_errors is None:
+        introduction = candidate["blocks"][0].get("text", "")
+        if compound_measurement and compound_measurement.search(introduction):
+            raise ValueError("REWRITE_SPEC_SCOPE_MUTATION")
+        if guard_superscripts and _NUMERIC_SUPERSCRIPT.search(introduction):
+            raise ValueError("REWRITE_TECHNICAL_AMBIGUOUS")
+        if guard_prose and (
+            _INLINE_WARNING.search(introduction)
+            or (guard_actions and _PREREQUISITE.search(introduction))
+            or (guard_scope and _EXCEPTION_CONDITION.search(introduction))
+            or (guard_clearance_warnings and _CLEARANCE_WARNING.search(introduction))
+        ):
+            raise ValueError("REWRITE_SAFETY_MUTATION")
+        if guard_actions and (_INTRO_DIRECTIVE.search(introduction)
+                              or (guard_vehicle_support and _vehicle_support(introduction) is not None)):
+            raise ValueError("REWRITE_INTRODUCTION_INSTRUCTION")
+        if guard_lubrication and _lubricant_assignments(introduction):
+            raise ValueError("REWRITE_INTRODUCTION_INSTRUCTION")
+        if guard_actions and _spec_scope(
+            introduction, torque_aliases=guard_torque_aliases, duration_values=guard_duration_values,
+            electrical_values=guard_electrical_values, pressure_values=guard_pressure_values,
+            temperature_values=guard_temperature_values, resistance_values=guard_resistance_values,
+            rotation_values=guard_rotation_values, lowercase_litres=guard_lowercase_litres,
+        ):
+            raise ValueError("REWRITE_SPEC_SCOPE_MUTATION")
+        if guard_measured_force and _measured_force_scope(introduction):
+            raise ValueError("REWRITE_SPEC_SCOPE_MUTATION")
+        if guard_bare_temperatures and _bare_temperature_condition(introduction) != ():
+            raise ValueError("REWRITE_SPEC_SCOPE_MUTATION")
+        if guard_qualitative_rotation and _ROTARY_DIRECTION.search(introduction):
+            raise ValueError("REWRITE_INTRODUCTION_UNSUPPORTED_CLAIM")
+        if ((guard_simultaneous and _simultaneous_state(_proof_text(introduction), conjunctive=guard_conjunctive))
+                or (guard_pressure_conditions and _pressure_condition(_proof_text(introduction)))):
+            raise ValueError("REWRITE_INTRODUCTION_UNSUPPORTED_CLAIM")
+        if guard_procedure_conditions and _procedure_condition(introduction, fuel_prerequisites=guard_fuel_prerequisites) != ():
+            raise ValueError("REWRITE_INTRODUCTION_UNSUPPORTED_CLAIM")
+        if guard_claims:
+            _check_intro_claims(source, slots, introduction)
+
+    def check_slot(slot):
         original = slot["text"]
         replacement = full._get(restored, slot["path"])
         if compound_measurement and any(compound_measurement.search(text) for text in (original, replacement)):
             if original != replacement:
                 raise ValueError("REWRITE_SPEC_SCOPE_MUTATION")
-            continue
+            return
         if guard_superscripts and any(_NUMERIC_SUPERSCRIPT.search(text) for text in (original, replacement)):
             if original != replacement:
                 raise ValueError("REWRITE_TECHNICAL_AMBIGUOUS")
-            continue
+            return
         if guard_prose and any(
             _INLINE_WARNING.search(text)
             or (guard_actions and _PREREQUISITE.search(text))
@@ -3603,13 +3606,13 @@ def _require_changes(source, candidate, *, prompt_version, include_cell_blocks=N
         ):
             if original != replacement:
                 raise ValueError("REWRITE_SAFETY_MUTATION")
-            continue
+            return
         if guard_lubrication:
             assignments = _lubricant_assignments(original)
             if any(retain for retain, *_ in assignments):
                 if original != replacement:
                     raise ValueError("REWRITE_SAFETY_MUTATION")
-                continue
+                return
             if assignments != _lubricant_assignments(replacement):
                 raise ValueError("REWRITE_LUBRICATION_MUTATION")
         technical_only = _technical_only(original)
@@ -3631,12 +3634,12 @@ def _require_changes(source, candidate, *, prompt_version, include_cell_blocks=N
         ):
             if original != replacement:
                 raise ValueError("REWRITE_SPEC_SCOPE_MUTATION")
-            continue
+            return
         if (guard_measured_force and (_measured_force_scope(original) or _measured_force_scope(replacement))
                 and _harness_pull_force_bound(original) is None):
             if original != replacement:
                 raise ValueError("REWRITE_SPEC_SCOPE_MUTATION")
-            continue
+            return
         if guard_bare_temperatures:
             original_temperature = _bare_temperature_condition(original)
             if original != replacement and (
@@ -3644,7 +3647,7 @@ def _require_changes(source, candidate, *, prompt_version, include_cell_blocks=N
             ):
                 raise ValueError("REWRITE_SPEC_SCOPE_MUTATION")
             if original_temperature is None:
-                continue
+                return
         if guard_procedure_conditions:
             original_condition = _procedure_condition(original, fuel_prerequisites=guard_fuel_prerequisites)
             if original != replacement and (
@@ -3654,13 +3657,13 @@ def _require_changes(source, candidate, *, prompt_version, include_cell_blocks=N
             ):
                 raise ValueError("REWRITE_QUALIFIER_MUTATION")
             if original_condition is None:
-                continue
+                return
         if guard_qualitative_rotation:
             source_rotations = _qualitative_rotations(original)
             if source_rotations is None:
                 if original != replacement:
                     raise ValueError("REWRITE_DIRECTION_MUTATION")
-                continue
+                return
         if (_WORDS.findall(replacement.casefold()) == _WORDS.findall(original.casefold())
                 and not technical_only):
             raise ValueError("REWRITE_UNCHANGED")
@@ -3766,6 +3769,19 @@ def _require_changes(source, candidate, *, prompt_version, include_cell_blocks=N
             raise ValueError("REWRITE_QUALIFIER_MUTATION")
         if guard_qualitative_rotation:
             _check_qualitative_rotation(original, replacement, source_rotations)
+
+    for slot in slots:
+        if slot_errors is None:
+            check_slot(slot)
+        elif slot["path"] not in slot_errors:
+            try:
+                if guard_assembly_labels:
+                    _check_assembly_components((slot,), restored)
+                check_slot(slot)
+            except ValueError as error:
+                slot_errors[slot["path"]] = str(error)
+    if slot_errors is not None:
+        return
     if guard_claims:
         directive = _directive_with_inspection_focus if guard_inspection_target_swaps else _simple_directive
         _check_target_swaps(slots, restored, directive=directive)
@@ -3809,6 +3825,34 @@ def require_current_publication_checks(source, candidate, *, saved_prompt_versio
         source, candidate, prompt_version=current_version,
         include_cell_blocks=_include_cell_blocks(saved_prompt_version),
     )
+
+
+def failed_rewrite_passages(source, response):
+    """Locate passage failures in a complete, source-aligned draft for correction.
+
+    The introduction and comparisons between passages still require the
+    whole-document validators.
+    """
+    if not isinstance(response, dict) or set(response) != {"introduction", "replacements"}:
+        return []
+    rows = response["replacements"]
+    slots = full.prose_slots(source, include_cell_blocks=_include_cell_blocks(None))
+    if not isinstance(rows, list) or len(rows) != len(slots):
+        return []
+    restored = deepcopy(source)
+    errors = {}
+    for slot, row in zip(slots, rows):
+        path = slot["path"]
+        if not isinstance(row, dict) or row.get("path") != path or row.get("block_id") != slot["block_id"]:
+            return []
+        try:
+            full._check_prose_row(slot, row)
+        except ValueError as error:
+            errors[path] = str(error)
+        else:
+            full._set(restored, path, row["text"])
+    _require_changes(source, {"blocks": [None, *restored["blocks"]]}, prompt_version=None, slot_errors=errors)
+    return [{"path": slot["path"], "code": errors[slot["path"]]} for slot in slots if slot["path"] in errors]
 
 
 def render_auto(source, response, *, prompt_version=None, profile_version=PROFILE):

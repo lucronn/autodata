@@ -83,6 +83,43 @@ def test_source_bound_profile_applies_the_existing_mechanical_checks(replacement
         assert not rewrite.validate_article_rewrite(source, result.document, profile_version=PROFILE).passed
 
 
+def test_failed_source_bound_draft_records_each_rejected_passage():
+    source = document(
+        "Remove the cover.", "Install the shield.",
+        "Tighten the bolts to 25 Nm.", "Do not disconnect the harness.",
+    )
+    draft = response(
+        "Remove the cover.", "Take off the shield.",
+        "Tighten the bolts to 20 Nm.", "Do not disconnect the harness.",
+    )
+    draft["replacements"][3].update(action="retain", reason="Preserve the safety instruction.")
+    prior = deepcopy(draft)
+    client = Draft(draft)
+    result = rewrite.rewrite_ordered_document(
+        source, client=client, context={}, profile_version=SOURCE_BOUND_REWRITE_PROFILE,
+    )
+    assert client.calls == 1
+    assert result.error_code == "REWRITE_UNCHANGED"
+    assert result.document == source
+    assert result.raw_response == draft == prior
+    assert result.model_metadata["passage_errors"] == [
+        {"path": "/blocks/0/text", "code": "REWRITE_UNCHANGED"},
+        {"path": "/blocks/1/text", "code": "REWRITE_ACTION_MUTATION"},
+        {"path": "/blocks/2/text", "code": "REWRITE_TECHNICAL_MUTATION"},
+    ]
+
+
+def test_source_bound_passage_errors_require_the_original_path_and_block_order():
+    source = document("Remove the cover.", "Install the shield.")
+    draft = response("Remove the cover.", "Take off the shield.")
+    draft["replacements"].reverse()
+    result = rewrite.rewrite_ordered_document(
+        source, client=Draft(draft), context={}, profile_version=SOURCE_BOUND_REWRITE_PROFILE,
+    )
+    assert result.error_code == "REWRITE_SLOT_MISMATCH"
+    assert "passage_errors" not in result.model_metadata
+
+
 def _assembly_label_rewrite(replacement, *, label="REAR TIMING SENSOR ASSEMBLY"):
     source = document("unused")
     item = source["blocks"][0]
@@ -111,6 +148,17 @@ def test_automatic_rewrite_rewords_an_assembly_label_with_its_component_intact()
 def test_automatic_rewrite_rejects_a_changed_assembly_component(replacement):
     source, draft = _assembly_label_rewrite(replacement)
     assert run(source, draft).error_code == "REWRITE_SPEC_SCOPE_MUTATION"
+
+
+def test_failed_source_bound_draft_locates_changed_assembly_component():
+    source, draft = _assembly_label_rewrite("Assembly for the rear timing switch.")
+    result = rewrite.rewrite_ordered_document(
+        source, client=Draft(draft), context={}, profile_version=SOURCE_BOUND_REWRITE_PROFILE,
+    )
+    assert result.error_code == "REWRITE_SPEC_SCOPE_MUTATION"
+    assert result.model_metadata["passage_errors"] == [
+        {"path": "/blocks/0/items/0", "code": "REWRITE_SPEC_SCOPE_MUTATION"},
+    ]
 
 
 def test_automatic_rewrite_replays_old_assembly_draft_before_current_publication_checks():
