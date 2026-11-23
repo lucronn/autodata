@@ -1316,13 +1316,16 @@ async def expect_linked_pdf(article, *, rewritten=False):
     cell = article.locator('ol[start="4"] > li[value="9"] table td').first
     figures = cell.locator('figure:has(img[alt="Figure from page 1"])')
     await expect(figures).to_have_count(2)
-    await expect(cell.locator(':scope > p')).to_have_text(
+    extracted_text = (
         ['Check the seal.', 'Check the gasket.', 'After the flange has dried, fit the replacement oil seal into place.']
         if rewritten else ['Inspect the seal.', 'Inspect the gasket.', 'Install a new oil seal after the flange is dry.']
     )
+    await expect(cell.locator(':scope > p')).to_have_text(
+        ['Do not remove the retaining clip.', *extracted_text, 'Do not rotate the service shaft.'],
+    )
     assert await cell.locator(':scope > :is(p, figure)').evaluate_all(
         "nodes => nodes.map(node => node.tagName).join(',')"
-    ) == "P,FIGURE,P,FIGURE,P"
+    ) == "P,P,FIGURE,P,FIGURE,P,P"
     assert await article.locator('iframe, object, embed').count() == 0
     await expect(article).not_to_contain_text('Hidden fallback.')
     assert "/provider-private/" not in await article.inner_html()

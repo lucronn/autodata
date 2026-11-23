@@ -1436,7 +1436,7 @@ class API21FakeLocator:
         assert "tagName" in expression
         if 'td:has(img[alt="Alignment marks"])' in self.selector:
             return "P,FIGURE,P"
-        return "P,FIGURE,P,FIGURE,P"
+        return "P,P,FIGURE,P,FIGURE,P,P"
     def get_by_role(self, role, *, name):
         assert role == 'img' and name == 'Alignment marks'
         assert self.selector.endswith('td:has(img[alt="Alignment marks"])')

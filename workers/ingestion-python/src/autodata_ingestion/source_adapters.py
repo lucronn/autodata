@@ -1882,6 +1882,7 @@ def adapt_bound_article(
     keep_html_table_spans: bool = False,
     keep_html_nested_tables: bool = False,
     keep_html_numeric_superscripts: bool = False,
+    keep_mixed_html_pdf_embeds: bool = False,
     keep_html_flow_figure_captions: bool = False,
     keep_html_multiline_figure_captions: bool = False,
     keep_structured_table_cell_order: bool = False,
@@ -1894,6 +1895,70 @@ def adapt_bound_article(
     from .banktwo_connector import ArticleParser
     from .article_document import image_only_heading_figures, ordered_numbered_step, segment_plain_article_text
     from .article_lifecycle_types import ORDERED_STEP_IMAGE_ONLY_LAYOUT, ORDERED_STEP_INSTRUCTIONS_LAYOUT
+
+    def project_html(html_resource, *, include_untyped_pdf_positions=False):
+        html = html_resource.payload.decode("utf-8-sig")
+        parser = ArticleParser(
+            asset_bindings=html_resource.metadata.get("asset_bindings", []),
+            preserve_legacy_list_starts=False,
+            keep_html_headings=keep_html_headings,
+            keep_bound_pdf_iframes=keep_bound_pdf_iframes,
+            resolved_pdf_refs=resolved_pdf_refs,
+            include_untyped_pdf_positions=include_untyped_pdf_positions,
+            keep_html_table_image_order=keep_html_table_image_order,
+            keep_html_figure_captions=keep_html_figure_captions,
+            keep_html_table_captions=keep_html_table_captions,
+            keep_html_media_table_headers=keep_html_media_table_headers,
+            keep_html_table_spans=keep_html_table_spans,
+            keep_html_nested_tables=keep_html_nested_tables,
+            keep_html_numeric_superscripts=keep_html_numeric_superscripts,
+            keep_html_flow_figure_captions=keep_html_flow_figure_captions,
+            keep_html_multiline_figure_captions=keep_html_multiline_figure_captions,
+        )
+        parser.feed(html)
+        parser.close()
+        parser.flush()
+        # Check explicit structured vehicle metadata independently of body text.
+        metadata_parser = _ArticleHTMLParser()
+        metadata_parser.feed(html)
+        metadata_parser.close()
+        for field, keys in {
+            "year": ("vehicle.year", "vehicle_year", "year"),
+            "make": ("vehicle.make", "vehicle_make"),
+            "model": ("vehicle.model", "vehicle_model"),
+        }.items():
+            supplied = _first_meta_value(metadata_parser.meta, *keys)
+            if (
+                supplied
+                and field in context.vehicle
+                and supplied != str(context.vehicle[field])
+            ):
+                raise ValueError("wrong applicability")
+        for candidate in _html_article_candidates(html_resource, parser=metadata_parser):
+            if candidate.kind == "vehicle_identity":
+                for field in ("year", "make", "model"):
+                    if (
+                        field in candidate.data
+                        and field in context.vehicle
+                        and str(candidate.data[field]) != str(context.vehicle[field])
+                    ):
+                        raise ValueError("wrong applicability")
+        return {
+            "blocks": parser.blocks,
+            "asset_resource_refs": [],
+            **({"authored_html_headings": True} if keep_html_headings else {}),
+            **({"handled_pdf_embeds": True} if parser.handled_pdf_embeds else {}),
+            **({"untyped_pdf_embed_refs": tuple(parser.untyped_pdf_embed_refs)} if parser.untyped_pdf_embed_refs else {}),
+            **({"positioned_html_table_images": True} if parser.positioned_html_table_images else {}),
+            **({"html_figure_captions": True} if parser.html_figure_captions else {}),
+            **({"html_flow_figure_captions": True} if parser.html_flow_figure_captions else {}),
+            **({"html_multiline_figure_captions": True} if parser.html_multiline_figure_captions else {}),
+            **({"html_table_captions": True} if parser.html_table_captions else {}),
+            **({"html_media_table_headers": True} if parser.html_media_table_headers else {}),
+            **({"html_table_spans": True} if parser.html_table_spans else {}),
+            **({"html_nested_tables": True} if parser.html_nested_tables else {}),
+            **({"html_numeric_superscripts": True} if parser.html_numeric_superscripts else {}),
+        }
 
     media = resource.media_type.split(";", 1)[0]
     if media in {"application/json", "application/hal+json"}:
@@ -2065,12 +2130,34 @@ def adapt_bound_article(
                     ordered_steps = True
                     has_image_only_steps |= has_image_only
         step_layout = ORDERED_STEP_IMAGE_ONLY_LAYOUT if has_image_only_steps else ORDERED_STEP_INSTRUCTIONS_LAYOUT
+        untyped_refs, placed_pdfs = (), False
+        html = article.get("content")
+        if (keep_mixed_html_pdf_embeds and keep_bound_pdf_iframes
+                and (not needs_blocks or article.get("steps"))
+                and isinstance(html, str) and re.search(r"<(?:iframe|object|embed)\b", html, re.I)):
+            from .mixed_article_documents import place_bound_documents
+
+            try:
+                nested = SourceResource.from_bytes(
+                    resource.source_uri, resource.source_version, html.encode(), "text/html",
+                    resource.locator, resource.metadata,
+                )
+                alternate = project_html(nested, include_untyped_pdf_positions=True)
+            except ValueError:
+                # Secondary HTML can be unusable even when structured content is valid.
+                pass
+            else:
+                untyped_refs, placed_pdfs = place_bound_documents(
+                    blocks, alternate["blocks"], resolved_pdf_refs=resolved_pdf_refs,
+                )
         return {
             "blocks": blocks,
             "asset_resource_refs": article.get("asset_resource_refs", []),
             **({"image_only_headings": True} if image_only_headings else {}),
             **({"authored_json_blocks": True} if keep_structured_table_cell_order and not needs_blocks else {}),
             **({"ordered_step_instructions_layout": step_layout} if ordered_steps else {}),
+            **({"handled_pdf_embeds": True, "mixed_html_pdf_embeds": True} if placed_pdfs else {}),
+            **({"untyped_pdf_embed_refs": tuple(untyped_refs)} if untyped_refs else {}),
         }
     if media in {"application/xml", "text/xml"}:
         return {
@@ -2078,67 +2165,7 @@ def adapt_bound_article(
             "asset_resource_refs": [],
         }
     if media == "text/html":
-        html = resource.payload.decode("utf-8-sig")
-        parser = ArticleParser(
-            asset_bindings=resource.metadata.get("asset_bindings", []),
-            preserve_legacy_list_starts=False,
-            keep_html_headings=keep_html_headings,
-            keep_bound_pdf_iframes=keep_bound_pdf_iframes,
-            resolved_pdf_refs=resolved_pdf_refs,
-            keep_html_table_image_order=keep_html_table_image_order,
-            keep_html_figure_captions=keep_html_figure_captions,
-            keep_html_table_captions=keep_html_table_captions,
-            keep_html_media_table_headers=keep_html_media_table_headers,
-            keep_html_table_spans=keep_html_table_spans,
-            keep_html_nested_tables=keep_html_nested_tables,
-            keep_html_numeric_superscripts=keep_html_numeric_superscripts,
-            keep_html_flow_figure_captions=keep_html_flow_figure_captions,
-            keep_html_multiline_figure_captions=keep_html_multiline_figure_captions,
-        )
-        parser.feed(html)
-        parser.close()
-        parser.flush()
-        # Check explicit structured vehicle metadata independently of body text.
-        metadata_parser = _ArticleHTMLParser()
-        metadata_parser.feed(html)
-        metadata_parser.close()
-        for field, keys in {
-            "year": ("vehicle.year", "vehicle_year", "year"),
-            "make": ("vehicle.make", "vehicle_make"),
-            "model": ("vehicle.model", "vehicle_model"),
-        }.items():
-            supplied = _first_meta_value(metadata_parser.meta, *keys)
-            if (
-                supplied
-                and field in context.vehicle
-                and supplied != str(context.vehicle[field])
-            ):
-                raise ValueError("wrong applicability")
-        for candidate in _html_article_candidates(resource, parser=metadata_parser):
-            if candidate.kind == "vehicle_identity":
-                for field in ("year", "make", "model"):
-                    if (
-                        field in candidate.data
-                        and field in context.vehicle
-                        and str(candidate.data[field]) != str(context.vehicle[field])
-                    ):
-                        raise ValueError("wrong applicability")
-        return {
-            "blocks": parser.blocks,
-            "asset_resource_refs": [],
-            **({"authored_html_headings": True} if keep_html_headings else {}),
-            **({"handled_pdf_embeds": True} if parser.handled_pdf_embeds else {}),
-            **({"untyped_pdf_embed_refs": tuple(parser.untyped_pdf_embed_refs)} if parser.untyped_pdf_embed_refs else {}),
-            **({"positioned_html_table_images": True} if parser.positioned_html_table_images else {}),
-            **({"html_figure_captions": True} if parser.html_figure_captions else {}),
-            **({"html_flow_figure_captions": True} if parser.html_flow_figure_captions else {}),
-            **({"html_multiline_figure_captions": True} if parser.html_multiline_figure_captions else {}),
-            **({"html_table_captions": True} if parser.html_table_captions else {}),
-            **({"html_media_table_headers": True} if parser.html_media_table_headers else {}),
-            **({"html_table_spans": True} if parser.html_table_spans else {}),
-            **({"html_nested_tables": True} if parser.html_nested_tables else {}),
-            **({"html_numeric_superscripts": True} if parser.html_numeric_superscripts else {}),
-        }
+        return project_html(resource)
     if media == "text/plain":
         return {
             "blocks": segment_plain_article_text(resource.payload.decode("utf-8-sig"), step_parser=step_parser),

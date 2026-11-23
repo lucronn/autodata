@@ -20,6 +20,7 @@ from .article_lifecycle_types import (
     HTML_TABLE_CAPTION_LAYOUT,
     HTML_TABLE_SPAN_LAYOUT,
     LEADING_DECIMAL_LAYOUT,
+    MIXED_HTML_PDF_LAYOUT,
     STRUCTURED_TABLE_COLUMNS_LAYOUT,
 )
 
@@ -61,6 +62,7 @@ def normalize_procedure_article(
             or entry.get("html_media_table_header_layout") == HTML_MEDIA_TABLE_HEADER_LAYOUT
             or entry.get("html_nested_table_layout") == HTML_NESTED_TABLE_LAYOUT
             or entry.get("html_numeric_superscript_layout") == HTML_NUMERIC_SUPERSCRIPT_LAYOUT
+            or entry.get("mixed_html_pdf_layout") == MIXED_HTML_PDF_LAYOUT
             or entry.get("html_table_span_layout") == HTML_TABLE_SPAN_LAYOUT
             or entry.get("leading_decimal_layout") == LEADING_DECIMAL_LAYOUT
             or entry.get("structured_table_columns_layout") == STRUCTURED_TABLE_COLUMNS_LAYOUT

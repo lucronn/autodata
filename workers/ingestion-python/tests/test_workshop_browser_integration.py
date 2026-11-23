@@ -432,13 +432,38 @@ def _child(root_name,engine,provider,directory,monkeypatch):
                             '<ol start="4"><li value="9">Remove the pump.'
                             '<figure><img src="/fixture/alignment.png" alt="Shim">'
                             '<figcaption>Shim A</figcaption></figure>'
-                            '<table><tr><td>'
+                            '<table><tr><td><p>Do not remove the retaining clip.</p>'
                             f'<object data="{_PDF_LOCATOR}">Hidden fallback.</object>'
-                            '</td><td>Drive seal seating depth: 2.0 mm</td></tr></table></li></ol>'
+                            '<p>Do not rotate the service shaft.</p></td>'
+                            '<td>Drive seal seating depth: 2.0 mm</td></tr></table></li></ol>'
                             '<p>Tighten the cover bolts to 18 Nm.</p>'
                         )
+                        blocks = [
+                            {"kind": "text", "text": "Inspect the alignment marks before removing the pump."},
+                            {"kind": "table", "caption": "Alignment service data", "rows": [[{"blocks": [
+                                {"kind": "text", "text": "Check mark."},
+                                {"kind": "image", "asset_resource_ref": "figure", "alt": "Alignment marks",
+                                 "caption": "Alignment witness marks"},
+                                {"kind": "text", "text": "Keep shim seated."},
+                            ]}]]},
+                            {"kind": "text", "text": "Do not run the pump dry."},
+                            {"kind": "text", "text": "Chamber reference pressure: 1.2 × 10⁻³ Pa. "
+                                                     "Fixture scale factor: 10^(0.5)."},
+                            {"kind": "text", "text": "Remove the cover while the ignition is off."},
+                            {"kind": "ordered_list", "start": 4, "items": [
+                                {"number": 9, "text": "Remove the pump.", "blocks": [
+                                    {"kind": "image", "asset_resource_ref": "figure", "alt": "Shim", "caption": "Shim A"},
+                                    {"kind": "table", "rows": [[{"blocks": [
+                                        {"kind": "text", "text": "Do not remove the retaining clip."},
+                                        {"kind": "text", "text": "Do not rotate the service shaft."},
+                                    ]}, "Drive seal seating depth: 2.0 mm"]]},
+                                ]},
+                            ]},
+                            {"kind": "text", "text": "Tighten the cover bolts to 18 Nm."},
+                        ]
+                        mixed = {"_embedded": {"data": {"article": {"blocks": blocks, "content": html}}}}
                         server.body(pdf, "application/pdf", ref=_PDF_REF, kind="binary")
-                        server.body(html.encode(), assets=["figure", _PDF_REF], asset_bindings=[
+                        server.body(json.dumps(mixed).encode(), "application/hal+json", assets=["figure", _PDF_REF], asset_bindings=[
                             {"source_url": "/fixture/alignment.png", "resource_ref": "figure"},
                             {"source_url": _PDF_LOCATOR, "resource_ref": _PDF_REF},
                         ])

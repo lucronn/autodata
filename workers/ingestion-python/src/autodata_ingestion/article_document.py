@@ -35,6 +35,16 @@ DOCUMENT_TYPES = frozenset(
         "unknown",
     }
 )
+
+
+class ConnectorDocumentEmbed(dict):
+    """Internal HTML parser node that cannot be supplied as connector JSON."""
+
+    def __init__(self, ref: str, *, untyped: bool = False):
+        super().__init__(kind="document_embed", asset_resource_ref=ref)
+        self.untyped = untyped
+
+
 _PLAIN_MULTIWORD_SECTION_HEADERS = (
     "Technical Background",
     "Production Solution",
