@@ -53,15 +53,17 @@ type CatalogModel struct {
 }
 
 type CatalogConfiguration struct {
-	ID        string `json:"id"`
-	VehicleID string `json:"vehicle_id"`
-	Year      int    `json:"year"`
-	Make      string `json:"make"`
-	Model     string `json:"model"`
-	Region    string `json:"region,omitempty"`
-	Trim      string `json:"trim,omitempty"`
-	Engine    string `json:"engine,omitempty"`
-	Complete  bool   `json:"complete"`
+	ID         string `json:"id"`
+	VehicleID  string `json:"vehicle_id"`
+	Year       int    `json:"year"`
+	Make       string `json:"make"`
+	Model      string `json:"model"`
+	Region     string `json:"region,omitempty"`
+	Trim       string `json:"trim,omitempty"`
+	Engine     string `json:"engine,omitempty"`
+	BodyStyle  string `json:"body_style,omitempty"`
+	Drivetrain string `json:"drivetrain,omitempty"`
+	Complete   bool   `json:"complete"`
 }
 
 type CatalogProvenance struct {
@@ -664,6 +666,7 @@ func (s *postgresCatalogStore) Configurations(ctx context.Context, _ Principal, 
 		SELECT vc.vehicle_configuration_id::text, vc.vehicle_id::text,
 		       vib.model_year, vib.make, vib.model, vib.region,
 		       COALESCE(vc.trim, ''), COALESCE(vc.engine_displacement_l::text, ''),
+		       COALESCE(btrim(vib.body_style), ''), COALESCE(btrim(vib.drivetrain), ''),
 		       vib.reviewer_state <> 'rejected' AND vc.reviewer_state <> 'rejected'
 		FROM vehicle_configurations vc
 		JOIN vehicle_identity_bases vib ON vib.vehicle_identity_base_id = vc.vehicle_identity_base_id
@@ -679,7 +682,10 @@ func (s *postgresCatalogStore) Configurations(ctx context.Context, _ Principal, 
 	result := []CatalogConfiguration{}
 	for rows.Next() {
 		var record CatalogConfiguration
-		if err := rows.Scan(&record.ID, &record.VehicleID, &record.Year, &record.Make, &record.Model, &record.Region, &record.Trim, &record.Engine, &record.Complete); err != nil {
+		if err := rows.Scan(
+			&record.ID, &record.VehicleID, &record.Year, &record.Make, &record.Model, &record.Region,
+			&record.Trim, &record.Engine, &record.BodyStyle, &record.Drivetrain, &record.Complete,
+		); err != nil {
 			return nil, err
 		}
 		result = append(result, record)
@@ -759,13 +765,17 @@ func (s *postgresCatalogStore) ConfigurationByVehicle(ctx context.Context, _ Pri
 		SELECT vc.vehicle_configuration_id::text, vc.vehicle_id::text,
 		       vib.model_year, vib.make, vib.model, vib.region,
 		       COALESCE(vc.trim, ''), COALESCE(vc.engine_displacement_l::text, ''),
+		       COALESCE(btrim(vib.body_style), ''), COALESCE(btrim(vib.drivetrain), ''),
 		       vib.reviewer_state <> 'rejected' AND vc.reviewer_state <> 'rejected'
 		FROM vehicle_configurations vc
 		JOIN vehicle_identity_bases vib ON vib.vehicle_identity_base_id = vc.vehicle_identity_base_id
 		WHERE (vc.vehicle_id = $1::uuid OR vc.vehicle_configuration_id = $1::uuid)
 		  AND vib.reviewer_state <> 'rejected' AND vc.reviewer_state <> 'rejected'
 		ORDER BY vc.vehicle_configuration_id LIMIT 1`, vehicleID).
-		Scan(&record.ID, &record.VehicleID, &record.Year, &record.Make, &record.Model, &record.Region, &record.Trim, &record.Engine, &record.Complete)
+		Scan(
+			&record.ID, &record.VehicleID, &record.Year, &record.Make, &record.Model, &record.Region,
+			&record.Trim, &record.Engine, &record.BodyStyle, &record.Drivetrain, &record.Complete,
+		)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return CatalogConfiguration{}, ErrCatalogNotFound
 	}

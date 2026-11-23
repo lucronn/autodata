@@ -78,6 +78,53 @@ func TestCatalogCascadeReturnsMakesModelsAndConfigurations(t *testing.T) {
 	}
 }
 
+func TestCatalogConfigurationChoicesIncludeAvailableVariantFacts(t *testing.T) {
+	store := newMemoryCatalogStore()
+	shared := CatalogConfiguration{
+		Year: 2024, Make: "Acme", Model: "Roadster", Region: "US", Engine: "2.0", Trim: "Sport", Complete: true,
+	}
+	coupe := shared
+	coupe.ID, coupe.BodyStyle, coupe.Drivetrain = "coupe-2wd", "Coupe", "2WD"
+	sedan := shared
+	sedan.ID, sedan.BodyStyle, sedan.Drivetrain = "sedan-awd", "Sedan", "AWD"
+	legacy := shared
+	legacy.ID = "legacy"
+	for _, variant := range []CatalogConfiguration{coupe, sedan, legacy} {
+		store.PutConfiguration(variant)
+	}
+
+	response := catalogRequest(catalogServer(store), "/v1/catalog/years/2024/makes/acme/models/roadster/configurations?region=US")
+	var body struct {
+		Items []map[string]any `json:"items"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &body); response.Code != http.StatusOK || err != nil || len(body.Items) != 3 {
+		t.Fatalf("configuration choices: %d %s", response.Code, response.Body)
+	}
+	byID := map[string]map[string]any{}
+	for _, item := range body.Items {
+		id, ok := item["id"].(string)
+		if !ok {
+			t.Fatalf("configuration choice missing ID: %v", item)
+		}
+		byID[id] = item
+	}
+	for _, variant := range []CatalogConfiguration{coupe, sedan} {
+		item := byID[variant.ID]
+		if item["body_style"] != variant.BodyStyle || item["drivetrain"] != variant.Drivetrain {
+			t.Fatalf("variant identity missing for %s: %v", variant.ID, item)
+		}
+	}
+	legacyItem := byID[legacy.ID]
+	if legacyItem == nil {
+		t.Fatal("legacy configuration choice missing")
+	}
+	for _, field := range []string{"body_style", "drivetrain"} {
+		if _, exists := legacyItem[field]; exists {
+			t.Fatalf("absent %s was serialized: %v", field, legacyItem)
+		}
+	}
+}
+
 type incompleteScopeCatalogStore struct {
 	*memoryCatalogStore
 }

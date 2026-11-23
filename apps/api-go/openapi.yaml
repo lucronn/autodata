@@ -1006,6 +1006,10 @@ paths:
                           type: string
                         engine:
                           type: string
+                        body_style:
+                          type: string
+                        drivetrain:
+                          type: string
                         year:
                           type: integer
                         complete:
@@ -2223,6 +2227,10 @@ components:
         engine:
           type: string
         trim:
+          type: string
+        body_style:
+          type: string
+        drivetrain:
           type: string
         complete:
           type: boolean
