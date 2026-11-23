@@ -687,6 +687,20 @@ func TestPostgresPaidCatalogSourceBodyPreviewRights(t *testing.T) {
 	f := paidSetup(t)
 	f.grant(0, f.configuration, "US")
 	detail := f.path("/" + f.article)
+	var title string
+	if err := f.pool.QueryRow(context.Background(), `SELECT title FROM canonical_articles
+		WHERE canonical_article_id=$1::uuid AND current_source_revision_id IS NULL`, f.article).Scan(&title); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, match := range f.contentSearch(0, title).Items {
+		if match.ID == f.article && match.SourceRevisionID == nil {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("the title search dropped an article before its body was captured")
+	}
 	f.expect(0, "POST", detail+"/prepare", "{}", 202)
 	f.exec(`INSERT INTO source_snapshots(source_snapshot_id,adapter_name,source_uri,source_version,content_sha256,object_key,
 		license_metadata,retrieved_at)

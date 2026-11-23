@@ -399,6 +399,11 @@ func TestPaidArticleDisplaysSourceBodyWhileFullCaptureRuns(t *testing.T) {
 		body.Document.Blocks[0].Text != sourceText || body.Document.Blocks[0].Href != "" {
 		t.Fatalf("incorrect source body response: %d %s", w.Code, w.Body)
 	}
+	store.view.Article.Processing.State = "failed"
+	if w = read(path, false); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), sourceText) {
+		t.Fatalf("a later capture failure hid the source body: %d %s", w.Code, w.Body)
+	}
+	store.view.Article.Processing.State = "fetching_source"
 	s.workshopOpenDemoHost = workshopOpenDemoHost("1", "test", "http://localhost:3013")
 	if w = read(path+"?demo=1", true); w.Code != http.StatusAccepted || strings.Contains(w.Body.String(), sourceText) {
 		t.Fatalf("preview leaked into demo: %d %s", w.Code, w.Body)

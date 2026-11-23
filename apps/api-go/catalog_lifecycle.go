@@ -162,7 +162,7 @@ func (s *postgresCatalogStore) ArticleView(ctx context.Context, p Principal, v, 
 			JOIN source_snapshots snap ON snap.source_snapshot_id=CASE
 				WHEN j.checkpoint->'source_body_preview'->>'snapshot_id' ~ '^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$'
 				THEN (j.checkpoint->'source_body_preview'->>'snapshot_id')::uuid END
-			WHERE a.current_source_revision_id IS NULL AND a.takedown_status='active'
+			WHERE a.vehicle_configuration_id::text=$1 AND a.current_source_revision_id IS NULL AND a.takedown_status='active'
 			AND view_row.takedown_status='active' AND j.source_fetch_job_id=a.current_job_id
 			AND j.job_kind='article' AND j.canonical_article_id=a.canonical_article_id
 			AND j.request_generation=a.request_generation AND j.canonical_vehicle_id=a.vehicle_id
