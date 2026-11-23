@@ -28,6 +28,8 @@ function runInNewContext(code, context) {
   context.cachedSelector ??= () => null;
   context.selectorLabel ??= selectorLabel;
   context.merchant ??= null;
+  context.checkoutModeReady ??= null;
+  context.testStripeMode ??= false;
   return runVM(code, context);
 }
 
@@ -7328,6 +7330,32 @@ test('cold startup exposes the prefetched public years during the account check'
   assert.deepEqual(routes, [years]);
   assert.equal(context.sessionRequest, null);
   assert.equal(context.sessionEstablished, true);
+});
+
+test('the first selector renders while checkout mode confirmation is pending', async () => {
+  const mode = deferredAuthOperation();
+  const routes = [];
+  const config = { enabled: true };
+  const years = { items: [{ year: 2024 }] };
+  const banner = { hidden: true };
+  const context = {
+    URLSearchParams, location: { search: '' }, openDemo: false, $: () => banner,
+    merchant: null, merchantRequest: null, sessionEstablished: false, sessionRequest: null,
+    session: { async bootstrap() {} }, invalidate() {},
+    requestJSON: async () => config,
+    async restoreRoute(initialYears) { routes.push(await initialYears); },
+  };
+  runInNewContext(appSection('async function bootstrap(', 'async function restoreRoute('), context);
+  await context.bootstrap(Promise.resolve(years), null, { testCheckout: mode.promise });
+  assert.deepEqual(routes, [years]);
+  assert.equal(context.merchant, null);
+  assert.equal(context.testStripeMode, false);
+  assert.equal(banner.hidden, true);
+  mode.resolve(true);
+  await context.merchantRequest;
+  assert.equal(context.merchant, config);
+  assert.equal(context.testStripeMode, true);
+  assert.equal(banner.hidden, false);
 });
 
 test('a late purchase configuration response cannot overwrite a newer refresh', async () => {
