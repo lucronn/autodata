@@ -56,6 +56,9 @@ async def exercise_simulated_payment(origin, scope, customer_account):
             page = await owner.new_page()
             assert (await owner.request.get(detail)).status == 401
             await page.goto(route)
+            await expect(page.locator("#purchase-message")).to_have_text(
+                "Sign in with Google to simulate purchase. No payment is collected."
+            )
             await api_signin(page)
             assert (await owner.request.get(detail)).status == 403
             configuration_response = await owner.request.get(origin + "/workshop/purchase-config.json")

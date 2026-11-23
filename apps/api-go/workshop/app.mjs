@@ -502,15 +502,17 @@ function renderPurchase() {
             ? pendingOrderMessage(unconfirmedOrder.state, canResume)
             : merchantRequest
               ? "Checking purchase availability…"
-              : !configured
-                ? "Purchasing is currently unavailable. You can keep browsing."
-                : !session.state.authenticated
-                  ? "Sign in to check access and purchase for your account."
-                  : access === "missing"
-                    ? simulation
-                      ? "Simulate this purchase to add the selected vehicle to My vehicles. No card details are needed."
-                      : "One purchase for this exact configuration and region. No renewal is required, subject to published terms and source availability."
-                    : "Checking access. Try again if the service is unavailable.";
+              : simulation && !session.state.authenticated
+                ? "Sign in with Google to simulate purchase. No payment is collected."
+                : !configured
+                  ? "Purchasing is currently unavailable. You can keep browsing."
+                  : !session.state.authenticated
+                    ? "Sign in to check access and purchase for your account."
+                    : access === "missing"
+                      ? simulation
+                        ? "Simulate this purchase to add the selected vehicle to My vehicles. No card details are needed."
+                        : "One purchase for this exact configuration and region. No renewal is required, subject to published terms and source availability."
+                      : "Checking access. Try again if the service is unavailable.";
   const action = $("purchase-action");
   action.hidden = session.state.authenticated && access !== "owned" &&
     !paymentReceived && !canResume && !confirming && !canPurchase;
