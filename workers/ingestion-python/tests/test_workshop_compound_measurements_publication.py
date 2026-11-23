@@ -48,14 +48,20 @@ class _Model:
 
 
 @pytest.mark.parametrize("provider", ["bankone", "banktwo"])
-@pytest.mark.parametrize("historical", [False, True], ids=["v57", "v55-first-publication"])
-@pytest.mark.parametrize("rate,wrong_rate", [
+@pytest.mark.parametrize("historical", [False, True], ids=["current", "v55-first-publication"])
+@pytest.mark.parametrize("rate,wrong_rate,current_prompt,current_validator", [
     pytest.param("Set the return line flow rate to a maximum of 14 L/min.",
-                 "Set the return line flow rate to a maximum of 14 L/s.", id="abbreviated"),
+                 "Set the return line flow rate to a maximum of 14 L/s.",
+                 "full-prose-auto-prompt-v57", "full-prose-auto-validator-v55", id="abbreviated"),
     pytest.param("The pump moves 14 US gal of water every minute.",
-                 "The pump moves 14 US gal of water every second.", id="written"),
+                 "The pump moves 14 US gal of water every second.",
+                 "full-prose-auto-prompt-v57", "full-prose-auto-validator-v55", id="written"),
+    pytest.param("The feed pump moves 14 fl oz of brake fluid per minute.", "The feed pump moves 14 fl oz of brake fluid per second.",
+                 "full-prose-auto-prompt-v58", "full-prose-auto-validator-v56", id="fluid-ounces"),
 ])
-def test_compound_measurement_first_publication(runtime, monkeypatch, provider, historical, rate, wrong_rate):
+def test_compound_measurement_first_publication(
+    runtime, monkeypatch, provider, historical, rate, wrong_rate, current_prompt, current_validator,
+):
     runtime.article_id = runtime.articles[provider]
     values = (_OPENING, rate, _WARNING)
     if provider == "bankone":
@@ -111,9 +117,9 @@ def test_compound_measurement_first_publication(runtime, monkeypatch, provider, 
         assert read["processing_error_code"] == "REWRITE_SPEC_SCOPE_MUTATION"
         assert publication is None
     else:
-        assert model.versions == ["full-prose-auto-prompt-v57"]
+        assert model.versions == [current_prompt]
         assert read["content_origin"] == "canonical"
         assert publication["canonical_body"].splitlines() == [
             "This procedure covers access to the pump.", "Take the cover off.", rate, _WARNING,
         ]
-        assert publication["validation_report"]["validator_version"] == "full-prose-auto-validator-v55"
+        assert publication["validation_report"]["validator_version"] == current_validator
