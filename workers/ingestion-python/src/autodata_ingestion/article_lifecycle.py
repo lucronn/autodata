@@ -3,6 +3,7 @@ from contextlib import contextmanager
 from dataclasses import replace
 from threading import Event, Thread
 from uuid import uuid4
+from psycopg import Error as DatabaseError
 from psycopg.errors import ConnectionTimeout, LockNotAvailable, QueryCanceled
 from psycopg.rows import dict_row
 from . import article_lifecycle_store as store
@@ -163,9 +164,21 @@ def run_article_job(repo,lease,*,registry,object_store,model_client,hooks=None):
                 from .source_article_capture import capture_source_article
                 context=_capture_context(repo,lease)
                 if context.key.provider not in registry:raise ValueError("SOURCE_NOT_CONFIGURED")
+
+                def save_body_preview(resource, document):
+                    if lost.is_set():
+                        raise LeaseLost("heartbeat lost during body preview")
+                    try:
+                        store.store_source_body_preview(repo, lease, context, resource, document)
+                    except DatabaseError:
+                        # The full source commit remains the durable fallback
+                        # when this optional reader checkpoint cannot be stored.
+                        pass
+
                 _hook(hooks,"before_source_request")
                 captured = capture_source_article(
                     context, registry=registry, object_store=object_store,
+                    on_body_preview=save_body_preview if context.key.vehicle_configuration_id is not None else None,
                     keep_embedded_pdf=True, keep_html_headings=True, keep_bound_pdf_iframes=True,
                     keep_pdf_figure_order=True, keep_multiple_pdf_figures=True,
                     keep_html_table_image_order=True, keep_repeated_pdf_figures=True,

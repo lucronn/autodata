@@ -351,6 +351,25 @@ func (s *Server) respondCatalogArticleView(response http.ResponseWriter, request
 	vehicleID := request.PathValue("vehicle_id")
 	article := view.Article
 	var configuration *CatalogConfiguration
+	var scope paidCatalogContext
+	paid := s.paidCatalogEnabled()
+	if paid {
+		var ok bool
+		scope, ok = request.Context().Value(paidCatalogContextKey{}).(paidCatalogContext)
+		if !ok || scope.identity == nil || article.CanonicalArticleID == nil || *article.CanonicalArticleID != scope.identity.CanonicalArticleID {
+			s.writePaidCatalogError(response, request, ErrCatalogNotFound)
+			return
+		}
+		if !scope.openDemo && scope.identity.CurrentSourceRevisionID == nil &&
+			article.SourceRevisionID == nil && article.Availability != "available" && view.sourceBodyPreview != nil {
+			article.Document = view.sourceBodyPreview
+			article.ContentOrigin = stringPointer("source")
+			article.Availability = "available"
+			article.ContentStatus = "content_partial"
+			article.SourceBodyPreview = true
+			article = lifecycleArticle(article)
+		}
+	}
 	if article.Processing != nil && article.Processing.RetryAfterSeconds != nil {
 		response.Header().Set("Retry-After", strconv.Itoa(*article.Processing.RetryAfterSeconds))
 	}
@@ -370,12 +389,7 @@ func (s *Server) respondCatalogArticleView(response http.ResponseWriter, request
 		}
 		status = http.StatusAccepted
 	}
-	if s.paidCatalogEnabled() {
-		scope, ok := request.Context().Value(paidCatalogContextKey{}).(paidCatalogContext)
-		if !ok || scope.identity == nil || article.CanonicalArticleID == nil || *article.CanonicalArticleID != scope.identity.CanonicalArticleID {
-			s.writePaidCatalogError(response, request, ErrCatalogNotFound)
-			return
-		}
+	if paid {
 		view.Article = article
 		if scope.openDemo {
 			clonePaidCatalogArticleImages(&view.Article)

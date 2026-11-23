@@ -681,6 +681,48 @@ func TestPostgresPaidCatalogPrepareSourceThenCanonicalReuse(t *testing.T) {
 	f.check("payment_grants_persist", r3Int(after, "payment_calls") == 0 && len(r3Map(after, "paid_rows")["entitlements"].([]any)) == 2)
 }
 
+func TestPostgresPaidCatalogSourceBodyPreviewRights(t *testing.T) {
+	const snapshot = "c271a09e-5679-4445-93e0-0bddc85ad5bd"
+	const text = "Hold the latch open while disconnecting the negative cable."
+	f := paidSetup(t)
+	f.grant(0, f.configuration, "US")
+	detail := f.path("/" + f.article)
+	f.expect(0, "POST", detail+"/prepare", "{}", 202)
+	f.exec(`INSERT INTO source_snapshots(source_snapshot_id,adapter_name,source_uri,source_version,content_sha256,object_key)
+		VALUES($1::uuid,'banktwo','https://fixture.invalid/preview','fixture',repeat('8',64),'sources/preview')`, snapshot)
+	f.exec(`UPDATE source_fetch_jobs j SET checkpoint=j.checkpoint||jsonb_build_object('source_body_preview',
+		jsonb_build_object('snapshot_id',$2::text,'descriptor_snapshot_id',a.descriptor_source_snapshot_id::text,
+		'document',jsonb_build_object('schema_version',1,'blocks',jsonb_build_array(jsonb_build_object('type','paragraph','text',$3::text)))))
+		FROM canonical_articles a WHERE a.canonical_article_id=$1::uuid AND a.current_job_id=j.source_fetch_job_id`, f.article, snapshot, text)
+	assertVisible := func() {
+		t.Helper()
+		got := f.detail(0)
+		if !got.SourceBodyPreview || got.SourceRevisionID != nil || got.SourceReview != nil ||
+			got.Document == nil || len(got.Document.Blocks) != 1 || got.Document.Blocks[0].Text != text {
+			t.Fatal("owner did not receive the original source body")
+		}
+	}
+	assertHidden := func(owner, status int) {
+		t.Helper()
+		if bytes.Contains(f.expect(owner, "GET", detail, "", status), []byte(text)) {
+			t.Fatalf("preview body was visible to owner index %d with status %d", owner, status)
+		}
+	}
+	assertVisible()
+	assertHidden(-1, http.StatusUnauthorized)
+	assertHidden(1, http.StatusForbidden)
+	f.exec(`UPDATE source_snapshots SET takedown_status='takedown' WHERE source_snapshot_id=$1::uuid`, snapshot)
+	assertHidden(0, http.StatusAccepted)
+	f.exec(`UPDATE source_snapshots SET takedown_status='active' WHERE source_snapshot_id=$1::uuid`, snapshot)
+	f.exec(`INSERT INTO source_review_items(source_review_item_id,item_key,item_kind,reason_code,source_snapshot_ids)
+		VALUES(gen_random_uuid(),'source-body-preview-quarantine','quarantine','FIXTURE',jsonb_build_array($1::text))`, snapshot)
+	assertHidden(0, http.StatusAccepted)
+	f.exec(`UPDATE source_review_items SET status='approved' WHERE item_key='source-body-preview-quarantine'`)
+	assertVisible()
+	f.exec(`UPDATE canonical_articles SET request_generation=request_generation+1 WHERE canonical_article_id=$1::uuid`, f.article)
+	assertHidden(0, http.StatusAccepted)
+}
+
 func (f *paidFixture) image(owner int, path string, want int) http.Header {
 	f.t.Helper()
 	status, raw, headers := f.call(owner, "GET", path, "")

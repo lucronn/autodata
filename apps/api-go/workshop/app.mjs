@@ -1005,6 +1005,7 @@ function addImage(parent, image, reference, g, figures = null, useAltCaption = f
     id = assetID(image);
   const available = Boolean(url && id);
   const missing = missingSourceImage(reference);
+  const preparing = reference?.unavailable_reason === "SOURCE_MEDIA_PENDING";
   const visibleCaption = available && useAltCaption ? caption || alt : caption;
   if (available) {
     figure.dataset.assetId = id;
@@ -1023,9 +1024,9 @@ function addImage(parent, image, reference, g, figures = null, useAltCaption = f
   } else {
     const missingID = missing ? imageReferenceID(reference) : "";
     if (missingID) figure.dataset.missingImagePlacement = missingImagePlacement(missingID, caption);
-    figure.append(element("p", "Illustration unavailable.", "image-missing"));
+    figure.append(element("p", preparing ? "Preparing illustration…" : "Illustration unavailable.", "image-missing"));
   }
-  if ((available || missing) && visibleCaption)
+  if ((available || missing || preparing) && visibleCaption)
     figure.append(element("figcaption", visibleCaption));
   parent.append(figure);
 }
@@ -1337,7 +1338,9 @@ function renderArticle(article, g) {
   currentArticle = article;
   $("article-title").textContent = article.title || "Article";
   $("article-kind").textContent =
-    article.content_origin === "canonical"
+    article.source_body_preview
+      ? "Supplier source"
+      : article.content_origin === "canonical"
       ? "Workshop article"
       : article.content_origin === "source"
         ? "Stored source"
@@ -1347,7 +1350,9 @@ function renderArticle(article, g) {
   const readable = readableArticle(article);
   const processing = processingArticle(article);
   const notes = [];
-  if (readable && processing) {
+  if (readable && processing && article.source_body_preview) {
+    notes.push("Showing the supplier text while the full article is prepared.");
+  } else if (readable && processing) {
     const rewriting = article.content_origin === "source" &&
       ["normalizing", "rewriting", "validating", "publishing"].includes(article.processing.state);
     notes.push(rewriting ? "Preparing the Workshop rewrite." : "An update is in progress.");
@@ -1475,9 +1480,12 @@ async function loadArticle(id, g, { savedLink = false } = {}) {
             paidOrder.configuration_id === selected.id && paidOrder.region === selected.region)
           completePaidOrder(paidOrder.id);
         if (!processingArticle(article)) return;
-        const ready = readable
-          ? article.content_origin === "source" ? "Stored source is ready." : "Article is readable."
-          : "";
+        let ready = "";
+        if (readable) {
+          if (article.source_body_preview) ready = "Source text is ready.";
+          else if (article.content_origin === "source") ready = "Stored source is ready.";
+          else ready = "Article is readable.";
+        }
         if (ready === readingStatus) return;
         readingStatus = ready;
         if (ready) status(ready, { complete: true, cancelable: true });

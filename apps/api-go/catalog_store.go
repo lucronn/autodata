@@ -225,6 +225,7 @@ type CatalogArticle struct {
 	SourceRevisionID         *string              `json:"source_revision_id"`
 	CanonicalRevisionID      *string              `json:"canonical_revision_id"`
 	ContentOrigin            *string              `json:"content_origin"`
+	SourceBodyPreview        bool                 `json:"source_body_preview,omitempty"`
 	Availability             string               `json:"availability"`
 	ViewRevision             *string              `json:"view_revision"`
 	ReviewStatus             *string              `json:"review_status"`

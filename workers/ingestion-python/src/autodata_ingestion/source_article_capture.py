@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from functools import partial
 from hashlib import sha256
 from threading import Lock
+import json
 import time
 import base64
 from uuid import NAMESPACE_URL, uuid5
@@ -44,12 +45,13 @@ from .source_adapters import adapt_bound_article, adapt_bound_pdf_embed
 from .source_connector_client import SourceConnectorError
 from .article_document import (
     ConnectorDocumentEmbed, LeadingDecimalStepParser, authored_image_caption, build_ordered_document,
-    table_image_summaries, walk_ordered_list_items,
+    table_image_summaries, validate_ordered_document, walk_ordered_list_items,
 )
 from .svg_rasterization import rasterize_svg, SVGUnavailable, RASTERIZER_VERSION
 
 
 _MAX_LINKED_PDFS = 4
+_MAX_BODY_PREVIEW_BYTES = 256 * 1024
 
 # Keep in sync with the raster types accepted by the catalog image endpoint.
 DISPLAYABLE_RASTER_MEDIA = frozenset({"image/png", "image/jpeg", "image/gif", "image/webp"})
@@ -357,6 +359,34 @@ def _replace_pdf_embeds(value, documents):
         value[:] = expanded
 
 
+def _source_body_preview(context, article, *, step_parser, keep_json_rows, keep_json_columns):
+    blocks = deepcopy(article["blocks"])
+    if article.get("authored_json_blocks"):
+        _mark_json_table_cells(blocks, keep_rows=keep_json_rows, keep_columns=keep_json_columns)
+    document = build_ordered_document(
+        {"article_id": str(article_id(context.key)), "evidence_ids": list(context.evidence_ids)},
+        blocks, preserve_marked_cells=True, preserve_structured_columns=True, step_parser=step_parser,
+    )
+    for node in _image_nodes(document["blocks"]):
+        # Keep the authored location without any unverified figure locator or
+        # alt text derived from the connector's media attributes.
+        fields = {
+            key: node[key] for key in ("type", "block_id", "source_order", "evidence_ids", "caption")
+            if key in node
+        }
+        node.clear()
+        node.update(fields, status="unavailable", unavailable_reason="SOURCE_MEDIA_PENDING")
+    for node in _walk(document):
+        node.pop("href", None)
+        node.pop("source_locator", None)
+    text, _, _ = project_document(document, include_cell_figure_captions=True, include_flow_figure_captions=True)
+    if (not text.strip() or text.strip() == str(context.descriptor.get("title", "")).strip()
+            or len(json.dumps(document, ensure_ascii=False).encode()) > _MAX_BODY_PREVIEW_BYTES
+            or validate_ordered_document(document)):
+        return None
+    return document
+
+
 def capture_source_article(
     context, *, registry, object_store, deadline_seconds=30.0,
     keep_embedded_pdf=False, keep_html_headings=False, keep_bound_pdf_iframes=False,
@@ -381,6 +411,7 @@ def capture_source_article(
     keep_html_document_links=False,
     keep_mixed_html_pdf_embeds=False,
     keep_bound_html_images=False,
+    on_body_preview=None,
 ):
     if not 0 < deadline_seconds <= 30:
         raise ValueError("capture deadline must be within 30 seconds")
@@ -646,6 +677,19 @@ def capture_source_article(
             return article
 
         article = parser_pool.submit(parse, step_parser=step_parser).result(timeout=remaining())
+        if on_body_preview is not None:
+            try:
+                preview = _source_body_preview(
+                    context, article, step_parser=LeadingDecimalStepParser() if keep_leading_decimals else None,
+                    keep_json_rows=keep_structured_table_cell_order,
+                    keep_json_columns=keep_structured_table_columns and keep_structured_table_column_order,
+                )
+            except (ValueError, TypeError, KeyError):
+                # Later media preparation can make an incomplete initial projection readable.
+                preview = None
+            if preview is not None:
+                body_resource = upload_resource(body, body_ref, "body", bounded_objects)
+                on_body_preview(body_resource, preview)
         candidates = article.get("untyped_pdf_embed_refs", ())
         if candidates:
             _, positioned, planned = plan_assets(article, article["blocks"])
@@ -655,7 +699,8 @@ def capture_source_article(
             initial_media_refs = positioned_media_refs(article)
             # Normal assets share the same workers. Optional reads must not hold
             # up PDF preparation or the corresponding HTML projection.
-            body_resource = upload_resource(body, body_ref, "body", bounded_objects)
+            if body_resource is None:
+                body_resource = upload_resource(body, body_ref, "body", bounded_objects)
             pool = ThreadPoolExecutor(max_workers=4)
             reading = {ref for ref in candidates if roles[ref] == "asset"}
             futures = {

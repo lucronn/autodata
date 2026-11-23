@@ -3035,6 +3035,10 @@
             ],
             "nullable": true
           },
+          "source_body_preview": {
+            "type": "boolean",
+            "description": "The original source body is ready while the full article is being prepared."
+          },
           "availability": {
             "enum": [
               "available",
