@@ -21,8 +21,11 @@ def main(argv=None, *, repo=None, object_store=None):
     preview.add_argument("--article-id", type=UUID, required=True)
     preview.add_argument("--source-revision-id", type=UUID, required=True)
     preview.add_argument("--output", type=Path, required=True)
-    preview.add_argument("--ordinals", action="store_true",
+    repairs = preview.add_mutually_exclusive_group()
+    repairs.add_argument("--ordinals", action="store_true",
                          help="Recover authored ordered-list numbers from the retained source")
+    repairs.add_argument("--table-spans", action="store_true",
+                         help="Recover authored table spans from the retained source")
     publish = commands.add_parser("publish")
     publish.add_argument("--expected", type=Path, required=True, help="Private manifest.json from preview")
     publish.add_argument("--reviewer", required=True)
@@ -36,6 +39,7 @@ def main(argv=None, *, repo=None, object_store=None):
         result = preview_published_media_repair(
             repo, args.article_id, args.source_revision_id, object_store=object_store,
             destination=args.output, fixture_mode=args.fixture_mode, ordinals=args.ordinals,
+            table_spans=args.table_spans,
         )
     else:
         result = publish_retained_media_repair(

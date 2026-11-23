@@ -4,13 +4,14 @@ import argparse
 import json
 import os
 from pathlib import Path
+import re
 import sys
 from uuid import UUID
 from urllib.parse import urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "workers/ingestion-python/src"))
 from autodata_ingestion.source_revision_reprojection import reproject_stored_source, apply_source_reprojection
-from autodata_ingestion.article_lifecycle_types import article_id
+from autodata_ingestion.article_lifecycle_types import article_id, digest_json
 
 
 def article_archive(repo=None, object_store=None):
@@ -30,7 +31,9 @@ def main(argv=None, *, repo=None, object_store=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--article-id", type=UUID, required=True)
     parser.add_argument("--source-revision-id", type=UUID, required=True)
-    parser.add_argument("--retained-media", action="store_true", help="Replay retained article figures")
+    replays = parser.add_mutually_exclusive_group()
+    replays.add_argument("--retained-media", action="store_true", help="Replay retained article figures")
+    replays.add_argument("--retained-table-spans", action="store_true", help="Restore authored spans in retained HTML tables")
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--dry-run", action="store_true")
     modes.add_argument("--apply", action="store_true")
@@ -43,9 +46,13 @@ def main(argv=None, *, repo=None, object_store=None):
     args = parser.parse_args(argv)
     if args.apply and not all((args.actor, args.reason, args.expected_fingerprint, args.expected_body_sha256)):
         parser.error("--apply requires --actor, --reason, --expected-fingerprint and --expected-body-sha256")
-    if args.apply and args.retained_media and not (args.expected_observation_id and args.expected_document_sha256):
-        parser.error("--apply --retained-media requires --expected-observation-id and --expected-document-sha256")
+    if (args.apply and (args.retained_media or args.retained_table_spans)
+            and not (args.expected_observation_id and args.expected_document_sha256)):
+        parser.error("apply requires --expected-observation-id and --expected-document-sha256 for retained media or table spans")
     repo, object_store = article_archive(repo, object_store)
+    if args.retained_table_spans:
+        print(json.dumps(replay_table_spans(args, repo, object_store), sort_keys=True))
+        return 0
     if args.retained_media:
         result = replay_media(args, repo, object_store)
         print(json.dumps(result, sort_keys=True))
@@ -102,9 +109,45 @@ def replay_media(args, repo, object_store):
     }
 
 
+def replay_table_spans(args, repo, object_store):
+    from autodata_ingestion.source_revision_reprojection import apply_table_reprojection
+    from autodata_ingestion.source_table_replay import preview_table_replay
+
+    if args.apply:
+        return apply_table_reprojection(
+            repo, args.article_id, args.source_revision_id, object_store=object_store,
+            expected_observation_id=args.expected_observation_id,
+            expected_fingerprint=args.expected_fingerprint,
+            expected_body_sha256=args.expected_body_sha256,
+            expected_document_sha256=args.expected_document_sha256,
+            actor=args.actor, reason=args.reason,
+        )
+    binding, captured = preview_table_replay(repo, args.source_revision_id, object_store=object_store)
+    row = binding.row
+    if row["canonical_article_id"] != args.article_id:
+        raise ValueError("SOURCE_TABLE_REPLAY_ARTICLE_MISMATCH")
+    canonical = row["current_canonical_revision_id"]
+    return {
+        "status": "preview",
+        "article_id": str(args.article_id),
+        "original_source_revision_id": str(args.source_revision_id),
+        "source_observation_id": str(row["source_observation_id"]),
+        "current_canonical_revision_id": str(canonical) if canonical else None,
+        "requires_canonical_repair": canonical is not None,
+        "source_fingerprint": row["source_fingerprint"],
+        "corrected_source_fingerprint": captured.source_fingerprint,
+        "body_sha256": row["resource_manifest"][0]["sha256"],
+        "document_sha256": digest_json(captured.source_document),
+        "projection_version": captured.projection_version,
+    }
+
+
 if __name__ == "__main__":
     try: sys.exit(main())
-    except Exception:
+    except Exception as error:
         # Never print provider refs, raw body, environment values or SDK exceptions.
-        print(json.dumps({"status": "error", "code": "SOURCE_REPLAY_FAILED"}), file=sys.stderr)
+        code = str(error) if isinstance(error, ValueError) else ""
+        if not re.fullmatch(r"SOURCE_TABLE_REPLAY_[A-Z_]+", code):
+            code = "SOURCE_REPLAY_FAILED"
+        print(json.dumps({"status": "error", "code": code}), file=sys.stderr)
         sys.exit(1)

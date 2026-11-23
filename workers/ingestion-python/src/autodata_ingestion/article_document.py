@@ -501,6 +501,26 @@ def has_only_list_ordinal_additions(before, after) -> bool:
     return same_content and added
 
 
+def has_only_table_span_additions(before, after) -> bool:
+    """Accept geometry added to the same top-level table cells."""
+    without_additions = deepcopy(after)
+    for old_block, new_block in zip(before["blocks"], without_additions["blocks"]):
+        if old_block["type"] != new_block["type"] or old_block["type"] != "table":
+            continue
+        for old_row, new_row in zip(old_block["rows"], new_block["rows"]):
+            for index, (old, new) in enumerate(zip(old_row, new_row)):
+                if not isinstance(old, str) or not isinstance(new, dict):
+                    continue
+                spans = {key: new[key] for key in ("rowspan", "colspan") if key in new}
+                if (
+                    spans and new == {"text": old, **spans}
+                    and all(type(value) is int and 1 < value <= (65_534 if key == "rowspan" else 1_000)
+                            for key, value in spans.items())
+                ):
+                    new_row[index] = old
+    return without_additions == before and before != after
+
+
 def has_ordered_list_numbering(document: Mapping[str, Any]) -> bool:
     """Detect persisted list ordinals, including lists nested inside items."""
     def visit(value):
