@@ -31,7 +31,7 @@ from .procedure_rewrite_auto import (
 )
 from .procedure_rewrite_full import PROFILE as REVIEW_PROFILE, validate_full
 from .published_media_repair import (
-    MEDIA_METHOD, ORDINAL_METHOD, TABLE_SPAN_METHOD, TECHNICAL_V1, TECHNICAL_V2,
+    MEDIA_METHOD, ORDINAL_METHOD, SVG_RECOVERY_METHOD, TABLE_SPAN_METHOD, TECHNICAL_V1, TECHNICAL_V2,
     PublishedMediaRepair, repair_published_media,
 )
 from .source_media_replay import (
@@ -40,12 +40,15 @@ from .source_media_replay import (
     preview_media_replay,
     validate_media_replay_result,
 )
-from .source_revision_reprojection import _require_no_active_normal_job
+from .source_revision_reprojection import (
+    _require_no_active_normal_job, preview_svg_reprojection,
+)
 from .source_table_replay import load_table_replay_binding, preview_table_replay
 
 SCHEMA = "autodata:published-media-repair:v1"
 ORDINAL_SCHEMA = "autodata:published-list-ordinals:v1"
 TABLE_SPAN_SCHEMA = "autodata:published-table-spans:v1"
+SVG_RECOVERY_SCHEMA = "autodata:published-svg-recovery:v1"
 
 
 @dataclass(frozen=True)
@@ -104,7 +107,9 @@ def _publication_evidence(cur, article, binding, *, fixture_mode, lock):
     if row is None:
         raise ValueError("PUBLISHED_MEDIA_REPAIR_CURRENT_REVISION_REQUIRED")
 
-    if row["model_metadata"].get("transformation_method") in (MEDIA_METHOD, ORDINAL_METHOD, TABLE_SPAN_METHOD):
+    if row["model_metadata"].get("transformation_method") in (
+        MEDIA_METHOD, ORDINAL_METHOD, TABLE_SPAN_METHOD, SVG_RECOVERY_METHOD,
+    ):
         raise ValueError("PUBLISHED_MEDIA_REPAIR_PRIOR_REPAIR_UNSUPPORTED")
 
     profile = row["rewrite_profile_version"]
@@ -178,24 +183,28 @@ def _publication_evidence(cur, article, binding, *, fixture_mode, lock):
     return row, latest, decision, attempt, response, prompt_version, tuple(sorted(authors))
 
 
-def _plan(cur, article, binding, captured, *, fixture_mode, lock=False, ordinals=False, table_spans=False):
+def _plan(cur, article, binding, captured, *, fixture_mode, lock=False, ordinals=False,
+          table_spans=False, svg_recovery=False):
     if article["current_source_revision_id"] != binding.source_revision_id:
         raise ValueError("PUBLISHED_MEDIA_REPAIR_STALE")
     row, review, decision, attempt, response, prompt_version, authors = _publication_evidence(
         cur, article, binding, fixture_mode=fixture_mode, lock=lock,
     )
-    normalized = captured.source_document if table_spans else _normalize(captured, binding.canonical_article_id)
+    normalized = captured.source_document if table_spans or svg_recovery else _normalize(captured, binding.canonical_article_id)
     repair = repair_published_media(
         row["normalized_source_document"], row["canonical_document"], normalized,
         response=response, prompt_version=prompt_version, profile=row["rewrite_profile_version"],
-        ordinals=ordinals, table_spans=table_spans,
+        ordinals=ordinals, table_spans=table_spans, svg_recovery=svg_recovery,
     )
     if attempt is None:
         preserving_document, _ = build_source_preserving_candidate(normalized)
         if digest_json(preserving_document) != digest_json(repair.document):
             raise ValueError("PUBLISHED_MEDIA_REPAIR_SOURCE_HEADING_CHANGED")
     manifest = {
-        "schema": TABLE_SPAN_SCHEMA if table_spans else ORDINAL_SCHEMA if ordinals else SCHEMA,
+        "schema": (
+            SVG_RECOVERY_SCHEMA if svg_recovery else TABLE_SPAN_SCHEMA if table_spans
+            else ORDINAL_SCHEMA if ordinals else SCHEMA
+        ),
         "article_id": str(binding.canonical_article_id),
         "source_revision_id": str(binding.source_revision_id),
         "source_observation_id": str(binding.source_observation_id),
@@ -216,22 +225,34 @@ def _plan(cur, article, binding, captured, *, fixture_mode, lock=False, ordinals
         "repaired_validation_hash": digest_json(repair.validation.report),
         **repair.provenance,
     }
+    if svg_recovery:
+        manifest.update(
+            recovered_source_fingerprint=captured.source_fingerprint,
+            recovered_provenance_hash=digest_json(captured.resource_provenance),
+        )
     return _RepairPlan(manifest, row, normalized, repair, decision, authors)
 
 
-def _preview_repair_source(repo, source_revision_id, *, object_store, ordinals, table_spans):
+def _preview_repair_source(repo, source_revision_id, *, object_store, ordinals, table_spans, svg_archive):
+    if sum((ordinals, table_spans, svg_archive is not None)) > 1:
+        raise ValueError("PUBLISHED_MEDIA_REPAIR_MODE_INVALID")
+    if svg_archive is not None:
+        return preview_svg_reprojection(
+            repo, source_revision_id, object_store=object_store, svg_archive=svg_archive,
+        )
     if table_spans:
-        if ordinals:
-            raise ValueError("PUBLISHED_MEDIA_REPAIR_MODE_INVALID")
-        return preview_table_replay(repo, source_revision_id, object_store=object_store)
-    return preview_media_replay(repo, source_revision_id, object_store=object_store, ordinals=ordinals)
+        binding, captured = preview_table_replay(repo, source_revision_id, object_store=object_store)
+    else:
+        binding, captured = preview_media_replay(repo, source_revision_id, object_store=object_store, ordinals=ordinals)
+    return binding, captured, {}
 
 
 def preview_published_media_repair(repo, article_id, source_revision_id, *, object_store, destination,
-                                   fixture_mode=False, ordinals=False, table_spans=False):
+                                   fixture_mode=False, ordinals=False, table_spans=False, svg_archive=None):
     """Export both documents and exact approval bindings to a private directory."""
-    binding, captured = _preview_repair_source(
-        repo, source_revision_id, object_store=object_store, ordinals=ordinals, table_spans=table_spans,
+    binding, captured, _ = _preview_repair_source(
+        repo, source_revision_id, object_store=object_store, ordinals=ordinals,
+        table_spans=table_spans, svg_archive=svg_archive,
     )
     if binding.canonical_article_id != article_id:
         raise ValueError("PUBLISHED_MEDIA_REPAIR_ARTICLE_MISMATCH")
@@ -241,7 +262,7 @@ def preview_published_media_repair(repo, article_id, source_revision_id, *, obje
         if article is None:
             raise ValueError("PUBLISHED_MEDIA_REPAIR_ARTICLE_MISMATCH")
         plan = _plan(cur, article, binding, captured, fixture_mode=fixture_mode,
-                     ordinals=ordinals, table_spans=table_spans)
+                     ordinals=ordinals, table_spans=table_spans, svg_recovery=svg_archive is not None)
     write_private_export(destination, {
         "manifest": plan.manifest,
         "source": {"before": plan.previous["normalized_source_document"], "after": plan.normalized},
@@ -281,17 +302,22 @@ def _already_published(cur, article, key, expected, reviewer_id, rationale, *, a
 
 
 def publish_retained_media_repair(repo, *, expected, object_store, reviewer_id, allowlist, rationale,
-                                  fixture_mode=False, hooks=None):
+                                  fixture_mode=False, hooks=None, svg_archive=None):
     """Rebuild the reviewed correction under owner/source rights locks, then publish."""
-    if (not isinstance(expected, dict) or expected.get("schema") not in (SCHEMA, ORDINAL_SCHEMA, TABLE_SPAN_SCHEMA)
+    if (not isinstance(expected, dict)
+        or expected.get("schema") not in (SCHEMA, ORDINAL_SCHEMA, TABLE_SPAN_SCHEMA, SVG_RECOVERY_SCHEMA)
         or type(expected.get("request_generation")) is not int or not _substantive(rationale)):
         raise ValueError("PUBLISHED_MEDIA_REPAIR_APPROVAL_INVALID")
     article_id = UUID(expected["article_id"])
     source_revision_id = UUID(expected["source_revision_id"])
     ordinals = expected["schema"] == ORDINAL_SCHEMA
     table_spans = expected["schema"] == TABLE_SPAN_SCHEMA
-    binding, captured = _preview_repair_source(
-        repo, source_revision_id, object_store=object_store, ordinals=ordinals, table_spans=table_spans,
+    svg_recovery = expected["schema"] == SVG_RECOVERY_SCHEMA
+    if svg_recovery != (svg_archive is not None):
+        raise ValueError("PUBLISHED_MEDIA_REPAIR_APPROVAL_INVALID")
+    binding, captured, blobs = _preview_repair_source(
+        repo, source_revision_id, object_store=object_store, ordinals=ordinals,
+        table_spans=table_spans, svg_archive=svg_archive,
     )
     if binding.canonical_article_id != article_id:
         raise ValueError("PUBLISHED_MEDIA_REPAIR_ARTICLE_MISMATCH")
@@ -300,16 +326,17 @@ def publish_retained_media_repair(repo, *, expected, object_store, reviewer_id, 
         article = cur.execute("SELECT * FROM canonical_articles WHERE canonical_article_id=%s FOR UPDATE", (article_id,)).fetchone()
         if article is None:
             raise ValueError("PUBLISHED_MEDIA_REPAIR_ARTICLE_MISMATCH")
-        if table_spans:
+        if table_spans or svg_recovery:
             locked = load_table_replay_binding(cur, source_revision_id, lock=True)
         else:
             locked = load_media_replay_binding(cur, source_revision_id, lock=True, ordinals=ordinals)
         if binding != locked:
             raise ValueError("PUBLISHED_MEDIA_REPAIR_SOURCE_CHANGED")
-        if not table_spans:
+        if not (table_spans or svg_recovery):
             validate_media_replay_result(locked, captured, ordinals=ordinals)
         key = transformation_key(
-            article_id, locked.source_fingerprint, article["target_normalization_version"],
+            article_id, captured.source_fingerprint if svg_recovery else locked.source_fingerprint,
+            article["target_normalization_version"],
             article["target_rewrite_profile_version"], projection_version=captured.projection_version,
         )
         repeated = _already_published(
@@ -317,19 +344,25 @@ def publish_retained_media_repair(repo, *, expected, object_store, reviewer_id, 
         )
         if repeated is not None:
             return repeated
-        if table_spans and cur.execute(
+        if (table_spans or svg_recovery) and cur.execute(
             "SELECT 1 FROM schema_migrations WHERE version='045_article_source_projection_v5'"
         ).fetchone() is None:
             raise ValueError("SOURCE_TABLE_REPLAY_SCHEMA_REQUIRED")
         _require_no_active_normal_job(cur, article_id)
         plan = _plan(cur, article, locked, captured, fixture_mode=fixture_mode, lock=True,
-                     ordinals=ordinals, table_spans=table_spans)
+                     ordinals=ordinals, table_spans=table_spans, svg_recovery=svg_recovery)
         if digest_json(plan.manifest) != digest_json(expected):
             raise ValueError("PUBLISHED_MEDIA_REPAIR_STALE")
         reviewer_kind = authorize_reviewer(
             allowlist, reviewer_id, drafting_identities=plan.drafting_identities, fixture_mode=fixture_mode,
         )
         approval = {"manifest": expected, "reviewer": reviewer_id, "reviewer_kind": reviewer_kind, "rationale": rationale}
+        if svg_recovery:
+            from .source_svg_recovery import check_svg_recovery_rights
+
+            check_svg_recovery_rights(cur, captured, lock=True)
+            for object_key, (payload, media_type) in blobs.items():
+                object_store.put_object(object_key, payload, media_type)
         return _publish(cur, article, captured, key, plan, approval, hooks=hooks)
 
 
@@ -355,6 +388,10 @@ def _publish(cur, article, captured, key, plan, approval, *, hooks):
               article_id, generation, plan.previous["normalization_version"], plan.previous["rewrite_profile_version"],
               Jsonb({"media_repair": approval}))).fetchone()
     source_id = _persist_article_capture(cur, article_id, job_id, generation, captured, verify_existing=True)
+    if method == SVG_RECOVERY_METHOD:
+        from .source_svg_recovery import check_svg_recovery_rights
+
+        check_svg_recovery_rights(cur, captured, lock=True, require_existing=True)
     cur.execute("UPDATE source_fetch_jobs SET source_revision_id=%s,transformation_key=%s WHERE source_fetch_job_id=%s",
                 (source_id, key, job_id))
     repair = plan.repair

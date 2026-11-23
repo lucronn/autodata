@@ -330,11 +330,13 @@ def apply_table_reprojection(repo, canonical_article_id, expected_source_revisio
         if cur.execute("SELECT 1 FROM schema_migrations WHERE version='045_article_source_projection_v5'").fetchone() is None:
             raise ValueError("SOURCE_TABLE_REPLAY_SCHEMA_REQUIRED")
         _require_no_active_normal_job(cur, canonical_article_id)
-        _verify_table_replay_conflict(cur, canonical_article_id, captured)
+        _verify_projection_conflict(
+            cur, canonical_article_id, captured, error="SOURCE_TABLE_REPLAY_PROJECTION_CONFLICT",
+        )
         return _apply_source_only(cur, article, captured, checkpoint)
 
 
-def _verify_table_replay_conflict(cur, canonical_article_id, captured):
+def _verify_projection_conflict(cur, canonical_article_id, captured, *, error):
     expected = {
         "body_source_snapshot_id": captured.body_source_snapshot_id,
         "source_document": captured.source_document,
@@ -352,4 +354,130 @@ def _verify_table_replay_conflict(cur, canonical_article_id, captured):
         WHERE canonical_article_id=%s AND source_fingerprint=%s AND projection_version=%s
     """, (canonical_article_id, captured.source_fingerprint, captured.projection_version)).fetchone()
     if existing is not None and existing != expected:
-        raise ValueError("SOURCE_TABLE_REPLAY_PROJECTION_CONFLICT")
+        raise ValueError(error)
+
+
+def preview_svg_reprojection(repo, source_revision_id, *, object_store, svg_archive):
+    """Verify private SVG inputs against their immutable capture again."""
+    from .source_svg_archive import read_svg_archive
+    from .source_svg_recovery import build_svg_recovery
+
+    original, assets = read_svg_archive(repo, source_revision_id, svg_archive)
+    binding, captured, blobs = build_svg_recovery(
+        repo, source_revision_id, object_store=object_store, assets=assets,
+    )
+    if original != binding:
+        raise ValueError("SOURCE_SVG_REPLAY_SOURCE_CHANGED")
+    return binding, captured, blobs
+
+
+def svg_reprojection_digests(captured):
+    return {
+        "corrected_source_fingerprint": captured.source_fingerprint,
+        "document_sha256": digest_json(captured.source_document),
+        "provenance_sha256": digest_json(captured.resource_provenance),
+    }
+
+
+def apply_svg_reprojection(repo, canonical_article_id, expected_source_revision_id, *,
+                           object_store, svg_archive, expected_observation_id, expected_fingerprint,
+                           expected_body_sha256, expected_document_sha256, expected_corrected_fingerprint,
+                           expected_provenance_sha256, actor, reason):
+    """Install the exact previewed SVG repair while the article is source-only."""
+    from .source_svg_recovery import check_svg_recovery_rights
+    from .source_table_replay import load_table_replay_binding
+
+    _validate_actor_reason(actor, reason)
+    binding, captured, blobs = preview_svg_reprojection(
+        repo, expected_source_revision_id, object_store=object_store, svg_archive=svg_archive,
+    )
+    expected = {
+        "corrected_source_fingerprint": expected_corrected_fingerprint,
+        "document_sha256": expected_document_sha256,
+        "provenance_sha256": expected_provenance_sha256,
+    }
+    if (binding.canonical_article_id != canonical_article_id
+            or binding.source_observation_id != expected_observation_id
+            or binding.source_fingerprint != expected_fingerprint
+            or binding.body_sha256 != expected_body_sha256
+            or svg_reprojection_digests(captured) != expected):
+        raise ValueError("SOURCE_SVG_REPLAY_PREVIEW_BINDING_MISMATCH")
+    checkpoint = {
+        "source_only_reprojection": True,
+        "svg_reprojection": True,
+        "original_source_revision_id": str(expected_source_revision_id),
+        "original_source_observation_id": str(expected_observation_id),
+        "actor": actor,
+        "reason": reason,
+        "expected_fingerprint": expected_fingerprint,
+        "expected_body_sha256": expected_body_sha256,
+        **expected,
+    }
+    with repo.connect() as conn, conn.cursor(row_factory=dict_row) as cur:
+        article = cur.execute(
+            "SELECT * FROM canonical_articles WHERE canonical_article_id=%s FOR UPDATE",
+            (canonical_article_id,),
+        ).fetchone()
+        if article is None:
+            raise ValueError("SOURCE_SVG_REPLAY_ARTICLE_NOT_FOUND")
+        if article["current_canonical_revision_id"] is not None:
+            raise ValueError("SOURCE_SVG_REPLAY_CANONICAL_ANCHOR")
+        if load_table_replay_binding(cur, expected_source_revision_id, lock=True) != binding:
+            raise ValueError("SOURCE_SVG_REPLAY_PREVIEW_BINDING_MISMATCH")
+        if cur.execute("SELECT 1 FROM schema_migrations WHERE version='045_article_source_projection_v5'").fetchone() is None:
+            raise ValueError("SOURCE_SVG_REPLAY_SCHEMA_REQUIRED")
+        current = cur.execute("""
+            SELECT j.source_fetch_job_id,j.status,j.error_code,j.checkpoint,j.request_generation,
+                   s.source_revision_id,s.source_fingerprint,s.projection_version
+            FROM source_fetch_jobs j JOIN canonical_article_source_revisions s USING(source_revision_id)
+            WHERE j.source_fetch_job_id=%s AND s.source_revision_id=%s
+        """, (article["current_job_id"], article["current_source_revision_id"])).fetchone()
+        if (current and current["status"] == "needs_review"
+                and current["error_code"] == "SOURCE_ONLY_REPROJECTION"
+                and current["checkpoint"] == checkpoint
+                and current["request_generation"] == article["request_generation"]
+                and current["projection_version"] == captured.projection_version
+                and current["source_fingerprint"] == captured.source_fingerprint):
+            _verify_projection_conflict(
+                cur, canonical_article_id, captured, error="SOURCE_SVG_REPLAY_PROJECTION_CONFLICT",
+            )
+            _verify_stored_svg_reprojection(cur, current["source_revision_id"], current["source_fetch_job_id"], captured)
+            return {"status": "already_applied", "source_revision_id": str(current["source_revision_id"]),
+                    "job_id": str(current["source_fetch_job_id"])}
+        if article["current_source_revision_id"] != expected_source_revision_id:
+            raise ValueError("SOURCE_SVG_REPLAY_CURRENT_SOURCE_CHANGED")
+        _require_no_active_normal_job(cur, canonical_article_id)
+        _verify_projection_conflict(
+            cur, canonical_article_id, captured, error="SOURCE_SVG_REPLAY_PROJECTION_CONFLICT",
+        )
+        check_svg_recovery_rights(cur, captured, lock=True)
+        for object_key, (payload, media_type) in blobs.items():
+            object_store.put_object(object_key, payload, media_type)
+        result = _apply_source_only(cur, article, captured, checkpoint)
+        _verify_stored_svg_reprojection(cur, result["source_revision_id"], result["job_id"], captured)
+        return result
+
+
+def _verify_stored_svg_reprojection(cur, source_revision_id, job_id, captured):
+    from .source_svg_recovery import check_svg_recovery_rights
+
+    check_svg_recovery_rights(cur, captured, lock=True, require_existing=True)
+    # Stored observations may use the pre-existing snapshot UUID for identical bytes.
+    resources = captured.resources
+    snapshots = {
+        row["content_sha256"]: row["source_snapshot_id"] for row in cur.execute(
+            "SELECT content_sha256, source_snapshot_id FROM source_snapshots WHERE content_sha256 = ANY(%s)",
+            (sorted({resource["sha256"] for resource in resources}),),
+        ).fetchall()
+    }
+    if any(resource["sha256"] not in snapshots for resource in resources):
+        raise ValueError("SOURCE_SVG_REPLAY_PROVENANCE_MISMATCH")
+    expected = _remap_snapshot_references(captured.resource_provenance, {
+        resource["source_snapshot_id"]: snapshots[resource["sha256"]] for resource in resources
+    })
+    stored = cur.execute("""
+        SELECT resource_provenance FROM canonical_article_source_observations
+        WHERE source_revision_id=%s AND source_fetch_job_id=%s
+    """, (source_revision_id, job_id)).fetchone()
+    if stored is None or stored["resource_provenance"] != expected:
+        raise ValueError("SOURCE_SVG_REPLAY_PROVENANCE_MISMATCH")

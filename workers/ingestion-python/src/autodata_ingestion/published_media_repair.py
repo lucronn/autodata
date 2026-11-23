@@ -4,6 +4,7 @@ from collections import Counter
 from copy import deepcopy
 from dataclasses import dataclass
 from functools import partial
+import re
 
 from .article_document import (
     has_only_list_ordinal_additions, has_only_table_span_additions, project_ordered_document,
@@ -23,6 +24,10 @@ _IMAGE_KEYS = _POSITION_KEYS | {"type"}
 MEDIA_METHOD = "published-media-placement-v1"
 ORDINAL_METHOD = "published-list-ordinals-v1"
 TABLE_SPAN_METHOD = "published-table-spans-v1"
+SVG_RECOVERY_METHOD = "published-svg-recovery-v1"
+_RECOVERED_IMAGE_FIELDS = frozenset({
+    "asset_id", "image_id", "storage_key", "content_sha256", "status", "media_type", "unavailable_reason",
+})
 
 
 @dataclass(frozen=True)
@@ -147,9 +152,35 @@ def _remap_v2_operations(old_source, repaired_source):
     return _selection(new_plan)
 
 
+def _svg_recovery_changes(before, after):
+    """Prove that only bound figure payload fields and authored spans changed."""
+    masked = deepcopy(after)
+    restored = {}
+    for index, (old, new) in enumerate(zip(before["blocks"], after["blocks"])):
+        if (old["type"] != "image" or old.get("status") != "unavailable"
+                or new["type"] != "image" or new.get("status") != "available"):
+            continue
+        old_id, digest = old.get("image_id"), new.get("content_sha256")
+        if (not isinstance(old_id, str) or not re.fullmatch(r"[a-f0-9]{64}", old_id)
+                or old_id in restored or not isinstance(digest, str) or not re.fullmatch(r"[a-f0-9]{64}", digest)):
+            raise ValueError("PUBLISHED_MEDIA_REPAIR_SVG_DRIFT")
+        object_key = "sources/" + digest[:16] + "/" + digest
+        if (new.get("unavailable_reason") is not None or new.get("image_id") != digest
+                or new.get("storage_key") != object_key or new.get("asset_id") != object_key
+                or new.get("media_type") != "image/png"
+                or {key: value for key, value in old.items() if key not in _RECOVERED_IMAGE_FIELDS}
+                != {key: value for key, value in new.items() if key not in _RECOVERED_IMAGE_FIELDS}):
+            raise ValueError("PUBLISHED_MEDIA_REPAIR_SVG_DRIFT")
+        restored[old_id] = digest
+        masked["blocks"][index] = old
+    if not restored or (masked != before and not has_only_table_span_additions(before, masked)):
+        raise ValueError("PUBLISHED_MEDIA_REPAIR_SVG_DRIFT")
+    return restored
+
+
 def repair_published_media(
     old_source, published, repaired_source, *, response, prompt_version=None, profile=PROFILE,
-    ordinals=False, table_spans=False,
+    ordinals=False, table_spans=False, svg_recovery=False,
 ) -> PublishedMediaRepair:
     """Restore figure placement, list numbering or table spans using the saved rewrite.
 
@@ -159,7 +190,7 @@ def repair_published_media(
     reviewed publication, supply its approved effective response. Reviewed
     and technical publications do not use an automatic prompt version.
     """
-    if ordinals and table_spans:
+    if sum((ordinals, table_spans, svg_recovery)) > 1:
         raise ValueError("PUBLISHED_MEDIA_REPAIR_MODE_INVALID")
     if profile == PROFILE:
         if not isinstance(prompt_version, str) or prompt_version not in _SUPPORTED_PROMPTS:
@@ -190,7 +221,13 @@ def repair_published_media(
     if not previous_validation.passed:
         raise ValueError("PUBLISHED_MEDIA_REPAIR_PUBLISHED_BINDING_MISMATCH")
     structure_only = None
-    if table_spans:
+    if svg_recovery:
+        method = SVG_RECOVERY_METHOD
+        asset_changes = _svg_recovery_changes(old_source, repaired_source)
+
+        def structure_only(before, after):
+            return _svg_recovery_changes(before, after) == asset_changes
+    elif table_spans:
         structure_only = has_only_table_span_additions
         method = TABLE_SPAN_METHOD
         if not structure_only(old_source, repaired_source):

@@ -116,15 +116,15 @@ def _private_path(path, *, directory=False):
     return path
 
 
-def _read_private_json(path):
+def _read_private_json(path, *, limit=_LIMIT):
     path = _private_path(path)
     descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
     with os.fdopen(descriptor, "r", encoding="utf-8") as stream:
         status = os.fstat(stream.fileno())
         if not stat.S_ISREG(status.st_mode) or status.st_uid != os.getuid() or status.st_mode & 0o077:
             raise ValueError("CONTENT_REVIEW_PRIVATE_PATH_REQUIRED")
-        raw = stream.read(_LIMIT + 1)
-    if len(raw.encode()) > _LIMIT:
+        raw = stream.read(limit + 1)
+    if len(raw.encode()) > limit:
         raise ValueError("CONTENT_REVIEW_INPUT_LIMIT")
     return json.loads(raw)
 

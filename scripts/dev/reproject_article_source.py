@@ -34,6 +34,7 @@ def main(argv=None, *, repo=None, object_store=None):
     replays = parser.add_mutually_exclusive_group()
     replays.add_argument("--retained-media", action="store_true", help="Replay retained article figures")
     replays.add_argument("--retained-table-spans", action="store_true", help="Restore authored spans in retained HTML tables")
+    replays.add_argument("--svg-archive", type=Path, help="Restore figures from a private archive created by stage-svg")
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--dry-run", action="store_true")
     modes.add_argument("--apply", action="store_true")
@@ -43,13 +44,21 @@ def main(argv=None, *, repo=None, object_store=None):
     parser.add_argument("--expected-body-sha256")
     parser.add_argument("--expected-observation-id", type=UUID)
     parser.add_argument("--expected-document-sha256")
+    parser.add_argument("--expected-corrected-fingerprint")
+    parser.add_argument("--expected-provenance-sha256")
     args = parser.parse_args(argv)
     if args.apply and not all((args.actor, args.reason, args.expected_fingerprint, args.expected_body_sha256)):
         parser.error("--apply requires --actor, --reason, --expected-fingerprint and --expected-body-sha256")
-    if (args.apply and (args.retained_media or args.retained_table_spans)
+    if (args.apply and (args.retained_media or args.retained_table_spans or args.svg_archive is not None)
             and not (args.expected_observation_id and args.expected_document_sha256)):
-        parser.error("apply requires --expected-observation-id and --expected-document-sha256 for retained media or table spans")
+        parser.error("retained repair requires --expected-observation-id and --expected-document-sha256 on apply")
+    if (args.apply and args.svg_archive is not None
+            and not (args.expected_corrected_fingerprint and args.expected_provenance_sha256)):
+        parser.error("SVG recovery requires --expected-corrected-fingerprint and --expected-provenance-sha256 on apply")
     repo, object_store = article_archive(repo, object_store)
+    if args.svg_archive is not None:
+        print(json.dumps(replay_svg(args, repo, object_store), sort_keys=True))
+        return 0
     if args.retained_table_spans:
         print(json.dumps(replay_table_spans(args, repo, object_store), sort_keys=True))
         return 0
@@ -142,12 +151,49 @@ def replay_table_spans(args, repo, object_store):
     }
 
 
+def replay_svg(args, repo, object_store):
+    from autodata_ingestion.source_revision_reprojection import (
+        apply_svg_reprojection, preview_svg_reprojection, svg_reprojection_digests,
+    )
+
+    if args.apply:
+        return apply_svg_reprojection(
+            repo, args.article_id, args.source_revision_id, object_store=object_store, svg_archive=args.svg_archive,
+            expected_observation_id=args.expected_observation_id,
+            expected_fingerprint=args.expected_fingerprint,
+            expected_body_sha256=args.expected_body_sha256,
+            expected_document_sha256=args.expected_document_sha256,
+            expected_corrected_fingerprint=args.expected_corrected_fingerprint,
+            expected_provenance_sha256=args.expected_provenance_sha256,
+            actor=args.actor, reason=args.reason,
+        )
+    binding, captured, _ = preview_svg_reprojection(
+        repo, args.source_revision_id, object_store=object_store, svg_archive=args.svg_archive,
+    )
+    if binding.canonical_article_id != args.article_id:
+        raise ValueError("SOURCE_SVG_REPLAY_ARTICLE_MISMATCH")
+    canonical = binding.row["current_canonical_revision_id"]
+    return {
+        "status": "preview",
+        "article_id": str(args.article_id),
+        "original_source_revision_id": str(binding.source_revision_id),
+        "source_observation_id": str(binding.source_observation_id),
+        "current_canonical_revision_id": str(canonical) if canonical else None,
+        "requires_canonical_repair": canonical is not None,
+        "source_fingerprint": binding.source_fingerprint,
+        "body_sha256": binding.body_sha256,
+        "restored_figure_count": sum("derived_from_sha256" in resource for resource in captured.resource_manifest),
+        "projection_version": captured.projection_version,
+        **svg_reprojection_digests(captured),
+    }
+
+
 if __name__ == "__main__":
     try: sys.exit(main())
     except Exception as error:
         # Never print provider refs, raw body, environment values or SDK exceptions.
         code = str(error) if isinstance(error, ValueError) else ""
-        if not re.fullmatch(r"SOURCE_TABLE_REPLAY_[A-Z_]+", code):
+        if not re.fullmatch(r"SOURCE_(?:TABLE_REPLAY|SVG_(?:REPLAY|RECOVERY|ARCHIVE))_[A-Z_]+", code):
             code = "SOURCE_REPLAY_FAILED"
         print(json.dumps({"status": "error", "code": code}), file=sys.stderr)
         sys.exit(1)
