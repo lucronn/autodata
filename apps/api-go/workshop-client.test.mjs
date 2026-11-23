@@ -831,7 +831,7 @@ test('early publication reads keep the displayed source with a negotiated pendin
   assert.equal(result.data.article.body, 'Published');
 });
 
-test('one negotiated publication check can open a ready article while keeping the ordinary deadline on a miss', async () => {
+test('negotiated publication checks can open ready text and keep ordinary deadlines on a miss', async () => {
   const { readArticle } = await import('./workshop/article-read.mjs');
   const source = {
     status: 200, publicationCheckSupported: true, data: { article: {
@@ -847,7 +847,10 @@ test('one negotiated publication check can open a ready article while keeping th
   const badJSON = Object.assign(new Error('Incomplete'), { code: 'INVALID_RESPONSE' });
   for (const [label, response, lastAt, expectedProbe] of [
     ['ready', ready, 5000, true],
-    ['miss checks once despite a later long wait', compact, 15000, true],
+    ['matching pending checks again in the long wait', compact, 15000, true],
+    ['ready during the long wait', [compact, ready], 9000, true],
+    ['late body timeout preserves the ordinary read', [compact, badJSON], 15000, true],
+    ['changed source requires another confirmation', compact, 15000, true],
     ['retry hint', { ...compact, data: { ...compact.data, retry_after_seconds: 6 } }, 11000, true],
     ['mismatched anchor cannot supply a body retry hint', { ...compact, data: { ...compact.data, job_id: 'other', retry_after_seconds: 6 } }, 7000, true],
     ['network loss', new TypeError('Disconnected'), 7000, true],
@@ -865,12 +868,19 @@ test('one negotiated publication check can open a ready article while keeping th
         probes.push(now);
         assert.deepEqual(options.publicationCheck, { articleId: 'article', sourceRevisionId: 'source', jobId: 'job' });
         assert.equal(options.timeout, 2000);
-        assert.equal(options.readableBodyTimeout, 10000);
+        assert.equal(options.readableBodyTimeout, probes.length === 1 ? 10000 : 6000);
         assert.equal(options.finishPublishedBody, true);
-        if (response instanceof Error) throw response;
-        return response;
+        const probeResponse = Array.isArray(response) ? response[probes.length - 1] : response;
+        if (probeResponse instanceof Error) {
+          if (probes.length === 2) now += options.readableBodyTimeout;
+          throw probeResponse;
+        }
+        return probeResponse;
       }
       if (now === lastAt) return ready;
+      if (label === 'changed source requires another confirmation' && now >= 7000) {
+        return { ...source, data: { article: { ...source.data.article, source_revision_id: 'source-2' } } };
+      }
       if (response === null) return { ...source, publicationCheckSupported: false };
       if (response === 6 && now === 3000) return { ...source, retryAfterSeconds: 6 };
       if (now === 0 || response === ready && now === 3000) return { ...source, retryAfterSeconds: 1 };
@@ -878,10 +888,12 @@ test('one negotiated publication check can open a ready article while keeping th
     }, { now: () => now, wait: async ms => { now += ms; }, onUpdate: ({ data }) => shown.push(data.article.body) });
     if (response === denied) await assert.rejects(result, error => error === denied);
     else assert.equal((await result).data.article.body, 'Published');
-    assert.deepEqual(probes, expectedProbe ? [5000] : [], label);
+    const lateProbe = Array.isArray(response) || label === 'matching pending checks again in the long wait';
+    assert.deepEqual(probes, lateProbe ? [5000, 9000] : expectedProbe ? [5000] : [], label);
     assert.equal(starts.at(-1), lastAt, label);
     assert.equal(shown.filter(item => item === 'Stored').length,
-      label === 'miss checks once despite a later long wait' || label === 'full response fallback' ? 4 : 3, label);
+      lateProbe || label === 'full response fallback' || label === 'changed source requires another confirmation' ? 4 : 3,
+      label);
   }
 });
 
@@ -903,6 +915,10 @@ test('article transport negotiates publication status with exact retained source
   });
   assert.equal(checked.publicationStatus, true);
   assert.equal(checked.retryAfterSeconds, 4);
+  await assert.rejects(requestArticleJSON('/article', {
+    publicationCheck: { jobId: 'job', sourceRevisionId: 'source' },
+    fetcher: async () => new Response('{', { headers: { 'Retry-After': '12' } }),
+  }), (error) => error.code === 'INVALID_RESPONSE' && error.retryAfterSeconds === 12);
   const offered = await requestArticleJSON('/article', {
     fetcher: async () => new Response(JSON.stringify({ article: {} }), {
       headers: { 'Workshop-Publication-Check': 'supported' },

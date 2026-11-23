@@ -340,7 +340,11 @@ export async function requestArticleJSON(path, {
       });
     }
     if (reportBodyNetworkError && retryAfterSeconds === 0 && bodyError instanceof TypeError) throw bodyError;
-    if (response.status !== 204 && (!data || typeof data !== 'object' || Array.isArray(data))) throw new CatalogRequestError('The catalog returned an unreadable response. Try again.', { code: 'INVALID_RESPONSE' });
+    if (response.status !== 204 && (!data || typeof data !== 'object' || Array.isArray(data))) {
+      throw new CatalogRequestError('The catalog returned an unreadable response. Try again.', {
+        code: 'INVALID_RESPONSE', retryAfterSeconds,
+      });
+    }
     const shortSourceCheck = preferShortSourceCheck && applied === shortSourceCheckPreference;
     const shortPublicationCheck = preferShortPublicationCheck && applied === shortPublicationCheckPreference;
     const publicationStatus = Boolean(publicationCheck && applied === publicationStatusPreference);
