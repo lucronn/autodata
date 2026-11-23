@@ -456,7 +456,7 @@ async function loadOptions(name, g, desired = "", initial = null) {
   if (!g.current()) return;
   if (result !== cached) rememberSelector(path, name, result);
   const selected = desired && result.items.some(choice);
-  if (!selected && (result.timedOut || result.complete === false)) {
+  if (!selected && (result.refreshFailed || result.timedOut || result.complete === false)) {
     if (!desired && result.items.length) {
       status(`Choose an available ${label}. Some choices could not be loaded.`, { retry: () => restoreRoute() });
       return;
@@ -701,7 +701,7 @@ async function loadArticles(g, articleID = "", { focusOnShow = false, focusArtic
   $("completion-status").textContent = "";
   stage("articles");
   status("Opening your article index…", { busy: true });
-  await readCollection(
+  const indexRead = await readCollection(
     () => {
       if (firstIndex) {
         const result = firstIndex;
@@ -770,11 +770,11 @@ async function loadArticles(g, articleID = "", { focusOnShow = false, focusArtic
     throw new Error("This article is unavailable for the selected vehicle.");
   } else {
     indexHydrating = false;
-    showArticleIndexStatus(articleID);
+    showArticleIndexStatus(articleID, indexRead?.refreshFailed);
   }
 }
 
-function showArticleIndexStatus(articleID = "") {
+function showArticleIndexStatus(articleID = "", refreshFailed = false) {
   if (indexComplete) {
     const ready = !indexLoaded && searchItems ? "Article search ready." :
       articles.length ? "Article index ready." : "Article index ready. No articles are currently available.";
@@ -786,7 +786,9 @@ function showArticleIndexStatus(articleID = "") {
       complete: false,
     });
   } else {
-    status("Your article index is still being prepared. Check again.", {
+    status(refreshFailed
+      ? "You can open the articles below. The index update couldn’t load."
+      : "Your article index is still being prepared. Check again.", {
       complete: false,
       retry: () => operation((next) => loadArticles(next, articleID)),
     });

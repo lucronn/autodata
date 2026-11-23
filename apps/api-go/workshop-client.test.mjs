@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext as runVM } from 'node:vm';
 import { NavigationGeneration, processingArticle, readableArticle } from './workshop/article-read.mjs';
 import { pollOrder, purchaseConfiguration, readOrder, resumableCheckoutURL, sameScope, uuid, validQuote, validScope, validLibrary } from './workshop/commerce.mjs';
-import { articlePresentation, configurationLabel, filterArticles, hasSourceReference, legacyArticleBlocks, localImageURL, readCollection, requestInitialYears, requestJSON, requestStoredSelector, selectedIndexSessionPreference, selectorLabel, sourceReferenceURL, startSavedSelectorReads, vehicleSelectorPath } from './workshop/catalog.mjs';
+import { articlePresentation, CatalogRequestError, configurationLabel, filterArticles, hasSourceReference, legacyArticleBlocks, localImageURL, readCollection, requestInitialYears, requestJSON, requestStoredSelector, selectedIndexSessionPreference, selectorLabel, sourceReferenceURL, startSavedSelectorReads, vehicleSelectorPath } from './workshop/catalog.mjs';
 import { LOAD_STAGES, loadingProgress } from './workshop/progress.mjs';
 
 // The app sections below run without the module bootstrap. Model the ordinary
@@ -66,6 +66,33 @@ test('persistent partial and empty scopes stop polling without claiming complete
     let calls = 0;
     const result = await readCollection(async () => { calls++; return { items, complete: false, hydrating: true }; }, { attempts: 3, wait: async () => {} });
     assert.equal(calls, 3); assert.equal(result.timedOut, true); assert.equal(result.complete, false);
+  }
+});
+
+test('a transient refresh preserves an already visible list in the current scope', async () => {
+  const first = { items: [{ id: 'stored' }], complete: false, hydrating: true };
+  const unavailable = new CatalogRequestError('Refresh unavailable', { status: 503 });
+  for (const error of [unavailable, new CatalogRequestError('Network unavailable')]) {
+    const updates = [];
+    const result = await readCollection(async () => {
+      if (updates.length) throw error;
+      return first;
+    }, { onUpdate: data => updates.push(data), wait: async () => {} });
+    assert.deepEqual(updates, [first]);
+    assert.deepEqual(result, { ...first, refreshFailed: true });
+  }
+  await assert.rejects(readCollection(async () => { throw unavailable; }), unavailable);
+});
+
+test('a denied refresh reaches the authorization handler after a visible list', async () => {
+  for (const status of [401, 403, 404, 410]) {
+    const denial = new CatalogRequestError('Access unavailable', { status });
+    let attempts = 0;
+    const opening = readCollection(async () => {
+      if (attempts++) throw denial;
+      return { items: [{ id: 'stored' }], complete: false, hydrating: true };
+    }, { wait: async () => {} });
+    await assert.rejects(opening, denial);
   }
 });
 
@@ -4404,6 +4431,22 @@ test('a failed supplier index still shows articles returned by the available sou
   assert.equal(h.$('articles').firstElementChild.children[0].dataset.articleId, 'oil-pump');
   assert.equal(h.$('no-results').hidden, true);
   assert.match(h.$('activity-text').textContent, /open the articles below/i);
+});
+
+test('an unavailable poll keeps the authorized article links open and the index retryable', async () => {
+  const item = { id: 'oil-pump', title: 'Oil Pump' };
+  const h = articleIndexHarness([
+    indexResponse('running', { hydrating: true, items: [item] }),
+    () => Promise.reject(new CatalogRequestError('Refresh unavailable', { status: 503 })),
+    indexResponse('completed', { complete: true, items: [item] }),
+  ]);
+  await h.load();
+  assert.equal(h.context.access, 'owned');
+  assert.equal(h.$('articles').firstElementChild.firstElementChild.dataset.articleId, item.id);
+  assert.match(h.$('activity-text').textContent, /open the articles below/i);
+  assert.equal(h.$('retry').hidden, false);
+  await h.context.retryAction();
+  assert.equal(h.$('completion-status').textContent, 'Article index ready.');
 });
 
 test('hydration reuses article rows and keeps keyboard focus on the same article ID', async () => {
