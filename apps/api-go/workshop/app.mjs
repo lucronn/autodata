@@ -405,16 +405,15 @@ async function loadOptions(name, g, desired = "", initial = null) {
         const response = await initial;
         initial = null;
         g.signal.throwIfAborted();
-        if (response && Array.isArray(response.items) && (name === "year" ||
-            (desired ? response.items.some(choice) : (response.complete === true || usableEngineChoices(name, response))))) {
-          const incomplete = name !== "year" && response.complete !== true;
-          if (name === "configuration" && incomplete && !desired) {
-            // Render the stored choices before the verified-parent discovery request.
-            showChoices(response);
-          } else {
-            if (incomplete)
+        if (Array.isArray(response?.items)) {
+          if (name === "year" || (desired ? response.items.some(choice) : response.complete === true)) {
+            if (name !== "year" && response.complete !== true)
               void requestJSON(path, { signal: g.signal }).catch(() => null);
             return response;
+          }
+          if (response.items.length) {
+            // Make stored choices usable while the verified parent starts discovery.
+            showChoices({ ...response, hydrating: true });
           }
         }
         // Stored descendants cannot start ingestion. A regular read can do so once the parent is valid.

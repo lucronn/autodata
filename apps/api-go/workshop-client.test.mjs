@@ -6851,6 +6851,27 @@ test('usable prefetched engine choices appear while the verified-parent scheduli
   assert.equal(h.$('retry').hidden, true);
 });
 
+test('stored make and model choices are selectable before normal discovery replies', async () => {
+  for (const [name, id] of [['make', 'buick-truck'], ['model', 'envision-awd']]) {
+    const first = { id };
+    const stored = { items: [first], complete: false, hydrating: true };
+    const discovery = deferredAuthOperation();
+    const h = selectorOptionsHarness(() => discovery.promise);
+    const loading = h.load('', null, Promise.resolve(stored), name);
+    try {
+      await new Promise(setImmediate);
+      assert.deepEqual(h.requests, ['/choices']);
+      assert.deepEqual(h.displayed, [[first]]);
+      assert.equal(h.$(name).disabled, false);
+      assert.equal(h.context.document.body.dataset.busy, 'false');
+    } finally {
+      discovery.resolve({ items: [first, { id: 'another' }], complete: true });
+      await loading;
+    }
+    assert.equal(h.displayed.at(-1).length, 2);
+  }
+});
+
 test('switching vehicles aborts an in-flight storage-only engine read and ignores its choices', async () => {
   const first = { id: 'engine-a', complete: true };
   const second = { id: 'engine-b', complete: true };
