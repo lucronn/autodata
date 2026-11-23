@@ -2393,22 +2393,26 @@ test('My vehicles activation clears the previous vehicle search and selector opt
     history: { pushState(_state, _title, url) { location.search = new URL(url, 'https://workshop.example').search; } },
     currentOrder: '', libraryPageRequest: null, libraryCursor: null, clearReader() {},
     session: { state: { authenticated: true } },
-    async requestJSON() { return { version: 'v1', next_cursor: null, items: [{
-      configuration_id: routeConfiguration, region: 'US', library_item_id: routeOrder,
-      label: 'Purchased vehicle', access_state: 'viewable', granted_at: '2026-11-16T00:00:00Z',
-    }, {
-      configuration_id: '44444444-4444-4444-8444-444444444444', region: 'CA',
-      library_item_id: '55555555-5555-4555-8555-555555555555', label: 'Other purchased vehicle',
-      access_state: 'paid', granted_at: '2026-11-16T00:00:00Z', catalog_available: false,
-    }, {
-      configuration_id: '66666666-6666-4666-8666-666666666666', region: 'US',
-      library_item_id: '77777777-7777-4777-8777-777777777777', label: 'Revoked vehicle',
-      access_state: 'revoked', granted_at: null,
-    }, {
-      configuration_id: '99999999-9999-4999-8999-999999999999', region: 'US',
-      library_item_id: '88888888-8888-4888-8888-888888888888', label: 'Empty catalog vehicle',
-      access_state: 'paid', granted_at: '2026-11-16T00:00:00Z', catalog_empty: true,
-    }] }; },
+    async requestJSON(path, options) {
+      assert.equal(path, '/v1/workshop/library?limit=20');
+      assert.equal(options.headers.Prefer, 'workshop-library-catalog-empty');
+      return { version: 'v1', next_cursor: null, items: [{
+        configuration_id: routeConfiguration, region: 'US', library_item_id: routeOrder,
+        label: 'Purchased vehicle', access_state: 'viewable', granted_at: '2026-11-16T00:00:00Z',
+      }, {
+        configuration_id: '44444444-4444-4444-8444-444444444444', region: 'CA',
+        library_item_id: '55555555-5555-4555-8555-555555555555', label: 'Other purchased vehicle',
+        access_state: 'paid', granted_at: '2026-11-16T00:00:00Z', catalog_available: false,
+      }, {
+        configuration_id: '66666666-6666-4666-8666-666666666666', region: 'US',
+        library_item_id: '77777777-7777-4777-8777-777777777777', label: 'Revoked vehicle',
+        access_state: 'revoked', granted_at: null,
+      }, {
+        configuration_id: '99999999-9999-4999-8999-999999999999', region: 'US',
+        library_item_id: '88888888-8888-4888-8888-888888888888', label: 'Empty catalog vehicle',
+        access_state: 'paid', granted_at: '2026-11-16T00:00:00Z', catalog_empty: true,
+      }] };
+    },
   });
   runInNewContext(appSection('function updateURL(', 'function rememberOrderRoute(') +
     appSection('function clearLibrary(', 'function resetSourceReview(') +

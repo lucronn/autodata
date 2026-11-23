@@ -369,13 +369,24 @@ func TestCommerceLibraryRetainsPaidCatalogAvailability(t *testing.T) {
 					`","configuration_id":"` + commerceConfigID + `","region":"US","label":"Vehicle","access_state":"` +
 					tc.state + `","granted_at":"2026-11-03T20:00:00Z"` + extra + `}],"next_cursor":null}`), nil
 			}))
-			w := customerHTTP(t, s.Handler(), "GET", "/v1/workshop/library", "", nil, cookie)
+			w := customerHTTP(t, s.Handler(), "GET", "/v1/workshop/library", "",
+				map[string]string{"Prefer": "workshop-library-catalog-empty"}, cookie)
 			if w.Code != tc.wantStatus || strings.Contains(w.Body.String(), `"catalog_available":false`) != (tc.wantStatus == 200 && tc.availability == "false") ||
 				strings.Contains(w.Body.String(), `"catalog_empty":true`) != (tc.wantStatus == 200 && tc.empty == "true") {
 				t.Fatalf("status=%d response=%s", w.Code, w.Body)
 			}
 			if w.Code != 200 {
 				return
+			}
+			if w.Header().Get("Preference-Applied") != "workshop-library-catalog-empty" {
+				t.Fatalf("missing applied Library preference: %v", w.Header())
+			}
+			if tc.empty == "true" {
+				legacy := customerHTTP(t, s.Handler(), "GET", "/v1/workshop/library", "", nil, cookie)
+				if legacy.Code != http.StatusOK || strings.Contains(legacy.Body.String(), "catalog_empty") ||
+					legacy.Header().Get("Preference-Applied") != "" {
+					t.Fatalf("closed Library response changed: %d %s", legacy.Code, legacy.Body)
+				}
 			}
 			var data commerceLibrary
 			if err := json.Unmarshal(w.Body.Bytes(), &data); err != nil || len(data.Items) != 1 {

@@ -1714,7 +1714,7 @@ async function library(g, append = false, { focusOnShow = false } = {}) {
   const more = $("library-more");
   const request = requestJSON(
     `/v1/workshop/library?limit=20${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
-    { signal: g.signal },
+    { signal: g.signal, headers: { Prefer: "workshop-library-catalog-empty" } },
   );
   libraryPageRequest = request;
   if (append) more.setAttribute("aria-disabled", "true");
