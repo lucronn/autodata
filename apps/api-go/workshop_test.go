@@ -111,6 +111,38 @@ func TestWorkshopPublicAssetsRevalidateByContent(t *testing.T) {
 			}
 		})
 	}
+	t.Run("versioned bootstrap", func(t *testing.T) {
+		const path = "/workshop/bootstrap.mjs"
+		const cache = "private, max-age=31536000, immutable"
+		first := request(http.MethodGet, path, "")
+		digest := sha256.Sum256(first.Body.Bytes())
+		version := hex.EncodeToString(digest[:])
+		versioned := path + "?v=" + version
+		tag := `W/"` + version + `"`
+		index := request(http.MethodGet, "/workshop/?view=library", "")
+		if index.Code != http.StatusOK || !strings.Contains(index.Body.String(), `src="`+versioned+`"`) {
+			t.Fatal("Workshop entry page does not link to the content version of the bootstrap")
+		}
+		for _, method := range []string{http.MethodGet, http.MethodHead} {
+			response := request(method, versioned, "")
+			if response.Code != http.StatusOK || response.Header().Get("ETag") != tag || response.Header().Get("Cache-Control") != cache {
+				t.Fatalf("%s versioned bootstrap = %d, tag %q, cache %q", method, response.Code, response.Header().Get("ETag"), response.Header().Get("Cache-Control"))
+			}
+			if (method == http.MethodHead && response.Body.Len() != 0) || (method == http.MethodGet && !bytes.Equal(response.Body.Bytes(), first.Body.Bytes())) {
+				t.Fatalf("%s versioned bootstrap has unexpected contents", method)
+			}
+			warm := request(method, versioned, tag)
+			if warm.Code != http.StatusNotModified || warm.Body.Len() != 0 || warm.Header().Get("Cache-Control") != cache {
+				t.Fatalf("%s conditional versioned bootstrap = %d with %d bytes, cache %q", method, warm.Code, warm.Body.Len(), warm.Header().Get("Cache-Control"))
+			}
+		}
+		for _, alias := range []string{path, path + "?v=previous-build", versioned + "&v=previous-build"} {
+			response := request(http.MethodGet, alias, "")
+			if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "no-cache" || !bytes.Equal(response.Body.Bytes(), first.Body.Bytes()) {
+				t.Fatalf("bootstrap alias %s = %d, cache %q", alias, response.Code, response.Header().Get("Cache-Control"))
+			}
+		}
+	})
 	for _, path := range []string{"/workshop/purchase-config.json", "/workshop/demo-mode.json"} {
 		live := request(http.MethodGet, path, "*")
 		if live.Code != http.StatusOK || live.Body.Len() == 0 || live.Header().Get("ETag") != "" || live.Header().Get("Cache-Control") != "no-store" {

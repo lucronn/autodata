@@ -142,11 +142,21 @@ def verify_provenance(args):
     certificate=ssl.get_server_certificate((host.hostname,host.port),timeout=5)
     certificate_hash=hashlib.sha256(ssl.PEM_cert_to_DER_cert(certificate)).hexdigest()
     assets={}
+    asset_root=ROOT/'apps/api-go/workshop'
+    bootstrap_path='/workshop/bootstrap.mjs'
+    bootstrap=(asset_root/'bootstrap.mjs').read_bytes()
+    bootstrap_hash=hashlib.sha256(bootstrap).hexdigest()
+    versioned_bootstrap=f'{bootstrap_path}?v={bootstrap_hash}'
     for name in ('index.html','app.mjs','auth.mjs','catalog.mjs','progress.mjs','commerce.mjs','article-read.mjs','styles.css','firebase-web.mjs','firebase-web.mjs.LEGAL.txt','firebase-web.provenance.json'):
-        local=(ROOT/'apps/api-go/workshop'/name).read_bytes()
+        local=(asset_root/name).read_bytes()
+        if name=='index.html':
+            local=local.replace(f'src="{bootstrap_path}"'.encode(),f'src="{versioned_bootstrap}"'.encode())
         with urlopen(args.base_url+'/workshop/'+name,context=ssl._create_unverified_context(),timeout=10) as response: served=response.read()
         if local!=served: raise ValueError(f'compiled Go asset differs from candidate: {name}')
         assets[name]={'sha256':hashlib.sha256(served).hexdigest(),'bytes':len(served)}
+    with urlopen(args.base_url+versioned_bootstrap,context=ssl._create_unverified_context(),timeout=10) as response:
+        if response.read()!=bootstrap:
+            raise ValueError('compiled Go asset differs from candidate: bootstrap.mjs')
     return {'certificate_sha256':certificate_hash,'assets':assets}
 
 
