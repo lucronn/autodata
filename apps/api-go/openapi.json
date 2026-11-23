@@ -1033,7 +1033,11 @@
         ],
         "operationId": "listCatalogYears",
         "summary": "List catalog years",
-        "parameters": [],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/StoredSelectorOnly"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Available selector rows and durable completeness.",
@@ -1064,6 +1068,12 @@
                           }
                         }
                       }
+                    },
+                    "complete": {
+                      "type": "boolean"
+                    },
+                    "hydrating": {
+                      "type": "boolean"
                     }
                   }
                 }
@@ -1112,6 +1122,9 @@
               "type": "string",
               "default": "US"
             }
+          },
+          {
+            "$ref": "#/components/parameters/StoredSelectorOnly"
           }
         ],
         "responses": {
@@ -1207,6 +1220,9 @@
               "type": "string",
               "default": "US"
             }
+          },
+          {
+            "$ref": "#/components/parameters/StoredSelectorOnly"
           }
         ],
         "responses": {
@@ -1310,6 +1326,9 @@
               "type": "string",
               "default": "US"
             }
+          },
+          {
+            "$ref": "#/components/parameters/StoredSelectorOnly"
           }
         ],
         "responses": {
@@ -2786,6 +2805,17 @@
       }
     },
     "parameters": {
+      "StoredSelectorOnly": {
+        "name": "stored_only",
+        "in": "query",
+        "schema": {
+          "type": "string",
+          "enum": [
+            "1"
+          ]
+        },
+        "description": "Read stored selector rows without scheduling supplier hydration."
+      },
       "VehicleId": {
         "name": "vehicle_id",
         "in": "path",

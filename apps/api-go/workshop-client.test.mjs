@@ -20,6 +20,10 @@ function runInNewContext(code, context) {
   context.paidOrder ??= null;
   context.articleIndexOrigin ??= null;
   context.performance ??= performance;
+  context.selectorCache ??= new Map();
+  context.selectorCacheLifetime ??= 30_000;
+  context.selectorCacheSize ??= 32;
+  context.cachedSelector ??= () => null;
   return runVM(code, context);
 }
 
@@ -1658,6 +1662,7 @@ function loginRouteHarness(search, { authenticate = true, signInError = null, lo
   const elements = new Map();
   const element = name => {
     if (!elements.has(name)) elements.set(name, { value: '', disabled: false, children: [],
+      get options() { return this.children; },
       replaceChildren(...children) { this.children = children; this.value = ''; } });
     return elements.get(name);
   };
@@ -1910,10 +1915,10 @@ test('returning to the displayed year and make overlaps reads but hides models u
     return { items: [{ id: 'toyota', name: 'Toyota' }] };
   } });
   h.context.location.search = '?year=2020&make=toyota';
-  const opening = h.context.restoreRoute(null, { fromHistory: true });
+  const opening = h.context.restoreRoute();
   assert.deepEqual(h.calls.selectorReads.map(({ path }) => path), [
-    '/v1/catalog/years', '/v1/catalog/years/2020/makes?region=US',
-    '/v1/catalog/years/2020/makes/toyota/models?region=US',
+    '/v1/catalog/years', '/v1/catalog/years/2020/makes?region=US&stored_only=1',
+    '/v1/catalog/years/2020/makes/toyota/models?region=US&stored_only=1',
   ]);
   assert.equal(new Set(h.calls.selectorReads.map(({ signal }) => signal)).size, 1);
   assert.equal(h.element('model').disabled, true);
@@ -1927,15 +1932,16 @@ test('returning to the displayed year and make overlaps reads but hides models u
   assert.deepEqual(h.calls.selections, []);
 });
 
-test('history does not prefetch model choices for a make outside the displayed chooser prefix', async () => {
+test('history only previews stored descendants until the new parent is validated', async () => {
   const h = selectedCheckoutHarness({ selectorRead(path) {
     if (path.endsWith('/years')) return { items: [{ year: 2020 }] };
     return { items: [{ id: 'different', name: 'Different make' }] };
   } });
   h.context.location.search = '?year=2020&make=different';
-  await h.context.restoreRoute(null, { fromHistory: true });
+  await h.context.restoreRoute();
   assert.deepEqual(h.calls.selectorReads.map(({ path }) => path), [
-    '/v1/catalog/years', '/v1/catalog/years/2020/makes?region=US',
+    '/v1/catalog/years', '/v1/catalog/years/2020/makes?region=US&stored_only=1',
+    '/v1/catalog/years/2020/makes/different/models?region=US&stored_only=1',
   ]);
   assert.deepEqual(h.calls.selections, []);
 });
@@ -1959,9 +1965,9 @@ test('a complete saved vehicle overlaps public reads but validates parents befor
   } });
   const restored = h.context.restoreRoute();
   assert.deepEqual(h.calls.selectorReads.map(({ path }) => path), [
-    '/v1/catalog/years', '/v1/catalog/years/2020/makes?region=US',
-    '/v1/catalog/years/2020/makes/toyota/models?region=US',
-    '/v1/catalog/years/2020/makes/toyota/models/rav4/configurations?region=US',
+    '/v1/catalog/years', '/v1/catalog/years/2020/makes?region=US&stored_only=1',
+    '/v1/catalog/years/2020/makes/toyota/models?region=US&stored_only=1',
+    '/v1/catalog/years/2020/makes/toyota/models/rav4/configurations?region=US&stored_only=1',
   ]);
   assert.equal(new Set(h.calls.selectorReads.map(r => r.signal)).size, 1);
   await new Promise(setImmediate);
@@ -2228,6 +2234,7 @@ function paidPurchaseLifecycleHarness(selectionErrors, { realArticleIndex = fals
       nodes.set(id, {
         hidden: false, disabled: false, checked: id === 'agreement', value: '',
         textContent: '', dataset: {}, children: [],
+        get options() { return this.children; },
         replaceChildren(...children) { this.children = children; this.value = ''; },
         append(...children) { this.children.push(...children); },
         setAttribute(name, value) { attributes.set(name, value); },
@@ -3565,7 +3572,7 @@ async function openedIndexHistory() {
     h.context.location.href = article ? `${indexURL}&article=${article}` : indexURL;
   };
   h.context.history = { back() { back.push(true); } };
-  h.context.restoreRoute = (_years, { fromHistory, focusArticle = '' } = {}) => restores.push({ fromHistory, focusArticle });
+  h.context.restoreRoute = (_years, { focusArticle = '' } = {}) => restores.push({ focusArticle });
   runInNewContext(appSection('function openArticle(', 'function validSourceURL('), h.context);
   await h.load();
   const link = h.$('articles').firstElementChild.firstElementChild.firstElementChild;
@@ -3607,7 +3614,7 @@ test('browser Back revalidates the index and only carries the originating articl
       else h.context.vehicle.region = 'CA';
     }
     h.returnToIndex();
-    assert.deepEqual(h.restores, [{ fromHistory: true, focusArticle: change === 'browser' ? 'first' : '' }], change);
+    assert.deepEqual(h.restores, [{ focusArticle: change === 'browser' ? 'first' : '' }], change);
     assert.notEqual(h.context.document.activeElement, h.link, change);
   }
 });
@@ -6119,14 +6126,60 @@ function selectorOptionsHarness(response) {
  const statuses=[], displayed=[];
  const requests=[];
  const context={ $, navigation:new NavigationGeneration(), document:{body:{dataset:{}}}, retryAction:null, currentOrder:'', paidOrder:'', stage(){}, selectorPath:()=>'/choices', requestJSON:async path=>{requests.push(path);if(response instanceof Error)throw response;return response;},
+  session:{ state:{mode:'firebase'} },
   readCollection:(read,options)=>readCollection(read,{...options,attempts:2,wait:async()=>{}}),
   populate(name,items,desired){displayed.push(items);$(name).disabled=!items.length;$(name).value=desired;},
   recordStatus:(text,options={})=>statuses.push({text,...options}), restoreRoute(){},
  };
- runInNewContext(appSection('function status(', 'function stage(')+appSection('async function operation(', 'function updateURL(')+appSection('async function loadOptions(', 'function renderPurchase(')+
+ runInNewContext(appSection('function status(', 'function stage(')+appSection('async function operation(', 'function updateURL(')+appSection('function cachedSelector(', 'function renderPurchase(')+
   'const actualStatus = status; status = (text, options = {}) => { recordStatus(text, options); actualStatus(text, options); };',context);
  return {context,$,statuses,displayed,requests,load:(desired='',current,initial=null,name='configuration')=>context.operation(g=>context.loadOptions(name,current?{...g,current}:g,desired,initial),()=>context.restoreRoute())};
 }
+
+test('identical hydration snapshots preserve existing option nodes and the selected make', () => {
+  const harness = loginRouteHarness('');
+  const rows = [{ id: 'toyota', name: 'Toyota' }];
+  harness.context.populate('make', rows, 'toyota');
+  const first = harness.element('make').options[1];
+  harness.context.populate('make', structuredClone(rows));
+  assert.equal(harness.element('make').options[1], first);
+  assert.equal(harness.element('make').value, 'toyota');
+});
+
+test('usable engine rows stay selectable while the catalog completion marker is pending', async () => {
+  const h = selectorOptionsHarness({ items: [{ id: 'engine', complete: true }], hydrating: false, complete: false });
+  await h.load();
+  assert.equal(h.$('configuration').disabled, false);
+  assert.equal(h.statuses.at(-1).text, 'Choose your vehicle to continue.');
+  assert.equal(h.statuses.some(status => status.error), false);
+});
+
+test('complete picker rows are reused only in their own scope and within their freshness window', async () => {
+  const h = selectorOptionsHarness({ items: [{ id: 'engine' }], hydrating: false, complete: true });
+  let time = 0;
+  let scope = '/first';
+  h.context.performance = { now: () => time };
+  h.context.selectorPath = () => scope;
+  await h.load();
+  await h.load();
+  scope = '/second';
+  await h.load();
+  time = 30_001;
+  scope = '/first';
+  await h.load();
+  assert.deepEqual(h.requests, ['/first', '/second', '/first']);
+});
+
+test('local or unconfirmed authorization never reuses a cached Firebase picker scope', async () => {
+  const h = selectorOptionsHarness({ items: [{ id: 'engine' }], complete: true });
+  await h.load();
+  h.context.session.state.mode = 'local';
+  await h.load();
+  await h.load();
+  h.context.session.state.mode = null;
+  await h.load();
+  assert.deepEqual(h.requests, ['/choices', '/choices', '/choices', '/choices']);
+});
 
 test('a prefetched selector miss is checked again after the parent was validated', async () => {
   const h = selectorOptionsHarness({ items: [{ id: 'selected' }], complete: true });

@@ -775,7 +775,8 @@ paths:
       - Catalog media
       operationId: listCatalogYears
       summary: List catalog years
-      parameters: []
+      parameters:
+      - $ref: '#/components/parameters/StoredSelectorOnly'
       responses:
         '200':
           description: Available selector rows and durable completeness.
@@ -800,6 +801,10 @@ paths:
                           type: integer
                           minimum: 1886
                           maximum: 2100
+                  complete:
+                    type: boolean
+                  hydrating:
+                    type: boolean
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -831,6 +836,7 @@ paths:
         schema:
           type: string
           default: US
+      - $ref: '#/components/parameters/StoredSelectorOnly'
       responses:
         '200':
           description: Available selector rows and durable completeness.
@@ -895,6 +901,7 @@ paths:
         schema:
           type: string
           default: US
+      - $ref: '#/components/parameters/StoredSelectorOnly'
       responses:
         '200':
           description: Available selector rows and durable completeness.
@@ -964,6 +971,7 @@ paths:
         schema:
           type: string
           default: US
+      - $ref: '#/components/parameters/StoredSelectorOnly'
       responses:
         '200':
           description: Available selector rows and durable completeness.
@@ -1912,6 +1920,14 @@ components:
         stored. State-changing requests require exact Origin and X-CSRF-Token from
         GET /auth/session.
   parameters:
+    StoredSelectorOnly:
+      name: stored_only
+      in: query
+      schema:
+        type: string
+        enum:
+        - '1'
+      description: Read stored selector rows without scheduling supplier hydration.
     VehicleId:
       name: vehicle_id
       in: path
