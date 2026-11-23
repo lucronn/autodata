@@ -123,9 +123,9 @@ def test_partial_selector_retry_is_bounded_then_replays_complete(monkeypatch):
     monkeypatch.setattr(service, "_persist_hydration_scope", lambda request, result, **kwargs: persisted.append(result) or {})
     monkeypatch.setattr(service, "_schedule_selector_deepening", lambda *a: pytest.fail("public descendant job"))
     monkeypatch.setattr(service.selector_job, "ADMISSION", service.selector_job.SelectorAdmission(clock=lambda: clock[0]))
-    def owned(request, deadline):
+    def owned(request, deadline, *, on_progress):
         resolved = service.CacheFirstCatalogService(cache_reader=lambda _: None, providers=(first, second)).resolve(
-            service.CatalogRequest(2020, "Ford", "unknown", scope="models"))
+            service.CatalogRequest(2020, "Ford", "unknown", scope="models"), on_progress=on_progress)
         return {"rows": list(resolved.rows), "complete": resolved.complete,
                 "missing_scopes": list(resolved.missing_scopes), "provenance": list(resolved.provenance)}
     monkeypatch.setattr(service.selector_job, "run_owned", owned)

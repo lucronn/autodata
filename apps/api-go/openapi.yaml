@@ -1014,6 +1014,9 @@ paths:
                     type: boolean
                   hydrating:
                     type: boolean
+                  discovering:
+                    type: boolean
+                    description: The listed engines are selectable while the source catalog looks for more.
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':

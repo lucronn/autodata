@@ -36,8 +36,9 @@ type CatalogModelsResponse struct {
 	CatalogHydrationResponse
 }
 type CatalogConfigurationsResponse struct {
-	Version string                 `json:"version"`
-	Items   []CatalogConfiguration `json:"items"`
+	Version     string                 `json:"version"`
+	Items       []CatalogConfiguration `json:"items"`
+	Discovering bool                   `json:"discovering,omitempty"`
 	CatalogHydrationResponse
 }
 type CatalogArticlesResponse struct {
@@ -76,12 +77,15 @@ func (s *Server) listCatalogMakes(response http.ResponseWriter, request *http.Re
 		writeAPIError(response, request, http.StatusUnprocessableEntity, "INVALID_REQUEST", "year is invalid", false)
 		return
 	}
-	items, err := s.catalog.Makes(request.Context(), principal, year, request.URL.Query().Get("region"))
+	region := request.URL.Query().Get("region")
+	// Read the marker before the rows. A concurrent completion can otherwise
+	// make an older partial row set appear complete to the caller.
+	complete, err := s.catalog.CatalogScopeComplete(request.Context(), principal, "makes", year, "", "", region)
 	if err != nil {
 		s.writeCatalogError(response, request, err)
 		return
 	}
-	complete, err := s.catalog.CatalogScopeComplete(request.Context(), principal, "makes", year, "", "", request.URL.Query().Get("region"))
+	items, err := s.catalog.Makes(request.Context(), principal, year, region)
 	if err != nil {
 		s.writeCatalogError(response, request, err)
 		return
@@ -105,12 +109,13 @@ func (s *Server) listCatalogModels(response http.ResponseWriter, request *http.R
 		return
 	}
 	makeName := catalogPathValue(request.PathValue("make"))
-	items, err := s.catalog.Models(request.Context(), principal, year, makeName, request.URL.Query().Get("region"))
+	region := request.URL.Query().Get("region")
+	complete, err := s.catalog.CatalogScopeComplete(request.Context(), principal, "models", year, makeName, "", region)
 	if err != nil {
 		s.writeCatalogError(response, request, err)
 		return
 	}
-	complete, err := s.catalog.CatalogScopeComplete(request.Context(), principal, "models", year, makeName, "", request.URL.Query().Get("region"))
+	items, err := s.catalog.Models(request.Context(), principal, year, makeName, region)
 	if err != nil {
 		s.writeCatalogError(response, request, err)
 		return
@@ -135,12 +140,13 @@ func (s *Server) listCatalogConfigurations(response http.ResponseWriter, request
 	}
 	makeName := catalogPathValue(request.PathValue("make"))
 	modelName := catalogPathValue(request.PathValue("model"))
-	items, err := s.catalog.Configurations(request.Context(), principal, year, makeName, modelName, request.URL.Query().Get("region"))
+	region := request.URL.Query().Get("region")
+	complete, err := s.catalog.CatalogScopeComplete(request.Context(), principal, "configurations", year, makeName, modelName, region)
 	if err != nil {
 		s.writeCatalogError(response, request, err)
 		return
 	}
-	complete, err := s.catalog.CatalogScopeComplete(request.Context(), principal, "configurations", year, makeName, modelName, request.URL.Query().Get("region"))
+	items, err := s.catalog.Configurations(request.Context(), principal, year, makeName, modelName, region)
 	if err != nil {
 		s.writeCatalogError(response, request, err)
 		return
@@ -159,6 +165,7 @@ func (s *Server) listCatalogConfigurations(response http.ResponseWriter, request
 	}
 	writeJSON(response, http.StatusOK, CatalogConfigurationsResponse{
 		Version: "v1", Items: items,
+		Discovering:              usable && !complete && s.ingestionClient != nil,
 		CatalogHydrationResponse: CatalogHydrationResponse{Complete: complete && usable, Hydrating: hydrating},
 	})
 }

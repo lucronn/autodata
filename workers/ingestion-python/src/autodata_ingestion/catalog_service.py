@@ -139,7 +139,7 @@ class CacheFirstCatalogService:
         self._providers = tuple(providers)
         self._cache_writer = cache_writer
 
-    def resolve(self, request: CatalogRequest) -> CatalogResult:
+    def resolve(self, request: CatalogRequest, *, on_progress: Callable[[CatalogResult], None] | None = None) -> CatalogResult:
         cached = self._cache_reader(request)
         if _is_complete(cached):
             result = _result_from_payload(cached, cache_hit=True, scope=request.scope)
@@ -154,7 +154,7 @@ class CacheFirstCatalogService:
             rows.extend(_canonical_rows(cached.get("rows", cached.get("records", [])), scope=request.scope))
             provenance.extend(_provenance(cached.get("provenance", ())))
 
-        for provider in self._providers:
+        for index, provider in enumerate(self._providers):
             try:
                 payload = _call_provider(provider, request)
             except (_SelectorDeepeningStopped, selector_job.SelectorJobStopped):
@@ -166,7 +166,8 @@ class CacheFirstCatalogService:
             try:
                 normalized_rows = _canonical_rows(payload.get("rows", payload.get("records", ())), scope=request.scope)
                 rows = _merge_rows(rows, normalized_rows)
-                provenance.extend(_provenance(payload.get("provenance", ())))
+                provider_provenance = _provenance(payload.get("provenance", ()))
+                provenance.extend(provider_provenance)
                 missing.update(_missing_scopes(payload))
                 provider_complete = bool(payload.get("complete")) and not _missing_scopes(payload)
             except Exception as error:
@@ -175,6 +176,13 @@ class CacheFirstCatalogService:
             if provider_complete:
                 complete = True
                 completed_providers += 1
+                if on_progress is not None and normalized_rows and provider_provenance and index + 1 < len(self._providers):
+                    on_progress(CatalogResult(
+                        rows=tuple(normalized_rows),
+                        complete=False,
+                        missing_scopes=(request.scope,),
+                        provenance=tuple(provider_provenance),
+                    ))
             else:
                 _configuration_diagnostic(request, provider=provider, stage="provider_resolution", outcome="incomplete", row_count=len(normalized_rows))
         if request.scope in {"makes", "models", "configurations"} or any(
@@ -459,9 +467,28 @@ def _ensure_initial_selector(request, key):
     complete = False
     stage = "resolve"
     try:
+        def persist_progress(payload):
+            # A verified provider can supply choices before the next dispatch.
+            # Leave completion to the final result from all configured sources.
+            try:
+                progress = CatalogResult(
+                    rows=tuple(_canonical_rows(payload["rows"], scope=scope)),
+                    complete=False,
+                    provenance=tuple(_provenance(payload["provenance"])),
+                    missing_scopes=(scope,),
+                )
+                _persist_hydration_scope(request, progress, deadline=deadline, progress=True)
+            except selector_job.SelectorJobStopped:
+                return
+            except Exception as error:
+                _LOG.warning("catalog selector progress persistence failed scope=%s error_type=%s",
+                             scope, type(error).__name__)
+
         normalized = {"scope": scope, "year": model.year, "make": model.make,
                       "region": model.region}
-        payload = selector_job.run_owned(normalized, deadline)
+        payload = selector_job.run_owned(normalized, deadline, **(
+            {"on_progress": persist_progress} if scope in {"makes", "models"} else {}
+        ))
         selector_job.SelectorJobControl(deadline).remaining()
         resolved = CatalogResult(rows=tuple(_canonical_rows(payload["rows"], scope=scope)),
                                  complete=payload["complete"],
@@ -1382,7 +1409,9 @@ def _persist_resolved_catalog_rows(
     return {"status": "persisted", "row_count": len(persistable), **result}
 
 
-def _persist_hydration_scope(request: Mapping[str, Any], result: CatalogResult, *, deadline: float | None = None) -> dict[str, Any]:
+def _persist_hydration_scope(
+    request: Mapping[str, Any], result: CatalogResult, *, deadline: float | None = None, progress: bool = False,
+) -> dict[str, Any]:
     """Persist a durable completeness marker for a successful scoped read."""
 
     # Empty rows are allowed: a complete provider enumeration with no matching
@@ -1448,9 +1477,10 @@ def _persist_hydration_scope(request: Mapping[str, Any], result: CatalogResult, 
                                        || EXCLUDED.selector_rows) AS merged(item)) END,
                         completion_version = EXCLUDED.completion_version,
                         updated_at = now()
+                    WHERE NOT %s OR vehicle_catalog_hydration_scopes.completion_version = 0
                     """,
                     (scope_key, scope, year, make, model, region, Jsonb(list(result.provenance)),
-                     Jsonb(selector_rows), 1 if result.complete else 0),
+                     Jsonb(selector_rows), 1 if result.complete else 0, progress),
                 )
             else:
                 if deadline is not None and scope == "years":

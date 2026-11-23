@@ -35,6 +35,8 @@ def isolated_selector(monkeypatch):
     dsn=psycopg.conninfo.make_conninfo(**conninfo,dbname=name)
     # Exact owning table DDL, without unrelated vector/identity migrations.
     definitions=[('002_platform_spine.sql','source_snapshots'),('003_canonical_vehicle.sql','vehicles'),
+                 ('029_vehicle_catalog_sync.sql','vehicle_catalog_syncs'),
+                 ('029_vehicle_catalog_sync.sql','vehicle_catalog_sync_scopes'),
                  ('030_vehicle_catalog_years.sql','vehicle_catalog_years'),
                  ('033_catalog_scope_coverage.sql','vehicle_catalog_hydration_scopes')]
     with psycopg.connect(dsn,autocommit=True) as connection:
@@ -45,21 +47,30 @@ def isolated_selector(monkeypatch):
             assert match, table
             connection.execute(match[0])
         connection.execute((ROOT/'db/migrations/042_catalog_selector_rows.sql').read_text())
+        # This fixture exercises sparse rows without materializing vehicle identities.
+        connection.execute('CREATE TABLE vehicle_identity_bases (model_year integer, make text, model text, region text, reviewer_state text)')
     for key,value in {'AUTODATA_DB_ADDRESS':host+':5432','AUTODATA_POSTGRES_DB':name,
                       'AUTODATA_POSTGRES_USER':'selector436','AUTODATA_POSTGRES_PASSWORD':'selector436_fixture_only',
                       'AUTODATA_SOURCE_PERSIST':'1','BANKTWO_BASE_URL':''}.items(): monkeypatch.setenv(key,value)
     monkeypatch.setattr(selector_job,'ADMISSION',selector_job.SelectorAdmission())
     catalog._HYDRATION_RESULTS.clear()
-    state={'calls':[], 'complete':True, 'status':200}
+    state={'calls':[], 'complete':True, 'status':200, 'scope':'years'}
     class Connector(BaseHTTPRequestHandler):
         def do_GET(self):
             state['calls'].append(self.path)
             if state['status']!=200:
                 self.send_response(state['status']); self.end_headers(); return
-            body=json.dumps(_envelope(scope='years',items=[
+            scope=state['scope']
+            items=[
                 {'year':2024,'opaque_ref':'authored-2024','label':'2024'},
-                {'year':2023,'opaque_ref':'authored-2023','label':'2023'}],
-                complete=state['complete'],next_cursor=None if state['complete'] else 'next')).encode()
+                {'year':2023,'opaque_ref':'authored-2023','label':'2023'}]
+            if scope != 'years':
+                item={'year':2024,'opaque_ref':'first','label':'First','make':'First' if scope=='makes' else 'Authored'}
+                if scope == 'models':
+                    item['model']='First'
+                items=[item]
+            body=json.dumps(_envelope(scope=scope,items=items,complete=state['complete'],
+                next_cursor=None if state['complete'] else 'next')).encode()
             self.send_response(200); self.send_header('Content-Type','application/json'); self.send_header('Content-Length',str(len(body))); self.end_headers(); self.wfile.write(body)
         def log_message(self,*args): pass
     source=ThreadingHTTPServer(('127.0.0.1',0),Connector)
@@ -144,8 +155,11 @@ def test_partial_selector_marker_remains_partial_until_complete(isolated_selecto
         assert version==0 and len(rows)==1
     complete=catalog.CatalogResult(rows=partial.rows,complete=True)
     catalog._persist_hydration_scope(request,complete,deadline=time.monotonic()+3)
+    stale_progress = catalog.CatalogResult(rows=({'year':2024,'make':'Historical','region':'US'},), complete=False)
+    catalog._persist_hydration_scope(request,stale_progress,deadline=time.monotonic()+3,progress=True)
     with psycopg.connect(dsn) as connection:
-        assert connection.execute('SELECT completion_version FROM vehicle_catalog_hydration_scopes').fetchone()[0]==1
+        version,rows=connection.execute('SELECT completion_version,selector_rows FROM vehicle_catalog_hydration_scopes').fetchone()
+        assert version==1 and [row['make'] for row in rows]==['Authored']
 
 
 def test_two_source_partial_cold_go_read_stays_empty_then_retries_after_cooldown(isolated_selector,monkeypatch):
@@ -195,3 +209,58 @@ def test_two_source_partial_cold_go_read_stays_empty_then_retries_after_cooldown
             assert connection.execute('SELECT count(*) FROM vehicle_catalog_hydration_scopes').fetchone()[0]==0
     finally:
         source.shutdown(); source.server_close(); thread.join(2)
+
+
+@pytest.mark.parametrize("scope,second_status", [("makes", 200), ("models", 200), ("makes", 429)])
+def test_cold_go_selector_shows_verified_first_provider_before_second(isolated_selector, monkeypatch, scope, second_status):
+    if os.getenv('AUTODATA_SELECTOR_GO_TEST') != '1':
+        pytest.skip('explicit Go cross-language fixture opt-in')
+    dsn, state, _, worker, name = isolated_selector
+    state['scope'] = scope
+    calls = []
+
+    class SecondConnector(BaseHTTPRequestHandler):
+        def do_GET(self):
+            calls.append(self.path)
+            self.send_response(second_status)
+            if second_status != 200:
+                self.end_headers()
+                return
+            item = {'year': 2024, 'opaque_ref': 'second', 'label': 'Second',
+                    'make': 'Second' if scope == 'makes' else 'Authored'}
+            if scope == 'models':
+                item['model'] = 'Second'
+            body = json.dumps(_envelope('banktwo', scope=scope, items=[item],
+                                       complete=True, next_cursor=None)).encode()
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    with ThreadingHTTPServer(('127.0.0.1', 0), SecondConnector) as source:
+        thread = threading.Thread(target=source.serve_forever, daemon=True)
+        thread.start()
+        monkeypatch.setenv('BANKTWO_BASE_URL', f'http://127.0.0.1:{source.server_port}')
+        host = os.environ['AUTODATA_SELECTOR_TEST_HOST']
+        env = {**os.environ,
+               'AUTODATA_SELECTOR_GO_DSN': f'postgres://selector436:selector436_fixture_only@{host}:5432/{name}?sslmode=disable',
+               'AUTODATA_SELECTOR_WORKER_URL': worker,
+               'AUTODATA_SELECTOR_PROGRESS_SCOPE': scope,
+               'AUTODATA_SELECTOR_EXPECT_PARTIAL': str(int(second_status != 200))}
+        try:
+            result = subprocess.run(['go', 'test', '-count=1', '-run', '^TestSelectorOwnedProgressFixture$', '.'],
+                                    cwd=ROOT/'apps/api-go', env=env, text=True, stdout=subprocess.PIPE,
+                                    stderr=subprocess.STDOUT, timeout=90)
+            assert result.returncode == 0, result.stdout[-6000:]
+        finally:
+            source.shutdown()
+            thread.join(2)
+    assert len(state['calls']) == len(calls) == 1
+    with psycopg.connect(dsn) as connection:
+        version, provenance = connection.execute('SELECT completion_version, provenance FROM vehicle_catalog_hydration_scopes').fetchone()
+        expected_providers = {'autoapi', 'autoapitwo'} if second_status == 200 else {'autoapi'}
+        assert version == int(second_status == 200)
+        assert {entry['provider'] for entry in provenance} == expected_providers
