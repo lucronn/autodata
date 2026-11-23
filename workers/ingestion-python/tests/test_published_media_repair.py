@@ -430,6 +430,49 @@ def test_retained_technical_rows_and_reasons_survive_repositioning():
     assert result.provenance["model_calls"] == result.provenance["model_dispatch_count"] == 0
 
 
+@pytest.mark.parametrize(("prompt_version", "validator_version", "flow_unit"), [
+    ("full-prose-auto-prompt-v56", "full-prose-auto-validator-v54", "cm³/min"),
+    ("full-prose-auto-prompt-v57", "full-prose-auto-validator-v55", "L/min"),
+])
+@pytest.mark.parametrize("ordinals", [False, True], ids=["media", "ordinals"])
+def test_repair_replays_retained_compound_specification(prompt_version, validator_version, flow_unit, ordinals):
+    opening = "Remove the pump."
+    specification = f"Set the return line flow rate to a maximum of 14 {flow_unit}."
+    image = _image()
+    old = _document([{"kind": "ordered_list", "items": [opening, specification]}, image])
+    if ordinals:
+        repaired = _document([{"kind": "ordered_list", "start": 4, "items": [
+            opening, {"text": specification, "number": 9},
+        ]}, image])
+    else:
+        repaired = _document([{"kind": "ordered_list", "items": [
+            opening, {"text": specification, "blocks": [image]},
+        ]}])
+    response = _response(old, ["Take the pump off.", specification])
+    response["replacements"][1].update(action="retain", reason="Keep the exact flow limit.")
+    published = render_auto(old, response, prompt_version=prompt_version)
+
+    result = repair_published_media(
+        old, published, repaired, response=response, prompt_version=prompt_version, ordinals=ordinals,
+    )
+
+    instructions = result.document["blocks"][1]
+    assert instructions["items"][0] == "Take the pump off."
+    retained = instructions["items"][1]
+    assert retained["text"] == specification
+    if ordinals:
+        assert (instructions["start"], retained["number"]) == (4, 9)
+    else:
+        assert retained["blocks"][0]["storage_key"] == image["storage_key"]
+    assert result.remapped_response["replacements"][1] == {
+        **prose_slots(repaired)[1], "action": "retain", "reason": "Keep the exact flow limit.",
+    }
+    assert result.validation.passed
+    assert result.validation.report["validator_version"] == validator_version
+    assert result.provenance["original_prompt_version"] == prompt_version
+    assert result.provenance["model_dispatch_count"] == 0
+
+
 @pytest.mark.parametrize("prompt_version", [None, "full-prose-auto-prompt-v0", "full-prose-auto-prompt-v99"])
 def test_repair_rejects_unrecognized_original_prompt_version(prompt_version):
     old, published, repaired, response = _fixture()
