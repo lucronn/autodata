@@ -1,5 +1,12 @@
 # New article automatic worker
 
+For an existing continuous rollout, the reviewed target checkout can update the
+source pin while the worker is stopped. Run its worker module with
+`--continuous --rebind-source-from <previous-full-sha>` and set
+`AUTODATA_NEW_ARTICLE_SOURCE_SHA` to the target checkout's full SHA. This uses the
+existing state directory and worker lock. The rollout ID, enablement, cutoff,
+provider scope, and spent reservations are preserved.
+
 Status: reviewed implementation merged; the first finite worker is disabled and stopped after two admissions, with both reservations retained. Bankone published automatically as UNREVIEWED; Banktwo failed once with readable source fallback. The [bounded live proof](../verification/2026-11-06-new-article-live-proof.md) does not establish two-bank publication or full-rewrite quality. The implementation gate is `docs/superpowers/plans/2026-11-06-new-article-worker.md`, record `docs/agents/records/2026-11-06-new-article-worker.json`; Issue https://github.com/lucronn/autodata/issues/186 and Project https://github.com/users/lucronn/projects/8 track the same work. Source base is merged PR350 `b3618fb6e68f1734ef029096748e30e655451a26` / tree `b686966c9bb4c01c7d35262c661f8645f9fb9f04`.
 
 The Workshop's persistent ingestion HTTP schedules jobs but does not process article jobs. Its separately gated prompt-v2 source refresh does not authorize a generic worker. The existing generic worker can resume historical rows, so this successor instead wraps existing exact-job dispatch with a persisted new-only eligibility boundary. No API/schema/validator change is proposed.
