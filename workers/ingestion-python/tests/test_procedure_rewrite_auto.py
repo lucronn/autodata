@@ -97,8 +97,9 @@ def test_automatic_rewrite_keeps_an_uppercase_assembly_instruction_editable(labe
     ("STOP LAMP SWITCH ASSEMBLY", "Assembly for the stop lamp sensor."),
     ("START SWITCH ASSEMBLY", "Assembly for the start relay."),
     ("START INHIBITOR SWITCH ASSEMBLY", "Assembly for the start inhibitor relay."),
+    ("SIDE IMPACT SENSOR ASSEMBLY", "Assembly for the front impact sensor."),
 ])
-def test_automatic_rewrite_preserves_switch_names_with_verb_like_words(label, replacement):
+def test_automatic_rewrite_preserves_switch_and_restraint_component_names(label, replacement):
     source, draft = _assembly_label_rewrite(replacement, label=label)
     assert run(source, draft).error_code == "REWRITE_SPEC_SCOPE_MUTATION"
 

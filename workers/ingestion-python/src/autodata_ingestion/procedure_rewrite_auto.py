@@ -458,9 +458,9 @@ _COMPONENT_ASSEMBLY_LABEL = re.compile(r"(?:the )?" + _ASSEMBLY_COMPONENT + r" a
 _ASSEMBLY_FOR_COMPONENT_LABEL = re.compile(r"(?:the )?assembly (?:for|of) (?:the )?" + _ASSEMBLY_COMPONENT)
 _LIST_ITEM_PROSE_PATH = re.compile(r"/items/\d+(?:/text)?$")
 _ASSEMBLY_LABEL_QUALIFIERS = frozenset(
-    "air ambient brake camshaft coolant crankshaft engine exhaust flow fluid front fuel heated heater high "
-    "intake left level low lower mass oil oxygen pedal position pressure rear right speed temperature throttle timing "
-    "upper wheel".split()
+    "air airbag ambient brake camshaft center centre coolant crankshaft engine exhaust flow fluid front fuel heated "
+    "heater high impact intake left level low lower mass oil oxygen pedal position pressure rear right side speed "
+    "temperature throttle timing upper wheel".split()
 )
 _ASSEMBLY_SWITCH_NAMES = frozenset({
     "start switch", "start inhibitor switch", "start interlock switch", "stop lamp switch", "stop light switch",
