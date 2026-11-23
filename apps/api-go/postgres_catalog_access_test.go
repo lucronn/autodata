@@ -688,8 +688,9 @@ func TestPostgresPaidCatalogSourceBodyPreviewRights(t *testing.T) {
 	f.grant(0, f.configuration, "US")
 	detail := f.path("/" + f.article)
 	f.expect(0, "POST", detail+"/prepare", "{}", 202)
-	f.exec(`INSERT INTO source_snapshots(source_snapshot_id,adapter_name,source_uri,source_version,content_sha256,object_key)
-		VALUES($1::uuid,'banktwo','https://fixture.invalid/preview','fixture',repeat('8',64),'sources/preview')`, snapshot)
+	f.exec(`INSERT INTO source_snapshots(source_snapshot_id,adapter_name,source_uri,source_version,content_sha256,object_key,
+		license_metadata,retrieved_at)
+		VALUES($1::uuid,'banktwo','https://fixture.invalid/preview','fixture',repeat('8',64),'sources/preview','{}',now())`, snapshot)
 	f.exec(`UPDATE source_fetch_jobs j SET checkpoint=j.checkpoint||jsonb_build_object('source_body_preview',
 		jsonb_build_object('snapshot_id',$2::text,'descriptor_snapshot_id',a.descriptor_source_snapshot_id::text,
 		'document',jsonb_build_object('schema_version',1,'blocks',jsonb_build_array(jsonb_build_object('type','paragraph','text',$3::text)))))
