@@ -31,8 +31,10 @@ const {
   requestJSON,
   requestArticleJSON,
   requestInitialYears,
+  requestStoredSelector,
   selectedIndexSessionPreference,
   sourceReferenceURL,
+  vehicleSelectorPath,
 } = catalog;
 
 const $ = (id) => document.getElementById(id);
@@ -348,16 +350,8 @@ function populate(name, items, desired = "") {
   if (select.value !== nextValue) select.value = nextValue;
   select.disabled = !items.length;
 }
-function selectorPath(name, selection) {
-  const year = encodeURIComponent(selection?.year ?? $("year").value),
-    make = encodeURIComponent(selection?.make ?? $("make").value),
-    model = encodeURIComponent(selection?.model ?? $("model").value);
-  return {
-    year: "/v1/catalog/years",
-    make: `/v1/catalog/years/${year}/makes?region=US`,
-    model: `/v1/catalog/years/${year}/makes/${make}/models?region=US`,
-    configuration: `/v1/catalog/years/${year}/makes/${make}/models/${model}/configurations?region=US`,
-  }[name];
+function selectorPath(name, selection = { year: $("year").value, make: $("make").value, model: $("model").value }) {
+  return vehicleSelectorPath(name, selection);
 }
 function cachedSelector(path) {
   if (session.state.mode !== "firebase") return null;
@@ -380,8 +374,7 @@ function usableEngineChoices(name, response) {
     response.items.every((item) => item.complete !== false);
 }
 function readStoredSelector(path, signal, timeout) {
-  const separator = path.includes("?") ? "&" : "?";
-  return requestJSON(`${path}${separator}stored_only=1`, { signal, timeout });
+  return requestStoredSelector(path, { signal, timeout }, requestJSON);
 }
 async function loadOptions(name, g, desired = "", initial = null) {
   const path = selectorPath(name);
@@ -2148,10 +2141,12 @@ async function signIn() {
   }
   await restoreRoute();
 }
-export async function bootstrap(initialYears, initialAccount, { preservePicker = false } = {}) {
+export async function bootstrap(initialYears, initialAccount, { preservePicker = false, initialSelectors = null } = {}) {
   invalidate();
   const params = new URLSearchParams(location.search);
-  const years = preservePicker ? null : initialYears ?? requestInitialYears(params);
+  const early = openDemo || preservePicker ? null : initialSelectors;
+  if (!early) initialSelectors?.abort();
+  const years = preservePicker || early ? null : initialYears ?? requestInitialYears(params);
   if (openDemo) return restoreRoute(years);
   loadPurchaseConfiguration();
   const accountCheck = checkAccount(initialAccount);
@@ -2162,7 +2157,7 @@ export async function bootstrap(initialYears, initialAccount, { preservePicker =
   // The first route can restore public selectors while the account is checked.
   // Account actions wait for that same check and use the current navigation.
   if (sessionEstablished) await accountCheck;
-  await Promise.all([accountCheck, restoreRoute(years)]);
+  await Promise.all([accountCheck, restoreRoute(years, { initialSelectors: early })]);
 }
 function loadPurchaseConfiguration() {
   const configRequest = requestJSON("/workshop/purchase-config.json")
@@ -2184,10 +2179,12 @@ function checkAccount(initial) {
   sessionRequest = accountCheck;
   return accountCheck;
 }
-async function restoreRoute(initialYears = null, { focusArticle = "" } = {}) {
+async function restoreRoute(initialYears = null, { focusArticle = "", initialSelectors = null } = {}) {
   invalidate();
   show("welcome");
   const params = new URLSearchParams(location.search);
+  const early = initialSelectors?.route === params.toString() ? initialSelectors : null;
+  if (!early) initialSelectors?.abort();
   // URL state is authoritative on history, sign-in, and direct-link restores.
   // A prior vehicle must not leave usable descendants or filter another index.
   for (const name of names) populate(name, []);
@@ -2195,8 +2192,9 @@ async function restoreRoute(initialYears = null, { focusArticle = "" } = {}) {
   vehicle = null;
   quote = null;
   renderPurchase();
-  return operation(
+  const restore = operation(
     async (g) => {
+      if (early) g.signal.addEventListener("abort", early.abort, { once: true });
       const order = params.get("order");
       if (!openDemo && uuid(order)) {
         if (sessionRequest) {
@@ -2238,7 +2236,7 @@ async function restoreRoute(initialYears = null, { focusArticle = "" } = {}) {
         return;
       }
       const desired = Object.fromEntries(names.map((name) => [name, params.get(name) || ""]));
-      const initial = { year: initialYears };
+      const initial = { year: initialYears, ...early?.reads };
       const year = Number(desired.year);
       if (/^\d{4}$/.test(desired.year) && year >= 1886 && year <= 2100) {
         // Read stored choices in parallel. A deeper list remains hidden until
@@ -2266,6 +2264,7 @@ async function restoreRoute(initialYears = null, { focusArticle = "" } = {}) {
     },
     () => restoreRoute(),
   );
+  return early ? restore.finally(early.abort) : restore;
 }
 for (const [index, name] of names.entries())
   $(name).addEventListener("change", () => {
