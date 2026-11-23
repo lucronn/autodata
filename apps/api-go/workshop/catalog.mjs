@@ -246,6 +246,7 @@ const DEFAULT_COLLECTION_POLL_ATTEMPTS = Math.ceil(
 const EMPTY_COLLECTION_PROBE_DELAY_MS = 350;
 const EMPTY_COLLECTION_PROBE_TIMEOUT_MS = 500;
 const PARTIAL_SELECTOR_FAST_WINDOW_MS = 8000;
+const ENGINE_DISCOVERY_INTERVAL_MS = 4000;
 const MAX_PARTIAL_SELECTOR_INTERVAL_MS = 12_000;
 
 // Hydration polling is bounded to one minute. The UI reports source progress;
@@ -301,6 +302,8 @@ export async function readCollection(
       // initial cadence through that interval, then slow optional refreshes.
       if (backoffWithChoices && !desired && latest.items.length > 0) {
         choicesSince ??= checkedAt;
+        if (latest.discovering && !latest.hydrating)
+          partialInterval = Math.max(partialInterval, ENGINE_DISCOVERY_INTERVAL_MS);
         if (checkedAt - choicesSince >= PARTIAL_SELECTOR_FAST_WINDOW_MS)
           partialInterval = Math.min(partialInterval * 2, MAX_PARTIAL_SELECTOR_INTERVAL_MS);
       } else {

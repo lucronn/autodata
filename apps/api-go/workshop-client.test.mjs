@@ -6497,16 +6497,29 @@ function selectorOptionsHarness(response) {
  const nodes = new Map();
  const $ = id => { if (!nodes.has(id)) nodes.set(id, {value:'',disabled:false,hidden:true,textContent:'',dataset:{}}); return nodes.get(id); };
  const statuses=[], displayed=[];
- const requests=[];
- const context={ $, navigation:new NavigationGeneration(), document:{body:{dataset:{}}}, retryAction:null, currentOrder:'', paidOrder:'', stage(){}, selectorPath:()=>'/choices', requestJSON:async path=>{requests.push(path);if(response instanceof Error)throw response;return response;},
+ const requests=[], waits=[];
+ let clock = 0;
+ const context={ $, navigation:new NavigationGeneration(), document:{body:{dataset:{}}}, retryAction:null, currentOrder:'', paidOrder:'', stage(){}, selectorPath:()=>'/choices',
+  async requestJSON(path, options) {
+    requests.push(path);
+    if (response instanceof Error) throw response;
+    return typeof response === 'function' ? response(path, options) : response;
+  },
   session:{ state:{mode:'firebase'} },
-  readCollection:(read,options)=>readCollection(read,{...options,attempts:2,wait:async()=>{}}),
-  populate(name,items,desired){displayed.push(items);$(name).disabled=!items.length;$(name).value=desired;},
+  readCollection:(read,options)=>readCollection(read,{
+    ...options, attempts:3, now:() => clock,
+    async wait(ms) { waits.push(ms); clock += ms; },
+  }),
+  populate(name,items,desired) {
+    displayed.push(items);
+    $(name).disabled = !items.length;
+    $(name).value = items.some(item => String(item.id ?? item.year) === desired) ? desired : '';
+  },
   recordStatus:(text,options={})=>statuses.push({text,...options}), restoreRoute(){},
  };
  runInNewContext(appSection('function status(', 'function stage(')+appSection('async function operation(', 'function updateURL(')+appSection('function cachedSelector(', 'function renderPurchase(')+
   'const actualStatus = status; status = (text, options = {}) => { recordStatus(text, options); actualStatus(text, options); };',context);
- return {context,$,statuses,displayed,requests,load:(desired='',current,initial=null,name='configuration')=>context.operation(g=>context.loadOptions(name,current?{...g,current}:g,desired,initial),()=>context.restoreRoute())};
+ return {context,$,statuses,displayed,requests,waits,load:(desired='',current,initial=null,name='configuration')=>context.operation(g=>context.loadOptions(name,current?{...g,current}:g,desired,initial),()=>context.restoreRoute())};
 }
 
 test('identical hydration snapshots preserve existing option nodes and the selected make', () => {
@@ -6519,29 +6532,120 @@ test('identical hydration snapshots preserve existing option nodes and the selec
   assert.equal(harness.element('make').value, 'toyota');
 });
 
-test('usable engine rows stay selectable while the catalog completion marker is pending', async () => {
-  const h = selectorOptionsHarness({ items: [{ id: 'engine', complete: true }], hydrating: false, complete: false });
+test('settled incomplete engine choices remain selectable and retry schedules once again', async () => {
+  const h = selectorOptionsHarness({
+    items: [{ id: 'engine', complete: true }], hydrating: false, discovering: false, complete: false,
+  });
+  h.context.restoreRoute = () => h.load();
   await h.load();
   assert.equal(h.$('configuration').disabled, false);
-  assert.equal(h.statuses.at(-1).text, 'Choose your vehicle to continue.');
+  assert.match(h.statuses.at(-1).text, /Choose an available engine/);
   assert.equal(h.statuses.some(status => status.error), false);
+  assert.equal(h.$('retry').hidden, false);
+  assert.deepEqual(h.requests, ['/choices']);
+  assert.deepEqual(h.waits, []);
+  await h.context.retryAction();
+  assert.deepEqual(h.requests, ['/choices', '/choices']);
 });
 
-test('selectable engine choices expand when the rest of the scope is discovered', async () => {
+test('selectable engine choices expand after one scheduling read and slower storage-only polls', async () => {
   const first = { id: 'engine-a', complete: true };
   const second = { id: 'engine-b', complete: true };
-  const h = selectorOptionsHarness(null);
+  const partial = { items: [first], hydrating: false, discovering: true, complete: false };
   let checks = 0;
-  h.context.requestJSON = async () => {
-    if (++checks === 1) return { items: [first], hydrating: false, discovering: true, complete: false };
-    assert.equal(h.$('configuration').disabled, false);
-    assert.match(h.statuses.at(-1).text, /More engine \/ trim choices are loading/);
-    return { items: [first, second], hydrating: false, complete: true };
-  };
+  const h = selectorOptionsHarness(() => {
+    if (++checks > 1) {
+      assert.equal(h.$('configuration').disabled, false);
+      assert.match(h.statuses.at(-1).text, /More engine \/ trim choices are loading/);
+    }
+    return checks < 3 ? partial : { items: [first, second], hydrating: false, complete: true };
+  });
   await h.load();
-  assert.equal(checks, 2);
-  assert.deepEqual(h.displayed, [[first], [first, second]]);
+  assert.deepEqual(h.requests, ['/choices', '/choices?stored_only=1', '/choices?stored_only=1']);
+  assert.deepEqual(h.waits, [4000, 4000]);
+  assert.deepEqual(h.displayed, [[first], [first], [first, second]]);
   assert.equal(h.statuses.at(-1).text, 'Choose your vehicle to continue.');
+});
+
+test('a missing saved engine keeps the fast storage-only cadence until its row arrives', async () => {
+  const alternate = { id: 'alternate', complete: true };
+  const saved = { id: 'saved', complete: true };
+  let checks = 0;
+  const h = selectorOptionsHarness(() => ({
+    items: ++checks < 3 ? [alternate] : [alternate, saved],
+    hydrating: false, discovering: true, complete: false,
+  }));
+  await h.load('saved');
+  assert.deepEqual(h.requests, ['/choices', '/choices?stored_only=1', '/choices?stored_only=1']);
+  assert.deepEqual(h.waits, [1500, 1500]);
+  assert.equal(h.$('configuration').value, 'saved');
+  assert.equal(h.$('retry').hidden, true);
+});
+
+test('an idle peer does not end discovery started by another API instance', async () => {
+  const first = { id: 'engine-a', complete: true };
+  const second = { id: 'engine-b', complete: true };
+  const responses = [
+    { items: [first], discovering: true, complete: false, discovery_instance: 'one' },
+    { items: [first], complete: false, discovery_instance: 'two' },
+    { items: [first, second], complete: false, discovery_instance: 'one' },
+  ];
+  const h = selectorOptionsHarness(() => responses.shift());
+  await h.load();
+  assert.deepEqual(h.requests, ['/choices', '/choices?stored_only=1', '/choices?stored_only=1']);
+  assert.deepEqual(h.waits, [4000, 4000]);
+  assert.deepEqual(h.displayed.at(-1), [first, second]);
+  assert.equal(h.$('configuration').disabled, false);
+  assert.equal(h.$('retry').hidden, false);
+});
+
+test('usable prefetched engine choices appear while the verified-parent scheduling response is pending', async () => {
+  const first = { id: 'engine-a', complete: true };
+  const second = { id: 'engine-b', complete: true };
+  const scheduled = deferredAuthOperation();
+  const prefetched = { items: [first], hydrating: false, discovering: false, complete: false };
+  const h = selectorOptionsHarness(path => path === '/choices'
+    ? scheduled.promise
+    : { items: [first, second], hydrating: false, complete: true });
+  const load = h.load('', null, Promise.resolve(prefetched));
+  try {
+    await new Promise(setImmediate);
+    assert.deepEqual(h.requests, ['/choices']);
+    assert.deepEqual(h.displayed, [[first]]);
+    assert.equal(h.$('configuration').disabled, false);
+  } finally {
+    scheduled.resolve({ ...prefetched, discovering: true });
+    await load;
+  }
+  assert.deepEqual(h.requests, ['/choices', '/choices?stored_only=1']);
+  assert.equal(h.displayed.at(-1).length, 2);
+  assert.equal(h.$('retry').hidden, true);
+});
+
+test('switching vehicles aborts an in-flight storage-only engine read and ignores its choices', async () => {
+  const first = { id: 'engine-a', complete: true };
+  const second = { id: 'engine-b', complete: true };
+  const stored = deferredAuthOperation();
+  let storedSignal;
+  const h = selectorOptionsHarness((path, { signal }) => {
+    if (path === '/choices') return { items: [first], discovering: true, complete: false };
+    storedSignal = signal;
+    return stored.promise;
+  });
+  const load = h.load();
+  try {
+    await new Promise(setImmediate);
+    assert.deepEqual(h.requests, ['/choices', '/choices?stored_only=1']);
+    assert.deepEqual(h.displayed, [[first]]);
+    assert.equal(storedSignal.aborted, false);
+  } finally {
+    h.context.navigation.clear();
+    stored.resolve({ items: [first, second], complete: true });
+    await load;
+  }
+  assert.equal(storedSignal.aborted, true);
+  assert.deepEqual(h.displayed, [[first]]);
+  assert.deepEqual(h.requests, ['/choices', '/choices?stored_only=1']);
 });
 
 test('complete picker rows are reused only in their own scope and within their freshness window', async () => {

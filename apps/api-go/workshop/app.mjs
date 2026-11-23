@@ -389,6 +389,19 @@ async function loadOptions(name, g, desired = "", initial = null) {
   const choice = (item) => String(item.id ?? item.year) === desired;
   const label = name === "configuration" ? "engine / trim" : name;
   let showingPartial = false;
+  let requestedConfiguration = false;
+  let discoveryInstance;
+  function showChoices(data) {
+    if (!g.current()) return;
+    populate(name, data.items, desired);
+    if (!(data.hydrating || data.discovering)) return;
+    const hasChoices = data.items.length > 0;
+    if (hasChoices === showingPartial) return;
+    showingPartial = hasChoices;
+    if (hasChoices)
+      status(`More ${label} choices are loading. You can choose an available option.`, { cancelable: true });
+    else status(`Loading ${label} choices…`, { busy: true });
+  }
   status(`Loading ${label} choices…`, { busy: true });
   stage(name);
   $(name).disabled = true;
@@ -401,15 +414,35 @@ async function loadOptions(name, g, desired = "", initial = null) {
         g.signal.throwIfAborted();
         if (response && Array.isArray(response.items) && (name === "year" ||
             (desired ? response.items.some(choice) : (response.complete === true || usableEngineChoices(name, response))))) {
-          if (name !== "year" && response.complete !== true) {
-            // The parent is now verified. Continue filling any usable partial list.
-            void requestJSON(path, { signal: g.signal }).catch(() => null);
+          const incomplete = name !== "year" && response.complete !== true;
+          if (name === "configuration" && incomplete && !desired) {
+            // Render the stored choices before the verified-parent discovery request.
+            showChoices(response);
+          } else {
+            if (incomplete)
+              void requestJSON(path, { signal: g.signal }).catch(() => null);
+            return response;
           }
-          return response;
         }
         // Stored descendants cannot start ingestion. A regular read can do so once the parent is valid.
       }
-      return requestJSON(path, { signal: g.signal, timeout });
+      if (name === "configuration") {
+        if (requestedConfiguration) {
+          const stored = await readStoredSelector(path, g.signal, timeout);
+          // An idle peer cannot confirm the scheduling instance has finished.
+          if (discoveryInstance && stored.discovery_instance && stored.discovery_instance !== discoveryInstance &&
+              !stored.complete && !stored.hydrating && !stored.discovering) {
+            const usable = usableEngineChoices(name, stored);
+            return { ...stored, hydrating: !usable, discovering: usable };
+          }
+          return stored;
+        }
+        requestedConfiguration = true;
+      }
+      const response = await requestJSON(path, { signal: g.signal, timeout });
+      if (name === "configuration" && (response.hydrating || response.discovering))
+        discoveryInstance = response.discovery_instance;
+      return response;
     },
     {
       signal: g.signal,
@@ -424,23 +457,13 @@ async function loadOptions(name, g, desired = "", initial = null) {
           return null;
         }
       },
-      onUpdate(data) {
-        if (!g.current()) return;
-        populate(name, data.items, desired);
-        if (!(data.hydrating || data.discovering)) return;
-        const hasChoices = data.items.length > 0;
-        if (hasChoices === showingPartial) return;
-        showingPartial = hasChoices;
-        if (hasChoices)
-          status(`More ${label} choices are loading. You can choose an available option.`, { cancelable: true });
-        else status(`Loading ${label} choices…`, { busy: true });
-      },
+      onUpdate: showChoices,
     },
   );
   if (!g.current()) return;
   if (result !== cached) rememberSelector(path, name, result);
   const selected = desired && result.items.some(choice);
-  if (!selected && (result.timedOut || (result.complete === false && !usableEngineChoices(name, result)))) {
+  if (!selected && (result.timedOut || result.complete === false)) {
     if (!desired && result.items.length) {
       status(`Choose an available ${label}. Some choices could not be loaded.`, { retry: () => restoreRoute() });
       return;
