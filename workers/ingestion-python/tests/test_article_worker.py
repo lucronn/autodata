@@ -1,10 +1,95 @@
 """Worker dispatch/recovery uses persisted phases and no warm IO."""
+import os
+from pathlib import Path
+import signal
+import subprocess
+import sys
+import time
+
 import pytest
 from uuid import uuid4
 from lifecycle_support import fresh_database, runtime
 from test_source_article_capture import capture_fixture
 from test_article_transform import prepare_transform, Model
 from autodata_ingestion import article_lifecycle_store as store
+
+
+def _supervisor_fixture_process(_poll_seconds):
+    folder = Path(os.environ["WORKSHOP_ARTICLE_POOL_TEST"])
+    (folder / f"child-{os.getpid()}").touch()
+    while not (folder / "exit-requested").exists():
+        time.sleep(0.01)
+    if os.environ.get("WORKSHOP_ARTICLE_POOL_EXIT_ALL") == "1":
+        raise SystemExit(7)
+    try:
+        (folder / "exit-owner").touch(exist_ok=False)
+    except FileExistsError:
+        time.sleep(30)
+    raise SystemExit(7)
+
+
+@pytest.mark.parametrize("mode", ["signal", "replace_worker", "both_exit"])
+def test_article_worker_pool_supervises_and_reaps_children(tmp_path, mode):
+    env = dict(os.environ, WORKSHOP_ARTICLE_POOL_TEST=str(tmp_path), AUTODATA_RUNTIME_SERVICE="article-worker")
+    env["WORKSHOP_ARTICLE_POOL_EXIT_ALL"] = "1" if mode == "both_exit" else "0"
+    env["PYTHONPATH"] = os.pathsep.join([str(Path(__file__).parent), *filter(None, sys.path)])
+    code = """
+from autodata_ingestion import worker
+from test_article_worker import _supervisor_fixture_process
+worker._article_worker_process = _supervisor_fixture_process
+raise SystemExit(worker.article_worker_main(["--poll-seconds", "0.05"]))
+"""
+    supervisor = subprocess.Popen([sys.executable, "-c", code], env=env)
+
+    def child_ids():
+        return {int(child.name.removeprefix("child-")) for child in tmp_path.glob("child-*")}
+
+    def wait_for_children(count):
+        deadline = time.monotonic() + 8
+        while time.monotonic() < deadline and supervisor.poll() is None:
+            children = child_ids()
+            if len(children) >= count:
+                return children
+            time.sleep(0.02)
+        pytest.fail(f"expected {count} worker starts")
+
+    def alive(pid):
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        return True
+
+    try:
+        initial = wait_for_children(2)
+        if mode != "signal":
+            (tmp_path / "exit-requested").touch()
+        if mode == "replace_worker":
+            started = wait_for_children(3)
+            assert sum(alive(pid) for pid in initial) == 1
+            assert all(alive(pid) for pid in started - initial)
+        if mode != "both_exit":
+            supervisor.terminate()
+        assert supervisor.wait(timeout=8) == (1 if mode == "both_exit" else 0)
+        assert not any(alive(pid) for pid in child_ids())
+    finally:
+        if supervisor.poll() is None:
+            supervisor.kill()
+            supervisor.wait(timeout=5)
+        for pid in child_ids():
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+
+
+@pytest.mark.parametrize("arguments", [["--once"], ["--worker-id", str(uuid4())]])
+def test_article_worker_pool_rejects_options_for_a_single_worker(arguments):
+    from autodata_ingestion.worker import article_worker_main
+
+    with pytest.raises(SystemExit) as error:
+        article_worker_main(["--processes", "2", *arguments])
+    assert error.value.code == 2
 
 
 def test_worker_publishes_persisted_source_and_warm_ensure_never_calls_model(fresh_database,capture_fixture):

@@ -1447,6 +1447,72 @@ def _warm_article_pdf_reader():
         pass
 
 
+def _article_worker_process(poll_seconds):
+    raise SystemExit(article_worker_main(["--processes", "1", "--poll-seconds", str(poll_seconds)]))
+
+
+def _supervise_article_workers(poll_seconds):
+    import signal
+    import sys
+    from multiprocessing import get_context
+    from multiprocessing.connection import wait
+
+    stopping = False
+
+    def request_stop(_signal, _frame):
+        nonlocal stopping
+        stopping = True
+
+    signals = (signal.SIGTERM, signal.SIGINT)
+    previous = {sig: signal.signal(sig, request_stop) for sig in signals}
+    context = get_context("spawn")
+    children = []
+
+    def start_worker():
+        child = context.Process(target=_article_worker_process, args=(poll_seconds,))
+        try:
+            child.start()
+        except OSError:
+            print("Could not start an article worker.", file=sys.stderr, flush=True)
+        else:
+            children.append(child)
+
+    try:
+        for _ in range(2):
+            if stopping:
+                break
+            start_worker()
+        restart_at = time.monotonic()
+        while not stopping:
+            for child in children[:]:
+                if child.exitcode is not None:
+                    child.join()
+                    children.remove(child)
+                    child.close()
+                    print("An article worker exited.", file=sys.stderr, flush=True)
+            if not children:
+                return 1
+            # Keep the active worker's lease while replacing its peer. Limit
+            # retries if the replacement cannot start or exits immediately.
+            if len(children) < 2 and time.monotonic() >= restart_at and not stopping:
+                restart_at = time.monotonic() + 5
+                start_worker()
+            wait([child.sentinel for child in children], timeout=0.2)
+        return 0
+    finally:
+        for child in children:
+            if child.is_alive():
+                child.terminate()
+        deadline = time.monotonic() + 5
+        for child in children:
+            child.join(timeout=max(0, deadline - time.monotonic()))
+            if child.is_alive():
+                child.kill()
+                child.join(timeout=1)
+        for sig, handler in previous.items():
+            signal.signal(sig, handler)
+
+
 def article_worker_main(argv=None):
     import argparse
     import sys
@@ -1462,8 +1528,20 @@ def article_worker_main(argv=None):
     parser.add_argument("--once",action="store_true")
     parser.add_argument("--poll-seconds",type=float,default=1)
     parser.add_argument("--worker-id",type=UUID,default=None)
+    parser.add_argument("--processes", type=int, choices=(1, 2),
+                        help="Run one worker or supervise two. The deployed article-worker service defaults to two.")
     args=parser.parse_args(argv)
     if args.poll_seconds<=0:parser.error("poll interval must be positive")
+    single_worker_options = args.once or args.worker_id is not None
+    if args.processes == 2 and single_worker_options:
+        parser.error("--processes 2 requires long-running workers with generated IDs")
+    hosted_pool = (
+        args.processes is None
+        and not single_worker_options
+        and os.getenv("AUTODATA_RUNTIME_SERVICE") == "article-worker"
+    )
+    if args.processes == 2 or hosted_pool:
+        return _supervise_article_workers(args.poll_seconds)
     endpoint=os.environ["AUTODATA_S3_ENDPOINT"]
     parsed=urlsplit(endpoint if "://" in endpoint else "http://"+endpoint)
     objects=ArticleObjectStore(endpoint=parsed.netloc,secure=parsed.scheme=="https",
