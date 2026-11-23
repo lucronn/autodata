@@ -60,6 +60,22 @@
               "maxLength": 120
             },
             "description": "Optional case-insensitive search over visible title, kind, component, and current readable article text. At most eight whitespace-separated words. In Firebase mode the current exact configuration grant is checked before searching; results remain metadata-only descriptors in index order. An empty query retains the unfiltered index."
+          },
+          {
+            "name": "Prefer",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Workshop can request workshop-confirm-session and workshop-purchase-quote on the exact selected configuration and region."
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required with workshop-confirm-session. Use the value from the successful Firebase exchange. The browser cookie must also match."
           }
         ],
         "responses": {
@@ -78,6 +94,19 @@
                   "type": "string",
                   "example": "private, no-store"
                 }
+              },
+              "Preference-Applied": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Acknowledges workshop-confirm-session after checking the exchanged cookie and current Firebase account."
+              },
+              "Workshop-Session-Expires": {
+                "schema": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "description": "Present with workshop-confirm-session."
               }
             }
           },
@@ -103,7 +132,7 @@
             "$ref": "#/components/responses/NotFound"
           }
         },
-        "description": "In Firebase mode vehicle_id is the exact canonical configuration UUID, not a base vehicle UUID. A verified session and current owner/configuration/region grant precede descriptor/progress reads, including content search. GET never schedules an index or article job. Only canonical identities are returned; document, body, steps and image URLs are omitted. An authenticated full-index GET with the exact region and the workshop-purchase-quote preference may receive a validated current purchase quote in error.details.purchase_quote on ENTITLEMENT_REQUIRED. The applied preference returns in Preference-Applied. A null quote indicates unavailable purchasing for the checked configuration."
+        "description": "In Firebase mode vehicle_id is the exact canonical configuration UUID, not a base vehicle UUID. A verified session and current owner/configuration/region grant precede descriptor/progress reads, including content search. GET never schedules an index or article job. Only canonical identities are returned; document, body, steps and image URLs are omitted. An authenticated full-index GET with the exact region and the workshop-purchase-quote preference may receive a validated current purchase quote in error.details.purchase_quote on ENTITLEMENT_REQUIRED. The applied preference returns in Preference-Applied. A null quote indicates unavailable purchasing for the checked configuration. The workshop-confirm-session preference confirms the exchanged cookie for the exact unfiltered index and returns Workshop-Session-Expires alongside the usual grant outcome."
       }
     },
     "/v1/catalog/vehicles/{vehicle_id}/articles/{article_id}": {
@@ -1575,6 +1604,18 @@
                   "type": "string"
                 },
                 "description": "Opaque secure cookie is set only after database commit; logout expires it."
+              },
+              "Preference-Applied": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Acknowledges workshop-confirm-session when requested."
+              },
+              "X-CSRF-Token": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Bound to the newly exchanged cookie. Present with workshop-confirm-session."
               }
             }
           },
@@ -1717,6 +1758,15 @@
               "type": "string"
             },
             "description": "Must be 1."
+          },
+          {
+            "name": "Prefer",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "example": "workshop-confirm-session"
+            },
+            "description": "Requests the CSRF value for confirming the newly exchanged cookie with the selected configuration index."
           }
         ],
         "requestBody": {

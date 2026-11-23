@@ -1,4 +1,6 @@
-import { requestJSON } from "./catalog.mjs";
+import * as catalog from "./catalog.mjs";
+
+const { requestJSON, selectedIndexSessionPreference } = catalog;
 export function validLoginConfig(config) {
   const f = config?.firebase;
   return Boolean(
@@ -69,10 +71,12 @@ export function createSession({
     provider,
     epoch = 0,
     preparation,
+    selectedIndexConfirmation,
     retried = false;
   const changed = () => onChange({ ...state });
   const clear = () => {
     epoch++;
+    selectedIndexConfirmation?.abort();
     state.mode = null;
     state.authenticated = false;
     state.csrf = "";
@@ -138,6 +142,7 @@ export function createSession({
     },
     async bootstrap({ signal, initial } = {}) {
       const current = ++epoch;
+      selectedIndexConfirmation?.abort();
       state.mode = null;
       state.authenticated = false;
       state.csrf = "";
@@ -168,7 +173,10 @@ export function createSession({
         if (state.available && error.status === 401) await prepare(current);
       }
     },
-    signIn() {
+    signIn({ confirmSelectedIndex } = {}) {
+      // App assets can span releases during a rolling deployment.
+      const useSelectedIndex = typeof selectedIndexSessionPreference === "string" &&
+        typeof confirmSelectedIndex === "function";
       if (!state.available || !state.ready || state.authenticated)
         return Promise.reject(new Error("Sign-in is unavailable."));
       const current = epoch;
@@ -197,12 +205,19 @@ export function createSession({
             e.code = "FRESH_SIGN_IN_REQUIRED";
             throw e;
           }
+          let exchangeCSRF = null;
           try {
             await request("/auth/firebase/session", {
               method: "POST",
               timeout: 10000,
               body: { id_token: token.token },
-              headers: { "X-Autodata-Session-Exchange": "1" },
+              headers: {
+                "X-Autodata-Session-Exchange": "1",
+                ...(useSelectedIndex ? { Prefer: selectedIndexSessionPreference } : {}),
+              },
+              ...(useSelectedIndex ? {
+                onSelectedIndexSession(receipt) { exchangeCSRF = receipt.exchangeCSRF; },
+              } : {}),
             });
           } catch (error) {
             if (error.status === 401 && !retried)
@@ -211,14 +226,35 @@ export function createSession({
           }
           if (current !== epoch) return;
           await sdk.signOut(auth);
-          const data = await request("/auth/session", { timeout: 10000 });
           if (current !== epoch) return;
-          if (!validSession(data)) throw new Error("Invalid session");
+          let confirmedIndex, confirmedSession;
+          if (exchangeCSRF) {
+            const confirmation = new AbortController();
+            selectedIndexConfirmation = confirmation;
+            try {
+              const index = await confirmSelectedIndex(exchangeCSRF, confirmation.signal);
+              const data = { authenticated: true, roles: ["dataset_viewer"],
+                expires_at: index?.expiresAt, csrf_token: exchangeCSRF };
+              if (validSession(data)) {
+                confirmedIndex = index.firstIndex;
+                confirmedSession = data;
+              }
+            } finally {
+              confirmation.abort();
+              if (selectedIndexConfirmation === confirmation) selectedIndexConfirmation = null;
+            }
+          }
+          if (current !== epoch) return;
+          const data = confirmedSession ?? await request("/auth/session", { timeout: 10000 });
+          if (current !== epoch) return;
+          if (!validSession(data) || (exchangeCSRF && data.csrf_token !== exchangeCSRF))
+            throw new Error("Invalid session");
           state.authenticated = true;
           state.csrf = data.csrf_token;
           state.confirm = false;
           retried = false;
           state.message = "Signed in.";
+          return confirmedIndex;
         } catch (error) {
           if (current !== epoch) return;
           if (error.code === "FRESH_SIGN_IN_REQUIRED" && !retried) {

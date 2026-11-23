@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext as runVM } from 'node:vm';
 import { NavigationGeneration, processingArticle, readableArticle } from './workshop/article-read.mjs';
 import { pollOrder, purchaseConfiguration, readOrder, resumableCheckoutURL, sameScope, uuid, validQuote, validScope, validLibrary } from './workshop/commerce.mjs';
-import { articlePresentation, configurationLabel, filterArticles, hasSourceReference, legacyArticleBlocks, localImageURL, readCollection, requestInitialYears, requestJSON, sourceReferenceURL } from './workshop/catalog.mjs';
+import { articlePresentation, configurationLabel, filterArticles, hasSourceReference, legacyArticleBlocks, localImageURL, readCollection, requestInitialYears, requestJSON, selectedIndexSessionPreference, sourceReferenceURL } from './workshop/catalog.mjs';
 import { LOAD_STAGES, loadingProgress } from './workshop/progress.mjs';
 
 // The app sections below run without the module bootstrap. Model the ordinary
@@ -1351,6 +1351,37 @@ test('cookie transport sends JSON/CSRF without bearer, honors response status an
   assert.equal(options.credentials,'same-origin');assert.equal(options.cache,'no-store');assert.equal(options.body,'{}');assert.equal(options.headers.Authorization,undefined);assert.equal(result.status,202);assert.equal(result.retryAfterSeconds,3);
   await assert.rejects(requestJSON('/x',{fetcher:async()=>new Response('{"error":{"code":"ENTITLEMENT_REQUIRED","message":"PRIVATE SECRET","retryable":false,"request_id":"safe-id"}}',{status:403})}),e=>e instanceof CatalogRequestError&&e.code==='ENTITLEMENT_REQUIRED'&&!e.message.includes('PRIVATE'));
 });
+test('selected index transport limits receipt handling to acknowledged private responses and disallows redirects', async () => {
+  const expiresAt = '2099-01-01T00:00:00Z';
+  const responses = [
+    new Response(null, { status: 204, headers: {
+      'Preference-Applied': selectedIndexSessionPreference, 'X-CSRF-Token': 'exchanged-csrf',
+    } }),
+    new Response('{"error":{"code":"ENTITLEMENT_REQUIRED"}}', { status: 403, headers: {
+      'Preference-Applied': `workshop-purchase-quote, ${selectedIndexSessionPreference}`,
+      'Workshop-Session-Expires': expiresAt,
+    } }),
+    new Response('{"error":{"code":"UNAUTHENTICATED"}}', { status: 401, headers: {
+      'Preference-Applied': selectedIndexSessionPreference, 'Workshop-Session-Expires': expiresAt,
+    } }),
+    new Response('{"items":[]}', { status: 200, headers: { 'Workshop-Session-Expires': expiresAt } }),
+  ];
+  const proofs = [];
+  const options = {
+    onSelectedIndexSession: proof => proofs.push(proof),
+    fetcher: async (_path, request) => {
+      assert.equal(request.redirect, 'error');
+      assert.equal(request.credentials, 'same-origin');
+      assert.equal(request.cache, 'no-store');
+      return responses.shift();
+    },
+  };
+  assert.equal(await requestJSON('/auth/firebase/session', options), null);
+  await assert.rejects(requestJSON('/articles', options), error => error.code === 'ENTITLEMENT_REQUIRED');
+  await assert.rejects(requestJSON('/articles', options), error => error.status === 401);
+  assert.deepEqual(await requestJSON('/articles', options), { items: [] });
+  assert.deepEqual(proofs, [{ exchangeCSRF: 'exchanged-csrf', expiresAt: null }, { exchangeCSRF: null, expiresAt }]);
+});
 test('indeterminate stage progress does not derive percentages from retries', () => {
   assert.equal(loadingProgress('make',{attempt:2,attempts:40,hydrating:true}).percent,null);
   assert.equal(loadingProgress('make',{attempt:39,attempts:40,hydrating:true}).percent,null);
@@ -1411,13 +1442,14 @@ test('session confirmation checks the same cookie proof without replacing client
 async function sessionPreparationHarness({
   authenticated = false, persistence = async () => {}, constructProvider = () => {}, popup,
   sdkSignOut = async () => {}, serverLogout = async () => {},
+  exchangeCSRF = null, sessionCSRF = 'cookie-csrf',
   tokenResult = () => {
     const time = new Date().toISOString();
     return { token: 'synthetic-token', authTime: time, issuedAtTime: time };
   },
 } = {}) {
   const { createSession } = await import('./workshop/auth.mjs');
-  const calls = { loads: 0, initializations: 0, providers: 0, persistence: 0, popups: 0, signouts: 0, exchanges: 0, tokenRefreshes: [] };
+  const calls = { loads: 0, initializations: 0, providers: 0, persistence: 0, popups: 0, signouts: 0, exchanges: 0, sessionReads: 0, tokenRefreshes: [] };
   const changes = [], user = {}, auth = {};
   let provider;
   const sdk = {
@@ -1457,8 +1489,9 @@ async function sessionPreparationHarness({
     request: async (path, options) => {
       if (path === '/auth/config') return { version: 'v1', mode: 'firebase', login_available: true, providers: ['google.com'], firebase: { apiKey: 'fixture', authDomain: 'fixture-project.firebaseapp.com', projectId: 'fixture-project', appId: '1:123:web:abc' } };
       if (path === '/auth/session') {
+        calls.sessionReads++;
         if (!authenticated) throw Object.assign(new Error('signed out'), { status: 401 });
-        return { authenticated: true, roles: ['dataset_viewer'], csrf_token: 'cookie-csrf', expires_at: '2099-01-01T00:00:00Z' };
+        return { authenticated: true, roles: ['dataset_viewer'], csrf_token: sessionCSRF, expires_at: '2099-01-01T00:00:00Z' };
       }
       if (path === '/auth/logout') {
         assert.equal(options.headers['X-CSRF-Token'], 'cookie-csrf');
@@ -1469,7 +1502,11 @@ async function sessionPreparationHarness({
       assert.equal(path, '/auth/firebase/session');
       assert.equal(options.method, 'POST');
       assert.deepEqual(options.body, { id_token: 'synthetic-token' });
-      assert.deepEqual(options.headers, { 'X-Autodata-Session-Exchange': '1' });
+      assert.deepEqual(options.headers, {
+        'X-Autodata-Session-Exchange': '1',
+        ...(options.onSelectedIndexSession ? { Prefer: selectedIndexSessionPreference } : {}),
+      });
+      if (exchangeCSRF) options.onSelectedIndexSession({ exchangeCSRF });
       calls.exchanges++;
       authenticated = true;
       return null;
@@ -1477,6 +1514,102 @@ async function sessionPreparationHarness({
   });
   return { session, calls, changes };
 }
+
+test('selected index checks the exchanged cookie after SDK sign-out', async () => {
+  const cleanupStarted = deferredAuthOperation();
+  const cleanup = deferredAuthOperation();
+  const { session, calls } = await sessionPreparationHarness({
+    exchangeCSRF: 'cookie-csrf',
+    sdkSignOut() { cleanupStarted.resolve(); return cleanup.promise; },
+  });
+  await session.bootstrap();
+  const index = { value: { items: [] } };
+  let indexReads = 0;
+  const signingIn = session.signIn({
+    confirmSelectedIndex(csrf, signal) {
+      assert.equal(csrf, 'cookie-csrf');
+      assert.equal(signal.aborted, false);
+      assert.equal(calls.signouts, 1);
+      indexReads++;
+      return { expiresAt: '2099-01-01T00:00:00Z', firstIndex: index };
+    },
+  });
+  await cleanupStarted.promise;
+  assert.equal(indexReads, 0);
+  assert.equal(session.state.authenticated, false);
+  cleanup.resolve();
+  assert.equal(await signingIn, index);
+  assert.equal(indexReads, 1);
+  assert.equal(session.state.authenticated, true);
+  assert.equal(session.state.csrf, 'cookie-csrf');
+  assert.equal(calls.sessionReads, 1);
+});
+
+test('a cookie replaced during SDK sign-out cannot provide a selected index', async () => {
+  const cleanupStarted = deferredAuthOperation();
+  const cleanup = deferredAuthOperation();
+  let browserCSRF = 'cookie-csrf';
+  const { session, calls } = await sessionPreparationHarness({
+    exchangeCSRF: 'cookie-csrf',
+    sessionCSRF: 'other-cookie',
+    sdkSignOut() { cleanupStarted.resolve(); return cleanup.promise; },
+  });
+  await session.bootstrap();
+  const signingIn = session.signIn({
+    confirmSelectedIndex(csrf) {
+      return browserCSRF === csrf
+        ? { expiresAt: '2099-01-01T00:00:00Z', firstIndex: { value: { items: ['old account'] } } }
+        : null;
+    },
+  });
+  await cleanupStarted.promise;
+  browserCSRF = 'other-cookie';
+  cleanup.resolve();
+  assert.equal(await signingIn, undefined);
+  assert.equal(session.state.authenticated, false);
+  assert.equal(calls.sessionReads, 2);
+});
+
+test('selected index negotiation falls back to the cookie read and rejects a different cookie', async t => {
+  for (const [name, exchangeCSRF, sessionCSRF, confirmed] of [
+    ['older exchange', null, 'cookie-csrf', true],
+    ['older index', 'cookie-csrf', 'cookie-csrf', true],
+    ['replaced cookie', 'cookie-csrf', 'other-cookie', false],
+  ]) {
+    await t.test(name, async () => {
+      const { session, calls } = await sessionPreparationHarness({ exchangeCSRF, sessionCSRF });
+      await session.bootstrap();
+      let indexes = 0;
+      assert.equal(await session.signIn({
+        confirmSelectedIndex() {
+          indexes++;
+          return { firstIndex: { value: { items: ['discarded'] } } };
+        },
+      }), undefined);
+      assert.equal(indexes, exchangeCSRF ? 1 : 0);
+      assert.equal(calls.sessionReads, 2);
+      assert.equal(session.state.authenticated, confirmed);
+    });
+  }
+});
+
+test('auth generation change aborts an in-flight selected index', async () => {
+  const started = deferredAuthOperation();
+  const { session, calls } = await sessionPreparationHarness({ exchangeCSRF: 'cookie-csrf' });
+  await session.bootstrap();
+  const signingIn = session.signIn({
+    confirmSelectedIndex(_csrf, signal) {
+      started.resolve(signal);
+      return new Promise(resolve => signal.addEventListener('abort', () => resolve(null), { once: true }));
+    },
+  });
+  const signal = await started.promise;
+  session.clear();
+  assert.equal(signal.aborted, true);
+  assert.equal(await signingIn, undefined);
+  assert.equal(session.state.authenticated, false);
+  assert.equal(calls.sessionReads, 1);
+});
 
 test('Firebase sign-in reuses recent popup tokens and refreshes older or unreadable issuance', async t => {
   for (const [name, issuedAt, expected] of [
@@ -1755,7 +1888,7 @@ const routeArticle = '22222222-2222-4222-8222-222222222222';
 const routeOrder = '33333333-3333-4333-8333-333333333333';
 const previousConfiguration = '44444444-4444-4444-8444-444444444444';
 
-function loginRouteHarness(search, { authenticate = true, signInError = null, login = null, library = null, selectorRead = null } = {}) {
+function loginRouteHarness(search, { authenticate = true, signInError = null, login = null, library = null, selectorRead = null, confirmSelectedIndex = null } = {}) {
   const navigation = new NavigationGeneration();
   const calls = { signIns: 0, checkoutClears: 0, checkouts: 0, routes: 0,
     selections: [], selectionOptions: [], libraries: 0, orders: [], options: [], selectorReads: [], invalidations: 0 };
@@ -1768,20 +1901,24 @@ function loginRouteHarness(search, { authenticate = true, signInError = null, lo
   };
   const configuration = { id: routeConfiguration, region: 'US' };
   const context = {
-    URLSearchParams, uuid, validScope, configurationLabel,
+    URLSearchParams, AbortSignal, uuid, validScope, configurationLabel, selectedIndexSessionPreference, validQuote,
     Option: function(text, value) { return { text, value }; },
-    location: { search }, signingIn: false, sessionRequest: null,
+    location: { pathname: '/workshop/', search }, signingIn: false, sessionRequest: null, viewGeneration: navigation.next(),
     vehicle: { id: previousConfiguration, region: 'US' }, quote: null,
     names: ['year', 'make', 'model', 'configuration'],
     rows: { configuration: [configuration] }, $: element,
     checkout: { read: () => null, clear() { calls.checkoutClears++; }, start() { calls.checkouts++; } },
-    session: { state: { authenticated: false }, async signIn() {
+    session: { state: { authenticated: false, mode: 'firebase' }, async signIn(options) {
       calls.signIns++;
       if (login) await login();
       if (signInError) throw signInError;
+      const result = await confirmSelectedIndex?.(options);
       context.session.state.authenticated = authenticate;
+      return result;
     } },
     scope: () => ({ configuration_id: context.vehicle?.id, region: context.vehicle?.region }),
+    articleRequestPath: () => `/v1/catalog/vehicles/${context.vehicle.id}/articles?region=${context.vehicle.region}`,
+    purchaseConfigured: () => true,
     invalidate() { calls.invalidations++; navigation.clear(); },
     show() {}, status() {}, renderPurchase() {},
     async operation(work) { calls.routes++; return work(navigation.next()); },
@@ -1801,7 +1938,7 @@ function loginRouteHarness(search, { authenticate = true, signInError = null, lo
     },
     async requestJSON(path, options) {
       calls.selectorReads.push({ path, signal: options.signal });
-      return selectorRead?.(path);
+      return selectorRead?.(path, options);
     },
     async loadOptions(name, g, desired, initial) {
       assert.equal(g.current(), true);
@@ -1944,6 +2081,76 @@ test('sign-in rechecks paid access for the displayed selection without reloading
   assert.equal(h.calls.checkoutClears, 1);
   assert.equal(h.calls.checkouts, 0);
   h.context.names.forEach((name, index) => assert.equal(h.element(name).children, before[index]));
+});
+
+test('selected sign-in hands off the exact negotiated index and purchase quote error once', async () => {
+  const revoked = Object.assign(new Error('Revoked'), { status: 403, code: 'ENTITLEMENT_REVOKED' });
+  const h = selectedCheckoutHarness({
+    async confirmSelectedIndex(options) {
+      const { expiresAt, firstIndex } = await options.confirmSelectedIndex('exchange-csrf', new AbortController().signal);
+      assert.equal(expiresAt, '2099-01-01T00:00:00Z');
+      return firstIndex;
+    },
+    selectorRead(path, options) {
+      assert.equal(path, `/v1/catalog/vehicles/${routeConfiguration}/articles?region=US`);
+      assert.equal(options.headers.Prefer, 'workshop-confirm-session, workshop-purchase-quote');
+      assert.equal(options.headers['X-CSRF-Token'], 'exchange-csrf');
+      options.onSelectedIndexSession({ expiresAt: '2099-01-01T00:00:00Z' });
+      throw revoked;
+    },
+  });
+  h.context.quote = { ...scopedQuoteFixture(), configuration_id: routeConfiguration, region: 'US' };
+  await h.context.signIn();
+  assert.equal(h.calls.selectionOptions[0].firstIndex.error, revoked);
+  assert.equal(h.calls.selectorReads.length, 1);
+});
+
+test('buffered index success needs a matching stored configuration and usable list', async t => {
+  const exact = { id: routeConfiguration, region: 'US' };
+  for (const [name, response, accepted] of [
+    ['exact', { configuration: exact, items: [] }, true],
+    ['other configuration', { configuration: { ...exact, id: previousConfiguration }, items: [] }, false],
+    ['other region', { configuration: { ...exact, region: 'CA' }, items: [] }, false],
+    ['missing metadata', { items: [] }, false],
+    ['malformed list', { configuration: exact }, false],
+  ]) {
+    await t.test(name, async () => {
+      const h = selectedCheckoutHarness({
+        async confirmSelectedIndex(options) {
+          const result = await options.confirmSelectedIndex('exchange-csrf', new AbortController().signal);
+          assert.equal(result.expiresAt, '2099-01-01T00:00:00Z');
+          return result.firstIndex;
+        },
+        selectorRead(_path, options) {
+          options.onSelectedIndexSession({ expiresAt: '2099-01-01T00:00:00Z' });
+          return response;
+        },
+      });
+      await h.context.signIn();
+      const firstIndex = h.calls.selectionOptions[0].firstIndex;
+      if (accepted) assert.equal(firstIndex.value, response);
+      else assert.equal(firstIndex, null);
+    });
+  }
+});
+
+test('superseding the picker generation aborts the early index even if the route returns to the same vehicle', async () => {
+  const started = deferredAuthOperation();
+  const h = selectedCheckoutHarness({
+    async confirmSelectedIndex(options) {
+      assert.equal(await options.confirmSelectedIndex('exchange-csrf', new AbortController().signal), null);
+    },
+    selectorRead(_path, { signal }) {
+      started.resolve(signal);
+      return new Promise(resolve => signal.addEventListener('abort', () => resolve({ items: [] }), { once: true }));
+    },
+  });
+  const signingIn = h.context.signIn();
+  const signal = await started.promise;
+  h.context.invalidate();
+  assert.equal(signal.aborted, true);
+  await signingIn;
+  assert.equal(h.calls.selectionOptions[0].firstIndex, null);
 });
 
 for (const change of ['URL', 'selector', 'region']) {

@@ -132,14 +132,25 @@ func (s *customerAuthService) session(r *http.Request, checkUser bool) (customer
 	return session, token, nil
 }
 func (s *customerAuthService) Authenticate(r *http.Request) (Principal, error) {
+	principal, _, err := s.authenticate(r, false)
+	return principal, err
+}
+
+func (s *customerAuthService) authenticate(r *http.Request, confirmExchange bool) (Principal, time.Time, error) {
 	session, token, err := s.session(r, true)
 	if err != nil {
-		return Principal{}, err
+		return Principal{}, time.Time{}, err
 	}
 	if r.Method != "GET" && r.Method != "HEAD" && r.Method != "OPTIONS" {
 		if !s.validOrigin(r) || !hmac.Equal([]byte(r.Header.Get("X-CSRF-Token")), []byte(customerCSRF(token))) {
-			return Principal{}, ErrCustomerCSRF
+			return Principal{}, time.Time{}, ErrCustomerCSRF
 		}
 	}
-	return Principal{OrganizationID: session.OrganizationID, Roles: []string{"dataset_viewer"}, CustomerAccountID: session.AccountID, FirebaseProjectID: session.ProjectID, FirebaseUID: session.UID}, nil
+	// An opt-in index read must carry both the browser cookie and the CSRF
+	// value from the exact exchange, even when another tab has a valid session.
+	if confirmExchange && (len(r.Header.Values("X-CSRF-Token")) != 1 ||
+		!hmac.Equal([]byte(r.Header.Get("X-CSRF-Token")), []byte(customerCSRF(token)))) {
+		return Principal{}, time.Time{}, ErrCustomerCSRF
+	}
+	return Principal{OrganizationID: session.OrganizationID, Roles: []string{"dataset_viewer"}, CustomerAccountID: session.AccountID, FirebaseProjectID: session.ProjectID, FirebaseUID: session.UID}, session.ExpiresAt, nil
 }

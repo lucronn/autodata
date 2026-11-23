@@ -154,7 +154,7 @@ func (s *Server) Handler() http.Handler {
 	if authService == nil {
 		authService = &customerAuthService{config: customerAuthConfig{Mode: "local"}}
 	}
-	authService.mountRoutes(mux)
+	authService.mountRoutes(mux, s.selectedIndexAuth() != nil)
 	s.mountCommerceRoutes(mux)
 	mux.HandleFunc("GET /{$}", func(response http.ResponseWriter, request *http.Request) {
 		http.Redirect(response, request, "/workshop/", http.StatusFound)

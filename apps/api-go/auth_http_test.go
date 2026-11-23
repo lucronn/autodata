@@ -15,7 +15,7 @@ import (
 
 func customerAuthHandler(service *customerAuthService) http.Handler {
 	mux := http.NewServeMux()
-	service.mountRoutes(mux)
+	service.mountRoutes(mux, false)
 	return mux
 }
 func customerHTTP(t *testing.T, handler http.Handler, method, path, body string, headers map[string]string, cookie *http.Cookie) *httptest.ResponseRecorder {
