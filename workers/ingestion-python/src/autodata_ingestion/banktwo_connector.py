@@ -127,6 +127,7 @@ class _ListFrame:
     authored_start: bool = False
     items: list[str | dict[str, Any]] = field(default_factory=list)
     item: _ListItem | None = None
+    bankone_graphic: bool = False
 
 
 @dataclass
@@ -319,6 +320,8 @@ class ArticleParser(HTMLParser):
             self._table_caption_blocks.append(block)
         elif self._table_cell is not None:
             self._table_cell.append(block)
+        elif self._lists and item is None and self._lists[-1].bankone_graphic:
+            self._append_between_list_items(block)
         elif item is None:
             self.blocks.append(block)
             self._list_start = 1
@@ -569,6 +572,16 @@ class ArticleParser(HTMLParser):
                 " ".join(block["text"] for block in blocks), source, start, len(source),
             )
 
+    def _append_between_list_items(self, block):
+        frame = self._lists.pop()
+        frame.bankone_graphic |= isinstance(block, ConnectorBankoneGraphic)
+        frame.start, frame.authored_start = self._emit_list(frame, top_level=not self._lists)
+        if frame.bankone_graphic and frame.tag == "ol" and frame.items:
+            frame.authored_start = True
+        frame.items = []
+        self._append_block(block)
+        self._lists.append(frame)
+
     def _append_inline_media(self, block):
         self.flush(inline=True)
         if self._table_caption_blocks is not None:
@@ -579,13 +592,7 @@ class ArticleParser(HTMLParser):
             return
         if self._lists and self._lists[-1].item is None:
             # Emit media between sibling <li> tags in the enclosing item.
-            frame = self._lists.pop()
-            frame.start, frame.authored_start = self._emit_list(frame, top_level=not self._lists)
-            if isinstance(block, ConnectorBankoneGraphic) and frame.tag == "ol" and frame.items:
-                frame.authored_start = True
-            frame.items = []
-            self._append_block(block)
-            self._lists.append(frame)
+            self._append_between_list_items(block)
         else:
             self._append_block(block)
 

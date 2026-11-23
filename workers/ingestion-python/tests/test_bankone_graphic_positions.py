@@ -15,7 +15,8 @@ ASSET = "provider-graphic"
 HTML = (
     '<ol><li>Inspect the cover.</li><li>Remove the shield.</li>'
     '<mtr-image id="71" alt="Upper fasteners"></mtr-image><li>Clean the threads.</li></ol>'
-    '<ol><mtr-image id="71" alt="Lower fasteners"></mtr-image><li>Fit the shield.</li></ol>'
+    '<ol><mtr-image id="71" alt="Lower fasteners"></mtr-image><li>Fit the shield.</li>'
+    '<p>Keep the seal in place.</p><li>Install the cover.</li></ol>'
     '<template><mtr-image id="71"></mtr-image></template>'
     '<mtr-image id="71" id="72"></mtr-image>'
 )
@@ -53,9 +54,10 @@ def test_same_graphic_is_fetched_once_and_keeps_both_authored_positions(capture_
     assert capture_fixture.resource_calls("bankone", ASSET) == 1
     result = captured.source_document["blocks"]
     assert [block["type"] for block in result] == [
-        "ordered_list", "image", "ordered_list", "image", "ordered_list",
+        "ordered_list", "image", "ordered_list", "image", "ordered_list", "paragraph", "ordered_list",
     ]
-    assert [block.get("start", 1) for block in result if block["type"] == "ordered_list"] == [1, 3, 1]
+    assert [block.get("start", 1) for block in result if block["type"] == "ordered_list"] == [1, 3, 1, 2]
+    assert result[5]["text"] == "Keep the seal in place."
     assert [block["alt"] for block in result if block["type"] == "image"] == ["Upper fasteners", "Lower fasteners"]
     images = [block for block in result if block["type"] == "image"]
     assert images[0]["block_id"] != images[1]["block_id"]
