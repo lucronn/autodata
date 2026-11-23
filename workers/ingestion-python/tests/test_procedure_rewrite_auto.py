@@ -34,6 +34,94 @@ def test_automatic_rewrite_has_own_identity_and_no_manual_acceptance():
     assert rewrite.validate_article_rewrite(source, reviewed.document, profile_version="full-prose-review-v1").report["content_acceptance_required"]
 
 
+def _assembly_label_rewrite(replacement, *, label="REAR TIMING SENSOR ASSEMBLY"):
+    source = document("unused")
+    item = source["blocks"][0]
+    del item["text"]
+    item.update(type="ordered_list", items=[label])
+    draft = response(replacement, introduction="This article presents component reference information.")
+    draft["replacements"][0]["path"] = "/blocks/0/items/0"
+    return source, draft
+
+
+def test_automatic_rewrite_rewords_an_assembly_label_with_its_component_intact():
+    source, draft = _assembly_label_rewrite("Assembly for the rear timing sensor.")
+    result = run(source, draft)
+    assert result.error_code is None
+    assert result.document["blocks"][1]["items"] == ["Assembly for the rear timing sensor."]
+    prompt = json.loads(rewrite.build_rewrite_prompt(source, context={}, profile_version=PROFILE))
+    assert prompt["prompt_version"] == "full-prose-auto-prompt-v60"
+
+
+@pytest.mark.parametrize("replacement", [
+    "Assembly for the front timing sensor.",
+    "Assembly for the rear pressure sensor.",
+    "Assembly for the rear timing switch.",
+    "Assembly for the timing sensor.",
+])
+def test_automatic_rewrite_rejects_a_changed_assembly_component(replacement):
+    source, draft = _assembly_label_rewrite(replacement)
+    assert run(source, draft).error_code == "REWRITE_SPEC_SCOPE_MUTATION"
+
+
+def test_automatic_rewrite_replays_old_assembly_draft_before_current_publication_checks():
+    from hashlib import sha256
+    from autodata_ingestion import procedure_rewrite_auto as auto
+    from autodata_ingestion.procedure_rewrite_full import render_full
+
+    source, draft = _assembly_label_rewrite("Assembly for the rear timing switch.")
+    saved = render_full(source, draft, profile_version=PROFILE)
+    prompt = auto._build_auto_prompt_v59(source, context={})
+    version = auto._auto_prompt_version(source, context={}, prompt_hash=sha256(prompt.encode()).hexdigest())
+    assert version == "full-prose-auto-prompt-v55"
+    assert auto.validate_auto(source, saved, response=draft, prompt_version=version).passed
+    with pytest.raises(ValueError, match="^REWRITE_SPEC_SCOPE_MUTATION$"):
+        auto.require_current_publication_checks(source, saved, saved_prompt_version=version)
+
+
+@pytest.mark.parametrize(("label", "replacement"), [
+    ("CLEAN THE FUEL PUMP ASSEMBLY", "Carry out cleaning of the fuel pump assembly."),
+    ("CLEAN FUEL PUMP ASSEMBLY", "Carry out cleaning of the fuel pump assembly."),
+    ("REBUILD FUEL PUMP ASSEMBLY", "Carry out the rebuild of the fuel pump assembly."),
+    ("CALIBRATE THROTTLE ACTUATOR ASSEMBLY", "Carry out calibration of the throttle actuator assembly."),
+    ("FLUSH COOLANT PUMP ASSEMBLY", "Carry out flushing of the coolant pump assembly."),
+    ("ALIGN THROTTLE ACTUATOR ASSEMBLY", "Carry out alignment of the throttle actuator assembly."),
+    ("PRIME FUEL PUMP ASSEMBLY", "Carry out priming of the fuel pump assembly."),
+])
+def test_automatic_rewrite_keeps_an_uppercase_assembly_instruction_editable(label, replacement):
+    source, draft = _assembly_label_rewrite(replacement, label=label)
+    assert run(source, draft).error_code is None
+
+
+@pytest.mark.parametrize(("label", "replacement"), [
+    ("STOP LAMP SWITCH ASSEMBLY", "Assembly for the stop lamp sensor."),
+    ("START SWITCH ASSEMBLY", "Assembly for the start relay."),
+    ("START INHIBITOR SWITCH ASSEMBLY", "Assembly for the start inhibitor relay."),
+    ("SIDE IMPACT SENSOR ASSEMBLY", "Assembly for the front impact sensor."),
+])
+def test_automatic_rewrite_preserves_switch_and_restraint_component_names(label, replacement):
+    source, draft = _assembly_label_rewrite(replacement, label=label)
+    assert run(source, draft).error_code == "REWRITE_SPEC_SCOPE_MUTATION"
+
+
+def test_assembly_label_prompt_rechecks_new_technical_qualifiers_at_publication():
+    from autodata_ingestion import procedure_rewrite_auto as auto
+
+    source, draft = _assembly_label_rewrite("Assembly for the rear timing sensor.")
+    paragraph = document("The reservoir contains 14 US gal of water.")["blocks"][0]
+    paragraph.update(block_id="p1", source_order=2)
+    source["blocks"].append(paragraph)
+    draft["replacements"].append({
+        "block_id": "p1", "path": "/blocks/1/text", "action": "rewrite",
+        "text": "The reservoir holds 14 US gal of water per second.", "reason": "",
+    })
+    version = "full-prose-auto-prompt-v60"
+    saved = auto.render_auto(source, draft, prompt_version=version)
+    assert auto.validate_auto(source, saved, response=draft, prompt_version=version).passed
+    with pytest.raises(ValueError, match="^REWRITE_SPEC_SCOPE_MUTATION$"):
+        auto.require_current_publication_checks(source, saved, saved_prompt_version=version)
+
+
 @pytest.mark.parametrize("replacement", ["Remove the cover.", " REMOVE  THE COVER. ", "Remove the cover!"])
 def test_automatic_profile_rejects_unchanged_ordinary_prose(replacement):
     source = document("Remove the cover.")
