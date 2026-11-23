@@ -20,6 +20,7 @@ from .article_lifecycle_types import (
     HTML_TABLE_CAPTION_LAYOUT,
     HTML_TABLE_SPAN_LAYOUT,
     LEADING_DECIMAL_LAYOUT,
+    MIXED_HTML_PDF_LAYOUT,
     MISSING_TABLE_IMAGE_CAPTION_LAYOUT,
     MISSING_TABLE_IMAGE_CAPTION_LAYOUT_V2,
     MISSING_TABLE_IMAGE_CAPTION_LAYOUT_V3,
@@ -40,7 +41,7 @@ from .article_lifecycle_types import (
 from .source_adapters import adapt_bound_article, adapt_bound_pdf_embed
 from .source_connector_client import SourceConnectorError
 from .article_document import (
-    LeadingDecimalStepParser, authored_image_caption, build_ordered_document,
+    ConnectorDocumentEmbed, LeadingDecimalStepParser, authored_image_caption, build_ordered_document,
     table_image_summaries, walk_ordered_list_items,
 )
 from .svg_rasterization import rasterize_svg, SVGUnavailable, RASTERIZER_VERSION
@@ -331,16 +332,14 @@ def _replace_pdf_embeds(value, documents):
     """Expand signed connector document bindings in their original block positions."""
     if isinstance(value, dict):
         children = value.get("blocks")
-        if isinstance(children, list) and any(
-            isinstance(node, dict) and node.get("kind") == "document_embed" for node in children
-        ):
+        if isinstance(children, list) and any(isinstance(node, ConnectorDocumentEmbed) for node in children):
             value["_preserve_cell_block_order"] = True
         for child in value.values():
             _replace_pdf_embeds(child, documents)
     elif isinstance(value, list):
         expanded = []
         for node in value:
-            if isinstance(node, dict) and node.get("kind") == "document_embed":
+            if isinstance(node, ConnectorDocumentEmbed):
                 ref = node.get("asset_resource_ref")
                 if ref in documents:
                     blocks, evidence, _ = documents[ref]
@@ -377,6 +376,7 @@ def capture_source_article(
     keep_image_only_step_instructions=False,
     keep_leading_decimals=False,
     keep_html_numeric_superscripts=False,
+    keep_mixed_html_pdf_embeds=False,
 ):
     if not 0 < deadline_seconds <= 30:
         raise ValueError("capture deadline must be within 30 seconds")
@@ -473,8 +473,7 @@ def capture_source_article(
         # A provider JSON block cannot authorize a document fetch by declaring a marker.
         linked_refs = dict.fromkeys(
             node["asset_resource_ref"] for node in _walk(blocks)
-            if article.get("handled_pdf_embeds") is True and node.get("kind") == "document_embed"
-            and isinstance(node.get("asset_resource_ref"), str)
+            if isinstance(node, ConnectorDocumentEmbed)
             and node["asset_resource_ref"] in (body.body.get("asset_resource_refs") or [])
             and node["asset_resource_ref"] != body_ref
         )
@@ -491,7 +490,7 @@ def capture_source_article(
     def positioned_media_refs(article):
         return set(article.get("untyped_pdf_embed_refs", ())) | {
             node["asset_resource_ref"] for node in _walk(article["blocks"])
-            if (node.get("kind") or node.get("type")) in {"image", "document_embed"}
+            if (isinstance(node, ConnectorDocumentEmbed) or (node.get("kind") or node.get("type")) == "image")
             and isinstance(node.get("asset_resource_ref"), str)
         }
 
@@ -605,6 +604,7 @@ def capture_source_article(
             keep_html_media_table_headers=keep_html_media_table_headers,
             keep_html_nested_tables=keep_html_nested_tables,
             keep_html_numeric_superscripts=keep_html_numeric_superscripts,
+            keep_mixed_html_pdf_embeds=keep_mixed_html_pdf_embeds,
             keep_html_flow_figure_captions=(
                 keep_html_flow_figure_captions and body.body["sha256"] != context.legacy_published_html_flow_figure_body
             ),
@@ -716,6 +716,7 @@ def capture_source_article(
     html_media_table_headers = article.get("html_media_table_headers") is True
     html_nested_tables = article.get("html_nested_tables") is True
     html_numeric_superscripts = article.get("html_numeric_superscripts") is True
+    mixed_html_pdf_embeds = article.get("mixed_html_pdf_embeds") is True
     handled_pdf_embeds = article.get("handled_pdf_embeds") is True
     positioned_html_table_images = article.get("positioned_html_table_images") is True
     positioned_pdf_figures = article.get("positioned_pdf_figures") is True
@@ -777,6 +778,8 @@ def capture_source_article(
         resources[0]["html_nested_table_layout"] = manifest[0]["html_nested_table_layout"] = HTML_NESTED_TABLE_LAYOUT
     if html_numeric_superscripts:
         resources[0]["html_numeric_superscript_layout"] = manifest[0]["html_numeric_superscript_layout"] = HTML_NUMERIC_SUPERSCRIPT_LAYOUT
+    if mixed_html_pdf_embeds:
+        resources[0]["mixed_html_pdf_layout"] = manifest[0]["mixed_html_pdf_layout"] = MIXED_HTML_PDF_LAYOUT
     if structured_table_columns:
         resources[0]["structured_table_columns_layout"] = manifest[0]["structured_table_columns_layout"] = STRUCTURED_TABLE_COLUMNS_LAYOUT
     if structured_table_cell_order:

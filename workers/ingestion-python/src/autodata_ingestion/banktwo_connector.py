@@ -9,7 +9,7 @@ import re
 import os
 from typing import Any, Mapping
 
-from .article_document import list_number
+from .article_document import ConnectorDocumentEmbed, list_number
 from .source_connector_client import (
     SourceConnectorClient,
     SourceConnectorError,
@@ -25,6 +25,9 @@ _MAX_LIST_DEPTH = 32
 _MAX_FIGURE_DEPTH = 32
 _MAX_TABLE_DEPTH = 8
 _TABLE_ROW_GROUPS = frozenset({"thead", "tbody", "tfoot"})
+_VOID_TAGS = frozenset({
+    "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr",
+})
 _HTML_LIST_NUMBER = re.compile(r"([+-]?)0*([0-9]{1,10})")
 _SUPERSCRIPT_NUMBER = re.compile(r"[+−⁺⁻-]?\s*[0-9⁰¹²³⁴⁵⁶⁷⁸⁹]+")
 _FRACTIONAL_SUPERSCRIPT = re.compile(r"[+−-]?\s*(?:[0-9]*\.[0-9]+|[0-9]+\s*[/⁄]\s*[0-9]+)")
@@ -128,6 +131,7 @@ class ArticleParser(HTMLParser):
         keep_html_multiline_figure_captions=False,
         keep_html_table_spans=False, keep_html_media_table_headers=False,
         keep_html_nested_tables=False, keep_html_numeric_superscripts=False, resolved_pdf_refs=frozenset(),
+        include_untyped_pdf_positions=False,
     ):
         super().__init__(convert_charrefs=True)
         self._asset_bindings = {item["source_url"]: item["resource_ref"] for item in asset_bindings}
@@ -156,6 +160,9 @@ class ArticleParser(HTMLParser):
         self.handled_pdf_embeds = False
         self.untyped_pdf_embed_refs = {}
         self._resolved_pdf_refs = resolved_pdf_refs
+        self._include_untyped_pdf_positions = include_untyped_pdf_positions
+        self._hidden_html_tag = None
+        self._hidden_html_depth = 0
         self.positioned_html_table_images = False
         self.html_figure_captions = False
         self.html_flow_figure_captions = False
@@ -511,9 +518,18 @@ class ArticleParser(HTMLParser):
             if tag in {"iframe", "object"}:
                 self._hidden_embed_tags.append(tag)
             return
+        if self._hidden_html_tag is not None:
+            if tag == self._hidden_html_tag:
+                self._hidden_html_depth += 1
+            return
         if tag in {"script", "style"}:
             self._skip += 1
         if self._skip:
+            return
+        if self._include_untyped_pdf_positions and (tag == "template" or "hidden" in attrs):
+            if tag not in _VOID_TAGS:
+                self._hidden_html_tag = tag
+                self._hidden_html_depth = 1
             return
         if tag == "figure" and (self._keep_html_figure_captions or self._keep_html_flow_figure_captions):
             self._start_figure()
@@ -525,13 +541,14 @@ class ArticleParser(HTMLParser):
             ref = self._asset_bindings.get(locator)
             media_type = (attrs.get("type") or "").strip().casefold()
             is_document = tag == "iframe" or media_type == "application/pdf"
-            if tag != "iframe" and not media_type and ref:
+            untyped = tag != "iframe" and not media_type and bool(ref)
+            if untyped:
                 self.untyped_pdf_embed_refs[ref] = None
-                is_document = ref in self._resolved_pdf_refs
+                is_document = self._include_untyped_pdf_positions or ref in self._resolved_pdf_refs
             if is_document:
                 self.handled_pdf_embeds = True
                 if ref and not (tag == "iframe" and "srcdoc" in attrs):
-                    self._append_inline_media({"kind": "document_embed", "asset_resource_ref": ref})
+                    self._append_inline_media(ConnectorDocumentEmbed(ref, untyped=untyped))
                 if tag != "embed":
                     self._hidden_embed_tags.append(tag)
                 return
@@ -665,6 +682,12 @@ class ArticleParser(HTMLParser):
             if self._hidden_embed_tags[-1] == tag:
                 self._hidden_embed_tags.pop()
             return
+        if self._hidden_html_tag is not None:
+            if tag == self._hidden_html_tag:
+                self._hidden_html_depth -= 1
+                if not self._hidden_html_depth:
+                    self._hidden_html_tag = None
+            return
         if self._skip:
             if tag in {"script", "style"}:
                 self._skip -= 1
@@ -727,7 +750,7 @@ class ArticleParser(HTMLParser):
             self.flush()
 
     def handle_data(self, data):
-        if not self._skip and not self._image_link and not self._hidden_embed_tags:
+        if not self._skip and not self._image_link and not self._hidden_embed_tags and self._hidden_html_tag is None:
             self._text.append(data)
 
 
