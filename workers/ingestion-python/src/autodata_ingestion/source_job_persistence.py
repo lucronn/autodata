@@ -1,10 +1,13 @@
 """Durable generic source jobs. PostgreSQL time/locks are lifecycle authority."""
 
 import re
-from uuid import uuid4
+from uuid import UUID, uuid4
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
-from .article_lifecycle_types import EnsureResult, JobLease
+from .article_lifecycle_types import (
+    AUTOMATIC_REWRITE_PROFILE, AUTOMATIC_REWRITE_PROFILES, NORMALIZATION_VERSION,
+    SOURCE_BOUND_REWRITE_PROFILE, EnsureResult, JobLease, transformation_key,
+)
 
 
 class LeaseLost(RuntimeError):
@@ -153,6 +156,153 @@ def refresh_article_job(
         return result
 
 
+def source_bound_rewrite_source_allowed(cur, article, source_revision_id):
+    """Check exact-scope source visibility while the caller owns the article lock."""
+    if (article["current_source_revision_id"] != source_revision_id
+        or article["provider_slug"] not in ("bankone", "banktwo")
+        or article["vehicle_configuration_id"] is None
+        or article["membership_status"] != "active" or article["takedown_status"] != "active"):
+        return False
+    return cur.execute("""
+        SELECT 1 FROM catalog_article_current v
+        JOIN canonical_article_source_revisions s USING(source_revision_id,canonical_article_id)
+        JOIN source_snapshots descriptor ON descriptor.source_snapshot_id=%s
+        JOIN LATERAL (
+            SELECT descriptor_source_snapshot_id,resolution_source_snapshot_id
+            FROM canonical_article_source_observations o
+            WHERE o.source_revision_id=s.source_revision_id AND o.canonical_article_id=s.canonical_article_id
+            ORDER BY o.captured_at,o.source_observation_id LIMIT 1
+        ) authored ON true
+        JOIN source_snapshots retained_descriptor ON retained_descriptor.source_snapshot_id=authored.descriptor_source_snapshot_id
+        JOIN source_snapshots retained_resolution ON retained_resolution.source_snapshot_id=authored.resolution_source_snapshot_id
+        JOIN vehicle_configurations c ON c.vehicle_configuration_id=v.vehicle_configuration_id
+        JOIN vehicle_identity_bases b ON b.vehicle_identity_base_id=c.vehicle_identity_base_id
+        WHERE v.canonical_article_id=%s AND s.source_revision_id=%s
+          AND descriptor.takedown_status='active' AND v.takedown_status='active'
+          AND retained_descriptor.takedown_status='active' AND retained_resolution.takedown_status='active'
+          AND c.reviewer_state<>'rejected' AND b.reviewer_state<>'rejected'
+          AND v.availability='available'
+          AND CASE WHEN jsonb_typeof(s.source_document->'blocks')='array'
+                   THEN jsonb_array_length(s.source_document->'blocks')>0 ELSE false END
+          AND NOT EXISTS (
+              SELECT 1 FROM source_artifacts a
+              WHERE a.extraction_status='quarantined'
+              AND (a.source_snapshot_id=s.body_source_snapshot_id OR EXISTS (
+                  SELECT 1 FROM jsonb_array_elements(s.resource_manifest) resource
+                  JOIN source_snapshots asset ON asset.content_sha256::text=resource->>'sha256'
+                  WHERE a.source_snapshot_id=asset.source_snapshot_id
+              ))
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM source_review_items q WHERE q.item_kind='quarantine' AND q.status<>'approved'
+              AND (q.source_snapshot_ids ?| ARRAY[descriptor.source_snapshot_id::text,
+                       authored.descriptor_source_snapshot_id::text, authored.resolution_source_snapshot_id::text,
+                       s.body_source_snapshot_id::text]
+                   OR EXISTS (
+                       SELECT 1 FROM jsonb_array_elements(s.resource_manifest) resource
+                       JOIN source_snapshots asset ON asset.content_sha256::text=resource->>'sha256'
+                       WHERE q.source_snapshot_ids ? asset.source_snapshot_id::text
+                   ))
+          )
+        """, (article["descriptor_source_snapshot_id"], article["canonical_article_id"], source_revision_id)).fetchone() is not None
+
+
+def schedule_source_bound_rewrite(
+    repo, canonical_article_id, *, expected_job_id, expected_source_revision_id, actor, reason,
+):
+    """Queue one new-profile rewrite of an exact, unchanged, unpublished source."""
+    canonical_article_id, expected_job_id, expected_source_revision_id = (
+        UUID(str(value)) for value in (canonical_article_id, expected_job_id, expected_source_revision_id)
+    )
+    if not all(
+        isinstance(value, str) and value.strip() and len(value) <= limit
+        and not any(ord(char) < 32 or ord(char) == 127 for char in value)
+        for value, limit in ((actor, 256), (reason, 2048))
+    ):
+        raise ValueError("SOURCE_BOUND_REWRITE_AUDIT_INVALID")
+    binding = {
+        "version": 1, "prior_job_id": str(expected_job_id),
+        "source_revision_id": str(expected_source_revision_id), "actor": actor, "reason": reason,
+    }
+    with repo.connect() as conn, _cursor(conn) as cur:
+        # Lifecycle writers lock the job before the article.
+        prior = cur.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s FOR UPDATE",
+                            (expected_job_id,)).fetchone()
+        article = cur.execute("SELECT * FROM canonical_articles WHERE canonical_article_id=%s FOR UPDATE",
+                              (canonical_article_id,)).fetchone()
+        if (prior is None or article is None or prior["canonical_article_id"] != canonical_article_id
+            or prior["job_kind"] != "article" or prior["provider_slug"] != article["provider_slug"]
+            or prior["canonical_vehicle_id"] != article["vehicle_id"]
+            or prior["source_vehicle_ref"] != article["source_vehicle_ref"]
+            or prior["source_article_ref"] != article["source_article_ref"]
+            or prior["source_revision_id"] != expected_source_revision_id
+            or prior["normalization_version"] != NORMALIZATION_VERSION
+            or article["target_normalization_version"] != NORMALIZATION_VERSION
+            or prior["rewrite_profile_version"] != AUTOMATIC_REWRITE_PROFILE
+            or prior["status"] not in ("completed", "dead_letter", "needs_review") or prior["retryable"]
+            or prior["lease_owner"] is not None):
+            raise ValueError("SOURCE_BOUND_REWRITE_PRIOR_JOB_CHANGED")
+        if not source_bound_rewrite_source_allowed(cur, article, expected_source_revision_id):
+            raise ValueError("SOURCE_BOUND_REWRITE_SOURCE_UNAVAILABLE")
+        source = cur.execute("""
+            SELECT source_fingerprint,projection_version FROM canonical_article_source_revisions
+            WHERE source_revision_id=%s AND canonical_article_id=%s
+            """, (expected_source_revision_id, canonical_article_id)).fetchone()
+        key_inputs = (canonical_article_id, source["source_fingerprint"], NORMALIZATION_VERSION)
+        projection = source["projection_version"]
+        if prior["transformation_key"] != transformation_key(
+            *key_inputs, AUTOMATIC_REWRITE_PROFILE, projection_version=projection,
+        ):
+            raise ValueError("SOURCE_BOUND_REWRITE_PRIOR_JOB_CHANGED")
+        key = transformation_key(*key_inputs, SOURCE_BOUND_REWRITE_PROFILE, projection_version=projection)
+        generation = article["request_generation"]
+        if article["target_rewrite_profile_version"] == SOURCE_BOUND_REWRITE_PROFILE:
+            # No lock on the current v2 job while holding the article row.
+            current = cur.execute("SELECT * FROM source_fetch_jobs WHERE source_fetch_job_id=%s",
+                                  (article["current_job_id"],)).fetchone()
+            if (current and current["transformation_key"] == key
+                and current["canonical_article_id"] == canonical_article_id
+                and current["normalization_version"] == NORMALIZATION_VERSION
+                and current["rewrite_profile_version"] == SOURCE_BOUND_REWRITE_PROFILE
+                and current["source_revision_id"] == expected_source_revision_id
+                and current["request_generation"] == generation
+                and current["checkpoint"].get("source_bound_rewrite") == {**binding, "prior_generation": generation - 1}):
+                return _result(cur, article, current)
+            raise ValueError("SOURCE_BOUND_REWRITE_ALREADY_SCHEDULED")
+        if (article["target_rewrite_profile_version"] != AUTOMATIC_REWRITE_PROFILE
+            or article["current_job_id"] != expected_job_id or prior["request_generation"] > generation):
+            raise ValueError("SOURCE_BOUND_REWRITE_CURRENT_JOB_CHANGED")
+        if article["current_canonical_revision_id"] is not None or cur.execute("""
+            SELECT 1 FROM canonical_article_revisions WHERE transformation_key=%s AND status='published'
+            """, (prior["transformation_key"],)).fetchone():
+            raise ValueError("SOURCE_BOUND_REWRITE_ALREADY_PUBLISHED")
+        if cur.execute("""
+            SELECT 1 FROM source_fetch_jobs WHERE transformation_key=%s
+            OR (canonical_article_id=%s AND job_kind='article' AND status=ANY(%s))
+            """, (key, canonical_article_id, list(ACTIVE))).fetchone():
+            raise ValueError("SOURCE_BOUND_REWRITE_ALREADY_SCHEDULED")
+        checkpoint = {"source_bound_rewrite": {**binding, "prior_generation": generation}}
+        generation += 1
+        job = cur.execute("""
+            INSERT INTO source_fetch_jobs(source_fetch_job_id,provider_slug,canonical_vehicle_id,source_vehicle_ref,
+                source_article_ref,source_version,connector_name,idempotency_key,status,job_kind,canonical_article_id,
+                request_generation,normalization_version,rewrite_profile_version,source_revision_id,
+                transformation_key,phase,max_attempts,checkpoint)
+            VALUES (%s,%s,%s,%s,%s,'lifecycle-v1',%s,%s,'pending','article',%s,%s,%s,%s,%s,%s,'normalizing',1,%s)
+            RETURNING *
+            """, (uuid4(), article["provider_slug"], article["vehicle_id"], article["source_vehicle_ref"],
+                  article["source_article_ref"], article["provider_slug"], f"article:{canonical_article_id}:{generation}",
+                  canonical_article_id, generation, NORMALIZATION_VERSION, SOURCE_BOUND_REWRITE_PROFILE,
+                  expected_source_revision_id, key, Jsonb(checkpoint))).fetchone()
+        cur.execute("""
+            UPDATE canonical_articles SET current_job_id=%s,request_generation=%s,
+                target_rewrite_profile_version=%s,updated_at=clock_timestamp()
+            WHERE canonical_article_id=%s
+            """, (job["source_fetch_job_id"], generation, SOURCE_BOUND_REWRITE_PROFILE, canonical_article_id))
+        cur.execute("SELECT pg_notify(%s, '')", (ARTICLE_JOB_CHANNEL,))
+        return _result(cur, article, job, True)
+
+
 def _mark_delivery_ambiguous(cur, job):
     # Only the locked row actually reclaimed/swept determines delivery ownership.
     # The transition and ambiguity accounting commit or roll back together.
@@ -160,6 +310,81 @@ def _mark_delivery_ambiguous(cur, job):
         SET status='ambiguous',error_code='MODEL_DELIVERY_AMBIGUOUS',completed_at=clock_timestamp()
         WHERE source_fetch_job_id=%s AND lease_token=%s AND status='dispatched' AND response IS NULL""",
         (job["source_fetch_job_id"], job["lease_token"]))
+
+
+_SOURCE_BOUND_EXACT_JOB_SQL = """COALESCE((
+    j.job_kind='article' AND j.rewrite_profile_version=%s AND j.max_attempts=1
+    AND j.retry_count=1 AND j.source_revision_id IS NOT NULL
+    AND j.checkpoint @> '{"source_bound_rewrite":{"version":1}}'::jsonb
+    AND j.checkpoint->'source_bound_rewrite'->>'source_revision_id'=j.source_revision_id::text
+), false)"""
+
+_SOURCE_BOUND_CURRENT_OWNER_SQL = """a.canonical_article_id=j.canonical_article_id
+    AND a.current_job_id=j.source_fetch_job_id AND a.request_generation=j.request_generation
+    AND a.current_source_revision_id=j.source_revision_id
+    AND a.target_rewrite_profile_version=j.rewrite_profile_version
+    AND a.target_normalization_version=j.normalization_version"""
+
+
+def _source_bound_no_delivery_sql(*, include_expired_prepared=False):
+    expired_prepared = """OR (r.lease_token=j.lease_token AND r.status='prepared'
+        AND r.error_code IS NULL AND r.completed_at IS NULL)""" if include_expired_prepared else ""
+    return f"""NOT EXISTS (
+        SELECT 1 FROM canonical_article_rewrite_attempts r
+        WHERE r.source_fetch_job_id=j.source_fetch_job_id AND (
+            r.profile_version=j.rewrite_profile_version AND r.attempt_number=1
+            AND r.dispatched_at IS NULL AND r.response IS NULL AND r.response_hash IS NULL
+            AND r.canonical_article_revision_id IS NULL
+            AND ((r.lease_token<j.lease_token AND r.status='failed'
+                  AND r.error_code='MODEL_NOT_DISPATCHED_LEASE_EXPIRED' AND r.completed_at IS NOT NULL)
+                 {expired_prepared})
+        ) IS NOT TRUE
+    )"""
+
+
+_MODEL_CONFIGURATION_NO_ATTEMPT_SQL = f"""(
+    NOT EXISTS (
+        SELECT 1 FROM canonical_article_rewrite_attempts r
+        WHERE r.source_fetch_job_id=j.source_fetch_job_id
+    )
+    OR ({_SOURCE_BOUND_EXACT_JOB_SQL} AND {_source_bound_no_delivery_sql()})
+)"""
+
+_SOURCE_BOUND_NO_DELIVERY_EXPIRY_SQL = f"""{_SOURCE_BOUND_EXACT_JOB_SQL}
+    AND j.phase IN ('normalizing','rewriting')
+    AND j.checkpoint->>'candidate_revision_id' IS NULL
+    AND j.checkpoint->>'rewrite_error_code' IS NULL
+    AND {_source_bound_no_delivery_sql(include_expired_prepared=True)}"""
+
+
+def _claim_source_bound_predispatch_resume(cur, worker_id, job_id):
+    """Fence an expired explicit job while preserving its one delivery allowance."""
+    job = cur.execute(f"""SELECT j.* FROM source_fetch_jobs j JOIN canonical_articles a
+        ON {_SOURCE_BOUND_CURRENT_OWNER_SQL}
+        WHERE (%s::uuid IS NULL OR j.source_fetch_job_id=%s)
+          AND j.status='processing' AND j.lease_expires_at<clock_timestamp()
+          AND {_SOURCE_BOUND_NO_DELIVERY_EXPIRY_SQL}
+        ORDER BY j.created_at,j.source_fetch_job_id FOR UPDATE OF j SKIP LOCKED LIMIT 1""",
+        (job_id, job_id, SOURCE_BOUND_REWRITE_PROFILE)).fetchone()
+    if job is None:
+        return None
+    # A dispatch changes the attempt row under the job lock. Use a fresh read
+    # after acquiring that lock to close a race with the initial selection.
+    safe = cur.execute(f"""SELECT 1 FROM source_fetch_jobs j JOIN canonical_articles a
+        ON {_SOURCE_BOUND_CURRENT_OWNER_SQL}
+        WHERE j.source_fetch_job_id=%s AND {_source_bound_no_delivery_sql(include_expired_prepared=True)}
+        FOR UPDATE OF a""", (job["source_fetch_job_id"],)).fetchone()
+    if safe is None:
+        return None
+    cur.execute("""UPDATE canonical_article_rewrite_attempts
+        SET status='failed',error_code='MODEL_NOT_DISPATCHED_LEASE_EXPIRED',completed_at=clock_timestamp()
+        WHERE source_fetch_job_id=%s AND lease_token=%s AND status='prepared'""",
+        (job["source_fetch_job_id"], job["lease_token"]))
+    row = cur.execute("""UPDATE source_fetch_jobs SET lease_token=lease_token+1,
+        lease_owner=%s,lease_expires_at=clock_timestamp()+interval '90 seconds',
+        heartbeat_at=clock_timestamp(),updated_at=clock_timestamp()
+        WHERE source_fetch_job_id=%s RETURNING *""", (worker_id, job["source_fetch_job_id"])).fetchone()
+    return _lease_from_row(row, worker_id)
 
 
 def _claim_review_resume(cur, worker_id, job_id=None):
@@ -193,14 +418,15 @@ def _claim_automatic_resume(cur, worker_id, job_id=None):
     from .article_lifecycle_store import automatic_candidate_validation
     job = cur.execute("""SELECT j.* FROM source_fetch_jobs j
         JOIN canonical_article_revisions r ON r.transformation_key=j.transformation_key
-        WHERE j.job_kind='article' AND NOT (j.checkpoint ? 'bankone_exact_recovery') AND j.rewrite_profile_version='full-prose-auto-v1' AND (%s::uuid IS NULL OR j.source_fetch_job_id=%s)
+        WHERE j.job_kind='article' AND NOT (j.checkpoint ? 'bankone_exact_recovery') AND j.rewrite_profile_version=ANY(%s) AND (%s::uuid IS NULL OR j.source_fetch_job_id=%s)
           AND (EXISTS (SELECT 1 FROM canonical_article_rewrite_attempts a WHERE a.canonical_article_revision_id=r.canonical_article_revision_id AND a.status='succeeded')
             OR r.model_metadata->>'transformation_method'='source-preserving-zero-slot-v1')
           AND r.status IN ('building','validated') AND j.checkpoint->>'rewrite_error_code' IS NULL
           AND j.checkpoint->>'candidate_revision_id'=r.canonical_article_revision_id::text
           AND ((j.status='pending' AND COALESCE(j.next_attempt_at,'-infinity'::timestamptz)<=clock_timestamp())
             OR (j.status='processing' AND j.lease_expires_at<clock_timestamp()))
-        ORDER BY j.created_at,j.source_fetch_job_id FOR UPDATE OF j SKIP LOCKED LIMIT 1""", (job_id,job_id)).fetchone()
+        ORDER BY j.created_at,j.source_fetch_job_id FOR UPDATE OF j SKIP LOCKED LIMIT 1""",
+        (list(AUTOMATIC_REWRITE_PROFILES), job_id, job_id)).fetchone()
     if job is None:
         return None
     article = cur.execute("SELECT * FROM canonical_articles WHERE canonical_article_id=%s FOR UPDATE", (job["canonical_article_id"],)).fetchone()
@@ -230,9 +456,11 @@ def park_automatic_for_model(repo, lease):
     from .article_lifecycle_store import _lock_transform
     with repo.connect() as conn, _cursor(conn) as cur:
         job, _ = _lock_transform(cur, lease)
-        if (job["rewrite_profile_version"] != "full-prose-auto-v1"
+        if (job["rewrite_profile_version"] not in AUTOMATIC_REWRITE_PROFILES
             or not job["source_revision_id"] or not job["checkpoint"].get("normalized_hash")
-            or cur.execute("SELECT 1 FROM canonical_article_rewrite_attempts WHERE source_fetch_job_id=%s", (lease.job_id,)).fetchone()):
+            or not cur.execute(f"""SELECT {_MODEL_CONFIGURATION_NO_ATTEMPT_SQL} AS no_attempt
+                FROM source_fetch_jobs j WHERE j.source_fetch_job_id=%s""",
+                (SOURCE_BOUND_REWRITE_PROFILE, lease.job_id)).fetchone()["no_attempt"]):
             raise ValueError("MODEL_CONFIGURATION_PARK_INVALID")
         cur.execute("""UPDATE source_fetch_jobs SET status='failed',error_code='MODEL_NOT_CONFIGURED',retryable=true,
             checkpoint=checkpoint||'{"awaiting_model_configuration":true}'::jsonb,next_attempt_at=NULL,
@@ -242,17 +470,18 @@ def park_automatic_for_model(repo, lease):
 
 def _claim_model_configuration_resume(cur, worker_id, job_id):
     """Configuration waits dispatched nothing and consume no additional attempt."""
-    job = cur.execute("""SELECT j.* FROM source_fetch_jobs j JOIN canonical_articles a
+    job = cur.execute(f"""SELECT j.* FROM source_fetch_jobs j JOIN canonical_articles a
         ON a.canonical_article_id=j.canonical_article_id
-        WHERE j.job_kind='article' AND NOT (j.checkpoint ? 'bankone_exact_recovery') AND j.rewrite_profile_version='full-prose-auto-v1'
+        WHERE j.job_kind='article' AND NOT (j.checkpoint ? 'bankone_exact_recovery') AND j.rewrite_profile_version=ANY(%s)
           AND (%s::uuid IS NULL OR j.source_fetch_job_id=%s)
           AND j.status IN ('failed','dead_letter') AND j.error_code='MODEL_NOT_CONFIGURED'
           AND j.source_revision_id IS NOT NULL AND j.checkpoint ? 'normalized_document' AND j.checkpoint ? 'normalized_hash'
           AND a.current_job_id=j.source_fetch_job_id AND a.request_generation=j.request_generation
           AND a.current_source_revision_id=j.source_revision_id
           AND a.target_rewrite_profile_version=j.rewrite_profile_version AND a.target_normalization_version=j.normalization_version
-          AND NOT EXISTS (SELECT 1 FROM canonical_article_rewrite_attempts r WHERE r.source_fetch_job_id=j.source_fetch_job_id)
-        ORDER BY j.created_at,j.source_fetch_job_id FOR UPDATE OF j SKIP LOCKED LIMIT 1""", (job_id,job_id)).fetchone()
+          AND {_MODEL_CONFIGURATION_NO_ATTEMPT_SQL}
+        ORDER BY j.created_at,j.source_fetch_job_id FOR UPDATE OF j SKIP LOCKED LIMIT 1""",
+        (list(AUTOMATIC_REWRITE_PROFILES), job_id, job_id, SOURCE_BOUND_REWRITE_PROFILE)).fetchone()
     if job is None:
         return None
     article = cur.execute("SELECT * FROM canonical_articles WHERE canonical_article_id=%s FOR UPDATE", (job["canonical_article_id"],)).fetchone()
@@ -426,6 +655,7 @@ def _finalize_expired_bankone_recovery(cur, job_id):
 
 
 def claim_source_job(repo, *, worker_id, model_ready=True, job_id=None):
+    claim_scope = (job_id, job_id, list(AUTOMATIC_REWRITE_PROFILES))
     with repo.connect() as conn, _cursor(conn) as cur:
         _finalize_expired_bankone_recovery(cur, job_id)
         resumed = _claim_automatic_resume(cur, worker_id, job_id)
@@ -438,19 +668,25 @@ def claim_source_job(repo, *, worker_id, model_ready=True, job_id=None):
             resumed = _claim_model_configuration_resume(cur, worker_id, job_id)
             if resumed is not None:
                 return resumed
+        resumed = _claim_source_bound_predispatch_resume(cur, worker_id, job_id)
+        if resumed is not None:
+            return resumed
         cur.execute(
-            """WITH exhausted AS (SELECT source_fetch_job_id FROM source_fetch_jobs
-        WHERE job_kind IN ('article','catalog_index') AND NOT (checkpoint ? 'bankone_exact_recovery') AND (%s::uuid IS NULL OR source_fetch_job_id=%s) AND NOT (rewrite_profile_version='full-prose-auto-v1' AND COALESCE(error_code,'')='MODEL_NOT_CONFIGURED') AND NOT (checkpoint @> '{"source_only_reprojection":true}'::jsonb) AND NOT (rewrite_profile_version='full-prose-review-v1' AND checkpoint ? 'content_review') AND status='processing' AND retry_count>=max_attempts AND lease_expires_at<clock_timestamp() FOR UPDATE SKIP LOCKED)
+            f"""WITH exhausted AS (SELECT j.source_fetch_job_id FROM source_fetch_jobs j
+        WHERE job_kind IN ('article','catalog_index') AND NOT (checkpoint ? 'bankone_exact_recovery') AND (%s::uuid IS NULL OR source_fetch_job_id=%s) AND NOT (rewrite_profile_version=ANY(%s) AND COALESCE(error_code,'')='MODEL_NOT_CONFIGURED') AND NOT (checkpoint @> '{{"source_only_reprojection":true}}'::jsonb) AND NOT (rewrite_profile_version='full-prose-review-v1' AND checkpoint ? 'content_review') AND status='processing' AND retry_count>=max_attempts AND lease_expires_at<clock_timestamp()
+        AND NOT ({_SOURCE_BOUND_NO_DELIVERY_EXPIRY_SQL}
+            AND EXISTS (SELECT 1 FROM canonical_articles a WHERE {_SOURCE_BOUND_CURRENT_OWNER_SQL}))
+        FOR UPDATE OF j SKIP LOCKED)
         UPDATE source_fetch_jobs j SET status='dead_letter',error_code='LEASE_ATTEMPTS_EXHAUSTED',retryable=false,lease_owner=NULL,lease_expires_at=NULL,heartbeat_at=NULL,updated_at=clock_timestamp()
         FROM exhausted e WHERE j.source_fetch_job_id=e.source_fetch_job_id
-        RETURNING j.source_fetch_job_id,j.lease_token""", (job_id,job_id)
+        RETURNING j.source_fetch_job_id,j.lease_token""", (*claim_scope, SOURCE_BOUND_REWRITE_PROFILE)
         )
         for exhausted in cur.fetchall():
             _mark_delivery_ambiguous(cur, exhausted)
         job = cur.execute(
-            """SELECT * FROM source_fetch_jobs WHERE job_kind IN ('article','catalog_index') AND NOT (checkpoint ? 'bankone_exact_recovery') AND (%s::uuid IS NULL OR source_fetch_job_id=%s) AND NOT (rewrite_profile_version='full-prose-auto-v1' AND COALESCE(error_code,'')='MODEL_NOT_CONFIGURED') AND NOT (checkpoint @> '{"source_only_reprojection":true}'::jsonb) AND NOT (rewrite_profile_version='full-prose-review-v1' AND checkpoint ? 'content_review') AND retry_count<max_attempts AND
+            """SELECT * FROM source_fetch_jobs WHERE job_kind IN ('article','catalog_index') AND NOT (checkpoint ? 'bankone_exact_recovery') AND (%s::uuid IS NULL OR source_fetch_job_id=%s) AND NOT (rewrite_profile_version=ANY(%s) AND COALESCE(error_code,'')='MODEL_NOT_CONFIGURED') AND NOT (checkpoint @> '{"source_only_reprojection":true}'::jsonb) AND NOT (rewrite_profile_version='full-prose-review-v1' AND checkpoint ? 'content_review') AND retry_count<max_attempts AND
         ((status IN ('pending','failed') AND COALESCE(next_attempt_at,'-infinity'::timestamptz)<=clock_timestamp()) OR (status='processing' AND lease_expires_at<clock_timestamp()))
-        ORDER BY created_at,source_fetch_job_id FOR UPDATE SKIP LOCKED LIMIT 1""", (job_id,job_id)
+        ORDER BY created_at,source_fetch_job_id FOR UPDATE SKIP LOCKED LIMIT 1""", claim_scope
         ).fetchone()
         if job is None:
             return None
@@ -544,7 +780,7 @@ def fail_source_job(repo, lease, *, code, retryable, retry_after_seconds=None):
             if retry
             else None
         )
-        status = "failed" if retry else ("dead_letter" if retryable or row["rewrite_profile_version"] == "full-prose-auto-v1" else "needs_review")
+        status = "failed" if retry else ("dead_letter" if retryable or row["rewrite_profile_version"] in AUTOMATIC_REWRITE_PROFILES else "needs_review")
         cur.execute(
             """UPDATE source_fetch_jobs SET status=%s,error_code=%s,retryable=%s,next_attempt_at=CASE WHEN %s::int IS NULL THEN NULL ELSE statement_timestamp()+make_interval(secs=>%s) END,
         lease_owner=NULL,lease_expires_at=NULL,heartbeat_at=NULL,updated_at=statement_timestamp() WHERE source_fetch_job_id=%s""",

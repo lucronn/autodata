@@ -4,6 +4,9 @@
 Selection JSON: [{"canonical_article_id":"UUID","expected_source_revision_id":"UUID"}].
 Apply may call the configured source connector and model when the worker runs;
 this command itself never contacts either. Published canonical articles are kept.
+With --source-bound-from, select one unpublished article to draft from its existing
+source revision and supply the UUID of its previous rejected job. Run
+article_worker.py --job-id with the returned job ID to process that exact job.
 """
 import argparse
 import json
@@ -12,8 +15,9 @@ import sys
 from uuid import UUID
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "workers/ingestion-python/src"))
-from autodata_ingestion.source_job_persistence import refresh_article_job
+from autodata_ingestion.article_lifecycle_types import AUTOMATIC_REWRITE_PROFILES
 from autodata_ingestion.procedure_rewrite_auto import PROFILE
+from autodata_ingestion.source_job_persistence import refresh_article_job, schedule_source_bound_rewrite
 
 
 def selection(value):
@@ -45,7 +49,7 @@ def refresh_selected(repo, targets, *, actor, reason, apply=False):
                 WHERE a.canonical_article_id=%s""", (target["canonical_article_id"],)).fetchone()
         if row is None or str(row["current_source_revision_id"]) != target["expected_source_revision_id"]:
             raise ValueError("AUTOMATIC_SOURCE_CHANGED")
-        if row["target_rewrite_profile_version"] == PROFILE:
+        if row["target_rewrite_profile_version"] in AUTOMATIC_REWRITE_PROFILES:
             action = "already_automatic"
         elif row["current_canonical_revision_id"] is not None:
             action = "keep_published"
@@ -67,14 +71,27 @@ def main(argv=None, *, repo=None):
     parser.add_argument("--actor", required=True)
     parser.add_argument("--reason", required=True)
     parser.add_argument("--apply", action="store_true")
+    parser.add_argument("--source-bound-from", type=UUID, metavar="PRIOR_JOB_ID",
+                        help="schedule one new draft from the selected article's retained source")
     args = parser.parse_args(argv)
     if args.selection.stat().st_size > 64 * 1024:
         raise ValueError("AUTOMATIC_SELECTION_LIMIT")
     targets = selection(json.loads(args.selection.read_text()))
+    if args.source_bound_from is not None and (len(targets) != 1 or not args.apply):
+        parser.error("--source-bound-from requires one selected article and --apply")
     if repo is None:
         from autodata_ingestion.worker import ArticleRepository
         repo = ArticleRepository()
-    results = refresh_selected(repo, targets, actor=args.actor, reason=args.reason, apply=args.apply)
+    if args.source_bound_from is not None:
+        target, = targets
+        job = schedule_source_bound_rewrite(
+            repo, UUID(target["canonical_article_id"]), expected_job_id=args.source_bound_from,
+            expected_source_revision_id=UUID(target["expected_source_revision_id"]),
+            actor=args.actor, reason=args.reason,
+        )
+        results = [{**target, "job_id": str(job.job_id), "action": "scheduled" if job.created else "joined_existing"}]
+    else:
+        results = refresh_selected(repo, targets, actor=args.actor, reason=args.reason, apply=args.apply)
     print(json.dumps({"mode":"apply" if args.apply else "preview", "items":results}, sort_keys=True))
     return 0
 

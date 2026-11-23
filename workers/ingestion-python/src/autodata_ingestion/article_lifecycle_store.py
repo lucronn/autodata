@@ -4,7 +4,10 @@ from copy import deepcopy
 from dataclasses import dataclass, replace
 from uuid import UUID, uuid4
 from .article_document import has_ordered_list_numbering, has_structured_list_items
-from .article_lifecycle_types import SOURCE_PROJECTION_VERSIONS, transformation_key
+from .article_lifecycle_types import (
+    AUTOMATIC_REWRITE_PROFILE, AUTOMATIC_REWRITE_PROFILES, SOURCE_BOUND_REWRITE_PROFILE,
+    SOURCE_PROJECTION_VERSIONS, transformation_key,
+)
 from .source_job_persistence import lock_live_lease, LeaseLost
 
 from psycopg.rows import dict_row
@@ -14,7 +17,7 @@ from .article_lifecycle_types import ArticleKey, article_id, identity_key
 
 def upsert_article_descriptor(
     repo, key: ArticleKey, descriptor: dict, descriptor_snapshot_id, generation: int,
-    *, rewrite_profile_version="full-prose-auto-v1"
+    *, rewrite_profile_version=AUTOMATIC_REWRITE_PROFILE
 ):
     with repo.connect() as conn:
         return _upsert_descriptor(
@@ -22,7 +25,7 @@ def upsert_article_descriptor(
         )
 
 
-def _upsert_descriptor(conn, key, descriptor, snapshot, generation, *, rewrite_profile_version="full-prose-auto-v1"):
+def _upsert_descriptor(conn, key, descriptor, snapshot, generation, *, rewrite_profile_version=AUTOMATIC_REWRITE_PROFILE):
     with conn.cursor(row_factory=dict_row) as cur:
         row = cur.execute(
             """INSERT INTO canonical_articles(canonical_article_id,provider_slug,vehicle_id,vehicle_configuration_id,scope_key,source_vehicle_ref,source_article_ref,identity_key,descriptor,descriptor_source_snapshot_id,title,kind,component,source_sort_order,last_seen_catalog_generation,target_rewrite_profile_version)
@@ -432,7 +435,9 @@ def load_source_revision(repo, source_revision_id):
         if row is None:
             raise KeyError("source revision not found")
         observation = cur.execute(
-            "SELECT descriptor_source_snapshot_id,resolution_source_snapshot_id,captured_context FROM canonical_article_source_observations WHERE source_revision_id=%s ORDER BY captured_at LIMIT 1",
+            """SELECT descriptor_source_snapshot_id,resolution_source_snapshot_id,captured_context
+            FROM canonical_article_source_observations WHERE source_revision_id=%s
+            ORDER BY captured_at,source_observation_id LIMIT 1""",
             (source_revision_id,),
         ).fetchone()
         key = ArticleKey(
@@ -478,9 +483,24 @@ def _lock_transform(cur, lease):
         or article["request_generation"] != job["request_generation"]
         or article["current_source_revision_id"] != job["source_revision_id"]
         or article["target_normalization_version"] != job["normalization_version"]
-        or article["target_rewrite_profile_version"] != job["rewrite_profile_version"]):
+        or article["target_rewrite_profile_version"] != job["rewrite_profile_version"]
+        or job["rewrite_profile_version"] != lease.rewrite_profile_version):
         raise LeaseLost("transformation generation/source changed")
     return job, article
+
+
+def _require_source_bound_rewrite_rights(cur, job, article):
+    profile = job["rewrite_profile_version"]
+    if "source_bound_rewrite" in job["checkpoint"]:
+        marker = job["checkpoint"]["source_bound_rewrite"]
+        if (profile != SOURCE_BOUND_REWRITE_PROFILE or not isinstance(marker, dict)
+            or type(marker.get("version")) is not int or marker["version"] != 1
+            or not job["source_revision_id"] or marker.get("source_revision_id") != str(job["source_revision_id"])):
+            raise ValueError("SOURCE_BOUND_REWRITE_BINDING_INVALID")
+    if profile == SOURCE_BOUND_REWRITE_PROFILE:
+        from .source_job_persistence import source_bound_rewrite_source_allowed
+        if not source_bound_rewrite_source_allowed(cur, article, job["source_revision_id"]):
+            raise ValueError("SOURCE_BOUND_REWRITE_SOURCE_UNAVAILABLE")
 
 
 def save_normalized_input(repo, lease, normalized):
@@ -502,7 +522,8 @@ def prepare_rewrite_attempt(repo, lease, document, *, context, model):
     prompt=build_rewrite_prompt(document,context=context,profile_version=lease.rewrite_profile_version)
     if len(prompt.encode())>200*1024: raise ValueError("REWRITE_INPUT_LIMIT")
     with repo.connect() as conn, conn.cursor(row_factory=dict_row) as cur:
-        job,_=_lock_transform(cur,lease)
+        job,article=_lock_transform(cur,lease)
+        _require_source_bound_rewrite_rights(cur, job, article)
         if job["checkpoint"].get("normalized_hash")!=digest_json(document):
             raise ValueError("normalized input mismatch")
         attempt=cur.execute("""INSERT INTO canonical_article_rewrite_attempts
@@ -517,7 +538,8 @@ def prepare_rewrite_attempt(repo, lease, document, *, context, model):
 
 def mark_rewrite_dispatched(repo,lease,attempt):
     with repo.connect() as conn,conn.cursor(row_factory=dict_row) as cur:
-        job,_=_lock_transform(cur,lease)
+        job,article=_lock_transform(cur,lease)
+        _require_source_bound_rewrite_rights(cur, job, article)
         recovery=job["checkpoint"].get("bankone_exact_recovery")
         if "bankone_exact_recovery" in job["checkpoint"]:
             if (not isinstance(recovery,dict) or recovery.get("version")!=1
@@ -527,7 +549,9 @@ def mark_rewrite_dispatched(repo,lease,attempt):
                 or type(recovery.get("dispatches_consumed")) is not int or recovery["dispatches_consumed"]!=0):
                 raise ValueError("RECOVERY_DISPATCH_BLOCKED")
         changed=cur.execute("""UPDATE canonical_article_rewrite_attempts SET status='dispatched',dispatched_at=clock_timestamp()
-            WHERE rewrite_attempt_id=%s AND source_fetch_job_id=%s AND lease_token=%s AND status='prepared' RETURNING rewrite_attempt_id""",(attempt,lease.job_id,lease.token)).fetchone()
+            WHERE rewrite_attempt_id=%s AND source_fetch_job_id=%s AND lease_token=%s AND profile_version=%s
+              AND status='prepared' RETURNING rewrite_attempt_id""",
+            (attempt,lease.job_id,lease.token,job["rewrite_profile_version"])).fetchone()
         if changed is None: raise ValueError("attempt cannot dispatch again")
         if recovery is not None:
             consumed={**recovery,"state":"dispatched","dispatches_consumed":1}
@@ -620,14 +644,17 @@ def _require_full_approval(cur, job, article, candidate):
 def automatic_candidate_validation(cur, job, candidate, *, require_current=False):
     """Rebuild automatic source, prompt and output from immutable saved evidence."""
     from .article_lifecycle_types import digest_json
-    from .procedure_rewrite_auto import PROFILE, _auto_prompt_version, require_current_publication_checks, validate_auto
+    from .procedure_rewrite_auto import _auto_prompt_version, require_current_publication_checks, validate_auto
     from .procedure_normalize import normalize_procedure_article
     if candidate is None:
         raise ValueError("automatic candidate binding missing")
+    profile = job["rewrite_profile_version"]
+    if profile not in AUTOMATIC_REWRITE_PROFILES or candidate["rewrite_profile_version"] != profile:
+        raise ValueError("automatic candidate profile binding mismatch")
     source = candidate["normalized_source_document"]
     captured = cur.execute("""SELECT s.*,o.captured_context FROM canonical_article_source_revisions s
         JOIN LATERAL (SELECT captured_context FROM canonical_article_source_observations
-        WHERE source_revision_id=s.source_revision_id ORDER BY captured_at LIMIT 1) o ON true
+        WHERE source_revision_id=s.source_revision_id ORDER BY captured_at,source_observation_id LIMIT 1) o ON true
         WHERE s.source_revision_id=%s AND s.canonical_article_id=%s""",
         (job["source_revision_id"],job["canonical_article_id"])).fetchone()
     if captured is None:
@@ -647,14 +674,15 @@ def automatic_candidate_validation(cur, job, candidate, *, require_current=False
             or candidate["canonical_article_id"] != job["canonical_article_id"]
             or candidate["transformation_key"] != job["transformation_key"]
             or candidate["normalization_version"] != job["normalization_version"]
-            or candidate["rewrite_profile_version"] != PROFILE or job["rewrite_profile_version"] != PROFILE
             or cur.execute("""SELECT 1 FROM canonical_article_rewrite_attempts x
                 JOIN source_fetch_jobs t ON t.source_fetch_job_id=x.source_fetch_job_id
                 WHERE x.source_fetch_job_id=%s OR x.canonical_article_revision_id=%s
                    OR t.transformation_key=%s LIMIT 1""",
                 (job["source_fetch_job_id"],candidate["canonical_article_revision_id"],job["transformation_key"])).fetchone()):
             raise ValueError("source preserving saved evidence binding mismatch")
-        return validate_source_preserving_candidate(source,candidate["canonical_document"],candidate["model_metadata"])
+        return validate_source_preserving_candidate(
+            source, candidate["canonical_document"], candidate["model_metadata"], profile_version=profile,
+        )
     attempt = cur.execute("""SELECT * FROM canonical_article_rewrite_attempts
         WHERE canonical_article_revision_id=%s AND status='succeeded'""",
         (candidate["canonical_article_revision_id"],)).fetchone()
@@ -664,20 +692,24 @@ def automatic_candidate_validation(cur, job, candidate, *, require_current=False
         or candidate["source_revision_id"] != job["source_revision_id"]
         or candidate["canonical_article_id"] != job["canonical_article_id"]
         or candidate["transformation_key"] != job["transformation_key"]
-        or candidate["rewrite_profile_version"] != PROFILE or job["rewrite_profile_version"] != PROFILE
+        or candidate["normalization_version"] != job["normalization_version"]
         or attempt is None or attempt["source_fetch_job_id"] != job["source_fetch_job_id"]
-        or attempt["profile_version"] != PROFILE or not isinstance(attempt["response"],dict)
+        or attempt["profile_version"] != profile or not isinstance(attempt["response"],dict)
         or attempt["response_hash"] != digest_json(attempt["response"])
         or attempt["input_hash"] != digest_json(source)
         or attempt["prompt_hash"] != candidate["model_metadata"].get("prompt_hash")
         or attempt["model"] != candidate["model_metadata"].get("model")
-        or candidate["model_metadata"].get("profile_version") != PROFILE):
+        or candidate["model_metadata"].get("profile_version") != profile):
         raise ValueError("automatic saved evidence binding mismatch")
-    prompt_version = _auto_prompt_version(source, context=context["vehicle"], prompt_hash=attempt["prompt_hash"])
+    prompt_version = _auto_prompt_version(
+        source, context=context["vehicle"], prompt_hash=attempt["prompt_hash"], profile_version=profile,
+    )
     if prompt_version is None:
         raise ValueError("automatic saved prompt binding mismatch")
     validation = validate_auto(
-        source, candidate["canonical_document"], response=attempt["response"], prompt_version=prompt_version)
+        source, candidate["canonical_document"], response=attempt["response"], prompt_version=prompt_version,
+        profile_version=profile,
+    )
     if not validation.passed:
         raise ValueError("automatic rewrite operation binding mismatch")
     if require_current:
@@ -688,12 +720,13 @@ def automatic_candidate_validation(cur, job, candidate, *, require_current=False
 
 
 def validate_saved_candidate(repo,lease,candidate):
-    if lease.rewrite_profile_version not in ("full-prose-review-v1", "full-prose-auto-v1"):
+    profile = lease.rewrite_profile_version
+    if profile not in AUTOMATIC_REWRITE_PROFILES and profile != "full-prose-review-v1":
         from .procedure_rewrite import validate_article_rewrite
-        return validate_article_rewrite(candidate["normalized_source_document"],candidate["canonical_document"],profile_version=lease.rewrite_profile_version)
+        return validate_article_rewrite(candidate["normalized_source_document"],candidate["canonical_document"],profile_version=profile)
     with repo.connect() as conn,conn.cursor(row_factory=dict_row) as cur:
         job,_ = _lock_transform(cur,lease)
-        return automatic_candidate_validation(cur,job,candidate) if lease.rewrite_profile_version == "full-prose-auto-v1" else full_candidate_validation(cur,job,candidate)
+        return automatic_candidate_validation(cur,job,candidate) if profile in AUTOMATIC_REWRITE_PROFILES else full_candidate_validation(cur,job,candidate)
 
 
 class RewriteStorageError(ValueError):
@@ -713,13 +746,15 @@ def store_source_preserving_candidate(repo,lease):
     """Persist an independently reconstructed server candidate; never manufacture an attempt."""
     from .article_lifecycle_types import digest_json
     from .article_document import project_ordered_document
-    from .procedure_rewrite_auto import PROFILE, build_source_preserving_candidate
+    from .procedure_rewrite_auto import build_source_preserving_candidate
     with repo.connect() as conn,conn.cursor(row_factory=dict_row) as cur:
-        job,_=_lock_transform(cur,lease)
-        if job["rewrite_profile_version"] != PROFILE or job["checkpoint"].get("rewrite_error_code"):
+        job,article=_lock_transform(cur,lease)
+        _require_source_bound_rewrite_rights(cur, job, article)
+        profile = job["rewrite_profile_version"]
+        if profile not in AUTOMATIC_REWRITE_PROFILES or job["checkpoint"].get("rewrite_error_code"):
             raise ValueError("SOURCE_PRESERVING_BINDING_INVALID")
         source=job["checkpoint"]["normalized_document"]
-        document,metadata=build_source_preserving_candidate(source)
+        document,metadata=build_source_preserving_candidate(source, profile_version=profile)
         projection=project_ordered_document(document)
         revision=uuid4()
         candidate=cur.execute("""INSERT INTO canonical_article_revisions
@@ -771,6 +806,7 @@ def _store_rewrite_result(repo,lease,result):
         if attempt is None: raise ValueError("no dispatched rewrite attempt")
         if (attempt["input_hash"]!=result.input_hash or attempt["prompt_hash"]!=result.prompt_hash
             or result.profile_version!=job["rewrite_profile_version"]
+            or attempt["profile_version"]!=job["rewrite_profile_version"]
             or result.model_metadata.get("model")!=attempt["model"]
             or result.model_metadata.get("profile_version")!=attempt["profile_version"]
             or result.model_metadata.get("prompt_hash")!=attempt["prompt_hash"]
@@ -782,10 +818,14 @@ def _store_rewrite_result(repo,lease,result):
             full_validation = validate_full(source,result.document,response=result.raw_response)
             if digest_json(render_full(source,result.raw_response)) != digest_json(result.document) or not full_validation.passed:
                 raise ValueError("rewrite operation binding mismatch")
-        if result.profile_version == "full-prose-auto-v1" and not result.error_code:
+        if result.profile_version in AUTOMATIC_REWRITE_PROFILES and not result.error_code:
             from .procedure_rewrite_auto import render_auto, validate_auto
             source = job["checkpoint"]["normalized_document"]
-            if digest_json(render_auto(source,result.raw_response)) != result.output_hash or not validate_auto(source,result.document,response=result.raw_response).passed:
+            rendered = render_auto(source, result.raw_response, profile_version=result.profile_version)
+            validation = validate_auto(
+                source, result.document, response=result.raw_response, profile_version=result.profile_version,
+            )
+            if digest_json(rendered) != result.output_hash or not validation.passed:
                 raise ValueError("automatic rewrite operation binding mismatch")
         if result.profile_version == "technical-prose-v2" and not result.error_code:
             _bind_v2_operations(job["checkpoint"]["normalized_document"], result.document, result.raw_response)
@@ -825,8 +865,16 @@ def store_validation(repo,lease,validation):
         job,_=_lock_transform(cur,lease)
         candidate=cur.execute("SELECT * FROM canonical_article_revisions WHERE transformation_key=%s FOR UPDATE",(job["transformation_key"],)).fetchone()
         if candidate is None: raise ValueError("missing candidate")
-        expected=automatic_candidate_validation(cur,job,candidate) if job["rewrite_profile_version"] == "full-prose-auto-v1" else full_candidate_validation(cur,job,candidate) if job["rewrite_profile_version"] == "full-prose-review-v1" else validate_article_rewrite(candidate["normalized_source_document"],candidate["canonical_document"],profile_version=job["rewrite_profile_version"])
-        if (expected != validation or (job["rewrite_profile_version"] in ("technical-prose-v2", "full-prose-review-v1", "full-prose-auto-v1")
+        profile = job["rewrite_profile_version"]
+        if profile in AUTOMATIC_REWRITE_PROFILES:
+            expected = automatic_candidate_validation(cur, job, candidate)
+        elif profile == "full-prose-review-v1":
+            expected = full_candidate_validation(cur, job, candidate)
+        else:
+            expected = validate_article_rewrite(
+                candidate["normalized_source_document"], candidate["canonical_document"], profile_version=profile,
+            )
+        if (expected != validation or (profile in (*AUTOMATIC_REWRITE_PROFILES, "technical-prose-v2", "full-prose-review-v1")
             and (type(validation.passed) is not bool or digest_json(expected.report) != digest_json(validation.report)))):
             raise ValueError("validation report binding mismatch")
         if expected.passed and job["rewrite_profile_version"] == "technical-prose-v2":
@@ -861,11 +909,12 @@ def publish_article_revision(repo,lease,revision_id,*,hooks=None):
             if published: return published["canonical_article_revision_id"]
             raise LeaseLost("completed publication no longer current")
         job,article=_lock_transform(cur,lease)
+        _require_source_bound_rewrite_rights(cur, job, article)
         row=cur.execute("SELECT * FROM canonical_article_revisions WHERE canonical_article_revision_id=%s FOR UPDATE",(revision_id,)).fetchone()
         if row is None: raise ValueError("missing candidate")
         projection=project_ordered_document(row["canonical_document"])
         profile = job["rewrite_profile_version"]
-        if profile == "full-prose-auto-v1":
+        if profile in AUTOMATIC_REWRITE_PROFILES:
             validation = automatic_candidate_validation(cur, job, row, require_current=True)
         elif profile == "full-prose-review-v1":
             validation = full_candidate_validation(cur, job, row)
@@ -886,7 +935,7 @@ def publish_article_revision(repo,lease,revision_id,*,hooks=None):
             or projection!={"body":row["canonical_body"],"steps":row["canonical_steps"],"images":row["canonical_images"]}):
             raise ValueError("publication binding validation failed")
         from .procedure_rewrite_auto import SOURCE_PRESERVING_METHOD
-        server_candidate=(job["rewrite_profile_version"] == "full-prose-auto-v1"
+        server_candidate=(profile in AUTOMATIC_REWRITE_PROFILES
             and row["model_metadata"].get("transformation_method") == SOURCE_PRESERVING_METHOD)
         if not server_candidate:
             if job["rewrite_profile_version"] == "full-prose-review-v1":

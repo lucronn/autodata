@@ -9,10 +9,11 @@ from . import article_lifecycle_store as store
 from .source_job_persistence import (claim_source_job, heartbeat_source_job, lock_live_lease,
                                      fail_source_job, park_automatic_for_model, LeaseLost)
 from .article_lifecycle_types import (
-    ArticleKey, HTML_DOCUMENT_LINK_LAYOUT, HTML_FIGURE_CAPTION_LAYOUT, HTML_FLOW_FIGURE_CAPTION_LAYOUT,
+    AUTOMATIC_REWRITE_PROFILES, ArticleKey, HTML_DOCUMENT_LINK_LAYOUT, HTML_FIGURE_CAPTION_LAYOUT, HTML_FLOW_FIGURE_CAPTION_LAYOUT,
     HTML_MULTILINE_FIGURE_CAPTION_LAYOUT, HTML_TABLE_CAPTION_LAYOUT,
     PDF_BLANK_PAGE_LAYOUT, PDF_COMPACT_FIGURE_LAYOUT,
-    PDF_LEGACY_FIGURE_LAYOUT, PDF_REPEAT_MARGIN_LAYOUT, SourceArticleContext, SOURCE_PROJECTION_VERSIONS,
+    PDF_LEGACY_FIGURE_LAYOUT, PDF_REPEAT_MARGIN_LAYOUT, SourceArticleContext,
+    SOURCE_BOUND_REWRITE_PROFILE, SOURCE_PROJECTION_VERSIONS,
 )
 from .procedure_rewrite import (rewrite_ordered_document, validate_article_rewrite,
                                 build_rewrite_prompt, editable_slots)
@@ -151,6 +152,13 @@ def run_article_job(repo,lease,*,registry,object_store,model_client,hooks=None):
     with _heartbeat(repo,lease) as lost:
         try:
             lease=_live(repo,lease)
+            profile = lease.rewrite_profile_version
+            automatic = profile in AUTOMATIC_REWRITE_PROFILES
+            if "source_bound_rewrite" in lease.checkpoint and (
+                profile != SOURCE_BOUND_REWRITE_PROFILE or lease.source_revision_id is None
+            ):
+                fail_source_job(repo, lease, code="SOURCE_BOUND_REWRITE_BINDING_INVALID", retryable=False)
+                return
             if lease.source_revision_id is None:
                 from .source_article_capture import capture_source_article
                 context=_capture_context(repo,lease)
@@ -212,35 +220,35 @@ def run_article_job(repo,lease,*,registry,object_store,model_client,hooks=None):
                 store.save_normalized_input(repo,lease,normalized)
                 document=normalized["normalized_document"]
                 from .procedure_rewrite_full import prose_slots
-                if lease.rewrite_profile_version == "full-prose-auto-v1" and not prose_slots(document, include_cell_blocks=True):
+                if automatic and not prose_slots(document, include_cell_blocks=True):
                     store.store_source_preserving_candidate(repo,lease)
                     _hook(hooks,"after_source_preserving_candidate_commit")
                 else:
                     if model_client is None:
-                        if lease.rewrite_profile_version == "full-prose-auto-v1":
+                        if automatic:
                             park_automatic_for_model(repo,lease)
                             return
                         raise ValueError("MODEL_NOT_CONFIGURED")
-                    if lease.rewrite_profile_version == "technical-prose-v2":
+                    if profile == "technical-prose-v2":
                         from .procedure_rewrite_v2 import plan_v2
                         plan = plan_v2(document)
                         if not plan["eligible"]:raise ValueError(plan["error_code"])
-                    elif lease.rewrite_profile_version not in ("technical-prose-v1", "full-prose-review-v1", "full-prose-auto-v1"):
+                    elif not automatic and profile not in ("technical-prose-v1", "full-prose-review-v1"):
                         raise ValueError("REWRITE_PROFILE_UNSUPPORTED")
-                    if lease.rewrite_profile_version not in ("full-prose-review-v1", "full-prose-auto-v1") and not editable_slots(document, profile_version=lease.rewrite_profile_version):raise ValueError("REWRITE_NOT_APPLICABLE")
-                    prompt=build_rewrite_prompt(document,context=source.vehicle,profile_version=lease.rewrite_profile_version)
+                    if not automatic and profile != "full-prose-review-v1" and not editable_slots(document, profile_version=profile):raise ValueError("REWRITE_NOT_APPLICABLE")
+                    prompt=build_rewrite_prompt(document,context=source.vehicle,profile_version=profile)
                     if len(prompt.encode())>200*1024:raise ValueError("REWRITE_INPUT_LIMIT")
                     attempt=store.prepare_rewrite_attempt(repo,lease,document,context=source.vehicle,model=getattr(model_client,"_model","mercury-2"))
                     store.mark_rewrite_dispatched(repo,lease,attempt)
                     _hook(hooks,"after_model_dispatch")
-                    result=rewrite_ordered_document(document,client=model_client,context=source.vehicle,profile_version=lease.rewrite_profile_version)
+                    result=rewrite_ordered_document(document,client=model_client,context=source.vehicle,profile_version=profile)
                     if lost.is_set():raise LeaseLost("heartbeat lost during model IO")
                     store.store_rewrite_result(repo,lease,result)
                     _hook(hooks,"after_model_result_commit")
-                    if lease.rewrite_profile_version == "full-prose-review-v1" and not result.error_code:
+                    if profile == "full-prose-review-v1" and not result.error_code:
                         return
                 candidate=store.load_candidate(repo,lease)
-            if lease.rewrite_profile_version in ("full-prose-review-v1", "full-prose-auto-v1"):
+            if automatic or profile == "full-prose-review-v1":
                 # A saved failed response is original evidence, not a successful
                 # draft to reconstruct; retain its specific mechanical failure.
                 lease=_live(repo,lease)

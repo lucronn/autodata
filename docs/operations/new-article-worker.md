@@ -7,6 +7,23 @@ source pin while the worker is stopped. Run its worker module with
 existing state directory and worker lock. The rollout ID, enablement, cutoff,
 provider scope, and spent reservations are preserved.
 
+## Re-author an unpublished retained article
+
+Run this with a reviewed article-worker revision that supports
+`full-prose-auto-v2`. Before scheduling, verify that every generic article
+worker on the same database supports v2 or is stopped. The operator selects
+the existing article and source revision using the normal selection JSON
+for `automatic_article_refresh.py`.
+For one selected article, pass `--apply --source-bound-from PRIOR_JOB_ID`
+with the usual operator and reason arguments. Then run
+`scripts/dev/article_worker.py --job-id NEW_JOB_ID` with the returned job ID.
+The exact job uses the retained source. The continuous new-article worker
+admits pristine catalog requests independently.
+
+Verify the job and article state after the exact worker exits. Before
+returning a generic dispatcher to an older revision, finish any queued
+or in-flight v2 jobs with the compatible worker.
+
 Status: reviewed implementation merged; the first finite worker is disabled and stopped after two admissions, with both reservations retained. Bankone published automatically as UNREVIEWED; Banktwo failed once with readable source fallback. The [bounded live proof](../verification/2026-11-06-new-article-live-proof.md) does not establish two-bank publication or full-rewrite quality. The implementation gate is `docs/superpowers/plans/2026-11-06-new-article-worker.md`, record `docs/agents/records/2026-11-06-new-article-worker.json`; Issue https://github.com/lucronn/autodata/issues/186 and Project https://github.com/users/lucronn/projects/8 track the same work. Source base is merged PR350 `b3618fb6e68f1734ef029096748e30e655451a26` / tree `b686966c9bb4c01c7d35262c661f8645f9fb9f04`.
 
 The Workshop's persistent ingestion HTTP schedules jobs but does not process article jobs. Its separately gated prompt-v2 source refresh does not authorize a generic worker. The existing generic worker can resume historical rows, so this successor instead wraps existing exact-job dispatch with a persisted new-only eligibility boundary. No API/schema/validator change is proposed.

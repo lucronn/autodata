@@ -9,7 +9,7 @@ import re
 from .article_document import (
     has_only_list_ordinal_additions, has_only_table_span_additions, project_ordered_document,
 )
-from .article_lifecycle_types import ValidationResult, digest_json
+from .article_lifecycle_types import AUTOMATIC_REWRITE_PROFILES, ValidationResult, digest_json
 from .procedure_rewrite import _set_path, editable_slots, validate_article_rewrite
 from .procedure_rewrite_auto import PROFILE, _include_cell_blocks, render_auto, validate_auto
 from .procedure_rewrite_full import PROFILE as REVIEW_PROFILE
@@ -18,7 +18,7 @@ from .procedure_rewrite_v2 import PROFILE as TECHNICAL_V2
 from .procedure_rewrite_v2 import _selection, plan_v2, render_v2
 
 TECHNICAL_V1 = "technical-prose-v1"
-_SUPPORTED_PROMPTS = frozenset(f"full-prose-auto-prompt-v{version}" for version in range(1, 60))
+_SUPPORTED_PROMPTS = frozenset(f"full-prose-auto-prompt-v{version}" for version in range(1, 61))
 _POSITION_KEYS = frozenset({"block_id", "source_order"})
 _IMAGE_KEYS = _POSITION_KEYS | {"type"}
 MEDIA_METHOD = "published-media-placement-v1"
@@ -192,11 +192,11 @@ def repair_published_media(
     """
     if sum((ordinals, table_spans, svg_recovery)) > 1:
         raise ValueError("PUBLISHED_MEDIA_REPAIR_MODE_INVALID")
-    if profile == PROFILE:
+    if profile in AUTOMATIC_REWRITE_PROFILES:
         if not isinstance(prompt_version, str) or prompt_version not in _SUPPORTED_PROMPTS:
             raise ValueError("PUBLISHED_MEDIA_REPAIR_PROMPT_UNSUPPORTED")
-        render = partial(render_auto, prompt_version=prompt_version)
-        validate = partial(validate_auto, prompt_version=prompt_version)
+        render = partial(render_auto, prompt_version=prompt_version, profile_version=profile)
+        validate = partial(validate_auto, prompt_version=prompt_version, profile_version=profile)
         slots = partial(prose_slots, include_cell_blocks=_include_cell_blocks(prompt_version))
     elif profile in (REVIEW_PROFILE, TECHNICAL_V1, TECHNICAL_V2):
         if prompt_version is not None:
@@ -261,7 +261,7 @@ def repair_published_media(
         raise ValueError("PUBLISHED_MEDIA_REPAIR_REWRITE_INVALID")
     published_prose = _without_media(published)
     if structure_only is not None:
-        if profile in (PROFILE, REVIEW_PROFILE):
+        if profile in (*AUTOMATIC_REWRITE_PROFILES, REVIEW_PROFILE):
             # The validated introduction's ID binds the entire source hash.
             # Compare its prose and evidence while allowing that ID to rebind.
             before_intro, *before_blocks = published["blocks"]

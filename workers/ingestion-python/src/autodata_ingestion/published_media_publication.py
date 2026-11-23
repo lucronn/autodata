@@ -20,11 +20,10 @@ from .article_content_review import (
 )
 from .article_document import project_ordered_document
 from .article_lifecycle_store import _latest_content_review, _persist_article_capture, automatic_candidate_validation
-from .article_lifecycle_types import digest_json, transformation_key
+from .article_lifecycle_types import AUTOMATIC_REWRITE_PROFILES, digest_json, transformation_key
 from .procedure_normalize import normalize_procedure_article
 from .procedure_rewrite import build_rewrite_prompt, validate_article_rewrite
 from .procedure_rewrite_auto import (
-    PROFILE as AUTO_PROFILE,
     SOURCE_PRESERVING_METHOD,
     _auto_prompt_version,
     build_source_preserving_candidate,
@@ -113,7 +112,7 @@ def _publication_evidence(cur, article, binding, *, fixture_mode, lock):
         raise ValueError("PUBLISHED_MEDIA_REPAIR_PRIOR_REPAIR_UNSUPPORTED")
 
     profile = row["rewrite_profile_version"]
-    if (profile not in (AUTO_PROFILE, REVIEW_PROFILE, TECHNICAL_V1, TECHNICAL_V2)
+    if (profile not in (*AUTOMATIC_REWRITE_PROFILES, REVIEW_PROFILE, TECHNICAL_V1, TECHNICAL_V2)
         or profile != article["target_rewrite_profile_version"]
         or row["normalization_version"] != article["target_normalization_version"]):
         raise ValueError("PUBLISHED_MEDIA_REPAIR_PROFILE_UNSUPPORTED")
@@ -151,7 +150,7 @@ def _publication_evidence(cur, article, binding, *, fixture_mode, lock):
             authors.add(correction["actor"])
         if set(reason["retention_reviews"]) != set(validation.report.get("retained_paths", [])):
             raise ValueError("PUBLISHED_MEDIA_REPAIR_REVIEW_REQUIRED")
-    elif profile == AUTO_PROFILE:
+    elif profile in AUTOMATIC_REWRITE_PROFILES:
         validation = automatic_candidate_validation(cur, job, row)
         attempt = _saved_attempt(cur, revision_id, job["source_fetch_job_id"])
         if row["model_metadata"].get("transformation_method") == SOURCE_PRESERVING_METHOD:
@@ -164,6 +163,7 @@ def _publication_evidence(cur, article, binding, *, fixture_mode, lock):
             response = attempt["response"]
             prompt_version = _auto_prompt_version(
                 source, context=binding.context.vehicle, prompt_hash=attempt["prompt_hash"],
+                profile_version=profile,
             )
         else:
             raise ValueError("PUBLISHED_MEDIA_REPAIR_ATTEMPT_REQUIRED")
@@ -197,7 +197,7 @@ def _plan(cur, article, binding, captured, *, fixture_mode, lock=False, ordinals
         ordinals=ordinals, table_spans=table_spans, svg_recovery=svg_recovery,
     )
     if attempt is None:
-        preserving_document, _ = build_source_preserving_candidate(normalized)
+        preserving_document, _ = build_source_preserving_candidate(normalized, profile_version=row["rewrite_profile_version"])
         if digest_json(preserving_document) != digest_json(repair.document):
             raise ValueError("PUBLISHED_MEDIA_REPAIR_SOURCE_HEADING_CHANGED")
     manifest = {

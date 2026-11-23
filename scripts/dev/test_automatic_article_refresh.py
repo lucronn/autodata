@@ -3,6 +3,7 @@ import importlib.util
 import json
 from pathlib import Path
 import sys
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -32,6 +33,30 @@ def test_duplicate_or_unbounded_selection_rejected():
     row = {"canonical_article_id":str(uuid4()), "expected_source_revision_id":str(uuid4())}
     with pytest.raises(ValueError): module().selection([row, row])
     with pytest.raises(ValueError): module().selection([row] * 101)
+
+
+def test_source_bound_cli_passes_the_exact_job_and_source(tmp_path, monkeypatch, capsys):
+    article, source, prior_job, new_job = (uuid4() for _ in range(4))
+    path = tmp_path / "selection.json"
+    path.write_text(json.dumps([{"canonical_article_id": str(article), "expected_source_revision_id": str(source)}]))
+    refresh = module()
+    expected_repo = object()
+    calls = []
+
+    def schedule(repo, article_id, **kwargs):
+        calls.append((repo, article_id, kwargs))
+        return SimpleNamespace(job_id=new_job, created=True)
+
+    monkeypatch.setattr(refresh, "schedule_source_bound_rewrite", schedule)
+    args = ["--selection", str(path), "--actor", "operator", "--reason", "Regenerate draft",
+            "--source-bound-from", str(prior_job)]
+    with pytest.raises(SystemExit):
+        refresh.main(args, repo=expected_repo)
+    assert not calls
+    assert refresh.main([*args, "--apply"], repo=expected_repo) == 0
+    assert calls == [(expected_repo, article, {"expected_job_id": prior_job,
+                      "expected_source_revision_id": source, "actor": "operator", "reason": "Regenerate draft"})]
+    assert json.loads(capsys.readouterr().out)["items"][0]["job_id"] == str(new_job)
 
 
 def historical_source(repo, fixture):
