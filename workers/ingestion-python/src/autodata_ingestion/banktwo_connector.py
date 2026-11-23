@@ -162,6 +162,23 @@ class _EnclosingTable:
 class ArticleParser(HTMLParser):
     """Keep ordered text, figures and component links without executable HTML."""
 
+    _DOCUMENT_LINK = "mtr-doc-link"
+    _DOCUMENT_LINK_EXCLUSIONS = frozenset({
+        "a", "button", "details", "form", "iframe", "label", "noscript", "object",
+        "script", "select", "style", "summary", "template", "textarea",
+    })
+    _DOCUMENT_LINK_OPENING_TAG = re.compile(
+        r"<(?:li|mtr-doc-link)(?:[ \t\n\r\f]+[^\x00-\x20\"'<>/=]+"
+        r"(?:[ \t\n\r\f]*=[ \t\n\r\f]*(?:\"[^\"]*\"|'[^']*'|[^\x00-\x20\"'`=<>]+))?)*"
+        r"[ \t\n\r\f]*>",
+        re.IGNORECASE | re.ASCII,
+    )
+    _DOCUMENT_LINK_CLOSING_TAG = re.compile(r"</(?:li|mtr-doc-link)[ \t\n\r\f]*>", re.IGNORECASE | re.ASCII)
+    _HIDDEN_LINK_STYLE = re.compile(
+        r"(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*(?:hidden|collapse))"
+        r"\s*(?:!important\s*)?(?:;|$)", re.IGNORECASE,
+    )
+
     def __init__(
         self, *, asset_bindings=(), preserve_legacy_list_starts=True, keep_html_headings=False,
         keep_bound_pdf_iframes=False, keep_html_table_image_order=False, keep_html_figure_captions=False,
@@ -170,7 +187,7 @@ class ArticleParser(HTMLParser):
         keep_html_table_spans=False, keep_html_media_table_headers=False,
         keep_html_nested_tables=False, keep_html_numeric_superscripts=False, resolved_pdf_refs=frozenset(),
         include_untyped_pdf_positions=False, keep_bound_html_images=False, skip_noscript_images=frozenset(),
-        declared_image_refs=frozenset(), lazy_image_alts=None,
+        declared_image_refs=frozenset(), lazy_image_alts=None, keep_html_document_links=False,
     ):
         super().__init__(convert_charrefs=True)
         self._asset_bindings = {item["source_url"]: item["resource_ref"] for item in asset_bindings}
@@ -193,6 +210,12 @@ class ArticleParser(HTMLParser):
         self._list_continuation_pending = False
         self._preserve_legacy_list_starts = preserve_legacy_list_starts
         self._keep_html_headings = keep_html_headings
+        self._keep_html_document_links = keep_html_document_links
+        self.html_document_links = False
+        # Bounds are indexes into _text. A new list item awaits both bounds.
+        self._document_link_bounds: tuple[int | None, int | None] | None = None
+        self._document_link_scope: str | None = None
+        self._document_link_depth = 0
         self._keep_bound_pdf_iframes = keep_bound_pdf_iframes
         self._keep_html_table_image_order = keep_html_table_image_order
         self._keep_html_figure_captions = keep_html_figure_captions
@@ -301,6 +324,47 @@ class ArticleParser(HTMLParser):
             self.blocks.append(block)
         else:
             item.blocks.append(block)
+
+    def _start_document_link_tag(self, tag, attrs):
+        if self._document_link_scope is not None:
+            if tag == self._document_link_scope:
+                self._document_link_depth += 1
+        else:
+            style = attrs.get("style") or ""
+            excluded = (
+                tag in self._DOCUMENT_LINK_EXCLUSIONS or "hidden" in attrs
+                or (attrs.get("aria-hidden") or "").strip().casefold() == "true"
+                or bool(style and self._HIDDEN_LINK_STYLE.search(style))
+            )
+            if (excluded or tag == self._DOCUMENT_LINK) and tag not in _VOID_TAGS:
+                self._document_link_scope = tag
+                self._document_link_depth = 1
+            if (tag == self._DOCUMENT_LINK and not excluded and self._document_link_bounds == (None, None)
+                    and self._DOCUMENT_LINK_OPENING_TAG.fullmatch(self.get_starttag_text())
+                    and not any(part.strip() for part in self._text)):
+                self._document_link_bounds = (len(self._text), None)
+                return
+        self._document_link_bounds = None
+
+    def _end_document_link_tag(self, tag):
+        if tag == self._document_link_scope:
+            self._document_link_depth -= 1
+            if self._document_link_depth == 0:
+                self._document_link_scope = None
+        bounds = self._document_link_bounds
+        self._document_link_bounds = None
+        if bounds is None or bounds[0] is None or self._document_link_scope is not None:
+            return
+        start, end = bounds
+        if tag == self._DOCUMENT_LINK and end is None:
+            self._document_link_bounds = (start, len(self._text))
+        elif tag == "li" and end is not None and not any(part.strip() for part in self._text[end:]):
+            item = self._current_list_item()
+            label = " ".join("".join(self._text[start:end]).split())
+            if label and item is not None and not item.lead and not item.blocks:
+                item.blocks.append({"kind": "link", "text": label})
+                self._text = []
+                self.html_document_links = True
 
     def _finish_list_item(self):
         frame = self._lists[-1]
@@ -575,6 +639,8 @@ class ArticleParser(HTMLParser):
 
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
+        if self._keep_html_document_links:
+            self._start_document_link_tag(tag, attrs)
         if self._hidden_embed_tags:
             if tag in {"iframe", "object"}:
                 self._hidden_embed_tags.append(tag)
@@ -716,6 +782,9 @@ class ArticleParser(HTMLParser):
             frame = self._lists[-1]
             number = _html_list_number(attrs.get("value")) if frame.tag == "ol" else None
             frame.item = _ListItem(number=number)
+            if (self._keep_html_document_links and self._document_link_scope is None
+                    and self._DOCUMENT_LINK_OPENING_TAG.fullmatch(self.get_starttag_text())):
+                self._document_link_bounds = (None, None)
             return
         if tag in {"br", "p", "div", "li", "tr", "h1", "h2", "h3"} or (
             tag in {"figure", "figcaption"} and self._current_list_item() is not None
@@ -765,7 +834,17 @@ class ArticleParser(HTMLParser):
                 return
             self._append_inline_media(image)
 
+    def parse_endtag(self, offset):
+        # HTMLParser accepts attributes on end tags and only reports the name.
+        if (self._document_link_bounds is not None
+                and not self._DOCUMENT_LINK_CLOSING_TAG.match(self.rawdata, offset)
+                and self.rawdata.find(">", offset + 2) != -1):
+            self._document_link_bounds = None
+        return super().parse_endtag(offset)
+
     def handle_endtag(self, tag):
+        if self._keep_html_document_links:
+            self._end_document_link_tag(tag)
         if self._hidden_embed_tags:
             if self._hidden_embed_tags[-1] == tag:
                 self._hidden_embed_tags.pop()
