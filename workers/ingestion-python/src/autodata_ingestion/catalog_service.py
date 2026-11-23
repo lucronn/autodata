@@ -176,7 +176,12 @@ class CacheFirstCatalogService:
             if provider_complete:
                 complete = True
                 completed_providers += 1
-                if on_progress is not None and normalized_rows and provider_provenance and index + 1 < len(self._providers):
+                has_more_coverage = index + 1 < len(self._providers) or (
+                    request.scope == "years" and completed_providers < len(self._providers)
+                )
+                if on_progress is not None and provider_provenance and has_more_coverage and (
+                    normalized_rows or request.scope == "years"
+                ):
                     on_progress(CatalogResult(
                         rows=tuple(normalized_rows),
                         complete=False,
@@ -446,6 +451,16 @@ def ensure_catalog_hydration(serialized_request: str) -> dict[str, Any]:
     return result
 
 
+def _year_provider_key():
+    from .source_connector_client import source_connector_registry
+
+    providers = source_connector_registry()
+    # Match retries from the same configured supplier endpoints without
+    # retaining credentials or combining checkpoints from another roster.
+    settings = sorted((key, client.base_url) for key, client in providers.items())
+    return sha256(json.dumps(settings, separators=(",", ":")).encode()).hexdigest()
+
+
 def _ensure_initial_selector(request, key):
     # Validate in the parent before acquiring admission or starting any process.
     scope = str(request["scope"]).strip()
@@ -467,6 +482,8 @@ def _ensure_initial_selector(request, key):
     complete = False
     stage = "resolve"
     try:
+        year_provider_key = _year_provider_key() if scope == "years" else None
+
         def persist_progress(payload):
             # A verified provider can supply choices before the next dispatch.
             # Leave completion to the final result from all configured sources.
@@ -477,7 +494,9 @@ def _ensure_initial_selector(request, key):
                     provenance=tuple(_provenance(payload["provenance"])),
                     missing_scopes=(scope,),
                 )
-                _persist_hydration_scope(request, progress, deadline=deadline, progress=True)
+                _persist_hydration_scope(
+                    request, progress, deadline=deadline, progress=True, year_provider_key=year_provider_key,
+                )
             except selector_job.SelectorJobStopped:
                 return
             except Exception as error:
@@ -486,9 +505,7 @@ def _ensure_initial_selector(request, key):
 
         normalized = {"scope": scope, "year": model.year, "make": model.make,
                       "region": model.region}
-        payload = selector_job.run_owned(normalized, deadline, **(
-            {"on_progress": persist_progress} if scope in {"makes", "models"} else {}
-        ))
+        payload = selector_job.run_owned(normalized, deadline, on_progress=persist_progress)
         selector_job.SelectorJobControl(deadline).remaining()
         resolved = CatalogResult(rows=tuple(_canonical_rows(payload["rows"], scope=scope)),
                                  complete=payload["complete"],
@@ -498,12 +515,14 @@ def _ensure_initial_selector(request, key):
         # Initial selectors are sparse: makes/models rows live in the scoped
         # marker, never the full vehicle/S3 evidence persistence pipeline.
         if scope == "years" and not resolved.complete:
-            # Go hydrates years only while the durable years read is empty.
-            # A partial upsert would suppress its next cold retry indefinitely.
+            # Verified progress is staged separately. Keep the legacy
+            # manifest empty until every configured supplier has finished.
             coverage = {"status": "skipped_incomplete_years", "row_count": 0}
             persistence = dict(coverage)
         else:
-            coverage = _persist_hydration_scope(request, resolved, deadline=deadline)
+            coverage = _persist_hydration_scope(
+                request, resolved, deadline=deadline, year_provider_key=year_provider_key,
+            )
             persistence = {"status": "selector_scope_only", "row_count": 0}
         selector_job.SelectorJobControl(deadline).remaining()
         complete = resolved.complete
@@ -1409,19 +1428,94 @@ def _persist_resolved_catalog_rows(
     return {"status": "persisted", "row_count": len(persistable), **result}
 
 
+def _owned_year_records(rows) -> list[dict[str, Any]]:
+    records = {}
+    for row in rows:
+        year = row["year"]
+        if type(year) is not int or not 1886 <= year <= 2100:
+            raise ValueError("source year is outside the supported range")
+        mappings = row.get("provider_mappings", ())
+        if not mappings:
+            raise ValueError("source year lacks page provenance")
+        for mapping in mappings:
+            if not all(mapping.get(name) for name in ("provider", "source_uri", "source_version")):
+                raise ValueError("source year lacks page provenance")
+            identity = (mapping["provider"], mapping["source_version"], year)
+            records.setdefault(identity, {
+                "provider": identity[0], "source_version": identity[1],
+                "year": year, "source_uri": mapping["source_uri"],
+                **({"page_number": mapping["page_number"]} if "page_number" in mapping else {}),
+            })
+    return list(records.values())
+
+
+def _write_year_checkpoint(cursor, result, records, provider_key, jsonb):
+    providers = {}
+    observed_pages = set()
+    for observation in result.provenance:
+        provider = observation.get("provider")
+        if not all(observation.get(name) for name in ("provider", "source_uri", "source_version")):
+            raise ValueError("verified year coverage lacks provider provenance")
+        suppliers = providers.setdefault(provider, {"records": [], "provenance": []})
+        suppliers["provenance"].append(observation)
+        metadata = observation.get("metadata")
+        page_number = metadata.get("page_number") if isinstance(metadata, Mapping) else None
+        observed_pages.add((provider, observation["source_version"], observation["source_uri"], page_number))
+    if not providers or any(
+        (record["provider"], record["source_version"], record["source_uri"], record.get("page_number")) not in observed_pages
+        for record in records
+    ):
+        raise ValueError("verified year coverage lacks provider provenance")
+    for record in records:
+        providers[record["provider"]]["records"].append(record)
+    status = "completed" if result.complete else "partial"
+    checkpoint = {"provider_key": provider_key, "provider_years": providers}
+    cursor.execute(
+        """
+        INSERT INTO vehicle_catalog_syncs
+            (provider, source_version, traversal_version, status, checkpoint, row_count, completed_at)
+        VALUES ('workshop', 'global-years', 'initial-selector-v1', %s, %s, %s,
+                CASE WHEN %s = 'completed' THEN now() END)
+        ON CONFLICT (provider, source_version, traversal_version) DO UPDATE SET
+            status = EXCLUDED.status,
+            (checkpoint, row_count) = (
+                WITH merged AS (
+                    SELECT CASE
+                        WHEN EXCLUDED.status = 'completed'
+                            OR vehicle_catalog_syncs.checkpoint->>'provider_key' IS DISTINCT FROM EXCLUDED.checkpoint->>'provider_key'
+                            THEN EXCLUDED.checkpoint->'provider_years'
+                        ELSE (vehicle_catalog_syncs.checkpoint->'provider_years') || (EXCLUDED.checkpoint->'provider_years')
+                    END AS providers
+                )
+                SELECT jsonb_set(EXCLUDED.checkpoint, '{provider_years}', merged.providers),
+                    (SELECT count(DISTINCT remembered.year)
+                     FROM jsonb_each(merged.providers) AS supplier
+                     CROSS JOIN LATERAL jsonb_to_recordset(supplier.value->'records') AS remembered(year integer))
+                FROM merged
+            ),
+            completed_at = EXCLUDED.completed_at,
+            updated_at = now()
+        WHERE EXCLUDED.status = 'completed' OR vehicle_catalog_syncs.status <> 'completed'
+            OR vehicle_catalog_syncs.checkpoint->>'provider_key' IS DISTINCT FROM EXCLUDED.checkpoint->>'provider_key'
+        """, (status, jsonb(checkpoint), len({record["year"] for record in records}), status),
+    )
+
+
 def _persist_hydration_scope(
-    request: Mapping[str, Any], result: CatalogResult, *, deadline: float | None = None, progress: bool = False,
+    request: Mapping[str, Any], result: CatalogResult, *, deadline: float | None = None,
+    progress: bool = False, year_provider_key: str | None = None,
 ) -> dict[str, Any]:
     """Persist a durable completeness marker for a successful scoped read."""
 
     # Empty rows are allowed: a complete provider enumeration with no matching
     # cars still proves the scope was walked and must clear API hydrating.
-    selector_scope = str(request.get("scope", "")).strip() in {"makes", "models"}
-    if (not result.complete and not selector_scope) or os.getenv("AUTODATA_SOURCE_PERSIST", "1") != "1":
+    scope = str(request.get("scope", "")).strip()
+    selector_scope = scope in {"makes", "models"}
+    year_progress = scope == "years" and progress and year_provider_key is not None and deadline is not None
+    if (not result.complete and not selector_scope and not year_progress) or os.getenv("AUTODATA_SOURCE_PERSIST", "1") != "1":
         return {"status": "not_complete"}
     from .catalog_sync import _conninfo
 
-    scope = str(request.get("scope", "")).strip()
     year = int(request.get("year", 0))
     make = str(request.get("make", "")).strip()
     model = str(request.get("model", "")).strip()
@@ -1484,36 +1578,29 @@ def _persist_hydration_scope(
                 )
             else:
                 if deadline is not None and scope == "years":
-                    # Exact row/page binding, with a normalized projection hash.
-                    years = sorted({int(row["year"]) for row in result.rows})
-                    if any(value < 1886 or value > 2100 for value in years):
-                        raise ValueError("source year is outside the supported range")
-                    projection_hash = sha256(json.dumps(years, separators=(",", ":")).encode()).hexdigest()
-                    records = {}
-                    for row in result.rows:
-                        mappings = row.get("provider_mappings", ())
-                        if not mappings:
-                            raise ValueError("source year lacks page provenance")
-                        for mapping in mappings:
-                            if not all(mapping.get(name) for name in ("provider", "source_uri", "source_version")):
-                                raise ValueError("source year lacks page provenance")
-                            identity = (mapping["provider"], mapping["source_version"], int(row["year"]))
-                            records.setdefault(identity, {"provider": identity[0], "source_version": identity[1],
-                                "year": identity[2], "source_uri": mapping["source_uri"]})
-                    selector_job.SelectorJobControl(deadline - 1).remaining()
-                    cursor.execute(
-                        """
-                        INSERT INTO vehicle_catalog_years
-                            (provider, source_version, year, source_uri, response_hash)
-                        SELECT provider, source_version, year, source_uri, %s
-                        FROM jsonb_to_recordset(%s) AS years(
-                            provider text, source_version text, year integer, source_uri text)
-                        ON CONFLICT (provider, source_version, year) DO UPDATE
-                        SET source_uri = EXCLUDED.source_uri,
-                            response_hash = EXCLUDED.response_hash,
-                            fetched_at = now(), updated_at = now()
-                        """, (projection_hash, Jsonb(list(records.values()))),
-                    )
+                    records = _owned_year_records(result.rows)
+                    if year_provider_key is not None:
+                        selector_job.SelectorJobControl(deadline - 1).remaining()
+                        _write_year_checkpoint(cursor, result, records, year_provider_key, Jsonb)
+                    if result.complete:
+                        # Keep the legacy manifest in the same transaction as
+                        # the true coverage record, even for an empty result.
+                        years = sorted({record["year"] for record in records})
+                        projection_hash = sha256(json.dumps(years, separators=(",", ":")).encode()).hexdigest()
+                        selector_job.SelectorJobControl(deadline - 1).remaining()
+                        cursor.execute(
+                            """
+                            INSERT INTO vehicle_catalog_years
+                                (provider, source_version, year, source_uri, response_hash)
+                            SELECT provider, source_version, year, source_uri, %s
+                            FROM jsonb_to_recordset(%s) AS years(
+                                provider text, source_version text, year integer, source_uri text)
+                            ON CONFLICT (provider, source_version, year) DO UPDATE
+                            SET source_uri = EXCLUDED.source_uri,
+                                response_hash = EXCLUDED.response_hash,
+                                fetched_at = now(), updated_at = now()
+                            """, (projection_hash, Jsonb(records)),
+                        )
                 else:
                     cursor.execute(
                         """
@@ -1562,7 +1649,7 @@ class _SourceCatalogProvider:
         provenance: list[dict[str, Any]] = []
         cursor: str | None = None
         seen: set[str] = set()
-        for _ in range(1000):
+        for page_number in range(1, 1001):
             if self.deepening_control is None:
                 page = self.client.catalog(scope, selector, cursor)
             else:
@@ -1610,14 +1697,25 @@ class _SourceCatalogProvider:
                         },
                     } for parent in page.pages],
                 }
+            source_uri = f"{self.client.base_url}/v1/catalog/{scope}"
+            metadata = {"request_id": page.request_id, "wire_provider": page.provider}
+            if scope == "years":
+                metadata["page_number"] = page_number
+                if cursor is not None:
+                    source_uri += "?" + urlencode({"cursor": cursor})
+            source_uri = page.source_locator or source_uri
             provenance.append({
                 "provider": page.persisted_provider,
-                "source_uri": page.source_locator or f"{self.client.base_url}/v1/catalog/{scope}",
+                "source_uri": source_uri,
                 "source_version": page.source_revision,
                 "retrieved_at": page.fetched_at,
-                "metadata": {"request_id": page.request_id, "wire_provider": page.provider},
+                "metadata": metadata,
             })
             for item in page.body["items"]:
+                if scope == "years":
+                    year = item.get("year")
+                    if type(year) is not int or not 1886 <= year <= 2100:
+                        raise ValueError("source year is missing or outside the supported range")
                 fields_by_scope = {
                     "years": ("year",),
                     "makes": ("year", "make"),
@@ -1640,13 +1738,12 @@ class _SourceCatalogProvider:
                     "provider_label": item["label"],
                 }]
                 if getattr(self.deepening_control, "initial_selector_budget", False):
-                    page_uri = f"{self.client.base_url}/v1/catalog/{scope}"
-                    if scope == "years" and cursor is not None:
-                        page_uri += "?" + urlencode({"cursor": cursor})
                     row["provider_mappings"][0].update(
-                        source_uri=page.source_locator or page_uri,
+                        source_uri=source_uri,
                         source_version=page.source_revision,
                     )
+                    if scope == "years":
+                        row["provider_mappings"][0]["page_number"] = page_number
                 rows.append(row)
             if page.complete:
                 # Completeness belongs to the requested selector scope. Sparse
@@ -1819,6 +1916,9 @@ def _dedupe_provenance(values: Iterable[Mapping[str, Any]]) -> list[dict[str, An
     seen = set()
     for value in values:
         key = (value.get("provider"), value.get("source_uri", value.get("uri")), value.get("content_sha256", value.get("hash")))
+        metadata = value.get("metadata")
+        if isinstance(metadata, Mapping) and type(metadata.get("page_number")) is int:
+            key += (value.get("source_version"), metadata["page_number"])
         if key not in seen:
             seen.add(key)
             result.append(dict(value))

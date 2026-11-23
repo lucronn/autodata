@@ -389,24 +389,47 @@ def test_unfiltered_years_scope_cannot_bypass_cooldown_with_region():
     assert admission.acquire({'scope':'years','year':2024,'make':'ignored','region':'CA'}) is None
 
 
-def test_paginated_years_retains_exact_fallback_page_uri():
+@pytest.mark.parametrize('shared_locator', [False, True])
+def test_paginated_years_retains_exact_page_provenance(shared_locator):
     from autodata_ingestion.source_connector_client import SourceConnectorClient
     from test_source_connector_client import _Response, _envelope
     control=job.SelectorJobControl(time.monotonic()+3,dispatch_interval=0)
     calls=[]
     def pages(request,**kwargs):
         calls.append(request.full_url); last=len(calls)==2
+        locator = {'source_locator': 'http://127.0.0.1:1/authored'} if shared_locator else {}
         return _Response(_envelope(scope='years',items=[{'year':2023 if last else 2024,'opaque_ref':'y','label':'year'}],
-                                   complete=last,next_cursor=None if last else 'authored/cursor'),url=request.full_url)
+                                   complete=last,next_cursor=None if last else 'authored/cursor',**locator),url=request.full_url)
     provider=catalog._SourceCatalogProvider(SourceConnectorClient('http://127.0.0.1:1',provider='bankone',opener=pages),deepening_control=control)
-    result=provider.resolve_catalog(catalog.CatalogRequest(2024,'unknown','unknown',scope='years'))
-    assert [row['provider_mappings'][0]['source_uri'] for row in result['rows']]==calls
+    result=catalog.CacheFirstCatalogService(cache_reader=lambda _:None, providers=(provider,)).resolve(
+        catalog.CatalogRequest(2024,'unknown','unknown',scope='years'))
+    expected = ['http://127.0.0.1:1/authored'] * 2 if shared_locator else calls
+    assert [record['source_uri'] for record in result.provenance] == expected
+    assert [record['metadata']['page_number'] for record in result.provenance] == [1, 2]
+    records = catalog._owned_year_records(result.rows)
+    assert [(row['source_uri'], row['page_number']) for row in records] == list(zip(expected, (1, 2)))
+
+
+@pytest.mark.parametrize('items, complete', [([], True), ([{'label': 'Missing year'}], False)])
+def test_year_source_distinguishes_true_empty_from_invalid_nonempty_page(items, complete):
+    from autodata_ingestion.source_connector_client import SourceEnvelopeV1
+
+    page = SourceEnvelopeV1('request', 'bankone', 'authored-v1', '2026-11-22T00:00:00Z', None,
+                            {'items': items, 'complete': True})
+    client = SimpleNamespace(base_url='http://fixture.invalid', catalog=lambda *_: page)
+    service = catalog.CacheFirstCatalogService(cache_reader=lambda _: None, providers=(catalog._SourceCatalogProvider(client),))
+    result = service.resolve(catalog.CatalogRequest(2024, 'unknown', 'unknown', scope='years'))
+    assert result.complete is complete and not result.rows
+    if complete:
+        assert [(source['provider'], source['source_version']) for source in result.provenance] == [('autoapi', 'authored-v1')]
+    else:
+        assert not result.provenance and result.missing_scopes == ('provider',)
 
 
 @pytest.mark.parametrize('failure',['incomplete','error'])
-def test_two_source_partial_years_skip_all_persistence_and_retry_after_cooldown(monkeypatch,failure):
+def test_two_source_partial_years_stage_verified_choices_and_retry_after_cooldown(monkeypatch,failure):
     catalog._HYDRATION_RESULTS.clear()
-    clock=Clock(); healthy=[False]; calls=[]; durable=[]
+    clock=Clock(); healthy=[False]; calls=[]; durable=[]; staged=[]
     monkeypatch.setattr(job,'ADMISSION',job.SelectorAdmission(clock=clock))
     monkeypatch.setattr(catalog,'_HYDRATION_INCOMPLETE_TTL_SECONDS',0)
     class Provider:
@@ -416,23 +439,27 @@ def test_two_source_partial_years_skip_all_persistence_and_retry_after_cooldown(
             calls.append(self.name)
             if self.name=='second' and not healthy[0] and failure=='error': raise TimeoutError('authored outage')
             return {'rows':[{'year':2024 if self.name=='first' else 2023}],
-                    'complete':self.name=='first' or healthy[0]}
+                    'complete':self.name=='first' or healthy[0],
+                    'provenance':[{'provider':self.name}]}
     providers=(Provider('first'),Provider('second'))
     monkeypatch.setattr(catalog,'_configured_catalog_providers',lambda **_:providers)
-    def owned(request,deadline):
+    def owned(request,deadline,on_progress):
         resolved=catalog.CacheFirstCatalogService(cache_reader=lambda _:None,providers=providers).resolve(
-            catalog.CatalogRequest(2000,'unknown','unknown',scope='years'))
+            catalog.CatalogRequest(2000,'unknown','unknown',scope='years'),
+            on_progress=lambda result: on_progress({'rows':list(result.rows),'provenance':list(result.provenance)}))
         return {'rows':list(resolved.rows),'complete':resolved.complete,
                 'missing_scopes':list(resolved.missing_scopes),'provenance':[]}
     monkeypatch.setattr(job,'run_owned',owned)
     def persist(request,result,**kwargs):
-        assert result.complete, 'incomplete years reached persistence helper'
-        durable.extend(row['year'] for row in result.rows)
+        target = staged if kwargs.get('progress') else durable
+        assert result.complete == (target is durable)
+        target.extend(row['year'] for row in result.rows)
         return {'status':'persisted'}
     monkeypatch.setattr(catalog,'_persist_hydration_scope',persist)
     request=json.dumps({'scope':'years','idempotency_key':'two-source-'+failure})
     partial=catalog.ensure_catalog_hydration(request)
     assert not partial['complete'] and partial['rows'] and not durable
+    assert staged == [2024]
     assert partial['coverage']=={'status':'skipped_incomplete_years','row_count':0}
     assert partial['persistence']=={'status':'skipped_incomplete_years','row_count':0}
     clock.now=7

@@ -24,7 +24,7 @@ var (
 // Implementations own hydration and persistence; handlers never see provider
 // response objects or database rows.
 type CatalogStore interface {
-	Years(context.Context, Principal) ([]CatalogYear, error)
+	Years(context.Context, Principal) ([]CatalogYear, *bool, error)
 	Makes(context.Context, Principal, int, string) ([]CatalogMake, error)
 	Models(context.Context, Principal, int, string, string) ([]CatalogModel, error)
 	Configurations(context.Context, Principal, int, string, string, string) ([]CatalogConfiguration, error)
@@ -368,7 +368,7 @@ func (s *memoryCatalogStore) PutArticle(record CatalogArticle) {
 	s.articles[record.ID] = record
 }
 
-func (s *memoryCatalogStore) Years(context.Context, Principal) ([]CatalogYear, error) {
+func (s *memoryCatalogStore) Years(context.Context, Principal) ([]CatalogYear, *bool, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	years := map[int]bool{}
@@ -380,7 +380,7 @@ func (s *memoryCatalogStore) Years(context.Context, Principal) ([]CatalogYear, e
 		result = append(result, CatalogYear{Year: year})
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].Year < result[j].Year })
-	return result, nil
+	return result, nil, nil
 }
 
 func (s *memoryCatalogStore) Makes(_ context.Context, _ Principal, year int, region string) ([]CatalogMake, error) {
@@ -571,25 +571,40 @@ func newPostgresCatalogStore(pool *pgxpool.Pool) *postgresCatalogStore {
 	return &postgresCatalogStore{pool: pool}
 }
 
-func (s *postgresCatalogStore) Years(ctx context.Context, _ Principal) ([]CatalogYear, error) {
-	rows, err := s.pool.Query(ctx, `
-		SELECT DISTINCT year FROM vehicle_catalog_years
-		UNION
-		SELECT DISTINCT model_year FROM vehicles
-		ORDER BY year`)
+func (s *postgresCatalogStore) Years(ctx context.Context, _ Principal) ([]CatalogYear, *bool, error) {
+	var years []int32
+	var complete *bool
+	// An older worker can finish the manifest while newer progress exists.
+	// Individual inventory rows do not prove the year enumeration is complete.
+	err := s.pool.QueryRow(ctx, `
+		WITH manifest AS (
+			SELECT year FROM vehicle_catalog_years
+		), durable AS (
+			SELECT checkpoint->'provider_years' AS provider_years, status = 'completed' AS complete
+			FROM vehicle_catalog_syncs
+			WHERE provider = 'workshop' AND source_version = 'global-years'
+			  AND traversal_version = 'initial-selector-v1' AND status IN ('partial', 'completed')
+		)
+		SELECT ARRAY(
+			SELECT year FROM manifest
+			UNION
+			SELECT model_year FROM vehicles
+			UNION
+			SELECT remembered.year
+			FROM durable, jsonb_each(durable.provider_years) AS supplier,
+				jsonb_to_recordset(supplier.value->'records') AS remembered(year integer)
+			WHERE NOT EXISTS (SELECT 1 FROM manifest) AND remembered.year BETWEEN 1886 AND 2100
+			ORDER BY year
+		), CASE WHEN EXISTS (SELECT 1 FROM manifest) THEN true ELSE (SELECT complete FROM durable) END`).
+		Scan(&years, &complete)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	defer rows.Close()
-	result := []CatalogYear{}
-	for rows.Next() {
-		var year int
-		if err := rows.Scan(&year); err != nil {
-			return nil, err
-		}
-		result = append(result, CatalogYear{Year: year})
+	result := make([]CatalogYear, 0, len(years))
+	for _, year := range years {
+		result = append(result, CatalogYear{Year: int(year)})
 	}
-	return result, rows.Err()
+	return result, complete, nil
 }
 
 func (s *postgresCatalogStore) Makes(ctx context.Context, _ Principal, year int, region string) ([]CatalogMake, error) {
