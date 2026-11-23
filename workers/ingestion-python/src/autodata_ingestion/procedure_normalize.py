@@ -14,6 +14,7 @@ from .article_document import (
     validate_ordered_document,
 )
 from .article_lifecycle_types import (
+    BANKONE_GRAPHIC_POSITION_LAYOUT,
     HTML_BOUND_IMAGE_LAYOUT,
     HTML_DOCUMENT_LINK_LAYOUT,
     HTML_MEDIA_TABLE_HEADER_LAYOUT,
@@ -67,6 +68,7 @@ def normalize_procedure_article(
             or entry.get("html_numeric_superscript_layout") == HTML_NUMERIC_SUPERSCRIPT_LAYOUT
             or entry.get("html_document_link_layout") == HTML_DOCUMENT_LINK_LAYOUT
             or entry.get("html_section_title_layout") == HTML_SECTION_TITLE_LAYOUT
+            or entry.get("bankone_graphic_position_layout") == BANKONE_GRAPHIC_POSITION_LAYOUT
             or entry.get("html_bound_image_layout") == HTML_BOUND_IMAGE_LAYOUT
             or entry.get("mixed_html_pdf_layout") == MIXED_HTML_PDF_LAYOUT
             or entry.get("html_table_span_layout") == HTML_TABLE_SPAN_LAYOUT

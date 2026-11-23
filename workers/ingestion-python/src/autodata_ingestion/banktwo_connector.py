@@ -6,11 +6,12 @@ from hashlib import sha256
 from html import unescape
 from html.parser import HTMLParser
 from itertools import accumulate, pairwise
+import json
 import re
 import os
 from typing import Any, Mapping
 
-from .article_document import ConnectorDocumentEmbed, list_number
+from .article_document import ConnectorBankoneGraphic, ConnectorDocumentEmbed, list_number
 from .source_connector_client import (
     SourceConnectorClient,
     SourceConnectorError,
@@ -24,6 +25,7 @@ _LIST_TAGS = {"ol": "ordered_list", "ul": "unordered_list"}
 _HEADING_LEVELS = {f"h{level}": level for level in range(1, 7)}
 _SECTION_TITLE_PARAGRAPH = re.compile(r"<p>\s*<(b|strong)>\s*([^<>]{1,80}?)\s*</\1>\s*</p>", re.IGNORECASE)
 _SECTION_TITLE_LEVELS = {"removal": 2, "installation": 2, "all vehicles": 3}
+_BANKONE_GRAPHIC_ID = re.compile(r"[A-Za-z0-9_-]{1,128}")
 _MAX_LIST_DEPTH = 32
 _MAX_FIGURE_DEPTH = 32
 _MAX_TABLE_DEPTH = 8
@@ -191,7 +193,7 @@ class ArticleParser(HTMLParser):
         keep_html_nested_tables=False, keep_html_numeric_superscripts=False, resolved_pdf_refs=frozenset(),
         include_untyped_pdf_positions=False, keep_bound_html_images=False, skip_noscript_images=frozenset(),
         declared_image_refs=frozenset(), lazy_image_alts=None, keep_html_document_links=False,
-        keep_html_section_titles=False,
+        keep_html_section_titles=False, keep_bankone_graphic_positions=False,
     ):
         super().__init__(convert_charrefs=True)
         self._asset_bindings = {item["source_url"]: item["resource_ref"] for item in asset_bindings}
@@ -216,6 +218,8 @@ class ArticleParser(HTMLParser):
         self._keep_html_headings = keep_html_headings
         self._keep_html_section_titles = keep_html_section_titles
         self.html_section_titles = False
+        self._keep_bankone_graphic_positions = keep_bankone_graphic_positions
+        self.bankone_graphic_positions = False
         self._keep_html_document_links = keep_html_document_links
         self.html_document_links = False
         # Bounds are indexes into _text. A new list item awaits both bounds.
@@ -577,6 +581,8 @@ class ArticleParser(HTMLParser):
             # Emit media between sibling <li> tags in the enclosing item.
             frame = self._lists.pop()
             frame.start, frame.authored_start = self._emit_list(frame, top_level=not self._lists)
+            if isinstance(block, ConnectorBankoneGraphic) and frame.tag == "ol" and frame.items:
+                frame.authored_start = True
             frame.items = []
             self._append_block(block)
             self._lists.append(frame)
@@ -644,6 +650,7 @@ class ArticleParser(HTMLParser):
         return ref
 
     def handle_starttag(self, tag, attrs):
+        duplicate_graphic_id = tag == "mtr-image" and sum(name == "id" for name, _ in attrs) != 1
         attrs = dict(attrs)
         if self._keep_html_document_links:
             self._start_document_link_tag(tag, attrs)
@@ -664,7 +671,7 @@ class ArticleParser(HTMLParser):
                 self._hidden_html_tag = tag
                 self._hidden_html_depth = 1
             return
-        if self._keep_bound_html_images:
+        if self._keep_bound_html_images or self._keep_bankone_graphic_positions:
             if tag == self._hidden_image_scope:
                 self._hidden_image_depth += 1
             elif self._hidden_image_scope is None and tag not in _VOID_TAGS and (
@@ -801,23 +808,37 @@ class ArticleParser(HTMLParser):
                 self._image_link += 1
             elif attrs.get("href"):
                 self.links.append(attrs["href"])
-        if tag == "img":
+        if tag in {"img", "mtr-image"}:
+            if tag == "mtr-image" and (
+                not self._keep_bankone_graphic_positions or duplicate_graphic_id
+                or self._hidden_image_scope is not None or "hidden" in attrs
+                or not _BANKONE_GRAPHIC_ID.fullmatch(attrs.get("id") or "")
+            ):
+                return
             if self._skip_noscript_images and self.getpos() in self._skip_noscript_images:
                 return
-            src = attrs.get("src") or ""
-            ref = self._asset_bindings.get(src) or attrs.get("data-resource-ref") or attrs.get("asset_resource_ref")
             lazy_ref = None
-            if (self._keep_bound_html_images and not ref and src not in self._declared_image_refs
-                    and not src.startswith("data:image/")
-                    and self._hidden_image_scope is None and "hidden" not in attrs):
-                lazy_ref = self._bound_lazy_image(attrs)
-                if lazy_ref:
-                    ref = lazy_ref
-                    src = ""
-                    self.html_bound_images = True
-            if not src and not ref:
-                return
-            image = {"kind": "image", "alt": attrs.get("alt", ""), "name": attrs.get("img_name", "")}
+            if tag == "mtr-image":
+                # Bankone's source connector hashes the graphic kind and ID in its asset locator.
+                locator_input = json.dumps({"kind": "graphic", "id": attrs["id"]}, separators=(",", ":"))
+                locator = "bankone:asset:" + sha256(locator_input.encode()).hexdigest()[:24]
+                image = ConnectorBankoneGraphic(locator, attrs.get("alt") or "")
+                src = ref = ""
+                self.bankone_graphic_positions = True
+            else:
+                src = attrs.get("src") or ""
+                ref = self._asset_bindings.get(src) or attrs.get("data-resource-ref") or attrs.get("asset_resource_ref")
+                if (self._keep_bound_html_images and not ref and src not in self._declared_image_refs
+                        and not src.startswith("data:image/")
+                        and self._hidden_image_scope is None and "hidden" not in attrs):
+                    lazy_ref = self._bound_lazy_image(attrs)
+                    if lazy_ref:
+                        ref = lazy_ref
+                        src = ""
+                        self.html_bound_images = True
+                if not src and not ref:
+                    return
+                image = {"kind": "image", "alt": attrs.get("alt", ""), "name": attrs.get("img_name", "")}
             if self._lazy_image_alts:
                 image["alt"] = self._lazy_image_alts.get(self.getpos(), image["alt"])
             if src:

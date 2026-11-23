@@ -10,7 +10,8 @@ from . import article_lifecycle_store as store
 from .source_job_persistence import (claim_source_job, heartbeat_source_job, lock_live_lease,
                                      fail_source_job, park_automatic_for_model, LeaseLost)
 from .article_lifecycle_types import (
-    AUTOMATIC_REWRITE_PROFILES, ArticleKey, HTML_DOCUMENT_LINK_LAYOUT, HTML_FIGURE_CAPTION_LAYOUT, HTML_FLOW_FIGURE_CAPTION_LAYOUT,
+    AUTOMATIC_REWRITE_PROFILES, ArticleKey, BANKONE_GRAPHIC_POSITION_LAYOUT, HTML_DOCUMENT_LINK_LAYOUT,
+    HTML_FIGURE_CAPTION_LAYOUT, HTML_FLOW_FIGURE_CAPTION_LAYOUT,
     HTML_MULTILINE_FIGURE_CAPTION_LAYOUT, HTML_SECTION_TITLE_LAYOUT, HTML_TABLE_CAPTION_LAYOUT,
     PDF_BLANK_PAGE_LAYOUT, PDF_COMPACT_FIGURE_LAYOUT,
     PDF_LEGACY_FIGURE_LAYOUT, PDF_REPEAT_MARGIN_LAYOUT, SourceArticleContext,
@@ -90,6 +91,7 @@ def _capture_context(repo,lease):
         legacy_table_caption_body = previous_body
         legacy_document_link_body = previous_body
         legacy_section_title_body = previous_body
+        legacy_bankone_graphic_body = previous_body
         previous_pdf_roots = {previous_body} if previous_body is not None else set()
         legacy_blank_pdf_roots = set()
         compact_layout_roots = set()
@@ -112,6 +114,8 @@ def _capture_context(repo,lease):
                     legacy_document_link_body = None
                 if resource.get("html_section_title_layout") == HTML_SECTION_TITLE_LAYOUT:
                     legacy_section_title_body = None
+                if resource.get("bankone_graphic_position_layout") == BANKONE_GRAPHIC_POSITION_LAYOUT:
+                    legacy_bankone_graphic_body = None
             is_pdf = resource.get("role") == "document_asset" and resource.get("media_type") == "application/pdf"
             if is_pdf:
                 previous_pdf_roots.add(digest)
@@ -144,6 +148,7 @@ def _capture_context(repo,lease):
             legacy_published_html_table_caption_body=legacy_table_caption_body,
             legacy_published_html_document_link_body=legacy_document_link_body,
             legacy_published_html_section_title_body=legacy_section_title_body,
+            legacy_published_bankone_graphic_body=legacy_bankone_graphic_body,
         )
 
 
@@ -208,6 +213,7 @@ def run_article_job(repo,lease,*,registry,object_store,model_client,hooks=None):
                     keep_html_numeric_superscripts=True,
                     keep_html_document_links=True,
                     keep_html_section_titles=True,
+                    keep_bankone_graphic_positions=True,
                     keep_mixed_html_pdf_embeds=True,
                     keep_bound_html_images=True,
                 )
