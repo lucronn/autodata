@@ -56,6 +56,9 @@ test('real demo uses the ordinary app only in test mode; sample stays separate',
     assert.equal(calls.length, fetchCount);
     assert.deepEqual(preload, fetchCount && !search.includes('demo=1') ? [
       { tag: 'link', rel: 'modulepreload', href: '/workshop/app.mjs' },
+      { tag: 'link', rel: 'modulepreload', href: '/workshop/progress.mjs' },
+      { tag: 'link', rel: 'modulepreload', href: '/workshop/commerce.mjs' },
+      { tag: 'link', rel: 'modulepreload', href: '/workshop/article-read.mjs' },
     ] : []);
     if (fetchCount) assert.deepEqual(calls[0], {
       path: '/workshop/demo-mode.json', preload, imports: [],
