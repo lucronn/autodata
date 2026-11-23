@@ -2892,6 +2892,12 @@ test('loopback TEST notices allow Buy and a deliberate retry after cancellation'
   const h = paidPurchaseLifecycleHarness([], { orderResponses: [canceled, canceled] });
   h.location.origin = 'http://localhost:3013';
   h.$('test-banner').hidden = false;
+  h.context.testStripeMode = true;
+  const start = h.context.checkout.start;
+  h.context.checkout.start = (selection, csrf, options) => {
+    assert.equal(options.mode, 'stripe_test');
+    return start(selection, csrf, options);
+  };
   for (const key of ['terms_url', 'privacy_url', 'refund_url', 'contact_url'])
     h.context.merchant[key] = `${h.location.origin}/workshop/test-notices/${key.slice(0, -4)}`;
 
