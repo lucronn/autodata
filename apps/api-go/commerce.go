@@ -157,6 +157,10 @@ func commercePublicResult(operation string, status int, body []byte, input map[s
 		}
 		configured, ok := client.(*HTTPCommerceClient)
 		availabilityAllowed := v.Purchasable || (ok && configured != nil && configured.readOnly)
+		if ok && configured != nil && configured.simulation {
+			_, signedIn := input["customer_account_id"].(string)
+			availabilityAllowed = v.Purchasable == signedIn
+		}
 		return v, v.Version == "v1" && v.ProductKey == "workshop-configuration-v1" && scopeMatches(v.ConfigurationID, v.Region) && len(v.ConfigurationLabel) > 0 && len(v.ConfigurationLabel) <= 1024 && v.AmountMinor == 2000 && v.Currency == "USD" && v.PurchaseTermsVersion == "workshop-v1" && availabilityAllowed
 	case "checkouts":
 		var v commerceCheckout

@@ -34,6 +34,7 @@ async def exercise_simulated_payment(origin, scope, customer_account):
     article = scope["article"]
     route = f"{origin}/workshop/?configuration={configuration}&region=US"
     detail = f"{origin}/v1/catalog/vehicles/{configuration}/articles/{article}?region=US"
+    quote = f"{origin}/v1/workshop/quote?configuration_id={configuration}&region=US"
     checkout_path = "/v1/workshop/checkout-sessions"
 
     async with async_playwright() as playwright:
@@ -55,12 +56,16 @@ async def exercise_simulated_payment(origin, scope, customer_account):
             await owner.route("**/*", route_fixture)
             page = await owner.new_page()
             assert (await owner.request.get(detail)).status == 401
+            guest_quote = await owner.request.get(quote)
+            assert guest_quote.ok and (await guest_quote.json())["purchasable"] is False
             await page.goto(route)
             await expect(page.locator("#purchase-message")).to_have_text(
                 "Sign in with Google to simulate purchase. No payment is collected."
             )
             await api_signin(page)
             assert (await owner.request.get(detail)).status == 403
+            owner_quote = await owner.request.get(quote)
+            assert owner_quote.ok and (await owner_quote.json())["purchasable"] is True
             configuration_response = await owner.request.get(origin + "/workshop/purchase-config.json")
             assert configuration_response.status == 200
             purchase_configuration = await configuration_response.json()

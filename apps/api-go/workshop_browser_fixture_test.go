@@ -590,6 +590,13 @@ func newWorkshopBrowserApplication(t *testing.T, paid *paidFixture, firebase *fi
 		if os.Getenv("AUTODATA_WORKSHOP_BROWSER_SIMULATION") == "1" {
 			customer.config.commerceMode = workshopSimulationMode
 			server.workshopSimulation = true
+			client, ok := server.commerceClient.(*HTTPCommerceClient)
+			if !ok {
+				t.Fatal("simulation requires the HTTP commerce transport")
+			}
+			simulatedClient := *client
+			simulatedClient.simulation = true
+			server.commerceClient = &simulatedClient
 		}
 		if err = server.validatePaidCatalogDependencies(); err != nil {
 			t.Fatal(err)
