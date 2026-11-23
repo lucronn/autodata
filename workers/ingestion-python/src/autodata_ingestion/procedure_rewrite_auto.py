@@ -68,6 +68,7 @@ _PROSE_PROMPT_V53 = "full-prose-auto-prompt-v53"
 _PROSE_PROMPT_V54 = "full-prose-auto-prompt-v54"
 _PROSE_PROMPT_VERSION = "full-prose-auto-prompt-v55"
 _SUPERSCRIPT_PROMPT_VERSION = "full-prose-auto-prompt-v56"
+_COMPOUND_MEASUREMENT_PROMPT_VERSION = "full-prose-auto-prompt-v57"
 _NUMERIC_SUPERSCRIPT = re.compile(r"[⁰¹²³⁴⁵⁶⁷⁸⁹]|\^\([+−-]?(?:[0-9]*\.[0-9]+|[0-9]+/[0-9]+)\)")
 _WORDS = re.compile(r"\w+")
 _MIN_COPIED_SENTENCE_WORDS = 6
@@ -111,13 +112,42 @@ _MEASUREMENT_AMOUNT = (
     r"(?<![\w./-])(?:" + full._SIGN + r")?" + full._NUMBER
     + r"(?:[ \t]*[–—−~…-][ \t]*[+−-]?" + full._NUMBER + r")?\s*"
 )
+_FLUID_NOUN = r"(?:fluids?|liquids?|coolant|antifreeze|oil|water|fuel|gasoline|diesel|refrigerant)"
+_MEASUREMENT_SPACE = r"[ \t\u00a0\u202f]"
+_COMPOUND_NUMBER = r"(?:[.,]\d+|" + full._NUMBER + r")"
+_COMPOUND_AMOUNT = (
+    r"(?<![\w./-])(?:" + full._SIGN + r")?" + _COMPOUND_NUMBER
+    + r"(?:[ \t]*[–—−~…-][ \t]*[+−-]?" + _COMPOUND_NUMBER + r")?\s*"
+)
+_RATE_VOLUME = (
+    r"(?:[mµμu]?[lℓ]|(?:milli)?lit(?:er|re)s?|cc|(?:cm|m|ft)(?:³|\^?3)|qts?\.?"
+    + rf"|cubic{_MEASUREMENT_SPACE}+(?:feet|foot|(?:centi)?met(?:er|re)s?)"
+    + rf"|(?:(?:us|u\.s\.|imperial|imp\.?){_MEASUREMENT_SPACE}+)?gal(?:lon)?s?\.?)"
+)
+_RATE_TIME = r"(?:seconds?|secs?|s|minutes?|mins?|hours?|hrs?|h)\.?"
+_RATE_PER = (
+    rf"(?:{_MEASUREMENT_SPACE}+of{_MEASUREMENT_SPACE}+{_FLUID_NOUN})?"
+    rf"{_MEASUREMENT_SPACE}+(?:per|(?:for{_MEASUREMENT_SPACE}+)?each|every|a){_MEASUREMENT_SPACE}+"
+)
+_FORCE_LENGTH = rf"{_MEASUREMENT_SPACE}*(?:[·⋅×*.‐‑–—-]{_MEASUREMENT_SPACE}*)?(?:cm|m)"
+_FORCE_AREA = (
+    rf"(?:{_MEASUREMENT_SPACE}*[/⁄]{_MEASUREMENT_SPACE}*(?:cm|m){_MEASUREMENT_SPACE}*(?:²|\^?2)"
+    rf"|{_MEASUREMENT_SPACE}+per{_MEASUREMENT_SPACE}+square{_MEASUREMENT_SPACE}+(?:centi)?met(?:er|re)s?)"
+)
+_COMPOUND_MEASUREMENT = re.compile(
+    _COMPOUND_AMOUNT + r"(?i:"
+    + _RATE_VOLUME + rf"(?:{_MEASUREMENT_SPACE}*[/⁄]{_MEASUREMENT_SPACE}*|{_RATE_PER})"
+    + _RATE_TIME
+    + r"|lpm|lph|gpm|gph|s?cfm"
+    + r"|kgf(?:" + _FORCE_AREA + r"|" + _FORCE_LENGTH + r")"
+    + r")(?![\w/⁄·⋅^−-]|\.\w)"
+)
 _MEASUREMENT_VALUE = re.compile(
     _MEASUREMENT_AMOUNT + r"(?:"
     + "|".join(unit for unit in full._UNITS if len(unit) > 1)
     + r"|[VALΩ%°]|in\.(?=\s|$)|(?i:" + _SPELLED_UNIT + r"))(?![\w/-]|\.\w)"
 )
 _LOWERCASE_LITRE = re.compile(_MEASUREMENT_AMOUNT + r"l(?![\w/·⋅×*^#−-]|\.\w)")
-_FLUID_NOUN = r"(?:fluids?|liquids?|coolant|antifreeze|oil|water|fuel|gasoline|diesel|refrigerant)"
 _FLUID_CONTEXT = re.compile(rf"\b(?:{_FLUID_NOUN}|reservoirs?|tanks?|sumps?)\b", re.IGNORECASE)
 _CAPACITY_CONTEXT = re.compile(r"\b(?:capacity|capacities|volumes?)\b", re.IGNORECASE)
 _FLUID_TRANSFER = re.compile(
@@ -1800,7 +1830,7 @@ def _build_auto_prompt_v55(document, *, context):
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
-def build_auto_prompt(document, *, context):
+def _auto_prompt_payload_v56(document, *, context):
     payload = _auto_prompt_payload_v55(document, context=context)
     superscript_slots = [slot for slot in payload["slots"] if _NUMERIC_SUPERSCRIPT.search(slot["text"])]
     if superscript_slots:
@@ -1811,13 +1841,33 @@ def build_auto_prompt(document, *, context):
             "Retain text with numeric superscripts or ^(…) exponents exactly, including signs and units. "
             "Omit these specifications from the introduction."
         )
+    return payload
+
+
+def _build_auto_prompt_v56(document, *, context):
+    payload = _auto_prompt_payload_v56(document, context=context)
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+
+
+def build_auto_prompt(document, *, context):
+    payload = _auto_prompt_payload_v56(document, context=context)
+    if payload["slots"] and any(_COMPOUND_MEASUREMENT.search(text) for text in full._strings(document)):
+        payload["prompt_version"] = _COMPOUND_MEASUREMENT_PROMPT_VERSION
+        for slot in payload["slots"]:
+            if _COMPOUND_MEASUREMENT.search(slot["text"]):
+                slot["required_action"] = "retain"
+        payload["rules"].append(
+            "Retain the full text of compound flow-rate and kilogram-force specifications exactly. "
+            "Keep their units, limits, directions and components together, and omit them from the introduction."
+        )
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
 
 
 def _auto_prompt_version(document, *, context, prompt_hash):
     """Identify the rules bound to the saved model attempt."""
     for builder in (
-        build_auto_prompt, _build_auto_prompt_v55, _build_auto_prompt_v54, _build_auto_prompt_v53, _build_auto_prompt_v52,
+        build_auto_prompt, _build_auto_prompt_v56, _build_auto_prompt_v55, _build_auto_prompt_v54,
+        _build_auto_prompt_v53, _build_auto_prompt_v52,
         _build_auto_prompt_v51,
         _build_auto_prompt_v50,
         _build_auto_prompt_v49, _build_auto_prompt_v48,
@@ -3095,7 +3145,8 @@ def _combined_replacement_preparation_targets(text, *, recognize_then_comma=Fals
 
 def _uses_prose_guards(prompt_version, slot_count):
     return bool(slot_count) and prompt_version in (
-        None, _SUPERSCRIPT_PROMPT_VERSION, _PROSE_PROMPT_V4, _PROSE_PROMPT_V5, _PROSE_PROMPT_V6, _PROSE_PROMPT_V7,
+        None, _SUPERSCRIPT_PROMPT_VERSION, _COMPOUND_MEASUREMENT_PROMPT_VERSION,
+        _PROSE_PROMPT_V4, _PROSE_PROMPT_V5, _PROSE_PROMPT_V6, _PROSE_PROMPT_V7,
         _PROSE_PROMPT_V8, _PROSE_PROMPT_V9, _PROSE_PROMPT_V10, _CELL_PROSE_PROMPT_V11,
         _PROSE_PROMPT_V12, _PROSE_PROMPT_V13, _PROSE_PROMPT_V14, _PROSE_PROMPT_V15, _PROSE_PROMPT_V16,
         _PROSE_PROMPT_V17, _PROSE_PROMPT_V18, _PROSE_PROMPT_V19, _PROSE_PROMPT_V20, _PROSE_PROMPT_V21,
@@ -3106,7 +3157,8 @@ def _uses_prose_guards(prompt_version, slot_count):
 
 def _include_cell_blocks(prompt_version):
     return prompt_version in (
-        None, _SUPERSCRIPT_PROMPT_VERSION, _CELL_PROSE_PROMPT_V11, _PROSE_PROMPT_V12, _PROSE_PROMPT_V13,
+        None, _SUPERSCRIPT_PROMPT_VERSION, _COMPOUND_MEASUREMENT_PROMPT_VERSION,
+        _CELL_PROSE_PROMPT_V11, _PROSE_PROMPT_V12, _PROSE_PROMPT_V13,
         _PROSE_PROMPT_V14, _PROSE_PROMPT_V15, _PROSE_PROMPT_V16, _PROSE_PROMPT_V17, _PROSE_PROMPT_V18,
         _PROSE_PROMPT_V19, _PROSE_PROMPT_V20, _PROSE_PROMPT_V21, _PROSE_PROMPT_V22, _PROSE_PROMPT_V23,
         _PROSE_PROMPT_V24, _PROSE_PROMPT_V25, _PROSE_PROMPT_V26, _PROSE_PROMPT_V27, _PROSE_PROMPT_V28, _PROSE_PROMPT_V29, _PROSE_PROMPT_V30, _PROSE_PROMPT_V31, _PROSE_PROMPT_V32, _PROSE_PROMPT_V33, _PROSE_PROMPT_V34, _PROSE_PROMPT_V35, _PROSE_PROMPT_V36, _PROSE_PROMPT_V37, _PROSE_PROMPT_V38, _PROSE_PROMPT_V39, _PROSE_PROMPT_V40, _PROSE_PROMPT_V41, _PROSE_PROMPT_V42, _PROSE_PROMPT_V43, _PROSE_PROMPT_V44, _PROSE_PROMPT_V45, _PROSE_PROMPT_V46, _PROSE_PROMPT_V47, _PROSE_PROMPT_V48, _PROSE_PROMPT_V49, _PROSE_PROMPT_V50, _PROSE_PROMPT_V51, _PROSE_PROMPT_V52, _PROSE_PROMPT_V53, _PROSE_PROMPT_V54, _PROSE_PROMPT_VERSION,
@@ -3118,8 +3170,9 @@ def _require_changes(source, candidate, *, prompt_version, include_cell_blocks=N
     restored = {"blocks": candidate["blocks"][1:]}
     if include_cell_blocks is None:
         include_cell_blocks = _include_cell_blocks(prompt_version)
-    guard_superscripts = prompt_version in (None, _SUPERSCRIPT_PROMPT_VERSION)
-    if prompt_version == _SUPERSCRIPT_PROMPT_VERSION:
+    guard_compound_measurements = prompt_version in (None, _COMPOUND_MEASUREMENT_PROMPT_VERSION)
+    guard_superscripts = guard_compound_measurements or prompt_version == _SUPERSCRIPT_PROMPT_VERSION
+    if prompt_version in (_SUPERSCRIPT_PROMPT_VERSION, _COMPOUND_MEASUREMENT_PROMPT_VERSION):
         prompt_version = _PROSE_PROMPT_VERSION
     slots = full.prose_slots(source, include_cell_blocks=include_cell_blocks)
     guard_prose = _uses_prose_guards(prompt_version, len(slots))
@@ -3220,6 +3273,8 @@ def _require_changes(source, candidate, *, prompt_version, include_cell_blocks=N
     guard_fuel_prerequisites = prompt_version in (None, _PROSE_PROMPT_V54, _PROSE_PROMPT_VERSION)
     guard_lowercase_litres = prompt_version in (None, _PROSE_PROMPT_VERSION)
     introduction = candidate["blocks"][0].get("text", "")
+    if guard_compound_measurements and _COMPOUND_MEASUREMENT.search(introduction):
+        raise ValueError("REWRITE_SPEC_SCOPE_MUTATION")
     if guard_superscripts and _NUMERIC_SUPERSCRIPT.search(introduction):
         raise ValueError("REWRITE_TECHNICAL_AMBIGUOUS")
     if guard_prose and (
@@ -3257,6 +3312,10 @@ def _require_changes(source, candidate, *, prompt_version, include_cell_blocks=N
     for slot in slots:
         original = slot["text"]
         replacement = full._get(restored, slot["path"])
+        if guard_compound_measurements and any(_COMPOUND_MEASUREMENT.search(text) for text in (original, replacement)):
+            if original != replacement:
+                raise ValueError("REWRITE_SPEC_SCOPE_MUTATION")
+            continue
         if guard_superscripts and any(_NUMERIC_SUPERSCRIPT.search(text) for text in (original, replacement)):
             if original != replacement:
                 raise ValueError("REWRITE_TECHNICAL_AMBIGUOUS")
@@ -3439,15 +3498,21 @@ def _require_changes(source, candidate, *, prompt_version, include_cell_blocks=N
 
 def require_current_publication_checks(source, candidate, *, saved_prompt_version):
     """Apply current prose rules to the saved prompt's editable slots."""
-    if saved_prompt_version == _SUPERSCRIPT_PROMPT_VERSION:
+    if saved_prompt_version == _COMPOUND_MEASUREMENT_PROMPT_VERSION:
         return
-    if saved_prompt_version == _PROSE_PROMPT_VERSION and not any(
-        _NUMERIC_SUPERSCRIPT.search(text)
-        for document in (source, candidate) for text in full._strings(document)
+    documents = (source, candidate)
+    if any(_COMPOUND_MEASUREMENT.search(text) for document in documents for text in full._strings(document)):
+        current_version = _COMPOUND_MEASUREMENT_PROMPT_VERSION
+    elif saved_prompt_version == _SUPERSCRIPT_PROMPT_VERSION or (
+        saved_prompt_version == _PROSE_PROMPT_VERSION and not any(
+            _NUMERIC_SUPERSCRIPT.search(text) for document in documents for text in full._strings(document)
+        )
     ):
         return
+    else:
+        current_version = _SUPERSCRIPT_PROMPT_VERSION
     _require_changes(
-        source, candidate, prompt_version=_SUPERSCRIPT_PROMPT_VERSION,
+        source, candidate, prompt_version=current_version,
         include_cell_blocks=_include_cell_blocks(saved_prompt_version),
     )
 
@@ -3529,6 +3594,7 @@ def validate_auto(source, candidate, *, response=None, prompt_version=None):
             _PROSE_PROMPT_V53: "full-prose-auto-validator-v51",
             _PROSE_PROMPT_V54: "full-prose-auto-validator-v52",
             _SUPERSCRIPT_PROMPT_VERSION: "full-prose-auto-validator-v54",
+            _COMPOUND_MEASUREMENT_PROMPT_VERSION: "full-prose-auto-validator-v55",
         }.get(prompt_version, "full-prose-auto-validator-v53")
     report.update(validator_version=validator_version, profile_version=PROFILE,
         publication_mode="automatic", content_acceptance_required=False,
