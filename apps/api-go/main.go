@@ -230,7 +230,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /readyz", s.ready)
 	mux.HandleFunc("GET /metrics", s.metrics.handler)
 	mux.HandleFunc("GET /workshop", func(response http.ResponseWriter, request *http.Request) {
-		http.Redirect(response, request, "/workshop/", http.StatusMovedPermanently)
+		location := "/workshop/"
+		if request.URL.RawQuery != "" {
+			location += "?" + request.URL.RawQuery
+		}
+		http.Redirect(response, request, location, http.StatusMovedPermanently)
 	})
 	mux.HandleFunc("/workshop", func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Allow", "GET, HEAD")
