@@ -342,6 +342,9 @@ def article_cli(monkeypatch):
         def execute(self, _):
             pass
 
+        def notifies(self, **_):
+            return ()
+
         def close(self):
             pass
 
@@ -396,6 +399,76 @@ def test_worker_keeps_postgres_errors_visible_for_fatal_or_single_runs(article_c
 
     with pytest.raises(failure):
         article_cli(iterate, *flags)
+
+
+@pytest.mark.parametrize("import_failure", [None, ModuleNotFoundError, RuntimeError])
+def test_worker_loads_pdf_reader_once_when_banktwo_is_idle(article_cli, monkeypatch, import_failure):
+    from autodata_ingestion import source_connector_client, worker
+
+    class CompletedFixture(Exception):
+        pass
+
+    monkeypatch.setattr(source_connector_client, "source_connector_registry", lambda **_: {"banktwo": object()})
+    events = []
+    outcomes = iter((True, False, True, False, CompletedFixture()))
+    warmups = []
+
+    class DeferredThread:
+        def __init__(self, *, target, daemon):
+            assert daemon
+            self.target = target
+
+        def start(self):
+            events.append("warmup started")
+            warmups.append(self.target)
+
+    monkeypatch.setattr(worker, "Thread", DeferredThread)
+
+    def iterate(*args, **kwargs):
+        events.append("claim")
+        outcome = next(outcomes)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    def import_reader(module):
+        events.append(module)
+        if import_failure:
+            raise import_failure("fixture import failure")
+
+    monkeypatch.setattr(worker, "import_module", import_reader)
+    with pytest.raises(CompletedFixture):
+        article_cli(iterate)
+    assert events == ["claim", "claim", "warmup started", "claim", "claim", "claim"]
+    [warmup] = warmups
+    warmup()
+    assert events[-1] == "pypdf"
+
+
+@pytest.mark.parametrize(("providers", "flags"), [({"bankone": object()}, ()), ({"banktwo": object()}, ("--once",))])
+def test_worker_skips_pdf_warmup_without_an_idle_banktwo_loop(article_cli, monkeypatch, providers, flags):
+    from autodata_ingestion import source_connector_client, worker
+
+    class CompletedFixture(Exception):
+        pass
+
+    monkeypatch.setattr(source_connector_client, "source_connector_registry", lambda **_: providers)
+    imports = []
+    monkeypatch.setattr(worker, "import_module", imports.append)
+    outcomes = iter((False, CompletedFixture()))
+
+    def iterate(*args, **kwargs):
+        outcome = next(outcomes)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    if flags:
+        assert article_cli(iterate, *flags) == 0
+    else:
+        with pytest.raises(CompletedFixture):
+            article_cli(iterate)
+    assert imports == []
 
 
 def test_worker_retries_captured_source_after_postgres_rollback(runtime, monkeypatch):
