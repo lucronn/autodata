@@ -699,7 +699,11 @@ async function loadArticles(g, articleID = "", { focusOnShow = false, focusArtic
   const previousFocus = focusArticle ? document.activeElement : null;
   $("completion-status").textContent = "";
   stage("articles");
-  status("Opening your article index…", { busy: true });
+  const visibleRows = !$("catalog").hidden && (articles.length > 0 || searchItems?.length > 0);
+  status(visibleRows ? "Updating your article index…" : "Opening your article index…", {
+    busy: !visibleRows,
+    cancelable: true,
+  });
   const indexRead = await readCollection(
     () => {
       if (firstIndex) {
@@ -769,7 +773,7 @@ async function loadArticles(g, articleID = "", { focusOnShow = false, focusArtic
     throw new Error("This article is unavailable for the selected vehicle.");
   } else {
     indexHydrating = false;
-    showArticleIndexStatus(articleID, indexRead?.refreshFailed);
+    showArticleIndexStatus(articleID, indexRead?.refreshFailed || (!indexRead?.progress && articles.length > 0));
   }
 }
 
@@ -957,7 +961,7 @@ function renderArticles() {
     countText = `${articleCount} from the loaded index. Searching…`;
   else if (items.length && searching && searchError)
     countText = `${articleCount} from the loaded index. Search could not refresh.`;
-  else if (items.length && indexFailed)
+  else if (items.length && (indexFailed || (!resultsComplete && !indexHydrating)))
     countText = `${articleCount} from available sources.`;
   // Avoid mutating the polite live region with the same pending text on every keystroke.
   if ($("catalog-count").textContent !== countText) $("catalog-count").textContent = countText;
@@ -1309,7 +1313,7 @@ function articleViewRevision(article) {
   return article.view_revision ||
     `${article.content_origin || "legacy"}:${article.source_revision_id || ""}:${article.canonical_revision_id || ""}`;
 }
-function renderArticle(article, g) {
+function renderArticle(article, g, redraw = false) {
   if (!g.current()) return;
   const revision = articleViewRevision(article);
   const review = article.source_review;
@@ -1318,7 +1322,7 @@ function renderArticle(article, g) {
   const previousURL = previousReview?.available ? previousReview.url : "";
   const sourceChanged = currentArticle?.id !== article.id ||
     currentArticle?.source_revision_id !== article.source_revision_id || previousURL !== reviewURL;
-  if (revision !== renderedRevision || sourceChanged) {
+  if (redraw || revision !== renderedRevision || sourceChanged) {
     const fragment = document.createDocumentFragment();
     const figures = !openDemo && session.state.mode === "firebase" && article.content_origin === "canonical" &&
       !processingArticle(article) && article.document?.blocks?.length ? [] : null;
@@ -1378,16 +1382,21 @@ function renderArticle(article, g) {
 async function loadArticle(id, g, { savedLink = false } = {}) {
   if ((!openDemo && !session.state.authenticated) || !g.current()) return;
   const sameArticle = currentArticle?.id === id;
+  let refreshVisibleArticle = sameArticle && !$("reader").hidden && readableArticle(currentArticle);
   const heading = $("article-title");
-  resetReaderContent();
+  if (!refreshVisibleArticle) resetReaderContent();
   if (!sameArticle) {
     heading.textContent = "Opening article…";
     document.title = "AutoData — The workshop reference";
   }
   show("reader");
   stage("article");
-  status("Opening article…", { busy: true });
-  heading.focus();
+  if (refreshVisibleArticle)
+    status("Checking for an article update…", { cancelable: true });
+  else {
+    status("Opening article…", { busy: true });
+    heading.focus();
+  }
   let readerAlignment = sameArticle ? null : new AbortController();
   if (readerAlignment) {
     const controller = readerAlignment;
@@ -1465,7 +1474,8 @@ async function loadArticle(id, g, { savedLink = false } = {}) {
         if (!g.current()) return;
         const article = response.data.article;
         const readable = readableArticle(article);
-        renderArticle(article, g);
+        renderArticle(article, g, refreshVisibleArticle);
+        refreshVisibleArticle = false;
         if (readerAlignment && readable) {
           const controller = readerAlignment;
           readerAlignment = null;

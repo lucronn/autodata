@@ -5837,7 +5837,7 @@ test('obsolete article navigation leaves current heading and focus alone', async
   assert.deepEqual(h.shows, []);
 });
 
-test('retrying a visible article keeps its tab title while preparation fails', async () => {
+test('retrying a visible article keeps its source and tab title while preparation fails', async () => {
   let rejectPrepare;
   const h = articleMediaHarness({
     session: { state: { authenticated: true, csrf: 'csrf' } },
@@ -5852,9 +5852,11 @@ test('retrying a visible article keeps its tab title while preparation fails', a
   const retry = h.context.loadArticle('a', h.g);
   assert.equal(h.nodes.get('article-title').textContent, 'Pump service');
   assert.equal(h.context.document.title, 'Pump service | AutoData');
+  assert.equal(h.nodes.get('article-content').textContent, 'Check pump.');
   rejectPrepare(new Error('temporarily unavailable'));
   await assert.rejects(retry, /temporarily unavailable/);
   assert.equal(h.context.document.title, 'Pump service | AutoData');
+  assert.equal(h.nodes.get('article-content').textContent, 'Check pump.');
 });
 
 test('opening another article removes the previous source and disables printing until it loads', async () => {

@@ -184,24 +184,27 @@ func (s *postgresCatalogStore) PaidArticleSearchDescriptors(ctx context.Context,
 	if _, err = tx.Exec(ctx, `SET LOCAL jit = off`); err != nil {
 		return nil, err
 	}
-	// The current view is only needed for stored bodies. Available descriptors
-	// still match by title even before they have their first source revision.
+	scope, scoped := ctx.Value(paidCatalogContextKey{}).(paidCatalogContext)
+	includePreview := scoped && !scope.openDemo && scope.configuration.ID == configurationID
+	// Search the authorized supplier body as soon as it arrives. A retained
+	// projection takes precedence and the response still contains descriptors.
 	rows, err := tx.Query(ctx, `SELECT a.canonical_article_id::text,COALESCE(a.title,''),COALESCE(a.kind,''),COALESCE(a.component,''),
 		c.source_revision_id::text,c.canonical_revision_id::text,c.content_origin,`+paidArticleAvailabilitySQL+`,
 		COALESCE(c.review_status,'UNREVIEWED'),
-		c.document,COALESCE(c.body,''),c.steps,c.images,source.source_images
+		COALESCE(c.document,early.document),COALESCE(c.body,''),c.steps,c.images,source.source_images
 		FROM canonical_articles a
 		LEFT JOIN LATERAL (
 			SELECT * FROM catalog_article_current
 			WHERE a.current_source_revision_id IS NOT NULL AND canonical_article_id=a.canonical_article_id LIMIT 1
 		) c ON true
 		LEFT JOIN source_fetch_jobs j ON j.source_fetch_job_id=a.current_job_id AND a.current_source_revision_id IS NULL
+		LEFT JOIN LATERAL (`+catalogSourceBodyPreviewSQL+`) early ON $2::boolean
 		JOIN source_snapshots descriptor ON descriptor.source_snapshot_id=a.descriptor_source_snapshot_id
 		LEFT JOIN canonical_article_source_revisions source ON source.source_revision_id=c.source_revision_id
 		WHERE `+paidArticleScopeSQL+` AND `+lifecycleEligibleSQL+`
 		  AND a.takedown_status='active' AND descriptor.takedown_status='active'
 		  AND (a.current_source_revision_id IS NULL OR (c.availability='available' AND c.takedown_status='active'))
-		ORDER BY CASE a.provider_slug WHEN 'bankone' THEN 0 ELSE 1 END,a.source_sort_order NULLS LAST,a.canonical_article_id`, configurationID)
+		ORDER BY CASE a.provider_slug WHEN 'bankone' THEN 0 ELSE 1 END,a.source_sort_order NULLS LAST,a.canonical_article_id`, configurationID, includePreview)
 	if err != nil {
 		return nil, err
 	}
@@ -256,6 +259,10 @@ func (projection paidSearchProjection) matchesContent(searchable CatalogArticle,
 	if len(projection.document) > 0 {
 		var parsed CatalogDocument
 		if err := json.Unmarshal(projection.document, &parsed); err != nil {
+			// An unreadable early preview must not break descriptor searches.
+			if searchable.SourceRevisionID == nil {
+				return false, nil
+			}
 			return false, err
 		}
 		searchable.Document = &parsed
