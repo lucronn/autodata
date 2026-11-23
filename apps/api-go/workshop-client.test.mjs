@@ -57,6 +57,43 @@ test('persistent partial and empty scopes stop polling without claiming complete
   }
 });
 
+for (const readyAtProbe of [true, false]) {
+  test(`one stored probe ${readyAtProbe ? 'opens available choices early' : 'keeps ordinary polling deadlines'}`, async () => {
+    const pending = { items: [], complete: false, hydrating: true };
+    const ready = { items: [{ year: 2024 }], complete: true, hydrating: false };
+    const normalReads = [], earlyReads = [];
+    let clock = 0;
+    const result = await readCollection(async () => {
+      normalReads.push(clock);
+      clock += 180;
+      return normalReads.length === 1 ? pending : ready;
+    }, {
+      now: () => clock,
+      wait: async ms => { clock += ms; },
+      emptyProbe: async timeout => {
+        earlyReads.push({ at: clock, timeout });
+        clock += 180;
+        return readyAtProbe ? ready : pending;
+      },
+    });
+    assert.deepEqual(result, ready);
+    assert.deepEqual(earlyReads, [{ at: 530, timeout: 500 }]);
+    assert.deepEqual(normalReads, readyAtProbe ? [0] : [0, 1680]);
+  });
+}
+
+test('a partial list with visible choices keeps the normal polling cadence', async () => {
+  const partial = { items: [{ id: 'first' }], complete: false, hydrating: true };
+  const ready = { ...partial, complete: true, hydrating: false };
+  const steps = [partial, ready];
+  const waits = [];
+  await readCollection(async () => steps.shift(), {
+    wait: async ms => { waits.push(ms); },
+    emptyProbe: async () => assert.fail('a nonempty picker should not probe early'),
+  });
+  assert.deepEqual(waits, [1500]);
+});
+
 test('obsolete requests never publish their result after vehicle selection changes', async () => {
   const controller = new AbortController();
   let resolveRead, updates = 0;
