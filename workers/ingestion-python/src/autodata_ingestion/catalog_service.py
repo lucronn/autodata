@@ -1543,12 +1543,16 @@ def _persist_hydration_scope(
                     row_make = str(row.get("make") or "").strip()
                     row_model = str(row.get("model") or "").strip()
                     row_region = str(row.get("region") or region).strip().upper()
+                    source_region = str(row.get("source_region") or "").strip().upper()
                     if (
                         row.get("year") != year or not row_make or row_region != region
+                        or (source_region and source_region != region)
                         or (scope == "models" and (row_make.casefold() != make.casefold() or not row_model))
                     ):
                         raise ValueError("source selector row does not match requested catalog scope")
-                    item = {"year": year, "make": row_make, "region": region}
+                    item = {"year": year, "make": row_make}
+                    if source_region:
+                        item["source_region"] = source_region
                     if scope == "models":
                         item["model"] = row_model
                     selector_rows.append(item)
@@ -1649,6 +1653,7 @@ class _SourceCatalogProvider:
         provenance: list[dict[str, Any]] = []
         cursor: str | None = None
         seen: set[str] = set()
+        requested_region = request.region.strip().upper()
         for page_number in range(1, 1001):
             if self.deepening_control is None:
                 page = self.client.catalog(scope, selector, cursor)
@@ -1727,6 +1732,14 @@ class _SourceCatalogProvider:
                     for key in fields_by_scope[scope]
                     if key in item
                 }
+                if scope in {"makes", "models"}:
+                    # Catalog enumeration has no region parameter. Only an
+                    # explicit country code on the row can establish a market.
+                    source_region = str(item.get("region") or "").strip().upper()
+                    if re.fullmatch(r"[A-Z]{2}", source_region) and source_region not in {"NA", "EU", "ZZ"}:
+                        if source_region != requested_region:
+                            continue
+                        row["source_region"] = source_region
                 if scope == "configurations":
                     row.setdefault("region", item.get("region") or request.region)
                 if scope == "configurations" and "configuration" in item:
@@ -1822,7 +1835,7 @@ def _canonical_rows(values: Any, *, scope: str = "configurations") -> list[dict[
         row = {
             key: value[key]
             for key in (
-                "year", "make", "model", "region", "engine", "engine_label",
+                "year", "make", "model", "region", "source_region", "engine", "engine_label",
                 "trim", "body_style", "drivetrain", "provider_mappings",
             )
             if value.get(key) not in (None, "")

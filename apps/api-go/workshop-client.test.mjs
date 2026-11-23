@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext as runVM } from 'node:vm';
 import { NavigationGeneration, processingArticle, readableArticle } from './workshop/article-read.mjs';
 import { pollOrder, purchaseConfiguration, readOrder, resumableCheckoutURL, sameScope, uuid, validQuote, validScope, validLibrary } from './workshop/commerce.mjs';
-import { articlePresentation, configurationLabel, filterArticles, hasSourceReference, legacyArticleBlocks, localImageURL, readCollection, requestInitialYears, requestJSON, selectedIndexSessionPreference, sourceReferenceURL } from './workshop/catalog.mjs';
+import { articlePresentation, configurationLabel, filterArticles, hasSourceReference, legacyArticleBlocks, localImageURL, readCollection, requestInitialYears, requestJSON, selectedIndexSessionPreference, selectorLabel, sourceReferenceURL } from './workshop/catalog.mjs';
 import { LOAD_STAGES, loadingProgress } from './workshop/progress.mjs';
 
 // The app sections below run without the module bootstrap. Model the ordinary
@@ -24,6 +24,7 @@ function runInNewContext(code, context) {
   context.selectorCacheLifetime ??= 30_000;
   context.selectorCacheSize ??= 32;
   context.cachedSelector ??= () => null;
+  context.selectorLabel ??= selectorLabel;
   return runVM(code, context);
 }
 
@@ -34,6 +35,14 @@ test('loading progress uses fixed ordered stages and caps incomplete hydration',
   assert.equal(partial.step, 2);
   assert.equal(partial.total, 6);
   assert.equal(partial.percent, null);
+});
+
+test('selector labels distinguish regional evidence from worldwide model names', () => {
+  assert.equal(selectorLabel('model', { name: 'Avanza', market_unverified: true }), 'Avanza · market unverified');
+  assert.equal(selectorLabel('model', { name: '4Runner' }), '4Runner');
+  assert.equal(selectorLabel('make', { name: 'Toyota', market_unverified: true }), 'Toyota · market unverified');
+  assert.equal(selectorLabel('year', { year: 2024 }), '2024');
+  assert.equal(selectorLabel('configuration', { engine: '2.0' }), '2.0 L');
 });
 
 test('partial selector hydration expands until complete', async () => {

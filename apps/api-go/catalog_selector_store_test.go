@@ -62,9 +62,9 @@ func TestPostgresSparseSelectorVisibilityAndLegacyRecovery(t *testing.T) {
 	if err != nil || complete {
 		t.Fatalf("legacy sparse marker trusted: %v %v", complete, err)
 	}
-	exec(`UPDATE vehicle_catalog_hydration_scopes SET selector_rows='[{"year":2014,"make":"Ford","region":"US"},{"year":2014,"make":"Saab","region":"US"}]',completion_version=1 WHERE scope_key='legacy'`)
+	exec(`UPDATE vehicle_catalog_hydration_scopes SET selector_rows='[{"year":2014,"make":"Ford","region":"US"},{"year":2014,"make":"Saab","source_region":"US"},{"year":2014,"make":"Canada only","source_region":"CA"}]',completion_version=1 WHERE scope_key='legacy'`)
 	exec(`INSERT INTO vehicle_catalog_hydration_scopes(scope_key,scope,model_year,make,region,selector_rows,completion_version) VALUES
- ('models','models',2020,'Ford','US','[{"year":2020,"make":"Ford","model":"Focus","region":"US"},{"year":2020,"make":"Ford","model":"Bronco","region":"US"}]',1),
+ ('models','models',2020,'Ford','US','[{"year":2020,"make":"Ford","model":"Focus","region":"US"},{"year":2020,"make":"Ford","model":"Bronco"},{"year":2020,"make":"Ford","model":"bronco","source_region":"US"},{"year":2020,"make":"Ford","model":"Canada only","source_region":"CA"}]',1),
  ('other-region','models',2020,'Ford','CA','[{"year":2020,"make":"Ford","model":"Canada only","region":"CA"}]',1),
  ('other-make','models',2020,'Saab','US','[{"year":2020,"make":"Saab","model":"900","region":"US"}]',1)`)
 	server := NewServerWithCatalogStore(staticReadiness{}, &fakeAuthenticator{principal: Principal{OrganizationID: "org-1", Roles: []string{"dataset_viewer"}}}, newMemoryRequestStore(), store)
@@ -77,6 +77,9 @@ func TestPostgresSparseSelectorVisibilityAndLegacyRecovery(t *testing.T) {
 	if !makes.Complete || makes.Hydrating || len(makes.Items) != 2 {
 		t.Fatalf("sparse makes unavailable: %s", response.Body.String())
 	}
+	if makes.Items[0].ID != "ford" || !makes.Items[0].MarketUnverified || makes.Items[1].ID != "saab" || makes.Items[1].MarketUnverified {
+		t.Fatalf("sparse make market evidence lost: %s", response.Body.String())
+	}
 	response = catalogRequest(server, "/v1/catalog/years/2020/makes/ford/models?region=US")
 	var models CatalogModelsResponse
 	if err := json.Unmarshal(response.Body.Bytes(), &models); err != nil {
@@ -85,6 +88,9 @@ func TestPostgresSparseSelectorVisibilityAndLegacyRecovery(t *testing.T) {
 	if !models.Complete || models.Hydrating || len(models.Items) != 2 || strings.Contains(response.Body.String(), "Canada only") || strings.Contains(response.Body.String(), "900") {
 		t.Fatalf("sparse models scope leak: %s", response.Body.String())
 	}
+	if models.Items[0].ID != "bronco" || models.Items[0].MarketUnverified || models.Items[1].ID != "focus" || !models.Items[1].MarketUnverified {
+		t.Fatalf("sparse model market evidence lost: %s", response.Body.String())
+	}
 	wrongYear, err := store.Models(ctx, Principal{}, 2019, "Ford", "US")
 	if err != nil || len(wrongYear) != 0 {
 		t.Fatalf("year isolation: %v %v", wrongYear, err)
@@ -92,6 +98,11 @@ func TestPostgresSparseSelectorVisibilityAndLegacyRecovery(t *testing.T) {
 	allRegions, err := store.Models(ctx, Principal{}, 2020, "Ford", "")
 	if err != nil || len(allRegions) != 3 {
 		t.Fatalf("unfiltered regions: %v %v", allRegions, err)
+	}
+	for _, model := range allRegions {
+		if model.MarketUnverified {
+			t.Fatalf("regional status on unfiltered result: %v", model)
+		}
 	}
 	exec(`UPDATE vehicle_catalog_hydration_scopes SET completion_version=0 WHERE scope_key='models'`)
 	complete, err = store.CatalogScopeComplete(ctx, Principal{}, "models", 2020, "Ford", "", "US")

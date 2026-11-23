@@ -23,6 +23,7 @@ import {
 const {
   articlePresentation,
   configurationLabel,
+  selectorLabel,
   delay,
   filterArticles,
   localImageURL,
@@ -333,7 +334,7 @@ function populate(name, items, desired = "") {
   rows[name] = name === "year" ? [...items].sort((a, b) => b.year - a.year) : items;
   const options = rows[name].map((item) => [
     String(item.id ?? item.year),
-    name === "year" ? String(item.year) : name === "configuration" ? configurationLabel(item) : item.name,
+    selectorLabel(name, item),
   ]);
   const unchanged = select.options.length === options.length + 1 && options.every(([value, label], index) =>
     select.options[index + 1].value === value && select.options[index + 1].text === label);
