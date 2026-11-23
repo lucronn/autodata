@@ -624,6 +624,7 @@ class CommerceService:
             cursor.execute(f"""
                 WITH page AS MATERIALIZED (
                     SELECT o.*,{_CONFIGURATION_LABEL_SQL} AS label,e.status AS grant_status,e.granted_at,
+                        b.region AS catalog_region,
                         c.reviewer_state<>'rejected' AND b.reviewer_state<>'rejected' AS catalog_available
                     FROM workshop_orders o JOIN vehicle_configurations c ON c.vehicle_configuration_id=o.configuration_id
                     JOIN vehicle_identity_bases b USING(vehicle_identity_base_id)
@@ -666,6 +667,17 @@ class CommerceService:
                                 ))
                           )
                     ) THEN 'viewable'
+                    WHEN p.region=p.catalog_region AND (
+                        SELECT count(*) FROM catalog_article_provider_scopes scope
+                        WHERE scope.scope_key='configuration:' || p.configuration_id::text
+                          AND scope.provider_slug IN ('bankone','banktwo')
+                          AND scope.status='complete' AND scope.completed_generation=scope.generation
+                          AND scope.row_count=0
+                    )=2 AND NOT EXISTS (
+                        SELECT 1 FROM canonical_articles a
+                        WHERE a.scope_key='configuration:' || p.configuration_id::text
+                          AND a.provider_slug IN ('bankone','banktwo') AND a.membership_status='active'
+                    ) THEN 'catalog_empty'
                     WHEN p.preparation_state IS DISTINCT FROM 'index_ready' OR EXISTS (
                         SELECT 1 FROM canonical_articles a
                         JOIN LATERAL (
@@ -685,11 +697,14 @@ class CommerceService:
             rows = cursor.fetchall()
             items = []
             for order in rows[:limit]:
-                state = order['access_state']
+                catalog_empty = order['access_state'] == 'catalog_empty'
+                state = 'paid' if catalog_empty else order['access_state']
                 item = dict(library_item_id=str(order['order_id']), configuration_id=str(order['configuration_id']), region=order['region'],
                     label=order['label'], access_state=state, granted_at=order['granted_at'].astimezone(UTC).isoformat() if order['granted_at'] else None)
                 if state == 'paid' and not order['catalog_available']:
                     item['catalog_available'] = False
+                if catalog_empty:
+                    item['catalog_empty'] = True
                 if order['revoked_at']:
                     item['revoked_at'] = order['revoked_at'].astimezone(UTC).isoformat()
                 if order['preparation_last_error_code']:

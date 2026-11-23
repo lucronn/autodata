@@ -96,6 +96,9 @@ export function validLibrary(data) {
           ) &&
           (!Object.hasOwn(item, "catalog_available") ||
             (item.catalog_available === false && item.access_state === "paid")) &&
+          (!Object.hasOwn(item, "catalog_empty") ||
+            (item.catalog_empty === true && item.access_state === "paid" &&
+              !Object.hasOwn(item, "catalog_available"))) &&
           (item.granted_at === null
             ? item.access_state === "revoked"
             : validTime(item.granted_at)),

@@ -429,6 +429,18 @@ test('library requires nullable cursor and accepts revoked never-granted tombsto
   for (const next_cursor of [null, '', 'opaque+/=']) assert.equal(validLibrary({ version: 'v1', items: [item], next_cursor }), true);
   for (const bad of [{ version: 'v1', items: [] }, { version: 'v1', items: [], next_cursor: 4 }, { version: 'v1', items: [{ ...item, access_state: 'paid' }], next_cursor: null }]) assert.equal(validLibrary(bad), false);
 });
+test('library accepts a confirmed empty catalog for an owned available configuration', async () => {
+  const { validLibrary } = await import('./workshop/commerce.mjs');
+  const item = { ...scope, library_item_id: orderID, label: 'Vehicle', access_state: 'paid',
+    granted_at: '2026-11-16T00:00:00Z', catalog_empty: true };
+  const valid = item => validLibrary({ version: 'v1', items: [item], next_cursor: null });
+  assert.equal(valid(item), true);
+  for (const access_state of ['preparing', 'viewable', 'revoked']) {
+    assert.equal(valid({ ...item, access_state }), false);
+  }
+  for (const value of [false, null, 'true']) assert.equal(valid({ ...item, catalog_empty: value }), false);
+  assert.equal(valid({ ...item, catalog_available: false }), false);
+});
 test('checkout attempt shares one in-flight request and retries the same key/body', async () => {
   const { createCheckout } = await import('./workshop/commerce.mjs');
   const values = new Map(), calls = []; let release;
@@ -2392,6 +2404,10 @@ test('My vehicles activation clears the previous vehicle search and selector opt
       configuration_id: '66666666-6666-4666-8666-666666666666', region: 'US',
       library_item_id: '77777777-7777-4777-8777-777777777777', label: 'Revoked vehicle',
       access_state: 'revoked', granted_at: null,
+    }, {
+      configuration_id: '99999999-9999-4999-8999-999999999999', region: 'US',
+      library_item_id: '88888888-8888-4888-8888-888888888888', label: 'Empty catalog vehicle',
+      access_state: 'paid', granted_at: '2026-11-16T00:00:00Z', catalog_empty: true,
     }] }; },
   });
   runInNewContext(appSection('function updateURL(', 'function rememberOrderRoute(') +
@@ -2404,6 +2420,8 @@ test('My vehicles activation clears the previous vehicle search and selector opt
   assert.equal(list.children[1].children.length, 2);
   assert.equal(list.children[2].children[1].textContent, 'Access revoked. Contact support.');
   assert.equal(list.children[2].children.length, 2);
+  assert.equal(list.children[3].children[1].textContent, 'Owned. No articles are currently available for this vehicle.');
+  assert.equal(list.children[3].children[2].textContent, 'Check article availability');
   list.children[0].children[2].events.click();
   assert.equal(h.element('search').value, '');
   const route = new URLSearchParams(location.search);
@@ -2414,7 +2432,11 @@ test('My vehicles activation clears the previous vehicle search and selector opt
     assert.equal(h.context.rows[name].length, 0);
     assert.equal(h.element(name).disabled, true);
   }
-  assert.deepEqual(h.calls.selections, [{ configuration: routeConfiguration, region: 'US', article: '' }]);
+  list.children[3].children[2].events.click();
+  assert.deepEqual(h.calls.selections, [
+    { configuration: routeConfiguration, region: 'US', article: '' },
+    { configuration: '99999999-9999-4999-8999-999999999999', region: 'US', article: '' },
+  ]);
 });
 
 for (const outcome of ['canceled', 'failed']) {

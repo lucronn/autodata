@@ -1746,6 +1746,8 @@ async function library(g, append = false, { focusOnShow = false } = {}) {
     }[item.access_state];
     if (catalogUnavailable) {
       summary = "Owned. Service information is currently unavailable.";
+    } else if (item.catalog_empty) {
+      summary = "Owned. No articles are currently available for this vehicle.";
     } else if (item.access_state === "preparing") {
       if (item.content_error_code === "CATALOG_PREPARATION_REVIEW") {
         summary = "Article preparation needs review.";
@@ -1755,7 +1757,7 @@ async function library(g, append = false, { focusOnShow = false } = {}) {
     }
     li.append(heading, element("p", summary));
     if (item.access_state !== "revoked" && !catalogUnavailable) {
-      const button = element("button", "Open articles");
+      const button = element("button", item.catalog_empty ? "Check article availability" : "Open articles");
       button.type = "button";
       button.addEventListener("click", () => {
         // A library item is an exact configuration/region route. A previous

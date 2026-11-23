@@ -4139,6 +4139,13 @@
             ],
             "description": "Present when a retained paid vehicle configuration or its identity base is rejected by the catalog. Ownership remains recorded."
           },
+          "catalog_empty": {
+            "type": "boolean",
+            "enum": [
+              true
+            ],
+            "description": "Present for an owned configuration when both current supplier indexes completed with zero articles and no active descriptors remain."
+          },
           "granted_at": {
             "type": "string",
             "format": "date-time",
@@ -4174,18 +4181,37 @@
         ],
         "description": "Permanent account ownership with current source readiness. No normal grant expiry. Revoked tombstones remain visible; viewable does not promise all articles are complete.",
         "not": {
-          "properties": {
-            "access_state": {
-              "type": "string",
-              "enum": [
-                "preparing",
-                "viewable",
-                "revoked"
+          "anyOf": [
+            {
+              "properties": {
+                "access_state": {
+                  "type": "string",
+                  "enum": [
+                    "preparing",
+                    "viewable",
+                    "revoked"
+                  ]
+                }
+              },
+              "anyOf": [
+                {
+                  "required": [
+                    "catalog_available"
+                  ]
+                },
+                {
+                  "required": [
+                    "catalog_empty"
+                  ]
+                }
+              ]
+            },
+            {
+              "required": [
+                "catalog_available",
+                "catalog_empty"
               ]
             }
-          },
-          "required": [
-            "catalog_available"
           ]
         },
         "oneOf": [

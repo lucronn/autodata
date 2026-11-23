@@ -486,6 +486,38 @@ def test_library_is_owner_only_and_paginated(commerce, monkeypatch):
             conn.execute(f"UPDATE {table} SET reviewer_state='approved' WHERE {key}=%s", (value,))
         assert item_for(first['order_id']) == original_item
 
+    from autodata_ingestion.article_lifecycle_types import ArticleKey
+    from autodata_ingestion.catalog_coverage import ensure_article_catalog_jobs
+    from lifecycle_support import insert_descriptor
+
+    ensure_article_catalog_jobs(repo, vehicle_id=vehicle, vehicle_configuration_id=uuid.UUID(second_configuration))
+    scope_key = f'configuration:{second_configuration}'
+    with repo.connect() as conn:
+        conn.execute("""UPDATE catalog_article_provider_scopes SET status='complete', completed_generation=generation
+            WHERE scope_key=%s AND provider_slug='bankone'""", (scope_key,))
+    assert item_for(second['order_id']) == control
+    with repo.connect() as conn:
+        conn.execute("""UPDATE catalog_article_provider_scopes SET status='complete', completed_generation=generation
+            WHERE scope_key=%s AND provider_slug='banktwo'""", (scope_key,))
+    assert item_for(second['order_id']) == dict(control, catalog_empty=True)
+    assert item_for(first['order_id']) == original_item
+
+    # The shared index may already be complete when a new purchase is queued.
+    with repo.connect() as conn:
+        conn.execute("UPDATE workshop_orders SET preparation_state='index_queued' WHERE order_id=%s", (second['order_id'],))
+    assert item_for(second['order_id']) == dict(control, catalog_empty=True)
+
+    with repo.connect() as conn:
+        conn.execute("UPDATE workshop_orders SET preparation_state='index_ready' WHERE order_id=%s", (second['order_id'],))
+        conn.execute("""UPDATE catalog_article_provider_scopes SET generation=generation+1, status='pending'
+            WHERE scope_key=%s AND provider_slug='banktwo'""", (scope_key,))
+    assert item_for(second['order_id']) == control
+    with repo.connect() as conn:
+        conn.execute("""UPDATE catalog_article_provider_scopes SET status='complete', completed_generation=generation
+            WHERE scope_key=%s AND provider_slug='banktwo'""", (scope_key,))
+    insert_descriptor(repo, ArticleKey('banktwo', vehicle, uuid.UUID(second_configuration), 'vehicle', 'article'))
+    assert item_for(second['order_id']) == control
+
 
 
 def test_grant_check_exact_scope_legacy_and_revoked(commerce):
