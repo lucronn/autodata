@@ -68,6 +68,8 @@ type commerceOrder struct {
 	ConfigurationLabel string `json:"configuration_label,omitempty"`
 	State              string `json:"state"`
 	RetryDisposition   string `json:"retry_disposition"`
+	CheckoutURL        string `json:"checkout_url,omitempty"`
+	ProviderExpiresAt  string `json:"provider_expires_at,omitempty"`
 }
 type commerceLibraryItem struct {
 	LibraryItemID    string  `json:"library_item_id"`
@@ -96,10 +98,14 @@ func commerceUUID(v string) bool {
 func commerceRegion(v string) bool {
 	return len(v) == 2 && v[0] >= 'A' && v[0] <= 'Z' && v[1] >= 'A' && v[1] <= 'Z'
 }
-func commerceTime(v string) bool {
+func parseCommerceTime(v string) (time.Time, bool) {
 	parsed, err := time.Parse(time.RFC3339, v)
 	_, offset := parsed.Zone()
-	return err == nil && offset == 0 && (strings.HasSuffix(v, "Z") || strings.HasSuffix(v, "+00:00"))
+	return parsed, err == nil && offset == 0 && (strings.HasSuffix(v, "Z") || strings.HasSuffix(v, "+00:00"))
+}
+func commerceTime(v string) bool {
+	_, valid := parseCommerceTime(v)
+	return valid
 }
 func commerceHostedURL(v string) bool {
 	if strings.IndexFunc(v, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) >= 0 {
@@ -167,9 +173,30 @@ func commercePublicResult(operation string, status int, body []byte, input map[s
 		}
 		return nil, false
 	case "orders/status":
-		var v commerceOrder
-		if status != 200 || json.Unmarshal(body, &v) != nil || v.Version != "v1" || v.OrderID != input["order_id"] || !commerceUUID(v.OrderID) || !scopeMatches(v.ConfigurationID, v.Region) {
+		var private struct {
+			commerceOrder
+			CheckoutURL       json.RawMessage `json:"checkout_url"`
+			ProviderExpiresAt json.RawMessage `json:"provider_expires_at"`
+		}
+		if status != 200 || json.Unmarshal(body, &private) != nil {
 			return nil, false
+		}
+		v := private.commerceOrder
+		if v.Version != "v1" || v.OrderID != input["order_id"] || !commerceUUID(v.OrderID) || !scopeMatches(v.ConfigurationID, v.Region) {
+			return nil, false
+		}
+		if len(private.CheckoutURL) != 0 || len(private.ProviderExpiresAt) != 0 {
+			if v.State != "open" || json.Unmarshal(private.CheckoutURL, &v.CheckoutURL) != nil ||
+				json.Unmarshal(private.ProviderExpiresAt, &v.ProviderExpiresAt) != nil || !commerceHostedURL(v.CheckoutURL) {
+				return nil, false
+			}
+			expires, valid := parseCommerceTime(v.ProviderExpiresAt)
+			if !valid {
+				return nil, false
+			}
+			if !expires.After(time.Now()) {
+				v.CheckoutURL, v.ProviderExpiresAt = "", ""
+			}
 		}
 		if len(v.ConfigurationLabel) > 1024 {
 			v.ConfigurationLabel = ""

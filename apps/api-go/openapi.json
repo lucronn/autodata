@@ -2229,7 +2229,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Unknown/other-owner orders are indistinguishable 404.",
+            "description": "Owner-scoped order status. When purchases are enabled, an unexpired open checkout may include its existing Stripe link. Unknown and other-owner orders are indistinguishable 404 responses.",
             "headers": {
               "Cache-Control": {
                 "schema": {
@@ -3929,6 +3929,17 @@
             "minLength": 1,
             "maxLength": 1024,
             "description": "Display label for the exact ordered vehicle configuration."
+          },
+          "checkout_url": {
+            "type": "string",
+            "format": "uri",
+            "pattern": "^https://checkout[.]stripe[.]com/[cg]/pay/[^/?#]+",
+            "description": "Existing validated Stripe-hosted checkout URL, including any opaque fragment. Present with provider_expires_at."
+          },
+          "provider_expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "RFC3339 UTC expiry of the existing checkout."
           }
         },
         "required": [
@@ -3938,6 +3949,44 @@
           "region",
           "state",
           "retry_disposition"
+        ],
+        "oneOf": [
+          {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "checkout_url"
+                  ]
+                },
+                {
+                  "required": [
+                    "provider_expires_at"
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "required": [
+              "checkout_url",
+              "provider_expires_at"
+            ],
+            "properties": {
+              "state": {
+                "type": "string",
+                "enum": [
+                  "open"
+                ]
+              },
+              "retry_disposition": {
+                "type": "string",
+                "enum": [
+                  "do_not_repay"
+                ]
+              }
+            }
+          }
         ]
       },
       "WorkshopLibraryItem": {

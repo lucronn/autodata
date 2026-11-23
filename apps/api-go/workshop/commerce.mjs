@@ -52,6 +52,8 @@ export function validOrder(o, orderID) {
       o.order_id === orderID &&
       uuid(orderID) &&
       validScope(o) &&
+      ((o.checkout_url === undefined && o.provider_expires_at === undefined) ||
+        (o.state === "open" && hostedCheckoutURL(o.checkout_url) && validTime(o.provider_expires_at))) &&
       (["expired", "canceled"].includes(o.state)
         ? o.retry_disposition === "new_key"
         : [
@@ -68,6 +70,12 @@ const validTime = (value) =>
   typeof value === "string" &&
   /(?:Z|\+00:00)$/.test(value) &&
   Number.isFinite(Date.parse(value));
+export function resumableCheckoutURL(order) {
+  return order?.state === "open" && validTime(order.provider_expires_at) &&
+    Date.parse(order.provider_expires_at) > Date.now()
+    ? hostedCheckoutURL(order.checkout_url)
+    : null;
+}
 export function validLibrary(data) {
   return Boolean(
     data?.version === "v1" &&
@@ -230,6 +238,14 @@ const firstOrderRetryMs = 1000;
 const earlyCheckoutCheckMs = 350;
 const firstCheckoutReturnCheckMs = 250;
 
+export async function readOrder(orderID, { request = requestJSON, signal, timeout = 10000 } = {}) {
+  if (!uuid(orderID)) throw new Error("This order is unavailable.");
+  const order = await request(`/v1/workshop/orders/${orderID}`, { signal, timeout });
+  signal?.throwIfAborted();
+  if (!validOrder(order, orderID)) throw new Error("Payment status is unavailable.");
+  return order;
+}
+
 export async function pollOrder(
   orderID,
   {
@@ -261,13 +277,11 @@ export async function pollOrder(
     let pauseBeforeRetry = false;
     try {
       const readDeadline = checkoutReadAt || regularReadAt || deadline;
-      latest = await request(`/v1/workshop/orders/${orderID}`, {
+      latest = await readOrder(orderID, {
+        request,
         signal,
         timeout: Math.min(10000, Math.max(1, Math.floor(readDeadline - startedAt))),
       });
-      signal?.throwIfAborted();
-      if (!validOrder(latest, orderID))
-        throw new Error("Payment status is unavailable.");
       unavailable = false;
       onUpdate(latest);
       if (["paid", "expired", "canceled", "revoked"].includes(latest.state))

@@ -149,6 +149,81 @@ func TestCommerceQuoteLibraryStatusAndSafeErrors(t *testing.T) {
 		t.Fatal("unsafe upstream error", w.Code, w.Body.String())
 	}
 }
+
+func TestCommerceOrderResumeLinkRequiresOwnerAndValidOpenPair(t *testing.T) {
+	hosted := "https://checkout.stripe.com/c/pay/fixture#opaque%2Ffragment"
+	future := time.Now().UTC().Add(time.Hour).Format(time.RFC3339)
+	past := time.Now().UTC().Add(-time.Hour).Format(time.RFC3339)
+	pair := map[string]any{"checkout_url": hosted, "provider_expires_at": future}
+	for _, tc := range []struct {
+		name, state, disposition string
+		fields                   map[string]any
+		status                   int
+		link                     bool
+	}{
+		{"open owner", "open", "do_not_repay", pair, 200, true},
+		{"legacy open", "open", "do_not_repay", nil, 200, false},
+		{"legacy paid", "paid", "do_not_repay", nil, 200, false},
+		{"expired in transit", "open", "do_not_repay", map[string]any{"checkout_url": hosted, "provider_expires_at": past}, 200, false},
+		{"partial url", "open", "do_not_repay", map[string]any{"checkout_url": hosted}, 503, false},
+		{"partial expiry", "open", "do_not_repay", map[string]any{"provider_expires_at": future}, 503, false},
+		{"null pair", "open", "do_not_repay", map[string]any{"checkout_url": nil, "provider_expires_at": nil}, 503, false},
+		{"foreign url", "open", "do_not_repay", map[string]any{"checkout_url": "https://checkout.stripe.com.evil.example/c/pay/fixture", "provider_expires_at": future}, 503, false},
+		{"bad expiry", "open", "do_not_repay", map[string]any{"checkout_url": hosted, "provider_expires_at": "tomorrow"}, 503, false},
+		{"processing pair", "processing", "do_not_repay", pair, 503, false},
+		{"paid pair", "paid", "do_not_repay", pair, 503, false},
+		{"expired pair", "expired", "new_key", pair, 503, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			calls := 0
+			s, cookie, _ := commerceTestAPI(t, commerceFixture(func(_ context.Context, op string, b []byte, _ string) (int, []byte, error) {
+				calls++
+				var input map[string]string
+				if op != "orders/status" || json.Unmarshal(b, &input) != nil || len(input) != 3 ||
+					input["order_id"] != commerceOrderID ||
+					input["customer_account_id"] != "11111111-1111-4111-8111-111111111111" ||
+					input["organization_id"] != "44444444-4444-4444-8444-444444444444" {
+					t.Fatal("order lookup lost the authenticated owner and exact order")
+				}
+				body := map[string]any{
+					"version": "v1", "order_id": commerceOrderID, "configuration_id": commerceConfigID,
+					"region": "CA", "state": tc.state, "retry_disposition": tc.disposition, "private_secret": "hidden",
+				}
+				for key, value := range tc.fields {
+					body[key] = value
+				}
+				raw, err := json.Marshal(body)
+				return 200, raw, err
+			}))
+			path := "/v1/workshop/orders/" + commerceOrderID
+			guest := customerHTTP(t, s.Handler(), "GET", path, "", nil, nil)
+			if guest.Code != 401 || calls != 0 {
+				t.Fatal("unauthenticated order lookup reached commerce authority")
+			}
+			w := customerHTTP(t, s.Handler(), "GET", path, "", nil, cookie)
+			if w.Code != tc.status || w.Header().Get("Cache-Control") != "no-store" || calls != 1 {
+				t.Fatalf("status=%d cache-policy=%q authority calls=%d", w.Code, w.Header().Get("Cache-Control"), calls)
+			}
+			var public map[string]any
+			if json.Unmarshal(w.Body.Bytes(), &public) != nil {
+				t.Fatal("invalid public response")
+			}
+			_, urlPresent := public["checkout_url"]
+			_, expiryPresent := public["provider_expires_at"]
+			if _, secret := public["private_secret"]; secret || urlPresent != tc.link || expiryPresent != tc.link {
+				t.Fatal("order response projected the wrong fields")
+			}
+			if tc.status == 200 && (public["order_id"] != commerceOrderID || public["configuration_id"] != commerceConfigID ||
+				public["region"] != "CA" || public["state"] != tc.state || public["retry_disposition"] != tc.disposition) {
+				t.Fatal("order state or scope changed")
+			}
+			if tc.link && (public["checkout_url"] != hosted || public["provider_expires_at"] != future) {
+				t.Fatal("resume pair lost the exact link or expiry")
+			}
+		})
+	}
+}
+
 func TestCommerceWebhookRawAndBounds(t *testing.T) {
 	calls := 0
 	raw := "{\n \"signed\": true\n}"
