@@ -56,18 +56,22 @@ type CatalogArticleResponse struct {
 }
 
 func (s *Server) listCatalogYears(response http.ResponseWriter, request *http.Request, principal Principal) {
-	items, err := s.catalog.Years(request.Context(), principal)
+	items, coverage, err := s.catalog.Years(request.Context(), principal)
 	if err != nil {
 		s.writeCatalogError(response, request, err)
 		return
 	}
-	hydrating := len(items) == 0 && s.ingestionClient != nil
+	complete := len(items) != 0 || s.ingestionClient == nil
+	if coverage != nil {
+		complete = *coverage
+	}
+	hydrating := !complete && s.ingestionClient != nil
 	if hydrating && !catalogStoredSelector(request) {
 		s.scheduleCatalogHydration(request, map[string]any{"scope": "years"})
 	}
 	writeJSON(response, http.StatusOK, CatalogYearsResponse{
 		Version: "v1", Items: items,
-		CatalogHydrationResponse: CatalogHydrationResponse{Complete: !hydrating, Hydrating: hydrating},
+		CatalogHydrationResponse: CatalogHydrationResponse{Complete: complete, Hydrating: hydrating},
 	})
 }
 

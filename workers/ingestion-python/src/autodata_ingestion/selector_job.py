@@ -189,7 +189,8 @@ def run_owned(request, absolute_deadline, *, command=None, on_progress=None):
                                 raise SelectorJobStopped('output_limit')
                             progress = _decode_result(output)
                             output.clear()
-                            if progress['complete'] or not progress['rows'] or not progress['provenance']:
+                            if (progress['complete'] or not progress['provenance']
+                                    or (not progress['rows'] and request.get('scope') != 'years')):
                                 raise SelectorJobStopped('invalid_result')
                             if time.monotonic() >= absolute_deadline:
                                 raise SelectorJobStopped('elapsed')
@@ -256,7 +257,7 @@ def _main():
 
         resolved = CacheFirstCatalogService(cache_reader=lambda _: None,
                     providers=_configured_catalog_providers(deepening_control=control)).resolve(
-                        model, on_progress=emit_progress if envelope.get('progress') and request['scope'] != 'years' else None,
+                        model, on_progress=emit_progress if envelope.get('progress') else None,
                     )
         control.remaining()
         result = {'rows': list(resolved.rows), 'complete': resolved.complete,

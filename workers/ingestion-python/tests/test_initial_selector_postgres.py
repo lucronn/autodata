@@ -54,7 +54,7 @@ def isolated_selector(monkeypatch):
                       'AUTODATA_SOURCE_PERSIST':'1','BANKTWO_BASE_URL':''}.items(): monkeypatch.setenv(key,value)
     monkeypatch.setattr(selector_job,'ADMISSION',selector_job.SelectorAdmission())
     catalog._HYDRATION_RESULTS.clear()
-    state={'calls':[], 'complete':True, 'status':200, 'scope':'years'}
+    state={'calls':[], 'complete':True, 'status':200, 'scope':'years', 'empty':False, 'malformed':False}
     class Connector(BaseHTTPRequestHandler):
         def do_GET(self):
             state['calls'].append(self.path)
@@ -64,6 +64,10 @@ def isolated_selector(monkeypatch):
             items=[
                 {'year':2024,'opaque_ref':'authored-2024','label':'2024'},
                 {'year':2023,'opaque_ref':'authored-2023','label':'2023'}]
+            if state['empty']:
+                items=[]
+            if state['malformed']:
+                items=[{'opaque_ref':'missing-year', 'label':'Missing year'}]
             if scope != 'years':
                 item={'year':2024,'opaque_ref':'first','label':'First','make':'First' if scope=='makes' else 'Authored'}
                 if scope == 'models':
@@ -92,6 +96,15 @@ def isolated_selector(monkeypatch):
             connection.execute(sql.SQL('DROP DATABASE {} WITH (FORCE)').format(sql.Identifier(name)))
 
 
+def workshop_year_checkpoint(connection):
+    return connection.execute("""
+        SELECT status, row_count, checkpoint, completed_at
+        FROM vehicle_catalog_syncs
+        WHERE provider = 'workshop' AND source_version = 'global-years'
+          AND traversal_version = 'initial-selector-v1'
+    """).fetchone()
+
+
 def test_http_cold_years_owned_job_durable_ordered_and_no_fake_marker(isolated_selector,monkeypatch):
     from autodata_ingestion import catalog_years
     monkeypatch.setattr(catalog_years,'ensure_catalog_years',lambda *_: pytest.fail('legacy daemon called'))
@@ -102,19 +115,30 @@ def test_http_cold_years_owned_job_durable_ordered_and_no_fake_marker(isolated_s
         rows=connection.execute('SELECT year,provider,source_version,source_uri,source_snapshot_id FROM vehicle_catalog_years ORDER BY year').fetchall()
         assert [r[0] for r in rows]==[2023,2024]
         assert all(r[1]=='autoapi' and r[2]=='revision-1' and r[3].endswith('/v1/catalog/years') and r[4] is None for r in rows)
+        status, count, checkpoint, completed_at = workshop_year_checkpoint(connection)
+        assert (status, count) == ('completed', 2) and completed_at is not None
+        assert set(checkpoint["provider_years"]) == {'autoapi'}
         assert connection.execute('SELECT count(*) FROM vehicle_catalog_hydration_scopes').fetchone()[0]==0
         assert connection.execute('SELECT count(*) FROM source_snapshots').fetchone()[0]==0
+    stage_year_progress(checkpoint["provider_key"], "autoapi", 2025)
+    with psycopg.connect(dsn) as connection:
+        assert workshop_year_checkpoint(connection) == ('completed', 2, checkpoint, completed_at)
     assert len(state['calls'])==1
     assert request()['complete'] is True and len(state['calls'])==1
 
 
-def test_http_failed_provider_cannot_create_years_or_complete_marker(isolated_selector):
+@pytest.mark.parametrize("failure", ["503", "malformed"])
+def test_http_failed_provider_cannot_create_years_or_complete_marker(isolated_selector, failure):
     dsn,state,request,_,_=isolated_selector
-    state['status']=503
+    if failure == "503":
+        state['status']=503
+    else:
+        state['malformed']=True
     result=request()
     assert result['complete'] is False
     with psycopg.connect(dsn) as connection:
         assert connection.execute('SELECT count(*) FROM vehicle_catalog_years').fetchone()[0]==0
+        assert workshop_year_checkpoint(connection) is None
         assert connection.execute('SELECT count(*) FROM vehicle_catalog_hydration_scopes').fetchone()[0]==0
     assert len(state['calls'])==1
 
@@ -128,20 +152,104 @@ def test_years_upsert_lock_timeout_rolls_back_without_marker(isolated_selector):
         assert caught.value.code==502 and time.monotonic()-start<3
     with psycopg.connect(dsn) as connection:
         assert connection.execute('SELECT count(*) FROM vehicle_catalog_years').fetchone()[0]==0
+        assert workshop_year_checkpoint(connection) is None
         assert connection.execute('SELECT count(*) FROM vehicle_catalog_hydration_scopes').fetchone()[0]==0
 
 
-def test_go_cold_years_handler_through_actual_python_http_and_pg(isolated_selector):
+@pytest.mark.parametrize("mode", ["normal", "complete-empty", "legacy", "legacy-inventory", "partial-inventory"])
+def test_go_cold_years_handler_through_actual_python_http_and_pg(isolated_selector, mode):
     if os.getenv('AUTODATA_SELECTOR_GO_TEST')!='1': pytest.skip('explicit Go cross-language fixture opt-in')
     dsn,state,_,worker,name=isolated_selector
-    from urllib.parse import quote
+    state["empty"] = mode == "complete-empty"
+    with psycopg.connect(dsn) as connection:
+        # Even a completed supplier sync with similar JSON cannot contribute
+        # choices or coverage to the separate Workshop Year checkpoint.
+        connection.execute("""
+            INSERT INTO vehicle_catalog_syncs (provider, source_version, traversal_version, status, checkpoint, row_count)
+            VALUES ('autoapitwo', 'global-years', 'initial-selector-v1', 'completed',
+                    '{"provider_years":{"autoapitwo":{"records":[{"year":1999}]}}}', 1)
+        """)
+    if mode == "legacy":
+        # An older worker can complete coverage after a new worker stages a
+        # partial manifest that the old binary cannot see.
+        stage_year_progress("a" * 64, "autoapi", 2023)
+        with psycopg.connect(dsn) as connection:
+            connection.execute("""
+                INSERT INTO vehicle_catalog_years(provider,source_version,year,source_uri,response_hash)
+                VALUES ('autoapi','older-worker-version',2021,'fixture://years','legacy')
+            """)
+    if mode in {"legacy-inventory", "partial-inventory"}:
+        if mode == "partial-inventory":
+            stage_year_progress("a" * 64, "autoapi", 2023)
+        with psycopg.connect(dsn) as connection:
+            connection.execute("""
+                WITH fixture_snapshot AS (
+                    INSERT INTO source_snapshots(adapter_name,source_uri,source_version,content_sha256,
+                                                 object_key,license_metadata,retrieved_at)
+                    VALUES ('fixture','fixture://inventory','v1',repeat('a',64),'fixture','{}',now())
+                    RETURNING source_snapshot_id
+                )
+                INSERT INTO vehicles(vehicle_key,make,model,model_year,region,source_snapshot_id,source_watermark)
+                    SELECT 'fixture-2022','Authored','Example',2022,'US',source_snapshot_id,'v1'
+                    FROM fixture_snapshot
+            """)
     host=os.environ['AUTODATA_SELECTOR_TEST_HOST']
     env={**os.environ,'AUTODATA_SELECTOR_GO_DSN':f'postgres://selector436:selector436_fixture_only@{host}:5432/{name}?sslmode=disable',
-         'AUTODATA_SELECTOR_WORKER_URL':worker}
+         'AUTODATA_SELECTOR_WORKER_URL':worker, 'AUTODATA_SELECTOR_YEARS_MODE':mode}
     result=subprocess.run(['go','test','-count=1','-run','^TestSelectorOwnedColdYearsFixture$','.'],
                           cwd=ROOT/'apps/api-go',env=env,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=180)
     assert result.returncode==0,result.stdout[-6000:]
-    assert len(state['calls'])==1
+    assert len(state['calls']) == (0 if mode in {"legacy", "legacy-inventory"} else 1)
+    if mode == "complete-empty":
+        with psycopg.connect(dsn) as connection:
+            assert connection.execute('SELECT count(*) FROM vehicle_catalog_years').fetchone()[0] == 0
+            status, count, checkpoint, completed_at = workshop_year_checkpoint(connection)
+            assert (status, count) == ('completed', 0) and completed_at is not None
+            providers = checkpoint["provider_years"]
+            assert providers["autoapi"]["records"] == [] and providers["autoapi"]["provenance"]
+
+
+def stage_year_progress(key, provider, year):
+    evidence = {"provider": provider, "source_version": "authored-v1", "source_uri": "fixture://years"}
+    result = catalog.CatalogResult(
+        rows=({"year": year, "provider_mappings": [evidence]},),
+        provenance=(evidence,), complete=False,
+    )
+    catalog._persist_hydration_scope(
+        {"scope": "years"}, result, deadline=time.monotonic() + 3, progress=True, year_provider_key=key,
+    )
+
+
+def test_year_progress_keeps_only_current_configuration_evidence(isolated_selector):
+    dsn, _, _, _, _ = isolated_selector
+    from autodata_ingestion import catalog_sync
+
+    old_sync = catalog_sync._claim('global-years', 'initial-selector-v1')
+    legacy_checkpoint = {'phase': 'persisted', 'scope': 'configurations'}
+    catalog_sync._finish(old_sync['id'], status='completed', row_count=17, checkpoint=legacy_checkpoint)
+    stage_year_progress("a" * 64, "autoapi", 2023)
+    stage_year_progress("a" * 64, "autoapitwo", 2023)
+    with psycopg.connect(dsn) as connection:
+        status, count, checkpoint, completed_at = workshop_year_checkpoint(connection)
+        assert (status, count) == ('partial', 1) and completed_at is None
+        assert checkpoint["provider_key"] == "a" * 64
+        assert set(checkpoint["provider_years"]) == {"autoapi", "autoapitwo"}
+    stage_year_progress("a" * 64, "autoapitwo", 2024)
+    with psycopg.connect(dsn) as connection:
+        status, count, checkpoint, completed_at = workshop_year_checkpoint(connection)
+        assert (status, count) == ('partial', 2) and completed_at is None
+        assert set(checkpoint["provider_years"]) == {"autoapi", "autoapitwo"}
+    stage_year_progress("b" * 64, "autoapitwo", 2025)
+    with psycopg.connect(dsn) as connection:
+        status, count, checkpoint, completed_at = workshop_year_checkpoint(connection)
+        assert (status, count) == ('partial', 1) and completed_at is None
+        assert checkpoint["provider_key"] == "b" * 64
+        providers = checkpoint["provider_years"]
+        assert set(providers) == {"autoapitwo"}
+        assert [row["year"] for row in providers["autoapitwo"]["records"]] == [2025]
+        assert connection.execute('SELECT count(*) FROM vehicle_catalog_years').fetchone()[0] == 0
+        assert connection.execute('SELECT status,row_count,checkpoint FROM vehicle_catalog_syncs WHERE provider = %s',
+                                  ('autoapitwo',)).fetchone() == ('completed', 17, legacy_checkpoint)
 
 
 def test_partial_selector_marker_remains_partial_until_complete(isolated_selector):
@@ -162,7 +270,8 @@ def test_partial_selector_marker_remains_partial_until_complete(isolated_selecto
         assert version==1 and [row['make'] for row in rows]==['Authored']
 
 
-def test_two_source_partial_cold_go_read_stays_empty_then_retries_after_cooldown(isolated_selector,monkeypatch):
+@pytest.mark.parametrize("failure_status", [503, 429])
+def test_two_source_partial_cold_go_read_keeps_verified_years_and_retries(isolated_selector,monkeypatch,failure_status):
     if os.getenv('AUTODATA_SELECTOR_GO_TEST')!='1': pytest.skip('explicit Go cross-language fixture opt-in')
     dsn,state,request,worker,name=isolated_selector
     clock=[0.0]; second={'healthy':False,'calls':0}
@@ -174,10 +283,9 @@ def test_two_source_partial_cold_go_read_stays_empty_then_retries_after_cooldown
         def do_GET(self):
             second['calls']+=1
             if not second['healthy']:
-                self.send_response(503); self.end_headers(); return
+                self.send_response(failure_status); self.end_headers(); return
             body=json.dumps(_envelope('banktwo',scope='years',items=[
-                {'year':2024,'opaque_ref':'authored-2024','label':'2024'},
-                {'year':2023,'opaque_ref':'authored-2023','label':'2023'}],complete=True,next_cursor=None)).encode()
+                {'year':2025,'opaque_ref':'authored-2025','label':'2025'}],complete=True,next_cursor=None)).encode()
             self.send_response(200); self.send_header('Content-Type','application/json'); self.send_header('Content-Length',str(len(body))); self.end_headers(); self.wfile.write(body)
         def log_message(self,*args): pass
     source=ThreadingHTTPServer(('127.0.0.1',0),SecondConnector)
@@ -186,27 +294,52 @@ def test_two_source_partial_cold_go_read_stays_empty_then_retries_after_cooldown
     host=os.environ['AUTODATA_SELECTOR_TEST_HOST']
     env={**os.environ,'AUTODATA_SELECTOR_GO_DSN':f'postgres://selector436:selector436_fixture_only@{host}:5432/{name}?sslmode=disable',
          'AUTODATA_SELECTOR_WORKER_URL':worker}
-    def go_read(empty):
+    def go_read(mode):
         result=subprocess.run(['go','test','-count=1','-run','^TestSelectorOwnedColdYearsFixture$','.'],
-                              cwd=ROOT/'apps/api-go',env={**env,'AUTODATA_SELECTOR_EXPECT_EMPTY':'1' if empty else '0'},
+                              cwd=ROOT/'apps/api-go',env={**env,'AUTODATA_SELECTOR_YEARS_MODE':mode},
                               text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=90)
         assert result.returncode==0,result.stdout[-6000:]
     try:
-        go_read(True)
+        go_read('partial')
         assert len(state['calls'])==1 and second['calls']==1
         with psycopg.connect(dsn) as connection:
             assert connection.execute('SELECT count(*) FROM vehicle_catalog_years').fetchone()[0]==0
             assert connection.execute('SELECT count(*) FROM vehicle_catalog_hydration_scopes').fetchone()[0]==0
+            status, count, checkpoint, completed_at = workshop_year_checkpoint(connection)
+            assert (status, count) == ('partial', 2) and completed_at is None
+            providers = checkpoint["provider_years"]
+            assert set(providers) == {'autoapi'}
+            records = providers['autoapi']['records']
+            assert sorted(row['year'] for row in records) == [2023, 2024]
+            assert all(row['source_version'] == 'revision-1' and row['source_uri'].endswith('/v1/catalog/years') for row in records)
         clock[0]=7
         deferred=request('early-cold-retry')
         assert deferred['complete'] is False and deferred['stop_reason']=='admission'
         assert len(state['calls'])==1 and second['calls']==1
-        second['healthy']=True; clock[0]=31
-        go_read(False)
-        assert len(state['calls'])==2 and second['calls']==2
+        retry_mode = 'resume'
+        attempts = 2
+        clock[0] = 31
+        if failure_status == 503:
+            state['empty'] = True
+            go_read('replace-with-empty')
+            with psycopg.connect(dsn) as connection:
+                status, count, checkpoint, completed_at = workshop_year_checkpoint(connection)
+                assert (status, count) == ('partial', 0) and completed_at is None
+                providers = checkpoint["provider_years"]
+                assert providers['autoapi']['records'] == [] and providers['autoapi']['provenance']
+            state['empty'] = False
+            retry_mode = 'resume-cleared'
+            attempts = 3
+            clock[0] = 62
+        second['healthy'] = True
+        go_read(retry_mode)
+        assert len(state['calls']) == second['calls'] == attempts
         with psycopg.connect(dsn) as connection:
-            assert connection.execute('SELECT DISTINCT year FROM vehicle_catalog_years ORDER BY year').fetchall()==[(2023,),(2024,)]
+            assert connection.execute('SELECT DISTINCT year FROM vehicle_catalog_years ORDER BY year').fetchall()==[(2023,),(2024,),(2025,)]
             assert connection.execute('SELECT count(*) FROM vehicle_catalog_hydration_scopes').fetchone()[0]==0
+            status, count, checkpoint, completed_at = workshop_year_checkpoint(connection)
+            assert (status, count) == ('completed', 3) and completed_at is not None
+            assert set(checkpoint["provider_years"]) == {'autoapi', 'autoapitwo'}
     finally:
         source.shutdown(); source.server_close(); thread.join(2)
 

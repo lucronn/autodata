@@ -53,6 +53,7 @@ func newOwnedSelectorFixture(t *testing.T) (*Server, *pgxpool.Pool, context.Cont
 
 func TestSelectorOwnedColdYearsFixture(t *testing.T) {
 	server, pool, ctx := newOwnedSelectorFixture(t)
+	mode := os.Getenv("AUTODATA_SELECTOR_YEARS_MODE")
 	readYears := func(path string) CatalogYearsResponse {
 		t.Helper()
 		response := catalogRequest(server, path)
@@ -65,9 +66,31 @@ func TestSelectorOwnedColdYearsFixture(t *testing.T) {
 		}
 		return body
 	}
+	assertYears := func(body CatalogYearsResponse, complete bool, expected ...int) {
+		t.Helper()
+		if body.Complete != complete || body.Hydrating == complete || len(body.Items) != len(expected) {
+			t.Fatalf("year coverage = %#v, want complete=%t years=%v", body, complete, expected)
+		}
+		for i, year := range expected {
+			if body.Items[i].Year != year {
+				t.Fatalf("unordered or missing years: %#v, want %v", body.Items, expected)
+			}
+		}
+	}
 	initial := readYears("/v1/catalog/years")
-	if len(initial.Items) != 0 || initial.Complete || !initial.Hydrating {
-		t.Fatalf("initial empty catalog should be hydrating, got %#v", initial)
+	switch mode {
+	case "legacy":
+		assertYears(initial, true, 2021)
+		return
+	case "legacy-inventory":
+		assertYears(initial, true, 2022)
+		return
+	case "partial-inventory":
+		assertYears(initial, false, 2022, 2023)
+	case "resume", "replace-with-empty":
+		assertYears(initial, false, 2023, 2024)
+	default:
+		assertYears(initial, false)
 	}
 	key, _, err := catalogHydrationRequest(map[string]any{"scope": "years"})
 	if err != nil {
@@ -75,9 +98,17 @@ func TestSelectorOwnedColdYearsFixture(t *testing.T) {
 	}
 	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()
+	seenPartial := false
 	for {
 		if _, running := catalogHydrationInFlight.Load(key); !running {
 			break
+		}
+		if mode == "partial" && !seenPartial {
+			body := readYears("/v1/catalog/years?stored_only=1")
+			if len(body.Items) > 0 {
+				assertYears(body, false, 2023, 2024)
+				seenPartial = true
+			}
 		}
 		select {
 		case <-ctx.Done():
@@ -85,17 +116,26 @@ func TestSelectorOwnedColdYearsFixture(t *testing.T) {
 		case <-ticker.C:
 		}
 	}
-	if os.Getenv("AUTODATA_SELECTOR_EXPECT_EMPTY") == "1" {
-		body := readYears("/v1/catalog/years?stored_only=1")
-		if len(body.Items) != 0 {
-			t.Fatalf("partial years escaped into durable reader: %#v", body.Items)
+	switch mode {
+	case "partial":
+		if !seenPartial {
+			t.Fatal("verified years did not become selectable before the worker finished")
 		}
-	} else {
+		assertYears(readYears("/v1/catalog/years?stored_only=1"), false, 2023, 2024)
+	case "complete-empty":
+		assertYears(readYears("/v1/catalog/years"), true)
+		if _, running := catalogHydrationInFlight.Load(key); running {
+			t.Fatal("complete empty scope scheduled hydration again")
+		}
+	case "replace-with-empty":
+		assertYears(readYears("/v1/catalog/years?stored_only=1"), false)
+	case "resume", "resume-cleared":
+		assertYears(readYears("/v1/catalog/years"), true, 2023, 2024, 2025)
+	case "partial-inventory":
+		assertYears(readYears("/v1/catalog/years"), true, 2022, 2023, 2024)
+	default:
 		for i := 0; i < 2; i++ {
-			body := readYears("/v1/catalog/years")
-			if !body.Complete || body.Hydrating || len(body.Items) != 2 || body.Items[0].Year != 2023 || body.Items[1].Year != 2024 {
-				t.Fatalf("unordered/unusable years: %#v", body)
-			}
+			assertYears(readYears("/v1/catalog/years"), true, 2023, 2024)
 		}
 	}
 	var count int
