@@ -1887,7 +1887,7 @@ def adapt_bound_article(
     keep_image_only_headings: bool = False,
     keep_ordered_step_instructions: bool = False,
     keep_image_only_step_instructions: bool = False,
-    step_parser=None,
+    step_parser=None, resolved_pdf_refs: frozenset[str] = frozenset(),
 ) -> dict[str, Any]:
     """Adapt fetched bytes under proven connector scope, without weakening URL intake."""
     from .banktwo_connector import ArticleParser
@@ -2025,6 +2025,7 @@ def adapt_bound_article(
                     return adapt_bound_article(
                         nested, context, keep_html_headings=keep_html_headings,
                         keep_bound_pdf_iframes=keep_bound_pdf_iframes,
+                        resolved_pdf_refs=resolved_pdf_refs,
                         keep_pdf_figure_order=keep_pdf_figure_order,
                         keep_multiple_pdf_figures=keep_multiple_pdf_figures,
                         keep_html_table_image_order=keep_html_table_image_order,
@@ -2081,6 +2082,7 @@ def adapt_bound_article(
             preserve_legacy_list_starts=False,
             keep_html_headings=keep_html_headings,
             keep_bound_pdf_iframes=keep_bound_pdf_iframes,
+            resolved_pdf_refs=resolved_pdf_refs,
             keep_html_table_image_order=keep_html_table_image_order,
             keep_html_figure_captions=keep_html_figure_captions,
             keep_html_table_captions=keep_html_table_captions,
@@ -2123,6 +2125,7 @@ def adapt_bound_article(
             "asset_resource_refs": [],
             **({"authored_html_headings": True} if keep_html_headings else {}),
             **({"handled_pdf_embeds": True} if parser.handled_pdf_embeds else {}),
+            **({"untyped_pdf_embed_refs": tuple(parser.untyped_pdf_embed_refs)} if parser.untyped_pdf_embed_refs else {}),
             **({"positioned_html_table_images": True} if parser.positioned_html_table_images else {}),
             **({"html_figure_captions": True} if parser.html_figure_captions else {}),
             **({"html_flow_figure_captions": True} if parser.html_flow_figure_captions else {}),

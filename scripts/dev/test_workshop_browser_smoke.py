@@ -1346,7 +1346,12 @@ class API21FakeContext:
         elif phase=='warm-pinned-source-http':
             assert kwargs.get('headers') == {'Accept':'application/json'}
             data={'source':{'url':smoke.urlsplit(url).path+'?'+smoke.urlsplit(url).query}}
-        elif '/images/' in path:browser.reads+=1;data=b'image-original-bytes'
+        elif '/images/' in path:
+            if self.other and not self.signed:
+                status, data = 401, {'error': 'denied'}
+            else:
+                browser.reads += 1
+                data = b'image-original-bytes'
         return API21FakeResponse(url,data,status)
     async def post(self,url):
         path=smoke.urlsplit(url).path

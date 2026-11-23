@@ -423,7 +423,7 @@ def _child(root_name,engine,provider,directory,monkeypatch):
                             '<figure><img src="/fixture/alignment.png" alt="Shim">'
                             '<figcaption>Shim A</figcaption></figure>'
                             '<table><tr><td>'
-                            f'<iframe src="{_PDF_LOCATOR}">Hidden fallback.</iframe>'
+                            f'<object data="{_PDF_LOCATOR}">Hidden fallback.</object>'
                             '</td><td>Drive seal seating depth: 2.0 mm</td></tr></table></li></ol>'
                             '<p>Tighten the cover bolts to 18 Nm.</p>'
                         )

@@ -457,7 +457,8 @@ def test_v10_promotion_preserves_an_unchanged_sibling_pdf_across_refreshes(runti
     assert all(entry.get("pdf_figure_layout") != PDF_LEGACY_FIGURE_LAYOUT for entry in updated_source["resource_manifest"])
 
 
-def test_linked_pdf_publishes_in_order_and_private_original_controls_visibility(runtime, monkeypatch):
+@pytest.mark.parametrize(('provider', 'embed_tag'), [('banktwo', 'iframe'), ('bankone', 'object'), ('banktwo', 'object')])
+def test_linked_pdf_publishes_in_order_and_private_original_controls_visibility(runtime, monkeypatch, provider, embed_tag):
     from autodata_ingestion import source_adapters
     from autodata_ingestion.ocr import OCRUnavailable
 
@@ -465,13 +466,13 @@ def test_linked_pdf_publishes_in_order_and_private_original_controls_visibility(
         raise OCRUnavailable("Fixture OCR unavailable")
 
     monkeypatch.setattr(source_adapters, "extract_scanned_pdf_text", unavailable_ocr)
-    provider = "banktwo"
     runtime.article_id = runtime.articles[provider]
     connector = runtime.servers[provider]
     raw_pdf, figure_pixels = _pdf_with_fixture_figure(trailing_text="Install the replacement.", blank_page=True)
+    locator_attr = 'src' if embed_tag == 'iframe' else 'data'
     body = (
         '<p>Remove the pump.</p>'
-        f'<iframe src="{_PDF_LOCATOR}" title="Private provider title">Hidden fallback.</iframe>'
+        f'<{embed_tag} {locator_attr}="{_PDF_LOCATOR}" title="Private provider title">Hidden fallback.</{embed_tag}>'
     ).encode()
     connector.body(
         body, assets=[_PDF_REF],
