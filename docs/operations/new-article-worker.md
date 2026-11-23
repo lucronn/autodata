@@ -10,8 +10,10 @@ provider scope, and spent reservations are preserved.
 ## Re-author an unpublished retained article
 
 Run this with a reviewed article-worker revision that supports
-`full-prose-auto-v2`. The operator selects the existing article and source
-revision using the normal selection JSON for `automatic_article_refresh.py`.
+`full-prose-auto-v2`. Before scheduling, verify that every generic article
+worker on the same database supports v2 or is stopped. The operator selects
+the existing article and source revision using the normal selection JSON
+for `automatic_article_refresh.py`.
 For one selected article, pass `--apply --source-bound-from PRIOR_JOB_ID`
 with the usual operator and reason arguments. Then run
 `scripts/dev/article_worker.py --job-id NEW_JOB_ID` with the returned job ID.
