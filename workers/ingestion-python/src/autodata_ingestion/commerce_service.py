@@ -640,7 +640,8 @@ class CommerceService:
                         SELECT 1 FROM canonical_articles a
                         JOIN LATERAL (
                             SELECT takedown_status,availability,document FROM catalog_article_current
-                            WHERE canonical_article_id=a.canonical_article_id LIMIT 1
+                            WHERE a.current_source_revision_id IS NOT NULL
+                              AND canonical_article_id=a.canonical_article_id LIMIT 1
                         ) v ON true
                         JOIN vehicle_configurations c ON c.vehicle_configuration_id=a.vehicle_configuration_id
                         JOIN vehicle_identity_bases b USING(vehicle_identity_base_id)
