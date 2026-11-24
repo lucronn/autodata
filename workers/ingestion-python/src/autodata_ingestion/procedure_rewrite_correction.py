@@ -9,7 +9,7 @@ import re
 from . import procedure_rewrite_auto as auto
 from . import procedure_rewrite_full as full
 from .article_lifecycle_types import (
-    MAX_CORRECTION_CALLS, SOURCE_BOUND_CORRECTION_PROFILE, SOURCE_BOUND_REWRITE_PROFILE, digest_json,
+    MAX_CORRECTION_CALLS, SOURCE_BOUND_CORRECTION_PROFILE, digest_json,
 )
 
 
@@ -42,19 +42,21 @@ def _introduction(source, previous):
     raise ValueError("REWRITE_CORRECTION_INTRODUCTION_INVALID")
 
 
-def _initial_draft(source, previous):
+def _initial_draft(source, previous, *, preserve_notes=False):
     if not full._source_valid(source):
         raise ValueError("REWRITE_DOCUMENT_INVALID")
     if (not isinstance(previous, dict) or set(previous) != {"introduction", "replacements"}
             or not isinstance(previous["replacements"], list)):
         raise ValueError("REWRITE_CORRECTION_PRIOR_INVALID")
-    plan = json.loads(auto.build_auto_prompt(source, context={}, profile_version=SOURCE_BOUND_REWRITE_PROFILE))
+    plan = json.loads(auto._build_source_bound_prompt(source, preserve_notes=preserve_notes))
     slots = plan["slots"]
     rows = previous["replacements"]
     if not slots or len(rows) != len(slots):
         raise ValueError("REWRITE_CORRECTION_PRIOR_INVALID")
     draft = deepcopy(previous)
     for slot, row in zip(slots, draft["replacements"], strict=True):
+        if preserve_notes:
+            slot["preserve_note_labels"] = True
         if (not isinstance(row, dict) or set(row) != {"block_id", "path", "action", "text", "reason"}
                 or not all(isinstance(value, str) for value in row.values())
                 or row["block_id"] != slot["block_id"] or row["path"] != slot["path"]
@@ -67,7 +69,8 @@ def _initial_draft(source, previous):
 
 
 def _passage_errors(source, slots, draft):
-    errors = {issue["path"]: issue["code"] for issue in auto.failed_rewrite_passages(source, draft)}
+    version = auto._NOTE_LABEL_PROMPT_VERSION if slots[0].get("preserve_note_labels") else None
+    errors = {issue["path"]: issue["code"] for issue in auto.failed_rewrite_passages(source, draft, prompt_version=version)}
     for slot, row in zip(slots, draft["replacements"], strict=True):
         if slot["required_action"] == "rewrite" and row["action"] != "rewrite":
             errors.setdefault(slot["path"], "REWRITE_RETENTION_INVALID")
@@ -182,11 +185,11 @@ def _apply_variants(source, slots, draft, batch, alternatives):
                 del remaining[index]
 
 
-def correct_retained_draft(source, previous, *, complete_json, model_call_budget):
+def correct_retained_draft(source, previous, *, complete_json, model_call_budget, preserve_notes=False):
     """Assemble a draft through the caller's accountable model dispatch."""
     if type(model_call_budget) is not int or not 1 <= model_call_budget <= MAX_CORRECTION_CALLS:
         raise ValueError("REWRITE_CORRECTION_BUDGET_INVALID")
-    version, slots, draft = _initial_draft(source, previous)
+    version, slots, draft = _initial_draft(source, previous, preserve_notes=preserve_notes)
     exchanges = []
     for masked, size in ((False, 8), (True, 5), (True, 5)):
         failures = _passage_errors(source, slots, draft)
@@ -221,7 +224,10 @@ def _validated_document(source, slots, draft, version):
     if unresolved:
         return None, next(iter(unresolved.values()))
     try:
-        candidate = auto.render_auto(source, draft, profile_version=SOURCE_BOUND_CORRECTION_PROFILE)
+        candidate = auto.render_auto(
+            source, draft, prompt_version=version if version == auto._NOTE_LABEL_PROMPT_VERSION else None,
+            profile_version=SOURCE_BOUND_CORRECTION_PROFILE,
+        )
         validation = auto.validate_auto(
             source, candidate, response=draft, prompt_version=version,
             profile_version=SOURCE_BOUND_CORRECTION_PROFILE,
@@ -258,24 +264,27 @@ def correction_recovery_for_method(method):
 
 
 def replay_retained_correction(source, previous, *, model_call_budget, evidence, attempts,
-                               method=_CORRECTION_METHOD):
+                               method=_CORRECTION_METHOD, preserve_notes=False):
     """Rebuild the draft from pinned prompt hashes and original provider replies."""
     result = rebuild_retained_correction(
         source, previous, model_call_budget=model_call_budget, attempts=attempts, method=method,
+        preserve_notes=preserve_notes,
     )
     if result.evidence != evidence:
         raise ValueError("REWRITE_CORRECTION_EVIDENCE_INVALID")
     return result
 
 
-def rebuild_retained_correction(source, previous, *, model_call_budget, attempts, method=_CORRECTION_METHOD):
+def rebuild_retained_correction(source, previous, *, model_call_budget, attempts, method=_CORRECTION_METHOD,
+                                preserve_notes=False):
     """Reproduce the original method, including the prompts in a failed archive."""
     return _replay_transcript(
         correction_for_method(method), source, previous, model_call_budget=model_call_budget, attempts=attempts,
+        preserve_notes=preserve_notes,
     )
 
 
-def _replay_transcript(correct, source, previous, *, model_call_budget, attempts):
+def _replay_transcript(correct, source, previous, *, model_call_budget, attempts, preserve_notes=False):
     rounds = iter(attempts)
 
     def from_saved(prompt):
@@ -287,7 +296,8 @@ def _replay_transcript(correct, source, previous, *, model_call_budget, attempts
             raise ValueError("REWRITE_CORRECTION_EVIDENCE_INVALID")
         return attempt["response"]
 
-    result = correct(source, previous, complete_json=from_saved, model_call_budget=model_call_budget)
+    result = correct(source, previous, complete_json=from_saved, model_call_budget=model_call_budget,
+                     preserve_notes=preserve_notes)
     if next(rounds, None) is not None:
         raise ValueError("REWRITE_CORRECTION_EVIDENCE_INVALID")
     return result

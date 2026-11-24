@@ -16,6 +16,51 @@ def run(source, payload):
     return rewrite.rewrite_ordered_document(source, client=Draft(payload), context={}, profile_version=PROFILE)
 
 
+@pytest.mark.parametrize("profile", [PROFILE, SOURCE_BOUND_REWRITE_PROFILE])
+def test_automatic_rewrite_reapplies_authored_note_labels_without_replacing_prose(profile):
+    from autodata_ingestion import procedure_rewrite_auto as auto
+
+    source = document("Note: Remove the cover.", "unused")
+    source["blocks"][1].pop("text")
+    source["blocks"][1].update(type="ordered_list", items=["NOTE :  Inspect the seal."])
+    payload = response("Take the cover off.", "note: Check the seal.")
+    payload["replacements"][1]["path"] = "/blocks/1/items/0"
+    client = Draft(payload)
+    result = rewrite.rewrite_ordered_document(source, client=client, context={}, profile_version=profile)
+    assert client.calls == 1
+    assert result.error_code is None
+    assert result.raw_response == payload
+    assert result.document["blocks"][1]["text"] == "Note: Take the cover off."
+    assert result.document["blocks"][2]["items"] == ["NOTE :  Check the seal."]
+
+    version = auto._auto_prompt_version(source, context={}, prompt_hash=result.prompt_hash, profile_version=profile)
+    assert version == "full-prose-auto-prompt-v61"
+    assert auto.validate_auto(
+        source, result.document, response=payload, prompt_version=version, profile_version=profile,
+    ).passed
+    historical_prompt = (
+        auto._build_auto_prompt_v60(source, context={}) if profile == PROFILE
+        else auto._build_source_bound_prompt(source, preserve_notes=False)
+    )
+    archived_version = auto._auto_prompt_version(
+        source, context={}, prompt_hash=sha256(historical_prompt.encode()).hexdigest(), profile_version=profile,
+    )
+    assert archived_version == "full-prose-auto-prompt-v55"
+    archived_candidate = auto.render_auto(source, payload, prompt_version=archived_version, profile_version=profile)
+    assert archived_candidate["blocks"][1]["text"] == "Take the cover off."
+    assert auto.validate_auto(
+        source, archived_candidate, response=payload, prompt_version=archived_version, profile_version=profile,
+    ).passed
+
+
+def test_note_draft_cannot_move_labels_or_count_label_only_edits_as_rewrites():
+    source = document("Note: Remove the cover.", "Inspect the seal.")
+    assert run(source, response("Remove the cover.", "Check the seal.")).error_code == "REWRITE_UNCHANGED"
+    assert run(
+        source, response("Take the cover off.", "Note: Check the seal."),
+    ).error_code == "REWRITE_NOTE_LABEL_MUTATION"
+
+
 @pytest.mark.parametrize("introduction", [
     "Overview. The acoustic insulation softens vibration from the ventilation system.",
     'The manual states: "The acoustic insulation softens vibration from the ventilation system."',
