@@ -6,8 +6,10 @@ import pytest
 from autodata_ingestion.article_lifecycle_types import digest_json
 from autodata_ingestion.procedure_rewrite_auto import build_auto_prompt
 from autodata_ingestion.procedure_rewrite_recovery import (
+    FIRST_DRAFT_COOLING_RECOVERY_METHOD,
     FIRST_DRAFT_DIRECTIVE_RECOVERY_METHOD,
     FIRST_DRAFT_RECOVERY_METHOD,
+    _equivalent_cooling_directive,
     _equivalent_directive,
     _equivalent_wording,
     recover_first_draft,
@@ -140,11 +142,75 @@ def test_directive_recovery_leaves_conditional_or_unrecognized_forms_unedited(or
     assert _equivalent_directive(original) is None
 
 
-def test_directive_recovery_rejects_an_unbound_introduction_and_misaligned_rows():
+def test_earlier_recovery_cannot_rebuild_an_unbound_introduction():
     source = document("Tighten the 3 return bracket nuts.")
     raw = response("Tighten the 4 return bracket nuts.", introduction="Apply 18 N·m as instructed.")
     version = json.loads(build_auto_prompt(source, context={}))["prompt_version"]
-    assert recover_first_draft(source, raw, prompt_version=version) is None
+    assert recover_first_draft(
+        source, raw, prompt_version=version, method=FIRST_DRAFT_DIRECTIVE_RECOVERY_METHOD,
+    ) is None
+    recovered = recover_first_draft(source, raw, prompt_version=version)
+    assert recovered.evidence["method"] == FIRST_DRAFT_COOLING_RECOVERY_METHOD
+    assert recovered.evidence["introduction_replaced"] is True
+    assert recovered.response["introduction"] != raw["introduction"]
+    assert recovered.response["replacements"][0]["text"] == "Tighten each of the 3 return bracket nuts."
+
+
+def test_cooling_recovery_requires_a_source_aligned_reply():
+    source = document("Loosen the mounting plate bolts.")
+    raw = response("Remove the mounting plate bolts.")
+    version = json.loads(build_auto_prompt(source, context={}))["prompt_version"]
     raw["introduction"] = "This procedure describes the fastener work."
     raw["replacements"][0]["block_id"] = "unrelated-block"
     assert recover_first_draft(source, raw, prompt_version=version) is None
+
+
+def test_recovers_loosen_and_fill_bleed_with_a_source_based_introduction():
+    source = document(
+        "Loosen the mounting plate bolts.",
+        "Fill and bleed the cooling system. For additional information, refer to "
+        "Cooling System Draining, Filling and Bleeding in this section.",
+    )
+    source["blocks"].append({
+        "block_id": "heading", "source_order": 3, "type": "heading", "level": 2,
+        "text": "Cooling system service", "evidence_ids": ["fixture-evidence"],
+    })
+    raw = response(
+        "Remove the mounting plate bolts.",
+        source["blocks"][1]["text"],
+        introduction="It is safe to service this system while the engine is running.",
+    )
+    saved = deepcopy(raw)
+    version = json.loads(build_auto_prompt(source, context={}))["prompt_version"]
+    result = recover_first_draft(source, raw, prompt_version=version)
+
+    assert result.evidence["method"] == FIRST_DRAFT_COOLING_RECOVERY_METHOD
+    assert result.evidence["introduction_replaced"] is True
+    assert result.evidence["raw_response_hash"] == digest_json(raw)
+    assert result.evidence["corrected_paths"] == [row["path"] for row in raw["replacements"]]
+    assert result.response["introduction"] == "This article covers the service information for Cooling system service."
+    assert [row["text"] for row in result.response["replacements"]] == [
+        "The mounting plate bolts must be loosened.",
+        "Fill the cooling system and bleed it. See Cooling System Draining, Filling and Bleeding "
+        "in this section for details.",
+    ]
+    assert raw == saved
+    assert recover_first_draft(
+        source, raw, prompt_version=version, method=FIRST_DRAFT_COOLING_RECOVERY_METHOD,
+    ) == result
+    assert recover_first_draft(
+        source, raw, prompt_version=version, method=FIRST_DRAFT_DIRECTIVE_RECOVERY_METHOD,
+    ) is None
+
+
+@pytest.mark.parametrize("original", [
+    "Loosen the mounting plate bolts only after the vehicle is supported.",
+    "Loosen the ring and remove it.",
+    "Loosen the two clips without detaching them.",
+    "Bleed and fill the cooling system. For additional information, refer to "
+    "Cooling System Draining, Filling and Bleeding in this section.",
+    "Fill and bleed the brake system. For additional information, refer to "
+    "Cooling System Draining, Filling and Bleeding in this section.",
+])
+def test_cooling_recovery_does_not_infer_conditions_sequence_or_system(original):
+    assert _equivalent_cooling_directive(original) is None
