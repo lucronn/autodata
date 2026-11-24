@@ -63,6 +63,7 @@ let testStripeMode = $("test-banner").hidden === false;
 let checkoutModeReady = null;
 let vehicle = null,
   articles = [],
+  articlePage = 0,
   indexLoaded = false,
   indexComplete = false,
   indexHydrating = false,
@@ -167,6 +168,7 @@ function clearProtected() {
   searchError = false;
   searchTimer = null;
   articles = [];
+  articlePage = 0;
   indexLoaded = false;
   indexComplete = false;
   indexHydrating = false;
@@ -176,6 +178,10 @@ function clearProtected() {
     $(id).replaceChildren();
   $("article-title").textContent = "";
   $("catalog-count").textContent = "";
+  $("article-page-range").textContent = "";
+  $("article-pages").hidden = true;
+  $("article-prev").disabled = true;
+  $("article-next").disabled = true;
   $("reader").hidden = true;
   $("catalog").hidden = true;
   clearLibrary();
@@ -882,12 +888,13 @@ function scheduleArticleSearch({ fromIndex = false, restoreFocus } = {}) {
   searchQuery = query;
   searchRefreshPending = false;
   if (!refresh) {
+    articlePage = 0;
     searchItems = null;
     searchComplete = false;
   }
   searchPending = Boolean(query && vehicle?.id && access === "owned");
   searchError = false;
-  renderArticles();
+  renderArticles({ keepFocus: refresh });
   if (!searchPending) return;
   const generation = searchNavigation.next();
   const vehicleID = vehicle.id;
@@ -934,12 +941,9 @@ function scheduleArticleSearch({ fromIndex = false, restoreFocus } = {}) {
 
 function renderArticleLinks(items) {
   const container = $("articles");
-  let list = container.firstElementChild;
-  if (!list) {
-    list = element("ul", undefined, "article-list");
-    list.setAttribute("role", "list");
-    container.append(list);
-  }
+  const existingList = container.firstElementChild;
+  const list = existingList || element("ul", undefined, "article-list");
+  if (!existingList) list.setAttribute("role", "list");
   const active = document.activeElement;
   const focused = list.contains(active) ? active : null;
   const previous = new Map(Array.from(list.children, (row) => [row.dataset.articleId, row]));
@@ -972,12 +976,13 @@ function renderArticleLinks(items) {
     if (link.getAttribute("href") !== href) link.href = href;
     return row;
   });
-  const retained = new Set(rows);
-  for (const row of [...list.children]) if (!retained.has(row)) row.remove();
-  for (const [index, row] of rows.entries()) {
-    const previousRow = list.children[index] || null;
-    if (row !== previousRow) list.insertBefore(row, previousRow);
+  for (const row of previous.values()) row.remove();
+  let next = list.firstElementChild;
+  for (const row of rows) {
+    if (row === next) next = next.nextElementSibling;
+    else list.insertBefore(row, next);
   }
+  if (!existingList) container.append(list);
   // Moving a focused link can blur it. A removed result returns focus to the
   // index heading instead of activating an unrelated row at the same position.
   if (focused && focused !== document.activeElement) {
@@ -986,27 +991,47 @@ function renderArticleLinks(items) {
   }
 }
 
-function renderArticles() {
+function renderArticles({ keepFocus = true } = {}) {
   $("vehicle-caption").textContent =
     quote?.configuration_label || $("purchase-selection").textContent;
   const query = $("search").value.trim();
   const searching = Boolean(query && searchQuery === query);
-  const visible = openDemo ? articles.filter((item) => item.availability === 'available') : articles;
   const localSearch = searching && searchItems === null;
-  const results = searching && !localSearch ? searchItems : filterArticles(visible, query);
-  const items = openDemo ? results.filter((item) => item.availability === 'available') : results;
+  const items = articleIndexItems(query);
   if (items.length && !localSearch && access === "owned" && paidOrder?.id === currentOrder &&
       vehicle?.id === paidOrder.configuration_id && vehicle?.region === paidOrder.region) {
     clearPaidOrderAction(currentOrder);
   }
-  renderArticleLinks(items);
+  const lastPage = Math.max(0, Math.ceil(items.length / articlePageSize) - 1);
+  const focusedID = keepFocus ? document.activeElement?.parentElement?.dataset.articleId : "";
+  if (focusedID) {
+    const focusedIndex = items.findIndex((item) => item.id === focusedID);
+    if (focusedIndex >= 0) articlePage = Math.floor(focusedIndex / articlePageSize);
+  }
+  articlePage = Math.min(articlePage, lastPage);
+  const start = articlePage * articlePageSize;
+  const end = Math.min(start + articlePageSize, items.length);
+  renderArticleLinks(items.slice(start, end));
+  const pages = $("article-pages");
+  const previous = $("article-prev");
+  const next = $("article-next");
+  const active = document.activeElement;
+  pages.hidden = lastPage === 0;
+  previous.disabled = articlePage === 0;
+  next.disabled = articlePage === lastPage;
+  if ((active === previous || active === next) && (pages.hidden || active.disabled))
+    focusArticleIndex();
+  const range = lastPage > 0 ? `${start + 1}–${end} of ${items.length}` : "";
+  if ($("article-page-range").textContent !== range) $("article-page-range").textContent = range;
   const articleCount = `${items.length} ${items.length === 1 ? "article" : "articles"}`;
   const resultsComplete = searching ? searchComplete && indexComplete : indexComplete;
+  const indexUnavailable = indexFailed && !articles.length;
+  const noPartialMatches = searching && indexFailed && !indexUnavailable && !items.length;
   let countText = searching && searchPending
     ? "Searching articles…"
     : searching && searchError
       ? "Article search is unavailable. Try again."
-      : indexFailed
+      : indexUnavailable
         ? "Article index could not be prepared."
         : !resultsComplete
           ? `${items.length} articles so far. Article index is still being prepared.`
@@ -1019,31 +1044,54 @@ function renderArticles() {
     countText = `${articleCount} from the loaded index. Search could not refresh.`;
   else if (items.length && (indexFailed || (!resultsComplete && !indexHydrating)))
     countText = `${articleCount} from available sources.`;
+  else if (noPartialMatches && !searchPending && !searchError)
+    countText = "0 articles from available sources.";
   // Avoid mutating the polite live region with the same pending text on every keystroke.
   if ($("catalog-count").textContent !== countText) $("catalog-count").textContent = countText;
   $("no-results").textContent = searching && searchError
     ? "Article search is unavailable. Try again."
     : searching && searchPending
       ? "Searching articles…"
-      : openDemo && articles.length > 0 && visible.length === 0
+      : openDemo && articles.length > 0 && !articles.some((item) => item.availability === "available")
         ? "No articles are readable yet for this vehicle. Choose another vehicle or check back later."
-        : indexFailed
+        : indexUnavailable
           ? "This article index could not be prepared. Check the status above."
-          : !resultsComplete
-            ? "This article index is still being prepared. Check again shortly."
-            : query && (articles.length > 0 || !indexLoaded)
-              ? "No articles match this search. Try a component name or a shorter phrase."
-              : "No articles are currently available for this vehicle.";
+          : noPartialMatches
+            ? "No articles from available sources match this search."
+            : !resultsComplete
+              ? "This article index is still being prepared. Check again shortly."
+              : query && (articles.length > 0 || !indexLoaded)
+                ? "No articles match this search. Try a component name or a shorter phrase."
+                : "No articles are currently available for this vehicle.";
   $("no-results").hidden = items.length > 0;
 }
 
 function focusArticleIndex(id) {
+  if (id) {
+    const index = articleIndexItems($("search").value.trim()).findIndex((item) => item.id === id);
+    const page = Math.floor(index / articlePageSize);
+    if (page >= 0 && page !== articlePage) {
+      articlePage = page;
+      renderArticles({ keepFocus: false });
+    }
+  }
   const row = id && Array.from($("articles").firstElementChild?.children || [])
     .find((item) => item.dataset.articleId === id);
   const link = row?.firstElementChild;
   const target = link || $("catalog-title");
   target.focus({ preventScroll: Boolean(link) });
   link?.scrollIntoView({ behavior: "instant", block: "nearest" });
+}
+const articlePageSize = 100;
+function articleIndexItems(query) {
+  const visible = openDemo ? articles.filter((item) => item.availability === "available") : articles;
+  if (query && query === searchQuery && searchItems !== null)
+    return openDemo ? searchItems.filter((item) => item.availability === "available") : searchItems;
+  return query ? filterArticles(visible, query) : visible;
+}
+function moveArticlePage(direction) {
+  articlePage = Math.max(0, articlePage + direction);
+  renderArticles({ keepFocus: false });
 }
 const assetID = (image) =>
   image?.id || image?.image_id || image?.asset_id || "";
@@ -2435,6 +2483,8 @@ $("my-vehicles").addEventListener("click", () => {
 $("library-more").addEventListener("click", loadMoreLibrary);
 $("purchase-action").addEventListener("click", () => void purchase());
 $("check-order").addEventListener("click", checkPaymentStatus);
+$("article-prev").addEventListener("click", () => moveArticlePage(-1));
+$("article-next").addEventListener("click", () => moveArticlePage(1));
 $("search").addEventListener("input", () => {
   updateURL({ replace: true });
   const loadFullIndex = !$("search").value.trim() && !indexLoaded && access === "owned";

@@ -21,6 +21,7 @@ function runInNewContext(code, context) {
   context.mountedSource ??= null;
   context.paidOrder ??= null;
   context.articleIndexOrigin ??= null;
+  context.articlePage ??= 0;
   context.performance ??= performance;
   context.pickerStates ??= new Map();
   context.cancelPickerRefreshes ??= () => {};
@@ -3975,6 +3976,10 @@ function articleIndexHarness(responses, { wait = async () => {}, openDemo = fals
   function element(tag, text = '', className = '') {
     return { tag, textContent: text, className, hidden: false, value: '', dataset: {}, attributes: {}, children: [], events: {}, parent: null,
       get firstElementChild() { return this.children[0] || null; },
+      get parentElement() { return this.parent; },
+      get nextElementSibling() {
+        return this.parent?.children[this.parent.children.indexOf(this) + 1] || null;
+      },
       contains(node) { return node === this || this.children.some(child => child.contains(node)); },
       remove() {
         if (!this.parent) return;
@@ -4517,6 +4522,84 @@ test('article index type labels show readable kinds beside titles without changi
     ['Legacy entry', 'Legacy content'],
   ]);
   assert.equal(new URL(list.children[0].children[0].href, 'https://cars.example').searchParams.get('article'), 'source/procedure');
+});
+
+test('large article indexes page stored descriptors and search beyond the visible page', async () => {
+  const articles = Array.from({ length: 205 }, (_, index) => ({
+    id: `article-${index + 1}`, title: `Service article ${index + 1}`,
+  }));
+  const [last] = articles.slice(-1);
+  const h = articleIndexHarness([
+    indexResponse('completed', { complete: true, items: articles }),
+    indexResponse('completed', { complete: true, items: [last] }),
+  ]);
+  await h.load();
+  const list = h.$('articles').firstElementChild;
+  assert.equal(h.$('catalog-count').textContent, '205 articles');
+  assert.equal(h.$('article-page-range').textContent, '1–100 of 205');
+  assert.equal(h.$('article-prev').disabled, true);
+  assert.equal(list.children.length, 100);
+
+  h.context.moveArticlePage(1);
+  assert.equal(h.$('article-page-range').textContent, '101–200 of 205');
+  assert.equal(list.firstElementChild.dataset.articleId, articles[100].id);
+  h.context.focusArticleIndex(last.id);
+  assert.equal(h.$('article-page-range').textContent, '201–205 of 205');
+  assert.equal(h.$('article-next').disabled, true);
+  assert.equal(h.context.document.activeElement.parent.dataset.articleId, last.id);
+  h.context.moveArticlePage(-1);
+  assert.equal(list.firstElementChild.dataset.articleId, articles[100].id);
+  assert.equal(h.requests.length, 1);
+
+  h.$('search').value = last.title;
+  h.$('search').events.input();
+  assert.equal(list.firstElementChild.dataset.articleId, last.id);
+  await new Promise(setImmediate);
+  assert.equal(h.$('article-pages').hidden, true);
+  assert.equal(h.requests.length, 2);
+  h.$('search').value = '';
+  h.$('search').events.input();
+  assert.equal(h.$('article-page-range').textContent, '1–100 of 205');
+  assert.equal(list.firstElementChild.dataset.articleId, articles[0].id);
+  assert.equal(h.requests.length, 2);
+  const focused = list.children[99].firstElementChild;
+  focused.focus();
+  h.context.articles = [{ id: 'new', title: 'New article' }, ...articles];
+  h.context.renderArticles();
+  assert.equal(h.$('article-page-range').textContent, '101–200 of 206');
+  assert.equal(list.firstElementChild.firstElementChild, focused);
+  assert.equal(h.context.document.activeElement, focused);
+  h.$('article-next').focus();
+  h.context.articles = articles.slice(0, 10);
+  h.context.renderArticles();
+  assert.equal(h.$('article-pages').hidden, true);
+  assert.equal(h.context.document.activeElement, h.$('catalog-title'));
+  h.context.articles = articles;
+  h.context.renderArticles();
+  assert.equal(h.$('article-pages').hidden, false);
+  h.context.clearProtected();
+  assert.equal(h.$('article-pages').hidden, true);
+  assert.equal(h.$('article-page-range').textContent, '');
+  assert.equal(h.$('article-prev').disabled, true);
+  assert.equal(h.$('article-next').disabled, true);
+});
+
+test('a zero-match search keeps a failed partial index usable', async () => {
+  const item = { id: 'one', title: 'Oil pump' };
+  const h = articleIndexHarness([
+    indexResponse('failed', { items: [item] }),
+    indexResponse('failed'),
+  ]);
+  await h.load();
+  assert.equal(h.$('catalog-count').textContent, '1 article from available sources.');
+  h.$('search').value = 'Alternator';
+  h.$('search').events.input();
+  await new Promise(setImmediate);
+  assert.equal(h.$('catalog-count').textContent, '0 articles from available sources.');
+  assert.equal(h.$('no-results').textContent, 'No articles from available sources match this search.');
+  h.$('search').value = '';
+  h.$('search').events.input();
+  assert.equal(h.$('articles').firstElementChild.firstElementChild.dataset.articleId, item.id);
 });
 
 test('article index empty states distinguish pending, completed empty and no search matches', async () => {
@@ -5169,7 +5252,8 @@ function mediaArticle(blocks, images = [], changes = {}) {
 function articleMediaHarness(overrides = {}) {
   const body = new ArticleMediaNode('body'), nodes = new Map();
   const ids = ['articles', 'article-content', 'source-review-frame', 'reference-data', 'library-items',
-    'article-title', 'catalog-count', 'article-note', 'source-review-meta', 'source-review', 'source-review-title', 'print',
+    'article-title', 'catalog-count', 'article-pages', 'article-page-range', 'article-prev', 'article-next',
+    'article-note', 'source-review-meta', 'source-review', 'source-review-title', 'print',
     'welcome', 'reader', 'catalog', 'library', 'source-review-link', 'reader-vehicle', 'reader-engine', 'purchase', 'purchase-selection',
     'article-kind', 'article-reference', 'source-review-load', 'check-order',
     'library-more', 'library-message', 'library-title'];

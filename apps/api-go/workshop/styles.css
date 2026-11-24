@@ -437,6 +437,15 @@ select:enabled:hover {
 .search-label input::placeholder {
   color: #757d76;
 }
+.article-pages {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
 .list-heading {
   display: flex;
   justify-content: space-between;
