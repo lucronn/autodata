@@ -6942,6 +6942,24 @@ test('a prefetched selector miss is checked again after the parent was validated
   assert.equal(h.$('configuration').value, 'selected');
 });
 
+test('saved rows in incomplete prefetched lists restore while discovery continues', async () => {
+  const partial = { items: [{ id: 'selected' }], complete: false, hydrating: true };
+  for (const name of ['make', 'model', 'configuration']) {
+    const discovery = deferredAuthOperation();
+    const h = selectorOptionsHarness(() => discovery.promise);
+    const restored = h.load('selected', null, Promise.resolve(partial), name);
+    try {
+      await new Promise(setImmediate);
+      assert.equal(h.$(name).disabled, false);
+      assert.equal(h.$(name).value, 'selected');
+      assert.deepEqual(h.requests, ['/choices']);
+    } finally {
+      discovery.resolve(partial);
+      await restored;
+    }
+  }
+});
+
 test('a missing saved year reports the existing error without repeating the top-level read', async () => {
   const h = selectorOptionsHarness({ items: [{ year: 2020 }], complete: true });
   await h.load('2020', null, Promise.resolve({ items: [{ year: 2021 }], complete: true }), 'year');
