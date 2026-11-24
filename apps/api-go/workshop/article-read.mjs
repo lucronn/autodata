@@ -3,6 +3,7 @@ import { delay } from "./catalog.mjs";
 const sourceProbeIntervalMs = 250;
 const initialSourceProbeDelayMs = 150;
 const minimumSourceProbeAdvanceMs = 50;
+const sourceConfirmationDelayMs = 1000;
 const initialPublicationProbeDelayMs = 250;
 const publicationProbeIntervalMs = 500;
 const maxArticleRequestMs = 10000;
@@ -88,6 +89,7 @@ export async function readArticle(
   let firstSourceProbePending = false;
   let confirmedSourceCapture = false;
   let regularSourceReadAt = 0;
+  let regularSourceReadJob;
   let keepRegularSourceRead = false;
   let previewMidpointAt = 0;
   let sourceConfirmationAt = 0;
@@ -99,7 +101,7 @@ export async function readArticle(
   let attempt = 0;
   while (now() < deadline) {
     signal?.throwIfAborted();
-    let retryAfter = 0, fastPendingJob, fastSource = false, readable = false;
+    let retryAfter = 0, fastPendingJob, fastSource = false, sourcePreview = false, readable = false;
     let shortSourceCheck = false, sourceProbeFailed = false;
     let shortPublicationJob;
     const startedAt = now();
@@ -115,6 +117,7 @@ export async function readArticle(
     if (nextSourceProbeAt <= startedAt) nextSourceProbeAt = 0;
     if (regularSourceReadAt <= startedAt) {
       regularSourceReadAt = 0;
+      regularSourceReadJob = undefined;
       keepRegularSourceRead = false;
     }
     if (sourceConfirmationAt <= startedAt) sourceConfirmationAt = 0;
@@ -174,6 +177,7 @@ export async function readArticle(
           latest.status === 202 && !readable &&
           ["queued", "fetching_source"].includes(article.processing.state);
         const readableSource = latest.status === 200 && readable && article.content_origin === "source";
+        sourcePreview = readableSource && article.source_body_preview === true && article.source_revision_id === null;
         if (latest.shortPublicationCheck === true && retryAfter === 0 &&
             readableSource && publicationStates.includes(article.processing.state)) {
           shortPublicationJob = article.processing.job_id;
@@ -253,6 +257,15 @@ export async function readArticle(
     }
     if (regularSourceReadAt) {
       const regularWait = Math.max(0, regularSourceReadAt - now());
+      const firstPreview = sourcePreview && latest.data.article.processing.job_id === regularSourceReadJob;
+      regularSourceReadJob = undefined;
+      if (firstPreview) {
+        // Confirm a first preview without losing the regular read for the stored Original.
+        keepRegularSourceRead = true;
+        const confirmationWait = Math.min(regularWait, sourceConfirmationDelayMs);
+        await wait(Math.min(remaining, Math.max(confirmationWait, retryAfter * 1000)), signal);
+        continue;
+      }
       const keepDeadline = keepRegularSourceRead;
       regularSourceReadAt = 0;
       keepRegularSourceRead = false;
@@ -319,9 +332,9 @@ export async function readArticle(
       attempt--;
     } else if ((fastSource || shortPublicationJob) && !sawFastSource) {
       sawFastSource = true;
-      if (backoff > 1000) {
+      if (backoff > sourceConfirmationDelayMs) {
         sourceConfirmationAt = now() + backoff;
-        backoff = 1000;
+        backoff = sourceConfirmationDelayMs;
       }
       if (shortPublicationJob) {
         const scheduledAt = now();
@@ -359,10 +372,11 @@ export async function readArticle(
     // A readable preview is still an active capture until it has a stored revision.
     // Show newer content on a preview check while keeping the ordinary read slot.
     const source = latest?.data?.article;
-    const preview = fastSource && source.source_body_preview === true && source.source_revision_id === null;
+    const preview = fastSource && sourcePreview;
     if ((backoff === 4000 || backoff === 8000) && (fastPendingJob || preview) &&
         source.processing.state === "fetching_source") {
       keepRegularSourceRead = preview;
+      regularSourceReadJob = fastPendingJob;
       regularSourceReadAt = now() + backoff;
       backoff /= 2;
       if (preview && backoff === 2000) {
