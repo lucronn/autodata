@@ -256,22 +256,21 @@ export async function readArticle(
       }
     }
     if (regularSourceReadAt) {
-      const regularWait = Math.max(0, regularSourceReadAt - now());
-      const firstPreview = sourcePreview && latest.data.article.processing.job_id === regularSourceReadJob;
-      regularSourceReadJob = undefined;
-      if (firstPreview) {
-        // Confirm a first preview without losing the regular read for the stored Original.
+      const samePreview = sourcePreview && latest.data.article.processing.job_id === regularSourceReadJob;
+      const firstPreview = !sawFastSource && samePreview;
+      if (firstPreview && fastSource) {
+        // Keep the Original read while the usual early confirmation and fallback are scheduled.
         keepRegularSourceRead = true;
-        const confirmationWait = Math.min(regularWait, sourceConfirmationDelayMs);
-        await wait(Math.min(remaining, Math.max(confirmationWait, retryAfter * 1000)), signal);
-        continue;
-      }
-      const keepDeadline = keepRegularSourceRead;
-      regularSourceReadAt = 0;
-      keepRegularSourceRead = false;
-      if (!readable || keepDeadline) {
-        await wait(Math.min(remaining, Math.max(regularWait, retryAfter * 1000)), signal);
-        continue;
+      } else {
+        const regularWait = Math.max(0, regularSourceReadAt - now());
+        const keepDeadline = keepRegularSourceRead && (regularSourceReadJob === undefined || samePreview);
+        regularSourceReadAt = 0;
+        regularSourceReadJob = undefined;
+        keepRegularSourceRead = false;
+        if (!readable || keepDeadline || firstPreview) {
+          await wait(Math.min(remaining, Math.max(regularWait, retryAfter * 1000)), signal);
+          continue;
+        }
       }
     }
     if (publicationReadAt) {

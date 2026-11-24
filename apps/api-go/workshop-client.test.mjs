@@ -959,6 +959,7 @@ test('a first capture preview at a midpoint preserves the scheduled Original rea
     ['job', 6900, null, [0, 1000, 2000, 4000, 6000, 7000]],
     ['job', 7800, null, [0, 1000, 2000, 4000, 6000, 7000, 8000]],
     ['job', 7800, busy, [0, 1000, 2000, 4000, 6000, 7000, 11000]],
+    ['job', 10500, null, [0, 1000, 2000, 4000, 6000, 7000, 8000, 14000]],
     ['other-job', 7800, null, [0, 1000, 2000, 4000, 6000, 7000, 14000]],
   ]) {
     let now = 0;
