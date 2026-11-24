@@ -182,6 +182,10 @@ const catalogSourceBodyPreviewSQL = `
 	AND j.source_article_ref=a.source_article_ref AND snap.takedown_status='active'
 	AND preview.body->>'descriptor_snapshot_id'=a.descriptor_source_snapshot_id::text
 	AND NOT EXISTS (
+		SELECT 1 FROM source_artifacts artifact
+		WHERE artifact.source_snapshot_id=snap.source_snapshot_id AND artifact.extraction_status='quarantined'
+	)
+	AND NOT EXISTS (
 		SELECT 1 FROM source_review_items quarantine
 		WHERE quarantine.item_kind='quarantine' AND quarantine.status<>'approved'
 		AND quarantine.source_snapshot_ids ? snap.source_snapshot_id::text
