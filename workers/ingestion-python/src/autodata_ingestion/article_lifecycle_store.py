@@ -532,15 +532,28 @@ def _lock_transform(cur, lease):
 def _require_source_bound_rewrite_rights(cur, job, article):
     profile = job["rewrite_profile_version"]
     marker_version = {SOURCE_BOUND_REWRITE_PROFILE: 1, SOURCE_BOUND_CORRECTION_PROFILE: 2}.get(profile)
+    predecessor_observation = None
     if "source_bound_rewrite" in job["checkpoint"] or profile == SOURCE_BOUND_CORRECTION_PROFILE:
         marker = job["checkpoint"].get("source_bound_rewrite")
         if (marker_version is None or not isinstance(marker, dict)
             or type(marker.get("version")) is not int or marker["version"] != marker_version
             or not job["source_revision_id"] or marker.get("source_revision_id") != str(job["source_revision_id"])):
             raise ValueError("SOURCE_BOUND_REWRITE_BINDING_INVALID")
+        if "prior_source_observation_id" in marker:
+            generation = marker.get("prior_generation")
+            if marker_version != 1 or type(generation) is not int or generation + 1 != job["request_generation"]:
+                raise ValueError("SOURCE_BOUND_REWRITE_BINDING_INVALID")
+            try:
+                predecessor_observation = (
+                    UUID(marker["prior_source_observation_id"]), UUID(marker["prior_job_id"]), generation,
+                )
+            except (AttributeError, KeyError, TypeError, ValueError):
+                raise ValueError("SOURCE_BOUND_REWRITE_BINDING_INVALID") from None
     if marker_version is not None:
         from .source_job_persistence import source_bound_rewrite_source_allowed
-        if not source_bound_rewrite_source_allowed(cur, article, job["source_revision_id"]):
+        if not source_bound_rewrite_source_allowed(
+            cur, article, job["source_revision_id"], predecessor_observation=predecessor_observation,
+        ):
             raise ValueError("SOURCE_BOUND_REWRITE_SOURCE_UNAVAILABLE")
 
 

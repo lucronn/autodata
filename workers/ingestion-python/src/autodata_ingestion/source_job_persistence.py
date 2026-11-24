@@ -163,14 +163,14 @@ def refresh_article_job(
         return result
 
 
-def source_bound_rewrite_source_allowed(cur, article, source_revision_id):
+def source_bound_rewrite_source_allowed(cur, article, source_revision_id, *, predecessor_observation=None):
     """Check exact-scope source visibility while the caller owns the article lock."""
     if (article["current_source_revision_id"] != source_revision_id
         or article["provider_slug"] not in ("bankone", "banktwo")
         or article["vehicle_configuration_id"] is None
         or article["membership_status"] != "active" or article["takedown_status"] != "active"):
         return False
-    return cur.execute("""
+    allowed = cur.execute("""
         SELECT 1 FROM catalog_article_current v
         JOIN canonical_article_source_revisions s USING(source_revision_id,canonical_article_id)
         JOIN source_snapshots descriptor ON descriptor.source_snapshot_id=%s
@@ -212,6 +212,21 @@ def source_bound_rewrite_source_allowed(cur, article, source_revision_id):
                    ))
           )
         """, (article["descriptor_source_snapshot_id"], article["canonical_article_id"], source_revision_id)).fetchone() is not None
+    if not allowed or predecessor_observation is None:
+        return allowed
+    observation_id, job_id, generation = predecessor_observation
+    return cur.execute("""
+        SELECT 1 FROM canonical_article_source_observations o
+        JOIN source_snapshots descriptor ON descriptor.source_snapshot_id=o.descriptor_source_snapshot_id
+        JOIN source_snapshots resolution ON resolution.source_snapshot_id=o.resolution_source_snapshot_id
+        WHERE o.source_observation_id=%s AND o.source_fetch_job_id=%s AND o.request_generation=%s
+          AND o.canonical_article_id=%s AND o.source_revision_id=%s
+          AND descriptor.takedown_status='active' AND resolution.takedown_status='active'
+          AND NOT EXISTS (
+              SELECT 1 FROM source_review_items q WHERE q.item_kind='quarantine' AND q.status<>'approved'
+              AND q.source_snapshot_ids ?| ARRAY[descriptor.source_snapshot_id::text,resolution.source_snapshot_id::text]
+          )
+        """, (observation_id, job_id, generation, article["canonical_article_id"], source_revision_id)).fetchone() is not None
 
 
 def schedule_source_bound_rewrite(
@@ -326,7 +341,34 @@ def _schedule_source_bound_job(
             or prior["status"] not in ("completed", "dead_letter", "needs_review") or prior["retryable"]
             or prior["lease_owner"] is not None):
             raise ValueError("SOURCE_BOUND_REWRITE_PRIOR_JOB_CHANGED")
-        if not source_bound_rewrite_source_allowed(cur, article, expected_source_revision_id):
+        source_only = ("source_only_reprojection" in prior["checkpoint"]
+                       or prior["error_code"] == "SOURCE_ONLY_REPROJECTION")
+        predecessor_observation = None
+        if source_only:
+            # A source-only job owns an observation but never a transformation.
+            if (prior_profile != AUTOMATIC_REWRITE_PROFILE or next_profile != SOURCE_BOUND_REWRITE_PROFILE
+                or prior["checkpoint"].get("source_only_reprojection") is not True
+                or prior["status"] != "needs_review" or prior["phase"] != "completed"
+                or prior["error_code"] != "SOURCE_ONLY_REPROJECTION"
+                or prior["transformation_key"] is not None or prior["next_attempt_at"] is not None):
+                raise ValueError("SOURCE_BOUND_REWRITE_PRIOR_JOB_CHANGED")
+            observation = cur.execute("""
+                SELECT o.source_observation_id FROM canonical_article_source_observations o
+                WHERE o.source_fetch_job_id=%s AND o.canonical_article_id=%s AND o.source_revision_id=%s
+                  AND o.request_generation=%s
+                  AND NOT EXISTS (
+                      SELECT 1 FROM canonical_article_rewrite_attempts r WHERE r.source_fetch_job_id=o.source_fetch_job_id
+                  )
+                """, (expected_job_id, canonical_article_id, expected_source_revision_id,
+                      prior["request_generation"])).fetchone()
+            if observation is None:
+                raise ValueError("SOURCE_BOUND_REWRITE_PRIOR_JOB_CHANGED")
+            observation_id = observation["source_observation_id"]
+            binding["prior_source_observation_id"] = str(observation_id)
+            predecessor_observation = (observation_id, expected_job_id, prior["request_generation"])
+        if not source_bound_rewrite_source_allowed(
+            cur, article, expected_source_revision_id, predecessor_observation=predecessor_observation,
+        ):
             raise ValueError("SOURCE_BOUND_REWRITE_SOURCE_UNAVAILABLE")
         source = cur.execute("""
             SELECT source_fingerprint,projection_version FROM canonical_article_source_revisions
@@ -334,7 +376,7 @@ def _schedule_source_bound_job(
             """, (expected_source_revision_id, canonical_article_id)).fetchone()
         key_inputs = (canonical_article_id, source["source_fingerprint"], NORMALIZATION_VERSION)
         projection = source["projection_version"]
-        if prior["transformation_key"] != transformation_key(
+        if not source_only and prior["transformation_key"] != transformation_key(
             *key_inputs, prior_profile, projection_version=projection,
         ):
             raise ValueError("SOURCE_BOUND_REWRITE_PRIOR_JOB_CHANGED")
@@ -360,11 +402,13 @@ def _schedule_source_bound_job(
                 return _result(cur, article, current)
             raise ValueError("SOURCE_BOUND_REWRITE_ALREADY_SCHEDULED")
         if (article["target_rewrite_profile_version"] != prior_profile
-            or article["current_job_id"] != expected_job_id or prior["request_generation"] > generation):
+            or article["current_job_id"] != expected_job_id or prior["request_generation"] > generation
+            or (source_only and prior["request_generation"] != generation)):
             raise ValueError("SOURCE_BOUND_REWRITE_CURRENT_JOB_CHANGED")
         if article["current_canonical_revision_id"] is not None or cur.execute("""
-            SELECT 1 FROM canonical_article_revisions WHERE transformation_key=%s AND status='published'
-            """, (prior["transformation_key"],)).fetchone():
+            SELECT 1 FROM canonical_article_revisions WHERE status='published'
+              AND (transformation_key=%s OR (%s AND canonical_article_id=%s AND source_revision_id=%s))
+            """, (prior["transformation_key"], source_only, canonical_article_id, expected_source_revision_id)).fetchone():
             raise ValueError("SOURCE_BOUND_REWRITE_ALREADY_PUBLISHED")
         if cur.execute("""
             SELECT 1 FROM source_fetch_jobs WHERE transformation_key=%s
