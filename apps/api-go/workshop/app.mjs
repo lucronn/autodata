@@ -1,17 +1,6 @@
 import * as catalog from "./catalog.mjs";
 import { createSession } from "./auth.mjs";
-import {
-  createCheckout,
-  validQuote,
-  validScope,
-  validLibrary,
-  purchaseConfiguration,
-  pollOrder,
-  readOrder,
-  resumableCheckoutURL,
-  sameScope,
-  uuid,
-} from "./commerce.mjs";
+import * as commerce from "./commerce.mjs";
 import {
   NavigationGeneration,
   readArticle,
@@ -37,6 +26,19 @@ const {
   trimArticleSearch,
   vehicleSelectorPath,
 } = catalog;
+const {
+  createCheckout,
+  quoteConfigurationLabel,
+  validQuote,
+  validScope,
+  validLibrary,
+  purchaseConfiguration,
+  pollOrder,
+  readOrder,
+  resumableCheckoutURL,
+  sameScope,
+  uuid,
+} = commerce;
 
 const $ = (id) => document.getElementById(id);
 const openDemo = document.documentElement.dataset.workshopMode === 'open-demo';
@@ -660,7 +662,7 @@ function vehicleIdentityLabel() {
     vehicle?.model,
     (vehicle?.engine || vehicle?.trim || vehicle?.body_style || vehicle?.drivetrain) &&
       configurationLabel(vehicle),
-  ].filter(Boolean).join(" / ") || vehicle?.orderLabel || "";
+  ].filter(Boolean).join(" / ") || vehicle?.orderLabel || vehicle?.publicLabel || "";
 }
 function purchaseConfigured() {
   return purchaseConfiguration(merchant, quote, {
@@ -688,11 +690,16 @@ async function selectVehicle(g, articleID = "", { quoteMode = "eager", savedLink
     session.state.mode === "firebase";
   const directArticle = authorizedLink && uuid(articleID);
   const savedQuery = authorizedLink && !articleID ? trimArticleSearch($("search").value) : "";
+  const guest = !openDemo && !session.state.authenticated;
+  // A navigation can load commerce from the prior release during rollout.
+  const needsPublicLabel = guest && savedLink && typeof quoteConfigurationLabel === "function" && !vehicleIdentityLabel();
   const loadQuote = async () => {
     if (openDemo) return;
-    if (merchantRequest) await merchantRequest;
-    if (!g.current()) return;
-    if (merchant?.enabled !== true) {
+    const current = () => g.current() && sameScope(selected, scope()) &&
+      (!needsPublicLabel || !session.state.authenticated);
+    if (!needsPublicLabel && merchantRequest) await merchantRequest;
+    if (!current()) return;
+    if (!needsPublicLabel && merchant?.enabled !== true) {
       renderPurchase();
       return;
     }
@@ -701,8 +708,17 @@ async function selectVehicle(g, articleID = "", { quoteMode = "eager", savedLink
         `/v1/workshop/quote?configuration_id=${selected.configuration_id}&region=${selected.region}`,
         { signal: g.signal },
       );
-      if (!g.current()) return;
-      quote = validQuote(q, selected) ? q : null;
+      if (!current()) return;
+      if (needsPublicLabel) {
+        const label = quoteConfigurationLabel(q, selected).trim();
+        if (label) vehicle = { ...vehicle, publicLabel: label };
+        if (merchantRequest) {
+          renderPurchase();
+          await merchantRequest;
+          if (!current()) return;
+        }
+      }
+      quote = merchant?.enabled === true && validQuote(q, selected) ? q : null;
       renderPurchase();
       if (access === "owned") {
         $("vehicle-caption").textContent = $("purchase-selection").textContent;
@@ -713,11 +729,10 @@ async function selectVehicle(g, articleID = "", { quoteMode = "eager", savedLink
     }
   };
   const quoteRequest = !retainedQuote && quoteMode === "eager" && !directArticle && !savedQuery ? loadQuote() : null;
-  if (!openDemo && !session.state.authenticated) {
-    if (!retainedQuote && quoteMode !== "skip") await (quoteRequest ?? loadQuote());
-    if (!g.current()) return;
+  if (guest) {
     show("welcome");
     status("Sign in to check access to your selected vehicle.");
+    if (!retainedQuote && quoteMode !== "skip") await (quoteRequest ?? loadQuote());
     return;
   }
   try {

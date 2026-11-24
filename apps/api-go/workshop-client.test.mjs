@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext as runVM } from 'node:vm';
 import { NavigationGeneration, processingArticle, readableArticle } from './workshop/article-read.mjs';
-import { pollOrder, purchaseConfiguration, readOrder, resumableCheckoutURL, sameScope, uuid, validQuote, validScope, validLibrary } from './workshop/commerce.mjs';
+import { pollOrder, purchaseConfiguration, quoteConfigurationLabel, readOrder, resumableCheckoutURL, sameScope, uuid, validQuote, validScope, validLibrary } from './workshop/commerce.mjs';
 import { articlePresentation, articleSearchParams, CatalogRequestError, configurationLabel, filterArticles, hasSourceReference, legacyArticleBlocks, localImageURL, readCollection, requestInitialYears, requestJSON, requestStoredSelector, selectedIndexSessionPreference, selectorLabel, sourceReferenceURL, startSavedSelectorReads, trimArticleSearch, vehicleSelectorPath } from './workshop/catalog.mjs';
 import { LOAD_STAGES, loadingProgress } from './workshop/progress.mjs';
 
@@ -7639,17 +7639,86 @@ const scopedQuoteFixture = () => ({
 
 function selectionQuoteHarness(merchant, { authenticated = true, openDemo = false, request = async () => scopedQuoteFixture() } = {}) {
   const navigation = new NavigationGeneration(), generation = navigation.next(), calls = [], opened = [], nodes = new Map();
+  const shown = [];
   const context = {
-    merchant, merchantRequest: null, openDemo, quote: null, access: "unknown", validScope, validQuote, uuid, scope: () => scope,
+    merchant, merchantRequest: null, openDemo, quote: null, access: "unknown", validScope, validQuote, uuid, configurationLabel,
+    quoteConfigurationLabel,
+    vehicle: { id: scope.configuration_id, region: scope.region },
+    scope: () => ({ configuration_id: context.vehicle.id, region: context.vehicle.region }),
     session: { state: { authenticated } }, sessionRequest: null,
-    clearProtected() {}, renderPurchase() {}, show() {}, status() {}, purchaseConfigured: () => context.merchant?.enabled === true,
+    clearProtected() {}, renderPurchase() {}, show: id => shown.push(id), status() {}, purchaseConfigured: () => context.merchant?.enabled === true,
     $: id => { if (!nodes.has(id)) nodes.set(id, {}); return nodes.get(id); },
     requestJSON: async (path, options) => { calls.push({ path, options }); return request(path, options); },
     loadArticles: async (g, id) => opened.push({ g, id }),
   };
+  runInNewContext(appSection('function vehicleIdentityLabel(', 'function purchaseConfigured('), context);
   runInNewContext(appSection('async function selectVehicle(', 'async function loadArticles('), context);
-  return { context, navigation, generation, calls, opened };
+  return { context, navigation, generation, calls, opened, shown };
 }
+
+test('an unnamed guest saved scope shows its public label while purchase configuration is pending', async () => {
+  const config = deferredAuthOperation(), pending = deferredAuthOperation();
+  const h = selectionQuoteHarness(null, { authenticated: false, request: () => pending.promise });
+  h.context.merchantRequest = config.promise;
+  const loading = h.context.selectVehicle(h.generation, '', { savedLink: true });
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.calls[0].path, `/v1/workshop/quote?configuration_id=${scope.configuration_id}&region=${scope.region}`);
+  assert.equal(h.calls[0].options.signal, h.generation.signal);
+  assert.deepEqual(h.shown, ['welcome']);
+  pending.resolve({ ...scopedQuoteFixture(), purchasable: false });
+  await new Promise(setImmediate);
+  assert.equal(h.context.vehicleIdentityLabel(), '2024 Example Car');
+  assert.equal(h.context.quote, null);
+  h.context.merchant = { enabled: false };
+  h.context.merchantRequest = null;
+  config.resolve();
+  await loading;
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.opened.length, 0);
+});
+
+test('the saved guest quote rejects a wrong or superseded scope and leaves known labels alone', async () => {
+  for (const scenario of ['wrong region', 'wrong configuration', 'abort', 'new selection', 'known label']) {
+    const pending = deferredAuthOperation();
+    const h = selectionQuoteHarness({ enabled: false }, { authenticated: false, request: () => pending.promise });
+    if (scenario === 'known label') h.context.vehicle.make = 'Known';
+    const loading = h.context.selectVehicle(h.generation, '', { savedLink: true });
+    assert.equal(h.calls.length, scenario === 'known label' ? 0 : 1, scenario);
+    if (scenario === 'abort') h.navigation.next();
+    if (scenario === 'new selection') h.context.vehicle = { ...h.context.vehicle, region: 'CA' };
+    const response = { ...scopedQuoteFixture(), purchasable: false };
+    if (scenario === 'wrong region') response.region = 'CA';
+    if (scenario === 'wrong configuration') response.configuration_id = '22222222-2222-4222-8222-222222222222';
+    pending.resolve(response);
+    await loading;
+    assert.equal(h.context.vehicleIdentityLabel(), scenario === 'known label' ? 'Known' : '', scenario);
+    assert.equal(h.context.quote, null, scenario);
+    assert.equal(h.opened.length, 0, scenario);
+    assert.equal(h.generation.signal.aborted, scenario === 'abort', scenario);
+  }
+});
+
+test('one saved guest quote can still supply an eligible price for an enabled merchant', async () => {
+  const h = selectionQuoteHarness({ enabled: true }, { authenticated: false });
+  await h.context.selectVehicle(h.generation, '', { savedLink: true });
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.context.vehicleIdentityLabel(), '2024 Example Car');
+  assert.ok(validQuote(h.context.quote, scope));
+  assert.equal(h.opened.length, 0);
+});
+
+test('saved guest selection tolerates a commerce module without public label validation', async () => {
+  for (const enabled of [false, true]) {
+    const h = selectionQuoteHarness({ enabled }, { authenticated: false });
+    h.context.quoteConfigurationLabel = undefined;
+    await h.context.selectVehicle(h.generation, '', { savedLink: true });
+    assert.deepEqual(h.shown, ['welcome']);
+    assert.equal(h.calls.length, enabled ? 1 : 0);
+    assert.equal(h.context.vehicleIdentityLabel(), '');
+    assert.equal(validQuote(h.context.quote, scope), enabled);
+    assert.equal(h.opened.length, 0);
+  }
+});
 
 test('same-selection sign-in keeps the public price visible and uses the current quote returned with paid access', async () => {
   const h = selectionQuoteHarness({ enabled: true }, { authenticated: false });

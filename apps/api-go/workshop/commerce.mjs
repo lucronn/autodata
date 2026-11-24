@@ -11,14 +11,15 @@ export const sameScope = (a, b) =>
   validScope(b) &&
   a.configuration_id === b.configuration_id &&
   a.region === b.region;
+export function quoteConfigurationLabel(q, scope) {
+  if (q?.version !== "v1" || !sameScope(q, scope) ||
+      q.product_key !== "workshop-configuration-v1" ||
+      typeof q.configuration_label !== "string" || q.configuration_label.length > 1024) return "";
+  return q.configuration_label;
+}
 export function validQuote(q, scope) {
   return Boolean(
-    q?.version === "v1" &&
-      sameScope(q, scope) &&
-      q.product_key === "workshop-configuration-v1" &&
-      typeof q.configuration_label === "string" &&
-      q.configuration_label.length > 0 &&
-      q.configuration_label.length <= 1024 &&
+    quoteConfigurationLabel(q, scope) &&
       q.amount_minor === 2000 &&
       q.currency === "USD" &&
       q.purchase_terms_version === "workshop-v1" &&
