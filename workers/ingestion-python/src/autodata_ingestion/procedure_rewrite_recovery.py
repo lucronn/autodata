@@ -55,7 +55,11 @@ _TIGHTEN_COUNTED = re.compile(
     rf"Tighten the (?P<count>{_COUNT}) (?P<part>{_PART} )?(?P<fasteners>{_FASTENERS})\.", re.I,
 )
 _DIRECTIVE_LABEL_EXCLUSIONS = auto._TARGET_DELIMITERS | frozenset(
-    "against during inside never no not only outside should together must instead except finger tight".split()
+    "against down during facing finger inside instead last must never no not only outside should tight together up".split()
+)
+_COMPONENT_ENDINGS = frozenset(
+    "belt bolt bolts bracket cover duct fasteners gasket housing mount nut nuts pipe plate pulley pump retainer "
+    "ring screw screws seal shield spacer tube".split()
 )
 
 
@@ -85,15 +89,19 @@ def _equivalent_wording(text):
     return None
 
 
+def _plain_label(text):
+    return _DIRECTIVE_LABEL_EXCLUSIONS.isdisjoint(re.split(r"[\s-]+", text.casefold()))
+
+
 def _part_label(text):
-    return _DIRECTIVE_LABEL_EXCLUSIONS.isdisjoint(text.casefold().split())
+    return _plain_label(text) and text.casefold().split()[-1] in _COMPONENT_ENDINGS
 
 
 def _equivalent_directive(text):
     """Recast complete instruction forms, keeping their parts and quantities literal."""
     if match := _INSTALL_SECTION.fullmatch(text):
         part, number, name = match["part"], match["number"], match["name"]
-        if _part_label(part) and (name is None or _part_label(name)):
+        if _part_label(part) and (name is None or _plain_label(name)):
             if number:
                 return f"Fit the {part}. Details are in {number}."
             return f"Fit the {part}. See {name} in this section for details."
@@ -102,7 +110,7 @@ def _equivalent_directive(text):
             return f"Bring the {match['part']} into position. Install the {match['count']} bolts finger tight."
     if match := _TIGHTEN_COUNTED.fullmatch(text):
         part = match["part"] or ""
-        if _part_label(part):
+        if _part_label(part + match["fasteners"]):
             return f"Tighten each of the {match['count']} {part}{match['fasteners']}."
     if match := _INSTALL.fullmatch(text):
         article, parts = match["article"], match["parts"]
