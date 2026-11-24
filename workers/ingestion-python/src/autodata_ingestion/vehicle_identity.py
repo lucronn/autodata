@@ -32,6 +32,12 @@ _DRIVETRAIN_ALIASES = {
     "rwd": "RWD",
 }
 _KNOWN_TRIMS = {"lt", "ltz"}
+_ENGINE_VARIANTS = {
+    "CNG": re.compile(r"\b(?:cng|compressed[ -]+natural[ -]+gas)\b", re.IGNORECASE),
+    "LNG": re.compile(r"\b(?:lng|liquefied[ -]+natural[ -]+gas)\b", re.IGNORECASE),
+    "LPG": re.compile(r"\b(?:lpg|liquefied[ -]+petroleum[ -]+gas|propane)\b", re.IGNORECASE),
+    "FLEX FUEL": re.compile(r"\b(?:ffv|flex(?:ible)?[ -]+fuel)\b", re.IGNORECASE),
+}
 
 
 @dataclass(frozen=True)
@@ -55,9 +61,12 @@ class CanonicalVehicleObservation:
     drivetrain: str | None
     engine_displacement_l: float | None
     aliases: tuple[VehicleAlias, ...] = ()
+    engine_variant: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         output = asdict(self)
+        if self.engine_variant is None:
+            del output["engine_variant"]
         output["aliases"] = [alias.to_dict() for alias in self.aliases]
         return output
 
@@ -83,9 +92,13 @@ class VehicleConfiguration:
     trim: str | None
     drivetrain: str | None
     engine_displacement_l: float | None
+    engine_variant: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        output = asdict(self)
+        if self.engine_variant is None:
+            del output["engine_variant"]
+        return output
 
 
 @dataclass(frozen=True)
@@ -143,15 +156,17 @@ def build_base_identity(observation: CanonicalVehicleObservation) -> VehicleBase
 def build_vehicle_configuration(observation: CanonicalVehicleObservation) -> VehicleConfiguration:
     base = build_base_identity(observation)
     return VehicleConfiguration(
-        configuration_key=_configuration_key(
+        configuration_key=vehicle_configuration_key(
             base.vehicle_key,
             observation.trim,
             observation.engine_displacement_l,
+            observation.engine_variant,
         ),
         vehicle_key=base.vehicle_key,
         trim=observation.trim,
         drivetrain=observation.drivetrain,
         engine_displacement_l=observation.engine_displacement_l,
+        engine_variant=observation.engine_variant,
     )
 
 
@@ -228,15 +243,12 @@ def _canonicalize_mapping_observation(value: Mapping[str, Any]) -> CanonicalVehi
     drivetrain = _normalize_drivetrain(
         _first_non_empty(value.get("drivetrain"), value.get("driveType")), aliases
     )
-    engine = _normalize_engine(
-        _first_non_empty(
-            value.get("engine"),
-            value.get("engine_displacement_l"),
-            value.get("engineDisplacementL"),
-            value.get("engineName"),
-        ),
-        aliases,
-    )
+    raw_engine = _engine_value(value)
+    engine_label = value.get("engine_label")
+    if raw_engine is None and isinstance(engine_label, str) and _extract_engine_displacement(engine_label) is not None:
+        raw_engine = engine_label
+    engine = _normalize_engine(raw_engine, aliases)
+    variant = engine_variant_for_row(value)
     return CanonicalVehicleObservation(
         year,
         make,
@@ -247,6 +259,7 @@ def _canonicalize_mapping_observation(value: Mapping[str, Any]) -> CanonicalVehi
         drivetrain,
         engine,
         tuple(aliases),
+        variant,
     )
 
 
@@ -264,6 +277,9 @@ def _canonicalize_text_observation(value: str) -> CanonicalVehicleObservation:
         r"\1\2",
         normalized_value,
     )
+    variant = engine_variant_from_label(normalized_text) if _extract_engine_displacement(normalized_text) is not None else None
+    if variant:
+        normalized_text = _ENGINE_VARIANTS[variant].sub(" ", normalized_text)
     tokens = re.findall(r"[a-z0-9.]+", normalized_text)
     year_indexes = [
         index for index, token in enumerate(tokens) if _is_valid_year_token(token)
@@ -317,6 +333,7 @@ def _canonicalize_text_observation(value: str) -> CanonicalVehicleObservation:
         drivetrain,
         engine,
         tuple(aliases),
+        variant,
     )
 
 
@@ -411,6 +428,41 @@ def _is_electric_engine(text: str) -> bool:
     return bool(_ELECTRIC_ENGINE_PATTERN.search(text))
 
 
+def _engine_value(value: Mapping[str, Any]) -> Any:
+    return _first_non_empty(
+        value.get("engine"),
+        value.get("engine_displacement_l"),
+        value.get("engineDisplacementL"),
+        value.get("engineName"),
+    )
+
+
+def engine_variants_from_label(label: str) -> tuple[str, ...]:
+    return tuple(variant for variant, pattern in _ENGINE_VARIANTS.items() if pattern.search(label))
+
+
+def engine_variant_from_label(label: str) -> str | None:
+    matches = engine_variants_from_label(label)
+    return matches[0] if len(matches) == 1 else None
+
+
+def engine_variant_for_row(row: Mapping[str, Any]) -> str | None:
+    raw_engine = _engine_value(row)
+    displacement = (
+        float(raw_engine) if type(raw_engine) in (int, float) else
+        _extract_engine_displacement(raw_engine) if isinstance(raw_engine, str) else None
+    )
+    variants = set()
+    for value in (raw_engine, row.get("engine_label"), row.get("engine_variant")):
+        if not isinstance(value, str):
+            continue
+        label_displacement = _extract_engine_displacement(value)
+        if displacement is not None and label_displacement is not None and displacement != label_displacement:
+            continue
+        variants.update(engine_variants_from_label(value))
+    return next(iter(variants)) if len(variants) == 1 else None
+
+
 def _normalize_engine(raw_engine: Any, aliases: list[VehicleAlias]) -> float | None:
     if raw_engine is None:
         return None
@@ -428,7 +480,7 @@ def _normalize_engine(raw_engine: Any, aliases: list[VehicleAlias]) -> float | N
         if text != canonical:
             aliases.append(VehicleAlias("engine_displacement", text, canonical))
         return value
-    if _is_electric_engine(text):
+    if _is_electric_engine(text) or any(pattern.fullmatch(text) for pattern in _ENGINE_VARIANTS.values()):
         return None
     raise ValueError("engine displacement could not be normalized")
 
@@ -483,17 +535,19 @@ def _vehicle_key(
     return "-".join(parts)
 
 
-def _configuration_key(
+def vehicle_configuration_key(
     vehicle_key: str,
     trim: str | None,
     engine_displacement_l: float | None,
+    engine_variant: str | None = None,
 ) -> str:
     parts = [vehicle_key]
     if trim:
         parts.extend(("trim", _slug(trim)))
     if engine_displacement_l is not None:
         parts.extend(("engine", _slug(_format_engine_displacement(engine_displacement_l))))
-    return "-".join(parts)
+    key = "-".join(parts)
+    return f"{key}:engine-variant:{_slug(engine_variant)}" if engine_variant else key
 
 
 def _slug(value: str) -> str:
@@ -532,6 +586,7 @@ def _observations_are_compatible(
         and _optional_values_are_compatible(observation.body_style, candidate.body_style)
         and _optional_values_are_compatible(observation.trim, candidate.trim)
         and _optional_values_are_compatible(observation.drivetrain, candidate.drivetrain)
+        and observation.engine_variant == candidate.engine_variant
         and _optional_engine_values_are_compatible(
             observation.engine_displacement_l,
             candidate.engine_displacement_l,

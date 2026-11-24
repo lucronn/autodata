@@ -1,13 +1,16 @@
 // Pure catalog helpers are shared by the browser and the regression suite.
 export function configurationLabel(item) {
   const displacement = typeof item.engine === 'string' && /^\d+(?:\.\d+)?$/.test(item.engine);
-  const engine = displacement ? `${item.engine} L` : item.engine;
+  const engine = [displacement ? `${item.engine} L` : item.engine, item.engine_variant].filter(Boolean).join(' ');
   return [engine, item.trim, item.body_style, item.drivetrain].filter(Boolean).join(' / ') || 'Base configuration';
 }
 
 export function selectorLabel(name, item) {
   if (name === 'year') return String(item.year);
-  if (name === 'configuration') return configurationLabel(item);
+  if (name === 'configuration') {
+    const label = configurationLabel(item);
+    return item.engine_variant_market_unverified === true ? `${label} · market unverified` : label;
+  }
   return item.market_unverified === true ? `${item.name} · market unverified` : item.name;
 }
 

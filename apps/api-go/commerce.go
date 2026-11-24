@@ -150,7 +150,8 @@ func commercePublicResult(operation string, status int, body []byte, input map[s
 	case "quote":
 		var v commerceQuote
 		var availability struct {
-			Purchasable *bool `json:"purchasable"`
+			Purchasable                   *bool `json:"purchasable"`
+			EngineVariantMarketUnverified bool  `json:"engine_variant_market_unverified"`
 		}
 		// Accepting false must not also accept missing or null availability.
 		if status != 200 || json.Unmarshal(body, &v) != nil || json.Unmarshal(body, &availability) != nil || availability.Purchasable == nil {
@@ -161,6 +162,9 @@ func commercePublicResult(operation string, status int, body []byte, input map[s
 		if ok && configured != nil && configured.simulation {
 			_, signedIn := input["customer_account_id"].(string)
 			availabilityAllowed = v.Purchasable == signedIn
+		}
+		if availability.EngineVariantMarketUnverified {
+			availabilityAllowed = !v.Purchasable
 		}
 		return v, v.Version == "v1" && v.ProductKey == "workshop-configuration-v1" && scopeMatches(v.ConfigurationID, v.Region) && len(v.ConfigurationLabel) > 0 && len(v.ConfigurationLabel) <= 1024 && v.AmountMinor == 2000 && v.Currency == "USD" && v.PurchaseTermsVersion == "workshop-v1" && availabilityAllowed
 	case "checkouts":

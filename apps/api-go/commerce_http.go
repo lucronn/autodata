@@ -268,6 +268,9 @@ func (s *Server) commerceCall(w http.ResponseWriter, r *http.Request, operation 
 		case status == 404 && (code == "NOT_FOUND" || code == "CONFIGURATION_NOT_FOUND" || code == "ORDER_NOT_FOUND"):
 		case status == 403 && (code == "ENTITLEMENT_REVOKED" || code == "CUSTOMER_ACCESS_REQUIRED" || code == "ENTITLEMENT_REQUIRED"):
 		case status == 409 && (code == "IDEMPOTENCY_CONFLICT" || code == "TERMS_VERSION_REQUIRED" || code == "PAYMENT_FINANCIAL_CONFLICT" || code == "PAYMENT_EVENT_CONFLICT" || code == "PAYMENT_MODE_CONFLICT"):
+		case status == 409 && operation == "checkouts" && code == "CONFIGURATION_MARKET_UNVERIFIED":
+			writeAPIError(w, r, status, code, "The source market for this engine is unverified.", false)
+			return
 		case status == 413 && code == "REQUEST_TOO_LARGE":
 		default:
 			unavailable()

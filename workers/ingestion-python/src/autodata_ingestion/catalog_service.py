@@ -18,6 +18,7 @@ from uuid import uuid4
 
 
 from . import selector_job
+from .vehicle_identity import engine_variant_for_row
 
 
 _LOG = logging.getLogger(__name__)
@@ -121,6 +122,9 @@ def canonical_catalog_id(row: Mapping[str, Any]) -> str:
         for key in ("year", "make", "model", "region", "engine", "trim")
         if row.get(key) not in (None, "")
     }
+    if row.get("engine") or row.get("engine_label") or row.get("engine_variant"):
+        if variant := engine_variant_for_row(row):
+            identity["engine_variant"] = variant.casefold()
     digest = sha256(json.dumps(identity, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     return f"catalog:{digest[:24]}"
 
@@ -1424,6 +1428,7 @@ def _persist_resolved_catalog_rows(
         source_uri=source_uri,
         source_version=source_version,
         region=str(persistable[0].get("region") or "US"),
+        trusted_source_markets=scope == "configurations",
     )
     return {"status": "persisted", "row_count": len(persistable), **result}
 
@@ -1732,12 +1737,12 @@ class _SourceCatalogProvider:
                     for key in fields_by_scope[scope]
                     if key in item
                 }
-                if scope in {"makes", "models"}:
-                    # Catalog enumeration has no region parameter. Only an
-                    # explicit country code on the row can establish a market.
+                if scope in {"makes", "models", "configurations"}:
+                    # The requested region is a placement fallback. Preserve
+                    # the supplier's independently reported market separately.
                     source_region = str(item.get("region") or "").strip().upper()
                     if re.fullmatch(r"[A-Z]{2}", source_region) and source_region not in {"NA", "EU", "ZZ"}:
-                        if source_region != requested_region:
+                        if scope != "configurations" and source_region != requested_region:
                             continue
                         row["source_region"] = source_region
                 if scope == "configurations":
@@ -1750,11 +1755,13 @@ class _SourceCatalogProvider:
                     "provider_id": item["opaque_ref"],
                     "provider_label": item["label"],
                 }]
-                if getattr(self.deepening_control, "initial_selector_budget", False):
+                if scope == "configurations" or getattr(self.deepening_control, "initial_selector_budget", False):
                     row["provider_mappings"][0].update(
                         source_uri=source_uri,
                         source_version=page.source_revision,
                     )
+                    if scope == "configurations" and row.get("source_region"):
+                        row["provider_mappings"][0].update(source_provider=page.provider, source_region=row["source_region"])
                     if scope == "years":
                         row["provider_mappings"][0]["page_number"] = page_number
                 rows.append(row)
@@ -1836,7 +1843,7 @@ def _canonical_rows(values: Any, *, scope: str = "configurations") -> list[dict[
             key: value[key]
             for key in (
                 "year", "make", "model", "region", "source_region", "engine", "engine_label",
-                "trim", "body_style", "drivetrain", "provider_mappings",
+                "engine_variant", "trim", "body_style", "drivetrain", "provider_mappings",
             )
             if value.get(key) not in (None, "")
         }
@@ -1876,8 +1883,7 @@ def _merge_rows(existing: list[dict[str, Any]], additions: Iterable[Mapping[str,
 def _merge_provider_mappings(existing: Any, additions: Any) -> list[dict[str, Any]]:
     """Keep distinct source identities when providers share a canonical row."""
 
-    merged: list[dict[str, Any]] = []
-    seen: set[tuple[str, str, str]] = set()
+    by_key: dict[tuple[str, str, str], dict[str, Any]] = {}
     for value in (*_mapping_sequence(existing), *_mapping_sequence(additions)):
         if not isinstance(value, Mapping):
             continue
@@ -1887,10 +1893,12 @@ def _merge_provider_mappings(existing: Any, additions: Any) -> list[dict[str, An
             str(mapping.get("entity_type", "")),
             str(mapping.get("provider_id", "")),
         )
-        if key not in seen:
-            seen.add(key)
-            merged.append(mapping)
-    return merged
+        existing_mapping = by_key.get(key)
+        # An early page may have placed a row in the requested market before
+        # a later observation of the same source ID declared its own market.
+        if existing_mapping is None or (mapping.get("source_region") and not existing_mapping.get("source_region")):
+            by_key[key] = mapping
+    return list(by_key.values())
 
 
 def _mapping_sequence(value: Any) -> tuple[Any, ...]:

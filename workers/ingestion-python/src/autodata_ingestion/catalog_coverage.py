@@ -8,6 +8,7 @@ from .article_lifecycle_store import _upsert_descriptor, persist_resource
 from .source_job_persistence import _result, lock_live_lease, fail_source_job, LeaseLost
 from .source_connector_client import SourceConnectorError
 from .source_article_capture import upload_envelope
+from .vehicle_identity import _extract_engine_displacement, engine_variants_from_label
 
 PROVIDERS = ("bankone", "banktwo")
 
@@ -217,6 +218,53 @@ def _complete(cur, lease, scope, code=None):
     )
 
 
+def _configuration_candidate_matches(cur, scope, configuration, candidate):
+    label = candidate["label"]
+    variants = engine_variants_from_label(label)
+    variant = configuration["engine_variant"]
+    displacement = configuration["engine_displacement_l"]
+    if variant is None:
+        return displacement is None or not variants
+    if variants != (variant,) or (
+        displacement is not None and _extract_engine_displacement(label) != float(displacement)
+    ):
+        return False
+
+    # A requested region echoed by a resolver does not identify the source
+    # vehicle's market. Require a same-reference catalog observation with
+    # independent market evidence and honor a previously rejected exact mapping.
+    region = configuration["region"]
+    provider = scope["provider_slug"]
+    ref = candidate["opaque_ref"]
+    return cur.execute(
+        """SELECT EXISTS (
+            SELECT 1 FROM vehicle_identity_observations o
+            CROSS JOIN LATERAL jsonb_array_elements(
+                CASE WHEN jsonb_typeof(o.raw_observation->'provider_mappings')='array'
+                    THEN o.raw_observation->'provider_mappings' ELSE '[]'::jsonb END
+            ) AS mappings(mapping)
+            WHERE o.vehicle_id=%s AND o.vehicle_configuration_id=%s
+              AND o.resolution_status='matched' AND o.reviewer_state<>'rejected'
+              AND o.canonical_observation->'engine_variant_market_verified'='true'::jsonb
+              AND o.canonical_observation->>'engine_variant'=%s
+              AND o.canonical_observation->>'region'=%s
+              AND mapping->>'source_provider'=%s AND mapping->>'provider_id'=%s
+              AND mapping->>'source_region'=%s
+              AND nullif(btrim(mapping->>'source_uri'),'') IS NOT NULL
+              AND nullif(btrim(mapping->>'source_version'),'') IS NOT NULL
+              AND NOT EXISTS (
+                SELECT 1 FROM vehicle_provider_mappings review
+                WHERE review.vehicle_id=o.vehicle_id
+                  AND review.vehicle_configuration_id=o.vehicle_configuration_id
+                  AND review.provider IN (mapping->>'source_provider',mapping->>'provider')
+                  AND review.entity_type='car' AND review.provider_id=mapping->>'provider_id'
+                  AND review.mapping_status='rejected'
+              )
+        ) AS matched""",
+        (scope["vehicle_id"], scope["vehicle_configuration_id"], variant, region, provider, ref, region),
+    ).fetchone()["matched"]
+
+
 def run_catalog_index_job(repo, lease, *, registry, object_store):
     if lease is None or lease.kind != "catalog_index":
         raise ValueError("catalog lease required")
@@ -232,10 +280,11 @@ def run_catalog_index_job(repo, lease, *, registry, object_store):
             "model": vehicle["model"],
             "region": vehicle["region"],
         }
+        configuration = None
         configuration_unresolved = False
         if scope["vehicle_configuration_id"]:
             configuration = cur.execute(
-                """SELECT c.trim,c.engine_displacement_l,b.drivetrain,b.region FROM vehicle_configurations c
+                """SELECT c.trim,c.engine_displacement_l,c.engine_variant,b.drivetrain,b.region FROM vehicle_configurations c
                 JOIN vehicle_identity_bases b USING(vehicle_identity_base_id)
                 WHERE c.vehicle_configuration_id=%s""",
                 (scope["vehicle_configuration_id"],),
@@ -250,6 +299,7 @@ def run_catalog_index_job(repo, lease, *, registry, object_store):
                         if configuration["engine_displacement_l"] is not None
                         else None
                     ),
+                    configuration["engine_variant"],
                     configuration["drivetrain"],
                 )
                 if value not in (None, "")
@@ -284,6 +334,7 @@ def run_catalog_index_job(repo, lease, *, registry, object_store):
         ref = scope["source_vehicle_ref"]
         ambiguous = False
         if not ref:
+            candidate = None
             with repo.connect() as conn, conn.cursor(row_factory=dict_row) as cur:
                 mappings = cur.execute(
                     "SELECT provider_id,source_snapshot_id FROM vehicle_provider_mappings WHERE vehicle_id=%s AND vehicle_configuration_id IS NOT DISTINCT FROM %s AND provider=%s AND entity_type='car' AND mapping_status='verified'",
@@ -305,9 +356,17 @@ def run_catalog_index_job(repo, lease, *, registry, object_store):
                 )
                 candidates = resolution.body["candidates"]
                 ambiguous = len(candidates) > 1
-                ref = candidates[0]["opaque_ref"] if len(candidates) == 1 else None
+                candidate = candidates[0] if len(candidates) == 1 else None
+                ref = candidate["opaque_ref"] if candidate is not None else None
             with repo.connect() as conn, conn.cursor(row_factory=dict_row) as cur:
                 scope = _lock_scope(cur, lease)
+                if (
+                    candidate is not None
+                    and configuration is not None
+                    and not _configuration_candidate_matches(cur, scope, configuration, candidate)
+                ):
+                    ref = None
+                    configuration_unresolved = True
                 if resolution_resource:
                     resolution_snapshot = persist_resource(cur, resolution_resource)
                 cur.execute(
@@ -318,11 +377,13 @@ def run_catalog_index_job(repo, lease, *, registry, object_store):
                     "UPDATE source_fetch_jobs SET source_vehicle_ref=%s WHERE source_fetch_job_id=%s",
                     (ref or "", lease.job_id),
                 )
-                if ref is None and not ambiguous:
+                if ref is None and not ambiguous and not configuration_unresolved:
                     _complete(cur, lease, scope, "NO_MATCHING_SOURCE_VEHICLE")
                     return
             if ambiguous:
                 raise SourceConnectorError("AMBIGUOUS")
+            if configuration_unresolved and ref is None:
+                raise SourceConnectorError("UNRESOLVED_CONFIGURATION")
         cursor = checkpoint.get("next_cursor")
         page_number = checkpoint.get("next_page_number", 0)
         seen_cursors = set(checkpoint.get("seen_cursors", []))

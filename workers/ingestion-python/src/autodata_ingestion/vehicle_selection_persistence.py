@@ -29,6 +29,7 @@ def persist_vehicle_selection_list(
     source_version: str = "vehicle-list-v1",
     region: str | None = None,
     address: str | None = None,
+    trusted_source_markets: bool = False,
 ) -> dict[str, Any]:
     """Persist a vehicle list as source evidence and identity graph facts.
 
@@ -143,6 +144,11 @@ def persist_vehicle_selection_list(
                     reviewer_state=evidence["reviewer_state"],
                     source_watermark=source_version,
                     raw_observation=raw_value,
+                    engine_variant_market_verified=(
+                        trusted_source_markets
+                        and observation.engine_variant is not None
+                        and _connector_declared_market(raw_value, observation.region)
+                    ),
                     jsonb=Jsonb,
                 )
                 results.append(
@@ -165,6 +171,21 @@ def persist_vehicle_selection_list(
         "observations": results,
         "observation_count": len(results),
     }
+
+
+def _connector_declared_market(value: Mapping[str, Any] | str, region: str) -> bool:
+    if not isinstance(value, Mapping) or value.get("source_region") != region:
+        return False
+    mappings = value.get("provider_mappings")
+    if not isinstance(mappings, list):
+        return False
+    return any(
+        isinstance(mapping, Mapping)
+        and mapping.get("source_provider") in ("bankone", "banktwo")
+        and mapping.get("source_region") == region
+        and all(isinstance(mapping.get(key), str) and mapping[key] for key in ("provider_id", "source_uri", "source_version"))
+        for mapping in mappings
+    )
 
 
 def _with_default_region(value: Mapping[str, Any] | str, region: str | None) -> Mapping[str, Any] | str:
