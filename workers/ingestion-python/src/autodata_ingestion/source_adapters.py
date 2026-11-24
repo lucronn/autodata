@@ -820,6 +820,7 @@ def _adapt_pdf_resource(
     keep_single_line_compact_figures: bool = False,
     keep_wordless_pdf_figures: bool = False,
     step_parser=None,
+    on_native_text=None,
 ) -> SourceArtifact:
     """Extract native PDF text and OCR pages that contain no native text."""
 
@@ -861,19 +862,33 @@ def _adapt_pdf_resource(
     compact_figures: list[dict[str, Any]] = []
     compact_positions: dict[str, tuple[int, int, int]] = {}
     wordless_candidates: list[dict[str, Any]] = []
-    for index, page in enumerate(pages, start=1):
-        try:
-            # Keep line breaks so TSB/PDF text can be segmented into headings,
-            # steps, and notes instead of one collapsed workshop paragraph.
-            raw_text = str(page.extract_text() or "")
-            lines = [re.sub(r"[ \t]+", " ", line).strip() for line in raw_text.splitlines()]
-            text = "\n".join(line for line in lines if line)
-        except Exception as error:
-            page_errors.append({"locator": f"page:{index}", "error": str(error)})
-            continue
-        if skip_blank_pages and not text and _is_blank_pdf_page(page):
-            blank_pages.add(index)
-            continue
+    def read_pages():
+        for index, page in enumerate(pages, start=1):
+            try:
+                # Keep line breaks so TSB/PDF text can be segmented into headings,
+                # steps, and notes instead of one collapsed workshop paragraph.
+                raw_text = str(page.extract_text() or "")
+                lines = [re.sub(r"[ \t]+", " ", line).strip() for line in raw_text.splitlines()]
+                text = "\n".join(line for line in lines if line)
+            except Exception as error:
+                page_errors.append({"locator": f"page:{index}", "error": str(error)})
+                continue
+            if skip_blank_pages and not text and _is_blank_pdf_page(page):
+                blank_pages.add(index)
+                continue
+            if text:
+                native_text_pages.add(index)
+                page_texts.append((index, text))
+            yield index, page, text
+
+    page_inputs = read_pages()
+    if on_native_text is not None:
+        # Scan the text layer once. OCR-needed or uncertain pages cannot
+        # contribute to a provisional native-text document.
+        page_inputs = list(page_inputs)
+        if page_texts and len(native_text_pages | blank_pages) == len(pages):
+            on_native_text(tuple(page_texts))
+    for index, page, text in page_inputs:
         single_line = bool(text) and "\n" not in text and keep_single_line_compact_figures
         extracted_images, page_image_keys = _extract_pdf_page_images(
             page, page_number=index,
@@ -901,8 +916,6 @@ def _adapt_pdf_resource(
             page_image_digests.setdefault(digest, set()).add(index)
             page_image_payloads.setdefault(digest, extracted)
         if text:
-            native_text_pages.add(index)
-            page_texts.append((index, text))
             if (figure_gaps is not None and extracted_images and len(extracted_images) == len(page_image_keys)
                     and (keep_multiple_pdf_figures or len(extracted_images) == 1)):
                 segments = segment_plain_article_text(text, step_parser=step_parser)
@@ -2231,6 +2244,7 @@ def adapt_bound_pdf_embed(
     keep_single_line_compact_figures: bool = False,
     keep_wordless_pdf_figures: bool = False,
     step_parser=None,
+    on_native_text=None,
 ) -> dict[str, Any]:
     return _adapt_bound_pdf(
         resource, embedded=True, require_complete_ocr=require_complete_ocr,
@@ -2243,13 +2257,15 @@ def adapt_bound_pdf_embed(
         keep_single_line_compact_figures=keep_single_line_compact_figures,
         keep_wordless_pdf_figures=keep_wordless_pdf_figures,
         step_parser=step_parser,
+        on_native_text=on_native_text,
     )
 
 
 def _adapt_bound_pdf(resource, *, embedded=False, require_complete_ocr=False, keep_pdf_figure_order=False,
                      keep_multiple_pdf_figures=False, keep_repeated_pdf_figures=False,
                      keep_pdf_figures_with_margins=False, keep_compact_pdf_figures=False, skip_blank_pages=False,
-                     keep_single_line_compact_figures=False, keep_wordless_pdf_figures=False, step_parser=None):
+                     keep_single_line_compact_figures=False, keep_wordless_pdf_figures=False, step_parser=None,
+                     on_native_text=None):
     if embedded and (resource.media_type != "application/pdf"
             or len(resource.payload) > _MAX_BOUND_EMBEDDED_PDF_BYTES
             or not resource.payload.startswith(b"%PDF-")):
@@ -2267,6 +2283,7 @@ def _adapt_bound_pdf(resource, *, embedded=False, require_complete_ocr=False, ke
             keep_single_line_compact_figures=keep_single_line_compact_figures,
             keep_wordless_pdf_figures=keep_wordless_pdf_figures,
             step_parser=step_parser,
+            on_native_text=on_native_text,
         )
     else:
         artifact = adapt_source_resource(resource)

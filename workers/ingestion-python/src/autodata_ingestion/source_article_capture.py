@@ -1,7 +1,7 @@
 """Bounded provider-bound capture; immutable public projection from actual bytes."""
 
 from collections import Counter
-from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from copy import deepcopy
 from datetime import datetime, timezone
 from functools import partial
@@ -49,7 +49,7 @@ from .source_adapters import adapt_bound_article, adapt_bound_pdf_embed
 from .source_connector_client import SourceConnectorError
 from .article_document import (
     ConnectorBankoneGraphic, ConnectorDocumentEmbed, LeadingDecimalStepParser, authored_image_caption, build_ordered_document,
-    table_image_summaries, validate_ordered_document, walk_ordered_list_items,
+    segment_plain_article_text, table_image_summaries, validate_ordered_document, walk_ordered_list_items,
 )
 from .svg_rasterization import rasterize_svg, SVGUnavailable, RASTERIZER_VERSION
 
@@ -595,7 +595,7 @@ def capture_source_article(
         }
 
     # All requests share one deadline; no more than four can run concurrently.
-    def fetch(pair, defer_pdf=False):
+    def fetch(pair, defer_pdf=False, native_ready=None):
         ref, role = pair
         originals = []
         try:
@@ -608,6 +608,16 @@ def capture_source_article(
                 if payload.media_type != "application/pdf":
                     return ref, role, None, "UNSUPPORTED_DOCUMENT_MEDIA", originals, None
                 resource = upload_resource(envelope, ref, role, bounded_objects)
+
+                def native_text(page_texts):
+                    parser = LeadingDecimalStepParser() if keep_leading_decimals else None
+                    blocks = [
+                        block for _, text in page_texts
+                        for block in segment_plain_article_text(text, step_parser=parser)
+                    ]
+                    if blocks:
+                        native_ready.set_result((resource, blocks))
+
                 try:
                     linked_step_parser = LeadingDecimalStepParser() if keep_leading_decimals else None
                     adapted = adapt_bound_pdf_embed(
@@ -619,6 +629,7 @@ def capture_source_article(
                         keep_single_line_compact_figures=keep_single_line_pdf_figures,
                         keep_wordless_pdf_figures=keep_wordless_linked_pdf_figures,
                         step_parser=linked_step_parser,
+                        on_native_text=native_text if native_ready is not None else None,
                         skip_blank_pages=(
                             skip_blank_linked_pdf_pages
                             and payload.content_sha256 not in context.legacy_published_pdf_blank_roots
@@ -679,6 +690,18 @@ def capture_source_article(
         except (ValueError, TypeError, KeyError):
             # Later media preparation can make an incomplete initial projection readable.
             return None
+
+    def publish_linked_preview(article, body_resource, linked_refs, ready_parts):
+        if time.monotonic() >= deadline:
+            return
+        ordered = [ready_parts[ref] for ref in linked_refs if ref in ready_parts]
+        preview = build_preview(article, {
+            resource["opaque_ref"]: (blocks, ["source:" + resource["source_snapshot_id"]], [])
+            for resource, blocks in ordered
+        })
+        if preview is not None and time.monotonic() < deadline:
+            on_linked_preview(body_resource, body_preview, linked_document=preview,
+                              linked_resources=tuple(resource for resource, _ in ordered))
 
     def store_document_figures(blocks):
         for node in _embedded_images(blocks):
@@ -804,13 +827,36 @@ def capture_source_article(
             verified = set()
             projected_refs = frozenset()
             projection = None
+            # Resolve a lone inferred link for the preview without changing
+            # the final projection. Mixed candidates keep full verification.
+            sole_inferred = (
+                candidates[0] if on_linked_preview is not None and not positioned and len(candidates) == 1 else None
+            )
+            inferred_text = None
             while pending or projection is not None:
                 waiting = set(pending)
                 if projection is not None:
                     waiting.add(projection)
+                if inferred_text is not None:
+                    waiting.add(inferred_text)
                 done, _ = wait(waiting, timeout=max(0, deadline - time.monotonic()), return_when=FIRST_COMPLETED)
                 if not done:
                     break
+                if inferred_text in done:
+                    done.remove(inferred_text)
+                    if not futures[sole_inferred].done() and time.monotonic() < deadline:
+                        part = inferred_text.result()
+                        try:
+                            native_article = parser_pool.submit(
+                                parse, step_parser=LeadingDecimalStepParser() if keep_leading_decimals else None,
+                                resolved_pdf_refs=frozenset({sole_inferred}),
+                            ).result(timeout=max(0, deadline - time.monotonic()))
+                            _, native_links, _ = plan_assets(native_article, deepcopy(native_article["blocks"]))
+                        except (ValueError, TypeError, KeyError, UnicodeError, TimeoutError):
+                            native_links = {}
+                        if sole_inferred in native_links:
+                            publish_linked_preview(native_article, body_resource, native_links, {sole_inferred: part})
+                    inferred_text = None
                 if projection in done:
                     article = projection.result()
                     step_parser = projected_steps
@@ -828,6 +874,8 @@ def capture_source_article(
                         if future.result()[1] == "document_asset":
                             acquired.add(ref)
                     else:
+                        if ref == sole_inferred:
+                            inferred_text = None
                         adapted = future.result()[-1]
                         if adapted is not None:
                             if ref in inferred:
@@ -845,7 +893,9 @@ def capture_source_article(
                     break
                 # Rank ready PDFs in source order. Pending or non-PDF reads take no slot.
                 for ref in [ref for ref in candidates if ref in acquired][:capacity]:
-                    future = pool.submit(fetch, (ref, "document_asset"))
+                    if ref == sole_inferred:
+                        inferred_text = Future()
+                    future = pool.submit(fetch, (ref, "document_asset"), native_ready=inferred_text)
                     futures[ref] = future
                     pending[future] = ref
                     capacity -= 1
@@ -981,34 +1031,40 @@ def capture_source_article(
     if pool is None:
         pool = ThreadPoolExecutor(max_workers=4)
         futures = {}
+    native_documents = {}
     for ref, role in fetch_order(optional):
         if ref not in futures:
-            futures[ref] = pool.submit(fetch, (ref, role))
+            native_ready = None
+            if on_linked_preview is not None and role == "document_asset":
+                native_ready = native_documents[ref] = Future()
+            futures[ref] = pool.submit(fetch, (ref, role), native_ready=native_ready)
     if on_linked_preview is not None and selected_documents:
         pending_documents = {futures[ref]: ref for ref in linked_refs if ref in selected_documents}
-        preview_documents = {}
-        preview_resources = {}
+        preview_parts = {}
         try:
             while pending_documents and time.monotonic() < deadline:
-                ready, _ = wait(pending_documents, timeout=max(0, deadline - time.monotonic()),
+                ready, _ = wait([*pending_documents, *native_documents.values()], timeout=max(0, deadline - time.monotonic()),
                                 return_when=FIRST_COMPLETED)
                 if not ready:
                     break
+                preview_changed = False
+                for ref, signal in tuple(native_documents.items()):
+                    if signal in ready or futures[ref] in ready:
+                        del native_documents[ref]
+                        if signal in ready and futures[ref] not in ready:
+                            preview_parts[ref] = signal.result()
+                            preview_changed = True
                 ready_refs = []
                 for future in ready:
-                    ref = pending_documents.pop(future)
+                    ref = pending_documents.pop(future, None)
+                    if ref is None:
+                        continue
                     _, role, resource, _, _, adapted = future.result()
                     if role == "document_asset" and resource is not None and adapted is not None:
                         ready_refs.append(ref)
-                        preview_resources[ref] = resource
-                        preview_documents[ref] = (adapted["blocks"], ["source:" + resource["source_snapshot_id"]], [])
-                if ready_refs and time.monotonic() < deadline:
-                    preview = build_preview(article, preview_documents)
-                    if preview is not None and time.monotonic() < deadline:
-                        on_linked_preview(resources[0], body_preview, linked_document=preview,
-                                          linked_resources=tuple(
-                                              preview_resources[ref] for ref in linked_refs if ref in preview_resources
-                                          ))
+                        preview_parts[ref] = (resource, adapted["blocks"])
+                if ready_refs or preview_changed:
+                    publish_linked_preview(article, resources[0], linked_refs, preview_parts)
                 for ref in ready_refs:
                     if ref in deferred_figures and time.monotonic() < deadline:
                         figure_writes[ref] = pool.submit(store_document_figures, deferred_figures[ref])
