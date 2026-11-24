@@ -208,24 +208,7 @@ def correct_retained_draft(source, previous, *, complete_json, model_call_budget
         if not _passage_errors(source, slots, draft) or len(exchanges) >= model_call_budget:
             break
 
-    unresolved = _passage_errors(source, slots, draft)
-    document, error_code = None, None
-    if unresolved:
-        error_code = next(iter(unresolved.values()))
-    else:
-        try:
-            candidate = auto.render_auto(source, draft, profile_version=SOURCE_BOUND_CORRECTION_PROFILE)
-            validation = auto.validate_auto(
-                source, candidate, response=draft, prompt_version=version,
-                profile_version=SOURCE_BOUND_CORRECTION_PROFILE,
-            )
-            if not validation.passed:
-                raise ValueError(validation.error_codes[0])
-            auto.require_current_publication_checks(source, candidate, saved_prompt_version=version)
-        except ValueError as error:
-            error_code = str(error)
-        else:
-            document = candidate
+    document, error_code = _validated_document(source, slots, draft, version)
     return CorrectionResult(draft, document, error_code, {
         "method": _CORRECTION_METHOD, "input_hash": digest_json(source),
         "guard_version": version, "prior_response_hash": digest_json(previous),
@@ -233,8 +216,34 @@ def correct_retained_draft(source, previous, *, complete_json, model_call_budget
     })
 
 
+def _validated_document(source, slots, draft, version):
+    unresolved = _passage_errors(source, slots, draft)
+    if unresolved:
+        return None, next(iter(unresolved.values()))
+    try:
+        candidate = auto.render_auto(source, draft, profile_version=SOURCE_BOUND_CORRECTION_PROFILE)
+        validation = auto.validate_auto(
+            source, candidate, response=draft, prompt_version=version,
+            profile_version=SOURCE_BOUND_CORRECTION_PROFILE,
+        )
+        if not validation.passed:
+            return None, validation.error_codes[0]
+        auto.require_current_publication_checks(source, candidate, saved_prompt_version=version)
+    except ValueError as error:
+        return None, str(error)
+    return candidate, None
+
+
 def replay_retained_correction(source, previous, *, model_call_budget, evidence, attempts):
     """Rebuild the draft from pinned prompt hashes and original provider replies."""
+    result = rebuild_retained_correction(source, previous, model_call_budget=model_call_budget, attempts=attempts)
+    if result.evidence != evidence:
+        raise ValueError("REWRITE_CORRECTION_EVIDENCE_INVALID")
+    return result
+
+
+def rebuild_retained_correction(source, previous, *, model_call_budget, attempts):
+    """Reproduce the original method, including the prompts in a failed archive."""
     rounds = iter(attempts)
 
     def from_saved(prompt):
@@ -249,6 +258,6 @@ def replay_retained_correction(source, previous, *, model_call_budget, evidence,
     result = correct_retained_draft(
         source, previous, complete_json=from_saved, model_call_budget=model_call_budget,
     )
-    if next(rounds, None) is not None or result.evidence != evidence:
+    if next(rounds, None) is not None:
         raise ValueError("REWRITE_CORRECTION_EVIDENCE_INVALID")
     return result
