@@ -2299,7 +2299,7 @@ function loginRouteHarness(search, { authenticate = true, signInError = null, lo
     appSection('function populate(', 'async function loadOptions(') +
     appSection('async function signIn() {', 'export async function bootstrap(') +
     appSection('function loadPurchaseConfiguration(', 'function checkAccount(') +
-    appSection('async function restoreRoute(', 'for (const [index, name] of names.entries())'),
+    appSection('async function confirmedSavedYear(', 'for (const [index, name] of names.entries())'),
     context,
   );
   return { context, calls, element };
@@ -2693,6 +2693,68 @@ test('startup starts each saved picker read once and restores the hierarchy in p
   assert.equal(h.element('configuration').disabled, false);
   assert.equal(h.context.rows.configuration[0].id, routeConfiguration);
   assert.equal(earlyCalls[0].signal.aborted, true);
+});
+
+const storedPickerConfiguration = {
+  id: routeConfiguration, year: 2024, make: 'Buick Truck', model: 'Envision AWD',
+  region: 'US', engine: '2.0', complete: true,
+};
+const fullPickerYears = { items: [{ year: 2024 }, { year: 2022 }, { year: 2026 }], complete: true };
+
+function setupSlowSavedYears(route, configuration = storedPickerConfiguration) {
+  const year = deferredAuthOperation();
+  const response = { items: [configuration], complete: true };
+  const initialSelectors = startSavedSelectorReads(new URLSearchParams(route), async path => {
+    const index = savedPickerPaths.indexOf(path);
+    if (index === 0) return year.promise;
+    return index === 3 ? response : savedPickerRows[index];
+  });
+  const h = loginRouteHarness(route);
+  const opening = h.context.restoreRoute(null, { initialSelectors });
+  return { ...h, opening, year, initialSelectors };
+}
+
+for (const exact of [false, true]) {
+  test(`a verified saved ${exact ? 'configuration' : 'model'} is usable before its full year list`, async () => {
+    const route = exact ? `${savedPickerRoute}&configuration=${routeConfiguration}&region=US` : savedPickerRoute;
+    const h = setupSlowSavedYears(route);
+    await new Promise(setImmediate);
+    const expected = ['2024', 'buick-truck', 'envision-awd', exact ? routeConfiguration : ''];
+    assert.deepEqual(h.context.names.map(name => h.element(name).value), expected);
+    assert.equal(h.element('configuration').disabled, false);
+    assert.equal(h.element('year').children.length, 2);
+    assert.deepEqual(h.calls.selections, exact ? [{ configuration: routeConfiguration, region: 'US', article: '' }] : []);
+
+    h.year.resolve(fullPickerYears);
+    await h.opening;
+    assert.deepEqual(h.context.names.map(name => h.element(name).value), expected);
+    assert.deepEqual(h.element('year').children.slice(1).map(option => option.value), ['2026', '2024', '2022']);
+    assert.deepEqual(h.calls.selectorReads, []);
+  });
+}
+
+test('an inconsistent saved configuration cannot establish the year early', async () => {
+  const route = `${savedPickerRoute}&configuration=${routeConfiguration}&region=US`;
+  const h = setupSlowSavedYears(route, { ...storedPickerConfiguration, region: 'CA' });
+  const rejected = assert.rejects(h.opening, /unavailable in the selected region/);
+  await new Promise(setImmediate);
+  assert.equal(h.element('configuration').disabled, true);
+  assert.deepEqual(h.calls.selections, []);
+  h.year.resolve(fullPickerYears);
+  await rejected;
+  assert.deepEqual(h.calls.selections, []);
+});
+
+test('a late year list cannot update a superseded saved picker', async () => {
+  const h = setupSlowSavedYears(savedPickerRoute);
+  await new Promise(setImmediate);
+  assert.equal(h.element('configuration').disabled, false);
+  h.context.invalidate();
+  h.context.populate('year', [{ year: 2001 }], '2001');
+  h.year.resolve(fullPickerYears);
+  await h.opening;
+  assert.deepEqual(h.element('year').children.slice(1).map(option => option.value), ['2001']);
+  assert.equal(h.element('year').value, '2001');
 });
 
 test('early saved selectors skip independent or session-dependent routes', () => {

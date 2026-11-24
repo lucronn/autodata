@@ -2482,6 +2482,35 @@ function checkAccount(initial) {
   sessionRequest = accountCheck;
   return accountCheck;
 }
+async function confirmedSavedYear(desired, initial, region) {
+  const [makes, models, configurations] = await Promise.all([initial.make, initial.model, initial.configuration]);
+  const includes = (result, id) => Array.isArray(result?.items) && result.items.some((item) => item?.id === id);
+  if (!includes(makes, desired.make) || !includes(models, desired.model) ||
+      !Array.isArray(configurations?.items) || !configurations.items.length ||
+      (desired.configuration && !includes(configurations, desired.configuration))) return null;
+  const slug = (value) => typeof value === "string"
+    ? value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") : "";
+  const year = Number(desired.year);
+  return configurations.items.every((item) => item?.complete === true && item.year === year &&
+    item.region === region && slug(item.make) === desired.make && slug(item.model) === desired.model)
+    ? { year } : null;
+}
+
+async function finishSavedYears(g, pending, confirmed) {
+  try {
+    const path = selectorPath("year");
+    const response = (await pending) ?? await requestJSON(path, { signal: g.signal });
+    if (!g.current() || $("year").value !== String(confirmed.year) || !Array.isArray(response?.items)) return;
+    const includesYear = response.items.some((item) => item?.year === confirmed.year);
+    populate("year", includesYear ? response.items : [...response.items, confirmed]);
+    const picker = pickerStates.get("year");
+    if (picker) picker.incomplete = !includesYear || response.complete !== true;
+    if (includesYear) rememberSelector(path, "year", response);
+  } catch {
+    // The exact stored branch remains available if the broader year list fails.
+  }
+}
+
 async function restoreRoute(initialYears = null, { focusArticle = "", indexAnchor = "", initialSelectors = null } = {}) {
   invalidate();
   show("welcome");
@@ -2553,17 +2582,34 @@ async function restoreRoute(initialYears = null, { focusArticle = "", indexAncho
           if (!desired[name]) break;
         }
       }
-      for (const name of names) {
-        await loadOptions(name, g, desired[name], initial[name]);
-        if (!g.current() || !desired[name]) return;
+      const fullYears = Promise.resolve(initial.year);
+      // Exact configuration rows can confirm the year while the broader list
+      // is in flight. Make/model membership still comes from their own reads.
+      const confirmed = initial.year && desired.make && desired.model && initial.configuration
+        ? await Promise.race([
+          fullYears.then(() => null),
+          confirmedSavedYear(desired, initial, params.get("region") ?? "US"),
+        ]) : null;
+      if (!g.current()) return;
+      if (confirmed) initial.year = { items: [confirmed], complete: false };
+      let yearsRefresh;
+      try {
+        for (const name of names) {
+          await loadOptions(name, g, desired[name], initial[name]);
+          if (!g.current() || !desired[name]) return;
+          if (name === "year" && confirmed) yearsRefresh = finishSavedYears(g, fullYears, confirmed);
+        }
+        const configuration = rows.configuration.find(
+          (item) => item.id === $("configuration").value,
+        );
+        if (params.has("region") && configuration?.region !== exact.region)
+          throw new Error("This saved vehicle choice is unavailable in the selected region.");
+        vehicle = configuration;
+        await selectVehicle(g, articleID, indexOptions);
+      } finally {
+        // Keep the startup reads alive until the year list has had time to fill.
+        if (yearsRefresh) await yearsRefresh;
       }
-      const configuration = rows.configuration.find(
-        (item) => item.id === $("configuration").value,
-      );
-      if (params.has("region") && configuration?.region !== exact.region)
-        throw new Error("This saved vehicle choice is unavailable in the selected region.");
-      vehicle = configuration;
-      await selectVehicle(g, articleID, indexOptions);
     },
     () => restoreRoute(),
   );
